@@ -203,6 +203,11 @@ body {
   font-size: 16.5px;
 }
 
+/* The page header already shows the document title; skip the markdown's own first H1. */
+.markdown-body > h1:first-child {
+  display: none;
+}
+
 .markdown-body h1 {
   font-family: var(--font-serif);
   font-size: 2.25rem;
@@ -242,6 +247,14 @@ body {
 .markdown-body ol {
   margin: 0.6rem 0 0.9rem;
   padding-left: 1.4rem;
+}
+
+.markdown-body ul {
+  list-style: disc;
+}
+
+.markdown-body ol {
+  list-style: decimal;
 }
 
 .markdown-body li {

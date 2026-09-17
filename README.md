@@ -88,7 +88,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 pnpm --filter @real-bot/messenger build
 ```
 
-源码托管在 [github.com/Blackman99/real-bot](https://github.com/Blackman99/real-bot)。推送到 `main` 或打开 PR 会跑上述检查（另含落地页 build）；推送 `v*` 标签会打未签名 macOS 快照 draft，不是稳定安装包。落地页由 GitHub Pages 发布。细节见[开发说明](docs/development.md#ci落地页与快照发布)。
+源码托管在 [github.com/Blackman99/real-bot](https://github.com/Blackman99/real-bot)。推送到 `main` 或打开 PR 会跑上述检查（另含落地页 build）；推送 `v*` 标签会打未签名 macOS 快照并发布为 prerelease，不是稳定安装包。落地页由 GitHub Pages 发布。细节见[开发说明](docs/development.md#ci落地页与快照发布)。
 
 | 路径 | 职责 |
 | --- | --- |

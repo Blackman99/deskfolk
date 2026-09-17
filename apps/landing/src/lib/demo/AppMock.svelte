@@ -90,7 +90,9 @@
   });
 
   /* ---- Callout placement ---- */
-  let callout = $state<{ x: number; y: number; side: 'right' | 'left' } | null>(null);
+  type Side = 'right' | 'left' | 'below';
+  let callout = $state<{ x: number; y: number; side: Side } | null>(null);
+  const CALLOUT_W = 180;
 
   $effect(() => {
     // Depend on the whole state so we re-measure after each beat.
@@ -103,20 +105,29 @@
         callout = null;
         return;
       }
-      const r = measure(target);
+      const [name, prefer = 'right'] = target.split(':') as [string, Side];
+      const r = measure(name);
       if (!r) {
         callout = null;
         return;
       }
-      const W = 210;
-      let side: 'right' | 'left' = 'right';
-      let x = r.x + r.w + 14;
-      if (x + W > DESIGN_W - 8) {
-        side = 'left';
-        x = r.x - W - 14;
+      let side: Side = prefer;
+      let x: number;
+      let y: number;
+      if (side === 'right' && r.x + r.w + 14 + CALLOUT_W > DESIGN_W - 8) side = 'left';
+      if (side === 'left' && r.x - 14 - CALLOUT_W < 8) side = 'below';
+      if (side === 'right') {
+        x = r.x + r.w + 14;
+        y = r.y + r.h / 2 - 22;
+      } else if (side === 'left') {
+        x = r.x - 14 - CALLOUT_W;
+        y = r.y + r.h / 2 - 22;
+      } else {
+        x = r.x;
+        y = r.y + r.h + 12;
       }
-      let y = r.y + r.h / 2 - 22;
-      y = Math.max(8, Math.min(DESIGN_H - 70, y));
+      x = Math.max(8, Math.min(DESIGN_W - CALLOUT_W - 8, x));
+      y = Math.max(8, Math.min(DESIGN_H - 64, y));
       callout = { x, y, side };
     });
     return () => {
@@ -277,7 +288,7 @@
               {#each activeItems as item (item.id)}
                 {#if item.kind === 'user'}
                   <div class="msg you" in:fly={{ y: 10, duration: dur }}>
-                    <div class="bubble you">{item.text}</div>
+                    <div class="bubble you" data-hit="msg-{item.id}">{item.text}</div>
                     <span class="time">{item.time}</span>
                   </div>
                   {#if mock.judgement && item.id === 'g1'}
@@ -293,7 +304,7 @@
                     <Avatar name={botName(item.bot)} size={26} />
                     <div class="msg-col">
                       <div class="meta"><span class="who">{botName(item.bot)}</span><span class="time">{item.time}</span></div>
-                      <div class="bubble bot">
+                      <div class="bubble bot" data-hit="msg-{item.id}">
                         {#if item.streaming}
                           <Typewriter text={item.parts.map((p) => (p.type === 'text' ? p.text : '')).join('')} duration={2600} {instant} caret />
                         {:else}
@@ -374,7 +385,7 @@
                 </div>
               {/each}
               {#if mock.preview.edited}
-                <div class="code-line edit">
+                <div class="code-line edit" data-hit="pv-edit">
                   <span class="ln">{t.script.reportLines.length + 1}</span>
                   <span class="code q"><Typewriter text={t.script.reportEditLine} duration={900} {instant} caret={!mock.preview.saved} /></span>
                 </div>
@@ -445,7 +456,7 @@
           <span class="label">{t.mock.endpointKeyLabel}</span>
           <div class="key-row" data-hit="settings-key">
             <div class="input mono key">{#if mock.settings >= 4}<span in:fade={{ duration: dur }}>••••••••••••••••••••••••</span>{/if}</div>
-            {#if mock.settings >= 4}<span class="chip-ok" in:scale={{ duration: dur }}>{t.mock.keySet}</span>{/if}
+            {#if mock.settings >= 4}<span class="chip-ok" data-hit="settings-key-chip" in:scale={{ duration: dur }}>{t.mock.keySet}</span>{/if}
           </div>
           <span class="field-hint">{t.mock.keyHint}</span>
         </div>
@@ -538,7 +549,7 @@
 
   <!-- ───────── Callout ───────── -->
   {#if callout && calloutText}
-    <div class="callout" class:left={callout.side === 'left'} style:left="{callout.x}px" style:top="{callout.y}px" in:fade={{ duration: dur }}>
+    <div class="callout {callout.side}" style:left="{callout.x}px" style:top="{callout.y}px" style:width="{CALLOUT_W}px" in:fade={{ duration: dur }}>
       {calloutText}
     </div>
   {/if}
@@ -731,7 +742,7 @@
   .meta { display: flex; align-items: baseline; gap: 8px; }
   .who { font-weight: 600; font-size: 12px; }
   .time { font-size: 10.5px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
-  .bubble { padding: 8px 12px; border-radius: 12px; max-width: 460px; font-size: 12.5px; line-height: 1.55; overflow-wrap: anywhere; }
+  .bubble { padding: 8px 12px; border-radius: 12px; max-width: 440px; font-size: 12.5px; line-height: 1.55; overflow-wrap: anywhere; }
   .bubble.you { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
   .bubble.bot { background: var(--bot-bubble); border: 1px solid var(--line); border-top-left-radius: 4px; }
 
@@ -849,7 +860,7 @@
     padding: 4px 9px; font-size: 12px; color: var(--ink); display: flex; align-items: center;
   }
   .input.tall { min-height: 44px; align-items: flex-start; }
-  .input.key { letter-spacing: 0.08em; flex: 1; color: var(--ink-2); }
+  .input.key { letter-spacing: 0.08em; flex: 0 0 56%; color: var(--ink-2); }
   .key-row { display: flex; align-items: center; gap: 8px; }
   .chip-ok { font-size: 10.5px; font-weight: 600; color: var(--ok-text); background: var(--ok-bg); border-radius: 999px; padding: 2px 8px; }
   .field-hint { font-size: 10.5px; color: var(--muted); }
@@ -905,7 +916,7 @@
 
   /* Callout */
   .callout {
-    position: absolute; width: 210px; z-index: 5;
+    position: absolute; z-index: 5;
     background: #fff; color: #0f172a;
     border-left: 3px solid #146a7c; border-radius: 6px;
     padding: 7px 10px; font-size: 12px; line-height: 1.45;
@@ -918,6 +929,8 @@
   }
   .callout.left { border-left: 0; border-right: 3px solid #146a7c; }
   .callout.left::before { left: auto; right: -9px; border-right: 0; border-left: 6px solid #146a7c; }
+  .callout.below { border-left: 0; border-top: 3px solid #146a7c; }
+  .callout.below::before { top: -9px; left: 16px; border: 6px solid transparent; border-top: 0; border-bottom-color: #146a7c; }
 
   /* Cursor */
   .cursor {
@@ -933,6 +946,10 @@
   }
   .cursor.clicking .ripple { animation: ripple 320ms ease-out; }
   @keyframes ripple { 0% { opacity: 0.9; transform: scale(0.4); } 100% { opacity: 0; transform: scale(1.6); } }
+
+  @media (max-width: 1023px) {
+    .callout { display: none; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .frame, .callout, .cursor, .pv-save, .approval, .send, .transcript { transition: none; }

@@ -90,7 +90,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 pnpm --filter @real-bot/messenger build
 ```
 
-Source is at [github.com/Blackman99/real-bot](https://github.com/Blackman99/real-bot). Pushes to `main` and pull requests run the checks above (plus the landing-page build). A `v*` tag packages an unsigned macOS snapshot as a draft prerelease; that is not a supported installer. The landing page is published with GitHub Pages. See the [development guide](docs/development.md#ci落地页与快照发布) (Chinese) for workflow details.
+Source is at [github.com/Blackman99/real-bot](https://github.com/Blackman99/real-bot). Pushes to `main` and pull requests run the checks above (plus the landing-page build). A `v*` tag packages an unsigned macOS snapshot as a GitHub prerelease; that is not a supported installer. The landing page is published with GitHub Pages. See the [development guide](docs/development.md#ci落地页与快照发布) (Chinese) for workflow details.
 
 | Path | Responsibility |
 | --- | --- |

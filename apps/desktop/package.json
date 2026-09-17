@@ -2,7 +2,7 @@
   "name": "@real-bot/desktop",
   "license": "MIT",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.1",
   "type": "module",
   "engines": {
     "node": ">=22"

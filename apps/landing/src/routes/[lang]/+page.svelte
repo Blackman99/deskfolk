@@ -1,6 +1,7 @@
 <script lang="ts">
   import { base } from '$app/paths';
   import Walkthrough from '$lib/demo/Walkthrough.svelte';
+  import Seo from '$lib/Seo.svelte';
   import { DICT, type Lang } from '$lib/i18n';
   import { GITHUB_URL, GITHUB_BLOB_MAIN } from '$lib/site';
 
@@ -9,10 +10,7 @@
   const t = $derived(DICT[lang]);
 </script>
 
-<svelte:head>
-  <title>Real Bot — {t.footer.tagline}</title>
-  <meta name="description" content={t.hero.subhead} />
-</svelte:head>
+<Seo {lang} title={t.seo.title} description={t.seo.description} imageAlt={t.seo.imageAlt} softwareSchema />
 
 <Walkthrough {t} {lang} />
 
@@ -41,10 +39,7 @@
       {/each}
     </div>
     <p class="footnote">
-      {t.boundaries.footnote}
-      <a class="text-link" href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
-      ·
-      <a class="text-link" href="{base}/{lang}/manifesto">CONTEXT.md</a>
+      {t.boundaries.footnote[0]}<a class="text-link" href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>{t.boundaries.footnote[1]}<a class="text-link" href="{base}/{lang}/manifesto">CONTEXT.md</a>{t.boundaries.footnote[2]}
     </p>
   </div>
 </section>
@@ -235,6 +230,7 @@
   }
 
   .first-run {
+    list-style: decimal;
     margin: 22px 0 0;
     padding-left: 1.4em;
     color: var(--ink-2);
@@ -263,6 +259,7 @@
     border-radius: 12px;
     background: #0f172a;
     color: #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: var(--shadow-float);
     overflow: hidden;
   }

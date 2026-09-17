@@ -91,9 +91,9 @@ jobs:
           tagName: v__VERSION__
           releaseName: Real Bot v__VERSION__
           releaseBody: |
-            WIP unsigned macOS snapshot. This is not a supported signed installer.
+            Unsigned macOS alpha. This is not a supported signed installer.
 
-            Gatekeeper may block ad-hoc signed builds. Prefer running from source:
+            Gatekeeper may block ad-hoc signed builds (`signingIdentity: "-"`). Prefer running from source:
 
             ```
             pnpm install
@@ -101,7 +101,7 @@ jobs:
             ```
 
             Windows and Linux are out of scope. See CHANGELOG.md and ROADMAP.md.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: true
           generateReleaseNotes: true
           uploadUpdaterJson: false

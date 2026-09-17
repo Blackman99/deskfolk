@@ -1,6 +1,7 @@
 <script lang="ts">
   import { base } from '$app/paths';
   import { DICT, type Lang } from '$lib/i18n';
+  import Seo from '$lib/Seo.svelte';
 
   let { data } = $props();
   const lang: Lang = $derived(data.lang);
@@ -8,9 +9,7 @@
   const t = $derived(DICT[lang]);
 </script>
 
-<svelte:head>
-  <title>{doc.title} — {t.nav.manifesto} — Real Bot</title>
-</svelte:head>
+<Seo {lang} title="{doc.title} — {t.nav.manifesto} — Real Bot" description={t.docs.manifestoIntro} suffix="/manifesto" imageAlt={t.seo.imageAlt} />
 
 <div class="doc page">
   <nav class="crumbs" aria-label="Breadcrumb">

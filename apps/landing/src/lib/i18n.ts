@@ -28,6 +28,7 @@ export type Dict = {
   };
   hero: {
     headline: string;
+    headlineLines: string[];
     subhead: string;
     wipNote: string;
     ctaPrimary: string;
@@ -134,7 +135,8 @@ export type Dict = {
     colWip: string;
     colAvoid: string;
     rows: BoundaryRow[];
-    footnote: string;
+    /** [before roadmap link, between roadmap and CONTEXT.md links, after] */
+    footnote: [string, string, string];
   };
   quickstart: {
     heading: string;
@@ -151,6 +153,11 @@ export type Dict = {
     tagline: string;
     mit: string;
     contributors: string;
+  };
+  seo: {
+    title: string;
+    description: string;
+    imageAlt: string;
   };
   docs: {
     manifestoTag: string;
@@ -176,6 +183,7 @@ const zh: Dict = {
   },
   hero: {
     headline: '在自己的电脑上，用对话组一支持久的 AI 队友。',
+    headlineLines: ['在自己的电脑上，', '用对话组一支', '持久的 AI 队友。'],
     subhead:
       'Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在你的 Mac 上；模型端点和 MCP 工具由你接入。',
     wipNote: '正在开发中：面向 macOS 从源码运行，尚无稳定版。',
@@ -398,7 +406,7 @@ const zh: Dict = {
         avoid: '每件事都要手点深层菜单'
       }
     ],
-    footnote: '详细方向见路线图；领域词汇以 CONTEXT.md 为准。'
+    footnote: ['详细方向见', '；领域词汇以 ', ' 为准。']
   },
   quickstart: {
     heading: '从源码在你的 Mac 上启动',
@@ -420,6 +428,12 @@ const zh: Dict = {
     tagline: '本机 macOS 上的单人 agent 协作应用。',
     mit: 'MIT 协议开源。与 xAI / Grok 无官方附属关系。',
     contributors: 'Real Bot Contributors'
+  },
+  seo: {
+    title: 'Real Bot — 在自己的电脑上，用对话组一支持久的 AI 队友',
+    description:
+      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，正在开发中。',
+    imageAlt: 'Real Bot：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
     manifestoTag: 'CONTEXT.md',
@@ -444,7 +458,8 @@ const en: Dict = {
     wip: 'Work in progress'
   },
   hero: {
-    headline: 'Build a team of persistent AI teammates on your own computer, through conversation.',
+    headline: 'Persistent AI teammates, organized by conversation, on your own Mac.',
+    headlineLines: ['Persistent AI teammates,', 'organized by conversation,', 'on your own Mac.'],
     subhead:
       'Bots have names, duties and boundaries. They chat one to one, join groups, get @mentioned and hand work to each other. The window, runtime, sessions and shared workspace live on your Mac; you plug in the model endpoints and MCP tools.',
     wipNote: 'Work in progress: runs from source on macOS. No stable release yet.',
@@ -668,7 +683,7 @@ const en: Dict = {
         avoid: 'Deep menus for everyday configuration'
       }
     ],
-    footnote: 'See the roadmap for direction; CONTEXT.md is the source of truth for vocabulary.'
+    footnote: ['See the ', ' for direction; ', ' is the source of truth for vocabulary.']
   },
   quickstart: {
     heading: 'Run from source on your Mac',
@@ -690,6 +705,12 @@ const en: Dict = {
     tagline: 'A single-user agent collaboration app for your Mac.',
     mit: 'Open source under MIT. Not affiliated with xAI / Grok.',
     contributors: 'Real Bot Contributors'
+  },
+  seo: {
+    title: 'Real Bot — Persistent AI teammates, organized by conversation, on your own Mac',
+    description:
+      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, work in progress.',
+    imageAlt: 'Real Bot: three bots collaborating on report.md in a group chat window'
   },
   docs: {
     manifestoTag: 'CONTEXT.md',

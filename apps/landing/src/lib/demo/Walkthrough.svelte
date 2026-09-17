@@ -9,17 +9,17 @@
   const DESIGN_W = 900;
   const DESIGN_H = 580;
 
-  /** Which [data-hit] element in the mock each step's callout points at. */
+  /** Which [data-hit] element in the mock each step's callout points at, with a preferred side. */
   const CALLOUT_TARGETS: (string | null)[] = [
     null,
-    'settings-key',
-    'roster-row',
-    'roster-row',
-    'judgement',
-    'approval-card',
-    'mention-writer',
-    'preview-save',
-    'tray-status'
+    'settings-key-chip:right',
+    'roster-row:below',
+    'msg-u1:left',
+    'judgement:left',
+    'allow-once:below',
+    'msg-g3:right',
+    'pv-edit:left',
+    'tray-status:right'
   ];
 
   let scene = $state(0);
@@ -32,7 +32,7 @@
   const calloutText = $derived(scene > 0 ? t.demo.steps[scene - 1]?.callout ?? null : null);
   const calloutTarget = $derived(CALLOUT_TARGETS[scene] ?? null);
   const railLabel = $derived(
-    scene > 0 ? `${String(scene).padStart(2, '0')}  ${t.demo.steps[scene - 1]?.title ?? ''}` : t.hero.scrollHint
+    scene > 0 ? `${String(scene).padStart(2, '0')}  ${t.demo.steps[scene - 1]?.title ?? ''}` : t.demo.railLabel
   );
 
   function pad(n: number): string {
@@ -86,7 +86,9 @@
     <!-- Hero copy: scene 0 -->
     <div class="hero step" data-scene="0">
       <p class="wip"><span class="wip-mark"></span>{t.hero.wipNote}</p>
-      <h1 class="serif">{t.hero.headline}</h1>
+      <h1 class="serif">
+        {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
+      </h1>
       <p class="sub">{t.hero.subhead}</p>
       <div class="ctas">
         <a class="btn btn-primary" href="{base}/{lang}#quickstart">{t.hero.ctaPrimary}</a>
@@ -187,18 +189,20 @@
 
   h1 {
     margin: 0;
-    font-size: clamp(2.1rem, 4.6vw, 3.6rem);
+    font-size: clamp(2rem, 4.2vw, 3rem);
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.22;
     color: var(--ink);
-    text-wrap: balance;
-    max-width: 22ch;
+  }
+
+  h1 span {
+    display: inline-block;
   }
 
   :global([lang='en']) h1 {
-    font-size: clamp(2rem, 4vw, 3.15rem);
-    line-height: 1.12;
-    max-width: 24ch;
+    font-size: clamp(1.9rem, 3.6vw, 2.6rem);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
   }
 
   .sub {
@@ -430,7 +434,7 @@
   @media (min-width: 1024px) {
     .walk-grid {
       display: grid;
-      grid-template-columns: minmax(320px, 4fr) minmax(0, 8fr);
+      grid-template-columns: minmax(340px, 9fr) minmax(0, 16fr);
       column-gap: 44px;
     }
 

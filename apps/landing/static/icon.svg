@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Full-bleed app icon (used for PNG exports; platforms mask the corners). -->
+  <rect width="64" height="64" fill="#146a7c"/>
+  <circle cx="24" cy="32" r="13" fill="#ffffff"/>
+  <circle cx="41" cy="32" r="13" fill="#f0ab3d" stroke="#146a7c" stroke-width="3.5"/>
+</svg>

@@ -74,8 +74,10 @@ pnpm --filter @real-bot/messenger dev
 |---|---|---|
 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、信使与落地页 build；macOS 上 `cargo test` |
 | [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) | `main` 推送 | 构建 `apps/landing` 并部署 GitHub Pages |
-| [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证后打 **未签名** 的 macOS `.dmg` / `.app`，写入 **draft prerelease** |
+| [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证后打 **未签名** 的 macOS `.dmg` / `.app`，发布为 GitHub **prerelease** |
 
 落地页本地预览：`pnpm --filter @real-bot/landing dev`（5174）。Pages 构建会设 `BASE_PATH=/<仓库名>`，适配 `https://<owner>.github.io/<repo>/`。仓库链接集中在 `apps/landing/src/lib/site.ts`。
 
-当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致，否则 `tauri-action` 会按配置里的版本建 draft（现在是 `0.0.0`）。Windows / Linux 不在发布范围。Apple Developer 证书与公证需要以后另配仓库 secrets，不写进工作流。
+落地页首页是随滚动推进的完整流程演示：`apps/landing/src/lib/demo/scenes.ts` 用纯函数按（场景，节拍）算出信使窗口的状态，`SCENE_BEATS` 定义每个场景各节拍的毫秒偏移；`AppMock.svelte` 只负责把状态画成窗口，`Walkthrough.svelte` 用 IntersectionObserver 决定当前场景并把窗口按容器宽度缩放。中英文案（含各步标题、标注和演示台词）都在 `apps/landing/src/lib/i18n.ts`；改台词或加步骤时同时改两种语言。窗口内标注用 `data-hit` 属性定位界面元素，`Walkthrough.svelte` 里的 `CALLOUT_TARGETS` 指定每步指向哪个元素及偏好的一侧。
+
+当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致（去掉 `v` 前缀），否则 `tauri-action` 会按配置里的版本建 release。例如标签 `v0.1.0-alpha.1` 对应配置版本 `0.1.0-alpha.1`。Windows / Linux 不在发布范围。Apple Developer 证书与公证需要以后另配仓库 secrets，不写进工作流。

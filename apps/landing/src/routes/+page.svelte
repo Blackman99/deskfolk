@@ -1,6 +1,7 @@
 <script lang="ts">
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
+  import Logo from '$lib/Logo.svelte';
 
   onMount(() => {
     const lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
@@ -13,8 +14,9 @@
 </svelte:head>
 
 <div class="redirect">
-  <span class="spinner" aria-hidden="true"></span>
+  <Logo size={28} />
   <span>Real Bot</span>
+  <span class="spinner" aria-hidden="true"></span>
 </div>
 
 <style>

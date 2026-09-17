@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { DICT, type Lang } from '$lib/i18n';
   import { GITHUB_URL } from '$lib/site';
+  import Logo from '$lib/Logo.svelte';
 
   let { data, children } = $props();
   const lang: Lang = $derived(data.lang);
@@ -24,9 +25,7 @@
   <header class="nav">
     <div class="page nav-inner">
       <a class="brand" href="{base}/{lang}">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="13" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="11.5" r="1.4" fill="currentColor"/><circle cx="15" cy="11.5" r="1.4" fill="currentColor"/><path d="M12 2v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </span>
+        <span class="brand-mark"><Logo size={26} /></span>
         <span class="brand-name serif">Real Bot</span>
         <span class="brand-wip">{t.nav.wip}</span>
       </a>
@@ -56,7 +55,7 @@
   <footer class="foot">
     <div class="page foot-inner">
       <div class="foot-brand">
-        <span class="brand-name serif">Real Bot</span>
+        <span class="foot-id"><Logo size={22} /><span class="brand-name serif">Real Bot</span></span>
         <p>{t.footer.tagline}</p>
         <p class="fine">{t.footer.mit}</p>
       </div>
@@ -104,18 +103,23 @@
     color: var(--ink);
   }
 
-  .brand-mark {
+  .brand-mark,
+  .foot-id {
     display: inline-flex;
-    color: var(--teal);
+    align-items: center;
+    gap: 10px;
   }
 
   .brand-name {
     font-size: 1.2rem;
     font-weight: 700;
     letter-spacing: -0.01em;
+    white-space: nowrap;
   }
 
   .brand-wip {
+    display: none;
+    white-space: nowrap;
     font-size: 11.5px;
     font-weight: 600;
     color: var(--mustard-ink);
@@ -153,7 +157,8 @@
     align-items: center;
     gap: 7px;
     min-height: 34px;
-    padding: 0 12px;
+    padding: 0 10px;
+    white-space: nowrap;
     border-radius: 8px;
     border: 1px solid var(--line);
     background: var(--paper);
@@ -167,6 +172,25 @@
   .gh:hover {
     border-color: var(--teal-line);
     color: var(--teal-2);
+  }
+
+  .gh span {
+    display: none;
+  }
+
+  @media (min-width: 480px) {
+    .brand-wip {
+      display: inline-block;
+    }
+
+    .gh span {
+      display: inline;
+    }
+
+    .lang,
+    .gh {
+      padding: 0 12px;
+    }
   }
 
   main {
