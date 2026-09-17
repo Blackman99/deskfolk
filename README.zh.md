@@ -1,0 +1,56 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-hero-dark.png">
+    <img alt="Real Bot：三个 Bot 的群聊、一张待批准卡和 Markdown 预览" src="docs/assets/readme-hero-light.png">
+  </picture>
+</p>
+
+<h1 align="center">Real Bot</h1>
+
+<p align="center">在自己的电脑上，用对话组一支持久的 AI 队友。</p>
+
+<p align="center">
+  <a href="https://blackman99.github.io/real-bot/zh"><b>官网</b></a> ·
+  <a href="https://github.com/Blackman99/real-bot/releases/latest"><b>下载 Alpha</b></a> ·
+  <a href="README.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Blackman99/real-bot/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Blackman99/real-bot/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-146a7c.svg"></a>
+  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-0f172a.svg">
+  <a href="https://github.com/Blackman99/real-bot/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
+</p>
+
+## 它做什么
+
+- **是队友，不是用完即弃的对话。** Bot 有名字、职责和边界，可以私聊、进群、被 `@` 点名、彼此交接。
+- **一切都在你的 Mac 上。** 窗口、守护进程、会话和一个共享工作区目录都在本机，没有项目方的云端。
+- **模型和工具自己接。** 任意 OpenAI 兼容端点；stdio 或 Streamable HTTP 的 MCP 服务器，所有 Bot 共用。
+- **危险动作等你放行。** 新建端点或 MCP、工作区外读写、出站网络都停在批准卡上；密钥进钥匙串，不进聊天。
+- **Bot 管理应用本身。** 建 Bot、组群、配端点和 MCP，跟它说一句就行。
+
+## 获取
+
+**下载**最新 Alpha：[GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest) 提供 Apple 芯片与 Intel 两种未签名 `.dmg`。首次打开若被 Gatekeeper 拦截，右键选「打开」，或执行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
+```
+
+**从源码启动**（macOS、Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
+
+```bash
+pnpm install
+pnpm dev
+```
+
+首次使用：选一个工作区目录，在设置里填 OpenAI 兼容端点和密钥，从侧栏建第一个 Bot，再让它把其他队友建出来。
+
+## 状态
+
+Alpha，仅 macOS。已接入、正在建设与明确不做：[官网](https://blackman99.github.io/real-bot/zh#boundaries) · [路线图](ROADMAP.md) · [CONTEXT.md](CONTEXT.md)（领域语言）。
+
+## 参与
+
+[开发说明](docs/development.md) · [参与贡献](CONTRIBUTING.md) · [安全说明](SECURITY.md)。MIT 协议开源，与 xAI / Grok 无官方附属关系。
