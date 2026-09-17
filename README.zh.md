@@ -38,6 +38,8 @@
 xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
 ```
 
+**更新：**应用会在后台检查 GitHub Releases，有新构建时设置齿轮上会出现小红点。设置 → 通用 → 关于 显示当前版本，并在浏览器中打开对应芯片的 `.dmg`；构建未签名期间没有应用内安装器。
+
 **从源码启动**（macOS、Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 
 ```bash

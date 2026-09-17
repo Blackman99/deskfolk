@@ -1,6 +1,4 @@
-type TauriInternals = {
-  invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
-};
+import { readTauriInternals } from "./tauri.ts";
 
 export async function openWorkspacePath(abs: string, reveal = false): Promise<boolean> {
   const internals = readTauriInternals();
@@ -11,10 +9,4 @@ export async function openWorkspacePath(abs: string, reveal = false): Promise<bo
   } catch {
     return false;
   }
-}
-
-function readTauriInternals(): TauriInternals | undefined {
-  if (typeof globalThis === "undefined") return undefined;
-  const w = globalThis as { __TAURI_INTERNALS__?: TauriInternals };
-  return w.__TAURI_INTERNALS__;
 }

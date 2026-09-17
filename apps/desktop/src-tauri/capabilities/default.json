@@ -10,6 +10,9 @@
     "core:default",
     "allow-local-api-endpoint",
     "allow-open-workspace-path",
+    "allow-app-version",
+    "allow-check-for-update",
+    "allow-open-external-url",
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled"

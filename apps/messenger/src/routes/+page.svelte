@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { copyFor } from '$lib/copy';
 	import { MessengerRuntime } from '$lib/runtime.svelte';
+	import { updateChecker } from '$lib/update-checker.svelte';
 	import Shell from '$lib/Shell.svelte';
 
 	const runtime = new MessengerRuntime();
@@ -11,7 +12,11 @@
 
 	onMount(() => {
 		runtime.start();
-		return () => runtime.destroy();
+		updateChecker.start();
+		return () => {
+			runtime.destroy();
+			updateChecker.stop();
+		};
 	});
 
 	const disconnectedCopy = $derived(copyFor(runtime.snapshot.settings.locale).disconnected.message);

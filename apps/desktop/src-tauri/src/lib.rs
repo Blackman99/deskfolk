@@ -1,15 +1,17 @@
 mod daemon;
 mod local_api;
 mod supervisor;
+mod updates;
 
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use local_api::{endpoint_from_descriptor, probe_bind, BIND_PORT};
 use supervisor::{launched_hidden, Action, Endpoint, Probe, QuitPlan, Supervisor};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
+use updates::UpdateCheck;
 
 struct AppState {
     supervisor: Supervisor,
@@ -70,6 +72,70 @@ fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+#[tauri::command]
+async fn check_for_update(app: AppHandle, force: bool) -> Result<UpdateCheck, String> {
+    let fresh = {
+        let state = app.state::<Mutex<updates::UpdateCache>>();
+        let cache = state.lock().map_err(|_| "update cache poisoned".to_string())?;
+        cache.fresh(Instant::now(), updates::CACHE_TTL)
+    };
+    if !force {
+        if let Some(fresh) = fresh {
+            return Ok(fresh);
+        }
+    }
+
+    let current = app.package_info().version.clone();
+    let user_agent = format!("real-bot-desktop/{current}");
+    let url = updates::feed_url();
+    let arch = updates::arch_tag();
+
+    let result = tauri::async_runtime::spawn_blocking(move || -> Result<UpdateCheck, String> {
+        let releases = updates::fetch_releases(&url, &user_agent)?;
+        Ok(updates::pick_update(&current, &releases, arch))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    {
+        let state = app.state::<Mutex<updates::UpdateCache>>();
+        let mut cache = state.lock().map_err(|_| "update cache poisoned".to_string())?;
+        cache.store(Instant::now(), result.clone());
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !updates::is_allowed_release_url(&url) {
+        return Err("url not allowed".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .status()
+            .map_err(|err| err.to_string())
+            .and_then(|status| {
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err("open failed".into())
+                }
+            })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("open with system is only on macOS".into())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -97,7 +163,14 @@ pub fn run() {
             stop_item: None,
             quitting: false,
         }))
-        .invoke_handler(tauri::generate_handler![local_api_endpoint, open_workspace_path])
+        .manage(Mutex::new(updates::UpdateCache::default()))
+        .invoke_handler(tauri::generate_handler![
+            local_api_endpoint,
+            open_workspace_path,
+            app_version,
+            check_for_update,
+            open_external_url
+        ])
         .setup(|app| {
             install_menus(app.handle())?;
             install_tray(app.handle())?;

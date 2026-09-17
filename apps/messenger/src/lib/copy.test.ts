@@ -245,6 +245,31 @@ test("create-bot and create-group chrome lives on sidebar.*, empty roster on top
   expect(COPY.en.sidebar.saveFailed).toBe("Couldn’t save.");
 });
 
+test("about card and update chrome are locked in both locales", () => {
+  expect(COPY.zh.settings.sectionAbout).toBe("关于");
+  expect(COPY.en.settings.sectionAbout).toBe("About");
+  expect(COPY.zh.settings.version("0.1.0")).toBe("版本 0.1.0");
+  expect(COPY.en.settings.version("0.1.0")).toBe("Version 0.1.0");
+  expect(COPY.zh.settings.checkUpdates).toBe("检查更新");
+  expect(COPY.en.settings.checkUpdates).toBe("Check for updates");
+  expect(COPY.zh.settings.checkingUpdates).toBe("检查中...");
+  expect(COPY.en.settings.checkingUpdates).toBe("Checking...");
+  expect(COPY.zh.settings.upToDate).toBe("已是最新版本。");
+  expect(COPY.en.settings.upToDate).toBe("You’re on the latest version.");
+  expect(COPY.zh.settings.updateAvailable("0.2.0")).toBe("有新版本 0.2.0 可用。");
+  expect(COPY.en.settings.updateAvailable("0.2.0")).toBe("Version 0.2.0 is available.");
+  expect(COPY.zh.settings.updateDownload).toBe("下载更新");
+  expect(COPY.en.settings.updateDownload).toBe("Download update");
+  expect(COPY.zh.settings.updateNotes).toBe("查看发布说明");
+  expect(COPY.en.settings.updateNotes).toBe("Release notes");
+  expect(COPY.zh.settings.updateIgnore).toBe("忽略此版本");
+  expect(COPY.en.settings.updateIgnore).toBe("Skip this version");
+  expect(COPY.zh.settings.updateFailed).toBe("没能检查更新。");
+  expect(COPY.en.settings.updateFailed).toBe("Couldn’t check for updates.");
+  expect(COPY.zh.sidebar.updateAvailable).toBe("有新版本");
+  expect(COPY.en.sidebar.updateAvailable).toBe("Update available");
+});
+
 test("copyFor takes the whole en tree or otherwise zh", () => {
   expect(copyFor("en").settings.save).toBe("Save");
   expect(copyFor("zh").settings.save).toBe("保存");

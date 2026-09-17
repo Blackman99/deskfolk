@@ -1,4 +1,5 @@
 import { LOCAL_API_DISCOVERY_PATH, LOCAL_API_HOST } from "@real-bot/protocol";
+import { readTauriInternals, type TauriInternals } from "./tauri.ts";
 
 export type LocalEndpoint = {
   origin: string;
@@ -21,10 +22,6 @@ export function parseTauriEndpoint(body: unknown): LocalEndpoint | null {
   return { origin: record.origin, token: record.token };
 }
 
-type TauriInternals = {
-  invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
-};
-
 export async function discoverEndpoint(
   fetchFn: typeof fetch = fetch,
   internals: TauriInternals | undefined = readTauriInternals(),
@@ -44,10 +41,4 @@ export async function discoverEndpoint(
   } catch {
     return null;
   }
-}
-
-function readTauriInternals(): TauriInternals | undefined {
-  if (typeof globalThis === "undefined") return undefined;
-  const w = globalThis as { __TAURI_INTERNALS__?: TauriInternals };
-  return w.__TAURI_INTERNALS__;
 }

@@ -1,0 +1,14 @@
+[[permission]]
+identifier = "allow-app-version"
+description = "Lets the messenger read the desktop app version."
+commands.allow = ["app_version"]
+
+[[permission]]
+identifier = "allow-check-for-update"
+description = "Lets the messenger ask the window process to query GitHub Releases for a newer build."
+commands.allow = ["check_for_update"]
+
+[[permission]]
+identifier = "allow-open-external-url"
+description = "Lets the messenger open a GitHub release page or asset in the system browser. Only https://github.com/Blackman99/real-bot/ URLs are accepted."
+commands.allow = ["open_external_url"]

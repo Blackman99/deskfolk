@@ -92,6 +92,7 @@
 		transcriptItemKey
 	} from './transcript.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
+	import { updateChecker } from './update-checker.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import ProviderForm from './ProviderForm.svelte';
 	import Select from './Select.svelte';
@@ -2343,14 +2344,17 @@
 					type="button"
 					class="foot-icon-btn"
 					class:is-active={runtime.settingsOpen}
-					title={t.sidebar.settings}
-					aria-label={t.sidebar.settings}
+					title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
+					aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
 					onclick={() => runtime.openSettings()}
 				>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<circle cx="12" cy="12" r="3"></circle>
 						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 					</svg>
+					{#if updateChecker.updateVisible}
+						<span class="foot-badge is-dot" aria-hidden="true"></span>
+					{/if}
 				</button>
 			</div>
 		</div>
@@ -3982,6 +3986,51 @@
 									</label>
 								</div>
 							</div>
+
+							{#if updateChecker.available}
+								<div class="settings-card">
+									<div class="settings-card-head">
+										<h3 class="settings-card-title">{t.settings.sectionAbout}</h3>
+									</div>
+									<div class="modal-section">
+										<div class="about-row">
+											<span class="about-version">{t.settings.version(updateChecker.version ?? '—')}</span>
+											<button
+												type="button"
+												class="btn-xs"
+												disabled={updateChecker.status === 'checking'}
+												onclick={() => void updateChecker.checkNow()}
+											>
+												{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}
+											</button>
+										</div>
+										{#if updateChecker.status === 'error'}
+											<p class="muted about-status">{t.settings.updateFailed}</p>
+										{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
+											<p class="about-status">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
+											<div class="about-actions">
+												{#if updateChecker.result.downloadUrl}
+													<button type="button" class="btn-xs" onclick={() => void updateChecker.download()}>
+														{t.settings.updateDownload}
+													</button>
+												{/if}
+												{#if updateChecker.result.releaseUrl}
+													<button type="button" class="btn-xs" onclick={() => void updateChecker.openNotes()}>
+														{t.settings.updateNotes}
+													</button>
+												{/if}
+												{#if updateChecker.ignoredVersion !== updateChecker.result.latest}
+													<button type="button" class="btn-text-action" onclick={() => updateChecker.ignoreLatest()}>
+														{t.settings.updateIgnore}
+													</button>
+												{/if}
+											</div>
+										{:else if updateChecker.status === 'ok'}
+											<p class="muted about-status">{t.settings.upToDate}</p>
+										{/if}
+									</div>
+								</div>
+							{/if}
 						</div>
 					{:else if activeSettingsTab === 'models'}
 						<div class="settings-tab-pane">

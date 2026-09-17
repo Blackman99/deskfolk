@@ -52,7 +52,7 @@ pnpm --filter @real-bot/messenger dev
 
 ## Bot 遇到障碍时
 
-所有 Bot 的中英文轮次指令都要求先主动排查和尝试解决：检查实际错误、工具说明与已有文件，用低风险、可逆的方法推进；失败后根据证据调整参数或换用工具，完成后验证原始目标。技术问题不能仅以「遇到问题」收尾，不能让用户代做可自行完成的下载、查找、转换，也不能擅自用替代产物冒充完成。用户指出上轮问题或要求继续，仍是待处理的新工作。
+所有 Bot 的中英文轮次指令都要求先主动排查和尝试解决：检查实际错误、工具说明与已有文件，用低风险、可逆的方法推进；失败后根据证据调整参数或换用工具，完成后验证原始目标。技术问题不能仅以「遇到问题」收尾，不能让用户代做可自行完成的下载、查找、转换，也不能擅自用替代产物冒充完成。用户指出上轮问题或要求继续，仍是待处理的新工作。群里同一 Bot 同时最多一轮进行中：再被点名或判断下场时听进那一轮，不另开分身。群轮补全能看见谁有活轮、谁叫醒、用户最近一句；达成一致由 Bot 自己停嘴，没有跳数或花费熔断。
 
 超过上下文限额的工具结果会先保存完整 JSON 到工作区 `tool-results/<唯一标识>.json`，再提供 `full_result_path`（工作区相对路径）和受限预览。文件以仅当前用户可读写的权限独占创建，保留原始内容，可能包含工具返回的敏感信息；用完可自行清理 `tool-results/`，清理后对应完整结果不可再读。Bot 可用现有 `shell` 解析文件、筛选日志或提取链接、把内嵌 base64 图片解码为文件，不必反复生成或要求用户手工保存。模型看到的单条工具结果仍限制为 8,000 个 Unicode 码点；保存失败会明确标记，不会假称已经保存，真实失败状态也不会因裁剪而变成成功。
 
@@ -91,3 +91,5 @@ GitHub 仓库侧的展示信息：描述、主页（落地页地址）和 topics
 桌面 App 图标的源文件是 `apps/desktop/src-tauri/icons/app-icon.svg`（1024 画布、macOS 式圆角方块留透明边距）。改动后在 `apps/desktop` 下执行 `pnpm exec tauri icon src-tauri/icons/app-icon.svg --output src-tauri/icons` 重新生成 `tauri.conf.json` 引用的 `32x32.png` / `128x128.png` / `128x128@2x.png` / `icon.icns` / `icon.ico` 以及 Windows 商店尺寸；托盘图标取自窗口默认图标，无需单独维护。SVG 注释里不能出现 `--`，否则 CLI 的 SVG 解析会失败。信使窗口的 favicon 在 `apps/messenger/src/lib/assets/favicon.svg`，与落地页 `static/favicon.svg` 是同一份标识。
 
 当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致（去掉 `v` 前缀），否则 `tauri-action` 会按配置里的版本建 release。例如标签 `v0.1.0-alpha.1` 对应配置版本 `0.1.0-alpha.1`。Windows / Linux 不在发布范围。Apple Developer 证书与公证需要以后另配仓库 secrets，不写进工作流。
+
+自动检查更新走「检查 + 浏览器下载」，不做应用内安装（见 [ADR 0015](adr/0015-update-check-via-github-releases.md)）。窗口进程启动 15 秒后发起首次检查，之后每 6 小时重复一次；设置里的「检查更新」按钮随时可强制刷新。网络请求只在 `apps/desktop/src-tauri/src/updates.rs`（Rust 侧）发出——webview 的 CSP 把 `connect-src` 钉在回环地址，前端本身拿不到 GitHub 的公网访问。结果在 Rust 进程内缓存 30 分钟，非强制检查命中缓存不重复请求。请求的是 `GET /repos/Blackman99/real-bot/releases?per_page=10` 而不是 `/releases/latest`：仓库目前每个 release 都是 prerelease，`/releases/latest` 会 404。拿到列表后跳过 draft 与无法解析的 tag，按 semver 取最高版本；比较基准是 `tauri.conf.json` 的 `version`（经 `app.package_info()` 读出），当前版本带预发布标识时所有 release 都参与比较，否则只看正式 release。下载按钮按机器架构在 release 资产里找 `Real.Bot_<ver>_aarch64.dmg` / `Real.Bot_<ver>_x64.dmg`，这依赖 `tauri-action` 产出的命名规则；资产改名不会报错，只会让按钮退化成打开发布页。打开外链统一经新命令 `open_external_url`，只放行 `https://github.com/Blackman99/real-bot/` 前缀，防止把系统浏览器带去任意地址。本地验证可设 `REAL_BOT_UPDATE_FEED=<url>` 让窗口进程改从该地址取 releases JSON：起一个 `python3 -m http.server` 在本地端口提供伪造的 `releases.json`，但里面的 `html_url` / `browser_download_url` 仍必须是真实的 `https://github.com/Blackman99/real-bot/...` 链接，否则会被打开外链的白名单拒绝。「忽略此版本」只记在信使 webview 的 `localStorage`（键 `real-bot-ignored-update`），不进守护进程的 `Settings` 契约——这是纯界面偏好，浏览器开发态也压根没有可更新的桌面壳。之所以不用 `tauri-plugin-updater`：当前构建是 ad-hoc 签名（`signingIdentity: "-"`），没有 minisign 密钥，`release.yml` 也没开 `uploadUpdaterJson`，未签名期间做不出可信的应用内安装；等有了签名构建和密钥，可以只替换下载这一步接入该插件，「关于」卡片不用改。
