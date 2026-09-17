@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { builtinTools, JUDGEMENT_SYSTEM, turnSystemPrompt } from "./prompts";
+import { builtinTools, JUDGEMENT_SYSTEM, turnSystemPrompt, unknownMentionBody } from "./prompts";
 
 describe("prompts", () => {
   test("judgement system has no opening brace", () => {
@@ -252,5 +252,38 @@ describe("prompts", () => {
     expect(schedule.properties.time.description).toBe("本机本地时区的时刻，HH:MM（24 小时）。");
     const update = tools.find((t) => t.function.name === "update_routine")!;
     expect((update.function.parameters.properties.schedule as { description: string }).description).toBe("新的日历");
+  });
+});
+
+describe("mention spelling", () => {
+  test("system and send_message copy demand the exact member name in both locales", () => {
+    const base = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false } as const;
+    expect(turnSystemPrompt({ ...base, locale: "zh" })).toContain(
+      "名字必须与局面块列出的在场成员逐字一致，不要缩写或省略后缀，写错的 @ 叫不到人。",
+    );
+    expect(turnSystemPrompt({ ...base, locale: "en" })).toContain(
+      "Write the name exactly as the situation block lists it; do not abbreviate or drop a suffix, a misspelt @ wakes nobody.",
+    );
+    const zh = builtinTools("zh").find((t) => t.function.name === "send_message")!;
+    expect(zh.function.description).toContain(
+      "群里 @ 的名字必须与在场成员逐字一致，写错会返回 unknown_mention 且消息不会发出。",
+    );
+    const en = builtinTools("en").find((t) => t.function.name === "send_message")!;
+    expect(en.function.description).toContain(
+      "In a group, an @ that matches no member exactly fails with unknown_mention and nothing is sent.",
+    );
+  });
+
+  test("the unknown-mention note names the tokens and the members present", () => {
+    expect(unknownMentionBody("zh", ["分镜"], ["选题策划", "分镜师"])).toBe(
+      "@分镜 没有匹配到群成员。在场：选题策划、分镜师。点名请逐字写全名。",
+    );
+    expect(unknownMentionBody("zh", ["分镜"], [])).toBe("@分镜 没有匹配到群成员。在场：（无）。点名请逐字写全名。");
+    expect(unknownMentionBody("en", ["storyboard", "x"], ["Writer"])).toBe(
+      "@storyboard, @x do not match any member here. Members: Writer. Mention people by their exact full name.",
+    );
+    expect(unknownMentionBody("en", ["x"], ["Writer"])).toBe(
+      "@x does not match any member here. Members: Writer. Mention people by their exact full name.",
+    );
   });
 });

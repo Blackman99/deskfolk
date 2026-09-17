@@ -197,6 +197,7 @@ describe("assembleTurnMessages", () => {
     });
     const situation = messages.find((m) => m.role === "user" && typeof m.content === "string" && m.content.startsWith(SITUATION_HEADING));
     expect(String(situation?.content)).toContain("本轮由【设计师】叫醒。");
+    expect(String(situation?.content)).toContain("在场成员（点名请逐字写全名）：@设计师。");
     const user = messages.find((m) => m.role === "user" && Array.isArray(m.content));
     expect(Array.isArray(user?.content)).toBe(true);
     const parts = user?.content as Array<Record<string, unknown>>;
@@ -302,5 +303,45 @@ describe("trimToolContent", () => {
   test("keeps small JSON intact", () => {
     const raw = JSON.stringify({ ok: true, data: { message_id: "abc" } });
     expect(trimToolContent(raw)).toBe(raw);
+  });
+});
+
+describe("situation members", () => {
+  test("the situation block lists the other members by exact name in both locales", () => {
+    const store = new Store();
+    const director = store.createBot({ name: "导演", duties: "direct", boundaries: "stay" });
+    const storyboard = store.createBot({ name: "分镜师", duties: "storyboard", boundaries: "stay" });
+    const writer = store.createBot({ name: "编剧", duties: "write", boundaries: "stay" });
+    const group = store.createGroup({
+      name: "Film",
+      members: [director.bot.id, storyboard.bot.id, writer.bot.id],
+    });
+    const trigger = store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@导演 开始" });
+    const turn = store.createTurn({ sessionId: group.id, botId: director.bot.id, triggerMessageId: trigger.id });
+    const find = (locale: "zh" | "en") => {
+      const messages = assembleTurnMessages(store, {
+        sessionId: group.id,
+        botId: director.bot.id,
+        turnId: turn.id,
+        triggerMessageId: trigger.id,
+        locale,
+        interrupt: false,
+        loop: [],
+      });
+      const situation = messages.find(
+        (m) => m.role === "user" && typeof m.content === "string" && m.content.startsWith(SITUATION_HEADING),
+      );
+      return String(situation?.content);
+    };
+    const zh = find("zh");
+    const membersLine = zh.split("\n").find((line) => line.startsWith("在场成员")) ?? "";
+    expect(membersLine.startsWith("在场成员（点名请逐字写全名）：@")).toBe(true);
+    expect(membersLine.endsWith("。")).toBe(true);
+    expect(membersLine.slice("在场成员（点名请逐字写全名）：".length, -1).split("、").sort()).toEqual(["@分镜师", "@编剧"]);
+    expect(zh.indexOf("在场成员")).toBeLessThan(zh.indexOf("本群"));
+    const enLine = find("en").split("\n").find((line) => line.startsWith("Members here")) ?? "";
+    expect(enLine.startsWith("Members here (mention by exact full name): @")).toBe(true);
+    expect(enLine.slice("Members here (mention by exact full name): ".length, -1).split(", ").sort()).toEqual(["@分镜师", "@编剧"]);
+    store.close();
   });
 });

@@ -61,7 +61,13 @@ export function assembleTurnMessages(
     triggerMessageId: input.triggerMessageId,
     selfBotId: input.botId,
   });
-  const situation = situationUserMessage(store, input.sessionId, input.triggerMessageId, input.locale);
+  const situation = situationUserMessage(
+    store,
+    input.sessionId,
+    input.triggerMessageId,
+    input.locale,
+    input.botId,
+  );
   return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
 }
 
@@ -100,6 +106,7 @@ function situationUserMessage(
   sessionId: string,
   triggerMessageId: string,
   locale: Locale,
+  selfBotId: string,
 ): ChatMessage | null {
   let sessionKind: string;
   try {
@@ -115,6 +122,18 @@ function situationUserMessage(
     return null;
   }
   const facts = situationFacts(store, sessionId, trigger);
+  const members = store
+    .presentBotIds(sessionId)
+    .filter((id) => id !== selfBotId)
+    .map((id) => `@${botDisplayName(store, id)}`);
+  const membersLine =
+    locale === "en"
+      ? members.length > 0
+        ? `Members here (mention by exact full name): ${members.join(", ")}.`
+        : "Members here: only you."
+      : members.length > 0
+        ? `在场成员（点名请逐字写全名）：${members.join("、")}。`
+        : "在场成员：只有你。";
   const seatLine =
     locale === "en"
       ? facts.seats.length > 0
@@ -138,7 +157,7 @@ function situationUserMessage(
         : "用户最近一条：（无）";
   return {
     role: "user",
-    content: `${SITUATION_HEADING}\n\n${seatLine}\n${wakerLine}\n${latestLine}`,
+    content: `${SITUATION_HEADING}\n\n${membersLine}\n${seatLine}\n${wakerLine}\n${latestLine}`,
   };
 }
 

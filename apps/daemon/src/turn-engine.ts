@@ -21,7 +21,14 @@ import { serializeToolResult } from "./tool-results";
 import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
 import { isNoWorkCloser } from "./no-work";
-import { builtinTools, COLLAB_TOOL_NAMES, completionFailBody, JUDGEMENT_SYSTEM, type FailKind } from "./prompts";
+import {
+  builtinTools,
+  COLLAB_TOOL_NAMES,
+  completionFailBody,
+  JUDGEMENT_SYSTEM,
+  unknownMentionBody,
+  type FailKind,
+} from "./prompts";
 import { HttpError } from "./errors";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
@@ -67,6 +74,8 @@ type Live = {
   partial: string;
   parentId: string | null;
   writtenPaths: string[];
+  /** Unknown `@token`s send_message already rejected once this turn. */
+  mentionWarned: Set<string>;
   spoke: boolean;
   running: Promise<void>;
   ask?: {
@@ -238,6 +247,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       partial: "",
       parentId: trigger.parent_id,
       writtenPaths: [],
+      mentionWarned: new Set(),
       spoke: false,
       running: Promise.resolve(),
     };
@@ -636,6 +646,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               turnId: turn.id,
               parentId: live.parentId,
               writtenPaths: live.writtenPaths,
+              mentionWarned: live.mentionWarned,
             },
             name,
             args,
@@ -736,6 +747,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     });
   }
 
+  /** A Bot's `@token` matched nobody present: say so in the transcript so the miss is visible. */
+  async function noteUnknownMentions(message: Message, tokens: string[], members: string[]): Promise<void> {
+    const locale = (await store.settings()).locale;
+    const note = store.insertMessage({
+      sessionId: message.session_id,
+      turnId: message.turn_id,
+      parentId: null,
+      kind: "system",
+      author: message.author,
+      body: unknownMentionBody(locale, tokens, members),
+    });
+    publishMessage(note);
+  }
+
   async function failTurn(turnId: string, kind: FailKind): Promise<void> {
     const live = lives.get(turnId);
     const current = store.getTurn(turnId);
@@ -815,7 +840,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
 
     const roster = store.listBots();
-    const parsed = parseMentions(message.body, roster.map((b) => b.name));
+    const nameById = new Map(roster.map((b) => [b.id, b.name] as const));
+    const presentNames = store
+      .presentBotIds(session.id)
+      .map((id) => nameById.get(id))
+      .filter((name): name is string => typeof name === "string");
+    const parsed = parseMentions(message.body, roster.map((b) => b.name), { lenient: presentNames });
+    if (!opts.fromUser && parsed.unresolved.length > 0) {
+      const authorName = nameById.get(message.author);
+      await noteUnknownMentions(message, parsed.unresolved, presentNames.filter((name) => name !== authorName));
+    }
     if (session.kind === "group") {
       for (const name of parsed.mentions) {
         const bot = store.findBotByName(name);

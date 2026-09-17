@@ -1,13 +1,17 @@
 import { expect, test } from "bun:test";
 import type { Bot } from "@real-bot/protocol";
 import {
+  decorateMentionChips,
   deleteLastMentionOrChar,
   extractActiveMentionChips,
   isBotMentionedInDraft,
+  lenientMatch,
   linkifyRosterMentions,
   mentionHref,
+  mentionToken,
   parseMentionHref,
   removeMentionFromDraft,
+  type MentionableBot,
 } from "./mention-chips.ts";
 
 const bot1: Bot = {
@@ -124,9 +128,81 @@ test("linkifyRosterMentions uses the longest roster name and skips code", () => 
   expect(linked).toContain("`@Writer`");
 });
 
-test("linkifyRosterMentions leaves unknown names and empty roster alone", () => {
-  expect(linkifyRosterMentions("@Nope hello", [bot1])).toBe("@Nope hello");
+test("linkifyRosterMentions leaves empty roster alone and marks unknown names unresolved without a members option", () => {
+  expect(linkifyRosterMentions("@Nope hello", [bot1])).toBe(
+    `[@Nope](${mentionHref("unresolved:Nope")}) hello`,
+  );
   expect(linkifyRosterMentions("@Researcher hello", [])).toBe("@Researcher hello");
+});
+
+test("mentionToken mirrors the daemon: stops at whitespace or a delimiter", () => {
+  expect(mentionToken("分镜，请出图")).toBe("分镜");
+  expect(mentionToken("Researcher hello")).toBe("Researcher");
+  expect(mentionToken("")).toBe("");
+});
+
+test("lenientMatch mirrors the daemon: unambiguous prefix/suffix, case-insensitive, min two code points", () => {
+  expect(lenientMatch("分镜", ["分镜师", "导演"])).toBe("分镜师");
+  expect(lenientMatch("镜师", ["分镜师", "导演"])).toBe("分镜师");
+  expect(lenientMatch("师", ["分镜师"])).toBeNull();
+  expect(lenientMatch("分", ["分镜师", "分析师"])).toBeNull();
+  expect(lenientMatch("researcher", ["Writer", "Researcher"])).toBe("Researcher");
+});
+
+test("linkifyRosterMentions resolves a lenient prefix match to the full member name", () => {
+  const storyboard: MentionableBot = { id: "storyboard-1", name: "分镜师" };
+  const director: MentionableBot = { id: "director-1", name: "导演" };
+  const linked = linkifyRosterMentions("@分镜 请出图", [storyboard, director], {
+    members: [storyboard, director],
+  });
+  expect(linked).toContain(`[@分镜师](${mentionHref(storyboard.id)})`);
+  expect(linked).toContain(" 请出图");
+});
+
+test("linkifyRosterMentions resolves a lenient suffix match, case-insensitively", () => {
+  const planner: MentionableBot = { id: "planner-1", name: "选题策划" };
+  const researcher: MentionableBot = { id: "researcher-1", name: "Researcher" };
+
+  const linkedSuffix = linkifyRosterMentions("@策划 看一下", [planner], { members: [planner] });
+  expect(linkedSuffix).toContain(`[@选题策划](${mentionHref(planner.id)})`);
+
+  const linkedCase = linkifyRosterMentions("@researcher 看一下", [researcher], {
+    members: [researcher],
+  });
+  expect(linkedCase).toContain(`[@Researcher](${mentionHref(researcher.id)})`);
+});
+
+test("linkifyRosterMentions leaves an ambiguous or too-short token unresolved", () => {
+  const storyboard: MentionableBot = { id: "storyboard-1", name: "分镜师" };
+  const analyst: MentionableBot = { id: "analyst-1", name: "分析师" };
+  const linked = linkifyRosterMentions("@分 看", [storyboard, analyst], {
+    members: [storyboard, analyst],
+  });
+  expect(linked).toContain(`[@分](${mentionHref("unresolved:分")})`);
+  expect(linked).not.toContain(`(${mentionHref(storyboard.id)})`);
+  expect(linked).not.toContain(`(${mentionHref(analyst.id)})`);
+});
+
+test("linkifyRosterMentions stops the token at CJK punctuation and preserves the rest", () => {
+  const storyboard: MentionableBot = { id: "storyboard-1", name: "分镜师" };
+  // No `members` option: nothing to lenient-match against, so the token surfaces as a marker.
+  const linked = linkifyRosterMentions("@分镜，请", [storyboard]);
+  expect(linked).toContain(`[@分镜](${mentionHref("unresolved:分镜")})`);
+  expect(linked).toContain("，请");
+});
+
+test("decorateMentionChips renders an unresolved marker span, with or without a title", () => {
+  const html = decorateMentionChips(
+    `<a href="${mentionHref("unresolved:Nope")}">@Nope</a>`,
+    [],
+    { unresolvedTitle: "这个 @ 没有匹配到群成员" },
+  );
+  expect(html).toBe(
+    '<span class="md-mention-unresolved" title="这个 @ 没有匹配到群成员">@Nope</span>',
+  );
+
+  const htmlNoTitle = decorateMentionChips(`<a href="${mentionHref("unresolved:Nope")}">@Nope</a>`, []);
+  expect(htmlNoTitle).toBe('<span class="md-mention-unresolved">@Nope</span>');
 });
 
 test("deleteLastMentionOrChar deletes single char when cursor is in normal text", () => {
@@ -141,3 +217,8 @@ test("deleteLastMentionOrChar deletes single char when cursor is in normal text"
   expect(r2.nextCursor).toBe(22);
 });
 
+test("linkifyRosterMentions leaves emails and npm scopes untouched", () => {
+  const text = "mail user@host.com and run @sveltejs/kit, then @Researcher";
+  const linked = linkifyRosterMentions(text, [bot1], { members: [bot1] });
+  expect(linked).toBe(`mail user@host.com and run @sveltejs/kit, then [@Researcher](${mentionHref("bot-1")})`);
+});

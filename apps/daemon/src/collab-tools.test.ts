@@ -400,3 +400,74 @@ describe("endpoint and MCP catalog tools", () => {
     store.close();
   });
 });
+
+describe("send_message mentions", () => {
+  function filmGroup(store: Store) {
+    const director = store.createBot({ name: "导演", duties: "direct", boundaries: "stay" });
+    const storyboard = store.createBot({ name: "分镜师", duties: "storyboard", boundaries: "stay" });
+    store.createBot({ name: "选题策划", duties: "plan", boundaries: "stay" });
+    const group = store.createGroup({ name: "Film", members: [director.bot.id, storyboard.bot.id] });
+    return { director, storyboard, group };
+  }
+
+  test("a truncated @ resolves to the only matching member and the body stays as typed", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { director, group } = filmGroup(store);
+    const result = await runCollabTool(
+      { ...ctxFor(store, director.bot.id, group.id), mentionWarned: new Set() },
+      "send_message",
+      { body: "@分镜 请按锁点出六场镜表" },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data?.mentions).toEqual(["分镜师"]);
+    expect(result.data?.corrected_mentions).toEqual([{ token: "分镜", name: "分镜师" }]);
+    expect(result.data?.unresolved_mentions).toEqual([]);
+    expect(store.getMessage(String(result.data?.message_id)).body).toBe("@分镜 请按锁点出六场镜表");
+    store.close();
+  });
+
+  test("lenient matching only reaches members present, not the whole roster", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { director, group } = filmGroup(store);
+    const result = await runCollabTool(
+      { ...ctxFor(store, director.bot.id, group.id), mentionWarned: new Set() },
+      "send_message",
+      { body: "@选题 请看一下" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("unknown_mention");
+    expect(result.error?.message).toContain("@选题");
+    expect(result.error?.message).toContain("Members here: 分镜师.");
+    expect(result.error?.message).not.toContain("导演");
+    expect(store.listMainMessages(group.id, 10)).toEqual([]);
+    store.close();
+  });
+
+  test("an unknown @ in a group is rejected once, then the resend goes through", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { director, group } = filmGroup(store);
+    const ctx: ToolCtx = { ...ctxFor(store, director.bot.id, group.id), mentionWarned: new Set() };
+    const first = await runCollabTool(ctx, "send_message", { body: "@张三 请出镜表" });
+    expect(first.ok).toBe(false);
+    expect(first.error?.code).toBe("unknown_mention");
+    expect(store.listMainMessages(group.id, 10)).toEqual([]);
+    const second = await runCollabTool(ctx, "send_message", { body: "@张三 请出镜表" });
+    expect(second.ok).toBe(true);
+    expect(second.data?.unresolved_mentions).toEqual(["张三"]);
+    expect(store.listMainMessages(group.id, 10)).toHaveLength(1);
+    store.close();
+  });
+
+  test("an unknown @ in a direct session still sends", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const result = await runCollabTool(
+      ctxFor(store, writer.bot.id, writer.direct_session.id),
+      "send_message",
+      { body: "@Nobody hello" },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data?.unresolved_mentions).toEqual(["Nobody"]);
+    store.close();
+  });
+});

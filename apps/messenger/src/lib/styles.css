@@ -2594,6 +2594,12 @@ button.sender-name.is-clickable:focus-visible {
 .msg-attached-replying.is-user {
   align-items: flex-end;
 }
+.msg .body.is-md .md-mention-unresolved {
+  color: var(--muted);
+  border-bottom: 1px dashed var(--muted);
+  cursor: help;
+}
+
 
 /* Base card animation and layout */
 .attached-replying-card {

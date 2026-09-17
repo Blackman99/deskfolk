@@ -524,15 +524,59 @@ export function parseMentionHref(href: string): string | null {
   }
 }
 
+/** Characters that end an `@token` besides whitespace. Covers ASCII and CJK punctuation. Mirrors the daemon's `TOKEN_DELIMITERS`. */
+const TOKEN_DELIMITERS = new Set([
+  ..."@,.;:!?()[]{}<>\"'`*/\\|",
+  ..."，。、：；！？（）【】「」『』《》〈〉“”‘’…～／",
+]);
+
+/** The text after `@` up to whitespace or punctuation, so `@分镜，请出图` yields `分镜`. Mirrors the daemon's `mentionToken`. */
+export function mentionToken(rest: string): string {
+  let end = 0;
+  for (const ch of rest) {
+    if (/\s/.test(ch) || TOKEN_DELIMITERS.has(ch)) break;
+    end += ch.length;
+  }
+  return rest.slice(0, end);
+}
+
+/**
+ * The single lenient name the token is a prefix or suffix of, ignoring case.
+ * Tokens shorter than two code points never match; ambiguity yields null.
+ * Mirrors the daemon's `lenientMatch`.
+ */
+export function lenientMatch(token: string, names: readonly string[]): string | null {
+  if ([...token].length < 2) return null;
+  const needle = token.toLowerCase();
+  const hits = names.filter((name) => {
+    const hay = name.toLowerCase();
+    return hay.startsWith(needle) || hay.endsWith(needle);
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+export type LinkifyRosterMentionsOptions = {
+  /** Present members eligible for lenient prefix/suffix resolution of misspelt tokens. */
+  members?: readonly MentionableBot[];
+};
+
 /** Turn roster `@Name` / `@everyone` into markdown links; skip fenced and inline code. */
-export function linkifyRosterMentions(body: string, bots: readonly MentionableBot[] = []): string {
+export function linkifyRosterMentions(
+  body: string,
+  bots: readonly MentionableBot[] = [],
+  options: LinkifyRosterMentionsOptions = {},
+): string {
   if (!body || bots.length === 0) return body;
   return splitFences(body)
-    .map((part) => (part.fence ? part.text : replaceMentionsOutsideCode(part.text, bots)))
+    .map((part) => (part.fence ? part.text : replaceMentionsOutsideCode(part.text, bots, options)))
     .join("");
 }
 
-function replaceMentionsOutsideCode(text: string, bots: readonly MentionableBot[]): string {
+function replaceMentionsOutsideCode(
+  text: string,
+  bots: readonly MentionableBot[],
+  options: LinkifyRosterMentionsOptions,
+): string {
   const protectedParts: string[] = [];
   let next = text.replace(/!?\[(?:[^\]]*)\]\((?:<[^>]+>|[^)\s]+)\)/g, (link) => {
     const token = `\u0000M${protectedParts.length}\u0000`;
@@ -544,16 +588,25 @@ function replaceMentionsOutsideCode(text: string, bots: readonly MentionableBot[
     protectedParts.push(full);
     return token;
   });
-  next = replaceMentionTokens(next, bots);
+  next = replaceMentionTokens(next, bots, options);
   return next.replace(/\u0000M(\d+)\u0000/g, (_, i: string) => protectedParts[Number(i)] ?? "");
 }
 
-function replaceMentionTokens(text: string, bots: readonly MentionableBot[]): string {
+function replaceMentionTokens(
+  text: string,
+  bots: readonly MentionableBot[],
+  options: LinkifyRosterMentionsOptions = {},
+): string {
   const byName = new Map<string, MentionableBot>();
   for (const bot of bots) {
     if (!byName.has(bot.name)) byName.set(bot.name, bot);
   }
   const names = [...byName.keys()].sort((a, b) => b.length - a.length);
+  const memberByName = new Map<string, MentionableBot>();
+  for (const member of options.members ?? []) {
+    if (!memberByName.has(member.name)) memberByName.set(member.name, member);
+  }
+  const memberNames = [...memberByName.keys()];
   let out = "";
   let i = 0;
   while (i < text.length) {
@@ -575,10 +628,29 @@ function replaceMentionTokens(text: string, bots: readonly MentionableBot[]): st
       i += 1 + hit.length;
       continue;
     }
+    const token = mentionToken(rest);
+    if (token && looksLikeMention(text, i, token)) {
+      const matchedName = lenientMatch(token, memberNames);
+      const member = matchedName ? memberByName.get(matchedName) : undefined;
+      if (member) {
+        out += `[@${escapeMdLinkLabel(member.name)}](${mentionHref(member.id)})`;
+      } else {
+        out += `[@${escapeMdLinkLabel(token)}](${mentionHref(`unresolved:${token}`)})`;
+      }
+      i += 1 + token.length;
+      continue;
+    }
     out += "@";
     i += 1;
   }
   return out;
+}
+
+/** Mirrors the daemon: `user@host.com` and `@scope/pkg` are not mention attempts. */
+export function looksLikeMention(body: string, at: number, token: string): boolean {
+  const prev = at > 0 ? body[at - 1] : "";
+  if (/[A-Za-z0-9_]/.test(prev)) return false;
+  return body[at + 1 + token.length] !== "/";
 }
 
 function startsName(literal: string, rest: string, names: string[]): boolean {
@@ -589,8 +661,19 @@ function escapeMdLinkLabel(name: string): string {
   return name.replace(/[[\]\\]/g, "");
 }
 
-/** After markdown + sanitize, turn `bot:` links into avatar chips. */
-export function decorateMentionChips(html: string, bots: readonly MentionableBot[] = []): string {
+const UNRESOLVED_MENTION_PREFIX = "unresolved:";
+
+export type DecorateMentionChipsOptions = {
+  /** Title attribute for the unresolved-mention marker; the attribute is omitted when not given. */
+  unresolvedTitle?: string;
+};
+
+/** After markdown + sanitize, turn `bot:` links into avatar chips (or unresolved markers). */
+export function decorateMentionChips(
+  html: string,
+  bots: readonly MentionableBot[] = [],
+  options: DecorateMentionChipsOptions = {},
+): string {
   if (!html.includes(BOT_HREF_SCHEME)) return html;
   const byId = new Map(bots.map((bot) => [bot.id, bot]));
   return html.replace(
@@ -598,6 +681,11 @@ export function decorateMentionChips(html: string, bots: readonly MentionableBot
     (full, _pre: string, href: string, _post: string, inner: string) => {
       const id = parseMentionHref(href.replace(/&amp;/g, "&"));
       if (!id) return full;
+      if (id.startsWith(UNRESOLVED_MENTION_PREFIX)) {
+        const token = id.slice(UNRESOLVED_MENTION_PREFIX.length);
+        const titleAttr = options.unresolvedTitle ? ` title="${escapeHtml(options.unresolvedTitle)}"` : "";
+        return `<span class="md-mention-unresolved"${titleAttr}>@${escapeHtml(token)}</span>`;
+      }
       if (id === "everyone") {
         return renderTranscriptMentionChip({
           id: "everyone",

@@ -88,11 +88,27 @@ test("mentions inside code are left as text", () => {
   expect(html).not.toContain("md-mention-chip");
 });
 
-test("unknown @tokens stay plain text", () => {
+test("unknown @tokens become unresolved markers, not chips, without a members option", () => {
   const html = renderMarkdown("邮箱 user@host.com，以及 @路人", {
     mentionBots: [{ id: "pm-1", name: "产品经理", avatar: null }],
   });
-  expect(html).toContain("@host.com");
-  expect(html).toContain("@路人");
+  expect(html).toContain("user@host.com");
+  expect(html).not.toContain("@host</span>");
+  expect(html).toContain('<span class="md-mention-unresolved">@路人</span>');
   expect(html).not.toContain("md-mention-chip");
+});
+
+test("unresolved @tokens carry the configured title, and lenient members resolve to their full name", () => {
+  const storyboard = { id: "storyboard-1", name: "分镜师", avatar: null };
+  const html = renderMarkdown("@分镜 请出图，@路人 你好", {
+    mentionBots: [storyboard],
+    mentionMembers: [storyboard],
+    unresolvedMentionTitle: "这个 @ 没有匹配到群成员",
+  });
+  expect(html).toContain('class="md-mention-chip"');
+  expect(html).toContain('href="bot:storyboard-1"');
+  expect(html).toContain("@分镜师");
+  expect(html).toContain(
+    '<span class="md-mention-unresolved" title="这个 @ 没有匹配到群成员">@路人</span>',
+  );
 });

@@ -991,10 +991,18 @@
 	}
 
 	function markdownOpts(message?: Message, extra?: { streaming?: boolean }) {
+		const session = message ? snapshot.sessions.find((s) => s.id === message.session_id) : undefined;
+		const mentionMembers = session
+			? presentBotIds(session)
+					.map((id) => botsById.get(id))
+					.filter((b): b is Bot => Boolean(b))
+			: snapshot.bots;
 		return {
 			streaming: extra?.streaming,
 			extraPaths: message?.attachments.map((att) => att.workspace_relpath) ?? [],
-			mentionBots: snapshot.bots
+			mentionBots: snapshot.bots,
+			mentionMembers,
+			unresolvedMentionTitle: t.stream.mentionUnresolved
 		};
 	}
 

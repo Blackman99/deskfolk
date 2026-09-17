@@ -220,6 +220,7 @@ const zh = {
   },
   stream: {
     empty: "还没有消息。",
+    mentionUnresolved: "这个 @ 没有匹配到群成员",
     streaming: "正在写",
     replying: "回复中",
     ask: "提问",
@@ -579,6 +580,7 @@ const en: CopyShape<typeof zh> = {
     ask: "ask",
     reply: "Reply",
     approval: "approval",
+    mentionUnresolved: "This @ matches no member here",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
     deny: "Deny",

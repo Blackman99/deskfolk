@@ -280,6 +280,8 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.streaming).toBe("streaming");
   expect(COPY.zh.stream.artifactTree).toBe("引用的文件");
   expect(COPY.en.stream.artifactTree).toBe("Cited files");
+  expect(COPY.zh.stream.mentionUnresolved).toBe("这个 @ 没有匹配到群成员");
+  expect(COPY.en.stream.mentionUnresolved).toBe("This @ matches no member here");
   expect(COPY.zh.stream.artifactBundle).toBe("工作区文件");
   expect(COPY.en.stream.artifactBundle).toBe("Workspace files");
   expect(COPY.zh.stream.artifactBundleCount(12)).toBe("12 个文件");

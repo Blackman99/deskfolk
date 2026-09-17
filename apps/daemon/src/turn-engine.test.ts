@@ -2857,3 +2857,78 @@ describe("per-message model and thinking-level routing", () => {
     sub.close();
   });
 });
+
+describe("mention spelling in groups", () => {
+  test("a bot's truncated @ resolves to the only matching member and wakes it", async () => {
+    const fixture = await startFixture(({ body }) => {
+      if (isJudgementRequest(body)) return judgementPass();
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const name = system.match(/## 名字\n\n(.+)/)?.[1] ?? "bot";
+      if (name === "导演") return sse(textChunks("@分镜 请按锁点出六场镜表"));
+      return sse(textChunks("镜表已出"));
+    });
+    const h = await startApi();
+    const { bots, groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "导演", duties: "direct" },
+      { name: "分镜师", duties: "storyboard" },
+    ]);
+    const storyboard = bots.find((b) => b.name === "分镜师")!;
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@导演 开始" }),
+    });
+    const reply = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.author === storyboard.id,
+      4000,
+    );
+    expect(reply.body).toBe("镜表已出");
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.status === "completed" && e.bot_id === storyboard.id,
+      4000,
+    );
+    expect(sub.events.some((e) => e.event === "message.created" && e.kind === "system")).toBe(false);
+    sub.close();
+  });
+
+  test("a bot's unknown @ leaves a system note naming the members and wakes nobody", async () => {
+    const fixture = await startFixture(({ body }) => {
+      if (isJudgementRequest(body)) return judgementPass();
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const name = system.match(/## 名字\n\n(.+)/)?.[1] ?? "bot";
+      if (name === "导演") return sse(textChunks("@张三 请出镜表"));
+      return sse(textChunks("ok"));
+    });
+    const h = await startApi();
+    const { bots, groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "导演", duties: "direct" },
+      { name: "分镜师", duties: "storyboard" },
+    ]);
+    const director = bots.find((b) => b.name === "导演")!;
+    const storyboard = bots.find((b) => b.name === "分镜师")!;
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@导演 开始" }),
+    });
+    const note = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === director.id,
+      4000,
+    );
+    expect(note.body).toBe("@张三 没有匹配到群成员。在场：分镜师。点名请逐字写全名。");
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.status === "completed" && e.bot_id === director.id,
+      4000,
+    );
+    expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === storyboard.id)).toBe(false);
+    sub.close();
+  });
+});

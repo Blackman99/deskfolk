@@ -61,6 +61,8 @@ export type ToolCtx = {
   approved?: boolean;
   approvalApiKey?: string;
   writtenPaths?: string[];
+  /** Unknown `@token`s already rejected once this turn; a resend with them goes through. Absent = always reject. */
+  mentionWarned?: Set<string>;
 };
 
 export async function runCollabTool(
@@ -135,7 +137,9 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   }
   const session = ctx.store.getSession(sessionId);
   const roster = ctx.store.listBots();
-  const parsed = parseMentions(body, roster.map((b) => b.name));
+  const selfName = roster.find((b) => b.id === ctx.botId)?.name;
+  const presentNames = presentMemberNames(ctx.store, sessionId, roster);
+  const parsed = parseMentions(body, roster.map((b) => b.name), { lenient: presentNames });
   const emitted: ToolResult["emitted"] = [];
   if (session.kind === "group") {
     for (const name of parsed.mentions) {
@@ -148,6 +152,14 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     }
   }
   const unresolved = parsed.unresolved.filter((token) => token !== "everyone");
+  if (session.kind === "group" && unresolved.length > 0) {
+    const fresh = unresolved.filter((token) => !ctx.mentionWarned?.has(token));
+    if (fresh.length > 0) {
+      for (const token of fresh) ctx.mentionWarned?.add(token);
+      const members = presentNames.filter((name) => name !== selfName);
+      return fail("unknown_mention", unknownMentionError(fresh, members));
+    }
+  }
   const cited = mergeCitedPaths(
     [...(ctx.writtenPaths ?? []), ...(optionalStringArray(args.paths, "paths") ?? [])],
     extractWorkspacePathsFromBody(body),
@@ -172,6 +184,7 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
       message_id: message.id,
       session_id: sessionId,
       mentions: parsed.mentions,
+      corrected_mentions: parsed.corrected,
       unresolved_mentions: unresolved,
       paths: resolved.paths,
       unresolved_paths: resolved.unresolved,
@@ -1087,6 +1100,26 @@ function optionalNumber(value: unknown): number | undefined {
     throw new HttpError(422, "invalid_args", "avatar_seed must be a non-negative integer");
   }
   return value;
+}
+
+function presentMemberNames(
+  store: Store,
+  sessionId: string,
+  roster: ReturnType<Store["listBots"]>,
+): string[] {
+  const byId = new Map(roster.map((b) => [b.id, b.name] as const));
+  return store
+    .presentBotIds(sessionId)
+    .map((id) => byId.get(id))
+    .filter((name): name is string => typeof name === "string");
+}
+
+/** Tool error for `@token`s that match nobody present; lists the exact names to use. */
+function unknownMentionError(tokens: string[], members: string[]): string {
+  const label = tokens.length === 1 ? "unknown mention" : "unknown mentions";
+  const list = tokens.map((token) => `@${token}`).join(", ");
+  const who = members.length > 0 ? members.join(", ") : "(nobody else)";
+  return `${label} ${list}: no member here has that name. Members here: ${who}. Use one of these exact names, or drop the @ and send again.`;
 }
 
 function fail(code: string, message: string): ToolResult {

@@ -84,6 +84,10 @@ export type RenderMarkdownOptions = {
   streaming?: boolean;
   extraPaths?: string[];
   mentionBots?: readonly MentionableBot[];
+  /** Present members eligible for lenient prefix/suffix resolution of misspelt @tokens. */
+  mentionMembers?: readonly MentionableBot[];
+  /** Title attribute for an unresolved @token marker. */
+  unresolvedMentionTitle?: string;
 };
 
 /** Chat markdown to sanitized HTML. Streaming heals unclosed emphasis and fences so the bubble does not flash raw markers. */
@@ -91,9 +95,13 @@ export function renderMarkdown(source: string, options: RenderMarkdownOptions = 
   if (!source && !(options.extraPaths && options.extraPaths.length > 0)) return "";
   const linked = linkifyWorkspacePaths(source, options.extraPaths ?? []);
   const prepared = options.streaming ? healStreaming(linked) : linked;
-  const mentioned = linkifyRosterMentions(prepared, options.mentionBots ?? []);
+  const mentioned = linkifyRosterMentions(prepared, options.mentionBots ?? [], {
+    members: options.mentionMembers,
+  });
   const html = marked.parse(mentioned, { async: false });
-  return decorateMentionChips(sanitizeHtml(html, SANITIZE), options.mentionBots ?? []);
+  return decorateMentionChips(sanitizeHtml(html, SANITIZE), options.mentionBots ?? [], {
+    unresolvedTitle: options.unresolvedMentionTitle,
+  });
 }
 
 function healStreaming(source: string): string {
