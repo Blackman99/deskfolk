@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LOCAL_API_NAME } from "@real-bot/protocol";
@@ -328,7 +328,7 @@ describe("empty roster and settings", () => {
     });
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({
-      error: { code: "invalid_args", message: "workspace_path must be an existing absolute directory" },
+      error: { code: "invalid_args", message: "workspace_path must be an absolute directory" },
     });
     const settings = (await (await fetch(`${h.origin}/v1/settings`, { headers: auth(h) })).json()) as {
       workspace_path: string | null;
@@ -336,17 +336,20 @@ describe("empty roster and settings", () => {
     expect(settings.workspace_path).toBeNull();
   });
 
-  test("missing workspace directory is 422", async () => {
+  test("missing workspace directory is created", async () => {
     const h = await start();
+    const dir = join(tmpdir(), `real-bot-missing-${process.pid}-${Date.now()}`);
+    const nested = join(dir, "workspace");
     const res = await fetch(`${h.origin}/v1/settings`, {
       method: "PATCH",
       headers: auth(h, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ workspace_path: "/tmp/real-bot-no-such-workspace" }),
+      body: JSON.stringify({ workspace_path: nested }),
     });
-    expect(res.status).toBe(422);
-    expect(await res.json()).toEqual({
-      error: { code: "invalid_args", message: "workspace_path must be an existing absolute directory" },
-    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { workspace_path: string };
+    expect(body.workspace_path).toBe(realpathSync(nested));
+    expect(statSync(nested).isDirectory()).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   test("file used as workspace path is 422", async () => {
@@ -361,9 +364,26 @@ describe("empty roster and settings", () => {
     });
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({
-      error: { code: "invalid_args", message: "workspace_path must be an existing absolute directory" },
+      error: { code: "invalid_args", message: "workspace_path must be a directory" },
     });
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("missing tilde workspace path is created", async () => {
+    const h = await start();
+    const home = process.env.HOME!;
+    const name = `real-bot-tilde-missing-${process.pid}-${Date.now()}`;
+    const real = join(home, name);
+    const res = await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ workspace_path: `~/${name}` }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { workspace_path: string };
+    expect(body.workspace_path).toBe(realpathSync(real));
+    expect(statSync(real).isDirectory()).toBe(true);
+    rmSync(real, { recursive: true, force: true });
   });
 
   test("tilde workspace path expands, realpath-resolves, and stores the absolute directory", async () => {

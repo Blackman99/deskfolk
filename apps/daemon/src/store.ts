@@ -2962,17 +2962,20 @@ function resolveWorkspacePath(value: unknown): string {
   }
   const expanded = expandHome(trimmed);
   if (!isAbsolute(expanded)) {
-    throw new HttpError(422, "invalid_args", "workspace_path must be an existing absolute directory");
+    throw new HttpError(422, "invalid_args", "workspace_path must be an absolute directory");
   }
   try {
+    if (!existsSync(expanded)) {
+      mkdirSync(expanded, { recursive: true });
+    }
     const resolved = realpathSync(expanded);
     if (!statSync(resolved).isDirectory()) {
-      throw new HttpError(422, "invalid_args", "workspace_path must be an existing absolute directory");
+      throw new HttpError(422, "invalid_args", "workspace_path must be a directory");
     }
     return resolved;
   } catch (error) {
     if (error instanceof HttpError) throw error;
-    throw new HttpError(422, "invalid_args", "workspace_path must be an existing absolute directory");
+    throw new HttpError(422, "invalid_args", "workspace_path could not be created");
   }
 }
 

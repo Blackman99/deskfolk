@@ -184,6 +184,11 @@ test("maps daemon English messages onto the locked field kinds", () => {
   expect(mapSettingsError("workspace_path must be an existing absolute directory")).toEqual({
     workspace: "invalid",
   });
+  expect(mapSettingsError("workspace_path must be an absolute directory")).toEqual({
+    workspace: "invalid",
+  });
+  expect(mapSettingsError("workspace_path must be a directory")).toEqual({ workspace: "invalid" });
+  expect(mapSettingsError("workspace_path could not be created")).toEqual({ workspace: "invalid" });
   expect(mapSettingsError("workspace_path cannot be empty")).toEqual({ workspace: "empty" });
   expect(mapSettingsError("endpoint_base_url must be an http or https URL")).toEqual({
     endpoint: "invalid",

@@ -26,8 +26,12 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
 test("wizard field errors are the locked 32 sentences", () => {
   expect(COPY.zh.settings.workspaceEmpty).toBe("填写一个本机目录。");
   expect(COPY.en.settings.workspaceEmpty).toBe("Enter a local directory.");
-  expect(COPY.zh.settings.workspaceInvalid).toBe("这个路径不是已有的目录。");
-  expect(COPY.en.settings.workspaceInvalid).toBe("This path is not an existing directory.");
+  expect(COPY.zh.settings.workspaceInvalid).toBe(
+    "需要本机绝对路径；不能是文件。目录不存在时会自动创建。",
+  );
+  expect(COPY.en.settings.workspaceInvalid).toBe(
+    "Use an absolute local path; it cannot be a file. Missing folders are created.",
+  );
   expect(COPY.zh.settings.endpointEmpty).toBe("填写端点 URL。");
   expect(COPY.en.settings.endpointEmpty).toBe("Enter the endpoint URL.");
   expect(COPY.zh.settings.endpointInvalid).toBe("端点必须是 http 或 https 的 URL。");

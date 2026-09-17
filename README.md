@@ -46,7 +46,7 @@ pnpm install
 pnpm dev
 ```
 
-First run: pick a workspace folder, add an OpenAI-compatible endpoint and key in Settings, create the first bot from the sidebar, then let it hire the rest.
+First run: pick a workspace folder (missing folders are created), add an OpenAI-compatible endpoint and key in Settings, create the first bot from the sidebar, then let it hire the rest.
 
 ## Status
 
