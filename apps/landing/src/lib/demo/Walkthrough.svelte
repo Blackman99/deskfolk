@@ -3,6 +3,7 @@
   import { base } from '$app/paths';
   import type { Dict, Lang } from '$lib/i18n';
   import AppMock from './AppMock.svelte';
+  import { LATEST_RELEASE_URL } from '$lib/site';
 
   let { t, lang }: { t: Dict; lang: Lang } = $props();
 
@@ -91,8 +92,8 @@
       </h1>
       <p class="sub">{t.hero.subhead}</p>
       <div class="ctas">
-        <a class="btn btn-primary" href="{base}/{lang}#quickstart">{t.hero.ctaPrimary}</a>
-        <a class="btn btn-secondary" href="{base}/{lang}/manifesto">{t.hero.ctaSecondary}</a>
+        <a class="btn btn-primary" href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.hero.ctaPrimary}</a>
+        <a class="btn btn-secondary" href="{base}/{lang}#quickstart">{t.hero.ctaSecondary}</a>
       </div>
       <div class="run">
         <span class="run-label">{t.hero.runLabel}</span>
@@ -297,7 +298,7 @@
     width: 100%;
     aspect-ratio: 900 / 580;
     box-shadow: var(--shadow-window);
-    background: #eef2f6;
+    background: var(--app-bg);
   }
 
   .scaler {

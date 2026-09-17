@@ -36,7 +36,7 @@ function sanitizeOptions(lang: 'zh' | 'en'): sanitizeHtml.IOptions {
           href = withBase(`/${lang}/roadmap`);
         } else if (href === 'CONTEXT.md' || href.endsWith('/CONTEXT.md')) {
           href = withBase(`/${lang}/manifesto`);
-        } else if (href === 'README.md' || href === 'README.en.md') {
+        } else if (href === 'README.md' || href === 'README.en.md' || href === 'README.zh.md') {
           href = withBase(`/${lang}`);
         } else if (href.endsWith('.md') || href.startsWith('docs/')) {
           const cleanPath = href.replace(/^\.\//, '');
@@ -84,7 +84,7 @@ export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', 
   } else if (docType === 'roadmap') {
     filename = 'ROADMAP.md';
   } else if (docType === 'readme') {
-    filename = lang === 'en' ? 'README.en.md' : 'README.md';
+    filename = lang === 'en' ? 'README.md' : 'README.zh.md';
   }
 
   const targetPath = path.join(repoRoot, filename);

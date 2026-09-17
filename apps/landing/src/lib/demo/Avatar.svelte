@@ -16,7 +16,7 @@
     flex: none;
     border-radius: 50%;
     overflow: hidden;
-    background: #e2e8f0;
+    background: var(--line, #e2e8f0);
     line-height: 0;
   }
 

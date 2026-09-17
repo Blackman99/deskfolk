@@ -3,7 +3,7 @@
   import Walkthrough from '$lib/demo/Walkthrough.svelte';
   import Seo from '$lib/Seo.svelte';
   import { DICT, type Lang } from '$lib/i18n';
-  import { GITHUB_URL, GITHUB_BLOB_MAIN } from '$lib/site';
+  import { GITHUB_URL, GITHUB_BLOB_MAIN, LATEST_RELEASE_URL } from '$lib/site';
 
   let { data } = $props();
   const lang: Lang = $derived(data.lang);
@@ -64,6 +64,14 @@
       </div>
     </div>
 
+    <div class="qs-side">
+      <div class="download">
+        <h3 class="serif">{t.quickstart.download.title}</h3>
+        <p>{t.quickstart.download.body}</p>
+        <pre class="mono dl-note">{t.quickstart.download.note}</pre>
+        <a class="btn btn-primary" href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.quickstart.download.link}</a>
+      </div>
+
     <div class="terminal" aria-label="Terminal">
       <div class="term-bar">
         <span class="l r"></span><span class="l y"></span><span class="l g"></span>
@@ -76,6 +84,7 @@
 
 <span class="c"># {t.quickstart.step2}</span>
 <span class="p">$</span> pnpm dev</pre>
+    </div>
     </div>
   </div>
 </section>
@@ -255,6 +264,54 @@
     font-size: 15px;
   }
 
+  .qs-side {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .download {
+    padding: 22px 24px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .download h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .download p {
+    margin: 0;
+    color: var(--ink-2);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  .dl-note {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--ground);
+    border: 1px solid var(--line);
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--ink);
+  }
+
+  .download .btn {
+    align-self: flex-start;
+    margin-top: 4px;
+  }
+
   .terminal {
     border-radius: 12px;
     background: #0f172a;
@@ -301,7 +358,7 @@
       gap: 56px;
     }
 
-    .terminal {
+    .qs-side {
       position: sticky;
       top: calc(var(--nav-h) + 24px);
     }

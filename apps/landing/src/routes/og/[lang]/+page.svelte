@@ -8,33 +8,57 @@
   let { data } = $props();
   const lang: Lang = $derived(data.lang);
   const t = $derived(DICT[lang]);
+  const variant = $derived(data.variant);
+  const theme = $derived(data.theme);
   const siteLabel = `${GITHUB_OWNER.toLowerCase()}.github.io/${GITHUB_REPO}`;
+
+  const SIZES = {
+    og: { w: 1200, h: 630 },
+    social: { w: 1280, h: 640 },
+    hero: { w: 1600, h: 900 }
+  } as const;
+  const size = $derived(SIZES[variant]);
+
+  $effect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  });
 </script>
 
 <svelte:head>
-  <title>OG image studio — Real Bot</title>
+  <title>Brand image studio — Real Bot</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
 {#if dev}
-  <div class="og" lang={lang === 'zh' ? 'zh-CN' : 'en'}>
-    <div class="copy">
-      <div class="brand">
-        <Logo size={44} />
-        <span class="brand-name">Real Bot</span>
-        <span class="wip">{t.nav.wip}</span>
+  <div class="og {variant}" lang={lang === 'zh' ? 'zh-CN' : 'en'} style:width="{size.w}px" style:height="{size.h}px">
+    {#if variant === 'hero'}
+      <!-- Montage: group collaboration, a pending approval card, the artifact editor. -->
+      <div class="win-a">
+        <div class="scaler" style:transform="scale(0.95)"><AppMock scene={0} {t} instant /></div>
       </div>
-      <h1>
-        {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
-      </h1>
-      <p class="tagline">{t.footer.tagline}{lang === 'zh' ? ' MIT 开源。' : ' Open source under MIT.'}</p>
-      <p class="url">{siteLabel}</p>
-    </div>
-    <div class="window">
-      <div class="scaler">
-        <AppMock scene={0} {t} instant />
+      <div class="win-c">
+        <div class="scaler" style:transform="scale(0.58)"><AppMock scene={5} {t} instant frozenBeat={3} /></div>
       </div>
-    </div>
+      <div class="win-b">
+        <div class="scaler" style:transform="scale(0.66)"><AppMock scene={7} {t} instant /></div>
+      </div>
+    {:else}
+      <div class="copy">
+        <div class="brand">
+          <Logo size={44} />
+          <span class="brand-name">Real Bot</span>
+          <span class="wip">{t.nav.wip}</span>
+        </div>
+        <h1>
+          {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
+        </h1>
+        <p class="tagline">{t.footer.tagline}{lang === 'zh' ? ' MIT 开源。' : ' Open source under MIT.'}</p>
+        <p class="url">{siteLabel}</p>
+      </div>
+      <div class="window">
+        <div class="scaler" style:transform="scale(0.8)"><AppMock scene={0} {t} instant /></div>
+      </div>
+    {/if}
   </div>
 {:else}
   <p>Development only.</p>
@@ -43,21 +67,27 @@
 <style>
   :global(html),
   :global(body) {
-    background: #eef2f7;
+    background: var(--ground);
   }
 
   .og {
     position: relative;
-    width: 1200px;
-    height: 630px;
     overflow: hidden;
     background:
-      radial-gradient(900px 500px at 105% 110%, #e3f0f2 0%, rgba(227, 240, 242, 0) 60%),
-      #eef2f7;
-    color: #0f172a;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
+      radial-gradient(900px 500px at 105% 110%, var(--teal-tint) 0%, transparent 60%),
+      var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
   }
 
+  .hero {
+    background:
+      radial-gradient(1100px 700px at 100% 0%, var(--teal-tint) 0%, transparent 60%),
+      radial-gradient(900px 600px at 0% 100%, var(--mustard-tint) 0%, transparent 55%),
+      var(--ground);
+  }
+
+  /* ── Open Graph / social preview ── */
   .copy {
     position: absolute;
     left: 64px;
@@ -68,37 +98,45 @@
     flex-direction: column;
   }
 
+  .social .copy {
+    left: 72px;
+    top: 64px;
+    bottom: 64px;
+    width: 600px;
+  }
+
   .brand {
     display: flex;
     align-items: center;
     gap: 14px;
   }
 
-  .brand-name {
-    font-family: 'Iowan Old Style', 'Charter', 'Songti SC', Georgia, serif;
-    font-size: 34px;
+  .brand-name,
+  h1 {
+    font-family: var(--font-serif);
     font-weight: 700;
     letter-spacing: -0.01em;
+  }
+
+  .brand-name {
+    font-size: 34px;
   }
 
   .wip {
     margin-left: 6px;
     font-size: 15px;
     font-weight: 600;
-    color: #8a5a08;
-    background: #fdf3e1;
-    border: 1px solid #f3d08e;
+    color: var(--mustard-ink);
+    background: var(--mustard-tint);
+    border: 1px solid var(--mustard-line);
     border-radius: 999px;
     padding: 3px 12px;
   }
 
   h1 {
     margin: 48px 0 0;
-    font-family: 'Iowan Old Style', 'Charter', 'Songti SC', Georgia, serif;
     font-size: 58px;
     line-height: 1.22;
-    font-weight: 700;
-    letter-spacing: -0.01em;
   }
 
   .og[lang='en'] h1 {
@@ -115,32 +153,67 @@
     margin: 28px 0 0;
     font-size: 21px;
     line-height: 1.55;
-    color: #475569;
+    color: var(--ink-2);
     max-width: 520px;
   }
 
   .url {
     margin: auto 0 0;
-    font-family: 'SF Mono', Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 17px;
-    color: #146a7c;
+    color: var(--teal);
+  }
+
+  .window,
+  .win-a,
+  .win-b,
+  .win-c {
+    position: absolute;
+    border-radius: 12px;
+    box-shadow: var(--shadow-window);
+    overflow: hidden;
   }
 
   .window {
-    position: absolute;
     left: 660px;
     top: 90px;
     width: 720px;
     height: 464px;
-    border-radius: 12px;
-    box-shadow: 0 40px 80px -30px rgba(15, 23, 42, 0.45), 0 12px 28px -10px rgba(15, 23, 42, 0.25);
-    overflow: hidden;
+  }
+
+  .social .window {
+    left: 720px;
+    top: 96px;
   }
 
   .scaler {
     width: 900px;
     height: 580px;
-    transform: scale(0.8);
     transform-origin: 0 0;
+  }
+
+  /* ── README hero montage ── */
+  .win-a {
+    left: 72px;
+    top: 168px;
+    width: 855px;
+    height: 551px;
+    z-index: 1;
+  }
+
+  .win-c {
+    left: 990px;
+    top: 72px;
+    width: 522px;
+    height: 336px;
+    z-index: 2;
+  }
+
+  .win-b {
+    left: 900px;
+    top: 452px;
+    width: 594px;
+    height: 383px;
+    z-index: 3;
   }
 </style>

@@ -25,6 +25,11 @@ export type Dict = {
     github: string;
     switchLang: string;
     wip: string;
+    download: string;
+    theme: string;
+    themeSystem: string;
+    themeLight: string;
+    themeDark: string;
   };
   hero: {
     headline: string;
@@ -145,6 +150,7 @@ export type Dict = {
     step1: string;
     step2: string;
     firstRun: string[];
+    download: { title: string; body: string; link: string; note: string };
     linkDocs: string;
     linkManifesto: string;
     linkRoadmap: string;
@@ -179,16 +185,21 @@ const zh: Dict = {
     roadmap: '路线图',
     github: 'GitHub',
     switchLang: 'English',
-    wip: '开发中'
+    wip: 'Alpha',
+    download: '下载',
+    theme: '外观',
+    themeSystem: '跟随系统',
+    themeLight: '亮色',
+    themeDark: '暗色'
   },
   hero: {
     headline: '在自己的电脑上，用对话组一支持久的 AI 队友。',
     headlineLines: ['在自己的电脑上，', '用对话组一支', '持久的 AI 队友。'],
     subhead:
       'Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在你的 Mac 上；模型端点和 MCP 工具由你接入。',
-    wipNote: '正在开发中：面向 macOS 从源码运行，尚无稳定版。',
-    ctaPrimary: '从源码启动',
-    ctaSecondary: '读设计理念',
+    wipNote: 'Alpha 版本：macOS 未签名快照，功能与数据结构仍会变化。',
+    ctaPrimary: '下载 Alpha（macOS）',
+    ctaSecondary: '从源码启动',
     runLabel: '本机运行',
     runCommand: 'pnpm install && pnpm dev',
     copy: '复制',
@@ -409,8 +420,8 @@ const zh: Dict = {
     footnote: ['详细方向见', '；领域词汇以 ', ' 为准。']
   },
   quickstart: {
-    heading: '从源码在你的 Mac 上启动',
-    intro: 'MIT 协议开源。当前没有稳定版或受支持的签名安装包，Windows 与 Linux 不在支持范围。',
+    heading: '下载，或从源码启动',
+    intro: 'MIT 协议开源。Alpha 快照只有 macOS 且未签名；Windows 与 Linux 不在支持范围。',
     requirements: '需要 macOS、Node.js 22+、pnpm 12.3.4、Bun 1.2+、Rust / Cargo，以及 Tauri 的 macOS 前置依赖（含 Xcode Command Line Tools）。',
     step1: '克隆并安装依赖',
     step2: '并行启动守护进程与桌面窗',
@@ -420,6 +431,12 @@ const zh: Dict = {
       '通过侧栏创建第一个 Bot，填名称、职责和边界，开始私聊。',
       '让它创建其他 Bot、组群或提出 MCP 配置；需要批准时在应用里审核。'
     ],
+    download: {
+      title: '下载 Alpha 快照',
+      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg。构建未签名：首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行：',
+      link: '前往最新 Release',
+      note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
+    },
     linkDocs: '开发说明',
     linkManifesto: '设计理念',
     linkRoadmap: '路线图'
@@ -432,7 +449,7 @@ const zh: Dict = {
   seo: {
     title: 'Real Bot — 在自己的电脑上，用对话组一支持久的 AI 队友',
     description:
-      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，正在开发中。',
+      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，Alpha 阶段。',
     imageAlt: 'Real Bot：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
@@ -455,16 +472,21 @@ const en: Dict = {
     roadmap: 'Roadmap',
     github: 'GitHub',
     switchLang: '中文',
-    wip: 'Work in progress'
+    wip: 'Alpha',
+    download: 'Download',
+    theme: 'Appearance',
+    themeSystem: 'System',
+    themeLight: 'Light',
+    themeDark: 'Dark'
   },
   hero: {
     headline: 'Persistent AI teammates, organized by conversation, on your own Mac.',
     headlineLines: ['Persistent AI teammates,', 'organized by conversation,', 'on your own Mac.'],
     subhead:
       'Bots have names, duties and boundaries. They chat one to one, join groups, get @mentioned and hand work to each other. The window, runtime, sessions and shared workspace live on your Mac; you plug in the model endpoints and MCP tools.',
-    wipNote: 'Work in progress: runs from source on macOS. No stable release yet.',
-    ctaPrimary: 'Run from source',
-    ctaSecondary: 'Read the manifesto',
+    wipNote: 'Alpha: unsigned macOS snapshot. Features and data structures may still change.',
+    ctaPrimary: 'Download alpha (macOS)',
+    ctaSecondary: 'Run from source',
     runLabel: 'Runs locally',
     runCommand: 'pnpm install && pnpm dev',
     copy: 'Copy',
@@ -686,8 +708,8 @@ const en: Dict = {
     footnote: ['See the ', ' for direction; ', ' is the source of truth for vocabulary.']
   },
   quickstart: {
-    heading: 'Run from source on your Mac',
-    intro: 'Open source under MIT. There is no stable release or supported signed installer yet; Windows and Linux are out of scope.',
+    heading: 'Download, or run from source',
+    intro: 'Open source under MIT. The alpha snapshot is macOS only and unsigned; Windows and Linux are out of scope.',
     requirements: 'Requires macOS, Node.js 22+, pnpm 12.3.4, Bun 1.2+, Rust / Cargo and the Tauri macOS prerequisites (including Xcode Command Line Tools).',
     step1: 'Clone and install',
     step2: 'Start the daemon and the desktop window in parallel',
@@ -697,6 +719,12 @@ const en: Dict = {
       'Create the first bot from the sidebar with a name, duties and boundaries, and open a direct chat.',
       'Ask it to create other bots, form groups or propose MCP configuration; approve dangerous actions in the app.'
     ],
+    download: {
+      title: 'Download the alpha snapshot',
+      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel. The build is unsigned: if Gatekeeper blocks the first launch, right-click and choose Open, or run:',
+      link: 'Go to the latest release',
+      note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
+    },
     linkDocs: 'Development guide',
     linkManifesto: 'Manifesto',
     linkRoadmap: 'Roadmap'
@@ -709,7 +737,7 @@ const en: Dict = {
   seo: {
     title: 'Real Bot — Persistent AI teammates, organized by conversation, on your own Mac',
     description:
-      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, work in progress.',
+      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, alpha.',
     imageAlt: 'Real Bot: three bots collaborating on report.md in a group chat window'
   },
   docs: {

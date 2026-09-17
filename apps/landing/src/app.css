@@ -38,6 +38,32 @@
   --shadow-window: 0 30px 60px -20px rgba(15, 23, 42, 0.28), 0 8px 20px -8px rgba(15, 23, 42, 0.16);
   --shadow-float: 0 12px 32px -12px rgba(15, 23, 42, 0.22);
 
+  /* The demo window borrows the messenger's own palette (apps/messenger/src/lib/styles.css). */
+  --app-bg: #eef2f6;
+  --app-pane: #ffffff;
+  --app-sidebar: #f8fafc;
+  --app-ink: #0f172a;
+  --app-ink-2: #334155;
+  --app-muted: #64748b;
+  --app-muted-2: #94a3b8;
+  --app-line: #e2e8f0;
+  --app-line-2: #f1f5f9;
+  --app-accent: #2563eb;
+  --app-accent-tint: #eff6ff;
+  --app-accent-line: #bfdbfe;
+  --app-bot-bubble: #f8fafc;
+  --app-card: #fffbeb;
+  --app-card-line: #fcd34d;
+  --app-card-ink: #92400e;
+  --app-ok-bg: #ecfdf5;
+  --app-ok-line: #a7f3d0;
+  --app-ok-text: #047857;
+  --app-warn-bg: #fffbeb;
+  --app-warn-text: #b45309;
+  --app-glass: rgba(255, 255, 255, 0.95);
+  --app-on-ink: #ffffff;
+  --app-shadow: rgba(15, 23, 42, 0.14);
+
   --nav-h: 60px;
   --page-max: 1280px;
   --gutter: clamp(16px, 4vw, 48px);
@@ -66,6 +92,31 @@
 
     --shadow-window: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -8px rgba(0, 0, 0, 0.5);
     --shadow-float: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+
+    --app-bg: #0d1219;
+    --app-pane: #161e2b;
+    --app-sidebar: #111722;
+    --app-ink: #f1f5f9;
+    --app-ink-2: #cbd5e1;
+    --app-muted: #8393a7;
+    --app-muted-2: #526379;
+    --app-line: #232f41;
+    --app-line-2: #182231;
+    --app-accent: #3b82f6;
+    --app-accent-tint: rgba(59, 130, 246, 0.16);
+    --app-accent-line: rgba(59, 130, 246, 0.35);
+    --app-bot-bubble: #1c2534;
+    --app-card: rgba(245, 158, 11, 0.12);
+    --app-card-line: rgba(245, 158, 11, 0.4);
+    --app-card-ink: #fbbf24;
+    --app-ok-bg: rgba(16, 185, 129, 0.15);
+    --app-ok-line: rgba(16, 185, 129, 0.35);
+    --app-ok-text: #34d399;
+    --app-warn-bg: rgba(245, 158, 11, 0.15);
+    --app-warn-text: #fbbf24;
+    --app-glass: rgba(22, 30, 43, 0.88);
+    --app-on-ink: #0d1219;
+    --app-shadow: rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -91,6 +142,31 @@
 
   --shadow-window: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -8px rgba(0, 0, 0, 0.5);
   --shadow-float: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+
+  --app-bg: #0d1219;
+  --app-pane: #161e2b;
+  --app-sidebar: #111722;
+  --app-ink: #f1f5f9;
+  --app-ink-2: #cbd5e1;
+  --app-muted: #8393a7;
+  --app-muted-2: #526379;
+  --app-line: #232f41;
+  --app-line-2: #182231;
+  --app-accent: #3b82f6;
+  --app-accent-tint: rgba(59, 130, 246, 0.16);
+  --app-accent-line: rgba(59, 130, 246, 0.35);
+  --app-bot-bubble: #1c2534;
+  --app-card: rgba(245, 158, 11, 0.12);
+  --app-card-line: rgba(245, 158, 11, 0.4);
+  --app-card-ink: #fbbf24;
+  --app-ok-bg: rgba(16, 185, 129, 0.15);
+  --app-ok-line: rgba(16, 185, 129, 0.35);
+  --app-ok-text: #34d399;
+  --app-warn-bg: rgba(245, 158, 11, 0.15);
+  --app-warn-text: #fbbf24;
+  --app-glass: rgba(22, 30, 43, 0.88);
+  --app-on-ink: #0d1219;
+  --app-shadow: rgba(0, 0, 0, 0.55);
 }
 
 html {

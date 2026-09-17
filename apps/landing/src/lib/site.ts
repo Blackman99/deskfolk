@@ -2,6 +2,9 @@ export const GITHUB_OWNER = 'Blackman99';
 export const GITHUB_REPO = 'real-bot';
 export const GITHUB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 export const GITHUB_BLOB_MAIN = `${GITHUB_URL}/blob/main`;
+export const RELEASES_URL = `${GITHUB_URL}/releases`;
+/** Resolves to the newest stable release; while only pre-releases exist GitHub redirects it to the releases list. */
+export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 
 /**
  * Canonical origin of the deployed site (GitHub Pages), without a trailing slash.
