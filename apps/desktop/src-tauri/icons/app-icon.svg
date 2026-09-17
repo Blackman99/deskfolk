@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Real Bot app icon source. macOS-style rounded square with transparent margins
+    (body 824×824 centered, radius 185), holding the two stacked teammates from
+    the brand mark. Regenerate the platform set with the Tauri CLI `icon` command;
+    see docs/development.md.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a7d91"/>
+      <stop offset="1" stop-color="#0e5767"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+  <circle cx="409" cy="512" r="167" fill="#ffffff"/>
+  <circle cx="628" cy="512" r="167" fill="#f0ab3d" stroke="#146a7c" stroke-width="45"/>
+</svg>
