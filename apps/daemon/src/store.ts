@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, join } from "node:path";
 import { Database } from "bun:sqlite";
 import {
   APP_SUPPORT_DIRNAME,
+  INTERRUPT_NOTE_BODY,
   KEYCHAIN_NAME,
   KEYCHAIN_REF,
   USER_MEMBER,
@@ -26,6 +27,7 @@ import {
   type Provider,
   type Reaction,
   type Routine,
+  type Skill,
   type SearchHit,
   type SessionDetail,
   type SessionKind,
@@ -63,6 +65,7 @@ import {
 } from "./route-decision";
 import { dueIso, isWeekday, latestDueAt, parseClockTime } from "./schedule";
 import { SCHEMA_SQL } from "./schema";
+import { codePointCount } from "./text";
 import { ensureReplyMention } from "./mentions";
 
 export { HttpError } from "./errors";
@@ -1437,6 +1440,7 @@ export class Store {
     auth?: string;
     enabled?: boolean;
     instructions?: string | null;
+    usage_note?: string | null;
     tool_catalog?: Array<{ name: string; description: string }>;
   }) {
     const name = requireNonEmpty("name", input.name);
@@ -1450,6 +1454,7 @@ export class Store {
     const now = isoNow();
     const catalog = JSON.stringify(input.tool_catalog ?? []);
     const instructions = input.instructions?.trim() ? input.instructions : null;
+    const usageNote = parseMcpUsageNote(input.usage_note);
     const id = ulid();
     const row: McpRow = {
       id,
@@ -1461,13 +1466,14 @@ export class Store {
       headers: JSON.stringify(spec.headers),
       enabled: input.enabled === false ? 0 : 1,
       instructions,
+      usage_note: usageNote,
       tool_catalog: catalog,
       created_at: now,
       updated_at: now,
     };
     this.db.run(
-      `INSERT INTO mcp_servers (id, name, transport, command, args, url, headers, enabled, instructions, tool_catalog, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO mcp_servers (id, name, transport, command, args, url, headers, enabled, instructions, usage_note, tool_catalog, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id,
         row.name,
@@ -1478,6 +1484,7 @@ export class Store {
         row.headers ?? "[]",
         row.enabled,
         row.instructions ?? null,
+        row.usage_note ?? null,
         row.tool_catalog ?? "[]",
         row.created_at,
         row.updated_at,
@@ -1502,11 +1509,16 @@ export class Store {
       auth?: string;
       enabled?: boolean;
       instructions?: string | null;
+      usage_note?: string | null;
       tool_catalog?: Array<{ name: string; description: string }>;
     },
   ) {
     const current = this.db.query<McpRow, [string]>(`SELECT * FROM mcp_servers WHERE id = ?`).get(id);
     if (!current) throw new HttpError(404, "not_found", "mcp server not found");
+    // The note is written by you or a Bot, so it survives connection changes; only an explicit
+    // patch replaces or clears it.
+    const usageNote =
+      patch.usage_note !== undefined ? parseMcpUsageNote(patch.usage_note) : (current.usage_note ?? null);
     const name = patch.name !== undefined ? requireNonEmpty("name", patch.name) : current.name;
     const spec = normalizeMcpSpec({
       transport: patch.transport ?? parseTransport(current.transport),
@@ -1538,7 +1550,7 @@ export class Store {
           : (current.tool_catalog ?? "[]");
     const now = isoNow();
     this.db.run(
-      `UPDATE mcp_servers SET name = ?, transport = ?, command = ?, args = ?, url = ?, headers = ?, enabled = ?, instructions = ?, tool_catalog = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE mcp_servers SET name = ?, transport = ?, command = ?, args = ?, url = ?, headers = ?, enabled = ?, instructions = ?, usage_note = ?, tool_catalog = ?, updated_at = ? WHERE id = ?`,
       [
         name,
         spec.transport,
@@ -1548,6 +1560,7 @@ export class Store {
         JSON.stringify(spec.headers),
         enabled,
         instructions ?? null,
+        usageNote,
         toolCatalog ?? "[]",
         now,
         id,
@@ -1646,6 +1659,111 @@ export class Store {
     const row = this.db.query<RoutineRow, [string]>(`SELECT * FROM routines WHERE id = ?`).get(id);
     if (!row) throw new HttpError(404, "not_found", "routine not found");
     return toRoutine(row);
+  }
+
+  listSkills(botId?: string): Skill[] {
+    if (botId) {
+      this.aliveBot(botId);
+      return this.db
+        .query<SkillRow, [string]>(`SELECT * FROM skills WHERE bot_id = ? ORDER BY name COLLATE NOCASE ASC, id ASC`)
+        .all(botId)
+        .map(toSkill);
+    }
+    return this.db
+      .query<SkillRow, []>(`SELECT * FROM skills ORDER BY bot_id ASC, name COLLATE NOCASE ASC, id ASC`)
+      .all()
+      .map(toSkill);
+  }
+
+  listEnabledSkills(botId: string): Skill[] {
+    return this.listSkills(botId).filter((skill) => skill.enabled);
+  }
+
+  getSkill(id: string): Skill {
+    const row = this.db.query<SkillRow, [string]>(`SELECT * FROM skills WHERE id = ?`).get(id);
+    if (!row) throw new HttpError(404, "not_found", "skill not found");
+    return toSkill(row);
+  }
+
+  findSkillByName(botId: string, name: string): Skill | null {
+    const normalized = requireNonEmpty("name", name);
+    const row = this.db
+      .query<SkillRow, [string, string]>(
+        `SELECT * FROM skills WHERE bot_id = ? AND lower(name) = lower(?) LIMIT 1`,
+      )
+      .get(botId, normalized);
+    return row ? toSkill(row) : null;
+  }
+
+  createSkill(input: {
+    bot_id: string;
+    name: string;
+    description: string;
+    body: string;
+    uses?: string[];
+    enabled?: boolean;
+  }): Skill {
+    this.aliveBot(input.bot_id);
+    const name = parseSkillName(input.name);
+    const description = parseSkillDescription(input.description);
+    const body = parseSkillBody(input.body);
+    const uses = JSON.stringify(parseSkillUses(input.uses));
+    this.assertSkillNameFree(input.bot_id, name);
+    this.assertSkillCapacity(input.bot_id);
+    const now = isoNow();
+    const id = ulid();
+    this.db.run(
+      `INSERT INTO skills (id, bot_id, name, description, body, uses, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.bot_id, name, description, body, uses, input.enabled === false ? 0 : 1, now, now],
+    );
+    return this.getSkill(id);
+  }
+
+  patchSkill(
+    id: string,
+    patch: Partial<{ name: string; description: string; body: string; uses: string[]; enabled: boolean }>,
+  ): Skill {
+    const current = this.db.query<SkillRow, [string]>(`SELECT * FROM skills WHERE id = ?`).get(id);
+    if (!current) throw new HttpError(404, "not_found", "skill not found");
+    const name = patch.name !== undefined ? parseSkillName(patch.name) : current.name;
+    const description =
+      patch.description !== undefined ? parseSkillDescription(patch.description) : current.description;
+    const body = patch.body !== undefined ? parseSkillBody(patch.body) : current.body;
+    const uses = patch.uses !== undefined ? JSON.stringify(parseSkillUses(patch.uses)) : (current.uses ?? "[]");
+    const enabled = patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : current.enabled;
+    if (name.toLowerCase() !== current.name.toLowerCase()) {
+      this.assertSkillNameFree(current.bot_id, name, id);
+    }
+    const now = isoNow();
+    this.db.run(
+      `UPDATE skills SET name = ?, description = ?, body = ?, uses = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+      [name, description, body, uses, enabled, now, id],
+    );
+    return this.getSkill(id);
+  }
+
+  deleteSkill(id: string): void {
+    const changes = this.db.run(`DELETE FROM skills WHERE id = ?`, [id]).changes;
+    if (changes === 0) throw new HttpError(404, "not_found", "skill not found");
+  }
+
+  private assertSkillNameFree(botId: string, name: string, exceptId?: string): void {
+    const row = this.db
+      .query<{ id: string }, [string, string]>(
+        `SELECT id FROM skills WHERE bot_id = ? AND lower(name) = lower(?) LIMIT 1`,
+      )
+      .get(botId, name);
+    if (row && row.id !== exceptId) throw new HttpError(409, "conflict", "that skill name is already used");
+  }
+
+  private assertSkillCapacity(botId: string): void {
+    const row = this.db
+      .query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM skills WHERE bot_id = ?`)
+      .get(botId);
+    if ((row?.n ?? 0) >= SKILL_MAX_PER_BOT) {
+      throw new HttpError(422, "failed", `a bot can have at most ${SKILL_MAX_PER_BOT} skills`);
+    }
   }
 
   /**
@@ -1862,12 +1980,59 @@ export class Store {
         );
         this.db.run(
           `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, created_at)
-           VALUES (?, ?, ?, NULL, 'system', ?, '中断', NULL, ?)`,
-          [ulid(), turn.session_id, turn.id, turn.bot_id, now],
+           VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?)`,
+          [ulid(), turn.session_id, turn.id, turn.bot_id, INTERRUPT_NOTE_BODY, now],
         );
         this.markInterruptPending(turn.bot_id);
       }
     })();
+  }
+
+  claimInterruptContinue(messageId: string): Turn {
+    const note = this.getMessage(messageId);
+    if (note.kind !== "system" || note.body !== INTERRUPT_NOTE_BODY || !note.turn_id) {
+      throw new HttpError(422, "invalid_args", "message is not an interrupted turn");
+    }
+    if (note.source_turn_id) {
+      throw new HttpError(422, "invalid_args", "interrupted turn already continued");
+    }
+    const cut = this.getTurn(note.turn_id);
+    if (cut.status !== "interrupted" || cut.bot_id !== note.author) {
+      throw new HttpError(422, "invalid_args", "turn is not interrupted");
+    }
+    const session = this.sessionRow(note.session_id);
+    if (session.archived_at) {
+      throw new HttpError(422, "invalid_args", "session is archived");
+    }
+    const bot = this.aliveBot(cut.bot_id);
+    if (bot.archived_at) {
+      throw new HttpError(422, "invalid_args", "bot is archived");
+    }
+    if (!this.isPresent(note.session_id, cut.bot_id)) {
+      throw new HttpError(422, "invalid_args", "bot is not in this session");
+    }
+    if (this.listLiveTurns({ sessionId: note.session_id, botId: cut.bot_id }).length > 0) {
+      throw new HttpError(422, "invalid_args", "bot already has a live turn");
+    }
+    const now = isoNow();
+    const id = ulid();
+    this.db.transaction(() => {
+      this.db.run(
+        `INSERT INTO turns
+          (id, session_id, bot_id, status, trigger_message_id, last_activity_at, created_at, updated_at)
+         VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
+        [id, note.session_id, cut.bot_id, note.id, now, now, now],
+      );
+      const updated = this.db.run(
+        `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL`,
+        [id, note.id],
+      ).changes;
+      if (updated !== 1) {
+        throw new HttpError(422, "invalid_args", "interrupted turn already continued");
+      }
+    })();
+    this.touchSession(note.session_id, now);
+    return this.getTurn(id);
   }
 
   search(q: string): SearchHit[] {
@@ -2322,6 +2487,7 @@ export class Store {
       auth_set: authKnown ? this.cachedKeys.get(mcpAuthKeychainName(row.id)) != null : false,
       enabled: row.enabled === 1,
       instructions: row.instructions?.trim() ? row.instructions : null,
+      usage_note: row.usage_note?.trim() ? row.usage_note : null,
       tool_catalog: parseToolCatalog(row.tool_catalog),
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -2573,6 +2739,18 @@ type RoutineRow = {
   updated_at: string;
 };
 
+type SkillRow = {
+  id: string;
+  bot_id: string;
+  name: string;
+  description: string;
+  body: string;
+  uses?: string | null;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+};
+
 type ApprovalRow = {
   id: string;
   turn_id: string;
@@ -2701,6 +2879,9 @@ function migrateSchema(db: Database): void {
   if (!mcpCols.includes("tool_catalog")) {
     db.run(`ALTER TABLE mcp_servers ADD COLUMN tool_catalog TEXT NOT NULL DEFAULT '[]'`);
   }
+  if (!mcpCols.includes("usage_note")) {
+    db.run(`ALTER TABLE mcp_servers ADD COLUMN usage_note TEXT`);
+  }
   if (!mcpCols.includes("transport")) {
     db.run(`ALTER TABLE mcp_servers ADD COLUMN transport TEXT NOT NULL DEFAULT 'stdio'`);
   }
@@ -2716,6 +2897,29 @@ function migrateSchema(db: Database): void {
     .map((row) => row.name);
   if (!approvalCols.includes("requires_api_key")) {
     db.run(`ALTER TABLE approvals ADD COLUMN requires_api_key INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!tables.includes("skills")) {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        bot_id TEXT NOT NULL REFERENCES bots (id),
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        body TEXT NOT NULL,
+        uses TEXT NOT NULL DEFAULT '[]',
+        enabled INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS skills_bot_name ON skills (bot_id, lower(name))`);
+  }
+  const skillCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(skills)`)
+    .all()
+    .map((row) => row.name);
+  if (!skillCols.includes("uses")) {
+    db.run(`ALTER TABLE skills ADD COLUMN uses TEXT NOT NULL DEFAULT '[]'`);
   }
   if (!tables.includes("route_feedback")) {
     db.run(`
@@ -2743,10 +2947,27 @@ type McpRow = {
   headers?: string | null;
   enabled: number;
   instructions?: string | null;
+  usage_note?: string | null;
   tool_catalog?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+const MCP_USAGE_NOTE_MAX = 2000;
+
+/** Trims the roster-level MCP usage note; empty means "no note". */
+function parseMcpUsageNote(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new HttpError(422, "invalid_args", "usage_note must be a string");
+  }
+  const note = value.trim();
+  if (note.length === 0) return null;
+  if (codePointCount(note) > MCP_USAGE_NOTE_MAX) {
+    throw new HttpError(422, "invalid_args", `usage_note must be at most ${MCP_USAGE_NOTE_MAX} characters`);
+  }
+  return note;
+}
 
 function parseTransport(value: string | null | undefined): McpTransport {
   return value === "http" ? "http" : "stdio";
@@ -2882,6 +3103,87 @@ function resolveMcpUrl(value: unknown): string {
     throw new HttpError(422, "invalid_args", "url must be an http or https URL");
   }
   return parsed.href;
+}
+
+const SKILL_NAME_MAX = 64;
+const SKILL_DESCRIPTION_MAX = 500;
+const SKILL_BODY_MAX = 32_000;
+const SKILL_MAX_PER_BOT = 32;
+
+function parseSkillName(value: unknown): string {
+  const name = requireNonEmpty("name", value);
+  if (codePointCount(name) > SKILL_NAME_MAX) {
+    throw new HttpError(422, "invalid_args", `name must be at most ${SKILL_NAME_MAX} characters`);
+  }
+  return name;
+}
+
+function parseSkillDescription(value: unknown): string {
+  const description = requireNonEmpty("description", value);
+  if (codePointCount(description) > SKILL_DESCRIPTION_MAX) {
+    throw new HttpError(422, "invalid_args", `description must be at most ${SKILL_DESCRIPTION_MAX} characters`);
+  }
+  return description;
+}
+
+function parseSkillBody(value: unknown): string {
+  const body = requireNonEmpty("body", value);
+  if (codePointCount(body) > SKILL_BODY_MAX) {
+    throw new HttpError(422, "invalid_args", `body must be at most ${SKILL_BODY_MAX} characters`);
+  }
+  return body;
+}
+
+const SKILL_USES_MAX = 16;
+const SKILL_USE_NAME_MAX = 64;
+
+/** MCP server names a skill relies on: trimmed, deduped case-insensitively, empty entries dropped. */
+function parseSkillUses(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new HttpError(422, "invalid_args", "uses must be an array of MCP server names");
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value as string[]) {
+    const name = item.trim();
+    if (name.length === 0) continue;
+    if (codePointCount(name) > SKILL_USE_NAME_MAX) {
+      throw new HttpError(422, "invalid_args", `each uses entry must be at most ${SKILL_USE_NAME_MAX} characters`);
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  if (out.length > SKILL_USES_MAX) {
+    throw new HttpError(422, "invalid_args", `uses may list at most ${SKILL_USES_MAX} MCP servers`);
+  }
+  return out;
+}
+
+function parseSkillUsesJson(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function toSkill(row: SkillRow): Skill {
+  return {
+    id: row.id,
+    bot_id: row.bot_id,
+    name: row.name,
+    description: row.description,
+    body: row.body,
+    uses: parseSkillUsesJson(row.uses),
+    enabled: row.enabled === 1,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
 function toRoutine(row: RoutineRow): Routine {

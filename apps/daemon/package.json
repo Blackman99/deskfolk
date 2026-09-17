@@ -9,6 +9,7 @@
     "start": "bun src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "eval:tool-selection": "bun scripts/tool-selection-eval.ts",
     "compile": "bun build --compile src/main.ts --outfile dist/real-bot-daemon"
   },
   "dependencies": {

@@ -389,6 +389,38 @@ test("ending a turn voids its pending approval across the transcript and session
   }
 });
 
+test("continuing from an interrupt stamps source_turn_id on the 中断 note", () => {
+  let snapshot = applyEvent(emptySnapshot(), {
+    event: "message.created",
+    occurred_at: "t",
+    id: "cut-1",
+    session_id: "s1",
+    turn_id: "turn-cut",
+    parent_id: null,
+    kind: "system",
+    author: "writer",
+    body: "中断",
+    source_turn_id: null,
+    created_at: "t",
+    attachments: [],
+    reactions: [],
+  });
+  snapshot = applyEvent(snapshot, {
+    event: "turn.upsert",
+    occurred_at: "t2",
+    id: "turn-next",
+    session_id: "s1",
+    bot_id: "writer",
+    status: "running",
+    trigger_message_id: "cut-1",
+    last_activity_at: "t2",
+    created_at: "t2",
+    updated_at: "t2",
+    partial_text: null,
+  });
+  expect(snapshot.messages[0]?.source_turn_id).toBe("turn-next");
+});
+
 test("turn.token for an unknown turn is ignored", () => {
   const next = applyEvent(emptySnapshot(), {
     event: "turn.token",
@@ -462,6 +494,7 @@ test("mcp.upsert replaces by id; mcp.removed drops the row", () => {
     auth_set: false,
     enabled: true,
     instructions: null,
+    usage_note: null,
     tool_catalog: [],
     created_at: "t",
     updated_at: "t",
@@ -480,6 +513,7 @@ test("mcp.upsert replaces by id; mcp.removed drops the row", () => {
     auth_set: false,
     enabled: false,
     instructions: null,
+    usage_note: null,
     tool_catalog: [],
     created_at: "t",
     updated_at: "t2",
@@ -493,6 +527,45 @@ test("mcp.upsert replaces by id; mcp.removed drops the row", () => {
     id: "m1",
   });
   expect(gone.mcpServers).toHaveLength(0);
+});
+
+test("skill.upsert replaces by id; skill.removed drops the row", () => {
+  const first = applyEvent(emptySnapshot(), {
+    event: "skill.upsert",
+    occurred_at: "t",
+    id: "s1",
+    bot_id: "b1",
+    name: "commits",
+    description: "when committing",
+    body: "use conventional commits",
+    uses: [],
+    enabled: true,
+    created_at: "t",
+    updated_at: "t",
+  });
+  expect(first.skills).toHaveLength(1);
+  const renamed = applyEvent(first, {
+    event: "skill.upsert",
+    occurred_at: "t2",
+    id: "s1",
+    bot_id: "b1",
+    name: "git-commits",
+    description: "when committing",
+    body: "use conventional commits",
+    uses: ["github"],
+    enabled: false,
+    created_at: "t",
+    updated_at: "t2",
+  });
+  expect(renamed.skills).toHaveLength(1);
+  expect(renamed.skills[0]?.name).toBe("git-commits");
+  expect(renamed.skills[0]?.enabled).toBe(false);
+  const gone = applyEvent(renamed, {
+    event: "skill.removed",
+    occurred_at: "t3",
+    id: "s1",
+  });
+  expect(gone.skills).toHaveLength(0);
 });
 
 test("provider.upsert replaces by id; provider.removed drops the row", () => {

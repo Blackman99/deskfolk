@@ -1,0 +1,202 @@
+{
+  "$comment": "Tool-selection cases for `pnpm --filter @real-bot/daemon eval:tool-selection`. Servers and skills are libraries a case references by key; `{ \"use\": \"github\", \"usage_note\": \"…\" }` overrides one field for that case. expect.first: `reply`, `read_skill:<skill>`, or a tool name (`mcp_<server>_<tool>`); expect.forbid: labels no call may match, `*` suffix is a prefix.",
+  "servers": {
+    "github": {
+      "instructions": "Read and manage GitHub issues and pull requests.",
+      "tools": [
+        { "name": "get_issue", "description": "Read one issue by number.", "inputSchema": { "type": "object", "properties": { "number": { "type": "integer" } }, "required": ["number"] } },
+        { "name": "list_issues", "description": "List open issues, optionally filtered by label.", "inputSchema": { "type": "object", "properties": { "label": { "type": "string" } } } },
+        { "name": "create_pull_request", "description": "Open a pull request from a branch.", "inputSchema": { "type": "object", "properties": { "title": { "type": "string" }, "head": { "type": "string" }, "base": { "type": "string" } }, "required": ["title", "head", "base"] } },
+        { "name": "create_release", "description": "Publish a GitHub release for an existing tag.", "inputSchema": { "type": "object", "properties": { "tag": { "type": "string" }, "notes": { "type": "string" } }, "required": ["tag"] } }
+      ]
+    },
+    "imagegen": {
+      "instructions": "Generates images from text prompts and returns a URL to the result.",
+      "tools": [
+        { "name": "create_image", "description": "Generate an image from a text prompt.", "inputSchema": { "type": "object", "properties": { "prompt": { "type": "string" }, "size": { "type": "string" } }, "required": ["prompt"] } },
+        { "name": "list_styles", "description": "List the preset styles create_image accepts.", "inputSchema": { "type": "object", "properties": {} } }
+      ]
+    },
+    "time": {
+      "instructions": null,
+      "tools": [
+        { "name": "now", "description": "Current date and time in a timezone.", "inputSchema": { "type": "object", "properties": { "timezone": { "type": "string" } } } }
+      ]
+    },
+    "docs-a": {
+      "instructions": "Search and read pages in a knowledge base.",
+      "tools": [
+        { "name": "search_pages", "description": "Full-text search over pages.", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] } },
+        { "name": "get_page", "description": "Read one page by id.", "inputSchema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } }
+      ]
+    },
+    "docs-b": {
+      "instructions": "Search and read pages in a knowledge base.",
+      "tools": [
+        { "name": "search_pages", "description": "Full-text search over pages.", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] } },
+        { "name": "get_page", "description": "Read one page by id.", "inputSchema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } }
+      ]
+    }
+  },
+  "skills": {
+    "release": { "description": "要发版、打 tag、写 release notes、发 alpha / beta 时用。", "uses": ["github"] },
+    "release-en": { "description": "Use when cutting a release: tagging, release notes, publishing an alpha or beta.", "uses": ["github"] },
+    "daily-report": { "description": "用户要日报、周报或汇总当天进展时用。" },
+    "code-review": { "description": "用户让审代码、看某个文件或 PR 有没有 bug、做代码评审时用。" },
+    "code-review-en": { "description": "Use when the user asks to review code, check a file or PR for bugs, or do a code review." }
+  },
+  "cases": [
+    {
+      "id": "skill-zh-release",
+      "category": "skill",
+      "locale": "zh",
+      "skills": ["release", "daily-report"],
+      "mcp": ["github"],
+      "trigger": "帮我把 0.1.0-alpha.4 发出去",
+      "expect": { "first": "read_skill:release", "forbid": ["mcp_github_*"] },
+      "note": "技能命中时先读正文，不直接调 MCP。"
+    },
+    {
+      "id": "skill-zh-distractor",
+      "category": "skill",
+      "locale": "zh",
+      "skills": ["daily-report", "code-review"],
+      "mcp": ["github"],
+      "trigger": "看看 apps/daemon/src/store.ts 里有没有 bug",
+      "expect": { "first": "read_skill:code-review", "forbid": ["read_skill:daily-report"] }
+    },
+    {
+      "id": "skill-en-release",
+      "category": "skill",
+      "locale": "en",
+      "skills": ["release-en", "code-review-en"],
+      "mcp": ["github"],
+      "trigger": "Cut 0.1.0-alpha.4 and publish it, please.",
+      "expect": { "first": "read_skill:release-en", "forbid": ["mcp_github_*"] }
+    },
+    {
+      "id": "skill-zh-unavailable",
+      "category": "skill",
+      "locale": "zh",
+      "skills": ["release"],
+      "mcp": [],
+      "trigger": "发个版",
+      "expect": { "first": ["reply", "read_skill:release"] },
+      "note": "依赖的 github 未连接：直说 / 提问或先读正文都算过，不能硬凑别的工具。"
+    },
+    {
+      "id": "mcp-zh-image",
+      "category": "mcp",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["imagegen", "time"],
+      "trigger": "画一张赛博朋克风格的猫，霓虹灯，夜景",
+      "expect": { "first": ["mcp_imagegen_create_image", "mcp_imagegen_list_styles"], "forbid": ["read_skill:*", "mcp_time_*"] }
+    },
+    {
+      "id": "mcp-en-image",
+      "category": "mcp",
+      "locale": "en",
+      "skills": ["code-review-en"],
+      "mcp": ["imagegen", "github"],
+      "trigger": "Generate an image of a lighthouse at dawn, watercolor style.",
+      "expect": { "first": ["mcp_imagegen_create_image", "mcp_imagegen_list_styles"], "forbid": ["read_skill:*", "mcp_github_*"] }
+    },
+    {
+      "id": "mcp-zh-time",
+      "category": "mcp",
+      "locale": "zh",
+      "mcp": ["time", "github"],
+      "trigger": "东京现在几点？",
+      "expect": { "first": "mcp_time_now", "forbid": ["mcp_github_*"] }
+    },
+    {
+      "id": "mcp-zh-issue",
+      "category": "mcp",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github", "docs-a"],
+      "trigger": "看一下 GitHub 上 #128 这个 issue 说了什么",
+      "expect": { "first": "mcp_github_get_issue", "forbid": ["mcp_docs_a_*", "read_skill:*"] }
+    },
+    {
+      "id": "note-zh-prefer",
+      "category": "usage_note",
+      "locale": "zh",
+      "mcp": [
+        { "use": "docs-a", "usage_note": "产品文档、设计说明都在这台。" },
+        { "use": "docs-b", "usage_note": "只有 HR 制度和假期规则，别拿它查产品。" }
+      ],
+      "trigger": "查一下产品文档里批准卡是怎么定义的",
+      "expect": { "first": "mcp_docs_a_search_pages", "forbid": ["mcp_docs_b_*"] },
+      "note": "两台服务器工具完全同名同说明，只有用法备注能区分。"
+    },
+    {
+      "id": "note-en-prefer",
+      "category": "usage_note",
+      "locale": "en",
+      "mcp": [
+        { "use": "docs-a", "usage_note": "Product docs and design notes live here." },
+        { "use": "docs-b", "usage_note": "HR policies and leave rules only; do not use it for product questions." }
+      ],
+      "trigger": "Find what the product docs say about the approval card.",
+      "expect": { "first": "mcp_docs_a_search_pages", "forbid": ["mcp_docs_b_*"] }
+    },
+    {
+      "id": "note-zh-readonly",
+      "category": "usage_note",
+      "locale": "zh",
+      "mcp": [
+        { "use": "github", "usage_note": "只读：只用来查 issue 和 PR。不要开 PR、不要发 release；要改仓库先问用户。" }
+      ],
+      "trigger": "给 #12 开个 PR 把那个 bug 修掉",
+      "expect": { "first": ["reply", "mcp_github_get_issue"], "forbid": ["mcp_github_create_pull_request", "mcp_github_create_release"] },
+      "note": "备注禁止写操作：先问用户或只读 issue 都算过。"
+    },
+    {
+      "id": "note-en-readonly",
+      "category": "usage_note",
+      "locale": "en",
+      "mcp": [
+        { "use": "github", "usage_note": "Read-only: look up issues and PRs only. Never open a PR or publish a release; ask the user before changing the repo." }
+      ],
+      "trigger": "Open a PR that fixes issue #12.",
+      "expect": { "first": ["reply", "mcp_github_get_issue"], "forbid": ["mcp_github_create_pull_request", "mcp_github_create_release"] }
+    },
+    {
+      "id": "builtin-zh-readfile",
+      "category": "builtin",
+      "locale": "zh",
+      "mcp": ["docs-a"],
+      "trigger": "读一下工作区里 README.md 的前 20 行",
+      "expect": { "first": ["read_file", "shell"], "forbid": ["mcp_*"] }
+    },
+    {
+      "id": "builtin-zh-listdir",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["docs-a", "github"],
+      "trigger": "工作区根目录现在有哪些文件？",
+      "expect": { "first": ["list_dir", "shell"], "forbid": ["mcp_*", "read_skill:*"] }
+    },
+    {
+      "id": "reply-zh-chat",
+      "category": "reply",
+      "locale": "zh",
+      "skills": ["release"],
+      "mcp": ["imagegen", "github"],
+      "trigger": "你叫什么，负责什么？",
+      "expect": { "first": "reply", "forbid": ["mcp_*", "read_skill:*"] }
+    },
+    {
+      "id": "reply-en-chat",
+      "category": "reply",
+      "locale": "en",
+      "skills": ["release-en"],
+      "mcp": ["imagegen", "github"],
+      "trigger": "What's your name and what do you do here?",
+      "expect": { "first": "reply", "forbid": ["mcp_*", "read_skill:*"] }
+    }
+  ]
+}

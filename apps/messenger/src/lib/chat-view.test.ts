@@ -3,6 +3,7 @@ import type { Message, Reaction, Turn } from "@real-bot/protocol";
 import {
   botAvatarColor,
   calculateBotDuration,
+  canContinueInterrupt,
   formatDateDivider,
   formatDurationMs,
   formatFullTimestamp,
@@ -11,6 +12,7 @@ import {
   groupReactions,
   groupTranscript,
   isDifferentDay,
+  isInterruptNote,
   itemGroupInfo,
 } from "./chat-view.ts";
 import type { TranscriptItem } from "./transcript.ts";
@@ -311,6 +313,25 @@ describe("chat-view helpers", () => {
       expect(groups).toHaveLength(2);
     });
 
+    test("interrupt system notes keep the bot author so the row can show an avatar", () => {
+      const items: TranscriptItem[] = [
+        fakeMsg({
+          id: "cut-1",
+          kind: "system",
+          author: "bot-1",
+          body: "中断",
+          created_at: "2026-09-15T13:54:01.000Z",
+          turn_id: "turn-cut",
+        }),
+      ];
+      const info = itemGroupInfo(items[0]);
+      expect(info).toMatchObject({ kind: "system", author: "bot-1", mergeable: false });
+      const groups = groupTranscript(items);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].author).toBe("bot-1");
+      expect(groups[0].kind).toBe("system");
+    });
+
     test("keeps non-mergeable kinds (ask, approval, system) standalone", () => {
       const items: TranscriptItem[] = [
         fakeMsg({ id: "m1", kind: "bot", author: "bot-1", body: "I need to ask", created_at: "2026-09-15T13:54:00.000Z" }),
@@ -323,6 +344,36 @@ describe("chat-view helpers", () => {
       expect(groups[0].kind).toBe("bot");
       expect(groups[1].kind).toBe("ask");
       expect(groups[2].kind).toBe("bot");
+    });
+
+    test("attaches a continue-from-interrupt thinking row to the 中断 note", () => {
+      const items: TranscriptItem[] = [
+        fakeMsg({
+          id: "cut-1",
+          kind: "system",
+          author: "bot-1",
+          body: "中断",
+          created_at: "2026-09-15T13:54:01.000Z",
+          turn_id: "turn-cut",
+        }),
+        {
+          type: "replying",
+          trigger_message_id: "cut-1",
+          entries: [
+            { bot_id: "bot-1", source: "turn", turn_id: "turn-next", created_at: "2026-09-15T13:54:02.000Z" },
+          ],
+        },
+      ];
+      const groups = groupTranscript(items);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].kind).toBe("system");
+      const msgItem = groups[0].items[0];
+      expect(msgItem.type).toBe("message");
+      if (msgItem.type === "message") {
+        expect(msgItem.replying).toEqual([
+          { bot_id: "bot-1", source: "turn", turn_id: "turn-next", created_at: "2026-09-15T13:54:02.000Z" },
+        ]);
+      }
     });
 
     test("attaches replying entries to their trigger message instead of creating a standalone block", () => {
@@ -392,5 +443,40 @@ describe("chat-view helpers", () => {
       expect(groups[0].items[0].type).toBe("message");
       expect(groups[0].items[1].type).toBe("streaming");
     });
+  });
+
+  test("isInterruptNote matches only the locked 中断 body", () => {
+    expect(isInterruptNote({ kind: "system", body: "中断" })).toBe(true);
+    expect(isInterruptNote({ kind: "system", body: "这一轮没写完：端点拒绝了这次补全" })).toBe(false);
+    expect(isInterruptNote({ kind: "bot", body: "中断" })).toBe(false);
+  });
+
+  test("canContinueInterrupt is on until a follow-up turn is recorded on the note", () => {
+    const note = {
+      id: "cut-1",
+      kind: "system" as const,
+      body: "中断",
+      author: "bot-1",
+      turn_id: "turn-cut",
+      source_turn_id: null as string | null,
+    };
+    expect(canContinueInterrupt(note, [])).toBe(true);
+    expect(canContinueInterrupt(note, [], { locked: true })).toBe(false);
+    expect(canContinueInterrupt(note, [], { hasLiveTurnForBot: true })).toBe(false);
+    expect(canContinueInterrupt({ ...note, source_turn_id: "turn-next" }, [])).toBe(false);
+    expect(
+      canContinueInterrupt(note, [
+        {
+          id: "turn-next",
+          session_id: "s1",
+          bot_id: "bot-1",
+          status: "running",
+          trigger_message_id: "cut-1",
+          last_activity_at: "t2",
+          created_at: "t2",
+          updated_at: "t2",
+        },
+      ]),
+    ).toBe(false);
   });
 });

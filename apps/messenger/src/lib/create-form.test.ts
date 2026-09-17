@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
-import { mapCreateBotError, mapCreateGroupError, planCreateBot, planCreateGroup } from "./create-form.ts";
+import {
+  formatSkillUses,
+  mapCreateBotError,
+  mapCreateGroupError,
+  mapSkillError,
+  parseSkillUses,
+  planCreateBot,
+  planCreateGroup,
+  planSkill,
+} from "./create-form.ts";
 
 test("whitespace name, duties, and boundaries do not produce a POST", () => {
   expect(
@@ -131,4 +140,47 @@ test("maps daemon group member and name failures onto the locked kinds", () => {
     members: "too_few",
   });
   expect(mapCreateGroupError(404, "bot not found")).toEqual({ top: true });
+});
+
+test("whitespace skill fields do not produce a POST", () => {
+  expect(planSkill({ name: "  ", description: "", body: "\t", uses: "", enabled: true })).toEqual({
+    ok: false,
+    errors: { name: "empty", description: "empty", body: "empty" },
+  });
+});
+
+test("trimmed skill fields produce the POST body", () => {
+  expect(
+    planSkill({
+      name: " Commits ",
+      description: " when committing ",
+      body: " use conventional commits ",
+      uses: " GitHub, github ，slack\n time ",
+      enabled: false,
+    }),
+  ).toEqual({
+    ok: true,
+    body: {
+      name: "Commits",
+      description: "when committing",
+      body: "use conventional commits",
+      uses: ["GitHub", "slack", "time"],
+      enabled: false,
+    },
+  });
+});
+
+test("skill uses round-trip between the typed list and the array", () => {
+  expect(parseSkillUses("")).toEqual([]);
+  expect(parseSkillUses(" , ；\n")).toEqual([]);
+  expect(formatSkillUses(["github", "slack"])).toBe("github, slack");
+  expect(parseSkillUses(formatSkillUses(["github", "slack"]))).toEqual(["github", "slack"]);
+});
+
+test("maps daemon skill name-conflict onto the name field", () => {
+  expect(mapSkillError(409, "that skill name is already used")).toEqual({ name: "conflict" });
+  expect(mapSkillError(422, "name is required")).toEqual({ name: "empty" });
+  expect(mapSkillError(422, "description is required")).toEqual({ description: "empty" });
+  expect(mapSkillError(422, "body is required")).toEqual({ body: "empty" });
+  expect(mapSkillError(422, "a bot can have at most 32 skills")).toEqual({ top: true });
 });

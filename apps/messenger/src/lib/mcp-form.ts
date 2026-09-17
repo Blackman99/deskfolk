@@ -9,6 +9,8 @@ export type McpDraft = {
   headers: string;
   auth: string;
   enabled: boolean;
+  /** Roster-level note for every Bot: what this server is for, when to use it, when not to. */
+  usageNote: string;
 };
 
 export type McpFieldErrors = {
@@ -26,6 +28,7 @@ export type CreateMcpBody = {
   headers?: Array<{ name: string; value: string }>;
   auth?: string;
   enabled: boolean;
+  usage_note?: string;
 };
 
 export type McpPatchBody = {
@@ -37,6 +40,8 @@ export type McpPatchBody = {
   headers?: Array<{ name: string; value: string }>;
   auth?: string;
   enabled?: boolean;
+  /** `null` clears the note. Never needs the connection confirm step. */
+  usage_note?: string | null;
 };
 
 export type McpAddPlan =
@@ -91,6 +96,8 @@ export function planMcpDraft(draft: McpDraft): { ok: true; body: CreateMcpBody }
   const errors: McpFieldErrors = {};
   const name = draft.name.trim();
   const transport = draft.transport === "http" ? "http" : "stdio";
+  const usageNote = (draft.usageNote ?? "").trim();
+  const note = usageNote ? { usage_note: usageNote } : {};
   if (name.length === 0) errors.name = "empty";
   if (transport === "http") {
     const url = (draft.url ?? "").trim();
@@ -107,6 +114,7 @@ export function planMcpDraft(draft: McpDraft): { ok: true; body: CreateMcpBody }
         headers: parseMcpHeaders(draft.headers ?? ""),
         ...(auth ? { auth } : {}),
         enabled: draft.enabled ?? true,
+        ...note,
       },
     };
   }
@@ -121,6 +129,7 @@ export function planMcpDraft(draft: McpDraft): { ok: true; body: CreateMcpBody }
       command,
       args: parseMcpArgs(draft.args),
       enabled: draft.enabled ?? true,
+      ...note,
     },
   };
 }
@@ -141,6 +150,7 @@ export function requestMcpSave(
     args: readonly string[];
     url?: string | null;
     headers?: readonly { name: string; value: string }[];
+    usage_note?: string | null;
   },
   draft: McpDraft,
 ): McpSavePlan {
@@ -148,6 +158,8 @@ export function requestMcpSave(
   if (!plan.ok) return plan;
   const patch: McpPatchBody = {};
   if (plan.body.name !== current.name) patch.name = plan.body.name;
+  const nextNote = plan.body.usage_note ?? null;
+  if (nextNote !== (current.usage_note ?? null)) patch.usage_note = nextNote;
   if (plan.body.transport !== current.transport) patch.transport = plan.body.transport;
   if (plan.body.transport === "stdio") {
     if ((plan.body.command ?? "") !== current.command) patch.command = plan.body.command;

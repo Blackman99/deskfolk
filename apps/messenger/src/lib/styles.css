@@ -1821,10 +1821,9 @@ select:focus-visible {
   align-self: stretch;
 }
 
-.msg-wrap.is-system-wrap {
-  max-width: 100%;
-  align-self: center;
-  justify-content: center;
+.msg-wrap.is-system-row {
+  max-width: 84%;
+  align-self: flex-start;
 }
 
 .avatar-col {
@@ -2055,6 +2054,38 @@ button.sender-name.is-clickable:focus-visible {
   background: var(--danger-bg);
   border-color: var(--danger);
   filter: brightness(0.95);
+}
+
+.msg-interrupt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.btn-mini-continue {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-mini-continue:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.btn-mini-continue:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .stop-icon-mini {
@@ -2349,8 +2380,7 @@ button.sender-name.is-clickable:focus-visible {
 /* But keep .who visible in standalone / tests */
 .stream-inner > .msg .who,
 .msg.is-approval .who,
-.msg.is-ask .who,
-.msg.is-system .who {
+.msg.is-ask .who {
   display: block;
 }
 
@@ -3287,17 +3317,17 @@ button.attached-replying-chip:focus-visible {
 
 /* System Messages */
 .msg.is-system {
-  background: transparent;
-  border: 0;
+  background: var(--chip);
+  border: 1px dashed var(--line);
   color: var(--muted);
-  max-width: none;
-  align-self: center;
-  text-align: center;
-  padding: 6px 14px;
-  font-size: 12px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.03);
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 4px 16px 16px 16px;
   box-shadow: none;
+}
+
+.msg-wrap.is-system-row .msg.is-system .who {
+  display: none;
 }
 
 /* Composer Area */
@@ -4993,6 +5023,116 @@ button.attached-replying-chip:focus-visible {
 
 .panel-card-body {
   padding: 16px;
+}
+
+.skill-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-empty {
+  margin: 0;
+  font-size: 13px;
+}
+
+.skill-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-right: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--pane);
+}
+
+.skill-row:hover,
+.skill-row:focus-within {
+  border-color: var(--accent-border);
+}
+
+.skill-row.is-disabled {
+  background: var(--sidebar-bg);
+}
+
+.skill-row.is-open {
+  border-color: var(--accent-border);
+}
+
+.skill-open {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.skill-name,
+.skill-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.skill-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.skill-desc {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.skill-row .mcp-enable-label {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.skill-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.skill-editor-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.skill-editor-enabled {
+  margin-top: 2px;
+}
+
+.skill-editor-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.skill-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-add {
+  align-self: flex-start;
 }
 
 /* Alert Notification */

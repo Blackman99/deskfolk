@@ -45,6 +45,9 @@ export function isHiddenTranscriptKind(kind: string): boolean {
   return kind === "profile_change";
 }
 
+/** Transcript body when a live turn is marked interrupted. Chinese in every locale. */
+export const INTERRUPT_NOTE_BODY = "中断" as const;
+
 export const REACTION_EMOJI = ["👍", "👀", "❤️", "❗"] as const;
 export type ReactionEmoji = (typeof REACTION_EMOJI)[number];
 
@@ -355,6 +358,10 @@ export type StopRequest = {
   turn_id?: string;
 };
 
+export type ContinueRequest = {
+  message_id: string;
+};
+
 export type ApprovalStatus = "pending" | "allowed_once" | "denied" | "voided";
 
 export type Approval = {
@@ -403,6 +410,12 @@ export type McpServer = {
   enabled: boolean;
   /** Handshake `instructions` from the server; used to pick tools for a turn. */
   instructions: string | null;
+  /**
+   * Roster-level usage note written by you or a Bot: what this server is for, when to use it,
+   * when not to. Goes into every hop's MCP block next to the server's own instructions.
+   * Editing it is not a dangerous action and survives connection changes.
+   */
+  usage_note: string | null;
   /** Last `tools/list` snapshot (server-native names). */
   tool_catalog: McpToolCatalogEntry[];
   created_at: string;
@@ -423,6 +436,39 @@ export type Routine = {
   last_fired_for_due_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Skill = {
+  id: string;
+  bot_id: string;
+  name: string;
+  description: string;
+  body: string;
+  /**
+   * MCP server names the body relies on (matched case-insensitively against connected servers).
+   * The skill catalog marks the ones not connected this turn so the Bot does not force the body.
+   */
+  uses: string[];
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateSkillRequest = {
+  bot_id: string;
+  name: string;
+  description: string;
+  body: string;
+  uses?: string[];
+  enabled?: boolean;
+};
+
+export type PatchSkillRequest = {
+  name?: string;
+  description?: string;
+  body?: string;
+  uses?: string[];
+  enabled?: boolean;
 };
 
 export type Spend = {
@@ -508,6 +554,8 @@ export type ClientEvent =
   | ({ event: "spend.created"; occurred_at: string } & Spend)
   | ({ event: "routine.upsert"; occurred_at: string } & Routine)
   | { event: "routine.removed"; occurred_at: string; id: string }
+  | ({ event: "skill.upsert"; occurred_at: string } & Skill)
+  | { event: "skill.removed"; occurred_at: string; id: string }
   | ({ event: "mcp.upsert"; occurred_at: string } & McpServer)
   | { event: "mcp.removed"; occurred_at: string; id: string }
   | ({ event: "provider.upsert"; occurred_at: string } & Provider)

@@ -30,6 +30,7 @@ describe("schema", () => {
       "session_participants",
       "sessions",
       "settings",
+      "skills",
       "spend",
       "turn_route_decisions",
       "turns",
@@ -73,7 +74,13 @@ describe("schema", () => {
       .all()
       .map((row) => row.name);
     expect(mcpCols).toContain("instructions");
+    expect(mcpCols).toContain("usage_note");
     expect(mcpCols).toContain("tool_catalog");
+    const skillCols = store.db
+      .query<{ name: string }, []>(`PRAGMA table_info(skills)`)
+      .all()
+      .map((row) => row.name);
+    expect(skillCols).toContain("uses");
     expect(mcpCols).toContain("transport");
     expect(mcpCols).toContain("url");
     expect(mcpCols).toContain("headers");
@@ -264,6 +271,61 @@ describe("schema", () => {
     store.close();
   });
 
+  test("skills are unique per bot, capped, and survive bot deletion", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const skill = store.createSkill({
+      bot_id: writer.bot.id,
+      name: "Commits",
+      description: "when committing",
+      body: "use conventional commits",
+    });
+    expect(skill.enabled).toBe(true);
+    expect(store.listEnabledSkills(writer.bot.id)).toHaveLength(1);
+    expect(() =>
+      store.createSkill({
+        bot_id: writer.bot.id,
+        name: "commits",
+        description: "dup",
+        body: "dup",
+      }),
+    ).toThrow();
+    store.createSkill({
+      bot_id: reviewer.bot.id,
+      name: "Commits",
+      description: "reviewer copy",
+      body: "reviewer body",
+    });
+    expect(() =>
+      store.createSkill({
+        bot_id: writer.bot.id,
+        name: "x".repeat(65),
+        description: "when",
+        body: "how",
+      }),
+    ).toThrow();
+    for (let i = 0; i < 31; i++) {
+      store.createSkill({
+        bot_id: writer.bot.id,
+        name: `Skill ${i}`,
+        description: "when",
+        body: "how",
+      });
+    }
+    expect(() =>
+      store.createSkill({
+        bot_id: writer.bot.id,
+        name: "overflow",
+        description: "when",
+        body: "how",
+      }),
+    ).toThrow();
+    store.deleteBot(writer.bot.id);
+    expect(store.listSkills().some((row) => row.id === skill.id)).toBe(true);
+    store.close();
+  });
+
   test("deleteSession deletes group and rejects direct session", () => {
     const store = new Store();
     const b1 = store.createBot({ name: "BotAlpha", duties: "alpha", boundaries: "none" });
@@ -350,6 +412,37 @@ describe("schema", () => {
     expect(stopped?.id).toBe(directTurn.id);
     expect(store.getTurn(directTurn.id).status).toBe("stopped");
     expect(store.getTurn(groupTurn.id).status).toBe("running");
+    store.close();
+  });
+
+  test("interruptRunningTurns inserts a 中断 system line and marks the bot pending", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const trigger = store.postMessage(writer.direct_session.id, { body: "go" });
+    const turn = store.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    store.interruptRunningTurns();
+    expect(store.getTurn(turn.id).status).toBe("interrupted");
+    expect(store.pendingInterrupt(writer.bot.id)).toBe(true);
+    const note = store
+      .listMainMessages(writer.direct_session.id, 10)
+      .find((m) => m.kind === "system" && m.body === "中断");
+    expect(note).toMatchObject({
+      author: writer.bot.id,
+      turn_id: turn.id,
+      source_turn_id: null,
+    });
+    const fail = store.insertMessage({
+      sessionId: writer.direct_session.id,
+      turnId: turn.id,
+      kind: "system",
+      author: writer.bot.id,
+      body: "这一轮没写完：没有可用的模型",
+    });
+    expect(() => store.claimInterruptContinue(fail.id)).toThrow("message is not an interrupted turn");
     store.close();
   });
 

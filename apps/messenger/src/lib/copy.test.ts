@@ -116,6 +116,42 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.top.deleted).toBe("Deleted");
   expect(COPY.zh.sidebar.profile).toBe("人设");
   expect(COPY.en.sidebar.profile).toBe("Profile");
+  expect(COPY.zh.sidebar.skills).toBe("技能");
+  expect(COPY.en.sidebar.skills).toBe("Skills");
+  expect(COPY.zh.sidebar.skillsEmpty).toBe("还没有技能。");
+  expect(COPY.en.sidebar.skillsEmpty).toBe("No skills yet.");
+  expect(COPY.zh.sidebar.skillAdd).toBe("添加技能");
+  expect(COPY.en.sidebar.skillAdd).toBe("Add skill");
+  expect(COPY.zh.sidebar.skillName).toBe("名称");
+  expect(COPY.en.sidebar.skillName).toBe("Name");
+  expect(COPY.zh.sidebar.skillDescription).toBe("何时用");
+  expect(COPY.en.sidebar.skillDescription).toBe("When to use");
+  expect(COPY.zh.sidebar.skillBody).toBe("怎么干");
+  expect(COPY.en.sidebar.skillBody).toBe("How to do it");
+  expect(COPY.zh.sidebar.skillEnabled).toBe("启用");
+  expect(COPY.en.sidebar.skillEnabled).toBe("Enabled");
+  expect(COPY.zh.sidebar.skillNameEmpty).toBe("填写一个名称。");
+  expect(COPY.en.sidebar.skillNameEmpty).toBe("Enter a name.");
+  expect(COPY.zh.sidebar.skillDescriptionEmpty).toBe("填写何时用。");
+  expect(COPY.en.sidebar.skillDescriptionEmpty).toBe("Enter when to use it.");
+  expect(COPY.zh.sidebar.skillBodyEmpty).toBe("填写怎么干。");
+  expect(COPY.en.sidebar.skillBodyEmpty).toBe("Enter how to do it.");
+  expect(COPY.zh.sidebar.skillNameConflict).toBe("这个名称已经有了。");
+  expect(COPY.en.sidebar.skillNameConflict).toBe("That name is already used.");
+  expect(COPY.zh.sidebar.skillDelete).toBe("删除技能");
+  expect(COPY.en.sidebar.skillDelete).toBe("Delete skill");
+  expect(COPY.zh.sidebar.skillDeleteBody).toBe("删除后，这个 Bot 下一跳就看不见这条技能。");
+  expect(COPY.en.sidebar.skillDeleteBody).toBe(
+    "After this, the Bot will not see the skill on the next hop.",
+  );
+  expect(COPY.zh.sidebar.skillConfirmDelete).toBe("确认删除");
+  expect(COPY.en.sidebar.skillConfirmDelete).toBe("Confirm delete");
+  expect(COPY.zh.sidebar.skillEdit).toBe("编辑技能");
+  expect(COPY.en.sidebar.skillEdit).toBe("Edit skill");
+  expect(COPY.zh.sidebar.skillSave).toBe("保存技能");
+  expect(COPY.en.sidebar.skillSave).toBe("Save skill");
+  expect(COPY.zh.sidebar.skillCancel).toBe("取消");
+  expect(COPY.en.sidebar.skillCancel).toBe("Cancel");
   expect(COPY.zh.sidebar.archive).toBe("归档");
   expect(COPY.en.sidebar.archive).toBe("Archive");
   expect(COPY.zh.sidebar.restore).toBe("恢复");
@@ -309,6 +345,12 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.artifactDiscard).toBe("Discard");
   expect(COPY.zh.stream.replying).toBe("回复中");
   expect(COPY.en.stream.replying).toBe("replying");
+  expect(COPY.zh.stream.continueInterrupt).toBe("继续");
+  expect(COPY.en.stream.continueInterrupt).toBe("Continue");
+  expect(COPY.zh.stream.continueInterruptHint).toBe("从中断处继续，不重试断掉的那一下");
+  expect(COPY.en.stream.continueInterruptHint).toBe(
+    "Continue from the interruption without retrying the cut action",
+  );
   expect(COPY.zh.stream.ask).toBe("提问");
   expect(COPY.en.stream.ask).toBe("ask");
   expect(COPY.zh.stream.reply).toBe("回复");

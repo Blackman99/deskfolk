@@ -1,5 +1,32 @@
-import { USER_MEMBER, type Message, type Reaction, type Turn } from "@real-bot/protocol";
+import {
+  INTERRUPT_NOTE_BODY,
+  USER_MEMBER,
+  type Message,
+  type Reaction,
+  type Turn,
+} from "@real-bot/protocol";
+import { isLiveStatus } from "./transcript.ts";
 import type { TranscriptItem } from "./transcript.ts";
+
+export function isInterruptNote(message: Pick<Message, "kind" | "body">): boolean {
+  return message.kind === "system" && message.body === INTERRUPT_NOTE_BODY;
+}
+
+export function canContinueInterrupt(
+  message: Pick<Message, "id" | "kind" | "body" | "author" | "turn_id" | "source_turn_id">,
+  turns: readonly Turn[],
+  opts: { locked?: boolean; hasLiveTurnForBot?: boolean } = {},
+): boolean {
+  if (!isInterruptNote(message) || !message.turn_id) return false;
+  if (message.source_turn_id) return false;
+  if (opts.locked) return false;
+  if (opts.hasLiveTurnForBot) return false;
+  const own = turns.find((turn) => turn.id === message.turn_id);
+  if (own && own.status !== "interrupted") return false;
+  return !turns.some(
+    (turn) => turn.trigger_message_id === message.id && isLiveStatus(turn.status),
+  );
+}
 
 export type BotDuration = {
   ms: number;
@@ -257,7 +284,7 @@ export function itemGroupInfo(item: TranscriptItem): {
     return { kind: "approval", author: m.author, created_at: m.created_at, mergeable: false };
   }
   if (m.kind === "system") {
-    return { kind: "system", author: "system", created_at: m.created_at, mergeable: false };
+    return { kind: "system", author: m.author, created_at: m.created_at, mergeable: false };
   }
   if (m.author === USER_MEMBER) {
     return { kind: "user", author: USER_MEMBER, created_at: m.created_at, mergeable: true };

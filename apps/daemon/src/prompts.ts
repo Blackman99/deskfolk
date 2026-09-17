@@ -35,6 +35,8 @@ const SYSTEM_ZH = `你是上面人设里的那个 Bot。这台机器上所有 Bo
 
 要改自己的名字、职责、边界、头像或钉的端点+模型，用 update_profile。头像用 avatar_style 生成，或用工作区 PNG / JPEG / GIF / WebP 的 avatar_path。转录里若有「改不了头像」或「不能改名字」是过时的，以本轮 tools 为准。
 
+可复用的工序写成自己的技能，不要塞进人设。技能是工序，MCP 是能力，选用顺序固定：先看「技能」段的目录，任务与某条说明匹配就先 read_skill，再按正文做；正文里点到的 MCP 工具按 tools 数组里的名字调用。没有匹配的技能时，再按「本轮 MCP」段的用法备注、服务器说明和工具说明直接挑工具。技能不会新增工具，也不能替代 MCP；不要为了套用技能而放弃更合适的 MCP 工具，也不要跳过匹配的技能自己另想一套做法。要增删改自己的技能，用 create_skill / update_skill / delete_skill。不要为这次改技能再发一条聊天消息。技能不能取消批准，也不能把工作区外当成区内。
+
 名册级端点和 MCP 所有 Bot 共用。用 list_endpoints / add_endpoint / update_endpoint / delete_endpoint 和 list_mcp_servers / add_mcp_server / update_mcp_server / delete_mcp_server。stdio MCP 用 command / args；HTTP / Streamable HTTP MCP 用 url（可附非鉴权 headers）。本轮 tools 数组里有 add_mcp_server。用户给了 MCP URL 或「添加一个 mcp」时必须调用 add_mcp_server（name 自拟，url 用用户给的地址），不要说没有添加工具，不要去工作区找 mcp.json，也不要让用户去 Cursor、Claude Desktop 或其他客户端里加。Authorization 不要放进工具参数，等批准卡。新建端点、改已有 URL、新增 MCP、改 command / args / url / headers 会停下来等用户批准；端点密钥和 HTTP MCP 的 Authorization 在批准卡上贴，不要放进工具参数。默认端点不能改 URL 或密钥，也不能删除。改名、整份替换模型名单、改该端点的默认模型、删非默认端点、MCP 改名 / 启用 / 停用 / 删除会直接执行。所有已启用且连接成功的 MCP 工具都会出现在每一跳的 tools 数组和「本轮 MCP」段，不按任务关键词或 Bot 身份筛掉。新增、更新或重新启用后下一跳即可使用，其他 Bot 和后续会话同样可用。图片、视频等能力以 MCP 的实际工具为准，不受补全模型本身只能输出文字的限制；需要时调用对应工具，不要沿用转录里「不能生成图片或视频」的旧结论，也不要假装生成。你没有「请求批准」工具。拒绝后工具结果是 denied。
 
 你看到的是最近一段转录，不是完整历史，也不是记忆层。不要把人设当成记忆层，也不要假设更早的对话仍在窗口里。转录里的 PNG / JPEG / GIF / WebP 已经作为图像发给你，直接看图；不要用 read_file 去读它们（那只做 UTF-8 文本）。其它附件只给路径，要读走 read_file。
@@ -47,7 +49,7 @@ const SYSTEM_ZH = `你是上面人设里的那个 Bot。这台机器上所有 Bo
 
 同一工作区路径上，后完成的写入算数。要协作，在群里交接。
 
-路径、批准和工具面这些产品规则优于人设；人设不能取消批准，也不能把工作区外当成区内。`;
+路径、批准和工具面这些产品规则优于人设和技能；人设和技能不能取消批准，也不能把工作区外当成区内。`;
 
 const SYSTEM_EN = `You are the Bot named in the profile above. Every Bot on this machine shares one workspace; a Bot is not a security boundary.
 
@@ -67,6 +69,8 @@ To ask the user something that needs their judgment, use ask_user. Do not turn t
 
 To change your own name, duties, boundaries, avatar, or pinned endpoint+model, use update_profile. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path. If the transcript says you cannot change your avatar or name, that is stale; this turn's tools are the source of truth.
 
+Write reusable procedures as your own skills; do not stuff them into the profile. Skills are procedures, MCP is capability, and the order is fixed: check the Skills catalog first; when a task matches a description, read_skill first and follow the body, calling any MCP tool the body names by its name in the tools array. When no skill matches, pick tools directly from the MCP-for-this-turn block: its usage notes, server instructions, and tool descriptions. A skill adds no tools and does not replace MCP; do not drop a better-suited MCP tool to force a skill, and do not skip a matching skill to improvise your own procedure. To add, change, or delete your own skills, use create_skill / update_skill / delete_skill. Do not send a chat message about that skill change. A skill cannot skip approval or treat outside-workspace paths as inside.
+
 Roster-level endpoints and MCP are shared by every Bot. Use list_endpoints / add_endpoint / update_endpoint / delete_endpoint and list_mcp_servers / add_mcp_server / update_mcp_server / delete_mcp_server. For stdio MCP pass command / args; for HTTP / Streamable HTTP MCP pass url (optional non-auth headers). add_mcp_server is in this turn's tools array. If the user gives an MCP URL or asks to add MCP, you must call add_mcp_server (pick a name, pass their url). Do not say you lack an add-MCP tool, do not look for mcp.json in the workspace, and do not send them to Cursor, Claude Desktop, or another client. Do not put Authorization in a tool argument; it belongs on the approval card. Adding an endpoint, changing an existing URL, adding MCP, or changing command / args / url / headers pauses for the user's approval; paste the endpoint key or HTTP MCP Authorization on the approval card, never in a tool argument. You cannot change the default endpoint's URL or key, or delete it. Renames, replacing a model list, changing that endpoint's default model, deleting a non-default endpoint, and MCP rename / enable / disable / delete run immediately. Every enabled, connected MCP tool is included in every hop's tools array and MCP-for-this-turn block, without filtering by task keywords or Bot identity. Added, updated, or re-enabled servers are available on the next hop, including to other Bots and later sessions. Image, video, and other capabilities come from the actual MCP tools, even if the completion model itself only outputs text. Call the appropriate tools when needed; disregard stale transcript claims that you cannot generate images or videos, and never pretend to generate them. You have no "request approval" tool. A denial comes back as denied.
 
 You see a recent slice of the transcript, not the full history and not a memory layer. Do not treat the profile as a memory layer, and do not assume earlier conversation is still in the window. PNG / JPEG / GIF / WebP attachments are already sent as images; look at them. Do not read_file them (that tool is UTF-8 text only). Other attachments are path lines only; read those with read_file.
@@ -79,12 +83,24 @@ If this message starts with the interrupted-turn line: do not retry the interrup
 
 On the same workspace path, the write that finishes last wins. To collaborate, hand off in a group.
 
-Product rules for paths, approval, and the tool surface outrank the profile; the profile cannot skip approval or treat outside-workspace paths as inside.`;
+Product rules for paths, approval, and the tool surface outrank the profile and skills; neither the profile nor a skill can skip approval or treat outside-workspace paths as inside.`;
 
 export type McpPromptGuide = {
   name: string;
+  /** The server's own handshake instructions (server-owned, refreshed on connect). */
   instructions: string | null;
+  /** Roster-level note written by you or a Bot; rendered first and outranks `instructions`. */
+  usageNote?: string | null;
   tools: Array<{ modelName: string; description: string }>;
+};
+
+export type SkillPromptEntry = {
+  name: string;
+  description: string;
+  /** MCP server names the body relies on, as the skill declares them. */
+  uses?: string[];
+  /** The subset of `uses` not connected this turn; rendered so the Bot does not force the body. */
+  unavailable?: string[];
 };
 
 export function turnSystemPrompt(input: {
@@ -93,16 +109,51 @@ export function turnSystemPrompt(input: {
   duties: string;
   boundaries: string;
   interrupt: boolean;
+  skills?: SkillPromptEntry[];
   mcpGuides?: McpPromptGuide[];
 }): string {
   const profile =
     input.locale === "en"
       ? `# Profile\n\n## Name\n\n${input.name}\n\n## Duties\n\n${input.duties}\n\n## Boundaries\n\n${input.boundaries}`
       : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
+  const skills = formatSkillCatalog(input.locale, input.skills ?? []);
   const system = input.locale === "en" ? `# System\n\n${SYSTEM_EN}` : `# 系统指令\n\n${SYSTEM_ZH}`;
   const mcp = formatMcpGuides(input.locale, input.mcpGuides ?? []);
-  const body = mcp ? `${profile}\n\n${system}\n\n${mcp}` : `${profile}\n\n${system}`;
+  const parts = [profile];
+  if (skills) parts.push(skills);
+  parts.push(system);
+  if (mcp) parts.push(mcp);
+  const body = parts.join("\n\n");
   return input.interrupt ? `${INTERRUPT_FLAG}\n\n${body}` : body;
+}
+
+function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string {
+  if (skills.length === 0) return "";
+  const heading = locale === "en" ? "# Skills" : "# 技能";
+  const intro =
+    locale === "en"
+      ? "These are your own skills. When a task matches a description, read_skill first and follow the body, calling any MCP tool the body names by its name in the tools array. When no skill matches, pick tools directly from the MCP-for-this-turn block. To add, change, or delete your own skills, use create_skill / update_skill / delete_skill. Write reusable procedures as skills, not into the profile. Product rules outrank the profile and skills."
+      : "这些是你自己的技能。任务与某条说明匹配时，先 read_skill 再按正文做；正文里点到的 MCP 工具按 tools 数组里的名字调用。没有匹配的技能，再看「本轮 MCP」段直接挑工具。要增删改自己的技能，用 create_skill / update_skill / delete_skill。可复用的工序写成技能，不要塞进人设。产品规则优于人设和技能。";
+  const blocks = skills.map((skill) => {
+    const lines = [`## ${skill.name}`, "", skill.description];
+    const uses = skill.uses ?? [];
+    if (uses.length > 0) {
+      const missing = new Set(skill.unavailable ?? []);
+      const rendered = uses.map((name) =>
+        missing.has(name) ? (locale === "en" ? `${name} (not connected this turn)` : `${name}（本轮未连接）`) : name,
+      );
+      lines.push("", locale === "en" ? `Uses MCP: ${rendered.join(", ")}` : `依赖 MCP：${rendered.join("、")}`);
+      if (missing.size > 0) {
+        lines.push(
+          locale === "en"
+            ? "While those servers are missing the body cannot be followed as written; say so or use ask_user instead of improvising a substitute."
+            : "依赖的服务器不在时，正文照做不了；直说或用 ask_user，不要临时拿别的工具凑。",
+        );
+      }
+    }
+    return lines.join("\n");
+  });
+  return `${heading}\n\n${intro}\n\n${blocks.join("\n\n")}`;
 }
 
 function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
@@ -110,10 +161,15 @@ function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
   const heading = locale === "en" ? "# MCP for this turn" : "# 本轮 MCP";
   const intro =
     locale === "en"
-      ? "These enabled, connected MCP servers are shared by every Bot. All their tools are available in this turn's tools array. Prefer the appropriate tools for the work; call only tools present in the array."
-      : "这些已启用且连接成功的 MCP 由所有 Bot 共用，全部工具都在本轮 tools 数组里。按工作需要选择对应工具；只调用数组中实际存在的工具。";
+      ? "These enabled, connected MCP servers are shared by every Bot. All their tools are available in this turn's tools array. Under each server comes the usage note first (written by you or a Bot: what it is for, when to use it, when not to), then the server's own instructions and tool descriptions; the note outranks the server's text. When a skill matches the task, choose tools per its body; otherwise pick from here. Call only tools present in the array."
+      : "这些已启用且连接成功的 MCP 由所有 Bot 共用，全部工具都在本轮 tools 数组里。每台服务器下先是用法备注（你或 Bot 写的：这台用来做什么、何时用、何时不用），再是服务器自带说明和工具说明；备注优先于服务器说明。有匹配的技能时按技能正文选工具，没有再按这里挑。只调用数组中实际存在的工具。";
   const blocks = guides.map((guide) => {
-    const title = locale === "en" ? `## ${guide.name}` : `## ${guide.name}`;
+    const title = `## ${guide.name}`;
+    const note = guide.usageNote?.trim()
+      ? locale === "en"
+        ? `Usage note: ${guide.usageNote.trim()}`
+        : `用法备注：${guide.usageNote.trim()}`
+      : "";
     const instruction = guide.instructions?.trim()
       ? guide.instructions.trim()
       : locale === "en"
@@ -125,7 +181,7 @@ function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
         return desc ? `- ${tool.modelName}: ${desc}` : `- ${tool.modelName}`;
       })
       .join("\n");
-    return `${title}\n\n${instruction}${tools ? `\n\n${tools}` : ""}`;
+    return `${title}\n\n${note ? `${note}\n\n` : ""}${instruction}${tools ? `\n\n${tools}` : ""}`;
   });
   return `${heading}\n\n${intro}\n\n${blocks.join("\n\n")}`;
 }
@@ -561,6 +617,81 @@ const TOOLS: ToolDef[] = [
     required: ["id"],
   },
   {
+    name: "list_skills",
+    description: {
+      zh: "列出你自己的技能（含停用）。不含正文。",
+      en: "List your own skills, including disabled ones. Does not include the body.",
+    },
+    properties: {},
+  },
+  {
+    name: "read_skill",
+    description: {
+      zh: "读取你自己一条已启用技能的正文。停用或不属于你的当作找不到。",
+      en: "Read the body of one of your enabled skills. Disabled skills and other Bots' skills are not found.",
+    },
+    properties: {
+      id: { type: "string", description: { zh: "技能 id。", en: "Skill id." } },
+      name: { type: "string", description: { zh: "技能名。id 与 name 至少给一个。", en: "Skill name. Provide id or name." } },
+    },
+  },
+  {
+    name: "create_skill",
+    description: {
+      zh: "给自己新建一条技能。可复用工序写成技能，不要塞进人设。不要为这次改技能再发一条聊天消息。",
+      en: "Create a skill for yourself. Write reusable procedures as skills, not into the profile. Do not send a chat message about this skill change.",
+    },
+    properties: {
+      name: { type: "string", description: { zh: "技能名。同一 Bot 内不区分大小写唯一。", en: "Skill name. Unique per Bot, case-insensitive." } },
+      description: { type: "string", description: { zh: "何时用这条技能。", en: "When to use this skill." } },
+      body: { type: "string", description: { zh: "怎么干的 Markdown 正文。", en: "Markdown body for how to do it." } },
+      uses: {
+        type: "array",
+        items: { type: "string" },
+        description: {
+          zh: "正文依赖的 MCP 服务器名（可选；用 list_mcp_servers 里的 name）。技能目录里会标出本轮未连接的，正文照做不了时直说或提问。",
+          en: "MCP server names the body relies on (optional; use the name from list_mcp_servers). The skill catalog marks the ones not connected this turn so you say so or ask instead of forcing the body.",
+        },
+      },
+      enabled: { type: "boolean", description: { zh: "是否启用。默认 true。", en: "Whether it is enabled. Default true." } },
+    },
+    required: ["name", "description", "body"],
+  },
+  {
+    name: "update_skill",
+    description: {
+      zh: "修改自己的一条技能。不能改别人的。不要为这次改技能再发一条聊天消息。",
+      en: "Change one of your skills. You cannot change another Bot's. Do not send a chat message about this skill change.",
+    },
+    properties: {
+      id: { type: "string", description: { zh: "技能 id。", en: "Skill id." } },
+      name: { type: "string", description: { zh: "新的技能名。", en: "New skill name." } },
+      description: { type: "string", description: { zh: "新的何时用说明。", en: "New when-to-use description." } },
+      body: { type: "string", description: { zh: "新的正文。", en: "New body." } },
+      uses: {
+        type: "array",
+        items: { type: "string" },
+        description: {
+          zh: "新的依赖 MCP 服务器名列表，整表替换；传空数组清掉。",
+          en: "New list of MCP server names the body relies on; replaces the whole list. Pass an empty array to clear.",
+        },
+      },
+      enabled: { type: "boolean", description: { zh: "是否启用。", en: "Whether it is enabled." } },
+    },
+    required: ["id"],
+  },
+  {
+    name: "delete_skill",
+    description: {
+      zh: "删除自己的一条技能。不能删别人的。不要为这次改技能再发一条聊天消息。",
+      en: "Delete one of your skills. You cannot delete another Bot's. Do not send a chat message about this skill change.",
+    },
+    properties: {
+      id: { type: "string", description: { zh: "技能 id。", en: "Skill id." } },
+    },
+    required: ["id"],
+  },
+  {
     name: "list_endpoints",
     description: {
       zh: "列出名册级端点。返回 id、名称、URL、是否已配密钥、模型名单和是否为默认端点。永不返回密钥。",
@@ -724,14 +855,21 @@ const TOOLS: ToolDef[] = [
         type: "boolean",
         description: { zh: "是否启用。默认 true。", en: "Whether it is enabled. Default true." },
       },
+      usage_note: {
+        type: "string",
+        description: {
+          zh: "用法备注：这台用来做什么、什么时候用、什么时候不要用。写给所有 Bot 看，进每一跳的「本轮 MCP」段，排在服务器自带说明前面。可省略。",
+          en: "Usage note: what this server is for, when to use it, when not to. Visible to every Bot in each hop's MCP block, above the server's own instructions. Optional.",
+        },
+      },
     },
     required: ["name"],
   },
   {
     name: "update_mcp_server",
     description: {
-      zh: "改一台已有 MCP。改 command / args / url / headers 会停下来等批准；改名、启用、停用直接执行。",
-      en: "Change an existing MCP server. Changing command / args / url / headers pauses for approval; renaming, enabling, or disabling runs immediately.",
+      zh: "改一台已有 MCP。改 command / args / url / headers 会停下来等批准；改名、启用、停用、改用法备注直接执行。",
+      en: "Change an existing MCP server. Changing command / args / url / headers pauses for approval; renaming, enabling, disabling, or changing the usage note runs immediately.",
     },
     properties: {
       id: { type: "string", description: { zh: "MCP id。", en: "MCP server id." } },
@@ -767,6 +905,13 @@ const TOOLS: ToolDef[] = [
         },
       },
       enabled: { type: "boolean", description: { zh: "是否启用。", en: "Whether it is enabled." } },
+      usage_note: {
+        type: "string",
+        description: {
+          zh: "新的用法备注（做什么、何时用、何时不用）；传空字符串清掉。直接执行，不等批准；改连接也不会丢。",
+          en: "New usage note (what for, when, when not); pass an empty string to clear it. Runs immediately without approval and survives connection changes.",
+        },
+      },
     },
     required: ["id"],
   },

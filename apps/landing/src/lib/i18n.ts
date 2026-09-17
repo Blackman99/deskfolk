@@ -424,7 +424,7 @@ const zh: Dict = {
       },
       {
         dim: '对话管理应用',
-        live: '改人设、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成',
+        live: '改人设和技能、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成',
         wip: '全部应用操作的对话覆盖（含首启向导）',
         avoid: '每件事都要手点深层菜单'
       }
@@ -488,7 +488,7 @@ const zh: Dict = {
       collaboration: { title: '协作', blurb: '点名、判断、交接、轮次。' },
       workspace: { title: '工作区', blurb: '共享目录、产物、附件、搜索。' },
       runtime: { title: '运行时', blurb: '窗、守护进程、托盘、本机接口。' },
-      models: { title: '模型与工具', blurb: '端点、MCP、日程、上下文与花费。' },
+      models: { title: '模型与工具', blurb: '端点、MCP、日程、技能、上下文与花费。' },
       safety: { title: '批准与边界', blurb: '危险动作、壳、Always allow。' },
       roadmap: { title: '路线图', blurb: '建设方向，不是交付时间表。' }
     }
@@ -734,7 +734,7 @@ const en: Dict = {
       },
       {
         dim: 'Managing the app by chat',
-        live: 'Bots edit profiles, create bots and groups, configure endpoints, model lists and MCP through tools',
+        live: 'Bots edit profiles and skills, create bots and groups, configure endpoints, model lists and MCP through tools',
         wip: 'Conversational coverage of every operation, including first-run setup',
         avoid: 'Deep menus for everyday configuration'
       }
@@ -798,7 +798,7 @@ const en: Dict = {
       collaboration: { title: 'Collaboration', blurb: 'Mentions, judgement, handoffs, turns.' },
       workspace: { title: 'Workspace', blurb: 'Shared folder, artifacts, attachments, search.' },
       runtime: { title: 'Runtime', blurb: 'Window, daemon, tray, local API.' },
-      models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, context, spend.' },
+      models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, skills, context, spend.' },
       safety: { title: 'Approval and bounds', blurb: 'Dangerous actions, shells, Always allow.' },
       roadmap: { title: 'Roadmap', blurb: 'Direction, not a delivery schedule.' }
     }

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
   headers TEXT NOT NULL DEFAULT '[]',
   enabled INTEGER NOT NULL,
   instructions TEXT,
+  usage_note TEXT,
   tool_catalog TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -164,6 +165,21 @@ CREATE TABLE IF NOT EXISTS routines (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS skills (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL REFERENCES bots (id),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  body TEXT NOT NULL,
+  uses TEXT NOT NULL DEFAULT '[]',
+  enabled INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS skills_bot_name
+  ON skills (bot_id, lower(name));
 
 CREATE TABLE IF NOT EXISTS turn_route_decisions (
   turn_id TEXT PRIMARY KEY REFERENCES turns (id),

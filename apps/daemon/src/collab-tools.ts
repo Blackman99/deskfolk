@@ -10,6 +10,7 @@ import {
   type Message,
   type Provider,
   type Routine,
+  type Skill,
   type SessionDetail,
   type SessionSummary,
 } from "@real-bot/protocol";
@@ -44,6 +45,8 @@ export type ToolResult = {
     | { kind: "participation"; message: Message }
     | { kind: "routine"; routine: Routine }
     | { kind: "routine_removed"; id: string }
+    | { kind: "skill"; skill: Skill }
+    | { kind: "skill_removed"; id: string }
     | { kind: "provider"; provider: Provider }
     | { kind: "provider_removed"; id: string }
     | { kind: "mcp"; server: McpServer }
@@ -63,6 +66,8 @@ export type ToolCtx = {
   writtenPaths?: string[];
   /** Unknown `@token`s already rejected once this turn; a resend with them goes through. Absent = always reject. */
   mentionWarned?: Set<string>;
+  /** Names in this hop's tools array (built-in + `mcp_…`). Absent = skip the stale-name check in read_skill. */
+  availableToolNames?: ReadonlySet<string>;
 };
 
 export async function runCollabTool(
@@ -100,6 +105,16 @@ export async function runCollabTool(
         return updateRoutine(ctx, args);
       case "delete_routine":
         return deleteRoutine(ctx, args);
+      case "list_skills":
+        return listSkills(ctx);
+      case "read_skill":
+        return readSkill(ctx, args);
+      case "create_skill":
+        return createSkill(ctx, args);
+      case "update_skill":
+        return updateSkill(ctx, args);
+      case "delete_skill":
+        return deleteSkill(ctx, args);
       case "list_endpoints":
         return await listEndpoints(ctx);
       case "add_endpoint":
@@ -511,6 +526,147 @@ function deleteRoutine(ctx: ToolCtx, args: Record<string, unknown>): ToolResult 
   return { ok: true, data: { id }, emitted: [{ kind: "routine_removed", id }] };
 }
 
+function listSkills(ctx: ToolCtx): ToolResult {
+  return {
+    ok: true,
+    data: {
+      skills: ctx.store.listSkills(ctx.botId).map(serializeSkillSummary),
+    },
+    emitted: [],
+  };
+}
+
+function readSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const skill = resolveOwnSkill(ctx, args, { requireEnabled: true });
+  if (!skill.ok) return skill.error;
+  const data = serializeSkill(skill.skill);
+  const stale = staleMcpToolNames(skill.skill.body, ctx.availableToolNames);
+  if (stale.length > 0) {
+    data.stale_tool_names = stale;
+    data.hint =
+      "这些 mcp_ 工具名不在本轮 tools 数组里（服务器可能改名、停用，或撞名后缀变了）。按「本轮 MCP」段里的服务器名和工具说明找到现名再调用，并用 update_skill 把正文里的名字改过来。" +
+      " / These mcp_ names are not in this hop's tools array (server renamed, disabled, or a collision suffix changed). Find the current name in the MCP block before calling, and fix the body with update_skill.";
+  }
+  return { ok: true, data, emitted: [] };
+}
+
+/**
+ * `mcp_<server>_<tool>` names cited in a skill body that are not in this hop's tools array.
+ * Tool names drift when a server is renamed or a collision suffix (`_2`) changes; a body that
+ * hardcodes the old name would otherwise fail only at call time.
+ */
+export function staleMcpToolNames(body: string, available: ReadonlySet<string> | undefined): string[] {
+  if (!available) return [];
+  const cited = new Set(body.match(/\bmcp_[A-Za-z0-9_]+/g) ?? []);
+  return [...cited].filter((name) => !available.has(name)).sort();
+}
+
+function createSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const name = requireString(args.name, "name");
+  const description = requireString(args.description, "description");
+  const body = requireString(args.body, "body");
+  const enabled = args.enabled === undefined ? undefined : Boolean(args.enabled);
+  const skill = ctx.store.createSkill({
+    bot_id: ctx.botId,
+    name,
+    description,
+    body,
+    enabled,
+    uses: parseUsesArg(args.uses),
+  });
+  return { ok: true, data: serializeSkill(skill), emitted: [{ kind: "skill", skill }] };
+}
+
+/** `uses` is a list of MCP server names; the store trims, dedupes, and bounds it. */
+function parseUsesArg(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new HttpError(422, "invalid_args", "uses must be an array of MCP server names");
+  }
+  return value as string[];
+}
+
+function updateSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const current = resolveOwnSkill(ctx, args, { requireEnabled: false });
+  if (!current.ok) return current.error;
+  const patch: Partial<{ name: string; description: string; body: string; enabled: boolean; uses: string[] }> = {};
+  if (args.name !== undefined) patch.name = requireString(args.name, "name");
+  if (args.description !== undefined) patch.description = requireString(args.description, "description");
+  if (args.body !== undefined) patch.body = requireString(args.body, "body");
+  if (args.enabled !== undefined) patch.enabled = Boolean(args.enabled);
+  if (args.uses !== undefined) patch.uses = parseUsesArg(args.uses);
+  if (
+    patch.name === undefined &&
+    patch.description === undefined &&
+    patch.body === undefined &&
+    patch.enabled === undefined &&
+    patch.uses === undefined
+  ) {
+    return fail("invalid_args", "name, description, body, enabled, or uses is required");
+  }
+  const skill = ctx.store.patchSkill(current.skill.id, patch);
+  return { ok: true, data: serializeSkill(skill), emitted: [{ kind: "skill", skill }] };
+}
+
+function deleteSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const current = resolveOwnSkill(ctx, args, { requireEnabled: false });
+  if (!current.ok) return current.error;
+  ctx.store.deleteSkill(current.skill.id);
+  return { ok: true, data: { id: current.skill.id }, emitted: [{ kind: "skill_removed", id: current.skill.id }] };
+}
+
+function resolveOwnSkill(
+  ctx: ToolCtx,
+  args: Record<string, unknown>,
+  opts: { requireEnabled: boolean },
+): { ok: true; skill: Skill } | { ok: false; error: ToolResult } {
+  const id = optionalString(args.id);
+  const name = optionalString(args.name);
+  if (!id && !name) return { ok: false, error: fail("invalid_args", "id or name is required") };
+  let skill: Skill | null = null;
+  if (id) {
+    try {
+      skill = ctx.store.getSkill(id);
+    } catch (error) {
+      if (error instanceof HttpError && error.code === "not_found") {
+        return { ok: false, error: fail("not_found", "skill not found") };
+      }
+      throw error;
+    }
+  } else if (name) {
+    skill = ctx.store.findSkillByName(ctx.botId, name);
+  }
+  if (!skill || skill.bot_id !== ctx.botId) {
+    return { ok: false, error: fail("not_found", "skill not found") };
+  }
+  if (opts.requireEnabled && !skill.enabled) {
+    return { ok: false, error: fail("not_found", "skill not found") };
+  }
+  return { ok: true, skill };
+}
+
+function serializeSkillSummary(skill: Skill): Record<string, unknown> {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    uses: skill.uses,
+    enabled: skill.enabled,
+  };
+}
+
+function serializeSkill(skill: Skill): Record<string, unknown> {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    body: skill.body,
+    uses: skill.uses,
+    enabled: skill.enabled,
+  };
+}
+
 async function listEndpoints(ctx: ToolCtx): Promise<ToolResult> {
   const providers = await ctx.store.listProviders();
   const defaultId = ctx.store.defaultProviderId();
@@ -682,8 +838,19 @@ async function addMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Promis
     headers: parsed.spec.headers,
     auth,
     enabled,
+    usage_note: parseUsageNoteArg(args.usage_note),
   });
   return { ok: true, data: serializeMcp(server), emitted: [{ kind: "mcp", server }] };
+}
+
+/** `undefined` leaves the note alone; `null` or an empty string clears it. */
+function parseUsageNoteArg(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new HttpError(422, "invalid_args", "usage_note must be a string");
+  }
+  return value;
 }
 
 async function updateMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
@@ -753,6 +920,7 @@ async function updateMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Pro
     headers: nextHeaders,
     auth,
     enabled: args.enabled === undefined ? undefined : Boolean(args.enabled),
+    usage_note: parseUsageNoteArg(args.usage_note),
   });
   return { ok: true, data: serializeMcp(server), emitted: [{ kind: "mcp", server }] };
 }
@@ -876,6 +1044,7 @@ function serializeMcp(server: McpServer): Record<string, unknown> {
     auth_set: server.auth_set,
     enabled: server.enabled,
     instructions: server.instructions,
+    usage_note: server.usage_note,
     tool_catalog: server.tool_catalog,
   };
 }

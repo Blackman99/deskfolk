@@ -13,6 +13,9 @@ import {
   type SearchHit,
   type SessionDetail,
   type SettingsPatch,
+  type Skill,
+  type CreateSkillRequest,
+  type PatchSkillRequest,
   type Turn,
 } from "@real-bot/protocol";
 import { ApiError, LocalApi, probeHealth } from "./api.ts";
@@ -255,6 +258,39 @@ export class MessengerRuntime {
     }
   }
 
+  async createSkill(body: CreateSkillRequest): Promise<ApiError | null> {
+    if (!this.api) return null;
+    try {
+      const skill = await this.api.createSkill(body);
+      this.ingestSkill(skill);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error);
+    }
+  }
+
+  async patchSkill(id: string, body: PatchSkillRequest): Promise<ApiError | null> {
+    if (!this.api) return null;
+    try {
+      const skill = await this.api.patchSkill(id, body);
+      this.ingestSkill(skill);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error);
+    }
+  }
+
+  async deleteSkill(id: string): Promise<ApiError | null> {
+    if (!this.api) return null;
+    try {
+      await this.api.deleteSkill(id);
+      this.ingest({ event: "skill.removed", occurred_at: new Date().toISOString(), id });
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error);
+    }
+  }
+
   async patchBot(
     id: string,
     body: {
@@ -446,6 +482,7 @@ export class MessengerRuntime {
     headers?: Array<{ name: string; value: string }>;
     auth?: string;
     enabled: boolean;
+    usage_note?: string;
   }): Promise<ApiError | null> {
     if (!this.api) return null;
     try {
@@ -468,6 +505,7 @@ export class MessengerRuntime {
       headers?: Array<{ name: string; value: string }>;
       auth?: string;
       enabled?: boolean;
+      usage_note?: string | null;
     },
   ): Promise<ApiError | null> {
     if (!this.api) return null;
@@ -575,6 +613,25 @@ export class MessengerRuntime {
     }
   }
 
+  async continueInterrupt(messageId: string): Promise<void> {
+    if (!this.api || this.connection !== "connected" || this.busy) return;
+    this.busy = true;
+    try {
+      const turn = await this.api.continueInterrupt(messageId);
+      this.ingest({
+        event: "turn.upsert",
+        occurred_at: turn.created_at,
+        ...turn,
+      });
+      this.focusedTurnId = turn.id;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 422) return;
+      this.markDisconnected();
+    } finally {
+      this.busy = false;
+    }
+  }
+
   async resolveApproval(
     id: string,
     action: ResolveApprovalRequest["action"],
@@ -659,7 +716,7 @@ export class MessengerRuntime {
 
   private async connect(endpoint: LocalEndpoint): Promise<void> {
     const api = new LocalApi(endpoint);
-    const [settings, bots, sessions, spend, approvals, mcpServers, providers] = await Promise.all([
+    const [settings, bots, sessions, spend, approvals, mcpServers, providers, skills] = await Promise.all([
       api.settings(),
       api.bots(),
       api.sessions(),
@@ -667,6 +724,7 @@ export class MessengerRuntime {
       api.approvals(),
       api.mcpServers(),
       api.providers(),
+      api.skills(),
     ]);
     const initialMessages = sessions
       .map((s) => s.last_message)
@@ -683,6 +741,7 @@ export class MessengerRuntime {
       approvals,
       mcpServers,
       providers,
+      skills,
       messages: initialMessages,
       turns: initialTurns,
       pendingJudgements: initialPending,
@@ -727,6 +786,14 @@ export class MessengerRuntime {
       occurred_at: bot.updated_at,
       ...bot,
       deleted_at: deletedAt,
+    });
+  }
+
+  private ingestSkill(skill: Skill): void {
+    this.ingest({
+      event: "skill.upsert",
+      occurred_at: skill.updated_at,
+      ...skill,
     });
   }
 

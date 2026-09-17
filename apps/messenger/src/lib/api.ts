@@ -6,12 +6,14 @@ import type {
   CreateBotResponse,
   CreateGroupRequest,
   CreateProviderRequest,
+  CreateSkillRequest,
   ErrorBody,
   Judgement,
   ListPage,
   McpServer,
   Message,
   PatchProviderRequest,
+  PatchSkillRequest,
   Provider,
   ResolveApprovalRequest,
   SearchHit,
@@ -19,7 +21,9 @@ import type {
   SessionSummary,
   Settings,
   SettingsPatch,
+  Skill,
   Spend,
+  Turn,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import type { LocalEndpoint } from "./discovery.ts";
@@ -268,6 +272,10 @@ export class LocalApi {
     await this.post("/v1/turns/stop", turnId ? { turn_id: turnId } : {});
   }
 
+  async continueInterrupt(messageId: string): Promise<Turn> {
+    return this.post<Turn>("/v1/turns/continue", { message_id: messageId });
+  }
+
   async putReaction(messageId: string, emoji: string): Promise<void> {
     await this.request<void>("PUT", `/v1/messages/${messageId}/reactions`, { emoji });
   }
@@ -281,6 +289,23 @@ export class LocalApi {
     return page.items;
   }
 
+  async skills(): Promise<Skill[]> {
+    const page = await this.get<ListPage<Skill>>("/v1/skills");
+    return page.items;
+  }
+
+  async createSkill(body: CreateSkillRequest): Promise<Skill> {
+    return this.post<Skill>("/v1/skills", body);
+  }
+
+  async patchSkill(id: string, body: PatchSkillRequest): Promise<Skill> {
+    return this.patch<Skill>(`/v1/skills/${id}`, body);
+  }
+
+  async deleteSkill(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/skills/${id}`);
+  }
+
   async createMcpServer(body: {
     name: string;
     transport?: "stdio" | "http";
@@ -290,6 +315,7 @@ export class LocalApi {
     headers?: Array<{ name: string; value: string }>;
     auth?: string;
     enabled: boolean;
+    usage_note?: string;
   }): Promise<McpServer> {
     return this.post<McpServer>("/v1/mcp-servers", body);
   }
@@ -305,6 +331,7 @@ export class LocalApi {
       headers?: Array<{ name: string; value: string }>;
       auth?: string;
       enabled?: boolean;
+      usage_note?: string | null;
     },
   ): Promise<McpServer> {
     return this.patch<McpServer>(`/v1/mcp-servers/${id}`, body);

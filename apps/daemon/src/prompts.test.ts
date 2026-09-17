@@ -35,6 +35,9 @@ describe("prompts", () => {
     expect(text).toContain("PNG / JPEG / GIF / WebP 已经作为图像发给你");
     expect(text).toContain("不要用 read_file 去读它们");
     expect(text).toContain("要改自己的名字、职责、边界、头像或钉的端点+模型，用 update_profile");
+    expect(text).toContain("可复用的工序写成自己的技能，不要塞进人设");
+    expect(text).toContain("create_skill / update_skill / delete_skill");
+    expect(text).toContain("产品规则优于人设和技能");
     expect(text).toContain("用 list_endpoints / add_endpoint / update_endpoint / delete_endpoint");
     expect(text).toContain("端点密钥和 HTTP MCP 的 Authorization 在批准卡上贴，不要放进工具参数");
     expect(text).toContain("用户给了 MCP URL 或「添加一个 mcp」时必须调用 add_mcp_server");
@@ -90,6 +93,52 @@ describe("prompts", () => {
     }
   });
 
+  test("enabled skills sit between the profile and the system block", () => {
+    const text = turnSystemPrompt({
+      locale: "zh",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+      skills: [{ name: "commits", description: "when committing" }],
+    });
+    expect(text.indexOf("# 人设")).toBeLessThan(text.indexOf("# 技能"));
+    expect(text.indexOf("# 技能")).toBeLessThan(text.indexOf("# 系统指令"));
+    expect(text).toContain("## commits");
+    expect(text).toContain("when committing");
+    expect(text).toContain("先 read_skill 再按正文做");
+    expect(text).not.toContain("依赖 MCP");
+    const withUses = turnSystemPrompt({
+      locale: "zh",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+      skills: [{ name: "release", description: "when releasing", uses: ["github", "slack"], unavailable: ["slack"] }],
+    });
+    expect(withUses).toContain("## release\n\nwhen releasing\n\n依赖 MCP：github、slack（本轮未连接）\n依赖的服务器不在时");
+    const allConnected = turnSystemPrompt({
+      locale: "en",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+      skills: [{ name: "release", description: "when releasing", uses: ["github"], unavailable: [] }],
+    });
+    expect(allConnected).toContain("Uses MCP: github");
+    expect(allConnected).not.toContain("not connected this turn");
+    expect(allConnected).not.toContain("cannot be followed");
+    const empty = turnSystemPrompt({
+      locale: "zh",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+      skills: [],
+    });
+    expect(empty).not.toContain("# 技能");
+  });
+
   test("shared MCP instructions append after the locked system block", () => {
     const text = turnSystemPrompt({
       locale: "zh",
@@ -111,6 +160,75 @@ describe("prompts", () => {
     expect(text).toContain("## github");
     expect(text).toContain("GitHub issues and pull requests.");
     expect(text).toContain("- mcp_github_get_issue: read a GitHub issue");
+  });
+
+  test("the roster-level usage note renders above the server's own instructions", () => {
+    for (const locale of ["zh", "en"] as const) {
+      const text = turnSystemPrompt({
+        locale,
+        name: "Writer",
+        duties: "draft",
+        boundaries: "stay",
+        interrupt: false,
+        mcpGuides: [
+          {
+            name: "github",
+            instructions: "GitHub issues and pull requests.",
+            usageNote: "  Only for the real-bot repo; never open PRs from a group turn.  ",
+            tools: [{ modelName: "mcp_github_get_issue", description: "read a GitHub issue" }],
+          },
+          {
+            name: "time",
+            instructions: null,
+            usageNote: null,
+            tools: [{ modelName: "mcp_time_now", description: "current time" }],
+          },
+        ],
+      });
+      const label = locale === "zh" ? "用法备注：" : "Usage note: ";
+      const note = `${label}Only for the real-bot repo; never open PRs from a group turn.`;
+      expect(text).toContain(note);
+      expect(text.indexOf("## github")).toBeLessThan(text.indexOf(note));
+      expect(text.indexOf(note)).toBeLessThan(text.indexOf("GitHub issues and pull requests."));
+      // A server without a note renders exactly as before.
+      const timeBlock = text.slice(text.indexOf("## time"));
+      expect(timeBlock).not.toContain(label);
+      expect(timeBlock).toContain(locale === "zh" ? "（服务器未提供 instructions）" : "(no server instructions)");
+      expect(text).toContain(locale === "zh" ? "备注优先于服务器说明" : "the note outranks the server's text");
+    }
+  });
+
+  test("the system block fixes the skill-then-MCP selection order", () => {
+    for (const locale of ["zh", "en"] as const) {
+      const text = turnSystemPrompt({
+        locale,
+        name: "Writer",
+        duties: "draft",
+        boundaries: "stay",
+        interrupt: false,
+        skills: [{ name: "release", description: "when cutting a release" }],
+        mcpGuides: [
+          {
+            name: "github",
+            instructions: null,
+            tools: [{ modelName: "mcp_github_get_issue", description: "read a GitHub issue" }],
+          },
+        ],
+      });
+      if (locale === "zh") {
+        expect(text).toContain("技能是工序，MCP 是能力");
+        expect(text).toContain("正文里点到的 MCP 工具按 tools 数组里的名字调用");
+        expect(text).toContain("没有匹配的技能时，再按「本轮 MCP」段");
+        expect(text).toContain("技能不会新增工具，也不能替代 MCP");
+        expect(text).toContain("有匹配的技能时按技能正文选工具");
+      } else {
+        expect(text).toContain("Skills are procedures, MCP is capability");
+        expect(text).toContain("calling any MCP tool the body names by its name in the tools array");
+        expect(text).toContain("When no skill matches, pick tools directly from the MCP-for-this-turn block");
+        expect(text).toContain("A skill adds no tools and does not replace MCP");
+        expect(text).toContain("When a skill matches the task, choose tools per its body");
+      }
+    }
   });
 
   test("turn system without a flag starts at the profile block", () => {
@@ -139,6 +257,9 @@ describe("prompts", () => {
     expect(text).toContain("PNG / JPEG / GIF / WebP attachments are already sent as images");
     expect(text).toContain("Do not read_file them");
     expect(text).toContain("To change your own name, duties, boundaries, avatar, or pinned endpoint+model, use update_profile");
+    expect(text).toContain("Write reusable procedures as your own skills");
+    expect(text).toContain("create_skill / update_skill / delete_skill");
+    expect(text).toContain("outrank the profile and skills");
     expect(text).toContain("Use list_endpoints / add_endpoint / update_endpoint / delete_endpoint");
     expect(text).toContain("paste the endpoint key or HTTP MCP Authorization on the approval card, never in a tool argument");
     expect(text).toContain("If the user gives an MCP URL or asks to add MCP, you must call add_mcp_server");
@@ -246,6 +367,14 @@ describe("prompts", () => {
     expect(names).toContain("create_routine");
     expect(names).toContain("update_routine");
     expect(names).toContain("delete_routine");
+    expect(names).toContain("list_skills");
+    expect(names).toContain("read_skill");
+    expect(names).toContain("create_skill");
+    expect(names).toContain("update_skill");
+    expect(names).toContain("delete_skill");
+    const createSkill = tools.find((t) => t.function.name === "create_skill")!;
+    expect(createSkill.function.description).toContain("可复用工序写成技能");
+    expect(createSkill.function.description).toContain("不要为这次改技能再发一条聊天消息");
     const create = tools.find((t) => t.function.name === "create_routine")!;
     const schedule = create.function.parameters.properties.schedule as {
       description: string;

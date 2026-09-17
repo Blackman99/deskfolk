@@ -63,6 +63,87 @@ describe("assembleTurnMessages", () => {
     store.close();
   });
 
+  test("enabled skills enter the system catalog; disabled ones do not", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.createSkill({
+      bot_id: writer.bot.id,
+      name: "commits",
+      description: "when committing",
+      body: "use conventional commits",
+    });
+    const hidden = store.createSkill({
+      bot_id: writer.bot.id,
+      name: "drafts",
+      description: "when drafting",
+      body: "keep a private draft",
+      enabled: false,
+    });
+    expect(hidden.enabled).toBe(false);
+    const trigger = store.postMessage(writer.direct_session.id, { body: "commit this" });
+    const turn = store.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    const messages = assembleTurnMessages(store, {
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale: "zh",
+      interrupt: false,
+      loop: [],
+    });
+    const system = String(messages[0]?.content);
+    expect(system).toContain("# 技能");
+    expect(system).toContain("## commits");
+    expect(system).toContain("when committing");
+    expect(system).not.toContain("## drafts");
+    expect(system).not.toContain("use conventional commits");
+    store.close();
+  });
+
+  test("a skill's declared MCP servers are checked against the servers connected this turn", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.createSkill({
+      bot_id: writer.bot.id,
+      name: "release",
+      description: "when cutting a release",
+      body: "call mcp_github_create_release",
+      uses: ["GitHub", "slack"],
+    });
+    const trigger = store.postMessage(writer.direct_session.id, { body: "ship it" });
+    const turn = store.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    const base = {
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      interrupt: false,
+      loop: [],
+    };
+    const zh = String(
+      assembleTurnMessages(store, {
+        ...base,
+        locale: "zh",
+        mcpGuides: [{ name: "github", instructions: null, tools: [{ modelName: "mcp_github_create_release", description: "" }] }],
+      })[0]?.content,
+    );
+    // Matching is case-insensitive; the name is echoed as the skill wrote it.
+    expect(zh).toContain("依赖 MCP：GitHub、slack（本轮未连接）");
+    expect(zh).toContain("依赖的服务器不在时，正文照做不了");
+    const en = String(assembleTurnMessages(store, { ...base, locale: "en", mcpGuides: [] })[0]?.content);
+    expect(en).toContain("Uses MCP: GitHub (not connected this turn), slack (not connected this turn)");
+    expect(en).toContain("cannot be followed as written");
+    store.close();
+  });
+
   test("raster image attachments are sent as image_url parts after the path line", async () => {
     const root = mkdtempSync(join(tmpdir(), "real-bot-ctx-img-"));
     workspaces.push(root);

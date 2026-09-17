@@ -35,7 +35,7 @@
 	});
 
 	function emptyDraft(): McpDraft {
-		return { name: '', transport: 'stdio', command: '', args: '', url: '', headers: '', auth: '', enabled: true };
+		return { name: '', transport: 'stdio', command: '', args: '', url: '', headers: '', auth: '', enabled: true, usageNote: '' };
 	}
 
 	async function openEditor(server?: McpServer): Promise<void> {
@@ -49,7 +49,8 @@
 					url: server.url ?? '',
 					headers: formatMcpHeaders(server.headers),
 					auth: '',
-					enabled: server.enabled
+					enabled: server.enabled,
+					usageNote: server.usage_note ?? ''
 				}
 			: emptyDraft();
 		phase = 'edit';
@@ -281,6 +282,17 @@
 							<input id="mcp-editor-args" type="text" class="mono" bind:value={draft.args} oninput={onInput} />
 						</div>
 					{/if}
+					<div class="modal-section">
+						<label for="mcp-editor-usage-note">{t.settings.mcpUsageNote}</label>
+						<textarea
+							id="mcp-editor-usage-note"
+							rows="3"
+							bind:value={draft.usageNote}
+							oninput={onInput}
+							placeholder={t.settings.mcpUsageNotePlaceholder}
+						></textarea>
+						<p class="hint">{t.settings.mcpUsageNoteHint}</p>
+					</div>
 					{#if editor === 'add'}
 						<label class="mcp-enable-label">
 							<input type="checkbox" bind:checked={draft.enabled} onchange={onInput} />

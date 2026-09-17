@@ -17,6 +17,8 @@ export type McpServerSpec = {
   auth?: string | null;
   enabled: boolean;
   instructions: string | null;
+  /** Roster-level note written by you or a Bot; rendered above the server's own instructions. */
+  usage_note?: string | null;
 };
 
 type McpSession = {
@@ -189,6 +191,7 @@ export function createMcpHost(options: McpHostOptions): McpHost {
       guides.push({
         name: server.name,
         instructions: sessions.get(server.id)?.instructions ?? server.instructions,
+        usageNote: server.usage_note ?? null,
         tools: tools.map((tool) => ({
           modelName: tool.modelName,
           description: tool.description,

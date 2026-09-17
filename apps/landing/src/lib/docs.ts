@@ -59,7 +59,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Interrupted',
     'Catch-up'
   ],
-  models: ['Model endpoint', 'Model', 'MCP', '向导', 'Routine', 'Completion', 'Context window', 'Spend'],
+  models: ['Model endpoint', 'Model', 'MCP', '向导', 'Routine', 'Skill', 'Completion', 'Context window', 'Spend'],
   safety: [
     'Approval',
     'Always allow',

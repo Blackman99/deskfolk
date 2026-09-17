@@ -17,6 +17,7 @@ const stdioDraft = {
   headers: "",
   auth: "",
   enabled: true,
+  usageNote: "",
 };
 
 test("empty name and command do not produce a body", () => {
@@ -64,6 +65,7 @@ test("http add confirm submits url and strips Authorization from headers", () =>
       headers: "Authorization: Bearer secret\nX-Debug: 1",
       auth: "Bearer secret",
       enabled: true,
+      usageNote: "",
     }),
   ).toEqual({
     ok: true,
@@ -82,6 +84,46 @@ test("http add confirm submits url and strips Authorization from headers", () =>
 test("empty args serialize to an empty list", () => {
   expect(parseMcpArgs("   ")).toEqual([]);
   expect(formatMcpArgs([])).toBe("");
+});
+
+test("a usage note is trimmed into the create body and omitted when blank", () => {
+  expect(
+    requestMcpAdd("confirm", { ...stdioDraft, usageNote: "  Only for the real-bot repo.  " }),
+  ).toEqual({
+    ok: true,
+    phase: "submit",
+    body: {
+      name: "probe",
+      transport: "stdio",
+      command: "bun",
+      args: ["run", "src/mcp-fixture.ts", "--modern-only"],
+      enabled: true,
+      usage_note: "Only for the real-bot repo.",
+    },
+  });
+  const blank = requestMcpAdd("confirm", { ...stdioDraft, usageNote: "   " });
+  expect(blank.ok && blank.phase === "submit" && "usage_note" in blank.body).toBe(false);
+});
+
+test("changing only the usage note submits a PATCH without confirm", () => {
+  const current = { name: "probe", transport: "stdio" as const, command: "bun", args: ["run", "fix.ts"], url: null, headers: [], usage_note: null };
+  expect(
+    requestMcpSave("edit", current, { ...stdioDraft, command: "bun", args: "run fix.ts", usageNote: "Read-only." }),
+  ).toEqual({ ok: true, phase: "submit", patch: { usage_note: "Read-only." } });
+  expect(
+    requestMcpSave(
+      "edit",
+      { ...current, usage_note: "Read-only." },
+      { ...stdioDraft, command: "bun", args: "run fix.ts", usageNote: "  " },
+    ),
+  ).toEqual({ ok: true, phase: "submit", patch: { usage_note: null } });
+  expect(
+    requestMcpSave(
+      "edit",
+      { ...current, usage_note: "Read-only." },
+      { ...stdioDraft, command: "bun", args: "run fix.ts", usageNote: "Read-only." },
+    ),
+  ).toEqual({ ok: true, phase: "submit", patch: {} });
 });
 
 test("name-only save submits a PATCH without confirm", () => {

@@ -47,12 +47,21 @@ export function assembleTurnMessages(
   },
 ): ChatMessage[] {
   const bot = store.getBot(input.botId);
+  // Guides only list enabled servers that connected and exposed tools, so "connected this turn"
+  // is exactly the set a skill's `uses` can be checked against.
+  const connectedMcp = new Set((input.mcpGuides ?? []).map((guide) => guide.name.toLowerCase()));
   const system = turnSystemPrompt({
     locale: input.locale,
     name: bot.name,
     duties: bot.duties,
     boundaries: bot.boundaries,
     interrupt: input.interrupt,
+    skills: store.listEnabledSkills(input.botId).map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      uses: skill.uses,
+      unavailable: skill.uses.filter((name) => !connectedMcp.has(name.toLowerCase())),
+    })),
     mcpGuides: input.mcpGuides,
   });
   const window = transcriptWindow(store, {

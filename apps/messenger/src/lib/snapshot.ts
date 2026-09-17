@@ -1,4 +1,5 @@
 import {
+  INTERRUPT_NOTE_BODY,
   USER_MEMBER,
   isHiddenTranscriptKind,
   type Approval,
@@ -12,6 +13,7 @@ import {
   type SearchHit,
   type SessionSummary,
   type Settings,
+  type Skill,
   type Spend,
   type Turn,
 } from "@real-bot/protocol";
@@ -23,6 +25,7 @@ export type Snapshot = {
   spend: Spend[];
   mcpServers: McpServer[];
   providers: Provider[];
+  skills: Skill[];
   messages: Message[];
   turns: Turn[];
   judgements: Judgement[];
@@ -51,6 +54,7 @@ export function emptySnapshot(): Snapshot {
     spend: [],
     mcpServers: [],
     providers: [],
+    skills: [],
     messages: [],
     turns: [],
     judgements: [],
@@ -144,6 +148,14 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       return {
         ...snapshot,
         turns: upsert(snapshot.turns, turn),
+        messages: snapshot.messages.map((message) =>
+          message.id === turn.trigger_message_id &&
+          message.kind === "system" &&
+          message.body === INTERRUPT_NOTE_BODY &&
+          !message.source_turn_id
+            ? { ...message, source_turn_id: turn.id }
+            : message,
+        ),
         approvals: voidApprovals
           ? snapshot.approvals.map((approval) =>
               approval.turn_id === turn.id && approval.status === "pending"
@@ -226,6 +238,24 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       return {
         ...snapshot,
         providers: snapshot.providers.filter((s) => s.id !== event.id),
+      };
+    }
+    case "skill.upsert": {
+      const { event: _e, occurred_at: _at, ...row } = event;
+      return {
+        ...snapshot,
+        skills: upsert(snapshot.skills, row).sort(
+          (a, b) =>
+            a.bot_id.localeCompare(b.bot_id) ||
+            a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
+            a.id.localeCompare(b.id),
+        ),
+      };
+    }
+    case "skill.removed": {
+      return {
+        ...snapshot,
+        skills: snapshot.skills.filter((s) => s.id !== event.id),
       };
     }
     case "reaction.changed": {

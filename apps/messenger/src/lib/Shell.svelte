@@ -9,6 +9,7 @@
 	import {
 		botAvatarColor,
 		calculateBotDuration,
+		canContinueInterrupt,
 		formatDateDivider,
 		formatFullTimestamp,
 		formatLiveDuration,
@@ -29,13 +30,21 @@
 	import { copyFor, JAIL_COPY } from './copy.ts';
 	import McpSettings from './McpSettings.svelte';
 	import {
+		emptySkillDraft,
+		formatSkillUses,
 		mapCreateBotError,
 		mapCreateGroupError,
+		mapSkillError,
 		planCreateBot,
 		planCreateGroup,
+		planSkill,
+		reconcileSkillDraft,
+		skillDraftDirty,
 		type CreateBotDraft,
 		type CreateBotFieldErrors,
-		type CreateGroupFieldErrors
+		type CreateGroupFieldErrors,
+		type SkillDraft,
+		type SkillFieldErrors
 	} from './create-form.ts';
 	import {
 		mapSettingsError,
@@ -518,8 +527,28 @@
 	let confirmDelete = $state(false);
 	let confirmDeleteGroup = $state(false);
 	let confirmClearHistory = $state(false);
+	let confirmDeleteSkill = $state<string | null>(null);
+	let skillEditor = $state<'add' | string | null>(null);
+	let skillDraft = $state<SkillDraft>(emptySkillDraft());
+	let skillBaseline = $state<SkillDraft>(emptySkillDraft());
+	let skillErrors = $state<SkillFieldErrors>({});
+	let skillFailed = $state(false);
+	let skillBusy = $state(false);
+	const profileSkills = $derived(
+		runtime.profileBotId
+			? snapshot.skills.filter((skill) => skill.bot_id === runtime.profileBotId)
+			: []
+	);
 	const dangerConfirmKind = $derived(
-		confirmDelete ? 'bot' : confirmDeleteGroup && selected?.kind === 'group' ? 'group' : confirmClearHistory && selected ? 'history' : null
+		confirmDelete
+			? 'bot'
+			: confirmDeleteGroup && selected?.kind === 'group'
+				? 'group'
+				: confirmClearHistory && selected
+					? 'history'
+					: confirmDeleteSkill
+						? 'skill'
+						: null
 	);
 	const dangerConfirmCopy = $derived(
 		dangerConfirmKind === 'bot'
@@ -543,7 +572,14 @@
 							confirm: t.detail.confirmClearHistory,
 							cancel: t.detail.cancel
 						}
-					: null
+					: dangerConfirmKind === 'skill'
+						? {
+								title: t.sidebar.skillDelete,
+								body: t.sidebar.skillDeleteBody,
+								confirm: t.sidebar.skillConfirmDelete,
+								cancel: t.sidebar.skillCancel
+							}
+						: null
 	);
 	let detailName = $state('');
 	let detailNameError = $state<'empty' | undefined>();
@@ -742,7 +778,10 @@
 	});
 
 	$effect(() => {
-		if (!runtime.sessionSettingsOpen || !runtime.profileBotId) return;
+		if (!runtime.sessionSettingsOpen || !runtime.profileBotId) {
+			if (skillEditor) closeSkillEditor();
+			return;
+		}
 		const bot = snapshot.bots.find((row) => row.id === runtime.profileBotId);
 		if (!bot) {
 			runtime.profileBotId = null;
@@ -758,6 +797,23 @@
 		const next = reconcileProfileDraft(profileDraft, profileBaseline, incoming);
 		if (profileDraftDirty(profileDraft, next.draft)) profileDraft = next.draft;
 		if (profileDraftDirty(profileBaseline, next.baseline)) profileBaseline = next.baseline;
+		if (skillEditor && skillEditor !== 'add') {
+			const live = snapshot.skills.find((skill) => skill.id === skillEditor);
+			if (!live || live.bot_id !== bot.id) {
+				closeSkillEditor();
+			} else {
+				const incomingSkill = {
+					name: live.name,
+					description: live.description,
+					body: live.body,
+					uses: formatSkillUses(live.uses),
+					enabled: live.enabled
+				};
+				const nextSkill = reconcileSkillDraft(skillDraft, skillBaseline, incomingSkill);
+				if (skillDraftDirty(skillDraft, nextSkill.draft)) skillDraft = nextSkill.draft;
+				if (skillDraftDirty(skillBaseline, nextSkill.baseline)) skillBaseline = nextSkill.baseline;
+			}
+		}
 	});
 
 	$effect(() => {
@@ -1704,7 +1760,96 @@
 		profileErrors = {};
 		profileFailed = false;
 		confirmDelete = false;
+		closeSkillEditor();
 		runtime.openProfile(botId);
+	}
+
+	function closeSkillEditor(): void {
+		skillEditor = null;
+		skillDraft = emptySkillDraft();
+		skillBaseline = emptySkillDraft();
+		skillErrors = {};
+		skillFailed = false;
+		skillBusy = false;
+		confirmDeleteSkill = null;
+	}
+
+	function openAddSkill(): void {
+		skillEditor = 'add';
+		skillDraft = emptySkillDraft();
+		skillBaseline = emptySkillDraft();
+		skillErrors = {};
+		skillFailed = false;
+	}
+
+	function openEditSkill(id: string): void {
+		const skill = snapshot.skills.find((row) => row.id === id);
+		if (!skill) return;
+		skillEditor = id;
+		skillDraft = {
+			name: skill.name,
+			description: skill.description,
+			body: skill.body,
+			uses: formatSkillUses(skill.uses),
+			enabled: skill.enabled
+		};
+		skillBaseline = { ...skillDraft };
+		skillErrors = {};
+		skillFailed = false;
+	}
+
+	function skillNameCopy(kind: 'empty' | 'conflict' | undefined): string {
+		if (kind === 'conflict') return t.sidebar.skillNameConflict;
+		return t.sidebar.skillNameEmpty;
+	}
+
+	async function saveSkill(): Promise<void> {
+		if (!runtime.profileBotId || !skillEditor) return;
+		skillFailed = false;
+		skillErrors = {};
+		const plan = planSkill(skillDraft);
+		if (!plan.ok) {
+			skillErrors = plan.errors;
+			return;
+		}
+		skillBusy = true;
+		const error =
+			skillEditor === 'add'
+				? await runtime.createSkill({ bot_id: runtime.profileBotId, ...plan.body })
+				: await runtime.patchSkill(skillEditor, plan.body);
+		skillBusy = false;
+		if (!error) {
+			closeSkillEditor();
+			return;
+		}
+		const mapped = mapSkillError(error.status, error.message);
+		if ('top' in mapped) skillFailed = true;
+		else skillErrors = mapped;
+	}
+
+	async function toggleSkillEnabled(id: string, enabled: boolean): Promise<void> {
+		skillFailed = false;
+		const error = await runtime.patchSkill(id, { enabled });
+		if (error) skillFailed = true;
+	}
+
+	function openDeleteSkillConfirm(id: string): void {
+		confirmDelete = false;
+		confirmDeleteGroup = false;
+		confirmClearHistory = false;
+		confirmDeleteSkill = id;
+	}
+
+	async function deleteSkillRow(): Promise<void> {
+		if (!confirmDeleteSkill) return;
+		skillFailed = false;
+		const error = await runtime.deleteSkill(confirmDeleteSkill);
+		if (error) {
+			skillFailed = true;
+			return;
+		}
+		if (skillEditor === confirmDeleteSkill) closeSkillEditor();
+		confirmDeleteSkill = null;
 	}
 
 	function toggleSessionSettings(): void {
@@ -1724,6 +1869,7 @@
 		confirmDelete = false;
 		profileErrors = {};
 		profileFailed = false;
+		closeSkillEditor();
 	}
 
 	function onProfileInput(): void {
@@ -1777,6 +1923,7 @@
 			confirmDelete = false;
 			confirmDeleteGroup = false;
 			confirmClearHistory = false;
+			confirmDeleteSkill = null;
 		});
 	}
 
@@ -1880,7 +2027,11 @@
 			await deleteGroupSession();
 			return;
 		}
-		if (dangerConfirmKind === 'history') await clearGroupHistory();
+		if (dangerConfirmKind === 'history') {
+			await clearGroupHistory();
+			return;
+		}
+		if (dangerConfirmKind === 'skill') await deleteSkillRow();
 	}
 
 	function openCreateBot(): void {
@@ -2813,15 +2964,87 @@
 					{:else if group.kind === 'system'}
 						{@const singleMsg = group.items[0]}
 						{#if singleMsg.type === 'message'}
+							{@const sysBot = botsById.get(singleMsg.message.author)}
+							{@const pal = botAvatarColor(singleMsg.message.author)}
+							{@const showContinue = canContinueInterrupt(singleMsg.message, snapshot.turns, {
+								locked: lockedComposer,
+								hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author)
+							})}
 							<div
-								class="msg-wrap is-system-wrap"
+								class="msg-wrap is-bot is-system-row"
 								data-message-id={singleMsg.message.id}
 								class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
 							>
-								<article class="msg is-system">
-									<div class="who">{who(singleMsg.message)}</div>
-									<div class="body is-md" use:markdownLinks>{@html renderMarkdown(singleMsg.message.body, markdownOpts(singleMsg.message))}</div>
-								</article>
+								<div class="avatar-col">
+									{#if sysBot}
+										<button
+											type="button"
+											class="bot-avatar is-clickable"
+											style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+											title={t.top.botSettings}
+											onclick={() => openProfile(sysBot.id)}
+										>
+											{#if avatarSrc(sysBot.avatar)}
+												<img src={avatarSrc(sysBot.avatar)} alt={sysBot.name} class="avatar-img" />
+											{:else}
+												{rosterLetter(sysBot.name)}
+											{/if}
+										</button>
+									{:else}
+										<div class="bot-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};">
+											?
+										</div>
+									{/if}
+								</div>
+								<div class="msg-content">
+									<div class="msg-header">
+										{#if sysBot}
+											<button
+												type="button"
+												class="sender-name is-clickable"
+												onclick={() => openProfile(sysBot.id)}
+												title={t.top.botSettings}
+											>
+												{who(singleMsg.message)}
+											</button>
+										{:else}
+											<span class="sender-name">{who(singleMsg.message)}</span>
+										{/if}
+										<span class="bot-badge">{t.chat.botBadge}</span>
+										<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>
+											{formatMessageTime(singleMsg.message.created_at)}
+										</span>
+									</div>
+									<div class="msg-interrupt-row">
+										<article class="msg is-system">
+											<div class="who">{who(singleMsg.message)}</div>
+											<div class="body">{singleMsg.message.body}</div>
+										</article>
+										{#if showContinue}
+											<button
+												type="button"
+												class="btn-mini-continue"
+												title={t.stream.continueInterruptHint}
+												disabled={!connected || runtime.busy}
+												onclick={() => void runtime.continueInterrupt(singleMsg.message.id)}
+											>
+												{t.stream.continueInterrupt}
+											</button>
+										{/if}
+									</div>
+									{#if singleMsg.replying && singleMsg.replying.length > 0}
+										<div class="msg-attached-replying" aria-live="polite">
+											<ReplyingIndicator
+												entries={singleMsg.replying}
+												{botsById}
+												isUser={false}
+												thinkingText={t.chat.thinking}
+												deletedText={t.top.deleted}
+												onOpenProfile={openProfile}
+											/>
+										</div>
+									{/if}
+								</div>
 							</div>
 						{/if}
 					{:else if group.kind === 'user'}
@@ -3564,6 +3787,129 @@
 										<p class="field-error">{t.sidebar.botModelInvalid}</p>
 									{/if}
 								</div>
+							</div>
+						</div>
+
+						<div class="panel-card">
+							<div class="panel-card-head">
+								<span class="panel-card-title">{t.sidebar.skills}</span>
+								<span class="panel-counter-badge">{profileSkills.length}</span>
+							</div>
+							<div class="panel-card-body skill-card-body">
+								{#if skillFailed && !skillEditor}
+									<p class="field-error" role="alert">{t.sidebar.saveFailed}</p>
+								{/if}
+								{#if profileSkills.length === 0 && !skillEditor}
+									<p class="muted skill-empty">{t.sidebar.skillsEmpty}</p>
+								{/if}
+								{#each profileSkills as skill (skill.id)}
+									<div class="skill-row" class:is-disabled={!skill.enabled} class:is-open={skillEditor === skill.id}>
+										<button
+											type="button"
+											class="skill-open"
+											aria-label={`${t.sidebar.skillEdit}: ${skill.name}`}
+											onclick={() => openEditSkill(skill.id)}
+										>
+											<span class="skill-name" title={skill.name}>{skill.name}</span>
+											<span class="skill-desc" title={skill.description}>{skill.description}</span>
+										</button>
+										<label class="mcp-enable-label">
+											<input
+												type="checkbox"
+												aria-label={`${t.sidebar.skillEnabled}: ${skill.name}`}
+												checked={skill.enabled}
+												onchange={(event) => {
+													event.currentTarget.checked = skill.enabled;
+													void toggleSkillEnabled(skill.id, !skill.enabled);
+												}}
+											/>
+											{t.sidebar.skillEnabled}
+										</label>
+									</div>
+								{/each}
+								{#if skillEditor}
+									<div class="skill-editor">
+										<p class="muted skill-editor-title">
+											{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
+										</p>
+										{#if skillFailed}
+											<p class="field-error" role="alert">{t.sidebar.saveFailed}</p>
+										{/if}
+										<div class="form-group">
+											<label for="skill-name">{t.sidebar.skillName}</label>
+											<input
+												id="skill-name"
+												type="text"
+												bind:value={skillDraft.name}
+												disabled={skillBusy}
+											/>
+											{#if skillErrors.name}
+												<p class="field-error">{skillNameCopy(skillErrors.name)}</p>
+											{/if}
+										</div>
+										<div class="form-group">
+											<label for="skill-description">{t.sidebar.skillDescription}</label>
+											<textarea
+												id="skill-description"
+												bind:value={skillDraft.description}
+												rows="2"
+												disabled={skillBusy}
+											></textarea>
+											{#if skillErrors.description}
+												<p class="field-error">{t.sidebar.skillDescriptionEmpty}</p>
+											{/if}
+										</div>
+										<div class="form-group">
+											<label for="skill-body">{t.sidebar.skillBody}</label>
+											<textarea
+												id="skill-body"
+												bind:value={skillDraft.body}
+												rows="6"
+												disabled={skillBusy}
+											></textarea>
+											{#if skillErrors.body}
+												<p class="field-error">{t.sidebar.skillBodyEmpty}</p>
+											{/if}
+										</div>
+										<div class="form-group">
+											<label for="skill-uses">{t.sidebar.skillUses}</label>
+											<input
+												id="skill-uses"
+												type="text"
+												bind:value={skillDraft.uses}
+												placeholder={t.sidebar.skillUsesPlaceholder}
+												disabled={skillBusy}
+											/>
+											<p class="muted skill-editor-hint">{t.sidebar.skillUsesHint}</p>
+										</div>
+										<label class="mcp-enable-label skill-editor-enabled">
+											<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
+											{t.sidebar.skillEnabled}
+										</label>
+										<div class="skill-editor-actions">
+											<button type="button" class="btn-primary" disabled={skillBusy} onclick={() => void saveSkill()}>
+												{t.sidebar.skillSave}
+											</button>
+											<button type="button" class="btn-secondary" disabled={skillBusy} onclick={closeSkillEditor}>
+												{t.sidebar.skillCancel}
+											</button>
+											{#if skillEditor !== 'add'}
+												<button
+													type="button"
+													class="deny"
+													disabled={skillBusy}
+													onclick={() => openDeleteSkillConfirm(skillEditor as string)}
+												>
+													{t.sidebar.skillDelete}
+												</button>
+											{/if}
+										</div>
+									</div>
+								{:else}
+									<button type="button" class="btn-secondary skill-add" onclick={openAddSkill}>
+										{t.sidebar.skillAdd}
+									</button>
+								{/if}
 							</div>
 						</div>
 

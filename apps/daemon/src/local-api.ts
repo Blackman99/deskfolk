@@ -246,6 +246,15 @@ async function dispatch(
     return jsonResponse(turn, 200, null);
   }
 
+  if (method === "POST" && path === "/v1/turns/continue") {
+    const body = (await readJson(request)) as { message_id?: string };
+    if (typeof body.message_id !== "string" || body.message_id.trim().length === 0) {
+      throw new HttpError(422, "invalid_args", "message_id is required");
+    }
+    const turn = engine.continueFromInterrupt(body.message_id.trim());
+    return jsonResponse(turn, 200, null);
+  }
+
   if (method === "GET" && path === "/v1/settings") {
     return jsonResponse(await store.settings(), 200, null);
   }
@@ -749,6 +758,7 @@ async function dispatch(
       headers?: Array<{ name: string; value: string }>;
       auth?: string;
       enabled?: boolean;
+      usage_note?: string | null;
     };
     let server = await store.createMcpServer(body);
     server = await persistMcpInspect(store, mcp, server);
@@ -766,6 +776,7 @@ async function dispatch(
       headers?: Array<{ name: string; value: string }>;
       auth?: string;
       enabled?: boolean;
+      usage_note?: string | null;
     };
     let server = await store.patchMcpServer(params.id!, body);
     server = await persistMcpInspect(store, mcp, server);
@@ -775,6 +786,41 @@ async function dispatch(
   if (params && method === "DELETE") {
     await store.deleteMcpServer(params.id!);
     publish({ event: "mcp.removed", occurred_at: occurred(), id: params.id! });
+    return emptyResponse(204, null);
+  }
+
+  if (method === "GET" && path === "/v1/skills") {
+    return jsonResponse({ items: store.listSkills() }, 200, null);
+  }
+  if (method === "POST" && path === "/v1/skills") {
+    const body = (await readJson(request)) as {
+      bot_id: string;
+      name: string;
+      description: string;
+      body: string;
+      uses?: string[];
+      enabled?: boolean;
+    };
+    const skill = store.createSkill(body);
+    publish({ event: "skill.upsert", occurred_at: occurred(), ...skill });
+    return jsonResponse(skill, 201, null);
+  }
+  params = matchPath(path, "/v1/skills/:id");
+  if (params && method === "PATCH") {
+    const body = (await readJson(request)) as {
+      name?: string;
+      description?: string;
+      body?: string;
+      uses?: string[];
+      enabled?: boolean;
+    };
+    const skill = store.patchSkill(params.id!, body);
+    publish({ event: "skill.upsert", occurred_at: occurred(), ...skill });
+    return jsonResponse(skill, 200, null);
+  }
+  if (params && method === "DELETE") {
+    store.deleteSkill(params.id!);
+    publish({ event: "skill.removed", occurred_at: occurred(), id: params.id! });
     return emptyResponse(204, null);
   }
 

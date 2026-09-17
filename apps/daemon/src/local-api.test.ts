@@ -962,6 +962,57 @@ describe("empty roster and settings", () => {
     expect(h.store.getTurn(groupTurn.id).status).toBe("running");
   });
 
+  test("POST /v1/turns/continue opens a new turn from an interrupted system note", async () => {
+    const h = await start();
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const trigger = h.store.postMessage(writer.direct_session.id, { body: "go" });
+    const turn = h.store.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    h.store.interruptRunningTurns();
+    const note = h.store
+      .listMainMessages(writer.direct_session.id, 10)
+      .find((m) => m.kind === "system" && m.body === "中断");
+    expect(note?.id).toBeString();
+
+    const missing = await fetch(`${h.origin}/v1/turns/continue`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({}),
+    });
+    expect(missing.status).toBe(422);
+
+    const continued = await fetch(`${h.origin}/v1/turns/continue`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ message_id: note!.id }),
+    });
+    expect(continued.status).toBe(200);
+    const body = (await continued.json()) as {
+      id: string;
+      bot_id: string;
+      session_id: string;
+      trigger_message_id: string;
+      status: string;
+    };
+    expect(body.bot_id).toBe(writer.bot.id);
+    expect(body.session_id).toBe(writer.direct_session.id);
+    expect(body.trigger_message_id).toBe(note!.id);
+    expect(body.status).toBe("running");
+    expect(body.id).not.toBe(turn.id);
+    expect(h.store.getMessage(note!.id).source_turn_id).toBe(body.id);
+
+    const again = await fetch(`${h.origin}/v1/turns/continue`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ message_id: note!.id }),
+    });
+    expect(again.status).toBe(422);
+    expect(h.store.getTurn(turn.id).status).toBe("interrupted");
+  });
+
   test("posting multipart/form-data with attachments saves to inbox and serves content", async () => {
     const h = await start();
     const ws = mkdtempSync(join(tmpdir(), "real-bot-att-ws-"));
@@ -1081,5 +1132,116 @@ describe("empty roster and settings", () => {
     expect(searchBody.items.some((hit) => hit.kind === "file" && hit.path === "report.md")).toBe(true);
 
     rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("skills CRUD publishes upsert and removed events", async () => {
+    const h = await start();
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay" }),
+    });
+    const bot = (await created.json()) as { bot: { id: string } };
+    const ws = new WebSocket(`${h.origin.replace("http", "ws")}/v1/events`);
+    await new Promise<void>((resolve) => ws.addEventListener("open", () => resolve()));
+    const events: Array<Record<string, unknown>> = [];
+    ws.addEventListener("message", (ev) => {
+      events.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
+    });
+    ws.send(JSON.stringify({ type: "auth", token: h.token }));
+    await Bun.sleep(20);
+    const posted = await fetch(`${h.origin}/v1/skills`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        bot_id: bot.bot.id,
+        name: "commits",
+        description: "when committing",
+        body: "use conventional commits",
+        uses: ["github", ""],
+      }),
+    });
+    expect(posted.status).toBe(201);
+    const skill = (await posted.json()) as { id: string; name: string; enabled: boolean; uses: string[] };
+    expect(skill.name).toBe("commits");
+    expect(skill.enabled).toBe(true);
+    expect(skill.uses).toEqual(["github"]);
+    const reUsed = await fetch(`${h.origin}/v1/skills/${skill.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ uses: ["github", "slack"] }),
+    });
+    expect(reUsed.status).toBe(200);
+    expect(((await reUsed.json()) as { uses: string[] }).uses).toEqual(["github", "slack"]);
+    await Bun.sleep(20);
+    expect(events.some((e) => e.event === "skill.upsert" && e.id === skill.id)).toBe(true);
+    const listed = await fetch(`${h.origin}/v1/skills`, { headers: auth(h) });
+    const page = (await listed.json()) as { items: Array<{ id: string }> };
+    expect(page.items.map((row) => row.id)).toEqual([skill.id]);
+    const patched = await fetch(`${h.origin}/v1/skills/${skill.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(patched.status).toBe(200);
+    const deleted = await fetch(`${h.origin}/v1/skills/${skill.id}`, {
+      method: "DELETE",
+      headers: auth(h),
+    });
+    expect(deleted.status).toBe(204);
+    await Bun.sleep(20);
+    expect(events.some((e) => e.event === "skill.removed" && e.id === skill.id)).toBe(true);
+    ws.close();
+  });
+});
+
+describe("mcp servers", () => {
+  test("usage_note round-trips through POST and PATCH and rejects an over-long note", async () => {
+    const h = await start();
+    const posted = await fetch(`${h.origin}/v1/mcp-servers`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        name: "github",
+        command: "bun",
+        args: ["run", "gh.ts"],
+        enabled: false,
+        usage_note: "  Only for the real-bot repo.  ",
+      }),
+    });
+    expect(posted.status).toBe(201);
+    const server = (await posted.json()) as { id: string; usage_note: string | null; instructions: string | null };
+    expect(server.usage_note).toBe("Only for the real-bot repo.");
+    expect(server.instructions).toBeNull();
+
+    const patched = await fetch(`${h.origin}/v1/mcp-servers/${server.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ usage_note: "Read-only." }),
+    });
+    expect(patched.status).toBe(200);
+    expect(((await patched.json()) as { usage_note: string | null }).usage_note).toBe("Read-only.");
+
+    const listed = await fetch(`${h.origin}/v1/mcp-servers`, { headers: auth(h) });
+    const page = (await listed.json()) as { items: Array<{ id: string; usage_note: string | null }> };
+    expect(page.items.find((row) => row.id === server.id)?.usage_note).toBe("Read-only.");
+
+    const cleared = await fetch(`${h.origin}/v1/mcp-servers/${server.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ usage_note: null }),
+    });
+    expect(cleared.status).toBe(200);
+    expect(((await cleared.json()) as { usage_note: string | null }).usage_note).toBeNull();
+
+    const tooLong = await fetch(`${h.origin}/v1/mcp-servers/${server.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ usage_note: "x".repeat(2001) }),
+    });
+    expect(tooLong.status).toBe(422);
+    expect(await tooLong.json()).toEqual({
+      error: { code: "invalid_args", message: "usage_note must be at most 2000 characters" },
+    });
   });
 });

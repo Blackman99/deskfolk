@@ -51,6 +51,7 @@ export type TurnEngine = {
     apiKey?: string,
   ) => Promise<unknown>;
   stop: (turnId?: string, opts?: { allowGroup?: boolean }) => Turn | null;
+  continueFromInterrupt: (messageId: string) => Turn;
   abortAll: () => void;
   partialText: (turnId: string) => string | null;
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
@@ -76,6 +77,8 @@ type Live = {
   writtenPaths: string[];
   /** Unknown `@token`s send_message already rejected once this turn. */
   mentionWarned: Set<string>;
+  /** Tool names in the current hop's tools array; read_skill flags `mcp_` names a body cites that are missing. */
+  toolNames: Set<string>;
   spoke: boolean;
   running: Promise<void>;
   ask?: {
@@ -238,22 +241,32 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
     }
     const turn = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
-    const interrupt = store.pendingInterrupt(botId);
+    attachLive(turn);
+    return turn;
+  }
+
+  function attachLive(turn: Turn): void {
     const live: Live = {
       abort: new AbortController(),
       loop: [],
-      interrupt,
+      interrupt: store.pendingInterrupt(turn.bot_id),
       burned: false,
       partial: "",
       parentId: null,
       writtenPaths: [],
       mentionWarned: new Set(),
+      toolNames: new Set(),
       spoke: false,
       running: Promise.resolve(),
     };
     lives.set(turn.id, live);
     publishTurn(turn);
     live.running = track(runTurn(turn.id).catch(() => undefined));
+  }
+
+  function continueFromInterrupt(messageId: string): Turn {
+    const turn = store.claimInterruptContinue(messageId);
+    attachLive(turn);
     return turn;
   }
 
@@ -366,6 +379,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         mcpGuides: listed.guides,
       });
       const tools = [...builtinTools(target.locale), ...listed.tools];
+      live.toolNames = new Set(tools.map((tool) => tool.function.name));
       live.partial = "";
       publishTurn(current, "");
       let result;
@@ -647,6 +661,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               parentId: live.parentId,
               writtenPaths: live.writtenPaths,
               mentionWarned: live.mentionWarned,
+              availableToolNames: live.toolNames,
             },
             name,
             args,
@@ -687,6 +702,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         fireRoutine(item.routine.id);
       } else if (item.kind === "routine_removed") {
         publish({ event: "routine.removed", occurred_at: occurred(), id: item.id });
+      } else if (item.kind === "skill") {
+        publish({ event: "skill.upsert", occurred_at: occurred(), ...item.skill });
+      } else if (item.kind === "skill_removed") {
+        publish({ event: "skill.removed", occurred_at: occurred(), id: item.id });
       } else if (item.kind === "provider") {
         publish({ event: "provider.upsert", occurred_at: occurred(), ...item.provider });
       } else if (item.kind === "provider_removed") {
@@ -1169,6 +1188,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       return turn;
     },
+    continueFromInterrupt,
     abortAll() {
       for (const id of [...lives.keys()]) abortLive(id);
     },

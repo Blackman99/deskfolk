@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateBoringAvatar } from "@real-bot/protocol";
-import { runCollabTool, type ToolCtx } from "./collab-tools";
+import { runCollabTool, staleMcpToolNames, type ToolCtx } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 
@@ -377,6 +377,86 @@ describe("endpoint and MCP catalog tools", () => {
     store.close();
   });
 
+  test("read_skill flags mcp_ names the body cites that are not in this hop's tools", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = ctxFor(store, created.bot.id, created.direct_session.id);
+    const made = await runCollabTool(ctx, "create_skill", {
+      name: "release",
+      description: "when releasing",
+      body: "1. `mcp_github_get_issue` to check blockers\n2. mcp_github_create_release, then mcp_time_now for the stamp.",
+      uses: ["github", " Time ", "github"],
+    });
+    expect(made.ok).toBe(true);
+    expect(made.data?.uses).toEqual(["github", "Time"]);
+
+    const unchecked = await runCollabTool(ctx, "read_skill", { name: "release" });
+    expect(unchecked.ok).toBe(true);
+    expect(unchecked.data?.stale_tool_names).toBeUndefined();
+
+    const checked = await runCollabTool(
+      { ...ctx, availableToolNames: new Set(["read_skill", "mcp_time_now", "mcp_github_get_issue_2"]) },
+      "read_skill",
+      { name: "release" },
+    );
+    expect(checked.ok).toBe(true);
+    expect(checked.data?.stale_tool_names).toEqual(["mcp_github_create_release", "mcp_github_get_issue"]);
+    expect(String(checked.data?.hint)).toContain("update_skill");
+
+    const cleared = await runCollabTool(ctx, "update_skill", { name: "release", uses: [] });
+    expect(cleared.ok).toBe(true);
+    expect(cleared.data?.uses).toEqual([]);
+    const bad = await runCollabTool(ctx, "update_skill", { name: "release", uses: "github" });
+    expect(bad.ok).toBe(false);
+    expect(bad.error?.code).toBe("invalid_args");
+    expect(staleMcpToolNames("nothing cited", new Set())).toEqual([]);
+    expect(staleMcpToolNames("form mcp_<server>_<tool>", new Set())).toEqual([]);
+    store.close();
+  });
+
+  test("usage_note is set on add, edited without approval, and survives a connection change", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = ctxFor(store, created.bot.id, created.direct_session.id);
+    const added = await runCollabTool({ ...ctx, approved: true }, "add_mcp_server", {
+      name: "github",
+      command: "bun",
+      args: ["run", "gh.ts"],
+      usage_note: "  Only for the real-bot repo.  ",
+    });
+    expect(added.ok).toBe(true);
+    expect(added.data?.usage_note).toBe("Only for the real-bot repo.");
+    const id = String(added.data?.id);
+
+    const noted = await runCollabTool(ctx, "update_mcp_server", {
+      id,
+      usage_note: "Read-only: never open pull requests.",
+    });
+    expect(noted.ok).toBe(true);
+    expect(noted.waitApproval).toBeUndefined();
+    expect(noted.data?.usage_note).toBe("Read-only: never open pull requests.");
+    expect(store.listMcpServers()[0]?.usage_note).toBe("Read-only: never open pull requests.");
+
+    // Changing the connection resets the server-owned instructions but keeps the note.
+    await store.patchMcpServer(id, { instructions: "from handshake", tool_catalog: [{ name: "x", description: "" }] });
+    const reconnected = await runCollabTool({ ...ctx, approved: true }, "update_mcp_server", { id, command: "npx" });
+    expect(reconnected.ok).toBe(true);
+    expect(reconnected.data?.instructions).toBeNull();
+    expect(reconnected.data?.usage_note).toBe("Read-only: never open pull requests.");
+
+    const cleared = await runCollabTool(ctx, "update_mcp_server", { id, usage_note: "" });
+    expect(cleared.ok).toBe(true);
+    expect(cleared.data?.usage_note).toBeNull();
+
+    const tooLong = await runCollabTool(ctx, "update_mcp_server", { id, usage_note: "x".repeat(2001) });
+    expect(tooLong.ok).toBe(false);
+    expect(tooLong.error?.code).toBe("invalid_args");
+    expect(tooLong.error?.message).toBe("usage_note must be at most 2000 characters");
+    const listed = await runCollabTool(ctx, "list_mcp_servers", {});
+    expect((listed.data?.servers as Array<Record<string, unknown>>)[0]?.usage_note).toBeNull();
+    store.close();
+  });
+
   test("add_mcp_server with a URL parks HTTP MCP and writes auth from the approval card", async () => {
     const store = new Store({ endpointKey: memoryKeyStore() });
     const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
@@ -493,6 +573,49 @@ describe("send_message mentions", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.data?.unresolved_mentions).toEqual(["Nobody"]);
+    store.close();
+  });
+
+  test("skill tools only mutate the calling bot and skip the transcript", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const writerCtx = ctxFor(store, writer.bot.id, writer.direct_session.id);
+    const reviewerCtx = ctxFor(store, reviewer.bot.id, reviewer.direct_session.id);
+    const created = await runCollabTool(writerCtx, "create_skill", {
+      name: "commits",
+      description: "when committing",
+      body: "use conventional commits",
+    });
+    expect(created.ok).toBe(true);
+    const skillId = String(created.data?.id);
+    expect(created.emitted.some((item) => item.kind === "skill")).toBe(true);
+    expect(created.emitted.some((item) => item.kind === "message")).toBe(false);
+    expect(store.listMainMessages(writer.direct_session.id, 10)).toEqual([]);
+    const listed = await runCollabTool(writerCtx, "list_skills", {});
+    expect(listed.data?.skills).toEqual([
+      {
+        id: skillId,
+        name: "commits",
+        description: "when committing",
+        uses: [],
+        enabled: true,
+      },
+    ]);
+    const read = await runCollabTool(writerCtx, "read_skill", { name: "commits" });
+    expect(read.data?.body).toBe("use conventional commits");
+    const foreign = await runCollabTool(reviewerCtx, "read_skill", { id: skillId });
+    expect(foreign.error?.code).toBe("not_found");
+    const disabled = await runCollabTool(writerCtx, "update_skill", {
+      id: skillId,
+      enabled: false,
+    });
+    expect(disabled.ok).toBe(true);
+    const hidden = await runCollabTool(writerCtx, "read_skill", { id: skillId });
+    expect(hidden.error?.code).toBe("not_found");
+    const removed = await runCollabTool(writerCtx, "delete_skill", { id: skillId });
+    expect(removed.ok).toBe(true);
+    expect(removed.emitted).toEqual([{ kind: "skill_removed", id: skillId }]);
     store.close();
   });
 });

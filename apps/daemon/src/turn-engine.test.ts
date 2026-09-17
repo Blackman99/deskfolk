@@ -863,6 +863,51 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  test("create_skill is visible on the next hop and read_skill returns the body", async () => {
+    let hop = 0;
+    const systems: string[] = [];
+    let skillId = "";
+    const fixture = await startFixture(({ body }) => {
+      hop += 1;
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      systems.push(system);
+      if (hop === 1) {
+        expect(system).not.toContain("# 技能");
+        return sse(
+          toolCallChunks(
+            "call_1",
+            "create_skill",
+            '{"name":"commits","description":"when committing","body":"use conventional commits"}',
+          ),
+        );
+      }
+      if (hop === 2) {
+        expect(system).toContain("# 技能");
+        expect(system).toContain("## commits");
+        return sse(toolCallChunks("call_2", "read_skill", '{"name":"commits"}'));
+      }
+      return sse(textChunks("ready"));
+    });
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "以后提交用 conventional commits" }),
+    });
+    const upsert = await waitFor(sub.events, (e) => e.event === "skill.upsert" && e.bot_id === botId);
+    skillId = String(upsert.id);
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    expect(skillId.length).toBeGreaterThan(0);
+    expect(systems[0]).not.toContain("# 技能");
+    expect(systems[1]).toContain("## commits");
+    expect(h.store.getSkill(skillId).body).toBe("use conventional commits");
+    expect(h.store.listMainMessages(sessionId, 40).some((m) => m.kind === "bot")).toBe(true);
+    sub.close();
+  });
+
   test("unmentioned group members are judged and a join opens a forked turn", async () => {
     const judgements: Array<Record<string, unknown>> = [];
     let releaseJudgements: (() => void) | undefined;
@@ -1464,6 +1509,40 @@ describe("turn engine on the local API", () => {
     );
     expect(sys.body).toBe("这一轮没写完：没有可用的模型");
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    sub.close();
+  });
+
+  test("continuing an interrupted turn prefixes the next system prompt with 上次断了", async () => {
+    let systems: string[] = [];
+    const fixture = await startFixture(({ body }) => {
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      systems.push(system);
+      return sse(textChunks("picked up"));
+    });
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const trigger = h.store.postMessage(sessionId, { body: "go" });
+    const cut = h.store.createTurn({
+      sessionId,
+      botId,
+      triggerMessageId: trigger.id,
+    });
+    h.store.interruptRunningTurns();
+    const note = h.store
+      .listMainMessages(sessionId, 10)
+      .find((m) => m.kind === "system" && m.body === "中断");
+    expect(note?.id).toBeString();
+    const sub = await subscribe(h);
+    const continued = await fetch(`${h.origin}/v1/turns/continue`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ message_id: note!.id }),
+    });
+    expect(continued.status).toBe(200);
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot");
+    expect(systems.some((text) => text.startsWith("上次断了（工具没有重试）。"))).toBe(true);
+    expect(h.store.getTurn(cut.id).status).toBe("interrupted");
     sub.close();
   });
 

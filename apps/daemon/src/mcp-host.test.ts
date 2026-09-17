@@ -195,6 +195,17 @@ describe("MCP stdio host", () => {
     expect(listed.guides[0]?.instructions).toContain("GitHub");
   });
 
+  test("guides carry the roster-level usage note next to the server's own instructions", async () => {
+    const noted = { ...server("github", "--github"), usage_note: "Only for the real-bot repo." };
+    const host = start([server("probe"), noted]);
+    const listed = await host.listForTurn();
+    const github = listed.guides.find((guide) => guide.name === "github");
+    expect(github?.usageNote).toBe("Only for the real-bot repo.");
+    expect(github?.instructions).toContain("GitHub");
+    const probe = listed.guides.find((guide) => guide.name === "probe");
+    expect(probe?.usageNote).toBeNull();
+  });
+
   test("collision suffixes stay stable when a turn lists a subset", async () => {
     const host = start([server("a-b"), server("a_b")]);
     const all = await host.listForTurn();
