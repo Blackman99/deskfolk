@@ -1,3 +1,7 @@
+<script lang="ts" module>
+  export type FocusRect = { x: number; y: number; w: number; h: number };
+</script>
+
 <script lang="ts">
   import { tick } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
@@ -15,7 +19,9 @@
     instant = false,
     calloutTarget = null,
     calloutText = null,
-    frozenBeat = null
+    frozenBeat = null,
+    skipToEnd = false,
+    onFocus
   }: {
     scene: number;
     t: Dict;
@@ -24,6 +30,10 @@
     calloutText?: string | null;
     /** With `instant`, show this beat instead of the scene's last one (used by the brand image studio). */
     frozenBeat?: number | null;
+    /** Jump straight to the scene's final beat (used when the reader scrolls back up). */
+    skipToEnd?: boolean;
+    /** Reports the callout target's rectangle in design px so a narrow stage can zoom onto it. */
+    onFocus?: (rect: FocusRect | null) => void;
   } = $props();
 
   let beat = $state(0);
@@ -37,7 +47,7 @@
     const current = scene;
     const offsets = SCENE_BEATS[current] ?? [];
     beat = 0;
-    if (instant) {
+    if (instant || skipToEnd) {
       beat = frozenBeat ?? maxBeat(current);
       return;
     }
@@ -106,14 +116,17 @@
       if (cancelled) return;
       if (!target) {
         callout = null;
+        onFocus?.(null);
         return;
       }
       const [name, prefer = 'right'] = target.split(':') as [string, Side];
       const r = measure(name);
       if (!r) {
         callout = null;
+        onFocus?.(null);
         return;
       }
+      onFocus?.(r);
       let side: Side = prefer;
       let x: number;
       let y: number;

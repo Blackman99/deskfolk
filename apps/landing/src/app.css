@@ -16,7 +16,7 @@
   --paper: #ffffff;
   --ink: #0f172a;
   --ink-2: #475569;
-  --ink-3: #7c8a9e;
+  --ink-3: #64748b;
   --line: #d9e0e8;
   --line-2: #eaeef3;
 
@@ -209,6 +209,19 @@ body {
 
 .mono {
   font-family: var(--font-mono);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .page {

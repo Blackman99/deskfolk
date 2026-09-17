@@ -55,4 +55,10 @@
       opacity: 0;
     }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret {
+      animation: none;
+    }
+  }
 </style>

@@ -17,8 +17,16 @@
     return resolve(`/${targetLang}${suffix}`);
   });
 
+  let menuOpen = $state(false);
+
   $effect(() => {
     document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  });
+
+  $effect(() => {
+    // Close the mobile menu whenever the route changes.
+    void page.url.pathname;
+    menuOpen = false;
   });
 </script>
 
@@ -43,12 +51,39 @@
       <div class="actions">
         <ThemeToggle {t} />
         <a class="lang" href={switchedPath} hreflang={targetLang}>{t.nav.switchLang}</a>
+        <button
+          type="button"
+          class="menu-btn"
+          aria-expanded={menuOpen}
+          aria-controls="site-menu"
+          aria-label={menuOpen ? t.nav.closeMenu : t.nav.menu}
+          onclick={() => (menuOpen = !menuOpen)}
+        >
+          {#if menuOpen}
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          {:else}
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          {/if}
+        </button>
         <a class="gh" href={GITHUB_URL} target="_blank" rel="noreferrer">
           <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
           <span>{t.nav.github}</span>
         </a>
       </div>
     </div>
+
+    {#if menuOpen}
+      <nav id="site-menu" class="menu" aria-label={t.nav.menu}>
+        <a href="{base}/{lang}#demo" onclick={() => (menuOpen = false)}>{t.nav.demo}</a>
+        <a href="{base}/{lang}#boundaries" onclick={() => (menuOpen = false)}>{t.nav.boundaries}</a>
+        <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
+        <a href="{base}/{lang}#quickstart" onclick={() => (menuOpen = false)}>{t.nav.quickstart}</a>
+        <a href="{base}/{lang}/manifesto">{t.nav.manifesto}</a>
+        <a href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
+        <a href={switchedPath} hreflang={targetLang}>{t.nav.switchLang}</a>
+        <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    {/if}
   </header>
 
   <main>
@@ -63,6 +98,8 @@
         <p class="fine">{t.footer.mit}</p>
       </div>
       <nav class="foot-links" aria-label="Footer">
+        <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
+        <a href="{base}/{lang}#boundaries">{t.nav.boundaries}</a>
         <a href="{base}/{lang}/manifesto">{t.nav.manifesto}</a>
         <a href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
@@ -181,6 +218,48 @@
     display: none;
   }
 
+  .lang {
+    display: none;
+  }
+
+  .menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    min-height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--nav-h);
+    display: flex;
+    flex-direction: column;
+    padding: 8px var(--gutter) 14px;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-float);
+  }
+
+  .menu a {
+    padding: 12px 4px;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 16px;
+    border-bottom: 1px solid var(--line-2);
+  }
+
+  .menu a:last-child {
+    border-bottom: 0;
+  }
+
   @media (min-width: 480px) {
     .brand-wip {
       display: inline-block;
@@ -240,9 +319,20 @@
     text-underline-offset: 4px;
   }
 
+  @media (min-width: 640px) {
+    .lang {
+      display: inline-flex;
+    }
+  }
+
   @media (min-width: 900px) {
     .links {
       display: flex;
+    }
+
+    .menu-btn,
+    .menu {
+      display: none;
     }
 
     .foot-inner {

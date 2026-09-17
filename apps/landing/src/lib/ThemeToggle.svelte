@@ -22,7 +22,7 @@
       type="button"
       role="radio"
       class="opt"
-      class:on={getTheme() === theme}
+      data-value={theme}
       aria-checked={getTheme() === theme}
       aria-label={labels[theme]}
       title={labels[theme]}
@@ -67,7 +67,11 @@
     color: var(--ink);
   }
 
-  .opt.on {
+  /* Selected state follows the root attribute the inline script sets before paint. */
+  :global(:root[data-theme-preference='light']) .opt[data-value='light'],
+  :global(:root[data-theme-preference='dark']) .opt[data-value='dark'],
+  :global(:root:not([data-theme-preference])) .opt[data-value='system'],
+  :global(:root[data-theme-preference='system']) .opt[data-value='system'] {
     background: var(--teal-tint);
     color: var(--teal-2);
   }

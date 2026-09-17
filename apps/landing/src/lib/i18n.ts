@@ -26,6 +26,8 @@ export type Dict = {
     switchLang: string;
     wip: string;
     download: string;
+    menu: string;
+    closeMenu: string;
     theme: string;
     themeSystem: string;
     themeLight: string;
@@ -166,6 +168,7 @@ export type Dict = {
     imageAlt: string;
   };
   docs: {
+    toc: string;
     manifestoTag: string;
     manifestoIntro: string;
     roadmapTag: string;
@@ -187,6 +190,8 @@ const zh: Dict = {
     switchLang: 'English',
     wip: 'Alpha',
     download: '下载',
+    menu: '菜单',
+    closeMenu: '关闭菜单',
     theme: '外观',
     themeSystem: '跟随系统',
     themeLight: '亮色',
@@ -208,7 +213,7 @@ const zh: Dict = {
   },
   demo: {
     heading: '从空名册到交付 report.md，一次走完',
-    intro: '右侧窗口会随着你的滚动自己操作起来。每一步都是应用里真实存在的功能，不是概念图。',
+    intro: '右侧窗口会随着你的滚动自己操作起来。窗口是按应用当前实现重建的示意，每一步对应真实存在的功能，不是概念图。',
     railLabel: '演示进度',
     steps: [
       {
@@ -453,6 +458,7 @@ const zh: Dict = {
     imageAlt: 'Real Bot：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
+    toc: '目录',
     manifestoTag: 'CONTEXT.md',
     manifestoIntro: '这份文档定义 Real Bot 的领域语言、架构决策和明确回避的反模式。页面在构建时直接由仓库根目录的 CONTEXT.md 生成。',
     roadmapTag: 'ROADMAP.md',
@@ -474,6 +480,8 @@ const en: Dict = {
     switchLang: '中文',
     wip: 'Alpha',
     download: 'Download',
+    menu: 'Menu',
+    closeMenu: 'Close menu',
     theme: 'Appearance',
     themeSystem: 'System',
     themeLight: 'Light',
@@ -495,7 +503,7 @@ const en: Dict = {
   },
   demo: {
     heading: 'From an empty roster to a delivered report.md, in one pass',
-    intro: 'The window on the right operates itself as you scroll. Every step is a feature that exists in the app today, not a concept sketch.',
+    intro: 'The window on the right operates itself as you scroll. It is a reconstruction of the current app; every step maps to a feature that exists today, not a concept sketch.',
     railLabel: 'Walkthrough progress',
     steps: [
       {
@@ -741,6 +749,7 @@ const en: Dict = {
     imageAlt: 'Real Bot: three bots collaborating on report.md in a group chat window'
   },
   docs: {
+    toc: 'Contents',
     manifestoTag: 'CONTEXT.md',
     manifestoIntro: 'This document defines Real Bot’s domain language, architectural decisions and the anti-patterns it avoids. The page is generated at build time from CONTEXT.md at the repository root.',
     roadmapTag: 'ROADMAP.md',

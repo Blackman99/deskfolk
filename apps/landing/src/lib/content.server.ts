@@ -4,7 +4,63 @@ import { Marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import { GITHUB_BLOB_MAIN } from './site';
 
-const marked = new Marked({ gfm: true, breaks: true });
+export type TocEntry = { id: string; text: string; level: number };
+
+/** Slug that keeps CJK characters so anchors read like the heading itself. */
+function slugify(text: string): string {
+  return text
+    .trim()
+    .replace(/[\s/]+/g, '-')
+    .replace(/[^\p{L}\p{N}_-]/gu, '')
+    .toLowerCase();
+}
+
+function createMarked(toc: TocEntry[]) {
+  const seen = new Map<string, number>();
+  const unique = (base: string): string => {
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base}-${n + 1}`;
+  };
+  let inQuote = false;
+  const marked = new Marked({ gfm: true, breaks: true });
+  marked.use({
+    renderer: {
+      blockquote({ tokens }) {
+        inQuote = true;
+        const body = this.parser.parse(tokens);
+        inQuote = false;
+        return `<blockquote>\n${body}</blockquote>\n`;
+      },
+      heading({ tokens, depth }) {
+        const html = this.parser.parseInline(tokens);
+        const text = tokens.map((tk) => ('text' in tk ? String(tk.text) : '')).join('');
+        const id = unique(slugify(text) || `h-${depth}`);
+        if (depth >= 2 && depth <= 3) toc.push({ id, text: text.trim(), level: depth });
+        return `<h${depth} id="${id}">${html}</h${depth}>\n`;
+      },
+      paragraph({ tokens }) {
+        const html = this.parser.parseInline(tokens);
+        // Glossary entries in CONTEXT.md are paragraphs that open with a bold term and a colon.
+        const first = tokens[0];
+        const second = tokens[1];
+        if (
+          !inQuote &&
+          first?.type === 'strong' &&
+          second?.type === 'text' &&
+          /^\s*[：:]/.test(String(second.raw ?? second.text ?? ''))
+        ) {
+          const term = 'text' in first ? String(first.text) : '';
+          const id = unique(`term-${slugify(term) || 'entry'}`);
+          toc.push({ id, text: term.trim(), level: 3 });
+          return `<p id="${id}" class="term">${html}</p>\n`;
+        }
+        return `<p>${html}</p>\n`;
+      }
+    }
+  });
+  return marked;
+}
 
 function withBase(pathname: string): string {
   const base = process.env.BASE_PATH ?? '';
@@ -23,6 +79,13 @@ function sanitizeOptions(lang: 'zh' | 'en'): sanitizeHtml.IOptions {
       a: ['href', 'target', 'rel', 'class', 'title'],
       code: ['class'],
       pre: ['class'],
+      p: ['id', 'class'],
+      h1: ['id'],
+      h2: ['id'],
+      h3: ['id'],
+      h4: ['id'],
+      h5: ['id'],
+      h6: ['id'],
       ol: ['start'],
       th: ['align'],
       td: ['align']
@@ -75,7 +138,18 @@ function findRepoRoot(startDir: string = process.cwd()): string {
   return path.resolve(startDir, '../..');
 }
 
-export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', lang: 'zh' | 'en' = 'zh'): { title: string; contentHtml: string } {
+/** Version of the desktop app as declared in tauri.conf.json (the release tag source of truth). */
+export function getAppVersion(): string {
+  const conf = path.join(findRepoRoot(), 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
+  try {
+    const parsed = JSON.parse(fs.readFileSync(conf, 'utf-8')) as { version?: string };
+    return parsed.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', lang: 'zh' | 'en' = 'zh'): { title: string; contentHtml: string; toc: TocEntry[] } {
   const repoRoot = findRepoRoot();
   let filename = 'CONTEXT.md';
 
@@ -91,7 +165,8 @@ export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', 
   if (!fs.existsSync(targetPath)) {
     return {
       title: filename,
-      contentHtml: `<p>Document ${filename} not found.</p>`
+      contentHtml: `<p>Document ${filename} not found.</p>`,
+      toc: []
     };
   }
 
@@ -99,8 +174,9 @@ export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', 
   const titleMatch = raw.match(/^#\s+(.+)$/m);
   const title = titleMatch ? titleMatch[1].trim() : filename;
 
-  const rawHtml = marked.parse(raw) as string;
+  const toc: TocEntry[] = [];
+  const rawHtml = createMarked(toc).parse(raw) as string;
   const contentHtml = sanitizeHtml(rawHtml, sanitizeOptions(lang));
 
-  return { title, contentHtml };
+  return { title, contentHtml, toc };
 }

@@ -2,17 +2,20 @@
   import { base } from '$app/paths';
   import Walkthrough from '$lib/demo/Walkthrough.svelte';
   import Seo from '$lib/Seo.svelte';
+  import CopyButton from '$lib/CopyButton.svelte';
   import { DICT, type Lang } from '$lib/i18n';
   import { GITHUB_URL, GITHUB_BLOB_MAIN, LATEST_RELEASE_URL } from '$lib/site';
 
   let { data } = $props();
   const lang: Lang = $derived(data.lang);
   const t = $derived(DICT[lang]);
+  const version: string = $derived(data.version);
+  const cloneCommands = $derived(`git clone ${GITHUB_URL}.git\ncd real-bot\npnpm install\npnpm dev`);
 </script>
 
 <Seo {lang} title={t.seo.title} description={t.seo.description} imageAlt={t.seo.imageAlt} softwareSchema />
 
-<Walkthrough {t} {lang} />
+<Walkthrough {t} {lang} {version} />
 
 <!-- Boundaries -->
 <section class="boundaries" id="boundaries">
@@ -66,9 +69,15 @@
 
     <div class="qs-side">
       <div class="download">
-        <h3 class="serif">{t.quickstart.download.title}</h3>
+        <div class="dl-head">
+          <h3 class="serif">{t.quickstart.download.title}</h3>
+          <span class="version mono">v{version}</span>
+        </div>
         <p>{t.quickstart.download.body}</p>
-        <pre class="mono dl-note">{t.quickstart.download.note}</pre>
+        <div class="dl-note-row">
+          <pre class="mono dl-note">{t.quickstart.download.note}</pre>
+          <CopyButton text={t.quickstart.download.note} label={t.hero.copy} doneLabel={t.hero.copied} compact />
+        </div>
         <a class="btn btn-primary" href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.quickstart.download.link}</a>
       </div>
 
@@ -76,6 +85,7 @@
       <div class="term-bar">
         <span class="l r"></span><span class="l y"></span><span class="l g"></span>
         <span class="term-title mono">zsh — real-bot</span>
+        <span class="term-copy"><CopyButton text={cloneCommands} label={t.hero.copy} doneLabel={t.hero.copied} compact /></span>
       </div>
       <pre class="mono"><span class="c"># {t.quickstart.step1}</span>
 <span class="p">$</span> git clone {GITHUB_URL}.git
@@ -280,11 +290,38 @@
     gap: 12px;
   }
 
+  .dl-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
   .download h3 {
     margin: 0;
     font-size: 1.3rem;
     font-weight: 700;
     line-height: 1.3;
+  }
+
+  .version {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 2px 8px;
+  }
+
+  .dl-note-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .dl-note-row .dl-note {
+    flex: 1;
+    min-width: 0;
   }
 
   .download p {
@@ -339,6 +376,18 @@
     margin-left: 8px;
     font-size: 12px;
     color: #94a3b8;
+    flex: 1;
+  }
+
+  .term-copy :global(.copy) {
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  .term-copy :global(.copy:hover) {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   pre {

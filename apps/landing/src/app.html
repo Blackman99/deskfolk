@@ -19,6 +19,7 @@
 					if (raw === 'light' || raw === 'dark') {
 						document.documentElement.setAttribute('data-theme', raw);
 					}
+					document.documentElement.setAttribute('data-theme-preference', raw === 'light' || raw === 'dark' ? raw : 'system');
 				} catch (e) {}
 			})();
 		</script>

@@ -2,10 +2,11 @@
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
   import type { Dict, Lang } from '$lib/i18n';
-  import AppMock from './AppMock.svelte';
   import { LATEST_RELEASE_URL } from '$lib/site';
+  import CopyButton from '$lib/CopyButton.svelte';
+  import AppMock, { type FocusRect } from './AppMock.svelte';
 
-  let { t, lang }: { t: Dict; lang: Lang } = $props();
+  let { t, lang, version }: { t: Dict; lang: Lang; version: string } = $props();
 
   const DESIGN_W = 900;
   const DESIGN_H = 580;
@@ -23,28 +24,69 @@
     'tray-status:right'
   ];
 
+  /**
+   * Narrow screens zoom the window onto the part that matters. Until the callout
+   * target exists in a scene, these regions (design px) are used instead.
+   */
+  const FOCUS_FALLBACK: (FocusRect | null)[] = [
+    null,
+    { x: 180, y: 60, w: 540, h: 470 },
+    { x: 0, y: 0, w: 520, h: 580 },
+    { x: 200, y: 44, w: 700, h: 536 },
+    { x: 200, y: 44, w: 700, h: 536 },
+    { x: 200, y: 44, w: 700, h: 536 },
+    { x: 200, y: 44, w: 700, h: 536 },
+    { x: 380, y: 44, w: 520, h: 536 },
+    { x: 150, y: 0, w: 600, h: 400 }
+  ];
+
   let scene = $state(0);
-  let scale = $state(0.8);
+  let skipToEnd = $state(false);
+  let stageW = $state(720);
+  let narrow = $state(false);
   let instant = $state(false);
-  let copied = $state(false);
+  let focusTarget = $state<FocusRect | null>(null);
   let stageEl: HTMLDivElement | undefined = $state();
   let rootEl: HTMLElement | undefined = $state();
 
   const calloutText = $derived(scene > 0 ? t.demo.steps[scene - 1]?.callout ?? null : null);
   const calloutTarget = $derived(CALLOUT_TARGETS[scene] ?? null);
-  const railLabel = $derived(
-    scene > 0 ? `${String(scene).padStart(2, '0')}  ${t.demo.steps[scene - 1]?.title ?? ''}` : t.demo.railLabel
-  );
+
+  /** Camera: whole window on wide screens; a focused region on narrow ones. */
+  const camera = $derived.by(() => {
+    const fit = stageW / DESIGN_W;
+    if (!narrow) return { s: fit, tx: 0, ty: 0 };
+    const region = focusTarget ? boxAround(focusTarget) : FOCUS_FALLBACK[scene];
+    if (!region) return { s: fit, tx: 0, ty: 0 };
+    const stageH = stageW * (DESIGN_H / DESIGN_W);
+    const s = Math.min(stageW / region.w, stageH / region.h);
+    const cx = region.x + region.w / 2;
+    const cy = region.y + region.h / 2;
+    let tx = stageW / 2 - cx * s;
+    let ty = stageH / 2 - cy * s;
+    tx = Math.min(0, Math.max(stageW - DESIGN_W * s, tx));
+    ty = Math.min(0, Math.max(stageH - DESIGN_H * s, ty));
+    return { s, tx, ty };
+  });
+
+  function boxAround(r: FocusRect): FocusRect {
+    const w = Math.min(DESIGN_W, Math.max(460, r.w + 80));
+    const h = Math.min(DESIGN_H, Math.max(w * (DESIGN_H / DESIGN_W), r.h + 80));
+    let x = r.x + r.w / 2 - w / 2;
+    let y = r.y + r.h / 2 - h / 2;
+    x = Math.max(0, Math.min(DESIGN_W - w, x));
+    y = Math.max(0, Math.min(DESIGN_H - h, y));
+    return { x, y, w, h };
+  }
 
   function pad(n: number): string {
     return String(n).padStart(2, '0');
   }
 
-  function copyCommand() {
-    navigator.clipboard?.writeText(t.hero.runCommand).then(() => {
-      copied = true;
-      setTimeout(() => (copied = false), 1800);
-    });
+  function setScene(next: number) {
+    if (next === scene) return;
+    skipToEnd = next < scene;
+    scene = next;
   }
 
   function jumpTo(n: number) {
@@ -53,29 +95,50 @@
   }
 
   onMount(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    instant = mq.matches;
-    const onMq = () => (instant = mq.matches);
-    mq.addEventListener('change', onMq);
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const width = window.matchMedia('(max-width: 1023px)');
+    instant = motion.matches;
+    narrow = width.matches;
+    const onMotion = () => (instant = motion.matches);
+    const onWidth = () => (narrow = width.matches);
+    motion.addEventListener('change', onMotion);
+    width.addEventListener('change', onWidth);
 
     const ro = new ResizeObserver((entries) => {
-      for (const e of entries) scale = e.contentRect.width / DESIGN_W;
+      for (const e of entries) stageW = e.contentRect.width;
     });
     if (stageEl) ro.observe(stageEl);
 
+    // Adjacent steps can both touch the observation band; pick the one nearest the viewport centre.
     const steps = rootEl ? Array.from(rootEl.querySelectorAll<HTMLElement>('[data-scene]')) : [];
+    const visible = new Set<Element>();
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
-          if (e.isIntersecting) scene = Number(e.target.getAttribute('data-scene'));
+          if (e.isIntersecting) visible.add(e.target);
+          else visible.delete(e.target);
         }
+        if (visible.size === 0) return;
+        const mid = window.innerHeight / 2;
+        let best: Element | null = null;
+        let bestDist = Infinity;
+        for (const el of visible) {
+          const r = el.getBoundingClientRect();
+          const dist = Math.abs(r.top + r.height / 2 - mid);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = el;
+          }
+        }
+        if (best) setScene(Number(best.getAttribute('data-scene')));
       },
       { rootMargin: '-42% 0px -42% 0px', threshold: 0 }
     );
     steps.forEach((el) => io.observe(el));
 
     return () => {
-      mq.removeEventListener('change', onMq);
+      motion.removeEventListener('change', onMotion);
+      width.removeEventListener('change', onWidth);
       ro.disconnect();
       io.disconnect();
     };
@@ -86,7 +149,11 @@
   <div class="page walk-grid">
     <!-- Hero copy: scene 0 -->
     <div class="hero step" data-scene="0">
-      <p class="wip"><span class="wip-mark"></span>{t.hero.wipNote}</p>
+      <p class="wip">
+        <span class="wip-mark"></span>
+        <span>{t.hero.wipNote}</span>
+        <span class="version mono">v{version}</span>
+      </p>
       <h1 class="serif">
         {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
       </h1>
@@ -98,7 +165,7 @@
       <div class="run">
         <span class="run-label">{t.hero.runLabel}</span>
         <code class="mono">{t.hero.runCommand}</code>
-        <button class="copy" onclick={copyCommand} type="button">{copied ? t.hero.copied : t.hero.copy}</button>
+        <CopyButton text={t.hero.runCommand} label={t.hero.copy} doneLabel={t.hero.copied} compact />
       </div>
       <p class="scroll-hint">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -109,30 +176,42 @@
     <!-- Sticky stage -->
     <div class="stage-col">
       <div class="sticky">
-        <div class="stage" bind:this={stageEl} style:border-radius="{12 * scale}px">
-          <div class="scaler" style:transform="scale({scale})">
-            <AppMock {scene} {t} {instant} {calloutTarget} {calloutText} />
+        <div class="stage" bind:this={stageEl} style:border-radius="{12 * camera.s}px">
+          <div
+            class="scaler"
+            class:animated={narrow && !instant}
+            style:transform="translate({camera.tx}px, {camera.ty}px) scale({camera.s})"
+          >
+            <AppMock
+              {scene}
+              {t}
+              {instant}
+              {skipToEnd}
+              {calloutTarget}
+              {calloutText}
+              onFocus={(r) => (focusTarget = r)}
+            />
           </div>
         </div>
         <p class="caption" class:on={!!calloutText}>{calloutText ?? ''}</p>
-        <div class="rail" aria-label={t.demo.railLabel}>
-          <span class="rail-label">{railLabel}</span>
-          <ol class="rail-segments">
-            {#each t.demo.steps as step, i}
-              <li>
-                <button
-                  type="button"
-                  class="seg"
-                  class:on={scene === i + 1}
-                  class:done={scene > i + 1}
-                  aria-label="{pad(i + 1)} {step.title}"
-                  aria-current={scene === i + 1 ? 'step' : undefined}
-                  onclick={() => jumpTo(i + 1)}
-                ></button>
-              </li>
-            {/each}
-          </ol>
-        </div>
+        <ol class="rail" aria-label={t.demo.railLabel}>
+          {#each t.demo.steps as step, i}
+            <li>
+              <button
+                type="button"
+                class="seg"
+                class:on={scene === i + 1}
+                class:done={scene > i + 1}
+                aria-current={scene === i + 1 ? 'step' : undefined}
+                title={step.title}
+                onclick={() => jumpTo(i + 1)}
+              >
+                <span class="seg-num">{pad(i + 1)}</span>
+                <span class="seg-title">{step.title}</span>
+              </button>
+            </li>
+          {/each}
+        </ol>
       </div>
     </div>
 
@@ -144,9 +223,12 @@
       </header>
       {#each t.demo.steps as step, i}
         <article class="step" data-scene={i + 1} class:on={scene === i + 1}>
-          <span class="num serif" aria-hidden="true">{pad(i + 1)}</span>
-          <h3 class="serif">{step.title}</h3>
+          <button type="button" class="step-link" onclick={() => jumpTo(i + 1)}>
+            <span class="num serif" aria-hidden="true">{pad(i + 1)}</span>
+            <h3 class="serif">{step.title}</h3>
+          </button>
           <p>{step.body}</p>
+          <p class="sr-only">{step.callout}</p>
         </article>
       {/each}
     </div>
@@ -172,7 +254,8 @@
   }
 
   .wip {
-    display: inline-flex;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     margin: 0;
@@ -186,6 +269,14 @@
     border-radius: 2px;
     background: var(--mustard);
     flex: none;
+  }
+
+  .version {
+    font-size: 12px;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1px 7px;
   }
 
   h1 {
@@ -243,23 +334,6 @@
     font-size: 13.5px;
   }
 
-  .copy {
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--ink-2);
-    background: var(--ground);
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    padding: 4px 10px;
-    cursor: pointer;
-  }
-
-  .copy:hover {
-    color: var(--teal-2);
-    border-color: var(--teal-line);
-  }
-
   .scroll-hint {
     display: inline-flex;
     align-items: center;
@@ -297,6 +371,7 @@
     position: relative;
     width: 100%;
     aspect-ratio: 900 / 580;
+    overflow: hidden;
     box-shadow: var(--shadow-window);
     background: var(--app-bg);
   }
@@ -308,6 +383,10 @@
     width: 900px;
     height: 580px;
     transform-origin: 0 0;
+  }
+
+  .scaler.animated {
+    transition: transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
   }
 
   .caption {
@@ -324,49 +403,65 @@
     border-left-color: var(--teal);
   }
 
+  /* Progress rail: eight clickable chips; the active one shows its title. */
   .rail {
     display: flex;
-    align-items: center;
-    gap: 14px;
-    font-size: 13px;
-    color: var(--ink-2);
-  }
-
-  .rail-label {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .rail-segments {
-    display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 6px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
   .seg {
-    display: block;
-    width: 22px;
-    height: 6px;
-    border-radius: 3px;
-    border: 0;
-    padding: 0;
-    background: var(--line);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper);
+    color: var(--ink-3);
+    font: inherit;
+    font-size: 12.5px;
     cursor: pointer;
-    transition: background-color 200ms ease;
+    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+  }
+
+  .seg:hover {
+    color: var(--ink);
+    border-color: var(--teal-line);
+  }
+
+  .seg-num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .seg-title {
+    display: none;
+    color: var(--ink);
+    font-weight: 500;
+    max-width: 22em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .seg.done {
-    background: var(--teal-line);
+    border-color: var(--teal-line);
+    color: var(--teal);
   }
 
   .seg.on {
-    background: var(--teal);
+    background: var(--teal-tint);
+    border-color: var(--teal);
+    color: var(--teal-2);
+  }
+
+  .seg.on .seg-title {
+    display: inline;
   }
 
   /* ── Steps ── */
@@ -407,6 +502,24 @@
     opacity: 0.55;
   }
 
+  .step-link {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .step-link:hover h3 {
+    color: var(--teal-2);
+  }
+
   .num {
     font-size: 2.6rem;
     line-height: 1;
@@ -422,6 +535,7 @@
     font-weight: 700;
     color: var(--ink);
     text-wrap: balance;
+    transition: color 160ms ease;
   }
 
   .step p {
@@ -488,7 +602,9 @@
     }
 
     .step,
-    .seg {
+    .seg,
+    .step h3,
+    .scaler.animated {
       transition: none;
     }
 

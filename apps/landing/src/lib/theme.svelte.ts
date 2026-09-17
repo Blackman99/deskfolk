@@ -21,6 +21,7 @@ export function setTheme(next: Theme): void {
   } else {
     document.documentElement.setAttribute('data-theme', next);
   }
+  document.documentElement.setAttribute('data-theme-preference', next);
   try {
     if (next === 'system') localStorage.removeItem(STORAGE_KEY);
     else localStorage.setItem(STORAGE_KEY, next);
