@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { parseArtifactHref } from "./artifacts.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 test("complete markdown turns emphasis and a fenced block into HTML", () => {
@@ -39,6 +40,14 @@ test("workspace-relative markdown links become artifact hrefs", () => {
   const html = renderMarkdown("稿在 [mock](out/mock.png) 和 [spec](https://example.com/spec)");
   expect(html).toContain('href="artifact:out%2Fmock.png"');
   expect(html).toContain('href="https://example.com/spec"');
+});
+
+test("CJK workspace links round-trip through marked encoding", () => {
+  const path = "inbox/制片交接-转审片-v5.md";
+  const html = renderMarkdown(`见 [${path}](${path})`);
+  const href = html.match(/href="([^"]+)"/)?.[1];
+  expect(href).toBeTruthy();
+  expect(parseArtifactHref(href ?? "")).toBe(path);
 });
 
 test("backticks and extraPaths become clickable artifact links", () => {

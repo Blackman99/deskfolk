@@ -152,19 +152,30 @@ export function looksLikeWorkspaceHref(href: string): boolean {
 }
 
 export function artifactHref(path: string): string {
-  return `${ARTIFACT_HREF_SCHEME}${encodeURIComponent(path)}`;
+  return `${ARTIFACT_HREF_SCHEME}${encodeURIComponent(decodePercentPath(path))}`;
 }
 
 export function parseArtifactHref(href: string): string | null {
   const raw = href.trim();
-  if (raw.startsWith(ARTIFACT_HREF_SCHEME)) {
+  if (!raw.startsWith(ARTIFACT_HREF_SCHEME)) return null;
+  const decoded = decodePercentPath(raw.slice(ARTIFACT_HREF_SCHEME.length));
+  return decoded || null;
+}
+
+/** marked encodeURI's CJK hrefs before sanitize; encodeURIComponent then double-encodes. Undo until stable. */
+function decodePercentPath(path: string): string {
+  let current = path;
+  for (let i = 0; i < 3; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(current)) break;
     try {
-      return decodeURIComponent(raw.slice(ARTIFACT_HREF_SCHEME.length));
+      const next = decodeURIComponent(current);
+      if (next === current) break;
+      current = next;
     } catch {
-      return null;
+      break;
     }
   }
-  return null;
+  return current;
 }
 
 /** Join a workspace-relative POSIX path onto an absolute workspace root. Rejects escapes. */

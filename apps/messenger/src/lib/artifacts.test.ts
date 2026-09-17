@@ -43,6 +43,14 @@ test("artifact href round-trips a relative path", () => {
   expect(parseArtifactHref(href)).toBe("out/mock.png");
 });
 
+test("artifact href round-trips CJK paths and undoes marked double-encoding", () => {
+  const path = "inbox/制片交接-转审片-v5.md";
+  expect(parseArtifactHref(artifactHref(path))).toBe(path);
+  expect(parseArtifactHref(artifactHref(encodeURI(path)))).toBe(path);
+  const doubleEncoded = `artifact:${encodeURIComponent(encodeURI(path))}`;
+  expect(parseArtifactHref(doubleEncoded)).toBe(path);
+});
+
 test("absWorkspacePath joins inside the root and rejects escapes", () => {
   expect(absWorkspacePath("/Users/me/ws", "out/mock.png")).toBe("/Users/me/ws/out/mock.png");
   expect(absWorkspacePath("/Users/me/ws", "../secret.txt")).toBeNull();
