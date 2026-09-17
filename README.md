@@ -41,6 +41,7 @@ xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
 **Run from source** (macOS, Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
 
 ```bash
+cd real-bot
 pnpm install
 pnpm dev
 ```
