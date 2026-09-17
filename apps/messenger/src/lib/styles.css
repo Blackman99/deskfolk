@@ -1256,6 +1256,12 @@ select:focus-visible {
   background: var(--accent-tint);
 }
 
+.foot-icon-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
 .foot-icon-btn:disabled {
   opacity: 0.35;
   cursor: default;
