@@ -1208,7 +1208,7 @@ select:focus-visible {
 /* Sidebar Footer */
 .foot {
   border-top: 1px solid var(--line);
-  padding: 8px 14px;
+  padding: 6px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1219,24 +1219,24 @@ select:focus-visible {
   z-index: 20;
 }
 
-.foot-left {
+.foot-left,
+.foot-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .foot-icon-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  border: 1px solid var(--line);
-  background: var(--btn-secondary-bg);
+  border: 1px solid transparent;
+  background: transparent;
   border-radius: var(--radius-sm);
   color: var(--muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-xs);
   transition: all 0.15s ease;
   position: relative;
   cursor: pointer;
@@ -1244,9 +1244,10 @@ select:focus-visible {
 }
 
 .foot-icon-btn:hover {
-  border-color: var(--line-hover);
+  border-color: var(--line);
   color: var(--ink);
   background: var(--btn-secondary-hover);
+  box-shadow: var(--shadow-xs);
 }
 
 .foot-icon-btn.is-active {
@@ -1256,7 +1257,7 @@ select:focus-visible {
 }
 
 .foot-icon-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: default;
 }
 
@@ -1268,16 +1269,16 @@ select:focus-visible {
 
 .foot-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 15px;
-  height: 15px;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
   line-height: 12px;
   padding: 0 3px;
   border-radius: 999px;
   background: var(--accent);
   color: #ffffff;
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 700;
   display: flex;
   align-items: center;
