@@ -18,9 +18,14 @@ describe("prompts", () => {
     expect(text).toContain("## 名字\n\nWriter");
     expect(text).toContain("# 系统指令");
     expect(text).toContain("本轮由标了「本轮触发」的那一条叫醒");
+    expect(text).toContain("再看局面和它前后的转录");
+    expect(text).toContain("群里已经对同一份产物、同一句结论对齐了");
+    expect(text).toContain("对方已经在场并同意时不要再点名");
+    expect(text).toContain("不要在 Bot 之间空转");
     expect(text).toContain("没有新信息时不要调用 send_message");
     expect(text).toContain("本轮没有新工作");
     expect(text).toContain("主转录里不要留痕迹");
+    expect(text).toContain("会让对方必须下场（群里已有活轮则听进那一轮）");
     expect(text).toContain("只在对方有尚未看见的新工作要接手时才点名");
     expect(text).toContain("用户已经向全员说过的请求，不要再 @ 一遍去催在场的人");
     expect(text).toContain("本轮写入的工作区文件会自动变成可点链接");
@@ -119,6 +124,10 @@ describe("prompts", () => {
     expect(text).toContain("## Name\n\nWriter");
     expect(text).toContain("# System");
     expect(text).toContain("（本轮触发）");
+    expect(text).toContain("forces that teammate to take the floor");
+    expect(text).toContain("then the situation and the transcript around it");
+    expect(text).toContain("If the group already agrees on the same artifact and the same conclusion");
+    expect(text).toContain("Do not mention someone who is already present and in agreement");
     expect(text).toContain("mention someone only when they have new work they have not already seen");
     expect(text).toContain("Do not re-mention people who already heard the user's group-wide request");
     expect(text).toContain("Workspace files written this turn become clickable links automatically");
@@ -139,7 +148,9 @@ describe("prompts", () => {
   });
 
   test("judgement system prefers pass when the trigger restates recent work", () => {
-    expect(JUDGEMENT_SYSTEM).toContain("触发条与最近转录是同一件事的重复或转述，则 pass");
+    expect(JUDGEMENT_SYSTEM).toContain("situation 和 recent_messages 是背景");
+    expect(JUDGEMENT_SYSTEM).toContain("situation 里已有人在做这件事且触发条没有新产物或新结论，则 pass");
+    expect(JUDGEMENT_SYSTEM).toContain("触发条与最近转录是同一件事的重复或转述");
     expect(JUDGEMENT_SYSTEM).toContain("把已经向全员提出的请求再点名一遍而 join");
     expect(JUDGEMENT_SYSTEM).toContain("只为声明没有新工作或已经介绍过");
     expect(JUDGEMENT_SYSTEM).toContain("用户向全员提出的工作请求不是打招呼");
@@ -147,14 +158,16 @@ describe("prompts", () => {
 
   test("send_message tool copy says mention forces a new turn", () => {
     const zh = builtinTools("zh").find((t) => t.function.name === "send_message")!;
-    expect(zh.function.description).toContain("会点名并让对方必须新开一轮");
+    expect(zh.function.description).toContain("会点名并让对方必须下场（群里已有活轮则听进那一轮）");
+    expect(zh.function.description).toContain("对方已经在场并同意时不要再点名");
     expect(zh.function.description).toContain("用户已经向全员说过的请求不要再 @ 一遍");
     expect(zh.function.description).toContain("不要把已经提出的请求再广播一遍");
     expect(zh.function.description).toContain("没有新工作、介绍已经发出、无其他事项、本轮结束这类收尾或状态汇报不要发");
     expect(zh.function.description).toContain("本轮写入的工作区文件会自动变成可点链接");
     expect((zh.function.parameters.properties.paths as { description: string }).description).toContain("工作区相对路径");
     const en = builtinTools("en").find((t) => t.function.name === "send_message")!;
-    expect(en.function.description).toContain("forces them to open a new turn");
+    expect(en.function.description).toContain("forces them to take the floor");
+    expect(en.function.description).toContain("Do not mention someone who is already present and in agreement");
     expect(en.function.description).toContain("Do not re-mention a request the user already made to the group");
     expect(en.function.description).toContain("Do not rebroadcast a request already in the transcript");
     expect(en.function.description).toContain("Do not post a closer or status note such as \"no new work\"");

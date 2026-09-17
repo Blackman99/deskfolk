@@ -214,8 +214,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   function startTurn(sessionId: string, botId: string, trigger: Message, mode: "redirect" | "fork"): Turn {
     if (mode === "redirect") {
-      const current = store.listLiveTurns({ sessionId, botId })[0];
-      if (current) {
+      const livesForBot = store.listLiveTurns({ sessionId, botId });
+      let sessionKind: string | null = null;
+      try {
+        sessionKind = store.getSession(sessionId).kind;
+      } catch {
+        sessionKind = null;
+      }
+      const toRedirect = sessionKind === "group" ? livesForBot : livesForBot.slice(0, 1);
+      for (const current of toRedirect) {
         abortLive(current.id);
         const redirected = store.redirectTurn(current.id);
         publishTurn(redirected);
@@ -857,7 +864,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
 
     for (const botId of mandatory) {
-      startTurn(session.id, botId, message, "fork");
+      startTurn(session.id, botId, message, opts.fork === true ? "fork" : "redirect");
       opened.add(botId);
     }
 
@@ -1003,7 +1010,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } catch {
         return;
       }
-      if (decision === "join") startTurn(message.session_id, botId, message, "fork");
+      if (decision === "join") startTurn(message.session_id, botId, message, "redirect");
       finish(row);
       publish({ event: "judgement.created", occurred_at: occurred(), ...row });
       if (result.usage) {

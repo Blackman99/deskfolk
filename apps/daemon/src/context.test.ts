@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
-import { assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, TRIGGER_FLAG } from "./context";
+import { assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG } from "./context";
 import { Store } from "./store";
 
 const PNG_1X1 = Buffer.from(
@@ -53,10 +53,13 @@ describe("assembleTurnMessages", () => {
       loop: [],
     });
     const window = messages.filter((m) => m.role !== "system");
-    expect(window).toHaveLength(2);
-    expect(window[0]?.content).toBe(`【user】\n${older.body}`);
-    expect(window[0]?.content).not.toContain(TRIGGER_FLAG);
-    expect(window[1]?.content).toBe(`【Reviewer】\n${TRIGGER_FLAG}\n${trigger.body}`);
+    expect(window).toHaveLength(3);
+    expect(window[0]?.content).toContain(SITUATION_HEADING);
+    expect(String(window[0]?.content)).toContain("本轮由【Reviewer】叫醒。");
+    expect(String(window[0]?.content)).toContain("用户最近一条：大家好，请各自用一句话介绍自己");
+    expect(window[1]?.content).toBe(`【user】\n${older.body}`);
+    expect(window[1]?.content).not.toContain(TRIGGER_FLAG);
+    expect(window[2]?.content).toBe(`【Reviewer】\n${TRIGGER_FLAG}\n${trigger.body}`);
     store.close();
   });
 
@@ -192,7 +195,9 @@ describe("assembleTurnMessages", () => {
       interrupt: false,
       loop: [],
     });
-    const user = messages.find((m) => m.role === "user");
+    const situation = messages.find((m) => m.role === "user" && typeof m.content === "string" && m.content.startsWith(SITUATION_HEADING));
+    expect(String(situation?.content)).toContain("本轮由【设计师】叫醒。");
+    const user = messages.find((m) => m.role === "user" && Array.isArray(m.content));
     expect(Array.isArray(user?.content)).toBe(true);
     const parts = user?.content as Array<Record<string, unknown>>;
     expect(parts[0]).toEqual({
@@ -203,6 +208,33 @@ describe("assembleTurnMessages", () => {
       type: "image_url",
       image_url: { url: `data:image/png;base64,${PNG_1X1.toString("base64")}` },
     });
+    store.close();
+  });
+
+  test("a direct session does not insert a situation block", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const trigger = store.insertMessage({
+      sessionId: writer.direct_session.id,
+      kind: "user",
+      author: USER_MEMBER,
+      body: "hello",
+    });
+    const turn = store.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    const messages = assembleTurnMessages(store, {
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale: "zh",
+      interrupt: false,
+      loop: [],
+    });
+    expect(messages.some((m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING))).toBe(false);
     store.close();
   });
 });
@@ -227,10 +259,25 @@ describe("assembleJudgementUser", () => {
         mentions: [],
         everyone: false,
       }),
-    ) as { message: { body: string }; recent_messages: Array<{ body: string }> };
+    ) as {
+      message: { body: string };
+      situation: { seats: string[]; waker: string; latest_user: string | null };
+      recent_messages: Array<{ body: string }>;
+    };
     expect(payload.message.body).toBe("请各自介绍");
     expect(payload.message.body).not.toContain(TRIGGER_FLAG);
     expect(payload.recent_messages[0]?.body).toBe("请各自介绍");
+    expect(payload.situation.waker).toBe("user");
+    expect(payload.situation.latest_user).toBe("请各自介绍");
+    expect(payload.situation.seats).toEqual([]);
+    expect(Object.keys(payload)).toEqual([
+      "you",
+      "session",
+      "members",
+      "message",
+      "situation",
+      "recent_messages",
+    ]);
     store.close();
   });
 });

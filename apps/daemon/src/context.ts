@@ -12,6 +12,11 @@ const BODY_LIMIT = 4000;
 /** Marks the message that opened this turn. Chinese in every locale, like transcript prefixes. */
 export const TRIGGER_FLAG = "（本轮触发）";
 
+/** Group-only fact block. Chinese heading in every locale, like TRIGGER_FLAG. */
+export const SITUATION_HEADING = "# 局面";
+
+const LATEST_USER_LIMIT = 200;
+
 function botDisplayName(store: Store, id: string): string {
   try {
     return store.getBot(id).name;
@@ -56,7 +61,85 @@ export function assembleTurnMessages(
     triggerMessageId: input.triggerMessageId,
     selfBotId: input.botId,
   });
-  return [{ role: "system", content: system }, ...window, ...input.loop];
+  const situation = situationUserMessage(store, input.sessionId, input.triggerMessageId, input.locale);
+  return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
+}
+
+export type SituationFacts = {
+  seats: string[];
+  waker: string;
+  latest_user: string | null;
+};
+
+export function situationFacts(
+  store: Store,
+  sessionId: string,
+  trigger: Message,
+): SituationFacts {
+  const live = store.listLiveTurns({ sessionId });
+  const seats: string[] = [];
+  const seen = new Set<string>();
+  for (const turn of live) {
+    const name = botDisplayName(store, turn.bot_id);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    seats.push(name);
+  }
+  const waker = trigger.author === USER_MEMBER ? "user" : botDisplayName(store, trigger.author);
+  const latest = store.listMainMessages(sessionId, 40).find((m) => m.kind === "user");
+  let latest_user: string | null = null;
+  if (latest) {
+    const clipped = takeCodePoints(latest.body.replace(/\s+/g, " ").trim(), LATEST_USER_LIMIT);
+    latest_user = clipped.text.length > 0 ? clipped.text : null;
+  }
+  return { seats, waker, latest_user };
+}
+
+function situationUserMessage(
+  store: Store,
+  sessionId: string,
+  triggerMessageId: string,
+  locale: Locale,
+): ChatMessage | null {
+  let sessionKind: string;
+  try {
+    sessionKind = store.getSession(sessionId).kind;
+  } catch {
+    return null;
+  }
+  if (sessionKind !== "group") return null;
+  let trigger: Message;
+  try {
+    trigger = store.getMessage(triggerMessageId);
+  } catch {
+    return null;
+  }
+  const facts = situationFacts(store, sessionId, trigger);
+  const seatLine =
+    locale === "en"
+      ? facts.seats.length > 0
+        ? `Live turns in this group: ${facts.seats.join(", ")}.`
+        : "Live turns in this group: none."
+      : facts.seats.length > 0
+        ? `本群进行中的轮：${facts.seats.join("、")}。`
+        : "本群没有进行中的轮。";
+  const wakerLabel = facts.waker === "user" ? "user" : facts.waker;
+  const wakerLine =
+    locale === "en"
+      ? `This turn was opened by 【${wakerLabel}】.`
+      : `本轮由【${wakerLabel}】叫醒。`;
+  const latestLine =
+    locale === "en"
+      ? facts.latest_user
+        ? `Latest user line: ${facts.latest_user}`
+        : "Latest user line: (none)"
+      : facts.latest_user
+        ? `用户最近一条：${facts.latest_user}`
+        : "用户最近一条：（无）";
+  return {
+    role: "user",
+    content: `${SITUATION_HEADING}\n\n${seatLine}\n${wakerLine}\n${latestLine}`,
+  };
 }
 
 function transcriptWindow(
@@ -217,6 +300,7 @@ export function assembleJudgementUser(store: Store, input: {
       mentions: input.mentions,
       everyone: input.everyone,
     },
+    situation: situationFacts(store, input.sessionId, input.message),
     recent_messages: recent,
   };
   return JSON.stringify(payload);

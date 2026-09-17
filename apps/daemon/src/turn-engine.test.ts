@@ -878,7 +878,7 @@ describe("turn engine on the local API", () => {
         expect(body.tools).toBeUndefined();
         expect(body.response_format).toBeUndefined();
         expect(system.includes("{")).toBe(false);
-        expect(system).toContain("触发条与最近转录是同一件事的重复或转述，则 pass");
+        expect(system).toContain("触发条与最近转录是同一件事的重复或转述");
         await holdJudgements;
         const decision = judgements.length <= 2 ? "join" : "pass";
         return Response.json({
@@ -1094,6 +1094,86 @@ describe("turn engine on the local API", () => {
     await Bun.sleep(40);
     expect(judgements).toEqual([]);
     expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === reviewer.id)).toBe(false);
+    sub.close();
+  });
+
+  test("a bot @ in a group redirects the named bot's live turn instead of cloning", async () => {
+    let writerHops = 0;
+    let releaseFirst = () => {};
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let sawFirstWriter = () => {};
+    const firstWriterArrived = new Promise<void>((resolve) => {
+      sawFirstWriter = resolve;
+    });
+    const fixture = await startFixture(async ({ body }) => {
+      if (isJudgementRequest(body)) return judgementPass();
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      if (system.includes("## 名字\n\nWriter")) {
+        writerHops += 1;
+        if (writerHops === 1) {
+          sawFirstWriter();
+          await firstHeld;
+          return sse(textChunks("first should not land"));
+        }
+        const situation = messages.find(
+          (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("# 局面"),
+        );
+        expect(situation?.content).toContain("本轮由【Researcher】叫醒。");
+        return sse(textChunks("heard the handoff"));
+      }
+      if (system.includes("## 名字\n\nResearcher")) {
+        return sse(toolCallChunks("call_1", "send_message", '{"body":"@Writer take this"}'));
+      }
+      return sse(textChunks("should not speak"));
+    });
+    const h = await startApi();
+    const { bots, groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "Writer", duties: "write" },
+      { name: "Researcher", duties: "read" },
+    ]);
+    const writer = bots.find((b) => b.name === "Writer")!;
+    const researcher = bots.find((b) => b.name === "Researcher")!;
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@Writer go" }),
+    });
+    const first = await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === writer.id,
+    );
+    await firstWriterArrived;
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@Researcher hand off" }),
+    });
+    await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.body === "@Writer take this" && e.author === researcher.id,
+    );
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected",
+    );
+    await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.body === "heard the handoff" && e.author === writer.id,
+    );
+    const writerRunning = sub.events.filter(
+      (e) => e.event === "turn.upsert" && e.bot_id === writer.id && e.status === "running",
+    );
+    expect(writerRunning.length).toBeGreaterThanOrEqual(2);
+    const liveAfterHandoff = h.store.listLiveTurns({ sessionId: groupId, botId: writer.id });
+    expect(liveAfterHandoff).toHaveLength(0);
+    expect(
+      sub.events.some((e) => e.event === "message.created" && e.kind === "bot" && e.body === "first should not land"),
+    ).toBe(false);
+    releaseFirst();
     sub.close();
   });
 
