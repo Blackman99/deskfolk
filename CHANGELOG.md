@@ -31,8 +31,9 @@
 
 - 落地页整体重新设计：冷灰底、宋体标题、取自名册头像调色板的青绿 / 芥黄两色，去掉渐变与玻璃卡片，零 webfont。
 - 首页改为随滚动推进的完整流程演示：右侧固定一扇信使窗口，8 个步骤依次演示填工作区与端点、建第一个 Bot、对话组队、群里参与判断、批准卡、@ 交接与产物、Monaco 预览与 Cmd+S 写回、关窗进托盘；每步配一条指向界面元素的标注。窄屏改为顶部吸附的窗口加文字说明；`prefers-reduced-motion` 下直接显示各步终态。
+- 新增品牌标识：一只装着两个叠放队友头像的消息气泡（青绿 / 芥黄），提供 `favicon.svg`、PNG 图标（48 / 180 / 192 / 512）与 `site.webmanifest`；导航、页脚与重定向页统一使用。
+- 补齐 SEO：每页独立的标题与描述、canonical、`hreflang` 交替链接、Open Graph 与 Twitter 大图卡片、首页 SoftwareApplication JSON-LD、`theme-color`、按语言输出的 `<html lang>`，以及预渲染的 `sitemap.xml` 与 `robots.txt`。中英文各一张 1200×630 的 OG 图（`static/og-zh.png` / `static/og-en.png`），由开发态专用的 `/og/[lang]` 页面截图生成。
 - 「已接入 / 正在建设 / 明确不做」改为按维度排列的账目式表格；「从源码启动」保留终端示例并列出首次使用步骤。中英文文案同步更新；`/manifesto` 与 `/roadmap` 页面沿用新样式，浅色与深色主题均可用。
-- 补站点图标、Open Graph 图、sitemap 与 robots.txt，便于分享落地页。
 
 ### Documentation
 
