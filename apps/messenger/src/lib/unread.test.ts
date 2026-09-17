@@ -15,10 +15,10 @@ test("unread badge caps at 99+", () => {
   expect(unreadBadge(100)).toBe("99+");
 });
 
-test("only main-transcript messages from others count as unread", () => {
+test("messages from others count as unread, including quote-replies", () => {
   expect(countsAsUnread({ parent_id: null, author: "writer" })).toBe(true);
   expect(countsAsUnread({ parent_id: null, author: "user" })).toBe(false);
-  expect(countsAsUnread({ parent_id: "m1", author: "writer" })).toBe(false);
+  expect(countsAsUnread({ parent_id: "m1", author: "writer" })).toBe(true);
   expect(countsAsUnread({ parent_id: null, author: "writer", kind: "profile_change" })).toBe(false);
 });
 

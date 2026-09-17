@@ -26,6 +26,7 @@ describe("prompts", () => {
     expect(text).toContain("本轮没有新工作");
     expect(text).toContain("主转录里不要留痕迹");
     expect(text).toContain("会让对方必须下场（群里已有活轮则听进那一轮）");
+    expect(text).toContain("要针对某一条主线消息说话时传 parent_id");
     expect(text).toContain("只在对方有尚未看见的新工作要接手时才点名");
     expect(text).toContain("用户已经向全员说过的请求，不要再 @ 一遍去催在场的人");
     expect(text).toContain("本轮写入的工作区文件会自动变成可点链接");
@@ -125,6 +126,7 @@ describe("prompts", () => {
     expect(text).toContain("# System");
     expect(text).toContain("（本轮触发）");
     expect(text).toContain("forces that teammate to take the floor");
+    expect(text).toContain("pass parent_id (one level only)");
     expect(text).toContain("then the situation and the transcript around it");
     expect(text).toContain("If the group already agrees on the same artifact and the same conclusion");
     expect(text).toContain("Do not mention someone who is already present and in agreement");
@@ -159,6 +161,7 @@ describe("prompts", () => {
   test("send_message tool copy says mention forces a new turn", () => {
     const zh = builtinTools("zh").find((t) => t.function.name === "send_message")!;
     expect(zh.function.description).toContain("会点名并让对方必须下场（群里已有活轮则听进那一轮）");
+    expect(zh.function.description).toContain("要针对某一条主线消息说话时传 parent_id");
     expect(zh.function.description).toContain("对方已经在场并同意时不要再点名");
     expect(zh.function.description).toContain("用户已经向全员说过的请求不要再 @ 一遍");
     expect(zh.function.description).toContain("不要把已经提出的请求再广播一遍");
@@ -167,6 +170,7 @@ describe("prompts", () => {
     expect((zh.function.parameters.properties.paths as { description: string }).description).toContain("工作区相对路径");
     const en = builtinTools("en").find((t) => t.function.name === "send_message")!;
     expect(en.function.description).toContain("forces them to take the floor");
+    expect(en.function.description).toContain("pass parent_id");
     expect(en.function.description).toContain("Do not mention someone who is already present and in agreement");
     expect(en.function.description).toContain("Do not re-mention a request the user already made to the group");
     expect(en.function.description).toContain("Do not rebroadcast a request already in the transcript");

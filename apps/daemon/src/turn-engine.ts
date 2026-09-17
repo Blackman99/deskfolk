@@ -245,7 +245,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       interrupt,
       burned: false,
       partial: "",
-      parentId: trigger.parent_id,
+      parentId: null,
       writtenPaths: [],
       mentionWarned: new Set(),
       spoke: false,
@@ -828,17 +828,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
 
-    if (message.parent_id) {
-      if (opts.fromUser) {
-        const focused = store.listLiveTurns({ sessionId: session.id })[0];
-        if (focused) {
-          const fork = opts.fork !== undefined ? opts.fork : true;
-          startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect");
-        }
-      }
-      return;
-    }
-
     const roster = store.listBots();
     const nameById = new Map(roster.map((b) => [b.id, b.name] as const));
     const presentNames = store
@@ -903,7 +892,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
 
     // User text with no @ is a group-wide ask: unmentioned bots judge. A user or
-    // Bot @ / @everyone only opens the named set. Bot text with no @ stays silent.
+    // Bot @ / @everyone (including an auto-@ on a quote-reply) only opens the
+    // named set. Bot text with no @ stays silent. Quote-replies still participate.
     if (!(opts.fromUser && !hasMention)) return;
 
     const judges = present.filter(

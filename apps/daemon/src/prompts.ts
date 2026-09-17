@@ -29,7 +29,7 @@ const SYSTEM_ZH = `你是上面人设里的那个 Bot。这台机器上所有 Bo
 
 工作区内的读、写、删和工作区壳会直接执行。工作区外的读/写，以及越界的壳，会停下来等用户批准。你没有「请求批准」工具。拒绝后工具结果是 denied。
 
-要在会话里发言或交接，用 send_message（省略 session_id 即本会话）。不要把用户当成路由器去传话。正文里的 @Name 会让对方必须下场（群里已有活轮则听进那一轮）；只在对方有尚未看见的新工作要接手时才点名。名字必须与局面块列出的在场成员逐字一致，不要缩写或省略后缀，写错的 @ 叫不到人。用户已经向全员说过的请求，不要再 @ 一遍去催在场的人。对方已经在场并同意时不要再点名。本轮写入的工作区文件会自动变成可点链接，不必另做交接工具。正文里直接写路径即可。栅格图会作为图像发给被这条消息叫醒的 Bot；其它类型对方只看到路径，要读走 read_file / list_dir / MCP。不要为「已写入某文件」再发一条不含路径的收尾。
+要在会话里发言或交接，用 send_message（省略 session_id 即本会话）。不要把用户当成路由器去传话。正文里的 @Name 会让对方必须下场（群里已有活轮则听进那一轮）；只在对方有尚未看见的新工作要接手时才点名。名字必须与局面块列出的在场成员逐字一致，不要缩写或省略后缀，写错的 @ 叫不到人。用户已经向全员说过的请求，不要再 @ 一遍去催在场的人。对方已经在场并同意时不要再点名。要针对某一条主线消息说话时传 parent_id（只能一层）；引用 Bot 时正文会自动加上 @对方。本轮写入的工作区文件会自动变成可点链接，不必另做交接工具。正文里直接写路径即可。栅格图会作为图像发给被这条消息叫醒的 Bot；其它类型对方只看到路径，要读走 read_file / list_dir / MCP。不要为「已写入某文件」再发一条不含路径的收尾。
 
 要问用户一件需要判断的事，用 ask_user，不要写成批准。
 
@@ -61,7 +61,7 @@ Paths are workspace-relative POSIX (\`/\`-separated, \`.\` is the workspace root
 
 Reads, writes, deletes, and the workspace shell inside the workspace run immediately. Reads/writes outside the workspace, and a shell that crosses the boundary, pause for the user's approval. You have no "request approval" tool. A denial comes back as denied.
 
-To speak or hand off in a session, use send_message (omit session_id for this session). Do not treat the user as a router. @Name in the body forces that teammate to take the floor (in a group, into their existing live turn if they have one); mention someone only when they have new work they have not already seen. Write the name exactly as the situation block lists it; do not abbreviate or drop a suffix, a misspelt @ wakes nobody. Do not re-mention people who already heard the user's group-wide request. Do not mention someone who is already present and in agreement. Workspace files written this turn become clickable links automatically; there is no separate handoff tool. Just write the path in the body. Raster images on that message are sent as images to the Bot it wakes; other types are path lines only — read them with read_file / list_dir / MCP. Do not post a closer that only says a file was written.
+To speak or hand off in a session, use send_message (omit session_id for this session). Do not treat the user as a router. @Name in the body forces that teammate to take the floor (in a group, into their existing live turn if they have one); mention someone only when they have new work they have not already seen. Write the name exactly as the situation block lists it; do not abbreviate or drop a suffix, a misspelt @ wakes nobody. Do not re-mention people who already heard the user's group-wide request. Do not mention someone who is already present and in agreement. To speak to a specific main-transcript line, pass parent_id (one level only); quoting a Bot prepends @them. Workspace files written this turn become clickable links automatically; there is no separate handoff tool. Just write the path in the body. Raster images on that message are sent as images to the Bot it wakes; other types are path lines only — read them with read_file / list_dir / MCP. Do not post a closer that only says a file was written.
 
 To ask the user something that needs their judgment, use ask_user. Do not turn that into an approval.
 
@@ -311,8 +311,8 @@ const TOOLS: ToolDef[] = [
   {
     name: "send_message",
     description: {
-      zh: "在你已在场的会话里发言或交接。省略 session_id 即本轮所在会话。正文里的 @Name 会点名并让对方必须下场（群里已有活轮则听进那一轮）；只在对方有尚未看见的新工作要接手时点名。用户已经向全员说过的请求不要再 @ 一遍。对方已经在场并同意时不要再点名。群里点到名册已有但不在场的 Bot 会先拉入。名册没有的名字不新建 Bot。群里 @ 的名字必须与在场成员逐字一致，写错会返回 unknown_mention 且消息不会发出。本轮写入的工作区文件会自动变成可点链接，正文里直接写路径即可。不要把已经提出的请求再广播一遍。没有新工作、介绍已经发出、无其他事项、本轮结束这类收尾或状态汇报不要发：直接结束本轮。成功发送会结束本轮；先解决可恢复的障碍并验证结果，不要用它预告排查或把可自行处理的技术问题交给用户。",
-      en: "Speak or hand off in a session you currently belong to. Omit session_id for this turn's session. @Name in the body mentions a teammate and forces them to take the floor (in a group, into their existing live turn if they have one); mention someone only when they have new work they have not already seen. Do not re-mention a request the user already made to the group. Do not mention someone who is already present and in agreement. In a group, a roster Bot who is not a member is pulled in first. Unknown names do not create a Bot. In a group, an @ that matches no member exactly fails with unknown_mention and nothing is sent. Workspace files written this turn become clickable links automatically; just write the path in the body. Do not rebroadcast a request already in the transcript. Do not post a closer or status note such as \"no new work\", \"introduction posted\", or \"nothing else\"; end the turn instead. A successful send_message ends this turn; resolve recoverable obstacles and verify results first, rather than announcing an investigation or handing technical work back to the user.",
+      zh: "在你已在场的会话里发言或交接。省略 session_id 即本轮所在会话。正文里的 @Name 会点名并让对方必须下场（群里已有活轮则听进那一轮）；只在对方有尚未看见的新工作要接手时点名。用户已经向全员说过的请求不要再 @ 一遍。对方已经在场并同意时不要再点名。要针对某一条主线消息说话时传 parent_id（只能一层）；引用 Bot 时正文会自动加上 @对方。群里点到名册已有但不在场的 Bot 会先拉入。名册没有的名字不新建 Bot。群里 @ 的名字必须与在场成员逐字一致，写错会返回 unknown_mention 且消息不会发出。本轮写入的工作区文件会自动变成可点链接，正文里直接写路径即可。不要把已经提出的请求再广播一遍。没有新工作、介绍已经发出、无其他事项、本轮结束这类收尾或状态汇报不要发：直接结束本轮。成功发送会结束本轮；先解决可恢复的障碍并验证结果，不要用它预告排查或把可自行处理的技术问题交给用户。",
+      en: "Speak or hand off in a session you currently belong to. Omit session_id for this turn's session. @Name in the body mentions a teammate and forces them to take the floor (in a group, into their existing live turn if they have one); mention someone only when they have new work they have not already seen. Do not re-mention a request the user already made to the group. Do not mention someone who is already present and in agreement. To speak to a specific main-transcript line, pass parent_id (one level only); quoting a Bot prepends @them. In a group, a roster Bot who is not a member is pulled in first. Unknown names do not create a Bot. In a group, an @ that matches no member exactly fails with unknown_mention and nothing is sent. Workspace files written this turn become clickable links automatically; just write the path in the body. Do not rebroadcast a request already in the transcript. Do not post a closer or status note such as \"no new work\", \"introduction posted\", or \"nothing else\"; end the turn instead. A successful send_message ends this turn; resolve recoverable obstacles and verify results first, rather than announcing an investigation or handing technical work back to the user.",
     },
     properties: {
       body: { type: "string", description: { zh: "消息正文。", en: "Message text." } },
@@ -334,8 +334,8 @@ const TOOLS: ToolDef[] = [
       parent_id: {
         type: "string",
         description: {
-          zh: "要回复的主线消息 id。省略则发在主转录。只能一层。",
-          en: "Id of the main-transcript message to reply to. Omit to post on the main transcript. Threads are one level only.",
+          zh: "要引用回复的主线消息 id。省略则发在主转录。只能一层。引用 Bot 时正文会自动加上 @对方（已有 @ 或 @everyone 则不重复）；对方必须下场。只在需要针对那一条说话时用。",
+          en: "Id of the main-transcript message to quote-reply to. Omit to post on the main transcript. Threads are one level only. Quoting a Bot prepends @them unless the body already mentions them or @everyone; that mention forces them to take the floor. Use only when speaking to that specific line.",
         },
       },
     },

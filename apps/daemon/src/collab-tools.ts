@@ -176,16 +176,17 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     sourceTurnId: ctx.turnId,
     paths: resolved.paths,
   });
+  const stored = parseMentions(message.body, roster.map((b) => b.name), { lenient: presentNames });
   emitted.push({ kind: "message", message });
-  if (!parentId) emitted.push({ kind: "participation", message });
+  emitted.push({ kind: "participation", message });
   return {
     ok: true,
     data: {
       message_id: message.id,
       session_id: sessionId,
-      mentions: parsed.mentions,
-      corrected_mentions: parsed.corrected,
-      unresolved_mentions: unresolved,
+      mentions: stored.mentions,
+      corrected_mentions: stored.corrected,
+      unresolved_mentions: stored.unresolved.filter((token) => token !== "everyone"),
       paths: resolved.paths,
       unresolved_paths: resolved.unresolved,
     },

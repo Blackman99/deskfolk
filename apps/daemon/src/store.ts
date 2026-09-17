@@ -63,6 +63,7 @@ import {
 } from "./route-decision";
 import { dueIso, isWeekday, latestDueAt, parseClockTime } from "./schedule";
 import { SCHEMA_SQL } from "./schema";
+import { ensureReplyMention } from "./mentions";
 
 export { HttpError } from "./errors";
 
@@ -527,7 +528,7 @@ export class Store {
         `SELECT * FROM (
            SELECT *, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, id DESC) as rn
            FROM messages
-           WHERE parent_id IS NULL AND kind != 'profile_change'
+           WHERE kind != 'profile_change'
          ) WHERE rn = 1`,
       )
       .all();
@@ -823,19 +824,9 @@ export class Store {
     input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] },
   ): Message {
     this.sessionRow(sessionId);
-    const body = requireString("body", input.body);
     const parentId = input.parent_id ?? null;
-    if (parentId) {
-      const parent = this.db
-        .query<MessageRow, [string]>(`SELECT * FROM messages WHERE id = ?`)
-        .get(parentId);
-      if (!parent || parent.session_id !== sessionId) {
-        throw new HttpError(422, "invalid_args", "parent_id must be a message in this session");
-      }
-      if (parent.parent_id) {
-        throw new HttpError(422, "invalid_args", "threads are one level deep");
-      }
-    }
+    const parent = parentId ? this.requireMainParent(sessionId, parentId) : null;
+    const body = this.withReplyMention(requireString("body", input.body), parent, USER_MEMBER);
     const now = isoNow();
     const id = ulid();
     this.db.run(
@@ -892,17 +883,11 @@ export class Store {
   }): Message {
     this.sessionRow(input.sessionId);
     const parentId = input.parentId ?? null;
-    if (parentId) {
-      const parent = this.db
-        .query<MessageRow, [string]>(`SELECT * FROM messages WHERE id = ?`)
-        .get(parentId);
-      if (!parent || parent.session_id !== input.sessionId) {
-        throw new HttpError(422, "invalid_args", "parent_id must be a message in this session");
-      }
-      if (parent.parent_id) {
-        throw new HttpError(422, "invalid_args", "threads are one level deep");
-      }
-    }
+    const parent = parentId ? this.requireMainParent(input.sessionId, parentId) : null;
+    const body =
+      input.kind === "bot" || input.kind === "user"
+        ? this.withReplyMention(input.body, parent, input.author)
+        : input.body;
     const now = isoNow();
     const id = ulid();
     this.db.run(
@@ -915,7 +900,7 @@ export class Store {
         parentId,
         input.kind,
         input.author,
-        input.body,
+        body,
         input.sourceTurnId ?? null,
         now,
       ],
@@ -936,12 +921,41 @@ export class Store {
     const rows = this.db
       .query<MessageRow, [string, number]>(
         `SELECT * FROM messages
-         WHERE session_id = ? AND parent_id IS NULL AND kind != 'profile_change'
+         WHERE session_id = ? AND kind != 'profile_change'
          ORDER BY created_at DESC, rowid DESC
          LIMIT ?`,
       )
       .all(sessionId, limit);
     return rows.map((row) => this.hydrateMessage(row));
+  }
+
+  private requireMainParent(sessionId: string, parentId: string): MessageRow {
+    const parent = this.db
+      .query<MessageRow, [string]>(`SELECT * FROM messages WHERE id = ?`)
+      .get(parentId);
+    if (!parent || parent.session_id !== sessionId) {
+      throw new HttpError(422, "invalid_args", "parent_id must be a message in this session");
+    }
+    if (parent.parent_id) {
+      throw new HttpError(422, "invalid_args", "threads are one level deep");
+    }
+    return parent;
+  }
+
+  private withReplyMention(body: string, parent: MessageRow | null, selfAuthor: string): string {
+    if (!parent || parent.author === USER_MEMBER) return body;
+    let parentName: string | null = null;
+    try {
+      parentName = this.getBot(parent.author).name;
+    } catch {
+      parentName = null;
+    }
+    return ensureReplyMention(body, {
+      parentAuthor: parent.author,
+      parentName,
+      selfAuthor,
+      rosterNames: this.listBots().map((b) => b.name),
+    });
   }
 
   listThreadMessages(parentId: string): Message[] {
@@ -2390,7 +2404,6 @@ export class Store {
          FROM messages m
          JOIN sessions s ON s.id = m.session_id
          WHERE m.session_id = ?
-           AND m.parent_id IS NULL
            AND m.kind != 'profile_change'
            AND m.author != ?
            AND (s.last_read_at IS NULL OR m.created_at > s.last_read_at)`,
@@ -2405,8 +2418,7 @@ export class Store {
         `SELECT m.session_id AS session_id, COUNT(*) AS n
          FROM messages m
          JOIN sessions s ON s.id = m.session_id
-         WHERE m.parent_id IS NULL
-           AND m.kind != 'profile_change'
+         WHERE m.kind != 'profile_change'
            AND m.author != ?
            AND (s.last_read_at IS NULL OR m.created_at > s.last_read_at)
          GROUP BY m.session_id`,

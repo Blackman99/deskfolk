@@ -115,3 +115,17 @@ export function looksLikeMention(body: string, at: number, token: string): boole
 function startsName(literal: string, rest: string, names: string[]): boolean {
   return names.some((name) => name !== literal && name.startsWith(literal) && rest.startsWith(name));
 }
+
+/** Prepend `@Name` when quoting a Bot that the body has not already named. */
+export function ensureReplyMention(
+  body: string,
+  input: { parentAuthor: string; parentName: string | null; selfAuthor: string; rosterNames: string[] },
+): string {
+  const name = input.parentName;
+  if (!name) return body;
+  if (input.parentAuthor === input.selfAuthor) return body;
+  const parsed = parseMentions(body, input.rosterNames);
+  if (parsed.everyone || parsed.mentions.includes(name)) return body;
+  const rest = body.replace(/^\s+/, "");
+  return rest ? `@${name} ${rest}` : `@${name} `;
+}

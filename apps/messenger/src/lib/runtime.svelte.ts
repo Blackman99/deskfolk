@@ -39,6 +39,7 @@ export class MessengerRuntime {
   searchQuery = $state("");
   searchHits = $state<SearchHit[]>([]);
   draft = $state("");
+  replyingToId = $state<string | null>(null);
   busy = $state(false);
   focusedTurnId = $state<string | null>(null);
   highlightedMessageId = $state<string | null>(null);
@@ -136,6 +137,7 @@ export class MessengerRuntime {
       return;
     }
     this.selectedId = id;
+    this.replyingToId = null;
     if (this.focusedTurnId) {
       const focused = this.snapshot.turns.find((turn) => turn.id === this.focusedTurnId);
       if (!focused || focused.session_id !== id) this.focusedTurnId = null;
@@ -495,10 +497,15 @@ export class MessengerRuntime {
     const body = this.draft.trim();
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
     if (!api || !id || (!body && !hasAttachments) || this.busy) return;
+    const parentId = this.replyingToId;
     this.busy = true;
     try {
-      const message = await api.postMessage(id, body, { attachments: opts?.attachments });
+      const message = await api.postMessage(id, body, {
+        attachments: opts?.attachments,
+        parentId,
+      });
       this.draft = "";
+      this.replyingToId = null;
       this.pendingFocusTrigger = message.id;
       this.ingest({
         event: "message.created",
@@ -907,7 +914,7 @@ export class MessengerRuntime {
     this.sessionMessageNext = null;
   }
 
-  private setHighlightedMessage(messageId: string | null): void {
+  setHighlightedMessage(messageId: string | null): void {
     this.clearHighlightTimer();
     this.highlightedMessageId = messageId;
     if (!messageId) return;

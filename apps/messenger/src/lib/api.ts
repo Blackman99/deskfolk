@@ -199,13 +199,20 @@ export class LocalApi {
   async postMessage(
     sessionId: string,
     body: string,
-    opts: { fork?: boolean; askId?: string | null; attachments?: File[] } = {},
+    opts: {
+      fork?: boolean;
+      askId?: string | null;
+      attachments?: File[];
+      parentId?: string | null;
+    } = {},
   ): Promise<Message> {
+    const parentId = opts.parentId ?? null;
     if (opts.attachments && opts.attachments.length > 0) {
       const form = new FormData();
       form.append("body", body);
       if (opts.fork) form.append("fork", "true");
       if (opts.askId) form.append("ask_id", opts.askId);
+      if (parentId) form.append("parent_id", parentId);
       for (const file of opts.attachments) {
         form.append("files", file, file.name);
       }
@@ -213,7 +220,7 @@ export class LocalApi {
     }
     return this.post<Message>(`/v1/sessions/${sessionId}/messages`, {
       body,
-      parent_id: null,
+      parent_id: parentId,
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
     });

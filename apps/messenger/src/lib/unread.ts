@@ -13,7 +13,7 @@ export function countsAsUnread(
   message: Pick<Message, "parent_id" | "author"> & { kind?: Message["kind"] },
 ): boolean {
   if (message.kind && isHiddenTranscriptKind(message.kind)) return false;
-  return message.parent_id === null && message.author !== USER_MEMBER;
+  return message.author !== USER_MEMBER;
 }
 
 export type SessionUnreadTarget = Pick<SessionSummary, "id" | "last_message"> & {

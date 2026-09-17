@@ -105,6 +105,7 @@
 	import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from './preview-width.ts';
 	import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from './sidebar-width.ts';
 	import { formatFileSize } from './attachments.ts';
+	import { canQuoteReply, draftWithQuoteMention, quotedBotName, quotePreview } from './quote-reply.ts';
 	import {
 		createInlineMentionChipElement,
 		deleteChipElement,
@@ -1566,6 +1567,35 @@
 		}
 	}
 
+	const quoteTarget = $derived(
+		runtime.replyingToId
+			? (snapshot.messages.find((m) => m.id === runtime.replyingToId) ?? null)
+			: null
+	);
+
+	function startQuoteReply(message: Message): void {
+		if (lockedComposer || !canQuoteReply(message)) return;
+		runtime.replyingToId = message.id;
+		const name = quotedBotName(message, botsById);
+		if (name) {
+			runtime.draft = draftWithQuoteMention(runtime.draft, name);
+			if (editorEl) {
+				setEditorContentFromText(editorEl, runtime.draft, botsById);
+			}
+		}
+		void tick().then(() => editorEl?.focus());
+	}
+
+	function cancelQuoteReply(): void {
+		runtime.replyingToId = null;
+	}
+
+	function quoteLabel(message: Message): string {
+		if (message.author === USER_MEMBER) return t.chat.replyToYou;
+		const name = quotedBotName(message, botsById);
+		return name ? t.chat.replyTo(name) : t.chat.replyToDeleted;
+	}
+
 	function copyMessageBody(id: string, text: string, event?: MouseEvent): void {
 		fallbackCopyText(text);
 		if (navigator.clipboard?.writeText) {
@@ -2831,6 +2861,16 @@
 												<article class="msg is-you">
 													<div class="who">{who(item.message)}</div>
 													<div class="msg-toolbar">
+														{#if canQuoteReply(item.message) && !lockedComposer}
+															<button
+																type="button"
+																class="act-btn"
+																title={t.chat.replyMessage}
+																onclick={() => startQuoteReply(item.message)}
+															>
+																<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+															</button>
+														{/if}
 														<button
 															type="button"
 															class="act-btn"
@@ -2845,6 +2885,17 @@
 															{/if}
 														</button>
 													</div>
+													{#if item.message.parent_id}
+														{@const quoted = snapshot.messages.find((m) => m.id === item.message.parent_id)}
+														<button
+															type="button"
+															class="quote-ref"
+															onclick={() => quoted && runtime.setHighlightedMessage(quoted.id)}
+														>
+															<span class="quote-ref-who">{quoted ? who(quoted) : t.top.deleted}</span>
+															<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
+														</button>
+													{/if}
 													<div class="body is-md" use:markdownLinks>{@html renderMarkdown(item.message.body, markdownOpts(item.message))}</div>
 													{#if item.message.attachments && item.message.attachments.length > 0}
 														<MessageAttachments
@@ -3046,6 +3097,16 @@
 												<article class="msg">
 													<div class="who">{who(item.message)}</div>
 													<div class="msg-toolbar">
+														{#if canQuoteReply(item.message) && !lockedComposer}
+															<button
+																type="button"
+																class="act-btn"
+																title={t.chat.replyMessage}
+																onclick={() => startQuoteReply(item.message)}
+															>
+																<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+															</button>
+														{/if}
 														<button
 															type="button"
 															class="act-btn"
@@ -3060,6 +3121,17 @@
 															{/if}
 														</button>
 													</div>
+													{#if item.message.parent_id}
+														{@const quoted = snapshot.messages.find((m) => m.id === item.message.parent_id)}
+														<button
+															type="button"
+															class="quote-ref"
+															onclick={() => quoted && runtime.setHighlightedMessage(quoted.id)}
+														>
+															<span class="quote-ref-who">{quoted ? who(quoted) : t.top.deleted}</span>
+															<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
+														</button>
+													{/if}
 													<div class="body is-md" use:markdownLinks>{@html renderMarkdown(item.message.body, markdownOpts(item.message))}</div>
 													{#if item.message.attachments && item.message.attachments.length > 0}
 														<MessageAttachments
@@ -3179,6 +3251,23 @@
 			{/if}
 
 			<div class="composer-card" class:is-locked={lockedComposer}>
+				{#if quoteTarget}
+					<div class="composer-quote-bar">
+						<div class="composer-quote-meta">
+							<span class="composer-quote-who">{quoteLabel(quoteTarget)}</span>
+							<span class="composer-quote-body">{quotePreview(quoteTarget.body)}</span>
+						</div>
+						<button
+							type="button"
+							class="composer-quote-cancel"
+							title={t.chat.cancelReply}
+							aria-label={t.chat.cancelReply}
+							onclick={cancelQuoteReply}
+						>
+							<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+						</button>
+					</div>
+				{/if}
 				{#if lockedComposer}
 					<div class="composer-locked-message">
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>

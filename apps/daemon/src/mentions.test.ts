@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { lenientMatch, mentionToken, parseMentions } from "./mentions";
+import { ensureReplyMention, lenientMatch, mentionToken, parseMentions } from "./mentions";
 
 describe("parseMentions", () => {
   test("longest roster name wins and everyone is literal", () => {
@@ -78,6 +78,57 @@ describe("lenientMatch", () => {
     expect(lenientMatch("分", ["分镜师", "分析师"])).toBeNull();
     expect(lenientMatch("writer", ["Writer", "WriterBot"])).toBeNull();
     expect(lenientMatch("nope", ["Writer"])).toBeNull();
+  });
+});
+
+describe("ensureReplyMention", () => {
+  test("prepends @Name when quoting a bot that is not already mentioned", () => {
+    expect(
+      ensureReplyMention("please revise", {
+        parentAuthor: "writer",
+        parentName: "Writer",
+        selfAuthor: "user",
+        rosterNames: ["Writer", "Reviewer"],
+      }),
+    ).toBe("@Writer please revise");
+  });
+
+  test("does not duplicate an existing mention or @everyone", () => {
+    expect(
+      ensureReplyMention("@Writer already", {
+        parentAuthor: "writer",
+        parentName: "Writer",
+        selfAuthor: "user",
+        rosterNames: ["Writer"],
+      }),
+    ).toBe("@Writer already");
+    expect(
+      ensureReplyMention("@everyone look", {
+        parentAuthor: "writer",
+        parentName: "Writer",
+        selfAuthor: "user",
+        rosterNames: ["Writer"],
+      }),
+    ).toBe("@everyone look");
+  });
+
+  test("does not mention yourself or a parent with no roster name", () => {
+    expect(
+      ensureReplyMention("ok", {
+        parentAuthor: "writer",
+        parentName: "Writer",
+        selfAuthor: "writer",
+        rosterNames: ["Writer"],
+      }),
+    ).toBe("ok");
+    expect(
+      ensureReplyMention("ok", {
+        parentAuthor: "user",
+        parentName: null,
+        selfAuthor: "writer",
+        rosterNames: ["Writer"],
+      }),
+    ).toBe("ok");
   });
 });
 

@@ -2213,6 +2213,92 @@ button.sender-name.is-clickable:focus-visible {
   color: var(--ok);
 }
 
+.quote-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: none;
+  border-left: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-ref-who {
+  font-size: 11px;
+  font-weight: 650;
+  opacity: 0.85;
+}
+
+.quote-ref-body {
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg.is-you .quote-ref {
+  background: rgba(255, 255, 255, 0.14);
+  border-left-color: rgba(255, 255, 255, 0.55);
+}
+
+.composer-quote-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid var(--line-subtle);
+  border-left: 2px solid var(--accent);
+}
+
+.composer-quote-meta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.composer-quote-who {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.composer-quote-body {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-quote-cancel {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.composer-quote-cancel:hover {
+  background: var(--line-subtle);
+  color: var(--text);
+}
+
 /* Reactions Display Row */
 .rx-row {
   display: flex;
@@ -2508,6 +2594,12 @@ button.sender-name.is-clickable:focus-visible {
   white-space: nowrap;
 }
 
+.msg .body.is-md .md-mention-unresolved {
+  color: var(--muted);
+  border-bottom: 1px dashed var(--muted);
+  cursor: help;
+}
+
 .msg.is-you .body.is-md .md-mention-chip,
 .msg.is-you .body.is-md a.md-mention-chip {
   background: rgba(255, 255, 255, 0.18);
@@ -2594,12 +2686,6 @@ button.sender-name.is-clickable:focus-visible {
 .msg-attached-replying.is-user {
   align-items: flex-end;
 }
-.msg .body.is-md .md-mention-unresolved {
-  color: var(--muted);
-  border-bottom: 1px dashed var(--muted);
-  cursor: help;
-}
-
 
 /* Base card animation and layout */
 .attached-replying-card {

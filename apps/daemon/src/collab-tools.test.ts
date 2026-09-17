@@ -178,6 +178,31 @@ describe("send_message artifacts", () => {
     store.close();
   });
 
+  test("quoting a teammate prepends @Name and still participates", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const group = store.createGroup({ name: "Brief", members: [writer.bot.id, reviewer.bot.id] });
+    const parent = store.insertMessage({
+      sessionId: group.id,
+      kind: "bot",
+      author: writer.bot.id,
+      body: "draft ready",
+    });
+    const result = await runCollabTool(
+      ctxFor(store, reviewer.bot.id, group.id),
+      "send_message",
+      { body: "please revise the ending", parent_id: parent.id },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data?.mentions).toEqual(["Writer"]);
+    const message = store.getMessage(String(result.data?.message_id));
+    expect(message.parent_id).toBe(parent.id);
+    expect(message.body.startsWith("@Writer ")).toBe(true);
+    expect(result.emitted.some((item) => item.kind === "participation")).toBe(true);
+    store.close();
+  });
+
   test("outside paths are unresolved and not attached", async () => {
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-art-ws-")));
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-art-out-")));

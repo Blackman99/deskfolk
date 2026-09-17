@@ -195,6 +195,25 @@ describe("schema", () => {
     store.close();
   });
 
+  test("quoting a bot prepends @Name and quote-replies stay on the main transcript", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const group = store.createGroup({ name: "Brief", members: [writer.bot.id, reviewer.bot.id] });
+    const parent = store.insertMessage({
+      sessionId: group.id,
+      kind: "bot",
+      author: writer.bot.id,
+      body: "draft ready",
+    });
+    const reply = store.postMessage(group.id, { body: "please revise", parent_id: parent.id });
+    expect(reply.parent_id).toBe(parent.id);
+    expect(reply.body).toBe("@Writer please revise");
+    expect(store.listMainMessages(group.id, 10).map((m) => m.id)).toEqual([reply.id, parent.id]);
+    expect(store.listSessions().find((s) => s.id === group.id)?.last_message?.id).toBe(reply.id);
+    store.close();
+  });
+
   test("message search hits name the session and keep the message id", () => {
     const store = new Store();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

@@ -1177,6 +1177,62 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  test("quoting a bot group message auto-@s them and opens their turn", async () => {
+    const fixture = await startFixture(({ body }) => {
+      if (isJudgementRequest(body)) return judgementPass();
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      if (system.includes("## 名字\n\nWriter")) {
+        return sse(textChunks("first draft"));
+      }
+      if (system.includes("## 名字\n\nResearcher")) {
+        return sse(textChunks("revised"));
+      }
+      return sse(textChunks("should not speak"));
+    });
+    const h = await startApi();
+    const { bots, groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "Writer", duties: "write" },
+      { name: "Researcher", duties: "read" },
+    ]);
+    const writer = bots.find((b) => b.name === "Writer")!;
+    const researcher = bots.find((b) => b.name === "Researcher")!;
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@Writer go" }),
+    });
+    const draft = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.body === "first draft" && e.author === writer.id,
+    );
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "please revise", parent_id: draft.id }),
+    });
+    const quote = await waitFor(
+      sub.events,
+      (e) =>
+        e.event === "message.created" &&
+        e.kind === "user" &&
+        e.parent_id === draft.id &&
+        typeof e.body === "string" &&
+        String(e.body).startsWith("@Writer "),
+    );
+    expect(quote.body).toBe("@Writer please revise");
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.status === "completed" && e.bot_id === writer.id && e.trigger_message_id === quote.id,
+    );
+    await Bun.sleep(40);
+    expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === researcher.id && e.trigger_message_id === quote.id)).toBe(
+      false,
+    );
+    sub.close();
+  });
+
   test("send_message status notes like 介绍已发出 are not posted in a group", async () => {
     let hop = 0;
     const fixture = await startFixture(({ body }) => {

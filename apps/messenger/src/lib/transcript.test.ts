@@ -325,7 +325,7 @@ test("leftover profile_change rows stay out of the main stream and preview", () 
   ).toBe("please update");
 });
 
-test("thread replies stay out of the main stream", () => {
+test("quote-replies stay on the main stream", () => {
   const items = composeTranscript(
     [
       msg({ id: "m1", kind: "user", body: "main", created_at: "t1" }),
@@ -334,8 +334,9 @@ test("thread replies stay out of the main stream", () => {
     [],
     "s1",
   );
-  expect(items).toHaveLength(1);
+  expect(items).toHaveLength(2);
   expect(items[0]).toMatchObject({ type: "message", message: { id: "m1" } });
+  expect(items[1]).toMatchObject({ type: "message", message: { id: "m2", parent_id: "m1" } });
 });
 
 test("session preview is the newest main-line body, even if the page arrived newest-first", () => {

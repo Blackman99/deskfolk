@@ -124,20 +124,18 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       const { event: _e, occurred_at: _at, ...message } = event;
       if (isHiddenTranscriptKind(message.kind)) return snapshot;
       if (snapshot.messages.some((m) => m.id === message.id)) return snapshot;
-      const sessions = message.parent_id === null
-        ? snapshot.sessions.map((s) =>
-            s.id === message.session_id
-              ? {
-                  ...s,
-                  last_message: message,
-                  unread_count:
-                    message.author === USER_MEMBER
-                      ? (s.unread_count ?? 0)
-                      : (s.unread_count ?? 0) + 1,
-                }
-              : s,
-          )
-        : snapshot.sessions;
+      const sessions = snapshot.sessions.map((s) =>
+        s.id === message.session_id
+          ? {
+              ...s,
+              last_message: message,
+              unread_count:
+                message.author === USER_MEMBER
+                  ? (s.unread_count ?? 0)
+                  : (s.unread_count ?? 0) + 1,
+            }
+          : s,
+      );
       return { ...snapshot, messages: [...snapshot.messages, message], sessions };
     }
     case "turn.upsert": {

@@ -38,10 +38,7 @@ export function composeTranscript(
   pendingJudgements: readonly PendingJudgement[] = [],
 ): TranscriptItem[] {
   const main = messages
-    .filter(
-      (m) =>
-        m.session_id === sessionId && m.parent_id === null && !isHiddenTranscriptKind(m.kind),
-    )
+    .filter((m) => m.session_id === sessionId && !isHiddenTranscriptKind(m.kind))
     .slice()
     .sort(byTime);
   const items: TranscriptItem[] = main.map((message) => ({ type: "message", message }));
@@ -139,10 +136,7 @@ export function latestPreview(
     return runningTurn.partial_text.slice(-80);
   }
   const last = messages
-    .filter(
-      (m) =>
-        m.session_id === sessionId && m.parent_id === null && !isHiddenTranscriptKind(m.kind),
-    )
+    .filter((m) => m.session_id === sessionId && !isHiddenTranscriptKind(m.kind))
     .slice()
     .sort(byTime)
     .at(-1);

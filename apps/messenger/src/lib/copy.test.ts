@@ -21,6 +21,10 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
   expect(COPY.en.chat.sendHintShortcut).toBe("Send (Enter)");
   expect(COPY.zh.composer.waitingHint).toContain("回复结束后可发送");
   expect(COPY.en.composer.waitingHint).toContain("Send after the reply ends");
+  expect(COPY.zh.chat.replyMessage).toBe("回复");
+  expect(COPY.en.chat.replyMessage).toBe("Reply");
+  expect(COPY.zh.chat.replyTo("Writer")).toBe("回复 Writer");
+  expect(COPY.en.chat.replyTo("Writer")).toBe("Replying to Writer");
 });
 
 test("wizard field errors are the locked 32 sentences", () => {
@@ -276,12 +280,12 @@ test("copyFor takes the whole en tree or otherwise zh", () => {
 });
 
 test("live-turn chrome lives on stream and composer, with interpolating redirect copy", () => {
+  expect(COPY.zh.stream.mentionUnresolved).toBe("这个 @ 没有匹配到群成员");
+  expect(COPY.en.stream.mentionUnresolved).toBe("This @ matches no member here");
   expect(COPY.zh.stream.streaming).toBe("正在写");
   expect(COPY.en.stream.streaming).toBe("streaming");
   expect(COPY.zh.stream.artifactTree).toBe("引用的文件");
   expect(COPY.en.stream.artifactTree).toBe("Cited files");
-  expect(COPY.zh.stream.mentionUnresolved).toBe("这个 @ 没有匹配到群成员");
-  expect(COPY.en.stream.mentionUnresolved).toBe("This @ matches no member here");
   expect(COPY.zh.stream.artifactBundle).toBe("工作区文件");
   expect(COPY.en.stream.artifactBundle).toBe("Workspace files");
   expect(COPY.zh.stream.artifactBundleCount(12)).toBe("12 个文件");
