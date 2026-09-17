@@ -1,0 +1,81 @@
+# Real Bot 开发说明
+
+> **WIP：**本文记录当前开发实现与限制，不是稳定版功能承诺。项目定位见 [README](../README.md)，建设方向见[路线图](../ROADMAP.md)。
+
+本机 macOS 上的单人 agent 协作应用。词汇见 [`CONTEXT.md`](../CONTEXT.md)。以下命令均在项目根目录执行。
+
+## 包
+
+| 包 | 路径 | 运行时 |
+|---|---|---|
+| `@real-bot/daemon` | `apps/daemon` | Bun `>=1.2` |
+| `@real-bot/messenger` | `apps/messenger` | Node `>=22` · SvelteKit SPA |
+| `@real-bot/desktop` | `apps/desktop` | Tauri 2 壳 |
+| `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
+| `@real-bot/protocol` | `packages/protocol` | 本机接口 TypeScript 类型 |
+
+守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，会用本机 `bun` 拉起 `apps/daemon/src/main.ts`；已有我们则连，不新开第二个。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+
+## 本机工具链
+
+- Node `>=22` 与 pnpm `12.3.4`（`packageManager`）
+- Bun `>=1.2`（守护进程，不当 npm 依赖）
+- Rust / Cargo（Tauri 2）
+
+## 命令
+
+```bash
+pnpm install
+pnpm dev        # 并行守护进程 + tauri dev（信使由窗拉起）
+pnpm test       # daemon bun test + messenger bun test
+pnpm typecheck  # protocol / daemon / desktop tsc，信使与落地页 svelte-check；不跑 cargo check
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml  # 桌面监督与线程锁回归
+pnpm --filter @real-bot/messenger build
+pnpm --filter @real-bot/landing build   # 可选；GitHub Pages 构建落地页
+```
+
+开发态修改信使代码走 Vite 热更新。`beforeDevCommand` 拉信使时，若 `http://localhost:5173` 已是本包开发服务器（含上次留下的孤儿 Vite），会直接复用，不再因 `strictPort` 退出；被其他进程占用才报 `port is taken`。非 5173 的残留 Vite（例如 5174）不会被复用。窗拉起的守护进程在 debug 构建里带 Bun `--watch`，改 `apps/daemon` 会重启本机接口（已有我们则连，不新开第二个；旧无 watch 进程会一直占端口，需退出后再开 `pnpm dev`）。修改 Rust 代码由 Tauri 重编译并重启窗口。桌面监督线程在释放应用状态锁后才更新托盘菜单，避免热更新后的本机接口查询与菜单更新互相等待。若旧版本窗口已经卡死，需要结束旧窗口进程，再重新运行 `pnpm dev`；热更新无法解除已经发生的原生线程死锁。
+
+单独起信使（浏览器改 UI，不是黄金路径）：
+
+```bash
+pnpm --filter @real-bot/messenger dev
+```
+
+开发态窗在守护进程起来之前可以是「连不上运行时」。连上后是空名册的会话优先三栏。设置弹窗是向导空态：未完成时路径、至少一个端点的 URL 和密钥齐了即完成（`wizard_complete` 看工作区 + 任一端点已配密钥）；点「保存」成功后关闭弹窗；可以向导里配第一个端点，之后在设置「模型服务」里再加：默认是端点卡片列表，点卡片或「添加端点」另开浮层编辑。每个端点有自己的模型名单和默认模型；名单上的名字可填价格、支持的思考等级和擅长领域（价格只给应用挑模型，花费仍只记端点 `usage`）。用户发消息开一轮时，应用从名单里选模型和思考等级；Bot 钉了仍在名单上的名字则模型名受约束，思考等级仍由应用选。空钉不是永远用端点默认。后续用户指出问题 / bug 的跟进消息会记成对上一轮决策的反馈，并改之后同类消息的选择。补全和判断打到该模型所属端点，不再发字面 `default`。路径须已有绝对目录，URL 须 `http(s)`；`422` 画在字段下或滑出顶，不会变成「连不上运行时」。左侧会话列表与聊天内容之间可拖条改宽度（200–480px，记住上次宽度）。侧栏全局搜索覆盖会话、消息、文件和日程；消息命中带所属会话名，点击打开该会话并滚到命中消息（短暂高亮）。会话详情默认最近 50 条，更早的命中会继续向后翻页直到找到。打开你↔Bot 私聊可以发消息（可带文件，复制到工作区 `inbox/`；PNG / JPEG / GIF / WebP 会进这一轮补全，Bot 能看见图）。Bot 写出的工作区文件可用 `send_message` 的 `paths` 或正文里的 Markdown / 反引号路径挂在那条消息上（不复制）；点开可预览图 / 音视频 / PDF / 文本 / 单文件 HTML，目录和未知类型用系统打开。同一条消息挂了多个路径时，气泡里收成一个入口，点开后预览栏左侧是引用路径嵌成的文件树（只含这条消息引用过的路径，不列未引用兄弟）；文本是 Monaco + Shiki 编辑器（行号、查找、折叠、换行、复制；Markdown / HTML 默认渲染，可切源码）。区内 UTF-8 文本可 Cmd+S / 保存写回 `PUT /v1/workspace/file`。能落盘的文件也可以从预览用系统打开或在 Finder 显示。侧栏底部文件夹按钮（⌘O）打开整个工作区目录，左侧按需展开，树和内容之间可拖；本机接口 `GET /v1/workspace/tree`、`GET /v1/workspace/file`、`PUT /v1/workspace/file`。聊天围栏代码块仍用 Shiki 分词着色（每 token 一个 span，亮/暗两套 CSS 变量；覆盖常见语言，含 JSON），流式输出过程中也会跟上。预览不写回工作区。交接仍是 `@Bot` 加上这些路径，没有单独的产物表。主转录里名册上的 `@Name` / `@everyone` 渲染成带头像的 chip（与作曲栏点名芯片同一视觉），点 Bot chip 打开人设；围栏和行内代码里的 `@` 不转。：Bot 一开始思考就在触发消息下出现紧凑「回复中」行（头像 + 名字）；群里多人同时思考收成同一列。侧栏会话行展示当前会话的状态（思考中 / 回复中 / 待审批 / 待回复 / 空闲）；Bot 自己的全局工作状态展示在 Bot 自己的头像上（状态标记）；会话行有未读角标，打开即已读。工具循环的中间跳不画气泡，一直保持思考；`send_message` 一旦发出就结束本轮，不再开下一跳补全。只有本轮最终那条 `kind: bot` 才渲染。空补全或「本轮没有新工作」这类收尾不插 bot 消息，也不再叫醒别人。终态 `kind: bot` / 你的气泡 / `system` 按 markdown 渲染。流中途卡住时，已写出的正文或完整工具调用会收下并继续这一轮，不插失败 `system`；还没有可用输出时会自动再试。同一端点同时最多两条补全 / 判断流，群里多人并行时其余排队。真正失败（连不上、端点拒绝、没有可用模型等）才出现那条 `system`。提问卡在流里，回复带 `ask_id`；区外写 / 无约束壳停在主转录里的批准卡（允许一次 / Always allow / 拒绝），待批准角标在会话行；私聊 Stop 打眼前这轮；群聊没有 Stop，要停就发消息。协作工具、群判断（仅你的无点名群消息才判断；点名只开被点名的）、文件四件套和工作区壳已接通；区内读写直接干。Bot 可用 `update_profile` 改自己的名字、职责、边界、头像和钉的端点+模型（生成风格或工作区 PNG / JPEG / GIF / WebP；区外读停待批准），改完不在转录里插人设条。Bot 也可用 `list_endpoints` / `add_endpoint` / `update_endpoint` / `delete_endpoint` 和 `list_mcp_servers` / `add_mcp_server` / `update_mcp_server` / `delete_mcp_server` 改名册级端点与 MCP：stdio 用 command / args，HTTP / Streamable HTTP 用 url（可附非鉴权 headers）。新建端点、改已有 URL、新增 MCP、改 command·args / url / headers 停在主转录批准卡（不能 Always allow）；新建 / 改 URL 的卡带密钥框，HTTP MCP 新增的卡带 Authorization 框且必须粘贴后才能允许一次，密钥只走 resolve、不进转录。默认端点不能改 URL / 密钥 / 删除。已有端点改名或整表替换模型名单、删非默认端点、MCP 改名 / 启用 / 停用 / 删除直接干。已配且启用的 MCP 服务器添加时会握手解析 `instructions` 和工具说明（设置里加和 Bot 批准后加同一条路）；每次补全都会把所有已启用且连接成功的服务器工具放进 `tools`（`mcp_<server>_<tool>`），服务器说明附在本轮 system 末尾，调用直接干；不按消息关键词、语言或 Bot 身份筛选。Bot 或设置中添加 / 修改 / 重新启用后，当前轮次下一跳、其他 Bot、后续私聊 / 群聊 / 日程均可调用，停用或删除后不可再调用。图片生成及视频提交 / 查询等能力来自 MCP 工具，不取决于补全模型能否直接输出媒体；「再来一张」这类后续请求也保留完整工具。设置里的名册级 MCP 服务（stdio 与 HTTP）使用紧凑列表，显示名称、传输、连接摘要和启用状态；列表独立滚动，搜索与添加入口保持可见，可按名称、传输或连接地址筛选，长名称与地址省略显示。点服务或添加入口打开独立编辑弹窗，取消不保存；新增 / 改连接必须确认才发 POST/PATCH，没有 Always allow，不走转录批准卡；删 / 停用直接干。名册行「+」和「群」组头「+」打开侧栏滑出，分别 `POST /v1/bots` 与 `POST /v1/sessions`；建完选中新会话。Bot 支持 `avatar`，默认用 boringavatars 算法生成 SVG（beam、marble、pixel、sunset、bauhaus、ring 风格，可随机换一个）；也可上传 PNG / JPEG / WebP，信使压成正方形 JPEG data URI 再落库。若创建时未显式指定头像，守护进程默认按 Bot 名称生成 SVG 头像；侧栏名册、左侧会话列表、顶栏、欢迎卡片、消息转录与提问卡均渲染对应头像。会话列表中，你↔Bot 显示该 Bot 的头像，Bot↔Bot 显示双方叠放头像，群显示群图标；无头像或图片加载失败时列表回退到名字首字，已删除 Bot 显示占位符，归档仍保留头像。顶栏只留一个当前对话设置：群是「群组设置」，私聊是「Bot 设置」。左侧会话列表（群组、你↔Bot、Bot↔Bot）以及顶部的已置顶项目均支持右键菜单：支持置顶/取消置顶、查看信息（打开对应的群组或 Bot 设置抽屉）、清除历史（二次确认后清空会话历史）、归档/取消归档（Bot 会话可用）以及删除（群聊确认后删除群，Bot 会话确认后删除 Bot）。你↔ 打开右侧抽屉可改名字 / 职责 / 边界 / 头像，同一张归档 / 恢复 / 删除（确认弹窗，点确认才删），以及清空历史（确认弹窗，点确认才清）；已归档从名册行消失、你↔行标「已归档」；删除后标题为「已删除」、作曲栏禁用。群组设置可改名、拉人、移出（只剩两个 Bot 时移出不可用），删除群聊走确认弹窗；点成员名进人设并可返回群组设置。Bot↔Bot 设置里点成员名同样打开人设。日历日程到点会在你↔该 Bot 私聊分叉叫醒（补跑只跑最近一次）。关窗隐藏到托盘且留 Dock；托盘左键叫回；退出后守护进程不在。黄金路径业务还没接。
+
+信使不再展示 token / 花费统计：会话顶栏、侧栏底部及未选会话时的全局统计、会话设置中的统计卡均已移除。后台仍保留端点 `usage` 记录与 `/v1/spend` 接口。
+
+## 聊天输入区
+
+输入区采用上方文字、下方工具栏的布局：附件在左，右侧固定一个圆形操作按钮，快捷键提示位于输入框外。你↔Bot 私聊空闲时显示发送箭头，有进行中的轮次（含待批准、待回复）时替换为停止方块；停止仍只针对眼前这一轮。群聊不论是否有进行中的轮都保持发送，不出现停止按钮；要停就发消息让 Bot 们停下来。私聊生成期间可以编辑下一条草稿、添加附件，但发送按钮和 Enter / ⌘+Enter / Ctrl+Enter 都不会提交；结束或停止后恢复发送，草稿保留。群聊有活轮或判断进行中时仍可发送。Shift+Enter 始终换行，多行内容不再误显示占位提示。消息提交中暂不允许重复发送；只读会话保持禁用。停止待批准的私聊轮次后，批准卡立即显示已作废，侧栏待批准状态同步清除。移动端隐藏快捷键提示，操作按钮使用 44px 点击区域。
+
+## Bot 遇到障碍时
+
+所有 Bot 的中英文轮次指令都要求先主动排查和尝试解决：检查实际错误、工具说明与已有文件，用低风险、可逆的方法推进；失败后根据证据调整参数或换用工具，完成后验证原始目标。技术问题不能仅以「遇到问题」收尾，不能让用户代做可自行完成的下载、查找、转换，也不能擅自用替代产物冒充完成。用户指出上轮问题或要求继续，仍是待处理的新工作。
+
+超过上下文限额的工具结果会先保存完整 JSON 到工作区 `tool-results/<唯一标识>.json`，再提供 `full_result_path`（工作区相对路径）和受限预览。文件以仅当前用户可读写的权限独占创建，保留原始内容，可能包含工具返回的敏感信息；用完可自行清理 `tool-results/`，清理后对应完整结果不可再读。Bot 可用现有 `shell` 解析文件、筛选日志或提取链接、把内嵌 base64 图片解码为文件，不必反复生成或要求用户手工保存。模型看到的单条工具结果仍限制为 8,000 个 Unicode 码点；保存失败会明确标记，不会假称已经保存，真实失败状态也不会因裁剪而变成成功。
+
+主动排障不等于无限重试或绕过边界：有副作用且结果不明时先检查是否已成功，拒绝与 Stop 必须尊重。只有确实需要用户独有的权限、凭据、信息或决策时才求助，并说明实际尝试、剩余阻碍和最小必要操作；危险动作仍走批准卡，密钥不进聊天。`send_message` 成功会结束本轮，因此不能用它提前发送排障预告。
+
+## 本机接口
+
+守护进程只绑 `127.0.0.1:17890`，前缀 `/v1`。`GET /v1/health` 不鉴权；其余 HTTP 用 `Authorization: Bearer`。WebSocket `ws://127.0.0.1:17890/v1/events` 连上后第一条消息 `{ "type": "auth", "token" }`。
+
+每次守护进程启动新铸本机 token，写到 `~/Library/Application Support/real-bot/local-api.json`（目录 `0700`，文件 `0600`）。库文件同目录 `state.sqlite`。每个端点的 API key 在钥匙串 `com.real-bot.daemon` / `endpoint-api-key:<provider-id>`（旧的单端点项 `endpoint-api-key` 会迁到默认端点）。测试或隔离跑可设 `REAL_BOT_DATA_DIR` 换这个目录。
+
+单独起信使时，Vite 开发服务器提供同源 `GET /__local-api` → `{ name, port, token }`（守护进程未起时是带 `name` 的 `not_found`），不把 token 写进仓库或 bundle。页面仍只使用 `port` 和 `token`。
+
+## CI、落地页与快照发布
+
+仓库在 GitHub Actions 里跑与本地相同的验证，不代替本机 UI 或原生桌面检查。
+
+| 工作流 | 触发 | 做什么 |
+|---|---|---|
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、信使与落地页 build；macOS 上 `cargo test` |
+| [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) | `main` 推送 | 构建 `apps/landing` 并部署 GitHub Pages |
+| [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证后打 **未签名** 的 macOS `.dmg` / `.app`，写入 **draft prerelease** |
+
+落地页本地预览：`pnpm --filter @real-bot/landing dev`（5174）。Pages 构建会设 `BASE_PATH=/<仓库名>`，适配 `https://<owner>.github.io/<repo>/`。仓库链接集中在 `apps/landing/src/lib/site.ts`。
+
+当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致，否则 `tauri-action` 会按配置里的版本建 draft（现在是 `0.0.0`）。Windows / Linux 不在发布范围。Apple Developer 证书与公证需要以后另配仓库 secrets，不写进工作流。

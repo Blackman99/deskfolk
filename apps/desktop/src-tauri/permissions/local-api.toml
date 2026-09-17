@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-local-api-endpoint"
+description = "Lets the messenger read the in-memory local API origin and token."
+commands.allow = ["local_api_endpoint"]
+
+[[permission]]
+identifier = "allow-open-workspace-path"
+description = "Lets the messenger open a workspace file with the system."
+commands.allow = ["open_workspace_path"]

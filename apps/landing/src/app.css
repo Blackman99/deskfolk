@@ -1,0 +1,335 @@
+@import "tailwindcss";
+
+/*
+  Real Bot landing — design tokens.
+
+  Palette comes from the product itself: the roster's default boring-avatars
+  palette (#146A7C teal, #F0AB3D mustard) on the messenger's cool grey ground.
+  Type is macOS system faces only: a serif for the written voice (Iowan Old
+  Style / Songti SC), the system sans for UI, SF Mono for paths and commands.
+*/
+:root {
+  color-scheme: light;
+
+  --ground: #eef2f7;
+  --ground-2: #e4e9f0;
+  --paper: #ffffff;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #7c8a9e;
+  --line: #d9e0e8;
+  --line-2: #eaeef3;
+
+  --teal: #146a7c;
+  --teal-2: #0f5462;
+  --teal-tint: #e3f0f2;
+  --teal-line: #b9d6dc;
+  --mustard: #f0ab3d;
+  --mustard-tint: #fdf3e1;
+  --mustard-line: #f3d08e;
+  --mustard-ink: #8a5a08;
+
+  --font-serif: "Iowan Old Style", "Charter", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC",
+    "Noto Serif SC", "SimSun", Georgia, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC",
+    "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", ui-monospace, monospace;
+
+  --shadow-window: 0 30px 60px -20px rgba(15, 23, 42, 0.28), 0 8px 20px -8px rgba(15, 23, 42, 0.16);
+  --shadow-float: 0 12px 32px -12px rgba(15, 23, 42, 0.22);
+
+  --nav-h: 60px;
+  --page-max: 1280px;
+  --gutter: clamp(16px, 4vw, 48px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0d1219;
+    --ground-2: #111722;
+    --paper: #161e2b;
+    --ink: #f1f5f9;
+    --ink-2: #b4c0cf;
+    --ink-3: #7f8da0;
+    --line: #253142;
+    --line-2: #1c2635;
+
+    --teal: #5ebbcc;
+    --teal-2: #8fd3df;
+    --teal-tint: rgba(94, 187, 204, 0.14);
+    --teal-line: rgba(94, 187, 204, 0.35);
+    --mustard: #f5c065;
+    --mustard-tint: rgba(240, 171, 61, 0.14);
+    --mustard-line: rgba(240, 171, 61, 0.4);
+    --mustard-ink: #f5c065;
+
+    --shadow-window: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+    --shadow-float: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0d1219;
+  --ground-2: #111722;
+  --paper: #161e2b;
+  --ink: #f1f5f9;
+  --ink-2: #b4c0cf;
+  --ink-3: #7f8da0;
+  --line: #253142;
+  --line-2: #1c2635;
+
+  --teal: #5ebbcc;
+  --teal-2: #8fd3df;
+  --teal-tint: rgba(94, 187, 204, 0.14);
+  --teal-line: rgba(94, 187, 204, 0.35);
+  --mustard: #f5c065;
+  --mustard-tint: rgba(240, 171, 61, 0.14);
+  --mustard-line: rgba(240, 171, 61, 0.4);
+  --mustard-ink: #f5c065;
+
+  --shadow-window: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+  --shadow-float: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+}
+
+html {
+  background: var(--ground);
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--teal-tint);
+  color: var(--teal-2);
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.serif {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.page {
+  width: 100%;
+  max-width: var(--page-max);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Buttons shared across the site */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn-primary:hover {
+  background: var(--teal-2);
+}
+
+:root[data-theme="dark"] .btn-primary,
+:root:not([data-theme="light"]) .btn-primary {
+  color: var(--ground);
+}
+
+.btn-secondary {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.btn-secondary:hover {
+  border-color: var(--teal);
+  color: var(--teal-2);
+}
+
+.text-link {
+  color: var(--teal);
+  text-decoration: underline;
+  text-decoration-color: var(--teal-line);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+
+.text-link:hover {
+  color: var(--teal-2);
+  text-decoration-color: currentColor;
+}
+
+/* Rendered markdown for manifesto / roadmap */
+.markdown-body {
+  color: var(--ink);
+  line-height: 1.8;
+  font-size: 16.5px;
+}
+
+.markdown-body h1 {
+  font-family: var(--font-serif);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 2.5rem 0 1rem;
+  letter-spacing: -0.01em;
+}
+
+.markdown-body h2 {
+  font-family: var(--font-serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 2.75rem 0 0.9rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.markdown-body h3 {
+  font-size: 1.15rem;
+  font-weight: 650;
+  margin: 1.9rem 0 0.6rem;
+}
+
+.markdown-body h4 {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.markdown-body p {
+  margin: 0.8rem 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.6rem 0 0.9rem;
+  padding-left: 1.4rem;
+}
+
+.markdown-body li {
+  margin: 0.3rem 0;
+}
+
+.markdown-body li > p {
+  margin: 0.25rem 0;
+}
+
+.markdown-body strong {
+  font-weight: 650;
+}
+
+.markdown-body a {
+  color: var(--teal);
+  text-decoration: underline;
+  text-decoration-color: var(--teal-line);
+  text-underline-offset: 4px;
+}
+
+.markdown-body a:hover {
+  color: var(--teal-2);
+  text-decoration-color: currentColor;
+}
+
+.markdown-body code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--ground-2);
+  border-radius: 5px;
+  padding: 0.12em 0.4em;
+}
+
+.markdown-body pre {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  margin: 1.1rem 0;
+  font-size: 0.9rem;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
+.markdown-body blockquote {
+  margin: 1.2rem 0;
+  padding: 0.75rem 1.1rem;
+  border-left: 3px solid var(--mustard);
+  background: var(--mustard-tint);
+  color: var(--ink-2);
+  border-radius: 0 8px 8px 0;
+}
+
+.markdown-body blockquote p {
+  margin: 0.35rem 0;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2rem 0;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th {
+  font-weight: 650;
+  color: var(--ink-2);
+  border-bottom-color: var(--ink-3);
+}

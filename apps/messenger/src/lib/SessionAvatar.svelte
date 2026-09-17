@@ -1,0 +1,95 @@
+<script lang="ts">
+	import type { Bot, SessionSummary } from '@real-bot/protocol';
+	import { compositeAvatarLayout, sessionAvatars } from './avatar.ts';
+	import { botAvatarColor } from './chat-view.ts';
+	import { rosterLetter } from './roster-letter.ts';
+	import { youBotPeer } from './session-groups.ts';
+	import type { SessionStatusResult } from './session-status.ts';
+
+	let {
+		session,
+		bots,
+		size = 'md',
+		class: customClass = '',
+		botStatus
+	}: {
+		session: SessionSummary;
+		bots: ReadonlyMap<string, Bot>;
+		size?: 'sm' | 'md' | 'top' | 'hero';
+		class?: string;
+		botStatus?: (botId: string) => SessionStatusResult | undefined;
+	} = $props();
+
+	const avatars = $derived(sessionAvatars(session, bots));
+	const plan = $derived(compositeAvatarLayout(avatars));
+	let failedSources = $state<Record<string, string>>({});
+
+	const overflowTooltip = $derived(
+		plan.overflowCount > 0 ? `+${plan.overflowCount} (${plan.overflowNames.join(', ')})` : ''
+	);
+
+	const peerBotId = $derived(youBotPeer(session));
+	const targetBotId = $derived(
+		peerBotId ?? (plan.layout === 'single' && avatars.length === 1 && bots.has(avatars[0].id) ? avatars[0].id : null)
+	);
+	const targetBot = $derived(targetBotId ? (bots.get(targetBotId) ?? null) : null);
+	const statusResult = $derived(
+		targetBotId && targetBot && !targetBot.archived_at && botStatus
+			? botStatus(targetBotId)
+			: undefined
+	);
+</script>
+
+<span
+	class="row-avatar size-{size} layout-{plan.layout} {customClass}"
+	class:is-group={session.kind === 'group'}
+	class:is-stack={avatars.length > 1}
+	class:has-overflow={plan.overflowCount > 0}
+	aria-hidden="true"
+>
+	{#if plan.layout === 'empty'}
+		<span class="row-avatar-bot is-empty">
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+				<circle cx="9" cy="7" r="4" />
+				<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+			</svg>
+		</span>
+	{:else}
+		{#each plan.visible as avatar, i (avatar.id)}
+			{@const palette = botAvatarColor(avatar.id)}
+			<span
+				class="row-avatar-bot slot-{i}"
+				style="background: {palette.bg}; color: {palette.text}; border-color: {palette.border};"
+				title={avatar.name ?? 'Bot'}
+			>
+				{#if avatar.src && failedSources[avatar.id] !== avatar.src}
+					<img
+						src={avatar.src}
+						alt={avatar.name ?? ''}
+						class="avatar-img"
+						onerror={() => { failedSources[avatar.id] = avatar.src!; }}
+					/>
+				{:else}
+					{avatar.name ? rosterLetter(avatar.name) : '?'}
+				{/if}
+			</span>
+		{/each}
+		{#if plan.overflowCount > 0}
+			<span
+				class="row-avatar-bot is-overflow slot-overflow"
+				title={overflowTooltip}
+			>
+				+{plan.overflowCount > 99 ? '99' : plan.overflowCount}
+			</span>
+		{/if}
+		{#if statusResult}
+			<span
+				class="avatar-status-dot is-{statusResult.kind}"
+				class:is-busy={statusResult.isBusy}
+				title="{targetBot?.name ?? 'Bot'}: {statusResult.label}"
+			></span>
+		{/if}
+	{/if}
+</span>
+

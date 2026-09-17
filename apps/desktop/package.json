@@ -1,0 +1,19 @@
+{
+  "name": "@real-bot/desktop",
+  "license": "MIT",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tauri dev",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "^6.0.3"
+  }
+}

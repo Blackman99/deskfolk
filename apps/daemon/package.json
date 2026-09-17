@@ -1,0 +1,21 @@
+{
+  "name": "@real-bot/daemon",
+  "license": "MIT",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "compile": "bun build --compile src/main.ts --outfile dist/real-bot-daemon"
+  },
+  "dependencies": {
+    "@real-bot/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^6.0.3"
+  }
+}

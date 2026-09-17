@@ -1,0 +1,17 @@
+{
+  "name": "real-bot",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @real-bot/daemon --filter @real-bot/desktop --parallel dev",
+    "dev:landing": "pnpm --filter @real-bot/landing dev",
+    "build:landing": "pnpm --filter @real-bot/landing build",
+    "test": "pnpm --filter @real-bot/daemon test && pnpm --filter @real-bot/messenger test",
+    "typecheck": "pnpm --filter @real-bot/protocol typecheck && pnpm --filter @real-bot/daemon typecheck && pnpm --filter @real-bot/messenger typecheck && pnpm --filter @real-bot/desktop typecheck && pnpm --filter @real-bot/landing typecheck"
+  }
+}

@@ -1,0 +1,243 @@
+import { describe, expect, test } from "bun:test";
+import { builtinTools, JUDGEMENT_SYSTEM, turnSystemPrompt } from "./prompts";
+
+describe("prompts", () => {
+  test("judgement system has no opening brace", () => {
+    expect(JUDGEMENT_SYSTEM.includes("{")).toBe(false);
+  });
+
+  test("turn system with interrupt flag is the locked zh shape", () => {
+    const text = turnSystemPrompt({
+      locale: "zh",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: true,
+    });
+    expect(text.startsWith("上次断了（工具没有重试）。\n\n# 人设")).toBe(true);
+    expect(text).toContain("## 名字\n\nWriter");
+    expect(text).toContain("# 系统指令");
+    expect(text).toContain("本轮由标了「本轮触发」的那一条叫醒");
+    expect(text).toContain("没有新信息时不要调用 send_message");
+    expect(text).toContain("本轮没有新工作");
+    expect(text).toContain("主转录里不要留痕迹");
+    expect(text).toContain("只在对方有尚未看见的新工作要接手时才点名");
+    expect(text).toContain("用户已经向全员说过的请求，不要再 @ 一遍去催在场的人");
+    expect(text).toContain("本轮写入的工作区文件会自动变成可点链接");
+    expect(text).toContain("不要为「已写入某文件」再发一条不含路径的收尾");
+    expect(text).toContain("介绍已经发出");
+    expect(text).toContain("PNG / JPEG / GIF / WebP 已经作为图像发给你");
+    expect(text).toContain("不要用 read_file 去读它们");
+    expect(text).toContain("要改自己的名字、职责、边界、头像或钉的端点+模型，用 update_profile");
+    expect(text).toContain("用 list_endpoints / add_endpoint / update_endpoint / delete_endpoint");
+    expect(text).toContain("端点密钥和 HTTP MCP 的 Authorization 在批准卡上贴，不要放进工具参数");
+    expect(text).toContain("用户给了 MCP URL 或「添加一个 mcp」时必须调用 add_mcp_server");
+    expect(text).toContain("不按任务关键词或 Bot 身份筛掉");
+    expect(text).toContain("其他 Bot 和后续会话同样可用");
+    expect(text).toContain("图片、视频等能力以 MCP 的实际工具为准");
+    expect(text).toContain("默认端点不能改 URL 或密钥，也不能删除");
+    expect(text).toContain("转录里若有「改不了头像」或「不能改名字」是过时的");
+    expect(text.endsWith("区内。")).toBe(true);
+  });
+
+  test("every locale requires active recovery before asking the user", () => {
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
+    const zh = turnSystemPrompt({ ...profile, locale: "zh" });
+    for (const rule of [
+      "遇到任何障碍，先主动排查并尝试解决",
+      "不要原样重复已失败的调用",
+      "full_result_path",
+      "不要把截断当成原始结果丢失",
+      "先核实是否已成功",
+      "验证原始目标是否达成",
+      "不能擅自降低要求或换成替代产物",
+      "真正缺少只有用户能提供的权限、凭据、信息或决策",
+      "send_message 会结束本轮",
+      "不能绕过批准、用户拒绝、Stop 或人设边界",
+      "denied 表示用户拒绝这个动作，不是工具故障",
+      "不能换工具、换命令或改路径继续执行同一意图",
+    ]) expect(zh).toContain(rule);
+    const en = turnSystemPrompt({ ...profile, locale: "en" });
+    for (const rule of [
+      "When any obstacle arises, actively investigate and attempt to resolve it",
+      "Do not repeat a failed call unchanged",
+      "full_result_path",
+      "Do not treat truncation as loss of the original result",
+      "first check whether it already succeeded",
+      "Verify the original goal",
+      "do not silently lower requirements or substitute a different deliverable",
+      "only the user can supply the missing permission, credentials, information, or decision",
+      "send_message ends this turn",
+      "never bypass approval, a user denial, Stop, or profile boundaries",
+      "denied means the user refused the action, not that a tool malfunctioned",
+      "Do not switch tools, commands, or paths to carry out the same intent",
+    ]) expect(en).toContain(rule);
+  });
+
+  test("communication tools leave recoverable technical work to the Bot", () => {
+    for (const locale of ["zh", "en"] as const) {
+      const tools = builtinTools(locale);
+      const ask = tools.find((t) => t.function.name === "ask_user")!.function.description;
+      const send = tools.find((t) => t.function.name === "send_message")!.function.description;
+      expect(ask).toContain(locale === "zh" ? "先主动排查" : "Investigate first");
+      expect(send).toContain(locale === "zh" ? "会结束本轮" : "ends this turn");
+    }
+  });
+
+  test("shared MCP instructions append after the locked system block", () => {
+    const text = turnSystemPrompt({
+      locale: "zh",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+      mcpGuides: [
+        {
+          name: "github",
+          instructions: "GitHub issues and pull requests.",
+          tools: [{ modelName: "mcp_github_get_issue", description: "read a GitHub issue" }],
+        },
+      ],
+    });
+    expect(text).toContain("# 系统指令");
+    expect(text).toContain("# 本轮 MCP");
+    expect(text).toContain("这些已启用且连接成功的 MCP 由所有 Bot 共用");
+    expect(text).toContain("## github");
+    expect(text).toContain("GitHub issues and pull requests.");
+    expect(text).toContain("- mcp_github_get_issue: read a GitHub issue");
+  });
+
+  test("turn system without a flag starts at the profile block", () => {
+    const text = turnSystemPrompt({
+      locale: "en",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+    });
+    expect(text.startsWith("# Profile")).toBe(true);
+    expect(text).toContain("## Name\n\nWriter");
+    expect(text).toContain("# System");
+    expect(text).toContain("（本轮触发）");
+    expect(text).toContain("mention someone only when they have new work they have not already seen");
+    expect(text).toContain("Do not re-mention people who already heard the user's group-wide request");
+    expect(text).toContain("Workspace files written this turn become clickable links automatically");
+    expect(text).toContain("Do not post a closer that only says a file was written");
+    expect(text).toContain("introduction posted");
+    expect(text).toContain("no transcript message");
+    expect(text).toContain("PNG / JPEG / GIF / WebP attachments are already sent as images");
+    expect(text).toContain("Do not read_file them");
+    expect(text).toContain("To change your own name, duties, boundaries, avatar, or pinned endpoint+model, use update_profile");
+    expect(text).toContain("Use list_endpoints / add_endpoint / update_endpoint / delete_endpoint");
+    expect(text).toContain("paste the endpoint key or HTTP MCP Authorization on the approval card, never in a tool argument");
+    expect(text).toContain("If the user gives an MCP URL or asks to add MCP, you must call add_mcp_server");
+    expect(text).toContain("without filtering by task keywords or Bot identity");
+    expect(text).toContain("including to other Bots and later sessions");
+    expect(text).toContain("Image, video, and other capabilities come from the actual MCP tools");
+    expect(text).toContain("You cannot change the default endpoint's URL or key, or delete it");
+    expect(text).toContain("If the transcript says you cannot change your avatar or name, that is stale");
+  });
+
+  test("judgement system prefers pass when the trigger restates recent work", () => {
+    expect(JUDGEMENT_SYSTEM).toContain("触发条与最近转录是同一件事的重复或转述，则 pass");
+    expect(JUDGEMENT_SYSTEM).toContain("把已经向全员提出的请求再点名一遍而 join");
+    expect(JUDGEMENT_SYSTEM).toContain("只为声明没有新工作或已经介绍过");
+    expect(JUDGEMENT_SYSTEM).toContain("用户向全员提出的工作请求不是打招呼");
+  });
+
+  test("send_message tool copy says mention forces a new turn", () => {
+    const zh = builtinTools("zh").find((t) => t.function.name === "send_message")!;
+    expect(zh.function.description).toContain("会点名并让对方必须新开一轮");
+    expect(zh.function.description).toContain("用户已经向全员说过的请求不要再 @ 一遍");
+    expect(zh.function.description).toContain("不要把已经提出的请求再广播一遍");
+    expect(zh.function.description).toContain("没有新工作、介绍已经发出、无其他事项、本轮结束这类收尾或状态汇报不要发");
+    expect(zh.function.description).toContain("本轮写入的工作区文件会自动变成可点链接");
+    expect((zh.function.parameters.properties.paths as { description: string }).description).toContain("工作区相对路径");
+    const en = builtinTools("en").find((t) => t.function.name === "send_message")!;
+    expect(en.function.description).toContain("forces them to open a new turn");
+    expect(en.function.description).toContain("Do not re-mention a request the user already made to the group");
+    expect(en.function.description).toContain("Do not rebroadcast a request already in the transcript");
+    expect(en.function.description).toContain("Do not post a closer or status note such as \"no new work\"");
+    expect(en.function.description).toContain("Workspace files written this turn become clickable links automatically");
+  });
+
+  test("builtin tools include the file set and shell with locked zh descriptions", () => {
+    const tools = builtinTools("zh");
+    const names = tools.map((t) => t.function.name);
+    expect(names.slice(0, 5)).toEqual(["read_file", "write_file", "delete_file", "list_dir", "shell"]);
+    const write = tools.find((t) => t.function.name === "write_file")!;
+    expect(write.function.description).toBe(
+      "写入或新建 UTF-8 文本（整文件覆盖，中间目录按需创建）。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
+    );
+    expect((write.function.parameters.properties.path as { description: string }).description).toBe(
+      "工作区相对 POSIX，或宿主绝对路径。`.` 是工作区根。开头的 `/` 不是工作区根。",
+    );
+    const list = tools.find((t) => t.function.name === "list_dir")!;
+    expect((list.function.parameters.properties.path as { description: string }).description).toBe(
+      "工作区相对 POSIX，或宿主绝对路径。`.` 是工作区根。开头的 `/` 不是工作区根。省略则为 `.`。",
+    );
+  });
+
+  test("update_profile can change name and avatar", () => {
+    const zh = builtinTools("zh").find((t) => t.function.name === "update_profile")!;
+    expect(zh.function.description).toContain("改自己的名字、职责、边界、头像和/或钉的端点+模型");
+    expect(zh.function.description).toContain("avatar_style");
+    expect(zh.function.description).toContain("avatar_path");
+    expect(zh.function.description).not.toContain("不能改名字");
+    expect(zh.function.description).not.toContain("人设变更");
+    expect(zh.function.description).toContain("不要为这次改人设再发一条聊天消息");
+    expect(Object.keys(zh.function.parameters.properties)).toEqual([
+      "name",
+      "duties",
+      "boundaries",
+      "avatar_style",
+      "avatar_seed",
+      "avatar_path",
+      "endpoint_id",
+      "model",
+    ]);
+    const en = builtinTools("en").find((t) => t.function.name === "update_profile")!;
+    expect(en.function.description).toContain("Change your own name, duties, boundaries, avatar, and/or pinned endpoint+model");
+    expect(en.function.description).not.toContain("You cannot rename yourself");
+    expect(en.function.description).not.toContain("profile-change");
+    expect(en.function.description).toContain("Do not send a chat message about this profile change");
+  });
+
+  test("builtin tools include endpoint and MCP catalog CRUD", () => {
+    const names = builtinTools("zh").map((t) => t.function.name);
+    expect(names).toContain("list_endpoints");
+    expect(names).toContain("add_endpoint");
+    expect(names).toContain("update_endpoint");
+    expect(names).toContain("delete_endpoint");
+    expect(names).toContain("list_mcp_servers");
+    expect(names).toContain("add_mcp_server");
+    expect(names).toContain("update_mcp_server");
+    expect(names).toContain("delete_mcp_server");
+    const add = builtinTools("zh").find((t) => t.function.name === "add_endpoint")!;
+    expect(add.function.description).toContain("不要传密钥");
+    expect(Object.keys(add.function.parameters.properties)).not.toContain("api_key");
+    const addMcp = builtinTools("zh").find((t) => t.function.name === "add_mcp_server")!;
+    expect(addMcp.function.description).toContain("HTTP / Streamable HTTP 传 url");
+    expect(Object.keys(addMcp.function.parameters.properties)).toContain("url");
+    expect(Object.keys(addMcp.function.parameters.properties)).not.toContain("api_key");
+  });
+
+  test("builtin tools include calendar routine CRUD with nested schedule copy", () => {
+    const tools = builtinTools("zh");
+    const names = tools.map((t) => t.function.name);
+    expect(names).toContain("list_routines");
+    expect(names).toContain("create_routine");
+    expect(names).toContain("update_routine");
+    expect(names).toContain("delete_routine");
+    const create = tools.find((t) => t.function.name === "create_routine")!;
+    const schedule = create.function.parameters.properties.schedule as {
+      description: string;
+      properties: { kind: { description: string }; time: { description: string }; weekdays: { description: string } };
+    };
+    expect(schedule.description).toBe("日历日程，不是 cron，不是事件触发。");
+    expect(schedule.properties.kind.description).toBe("daily 或 weekly。");
+    expect(schedule.properties.time.description).toBe("本机本地时区的时刻，HH:MM（24 小时）。");
+    const update = tools.find((t) => t.function.name === "update_routine")!;
+    expect((update.function.parameters.properties.schedule as { description: string }).description).toBe("新的日历");
+  });
+});

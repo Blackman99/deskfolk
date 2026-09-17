@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Real Bot",
+  "version": "0.0.0",
+  "identifier": "com.real-bot.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @real-bot/messenger dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm --filter @real-bot/messenger build",
+    "frontendDist": "../../messenger/build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Real Bot",
+        "width": 1100,
+        "height": 760,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; frame-src blob:; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:17890 ws://127.0.0.1:17890 http://localhost:5173 ws://localhost:5173"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": [],
+    "macOS": {
+      "signingIdentity": "-"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
