@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { base, resolve } from '$app/paths';
+  import { base } from '$app/paths';
   import { page } from '$app/state';
   import { DICT, type Lang } from '$lib/i18n';
   import { GITHUB_URL, LATEST_RELEASE_URL } from '$lib/site';
@@ -12,10 +12,16 @@
 
   const targetLang = $derived(lang === 'zh' ? 'en' : 'zh');
   const switchedPath = $derived.by(() => {
-    const routeId = page.route.id ?? '/[lang]';
-    const suffix = routeId.startsWith('/[lang]') ? routeId.slice('/[lang]'.length) : '';
-    return resolve(`/${targetLang}${suffix}`);
+    const prefix = `${base}/${lang}`;
+    const pathname = page.url.pathname;
+    const rest = pathname === prefix || pathname.startsWith(`${prefix}/`)
+      ? pathname.slice(prefix.length)
+      : '';
+    return `${base}/${targetLang}${rest}${page.url.hash}`;
   });
+
+  const onManifesto = $derived(page.url.pathname.includes('/manifesto'));
+  const onRoadmap = $derived(/\/roadmap\/?$/.test(page.url.pathname));
 
   let menuOpen = $state(false);
 
@@ -44,8 +50,8 @@
         <a href="{base}/{lang}#boundaries">{t.nav.boundaries}</a>
         <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
         <a href="{base}/{lang}#quickstart">{t.nav.quickstart}</a>
-        <a href="{base}/{lang}/manifesto">{t.nav.manifesto}</a>
-        <a href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
+        <a href="{base}/{lang}/manifesto" class:current={onManifesto} aria-current={onManifesto ? 'page' : undefined}>{t.nav.manifesto}</a>
+        <a href="{base}/{lang}/roadmap" class:current={onRoadmap} aria-current={onRoadmap ? 'page' : undefined}>{t.nav.roadmap}</a>
       </nav>
 
       <div class="actions">
@@ -78,8 +84,8 @@
         <a href="{base}/{lang}#boundaries" onclick={() => (menuOpen = false)}>{t.nav.boundaries}</a>
         <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
         <a href="{base}/{lang}#quickstart" onclick={() => (menuOpen = false)}>{t.nav.quickstart}</a>
-        <a href="{base}/{lang}/manifesto">{t.nav.manifesto}</a>
-        <a href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
+        <a href="{base}/{lang}/manifesto" class:current={onManifesto} aria-current={onManifesto ? 'page' : undefined}>{t.nav.manifesto}</a>
+        <a href="{base}/{lang}/roadmap" class:current={onRoadmap} aria-current={onRoadmap ? 'page' : undefined}>{t.nav.roadmap}</a>
         <a href={switchedPath} hreflang={targetLang}>{t.nav.switchLang}</a>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
       </nav>
@@ -181,7 +187,9 @@
     text-decoration: none;
   }
 
-  .links a:hover {
+  .links a:hover,
+  .links a.current,
+  .menu a.current {
     color: var(--teal-2);
   }
 

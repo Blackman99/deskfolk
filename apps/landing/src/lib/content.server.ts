@@ -3,19 +3,35 @@ import path from 'node:path';
 import { Marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import { GITHUB_BLOB_MAIN } from './site';
+import {
+  MANIFESTO_TOPICS,
+  type ManifestoTopic,
+  type ParsedTerm,
+  type TocEntry,
+  docsPath,
+  groupTerms,
+  parseContextMarkdown,
+  slugify,
+  termAnchorId
+} from './docs';
 
-export type TocEntry = { id: string; text: string; level: number };
+export type { TocEntry };
 
-/** Slug that keeps CJK characters so anchors read like the heading itself. */
-function slugify(text: string): string {
-  return text
-    .trim()
-    .replace(/[\s/]+/g, '-')
-    .replace(/[^\p{L}\p{N}_-]/gu, '')
-    .toLowerCase();
-}
+export type DocsDocument = {
+  title: string;
+  contentHtml: string;
+  toc: TocEntry[];
+};
 
-function createMarked(toc: TocEntry[]) {
+export type ManifestoIndexEntry = {
+  topic: ManifestoTopic;
+  terms: { name: string; id: string }[];
+};
+
+function createMarked(
+  toc: TocEntry[],
+  headingId?: (text: string, depth: number) => string | undefined
+) {
   const seen = new Map<string, number>();
   const unique = (base: string): string => {
     const n = seen.get(base) ?? 0;
@@ -35,25 +51,17 @@ function createMarked(toc: TocEntry[]) {
       heading({ tokens, depth }) {
         const html = this.parser.parseInline(tokens);
         const text = tokens.map((tk) => ('text' in tk ? String(tk.text) : '')).join('');
-        const id = unique(slugify(text) || `h-${depth}`);
+        const preferred = headingId?.(text.trim(), depth);
+        const id = unique(preferred || slugify(text) || `h-${depth}`);
         if (depth >= 2 && depth <= 3) toc.push({ id, text: text.trim(), level: depth });
         return `<h${depth} id="${id}">${html}</h${depth}>\n`;
       },
       paragraph({ tokens }) {
         const html = this.parser.parseInline(tokens);
-        // Glossary entries in CONTEXT.md are paragraphs that open with a bold term and a colon.
         const first = tokens[0];
-        const second = tokens[1];
-        if (
-          !inQuote &&
-          first?.type === 'strong' &&
-          second?.type === 'text' &&
-          /^\s*[：:]/.test(String(second.raw ?? second.text ?? ''))
-        ) {
-          const term = 'text' in first ? String(first.text) : '';
-          const id = unique(`term-${slugify(term) || 'entry'}`);
-          toc.push({ id, text: term.trim(), level: 3 });
-          return `<p id="${id}" class="term">${html}</p>\n`;
+        const firstText = first && 'text' in first ? String(first.text) : '';
+        if (!inQuote && first?.type === 'em' && firstText === 'Avoid') {
+          return `<p class="avoid">${html}</p>\n`;
         }
         return `<p>${html}</p>\n`;
       }
@@ -68,18 +76,32 @@ function withBase(pathname: string): string {
   return `${base}${normalized}`;
 }
 
-function sanitizeOptions(lang: 'zh' | 'en'): sanitizeHtml.IOptions {
+function contextHref(lang: 'zh' | 'en', hash?: string, termTargets?: Record<string, string>): string {
+  if (hash) {
+    const id = hash.startsWith('term-') ? hash : `term-${hash}`;
+    const dest = termTargets?.[hash] ?? termTargets?.[id];
+    if (dest) return withBase(`/${lang}${dest}#${id}`);
+    return withBase(`/${lang}/manifesto#${hash}`);
+  }
+  return withBase(`/${lang}/manifesto`);
+}
+
+function sanitizeOptions(
+  lang: 'zh' | 'en',
+  termTargets?: Record<string, string>
+): sanitizeHtml.IOptions {
   return {
     allowedTags: [
       'p', 'br', 'strong', 'em', 'del', 's', 'code', 'pre', 'a',
       'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+      'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section'
     ],
     allowedAttributes: {
       a: ['href', 'target', 'rel', 'class', 'title'],
       code: ['class'],
       pre: ['class'],
       p: ['id', 'class'],
+      section: ['id', 'class'],
       h1: ['id'],
       h2: ['id'],
       h3: ['id'],
@@ -93,35 +115,35 @@ function sanitizeOptions(lang: 'zh' | 'en'): sanitizeHtml.IOptions {
     transformTags: {
       a: (_tagName, attribs) => {
         let href = attribs.href || '';
+        const hashIdx = href.indexOf('#');
+        const pathPart = hashIdx >= 0 ? href.slice(0, hashIdx) : href;
+        const hash = hashIdx >= 0 ? href.slice(hashIdx + 1) : '';
 
-        // Rewrite internal markdown links
-        if (href === 'ROADMAP.md' || href.endsWith('/ROADMAP.md')) {
-          href = withBase(`/${lang}/roadmap`);
-        } else if (href === 'CONTEXT.md' || href.endsWith('/CONTEXT.md')) {
-          href = withBase(`/${lang}/manifesto`);
-        } else if (href === 'README.md' || href === 'README.en.md' || href === 'README.zh.md') {
+        if (pathPart === 'ROADMAP.md' || pathPart.endsWith('/ROADMAP.md')) {
+          href = withBase(`/${lang}/roadmap`) + (hash ? `#${hash}` : '');
+        } else if (pathPart === 'CONTEXT.md' || pathPart.endsWith('/CONTEXT.md')) {
+          href = contextHref(lang, hash || undefined, termTargets);
+        } else if (
+          pathPart === 'README.md' ||
+          pathPart === 'README.en.md' ||
+          pathPart === 'README.zh.md'
+        ) {
           href = withBase(`/${lang}`);
-        } else if (href.endsWith('.md') || href.startsWith('docs/')) {
+        } else if (pathPart.endsWith('.md') || pathPart.startsWith('docs/')) {
           const cleanPath = href.replace(/^\.\//, '');
           href = `${GITHUB_BLOB_MAIN}/${cleanPath}`;
         }
 
         const isExternal = href.startsWith('http://') || href.startsWith('https://');
-        const finalAttribs: Record<string, string> = {
-          ...attribs,
-          href,
-          class: 'text-cyan-400 hover:text-cyan-300 underline underline-offset-4 decoration-cyan-500/40'
-        };
+        const finalAttribs: Record<string, string> = { ...attribs, href };
+        delete finalAttribs.class;
 
         if (isExternal) {
           finalAttribs.target = '_blank';
           finalAttribs.rel = 'noreferrer noopener';
         }
 
-        return {
-          tagName: 'a',
-          attribs: finalAttribs
-        };
+        return { tagName: 'a', attribs: finalAttribs };
       }
     }
   };
@@ -138,6 +160,27 @@ function findRepoRoot(startDir: string = process.cwd()): string {
   return path.resolve(startDir, '../..');
 }
 
+function readRepoFile(filename: string): string | null {
+  const targetPath = path.join(findRepoRoot(), filename);
+  if (!fs.existsSync(targetPath)) return null;
+  return fs.readFileSync(targetPath, 'utf-8');
+}
+
+function renderMarkdown(
+  raw: string,
+  lang: 'zh' | 'en',
+  toc: TocEntry[],
+  termTargets?: Record<string, string>,
+  headingId?: (text: string, depth: number) => string | undefined
+): string {
+  const rawHtml = createMarked(toc, headingId).parse(raw) as string;
+  return sanitizeHtml(rawHtml, sanitizeOptions(lang, termTargets));
+}
+
+function stripLeadingH1(markdown: string): string {
+  return markdown.replace(/^#\s+.+\n+/, '');
+}
+
 /** Version of the desktop app as declared in tauri.conf.json (the release tag source of truth). */
 export function getAppVersion(): string {
   const conf = path.join(findRepoRoot(), 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
@@ -149,20 +192,81 @@ export function getAppVersion(): string {
   }
 }
 
-export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', lang: 'zh' | 'en' = 'zh'): { title: string; contentHtml: string; toc: TocEntry[] } {
-  const repoRoot = findRepoRoot();
-  let filename = 'CONTEXT.md';
+function loadContext(): { preamble: string; terms: ParsedTerm[] } {
+  const raw = readRepoFile('CONTEXT.md');
+  if (!raw) return { preamble: '', terms: [] };
+  return parseContextMarkdown(raw);
+}
 
+export function getTermTargets(): Record<string, string> {
+  const { terms } = loadContext();
+  const grouped = groupTerms(terms);
+  const map: Record<string, string> = {};
+  for (const topic of MANIFESTO_TOPICS) {
+    for (const term of grouped[topic]) {
+      map[termAnchorId(term.name)] = docsPath(topic);
+    }
+  }
+  return map;
+}
+
+function termToMarkdown(term: ParsedTerm): string {
+  const body = term.markdown
+    .replace(/^\*\*.+?\*\*[：:]\s*/, '')
+    .replace(/([^\n])\n(_Avoid_[：:])/g, '$1\n\n$2');
+  return `## ${term.name}\n\n${body}`;
+}
+
+export function getManifestoHub(lang: 'zh' | 'en'): {
+  preambleHtml: string;
+  toc: TocEntry[];
+  index: ManifestoIndexEntry[];
+  termTargets: Record<string, string>;
+} {
+  const { preamble, terms } = loadContext();
+  const termTargets = getTermTargets();
+  const toc: TocEntry[] = [];
+  const preambleHtml = preamble
+    ? renderMarkdown(stripLeadingH1(preamble), lang, toc, termTargets)
+    : '<p>CONTEXT.md not found.</p>';
+  const grouped = groupTerms(terms);
+  const index: ManifestoIndexEntry[] = MANIFESTO_TOPICS.map((topic) => ({
+    topic,
+    terms: grouped[topic].map((term) => ({ name: term.name, id: termAnchorId(term.name) }))
+  }));
+  return { preambleHtml, toc, index, termTargets };
+}
+
+export function getManifestoTopic(topic: ManifestoTopic, lang: 'zh' | 'en'): DocsDocument {
+  const { terms } = loadContext();
+  const grouped = groupTerms(terms);
+  const termTargets = getTermTargets();
+  const toc: TocEntry[] = [];
+  const parts = grouped[topic].map((term) =>
+    renderMarkdown(termToMarkdown(term), lang, toc, termTargets, (text) =>
+      text === term.name ? termAnchorId(term.name) : undefined
+    )
+  );
+  return {
+    title: topic,
+    contentHtml: parts.join('\n') || '<p>No terms in this topic.</p>',
+    toc
+  };
+}
+
+export function getDocumentContent(
+  docType: 'manifesto' | 'roadmap' | 'readme',
+  lang: 'zh' | 'en' = 'zh'
+): DocsDocument {
   if (docType === 'manifesto') {
-    filename = 'CONTEXT.md';
-  } else if (docType === 'roadmap') {
-    filename = 'ROADMAP.md';
-  } else if (docType === 'readme') {
-    filename = lang === 'en' ? 'README.md' : 'README.zh.md';
+    const hub = getManifestoHub(lang);
+    return { title: 'CONTEXT.md', contentHtml: hub.preambleHtml, toc: hub.toc };
   }
 
-  const targetPath = path.join(repoRoot, filename);
-  if (!fs.existsSync(targetPath)) {
+  const filename =
+    docType === 'roadmap' ? 'ROADMAP.md' : lang === 'en' ? 'README.md' : 'README.zh.md';
+  const raw = readRepoFile(filename);
+  if (!raw) {
     return {
       title: filename,
       contentHtml: `<p>Document ${filename} not found.</p>`,
@@ -170,13 +274,9 @@ export function getDocumentContent(docType: 'manifesto' | 'roadmap' | 'readme', 
     };
   }
 
-  const raw = fs.readFileSync(targetPath, 'utf-8');
   const titleMatch = raw.match(/^#\s+(.+)$/m);
   const title = titleMatch ? titleMatch[1].trim() : filename;
-
   const toc: TocEntry[] = [];
-  const rawHtml = createMarked(toc).parse(raw) as string;
-  const contentHtml = sanitizeHtml(rawHtml, sanitizeOptions(lang));
-
+  const contentHtml = renderMarkdown(raw, lang, toc, getTermTargets());
   return { title, contentHtml, toc };
 }

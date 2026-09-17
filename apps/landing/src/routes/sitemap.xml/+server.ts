@@ -1,8 +1,9 @@
+import { DOCS_NAV, docsPath } from '$lib/docs';
 import { SITE_URL } from '$lib/site';
 
 export const prerender = true;
 
-const PAGES = ['', '/manifesto', '/roadmap'];
+const PAGES = ['', ...DOCS_NAV.flatMap((g) => g.pages.map(docsPath))];
 const LANGS: { code: 'zh' | 'en'; hreflang: string }[] = [
   { code: 'zh', hreflang: 'zh-CN' },
   { code: 'en', hreflang: 'en' }

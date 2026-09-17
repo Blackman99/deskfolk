@@ -1,3 +1,5 @@
+import type { DocsNavGroupId, DocsPageKey } from './docs';
+
 export type Lang = 'zh' | 'en';
 
 export type BotId = 'coordinator' | 'researcher' | 'writer';
@@ -168,14 +170,19 @@ export type Dict = {
     imageAlt: string;
   };
   docs: {
-    toc: string;
+    onThisPage: string;
+    source: string;
+    navLabel: string;
     manifestoTag: string;
     manifestoIntro: string;
+    manifestoIndexHeading: string;
+    manifestoIndexLead: string;
     roadmapTag: string;
     roadmapIntro: string;
-    backHome: string;
-    toRoadmap: string;
-    toManifesto: string;
+    pagerPrev: string;
+    pagerNext: string;
+    navGroup: Record<DocsNavGroupId, string>;
+    pages: Record<DocsPageKey, { title: string; blurb: string }>;
   };
 };
 
@@ -458,14 +465,33 @@ const zh: Dict = {
     imageAlt: 'Real Bot：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
-    toc: '目录',
+    onThisPage: '本页',
+    source: '源文件',
+    navLabel: '文档',
     manifestoTag: 'CONTEXT.md',
-    manifestoIntro: '这份文档定义 Real Bot 的领域语言、架构决策和明确回避的反模式。页面在构建时直接由仓库根目录的 CONTEXT.md 生成。',
+    manifestoIntro:
+      '领域语言与明确回避的反模式。源文件仍是仓库根目录的 CONTEXT.md；站点按主题拆页，不另写一份词汇。',
+    manifestoIndexHeading: '按主题读术语',
+    manifestoIndexLead: '每个主题一页。点开后左侧是整份文档导航，右侧是本页术语。',
     roadmapTag: 'ROADMAP.md',
     roadmapIntro: 'Real Bot 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
-    backHome: '返回首页',
-    toRoadmap: '查看路线图',
-    toManifesto: '阅读设计理念'
+    pagerPrev: '上一页',
+    pagerNext: '下一页',
+    navGroup: {
+      language: '领域语言',
+      direction: '方向'
+    },
+    pages: {
+      manifesto: { title: '概述', blurb: '这份语言管什么、不管什么。' },
+      people: { title: '人与名册', blurb: 'Bot、你、人设、归档。' },
+      conversations: { title: '会话', blurb: '群、私聊、线程、回应。' },
+      collaboration: { title: '协作', blurb: '点名、判断、交接、轮次。' },
+      workspace: { title: '工作区', blurb: '共享目录、产物、附件、搜索。' },
+      runtime: { title: '运行时', blurb: '窗、守护进程、托盘、本机接口。' },
+      models: { title: '模型与工具', blurb: '端点、MCP、日程、上下文与花费。' },
+      safety: { title: '批准与边界', blurb: '危险动作、壳、Always allow。' },
+      roadmap: { title: '路线图', blurb: '建设方向，不是交付时间表。' }
+    }
   }
 };
 
@@ -749,14 +775,33 @@ const en: Dict = {
     imageAlt: 'Real Bot: three bots collaborating on report.md in a group chat window'
   },
   docs: {
-    toc: 'Contents',
+    onThisPage: 'On this page',
+    source: 'Source',
+    navLabel: 'Docs',
     manifestoTag: 'CONTEXT.md',
-    manifestoIntro: 'This document defines Real Bot’s domain language, architectural decisions and the anti-patterns it avoids. The page is generated at build time from CONTEXT.md at the repository root.',
+    manifestoIntro:
+      'The domain language and the anti-patterns it avoids. The source is still CONTEXT.md at the repository root; this site splits it by topic instead of rewriting the glossary.',
+    manifestoIndexHeading: 'Terms by topic',
+    manifestoIndexLead: 'One page per topic. The left rail is the whole docs tree; the right rail is this page.',
     roadmapTag: 'ROADMAP.md',
     roadmapIntro: 'Where Real Bot is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
-    backHome: 'Back to home',
-    toRoadmap: 'View the roadmap',
-    toManifesto: 'Read the manifesto'
+    pagerPrev: 'Previous',
+    pagerNext: 'Next',
+    navGroup: {
+      language: 'Language',
+      direction: 'Direction'
+    },
+    pages: {
+      manifesto: { title: 'Overview', blurb: 'What this language covers, and what it does not.' },
+      people: { title: 'People and roster', blurb: 'Bots, you, profiles, archive.' },
+      conversations: { title: 'Sessions', blurb: 'Groups, directs, threads, reactions.' },
+      collaboration: { title: 'Collaboration', blurb: 'Mentions, judgement, handoffs, turns.' },
+      workspace: { title: 'Workspace', blurb: 'Shared folder, artifacts, attachments, search.' },
+      runtime: { title: 'Runtime', blurb: 'Window, daemon, tray, local API.' },
+      models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, context, spend.' },
+      safety: { title: 'Approval and bounds', blurb: 'Dangerous actions, shells, Always allow.' },
+      roadmap: { title: 'Roadmap', blurb: 'Direction, not a delivery schedule.' }
+    }
   }
 };
 
