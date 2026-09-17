@@ -4,7 +4,24 @@
 
 ## Unreleased
 
-（尚无）
+尚无未发布的变更。
+
+## 0.1.0-alpha.2 — 2026-09-17
+
+### Landing
+
+- 站点所有「开发中 / WIP」措辞改为 Alpha。导航与首屏新增「下载」入口，指向最新 GitHub Release；「获取」区块加下载卡片（Apple 芯片 / Intel 两种未签名 .dmg 与 Gatekeeper 放行命令），从源码启动的说明保留。
+- 品牌图页面新增 `variant=hero`：由群聊、待批准卡和产物编辑器三扇窗口组成的 1600×900 组合图，亮 / 暗两版，供 README 使用；OG 图与社交预览图按 Alpha 措辞重新生成。
+
+### Messenger
+
+- 聊天里带中文等非 ASCII 的工作区路径链接点开后，预览栏不再显示百分号编码路径，会打开原来的文件。
+
+### Documentation
+
+- README 重写为精简版：顶部是应用界面组合大图（亮 / 暗两版，随 GitHub 外观切换），其下只留一句定位、官网 / 下载 / 语言三个入口、四枚徽章，以及「它做什么」「获取」「状态」「参与」四段；中英文同步。新增 `docs/assets/`：README 组合图与 1280×640 的仓库社交预览图，均由落地页开发态的 `/og/[lang]` 品牌图页面截图生成。
+- GitHub 仓库补充发现性 topics（ai-agents、multi-agent、llm、model-context-protocol、desktop-app、svelte、typescript、rust），移除 wip；描述改为 Alpha 措辞，主页保持指向落地页。社交预览图需在仓库设置里手动上传，步骤见开发说明。
+- 默认 `README.md` 改为英文，中文说明移至 `README.zh.md`。
 
 ## 0.1.0-alpha.1 — 2026-09-17
 
@@ -14,7 +31,13 @@
 
 - 补全流中途卡住时，已写出的正文或完整工具调用会收下并继续这一轮，不再插入「这一轮没写完：回复中途没有下文了」。还没有可用输出时会自动再试；注释心跳会续上等待。同一端点同时最多两条流，群里多个 Bot 并行时其余排队，避免把端点打挂。
 
+### Desktop
+
+- 应用图标换成新的品牌标识：青绿圆角方块里两个叠放的队友头像（白与芥黄），源文件 `apps/desktop/src-tauri/icons/app-icon.svg`，用 Tauri CLI 重新生成了 `.icns` / `.ico` / 各尺寸 PNG；Dock、托盘与安装包都使用这套图标。
+
 ### Messenger
+
+- 窗口 favicon 从 Svelte 占位标换成 Real Bot 标识。
 
 - 作曲栏 `@` 点名候选超出列表高度时，方向键移动高亮会把当前项滚进视口。
 - 开发态 5173 已是本包 Vite 时复用，不再因端口占用退出；被其他进程占用才报错。
@@ -33,6 +56,7 @@
 - 首页改为随滚动推进的完整流程演示：右侧固定一扇信使窗口，8 个步骤依次演示填工作区与端点、建第一个 Bot、对话组队、群里参与判断、批准卡、@ 交接与产物、Monaco 预览与 Cmd+S 写回、关窗进托盘；每步配一条指向界面元素的标注。窄屏改为顶部吸附的窗口加文字说明；`prefers-reduced-motion` 下直接显示各步终态。
 - 新增品牌标识：一只装着两个叠放队友头像的消息气泡（青绿 / 芥黄），提供 `favicon.svg`、PNG 图标（48 / 180 / 192 / 512）与 `site.webmanifest`；导航、页脚与重定向页统一使用。
 - 补齐 SEO：每页独立的标题与描述、canonical、`hreflang` 交替链接、Open Graph 与 Twitter 大图卡片、首页 SoftwareApplication JSON-LD、`theme-color`、按语言输出的 `<html lang>`，以及预渲染的 `sitemap.xml` 与 `robots.txt`。中英文各一张 1200×630 的 OG 图（`static/og-zh.png` / `static/og-en.png`），由开发态专用的 `/og/[lang]` 页面截图生成。
+- 导航栏新增外观切换（跟随系统 / 亮色 / 暗色），默认跟随系统，显式选择存在 `localStorage` 的 `real-bot-theme`，首屏脚本在绘制前应用避免闪烁。演示窗口改用信使自己的亮 / 暗两套配色令牌，批准卡、预览编辑器、托盘桌面、标注和光标都随主题切换；OG 图生成页固定亮色。
 - 「已接入 / 正在建设 / 明确不做」改为按维度排列的账目式表格；「从源码启动」保留终端示例并列出首次使用步骤。中英文文案同步更新；`/manifesto` 与 `/roadmap` 页面沿用新样式，浅色与深色主题均可用。
 
 ### Documentation
