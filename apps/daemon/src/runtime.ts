@@ -129,6 +129,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         }, 0);
       },
     });
+    // Chains the previous run left open go through review now; their timers died with it.
+    api.engine.sweepStaleChains();
     writeDescriptor(options.dataDir, {
       pid: process.pid,
       port,

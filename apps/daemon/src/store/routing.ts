@@ -117,20 +117,54 @@ export function recordTurnRoute(
 
 /**
  * The chain a Bot still has open in this session: the most recent decision that no review has
- * closed yet. A reviewed chain is finished, so the next turn opens a fresh one.
+ * closed yet. A reviewed chain is finished, so the next turn opens a fresh one. `notBefore` keeps
+ * a chain nobody has touched in a long time out of it — neither joined nor reviewed.
  */
-export function openChain(ctx: StoreContext, sessionId: string, botId: string): string | null {
+export function openChain(
+  ctx: StoreContext,
+  sessionId: string,
+  botId: string,
+  notBefore?: string,
+): string | null {
   const row = ctx.db
-    .query<{ chain_id: string | null }, [string, string]>(
+    .query<{ chain_id: string | null }, [string, string, string]>(
       `SELECT d.chain_id FROM turn_route_decisions d
        WHERE d.session_id = ? AND d.bot_id = ?
          AND d.chain_id IS NOT NULL
+         AND d.created_at >= ?
          AND NOT EXISTS (SELECT 1 FROM route_reviews r WHERE r.chain_id = d.chain_id)
        ORDER BY d.created_at DESC, d.turn_id DESC
        LIMIT 1`,
     )
-    .get(sessionId, botId);
+    .get(sessionId, botId, notBefore ?? "");
   return row?.chain_id ?? null;
+}
+
+/**
+ * Chains left open by a daemon that stopped before their quiet timer fired. The timers live in
+ * memory, so a restart would otherwise leave a correction chain unreviewed until the user happens
+ * to change the subject. `notBefore` bounds how far back a restart digs: a chain nobody has touched
+ * in a long time is not worth paying a completion for.
+ */
+export function staleOpenChains(
+  ctx: StoreContext,
+  input: { quietBefore: string; notBefore: string; limit?: number },
+): string[] {
+  return ctx.db
+    .query<{ chain_id: string }, [string, string, string, number]>(
+      `SELECT d.chain_id AS chain_id, MAX(COALESCE(f.created_at, d.created_at)) AS last_at
+       FROM turn_route_decisions d
+       LEFT JOIN route_feedback f ON f.turn_id = d.turn_id
+       WHERE d.chain_id IS NOT NULL
+         AND d.created_at >= ?
+         AND NOT EXISTS (SELECT 1 FROM route_reviews r WHERE r.chain_id = d.chain_id)
+       GROUP BY d.chain_id
+       HAVING last_at < ? AND last_at >= ?
+       ORDER BY last_at DESC
+       LIMIT ?`,
+    )
+    .all(input.notBefore, input.quietBefore, input.notBefore, input.limit ?? 20)
+    .map((row) => row.chain_id);
 }
 
 /**

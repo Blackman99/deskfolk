@@ -63,6 +63,8 @@ export type TurnEngine = {
   abortAll: () => void;
   partialText: (turnId: string) => string | null;
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
+  /** Reviews chains the last run left open; called once after boot. */
+  sweepStaleChains: () => void;
   drain: () => Promise<void>;
   close: () => Promise<void>;
 };
@@ -183,17 +185,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   type Routed = { target: ResolvedTarget; decision: RouteDecision };
 
   /**
-   * Picks the endpoint, model and thinking level for one turn. The Bot's own experience shapes the
-   * pick; the decision is returned alongside so the caller records exactly what ran.
-   */
-  function targetFor(botId: string, creds: Creds, text: string): Routed | null {
-    let botModel: string | null = null;
-    let botProviderId: string | null = null;
-    let botThinkingLevel: ThinkingLevel | null = null;
-    try {
-      const bot = store.getBot(botId);
-      botModel = bot.model;
-  /**
    * Has one closed chain judged: was the model the thing at fault, or was it the request, or the
    * job itself? The verdict is recorded either way, because recording it is what closes the chain;
    * only a confident `model` verdict is read back when picking later.
@@ -282,11 +273,30 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     clearChainTimer(sessionId, botId);
     let chainId: string | null = null;
     try {
-      chainId = store.openChain(sessionId, botId);
+      chainId = store.openChain(sessionId, botId, chainFloor());
     } catch {
       return;
     }
     if (chainId) void track(reviewChain(chainId));
+  }
+
+  /**
+   * The quiet timers live in this process, so a daemon that stopped mid-chain would leave the
+   * review undone until the user happened to change the subject. On start, chains that went quiet
+   * while nobody was running are reviewed — recent ones only, and a bounded number of them.
+   */
+  function sweepStaleChains(): void {
+    let chains: string[] = [];
+    try {
+      chains = store.staleOpenChains({
+        quietBefore: new Date(Date.now() - CHAIN_QUIET_MS).toISOString(),
+        notBefore: chainFloor(),
+        limit: CHAIN_SWEEP_LIMIT,
+      });
+    } catch {
+      return;
+    }
+    for (const chainId of chains) void track(reviewChain(chainId));
   }
 
   function chainKey(sessionId: string, botId: string): string {
@@ -315,7 +325,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   /** A chain closes when the user goes quiet, even if they never say so. */
   const CHAIN_QUIET_MS = 3 * 60_000;
+  /** Past this, a chain is cold: not joined by a new turn, and not worth a review call. */
+  const CHAIN_MAX_AGE_MS = 24 * 60 * 60_000;
+  /** How many chains one restart is willing to pay to catch up on. */
+  const CHAIN_SWEEP_LIMIT = 20;
   const chainTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function chainFloor(): string {
+    return new Date(Date.now() - CHAIN_MAX_AGE_MS).toISOString();
+  }
 
   /**
    * The routing agent cannot route itself, so it always runs on the default endpoint's default
@@ -419,6 +437,17 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     };
   }
 
+  /**
+   * Picks the endpoint, model and thinking level for one turn. The Bot's own experience shapes the
+   * pick; the decision is returned alongside so the caller records exactly what ran.
+   */
+  function targetFor(botId: string, creds: Creds, text: string): Routed | null {
+    let botModel: string | null = null;
+    let botProviderId: string | null = null;
+    let botThinkingLevel: ThinkingLevel | null = null;
+    try {
+      const bot = store.getBot(botId);
+      botModel = bot.model;
       botProviderId = bot.provider_id;
       botThinkingLevel = bot.thinking_level;
     } catch {
@@ -567,6 +596,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
     const target = routed.target;
+    let sessionId: string | null = null;
     try {
       sessionId = store.getTurn(turnId).session_id;
     } catch {
@@ -584,19 +614,18 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       // route row is best-effort; the completion still carries the chosen fields
     }
+    if (sessionId) touchChain(sessionId, botId);
     const drop = (): void => {
       lives.delete(turnId);
     };
     if (mcp) {
       for (const server of store.listMcpServers()) {
         if (!server.enabled) continue;
-    let sessionId: string | null = null;
         if (server.instructions || server.tool_catalog.length > 0) continue;
         try {
           const next = await persistMcpInspect(store, mcp, server);
           if (next.updated_at !== server.updated_at) {
             publish({ event: "mcp.upsert", occurred_at: occurred(), ...next });
-    if (sessionId) touchChain(sessionId, botId);
           }
         } catch {
           // handshake catalog is best-effort
@@ -1369,6 +1398,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         }),
       );
     },
+    sweepStaleChains,
     fireRoutine,
     async resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);

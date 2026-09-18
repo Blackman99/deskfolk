@@ -186,6 +186,7 @@ export class Store {
   readonly collectRouteFeedback = this.bind(routing.collectRouteFeedback);
   readonly forgetBotRoutes = this.bind(routing.forgetBotRoutes);
   readonly openChain = this.bind(routing.openChain);
+  readonly staleOpenChains = this.bind(routing.staleOpenChains);
   readonly chainForReview = this.bind(routing.chainForReview);
   readonly recordRouteReview = this.bind(routing.recordRouteReview);
   readonly recentRouteReviews = this.bind(routing.recentRouteReviews);

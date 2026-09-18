@@ -673,6 +673,114 @@ describe("schema", () => {
     store.close();
   });
 
+  test("an older turn_route_decisions table without chain_id still opens", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-old-route-"));
+    const filename = join(dir, "state.sqlite");
+    const first = new Store({ filename });
+    first.db.exec(`DROP INDEX IF EXISTS turn_route_decisions_chain`);
+    first.db.exec(`DROP INDEX IF EXISTS route_reviews_chain`);
+    const cols = first.db
+      .query<{ name: string }, []>(`PRAGMA table_info(turn_route_decisions)`)
+      .all()
+      .map((row) => row.name);
+    if (cols.includes("chain_id")) {
+      const keep = cols.filter((name) => name !== "chain_id");
+      first.db.exec(`
+        CREATE TABLE turn_route_decisions_old (${keep.join(", ")});
+        INSERT INTO turn_route_decisions_old SELECT ${keep.join(", ")} FROM turn_route_decisions;
+        DROP TABLE turn_route_decisions;
+        ALTER TABLE turn_route_decisions_old RENAME TO turn_route_decisions;
+      `);
+    }
+    const reviewCols = first.db
+      .query<{ name: string }, []>(`PRAGMA table_info(route_reviews)`)
+      .all()
+      .map((row) => row.name);
+    if (reviewCols.includes("chain_id")) {
+      const keep = reviewCols.filter((name) => name !== "chain_id");
+      first.db.exec(`
+        CREATE TABLE route_reviews_old (${keep.join(", ")});
+        INSERT INTO route_reviews_old SELECT ${keep.join(", ")} FROM route_reviews;
+        DROP TABLE route_reviews;
+        ALTER TABLE route_reviews_old RENAME TO route_reviews;
+      `);
+    }
+    first.close();
+    const second = new Store({ filename });
+    const nextCols = second.db
+      .query<{ name: string }, []>(`PRAGMA table_info(turn_route_decisions)`)
+      .all()
+      .map((row) => row.name);
+    expect(nextCols).toContain("chain_id");
+    const index = second.db
+      .query<{ name: string }, []>(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'turn_route_decisions_chain'`,
+      )
+      .get();
+    expect(index?.name).toBe("turn_route_decisions_chain");
+    const nextReviewCols = second.db
+      .query<{ name: string }, []>(`PRAGMA table_info(route_reviews)`)
+      .all()
+      .map((row) => row.name);
+    expect(nextReviewCols).toContain("chain_id");
+    second.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a chain the daemon never got to review is found again on the next start", async () => {
+    const store = await storeWithCodingCatalog();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const quiet = new Date(Date.now() - 10 * 60_000).toISOString();
+    const floor = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+
+    const open = decidedTurn(store, session, writer.bot.id);
+    store.setTurnStatus(open.turn.id, "completed");
+    const done = decidedTurn(store, session, writer.bot.id);
+    store.setTurnStatus(done.turn.id, "completed");
+    const cold = decidedTurn(store, session, writer.bot.id);
+    store.setTurnStatus(cold.turn.id, "completed");
+
+    // Age them: two went quiet a while ago, one is older than the daemon will dig for.
+    store.db.run(`UPDATE turn_route_decisions SET created_at = ? WHERE turn_id IN (?, ?)`, [
+      quiet,
+      open.turn.id,
+      done.turn.id,
+    ]);
+    store.db.run(`UPDATE turn_route_decisions SET created_at = ? WHERE turn_id = ?`, [
+      new Date(Date.now() - 48 * 60 * 60_000).toISOString(),
+      cold.turn.id,
+    ]);
+    store.recordRouteReview({
+      botId: writer.bot.id,
+      chainId: done.turn.id,
+      turnId: done.turn.id,
+      sessionId: session,
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "none", direction: "same", rounds: 0, confidence: 1, reason: "" },
+    });
+
+    const stale = store.staleOpenChains({
+      quietBefore: new Date(Date.now() - 3 * 60_000).toISOString(),
+      notBefore: floor,
+    });
+    // The reviewed one is finished and the cold one is not worth a call; only the open one is swept.
+    expect(stale).toEqual([open.turn.id]);
+
+    // A chain that is still being talked to is not swept out from under the live timer.
+    const fresh = decidedTurn(store, session, writer.bot.id);
+    store.setTurnStatus(fresh.turn.id, "completed");
+    expect(
+      store.staleOpenChains({
+        quietBefore: new Date(Date.now() - 3 * 60_000).toISOString(),
+        notBefore: floor,
+      }),
+    ).not.toContain(fresh.turn.id);
+    store.close();
+  });
+
   test("half-pinned bots are squared up on open: a level needs a model, a model needs a level", async () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-half-pin-"));
     const filename = join(dir, "state.sqlite");
