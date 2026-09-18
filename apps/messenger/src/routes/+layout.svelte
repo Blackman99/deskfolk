@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { themeManager } from '$lib/theme';
-	import '$lib/styles.css';
+	import '$lib/styles/index.css';
 
 	let { children } = $props();
 

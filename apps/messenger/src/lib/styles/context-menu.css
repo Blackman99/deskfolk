@@ -1,0 +1,200 @@
+/* The session row context menu. Some rules here style sidebar rows, not the menu. */
+/* Session Context Menu */
+.row.is-context-open {
+  background: var(--line-subtle);
+}
+
+.pinned-session-btn.is-context-open {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+}
+
+.session-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 168px;
+  background: var(--pane);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.16), 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  user-select: none;
+  animation: context-menu-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes context-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.session-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.session-context-menu-item svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+  transition: opacity 0.12s ease;
+}
+
+.session-context-menu-item:hover:not(:disabled) {
+  background: var(--line-subtle);
+  color: var(--accent);
+}
+
+.session-context-menu-item:hover:not(:disabled) svg {
+  opacity: 1;
+  stroke: var(--accent);
+}
+
+.session-context-menu-item.is-danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.session-context-menu-item.is-danger:hover:not(:disabled) svg {
+  opacity: 1;
+  stroke: var(--danger);
+}
+
+.session-context-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.session-context-menu-divider {
+  height: 1px;
+  background: var(--line-subtle);
+  margin: 3px 4px;
+}
+
+.step-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 580px) {
+  .step-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.onboarding-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-onboarding-submit {
+  width: 100%;
+  padding: 11px 20px;
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-onboarding-submit:hover {
+  background: var(--accent-hover);
+}
+
+.btn-onboarding-skip {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.15s ease;
+}
+
+.btn-onboarding-skip:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.setup-guide-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  color: var(--warn-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.setup-guide-pill:hover {
+  background: var(--warn-bg);
+  border-color: var(--warn);
+}
+
+.onboarding-alert-error {
+  padding: 8px 14px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.onboarding-alert-error p {
+  margin: 0;
+}
+
+[data-theme="dark"] .attr-pill.pill-price,
+body.dark .attr-pill.pill-price {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+[data-theme="dark"] .attr-pill.pill-thinking,
+body.dark .attr-pill.pill-thinking {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+[data-theme="dark"] .attr-pill.pill-strengths,
+body.dark .attr-pill.pill-strengths {
+  background: rgba(14, 165, 233, 0.2);
+  color: #7dd3fc;
+  border-color: rgba(14, 165, 233, 0.4);
+}

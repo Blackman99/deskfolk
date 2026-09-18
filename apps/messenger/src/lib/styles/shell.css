@@ -1,0 +1,65 @@
+/* The disconnected screen and the three-pane grid. */
+/* Disconnected State */
+.disconnected {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  gap: 12px;
+  background: var(--bg);
+}
+
+.disconnected::before {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Shell Layout */
+.shell {
+  height: 100%;
+  display: grid;
+  grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 0fr;
+  background: var(--bg);
+  color: var(--ink);
+  position: relative;
+  transition: grid-template-columns 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.shell.is-thread {
+  grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 320px;
+}
+
+.shell.is-preview {
+  grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 8px var(--preview-width, 420px) 0fr;
+}
+
+.shell.is-preview.is-thread {
+  grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 8px var(--preview-width, 420px) 320px;
+}
+
+.shell.is-preview-dragging,
+.shell.is-sidebar-dragging {
+  transition: none;
+  user-select: none;
+  cursor: col-resize;
+}
+
+.shell.is-preview .thread {
+  grid-column: 6;
+}

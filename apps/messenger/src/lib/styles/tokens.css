@@ -1,0 +1,245 @@
+/* Palette, dark mode and the OS dark-mode fallback. Every other file reads these. */
+:root {
+  /* Core Base Palette - Refined macOS Native Cool Palette */
+  --bg: #eef2f6;
+  --pane: #ffffff;
+  --sidebar-bg: #f8fafc;
+  --ink: #0f172a;
+  --ink-secondary: #334155;
+  --muted: #64748b;
+  --muted-light: #94a3b8;
+  --line: #e2e8f0;
+  --line-subtle: #f1f5f9;
+  --line-hover: #cbd5e1;
+
+  /* Accent & Interactive */
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-active: #1e40af;
+  --accent-tint: #eff6ff;
+  --accent-border: #bfdbfe;
+  --accent-glow: rgba(37, 99, 235, 0.12);
+
+  /* Message Bubbles */
+  --you: #2563eb;
+  --you-text: #ffffff;
+  --bot: #f8fafc;
+  --bot-border: #e2e8f0;
+  --bot-text: #0f172a;
+
+  /* Status Tokens */
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --warn-line: #fcd34d;
+  --warn-text: #b45309;
+
+  --ok: #10b981;
+  --ok-bg: #ecfdf5;
+  --ok-line: #a7f3d0;
+  --ok-text: #047857;
+
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --danger-line: #fca5a5;
+  --danger-text: #b91c1c;
+
+  --purple: #8b5cf6;
+
+  --chip: #f1f5f9;
+  --chip-line: #e2e8f0;
+  --card: #fffbeb;
+  --card-line: #fcd34d;
+  --thread: #f8fafc;
+
+  /* Typography */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC",
+    "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+  --mono: "SF Mono", Monaco, Menlo, Consolas, "Liberation Mono", ui-monospace, monospace;
+
+  /* Radius & Elevation */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --chat-max-width: 800px;
+
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 12px 28px -4px rgba(15, 23, 42, 0.12);
+  --shadow-sheet: 16px 0 36px -6px rgba(15, 23, 42, 0.14);
+  /* Components & Controls */
+  --input-bg: #ffffff;
+  --btn-secondary-bg: #ffffff;
+  --btn-secondary-hover: var(--line-subtle);
+  --glass-header: rgba(255, 255, 255, 0.95);
+  --glass-sidebar-header: rgba(255, 255, 255, 0.6);
+  --glass-footer: rgba(255, 255, 255, 0.7);
+  --glass-composer: rgba(255, 255, 255, 0.92);
+  --modal-backdrop: rgba(15, 23, 42, 0.45);
+  --inline-code-bg: rgba(15, 23, 42, 0.06);
+  --inline-code-border: transparent;
+  --date-pill-bg: #ffffff;
+  --date-pill-text: var(--muted);
+  --date-pill-border: var(--line);
+  --reaction-bg: #ffffff;
+  --code-bg: #1e293b;
+  --code-header-bg: #182232;
+  --row-hover: rgba(15, 23, 42, 0.05);
+}
+
+:root[data-theme="dark"],
+body.dark,
+[data-theme="dark"] {
+  /* Core Base Palette - macOS Dark Mode */
+  --bg: #0d1219;
+  --pane: #161e2b;
+  --sidebar-bg: #111722;
+  --ink: #f1f5f9;
+  --ink-secondary: #cbd5e1;
+  --muted: #8393a7;
+  --muted-light: #526379;
+  --line: #232f41;
+  --line-subtle: #182231;
+  --line-hover: #35455c;
+
+  /* Accent & Interactive */
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-active: #2563eb;
+  --accent-tint: rgba(59, 130, 246, 0.16);
+  --accent-border: rgba(59, 130, 246, 0.35);
+  --accent-glow: rgba(59, 130, 246, 0.25);
+
+  /* Message Bubbles */
+  --you: #2563eb;
+  --you-text: #ffffff;
+  --bot: #1c2534;
+  --bot-border: #28364c;
+  --bot-text: #f1f5f9;
+
+  /* Status Tokens */
+  --warn: #f59e0b;
+  --warn-bg: rgba(245, 158, 11, 0.15);
+  --warn-line: rgba(245, 158, 11, 0.35);
+  --warn-text: #fbbf24;
+
+  --ok: #10b981;
+  --ok-bg: rgba(16, 185, 129, 0.15);
+  --ok-line: rgba(16, 185, 129, 0.35);
+  --ok-text: #34d399;
+
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --danger-line: rgba(239, 68, 68, 0.35);
+  --danger-text: #f87171;
+
+  --purple: #a78bfa;
+
+  --chip: #1d2737;
+  --chip-line: #2a374c;
+  --card: #161e2b;
+  --card-line: #2a374c;
+  --thread: #111722;
+
+  /* Elevation Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 30px -4px rgba(0, 0, 0, 0.7);
+  --shadow-sheet: 16px 0 40px -6px rgba(0, 0, 0, 0.75);
+
+  /* Components & Controls */
+  --input-bg: #101620;
+  --btn-secondary-bg: #1c2534;
+  --btn-secondary-hover: #263346;
+  --glass-header: rgba(22, 30, 43, 0.88);
+  --glass-sidebar-header: rgba(17, 23, 34, 0.82);
+  --glass-footer: rgba(17, 23, 34, 0.85);
+  --glass-composer: rgba(22, 30, 43, 0.9);
+  --modal-backdrop: rgba(0, 0, 0, 0.7);
+  --inline-code-bg: rgba(241, 245, 249, 0.1);
+  --inline-code-border: rgba(241, 245, 249, 0.12);
+  --date-pill-bg: #1c2534;
+  --date-pill-text: var(--muted);
+  --date-pill-border: var(--line);
+  --reaction-bg: #1c2534;
+  --code-bg: #101620;
+  --code-header-bg: #151d2a;
+  --row-hover: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219;
+    --pane: #161e2b;
+    --sidebar-bg: #111722;
+    --ink: #f1f5f9;
+    --ink-secondary: #cbd5e1;
+    --muted: #8393a7;
+    --muted-light: #526379;
+    --line: #232f41;
+    --line-subtle: #182231;
+    --line-hover: #35455c;
+
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-active: #2563eb;
+    --accent-tint: rgba(59, 130, 246, 0.16);
+    --accent-border: rgba(59, 130, 246, 0.35);
+    --accent-glow: rgba(59, 130, 246, 0.25);
+
+    --you: #2563eb;
+    --you-text: #ffffff;
+    --bot: #1c2534;
+    --bot-border: #28364c;
+    --bot-text: #f1f5f9;
+
+    --warn: #f59e0b;
+    --warn-bg: rgba(245, 158, 11, 0.15);
+    --warn-line: rgba(245, 158, 11, 0.35);
+    --warn-text: #fbbf24;
+
+    --ok: #10b981;
+    --ok-bg: rgba(16, 185, 129, 0.15);
+    --ok-line: rgba(16, 185, 129, 0.35);
+    --ok-text: #34d399;
+
+    --danger: #ef4444;
+    --danger-bg: rgba(239, 68, 68, 0.15);
+    --danger-line: rgba(239, 68, 68, 0.35);
+    --danger-text: #f87171;
+
+    --purple: #a78bfa;
+
+    --chip: #1d2737;
+    --chip-line: #2a374c;
+    --card: #161e2b;
+    --card-line: #2a374c;
+    --thread: #111722;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 12px 30px -4px rgba(0, 0, 0, 0.7);
+    --shadow-sheet: 16px 0 40px -6px rgba(0, 0, 0, 0.75);
+
+    --input-bg: #101620;
+    --btn-secondary-bg: #1c2534;
+    --btn-secondary-hover: #263346;
+    --glass-header: rgba(22, 30, 43, 0.88);
+    --glass-sidebar-header: rgba(17, 23, 34, 0.82);
+    --glass-footer: rgba(17, 23, 34, 0.85);
+    --glass-composer: rgba(22, 30, 43, 0.9);
+    --modal-backdrop: rgba(0, 0, 0, 0.7);
+    --inline-code-bg: rgba(241, 245, 249, 0.1);
+    --inline-code-border: rgba(241, 245, 249, 0.12);
+    --date-pill-bg: #1c2534;
+    --date-pill-text: var(--muted);
+    --date-pill-border: var(--line);
+    --reaction-bg: #1c2534;
+    --code-bg: #101620;
+    --code-header-bg: #151d2a;
+    --row-hover: rgba(255, 255, 255, 0.06);
+  }
+}
