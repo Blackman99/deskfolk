@@ -221,6 +221,9 @@
         <h2 class="serif">{t.demo.heading}</h2>
         <p>{t.demo.intro}</p>
       </header>
+      <figure class="recorded">
+        <img src="{base}/demo.gif" alt="multi-bot chat + approval card" width="900" height="580" decoding="async" loading="lazy" />
+      </figure>
       {#each t.demo.steps as step, i}
         <article class="step" data-scene={i + 1} class:on={scene === i + 1}>
           <button type="button" class="step-link" onclick={() => jumpTo(i + 1)}>
@@ -612,4 +615,21 @@
       opacity: 1;
     }
   }
+
+  .recorded {
+    margin: 0 0 8px;
+    padding: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-window);
+    background: var(--app-bg);
+  }
+
+  .recorded img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
 </style>
