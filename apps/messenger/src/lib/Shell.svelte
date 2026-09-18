@@ -60,6 +60,7 @@
 		modelSelectValue,
 		planCreateProvider,
 		planPatchProvider,
+		probeSignature,
 		providerHost,
 		withSyncedDefaultModel,
 		type ProviderDraft,
@@ -508,6 +509,9 @@
 	let providerFetchError = $state<Record<string, string | null>>({});
 	let confirmDeleteProvider = $state<string | null>(null);
 	let providerEditor = $state<'closed' | 'add' | string>('closed');
+	let providerProbeTimer: ReturnType<typeof setTimeout> | null = null;
+	/** URL + key the open editor last asked the endpoint about; the same pair is not probed twice. */
+	let providerProbedSignature: string | null = null;
 	const modelsHasError = $derived(
 		Boolean(
 			addProviderErrors.name ||
@@ -1122,17 +1126,42 @@
 	}
 
 	function setProviderDraft(id: string, draft: ProviderDraft): void {
-		providerDrafts = { ...providerDrafts, [id]: withSyncedDefaultModel(draft) };
+		const synced = withSyncedDefaultModel(draft);
+		providerDrafts = { ...providerDrafts, [id]: synced };
 		const nextErrors = { ...providerErrors };
 		delete nextErrors[id];
 		providerErrors = nextErrors;
 		providerFailed = { ...providerFailed, [id]: false };
+		const keySet = snapshot.providers.find((row) => row.id === id)?.key_set ?? false;
+		scheduleProviderProbe(id, synced, keySet);
 	}
 
 	function setAddProviderDraft(draft: ProviderDraft): void {
 		addProviderDraft = withSyncedDefaultModel(draft);
 		addProviderErrors = {};
 		addProviderFailed = false;
+		scheduleProviderProbe('add', addProviderDraft, false);
+	}
+
+	function resetProviderProbe(): void {
+		if (providerProbeTimer) clearTimeout(providerProbeTimer);
+		providerProbeTimer = null;
+		providerProbedSignature = null;
+	}
+
+	/** Asks the endpoint for its models once the URL and key are usable, a moment after typing stops. */
+	function scheduleProviderProbe(target: 'add' | string, draft: ProviderDraft, keySet: boolean): void {
+		const signature = probeSignature(draft, keySet);
+		if (providerProbeTimer) clearTimeout(providerProbeTimer);
+		providerProbeTimer = null;
+		if (!signature || signature === providerProbedSignature) return;
+		providerProbeTimer = setTimeout(() => {
+			providerProbeTimer = null;
+			if (providerEditor !== target) return;
+			providerProbedSignature = signature;
+			if (target === 'add') void fetchAddProviderModels();
+			else void fetchProviderModels(target);
+		}, 700);
 	}
 
 	function openAddProvider(): void {
@@ -1140,22 +1169,31 @@
 		addProviderErrors = {};
 		addProviderFailed = false;
 		addProviderFetchError = null;
+		resetProviderProbe();
 		providerEditor = 'add';
 	}
 
 	function openEditProvider(id: string): void {
 		const provider = snapshot.providers.find((row) => row.id === id);
 		if (!provider) return;
-		providerDrafts = { ...providerDrafts, [id]: draftFromProvider(provider) };
+		const draft = draftFromProvider(provider);
+		providerDrafts = { ...providerDrafts, [id]: draft };
 		const nextErrors = { ...providerErrors };
 		delete nextErrors[id];
 		providerErrors = nextErrors;
 		providerFailed = { ...providerFailed, [id]: false };
 		providerFetchError = { ...providerFetchError, [id]: null };
+		resetProviderProbe();
 		providerEditor = id;
+		// The stored URL + key count as already asked, so only changing one of them probes again.
+		const signature = probeSignature(draft, provider.key_set);
+		providerProbedSignature = signature;
+		// Endpoints saved before the list was kept have nothing to show yet; ask once on open.
+		if (provider.available_models.length === 0 && signature) void fetchProviderModels(id);
 	}
 
 	function closeProviderEditor(): void {
+		resetProviderProbe();
 		if (providerEditor === 'add') {
 			addProviderDraft = emptyProviderDraft();
 			addProviderErrors = {};
@@ -1189,15 +1227,19 @@
 			addProviderFetchError = t.settings.endpointEmpty;
 			return;
 		}
+		const requested = probeSignature(addProviderDraft, false);
 		addProviderFetching = true;
 		addProviderFetchError = null;
 		const res = await runtime.probeModels(baseUrl, addProviderDraft.apiKey);
+		// The editor may have closed or moved to another URL / key while the request was out.
+		if (providerEditor !== 'add' || probeSignature(addProviderDraft, false) !== requested) return;
 		addProviderFetching = false;
 		if (!res.ok) {
 			addProviderFetchError = `${t.settings.modelsFetchFailed} (${res.error})`;
 			return;
 		}
-		if (res.models.length > 0) addProviderDraft = applyProbedModels(addProviderDraft, res.models);
+		addProviderDraft = applyProbedModels(addProviderDraft, res.models);
+		addProviderErrors = {};
 	}
 
 	async function fetchProviderModels(id: string): Promise<void> {
@@ -1207,9 +1249,12 @@
 			providerFetchError = { ...providerFetchError, [id]: t.settings.endpointEmpty };
 			return;
 		}
+		const keySet = snapshot.providers.find((row) => row.id === id)?.key_set ?? false;
+		const requested = probeSignature(draft, keySet);
 		providerFetching = { ...providerFetching, [id]: true };
 		providerFetchError = { ...providerFetchError, [id]: null };
 		const res = await runtime.probeModels(baseUrl, draft.apiKey, id);
+		if (providerEditor !== id || probeSignature(providerDraft(id), keySet) !== requested) return;
 		providerFetching = { ...providerFetching, [id]: false };
 		if (!res.ok) {
 			providerFetchError = {
@@ -1218,7 +1263,11 @@
 			};
 			return;
 		}
-		if (res.models.length > 0) setProviderDraft(id, applyProbedModels(draft, res.models));
+		const current = providerDraft(id);
+		providerDrafts = { ...providerDrafts, [id]: applyProbedModels(current, res.models) };
+		const nextErrors = { ...providerErrors };
+		delete nextErrors[id];
+		providerErrors = nextErrors;
 	}
 
 	async function saveProvider(id: string): Promise<void> {
@@ -4762,7 +4811,7 @@
 								fetching={Boolean(providerFetching[editing.id])}
 								fetchError={providerFetchError[editing.id] ?? null}
 								fieldPrefix={`provider-${editing.id}`}
-								keyPlaceholder={editing.key_set ? t.settings.keySet : t.settings.keyUnset}
+								keySet={editing.key_set}
 								{t}
 								onchange={(next) => setProviderDraft(editing.id, next)}
 								onfetch={() => void fetchProviderModels(editing.id)}

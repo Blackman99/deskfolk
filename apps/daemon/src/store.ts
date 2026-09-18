@@ -46,10 +46,12 @@ import { isoNow, ulid } from "./ids";
 import { classifyPath } from "./workspace-paths";
 import {
   catalogNames,
+  normalizeAvailableModels,
   normalizeBotModel,
   normalizeBotThinkingLevel,
   normalizeDefaultModel,
   normalizeModelCatalog,
+  parseStoredAvailableModels,
   parseStoredCatalog,
   parseStoredModels,
   parseStoredThinkingLevel,
@@ -172,6 +174,7 @@ type ProviderRow = {
   name: string;
   base_url: string;
   models: string;
+  available_models?: string | null;
   default_model: string | null;
   created_at: string;
   updated_at: string;
@@ -1341,6 +1344,8 @@ export class Store {
         : resolveEndpointUrl(input.base_url);
     const catalog = input.models !== undefined ? normalizeModelCatalog(input.models) : [];
     const models = catalogNames(catalog);
+    const availableModels =
+      input.available_models !== undefined ? normalizeAvailableModels(input.available_models) : [];
     const defaultModel =
       input.default_model !== undefined
         ? normalizeDefaultModel(input.default_model, models)
@@ -1348,9 +1353,9 @@ export class Store {
     const now = isoNow();
     const id = ulid();
     this.db.run(
-      `INSERT INTO providers (id, name, base_url, models, default_model, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, name, baseUrl, serializeCatalog(catalog), defaultModel, now, now],
+      `INSERT INTO providers (id, name, base_url, models, available_models, default_model, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, now],
     );
     if (typeof input.api_key === "string" && input.api_key.length > 0) {
       await this.writeProviderKey(id, input.api_key);
@@ -1372,6 +1377,10 @@ export class Store {
       this.dropUnknownBotModelsForProvider(id, catalogNames(catalog));
     }
     const models = catalogNames(catalog);
+    const availableModels =
+      patch.available_models !== undefined
+        ? normalizeAvailableModels(patch.available_models)
+        : parseStoredAvailableModels(current.available_models);
     let defaultModel = emptyToNull(current.default_model);
     if (patch.default_model !== undefined) {
       defaultModel = normalizeDefaultModel(patch.default_model, models);
@@ -1382,8 +1391,8 @@ export class Store {
     }
     const now = isoNow();
     this.db.run(
-      `UPDATE providers SET name = ?, base_url = ?, models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
-      [name, baseUrl, serializeCatalog(catalog), defaultModel, now, id],
+      `UPDATE providers SET name = ?, base_url = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
+      [name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
     );
     if (patch.api_key !== undefined) {
       if (typeof patch.api_key !== "string") {
@@ -2298,6 +2307,7 @@ export class Store {
       key_set: (await this.readKey(providerKeychainName(row.id))) !== null,
       models,
       model_catalog: catalog,
+      available_models: parseStoredAvailableModels(row.available_models),
       default_model: storedDefault && models.includes(storedDefault) ? storedDefault : null,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -2598,8 +2608,8 @@ export class Store {
     const now = isoNow();
     const id = ulid();
     this.db.run(
-      `INSERT INTO providers (id, name, base_url, models, default_model, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO providers (id, name, base_url, models, available_models, default_model, created_at, updated_at)
+       VALUES (?, ?, ?, ?, '[]', ?, ?, ?)`,
       [id, "Default", baseUrl ?? "", serializeCatalog(catalog), defaultModel, now, now],
     );
     this.setSetting("default_provider_id", id);
@@ -2911,11 +2921,19 @@ function migrateSchema(db: Database): void {
         name TEXT NOT NULL,
         base_url TEXT NOT NULL,
         models TEXT NOT NULL,
+        available_models TEXT NOT NULL DEFAULT '[]',
         default_model TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
     `);
+  }
+  const providerCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(providers)`)
+    .all()
+    .map((row) => row.name);
+  if (!providerCols.includes("available_models")) {
+    db.run(`ALTER TABLE providers ADD COLUMN available_models TEXT NOT NULL DEFAULT '[]'`);
   }
   if (!tables.includes("turn_route_decisions")) {
     db.run(`

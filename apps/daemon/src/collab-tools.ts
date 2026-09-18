@@ -1047,6 +1047,7 @@ function serializeEndpoint(provider: Provider, defaultId: string | null): Record
     key_set: provider.key_set,
     models: provider.models,
     model_catalog: provider.model_catalog,
+    available_models: provider.available_models,
     default_model: provider.default_model,
     is_default: provider.id === defaultId,
   };

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS providers (
   name TEXT NOT NULL,
   base_url TEXT NOT NULL,
   models TEXT NOT NULL,
+  available_models TEXT NOT NULL DEFAULT '[]',
   default_model TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

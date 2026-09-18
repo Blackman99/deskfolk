@@ -32,6 +32,46 @@ export function normalizeModelList(value: unknown): string[] {
   return catalogNames(normalizeModelCatalog(value));
 }
 
+/** Plain name list as the endpoint's `/models` returned it: trimmed, deduped, no attributes. */
+export function normalizeAvailableModels(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new HttpError(422, "invalid_args", "available_models must be an array of strings");
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new HttpError(422, "invalid_args", "available_models must be an array of strings");
+    }
+    const name = item.trim();
+    if (name.length === 0 || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+/** Loose read of the stored `/models` list; anything malformed reads as empty. */
+export function parseStoredAvailableModels(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed) {
+      if (typeof item !== "string") continue;
+      const name = item.trim();
+      if (name.length === 0 || seen.has(name)) continue;
+      seen.add(name);
+      out.push(name);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export function normalizeModelCatalog(value: unknown): EndpointModel[] {
   if (!Array.isArray(value)) {
     throw new HttpError(422, "invalid_args", "endpoint_models must be an array of strings");

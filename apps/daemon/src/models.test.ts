@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   catalogNames,
+  normalizeAvailableModels,
   normalizeBotModel,
   normalizeDefaultModel,
   normalizeModelCatalog,
   normalizeModelList,
+  parseStoredAvailableModels,
   parseStoredCatalog,
   parseStoredModels,
   resolveCompletionModel,
@@ -21,6 +23,15 @@ import {
 import { HttpError } from "./errors";
 
 describe("endpoint model names", () => {
+  test("the probed list is trimmed and deduped, and rejects non-strings", () => {
+    expect(normalizeAvailableModels([" gpt-4o ", "gpt-4o", "", "o3"])).toEqual(["gpt-4o", "o3"]);
+    expect(() => normalizeAvailableModels("gpt-4o")).toThrow(HttpError);
+    expect(() => normalizeAvailableModels([1])).toThrow(HttpError);
+    expect(parseStoredAvailableModels('["gpt-4o"," o3 ","gpt-4o",3]')).toEqual(["gpt-4o", "o3"]);
+    expect(parseStoredAvailableModels(undefined)).toEqual([]);
+    expect(parseStoredAvailableModels("not json")).toEqual([]);
+  });
+
   test("normalizes a list, trims, and drops duplicates", () => {
     expect(normalizeModelList([" grok-4.5 ", "deepseek-v4-pro", "grok-4.5"])).toEqual([
       "grok-4.5",

@@ -656,12 +656,19 @@ describe("empty roster and settings", () => {
         base_url: "https://api.openai.com/v1",
         api_key: "sk-openai",
         models: ["gpt-4o"],
+        available_models: ["gpt-4o", " gpt-4o-mini ", "gpt-4o", "o3"],
         default_model: "gpt-4o",
       }),
     });
     expect(created.status).toBe(201);
-    const openai = (await created.json()) as { id: string; key_set: boolean; models: string[] };
+    const openai = (await created.json()) as {
+      id: string;
+      key_set: boolean;
+      models: string[];
+      available_models: string[];
+    };
     expect(openai.key_set).toBe(true);
+    expect(openai.available_models).toEqual(["gpt-4o", "gpt-4o-mini", "o3"]);
     expect(JSON.stringify(openai)).not.toContain("sk-openai");
     const second = await fetch(`${h.origin}/v1/providers`, {
       method: "POST",
@@ -674,10 +681,18 @@ describe("empty roster and settings", () => {
       }),
     });
     expect(second.status).toBe(201);
+    expect(((await second.json()) as { available_models: string[] }).available_models).toEqual([]);
     const listed = await fetch(`${h.origin}/v1/providers`, { headers: auth(h) });
-    const page = (await listed.json()) as { items: Array<{ name: string; key_set: boolean }> };
+    const page = (await listed.json()) as {
+      items: Array<{ name: string; key_set: boolean; available_models: string[] }>;
+    };
     expect(page.items.map((item) => item.name).sort()).toEqual(["DeepSeek", "OpenAI"]);
     expect(page.items.every((item) => item.key_set)).toBe(true);
+    expect(page.items.find((item) => item.name === "OpenAI")?.available_models).toEqual([
+      "gpt-4o",
+      "gpt-4o-mini",
+      "o3",
+    ]);
     const settings = await fetch(`${h.origin}/v1/settings`, { headers: auth(h) });
     expect(await settings.json()).toMatchObject({
       default_provider_id: openai.id,
@@ -692,8 +707,25 @@ describe("empty roster and settings", () => {
     expect(patched.status).toBe(200);
     expect(await patched.json()).toMatchObject({
       models: ["gpt-4o", "gpt-4o-mini"],
+      available_models: ["gpt-4o", "gpt-4o-mini", "o3"],
       default_model: "gpt-4o-mini",
     });
+    const refetched = await fetch(`${h.origin}/v1/providers/${openai.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ available_models: ["gpt-4o", "gpt-4o-mini"] }),
+    });
+    expect(refetched.status).toBe(200);
+    expect(await refetched.json()).toMatchObject({
+      models: ["gpt-4o", "gpt-4o-mini"],
+      available_models: ["gpt-4o", "gpt-4o-mini"],
+    });
+    const rejected = await fetch(`${h.origin}/v1/providers/${openai.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ available_models: "gpt-4o" }),
+    });
+    expect(rejected.status).toBe(422);
     rmSync(workspace, { recursive: true, force: true });
   });
 

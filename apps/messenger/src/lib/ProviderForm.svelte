@@ -1,12 +1,23 @@
 <script lang="ts">
-	import { parseModelLines, type FieldErrorKind } from './wizard-save.ts';
+	import type { FieldErrorKind } from './wizard-save.ts';
 	import type { Copy } from './copy.ts';
 	import {
+		PRESET_STRENGTHS,
+		addAttrStrength,
+		addDraftModel,
 		emptyModelAttr,
+		hasCustomAttrs,
+		pickerModels,
+		probeSignature,
+		setDraftModels,
+		toggleAttrStrength,
+		toggleAttrThinkingLevel,
+		toggleDraftModel,
+		type ModelAttrDraft,
 		type ProviderDraft,
 		type ProviderFieldErrors
 	} from './provider-form.ts';
-	import { THINKING_LEVELS, type ThinkingLevel } from '@real-bot/protocol';
+	import { THINKING_LEVELS } from '@real-bot/protocol';
 	import Select from './Select.svelte';
 
 	interface Props {
@@ -16,7 +27,8 @@
 		fetching: boolean;
 		fetchError: string | null;
 		fieldPrefix: string;
-		keyPlaceholder?: string;
+		/** Set when editing: whether the daemon already holds a key for this endpoint. */
+		keySet?: boolean;
 		t: Copy;
 		onchange: (draft: ProviderDraft) => void;
 		onfetch: () => void;
@@ -29,11 +41,35 @@
 		fetching,
 		fetchError,
 		fieldPrefix,
-		keyPlaceholder = '',
+		keySet,
 		t,
 		onchange,
 		onfetch
 	}: Props = $props();
+
+	const TOOLBAR_MIN_ROWS = 6;
+	const PRESET_KEYS = new Set<string>(PRESET_STRENGTHS);
+
+	let filterQuery = $state('');
+	let filterMode = $state<'all' | 'enabled'>('all');
+	let expanded = $state<Record<string, boolean>>({});
+	let manualOpen = $state(false);
+	let manualName = $state('');
+	let strengthEditing = $state<string | null>(null);
+	let strengthText = $state('');
+
+	const rows = $derived(pickerModels(draft));
+	const enabled = $derived(new Set(draft.models));
+	const available = $derived(new Set(draft.availableModels));
+	const canProbe = $derived(probeSignature(draft, Boolean(keySet)) !== null);
+	const showToolbar = $derived(rows.length > TOOLBAR_MIN_ROWS);
+	const visibleRows = $derived.by(() => {
+		const q = filterQuery.trim().toLowerCase();
+		return rows.filter((name) => {
+			if (filterMode === 'enabled' && !enabled.has(name)) return false;
+			return q.length === 0 || name.toLowerCase().includes(q);
+		});
+	});
 
 	function fieldCopy(kind: FieldErrorKind | undefined, empty: string, invalid: string): string {
 		if (kind === 'empty') return empty;
@@ -45,103 +81,55 @@
 		onchange({ ...draft, ...partial });
 	}
 
-	function patchAttr(
-		name: string,
-		partial: Partial<{ price: string; thinkingLevels: string; strengths: string }>
-	): void {
-		const current = draft.modelAttrs[name] ?? emptyModelAttr();
-		patch({
-			modelAttrs: {
-				...draft.modelAttrs,
-				[name]: { ...current, ...partial }
-			}
-		});
+	function attrOf(name: string): ModelAttrDraft {
+		return draft.modelAttrs[name] ?? emptyModelAttr();
 	}
 
-	const listedModels = $derived(parseModelLines(draft.modelsText));
-
-	let filterQuery = $state('');
-	let expandedModels = $state<Record<string, boolean>>({});
-
-	const filteredModels = $derived.by(() => {
-		const q = filterQuery.trim().toLowerCase();
-		if (!q) return listedModels;
-		return listedModels.filter((name) => {
-			if (name.toLowerCase().includes(q)) return true;
-			const attrs = draft.modelAttrs[name];
-			if (attrs?.strengths?.toLowerCase().includes(q)) return true;
-			if (attrs?.thinkingLevels?.toLowerCase().includes(q)) return true;
-			return false;
-		});
-	});
-
-	function isExpanded(name: string): boolean {
-		if (name in expandedModels) return Boolean(expandedModels[name]);
-		return listedModels.length <= 3;
+	function patchAttr(name: string, next: ModelAttrDraft): void {
+		if (next === draft.modelAttrs[name]) return;
+		patch({ modelAttrs: { ...draft.modelAttrs, [name]: next } });
 	}
 
-	function toggleExpand(name: string): void {
-		expandedModels = { ...expandedModels, [name]: !isExpanded(name) };
+	function toggleExpanded(name: string): void {
+		expanded = { ...expanded, [name]: !expanded[name] };
 	}
 
-	const allExpanded = $derived(
-		filteredModels.length > 0 && filteredModels.every((name) => isExpanded(name))
-	);
-
-	function toggleExpandAll(): void {
-		const target = !allExpanded;
-		const next: Record<string, boolean> = { ...expandedModels };
-		for (const name of filteredModels) {
-			next[name] = target;
-		}
-		expandedModels = next;
+	function selectVisible(): void {
+		const merged = [...draft.models];
+		for (const name of visibleRows) if (!merged.includes(name)) merged.push(name);
+		onchange(setDraftModels(draft, merged));
 	}
 
-	function parseLevels(raw: string): string[] {
-		return raw
-			.split(/[,/\s]+/)
-			.map((s) => s.trim())
-			.filter(Boolean);
+	function submitManual(): void {
+		const next = addDraftModel(draft, manualName);
+		if (next === draft) return;
+		onchange(next);
+		manualName = '';
 	}
 
-	function isLevelActive(raw: string, level: string): boolean {
-		const active = parseLevels(raw);
-		return active.includes(level);
+	function openStrengthInput(name: string): void {
+		strengthEditing = name;
+		strengthText = '';
 	}
 
-	function toggleLevel(name: string, level: ThinkingLevel): void {
-		const current = draft.modelAttrs[name]?.thinkingLevels ?? THINKING_LEVELS.join(', ');
-		let active = parseLevels(current);
-		if (active.includes(level)) {
-			active = active.filter((l) => l !== level);
-		} else {
-			active = [...active, level];
-		}
-		patchAttr(name, { thinkingLevels: active.join(', ') });
+	function submitStrength(name: string): void {
+		patchAttr(name, addAttrStrength(attrOf(name), strengthText));
+		strengthEditing = null;
+		strengthText = '';
 	}
 
-	const PRESET_STRENGTHS = ['code', 'writing', 'reasoning', 'chat'];
-
-	function hasStrengthTag(raw: string, tag: string): boolean {
-		const list = raw
-			.split(/[,/\s]+/)
-			.map((s) => s.trim().toLowerCase())
-			.filter(Boolean);
-		return list.includes(tag.toLowerCase());
+	function customStrengths(attr: ModelAttrDraft): string[] {
+		return attr.strengths.filter((tag) => !PRESET_KEYS.has(tag.toLowerCase()));
 	}
 
-	function toggleStrengthTag(name: string, tag: string): void {
-		const current = draft.modelAttrs[name]?.strengths ?? '';
-		let list = current
-			.split(/[,/\s]+/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		if (list.some((s) => s.toLowerCase() === tag.toLowerCase())) {
-			list = list.filter((s) => s.toLowerCase() !== tag.toLowerCase());
-		} else {
-			list = [...list, tag];
-		}
-		patchAttr(name, { strengths: list.join(', ') });
+	function hasStrength(attr: ModelAttrDraft, tag: string): boolean {
+		return attr.strengths.some((item) => item.toLowerCase() === tag.toLowerCase());
+	}
+
+	function emptyHint(): string {
+		if (fetching) return t.settings.modelsFetchingHint;
+		if (canProbe && !fetchError) return t.settings.modelsAutoFetchHint;
+		return t.settings.modelsEmptyHint;
 	}
 </script>
 
@@ -153,6 +141,7 @@
 	<input
 		id={`${fieldPrefix}-name`}
 		type="text"
+		placeholder="OpenAI"
 		value={draft.name}
 		oninput={(ev) => patch({ name: (ev.currentTarget as HTMLInputElement).value })}
 	/>
@@ -165,6 +154,12 @@
 	<input
 		id={`${fieldPrefix}-url`}
 		type="text"
+		class="mono"
+		inputmode="url"
+		autocapitalize="off"
+		autocorrect="off"
+		spellcheck="false"
+		placeholder="https://api.openai.com/v1"
 		value={draft.baseUrl}
 		oninput={(ev) => patch({ baseUrl: (ev.currentTarget as HTMLInputElement).value })}
 	/>
@@ -177,20 +172,17 @@
 <div class="modal-section">
 	<div class="field-head-row">
 		<label for={`${fieldPrefix}-key`}>{t.settings.endpointKey}</label>
-		<button
-			type="button"
-			class="btn-fetch-models-mini"
-			disabled={fetching}
-			onclick={onfetch}
-		>
-			{fetching ? t.settings.modelsFetching : `🔄 ${t.settings.modelsFetch}`}
-		</button>
+		{#if keySet !== undefined}
+			<span class="key-status-badge" class:is-set={keySet}>
+				{keySet ? t.settings.keySet : t.settings.keyUnset}
+			</span>
+		{/if}
 	</div>
 	<input
 		id={`${fieldPrefix}-key`}
 		type="password"
 		autocomplete="off"
-		placeholder={keyPlaceholder}
+		placeholder={keySet ? '••••••••' : ''}
 		value={draft.apiKey}
 		oninput={(ev) => patch({ apiKey: (ev.currentTarget as HTMLInputElement).value })}
 	/>
@@ -198,30 +190,258 @@
 		<p class="field-error">{t.settings.keyEmpty}</p>
 	{/if}
 </div>
-{#if fetchError}
-	<div class="models-fetch-tip">
-		<span class="muted">{fetchError}</span>
-	</div>
-{/if}
+
 <div class="modal-section">
-	<label for={`${fieldPrefix}-models`}>
-		{t.settings.models}
-		{#if listedModels.length > 0}
-			<span class="badge-count-inline">{listedModels.length}</span>
+	<div class="field-head-row">
+		<span class="field-head model-picker-head" id={`${fieldPrefix}-models-label`}>
+			{t.settings.models}
+			{#if rows.length > 0}
+				<span class="badge-count-inline">
+					{t.settings.modelsCounts(draft.models.length, draft.availableModels.length)}
+				</span>
+			{/if}
+		</span>
+		<button
+			type="button"
+			class="btn-fetch-models-mini"
+			disabled={fetching || !canProbe}
+			onclick={onfetch}
+		>
+			{#if fetching}
+				{t.settings.modelsFetching}
+			{:else}
+				↻ {draft.availableModels.length > 0 ? t.settings.modelsRefetch : t.settings.modelsFetch}
+			{/if}
+		</button>
+	</div>
+	{#if fetchError}
+		<div class="models-fetch-tip">{fetchError}</div>
+	{/if}
+	<div class="model-picker" class:has-error={Boolean(errors.models)}>
+		{#if rows.length === 0}
+			<div class="model-picker-empty">
+				<p class="muted">{emptyHint()}</p>
+			</div>
+		{:else}
+			{#if showToolbar}
+				<div class="model-picker-toolbar">
+					<input
+						type="search"
+						class="model-picker-search"
+						placeholder={t.settings.modelsSearchPlaceholder}
+						aria-label={t.settings.modelsSearchPlaceholder}
+						bind:value={filterQuery}
+					/>
+					<div class="segmented" role="group" aria-label={t.settings.models}>
+						<button
+							type="button"
+							class:active={filterMode === 'all'}
+							aria-pressed={filterMode === 'all'}
+							onclick={() => (filterMode = 'all')}
+						>
+							{t.settings.modelsFilterAll}
+						</button>
+						<button
+							type="button"
+							class:active={filterMode === 'enabled'}
+							aria-pressed={filterMode === 'enabled'}
+							onclick={() => (filterMode = 'enabled')}
+						>
+							{t.settings.modelsFilterEnabled} {draft.models.length}
+						</button>
+					</div>
+					<button type="button" class="btn-xs" onclick={selectVisible}>
+						{t.settings.modelsSelectAll}
+					</button>
+					<button type="button" class="btn-xs" onclick={() => onchange(setDraftModels(draft, []))}>
+						{t.settings.modelsDeselectAll}
+					</button>
+				</div>
+			{/if}
+			<ul class="model-picker-list" aria-labelledby={`${fieldPrefix}-models-label`}>
+				{#if visibleRows.length === 0}
+					<li class="model-picker-none muted">
+						{filterMode === 'enabled' && filterQuery.trim().length === 0
+							? t.settings.modelsEnabledEmpty
+							: t.settings.modelAttrsEmptyFilter}
+					</li>
+				{/if}
+				{#each visibleRows as name (name)}
+					{@const on = enabled.has(name)}
+					{@const attr = attrOf(name)}
+					{@const open = on && Boolean(expanded[name])}
+					{@const customTags = customStrengths(attr)}
+					<li class="model-row" class:is-on={on} class:is-open={open}>
+						<div class="model-row-line">
+							<button
+								type="button"
+								role="checkbox"
+								aria-checked={on}
+								class="model-row-toggle"
+								onclick={() => onchange(toggleDraftModel(draft, name))}
+							>
+								<span class="model-row-box" aria-hidden="true">{on ? '✓' : ''}</span>
+								<span class="model-row-name mono">{name}</span>
+								{#if name === draft.defaultModel}
+									<span class="model-default-tag">{t.settings.modelAttrsDefaultBadge}</span>
+								{/if}
+								{#if !available.has(name)}
+									<span class="model-custom-tag">{t.settings.modelCustomBadge}</span>
+								{/if}
+							</button>
+							{#if on}
+								<button
+									type="button"
+									class="model-row-attrs"
+									class:has-custom={hasCustomAttrs(attr)}
+									aria-expanded={open}
+									aria-label={t.settings.modelAttrsToggle(name)}
+									onclick={() => toggleExpanded(name)}
+								>
+									{#if attr.price.trim()}
+										<span class="attr-pill pill-price">{attr.price.trim()}</span>
+									{/if}
+									{#if attr.thinkingLevels.length !== THINKING_LEVELS.length}
+										<span class="attr-pill pill-thinking">{attr.thinkingLevels.join('/')}</span>
+									{/if}
+									{#each attr.strengths as tag (tag)}
+										<span class="attr-pill pill-strengths">{tag}</span>
+									{/each}
+									<span class="model-row-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+								</button>
+							{/if}
+						</div>
+						{#if open}
+							<div class="model-row-body">
+								<div class="attr-field">
+									<label for={`${fieldPrefix}-price-${name}`} title={t.settings.modelPriceTitle}>
+										{t.settings.modelPrice}
+									</label>
+									<input
+										id={`${fieldPrefix}-price-${name}`}
+										class="attr-price-input"
+										type="number"
+										inputmode="decimal"
+										min="0"
+										step="any"
+										placeholder={t.settings.modelPriceHint}
+										value={attr.price}
+										oninput={(ev) =>
+											patchAttr(name, { ...attr, price: (ev.currentTarget as HTMLInputElement).value })}
+									/>
+								</div>
+								<div class="attr-field">
+									<span class="attr-field-label">{t.settings.modelThinking}</span>
+									<div class="chip-row" role="group" aria-label={t.settings.modelThinking}>
+										{#each THINKING_LEVELS as level (level)}
+											<button
+												type="button"
+												class="btn-chip"
+												class:active={attr.thinkingLevels.includes(level)}
+												aria-pressed={attr.thinkingLevels.includes(level)}
+												onclick={() => patchAttr(name, toggleAttrThinkingLevel(attr, level))}
+											>
+												{level}
+											</button>
+										{/each}
+									</div>
+								</div>
+								<div class="attr-field attr-field-strengths">
+									<span class="attr-field-label">{t.settings.modelStrengths}</span>
+									<div class="chip-row" role="group" aria-label={t.settings.modelStrengths}>
+										{#each PRESET_STRENGTHS as tag (tag)}
+											<button
+												type="button"
+												class="btn-chip"
+												class:active={hasStrength(attr, tag)}
+												aria-pressed={hasStrength(attr, tag)}
+												onclick={() => patchAttr(name, toggleAttrStrength(attr, tag))}
+											>
+												{tag}
+											</button>
+										{/each}
+										{#each customTags as tag (tag)}
+											<button
+												type="button"
+												class="btn-chip active is-custom"
+												aria-label={t.settings.modelStrengthRemove(tag)}
+												onclick={() => patchAttr(name, toggleAttrStrength(attr, tag))}
+											>
+												{tag} ×
+											</button>
+										{/each}
+										{#if strengthEditing === name}
+											<!-- svelte-ignore a11y_autofocus -->
+											<input
+												type="text"
+												class="chip-input mono"
+												autofocus
+												placeholder={t.settings.modelStrengthsAddPlaceholder}
+												bind:value={strengthText}
+												onkeydown={(ev) => {
+													if (ev.key === 'Enter') {
+														ev.preventDefault();
+														submitStrength(name);
+													} else if (ev.key === 'Escape') {
+														ev.preventDefault();
+														strengthEditing = null;
+													}
+												}}
+												onblur={() => submitStrength(name)}
+											/>
+										{:else}
+											<button
+												type="button"
+												class="btn-chip is-add"
+												onclick={() => openStrengthInput(name)}
+											>
+												+ {t.settings.modelStrengthsAdd}
+											</button>
+										{/if}
+									</div>
+								</div>
+							</div>
+						{/if}
+					</li>
+				{/each}
+			</ul>
 		{/if}
-	</label>
-	<textarea
-		id={`${fieldPrefix}-models`}
-		class="mono"
-		rows="3"
-		value={draft.modelsText}
-		oninput={(ev) => patch({ modelsText: (ev.currentTarget as HTMLTextAreaElement).value })}
-	></textarea>
-	<p class="muted">{t.settings.modelsHint}</p>
+		<div class="model-picker-foot">
+			{#if manualOpen}
+				<!-- svelte-ignore a11y_autofocus -->
+				<input
+					type="text"
+					class="model-manual-input mono"
+					autofocus
+					placeholder={t.settings.modelsAddManualPlaceholder}
+					aria-label={t.settings.modelsAddManual}
+					bind:value={manualName}
+					onkeydown={(ev) => {
+						if (ev.key === 'Enter') {
+							ev.preventDefault();
+							submitManual();
+						} else if (ev.key === 'Escape') {
+							ev.preventDefault();
+							manualOpen = false;
+							manualName = '';
+						}
+					}}
+				/>
+				<button type="button" class="btn-xs" onclick={submitManual}>
+					{t.settings.modelsAddConfirm}
+				</button>
+			{:else}
+				<button type="button" class="btn-text-action" onclick={() => (manualOpen = true)}>
+					+ {t.settings.modelsAddManual}
+				</button>
+			{/if}
+		</div>
+	</div>
 	{#if errors.models}
 		<p class="field-error">{t.settings.modelsEmpty}</p>
 	{/if}
 </div>
+
 <div class="modal-section">
 	<label for={`${fieldPrefix}-default`}>{t.settings.defaultModel}</label>
 	<Select
@@ -229,182 +449,13 @@
 		value={draft.defaultModel}
 		placeholder={t.settings.defaultModelEmpty}
 		emptyLabel={t.settings.defaultModelEmpty}
-		options={parseModelLines(draft.modelsText)}
+		options={draft.models}
 		error={!!errors.defaultModel}
 		onchange={(value) => patch({ defaultModel: value })}
 	/>
 	{#if errors.defaultModel}
 		<p class="field-error">
-			{fieldCopy(
-				errors.defaultModel,
-				t.settings.defaultModelEmpty,
-				t.settings.defaultModelInvalid
-			)}
+			{fieldCopy(errors.defaultModel, t.settings.defaultModelEmpty, t.settings.defaultModelInvalid)}
 		</p>
 	{/if}
 </div>
-{#if listedModels.length > 0}
-	<div class="modal-section model-attrs-section">
-		<div class="model-attrs-header-bar">
-			<div class="model-attrs-title-group">
-				<span class="model-attrs-title">{t.settings.modelAttrsTitle}</span>
-				<span class="model-attrs-count-badge">{t.settings.modelAttrsCount(listedModels.length)}</span>
-			</div>
-			<div class="model-attrs-actions">
-				<button
-					type="button"
-					class="btn-text-action"
-					onclick={toggleExpandAll}
-				>
-					{allExpanded ? t.settings.modelAttrsCollapseAll : t.settings.modelAttrsExpandAll}
-				</button>
-			</div>
-		</div>
-		<p class="muted model-attrs-hint">{t.settings.modelAttrsHint}</p>
-
-		{#if listedModels.length > 3}
-			<div class="model-attrs-search-bar">
-				<span class="search-icon">🔍</span>
-				<input
-					type="text"
-					class="model-search-input"
-					placeholder={t.settings.modelAttrsSearchPlaceholder}
-					bind:value={filterQuery}
-				/>
-				{#if filterQuery}
-					<button
-						type="button"
-						class="search-clear-btn"
-						onclick={() => (filterQuery = '')}
-					>✕</button>
-				{/if}
-			</div>
-		{/if}
-
-		<div class="model-attrs-list">
-			{#if filteredModels.length === 0}
-				<div class="model-attrs-empty">
-					<span>{t.settings.modelAttrsEmptyFilter}</span>
-				</div>
-			{/if}
-			{#each filteredModels as name (name)}
-				{@const attrs = draft.modelAttrs[name] ?? emptyModelAttr()}
-				{@const expanded = isExpanded(name)}
-				{@const isDefault = name === draft.defaultModel}
-				{@const hasCustom = Boolean(
-					attrs.price.trim() ||
-					(attrs.thinkingLevels.trim() && attrs.thinkingLevels.trim() !== THINKING_LEVELS.join(', ')) ||
-					attrs.strengths.trim()
-				)}
-				<div class="model-attr-item" class:is-expanded={expanded} class:has-custom={hasCustom}>
-					<!-- Accordion Header -->
-					<button
-						type="button"
-						class="model-attr-item-head"
-						onclick={() => toggleExpand(name)}
-						aria-expanded={expanded}
-					>
-						<div class="head-left">
-							<span class="toggle-icon">{expanded ? '▼' : '▶'}</span>
-							<span class="model-name-label">{name}</span>
-							{#if isDefault}
-								<span class="model-default-tag">{t.settings.modelAttrsDefaultBadge}</span>
-							{/if}
-						</div>
-						<div class="head-right">
-							{#if attrs.price.trim()}
-								<span class="attr-pill pill-price">¥{attrs.price}</span>
-							{/if}
-							{#if attrs.thinkingLevels.trim() && attrs.thinkingLevels.trim() !== THINKING_LEVELS.join(', ')}
-								<span class="attr-pill pill-thinking">{attrs.thinkingLevels}</span>
-							{/if}
-							{#if attrs.strengths.trim()}
-								<span class="attr-pill pill-strengths">{attrs.strengths}</span>
-							{/if}
-							{#if !attrs.price.trim() && (!attrs.thinkingLevels.trim() || attrs.thinkingLevels.trim() === THINKING_LEVELS.join(', ')) && !attrs.strengths.trim()}
-								<span class="attr-pill pill-unset">{t.settings.modelAttrsUnset}</span>
-							{/if}
-						</div>
-					</button>
-
-					<!-- Expanded Body -->
-					{#if expanded}
-						<div class="model-attr-item-body">
-							<div class="attr-grid-row">
-								<!-- Price column -->
-								<div class="attr-col attr-col-price">
-									<div class="field-sublabel-row">
-										<label for={`${fieldPrefix}-price-${name}`}>{t.settings.modelPrice}</label>
-									</div>
-									<input
-										id={`${fieldPrefix}-price-${name}`}
-										type="text"
-										inputmode="decimal"
-										value={attrs.price}
-										placeholder={t.settings.modelPriceHint}
-										oninput={(ev) =>
-											patchAttr(name, { price: (ev.currentTarget as HTMLInputElement).value })}
-									/>
-								</div>
-
-								<!-- Thinking Levels column -->
-								<div class="attr-col attr-col-thinking">
-									<div class="field-sublabel-row">
-										<label for={`${fieldPrefix}-think-${name}`}>{t.settings.modelThinking}</label>
-										<div class="quick-levels">
-											{#each THINKING_LEVELS as level}
-												<button
-													type="button"
-													class="btn-chip level-chip"
-													class:active={isLevelActive(attrs.thinkingLevels, level)}
-													onclick={() => toggleLevel(name, level)}
-												>
-													{level}
-												</button>
-											{/each}
-										</div>
-									</div>
-									<input
-										id={`${fieldPrefix}-think-${name}`}
-										type="text"
-										value={attrs.thinkingLevels}
-										placeholder={t.settings.modelThinkingHint}
-										oninput={(ev) =>
-											patchAttr(name, { thinkingLevels: (ev.currentTarget as HTMLInputElement).value })}
-									/>
-								</div>
-							</div>
-
-							<!-- Strengths row -->
-							<div class="attr-full-row">
-								<div class="field-sublabel-row">
-									<label for={`${fieldPrefix}-strengths-${name}`}>{t.settings.modelStrengths}</label>
-									<div class="quick-tags">
-										{#each PRESET_STRENGTHS as tag}
-											<button
-												type="button"
-												class="btn-chip tag-chip"
-												class:active={hasStrengthTag(attrs.strengths, tag)}
-												onclick={() => toggleStrengthTag(name, tag)}
-											>
-												+{tag}
-											</button>
-										{/each}
-									</div>
-								</div>
-								<input
-									id={`${fieldPrefix}-strengths-${name}`}
-									type="text"
-									value={attrs.strengths}
-									placeholder={t.settings.modelStrengthsHint}
-									oninput={(ev) =>
-										patchAttr(name, { strengths: (ev.currentTarget as HTMLInputElement).value })}
-								/>
-							</div>
-						</div>
-					{/if}
-				</div>
-			{/each}
-		</div>
-	</div>
-{/if}

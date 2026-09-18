@@ -28,6 +28,8 @@
 	let activePreset = $state<string>('');
 	let fetchingModels = $state(false);
 	let fetchError = $state<string | null>(null);
+	/** What the endpoint actually returned; saved with the endpoint so Settings can show it again. */
+	let probedModels = $state<string[]>([]);
 	let availableDiscoveredModels = $state<string[]>([
 		'gpt-4o',
 		'gpt-4o-mini',
@@ -157,6 +159,7 @@
 			return;
 		}
 		if (res.models.length > 0) {
+			probedModels = res.models;
 			availableDiscoveredModels = res.models;
 			const current = parseModelLines(runtime.endpointModelsText);
 			const matching = current.filter((m) => res.models.includes(m));
@@ -302,7 +305,8 @@
 				name: providerName || 'Default',
 				baseUrl: runtime.endpointUrl,
 				apiKey: runtime.endpointKey,
-				modelsText: runtime.endpointModelsText,
+				models: parseModelLines(runtime.endpointModelsText),
+				availableModels: probedModels,
 				defaultModel: runtime.endpointDefaultModel,
 				modelAttrs: {}
 			},
@@ -332,6 +336,7 @@
 					base_url: providerPlan.body.base_url,
 					api_key: providerPlan.body.api_key,
 					models: providerPlan.body.models,
+					available_models: providerPlan.body.available_models,
 					default_model: providerPlan.body.default_model
 				})
 			: await runtime.createProvider(providerPlan.body);

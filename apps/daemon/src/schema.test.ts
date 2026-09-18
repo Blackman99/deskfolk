@@ -91,6 +91,11 @@ describe("schema", () => {
       .all()
       .map((row) => row.name);
     expect(approvalCols).toContain("requires_api_key");
+    const providerCols = store.db
+      .query<{ name: string }, []>(`PRAGMA table_info(providers)`)
+      .all()
+      .map((row) => row.name);
+    expect(providerCols).toContain("available_models");
     expect(sessionCols).toContain("last_read_at");
     expect(created.direct_session.last_read_at).toBeString();
     expect(created.direct_session.unread_count).toBe(0);

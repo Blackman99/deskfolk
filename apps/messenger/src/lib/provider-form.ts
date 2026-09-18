@@ -6,19 +6,23 @@ import {
   type PatchProviderRequest,
   type ThinkingLevel,
 } from "@real-bot/protocol";
-import { parseModelLines } from "./wizard-save.ts";
 
 export type ModelAttrDraft = {
+  /** Raw text of the price field; empty means unset. */
   price: string;
-  thinkingLevels: string;
-  strengths: string;
+  /** Levels this name supports; never empty in a draft the form produced. */
+  thinkingLevels: ThinkingLevel[];
+  strengths: string[];
 };
 
 export type ProviderDraft = {
   name: string;
   baseUrl: string;
   apiKey: string;
-  modelsText: string;
+  /** Enabled names, in the order they were picked. */
+  models: string[];
+  /** What the endpoint's `/models` last returned; saved with the provider so the picker survives reopening. */
+  availableModels: string[];
   defaultModel: string;
   modelAttrs: Record<string, ModelAttrDraft>;
 };
@@ -39,35 +43,120 @@ export type ProviderPatchPlan =
   | { ok: true; patch: PatchProviderRequest }
   | { ok: false; errors: ProviderFieldErrors };
 
+export const PRESET_STRENGTHS = ["code", "writing", "reasoning", "chat"] as const;
+
+/** A probed list this short is enabled wholesale when nothing was picked yet. */
+export const AUTO_ENABLE_MAX = 3;
+
 export function emptyModelAttr(): ModelAttrDraft {
-  return { price: "", thinkingLevels: THINKING_LEVELS.join(", "), strengths: "" };
+  return { price: "", thinkingLevels: [...THINKING_LEVELS], strengths: [] };
 }
 
 export function emptyProviderDraft(): ProviderDraft {
-  return { name: "", baseUrl: "", apiKey: "", modelsText: "", defaultModel: "", modelAttrs: {} };
+  return {
+    name: "",
+    baseUrl: "",
+    apiKey: "",
+    models: [],
+    availableModels: [],
+    defaultModel: "",
+    modelAttrs: {},
+  };
 }
 
 export function withSyncedDefaultModel(draft: ProviderDraft): ProviderDraft {
-  const models = parseModelLines(draft.modelsText);
+  const models = uniqueNames(draft.models);
   const modelAttrs = pruneAttrs(draft.modelAttrs, models);
-  const next = { ...draft, modelAttrs };
+  const next = { ...draft, models, modelAttrs };
   if (next.defaultModel && models.includes(next.defaultModel)) return next;
   if (models[0]) return { ...next, defaultModel: models[0] };
   if (!next.defaultModel) return next;
   return { ...next, defaultModel: "" };
 }
 
-export function applyProbedModels(draft: ProviderDraft, models: string[]): ProviderDraft {
-  const current = parseModelLines(draft.modelsText);
-  const matching = current.filter((m) => models.includes(m));
-  const nextSelected = matching.length > 0 ? matching : models.slice(0, 3);
-  return withSyncedDefaultModel({
-    ...draft,
-    modelsText: nextSelected.join("\n"),
-    defaultModel: nextSelected.includes(draft.defaultModel)
-      ? draft.defaultModel
-      : (nextSelected[0] ?? ""),
-  });
+/**
+ * Records what the endpoint returned. Enabled names are kept as they are; only when nothing is
+ * enabled yet and the list is short does the whole list get enabled.
+ */
+export function applyProbedModels(draft: ProviderDraft, probed: readonly string[]): ProviderDraft {
+  const availableModels = uniqueNames(probed);
+  const models =
+    draft.models.length === 0 && availableModels.length > 0 && availableModels.length <= AUTO_ENABLE_MAX
+      ? [...availableModels]
+      : draft.models;
+  return withSyncedDefaultModel({ ...draft, availableModels, models });
+}
+
+/** Rows the picker shows: the probed list in endpoint order, then enabled names the endpoint did not list. */
+export function pickerModels(draft: ProviderDraft): string[] {
+  return uniqueNames([...draft.availableModels, ...draft.models]);
+}
+
+export function toggleDraftModel(draft: ProviderDraft, name: string): ProviderDraft {
+  const models = draft.models.includes(name)
+    ? draft.models.filter((item) => item !== name)
+    : [...draft.models, name];
+  return withSyncedDefaultModel({ ...draft, models });
+}
+
+export function setDraftModels(draft: ProviderDraft, names: readonly string[]): ProviderDraft {
+  return withSyncedDefaultModel({ ...draft, models: [...names] });
+}
+
+/** Adds a name typed by hand; returns the same draft when the input is blank or already enabled. */
+export function addDraftModel(draft: ProviderDraft, raw: string): ProviderDraft {
+  const name = raw.trim();
+  if (name.length === 0 || draft.models.includes(name)) return draft;
+  return withSyncedDefaultModel({ ...draft, models: [...draft.models, name] });
+}
+
+/**
+ * Whether the draft has enough to ask the endpoint for its models. The value doubles as a
+ * signature: a probe is repeated only when it changes.
+ */
+export function probeSignature(draft: ProviderDraft, keySet: boolean): string | null {
+  const baseUrl = draft.baseUrl.trim();
+  if (!isHttpOrHttpsUrl(baseUrl)) return null;
+  const apiKey = draft.apiKey.trim();
+  if (apiKey.length === 0 && !keySet) return null;
+  return `${baseUrl}\n${apiKey}`;
+}
+
+/** Toggles a level, keeping at least one so a name never claims to support nothing. */
+export function toggleAttrThinkingLevel(attr: ModelAttrDraft, level: ThinkingLevel): ModelAttrDraft {
+  if (attr.thinkingLevels.includes(level)) {
+    if (attr.thinkingLevels.length === 1) return attr;
+    return { ...attr, thinkingLevels: attr.thinkingLevels.filter((item) => item !== level) };
+  }
+  const next = new Set<ThinkingLevel>([...attr.thinkingLevels, level]);
+  return { ...attr, thinkingLevels: THINKING_LEVELS.filter((item) => next.has(item)) };
+}
+
+export function toggleAttrStrength(attr: ModelAttrDraft, tag: string): ModelAttrDraft {
+  const wanted = tag.trim();
+  if (wanted.length === 0) return attr;
+  const key = wanted.toLowerCase();
+  if (attr.strengths.some((item) => item.toLowerCase() === key)) {
+    return { ...attr, strengths: attr.strengths.filter((item) => item.toLowerCase() !== key) };
+  }
+  return { ...attr, strengths: [...attr.strengths, wanted] };
+}
+
+/** Adds a tag typed by hand; already-present tags (any case) are left alone. */
+export function addAttrStrength(attr: ModelAttrDraft, raw: string): ModelAttrDraft {
+  const tag = raw.trim();
+  if (tag.length === 0) return attr;
+  const key = tag.toLowerCase();
+  if (attr.strengths.some((item) => item.toLowerCase() === key)) return attr;
+  return { ...attr, strengths: [...attr.strengths, tag] };
+}
+
+export function hasCustomAttrs(attr: ModelAttrDraft): boolean {
+  return (
+    attr.price.trim().length > 0 ||
+    attr.thinkingLevels.length !== THINKING_LEVELS.length ||
+    attr.strengths.length > 0
+  );
 }
 
 export function providerHost(baseUrl: string | null | undefined): string {
@@ -85,6 +174,7 @@ export function draftFromProvider(input: {
   base_url: string | null;
   models: readonly string[];
   model_catalog?: readonly EndpointModel[];
+  available_models?: readonly string[];
   default_model: string | null;
 }): ProviderDraft {
   const catalog = input.model_catalog ?? input.models.map(defaultCatalogItem);
@@ -92,15 +182,16 @@ export function draftFromProvider(input: {
   for (const row of catalog) {
     modelAttrs[row.name] = {
       price: row.price == null ? "" : String(row.price),
-      thinkingLevels: row.thinking_levels.join(", "),
-      strengths: row.strengths.join(", "),
+      thinkingLevels: [...row.thinking_levels],
+      strengths: [...row.strengths],
     };
   }
   return {
     name: input.name,
     baseUrl: input.base_url ?? "",
     apiKey: "",
-    modelsText: input.models.join("\n"),
+    models: [...input.models],
+    availableModels: [...(input.available_models ?? [])],
     defaultModel: input.default_model ?? "",
     modelAttrs,
   };
@@ -109,16 +200,15 @@ export function draftFromProvider(input: {
 export function planCreateProvider(draft: ProviderDraft, requireKey: boolean): ProviderSavePlan {
   const parsed = parseProviderDraft(draft, requireKey);
   if (!parsed.ok) return parsed;
-  return {
-    ok: true,
-    body: {
-      name: parsed.name,
-      base_url: parsed.baseUrl,
-      api_key: parsed.apiKey || undefined,
-      models: parsed.models,
-      default_model: parsed.defaultModel,
-    },
+  const body: CreateProviderRequest = {
+    name: parsed.name,
+    base_url: parsed.baseUrl,
+    api_key: parsed.apiKey || undefined,
+    models: parsed.models,
+    default_model: parsed.defaultModel,
   };
+  if (parsed.availableModels.length > 0) body.available_models = parsed.availableModels;
+  return { ok: true, body };
 }
 
 export function planPatchProvider(
@@ -127,6 +217,7 @@ export function planPatchProvider(
     base_url: string | null;
     models: readonly string[];
     model_catalog?: readonly EndpointModel[];
+    available_models?: readonly string[];
     default_model: string | null;
   },
   draft: ProviderDraft,
@@ -138,6 +229,9 @@ export function planPatchProvider(
   if (parsed.baseUrl !== (current.base_url ?? "")) patch.base_url = parsed.baseUrl;
   const currentCatalog = current.model_catalog ?? current.models.map(defaultCatalogItem);
   if (!sameCatalog(parsed.models, currentCatalog)) patch.models = parsed.models;
+  if (!sameList(parsed.availableModels, current.available_models ?? [])) {
+    patch.available_models = parsed.availableModels;
+  }
   if (parsed.defaultModel !== (current.default_model ?? "")) patch.default_model = parsed.defaultModel;
   if (draft.apiKey.length > 0) patch.api_key = draft.apiKey;
   return { ok: true, patch };
@@ -168,11 +262,19 @@ function parseProviderDraft(
   draft: ProviderDraft,
   requireKey: boolean,
 ):
-  | { ok: true; name: string; baseUrl: string; apiKey: string; models: EndpointModelInput[]; defaultModel: string }
+  | {
+      ok: true;
+      name: string;
+      baseUrl: string;
+      apiKey: string;
+      models: EndpointModel[];
+      availableModels: string[];
+      defaultModel: string;
+    }
   | { ok: false; errors: ProviderFieldErrors } {
   const name = draft.name.trim();
   const baseUrl = draft.baseUrl.trim();
-  const names = parseModelLines(draft.modelsText);
+  const names = uniqueNames(draft.models);
   const defaultModel = draft.defaultModel.trim();
   const errors: ProviderFieldErrors = {};
   if (name.length === 0) errors.name = "empty";
@@ -186,42 +288,47 @@ function parseProviderDraft(
     return { ok: false, errors };
   }
   const models = names.map((modelName) => catalogFromAttr(modelName, draft.modelAttrs[modelName]));
-  return { ok: true, name, baseUrl, apiKey: draft.apiKey, models, defaultModel };
+  return {
+    ok: true,
+    name,
+    baseUrl,
+    apiKey: draft.apiKey,
+    models,
+    availableModels: uniqueNames(draft.availableModels),
+    defaultModel,
+  };
 }
 
 function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): EndpointModel {
   const source = attr ?? emptyModelAttr();
   const priceRaw = source.price.trim();
   const price = priceRaw.length === 0 ? null : Number(priceRaw);
+  const levels = THINKING_LEVELS.filter((level) => source.thinkingLevels.includes(level));
   return {
     name,
     price: price != null && Number.isFinite(price) && price >= 0 ? price : null,
-    thinking_levels: parseThinkingLevels(source.thinkingLevels),
-    strengths: parseTags(source.strengths),
+    thinking_levels: levels.length > 0 ? levels : [...THINKING_LEVELS],
+    strengths: uniqueTags(source.strengths),
   };
 }
 
-function parseThinkingLevels(raw: string): ThinkingLevel[] {
-  const out: ThinkingLevel[] = [];
-  const seen = new Set<string>();
-  for (const part of raw.split(/[,/\s]+/)) {
-    const item = part.trim();
-    if (!isThinkingLevel(item) || seen.has(item)) continue;
-    seen.add(item);
-    out.push(item);
-  }
-  return out.length > 0 ? out : [...THINKING_LEVELS];
-}
-
-function isThinkingLevel(value: string): value is ThinkingLevel {
-  return (THINKING_LEVELS as readonly string[]).includes(value);
-}
-
-function parseTags(raw: string): string[] {
+function uniqueNames(names: readonly string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const part of raw.split(/[,/\n]+/)) {
-    const tag = part.trim();
+  for (const raw of names) {
+    const name = raw.trim();
+    if (name.length === 0 || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+function uniqueTags(tags: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    const tag = raw.trim();
     if (tag.length === 0 || seen.has(tag.toLowerCase())) continue;
     seen.add(tag.toLowerCase());
     out.push(tag);
@@ -233,13 +340,9 @@ function pruneAttrs(
   attrs: Record<string, ModelAttrDraft>,
   names: readonly string[],
 ): Record<string, ModelAttrDraft> {
-  const keep = new Set(names);
   const next: Record<string, ModelAttrDraft> = {};
   for (const name of names) {
     next[name] = attrs[name] ?? emptyModelAttr();
-  }
-  for (const [name, value] of Object.entries(attrs)) {
-    if (keep.has(name)) next[name] = value;
   }
   return next;
 }
@@ -253,14 +356,19 @@ function defaultCatalogItem(name: string): EndpointModel {
   };
 }
 
+function catalogItemFromInput(item: EndpointModelInput): EndpointModel {
+  if (typeof item === "string") return defaultCatalogItem(item);
+  return catalogFromAttr(item.name, {
+    price: item.price == null ? "" : String(item.price),
+    thinkingLevels: [...(item.thinking_levels ?? THINKING_LEVELS)],
+    strengths: [...(item.strengths ?? [])],
+  });
+}
+
 function sameCatalog(a: readonly EndpointModelInput[], b: readonly EndpointModel[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((item, i) => {
-    const left = typeof item === "string" ? defaultCatalogItem(item) : catalogFromAttr(item.name, {
-      price: item.price == null ? "" : String(item.price),
-      thinkingLevels: (item.thinking_levels ?? THINKING_LEVELS).join(", "),
-      strengths: (item.strengths ?? []).join(", "),
-    });
+    const left = catalogItemFromInput(item);
     const right = b[i]!;
     return (
       left.name === right.name &&

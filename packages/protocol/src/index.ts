@@ -165,8 +165,11 @@ export type Provider = {
   name: string;
   base_url: string | null;
   key_set: boolean;
+  /** Enabled completion names; a subset of what the endpoint offers. */
   models: string[];
   model_catalog: EndpointModel[];
+  /** Last list the endpoint's `/models` returned, kept so the picker survives reopening. */
+  available_models: string[];
   default_model: string | null;
   created_at: string;
   updated_at: string;
@@ -177,6 +180,7 @@ export type CreateProviderRequest = {
   base_url: string;
   api_key?: string;
   models?: EndpointModelInput[];
+  available_models?: string[];
   default_model?: string | null;
 };
 
@@ -185,6 +189,7 @@ export type PatchProviderRequest = {
   base_url?: string;
   api_key?: string;
   models?: EndpointModelInput[];
+  available_models?: string[];
   default_model?: string | null;
 };
 

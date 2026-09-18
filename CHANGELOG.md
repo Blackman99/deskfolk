@@ -6,12 +6,14 @@
 
 ### Daemon
 
+- 端点多一个 `available_models`：端点 `/models` 上次返回的完整名单（`providers.available_models` 列，`POST/PATCH /v1/providers` 同名字段，`GET /v1/providers` 与 `provider.upsert` 一并返回；非字符串数组 `422 available_models must be an array of strings`）。它只是给信使的挑选列表，不影响启用名单 `models`、默认模型和路由；`list_endpoints` 工具也带上它。旧库打开时自动补列，缺省为空。
 - 没钉端点的 Bot 只在默认端点的模型名单里挑模型，设置里新加的端点不再自动进所有 Bot 的候选；要用别的端点必须在 Bot 上显式钉端点，钉的模型名只在别的端点上时照钉的用。此前加了第二个端点后，一条学习到的惩罚就足以把未钉的 Bot 送去那个端点。
 - 路由反馈只认说到模型本身的跟进消息（选的模型、换个模型、太慢、太浅、太贵、幻觉等）；「不对」「有问题」「重来」这类对回复内容的批评不再记成对上一轮模型选择的惩罚。
 - Bot 可以钉思考等级。`bots.thinking_level`（none / low / medium / high，即补全的 `reasoning_effort`）随 `POST /v1/bots`、`PATCH /v1/bots/:id` 和 `bot.upsert` 一起走；`null` 仍由应用按每条消息挑。开轮时所选模型支持这一档就用它，不支持则照旧由应用选。钉了模型时该档必须在该模型名单的 `thinking_levels` 里，否则 `422 thinking_level must be one the pinned model supports`；只换模型而新模型不支持原来那档会自动清掉。`update_profile` / `create_bot` 多一个 `thinking_level`（null 或空字符串清掉），`list_bots` 一并返回；系统指令写明用它改自己的思考等级。
 
 ### Messenger
 
+- 端点编辑浮层重做。填好端点 URL 和密钥停手约 0.7 秒就自动获取一次模型列表（同一对 URL + 密钥不重复拉，也可手动「重新获取」）；拉到的完整名单随端点保存，再进编辑时直接展示，不用再拉，旧端点名单为空时打开会自动拉一次。模型不再是「每行一个」的多行文本框，而是勾选列表：超过 6 条出现搜索、「全部 / 已启用」切换和全选 / 清空；名单里没有的名字从底部「手动添加模型名」补进去；什么都没勾且名单不超过 3 条时整单直接启用，更长的名单等你挑。每个已启用模型的决策属性收进该行右侧的折叠里：价格是数字框，思考等级和擅长领域都是点选芯片（擅长可加自定义标签），思考等级至少保留一档。默认模型从已启用的名字里选。向导里拉到的名单也会随第一个端点存下来。
 - 设置「模型服务」里删除端点改到卡片上，点了弹出确认，不再放在编辑浮层里。
 - 产物预览里点「源码」会切到 Monaco 编辑器，不再被空 iframe 挡住；切文件才退出源码，会话刷新不会把正在看的源码打回预览。Monaco 还没起来时先显示纯文本。HTML 源码按 Shiki 着色（含内嵌 CSS / JS）：开发态不再把巨大的 HTML 语法打进过期的 Vite 预构建块，Monaco 也会先注册 `html` 再挂分词器。源码着色用 `vitesse-light` / `vitesse-dark`，跟随应用明暗；聊天围栏仍是 github 主题。HTML 预览会写入 `color-scheme`，随外观切换。
 - 单文件 HTML 预览 iframe 允许脚本（`allow-scripts`，不含 `allow-same-origin`），CSS 动画和内联 JS 动效能在侧栏播；外链脚本仍受窗口 CSP 限制，和在 Chrome 里打开不是同一套网络权限。
