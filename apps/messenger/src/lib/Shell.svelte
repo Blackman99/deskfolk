@@ -75,7 +75,6 @@
 		type ProviderDraft,
 		type ProviderFieldErrors
 	} from './provider-form.ts';
-	import { pendingCounts } from './pending.ts';
 	import { rosterLetter } from './roster-letter.ts';
 	import { avatarSrc } from './avatar.ts';
 	import AvatarEditor from './AvatarEditor.svelte';
@@ -134,21 +133,18 @@
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from './preview-width.ts';
 	import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from './sidebar-width.ts';
+	import { isOutside } from './click-outside.ts';
 	import { formatFileSize } from './attachments.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotedBotName, quotePreview } from './quote-reply.ts';
 	import {
-		createInlineMentionChipElement,
 		deleteChipElement,
-		extractActiveMentionChips,
 		getTextBeforeCaret,
 		handleEditorBackspace,
 		handleEditorDelete,
 		insertMentionChipAtCaret,
 		parseMentionHref,
-		removeMentionFromDraft,
 		serializeEditorText,
-		setEditorContentFromText,
-		type ActiveMentionChip
+		setEditorContentFromText
 	} from './mention-chips.ts';
 	import {
 		applyMentionCandidate,
@@ -450,17 +446,10 @@
 			: null
 	);
 	const thinkingHere = $derived(Boolean(selectedWork?.isBusy));
-	const busyBotIds = $derived(
-		new Set([
-			...snapshot.turns.filter((turn) => isLiveStatus(turn.status)).map((turn) => turn.bot_id),
-			...snapshot.pendingJudgements.map((j) => j.bot_id),
-		])
-	);
 	const liveTurn = $derived(
 		liveTurnsHere.find((turn) => turn.id === runtime.focusedTurnId) ?? liveTurnsHere[0]
 	);
 	let askDrafts = $state<Record<string, string>>({});
-	const pendingBySession = $derived(pendingCounts(snapshot.approvals, snapshot.turns));
 	const connected = $derived(runtime.connection === 'connected');
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
 	const searchKindLabels = $derived({
@@ -687,7 +676,6 @@
 	let jumpToBottom = false;
 	let jumpToBottomTimer: ReturnType<typeof setTimeout> | null = null;
 	let nowMs = $state(Date.now());
-	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let editorEl = $state<HTMLDivElement | null>(null);
 	let composerIme = $state<ComposerImeState>(COMPOSER_IME_IDLE);
 
@@ -854,11 +842,6 @@
 			ro.disconnect();
 			window.removeEventListener('resize', follow);
 		};
-	});
-
-	const activeMentionChips = $derived.by<ActiveMentionChip[]>(() => {
-		if (selected?.kind !== 'group') return [];
-		return extractActiveMentionChips(runtime.draft, groupPresent, botsById);
 	});
 
 	$effect(() => {
@@ -1803,21 +1786,15 @@
 
 	function onWindowClick(e: MouseEvent): void {
 		const target = e.target as Node | null;
-		if (showMentionPopup) {
-			if (!target || (!editorEl?.contains(target) && !mentionPopupEl?.contains(target))) {
-				showMentionPopup = false;
-				mentionDismissed = false;
-			}
+		if (showMentionPopup && isOutside(target, editorEl, mentionPopupEl)) {
+			showMentionPopup = false;
+			mentionDismissed = false;
 		}
-		if (themeMenuOpen) {
-			if (!target || (!themeMenuEl?.contains(target) && !themeToggleBtnEl?.contains(target))) {
-				themeMenuOpen = false;
-			}
+		if (themeMenuOpen && isOutside(target, themeMenuEl, themeToggleBtnEl)) {
+			themeMenuOpen = false;
 		}
-		if (searchFocused) {
-			if (!target || !searchWrapEl?.contains(target)) {
-				searchFocused = false;
-			}
+		if (searchFocused && isOutside(target, searchWrapEl)) {
+			searchFocused = false;
 		}
 	}
 
