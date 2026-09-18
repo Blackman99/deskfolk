@@ -544,12 +544,14 @@
 	 * One confirm at a time. These used to be five booleans that each cleared the other four on the
 	 * way up; every opener, every close path and the window handler had to keep that list in sync.
 	 */
-	type DangerConfirm =
-		| { kind: 'bot' }
-		| { kind: 'group' }
-		| { kind: 'history' }
-		| { kind: 'skill'; id: string }
-		| { kind: 'provider'; id: string };
+	type DangerConfirm = {
+		/** Picks the copy, and says which close paths drop this confirm. */
+		kind: 'bot' | 'group' | 'history' | 'skill' | 'provider';
+		/** What the confirm button does. Whoever opens the dialog knows; the shell does not. */
+		run: () => Promise<void>;
+		/** The endpoint this is about, so the confirm goes when someone else deletes it. */
+		providerId?: string;
+	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
 
 	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
@@ -901,11 +903,9 @@
 			clearDanger('provider');
 			return;
 		}
-		const pendingProvider = dangerConfirm;
-		if (
-			pendingProvider?.kind === 'provider' &&
-			!snapshot.providers.some((row) => row.id === pendingProvider.id)
-		) {
+		// A Bot or another window can delete the endpoint out from under an open confirm.
+		const pending = dangerConfirm;
+		if (pending?.providerId && !snapshot.providers.some((row) => row.id === pending.providerId)) {
 			dangerConfirm = null;
 		}
 	});
@@ -1188,11 +1188,10 @@
 	}
 
 	function openDeleteProviderConfirm(id: string): void {
-		dangerConfirm = { kind: 'provider', id };
+		dangerConfirm = { kind: 'provider', run: () => deleteProvider(id), providerId: id };
 	}
 
 	async function deleteProvider(id: string): Promise<void> {
-		if (dangerConfirm?.kind !== 'provider' || dangerConfirm.id !== id) return;
 		saveFailed = false;
 		const error = await runtime.deleteProvider(id);
 		if (error) {
@@ -1799,12 +1798,10 @@
 	}
 
 	function openDeleteSkillConfirm(id: string): void {
-		dangerConfirm = { kind: 'skill', id };
+		dangerConfirm = { kind: 'skill', run: () => deleteSkillRow(id) };
 	}
 
-	async function deleteSkillRow(): Promise<void> {
-		if (dangerConfirm?.kind !== 'skill') return;
-		const skillId = dangerConfirm.id;
+	async function deleteSkillRow(skillId: string): Promise<void> {
 		skillFailed = false;
 		const error = await runtime.deleteSkill(skillId);
 		if (error) {
@@ -1941,19 +1938,19 @@
 	}
 
 	function openDeleteBotConfirm(): void {
-		dangerConfirm = { kind: 'bot' };
+		dangerConfirm = { kind: 'bot', run: deleteProfile };
 	}
 
 	function openDeleteGroupConfirm(): void {
-		dangerConfirm = { kind: 'group' };
+		dangerConfirm = { kind: 'group', run: deleteGroupSession };
 	}
 
 	function openClearHistoryConfirm(): void {
-		dangerConfirm = { kind: 'history' };
+		dangerConfirm = { kind: 'history', run: clearGroupHistory };
 	}
 
 	async function deleteProfile(): Promise<void> {
-		if (!runtime.profileBotId || dangerConfirm?.kind !== 'bot') return;
+		if (!runtime.profileBotId) return;
 		profileFailed = false;
 		const error = await runtime.deleteBot(runtime.profileBotId);
 		if (error) {
@@ -2003,7 +2000,7 @@
 	}
 
 	async function deleteGroupSession(): Promise<void> {
-		if (!selected || selected.kind !== 'group' || dangerConfirm?.kind !== 'group') return;
+		if (!selected || selected.kind !== 'group') return;
 		detailFailed = false;
 		const error = await runtime.deleteSession(selected.id);
 		if (error) {
@@ -2015,7 +2012,7 @@
 	}
 
 	async function clearGroupHistory(): Promise<void> {
-		if (!selected || dangerConfirm?.kind !== 'history') return;
+		if (!selected) return;
 		detailFailed = false;
 		const error = await runtime.clearSessionHistory(selected.id);
 		if (error) {
@@ -2023,28 +2020,6 @@
 			return;
 		}
 		dangerConfirm = null;
-	}
-
-	async function confirmDangerAction(): Promise<void> {
-		if (dangerConfirmKind === 'bot') {
-			await deleteProfile();
-			return;
-		}
-		if (dangerConfirmKind === 'group') {
-			await deleteGroupSession();
-			return;
-		}
-		if (dangerConfirmKind === 'history') {
-			await clearGroupHistory();
-			return;
-		}
-		if (dangerConfirmKind === 'skill') {
-			await deleteSkillRow();
-			return;
-		}
-		if (dangerConfirm?.kind === 'provider') {
-			await deleteProvider(dangerConfirm.id);
-		}
 	}
 
 	function openCreateBot(): void {
@@ -4329,7 +4304,7 @@
 			copy={dangerConfirmCopy}
 			{t}
 			onDismiss={dismissDangerConfirm}
-			onConfirm={() => void confirmDangerAction()}
+			onConfirm={() => void dangerConfirm?.run()}
 		/>
 	{/if}
 	<SettingsModal
