@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
 import { startRuntime, type RuntimeHandle } from "./runtime";
 import { memoryKeyStore } from "./secrets";
+import { Store } from "./store";
 
 const handles: RuntimeHandle[] = [];
 const dirs: string[] = [];
@@ -159,5 +160,58 @@ describe("local API runtime", () => {
       theme: "system",
       wizard_complete: false,
     });
+  });
+
+  test("a second runtime that cannot bind does not interrupt live turns", async () => {
+    const rt = await start();
+    const writer = rt.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const trigger = rt.store.postMessage(writer.direct_session.id, { body: "go" });
+    const turn = rt.store.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+
+    await expect(
+      startRuntime({
+        dataDir: rt.dataDir,
+        bind: `127.0.0.1:${rt.port}`,
+        endpointKey: memoryKeyStore(),
+      }),
+    ).rejects.toThrow();
+
+    expect(rt.store.getTurn(turn.id).status).toBe("running");
+    expect(
+      rt.store.listMainMessages(writer.direct_session.id, 20).some((m) => m.body === "中断"),
+    ).toBe(false);
+  });
+
+  test("start recovers leftover running turns after the port is bound", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
+    dirs.push(dataDir);
+    chmodSync(dataDir, 0o700);
+    const filename = join(dataDir, "state.sqlite");
+    const keys = memoryKeyStore();
+    const prep = new Store({ filename, endpointKey: keys });
+    const writer = prep.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const trigger = prep.postMessage(writer.direct_session.id, { body: "go" });
+    const turn = prep.createTurn({
+      sessionId: writer.direct_session.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    prep.close();
+
+    const rt = await startRuntime({
+      dataDir,
+      bind: "127.0.0.1:0",
+      endpointKey: keys,
+    });
+    handles.push(rt);
+
+    expect(rt.store.getTurn(turn.id).status).toBe("interrupted");
+    expect(
+      rt.store.listMainMessages(writer.direct_session.id, 20).some((m) => m.body === "中断"),
+    ).toBe(true);
   });
 });

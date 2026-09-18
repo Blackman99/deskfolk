@@ -81,8 +81,9 @@ impl Supervisor {
 
     /// Window is alive (including hidden to tray) → spawn a dead daemon.
     /// Occupied by someone else → do not spawn a second listener.
+    /// Health down but the descriptor pid is still alive → wait; do not spawn a sibling.
     /// After quit, never spawn.
-    pub fn on_probe(&mut self, probe: Probe) -> Action {
+    pub fn on_probe(&mut self, probe: Probe, holder_alive: bool) -> Action {
         match probe {
             Probe::Ours => Action::Idle,
             Probe::OccupiedByOther => {
@@ -91,7 +92,7 @@ impl Supervisor {
             }
             Probe::Down => {
                 self.endpoint = None;
-                if self.supervising {
+                if self.supervising && !holder_alive {
                     Action::Spawn
                 } else {
                     Action::Idle
@@ -121,7 +122,15 @@ mod tests {
     #[test]
     fn down_while_supervising_spawns() {
         let mut s = Supervisor::new();
-        assert_eq!(s.on_probe(Probe::Down), Action::Spawn);
+        assert_eq!(s.on_probe(Probe::Down, false), Action::Spawn);
+        assert!(!s.is_connected());
+    }
+
+    #[test]
+    fn down_while_holder_alive_does_not_spawn() {
+        let mut s = Supervisor::new();
+        s.remember(Endpoint::new(17890, "tok"));
+        assert_eq!(s.on_probe(Probe::Down, true), Action::Idle);
         assert!(!s.is_connected());
     }
 
@@ -129,7 +138,7 @@ mod tests {
     fn ours_does_not_spawn() {
         let mut s = Supervisor::new();
         s.remember(Endpoint::new(17890, "tok"));
-        assert_eq!(s.on_probe(Probe::Ours), Action::Idle);
+        assert_eq!(s.on_probe(Probe::Ours, false), Action::Idle);
         assert!(s.is_connected());
     }
 
@@ -137,7 +146,7 @@ mod tests {
     fn occupied_by_other_does_not_spawn() {
         let mut s = Supervisor::new();
         s.remember(Endpoint::new(17890, "tok"));
-        assert_eq!(s.on_probe(Probe::OccupiedByOther), Action::Idle);
+        assert_eq!(s.on_probe(Probe::OccupiedByOther, false), Action::Idle);
         assert!(!s.is_connected());
     }
 
@@ -145,7 +154,8 @@ mod tests {
     fn down_after_stop_does_not_spawn() {
         let mut s = Supervisor::new();
         s.stop_supervising();
-        assert_eq!(s.on_probe(Probe::Down), Action::Idle);
+        assert_eq!(s.on_probe(Probe::Down, false), Action::Idle);
+        assert_eq!(s.on_probe(Probe::Down, true), Action::Idle);
     }
 
     #[test]
@@ -162,7 +172,7 @@ mod tests {
                 token: "secret-token".into(),
             }
         );
-        assert_eq!(s.on_probe(Probe::Down), Action::Idle);
+        assert_eq!(s.on_probe(Probe::Down, false), Action::Idle);
     }
 
     #[test]

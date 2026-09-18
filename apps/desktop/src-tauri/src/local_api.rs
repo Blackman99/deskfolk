@@ -73,6 +73,30 @@ pub fn probe_bind(port: u16) -> Probe {
     probe_health(&format!("http://127.0.0.1:{port}"))
 }
 
+/// `kill(pid, 0)`: the process exists (including one we cannot signal).
+pub fn pid_alive(pid: i32) -> bool {
+    #[cfg(unix)]
+    {
+        if pid <= 0 {
+            return false;
+        }
+        let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        if rc == 0 {
+            return true;
+        }
+        match std::io::Error::last_os_error().raw_os_error() {
+            Some(code) if code == libc::ESRCH => false,
+            Some(_) => true,
+            None => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
 /// Authenticated quit. Returns true if the daemon accepted (204) or is already gone.
 pub fn post_quit(endpoint: &Endpoint) -> bool {
     let url = format!("{}/v1/runtime/quit", endpoint.origin);
@@ -153,5 +177,12 @@ mod tests {
     #[test]
     fn unreachable_health_is_down() {
         assert_eq!(probe_bind(1), Probe::Down);
+    }
+
+    #[test]
+    fn pid_alive_sees_this_process_and_not_pid_zero() {
+        assert!(pid_alive(std::process::id() as i32));
+        assert!(!pid_alive(0));
+        assert!(!pid_alive(-1));
     }
 }

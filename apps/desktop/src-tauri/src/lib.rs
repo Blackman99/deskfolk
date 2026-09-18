@@ -312,15 +312,19 @@ fn show_main(app: &AppHandle) {
 }
 
 fn tick(app: &AppHandle) {
+    let desc = local_api::read_descriptor(&local_api::data_dir());
+    let holder_alive = desc
+        .as_ref()
+        .map(|d| local_api::pid_alive(d.pid))
+        .unwrap_or(false);
     let probe = probe_bind(BIND_PORT);
     let endpoint = if probe == Probe::Ours {
-        local_api::read_descriptor(&local_api::data_dir())
-            .map(|desc| endpoint_from_descriptor(&desc))
+        desc.map(|d| endpoint_from_descriptor(&d))
     } else {
         None
     };
     let state = app.state::<Mutex<AppState>>();
-    let should_spawn = apply_probe(&state, probe, endpoint, |item, connected| {
+    let should_spawn = apply_probe(&state, probe, endpoint, holder_alive, |item, connected| {
         if let Some(item) = item {
             let _ = item.set_enabled(connected);
         }
@@ -337,6 +341,7 @@ fn apply_probe(
     state: &Mutex<AppState>,
     probe: Probe,
     endpoint: Option<Endpoint>,
+    holder_alive: bool,
     set_menu: impl FnOnce(Option<MenuItem<tauri::Wry>>, bool),
 ) -> bool {
     let mut should_spawn = false;
@@ -348,7 +353,7 @@ fn apply_probe(
         if !state.supervisor.is_supervising() {
             return false;
         }
-        let action = state.supervisor.on_probe(probe);
+        let action = state.supervisor.on_probe(probe, holder_alive);
         if probe == Probe::Ours {
             if let Some(endpoint) = endpoint {
                 state.supervisor.remember(endpoint);
@@ -494,7 +499,7 @@ mod tests {
     fn apply_probe_releases_lock_before_menu_callback() {
         let state = test_state();
         let mut menu_called = false;
-        let should_spawn = apply_probe(&state, Probe::Down, None, |item, connected| {
+        let should_spawn = apply_probe(&state, Probe::Down, None, false, |item, connected| {
             menu_called = true;
             assert!(item.is_none());
             assert!(!connected);
@@ -516,7 +521,7 @@ mod tests {
             .supervisor
             .remember(Endpoint::new(17890, "tok"));
         let mut menu_connected = None;
-        let should_spawn = apply_probe(&state, Probe::Ours, None, |_item, connected| {
+        let should_spawn = apply_probe(&state, Probe::Ours, None, false, |_item, connected| {
             menu_connected = Some(connected);
             assert_main_thread_can_read(&state, true);
             let guard = state.try_lock().expect("Stop/Quit must acquire AppState");
@@ -541,6 +546,7 @@ mod tests {
             &state,
             Probe::Ours,
             Some(Endpoint::new(17890, "new")),
+            false,
             |_, connected| {
                 assert!(connected);
                 let guard = state
@@ -553,6 +559,25 @@ mod tests {
     }
 
     #[test]
+    fn apply_probe_down_while_holder_alive_does_not_spawn() {
+        let state = test_state();
+        state
+            .lock()
+            .unwrap()
+            .supervisor
+            .remember(Endpoint::new(17890, "tok"));
+        let mut menu_called = false;
+        let should_spawn = apply_probe(&state, Probe::Down, None, true, |_, connected| {
+            menu_called = true;
+            assert!(!connected);
+            assert_main_thread_can_read(&state, false);
+        });
+        assert!(menu_called);
+        assert!(!should_spawn);
+        assert!(!state.lock().unwrap().supervisor.is_connected());
+    }
+
+    #[test]
     fn apply_probe_occupied_clears_endpoint_without_spawn() {
         let state = test_state();
         state
@@ -560,10 +585,16 @@ mod tests {
             .unwrap()
             .supervisor
             .remember(Endpoint::new(17890, "tok"));
-        let should_spawn = apply_probe(&state, Probe::OccupiedByOther, None, |_item, connected| {
-            assert!(!connected);
-            assert_main_thread_can_read(&state, false);
-        });
+        let should_spawn = apply_probe(
+            &state,
+            Probe::OccupiedByOther,
+            None,
+            false,
+            |_item, connected| {
+                assert!(!connected);
+                assert_main_thread_can_read(&state, false);
+            },
+        );
         assert!(!should_spawn);
         assert!(!state.lock().unwrap().supervisor.is_connected());
     }
@@ -579,7 +610,7 @@ mod tests {
         let plan = state.lock().unwrap().supervisor.quit();
         assert!(matches!(plan, QuitPlan::PostThenExit { .. }));
         let mut menu_called = false;
-        let should_spawn = apply_probe(&state, Probe::Down, None, |_, _| {
+        let should_spawn = apply_probe(&state, Probe::Down, None, false, |_, _| {
             menu_called = true;
         });
         assert!(!should_spawn);

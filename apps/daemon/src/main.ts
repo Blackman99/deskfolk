@@ -1,5 +1,5 @@
 import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
-import { defaultDataDir } from "./descriptor";
+import { defaultDataDir, pidAlive, readDescriptor } from "./descriptor";
 import { startRuntime } from "./runtime";
 import { bunKeyStore } from "./secrets";
 
@@ -13,6 +13,12 @@ if (already === "ours") {
 if (already === "other") {
   console.error(`${LOCAL_API_NAME} refused ${LOCAL_API_BIND}: port is taken`);
   process.exit(1);
+}
+
+const holder = readDescriptor(dataDir);
+if (holder && holder.pid !== process.pid && pidAlive(holder.pid)) {
+  console.log(`${LOCAL_API_NAME} holder pid ${holder.pid} is still alive; not starting a second runtime`);
+  process.exit(0);
 }
 
 const runtime = await startRuntime({

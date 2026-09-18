@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { descriptorPath, mintLocalToken, writeDescriptor } from "./descriptor";
+import { descriptorPath, mintLocalToken, pidAlive, readDescriptor, writeDescriptor } from "./descriptor";
 
 const dirs: string[] = [];
 
@@ -34,5 +34,24 @@ describe("local-api.json", () => {
       started_at: "2026-09-14T00:00:00.000Z",
     });
     expect(token.length).toBeGreaterThanOrEqual(64);
+  });
+
+  test("readDescriptor returns the written file and rejects garbage", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-"));
+    dirs.push(dir);
+    expect(readDescriptor(dir)).toBeNull();
+    writeDescriptor(dir, {
+      pid: 42,
+      port: 17890,
+      token: mintLocalToken(),
+      started_at: "2026-09-14T00:00:00.000Z",
+    });
+    expect(readDescriptor(dir)?.pid).toBe(42);
+  });
+
+  test("pidAlive sees this process and not a dead pid", () => {
+    expect(pidAlive(process.pid)).toBe(true);
+    expect(pidAlive(0)).toBe(false);
+    expect(pidAlive(-1)).toBe(false);
   });
 });

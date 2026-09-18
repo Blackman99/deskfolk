@@ -1,4 +1,4 @@
-import { LOCAL_API_BIND } from "@real-bot/protocol";
+import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
 import {
   descriptorPath,
   ensureDataDir,
@@ -10,6 +10,8 @@ import {
 import { createLocalApi } from "./local-api";
 import { bunKeyStore } from "./secrets";
 import { Store, type EndpointKeyStore } from "./store";
+
+type SocketData = { authed: boolean };
 
 export type RuntimeOptions = {
   dataDir: string;
@@ -40,14 +42,11 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
 
   ensureDataDir(options.dataDir);
   const token = options.token ?? mintLocalToken();
-  const store = new Store({
-    filename: stateDbPath(options.dataDir),
-    endpointKey: options.endpointKey ?? bunKeyStore,
-  });
 
-  let server: Bun.Server<{ authed: boolean }>;
+  let server: Bun.Server<SocketData>;
   let stopping: Promise<void> | null = null;
-  let api: ReturnType<typeof createLocalApi>;
+  let api: ReturnType<typeof createLocalApi> | undefined;
+  let store: Store | undefined;
 
   const stop = (): Promise<void> => {
     if (stopping) return stopping;
@@ -55,51 +54,96 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       try {
         api?.scheduler?.stop();
         await api?.engine.close();
-        store.interruptRunningTurns();
+        store?.interruptRunningTurns();
       } catch {
         // boot failed before schema
       }
       removeDescriptor(options.dataDir);
-      store.close();
-      await server.stop(true);
+      try {
+        store?.close();
+      } catch {
+        // already closed
+      }
+      try {
+        await server.stop(true);
+      } catch {
+        // serve never assigned
+      }
       if (options.exitProcess) process.exit(0);
     })();
     return stopping;
   };
 
-  store.recoverInterruptedTurns();
-
-  api = createLocalApi({
-    store,
-    token,
-    onQuit: () => {
-      options.onQuit?.();
-      removeDescriptor(options.dataDir);
-      setTimeout(() => {
-        void stop();
-      }, 0);
-    },
-  });
-
-  server = Bun.serve({
+  // Bind first. Opening the store and marking leftover turns interrupted must
+  // not run while another listener still owns the port (watch restart, a
+  // health-timeout sibling spawn). Health answers as soon as the socket is
+  // ours so the window does not treat boot as "down".
+  server = Bun.serve<SocketData>({
     hostname: host,
     port: requestedPort,
-    fetch: api.fetch,
-    websocket: api.websocket,
+    fetch(request, srv) {
+      if (api) return api.fetch(request, srv);
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/v1/health") {
+        return Response.json({ ok: true, name: LOCAL_API_NAME });
+      }
+      return new Response(null, { status: 503 });
+    },
+    websocket: {
+      data: { authed: false },
+      open(ws) {
+        api?.websocket.open(ws);
+      },
+      message(ws, message) {
+        api?.websocket.message(ws, message);
+      },
+      close(ws) {
+        api?.websocket.close(ws);
+      },
+    },
     error() {
       return Response.json({ error: { code: "failed", message: "internal error" } }, { status: 500 });
     },
   });
 
   const port = server.port;
-  if (port === undefined) throw new Error("server did not bind a port");
+  if (port === undefined) {
+    await server.stop(true);
+    throw new Error("server did not bind a port");
+  }
 
-  writeDescriptor(options.dataDir, {
-    pid: process.pid,
-    port,
-    token,
-    started_at: new Date().toISOString(),
-  });
+  try {
+    store = new Store({
+      filename: stateDbPath(options.dataDir),
+      endpointKey: options.endpointKey ?? bunKeyStore,
+    });
+    store.recoverInterruptedTurns();
+    api = createLocalApi({
+      store,
+      token,
+      onQuit: () => {
+        options.onQuit?.();
+        removeDescriptor(options.dataDir);
+        setTimeout(() => {
+          void stop();
+        }, 0);
+      },
+    });
+    writeDescriptor(options.dataDir, {
+      pid: process.pid,
+      port,
+      token,
+      started_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    try {
+      store?.close();
+    } catch {
+      // ignore
+    }
+    await server.stop(true);
+    throw error;
+  }
 
   return {
     origin: `http://${server.hostname}:${port}`,
