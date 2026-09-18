@@ -17,6 +17,7 @@ import {
   type ToolCall,
 } from "./completions";
 import { assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
+import { classifyMessage, type RouteDecision } from "./route-decision";
 import { serializeToolResult } from "./tool-results";
 import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
@@ -172,7 +173,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     };
   }
 
-  function targetFor(botId: string, creds: Creds, text: string): ResolvedTarget | null {
+  type Routed = { target: ResolvedTarget; decision: RouteDecision };
+
+  /**
+   * Picks the endpoint, model and thinking level for one turn. The Bot's own experience shapes the
+   * pick; the decision is returned alongside so the caller records exactly what ran.
+   */
+  function targetFor(botId: string, creds: Creds, text: string): Routed | null {
     let botModel: string | null = null;
     let botProviderId: string | null = null;
     let botThinkingLevel: ThinkingLevel | null = null;
@@ -186,22 +193,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       botProviderId = null;
       botThinkingLevel = null;
     }
-    const routed = store.decideTurnRoute({
-      text,
-      botModel,
-      botProviderId,
-      botThinkingLevel,
-      providerIds: creds.providers.map((row) => row.id),
-    });
+    const providerIds = creds.providers.map((row) => row.id);
+    const routed = store.decideTurnRoute({ botId, text, botModel, botProviderId, botThinkingLevel, providerIds });
     if (routed) {
       const provider = creds.providers.find((row) => row.id === routed.providerId);
       if (provider) {
         return {
-          baseUrl: provider.baseUrl,
-          apiKey: provider.apiKey,
-          model: routed.model,
-          thinkingLevel: routed.thinkingLevel,
-          locale: creds.locale,
+          target: {
+            baseUrl: provider.baseUrl,
+            apiKey: provider.apiKey,
+            model: routed.model,
+            thinkingLevel: routed.thinkingLevel,
+            locale: creds.locale,
+          },
+          decision: routed,
         };
       }
     }
@@ -214,18 +219,28 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const provider = creds.providers.find((row) => row.id === resolved.providerId);
     if (!provider) return null;
     const fallback = store.decideTurnRoute({
+      botId,
       text,
       botModel: resolved.model,
       botProviderId: resolved.providerId,
       botThinkingLevel,
-      providerIds: creds.providers.map((row) => row.id),
+      providerIds,
     });
+    const thinkingLevel = fallback?.thinkingLevel ?? "low";
     return {
-      baseUrl: provider.baseUrl,
-      apiKey: provider.apiKey,
-      model: resolved.model,
-      thinkingLevel: fallback?.thinkingLevel ?? "low",
-      locale: creds.locale,
+      target: {
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        model: resolved.model,
+        thinkingLevel,
+        locale: creds.locale,
+      },
+      decision: {
+        model: resolved.model,
+        thinkingLevel,
+        providerId: resolved.providerId,
+        signature: fallback?.signature ?? classifyMessage(text),
+      },
     };
   }
 
@@ -312,30 +327,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       triggerBody = "";
     }
-    const target = targetFor(botId, creds, triggerBody);
-    if (!target) {
+    const routed = targetFor(botId, creds, triggerBody);
+    if (!routed) {
       await failTurn(turnId, "no_model");
       return;
     }
+    const target = routed.target;
     try {
-      const turn = store.getTurn(turnId);
-      store.recordTurnRoute({
-        turnId,
-        sessionId: turn.session_id,
-        triggerMessageId: turn.trigger_message_id,
-        decision: {
-          model: target.model,
-          thinkingLevel: target.thinkingLevel,
-          providerId: "",
-          signature: store.decideTurnRoute({
-            text: triggerBody,
-            botModel: store.getBot(botId).model,
-            botProviderId: store.getBot(botId).provider_id,
-            botThinkingLevel: store.getBot(botId).thinking_level,
-            providerIds: creds.providers.map((row) => row.id),
-          })?.signature ?? "general",
-        },
-      });
+      store.recordTurnRoute({ turnId, decision: routed.decision });
     } catch {
       // route row is best-effort; the completion still carries the chosen fields
     }
@@ -803,6 +802,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       body: completionFailBody(locale, kind),
     });
     publishMessage(message);
+    store.finishTurnRoute(turnId, "failed", kind);
     const completed = store.setTurnStatus(turnId, "completed");
     lives.delete(turnId);
     publishTurn(completed, null);
@@ -991,7 +991,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         created_at: message.created_at,
         updated_at: message.created_at,
       };
-      const target = creds ? targetFor(botId, creds, message.body) : null;
+      const target = creds ? (targetFor(botId, creds, message.body)?.target ?? null) : null;
       if (!creds || !target) {
         try {
           const row = store.insertJudgement({

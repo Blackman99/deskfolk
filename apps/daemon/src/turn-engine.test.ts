@@ -3052,7 +3052,7 @@ describe("per-message model and thinking-level routing", () => {
       thinking_level: "medium",
       body: "这里有 bug，选的模型不对",
     });
-    expect(h.store.routeLearnedState().penalties.length).toBeGreaterThan(0);
+    expect(h.store.routeLearnedState(body.bot.id).entries.length).toBeGreaterThan(0);
 
     await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
       method: "POST",
@@ -3065,6 +3065,22 @@ describe("per-message model and thinking-level routing", () => {
     );
     expect(seen).toHaveLength(3);
     expect(`${seen[2]!.model}:${seen[2]!.reasoning_effort}`).not.toBe("code-pro:medium");
+    const routesRes = await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/routes`, { headers: auth(h) });
+    expect(routesRes.status).toBe(200);
+    const routes = (await routesRes.json()) as { items: Array<Record<string, unknown>> };
+    expect(routes.items).toHaveLength(3);
+    expect(routes.items[0]).toMatchObject({
+      turn_id: running.id,
+      bot_id: body.bot.id,
+      model: "code-pro",
+      thinking_level: "medium",
+      signature: "coding",
+      outcome: "completed",
+      fail_kind: null,
+      feedback: [{ body: "这里有 bug，选的模型不对" }],
+    });
+    expect(routes.items[1]).toMatchObject({ turn_id: critiqueTurn.id, outcome: "completed", feedback: [] });
+    expect(routes.items.every((row) => typeof row.provider_id === "string")).toBe(true);
     sub.close();
   });
 });

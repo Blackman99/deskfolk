@@ -567,6 +567,12 @@ async function dispatch(
     return jsonResponse({ items: store.listJudgements(params.id!) }, 200, null);
   }
 
+  params = matchPath(path, "/v1/sessions/:id/routes");
+  if (params && method === "GET") {
+    store.getSession(params.id!);
+    return jsonResponse({ items: store.listSessionRoutes(params.id!) }, 200, null);
+  }
+
   params = matchPath(path, "/v1/sessions/:id/read");
   if (params && method === "POST") {
     const session = store.markSessionRead(params.id!);

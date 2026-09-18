@@ -8,14 +8,36 @@ export type CatalogEntry = EndpointModel & {
   providerId: string;
 };
 
-export type RouteLearnedState = {
-  penalties: Array<{
-    signature: string;
-    model: string;
-    thinkingLevel: string;
-    penalty: number;
-  }>;
+/**
+ * One Bot's experience with one (message kind, model, thinking level) choice: how much evidence
+ * says "this pick was wrong" (`negative`) and how many turns finished fine on it (`positive`).
+ * Experience belongs to a Bot; a Reviewer's complaint never re-routes a Writer.
+ */
+export type RouteExperience = {
+  signature: string;
+  model: string;
+  /** A concrete level, or `*` for "every level of this model". */
+  thinkingLevel: string;
+  negative: number;
+  positive: number;
 };
+
+export type RouteLearnedState = {
+  entries: RouteExperience[];
+};
+
+/** A user critique of the model choice itself. */
+export const CRITIQUE_WEIGHT = 1;
+/** A completion the model itself botched (refused the request, incomplete reply). */
+export const FAILURE_WEIGHT = 0.5;
+/** Each turn that finishes cleanly on the same pick pays this much of the penalty back. */
+export const POSITIVE_RELIEF = 0.25;
+/** No pick sinks further than this, so it can climb back once alternatives also disappoint. */
+export const PENALTY_CAP = 3;
+/** Score points taken per unit of penalty; one critique outweighs a matched strength tag (+4). */
+export const PENALTY_WEIGHT = 10;
+
+export type RouteSignal = { negative?: number; positive?: number };
 
 export type RouteDecision = {
   model: string;
@@ -35,7 +57,13 @@ const STRENGTH_TAGS: Record<MessageKind, string[]> = {
 };
 
 export function emptyLearnedState(): RouteLearnedState {
-  return { penalties: [] };
+  return { entries: [] };
+}
+
+/** Penalty a single experience row contributes: negatives net of relief, floored at 0, capped. */
+export function effectivePenalty(row: Pick<RouteExperience, "negative" | "positive">): number {
+  const raw = row.negative - POSITIVE_RELIEF * row.positive;
+  return Math.max(0, Math.min(PENALTY_CAP, raw));
 }
 
 export function classifyMessage(text: string): MessageKind {
@@ -183,32 +211,21 @@ export function decideCompletion(input: {
   return best;
 }
 
-export function applyFeedbackToLearned(
+/** Returns a new state with `signal` added to the matching experience row (created when absent). */
+export function applySignal(
   learned: RouteLearnedState,
-  input: { signature: string; model: string; thinkingLevel: string },
+  key: { signature: string; model: string; thinkingLevel: string },
+  signal: RouteSignal,
 ): RouteLearnedState {
-  const next = {
-    penalties: learned.penalties.map((row) => ({ ...row })),
-  };
-  bumpPenalty(next, input.signature, input.model, input.thinkingLevel, 1);
-  return next;
-}
-
-function bumpPenalty(
-  state: RouteLearnedState,
-  signature: string,
-  model: string,
-  thinkingLevel: string,
-  delta: number,
-): void {
-  const existing = state.penalties.find(
-    (row) => row.signature === signature && row.model === model && row.thinkingLevel === thinkingLevel,
+  const entries = learned.entries.map((row) => ({ ...row }));
+  const existing = entries.find(
+    (row) => row.signature === key.signature && row.model === key.model && row.thinkingLevel === key.thinkingLevel,
   );
-  if (existing) {
-    existing.penalty += delta;
-    return;
-  }
-  state.penalties.push({ signature, model, thinkingLevel, penalty: delta });
+  const target = existing ?? { ...key, negative: 0, positive: 0 };
+  if (!existing) entries.push(target);
+  target.negative += signal.negative ?? 0;
+  target.positive += signal.positive ?? 0;
+  return { entries };
 }
 
 function scoreCandidate(
@@ -227,22 +244,20 @@ function scoreCandidate(
   if (strengths.length === 0) score += 1;
   if (kind === "simple" && model.price != null) score -= model.price;
   if (kind === "reasoning" && model.price != null) score += Math.min(model.price, 20) * 0.01;
-  score -= 10 * penaltyFor(learned, signature, model.name, thinkingLevel);
+  score -= PENALTY_WEIGHT * penaltyFor(learned, signature, model.name, thinkingLevel);
   return score;
 }
 
-function penaltyFor(
+export function penaltyFor(
   learned: RouteLearnedState,
   signature: string,
   model: string,
   thinkingLevel: string,
 ): number {
   let total = 0;
-  for (const row of learned.penalties) {
+  for (const row of learned.entries) {
     if (row.signature !== signature || row.model !== model) continue;
-    if (row.thinkingLevel === thinkingLevel || row.thinkingLevel === "*") total += row.penalty;
+    if (row.thinkingLevel === thinkingLevel || row.thinkingLevel === "*") total += effectivePenalty(row);
   }
   return total;
 }
-
-

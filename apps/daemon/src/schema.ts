@@ -186,22 +186,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS skills_bot_name
 CREATE TABLE IF NOT EXISTS turn_route_decisions (
   turn_id TEXT PRIMARY KEY REFERENCES turns (id),
   session_id TEXT NOT NULL REFERENCES sessions (id),
+  bot_id TEXT NOT NULL DEFAULT '',
   trigger_message_id TEXT NOT NULL REFERENCES messages (id),
+  provider_id TEXT,
   model TEXT NOT NULL,
   thinking_level TEXT NOT NULL,
   signature TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  outcome TEXT CHECK (
+    outcome IS NULL OR outcome IN ('completed', 'failed', 'stopped', 'redirected', 'interrupted')
+  ),
+  fail_kind TEXT,
+  created_at TEXT NOT NULL,
+  finished_at TEXT
 );
+
+CREATE INDEX IF NOT EXISTS turn_route_decisions_session
+  ON turn_route_decisions (session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS route_feedback (
   id TEXT PRIMARY KEY,
   turn_id TEXT NOT NULL REFERENCES turns (id),
   message_id TEXT NOT NULL REFERENCES messages (id),
+  bot_id TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL,
   thinking_level TEXT NOT NULL,
   signature TEXT NOT NULL,
   body TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS route_learned (
+  bot_id TEXT NOT NULL REFERENCES bots (id),
+  signature TEXT NOT NULL,
+  model TEXT NOT NULL,
+  thinking_level TEXT NOT NULL,
+  negative REAL NOT NULL DEFAULT 0,
+  positive REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (bot_id, signature, model, thinking_level)
 );
 
 CREATE TABLE IF NOT EXISTS spend (

@@ -14,7 +14,8 @@ import {
   unionProviderModels,
 } from "./models";
 import {
-  applyFeedbackToLearned,
+  CRITIQUE_WEIGHT,
+  applySignal,
   decideCompletion,
   emptyLearnedState,
   isCritiqueMessage,
@@ -284,11 +285,11 @@ describe("per-message completion decision", () => {
       learned: emptyLearnedState(),
     });
     expect(first).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
-    const learned = applyFeedbackToLearned(emptyLearnedState(), {
-      signature: first!.signature,
-      model: first!.model,
-      thinkingLevel: first!.thinkingLevel,
-    });
+    const learned = applySignal(
+      emptyLearnedState(),
+      { signature: first!.signature, model: first!.model, thinkingLevel: first!.thinkingLevel },
+      { negative: CRITIQUE_WEIGHT },
+    );
     const next = decideCompletion({
       text,
       catalog: codingCatalog,
@@ -318,11 +319,11 @@ describe("route scoping across endpoints", () => {
   ];
   const text = "把这周的进度汇总一下发给大家看看";
   // One learned penalty against the default endpoint's best pair for this signature.
-  const learned = applyFeedbackToLearned(emptyLearnedState(), {
-    signature: "general",
-    model: "grok-4.6",
-    thinkingLevel: "low",
-  });
+  const learned = applySignal(
+    emptyLearnedState(),
+    { signature: "general", model: "grok-4.6", thinkingLevel: "low" },
+    { negative: CRITIQUE_WEIGHT },
+  );
 
   test("an unpinned Bot stays on the default endpoint even when another endpoint scores higher", () => {
     const legacy = decideCompletion({ text, catalog: roster, botModel: null, learned });

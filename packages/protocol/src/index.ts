@@ -510,6 +510,38 @@ export type Judgement = {
   created_at: string;
 };
 
+/** How the turn a model choice ran on ended; `null` while it is still live. */
+export type RouteOutcome = "completed" | "failed" | "stopped" | "redirected" | "interrupted";
+
+/** A user follow-up about the model itself, attributed to one decision. */
+export type RouteFeedback = {
+  message_id: string;
+  body: string;
+  created_at: string;
+};
+
+/**
+ * The model and thinking level a turn ran on, who it was for, and how it went. One per turn; a
+ * Bot's own records are the only ones that shape its later choices.
+ */
+export type RouteRecord = {
+  turn_id: string;
+  session_id: string;
+  bot_id: string;
+  trigger_message_id: string;
+  provider_id: string | null;
+  model: string;
+  thinking_level: ThinkingLevel;
+  /** The message kind the choice was made for (coding / writing / reasoning / simple / general). */
+  signature: string;
+  outcome: RouteOutcome | null;
+  /** Completion failure kind when `outcome` is `failed`. */
+  fail_kind: string | null;
+  created_at: string;
+  finished_at: string | null;
+  feedback: RouteFeedback[];
+};
+
 export type SearchKind = "bot" | "session" | "message" | "routine" | "file";
 
 export type SearchHit = {
@@ -520,6 +552,7 @@ export type SearchHit = {
   session_id?: string;
   session_title?: string;
   parent_id?: string | null;
+  avatar?: string | null;
 };
 
 export type WsAuthMessage = {
