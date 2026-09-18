@@ -140,6 +140,22 @@ export function isInAppPreviewKind(kind: ArtifactKind): boolean {
   );
 }
 
+export type ArtifactByteSource = "attachment" | "workspace";
+
+/** Where the preview pane should fetch bytes. Chat links that never became attachments still live in the workspace. */
+export function artifactByteSource(opts: {
+  mode: "cited" | "workspace";
+  relpath: string;
+  attachment?: { exists?: boolean; is_dir?: boolean } | null;
+}): ArtifactByteSource | null {
+  const path = opts.relpath.trim();
+  if (!path) return null;
+  if (opts.attachment?.is_dir) return null;
+  if (opts.mode === "workspace") return "workspace";
+  if (opts.attachment && opts.attachment.exists !== false) return "attachment";
+  return "workspace";
+}
+
 export function looksLikeWorkspaceHref(href: string): boolean {
   const path = href.trim();
   if (!path || path.includes("://") || /^(https?:|mailto:|javascript:|data:|artifact:)/i.test(path)) {

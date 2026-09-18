@@ -6,6 +6,7 @@ import { attachmentMime } from "./artifact-mime";
 import { ulid } from "./ids";
 
 export const WORKSPACE_LIST_LIMIT = 500;
+/** Cap for PUT UTF-8 overwrite only. GET /v1/workspace/file has no size cap so the preview pane can open media. */
 export const WORKSPACE_READ_BYTES_MAX = 1_000_000;
 
 const SKIP_NAMES = new Set(["node_modules"]);
@@ -77,9 +78,6 @@ export function locateWorkspaceFile(
   }
   if (st.isDirectory()) {
     throw new HttpError(422, "invalid_args", "path is a directory");
-  }
-  if (st.size > WORKSPACE_READ_BYTES_MAX) {
-    throw new HttpError(422, "too_large", "file is too large");
   }
   return {
     abs: classified.abs,

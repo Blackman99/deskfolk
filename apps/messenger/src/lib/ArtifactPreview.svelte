@@ -2,7 +2,14 @@
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from './copy.ts';
 	import type { LocalApi } from './api.ts';
-	import { absWorkspacePath, artifactKind, isInAppPreviewKind, stripSvgActiveContent, type ArtifactKind } from './artifacts.ts';
+	import {
+		absWorkspacePath,
+		artifactByteSource,
+		artifactKind,
+		isInAppPreviewKind,
+		stripSvgActiveContent,
+		type ArtifactKind,
+	} from './artifacts.ts';
 	import {
 		buildCitedPathTree,
 		mergeWorkspaceChildren,
@@ -95,19 +102,14 @@
 	);
 	let canShowSource = $derived(kind === 'text' || kind === 'markdown' || kind === 'html');
 	let sourceMode = $derived(kind === 'text' || (canShowSource && showSource));
+	let byteSource = $derived(artifactByteSource({ mode, relpath, attachment }));
 	let canOpenOnDisk = $derived(
-		mode === 'workspace'
-			? Boolean(workspacePath) && Boolean(relpath) && kind !== 'directory' && !missing
-			: Boolean(attachment) && attachment?.exists !== false
+		Boolean(workspacePath) && Boolean(relpath) && kind !== 'directory' && !missing
 	);
 	let canSave = $derived(Boolean(api && relpath && canShowSource && sourceMode && text !== null));
 
 	$effect(() => {
-		if (mode === 'workspace') {
-			void loadWorkspaceFile(relpath, kind);
-			return;
-		}
-		void load(attachment, kind);
+		void loadPreview(relpath, kind, byteSource, attachment);
 	});
 
 	$effect(() => {
@@ -162,15 +164,23 @@
 		}
 	}
 
-	async function loadWorkspaceFile(path: string, previewKind: ArtifactKind): Promise<void> {
+	async function loadPreview(
+		path: string,
+		previewKind: ArtifactKind,
+		source: ReturnType<typeof artifactByteSource>,
+		att: Attachment | null,
+	): Promise<void> {
 		revoke();
 		text = null;
 		missing = false;
 		openHint = false;
-		if (!api || !path || previewKind === 'directory') return;
+		if (!source || !api || previewKind === 'directory') return;
 		if (!isInAppPreviewKind(previewKind)) return;
 		try {
-			const blob = await api.getWorkspaceFileBlob(path);
+			const blob =
+				source === 'attachment' && att
+					? await api.getAttachmentBlob(att.id)
+					: await api.getWorkspaceFileBlob(path);
 			if (previewKind === 'text' || previewKind === 'markdown' || previewKind === 'svg') {
 				const raw = await blob.text();
 				if (previewKind === 'svg') {
@@ -195,66 +205,17 @@
 		}
 	}
 
-	async function load(att: Attachment | null, previewKind: ArtifactKind): Promise<void> {
-		revoke();
-		text = null;
-		missing = att?.exists === false;
-		openHint = false;
-		if (!att || att.exists === false || att.is_dir) return;
-		if (!api) return;
-		if (!isInAppPreviewKind(previewKind)) return;
-		try {
-			const blob = await api.getAttachmentBlob(att.id);
-			if (previewKind === "text" || previewKind === "markdown" || previewKind === "svg") {
-				const raw = await blob.text();
-				if (previewKind === "svg") {
-					const cleaned = stripSvgActiveContent(raw);
-					liveBlob = URL.createObjectURL(new Blob([cleaned], { type: "image/svg+xml" }));
-					blobUrl = liveBlob;
-				} else {
-					text = raw;
-				}
-				return;
-			}
-			if (previewKind === "html") {
-				text = await blob.text();
-				liveHtml = URL.createObjectURL(new Blob([text], { type: blob.type || "text/html" }));
-				htmlSrc = liveHtml;
-				return;
-			}
-			liveBlob = URL.createObjectURL(blob);
-			blobUrl = liveBlob;
-		} catch {
-			missing = true;
-		}
-	}
-
 	async function download(): Promise<void> {
-		if (!api) return;
-		if (mode === 'workspace') {
-			if (!relpath || kind === 'directory') return;
-			try {
-				const blob = await api.getWorkspaceFileBlob(relpath);
-				const url = URL.createObjectURL(blob);
-				const a = document.createElement('a');
-				a.href = url;
-				a.download = relpath.split('/').pop() ?? relpath;
-				document.body.appendChild(a);
-				a.click();
-				document.body.removeChild(a);
-				URL.revokeObjectURL(url);
-			} catch {
-				missing = true;
-			}
-			return;
-		}
-		if (!attachment || attachment.is_dir) return;
+		if (!api || !relpath || kind === 'directory') return;
 		try {
-			const blob = await api.getAttachmentBlob(attachment.id);
+			const blob =
+				byteSource === 'attachment' && attachment
+					? await api.getAttachmentBlob(attachment.id)
+					: await api.getWorkspaceFileBlob(relpath);
 			const url = URL.createObjectURL(blob);
-			const a = document.createElement("a");
+			const a = document.createElement('a');
 			a.href = url;
-			a.download = attachment.original_filename;
+			a.download = attachment?.original_filename ?? relpath.split('/').pop() ?? relpath;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
@@ -273,7 +234,7 @@
 		const ok = await openWorkspacePath(abs, reveal);
 		if (!ok) {
 			openHint = true;
-			if (!reveal && attachment && !attachment.is_dir) await download();
+			if (!reveal && kind !== 'directory') await download();
 		}
 	}
 

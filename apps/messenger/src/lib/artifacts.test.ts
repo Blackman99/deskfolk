@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   absWorkspacePath,
+  artifactByteSource,
   artifactHref,
   artifactKind,
   bodyMentionsPath,
@@ -49,6 +50,59 @@ test("artifact href round-trips CJK paths and undoes marked double-encoding", ()
   expect(parseArtifactHref(artifactHref(encodeURI(path)))).toBe(path);
   const doubleEncoded = `artifact:${encodeURIComponent(encodeURI(path))}`;
   expect(parseArtifactHref(doubleEncoded)).toBe(path);
+});
+
+test("artifactByteSource loads uncited chat links from the workspace", () => {
+  expect(
+    artifactByteSource({
+      mode: "cited",
+      relpath: "inbox/gen/clip.mp4",
+      attachment: {
+        id: "att-1",
+        message_id: "m-1",
+        workspace_relpath: "inbox/gen/clip.mp4",
+        original_filename: "clip.mp4",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+    }),
+  ).toBe("attachment");
+  expect(
+    artifactByteSource({
+      mode: "cited",
+      relpath: "inbox/gen/clip.mp4",
+      attachment: null,
+    }),
+  ).toBe("workspace");
+  expect(
+    artifactByteSource({
+      mode: "cited",
+      relpath: "inbox/gen/clip.mp4",
+      attachment: {
+        id: "att-1",
+        message_id: "m-1",
+        workspace_relpath: "inbox/gen/clip.mp4",
+        original_filename: "clip.mp4",
+        created_at: "2026-01-01T00:00:00.000Z",
+        exists: false,
+      },
+    }),
+  ).toBe("workspace");
+  expect(
+    artifactByteSource({
+      mode: "cited",
+      relpath: "inbox/gen",
+      attachment: {
+        id: "att-1",
+        message_id: "m-1",
+        workspace_relpath: "inbox/gen",
+        original_filename: "gen",
+        created_at: "2026-01-01T00:00:00.000Z",
+        is_dir: true,
+      },
+    }),
+  ).toBeNull();
+  expect(artifactByteSource({ mode: "workspace", relpath: "inbox/gen/clip.mp4" })).toBe("workspace");
+  expect(artifactByteSource({ mode: "workspace", relpath: "" })).toBeNull();
 });
 
 test("absWorkspacePath joins inside the root and rejects escapes", () => {

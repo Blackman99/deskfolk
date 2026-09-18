@@ -259,6 +259,13 @@ describe("empty roster and settings", () => {
     expect(fileRes.status).toBe(200);
     expect(await fileRes.text()).toBe("# brief\n");
 
+    writeFileSync(join(ws, "clip.mp4"), Buffer.alloc(1_000_001, 7));
+    const bigRes = await fetch(`${h.origin}/v1/workspace/file?path=${encodeURIComponent("clip.mp4")}`, {
+      headers: auth(h),
+    });
+    expect(bigRes.status).toBe(200);
+    expect((await bigRes.arrayBuffer()).byteLength).toBe(1_000_001);
+
     const escapeRes = await fetch(`${h.origin}/v1/workspace/tree?path=${encodeURIComponent("../")}`, {
       headers: auth(h),
     });

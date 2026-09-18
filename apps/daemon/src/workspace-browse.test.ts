@@ -91,3 +91,13 @@ test("locateWorkspaceFile returns an inside file and rejects directories", () =>
   expect(() => locateWorkspaceFile(root, "src")).toThrow(HttpError);
   expect(() => locateWorkspaceFile(root, "missing.md")).toThrow(HttpError);
 });
+
+test("locateWorkspaceFile serves files larger than the UTF-8 write cap", () => {
+  const root = ws();
+  const big = join(root, "clip.mp4");
+  writeFileSync(big, Buffer.alloc(1_000_001, 7));
+  const located = locateWorkspaceFile(root, "clip.mp4");
+  expect(located.rel).toBe("clip.mp4");
+  expect(located.mime).toBe("video/mp4");
+  expect(() => writeWorkspaceFile(root, "clip.mp4", "x".repeat(1_000_001))).toThrow(HttpError);
+});
