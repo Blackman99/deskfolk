@@ -539,30 +539,32 @@
 	let dismissedOnboarding = $state(false);
 	const showOnboarding = $derived(!snapshot.settings.wizard_complete && !dismissedOnboarding);
 	const generalHasError = $derived(Boolean(fieldErrors.workspace));
-	let addProviderDraft = $state<ProviderDraft>(emptyProviderDraft());
-	let addProviderErrors = $state<ProviderFieldErrors>({});
-	let addProviderFailed = $state(false);
-	let addProviderFetching = $state(false);
-	let addProviderFetchError = $state<string | null>(null);
-	let providerDrafts = $state<Record<string, ProviderDraft>>({});
-	let providerErrors = $state<Record<string, ProviderFieldErrors>>({});
-	let providerFailed = $state<Record<string, boolean>>({});
-	let providerFetching = $state<Record<string, boolean>>({});
-	let providerFetchError = $state<Record<string, string | null>>({});
-	let providerEditor = $state<'closed' | 'add' | string>('closed');
+	/**
+	 * The one endpoint editor that can be open. Adding and editing used to be two parallel sets of
+	 * state — five scalars for the add form, five maps keyed by the endpoint being edited — for a
+	 * flyout that only ever shows one of them.
+	 */
+	type ProviderEditorState = {
+		/** `'add'`, or the id of the endpoint being edited. */
+		target: 'add' | string;
+		draft: ProviderDraft;
+		errors: ProviderFieldErrors;
+		failed: boolean;
+		fetching: boolean;
+		fetchError: string | null;
+	};
+	let providerEditor = $state<ProviderEditorState | null>(null);
 	let providerProbeTimer: ReturnType<typeof setTimeout> | null = null;
 	/** URL + key the open editor last asked the endpoint about; the same pair is not probed twice. */
 	let providerProbedSignature: string | null = null;
 	const modelsHasError = $derived(
 		Boolean(
-			addProviderErrors.name ||
-			addProviderErrors.endpoint ||
-			addProviderErrors.endpointKey ||
-			addProviderErrors.models ||
-			addProviderErrors.defaultModel ||
-			Object.values(providerErrors).some((row) =>
-				Boolean(row.name || row.endpoint || row.endpointKey || row.models || row.defaultModel)
-			)
+			providerEditor &&
+				(providerEditor.errors.name ||
+					providerEditor.errors.endpoint ||
+					providerEditor.errors.endpointKey ||
+					providerEditor.errors.models ||
+					providerEditor.errors.defaultModel)
 		)
 	);
 	let botDraft = $state<CreateBotDraft>({ name: '', duties: '', boundaries: '', model: '', thinkingLevel: '' });
@@ -952,14 +954,15 @@
 
 	$effect(() => {
 		if (!runtime.settingsOpen) {
-			if (providerEditor !== 'closed') closeProviderEditor();
+			if (providerEditor) closeProviderEditor();
 			clearDanger('provider');
 			return;
 		}
+		const openEditor = providerEditor;
 		if (
-			providerEditor !== 'closed' &&
-			providerEditor !== 'add' &&
-			!snapshot.providers.some((row) => row.id === providerEditor)
+			openEditor &&
+			openEditor.target !== 'add' &&
+			!snapshot.providers.some((row) => row.id === openEditor.target)
 		) {
 			closeProviderEditor();
 		}
@@ -1253,29 +1256,25 @@
 		if (fieldErrors.workspace) fieldErrors = { ...fieldErrors, workspace: undefined };
 	}
 
-	function providerDraft(id: string): ProviderDraft {
-		const existing = providerDrafts[id];
-		if (existing) return existing;
-		const provider = snapshot.providers.find((row) => row.id === id);
-		return provider ? draftFromProvider(provider) : emptyProviderDraft();
+	/** A new endpoint has no key on file yet; an existing one's is whatever the snapshot says. */
+	function editorKeySet(target: 'add' | string): boolean {
+		if (target === 'add') return false;
+		return snapshot.providers.find((row) => row.id === target)?.key_set ?? false;
 	}
 
-	function setProviderDraft(id: string, draft: ProviderDraft): void {
+	/** Write into the open editor, but only while it is still that one — awaits can outlive it. */
+	function patchProviderEditor(target: 'add' | string, patch: Partial<ProviderEditorState>): void {
+		const editor = providerEditor;
+		if (!editor || editor.target !== target) return;
+		providerEditor = { ...editor, ...patch };
+	}
+
+	function setProviderDraft(draft: ProviderDraft): void {
+		const editor = providerEditor;
+		if (!editor) return;
 		const synced = withSyncedDefaultModel(draft);
-		providerDrafts = { ...providerDrafts, [id]: synced };
-		const nextErrors = { ...providerErrors };
-		delete nextErrors[id];
-		providerErrors = nextErrors;
-		providerFailed = { ...providerFailed, [id]: false };
-		const keySet = snapshot.providers.find((row) => row.id === id)?.key_set ?? false;
-		scheduleProviderProbe(id, synced, keySet);
-	}
-
-	function setAddProviderDraft(draft: ProviderDraft): void {
-		addProviderDraft = withSyncedDefaultModel(draft);
-		addProviderErrors = {};
-		addProviderFailed = false;
-		scheduleProviderProbe('add', addProviderDraft, false);
+		providerEditor = { ...editor, draft: synced, errors: {}, failed: false };
+		scheduleProviderProbe(editor.target, synced, editorKeySet(editor.target));
 	}
 
 	function resetProviderProbe(): void {
@@ -1292,62 +1291,43 @@
 		if (!signature || signature === providerProbedSignature) return;
 		providerProbeTimer = setTimeout(() => {
 			providerProbeTimer = null;
-			if (providerEditor !== target) return;
+			if (providerEditor?.target !== target) return;
 			providerProbedSignature = signature;
-			if (target === 'add') void fetchAddProviderModels();
-			else void fetchProviderModels(target);
+			void fetchProviderModels();
 		}, 700);
 	}
 
-	function openAddProvider(): void {
-		addProviderDraft = emptyProviderDraft();
-		addProviderErrors = {};
-		addProviderFailed = false;
-		addProviderFetchError = null;
+	function openProviderEditor(target: 'add' | string, draft: ProviderDraft): void {
 		resetProviderProbe();
-		providerEditor = 'add';
+		providerEditor = {
+			target,
+			draft,
+			errors: {},
+			failed: false,
+			fetching: false,
+			fetchError: null
+		};
+	}
+
+	function openAddProvider(): void {
+		openProviderEditor('add', emptyProviderDraft());
 	}
 
 	function openEditProvider(id: string): void {
 		const provider = snapshot.providers.find((row) => row.id === id);
 		if (!provider) return;
 		const draft = draftFromProvider(provider);
-		providerDrafts = { ...providerDrafts, [id]: draft };
-		const nextErrors = { ...providerErrors };
-		delete nextErrors[id];
-		providerErrors = nextErrors;
-		providerFailed = { ...providerFailed, [id]: false };
-		providerFetchError = { ...providerFetchError, [id]: null };
-		resetProviderProbe();
-		providerEditor = id;
+		openProviderEditor(id, draft);
 		// The stored URL + key count as already asked, so only changing one of them probes again.
 		const signature = probeSignature(draft, provider.key_set);
 		providerProbedSignature = signature;
 		// Endpoints saved before the list was kept have nothing to show yet; ask once on open.
-		if (provider.available_models.length === 0 && signature) void fetchProviderModels(id);
+		if (provider.available_models.length === 0 && signature) void fetchProviderModels();
 	}
 
 	function closeProviderEditor(): void {
 		resetProviderProbe();
-		if (providerEditor === 'add') {
-			addProviderDraft = emptyProviderDraft();
-			addProviderErrors = {};
-			addProviderFailed = false;
-			addProviderFetchError = null;
-		} else if (providerEditor !== 'closed') {
-			const id = providerEditor;
-			const nextDrafts = { ...providerDrafts };
-			delete nextDrafts[id];
-			providerDrafts = nextDrafts;
-			const nextErrors = { ...providerErrors };
-			delete nextErrors[id];
-			providerErrors = nextErrors;
-			providerFailed = { ...providerFailed, [id]: false };
-			const nextFetch = { ...providerFetchError };
-			delete nextFetch[id];
-			providerFetchError = nextFetch;
-		}
-		providerEditor = 'closed';
+		providerEditor = null;
 	}
 
 	function closeSettings(): void {
@@ -1356,62 +1336,52 @@
 		runtime.settingsOpen = false;
 	}
 
-	async function fetchAddProviderModels(): Promise<void> {
-		const baseUrl = addProviderDraft.baseUrl.trim();
+	async function fetchProviderModels(): Promise<void> {
+		const editor = providerEditor;
+		if (!editor) return;
+		const { target } = editor;
+		const baseUrl = editor.draft.baseUrl.trim();
 		if (!baseUrl) {
-			addProviderFetchError = t.settings.endpointEmpty;
+			patchProviderEditor(target, { fetchError: t.settings.endpointEmpty });
 			return;
 		}
-		const requested = probeSignature(addProviderDraft, false);
-		addProviderFetching = true;
-		addProviderFetchError = null;
-		const res = await runtime.probeModels(baseUrl, addProviderDraft.apiKey);
+		const keySet = editorKeySet(target);
+		const requested = probeSignature(editor.draft, keySet);
+		patchProviderEditor(target, { fetching: true, fetchError: null });
+		const res = await runtime.probeModels(
+			baseUrl,
+			editor.draft.apiKey,
+			target === 'add' ? undefined : target
+		);
 		// The editor may have closed or moved to another URL / key while the request was out.
-		if (providerEditor !== 'add' || probeSignature(addProviderDraft, false) !== requested) return;
-		addProviderFetching = false;
+		const open = providerEditor;
+		if (!open || open.target !== target || probeSignature(open.draft, keySet) !== requested) return;
 		if (!res.ok) {
-			addProviderFetchError = `${t.settings.modelsFetchFailed} (${res.error})`;
-			return;
-		}
-		addProviderDraft = applyProbedModels(addProviderDraft, res);
-		addProviderErrors = {};
-	}
-
-	async function fetchProviderModels(id: string): Promise<void> {
-		const draft = providerDraft(id);
-		const baseUrl = draft.baseUrl.trim();
-		if (!baseUrl) {
-			providerFetchError = { ...providerFetchError, [id]: t.settings.endpointEmpty };
-			return;
-		}
-		const keySet = snapshot.providers.find((row) => row.id === id)?.key_set ?? false;
-		const requested = probeSignature(draft, keySet);
-		providerFetching = { ...providerFetching, [id]: true };
-		providerFetchError = { ...providerFetchError, [id]: null };
-		const res = await runtime.probeModels(baseUrl, draft.apiKey, id);
-		if (providerEditor !== id || probeSignature(providerDraft(id), keySet) !== requested) return;
-		providerFetching = { ...providerFetching, [id]: false };
-		if (!res.ok) {
-			providerFetchError = {
-				...providerFetchError,
-				[id]: `${t.settings.modelsFetchFailed} (${res.error})`
+			providerEditor = {
+				...open,
+				fetching: false,
+				fetchError: `${t.settings.modelsFetchFailed} (${res.error})`
 			};
 			return;
 		}
-		const current = providerDraft(id);
-		providerDrafts = { ...providerDrafts, [id]: applyProbedModels(current, res) };
-		const nextErrors = { ...providerErrors };
-		delete nextErrors[id];
-		providerErrors = nextErrors;
+		providerEditor = {
+			...open,
+			fetching: false,
+			draft: applyProbedModels(open.draft, res),
+			errors: {}
+		};
 	}
 
-	async function saveProvider(id: string): Promise<void> {
+	async function saveProvider(): Promise<void> {
+		const editor = providerEditor;
+		if (!editor || editor.target === 'add') return;
+		const id = editor.target;
 		const provider = snapshot.providers.find((row) => row.id === id);
 		if (!provider) return;
-		providerFailed = { ...providerFailed, [id]: false };
-		const plan = planPatchProvider(provider, providerDraft(id));
+		patchProviderEditor(id, { failed: false });
+		const plan = planPatchProvider(provider, editor.draft);
 		if (!plan.ok) {
-			providerErrors = { ...providerErrors, [id]: plan.errors };
+			patchProviderEditor(id, { errors: plan.errors });
 			return;
 		}
 		if (Object.keys(plan.patch).length === 0) {
@@ -1421,25 +1391,27 @@
 		const error = await runtime.patchProvider(id, plan.patch);
 		if (error) {
 			const mapped = mapProviderError(error.message);
-			if ('top' in mapped) providerFailed = { ...providerFailed, [id]: true };
-			else providerErrors = { ...providerErrors, [id]: mapped };
+			if ('top' in mapped) patchProviderEditor(id, { failed: true });
+			else patchProviderEditor(id, { errors: mapped });
 			return;
 		}
 		closeProviderEditor();
 	}
 
 	async function addProvider(): Promise<void> {
-		addProviderFailed = false;
-		const plan = planCreateProvider(addProviderDraft, true);
+		const editor = providerEditor;
+		if (!editor || editor.target !== 'add') return;
+		patchProviderEditor('add', { failed: false });
+		const plan = planCreateProvider(editor.draft, true);
 		if (!plan.ok) {
-			addProviderErrors = plan.errors;
+			patchProviderEditor('add', { errors: plan.errors });
 			return;
 		}
 		const error = await runtime.createProvider(plan.body);
 		if (error) {
 			const mapped = mapProviderError(error.message);
-			if ('top' in mapped) addProviderFailed = true;
-			else addProviderErrors = mapped;
+			if ('top' in mapped) patchProviderEditor('add', { failed: true });
+			else patchProviderEditor('add', { errors: mapped });
 			return;
 		}
 		closeProviderEditor();
@@ -1465,10 +1437,7 @@
 			return;
 		}
 		dangerConfirm = null;
-		const nextDrafts = { ...providerDrafts };
-		delete nextDrafts[id];
-		providerDrafts = nextDrafts;
-		if (providerEditor === id) closeProviderEditor();
+		if (providerEditor?.target === id) closeProviderEditor();
 	}
 
 	async function patchImmediate(patch: {
@@ -2437,7 +2406,7 @@
 				dismissDangerConfirm();
 			} else if (runtime.createBotOpen) {
 				runtime.createBotOpen = false;
-			} else if (providerEditor !== 'closed') {
+			} else if (providerEditor) {
 				e.stopPropagation();
 				closeProviderEditor();
 			} else if (runtime.settingsOpen) {
@@ -4781,11 +4750,11 @@
 			aria-modal="true"
 			tabindex="-1"
 			onclick={(e) => {
-				if (e.target === e.currentTarget && providerEditor === 'closed' && dangerConfirm?.kind !== 'provider')
+				if (e.target === e.currentTarget && !providerEditor && dangerConfirm?.kind !== 'provider')
 					closeSettings();
 			}}
 			onkeydown={(e) => {
-				if (e.key === 'Escape' && providerEditor === 'closed' && dangerConfirm?.kind !== 'provider')
+				if (e.key === 'Escape' && !providerEditor && dangerConfirm?.kind !== 'provider')
 					closeSettings();
 			}}
 		>
@@ -5380,7 +5349,7 @@
 			</div>
 		</div>
 	{/if}
-	{#if runtime.settingsOpen && providerEditor !== 'closed'}
+	{#if runtime.settingsOpen && providerEditor}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="modal-backdrop provider-editor-backdrop"
@@ -5394,7 +5363,7 @@
 			<div class="modal-dialog provider-editor-modal">
 				<div class="modal-head">
 					<h2>
-						{providerEditor === 'add' ? t.settings.providerAdd : t.settings.providerEdit}
+						{providerEditor.target === 'add' ? t.settings.providerAdd : t.settings.providerEdit}
 					</h2>
 					<button
 						type="button"
@@ -5404,45 +5373,28 @@
 					>✕</button>
 				</div>
 				<div class="modal-body">
-					{#if providerEditor === 'add'}
-						<ProviderForm
-							draft={addProviderDraft}
-							errors={addProviderErrors}
-							failed={addProviderFailed}
-							fetching={addProviderFetching}
-							fetchError={addProviderFetchError}
-							fieldPrefix="provider-add"
-							{t}
-							onchange={setAddProviderDraft}
-							onfetch={() => void fetchAddProviderModels()}
-						/>
-					{:else}
-						{@const editing = snapshot.providers.find((row) => row.id === providerEditor)}
-						{#if editing}
-							{@const draft = providerDraft(editing.id)}
-							<ProviderForm
-								{draft}
-								errors={providerErrors[editing.id] ?? {}}
-								failed={Boolean(providerFailed[editing.id])}
-								fetching={Boolean(providerFetching[editing.id])}
-								fetchError={providerFetchError[editing.id] ?? null}
-								fieldPrefix={`provider-${editing.id}`}
-								keySet={editing.key_set}
-								{t}
-								onchange={(next) => setProviderDraft(editing.id, next)}
-								onfetch={() => void fetchProviderModels(editing.id)}
-							/>
-						{/if}
-					{/if}
+					<ProviderForm
+						draft={providerEditor.draft}
+						errors={providerEditor.errors}
+						failed={providerEditor.failed}
+						fetching={providerEditor.fetching}
+						fetchError={providerEditor.fetchError}
+						fieldPrefix={providerEditor.target === 'add'
+							? 'provider-add'
+							: `provider-${providerEditor.target}`}
+						keySet={editorKeySet(providerEditor.target)}
+						{t}
+						onchange={setProviderDraft}
+						onfetch={() => void fetchProviderModels()}
+					/>
 				</div>
 				<div class="modal-foot actions">
-					{#if providerEditor === 'add'}
+					{#if providerEditor.target === 'add'}
 						<button type="button" onclick={() => void addProvider()}>{t.settings.providerAdd}</button>
-						<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
 					{:else}
-						<button type="button" onclick={() => void saveProvider(providerEditor)}>{t.settings.providerSave}</button>
-						<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
+						<button type="button" onclick={() => void saveProvider()}>{t.settings.providerSave}</button>
 					{/if}
+					<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
 				</div>
 			</div>
 		</div>
