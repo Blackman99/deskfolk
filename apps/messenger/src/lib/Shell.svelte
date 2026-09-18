@@ -549,7 +549,6 @@
 	let providerFailed = $state<Record<string, boolean>>({});
 	let providerFetching = $state<Record<string, boolean>>({});
 	let providerFetchError = $state<Record<string, string | null>>({});
-	let confirmDeleteProvider = $state<string | null>(null);
 	let providerEditor = $state<'closed' | 'add' | string>('closed');
 	let providerProbeTimer: ReturnType<typeof setTimeout> | null = null;
 	/** URL + key the open editor last asked the endpoint about; the same pair is not probed twice. */
@@ -596,10 +595,22 @@
 	/** The Bot the current draft belongs to; a save resolving after a switch must not touch the new draft. */
 	let profileSaveBotId: string | null = null;
 	let profileSaveQueued = false;
-	let confirmDelete = $state(false);
-	let confirmDeleteGroup = $state(false);
-	let confirmClearHistory = $state(false);
-	let confirmDeleteSkill = $state<string | null>(null);
+	/**
+	 * One confirm at a time. These used to be five booleans that each cleared the other four on the
+	 * way up; every opener, every close path and the window handler had to keep that list in sync.
+	 */
+	type DangerConfirm =
+		| { kind: 'bot' }
+		| { kind: 'group' }
+		| { kind: 'history' }
+		| { kind: 'skill'; id: string }
+		| { kind: 'provider'; id: string };
+	let dangerConfirm = $state<DangerConfirm | null>(null);
+
+	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
+	function clearDanger(...kinds: DangerConfirm['kind'][]): void {
+		if (dangerConfirm && kinds.includes(dangerConfirm.kind)) dangerConfirm = null;
+	}
 	let skillEditor = $state<'add' | string | null>(null);
 	let skillDraft = $state<SkillDraft>(emptySkillDraft());
 	let skillBaseline = $state<SkillDraft>(emptySkillDraft());
@@ -611,18 +622,23 @@
 			? snapshot.skills.filter((skill) => skill.bot_id === runtime.profileBotId)
 			: []
 	);
+	/** A group or history confirm stops showing once the session it belonged to is gone. */
 	const dangerConfirmKind = $derived(
-		confirmDelete
-			? 'bot'
-			: confirmDeleteGroup && selected?.kind === 'group'
-				? 'group'
-				: confirmClearHistory && selected
-					? 'history'
-					: confirmDeleteSkill
-						? 'skill'
-						: confirmDeleteProvider
-							? 'provider'
-							: null
+		dangerConfirm === null
+			? null
+			: dangerConfirm.kind === 'group'
+				? (selected?.kind === 'group' ? 'group' : null)
+				: dangerConfirm.kind === 'history'
+					? (selected ? 'history' : null)
+					: dangerConfirm.kind
+	);
+	/** Escape has never dismissed the skill confirm; it closes the drawer behind it instead. */
+	const escapeDismissesDanger = $derived(dangerConfirm !== null && dangerConfirm.kind !== 'skill');
+	/** The session drawer's backdrop refuses to close while one of its own confirms is up. */
+	const drawerHasDanger = $derived(
+		dangerConfirm?.kind === 'bot' ||
+			dangerConfirm?.kind === 'group' ||
+			dangerConfirm?.kind === 'history'
 	);
 	const dangerConfirmCopy = $derived(
 		dangerConfirmKind === 'bot'
@@ -916,8 +932,7 @@
 		const session = selected;
 		if (!session) {
 			detailSessionId = null;
-			confirmDeleteGroup = false;
-			confirmClearHistory = false;
+			clearDanger('group', 'history');
 			return;
 		}
 		if (detailSessionId === session.id) return;
@@ -926,22 +941,19 @@
 		detailNameError = undefined;
 		detailFailed = false;
 		pullPick = '';
-		confirmDeleteGroup = false;
-		confirmClearHistory = false;
+		clearDanger('group', 'history');
 	});
 
 	$effect(() => {
 		if (!runtime.sessionSettingsOpen) {
-			confirmDeleteGroup = false;
-			confirmClearHistory = false;
-			confirmDelete = false;
+			clearDanger('bot', 'group', 'history');
 		}
 	});
 
 	$effect(() => {
 		if (!runtime.settingsOpen) {
 			if (providerEditor !== 'closed') closeProviderEditor();
-			confirmDeleteProvider = null;
+			clearDanger('provider');
 			return;
 		}
 		if (
@@ -951,8 +963,12 @@
 		) {
 			closeProviderEditor();
 		}
-		if (confirmDeleteProvider && !snapshot.providers.some((row) => row.id === confirmDeleteProvider)) {
-			confirmDeleteProvider = null;
+		const pendingProvider = dangerConfirm;
+		if (
+			pendingProvider?.kind === 'provider' &&
+			!snapshot.providers.some((row) => row.id === pendingProvider.id)
+		) {
+			dangerConfirm = null;
 		}
 	});
 
@@ -1336,7 +1352,7 @@
 
 	function closeSettings(): void {
 		closeProviderEditor();
-		confirmDeleteProvider = null;
+		clearDanger('provider');
 		runtime.settingsOpen = false;
 	}
 
@@ -1436,23 +1452,19 @@
 	}
 
 	function openDeleteProviderConfirm(id: string): void {
-		confirmDelete = false;
-		confirmDeleteGroup = false;
-		confirmClearHistory = false;
-		confirmDeleteSkill = null;
-		confirmDeleteProvider = id;
+		dangerConfirm = { kind: 'provider', id };
 	}
 
 	async function deleteProvider(id: string): Promise<void> {
-		if (confirmDeleteProvider !== id) return;
+		if (dangerConfirm?.kind !== 'provider' || dangerConfirm.id !== id) return;
 		saveFailed = false;
 		const error = await runtime.deleteProvider(id);
 		if (error) {
 			saveFailed = true;
-			confirmDeleteProvider = null;
+			dangerConfirm = null;
 			return;
 		}
-		confirmDeleteProvider = null;
+		dangerConfirm = null;
 		const nextDrafts = { ...providerDrafts };
 		delete nextDrafts[id];
 		providerDrafts = nextDrafts;
@@ -2007,7 +2019,7 @@
 		profileErrors = {};
 		profileFailed = false;
 		profileSavedTick = 0;
-		confirmDelete = false;
+		clearDanger('bot');
 		closeSkillEditor();
 		runtime.openProfile(botId);
 	}
@@ -2019,7 +2031,7 @@
 		skillErrors = {};
 		skillFailed = false;
 		skillBusy = false;
-		confirmDeleteSkill = null;
+		clearDanger('skill');
 	}
 
 	function openAddSkill(): void {
@@ -2082,23 +2094,20 @@
 	}
 
 	function openDeleteSkillConfirm(id: string): void {
-		confirmDelete = false;
-		confirmDeleteGroup = false;
-		confirmClearHistory = false;
-		confirmDeleteProvider = null;
-		confirmDeleteSkill = id;
+		dangerConfirm = { kind: 'skill', id };
 	}
 
 	async function deleteSkillRow(): Promise<void> {
-		if (!confirmDeleteSkill) return;
+		if (dangerConfirm?.kind !== 'skill') return;
+		const skillId = dangerConfirm.id;
 		skillFailed = false;
-		const error = await runtime.deleteSkill(confirmDeleteSkill);
+		const error = await runtime.deleteSkill(skillId);
 		if (error) {
 			skillFailed = true;
 			return;
 		}
-		if (skillEditor === confirmDeleteSkill) closeSkillEditor();
-		confirmDeleteSkill = null;
+		if (skillEditor === skillId) closeSkillEditor();
+		dangerConfirm = null;
 	}
 
 	function toggleSessionSettings(): void {
@@ -2116,7 +2125,7 @@
 	function closeNestedProfile(): void {
 		flushProfileSave();
 		runtime.profileBotId = null;
-		confirmDelete = false;
+		clearDanger('bot');
 		profileErrors = {};
 		profileFailed = false;
 		closeSkillEditor();
@@ -2235,47 +2244,31 @@
 
 	function dismissDangerConfirm(): void {
 		requestAnimationFrame(() => {
-			confirmDelete = false;
-			confirmDeleteGroup = false;
-			confirmClearHistory = false;
-			confirmDeleteSkill = null;
-			confirmDeleteProvider = null;
+			dangerConfirm = null;
 		});
 	}
 
 	function openDeleteBotConfirm(): void {
-		confirmDeleteGroup = false;
-		confirmClearHistory = false;
-		confirmDeleteSkill = null;
-		confirmDeleteProvider = null;
-		confirmDelete = true;
+		dangerConfirm = { kind: 'bot' };
 	}
 
 	function openDeleteGroupConfirm(): void {
-		confirmDelete = false;
-		confirmClearHistory = false;
-		confirmDeleteSkill = null;
-		confirmDeleteProvider = null;
-		confirmDeleteGroup = true;
+		dangerConfirm = { kind: 'group' };
 	}
 
 	function openClearHistoryConfirm(): void {
-		confirmDelete = false;
-		confirmDeleteGroup = false;
-		confirmDeleteSkill = null;
-		confirmDeleteProvider = null;
-		confirmClearHistory = true;
+		dangerConfirm = { kind: 'history' };
 	}
 
 	async function deleteProfile(): Promise<void> {
-		if (!runtime.profileBotId || !confirmDelete) return;
+		if (!runtime.profileBotId || dangerConfirm?.kind !== 'bot') return;
 		profileFailed = false;
 		const error = await runtime.deleteBot(runtime.profileBotId);
 		if (error) {
 			profileFailed = true;
 			return;
 		}
-		confirmDelete = false;
+		dangerConfirm = null;
 		if (selectedKind === 'you-bot') runtime.closeSessionSettings();
 		else closeNestedProfile();
 	}
@@ -2318,26 +2311,26 @@
 	}
 
 	async function deleteGroupSession(): Promise<void> {
-		if (!selected || selected.kind !== 'group' || !confirmDeleteGroup) return;
+		if (!selected || selected.kind !== 'group' || dangerConfirm?.kind !== 'group') return;
 		detailFailed = false;
 		const error = await runtime.deleteSession(selected.id);
 		if (error) {
 			detailFailed = true;
 			return;
 		}
-		confirmDeleteGroup = false;
+		dangerConfirm = null;
 		runtime.closeSessionSettings();
 	}
 
 	async function clearGroupHistory(): Promise<void> {
-		if (!selected || !confirmClearHistory) return;
+		if (!selected || dangerConfirm?.kind !== 'history') return;
 		detailFailed = false;
 		const error = await runtime.clearSessionHistory(selected.id);
 		if (error) {
 			detailFailed = true;
 			return;
 		}
-		confirmClearHistory = false;
+		dangerConfirm = null;
 	}
 
 	async function confirmDangerAction(): Promise<void> {
@@ -2357,8 +2350,8 @@
 			await deleteSkillRow();
 			return;
 		}
-		if (dangerConfirmKind === 'provider' && confirmDeleteProvider) {
-			await deleteProvider(confirmDeleteProvider);
+		if (dangerConfirm?.kind === 'provider') {
+			await deleteProvider(dangerConfirm.id);
 		}
 	}
 
@@ -2440,7 +2433,7 @@
 		if (e.key === 'Escape') {
 			if (themeMenuOpen) {
 				themeMenuOpen = false;
-			} else if (confirmClearHistory || confirmDelete || confirmDeleteGroup || confirmDeleteProvider) {
+			} else if (escapeDismissesDanger) {
 				dismissDangerConfirm();
 			} else if (runtime.createBotOpen) {
 				runtime.createBotOpen = false;
@@ -4116,12 +4109,12 @@
 			aria-modal="true"
 			tabindex="-1"
 			onclick={(e) => {
-				if (confirmClearHistory || confirmDelete || confirmDeleteGroup) return;
+				if (drawerHasDanger) return;
 				if (e.target === e.currentTarget) runtime.closeSessionSettings();
 			}}
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
-					if (confirmClearHistory || confirmDelete || confirmDeleteGroup) dismissDangerConfirm();
+					if (drawerHasDanger) dismissDangerConfirm();
 					else if (nestedProfile) closeNestedProfile();
 					else runtime.closeSessionSettings();
 				}
@@ -4788,10 +4781,12 @@
 			aria-modal="true"
 			tabindex="-1"
 			onclick={(e) => {
-				if (e.target === e.currentTarget && providerEditor === 'closed' && !confirmDeleteProvider) closeSettings();
+				if (e.target === e.currentTarget && providerEditor === 'closed' && dangerConfirm?.kind !== 'provider')
+					closeSettings();
 			}}
 			onkeydown={(e) => {
-				if (e.key === 'Escape' && providerEditor === 'closed' && !confirmDeleteProvider) closeSettings();
+				if (e.key === 'Escape' && providerEditor === 'closed' && dangerConfirm?.kind !== 'provider')
+					closeSettings();
 			}}
 		>
 			<div class="modal-dialog settings-modal">
