@@ -57,6 +57,20 @@ export function emptyModelAttr(): ModelAttrDraft {
   return { price: "", thinkingLevels: [...THINKING_LEVELS], strengths: [] };
 }
 
+/**
+ * The one endpoint editor that can be open. Adding and editing are the same form, so they share a
+ * shape; `target` says which, and the shell keeps it so its Escape cascade can see the flyout.
+ */
+export type ProviderEditorState = {
+  /** `"add"`, or the id of the endpoint being edited. */
+  target: "add" | string;
+  draft: ProviderDraft;
+  errors: ProviderFieldErrors;
+  failed: boolean;
+  fetching: boolean;
+  fetchError: string | null;
+};
+
 export function emptyProviderDraft(): ProviderDraft {
   return {
     name: "",
