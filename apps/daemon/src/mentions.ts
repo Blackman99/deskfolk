@@ -8,7 +8,7 @@ export type MentionCorrection = {
 export type MentionParse = {
   mentions: string[];
   everyone: boolean;
-  /** `@token`s that matched no roster name and no lenient name. */
+  /** `@token`s that matched no roster name and no lenient name, excluding those that contain a digit. */
   unresolved: string[];
   /** `@token`s that matched no roster name literally but exactly one lenient name. */
   corrected: MentionCorrection[];
@@ -32,7 +32,8 @@ const TOKEN_DELIMITERS = new Set([
 /**
  * Longest roster-name match after `@`, plus the literal `@everyone`. A token that
  * matches no roster name literally resolves to a lenient name when it is an
- * unambiguous prefix or suffix of one of them; otherwise it is unresolved.
+ * unambiguous prefix or suffix of one of them; otherwise it is unresolved, unless
+ * it contains a digit: `@37.79s`, `@f96` or `@14:30` reads as "at", not as a misspelt name.
  */
 export function parseMentions(
   body: string,
@@ -69,7 +70,7 @@ export function parseMentions(
       if (name) {
         if (!mentions.includes(name)) mentions.push(name);
         if (!corrected.some((c) => c.token === token)) corrected.push({ token, name });
-      } else if (!unresolved.includes(token)) {
+      } else if (!hasDigit(token) && !unresolved.includes(token)) {
         unresolved.push(token);
       }
     }
@@ -110,6 +111,15 @@ export function looksLikeMention(body: string, at: number, token: string): boole
   const prev = at > 0 ? body[at - 1] : "";
   if (/[A-Za-z0-9_]/.test(prev)) return false;
   return body[at + 1 + token.length] !== "/";
+}
+
+/**
+ * A token with a digit in it (`-1.0 dB @37.79s`, `@f96`, `@t37`, `@14:30`, `@2026-09-18`)
+ * reads as "at" a point or offset, so it is never reported as a mention that matched
+ * nobody. It may still resolve leniently when it abbreviates exactly one member (`@3D` for `3D师`).
+ */
+export function hasDigit(token: string): boolean {
+  return /\p{Nd}/u.test(token);
 }
 
 function startsName(literal: string, rest: string, names: string[]): boolean {

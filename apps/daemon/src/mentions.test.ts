@@ -53,6 +53,26 @@ describe("parseMentions", () => {
     expect(parsed.unresolved).toEqual(["分镜"]);
   });
 
+  test("an @ before a number, frame or time reads as \"at\" and is neither a mention nor a miss", () => {
+    const roster = ["制片", "审片", "导演"];
+    const parsed = parseMentions(
+      "全局峰值 **−1.0 dB @37.79s**，落掌 @f96、@t37，会议 @14:30，版本 @2026-09-18 发布，@审片 请复核",
+      roster,
+      { lenient: roster },
+    );
+    expect(parsed.mentions).toEqual(["审片"]);
+    expect(parsed.unresolved).toEqual([]);
+    expect(parsed.corrected).toEqual([]);
+  });
+
+  test("a digit-leading token still resolves leniently to the one member it abbreviates", () => {
+    const roster = ["3D师", "导演"];
+    const parsed = parseMentions("@3D 请出模型", roster, { lenient: roster });
+    expect(parsed.mentions).toEqual(["3D师"]);
+    expect(parsed.corrected).toEqual([{ token: "3D", name: "3D师" }]);
+    expect(parsed.unresolved).toEqual([]);
+  });
+
   test("a literal roster name still beats a lenient guess", () => {
     const parsed = parseMentions("@分镜师请出图", ["分镜师", "分镜"], { lenient: ["分镜师", "分镜"] });
     expect(parsed.mentions).toEqual(["分镜师"]);

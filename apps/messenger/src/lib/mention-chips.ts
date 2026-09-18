@@ -634,6 +634,8 @@ function replaceMentionTokens(
       const member = matchedName ? memberByName.get(matchedName) : undefined;
       if (member) {
         out += `[@${escapeMdLinkLabel(member.name)}](${mentionHref(member.id)})`;
+      } else if (hasDigit(token)) {
+        out += `@${token}`;
       } else {
         out += `[@${escapeMdLinkLabel(token)}](${mentionHref(`unresolved:${token}`)})`;
       }
@@ -651,6 +653,11 @@ export function looksLikeMention(body: string, at: number, token: string): boole
   const prev = at > 0 ? body[at - 1] : "";
   if (/[A-Za-z0-9_]/.test(prev)) return false;
   return body[at + 1 + token.length] !== "/";
+}
+
+/** Mirrors the daemon: a token with a digit in it (`@37.79s`, `@f96`, `@14:30`, `@2026-09-18`) reads as "at", never as a miss. */
+export function hasDigit(token: string): boolean {
+  return /\p{Nd}/u.test(token);
 }
 
 function startsName(literal: string, rest: string, names: string[]): boolean {

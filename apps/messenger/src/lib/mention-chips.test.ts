@@ -191,6 +191,19 @@ test("linkifyRosterMentions stops the token at CJK punctuation and preserves the
   expect(linked).toContain("，请");
 });
 
+test("linkifyRosterMentions leaves an @ before a number, frame or time as plain text instead of an unresolved marker", () => {
+  const reviewer: MentionableBot = { id: "reviewer-1", name: "审片" };
+  const linked = linkifyRosterMentions(
+    "全局峰值 −1.0 dB @37.79s，落掌 @f96、@t37，会议 @14:30，版本 @2026-09-18 发布，@审片 请复核",
+    [reviewer],
+    { members: [reviewer] },
+  );
+  expect(linked).toBe(
+    `全局峰值 −1.0 dB @37.79s，落掌 @f96、@t37，会议 @14:30，版本 @2026-09-18 发布，[@审片](${mentionHref(reviewer.id)}) 请复核`,
+  );
+  expect(linked).not.toContain("unresolved:");
+});
+
 test("decorateMentionChips renders an unresolved marker span, with or without a title", () => {
   const html = decorateMentionChips(
     `<a href="${mentionHref("unresolved:Nope")}">@Nope</a>`,
