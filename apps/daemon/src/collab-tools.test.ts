@@ -345,6 +345,59 @@ describe("endpoint and MCP catalog tools", () => {
     store.close();
   });
 
+  test("update_profile pins a thinking level the model supports and clears it with null", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    const provider = await store.createProvider({
+      name: "Home",
+      base_url: "https://api.openai.com/v1",
+      api_key: "sk-home",
+      models: [
+        { name: "cheap-chat", thinking_levels: ["none", "low"] },
+        { name: "code-pro", thinking_levels: ["medium", "high"] },
+      ],
+    });
+    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = ctxFor(store, created.bot.id, created.direct_session.id);
+    const unpinnedModel = await runCollabTool(ctx, "update_profile", { thinking_level: "high" });
+    expect(unpinnedModel.ok).toBe(true);
+    expect(unpinnedModel.data?.thinking_level).toBe("high");
+    expect(store.getBot(created.bot.id).thinking_level).toBe("high");
+
+    const unsupported = await runCollabTool(ctx, "update_profile", {
+      endpoint_id: provider.id,
+      model: "cheap-chat",
+      thinking_level: "high",
+    });
+    expect(unsupported.ok).toBe(false);
+    expect(unsupported.error?.code).toBe("invalid_args");
+    expect(unsupported.error?.message).toBe("thinking_level must be one the pinned model supports");
+
+    const bogus = await runCollabTool(ctx, "update_profile", { thinking_level: "ultra" });
+    expect(bogus.ok).toBe(false);
+    expect(bogus.error?.message).toBe("thinking_level must be none, low, medium, or high");
+
+    const pinned = await runCollabTool(ctx, "update_profile", {
+      endpoint_id: provider.id,
+      model: "code-pro",
+      thinking_level: "medium",
+    });
+    expect(pinned.ok).toBe(true);
+    expect(pinned.data?.model).toBe("code-pro");
+    expect(pinned.data?.thinking_level).toBe("medium");
+
+    const switched = await runCollabTool(ctx, "update_profile", { model: "cheap-chat" });
+    expect(switched.ok).toBe(true);
+    expect(switched.data?.thinking_level).toBeNull();
+
+    const cleared = await runCollabTool(ctx, "update_profile", { thinking_level: null });
+    expect(cleared.ok).toBe(true);
+    expect(cleared.data?.thinking_level).toBeNull();
+    expect(
+      (await runCollabTool(ctx, "list_bots", {})).data?.bots,
+    ).toEqual([expect.objectContaining({ name: "Writer", thinking_level: null })]);
+    store.close();
+  });
+
   test("add_mcp_server parks; rename and delete run immediately", async () => {
     const store = new Store({ endpointKey: memoryKeyStore() });
     const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

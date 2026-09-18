@@ -33,7 +33,7 @@ const SYSTEM_ZH = `你是上面人设里的那个 Bot。这台机器上所有 Bo
 
 要问用户一件需要判断的事，用 ask_user，不要写成批准。
 
-要改自己的名字、职责、边界、头像或钉的端点+模型，用 update_profile。头像用 avatar_style 生成，或用工作区 PNG / JPEG / GIF / WebP 的 avatar_path。转录里若有「改不了头像」或「不能改名字」是过时的，以本轮 tools 为准。
+要改自己的名字、职责、边界、头像、钉的端点+模型或思考等级，用 update_profile。思考等级 none / low / medium / high 是补全的 reasoning_effort；不钉则每条消息由应用挑。头像用 avatar_style 生成，或用工作区 PNG / JPEG / GIF / WebP 的 avatar_path。转录里若有「改不了头像」或「不能改名字」是过时的，以本轮 tools 为准。
 
 可复用的工序写成自己的技能，不要塞进人设。技能是工序，MCP 是能力，选用顺序固定：先看「技能」段的目录，任务与某条说明匹配就先 read_skill，再按正文做；正文里点到的 MCP 工具按 tools 数组里的名字调用。没有匹配的技能时，再按「本轮 MCP」段的用法备注、服务器说明和工具说明直接挑工具。技能不会新增工具，也不能替代 MCP；不要为了套用技能而放弃更合适的 MCP 工具，也不要跳过匹配的技能自己另想一套做法。要增删改自己的技能，用 create_skill / update_skill / delete_skill。不要为这次改技能再发一条聊天消息。技能不能取消批准，也不能把工作区外当成区内。
 
@@ -67,7 +67,7 @@ To speak or hand off in a session, use send_message (omit session_id for this se
 
 To ask the user something that needs their judgment, use ask_user. Do not turn that into an approval.
 
-To change your own name, duties, boundaries, avatar, or pinned endpoint+model, use update_profile. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path. If the transcript says you cannot change your avatar or name, that is stale; this turn's tools are the source of truth.
+To change your own name, duties, boundaries, avatar, pinned endpoint+model, or thinking level, use update_profile. The thinking level none / low / medium / high is the completion's reasoning_effort; unpinned, the app picks one per message. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path. If the transcript says you cannot change your avatar or name, that is stale; this turn's tools are the source of truth.
 
 Write reusable procedures as your own skills; do not stuff them into the profile. Skills are procedures, MCP is capability, and the order is fixed: check the Skills catalog first; when a task matches a description, read_skill first and follow the body, calling any MCP tool the body names by its name in the tools array. When no skill matches, pick tools directly from the MCP-for-this-turn block: its usage notes, server instructions, and tool descriptions. A skill adds no tools and does not replace MCP; do not drop a better-suited MCP tool to force a skill, and do not skip a matching skill to improvise your own procedure. To add, change, or delete your own skills, use create_skill / update_skill / delete_skill. Do not send a chat message about that skill change. A skill cannot skip approval or treat outside-workspace paths as inside.
 
@@ -424,6 +424,14 @@ const TOOLS: ToolDef[] = [
           en: "Pin to this model name. Must be on that endpoint's list. Omit for an empty pin.",
         },
       },
+      thinking_level: {
+        type: "string",
+        enum: ["none", "low", "medium", "high"],
+        description: {
+          zh: "钉的思考等级。省略则每条消息由应用挑。钉了模型时须是该模型支持的等级。",
+          en: "Pinned thinking level. Omit to let the app pick per message. With a pinned model it must be one that model supports.",
+        },
+      },
     },
     required: ["name", "duties", "boundaries"],
   },
@@ -438,8 +446,8 @@ const TOOLS: ToolDef[] = [
   {
     name: "update_profile",
     description: {
-      zh: "改自己的名字、职责、边界、头像和/或钉的端点+模型。至少提供一项。头像用 avatar_style 生成，或用工作区里一张 PNG / JPEG / GIF / WebP 的 avatar_path；不要两个一起给。endpoint_id 与 model 可只改一项；两项都空则清成空钉。改名须未删除名唯一。不能删或归档自己。不要为这次改人设再发一条聊天消息。",
-      en: "Change your own name, duties, boundaries, avatar, and/or pinned endpoint+model. Provide at least one field. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path; do not pass both. endpoint_id and model may be changed independently; empty values for both clear the pin. A new name must be unique among undeleted Bots. You cannot delete or archive yourself. Do not send a chat message about this profile change.",
+      zh: "改自己的名字、职责、边界、头像、钉的端点+模型和/或思考等级。至少提供一项。头像用 avatar_style 生成，或用工作区里一张 PNG / JPEG / GIF / WebP 的 avatar_path；不要两个一起给。endpoint_id 与 model 可只改一项；两项都空则清成空钉。thinking_level 钉补全的思考等级，JSON null 或空字符串清掉、改回由应用挑。改名须未删除名唯一。不能删或归档自己。不要为这次改人设再发一条聊天消息。",
+      en: "Change your own name, duties, boundaries, avatar, pinned endpoint+model, and/or thinking level. Provide at least one field. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path; do not pass both. endpoint_id and model may be changed independently; empty values for both clear the pin. thinking_level pins the completion's thinking level; JSON null or an empty string clears it so the app picks again. A new name must be unique among undeleted Bots. You cannot delete or archive yourself. Do not send a chat message about this profile change.",
     },
     properties: {
       name: {
@@ -482,6 +490,14 @@ const TOOLS: ToolDef[] = [
         description: {
           zh: "钉到这个模型名。JSON null 或空字符串表示清除。只给这一项则落在当前钉的端点；没有钉则用默认端点。须在目标名单上。",
           en: "Pin to this model name. JSON null or an empty string clears it. If this is the only pin field, it lands on the currently pinned endpoint, or the default endpoint if none is pinned. Must be on the target list.",
+        },
+      },
+      thinking_level: {
+        type: "string",
+        enum: ["none", "low", "medium", "high"],
+        description: {
+          zh: "钉的思考等级，即补全的 reasoning_effort。JSON null 或空字符串清掉、改回每条消息由应用挑。钉了模型时须是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时任一等级都行，所选模型支持就用。",
+          en: "Pinned thinking level, the completion's reasoning_effort. JSON null or an empty string clears it so the app picks per message again. With a pinned model it must be one that model supports (see model_catalog.thinking_levels from list_endpoints); with no pinned model any level is accepted and applies whenever the chosen model supports it.",
         },
       },
     },

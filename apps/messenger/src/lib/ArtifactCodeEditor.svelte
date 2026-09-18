@@ -3,6 +3,7 @@
 	import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 	import { untrack } from 'svelte';
 	import {
+		applyMonacoTheme,
 		ensureMonaco,
 		monacoLanguageFromPath,
 		monacoThemeName,
@@ -54,42 +55,51 @@
 		let sub: Monaco.IDisposable | null = null;
 		let themeUnsub: (() => void) | null = null;
 		void (async () => {
-			const monaco = await ensureMonaco();
-			if (cancelled || !el.isConnected) return;
-			const lang = monacoLanguageFromPath(file);
-			if (shouldHighlightMonaco(doc, lang)) {
-				await prepareMonacoLanguage(lang);
+			try {
+				const monaco = await ensureMonaco();
+				if (cancelled || !el.isConnected) return;
+				const lang = monacoLanguageFromPath(file);
+				created = monaco.editor.create(el, {
+					value: doc,
+					language: 'plaintext',
+					theme: monacoThemeName(themeManager.resolved),
+					readOnly: false,
+					wordWrap: wrapOn ? 'on' : 'off',
+					minimap: { enabled: false },
+					scrollBeyondLastLine: false,
+					fontSize: 12,
+					fontFamily: 'var(--mono)',
+					automaticLayout: true,
+					renderLineHighlight: 'line',
+					tabSize: 2,
+					padding: { top: 8 },
+					contextmenu: true,
+				});
+				editor = created;
+				saved = doc;
+				dirty = false;
+				onDirty?.(false);
+				created.layout();
+				sub = created.onDidChangeModelContent(() => {
+					const next = created?.getValue() ?? '';
+					const isDirtyNow = next !== saved;
+					dirty = isDirtyNow;
+					onDirty?.(isDirtyNow);
+				});
+				applyMonacoTheme(monaco.editor);
+				themeUnsub = themeManager.subscribe(() => {
+					applyMonacoTheme(monaco.editor, themeManager.resolved as ResolvedTheme);
+				});
+				if (shouldHighlightMonaco(doc, lang)) {
+					await prepareMonacoLanguage(lang);
+					if (cancelled || !created) return;
+					const model = created.getModel();
+					if (model) monaco.editor.setModelLanguage(model, lang);
+					applyMonacoTheme(monaco.editor);
+				}
+			} catch {
+				editor = null;
 			}
-			if (cancelled || !el.isConnected) return;
-			created = monaco.editor.create(el, {
-				value: doc,
-				language: shouldHighlightMonaco(doc, lang) ? lang : 'plaintext',
-				theme: monacoThemeName(themeManager.resolved),
-				readOnly: false,
-				wordWrap: wrapOn ? 'on' : 'off',
-				minimap: { enabled: false },
-				scrollBeyondLastLine: false,
-				fontSize: 12,
-				fontFamily: 'var(--mono)',
-				automaticLayout: true,
-				renderLineHighlight: 'line',
-				tabSize: 2,
-				padding: { top: 8 },
-				contextmenu: true,
-			});
-			editor = created;
-			saved = doc;
-			dirty = false;
-			onDirty?.(false);
-			sub = created.onDidChangeModelContent(() => {
-				const next = created?.getValue() ?? '';
-				const isDirtyNow = next !== saved;
-				dirty = isDirtyNow;
-				onDirty?.(isDirtyNow);
-			});
-			themeUnsub = themeManager.subscribe(() => {
-				monaco.editor.setTheme(monacoThemeName(themeManager.resolved as ResolvedTheme));
-			});
 		})();
 		return () => {
 			cancelled = true;
@@ -117,4 +127,7 @@
 	});
 </script>
 
-<div class="artifact-cm" bind:this={host}></div>
+<div class="artifact-cm-wrap">
+	<pre class="artifact-text artifact-cm-fallback">{code}</pre>
+	<div class="artifact-cm" bind:this={host}></div>
+</div>

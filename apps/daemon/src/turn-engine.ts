@@ -175,18 +175,22 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   function targetFor(botId: string, creds: Creds, text: string): ResolvedTarget | null {
     let botModel: string | null = null;
     let botProviderId: string | null = null;
+    let botThinkingLevel: ThinkingLevel | null = null;
     try {
       const bot = store.getBot(botId);
       botModel = bot.model;
       botProviderId = bot.provider_id;
+      botThinkingLevel = bot.thinking_level;
     } catch {
       botModel = null;
       botProviderId = null;
+      botThinkingLevel = null;
     }
     const routed = store.decideTurnRoute({
       text,
       botModel,
       botProviderId,
+      botThinkingLevel,
       providerIds: creds.providers.map((row) => row.id),
     });
     if (routed) {
@@ -213,6 +217,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       text,
       botModel: resolved.model,
       botProviderId: resolved.providerId,
+      botThinkingLevel,
       providerIds: creds.providers.map((row) => row.id),
     });
     return {
@@ -326,6 +331,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             text: triggerBody,
             botModel: store.getBot(botId).model,
             botProviderId: store.getBot(botId).provider_id,
+            botThinkingLevel: store.getBot(botId).thinking_level,
             providerIds: creds.providers.map((row) => row.id),
           })?.signature ?? "general",
         },

@@ -17,6 +17,7 @@ import {
   type Approval,
   type Attachment,
   type Bot,
+  type ThinkingLevel,
   type CreateBotRequest,
   type CreateGroupRequest,
   type CreateProviderRequest,
@@ -46,10 +47,12 @@ import { classifyPath } from "./workspace-paths";
 import {
   catalogNames,
   normalizeBotModel,
+  normalizeBotThinkingLevel,
   normalizeDefaultModel,
   normalizeModelCatalog,
   parseStoredCatalog,
   parseStoredModels,
+  parseStoredThinkingLevel,
   resolveProviderForModel,
   serializeCatalog,
   unionProviderModels,
@@ -89,6 +92,7 @@ type BotRow = {
   avatar: string | null;
   model: string | null;
   provider_id: string | null;
+  thinking_level: string | null;
   archived_at: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -380,6 +384,7 @@ export class Store {
         ? input.avatar.trim()
         : generateBoringAvatar({ name });
     const { model, providerId } = this.resolveIncomingBotTarget(input.model, input.provider_id);
+    const thinkingLevel = this.resolveIncomingThinkingLevel(input.thinking_level, model, providerId);
     this.assertNameFree(name);
     const now = isoNow();
     const botId = ulid();
@@ -387,9 +392,9 @@ export class Store {
     const revisionId = ulid();
     this.db.transaction(() => {
       this.db.run(
-        `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, archived_at, deleted_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-        [botId, name, duties, boundaries, avatar, model, providerId, now, now],
+        `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, archived_at, deleted_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+        [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, now, now],
       );
       this.db.run(
         `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
@@ -424,6 +429,7 @@ export class Store {
       avatar?: string | null;
       model?: string | null;
       provider_id?: string | null;
+      thinking_level?: ThinkingLevel | null;
     },
     actor: string = USER_MEMBER,
   ): Bot {
@@ -449,12 +455,16 @@ export class Store {
         : { model: row.model, providerId: row.provider_id };
     const model = nextTarget.model;
     const providerId = nextTarget.providerId;
+    const thinkingLevel =
+      "thinking_level" in patch
+        ? this.resolveIncomingThinkingLevel(patch.thinking_level, model, providerId)
+        : this.carriedThinkingLevel(row.thinking_level, model, providerId);
     if (name !== row.name) this.assertNameFree(name);
     const now = isoNow();
     this.db.transaction(() => {
       this.db.run(
-        `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, updated_at = ? WHERE id = ?`,
-        [name, duties, boundaries, avatar, model, providerId, now, id],
+        `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, updated_at = ? WHERE id = ?`,
+        [name, duties, boundaries, avatar, model, providerId, thinkingLevel, now, id],
       );
       this.db.run(
         `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
@@ -2206,6 +2216,48 @@ export class Store {
     return { model, providerId: match?.id ?? null };
   }
 
+  /**
+   * An explicit pin must be a level the pinned model supports. With no pinned model any level is
+   * accepted; the turn applies it whenever the chosen model supports it.
+   */
+  private resolveIncomingThinkingLevel(
+    value: unknown,
+    model: string | null,
+    providerId: string | null,
+  ): ThinkingLevel | null {
+    const level = normalizeBotThinkingLevel(value);
+    if (!level) return null;
+    if (!this.modelSupportsThinking(model, providerId, level)) {
+      throw new HttpError(422, "invalid_args", "thinking_level must be one the pinned model supports");
+    }
+    return level;
+  }
+
+  /** A pin carried across a model change is dropped when the new model cannot honour it. */
+  private carriedThinkingLevel(
+    raw: string | null,
+    model: string | null,
+    providerId: string | null,
+  ): ThinkingLevel | null {
+    const level = parseStoredThinkingLevel(raw);
+    if (!level) return null;
+    return this.modelSupportsThinking(model, providerId, level) ? level : null;
+  }
+
+  private modelSupportsThinking(
+    model: string | null,
+    providerId: string | null,
+    level: ThinkingLevel,
+  ): boolean {
+    if (!model) return true;
+    const rows = providerId
+      ? this.providerRows().filter((row) => row.id === providerId)
+      : this.providerRows();
+    const entries = rows.flatMap((row) => parseStoredCatalog(row.models)).filter((row) => row.name === model);
+    if (entries.length === 0) return true;
+    return entries.some((entry) => entry.thinking_levels.length === 0 || entry.thinking_levels.includes(level));
+  }
+
   private dropUnknownBotModels(models: string[]): void {
     const rows = this.db
       .query<{ id: string; model: string }, []>(
@@ -2266,6 +2318,7 @@ export class Store {
     text: string;
     botModel: string | null;
     botProviderId: string | null;
+    botThinkingLevel?: ThinkingLevel | null;
     providerIds?: readonly string[];
   }): RouteDecision | null {
     const catalog = this.catalogEntries().filter((row) =>
@@ -2276,6 +2329,7 @@ export class Store {
       catalog,
       botModel: input.botModel,
       botProviderId: input.botProviderId,
+      botThinkingLevel: input.botThinkingLevel ?? null,
       learned: this.routeLearnedState(),
     });
   }
@@ -2792,6 +2846,7 @@ function toBot(row: BotRow): Bot {
     avatar: row.avatar ?? generateBoringAvatar({ name: row.name }),
     model: row.model,
     provider_id: row.provider_id,
+    thinking_level: parseStoredThinkingLevel(row.thinking_level),
     archived_at: row.archived_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -2820,6 +2875,9 @@ function migrateSchema(db: Database): void {
   }
   if (!botCols.includes("provider_id")) {
     db.run(`ALTER TABLE bots ADD COLUMN provider_id TEXT`);
+  }
+  if (!botCols.includes("thinking_level")) {
+    db.run(`ALTER TABLE bots ADD COLUMN thinking_level TEXT`);
   }
   const revCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(profile_revisions)`)

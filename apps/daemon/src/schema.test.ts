@@ -57,6 +57,8 @@ describe("schema", () => {
       .map((row) => row.name);
     expect(cols).toContain("model");
     expect(cols).toContain("avatar");
+    expect(cols).toContain("thinking_level");
+    expect(created.bot.thinking_level).toBeNull();
     expect(created.bot.avatar).toBeString();
     expect(created.bot.avatar?.startsWith("<svg")).toBe(true);
     expect(created.bot.id).toHaveLength(26);

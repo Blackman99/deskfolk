@@ -90,6 +90,8 @@ export function decideCompletion(input: {
   catalog: readonly CatalogEntry[];
   botModel: string | null;
   botProviderId?: string | null;
+  /** A Bot's pinned level wins for any candidate model that supports it; other models keep their own list. */
+  botThinkingLevel?: ThinkingLevel | null;
   learned: RouteLearnedState;
 }): RouteDecision | null {
   const scoped = input.botProviderId
@@ -111,8 +113,13 @@ export function decideCompletion(input: {
 
   for (let i = 0; i < candidates.length; i++) {
     const model = candidates[i]!;
-    const levels =
+    const supported =
       model.thinking_levels.length > 0 ? model.thinking_levels : [...THINKING_LEVELS];
+    const pinnedLevel =
+      input.botThinkingLevel && supported.includes(input.botThinkingLevel)
+        ? input.botThinkingLevel
+        : null;
+    const levels: readonly ThinkingLevel[] = pinnedLevel ? [pinnedLevel] : supported;
     const preferred = pickThinkingLevel(kind, levels);
     for (const thinkingLevel of levels) {
       const score =

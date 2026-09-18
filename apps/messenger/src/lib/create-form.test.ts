@@ -5,10 +5,51 @@ import {
   mapCreateGroupError,
   mapSkillError,
   parseSkillUses,
+  pinnableThinkingLevels,
   planCreateBot,
   planCreateGroup,
   planSkill,
 } from "./create-form.ts";
+
+test("a pinned thinking level rides along; blank is null; an unknown level does not produce a request", () => {
+  const base = { name: "Researcher", duties: "read", boundaries: "stay", model: "" };
+  expect(planCreateBot({ ...base, thinkingLevel: "high" })).toMatchObject({
+    ok: true,
+    body: { thinking_level: "high" },
+  });
+  expect(planCreateBot({ ...base, thinkingLevel: "" })).toMatchObject({
+    ok: true,
+    body: { thinking_level: null },
+  });
+  const omitted = planCreateBot(base);
+  expect(omitted.ok).toBe(true);
+  if (omitted.ok) expect("thinking_level" in omitted.body).toBe(false);
+  expect(planCreateBot({ ...base, thinkingLevel: "ultra" })).toEqual({
+    ok: false,
+    errors: { thinkingLevel: "invalid" },
+  });
+  expect(mapCreateBotError(422, "thinking_level must be one the pinned model supports")).toEqual({
+    thinkingLevel: "invalid",
+  });
+});
+
+test("pinnable thinking levels follow the picked model's catalog, or every level when nothing is pinned", () => {
+  const providers = [
+    {
+      id: "p1",
+      model_catalog: [
+        { name: "cheap-chat", thinking_levels: ["none", "low"] as const },
+        { name: "code-pro", thinking_levels: ["high", "medium"] as const },
+      ],
+    },
+    { id: "p2", model_catalog: [{ name: "code-pro", thinking_levels: ["low"] as const }] },
+  ];
+  expect(pinnableThinkingLevels("", providers)).toEqual(["none", "low", "medium", "high"]);
+  expect(pinnableThinkingLevels("p1::cheap-chat", providers)).toEqual(["none", "low"]);
+  expect(pinnableThinkingLevels("p1::code-pro", providers)).toEqual(["medium", "high"]);
+  expect(pinnableThinkingLevels("code-pro", providers)).toEqual(["low", "medium", "high"]);
+  expect(pinnableThinkingLevels("p1::unknown", providers)).toEqual(["none", "low", "medium", "high"]);
+});
 
 test("whitespace name, duties, and boundaries do not produce a POST", () => {
   expect(

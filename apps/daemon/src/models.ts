@@ -72,6 +72,25 @@ export function normalizeBotModel(value: unknown, models: string[]): string | nu
   return name;
 }
 
+export function normalizeBotThinkingLevel(value: unknown): ThinkingLevel | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new HttpError(422, "invalid_args", "thinking_level must be none, low, medium, or high");
+  }
+  const level = value.trim();
+  if (level.length === 0) return null;
+  if (!THINKING_SET.has(level)) {
+    throw new HttpError(422, "invalid_args", "thinking_level must be none, low, medium, or high");
+  }
+  return level as ThinkingLevel;
+}
+
+/** Loose read of a stored pin: anything not on the list is treated as unpinned. */
+export function parseStoredThinkingLevel(raw: string | null | undefined): ThinkingLevel | null {
+  if (!raw || !THINKING_SET.has(raw)) return null;
+  return raw as ThinkingLevel;
+}
+
 export function resolveCompletionModel(input: {
   botModel: string | null;
   defaultModel: string | null;

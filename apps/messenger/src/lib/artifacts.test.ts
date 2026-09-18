@@ -5,7 +5,12 @@ import {
   artifactHref,
   artifactKind,
   bodyMentionsPath,
+  htmlPreviewBlob,
+  HTML_PREVIEW_SANDBOX,
+  injectHtmlPreviewColorScheme,
+  injectHtmlPreviewNonce,
   isInAppPreviewKind,
+  pageCspNonce,
   linkifyWorkspacePaths,
   looksLikeWorkspaceHref,
   parseArtifactHref,
@@ -17,6 +22,7 @@ test("artifactKind maps extensions and directories", () => {
   expect(artifactKind("icon.svg")).toBe("svg");
   expect(artifactKind("clip.mp4")).toBe("video");
   expect(artifactKind("note.md")).toBe("markdown");
+  expect(artifactKind("todo/index.html")).toBe("html");
   expect(artifactKind("src/app.ts")).toBe("text");
   expect(artifactKind("Main.kt")).toBe("text");
   expect(artifactKind("Dockerfile")).toBe("text");
@@ -25,6 +31,7 @@ test("artifactKind maps extensions and directories", () => {
   expect(artifactKind("src", { isDir: true })).toBe("directory");
   expect(isInAppPreviewKind("image")).toBe(true);
   expect(isInAppPreviewKind("pdf")).toBe(true);
+  expect(isInAppPreviewKind("html")).toBe(true);
   expect(isInAppPreviewKind("text")).toBe(true);
   expect(isInAppPreviewKind("file")).toBe(false);
   expect(isInAppPreviewKind("directory")).toBe(false);
@@ -124,4 +131,45 @@ test("stripSvgActiveContent removes scripts and handlers", () => {
   expect(cleaned).not.toContain("<script>");
   expect(cleaned).not.toContain("onclick");
   expect(cleaned).toContain("ok");
+});
+
+test("html preview sandbox runs scripts in an opaque origin", () => {
+  expect(HTML_PREVIEW_SANDBOX.split(/\s+/)).toContain("allow-scripts");
+  expect(HTML_PREVIEW_SANDBOX.split(/\s+/)).toContain("allow-modals");
+  expect(HTML_PREVIEW_SANDBOX.split(/\s+/)).not.toContain("allow-same-origin");
+  expect(htmlPreviewBlob("<h1>ok</h1>").type).toBe("text/html;charset=utf-8");
+});
+
+test("injectHtmlPreviewColorScheme stamps the messenger light or dark scheme", () => {
+  const withHead = `<html><head><title>x</title></head><body></body></html>`;
+  expect(injectHtmlPreviewColorScheme(withHead, "dark")).toContain(
+    '<meta name="color-scheme" content="dark">',
+  );
+  const replaced = injectHtmlPreviewColorScheme(
+    `<head><meta name="color-scheme" content="light"></head>`,
+    "dark",
+  );
+  expect(replaced).toContain('content="dark"');
+  expect(replaced).not.toContain('content="light"');
+});
+
+test("injectHtmlPreviewNonce stamps script and style tags for inherited CSP", () => {
+  const html = `<style>.a{color:red}</style><script>1</script><script type="module">2</script><script nonce="keep">3</script>`;
+  const out = injectHtmlPreviewNonce(html, "abc");
+  expect(out).toContain('<style nonce="abc">');
+  expect(out).toContain('<script nonce="abc">');
+  expect(out).toContain('<script nonce="abc" type="module">');
+  expect(out).toContain('<script nonce="keep">');
+  expect(injectHtmlPreviewNonce(html, null)).toBe(html);
+  expect(injectHtmlPreviewNonce(html, `ab"c`)).toBe(html);
+});
+
+test("pageCspNonce reads the IDL nonce", () => {
+  const doc = {
+    querySelectorAll() {
+      return [{ nonce: "from-idl", getAttribute: () => null }];
+    },
+  } as unknown as Document;
+  expect(pageCspNonce(doc)).toBe("from-idl");
+  expect(pageCspNonce(null)).toBeNull();
 });

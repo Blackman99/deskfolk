@@ -79,7 +79,14 @@
 		presentBotIds,
 		pullInCandidates
 	} from './group-edit.ts';
-	import { profileDraftDirty, reconcileProfileDraft, type ProfileFields } from './roster-edit.ts';
+	import {
+		profileDraftDirty,
+		profileNeedsSave,
+		reconcileProfileDraft,
+		type ProfileFields
+	} from './roster-edit.ts';
+	import { pinnableThinkingLevels } from './create-form.ts';
+	import { untrack } from 'svelte';
 	import {
 		cleanPinnedIds,
 		isSessionPinned,
@@ -513,17 +520,36 @@
 			)
 		)
 	);
-	let botDraft = $state<CreateBotDraft>({ name: '', duties: '', boundaries: '', model: '' });
+	let botDraft = $state<CreateBotDraft>({ name: '', duties: '', boundaries: '', model: '', thinkingLevel: '' });
 	let botErrors = $state<CreateBotFieldErrors>({});
 	let botFailed = $state(false);
 	let groupName = $state('');
 	let groupMembers = $state<string[]>([]);
 	let groupErrors = $state<CreateGroupFieldErrors>({});
 	let groupFailed = $state(false);
-	let profileDraft = $state<ProfileFields>({ name: '', duties: '', boundaries: '', model: '' });
-	let profileBaseline = $state<ProfileFields>({ name: '', duties: '', boundaries: '', model: '' });
+	let profileDraft = $state<ProfileFields>({
+		name: '',
+		duties: '',
+		boundaries: '',
+		model: '',
+		thinkingLevel: ''
+	});
+	let profileBaseline = $state<ProfileFields>({
+		name: '',
+		duties: '',
+		boundaries: '',
+		model: '',
+		thinkingLevel: ''
+	});
 	let profileErrors = $state<CreateBotFieldErrors>({});
 	let profileFailed = $state(false);
+	let profileSaving = $state(false);
+	/** Bumps after each successful autosave so the panel can say so; reset when a profile opens. */
+	let profileSavedTick = $state(0);
+	let profileSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	/** The Bot the current draft belongs to; a save resolving after a switch must not touch the new draft. */
+	let profileSaveBotId: string | null = null;
+	let profileSaveQueued = false;
 	let confirmDelete = $state(false);
 	let confirmDeleteGroup = $state(false);
 	let confirmClearHistory = $state(false);
@@ -548,7 +574,9 @@
 					? 'history'
 					: confirmDeleteSkill
 						? 'skill'
-						: null
+						: confirmDeleteProvider
+							? 'provider'
+							: null
 	);
 	const dangerConfirmCopy = $derived(
 		dangerConfirmKind === 'bot'
@@ -579,7 +607,14 @@
 								confirm: t.sidebar.skillConfirmDelete,
 								cancel: t.sidebar.skillCancel
 							}
-						: null
+						: dangerConfirmKind === 'provider'
+							? {
+									title: t.settings.providerDelete,
+									body: t.settings.providerDeleteBody,
+									confirm: t.settings.providerConfirmDelete,
+									cancel: t.settings.providerCancel
+								}
+							: null
 	);
 	let detailName = $state('');
 	let detailNameError = $state<'empty' | undefined>();
@@ -779,6 +814,7 @@
 
 	$effect(() => {
 		if (!runtime.sessionSettingsOpen || !runtime.profileBotId) {
+			untrack(() => flushProfileSave());
 			if (skillEditor) closeSkillEditor();
 			return;
 		}
@@ -792,7 +828,8 @@
 			duties: bot.duties,
 			boundaries: bot.boundaries,
 			avatar: bot.avatar ?? '',
-			model: botModelValue(bot)
+			model: botModelValue(bot),
+			thinkingLevel: bot.thinking_level ?? ''
 		};
 		const next = reconcileProfileDraft(profileDraft, profileBaseline, incoming);
 		if (profileDraftDirty(profileDraft, next.draft)) profileDraft = next.draft;
@@ -843,8 +880,9 @@
 	});
 
 	$effect(() => {
-		if (!runtime.settingsOpen && providerEditor !== 'closed') {
-			closeProviderEditor();
+		if (!runtime.settingsOpen) {
+			if (providerEditor !== 'closed') closeProviderEditor();
+			confirmDeleteProvider = null;
 			return;
 		}
 		if (
@@ -853,6 +891,9 @@
 			!snapshot.providers.some((row) => row.id === providerEditor)
 		) {
 			closeProviderEditor();
+		}
+		if (confirmDeleteProvider && !snapshot.providers.some((row) => row.id === confirmDeleteProvider)) {
+			confirmDeleteProvider = null;
 		}
 	});
 
@@ -1111,7 +1152,6 @@
 		providerErrors = nextErrors;
 		providerFailed = { ...providerFailed, [id]: false };
 		providerFetchError = { ...providerFetchError, [id]: null };
-		confirmDeleteProvider = null;
 		providerEditor = id;
 	}
 
@@ -1134,12 +1174,12 @@
 			delete nextFetch[id];
 			providerFetchError = nextFetch;
 		}
-		confirmDeleteProvider = null;
 		providerEditor = 'closed';
 	}
 
 	function closeSettings(): void {
 		closeProviderEditor();
+		confirmDeleteProvider = null;
 		runtime.settingsOpen = false;
 	}
 
@@ -1227,14 +1267,21 @@
 		if (error) saveFailed = true;
 	}
 
+	function openDeleteProviderConfirm(id: string): void {
+		confirmDelete = false;
+		confirmDeleteGroup = false;
+		confirmClearHistory = false;
+		confirmDeleteSkill = null;
+		confirmDeleteProvider = id;
+	}
+
 	async function deleteProvider(id: string): Promise<void> {
-		if (confirmDeleteProvider !== id) {
-			confirmDeleteProvider = id;
-			return;
-		}
+		if (confirmDeleteProvider !== id) return;
+		saveFailed = false;
 		const error = await runtime.deleteProvider(id);
 		if (error) {
-			providerFailed = { ...providerFailed, [id]: true };
+			saveFailed = true;
+			confirmDeleteProvider = null;
 			return;
 		}
 		confirmDeleteProvider = null;
@@ -1732,7 +1779,7 @@
 
 
 	function emptyBot(): CreateBotDraft {
-		return { name: '', duties: '', boundaries: '', avatar: '', model: '' };
+		return { name: '', duties: '', boundaries: '', avatar: '', model: '', thinkingLevel: '' };
 	}
 
 	function botModelValue(bot: Bot): string {
@@ -1748,17 +1795,20 @@
 			duties: bot.duties,
 			boundaries: bot.boundaries,
 			avatar: bot.avatar ?? '',
-			model: botModelValue(bot)
+			model: botModelValue(bot),
+			thinkingLevel: bot.thinking_level ?? ''
 		};
 	}
 
 	function openProfile(botId: string): void {
 		const bot = botsById.get(botId);
 		if (!bot) return;
+		flushProfileSave();
 		profileDraft = emptyProfile(bot);
 		profileBaseline = emptyProfile(bot);
 		profileErrors = {};
 		profileFailed = false;
+		profileSavedTick = 0;
 		confirmDelete = false;
 		closeSkillEditor();
 		runtime.openProfile(botId);
@@ -1837,6 +1887,7 @@
 		confirmDelete = false;
 		confirmDeleteGroup = false;
 		confirmClearHistory = false;
+		confirmDeleteProvider = null;
 		confirmDeleteSkill = id;
 	}
 
@@ -1865,6 +1916,7 @@
 	}
 
 	function closeNestedProfile(): void {
+		flushProfileSave();
 		runtime.profileBotId = null;
 		confirmDelete = false;
 		profileErrors = {};
@@ -1872,36 +1924,103 @@
 		closeSkillEditor();
 	}
 
+	const profileThinkingOptions = $derived(
+		pinnableThinkingLevels(profileDraft.model, snapshot.providers)
+	);
+	const botThinkingOptions = $derived(pinnableThinkingLevels(botDraft.model, snapshot.providers));
+
 	function onProfileInput(): void {
 		profileErrors = {};
 		profileFailed = false;
+		scheduleProfileSave();
+	}
+
+	/** Picks (model, thinking level, avatar) are deliberate, so they save almost at once. */
+	function onProfilePick(): void {
+		profileErrors = {};
+		profileFailed = false;
+		scheduleProfileSave(120);
+	}
+
+	function onProfileModelChange(value: string): void {
+		const pinnable = pinnableThinkingLevels(value, snapshot.providers) as readonly string[];
+		if (profileDraft.thinkingLevel && !pinnable.includes(profileDraft.thinkingLevel)) {
+			profileDraft.thinkingLevel = '';
+		}
+		onProfilePick();
+	}
+
+	function pickProfileThinking(level: string): void {
+		if (profileDraft.thinkingLevel === level) return;
+		profileDraft.thinkingLevel = level;
+		onProfilePick();
+	}
+
+	function onBotModelChange(value: string): void {
+		const pinnable = pinnableThinkingLevels(value, snapshot.providers) as readonly string[];
+		if (botDraft.thinkingLevel && !pinnable.includes(botDraft.thinkingLevel)) {
+			botDraft.thinkingLevel = '';
+		}
+		onBotInput();
+	}
+
+	function pickBotThinking(level: string): void {
+		botDraft.thinkingLevel = level;
+		onBotInput();
+	}
+
+	function scheduleProfileSave(delay = 600): void {
+		if (!runtime.profileBotId) return;
+		profileSaveBotId = runtime.profileBotId;
+		if (profileSaveTimer) clearTimeout(profileSaveTimer);
+		profileSaveTimer = setTimeout(() => {
+			profileSaveTimer = null;
+			void saveProfile();
+		}, delay);
+	}
+
+	/** Sends a pending autosave now: on close, on switching Bots, or when the panel goes away. */
+	function flushProfileSave(): void {
+		if (!profileSaveTimer) return;
+		clearTimeout(profileSaveTimer);
+		profileSaveTimer = null;
+		void saveProfile();
 	}
 
 	async function saveProfile(): Promise<void> {
-		if (!runtime.profileBotId) return;
+		const botId = profileSaveBotId;
+		if (!botId) return;
+		if (profileSaving) {
+			profileSaveQueued = true;
+			return;
+		}
+		const sent: ProfileFields = { ...profileDraft };
+		if (!profileNeedsSave(sent, profileBaseline)) return;
+		const plan = planCreateBot(sent, availableModels);
+		if (!plan.ok) {
+			if (profileSaveBotId === botId) profileErrors = plan.errors;
+			return;
+		}
+		profileSaving = true;
 		profileFailed = false;
 		profileErrors = {};
-		const plan = planCreateBot(profileDraft, availableModels);
-		if (!plan.ok) {
-			profileErrors = plan.errors;
-			return;
-		}
-		const error = await runtime.patchBot(runtime.profileBotId, plan.body);
+		const error = await runtime.patchBot(botId, plan.body);
+		profileSaving = false;
+		const stillHere = profileSaveBotId === botId && runtime.profileBotId === botId;
 		if (!error) {
-			const saved = {
-				name: plan.body.name,
-				duties: plan.body.duties,
-				boundaries: plan.body.boundaries,
-				avatar: plan.body.avatar ?? '',
-				model: plan.body.model ?? '',
-			};
-			profileDraft = saved;
-			profileBaseline = saved;
-			return;
+			if (stillHere) {
+				profileBaseline = sent;
+				profileSavedTick += 1;
+			}
+		} else if (stillHere) {
+			const mapped = mapCreateBotError(error.status, error.message);
+			if ('top' in mapped) profileFailed = true;
+			else profileErrors = mapped;
 		}
-		const mapped = mapCreateBotError(error.status, error.message);
-		if ('top' in mapped) profileFailed = true;
-		else profileErrors = mapped;
+		if (profileSaveQueued) {
+			profileSaveQueued = false;
+			void saveProfile();
+		}
 	}
 
 	async function archiveProfile(): Promise<void> {
@@ -1924,24 +2043,31 @@
 			confirmDeleteGroup = false;
 			confirmClearHistory = false;
 			confirmDeleteSkill = null;
+			confirmDeleteProvider = null;
 		});
 	}
 
 	function openDeleteBotConfirm(): void {
 		confirmDeleteGroup = false;
 		confirmClearHistory = false;
+		confirmDeleteSkill = null;
+		confirmDeleteProvider = null;
 		confirmDelete = true;
 	}
 
 	function openDeleteGroupConfirm(): void {
 		confirmDelete = false;
 		confirmClearHistory = false;
+		confirmDeleteSkill = null;
+		confirmDeleteProvider = null;
 		confirmDeleteGroup = true;
 	}
 
 	function openClearHistoryConfirm(): void {
 		confirmDelete = false;
 		confirmDeleteGroup = false;
+		confirmDeleteSkill = null;
+		confirmDeleteProvider = null;
 		confirmClearHistory = true;
 	}
 
@@ -2031,7 +2157,13 @@
 			await clearGroupHistory();
 			return;
 		}
-		if (dangerConfirmKind === 'skill') await deleteSkillRow();
+		if (dangerConfirmKind === 'skill') {
+			await deleteSkillRow();
+			return;
+		}
+		if (dangerConfirmKind === 'provider' && confirmDeleteProvider) {
+			await deleteProvider(confirmDeleteProvider);
+		}
 	}
 
 	function openCreateBot(): void {
@@ -2110,7 +2242,7 @@
 		if (e.key === 'Escape') {
 			if (themeMenuOpen) {
 				themeMenuOpen = false;
-			} else if (confirmClearHistory || confirmDelete || confirmDeleteGroup) {
+			} else if (confirmClearHistory || confirmDelete || confirmDeleteGroup || confirmDeleteProvider) {
 				dismissDangerConfirm();
 			} else if (runtime.createBotOpen) {
 				runtime.createBotOpen = false;
@@ -3721,13 +3853,24 @@
 								<span class="panel-card-title">{t.sidebar.botAvatar}</span>
 							</div>
 							<div class="panel-card-body">
-								<AvatarEditor bind:avatar={profileDraft.avatar} name={profileDraft.name} {t} onchange={onProfileInput} />
+								<AvatarEditor bind:avatar={profileDraft.avatar} name={profileDraft.name} {t} onchange={onProfilePick} />
 							</div>
 						</div>
 
 						<div class="panel-card">
 							<div class="panel-card-head">
 								<span class="panel-card-title">{t.top.profile}</span>
+								<span class="profile-save-state" class:is-error={profileFailed} aria-live="polite">
+									{#if profileSaving}
+										{t.sidebar.autoSaving}
+									{:else if profileFailed}
+										{t.sidebar.saveFailed}
+									{:else if profileSavedTick > 0}
+										{t.sidebar.autoSaved}
+									{:else}
+										{t.sidebar.autoSaveHint}
+									{/if}
+								</span>
 							</div>
 							<div class="panel-card-body">
 								<div class="form-group">
@@ -3781,10 +3924,38 @@
 										emptyLabel={t.sidebar.botModelDefault}
 										options={availableModelOptions}
 										error={!!profileErrors.model}
-										onchange={onProfileInput}
+										onchange={onProfileModelChange}
 									/>
 									{#if profileErrors.model}
 										<p class="field-error">{t.sidebar.botModelInvalid}</p>
+									{/if}
+								</div>
+								<div class="form-group">
+									<span class="field-label" id="profile-thinking-label">{t.sidebar.botThinking}</span>
+									<div class="thinking-picker" role="radiogroup" aria-labelledby="profile-thinking-label">
+										<button
+											id="profile-thinking-auto"
+											type="button"
+											class="btn-chip level-chip"
+											class:active={profileDraft.thinkingLevel === ''}
+											role="radio"
+											aria-checked={profileDraft.thinkingLevel === ''}
+											onclick={() => pickProfileThinking('')}
+										>{t.sidebar.botThinkingAuto}</button>
+										{#each profileThinkingOptions as level (level)}
+											<button
+												type="button"
+												class="btn-chip level-chip"
+												class:active={profileDraft.thinkingLevel === level}
+												role="radio"
+												aria-checked={profileDraft.thinkingLevel === level}
+												onclick={() => pickProfileThinking(level)}
+											>{t.sidebar.thinkingLevels[level]}</button>
+										{/each}
+									</div>
+									<p class="muted field-hint">{t.sidebar.botThinkingHint}</p>
+									{#if profileErrors.thinkingLevel}
+										<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
 									{/if}
 								</div>
 							</div>
@@ -3911,19 +4082,6 @@
 									</button>
 								{/if}
 							</div>
-						</div>
-
-						<div class="panel-actions-bar">
-							<button type="button" class="btn-primary" onclick={() => void saveProfile()}>
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-								<span>{t.sidebar.create}</span>
-							</button>
-							<button
-								type="button"
-								class="btn-secondary"
-								onclick={() =>
-									nestedProfile ? closeNestedProfile() : runtime.closeSessionSettings()}
-							>{t.common.close}</button>
 						</div>
 
 						<div class="panel-card danger-zone-card">
@@ -4248,10 +4406,10 @@
 			aria-modal="true"
 			tabindex="-1"
 			onclick={(e) => {
-				if (e.target === e.currentTarget && providerEditor === 'closed') closeSettings();
+				if (e.target === e.currentTarget && providerEditor === 'closed' && !confirmDeleteProvider) closeSettings();
 			}}
 			onkeydown={(e) => {
-				if (e.key === 'Escape' && providerEditor === 'closed') closeSettings();
+				if (e.key === 'Escape' && providerEditor === 'closed' && !confirmDeleteProvider) closeSettings();
 			}}
 		>
 			<div class="modal-dialog settings-modal">
@@ -4533,6 +4691,14 @@
 											<span class="key-status-badge" class:is-set={provider.key_set}>
 												{provider.key_set ? t.settings.keySet : t.settings.keyUnset}
 											</span>
+											<button
+												type="button"
+												class="btn-text-action provider-card-delete"
+												aria-label={`${t.settings.providerDelete}: ${provider.name}`}
+												onclick={() => openDeleteProviderConfirm(provider.id)}
+											>
+												{t.settings.providerDelete}
+											</button>
 										</div>
 									</div>
 								{/each}
@@ -4610,17 +4776,7 @@
 						<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
 					{:else}
 						<button type="button" onclick={() => void saveProvider(providerEditor)}>{t.settings.providerSave}</button>
-						{#if confirmDeleteProvider === providerEditor}
-							<button type="button" class="deny" onclick={() => void deleteProvider(providerEditor)}>
-								{t.settings.providerDelete}
-							</button>
-							<button type="button" onclick={() => (confirmDeleteProvider = null)}>{t.common.close}</button>
-						{:else}
-							<button type="button" class="deny" onclick={() => void deleteProvider(providerEditor)}>
-								{t.settings.providerDelete}
-							</button>
-							<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
-						{/if}
+						<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
 					{/if}
 				</div>
 			</div>
@@ -4692,10 +4848,38 @@
 							emptyLabel={t.sidebar.botModelDefault}
 							options={availableModelOptions}
 							error={!!botErrors.model}
-							onchange={onBotInput}
+							onchange={onBotModelChange}
 						/>
 						{#if botErrors.model}
 							<p class="field-error">{t.sidebar.botModelInvalid}</p>
+						{/if}
+					</div>
+					<div class="modal-section">
+						<span class="field-label" id="bot-thinking-label">{t.sidebar.botThinking}</span>
+						<div class="thinking-picker" role="radiogroup" aria-labelledby="bot-thinking-label">
+							<button
+								id="bot-thinking-auto"
+								type="button"
+								class="btn-chip level-chip"
+								class:active={botDraft.thinkingLevel === ''}
+								role="radio"
+								aria-checked={botDraft.thinkingLevel === ''}
+								onclick={() => pickBotThinking('')}
+							>{t.sidebar.botThinkingAuto}</button>
+							{#each botThinkingOptions as level (level)}
+								<button
+									type="button"
+									class="btn-chip level-chip"
+									class:active={botDraft.thinkingLevel === level}
+									role="radio"
+									aria-checked={botDraft.thinkingLevel === level}
+									onclick={() => pickBotThinking(level)}
+								>{t.sidebar.thinkingLevels[level]}</button>
+							{/each}
+						</div>
+						<p class="muted field-hint">{t.sidebar.botThinkingHint}</p>
+						{#if botErrors.thinkingLevel}
+							<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
 						{/if}
 					</div>
 				</div>

@@ -31,6 +31,7 @@ Real Bot 当前是 **WIP**，只面向 macOS 本地开发与试用，没有稳�
 - 工作区内文件操作可直接执行；区外文件访问、无约束 shell、新端点 / 端点 URL 变更、新 MCP / 连接变更等动作按应用规则请求批准。
 - **信任 MCP 是安装 / 配置时的决定。** 已配置、启用且连接成功的工具对所有 Bot 可用，调用不再逐次批准。只安装可信程序和服务，使用最小权限的凭据。
 - 模型输出、工具结果和外部内容可能包含错误或提示注入；检查结果和危险动作仍然重要。
+- **HTML 预览会跑脚本。** 工作区单文件 HTML 在侧栏 iframe 里以 `allow-scripts`、无 `allow-same-origin` 执行，便于设计稿动效；脚本不能读信使页面或本机 token，外链仍受窗口 CSP 限制。不要把不可信 HTML 当隔离执行环境。
 - 拒绝和 Stop 应被尊重，但不能撤销已经发生的文件修改、外部请求或费用。本项目没有自动预算熔断保证。
 
 ## 数据与凭据位置
@@ -58,6 +59,6 @@ SQLite、附件与工具结果没有应用层加密承诺；依赖本机账户�
 
 Real Bot is WIP for local macOS experimentation, with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
 
-Local execution does not mean offline or sandboxed execution. Remote model and MCP requests may transmit data, local MCP processes may access the network, all Bots share tools and files, and configured MCP calls are not individually approved. The workspace shell is not an OS sandbox. Stop and approval cannot undo completed effects or costs.
+Local execution does not mean offline or sandboxed execution. Remote model and MCP requests may transmit data, local MCP processes may access the network, all Bots share tools and files, and configured MCP calls are not individually approved. The workspace shell is not an OS sandbox. Single-file HTML preview runs scripts in an opaque-origin iframe (`allow-scripts`, no `allow-same-origin`) and is not an isolated execution environment. Stop and approval cannot undo completed effects or costs.
 
 State and local tokens live in the application support directory, provider and HTTP MCP credentials use macOS Keychain, and attachments and full tool results live in the selected workspace. There is no application-level encryption guarantee for these data files. `REAL_BOT_DATA_DIR` does not isolate Keychain credentials or change the API port. Keep development services local, redact diagnostics, and rotate any exposed credentials immediately.

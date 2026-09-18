@@ -2895,6 +2895,82 @@ describe("per-message model and thinking-level routing", () => {
     sub.close();
   });
 
+  test("a bot thinking-level pin overrides the app's choice when the resolved model supports it", async () => {
+    const seen: Array<{ model: string; reasoning_effort: string }> = [];
+    const fixture = await startFixture(({ body }) => {
+      seen.push({
+        model: String(body.model),
+        reasoning_effort: String(body.reasoning_effort),
+      });
+      return sse(textChunks("ok"));
+    });
+    const h = await startApi();
+    mkdirSync("/tmp/real-bot-ws", { recursive: true });
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h),
+      body: JSON.stringify({
+        workspace_path: "/tmp/real-bot-ws",
+        endpoint_base_url: fixture.origin,
+        endpoint_api_key: "sk-test",
+        endpoint_models: [
+          {
+            name: "cheap-chat",
+            price: 1,
+            thinking_levels: ["none", "low"],
+            strengths: ["chat"],
+          },
+          {
+            name: "code-pro",
+            price: 12,
+            thinking_levels: ["medium", "high"],
+            strengths: ["code"],
+          },
+        ],
+        endpoint_default_model: "code-pro",
+      }),
+    });
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({
+        name: "Writer",
+        duties: "write",
+        boundaries: "stay",
+        model: "code-pro",
+        thinking_level: "high",
+      }),
+    });
+    const body = (await created.json()) as { bot: { id: string }; direct_session: { id: string } };
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "please implement a TypeScript function that parses the AST" }),
+    });
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    expect(seen[0]).toEqual({ model: "code-pro", reasoning_effort: "high" });
+
+    // Unpin the model but keep a level the routed model cannot honour: the app picks again.
+    await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
+      method: "PATCH",
+      headers: auth(h),
+      body: JSON.stringify({ model: null, thinking_level: "none" }),
+    });
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "please implement a TypeScript function that parses the AST" }),
+    });
+    await waitFor(sub.events, () => seen.length >= 2);
+    await waitFor(
+      sub.events,
+      () => sub.events.filter((e) => e.event === "turn.upsert" && e.status === "completed").length >= 2,
+    );
+    expect(seen[1]).toEqual({ model: "code-pro", reasoning_effort: "medium" });
+    sub.close();
+  });
+
   test("a follow-up critique of the prior turn updates the later comparable decision", async () => {
     const seen: Array<{ model: string; reasoning_effort: string }> = [];
     const fixture = await startFixture(({ body }) => {

@@ -99,6 +99,58 @@ const TEXT = new Set([
 
 export const ARTIFACT_HREF_SCHEME = "artifact:";
 
+/**
+ * HTML preview iframe flags. `allow-scripts` is required for JS/CSS-driven
+ * motion in single-file design HTML. Omit `allow-same-origin` so the frame
+ * stays an opaque origin and cannot read the messenger page or local token.
+ */
+export const HTML_PREVIEW_SANDBOX = "allow-scripts allow-modals";
+
+export function htmlPreviewBlob(source: string): Blob {
+  return new Blob([source], { type: "text/html;charset=utf-8" });
+}
+
+/** Tell the preview document which scheme the messenger is using. */
+export function injectHtmlPreviewColorScheme(source: string, scheme: "light" | "dark"): string {
+  if (scheme !== "light" && scheme !== "dark") return source;
+  const meta = `<meta name="color-scheme" content="${scheme}">`;
+  let out = source;
+  if (/<meta\s[^>]*name=["']color-scheme["'][^>]*>/i.test(out)) {
+    out = out.replace(/<meta\s[^>]*name=["']color-scheme["'][^>]*>/i, meta);
+  } else if (/<head[\s>]/i.test(out)) {
+    out = out.replace(/<head([^>]*)>/i, `<head$1>${meta}`);
+  } else if (/<html[\s>]/i.test(out)) {
+    out = out.replace(/<html([^>]*)>/i, `<html$1><head>${meta}</head>`);
+  } else {
+    out = `<!DOCTYPE html><html><head>${meta}</head><body>${out}</body></html>`;
+  }
+  return out;
+}
+
+/** Nonce from the messenger document, if Tauri injected one into CSP. */
+export function pageCspNonce(doc: Document | null | undefined = typeof document === "undefined" ? null : document): string | null {
+  if (!doc) return null;
+  for (const el of doc.querySelectorAll("script, style")) {
+    const nonce = (el as HTMLElement).nonce || el.getAttribute("nonce");
+    if (nonce) return nonce;
+  }
+  return null;
+}
+
+/**
+ * Blob documents inherit the parent CSP. Tauri puts a nonce on script-src /
+ * style-src, which disables `'unsafe-inline'`, so preview HTML must carry
+ * the same nonce on its own script and style tags.
+ */
+export function injectHtmlPreviewNonce(source: string, nonce: string | null | undefined): string {
+  const token = nonce?.trim();
+  if (!token || /["'<>]/.test(token)) return source;
+  const attr = ` nonce="${token}"`;
+  return source
+    .replace(/<script\b(?![^>]*\bnonce\s*=)/gi, `<script${attr}`)
+    .replace(/<style\b(?![^>]*\bnonce\s*=)/gi, `<style${attr}`);
+}
+
 export function extensionOf(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? name;
   const dot = base.lastIndexOf(".");

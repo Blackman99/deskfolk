@@ -8,6 +8,8 @@ import {
   type HealthResponse,
   type PatchProviderRequest,
   type Routine,
+  type CreateBotRequest,
+  type PatchBotRequest,
   type RuntimeResponse,
   type WsAuthMessage,
 } from "@real-bot/protocol";
@@ -385,14 +387,7 @@ async function dispatch(
   }
 
   if (method === "POST" && path === "/v1/bots") {
-    const body = (await readJson(request)) as {
-      name: string;
-      duties: string;
-      boundaries: string;
-      avatar?: string | null;
-      model?: string | null;
-      provider_id?: string | null;
-    };
+    const body = (await readJson(request)) as CreateBotRequest;
     const created = store.createBot(body);
     const at = occurred();
     publish({ event: "bot.upsert", occurred_at: at, ...created.bot, deleted_at: null });
@@ -425,14 +420,7 @@ async function dispatch(
     return jsonResponse(store.getBot(params.id!), 200, null);
   }
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as {
-      name?: string;
-      duties?: string;
-      boundaries?: string;
-      avatar?: string | null;
-      model?: string | null;
-      provider_id?: string | null;
-    };
+    const body = (await readJson(request)) as PatchBotRequest;
     const bot = store.patchBot(params.id!, body);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
     return jsonResponse(bot, 200, null);

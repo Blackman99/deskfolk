@@ -23,6 +23,7 @@ import type {
   SettingsPatch,
   Skill,
   Spend,
+  ThinkingLevel,
   Turn,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
@@ -108,6 +109,7 @@ export class LocalApi {
       avatar?: string | null;
       model?: string | null;
       provider_id?: string | null;
+      thinking_level?: ThinkingLevel | null;
     },
   ): Promise<Bot> {
     return this.patch<Bot>(`/v1/bots/${id}`, body);

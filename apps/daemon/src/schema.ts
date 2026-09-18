@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS bots (
   avatar TEXT,
   model TEXT,
   provider_id TEXT,
+  thinking_level TEXT,
   archived_at TEXT,
   deleted_at TEXT,
   created_at TEXT NOT NULL,

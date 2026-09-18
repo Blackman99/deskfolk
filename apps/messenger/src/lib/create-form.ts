@@ -1,4 +1,9 @@
-import type { CreateBotRequest, CreateGroupRequest } from "@real-bot/protocol";
+import {
+  THINKING_LEVELS,
+  type CreateBotRequest,
+  type CreateGroupRequest,
+  type ThinkingLevel,
+} from "@real-bot/protocol";
 import { modelSelectValue, parseModelSelectValue } from "./provider-form.ts";
 
 export type CreateBotDraft = {
@@ -7,6 +12,8 @@ export type CreateBotDraft = {
   boundaries: string;
   avatar?: string | null;
   model: string;
+  /** Pinned thinking level; `''` lets the app pick. Omit to leave the field out of the request. */
+  thinkingLevel?: string;
 };
 
 export type CreateBotFieldErrors = {
@@ -14,6 +21,7 @@ export type CreateBotFieldErrors = {
   duties?: "empty";
   boundaries?: "empty";
   model?: "empty" | "invalid";
+  thinkingLevel?: "invalid";
 };
 
 export type CreateBotPlan =
@@ -44,6 +52,7 @@ export function planCreateBot(
   const avatar = draft.avatar?.trim();
   const rawModel = draft.model.trim();
   const parsed = parseModelSelectValue(rawModel);
+  const rawThinking = draft.thinkingLevel === undefined ? undefined : draft.thinkingLevel.trim();
   const errors: CreateBotFieldErrors = {};
   if (name.length === 0) errors.name = "empty";
   if (duties.length === 0) errors.duties = "empty";
@@ -56,7 +65,10 @@ export function planCreateBot(
       errors.model = "invalid";
     }
   }
-  if (errors.name || errors.duties || errors.boundaries || errors.model) {
+  if (rawThinking !== undefined && rawThinking.length > 0 && !isThinkingLevel(rawThinking)) {
+    errors.thinkingLevel = "invalid";
+  }
+  if (errors.name || errors.duties || errors.boundaries || errors.model || errors.thinkingLevel) {
     return { ok: false, errors };
   }
   const body: CreateBotRequest = {
@@ -66,6 +78,9 @@ export function planCreateBot(
     model: parsed.model.length > 0 ? parsed.model : null,
     provider_id: parsed.provider_id,
   };
+  if (rawThinking !== undefined) {
+    body.thinking_level = rawThinking.length > 0 && isThinkingLevel(rawThinking) ? rawThinking : null;
+  }
   if (avatar && avatar.length > 0) {
     body.avatar = avatar;
   }
@@ -97,7 +112,38 @@ export function mapCreateBotError(
   ) {
     return { model: "invalid" };
   }
+  if (message.startsWith("thinking_level")) return { thinkingLevel: "invalid" };
   return { top: true };
+}
+
+/** Thinking levels a Bot may pin for the picked model: the catalog's list, or every level when nothing is pinned. */
+export function pinnableThinkingLevels(
+  modelValue: string,
+  providers: readonly {
+    id: string;
+    model_catalog: readonly { name: string; thinking_levels: readonly ThinkingLevel[] }[];
+  }[],
+): ThinkingLevel[] {
+  const parsed = parseModelSelectValue(modelValue);
+  if (parsed.model.length === 0) return [...THINKING_LEVELS];
+  const scoped = parsed.provider_id
+    ? providers.filter((provider) => provider.id === parsed.provider_id)
+    : providers;
+  const entries = scoped
+    .flatMap((provider) => provider.model_catalog)
+    .filter((entry) => entry.name === parsed.model);
+  if (entries.length === 0) return [...THINKING_LEVELS];
+  const union = new Set<ThinkingLevel>();
+  for (const entry of entries) {
+    for (const level of entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS) {
+      union.add(level);
+    }
+  }
+  return THINKING_LEVELS.filter((level) => union.has(level));
+}
+
+function isThinkingLevel(value: string): value is ThinkingLevel {
+  return (THINKING_LEVELS as readonly string[]).includes(value);
 }
 
 export function mapCreateGroupError(

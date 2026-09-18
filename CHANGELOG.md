@@ -4,7 +4,21 @@
 
 ## Unreleased
 
-（尚无）
+### Daemon
+
+- Bot 可以钉思考等级。`bots.thinking_level`（none / low / medium / high，即补全的 `reasoning_effort`）随 `POST /v1/bots`、`PATCH /v1/bots/:id` 和 `bot.upsert` 一起走；`null` 仍由应用按每条消息挑。开轮时所选模型支持这一档就用它，不支持则照旧由应用选。钉了模型时该档必须在该模型名单的 `thinking_levels` 里，否则 `422 thinking_level must be one the pinned model supports`；只换模型而新模型不支持原来那档会自动清掉。`update_profile` / `create_bot` 多一个 `thinking_level`（null 或空字符串清掉），`list_bots` 一并返回；系统指令写明用它改自己的思考等级。
+
+### Messenger
+
+- 设置「模型服务」里删除端点改到卡片上，点了弹出确认，不再放在编辑浮层里。
+- 产物预览里点「源码」会切到 Monaco 编辑器，不再被空 iframe 挡住；切文件才退出源码，会话刷新不会把正在看的源码打回预览。Monaco 还没起来时先显示纯文本。HTML 源码按 Shiki 着色（含内嵌 CSS / JS）：开发态不再把巨大的 HTML 语法打进过期的 Vite 预构建块，Monaco 也会先注册 `html` 再挂分词器。源码着色用 `vitesse-light` / `vitesse-dark`，跟随应用明暗；聊天围栏仍是 github 主题。HTML 预览会写入 `color-scheme`，随外观切换。
+- 单文件 HTML 预览 iframe 允许脚本（`allow-scripts`，不含 `allow-same-origin`），CSS 动画和内联 JS 动效能在侧栏播；外链脚本仍受窗口 CSP 限制，和在 Chrome 里打开不是同一套网络权限。
+- Bot 面板不再有「保存」「关闭」按钮：所有改动自动保存。名字 / 职责 / 边界停手约 0.6 秒后 PATCH，头像 / 模型 / 思考等级点了就存；切换 Bot、返回群设置或关面板前先把未保存的发出去。人设卡片头显示「保存中… / 已自动保存」，字段错误仍画在字段下。Bot 自己改人设推来的 `bot.upsert` 只在你没有未保存改动时刷新，自动保存回显的修剪空白不会吞掉你正在输入的尾部空格。
+- Bot 面板和新建 Bot 滑出多一排「思考等级」快捷档位：「自动」加上所选模型支持的档；换成不支持当前档的模型会自动退回「自动」。
+
+### Desktop
+
+- 窗口 CSP 允许 HTML 预览 iframe 跑内联脚本和样式（`script-src` / `style-src` 的 `'unsafe-inline'`，以及 `script-src-attr`），外链和本机接口范围不变。
 
 ## 0.1.0-rc.1 — 2026-09-18
 

@@ -14,6 +14,7 @@ import {
   type SessionDetail,
   type SettingsPatch,
   type Skill,
+  type ThinkingLevel,
   type CreateSkillRequest,
   type PatchSkillRequest,
   type Turn,
@@ -300,6 +301,7 @@ export class MessengerRuntime {
       avatar?: string | null;
       model?: string | null;
       provider_id?: string | null;
+      thinking_level?: ThinkingLevel | null;
     },
   ): Promise<ApiError | null> {
     if (!this.api) return null;

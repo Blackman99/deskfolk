@@ -32,4 +32,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  optimizeDeps: {
+    // Huge TextMate JSON grammars 504 as stale Vite dep chunks (`shiki_langs_html__mjs.js`).
+    exclude: ["shiki", "@shikijs/langs", "@shikijs/themes", "@shikijs/monaco"],
+  },
 });

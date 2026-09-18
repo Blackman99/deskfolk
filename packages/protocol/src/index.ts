@@ -196,6 +196,11 @@ export type Bot = {
   avatar: string | null;
   model: string | null;
   provider_id: string | null;
+  /**
+   * Pinned thinking level. `null` lets the app pick per message. A pinned level applies whenever the
+   * resolved model supports it; otherwise the app picks as if unpinned.
+   */
+  thinking_level: ThinkingLevel | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -220,6 +225,7 @@ export type CreateBotRequest = {
   avatar?: string | null;
   model?: string | null;
   provider_id?: string | null;
+  thinking_level?: ThinkingLevel | null;
 };
 
 export type PatchBotRequest = {
@@ -229,6 +235,7 @@ export type PatchBotRequest = {
   avatar?: string | null;
   model?: string | null;
   provider_id?: string | null;
+  thinking_level?: ThinkingLevel | null;
 };
 
 export type CreateBotResponse = {

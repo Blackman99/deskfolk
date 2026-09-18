@@ -6,7 +6,12 @@
 		absWorkspacePath,
 		artifactByteSource,
 		artifactKind,
+		htmlPreviewBlob,
+		HTML_PREVIEW_SANDBOX,
+		injectHtmlPreviewColorScheme,
+		injectHtmlPreviewNonce,
 		isInAppPreviewKind,
+		pageCspNonce,
 		stripSvgActiveContent,
 		type ArtifactKind,
 	} from './artifacts.ts';
@@ -30,7 +35,8 @@
 		loadArtifactTreeWidth,
 		saveArtifactTreeWidth,
 	} from './artifact-tree-width.ts';
-	import { onDestroy } from 'svelte';
+	import { themeManager } from './theme.ts';
+	import { onDestroy, untrack } from 'svelte';
 
 	interface Props {
 		attachment: Attachment | null;
@@ -69,6 +75,8 @@
 	let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 	let liveBlob: string | null = null;
 	let liveHtml: string | null = null;
+	let loadGen = 0;
+	let lastSourcePath = $state('');
 	let editor = $state<{
 		getValue: () => string;
 		isDirty: () => boolean;
@@ -82,6 +90,7 @@
 	let treeWidth = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
 	let paneEl = $state<HTMLElement | null>(null);
+	let resolvedTheme = $state(themeManager.resolved);
 	let kind = $derived(
 		artifactKind(attachment?.original_filename ?? relpath, { isDir: attachment?.is_dir === true })
 	);
@@ -109,12 +118,24 @@
 	let canSave = $derived(Boolean(api && relpath && canShowSource && sourceMode && text !== null));
 
 	$effect(() => {
-		void loadPreview(relpath, kind, byteSource, attachment);
+		const path = relpath;
+		const previewKind = kind;
+		const source = byteSource;
+		void attachment?.id;
+		const att = untrack(() => attachment);
+		void loadPreview(path, previewKind, source, att);
 	});
 
 	$effect(() => {
-		void attachment?.id;
-		void relpath;
+		return themeManager.subscribe(() => {
+			resolvedTheme = themeManager.resolved;
+		});
+	});
+
+	$effect(() => {
+		const path = relpath;
+		if (path === lastSourcePath) return;
+		lastSourcePath = path;
 		showSource = false;
 	});
 
@@ -134,6 +155,24 @@
 	onDestroy(() => {
 		revoke();
 		if (copiedTimer) clearTimeout(copiedTimer);
+	});
+
+	function publishHtml(raw: string, scheme: "light" | "dark" = resolvedTheme): void {
+		const next = URL.createObjectURL(
+			htmlPreviewBlob(
+				injectHtmlPreviewNonce(injectHtmlPreviewColorScheme(raw, scheme), pageCspNonce()),
+			),
+		);
+		if (liveHtml) URL.revokeObjectURL(liveHtml);
+		liveHtml = next;
+		htmlSrc = next;
+	}
+
+	$effect(() => {
+		const scheme = resolvedTheme;
+		const raw = text;
+		if (kind !== 'html' || raw == null) return;
+		publishHtml(raw, scheme);
 	});
 
 	function revoke(): void {
@@ -170,37 +209,50 @@
 		source: ReturnType<typeof artifactByteSource>,
 		att: Attachment | null,
 	): Promise<void> {
-		revoke();
-		text = null;
+		const gen = ++loadGen;
 		missing = false;
 		openHint = false;
-		if (!source || !api || previewKind === 'directory') return;
-		if (!isInAppPreviewKind(previewKind)) return;
+		if (!source || !api || previewKind === 'directory' || !isInAppPreviewKind(previewKind)) {
+			if (gen !== loadGen) return;
+			revoke();
+			text = null;
+			return;
+		}
 		try {
 			const blob =
 				source === 'attachment' && att
 					? await api.getAttachmentBlob(att.id)
 					: await api.getWorkspaceFileBlob(path);
+			if (gen !== loadGen) return;
 			if (previewKind === 'text' || previewKind === 'markdown' || previewKind === 'svg') {
 				const raw = await blob.text();
+				if (gen !== loadGen) return;
 				if (previewKind === 'svg') {
 					const cleaned = stripSvgActiveContent(raw);
-					liveBlob = URL.createObjectURL(new Blob([cleaned], { type: 'image/svg+xml' }));
-					blobUrl = liveBlob;
+					const next = URL.createObjectURL(new Blob([cleaned], { type: 'image/svg+xml' }));
+					if (liveBlob) URL.revokeObjectURL(liveBlob);
+					liveBlob = next;
+					blobUrl = next;
+					text = null;
 				} else {
 					text = raw;
 				}
 				return;
 			}
 			if (previewKind === 'html') {
-				text = await blob.text();
-				liveHtml = URL.createObjectURL(new Blob([text], { type: blob.type || 'text/html' }));
-				htmlSrc = liveHtml;
+				const raw = await blob.text();
+				if (gen !== loadGen) return;
+				text = raw;
+				publishHtml(raw);
 				return;
 			}
-			liveBlob = URL.createObjectURL(blob);
-			blobUrl = liveBlob;
+			const next = URL.createObjectURL(blob);
+			if (liveBlob) URL.revokeObjectURL(liveBlob);
+			liveBlob = next;
+			blobUrl = next;
+			text = null;
 		} catch {
+			if (gen !== loadGen) return;
 			missing = true;
 		}
 	}
@@ -445,14 +497,16 @@
 				<p class="muted">{t.stream.workspacePickFile}</p>
 			{:else if kind === "directory"}
 				<p class="muted">{mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactDirectory}</p>
-			{:else if sourceMode && text !== null}
-				<ArtifactCodeEditor
-					bind:this={editor}
-					code={text}
-					path={relpath}
-					{wrap}
-					onDirty={(next) => (dirty = next)}
-				/>
+			{:else if sourceMode}
+				{#if text !== null}
+					<ArtifactCodeEditor
+						bind:this={editor}
+						code={text}
+						path={relpath}
+						{wrap}
+						onDirty={(next) => (dirty = next)}
+					/>
+				{/if}
 			{:else if kind === "image" || kind === "svg"}
 				{#if blobUrl}
 					<img src={blobUrl} alt={relpath} class="artifact-img" />
@@ -465,7 +519,14 @@
 			{:else if kind === "pdf" && blobUrl}
 				<iframe title={relpath} class="artifact-frame" src={blobUrl}></iframe>
 			{:else if kind === "html" && htmlSrc}
-				<iframe title={relpath} class="artifact-frame" src={htmlSrc} sandbox=""></iframe>
+				<iframe
+					title={relpath}
+					class="artifact-frame"
+					src={htmlSrc}
+					sandbox={HTML_PREVIEW_SANDBOX}
+					referrerpolicy="no-referrer"
+					style:color-scheme={resolvedTheme}
+				></iframe>
 			{:else if kind === "markdown" && text !== null}
 				<div class="artifact-md" use:markdownCode={codeLabels}>{@html renderMarkdown(text)}</div>
 			{:else}

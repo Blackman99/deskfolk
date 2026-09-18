@@ -4142,12 +4142,39 @@ button.attached-replying-chip:focus-visible {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
+}
+
+.artifact-cm-wrap {
+  min-height: 280px;
+  flex: 1;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .artifact-cm {
   min-height: 0;
   flex: 1;
   height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.artifact-cm-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: auto;
+  background: var(--pane);
+  pointer-events: none;
+}
+
+.artifact-cm-wrap:has(.monaco-editor) .artifact-cm-fallback {
+  display: none;
 }
 
 .artifact-cm .cm-editor {
@@ -5282,7 +5309,8 @@ button.attached-replying-chip:focus-visible {
   margin-bottom: 0;
 }
 
-.sheet.session-settings .form-group label {
+.sheet.session-settings .form-group label,
+.sheet.session-settings .form-group .field-label {
   display: block;
   font-size: 12px;
   font-weight: 600;
@@ -5503,54 +5531,37 @@ button.attached-replying-chip:focus-visible {
   color: var(--muted);
 }
 
-/* Actions in Panel */
-.panel-actions-bar {
+/* Profile panel: autosave state + thinking-level quick picker */
+.profile-save-state {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.profile-save-state.is-error {
+  color: var(--danger-text);
+}
+
+.thinking-picker {
   display: flex;
-  gap: 10px;
-}
-
-.panel-actions-bar .btn-primary {
-  flex: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  flex-wrap: wrap;
   gap: 6px;
-  background: var(--accent);
-  color: #ffffff;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
-  transition: all 0.15s ease;
 }
 
-.panel-actions-bar .btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+.thinking-picker .btn-chip {
+  text-transform: none;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: 6px;
 }
 
-.panel-actions-bar .btn-secondary {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--btn-secondary-bg);
-  color: var(--ink-secondary);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 9px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.panel-actions-bar .btn-secondary:hover {
-  background: var(--line-subtle);
-  border-color: var(--line-hover);
+.form-group .field-hint,
+.modal-section .field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .bot-management-actions {
@@ -6091,6 +6102,14 @@ button.attached-replying-chip:focus-visible {
   gap: 6px;
   padding: 8px 6px 8px 0;
   flex-shrink: 0;
+}
+
+.provider-card-delete {
+  color: var(--danger);
+}
+
+.provider-card-delete:hover {
+  color: var(--danger);
 }
 
 .provider-editor-backdrop {
@@ -6707,7 +6726,8 @@ button.attached-replying-chip:focus-visible {
 }
 
 .modal-section label,
-.modal-section .field-head {
+.modal-section .field-head,
+.modal-section .field-label {
   display: block;
   font-size: 12.5px;
   color: var(--ink-secondary);

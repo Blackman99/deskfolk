@@ -1,9 +1,11 @@
 import {
   BORING_AVATAR_VARIANTS,
+  THINKING_LEVELS,
   USER_MEMBER,
   generateBoringAvatar,
   type BoringAvatarVariant,
   type Bot,
+  type ThinkingLevel,
   type McpHeader,
   type McpServer,
   type McpTransport,
@@ -219,6 +221,8 @@ async function createBot(ctx: ToolCtx, args: Record<string, unknown>): Promise<T
       avatar: optionalString(args.avatar),
       model: pin.model,
       provider_id: pin.providerId,
+      thinking_level:
+        "thinking_level" in args ? nullableThinkingLevel(args.thinking_level) : undefined,
     },
     ctx.botId,
   );
@@ -231,6 +235,7 @@ async function createBot(ctx: ToolCtx, args: Record<string, unknown>): Promise<T
       avatar: created.bot.avatar,
       endpoint_id: created.bot.provider_id,
       model: created.bot.model,
+      thinking_level: created.bot.thinking_level,
     },
     emitted: [
       { kind: "bot", bot: created.bot, deleted_at: null },
@@ -251,6 +256,7 @@ function listBots(ctx: ToolCtx): ToolResult {
         avatar: b.avatar,
         endpoint_id: b.provider_id,
         model: b.model,
+        thinking_level: b.thinking_level,
         archived: Boolean(b.archived_at),
       })),
     },
@@ -266,17 +272,19 @@ async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>): Promi
   const avatarPath = optionalString(args.avatar_path);
   const avatarSeed = optionalNumber(args.avatar_seed);
   const pinTouched = "endpoint_id" in args || "model" in args;
+  const thinkingTouched = "thinking_level" in args;
   if (
     name === undefined &&
     duties === undefined &&
     boundaries === undefined &&
     avatarStyle === undefined &&
     avatarPath === undefined &&
-    !pinTouched
+    !pinTouched &&
+    !thinkingTouched
   ) {
     return fail(
       "invalid_args",
-      "name, duties, boundaries, avatar_style, avatar_path, endpoint_id, or model is required",
+      "name, duties, boundaries, avatar_style, avatar_path, endpoint_id, model, or thinking_level is required",
     );
   }
   if (avatarStyle !== undefined && avatarPath !== undefined) {
@@ -299,6 +307,7 @@ async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>): Promi
     avatar?: string;
     model?: string | null;
     provider_id?: string | null;
+    thinking_level?: ThinkingLevel | null;
   } = {};
   if (name !== undefined) patch.name = nextName;
   if (duties !== undefined) patch.duties = duties;
@@ -313,6 +322,7 @@ async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>): Promi
     patch.model = pin.model;
     patch.provider_id = pin.providerId;
   }
+  if (thinkingTouched) patch.thinking_level = nullableThinkingLevel(args.thinking_level);
 
   if (avatarStyle !== undefined) {
     const variant = parseAvatarStyle(avatarStyle);
@@ -344,6 +354,7 @@ async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>): Promi
       avatar: bot.avatar,
       endpoint_id: bot.provider_id,
       model: bot.model,
+      thinking_level: bot.thinking_level,
     },
     emitted: [{ kind: "bot", bot, deleted_at: null }],
   };
@@ -1010,6 +1021,15 @@ async function pinFromArgs(
     throw new HttpError(422, "invalid_args", "model must be one of the provider models");
   }
   return { model: model ?? null, providerId: providerId ?? null };
+}
+
+function nullableThinkingLevel(value: unknown): ThinkingLevel | null {
+  const raw = nullableId(value, "thinking_level");
+  if (raw === null) return null;
+  if (!(THINKING_LEVELS as readonly string[]).includes(raw)) {
+    throw new HttpError(422, "invalid_args", "thinking_level must be none, low, medium, or high");
+  }
+  return raw as ThinkingLevel;
 }
 
 function nullableId(value: unknown, field: string): string | null {

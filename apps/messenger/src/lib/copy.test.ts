@@ -65,6 +65,16 @@ test("provider settings chrome lives on settings.*", () => {
   expect(COPY.en.settings.providerEmpty).toBe("No model endpoints yet.");
   expect(COPY.zh.settings.providerSetDefault).toBe("设为默认");
   expect(COPY.en.settings.providerSetDefault).toBe("Set as default");
+  expect(COPY.zh.settings.providerDelete).toBe("删除");
+  expect(COPY.en.settings.providerDelete).toBe("Delete");
+  expect(COPY.zh.settings.providerDeleteBody).toBe(
+    "删除后，钉了这个端点的 Bot 会改回空钉。若删的是默认端点，默认会换成剩下的第一个。",
+  );
+  expect(COPY.en.settings.providerDeleteBody).toBe(
+    "Bots pinned to this endpoint revert to an empty pin. If this is the default, the first remaining endpoint becomes default.",
+  );
+  expect(COPY.zh.settings.providerConfirmDelete).toBe("确认删除");
+  expect(COPY.en.settings.providerConfirmDelete).toBe("Confirm delete");
   expect(COPY.zh.settings.providerModelCount(2)).toBe("2 个模型");
   expect(COPY.en.settings.providerModelCount(1)).toBe("1 model");
 });

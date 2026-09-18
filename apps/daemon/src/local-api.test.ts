@@ -519,6 +519,80 @@ describe("empty roster and settings", () => {
     expect(body.bot.model).toBe("deepseek-v4-pro");
   });
 
+  test("a bot thinking_level pin is validated against the pinned model and round-trips through PATCH", async () => {
+    const h = await start();
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        endpoint_models: [
+          { name: "grok-4.5", thinking_levels: ["low", "high"] },
+          { name: "deepseek-v4-pro", thinking_levels: ["none"] },
+        ],
+        endpoint_default_model: "grok-4.5",
+      }),
+    });
+    const badLevel = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay", thinking_level: "ultra" }),
+    });
+    expect(badLevel.status).toBe(422);
+    expect(await badLevel.json()).toEqual({
+      error: { code: "invalid_args", message: "thinking_level must be none, low, medium, or high" },
+    });
+    const unsupported = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        name: "Writer",
+        duties: "write",
+        boundaries: "stay",
+        model: "deepseek-v4-pro",
+        thinking_level: "high",
+      }),
+    });
+    expect(unsupported.status).toBe(422);
+    expect(await unsupported.json()).toEqual({
+      error: { code: "invalid_args", message: "thinking_level must be one the pinned model supports" },
+    });
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay", thinking_level: "high" }),
+    });
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { bot: { id: string; thinking_level: string | null } };
+    expect(body.bot.thinking_level).toBe("high");
+
+    const ws = new WebSocket(`${h.origin.replace("http", "ws")}/v1/events`);
+    await new Promise<void>((resolve) => ws.addEventListener("open", () => resolve()));
+    const events: Array<Record<string, unknown>> = [];
+    ws.addEventListener("message", (ev) => {
+      events.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
+    });
+    ws.send(JSON.stringify({ type: "auth", token: h.token }));
+    await Bun.sleep(20);
+    const patched = await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ model: "grok-4.5", thinking_level: "low" }),
+    });
+    expect(patched.status).toBe(200);
+    expect(await patched.json()).toMatchObject({ model: "grok-4.5", thinking_level: "low" });
+    const cleared = await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ thinking_level: null }),
+    });
+    expect(await cleared.json()).toMatchObject({ model: "grok-4.5", thinking_level: null });
+    await Bun.sleep(20);
+    expect(
+      events.some((e) => e.event === "bot.upsert" && e.id === body.bot.id && e.thinking_level === "low"),
+    ).toBe(true);
+    ws.close();
+  });
+
   test("dropping a model from the list clears bots that used it", async () => {
     const h = await start();
     await fetch(`${h.origin}/v1/settings`, {

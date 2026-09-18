@@ -74,7 +74,8 @@ async function createHighlighter(): Promise<HighlighterCore> {
   const monacoDark = unwrapDefault(await import("shiki/themes/vitesse-dark.mjs"));
   return createHighlighterCore({
     langs: [],
-    themes: [light, dark, monacoLight, monacoDark] as ThemeInput[],
+    // Vitesse first: @shikijs/monaco setTheme()s highlighter.getLoadedThemes()[0].
+    themes: [monacoLight, monacoDark, light, dark] as ThemeInput[],
     engine: createJavaScriptRegexEngine(),
   });
 }

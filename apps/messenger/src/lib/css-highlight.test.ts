@@ -4,7 +4,7 @@ import {
   themeColorsFromHtmlStyle,
   tokensToHighlightedHtml,
 } from "./css-highlight.ts";
-import { ensureHighlightLang, getShikiHighlighter, SHIKI_THEMES } from "./shiki-highlighter.ts";
+import { ensureHighlightLang, getShikiHighlighter, MONACO_SHIKI_THEMES, SHIKI_THEMES } from "./shiki-highlighter.ts";
 
 test("themeColorsFromHtmlStyle reads light/dark hex from Shiki htmlStyle", () => {
   expect(
@@ -24,6 +24,15 @@ test("escapeHtml keeps token text from becoming markup", () => {
   expect(escapeHtml(`a <b> & "c"`)).toBe(`a &lt;b&gt; &amp; "c"`);
 });
 
+test("highlighter loads vitesse before github so monaco defaults to the editor theme", async () => {
+  const highlighter = await getShikiHighlighter();
+  const themes = highlighter.getLoadedThemes();
+  expect(themes[0]).toBe(MONACO_SHIKI_THEMES.light);
+  expect(themes).toContain(MONACO_SHIKI_THEMES.dark);
+  expect(themes).toContain(SHIKI_THEMES.light);
+  expect(themes).toContain(SHIKI_THEMES.dark);
+});
+
 test("codeToTokens with dual github themes fills htmlStyle colors", async () => {
   await ensureHighlightLang("typescript");
   const highlighter = await getShikiHighlighter();
@@ -38,6 +47,21 @@ test("codeToTokens with dual github themes fills htmlStyle colors", async () => 
   const colors = themeColorsFromHtmlStyle(token?.htmlStyle);
   expect(colors.some((c) => c.theme === "light")).toBe(true);
   expect(colors.some((c) => c.theme === "dark")).toBe(true);
+});
+
+test("ensureHighlightLang loads html plus the embedded css and javascript grammars", async () => {
+  await ensureHighlightLang("html");
+  const highlighter = await getShikiHighlighter();
+  const loaded = highlighter.getLoadedLanguages();
+  expect(loaded).toContain("html");
+  expect(loaded).toContain("css");
+  expect(loaded).toContain("javascript");
+  const tokens = highlighter.codeToTokens("<style>.a{color:red}</style>", {
+    lang: "html",
+    theme: "vitesse-light",
+  });
+  const colors = new Set(tokens.tokens.flat().map((row) => row.color).filter(Boolean));
+  expect(colors.size).toBeGreaterThan(1);
 });
 
 test("tokensToHighlightedHtml wraps JSON keys and strings in dual-theme spans", async () => {
