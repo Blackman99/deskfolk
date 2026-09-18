@@ -224,7 +224,7 @@ const zh: Dict = {
     railLabel: '演示进度',
     steps: [
       {
-        title: '先填工作区和模型端点',
+        title: '先选工作区和模型端点',
         body:
           '设置就是向导：一个本机目录做共享工作区，再加至少一个 OpenAI 兼容端点。模型名单写清楚擅长领域、思考等级和价格，之后由应用按任务挑模型，你不用每轮自选。',
         callout: '密钥只在这个输入框里填，不进聊天。'
@@ -262,7 +262,7 @@ const zh: Dict = {
       {
         title: '产物就在你的工作区里',
         body:
-          '点开 report.md，右侧预览面板是 Monaco 编辑器：行号、查找、Markdown 渲染或源码。改完 Cmd+S 写回同一路径；侧栏 ⌘O 能打开整棵目录。',
+          '点开 report.md，对话框旁的产物预览是 Monaco 编辑器：行号、查找、折叠、Markdown 渲染或源码。改完 Cmd+S 写回同一路径；侧栏 ⌘O 从右侧打开独立的工作区浮层（文件树 + 预览），不占用对话框预览。',
         callout: '写回的是磁盘上的真文件。'
       },
       {
@@ -439,7 +439,7 @@ const zh: Dict = {
     step2: '并行启动守护进程与桌面窗',
     firstRun: [
       '选一个本机目录作为共享工作区，建议独立于源码仓库；不存在会自动创建。',
-      '在设置里填工作区、OpenAI 兼容端点 URL 和 API key，配好模型名单与默认模型。',
+      '在设置里选择工作区文件夹，再填 OpenAI 兼容端点 URL 和 API key，配好模型名单与默认模型。',
       '通过侧栏创建第一个 Bot，填名称、职责和边界，开始私聊。',
       '让它创建其他 Bot、组群或提出 MCP 配置；需要批准时在应用里审核。'
     ],
@@ -571,7 +571,7 @@ const en: Dict = {
       {
         title: 'The output is in your workspace',
         body:
-          'Open report.md and the preview panel shows a Monaco editor: line numbers, find, rendered Markdown or source. Edit and press Cmd+S to write back to the same path; ⌘O in the sidebar opens the whole folder tree.',
+          'Open report.md and the chat preview pane shows a Monaco editor: line numbers, find, folding, rendered Markdown or source. Edit and press Cmd+S to write back to the same path; ⌘O in the sidebar opens an independent workspace overlay from the right (folder tree + preview), without taking the chat preview pane.',
         callout: 'It writes a real file on disk.'
       },
       {
@@ -749,7 +749,7 @@ const en: Dict = {
     step2: 'Start the daemon and the desktop window in parallel',
     firstRun: [
       'Pick a local folder as the shared workspace, ideally outside the source checkout; missing folders are created.',
-      'In Settings, enter the workspace, an OpenAI-compatible endpoint URL and API key, then the model list and default model.',
+      'In Settings, choose a workspace folder, then enter an OpenAI-compatible endpoint URL and API key, then the model list and default model.',
       'Create the first bot from the sidebar with a name, duties and boundaries, and open a direct chat.',
       'Ask it to create other bots, form groups or propose MCP configuration; approve dangerous actions in the app.'
     ],

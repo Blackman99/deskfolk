@@ -16,6 +16,7 @@ import type {
   PatchSkillRequest,
   Provider,
   ResolveApprovalRequest,
+  RouteRecord,
   SearchHit,
   SessionDetail,
   SessionSummary,
@@ -194,6 +195,11 @@ export class LocalApi {
 
   async judgements(sessionId: string): Promise<Judgement[]> {
     const page = await this.get<ListPage<Judgement>>(`/v1/sessions/${sessionId}/judgements`);
+    return page.items;
+  }
+
+  async routes(sessionId: string): Promise<RouteRecord[]> {
+    const page = await this.get<ListPage<RouteRecord>>(`/v1/sessions/${sessionId}/routes`);
     return page.items;
   }
 

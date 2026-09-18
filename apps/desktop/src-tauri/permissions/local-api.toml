@@ -7,3 +7,8 @@ commands.allow = ["local_api_endpoint"]
 identifier = "allow-open-workspace-path"
 description = "Lets the messenger open a workspace file with the system."
 commands.allow = ["open_workspace_path"]
+
+[[permission]]
+identifier = "allow-pick-workspace-folder"
+description = "Lets the messenger open a native folder picker for the workspace path."
+commands.allow = ["pick_workspace_folder"]

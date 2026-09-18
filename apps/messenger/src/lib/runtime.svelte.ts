@@ -62,6 +62,7 @@ export class MessengerRuntime {
   private pendingFocusTrigger: string | null = null;
   private sessionMessageNext: string | null = null;
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  private routesInFlight: string | null = null;
 
   start(): void {
     this.stopped = false;
@@ -100,6 +101,7 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
+    if (this.selectedId) void this.refreshRoutes(this.selectedId);
   }
 
   openProfile(botId: string): void {
@@ -109,6 +111,7 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
+    if (this.selectedId) void this.refreshRoutes(this.selectedId);
   }
 
   closeSessionSettings(): void {
@@ -155,8 +158,11 @@ export class MessengerRuntime {
     if (!this.api) return;
     try {
       const detail = await this.api.session(id);
-      const judgements = await this.api.judgements(id);
-      this.applySessionDetail(id, { ...detail, unread_count: 0 }, judgements);
+      const [judgements, routes] = await Promise.all([
+        this.api.judgements(id),
+        this.api.routes(id),
+      ]);
+      this.applySessionDetail(id, { ...detail, unread_count: 0 }, judgements, routes);
       if (messageId) {
         await this.ensureMessageLoaded(id, messageId);
         this.setHighlightedMessage(messageId);
@@ -190,6 +196,26 @@ export class MessengerRuntime {
           s.id === id ? { ...s, unread_count: 0 } : s,
         ),
       };
+    }
+  }
+
+  /**
+   * Model choices are not pushed over the socket. The panel pulls them when it opens and again
+   * whenever a turn here changes state, so a finished turn's outcome and feedback land on their own.
+   */
+  async refreshRoutes(sessionId: string): Promise<void> {
+    if (!this.api || this.routesInFlight === sessionId) return;
+    this.routesInFlight = sessionId;
+    try {
+      const routes = await this.api.routes(sessionId);
+      this.snapshot = {
+        ...this.snapshot,
+        routes: [...this.snapshot.routes.filter((r) => r.session_id !== sessionId), ...routes],
+      };
+    } catch {
+      // Keep the rows already on screen; a real drop shows up as the socket closing.
+    } finally {
+      this.routesInFlight = null;
     }
   }
 
@@ -866,6 +892,7 @@ export class MessengerRuntime {
     id: string,
     detail: SessionDetail,
     judgements: Snapshot["judgements"],
+    routes: Snapshot["routes"],
   ): void {
     this.sessionMessageNext = detail.messages.next ?? null;
     this.snapshot = {
@@ -903,6 +930,7 @@ export class MessengerRuntime {
         ...this.snapshot.pendingJudgements.filter((j) => j.session_id !== id),
         ...(detail.pending_judgements ?? []),
       ],
+      routes: [...this.snapshot.routes.filter((r) => r.session_id !== id), ...routes],
     };
   }
 
@@ -958,7 +986,12 @@ export class MessengerRuntime {
     if (event.event === "settings.changed") {
       this.syncSettingsDraft(event);
     }
-    if (event.event === "turn.upsert") this.claimFocus(event.trigger_message_id, event.id);
+    if (event.event === "turn.upsert") {
+      this.claimFocus(event.trigger_message_id, event.id);
+      if (this.sessionSettingsOpen && event.session_id === this.selectedId) {
+        void this.refreshRoutes(event.session_id);
+      }
+    }
   }
 
   private claimFocus(triggerMessageId: string, turnId?: string): void {

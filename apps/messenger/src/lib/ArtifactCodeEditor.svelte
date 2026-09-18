@@ -1,10 +1,13 @@
 <script lang="ts">
 	import 'monaco-editor-css';
+	import 'monaco-editor/esm/vs/platform/hover/browser/hover.css';
+	import 'monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css';
 	import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 	import { untrack } from 'svelte';
 	import {
 		applyMonacoTheme,
 		ensureMonaco,
+		MONACO_EDITOR_BASE_OPTIONS,
 		monacoLanguageFromPath,
 		monacoThemeName,
 		prepareMonacoLanguage,
@@ -44,6 +47,36 @@
 		markSaved(value);
 	}
 
+	export function openFind(): void {
+		editor?.focus();
+		void editor?.getAction('actions.find')?.run();
+	}
+
+	export function openReplace(): void {
+		editor?.focus();
+		void editor?.getAction('editor.action.startFindReplaceAction')?.run();
+	}
+
+	export function findNext(): void {
+		void editor?.getAction('editor.action.nextMatchFindAction')?.run();
+	}
+
+	export function findPrevious(): void {
+		void editor?.getAction('editor.action.previousMatchFindAction')?.run();
+	}
+
+	export function isFindOpen(): boolean {
+		const widget = host?.querySelector('.editor-widget.find-widget');
+		return Boolean(widget?.classList.contains('visible'));
+	}
+
+	export function closeFind(): boolean {
+		if (!isFindOpen()) return false;
+		editor?.trigger('keyboard', 'closeFindWidget', null);
+		editor?.focus();
+		return true;
+	}
+
 	$effect(() => {
 		const el = host;
 		if (!el) return;
@@ -74,6 +107,7 @@
 					tabSize: 2,
 					padding: { top: 8 },
 					contextmenu: true,
+					...MONACO_EDITOR_BASE_OPTIONS,
 				});
 				editor = created;
 				saved = doc;
@@ -90,12 +124,12 @@
 				themeUnsub = themeManager.subscribe(() => {
 					applyMonacoTheme(monaco.editor, themeManager.resolved as ResolvedTheme);
 				});
-				if (shouldHighlightMonaco(doc, lang)) {
-					await prepareMonacoLanguage(lang);
+				if (lang !== 'plaintext') {
+					await prepareMonacoLanguage(lang, doc);
 					if (cancelled || !created) return;
 					const model = created.getModel();
 					if (model) monaco.editor.setModelLanguage(model, lang);
-					applyMonacoTheme(monaco.editor);
+					if (shouldHighlightMonaco(doc, lang)) applyMonacoTheme(monaco.editor);
 				}
 			} catch {
 				editor = null;

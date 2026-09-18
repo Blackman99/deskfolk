@@ -39,6 +39,68 @@ fn local_api_endpoint(state: tauri::State<'_, Mutex<AppState>>) -> Option<LocalA
     read_endpoint(&guard)
 }
 
+fn expand_home(raw: &str) -> std::path::PathBuf {
+    if raw == "~" || raw.starts_with("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            if raw == "~" {
+                return std::path::PathBuf::from(home);
+            }
+            let mut path = std::path::PathBuf::from(home);
+            path.push(&raw[2..]);
+            return path;
+        }
+    }
+    std::path::PathBuf::from(raw)
+}
+
+fn starting_directory(current: Option<&str>) -> Option<std::path::PathBuf> {
+    let raw = current?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let path = expand_home(raw);
+    if path.is_dir() {
+        return Some(path);
+    }
+    let parent = path.parent()?;
+    if parent.is_dir() && !parent.as_os_str().is_empty() {
+        return Some(parent.to_path_buf());
+    }
+    None
+}
+
+#[tauri::command]
+async fn pick_workspace_folder(
+    app: AppHandle,
+    current: Option<String>,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let title = title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Choose folder")
+        .to_string();
+    app.run_on_main_thread(move || {
+        let mut dialog = rfd::AsyncFileDialog::new()
+            .set_title(&title)
+            .set_can_create_directories(true);
+        if let Some(dir) = starting_directory(current.as_deref()) {
+            dialog = dialog.set_directory(dir);
+        }
+        let fut = dialog.pick_folder();
+        std::thread::spawn(move || {
+            let picked = tauri::async_runtime::block_on(fut);
+            let _ = tx.send(picked.map(|handle| handle.path().to_string_lossy().into_owned()));
+        });
+    })
+    .map_err(|err| err.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv().map_err(|err| err.to_string()))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
 #[tauri::command]
 fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
     let target = std::path::Path::new(&path);
@@ -166,6 +228,7 @@ pub fn run() {
         .manage(Mutex::new(updates::UpdateCache::default()))
         .invoke_handler(tauri::generate_handler![
             local_api_endpoint,
+            pick_workspace_folder,
             open_workspace_path,
             app_version,
             check_for_update,
@@ -493,6 +556,19 @@ mod tests {
         assert_eq!(guard.supervisor.is_connected(), connected);
         assert_eq!(read_endpoint(&guard).is_some(), connected);
         assert!(!guard.quitting);
+    }
+
+    #[test]
+    fn starting_directory_prefers_an_existing_folder() {
+        let dir = std::env::temp_dir();
+        assert_eq!(starting_directory(Some(dir.to_str().unwrap())), Some(dir.clone()));
+        assert_eq!(starting_directory(Some("")), None);
+        assert_eq!(starting_directory(None), None);
+        let nested = dir.join("real-bot-missing-workspace-picker");
+        assert_eq!(starting_directory(Some(nested.to_str().unwrap())), Some(dir));
+        if let Some(home) = std::env::var_os("HOME") {
+            assert_eq!(starting_directory(Some("~")), Some(std::path::PathBuf::from(home)));
+        }
     }
 
     #[test]

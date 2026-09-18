@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
+	import WorkspacePicker from './WorkspacePicker.svelte';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import {
 		mapSettingsError,
@@ -423,36 +424,38 @@
 					</div>
 
 					<div class="modal-section">
-						<label for="onboarding-workspace">{t.settings.workspace}</label>
-						<div class="input-with-action">
-							<input
-								id="onboarding-workspace"
-								type="text"
-								placeholder={t.onboarding.workspacePlaceholder}
-								bind:value={runtime.workspacePath}
-								oninput={() => {
-									if (fieldErrors.workspace) {
-										const next = { ...fieldErrors };
-										delete next.workspace;
-										fieldErrors = next;
-									}
-								}}
-							/>
-							<button
-								type="button"
-								class="btn-preset-workspace"
-								onclick={() => {
-									runtime.workspacePath = '~/real-bot-workspace';
-									if (fieldErrors.workspace) {
-										const next = { ...fieldErrors };
-										delete next.workspace;
-										fieldErrors = next;
-									}
-								}}
-							>
-								{t.onboarding.useDefaultWorkspace}
-							</button>
-						</div>
+						<p class="field-head" id="onboarding-workspace-label">{t.settings.workspace}</p>
+						<WorkspacePicker
+							id="onboarding-workspace"
+							path={runtime.workspacePath}
+							chooseLabel={t.settings.workspaceChoose}
+							changeLabel={t.settings.workspaceChange}
+							emptyLabel={t.settings.workspaceUnsetValue}
+							unavailableLabel={t.settings.workspacePickerUnavailable}
+							dialogTitle={t.settings.workspaceChoose}
+							onChange={(next) => {
+								runtime.workspacePath = next;
+								if (fieldErrors.workspace) {
+									const nextErrors = { ...fieldErrors };
+									delete nextErrors.workspace;
+									fieldErrors = nextErrors;
+								}
+							}}
+						/>
+						<button
+							type="button"
+							class="btn-preset-workspace"
+							onclick={() => {
+								runtime.workspacePath = '~/real-bot-workspace';
+								if (fieldErrors.workspace) {
+									const next = { ...fieldErrors };
+									delete next.workspace;
+									fieldErrors = next;
+								}
+							}}
+						>
+							{t.onboarding.useDefaultWorkspace}
+						</button>
 						<p class="jail">{JAIL_COPY[locale]}</p>
 						{#if fieldErrors.workspace}
 							<p class="field-error">

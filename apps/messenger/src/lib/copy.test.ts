@@ -28,8 +28,8 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
 });
 
 test("wizard field errors are the locked 32 sentences", () => {
-  expect(COPY.zh.settings.workspaceEmpty).toBe("填写一个本机目录。");
-  expect(COPY.en.settings.workspaceEmpty).toBe("Enter a local directory.");
+  expect(COPY.zh.settings.workspaceEmpty).toBe("选择一个本机目录。");
+  expect(COPY.en.settings.workspaceEmpty).toBe("Choose a local folder.");
   expect(COPY.zh.settings.workspaceInvalid).toBe(
     "需要本机绝对路径；不能是文件。目录不存在时会自动创建。",
   );
@@ -345,8 +345,16 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.artifactRendered).toBe("Preview");
   expect(COPY.zh.stream.artifactFind).toBe("查找");
   expect(COPY.en.stream.artifactFind).toBe("Find");
+  expect(COPY.zh.stream.artifactFindNext).toBe("下一个");
+  expect(COPY.en.stream.artifactFindNext).toBe("Next");
   expect(COPY.zh.sidebar.workspace).toBe("工作区");
   expect(COPY.en.sidebar.workspace).toBe("Workspace");
+  expect(COPY.zh.sidebar.workspaceUnset).toBe("先在设置里选择工作区目录。");
+  expect(COPY.en.sidebar.workspaceUnset).toBe("Choose a workspace folder in Settings first.");
+  expect(COPY.zh.settings.workspaceChoose).toBe("选择文件夹");
+  expect(COPY.en.settings.workspaceChoose).toBe("Choose folder");
+  expect(COPY.zh.settings.workspaceChange).toBe("更换文件夹");
+  expect(COPY.en.settings.workspaceChange).toBe("Change folder");
   expect(COPY.zh.stream.workspaceExplorer).toBe("工作区");
   expect(COPY.en.stream.workspaceExplorer).toBe("Workspace");
   expect(COPY.zh.stream.artifactSave).toBe("保存");
@@ -389,6 +397,53 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.composer.forkLive("Writer")).toBe(
     "Send forks a new turn; Writer's current turn keeps running.",
   );
+});
+
+test("the model choice log names the log, the outcomes and the message kinds in both locales", () => {
+  expect(COPY.zh.detail.routes.title).toBe("模型选择记录");
+  expect(COPY.en.detail.routes.title).toBe("Model choice log");
+  expect(COPY.zh.detail.routes.none).toBe("还没有模型选择记录。");
+  expect(COPY.en.detail.routes.none).toBe("No model choices yet.");
+  expect(COPY.zh.detail.routes.outcome.live).toBe("进行中");
+  expect(COPY.zh.detail.routes.outcome.completed).toBe("完成");
+  // A failed completion is not a fifth terminal state for the turn; it is this choice's failure.
+  expect(COPY.zh.detail.routes.outcome.failed).toBe("补全失败");
+  expect(COPY.en.detail.routes.outcome.failed).toBe("Completion failed");
+  expect(COPY.zh.detail.routes.outcome.stopped).toBe("被 Stop");
+  expect(COPY.zh.detail.routes.outcome.redirected).toBe("改道");
+  expect(COPY.zh.detail.routes.outcome.interrupted).toBe("中断");
+  expect(Object.keys(COPY.zh.detail.routes.signature)).toEqual([
+    "coding",
+    "writing",
+    "reasoning",
+    "simple",
+    "general",
+  ]);
+  // The chip reads "思考 无", so the log keeps its own short level words instead of "不思考".
+  expect(COPY.zh.detail.routes.thinking.none).toBe("无");
+  expect(COPY.zh.sidebar.thinkingLevels.none).toBe("不思考");
+  expect(COPY.en.detail.routes.thinking.none).toBe("None");
+  expect(COPY.zh.detail.routes.feedbackCount(2)).toBe("2 条模型反馈");
+  expect(COPY.en.detail.routes.feedbackCount(1)).toBe("1 model note");
+  expect(COPY.en.detail.routes.feedbackCount(2)).toBe("2 model notes");
+});
+
+test("the model choice log covers every fail kind the daemon can record", () => {
+  // Mirrors FAIL_REASON in apps/daemon/src/prompts/transcript-copy.ts.
+  expect(Object.keys(COPY.zh.detail.routes.failReason).sort()).toEqual([
+    "busy",
+    "endpoint_error",
+    "first_byte",
+    "incomplete",
+    "no_model",
+    "refused",
+    "stalled",
+    "unreachable",
+  ]);
+  expect(COPY.zh.detail.routes.failReason.refused).toBe("端点拒绝了这次补全");
+  expect(COPY.en.detail.routes.failReason.refused).toBe("Endpoint refused this completion");
+  expect(COPY.zh.detail.routes.failReason.incomplete).toBe("回复不完整");
+  expect(COPY.en.detail.routes.failReason.incomplete).toBe("Incomplete reply");
 });
 
 function assertSameShape(a: unknown, b: unknown, path: string): void {

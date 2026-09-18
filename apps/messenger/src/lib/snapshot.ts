@@ -10,6 +10,7 @@ import {
   type Message,
   type Provider,
   type PendingJudgement,
+  type RouteRecord,
   type SearchHit,
   type SessionSummary,
   type Settings,
@@ -30,6 +31,8 @@ export type Snapshot = {
   turns: Turn[];
   judgements: Judgement[];
   pendingJudgements: PendingJudgement[];
+  /** Per-turn model choices for the open session; fetched, not pushed. */
+  routes: RouteRecord[];
   approvals: Approval[];
   searchHits: SearchHit[];
 };
@@ -59,6 +62,7 @@ export function emptySnapshot(): Snapshot {
     turns: [],
     judgements: [],
     pendingJudgements: [],
+    routes: [],
     approvals: [],
     searchHits: [],
   };
@@ -110,6 +114,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
+        routes: snapshot.routes.filter((r) => r.session_id !== event.id),
       };
     }
     case "session.cleared": {
@@ -122,6 +127,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
+        routes: snapshot.routes.filter((r) => r.session_id !== event.id),
       };
     }
     case "message.created": {

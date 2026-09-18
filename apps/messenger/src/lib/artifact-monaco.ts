@@ -1,6 +1,9 @@
 import type { HighlightLang } from "./highlight-lang.ts";
 import { highlightLangFromPath } from "./highlight-lang.ts";
 import { HIGHLIGHT_CHAR_LIMIT } from "./highlight-mount.ts";
+import { registerMatchingFolding } from "./monaco-folding.ts";
+import { installMonacoShortcutGuard, registerMonacoEditorFeatures } from "./monaco-features.ts";
+import { applyMonacoLanguageConfiguration } from "./monaco-language-config.ts";
 import { ensureHighlightLang, getShikiHighlighter, MONACO_SHIKI_THEMES } from "./shiki-highlighter.ts";
 import { themeManager, type ResolvedTheme } from "./theme.ts";
 
@@ -74,6 +77,23 @@ export function applyMonacoTheme(
   monaco.setTheme(monacoThemeName(resolved));
 }
 
+export const MONACO_EDITOR_BASE_OPTIONS = {
+  folding: true,
+  foldingStrategy: "auto" as const,
+  foldingHighlight: true,
+  showFoldingControls: "always" as const,
+  unfoldOnClickAfterEndOfLine: true,
+  matchBrackets: "always" as const,
+  autoClosingBrackets: "languageDefined" as const,
+  find: {
+    addExtraSpaceOnTop: false,
+    autoFindInSelection: "never" as const,
+    seedSearchStringFromSelection: "always" as const,
+  },
+  links: true,
+  mouseWheelZoom: true,
+};
+
 async function bindShikiToMonaco(monaco: MonacoApi): Promise<void> {
   const highlighter = await getShikiHighlighter();
   registerLoadedShikiLanguages(monaco.languages, highlighter.getLoadedLanguages());
@@ -86,20 +106,24 @@ export async function ensureMonaco(): Promise<MonacoApi> {
   monacoReady ??= (async () => {
     await loadMonacoWorker();
     installMonacoWorker();
+    installMonacoShortcutGuard();
     const monaco = await import("monaco-editor/esm/vs/editor/editor.api");
+    await registerMonacoEditorFeatures();
+    registerMatchingFolding(monaco.languages);
     await bindShikiToMonaco(monaco);
     return monaco;
   })();
   return monacoReady;
 }
 
-export async function prepareMonacoLanguage(lang: HighlightLang): Promise<void> {
-  if (lang === "plaintext") return;
+export async function prepareMonacoLanguage(lang: HighlightLang, source = "ok"): Promise<void> {
   try {
-    await ensureHighlightLang(lang);
     const monaco = await ensureMonaco();
+    if (shouldHighlightMonaco(source, lang)) await ensureHighlightLang(lang);
+    await applyMonacoLanguageConfiguration(monaco.languages, lang);
+    if (!shouldHighlightMonaco(source, lang)) return;
     await bindShikiToMonaco(monaco);
   } catch (error) {
-    console.error(`failed to highlight ${lang}`, error);
+    console.error(`failed to prepare monaco language ${lang}`, error);
   }
 }

@@ -5,3 +5,7 @@ declare module 'monaco-editor/esm/vs/editor/editor.api' {
 }
 
 declare module 'monaco-editor/esm/vs/editor/editor.worker.js';
+
+declare module 'monaco-editor/esm/vs/features/*/register.js';
+declare module 'monaco-editor/esm/vs/platform/hover/browser/hover.css';
+declare module 'monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css';

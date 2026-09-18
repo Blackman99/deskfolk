@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   applyMonacoTheme,
+  MONACO_EDITOR_BASE_OPTIONS,
   monacoLanguageFromPath,
   monacoThemeName,
   registerLoadedShikiLanguages,
@@ -36,6 +37,13 @@ test("shouldHighlightMonaco skips plaintext, empty, and oversized docs", () => {
   expect(shouldHighlightMonaco("const x = 1", "plaintext")).toBe(false);
   expect(shouldHighlightMonaco("", "typescript")).toBe(false);
   expect(shouldHighlightMonaco("x".repeat(HIGHLIGHT_CHAR_LIMIT + 1), "typescript")).toBe(false);
+});
+
+test("MONACO_EDITOR_BASE_OPTIONS turns on find, folding, and matching brackets", () => {
+  expect(MONACO_EDITOR_BASE_OPTIONS.folding).toBe(true);
+  expect(MONACO_EDITOR_BASE_OPTIONS.showFoldingControls).toBe("always");
+  expect(MONACO_EDITOR_BASE_OPTIONS.matchBrackets).toBe("always");
+  expect(MONACO_EDITOR_BASE_OPTIONS.find.seedSearchStringFromSelection).toBe("always");
 });
 
 test("registerLoadedShikiLanguages adds html and its embedded langs monaco does not ship", () => {

@@ -11,6 +11,7 @@
 		calculateBotDuration,
 		canContinueInterrupt,
 		formatDateDivider,
+		formatDurationMs,
 		formatFullTimestamp,
 		formatLiveDuration,
 		formatMessageTime,
@@ -27,6 +28,14 @@
 	} from './approval-card.ts';
 	import { composerAction, composerLocked } from './composer-mode.ts';
 	import { insertComposerNewline } from './composer-editor.ts';
+	import {
+		COMPOSER_IME_IDLE,
+		composerImeKeyAction,
+		composerImeOnEnd,
+		composerImeOnStart,
+		composerImeOnUpdate,
+		type ComposerImeState
+	} from './composer-ime.ts';
 	import { copyFor, JAIL_COPY } from './copy.ts';
 	import McpSettings from './McpSettings.svelte';
 	import {
@@ -72,6 +81,7 @@
 	import AvatarEditor from './AvatarEditor.svelte';
 	import SessionAvatar from './SessionAvatar.svelte';
 	import { searchHitView, searchJump } from './search-jump.ts';
+	import { routeLogRows } from './route-log.ts';
 	import { getStarterOptions } from './starter-prompts.ts';
 	import {
 		canRemoveGroupBot,
@@ -116,9 +126,11 @@
 	import SessionContextMenu from './SessionContextMenu.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import ArtifactPreview from './ArtifactPreview.svelte';
+	import WorkspaceExplorer from './WorkspaceExplorer.svelte';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import { markdownCode } from './code-blocks.ts';
 	import { parseArtifactHref } from './artifacts.ts';
+	import WorkspacePicker from './WorkspacePicker.svelte';
 	import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from './preview-width.ts';
 	import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from './sidebar-width.ts';
 	import { formatFileSize } from './attachments.ts';
@@ -153,11 +165,23 @@
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const t = $derived(copyFor(locale));
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
+	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	let pinnedSessionIds = $state<string[]>(loadPinnedIds());
 	let pinnedExpanded = $state(false);
 	let approvalKeys = $state<Record<string, string>>({});
 	let approvalKeyErrors = $state<Record<string, boolean>>({});
+
+	let searchFocused = $state(false);
+	let searchHighlightIndex = $state(-1);
+	let searchWrapEl = $state<HTMLElement | null>(null);
+	let searchInputEl = $state<HTMLInputElement | null>(null);
+	let searchDropEl = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		void runtime.searchHits;
+		searchHighlightIndex = -1;
+	});
 
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
 	const validSessionIds = $derived(new Set(snapshot.sessions.map((s) => s.id)));
@@ -243,8 +267,10 @@
 		relpath: string;
 		attachment: Attachment | null;
 		siblings: Attachment[];
-		mode: 'cited' | 'workspace';
 	} | null>(null);
+	let workspaceOpen = $state(false);
+	let workspaceSelected = $state('');
+	let workspacePane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 	let previewWidth = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
 	let sidebarWidth = $state(loadSidebarWidth());
@@ -491,6 +517,45 @@
 	const groupCandidates = $derived(
 		selected?.kind === 'group' ? pullInCandidates(visibleBots, selected) : []
 	);
+	const routeRows = $derived(
+		selected
+			? routeLogRows(
+					snapshot.routes.filter((route) => route.session_id === selected.id),
+					{
+						bots: snapshot.bots,
+						providers: snapshot.providers,
+						labels: {
+							outcome: t.detail.routes.outcome,
+							signature: t.detail.routes.signature,
+							failReason: t.detail.routes.failReason,
+							thinking: t.detail.routes.thinking,
+							unknownBot: t.top.deleted
+						}
+					}
+				)
+			: []
+	);
+	/** Feedback bodies stay folded until asked for; one open turn at a time keeps the panel short. */
+	let openRouteFeedback = $state<string | null>(null);
+	/** A busy group can hold hundreds of turns; only the recent ones show until you ask for the rest. */
+	const ROUTE_LOG_PREVIEW = 20;
+	let routeLogExpanded = $state(false);
+	const visibleRouteRows = $derived(
+		routeLogExpanded ? routeRows : routeRows.slice(0, ROUTE_LOG_PREVIEW)
+	);
+
+	$effect(() => {
+		void runtime.selectedId;
+		untrack(() => {
+			routeLogExpanded = false;
+			openRouteFeedback = null;
+		});
+	});
+
+	function jumpToRouteTrigger(messageId: string): void {
+		if (!selected) return;
+		void runtime.selectSession(selected.id, { messageId });
+	}
 	let fieldErrors = $state<SettingsFieldErrors>({});
 	let saveFailed = $state(false);
 	let activeSettingsTab = $state<'general' | 'models' | 'mcp'>('general');
@@ -634,6 +699,7 @@
 	let nowMs = $state(Date.now());
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let editorEl = $state<HTMLDivElement | null>(null);
+	let composerIme = $state<ComposerImeState>(COMPOSER_IME_IDLE);
 
 	type PendingAttachment = {
 		id: string;
@@ -968,10 +1034,66 @@
 	}
 
 	function onSearchInput(ev: Event): void {
+		searchHighlightIndex = -1;
 		void runtime.runSearch((ev.currentTarget as HTMLInputElement).value);
 	}
 
+	function scrollSearchHighlightIntoView(index = searchHighlightIndex): void {
+		const drop = searchDropEl;
+		if (!drop) return;
+		const item = drop.querySelectorAll<HTMLElement>('.search-hit')[index];
+		if (!item) return;
+		const dropRect = drop.getBoundingClientRect();
+		const itemRect = item.getBoundingClientRect();
+		drop.scrollTop = scrollTopToRevealRect(
+			drop.scrollTop,
+			dropRect.top,
+			dropRect.bottom,
+			itemRect.top,
+			itemRect.bottom
+		);
+	}
+
+	function onSearchKeyDown(e: KeyboardEvent): void {
+		if (e.isComposing) return;
+		if (e.key === 'Escape') {
+			searchFocused = false;
+			searchHighlightIndex = -1;
+			searchInputEl?.blur();
+			return;
+		}
+		if (!searchFocused || !runtime.searchQuery.trim() || runtime.searchHits.length === 0) {
+			return;
+		}
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			const count = runtime.searchHits.length;
+			searchHighlightIndex = searchHighlightIndex < count - 1 ? searchHighlightIndex + 1 : 0;
+			scrollSearchHighlightIntoView(searchHighlightIndex);
+			return;
+		}
+		if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			const count = runtime.searchHits.length;
+			searchHighlightIndex = searchHighlightIndex > 0 ? searchHighlightIndex - 1 : count - 1;
+			scrollSearchHighlightIntoView(searchHighlightIndex);
+			return;
+		}
+		if (e.key === 'Enter') {
+			const targetIndex = searchHighlightIndex >= 0 ? searchHighlightIndex : 0;
+			const hit = runtime.searchHits[targetIndex];
+			if (hit) {
+				e.preventDefault();
+				onHit(hit);
+			}
+			return;
+		}
+	}
+
 	function onHit(hit: (typeof runtime.searchHits)[number]): void {
+		searchFocused = false;
+		searchHighlightIndex = -1;
+		searchInputEl?.blur();
 		if (hit.kind === 'file' && hit.path) {
 			runtime.closeSearch();
 			openArtifactPath(hit.path);
@@ -1028,21 +1150,29 @@
 			relpath,
 			attachment,
 			siblings: siblingsForPath(relpath, attachment),
-			mode: 'cited',
 		};
 	}
 
-	function openWorkspaceExplorer(relpath = ''): void {
+	function toggleWorkspaceExplorer(): void {
 		if (!snapshot.settings.workspace_path) return;
-		artifactPreview = {
-			relpath,
-			attachment: null,
-			siblings: [],
-			mode: 'workspace',
-		};
+		if (workspaceOpen) {
+			workspacePane?.requestCloseFromParent();
+			return;
+		}
+		runtime.createGroupOpen = false;
+		workspaceOpen = true;
+		if (artifactPreview) workspaceSelected = artifactPreview.relpath;
 	}
 
-	let previewPane = $state<{ requestCloseFromParent: () => void } | null>(null);
+	function closeWorkspaceExplorer(): void {
+		workspaceOpen = false;
+	}
+
+	function openWorkspaceFile(path: string): void {
+		workspaceSelected = path;
+	}
+
+	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 
 	function closeArtifactPreview(): void {
 		artifactPreview = null;
@@ -1553,8 +1683,38 @@
 		scrollToBottom(false);
 	}
 
+	function onComposerCompositionStart(): void {
+		composerIme = composerImeOnStart();
+	}
+
+	function onComposerCompositionUpdate(): void {
+		composerIme = composerImeOnUpdate(composerIme);
+	}
+
+	function onComposerCompositionEnd(): void {
+		composerIme = composerImeOnEnd(performance.now());
+	}
+
 	function onComposerKey(ev: KeyboardEvent): void {
-		if (ev.isComposing || lockedComposer || !selected) return;
+		const imeAction = composerImeKeyAction(
+			{
+				isComposing: ev.isComposing,
+				key: ev.key,
+				keyCode: ev.keyCode,
+				which: ev.which,
+				shiftKey: ev.shiftKey,
+				metaKey: ev.metaKey,
+				ctrlKey: ev.ctrlKey
+			},
+			composerIme,
+			performance.now()
+		);
+		if (imeAction === 'swallow') {
+			ev.preventDefault();
+			composerIme = COMPOSER_IME_IDLE;
+			return;
+		}
+		if (imeAction === 'ignore' || lockedComposer || !selected) return;
 		if (showMentionPopup) {
 			if (mentionCandidates.length > 0) {
 				if (ev.key === 'ArrowDown') {
@@ -1646,6 +1806,11 @@
 		if (themeMenuOpen) {
 			if (!target || (!themeMenuEl?.contains(target) && !themeToggleBtnEl?.contains(target))) {
 				themeMenuOpen = false;
+			}
+		}
+		if (searchFocused) {
+			if (!target || !searchWrapEl?.contains(target)) {
+				searchFocused = false;
 			}
 		}
 	}
@@ -2216,6 +2381,7 @@
 	}
 
 	function openCreateBot(): void {
+		workspaceOpen = false;
 		botDraft = emptyBot();
 		botErrors = {};
 		botFailed = false;
@@ -2223,6 +2389,7 @@
 	}
 
 	function openCreateGroup(): void {
+		workspaceOpen = false;
 		groupName = '';
 		groupMembers = [];
 		groupErrors = {};
@@ -2304,19 +2471,34 @@
 				closeNestedProfile();
 			} else if (runtime.sessionSettingsOpen) {
 				runtime.closeSessionSettings();
+			} else if (workspaceOpen) {
+				if (workspacePane?.closeFind()) {
+					e.preventDefault();
+					e.stopPropagation();
+				} else if (workspacePane) {
+					workspacePane.requestCloseFromParent();
+				} else {
+					workspaceOpen = false;
+				}
 			} else if (artifactPreview) {
-				if (previewPane) previewPane.requestCloseFromParent();
+				const target = e.target as HTMLElement | null;
+				if (previewPane?.closeFind()) {
+					e.preventDefault();
+					e.stopPropagation();
+				} else if (target?.closest('.monaco-editor, .editor-widget.find-widget, .artifact-cm')) {
+					return;
+				} else if (previewPane) previewPane.requestCloseFromParent();
 				else closeArtifactPreview();
 			}
 		}
 		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
 			const target = e.target as HTMLElement | null;
-			if (target && (target.closest('input, textarea, [contenteditable="true"], .cm-editor, .composer-input'))) {
+			if (target && (target.closest('input, textarea, [contenteditable="true"], .monaco-editor, .editor-widget.find-widget, .composer-input'))) {
 				return;
 			}
 			if (!snapshot.settings.workspace_path) return;
 			e.preventDefault();
-			openWorkspaceExplorer(artifactPreview?.mode === 'workspace' ? artifactPreview.relpath : '');
+			toggleWorkspaceExplorer();
 		}
 	}}
 />
@@ -2391,7 +2573,8 @@
 				</button>
 			{/if}
 		</div>
-		<div class="search-wrap">
+		<div class="side-body">
+		<div class="search-wrap" bind:this={searchWrapEl}>
 			<span class="search-icon-badge" aria-hidden="true">
 				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 					<circle cx="11" cy="11" r="8"></circle>
@@ -2399,14 +2582,53 @@
 				</svg>
 			</span>
 			<input
+				bind:this={searchInputEl}
 				class="search"
 				placeholder={t.sidebar.search}
 				value={runtime.searchQuery}
+				role="combobox"
+				aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
+				aria-controls="search-dropdown-list"
+				aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
 				oninput={onSearchInput}
+				onfocus={() => {
+					searchFocused = true;
+				}}
+				onblur={(e) => {
+					const next = e.relatedTarget as Node | null;
+					if (searchWrapEl && next && searchWrapEl.contains(next)) {
+						return;
+					}
+					searchFocused = false;
+					searchHighlightIndex = -1;
+				}}
+				onkeydown={onSearchKeyDown}
 			/>
 			{#if runtime.searchQuery.trim()}
-				<button type="button" class="search-clear" title="清除" onclick={() => void runtime.runSearch('')}>✕</button>
-				<div class="search-drop">
+				<button
+					type="button"
+					class="search-clear"
+					title="清除"
+					onmousedown={(e) => e.preventDefault()}
+					onclick={() => {
+						void runtime.runSearch('');
+						searchFocused = true;
+						searchHighlightIndex = -1;
+						searchInputEl?.focus();
+					}}
+				>✕</button>
+			{/if}
+			{#if searchFocused && runtime.searchQuery.trim()}
+				<div
+					bind:this={searchDropEl}
+					id="search-dropdown-list"
+					class="search-drop"
+					role="listbox"
+					tabindex="-1"
+					onmousedown={(e) => {
+						e.preventDefault();
+					}}
+				>
 					{#if runtime.searchHits.length === 0}
 						<p class="muted">{t.sidebar.emptySearch}</p>
 					{:else}
@@ -2414,17 +2636,63 @@
 							{@const view = searchHitView(hit, searchKindLabels)}
 							<button
 								type="button"
+								id={`search-hit-${i}`}
 								class="search-hit"
+								class:is-highlighted={searchHighlightIndex === i}
+								class:is-selected={searchHighlightIndex === i}
+								role="option"
+								aria-selected={searchHighlightIndex === i}
 								title={view.sessionTitle ? `${view.kindLabel} · ${view.sessionTitle}` : view.kindLabel}
+								onmouseenter={() => {
+									searchHighlightIndex = i;
+								}}
 								onclick={() => onHit(hit)}
 							>
-								<span class="search-hit-meta">
-									<span class="search-hit-kind">{view.kindLabel}</span>
-									{#if view.sessionTitle}
-										<span class="search-hit-session">{view.sessionTitle}</span>
+								{#if hit.kind === 'bot'}
+									{@const bot = hit.id ? botsById.get(hit.id) : null}
+									{@const botName = bot?.name ?? hit.snippet ?? ''}
+									{@const pal = botAvatarColor(hit.id ?? botName)}
+									{@const src = avatarSrc(bot?.avatar ?? hit.avatar)}
+									<span class="row-avatar size-sm search-hit-avatar" aria-hidden="true">
+										<span
+											class="row-avatar-bot"
+											style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+											title={botName}
+										>
+											{#if src}
+												<img src={src} alt={botName} class="avatar-img" />
+											{:else}
+												{botName ? rosterLetter(botName) : '?'}
+											{/if}
+										</span>
+									</span>
+								{:else if hit.kind === 'session'}
+									{@const session = hit.id ? sessionsById.get(hit.id) : null}
+									{#if session}
+										<SessionAvatar {session} bots={botsById} size="sm" class="search-hit-avatar" />
+									{:else}
+										<span class="row-avatar size-sm is-group layout-empty search-hit-avatar" aria-hidden="true">
+											<span class="row-avatar-bot is-empty">
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+													<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+													<circle cx="9" cy="7" r="4" />
+													<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+												</svg>
+											</span>
+										</span>
+									{/if}
+								{/if}
+								<span class="search-hit-body">
+									<span class="search-hit-meta">
+										<span class="search-hit-kind">{view.kindLabel}</span>
+										{#if view.sessionTitle}
+											<span class="search-hit-session">{view.sessionTitle}</span>
+										{/if}
+									</span>
+									{#if view.snippet && view.snippet !== view.sessionTitle}
+										<span class="search-hit-snippet">{view.snippet}</span>
 									{/if}
 								</span>
-								<span class="search-hit-snippet">{view.snippet}</span>
 							</button>
 						{/each}
 					{/if}
@@ -2565,16 +2833,18 @@
 				{/each}
 			{/if}
 		</div>
+		</div>
 		<div class="foot">
 			<div class="foot-left">
 				<button
 					type="button"
 					class="foot-icon-btn"
-					class:is-active={artifactPreview?.mode === 'workspace'}
+					class:is-active={workspaceOpen}
 					title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (⌘O)` : t.sidebar.workspaceUnset}
 					aria-label={t.sidebar.workspace}
+					aria-expanded={workspaceOpen}
 					disabled={!snapshot.settings.workspace_path}
-					onclick={() => openWorkspaceExplorer()}
+					onclick={() => toggleWorkspaceExplorer()}
 				>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -2716,7 +2986,10 @@
 					class:is-active={runtime.settingsOpen}
 					title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
 					aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
-					onclick={() => runtime.openSettings()}
+					onclick={() => {
+						workspaceOpen = false;
+						runtime.openSettings();
+					}}
 				>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<circle cx="12" cy="12" r="3"></circle>
@@ -3654,7 +3927,17 @@
 				</div>
 			{/if}
 
-			<div class="composer-card" class:is-locked={lockedComposer}>
+			<div
+				class="composer-card"
+				class:is-locked={lockedComposer}
+				role="presentation"
+				onclick={(e) => {
+					const target = e.target as HTMLElement | null;
+					if (selected && !lockedComposer && target && !target.closest('button, input, [contenteditable="true"]')) {
+						editorEl?.focus();
+					}
+				}}
+			>
 				{#if quoteTarget}
 					<div class="composer-quote-bar">
 						<div class="composer-quote-meta">
@@ -3708,25 +3991,7 @@
 					</div>
 				{/if}
 
-				<div
-					bind:this={editorEl}
-					class="composer-input"
-					class:is-empty={!runtime.draft}
-					role="textbox"
-					aria-multiline="true"
-					aria-label={selectedKind === 'you-bot' && selectedPeerBot ? `${t.chat.replyPrompt} ${selectedPeerBot.name}...` : t.composer.send}
-					aria-describedby={!lockedComposer ? 'composer-hint' : undefined}
-					data-placeholder={selectedKind === 'you-bot' && selectedPeerBot ? `${t.chat.replyPrompt} ${selectedPeerBot.name}...` : t.composer.send}
-					contenteditable={Boolean(selected) && !lockedComposer}
-					tabindex="0"
-					oninput={onEditorInput}
-					onkeydown={onComposerKey}
-					onkeyup={onComposerKeyUp}
-					onclick={onEditorClick}
-					onpaste={onComposerPaste}
-				></div>
-
-				<div class="composer-toolbar">
+				<div class="composer-row">
 					<button
 						type="button"
 						class="attach-btn"
@@ -3735,7 +4000,7 @@
 						disabled={!connected || !selected || lockedComposer || runtime.busy}
 						onclick={openFilePicker}
 					>
-						<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 							<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
 						</svg>
 					</button>
@@ -3746,6 +4011,26 @@
 						onchange={onFileInputChange}
 						style="display: none;"
 					/>
+					<div
+						bind:this={editorEl}
+						class="composer-input"
+						class:is-empty={!runtime.draft}
+						role="textbox"
+						aria-multiline="true"
+						aria-label={selectedKind === 'you-bot' && selectedPeerBot ? `${t.chat.replyPrompt} ${selectedPeerBot.name}...` : t.composer.send}
+						aria-describedby={!lockedComposer ? 'composer-hint' : undefined}
+						data-placeholder={selectedKind === 'you-bot' && selectedPeerBot ? `${t.chat.replyPrompt} ${selectedPeerBot.name}...` : t.composer.send}
+						contenteditable={Boolean(selected) && !lockedComposer}
+						tabindex="0"
+						oninput={onEditorInput}
+						onkeydown={onComposerKey}
+						onkeyup={onComposerKeyUp}
+						oncompositionstart={onComposerCompositionStart}
+						oncompositionupdate={onComposerCompositionUpdate}
+						oncompositionend={onComposerCompositionEnd}
+						onclick={onEditorClick}
+						onpaste={onComposerPaste}
+					></div>
 					<button
 						type="button"
 						class="composer-action"
@@ -3757,9 +4042,9 @@
 						onclick={() => primaryAction.kind === 'stop' ? void runtime.stopTurn() : void handleSend()}
 					>
 						{#if primaryAction.kind === 'stop'}
-							<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+							<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
 						{:else}
-							<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"></path></svg>
+							<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"></path></svg>
 						{/if}
 					</button>
 				</div>
@@ -3785,11 +4070,20 @@
 			siblings={artifactPreview.siblings}
 			api={runtime.client}
 			workspacePath={snapshot.settings.workspace_path}
-			mode={artifactPreview.mode}
 			{t}
 			onClose={closeArtifactPreview}
 			onSelect={(att) => openArtifactPath(att.workspace_relpath, att)}
-			onSelectWorkspacePath={(path) => openWorkspaceExplorer(path)}
+		/>
+	{/if}
+	{#if workspaceOpen}
+		<WorkspaceExplorer
+			bind:this={workspacePane}
+			api={runtime.client}
+			workspacePath={snapshot.settings.workspace_path}
+			selected={workspaceSelected}
+			{t}
+			onClose={closeWorkspaceExplorer}
+			onSelect={openWorkspaceFile}
 		/>
 	{/if}
 	<aside class="thread">
@@ -3801,7 +4095,110 @@
 			<p class="muted">{t.thread.none}</p>
 		</div>
 	</aside>
-	{#if runtime.sessionSettingsOpen && selected}
+	{#snippet routeLogCard()}
+	<div class="panel-card route-log-card">
+		<div class="panel-card-head">
+			<span class="panel-card-title">{t.detail.routes.title}</span>
+			{#if routeRows.length > 0}
+				<span class="panel-counter-badge">{routeRows.length}</span>
+			{/if}
+		</div>
+		<div class="panel-card-body route-log-body">
+			{#if routeRows.length === 0}
+				<p class="muted route-log-empty">{t.detail.routes.none}</p>
+			{:else}
+				<p class="muted route-log-hint">{t.detail.routes.hint}</p>
+				<ul class="route-log-list">
+					{#each visibleRouteRows as row (row.turnId)}
+						<li class="route-row">
+							<button
+								type="button"
+								class="route-row-main"
+								title={t.detail.routes.jump}
+								onclick={() => jumpToRouteTrigger(row.triggerMessageId)}
+							>
+								<span class="route-row-head">
+									<span class="route-bot" class:is-unknown={!row.botKnown}>{row.botName}</span>
+									<span class="route-outcome is-{row.outcome}">{row.outcomeLabel}</span>
+									<span class="route-time mono" title={formatFullTimestamp(row.createdAt)}>
+										{formatMessageTime(row.createdAt)}
+									</span>
+								</span>
+								<span class="route-row-meta">
+									<span class="route-chip is-model mono" title={row.model}>{row.model}</span>
+									<span class="route-chip">{t.detail.routes.thinkingPrefix} {row.thinkingLabel}</span>
+									<span class="route-chip" title={t.detail.routes.kindLabel}>{row.signatureLabel}</span>
+									{#if row.providerName && snapshot.providers.length > 1}
+										<span class="route-chip is-endpoint" title={t.detail.routes.endpoint}>
+											{row.providerName}
+										</span>
+									{/if}
+									{#if row.durationMs !== null}
+										<span class="route-duration mono">{formatDurationMs(row.durationMs)}</span>
+									{/if}
+								</span>
+								{#if row.failReason}
+									<span class="route-fail">
+										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+										<span>{row.failReason}</span>
+									</span>
+								{/if}
+							</button>
+							{#if row.feedback.length > 0}
+								{@const open = openRouteFeedback === row.turnId}
+								<button
+									type="button"
+									class="route-feedback-toggle"
+									aria-expanded={open}
+									onclick={() => (openRouteFeedback = open ? null : row.turnId)}
+								>
+									<svg
+										class="route-caret"
+										class:is-open={open}
+										width="11"
+										height="11"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									><polyline points="9 18 15 12 9 6"></polyline></svg>
+									<span>{t.detail.routes.feedbackCount(row.feedback.length)}</span>
+								</button>
+								{#if open}
+									<ul class="route-feedback">
+										{#each row.feedback as note (note.message_id)}
+											<li class="route-feedback-item">
+												<p class="route-feedback-body">{note.body}</p>
+												<span class="route-feedback-time mono" title={formatFullTimestamp(note.created_at)}>
+													{formatMessageTime(note.created_at)}
+												</span>
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							{/if}
+						</li>
+					{/each}
+				</ul>
+				{#if routeRows.length > ROUTE_LOG_PREVIEW}
+					<button
+						type="button"
+						class="route-log-more"
+						onclick={() => (routeLogExpanded = !routeLogExpanded)}
+					>
+						{routeLogExpanded
+							? t.detail.routes.showLess
+							: t.detail.routes.showAll(routeRows.length)}
+					</button>
+				{/if}
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
+{#if runtime.sessionSettingsOpen && selected}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="profile-backdrop"
@@ -4133,6 +4530,10 @@
 							</div>
 						</div>
 
+						{#if !nestedProfile}
+							{@render routeLogCard()}
+						{/if}
+
 						<div class="panel-card danger-zone-card">
 							<div class="panel-card-head">
 								<span class="panel-card-title">{#if selectedKind === 'you-bot'}{t.sidebar.archive} / {t.detail.clearHistory} / {t.sidebar.delete}{:else}{t.sidebar.archive} / {t.sidebar.delete}{/if}</span>
@@ -4181,7 +4582,12 @@
 										<SessionAvatar session={selected} bots={botsById} size="hero" botStatus={botStatusOf} />
 									</div>
 									<div class="group-hero-info">
-										<span class="group-hero-name">{detailName || titleOf(selected)}</span>
+										<div class="group-hero-title-row">
+											<h3 class="group-hero-name">{detailName || titleOf(selected)}</h3>
+											{#if selected.archived_at}
+												<span class="badge-archived">{t.top.archived}</span>
+											{/if}
+										</div>
 										<span class="group-hero-count">{groupPresent.length + 1} {t.detail.members}</span>
 									</div>
 								</div>
@@ -4194,8 +4600,20 @@
 											type="text"
 											bind:value={detailName}
 											placeholder={t.sidebar.groupName}
+											onkeydown={(e) => {
+												if (e.key === 'Enter') {
+													e.preventDefault();
+													void saveGroupName();
+												}
+											}}
 										/>
-										<button type="button" class="btn-save-name" onclick={() => void saveGroupName()}>
+										<button
+											type="button"
+											class="btn-save-name"
+											class:is-active={detailName.trim() !== (selected.name ?? '').trim()}
+											disabled={detailName.trim() === (selected.name ?? '').trim()}
+											onclick={() => void saveGroupName()}
+										>
 											{t.detail.saveName}
 										</button>
 									</div>
@@ -4206,7 +4624,7 @@
 							</div>
 
 							<!-- Group Members Section -->
-							<div class="panel-card">
+							<div class="panel-card group-members-card">
 								<div class="panel-card-head">
 									<span class="panel-card-title">{t.detail.members}</span>
 									<span class="panel-counter-badge">{groupPresent.length + 1}</span>
@@ -4219,8 +4637,10 @@
 													<span>{rosterLetter(t.common.you)}</span>
 												</div>
 												<div class="member-info">
-													<span class="member-name-text">{t.common.you}</span>
-													<span class="member-role-tag">{locale === 'zh' ? '创建者' : 'Owner'}</span>
+													<div class="member-name-row">
+														<span class="member-name-text">{t.common.you}</span>
+														<span class="member-badge is-owner">{locale === 'zh' ? '创建者' : 'Owner'}</span>
+													</div>
 												</div>
 											</div>
 										</div>
@@ -4242,16 +4662,21 @@
 															{/if}
 														</span>
 														<div class="member-info">
-															<button
-																type="button"
-																class="name"
-																onclick={() => openProfile(bot.id)}
-																title={locale === 'zh' ? '查看并编辑 Bot 人设' : 'View & edit bot profile'}
-															>
-																{memberLabel(botId)}
-															</button>
-															{#if bot.model}
-																<span class="member-model-tag mono">{bot.model}</span>
+															<div class="member-name-row">
+																<button
+																	type="button"
+																	class="member-name-btn"
+																	onclick={() => openProfile(bot.id)}
+																	title={locale === 'zh' ? '查看并编辑 Bot 人设' : 'View & edit bot profile'}
+																>
+																	{memberLabel(botId)}
+																</button>
+																{#if bot.model}
+																	<span class="member-badge is-model mono" title={bot.model}>{bot.model}</span>
+																{/if}
+															</div>
+															{#if bot.duties}
+																<span class="member-duties-text" title={bot.duties}>{bot.duties}</span>
 															{/if}
 														</div>
 													{:else}
@@ -4303,7 +4728,7 @@
 								</div>
 							</div>
 						{:else if selectedKind === 'bot-bot'}
-							<div class="panel-card">
+							<div class="panel-card group-members-card">
 								<div class="panel-card-head">
 									<span class="panel-card-title">{t.detail.members}</span>
 									<span class="panel-counter-badge">{groupPresent.length}</span>
@@ -4327,16 +4752,21 @@
 															{/if}
 														</span>
 														<div class="member-info">
-															<button
-																type="button"
-																class="name"
-																onclick={() => openProfile(bot.id)}
-																title={locale === 'zh' ? '查看并编辑 Bot 人设' : 'View & edit bot profile'}
-															>
-																{memberLabel(botId)}
-															</button>
-															{#if bot.model}
-																<span class="member-model-tag mono">{bot.model}</span>
+															<div class="member-name-row">
+																<button
+																	type="button"
+																	class="member-name-btn"
+																	onclick={() => openProfile(bot.id)}
+																	title={locale === 'zh' ? '查看并编辑 Bot 人设' : 'View & edit bot profile'}
+																>
+																	{memberLabel(botId)}
+																</button>
+																{#if bot.model}
+																	<span class="member-badge is-model mono" title={bot.model}>{bot.model}</span>
+																{/if}
+															</div>
+															{#if bot.duties}
+																<span class="member-duties-text" title={bot.duties}>{bot.duties}</span>
 															{/if}
 														</div>
 													{:else}
@@ -4353,41 +4783,69 @@
 							</div>
 						{/if}
 
-						<!-- Session History & Danger Actions -->
-						<div class="panel-card danger-zone-card">
-							<div class="panel-card-head">
-								<span class="panel-card-title">{locale === 'zh' ? '会话操作与危险区域' : 'Actions & Danger Zone'}</span>
-							</div>
-							<div class="panel-card-body">
-								<div class="detail-actions">
-									{#if selected.kind === 'group'}
+						{@render routeLogCard()}
+
+						<!-- Session Actions (Archive / Restore) -->
+						{#if selected.kind === 'group'}
+							<div class="panel-card">
+								<div class="panel-card-head">
+									<span class="panel-card-title">{locale === 'zh' ? '会话操作' : 'Actions'}</span>
+								</div>
+								<div class="panel-card-body">
+									<div class="action-list-row">
+										<div class="action-list-info">
+											<span class="action-list-title">{selected.archived_at ? t.sidebar.restore : t.sidebar.archive}</span>
+											<span class="action-list-desc">{selected.archived_at ? (locale === 'zh' ? '恢复此群组到活跃会话列表' : 'Restore group to active sidebar') : (locale === 'zh' ? '从侧栏移入已归档列表，保留历史消息' : 'Move to archived sessions without deleting history')}</span>
+										</div>
 										{#if selected.archived_at}
-											<button type="button" class="btn-secondary" onclick={() => void runtime.restoreSession(selected.id)}>
+											<button type="button" class="btn-secondary action-btn" onclick={() => void runtime.restoreSession(selected.id)}>
 												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
 												<span>{t.sidebar.restore}</span>
 											</button>
 										{:else}
-											<button type="button" class="btn-secondary" onclick={() => void runtime.archiveSession(selected.id)}>
+											<button type="button" class="btn-secondary action-btn" onclick={() => void runtime.archiveSession(selected.id)}>
 												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
 												<span>{t.sidebar.archive}</span>
 											</button>
 										{/if}
-									{/if}
+									</div>
+								</div>
+							</div>
+						{/if}
 
-									<button
-										type="button"
-										class="btn-history-clear"
-										onclick={openClearHistoryConfirm}
-									>
-										<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-										<span>{t.detail.clearHistory}</span>
-									</button>
+						<!-- Danger Zone (Clear History / Delete Group) -->
+						<div class="panel-card danger-zone-card">
+							<div class="panel-card-head">
+								<span class="panel-card-title">{locale === 'zh' ? '危险区域' : 'Danger Zone'}</span>
+							</div>
+							<div class="panel-card-body">
+								<div class="action-list-stack">
+									<div class="action-list-row">
+										<div class="action-list-info">
+											<span class="action-list-title">{t.detail.clearHistory}</span>
+											<span class="action-list-desc">{locale === 'zh' ? '清空所有聊天消息、轮次和上下文，不可撤销' : 'Clear all messages and turns in this group'}</span>
+										</div>
+										<button
+											type="button"
+											class="btn-secondary btn-history-clear action-btn"
+											onclick={openClearHistoryConfirm}
+										>
+											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+											<span>{t.detail.clearHistory}</span>
+										</button>
+									</div>
 
 									{#if selected.kind === 'group'}
-										<button type="button" class="deny" onclick={openDeleteGroupConfirm}>
-											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-											<span>{t.detail.deleteGroup}</span>
-										</button>
+										<div class="action-list-row is-danger">
+											<div class="action-list-info">
+												<span class="action-list-title text-danger">{t.detail.deleteGroup}</span>
+												<span class="action-list-desc">{locale === 'zh' ? '永久解散此群组并删除记录，名册上的 Bot 保留' : 'Permanently delete this group; member bots remain'}</span>
+											</div>
+											<button type="button" class="deny action-btn" onclick={openDeleteGroupConfirm}>
+												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+												<span>{t.detail.deleteGroup}</span>
+											</button>
+										</div>
 									{/if}
 								</div>
 							</div>
@@ -4462,79 +4920,100 @@
 			}}
 		>
 			<div class="modal-dialog settings-modal">
-				<div class="modal-head">
-					<div class="settings-head-left">
-						<h2>{t.settings.title}</h2>
+				<aside class="settings-sidebar">
+					<div class="settings-sidebar-head">
+						<div class="settings-head-left">
+							<svg class="settings-head-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="12" cy="12" r="3"></circle>
+								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+							</svg>
+							<h2>{t.settings.title}</h2>
+						</div>
 						{#if !snapshot.settings.wizard_complete}
 							<span class="settings-wizard-badge">{t.settings.wizardIncomplete}</span>
 						{/if}
 					</div>
-					<button
-						type="button"
-						class="modal-close"
-						title={t.common.close}
-						onclick={closeSettings}
-					>✕</button>
-				</div>
 
-				<div class="settings-tabs" role="tablist" aria-label={t.settings.title}>
-					<button
-						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'general'}
-						class="settings-tab-btn"
-						class:is-active={activeSettingsTab === 'general'}
-						onclick={() => (activeSettingsTab = 'general')}
-					>
-						<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="3"></circle>
-							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-						</svg>
-						<span>{t.settings.tabGeneral}</span>
-						{#if generalHasError}
-							<span class="tab-badge-error" aria-label="error">!</span>
-						{/if}
-					</button>
+					<div class="settings-tabs" role="tablist" aria-label={t.settings.title}>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeSettingsTab === 'general'}
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'general'}
+							onclick={() => (activeSettingsTab = 'general')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="12" cy="12" r="3"></circle>
+								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+							</svg>
+							<span class="tab-name">{t.settings.tabGeneral}</span>
+							{#if generalHasError}
+								<span class="tab-badge-error" aria-label="error">!</span>
+							{/if}
+						</button>
 
-					<button
-						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'models'}
-						class="settings-tab-btn"
-						class:is-active={activeSettingsTab === 'models'}
-						onclick={() => (activeSettingsTab = 'models')}
-					>
-						<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-							<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-							<line x1="12" y1="22.08" x2="12" y2="12"></line>
-						</svg>
-						<span>{t.settings.tabModels}</span>
-						{#if modelsHasError}
-							<span class="tab-badge-error" aria-label="error">!</span>
-						{/if}
-					</button>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeSettingsTab === 'models'}
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'models'}
+							onclick={() => (activeSettingsTab = 'models')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+								<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+								<line x1="12" y1="22.08" x2="12" y2="12"></line>
+							</svg>
+							<span class="tab-name">{t.settings.tabModels}</span>
+							{#if modelsHasError}
+								<span class="tab-badge-error" aria-label="error">!</span>
+							{:else if snapshot.providers.length > 0}
+								<span class="tab-count">{snapshot.providers.length}</span>
+							{/if}
+						</button>
 
-					<button
-						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'mcp'}
-						class="settings-tab-btn"
-						class:is-active={activeSettingsTab === 'mcp'}
-						onclick={() => (activeSettingsTab = 'mcp')}
-					>
-						<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-							<rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-							<line x1="6" y1="6" x2="6.01" y2="6"></line>
-							<line x1="6" y1="18" x2="6.01" y2="18"></line>
-						</svg>
-						<span>{t.settings.tabMcp}</span>
-						{#if snapshot.mcpServers.length > 0}
-							<span class="tab-count">{snapshot.mcpServers.length}</span>
-						{/if}
-					</button>
-				</div>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeSettingsTab === 'mcp'}
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'mcp'}
+							onclick={() => (activeSettingsTab = 'mcp')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+								<rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+								<line x1="6" y1="6" x2="6.01" y2="6"></line>
+								<line x1="6" y1="18" x2="6.01" y2="18"></line>
+							</svg>
+							<span class="tab-name">{t.settings.tabMcp}</span>
+							{#if snapshot.mcpServers.length > 0}
+								<span class="tab-count">{snapshot.mcpServers.length}</span>
+							{/if}
+						</button>
+					</div>
+				</aside>
+
+				<section class="settings-main">
+					<div class="settings-main-head">
+						<div class="settings-main-head-left">
+							<h3 class="settings-main-title">
+								{activeSettingsTab === 'general'
+									? t.settings.tabGeneral
+									: activeSettingsTab === 'models'
+										? t.settings.tabModels
+										: t.settings.tabMcp}
+							</h3>
+						</div>
+						<button
+							type="button"
+							class="modal-close"
+							title={t.common.close}
+							onclick={closeSettings}
+						>✕</button>
+					</div>
 
 				<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'}>
 					{#if saveFailed}
@@ -4554,12 +5033,19 @@
 									<h3 class="settings-card-title">{t.settings.sectionWorkspace}</h3>
 								</div>
 								<div class="modal-section">
-									<label for="workspace">{t.settings.workspace}</label>
-									<input
+									<p class="field-head" id="workspace-label">{t.settings.workspace}</p>
+									<WorkspacePicker
 										id="workspace"
-										type="text"
-										bind:value={runtime.workspacePath}
-										oninput={clearWorkspaceError}
+										path={runtime.workspacePath}
+										chooseLabel={t.settings.workspaceChoose}
+										changeLabel={t.settings.workspaceChange}
+										emptyLabel={t.settings.workspaceUnsetValue}
+										unavailableLabel={t.settings.workspacePickerUnavailable}
+										dialogTitle={t.settings.workspaceChoose}
+										onChange={(next) => {
+											runtime.workspacePath = next;
+											clearWorkspaceError();
+										}}
 									/>
 									<p class="jail">{JAIL_COPY[locale]}</p>
 									{#if fieldErrors.workspace}
@@ -4687,7 +5173,8 @@
 							<div class="provider-list-head">
 								<p class="muted">{t.settings.providersHint}</p>
 								<button type="button" class="btn-provider-add" onclick={openAddProvider}>
-									{t.settings.providerAdd}
+									<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+									<span>{t.settings.providerAdd}</span>
 								</button>
 							</div>
 							{#if snapshot.providers.length === 0}
@@ -4701,54 +5188,114 @@
 									{@const palette = botAvatarColor(provider.id)}
 									{@const host = providerHost(provider.base_url)}
 									<div class="provider-card" class:is-default={isDefault}>
-										<button
-											type="button"
-											class="provider-card-open"
-											onclick={() => openEditProvider(provider.id)}
-										>
-											<span
-												class="provider-card-mark"
-												style:background={palette.bg}
-												style:color={palette.text}
-												style:border-color={palette.border}
-											>{rosterLetter(provider.name)}</span>
-											<span class="provider-card-body">
-												<span class="provider-card-name">{provider.name}</span>
-												<span class="provider-card-meta">
-													{#if host}
-														<span class="mono">{host}</span>
-													{/if}
-													<span>{t.settings.providerModelCount(provider.models.length)}</span>
-												</span>
-												{#if provider.default_model}
-													<span class="provider-card-default mono">{provider.default_model}</span>
-												{/if}
-											</span>
-										</button>
-										<div class="provider-card-acts">
-											{#if isDefault}
-												<span class="key-status-badge is-set">{t.settings.providerDefault}</span>
-											{:else}
-												<button
-													type="button"
-													class="btn-text-action"
-													onclick={() => void setDefaultProvider(provider.id)}
-												>
-													{t.settings.providerSetDefault}
-												</button>
-											{/if}
-											<span class="key-status-badge" class:is-set={provider.key_set}>
-												{provider.key_set ? t.settings.keySet : t.settings.keyUnset}
-											</span>
+										<div class="provider-card-head">
 											<button
 												type="button"
-												class="btn-text-action provider-card-delete"
-												aria-label={`${t.settings.providerDelete}: ${provider.name}`}
-												onclick={() => openDeleteProviderConfirm(provider.id)}
+												class="provider-card-identity"
+												onclick={() => openEditProvider(provider.id)}
+												title={`${t.settings.providerEdit}: ${provider.name}`}
 											>
-												{t.settings.providerDelete}
+												<span
+													class="provider-card-mark"
+													style:background={palette.bg}
+													style:color={palette.text}
+													style:border-color={palette.border}
+												>{rosterLetter(provider.name)}</span>
+												<span class="provider-identity-text">
+													<span class="provider-name-row">
+														<span class="provider-card-name">{provider.name}</span>
+														{#if isDefault}
+															<span class="provider-badge-default" title={t.settings.providerDefault}>
+																<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+																<span>{t.settings.providerDefault}</span>
+															</span>
+														{/if}
+														<span class="provider-badge-key" class:is-set={provider.key_set} title={provider.key_set ? t.settings.keySet : t.settings.keyUnset}>
+															<span class="provider-status-dot" class:is-set={provider.key_set}></span>
+															<span>{provider.key_set ? t.settings.keySet : t.settings.keyUnset}</span>
+														</span>
+													</span>
+													{#if host}
+														<span class="provider-card-host mono" title={provider.base_url ?? ''}>
+															<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+															<span>{host}</span>
+														</span>
+													{/if}
+												</span>
 											</button>
+
+											<div class="provider-card-acts">
+												{#if !isDefault}
+													<button
+														type="button"
+														class="btn-provider-action btn-provider-setdefault"
+														onclick={() => void setDefaultProvider(provider.id)}
+														title={t.settings.providerSetDefault}
+													>
+														<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+														<span>{t.settings.providerSetDefault}</span>
+													</button>
+												{/if}
+												<button
+													type="button"
+													class="btn-provider-action btn-provider-edit"
+													aria-label={`${t.settings.providerEdit}: ${provider.name}`}
+													onclick={() => openEditProvider(provider.id)}
+													title={t.settings.providerEdit}
+												>
+													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+													<span>{t.settings.providerEdit}</span>
+												</button>
+												<button
+													type="button"
+													class="btn-provider-action btn-provider-delete"
+													aria-label={`${t.settings.providerDelete}: ${provider.name}`}
+													onclick={() => openDeleteProviderConfirm(provider.id)}
+													title={t.settings.providerDelete}
+												>
+													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+												</button>
+											</div>
 										</div>
+
+										{#if provider.default_model || provider.models.length > 0}
+											<button
+												type="button"
+												class="provider-card-body-btn"
+												onclick={() => openEditProvider(provider.id)}
+												title={`${t.settings.providerEdit}: ${provider.name}`}
+											>
+												<div class="provider-meta-row">
+													{#if provider.default_model}
+														<div class="provider-default-model-tag" title={`${t.settings.defaultModel}: ${provider.default_model}`}>
+															<span class="tag-icon">
+																<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+															</span>
+															<span class="tag-label">{t.settings.defaultModel}:</span>
+															<span class="tag-val mono">{provider.default_model}</span>
+														</div>
+													{/if}
+													<span class="provider-model-count-label">
+														{t.settings.providerModelCount(provider.models.length)}
+													</span>
+												</div>
+
+												{#if provider.models.length > 0}
+													<div class="provider-model-chips">
+														{#each provider.models.slice(0, 4) as model}
+															<span class="provider-model-chip mono" class:is-default={model === provider.default_model}>
+																{model}
+															</span>
+														{/each}
+														{#if provider.models.length > 4}
+															<span class="provider-model-chip is-overflow">
+																+{provider.models.length - 4}
+															</span>
+														{/if}
+													</div>
+												{/if}
+											</button>
+										{/if}
 									</div>
 								{/each}
 							</div>
@@ -4757,10 +5304,11 @@
 						<McpSettings {runtime} {t} />
 					{/if}
 				</div>
-				<div class="modal-foot actions">
-					<button type="button" onclick={() => void saveSettings()}>{t.settings.save}</button>
-					<button type="button" onclick={closeSettings}>{t.common.close}</button>
-				</div>
+					<div class="modal-foot actions">
+						<button type="button" onclick={() => void saveSettings()}>{t.settings.save}</button>
+						<button type="button" onclick={closeSettings}>{t.common.close}</button>
+					</div>
+				</section>
 			</div>
 		</div>
 	{/if}

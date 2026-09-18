@@ -82,6 +82,12 @@
 		isDirty: () => boolean;
 		markSaved: (next?: string) => void;
 		revert: (value: string) => void;
+		openFind: () => void;
+		openReplace: () => void;
+		findNext: () => void;
+		findPrevious: () => void;
+		isFindOpen: () => boolean;
+		closeFind: () => boolean;
 	} | null>(null);
 	let dirty = $state(false);
 	let saving = $state(false);
@@ -149,8 +155,6 @@
 		if (loadedDirs.has('.')) return;
 		void loadWorkspaceDir('.');
 	});
-
-
 
 	onDestroy(() => {
 		revoke();
@@ -353,6 +357,10 @@
 		else if (nav?.kind === 'node') commitSelect(nav.node);
 	}
 
+	export function closeFind(): boolean {
+		return editor?.closeFind() ?? false;
+	}
+
 	export function requestCloseFromParent(): void {
 		requestClose();
 	}
@@ -378,11 +386,26 @@
 	}
 
 	function onPaneKey(ev: KeyboardEvent): void {
-		if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === 's') {
+		if (ev.key === 'Escape' && closeFind()) {
+			ev.preventDefault();
+			ev.stopPropagation();
+			return;
+		}
+		const mod = ev.metaKey || ev.ctrlKey;
+		if (!mod || ev.altKey) return;
+		const key = ev.key.toLowerCase();
+		if (!ev.shiftKey && key === 's') {
 			if (!canSave) return;
 			ev.preventDefault();
 			ev.stopPropagation();
 			void save();
+			return;
+		}
+		if (!sourceMode || !editor) return;
+		if (!ev.shiftKey && key === 'f') {
+			ev.preventDefault();
+			ev.stopPropagation();
+			editor.openFind();
 		}
 	}
 
@@ -429,6 +452,11 @@
 						class:is-on={wrap}
 						onclick={() => (wrap = !wrap)}
 					>{t.stream.artifactWrap}</button>
+					<button
+						type="button"
+						class="artifact-tool-btn"
+						onclick={() => editor?.openFind()}
+					>{t.stream.artifactFind}</button>
 				{/if}
 				{#if kind === 'markdown' || kind === 'html'}
 					<button
