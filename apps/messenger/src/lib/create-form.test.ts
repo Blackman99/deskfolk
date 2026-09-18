@@ -24,7 +24,11 @@ test("a pinned thinking level rides along; blank is null; an unknown level does 
   const omitted = planCreateBot(base);
   expect(omitted.ok).toBe(true);
   if (omitted.ok) expect("thinking_level" in omitted.body).toBe(false);
-  expect(planCreateBot({ ...base, thinkingLevel: "ultra" })).toEqual({
+  expect(planCreateBot({ ...base, thinkingLevel: "xhigh" })).toMatchObject({
+    ok: true,
+    body: { thinking_level: "xhigh" },
+  });
+  expect(planCreateBot({ ...base, thinkingLevel: "high!" })).toEqual({
     ok: false,
     errors: { thinkingLevel: "invalid" },
   });
@@ -40,13 +44,15 @@ test("pinnable thinking levels follow the picked model's catalog, or every level
       model_catalog: [
         { name: "cheap-chat", thinking_levels: ["none", "low"] as const },
         { name: "code-pro", thinking_levels: ["high", "medium"] as const },
+        { name: "grok-4.6", thinking_levels: ["low", "high", "xhigh"] as const },
       ],
     },
     { id: "p2", model_catalog: [{ name: "code-pro", thinking_levels: ["low"] as const }] },
   ];
-  expect(pinnableThinkingLevels("", providers)).toEqual(["none", "low", "medium", "high"]);
+  expect(pinnableThinkingLevels("", providers)).toEqual(["none", "low", "medium", "high", "xhigh"]);
   expect(pinnableThinkingLevels("p1::cheap-chat", providers)).toEqual(["none", "low"]);
   expect(pinnableThinkingLevels("p1::code-pro", providers)).toEqual(["medium", "high"]);
+  expect(pinnableThinkingLevels("p1::grok-4.6", providers)).toEqual(["low", "high", "xhigh"]);
   expect(pinnableThinkingLevels("code-pro", providers)).toEqual(["low", "medium", "high"]);
   expect(pinnableThinkingLevels("p1::unknown", providers)).toEqual(["none", "low", "medium", "high"]);
 });

@@ -1,7 +1,11 @@
-import { THINKING_LEVELS, type EndpointModel, type ThinkingLevel } from "@real-bot/protocol";
+import {
+  THINKING_LEVELS,
+  isThinkingLevel,
+  sortThinkingLevels,
+  type EndpointModel,
+  type ThinkingLevel,
+} from "@real-bot/protocol";
 import { HttpError } from "./errors";
-
-const THINKING_SET = new Set<string>(THINKING_LEVELS);
 
 export function parseStoredModels(raw: string | undefined): string[] {
   return parseStoredCatalog(raw).map((row) => row.name);
@@ -115,20 +119,20 @@ export function normalizeBotModel(value: unknown, models: string[]): string | nu
 export function normalizeBotThinkingLevel(value: unknown): ThinkingLevel | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") {
-    throw new HttpError(422, "invalid_args", "thinking_level must be none, low, medium, or high");
+    throw new HttpError(422, "invalid_args", "thinking_level must be a reasoning_effort name");
   }
   const level = value.trim();
   if (level.length === 0) return null;
-  if (!THINKING_SET.has(level)) {
-    throw new HttpError(422, "invalid_args", "thinking_level must be none, low, medium, or high");
+  if (!isThinkingLevel(level)) {
+    throw new HttpError(422, "invalid_args", "thinking_level must be a reasoning_effort name");
   }
-  return level as ThinkingLevel;
+  return level;
 }
 
-/** Loose read of a stored pin: anything not on the list is treated as unpinned. */
+/** Loose read of a stored pin: anything that is not a reasoning_effort token is treated as unpinned. */
 export function parseStoredThinkingLevel(raw: string | null | undefined): ThinkingLevel | null {
-  if (!raw || !THINKING_SET.has(raw)) return null;
-  return raw as ThinkingLevel;
+  if (!raw || !isThinkingLevel(raw)) return null;
+  return raw;
 }
 
 export function resolveCompletionModel(input: {
@@ -270,16 +274,14 @@ function normalizeThinkingLevels(value: unknown): ThinkingLevel[] {
   if (!Array.isArray(value)) {
     throw new HttpError(422, "invalid_args", "thinking_levels must be an array");
   }
-  const out: ThinkingLevel[] = [];
-  const seen = new Set<string>();
+  const collected: string[] = [];
   for (const item of value) {
-    if (typeof item !== "string" || !THINKING_SET.has(item)) {
-      throw new HttpError(422, "invalid_args", "thinking_levels must be none, low, medium, or high");
+    if (typeof item !== "string" || !isThinkingLevel(item.trim())) {
+      throw new HttpError(422, "invalid_args", "thinking_levels must be reasoning_effort names");
     }
-    if (seen.has(item)) continue;
-    seen.add(item);
-    out.push(item as ThinkingLevel);
+    collected.push(item.trim());
   }
+  const out = sortThinkingLevels(collected);
   return out.length > 0 ? out : [...THINKING_LEVELS];
 }
 

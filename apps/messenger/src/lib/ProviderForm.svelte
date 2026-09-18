@@ -4,10 +4,12 @@
 	import {
 		PRESET_STRENGTHS,
 		addAttrStrength,
+		addAttrThinkingLevel,
 		addDraftModel,
 		emptyModelAttr,
 		hasCustomAttrs,
 		pickerModels,
+		thinkingChipOptions,
 		probeSignature,
 		setDraftModels,
 		toggleAttrStrength,
@@ -17,8 +19,8 @@
 		type ProviderDraft,
 		type ProviderFieldErrors
 	} from './provider-form.ts';
-	import { THINKING_LEVELS } from '@real-bot/protocol';
 	import Select from './Select.svelte';
+	import { thinkingLevelLabel } from './copy.ts';
 
 	interface Props {
 		draft: ProviderDraft;
@@ -57,6 +59,8 @@
 	let manualName = $state('');
 	let strengthEditing = $state<string | null>(null);
 	let strengthText = $state('');
+	let thinkingEditing = $state<string | null>(null);
+	let thinkingText = $state('');
 
 	const rows = $derived(pickerModels(draft));
 	const enabled = $derived(new Set(draft.models));
@@ -116,6 +120,17 @@
 		patchAttr(name, addAttrStrength(attrOf(name), strengthText));
 		strengthEditing = null;
 		strengthText = '';
+	}
+
+	function openThinkingInput(name: string): void {
+		thinkingEditing = name;
+		thinkingText = '';
+	}
+
+	function submitThinking(name: string): void {
+		patchAttr(name, addAttrThinkingLevel(attrOf(name), thinkingText));
+		thinkingEditing = null;
+		thinkingText = '';
 	}
 
 	function customStrengths(attr: ModelAttrDraft): string[] {
@@ -293,7 +308,7 @@
 								<button
 									type="button"
 									class="model-row-attrs"
-									class:has-custom={hasCustomAttrs(attr)}
+									class:has-custom={hasCustomAttrs(attr, draft.advertisedThinking[name])}
 									aria-expanded={open}
 									aria-label={t.settings.modelAttrsToggle(name)}
 									onclick={() => toggleExpanded(name)}
@@ -301,7 +316,7 @@
 									{#if attr.price.trim()}
 										<span class="attr-pill pill-price">{attr.price.trim()}</span>
 									{/if}
-									{#if attr.thinkingLevels.length !== THINKING_LEVELS.length}
+									{#if hasCustomAttrs({ ...attr, price: '', strengths: [] }, draft.advertisedThinking[name])}
 										<span class="attr-pill pill-thinking">{attr.thinkingLevels.join('/')}</span>
 									{/if}
 									{#each attr.strengths as tag (tag)}
@@ -333,7 +348,7 @@
 								<div class="attr-field">
 									<span class="attr-field-label">{t.settings.modelThinking}</span>
 									<div class="chip-row" role="group" aria-label={t.settings.modelThinking}>
-										{#each THINKING_LEVELS as level (level)}
+										{#each thinkingChipOptions(attr, draft.advertisedThinking[name]) as level (level)}
 											<button
 												type="button"
 												class="btn-chip"
@@ -341,9 +356,37 @@
 												aria-pressed={attr.thinkingLevels.includes(level)}
 												onclick={() => patchAttr(name, toggleAttrThinkingLevel(attr, level))}
 											>
-												{level}
+												{thinkingLevelLabel(t.sidebar.thinkingLevels, level)}
 											</button>
 										{/each}
+										{#if thinkingEditing === name}
+											<!-- svelte-ignore a11y_autofocus -->
+											<input
+												type="text"
+												class="chip-input mono"
+												autofocus
+												placeholder={t.settings.modelThinkingAddPlaceholder}
+												bind:value={thinkingText}
+												onkeydown={(ev) => {
+													if (ev.key === 'Enter') {
+														ev.preventDefault();
+														submitThinking(name);
+													} else if (ev.key === 'Escape') {
+														ev.preventDefault();
+														thinkingEditing = null;
+													}
+												}}
+												onblur={() => submitThinking(name)}
+											/>
+										{:else}
+											<button
+												type="button"
+												class="btn-chip is-add"
+												onclick={() => openThinkingInput(name)}
+											>
+												+ {t.settings.modelThinkingAdd}
+											</button>
+										{/if}
 									</div>
 								</div>
 								<div class="attr-field attr-field-strengths">

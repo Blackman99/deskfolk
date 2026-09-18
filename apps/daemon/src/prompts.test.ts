@@ -319,7 +319,10 @@ describe("prompts", () => {
   test("update_profile can change name and avatar", () => {
     const zh = builtinTools("zh").find((t) => t.function.name === "update_profile")!;
     expect(zh.function.description).toContain("改自己的名字、职责、边界、头像、钉的端点+模型和/或思考等级");
-    expect(zh.function.parameters.properties.thinking_level).toMatchObject({ enum: ["none", "low", "medium", "high"] });
+    expect(zh.function.parameters.properties.thinking_level).toMatchObject({ type: "string" });
+    expect(
+      (zh.function.parameters.properties.thinking_level as { enum?: unknown }).enum,
+    ).toBeUndefined();
     expect(zh.function.description).toContain("avatar_style");
     expect(zh.function.description).toContain("avatar_path");
     expect(zh.function.description).not.toContain("不能改名字");

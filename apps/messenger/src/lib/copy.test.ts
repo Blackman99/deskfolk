@@ -80,6 +80,8 @@ test("provider settings chrome lives on settings.*", () => {
 });
 
 test("theme settings chrome lives on settings.*", () => {
+  expect(COPY.zh.settings.tabPreferences).toBe("基础偏好");
+  expect(COPY.en.settings.tabPreferences).toBe("Preferences");
   expect(COPY.zh.settings.theme).toBe("外观");
   expect(COPY.en.settings.theme).toBe("Appearance");
   expect(COPY.zh.settings.themeSystem).toBe("跟随系统");
@@ -296,6 +298,8 @@ test("create-bot and create-group chrome lives on sidebar.*, empty roster on top
 });
 
 test("about card and update chrome are locked in both locales", () => {
+  expect(COPY.zh.settings.tabAbout).toBe("关于");
+  expect(COPY.en.settings.tabAbout).toBe("About");
   expect(COPY.zh.settings.sectionAbout).toBe("关于");
   expect(COPY.en.settings.sectionAbout).toBe("About");
   expect(COPY.zh.settings.version("0.1.0")).toBe("版本 0.1.0");
@@ -427,6 +431,8 @@ test("the model choice log names the log, the outcomes and the message kinds in 
   // The chip reads "思考 无", so the log keeps its own short level words instead of "不思考".
   expect(COPY.zh.routes.thinking.none).toBe("无");
   expect(COPY.zh.sidebar.thinkingLevels.none).toBe("不思考");
+  expect(COPY.zh.sidebar.thinkingLevels.xhigh).toBe("极高");
+  expect(COPY.zh.sidebar.thinkingLevels.max).toBe("最大");
   expect(COPY.en.routes.thinking.none).toBe("None");
   expect(COPY.zh.routes.feedbackCount(2)).toBe("2 条模型反馈");
   expect(COPY.en.routes.feedbackCount(1)).toBe("1 model note");

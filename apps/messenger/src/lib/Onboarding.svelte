@@ -9,7 +9,14 @@
 		type FieldErrorKind,
 		type SettingsFieldErrors
 	} from './wizard-save.ts';
-	import { mapProviderError, planCreateProvider, type ProviderFieldErrors } from './provider-form.ts';
+	import {
+		applyProbedModels,
+		emptyProviderDraft,
+		mapProviderError,
+		planCreateProvider,
+		type ProviderFieldErrors
+	} from './provider-form.ts';
+	import type { ProbedModel } from '@real-bot/protocol';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -31,6 +38,7 @@
 	let fetchError = $state<string | null>(null);
 	/** What the endpoint actually returned; saved with the endpoint so Settings can show it again. */
 	let probedModels = $state<string[]>([]);
+	let probedCatalog = $state<ProbedModel[]>([]);
 	let availableDiscoveredModels = $state<string[]>([
 		'gpt-4o',
 		'gpt-4o-mini',
@@ -161,6 +169,7 @@
 		}
 		if (res.models.length > 0) {
 			probedModels = res.models;
+			probedCatalog = res.catalog ?? [];
 			availableDiscoveredModels = res.models;
 			const current = parseModelLines(runtime.endpointModelsText);
 			const matching = current.filter((m) => res.models.includes(m));
@@ -302,15 +311,18 @@
 			return;
 		}
 		const providerPlan = planCreateProvider(
-			{
-				name: providerName || 'Default',
-				baseUrl: runtime.endpointUrl,
-				apiKey: runtime.endpointKey,
-				models: parseModelLines(runtime.endpointModelsText),
-				availableModels: probedModels,
-				defaultModel: runtime.endpointDefaultModel,
-				modelAttrs: {}
-			},
+			applyProbedModels(
+				{
+					...emptyProviderDraft(),
+					name: providerName || 'Default',
+					baseUrl: runtime.endpointUrl,
+					apiKey: runtime.endpointKey,
+					models: parseModelLines(runtime.endpointModelsText),
+					availableModels: probedModels,
+					defaultModel: runtime.endpointDefaultModel
+				},
+				{ models: probedModels, catalog: probedCatalog }
+			),
 			!snapshot.settings.wizard_complete
 		);
 		if (!providerPlan.ok) {

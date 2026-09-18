@@ -323,8 +323,8 @@ async function dispatch(
     if (!baseUrl) {
       throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
     }
-    const models = await probeEndpointModels(baseUrl, apiKey);
-    return jsonResponse({ models }, 200, null);
+    const probed = await probeEndpointModels(baseUrl, apiKey);
+    return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
   }
 
   if (method === "PATCH" && path === "/v1/settings") {

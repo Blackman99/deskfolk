@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractModelIds, probeEndpointModels } from "./probe-models";
+import { extractModelIds, extractProbedModels, probeEndpointModels } from "./probe-models";
 
 describe("extractModelIds", () => {
   test("extracts from OpenAI format", () => {
@@ -40,6 +40,39 @@ describe("extractModelIds", () => {
   });
 });
 
+describe("extractProbedModels", () => {
+  test("pulls advertised reasoning efforts off OpenAI-compatible objects", () => {
+    expect(
+      extractProbedModels({
+        data: [
+          { id: "grok-4.6", reasoning_efforts: ["low", "high", "xhigh"] },
+          { id: "gemini-flash", reasoning: { supported_efforts: ["low", "max"] } },
+          { id: "plain" },
+        ],
+      }),
+    ).toEqual({
+      models: ["grok-4.6", "gemini-flash", "plain"],
+      catalog: [
+        { name: "grok-4.6", thinking_levels: ["low", "high", "xhigh"] },
+        { name: "gemini-flash", thinking_levels: ["low", "max"] },
+        { name: "plain", thinking_levels: [] },
+      ],
+    });
+  });
+
+  test("accepts a single thinking_level string and ignores junk tokens", () => {
+    expect(
+      extractProbedModels([{ id: "m", thinking_level: "max" }, { name: "n", thinking_levels: ["low", "??", "HIGH"] }]),
+    ).toEqual({
+      models: ["m", "n"],
+      catalog: [
+        { name: "m", thinking_levels: ["max"] },
+        { name: "n", thinking_levels: ["low", "HIGH"] },
+      ],
+    });
+  });
+});
+
 describe("probeEndpointModels", () => {
   test("queries /models with auth header and returns extracted models", async () => {
     let capturedUrl = "";
@@ -62,7 +95,13 @@ describe("probeEndpointModels", () => {
     );
     expect(capturedUrl).toBe("https://example.com/v1/models");
     expect(capturedAuth).toBe("Bearer test-key");
-    expect(models).toEqual(["model-a", "model-b"]);
+    expect(models).toEqual({
+      models: ["model-a", "model-b"],
+      catalog: [
+        { name: "model-a", thinking_levels: [] },
+        { name: "model-b", thinking_levels: [] },
+      ],
+    });
   });
 
   test("throws 401 when endpoint returns 401", async () => {

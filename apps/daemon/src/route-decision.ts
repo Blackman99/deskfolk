@@ -1,5 +1,6 @@
 import {
   THINKING_LEVELS,
+  thinkingLevelRank,
   type EndpointModel,
   type ThinkingLevel,
 } from "@real-bot/protocol";
@@ -105,18 +106,24 @@ export function isCritiqueMessage(text: string): boolean {
 }
 
 export function pickThinkingLevel(kind: MessageKind, supported: readonly ThinkingLevel[]): ThinkingLevel {
-  const levels = supported.length > 0 ? supported : THINKING_LEVELS;
-  const preferred: ThinkingLevel[] =
-    kind === "simple"
-      ? ["none", "low", "medium", "high"]
-      : kind === "reasoning"
-        ? ["high", "medium", "low", "none"]
-        : kind === "coding"
-          ? ["medium", "high", "low", "none"]
-          : kind === "writing"
-            ? ["low", "medium", "none", "high"]
-            : ["low", "medium", "none", "high"];
-  return preferred.find((level) => levels.includes(level)) ?? levels[0]!;
+  const levels = supported.length > 0 ? [...supported] : [...THINKING_LEVELS];
+  const target =
+    kind === "simple" ? 0 : kind === "coding" ? 3 : kind === "reasoning" ? 6 : 2;
+  const preferHigher = kind === "coding" || kind === "reasoning";
+  let best = levels[0]!;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const level of levels) {
+    const rank = thinkingLevelRank(level);
+    const dist = Math.abs(rank - target);
+    const better =
+      dist < bestDist ||
+      (dist === bestDist &&
+        (preferHigher ? rank > thinkingLevelRank(best) : rank < thinkingLevelRank(best)));
+    if (!better) continue;
+    best = level;
+    bestDist = dist;
+  }
+  return best;
 }
 
 /**
@@ -181,10 +188,7 @@ export function decideCompletion(input: {
     const model = candidates[i]!;
     const supported =
       model.thinking_levels.length > 0 ? model.thinking_levels : [...THINKING_LEVELS];
-    const pinnedLevel =
-      input.botThinkingLevel && supported.includes(input.botThinkingLevel)
-        ? input.botThinkingLevel
-        : null;
+    const pinnedLevel = matchThinkingLevel(supported, input.botThinkingLevel);
     const levels: readonly ThinkingLevel[] = pinnedLevel ? [pinnedLevel] : supported;
     const preferred = pickThinkingLevel(kind, levels);
     for (const thinkingLevel of levels) {
@@ -226,6 +230,15 @@ export function applySignal(
   target.negative += signal.negative ?? 0;
   target.positive += signal.positive ?? 0;
   return { entries };
+}
+
+function matchThinkingLevel(
+  supported: readonly ThinkingLevel[],
+  wanted: ThinkingLevel | null | undefined,
+): ThinkingLevel | null {
+  if (!wanted) return null;
+  const key = wanted.toLowerCase();
+  return supported.find((level) => level.toLowerCase() === key) ?? null;
 }
 
 function scoreCandidate(

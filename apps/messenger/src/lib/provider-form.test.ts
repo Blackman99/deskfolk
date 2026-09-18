@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   addAttrStrength,
+  addAttrThinkingLevel,
   addDraftModel,
   applyProbedModels,
   draftFromProvider,
@@ -32,6 +33,7 @@ function draft(overrides: Partial<ProviderDraft> = {}): ProviderDraft {
     apiKey: "",
     models: ["gpt-4o"],
     availableModels: [],
+    advertisedThinking: {},
     defaultModel: "gpt-4o",
     modelAttrs: {},
     ...overrides,
@@ -206,6 +208,31 @@ test("thinking levels toggle in canonical order and never empty out", () => {
   attr = toggleAttrThinkingLevel(toggleAttrThinkingLevel(attr, "low"), "high");
   expect(attr.thinkingLevels).toEqual(["none"]);
   expect(toggleAttrThinkingLevel(attr, "none")).toBe(attr);
+  attr = addAttrThinkingLevel(attr, "xhigh");
+  expect(attr.thinkingLevels).toEqual(["none", "xhigh"]);
+  expect(addAttrThinkingLevel(attr, "XHIGH")).toBe(attr);
+});
+
+test("a probed catalog fills advertised thinking levels unless the draft already customized them", () => {
+  const next = applyProbedModels(draft({ models: ["grok-4.6"] }), {
+    models: ["grok-4.6", "gemini-flash"],
+    catalog: [
+      { name: "grok-4.6", thinking_levels: ["low", "high", "xhigh"] },
+      { name: "gemini-flash", thinking_levels: ["low", "max"] },
+    ],
+  });
+  expect(next.availableModels).toEqual(["grok-4.6", "gemini-flash"]);
+  expect(next.advertisedThinking["grok-4.6"]).toEqual(["low", "high", "xhigh"]);
+  expect(next.modelAttrs["grok-4.6"]?.thinkingLevels).toEqual(["low", "high", "xhigh"]);
+  const customized = applyProbedModels(
+    draft({
+      models: ["grok-4.6"],
+      modelAttrs: { "grok-4.6": { price: "", thinkingLevels: ["high"], strengths: [] } },
+    }),
+    { catalog: [{ name: "grok-4.6", thinking_levels: ["low", "xhigh"] }] },
+  );
+  expect(customized.modelAttrs["grok-4.6"]?.thinkingLevels).toEqual(["high"]);
+  expect(customized.advertisedThinking["grok-4.6"]).toEqual(["low", "xhigh"]);
 });
 
 test("strength tags toggle and add case-insensitively", () => {
@@ -264,7 +291,24 @@ test("draft from provider carries the catalog and the probed list", () => {
   expect(made.models).toEqual(["gpt-4o"]);
   expect(made.availableModels).toEqual(["gpt-4o", "o3"]);
   expect(made.modelAttrs["gpt-4o"]).toEqual({ price: "1.5", thinkingLevels: ["low"], strengths: ["code"] });
+  expect(made.advertisedThinking).toEqual({});
   expect(made.apiKey).toBe("");
+});
+
+test("reopening a saved catalog does not treat it as advertised, so a later probe leaves a hand-edited list alone", () => {
+  const reopened = draftFromProvider({
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["grok-4.6"],
+    model_catalog: [{ name: "grok-4.6", price: null, thinking_levels: ["high"], strengths: [] }],
+    available_models: ["grok-4.6"],
+    default_model: "grok-4.6",
+  });
+  const next = applyProbedModels(reopened, {
+    catalog: [{ name: "grok-4.6", thinking_levels: ["low", "high", "xhigh"] }],
+  });
+  expect(next.modelAttrs["grok-4.6"]?.thinkingLevels).toEqual(["high"]);
+  expect(next.advertisedThinking["grok-4.6"]).toEqual(["low", "high", "xhigh"]);
 });
 
 test("maps daemon messages onto provider fields", () => {

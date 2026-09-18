@@ -1,4 +1,4 @@
-/** Local API types. This package only exports types and constants. */
+/** Local API types, plus thinking-level helpers used by the daemon and messenger. */
 
 export const LOCAL_API_BIND = "127.0.0.1:17890" as const;
 export const LOCAL_API_HOST = "127.0.0.1" as const;
@@ -104,8 +104,60 @@ export type ListPage<T> = {
   next?: string | null;
 };
 
+/**
+ * Fallback thinking levels when a catalog row does not list any. Endpoints may advertise others
+ * (`xhigh`, `max`, `minimal`, …) as `reasoning_effort` values; those names are stored and sent as-is.
+ */
 export const THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
-export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+/** A completion `reasoning_effort` name: the four fallbacks, or whatever the endpoint advertised. */
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number] | string;
+
+const THINKING_RANK: Record<string, number> = {
+  none: 0,
+  off: 0,
+  minimal: 1,
+  min: 1,
+  low: 2,
+  medium: 3,
+  default: 3,
+  high: 4,
+  xhigh: 5,
+  extra_high: 5,
+  max: 6,
+  maximum: 6,
+};
+
+/** Token the completions API will accept as `reasoning_effort`. */
+const THINKING_TOKEN = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+
+export function isThinkingLevel(value: string): boolean {
+  return THINKING_TOKEN.test(value.trim());
+}
+
+export function thinkingLevelRank(level: string): number {
+  const key = level.trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(THINKING_RANK, key)) return THINKING_RANK[key]!;
+  return 3.5;
+}
+
+/** Dedupes (case-insensitive, first spelling wins) and orders from lightest to heaviest. */
+export function sortThinkingLevels(levels: readonly string[]): ThinkingLevel[] {
+  const out: ThinkingLevel[] = [];
+  const seen = new Set<string>();
+  for (const raw of levels) {
+    const level = raw.trim();
+    if (!level) continue;
+    const key = level.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(level as ThinkingLevel);
+  }
+  out.sort((a, b) => {
+    const delta = thinkingLevelRank(a) - thinkingLevelRank(b);
+    return delta !== 0 ? delta : a.localeCompare(b);
+  });
+  return out;
+}
 
 /** One configured completion name plus routing attributes. Price is routing input only. */
 export type EndpointModel = {
@@ -120,6 +172,17 @@ export type EndpointModelInput = string | {
   price?: number | null;
   thinking_levels?: ThinkingLevel[];
   strengths?: string[];
+};
+
+/** One name from an endpoint `GET /models`, plus thinking levels that object advertised. */
+export type ProbedModel = {
+  name: string;
+  thinking_levels: ThinkingLevel[];
+};
+
+export type ProbeModelsResponse = {
+  models: string[];
+  catalog: ProbedModel[];
 };
 
 export type Settings = {

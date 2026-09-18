@@ -12,7 +12,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { THINKING_LEVELS, type Locale, type ThinkingLevel } from "@real-bot/protocol";
+import { isThinkingLevel, type Locale, type ThinkingLevel } from "@real-bot/protocol";
 import { createCompletionsClient } from "../src/completions";
 import {
   buildEvalTurn,
@@ -56,7 +56,7 @@ Required:
 
 Optional:
   --api-key-env <NAME>    env var holding the key (default REAL_BOT_EVAL_API_KEY)
-  --thinking <level>      ${THINKING_LEVELS.join(" | ")} (default none)
+  --thinking <level>      reasoning_effort name (default none)
   --repeat <n>            attempts per case per model (default 1)
   --cases <path>          cases file (default apps/daemon/eval/tool-selection-cases.json)
   --only <id,id>          run only these case ids
@@ -114,8 +114,8 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--thinking": {
         const level = next(flag, i++);
-        if (!(THINKING_LEVELS as readonly string[]).includes(level)) {
-          throw new Error(`--thinking must be one of ${THINKING_LEVELS.join(", ")}`);
+        if (!isThinkingLevel(level)) {
+          throw new Error("--thinking must be a reasoning_effort name");
         }
         opts.thinking = level as ThinkingLevel;
         break;

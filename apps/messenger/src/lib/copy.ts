@@ -59,7 +59,7 @@ const zh = {
     botThinkingAuto: "自动",
     botThinkingHint: "自动：每条消息由应用挑。钉一档就固定用它；模型不支持时仍由应用挑。",
     botThinkingInvalid: "挑这个模型支持的思考等级。",
-    thinkingLevels: { none: "不思考", low: "低", medium: "中", high: "高" },
+    thinkingLevels: { none: "不思考", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
     autoSaving: "保存中…",
     autoSaved: "已自动保存",
     autoSaveHint: "改动自动保存",
@@ -121,10 +121,21 @@ const zh = {
   settings: {
     title: "设置",
     tabGeneral: "通用",
+    tabPreferences: "基础偏好",
     tabModels: "模型服务",
     tabMcp: "MCP 扩展",
+    tabAbout: "关于",
     sectionWorkspace: "工作区目录",
+    workspaceSubtitle: "Bot 的文件读写与命令执行限制在此目录下",
+    workspaceConfigured: "已配置",
+    workspaceUnsetNotice: "未配置",
+    workspaceSecurityBoundary: "工作区安全边界",
     sectionPreferences: "基础偏好",
+    preferencesSubtitle: "个性化外观、显示语言与系统启动行为",
+    themeDesc: "界面外观配色偏好",
+    languageDesc: "界面所使用的显示语言",
+    launchDesc: "系统登录时在后台自动启动 Real Bot",
+    aboutSubtitle: "本机单人 Agent 协作工作区应用",
     sectionEndpoint: "端点与鉴权",
     sectionModels: "模型配置",
     sectionMcpServers: "已配置服务器",
@@ -205,6 +216,8 @@ const zh = {
     modelPrice: "价格",
     modelPriceHint: "可选，如 1.5",
     modelThinking: "思考等级",
+    modelThinkingAdd: "自定义",
+    modelThinkingAddPlaceholder: "例如 xhigh",
     modelStrengths: "擅长领域",
     saveFailed: "没能保存。",
     mcp: "MCP",
@@ -381,7 +394,7 @@ const zh = {
     jump: "跳到触发消息",
     thinkingPrefix: "思考",
     kindLabel: "消息类别",
-    thinking: { none: "无", low: "低", medium: "中", high: "高" },
+    thinking: { none: "无", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
     feedbackTitle: "模型反馈",
     feedbackCount: (count: number) => `${count} 条模型反馈`,
     outcome: {
@@ -504,7 +517,7 @@ const en: CopyShape<typeof zh> = {
     botThinkingAuto: "Auto",
     botThinkingHint: "Auto lets the app pick per message. A pinned level is used whenever the model supports it; otherwise the app picks.",
     botThinkingInvalid: "Pick a thinking level this model supports.",
-    thinkingLevels: { none: "None", low: "Low", medium: "Medium", high: "High" },
+    thinkingLevels: { none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
     autoSaving: "Saving…",
     autoSaved: "Saved automatically",
     autoSaveHint: "Changes save automatically",
@@ -566,10 +579,21 @@ const en: CopyShape<typeof zh> = {
   settings: {
     title: "Settings",
     tabGeneral: "General",
+    tabPreferences: "Preferences",
     tabModels: "Models",
     tabMcp: "MCP Servers",
+    tabAbout: "About",
     sectionWorkspace: "Workspace Directory",
+    workspaceSubtitle: "Root folder where bot file operations and commands run",
+    workspaceConfigured: "Configured",
+    workspaceUnsetNotice: "Unset",
+    workspaceSecurityBoundary: "Workspace Security Boundary",
     sectionPreferences: "Preferences",
+    preferencesSubtitle: "Personalize appearance, language, and launch behavior",
+    themeDesc: "Color theme for the interface",
+    languageDesc: "Display language for the interface",
+    launchDesc: "Start Real Bot automatically when logging into macOS",
+    aboutSubtitle: "Local macOS single-user agent workspace",
     sectionEndpoint: "Endpoint & Auth",
     sectionModels: "Model Configuration",
     sectionMcpServers: "Configured Servers",
@@ -652,6 +676,8 @@ const en: CopyShape<typeof zh> = {
     modelPrice: "Price",
     modelPriceHint: "Optional, e.g. 1.5",
     modelThinking: "Thinking levels",
+    modelThinkingAdd: "Custom",
+    modelThinkingAddPlaceholder: "e.g. xhigh",
     modelStrengths: "Strengths",
     saveFailed: "Couldn’t save.",
     mcp: "MCP",
@@ -829,7 +855,7 @@ const en: CopyShape<typeof zh> = {
     jump: "Jump to the triggering message",
     thinkingPrefix: "Thinking",
     kindLabel: "Message kind",
-    thinking: { none: "None", low: "Low", medium: "Medium", high: "High" },
+    thinking: { none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
     feedbackTitle: "Model feedback",
     feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
     outcome: {
@@ -911,4 +937,12 @@ export type Copy = CopyShape<typeof zh>;
 
 export function copyFor(locale: Locale): Copy {
   return locale === "en" ? en : zh;
+}
+
+/** Known thinking-level labels, falling back to the endpoint's own token. */
+export function thinkingLevelLabel(
+  labels: Record<string, string> | undefined,
+  level: string,
+): string {
+  return labels?.[level] ?? level;
 }

@@ -535,11 +535,11 @@ describe("empty roster and settings", () => {
     const badLevel = await fetch(`${h.origin}/v1/bots`, {
       method: "POST",
       headers: auth(h, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay", thinking_level: "ultra" }),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay", thinking_level: "high!" }),
     });
     expect(badLevel.status).toBe(422);
     expect(await badLevel.json()).toEqual({
-      error: { code: "invalid_args", message: "thinking_level must be none, low, medium, or high" },
+      error: { code: "invalid_args", message: "thinking_level must be a reasoning_effort name" },
     });
     const unsupported = await fetch(`${h.origin}/v1/bots`, {
       method: "POST",
@@ -855,7 +855,10 @@ describe("empty roster and settings", () => {
         if (String(url).endsWith("/models")) {
           return new Response(
             JSON.stringify({
-              data: [{ id: "mock-model-1" }, { id: "mock-model-2" }],
+              data: [
+                { id: "mock-model-1", reasoning_efforts: ["low", "high", "xhigh"] },
+                { id: "mock-model-2" },
+              ],
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
@@ -874,6 +877,10 @@ describe("empty roster and settings", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
         models: ["mock-model-1", "mock-model-2"],
+        catalog: [
+          { name: "mock-model-1", thinking_levels: ["low", "high", "xhigh"] },
+          { name: "mock-model-2", thinking_levels: [] },
+        ],
       });
     } finally {
       globalThis.fetch = originalFetch;

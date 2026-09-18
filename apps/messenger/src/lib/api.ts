@@ -14,6 +14,7 @@ import type {
   Message,
   PatchProviderRequest,
   PatchSkillRequest,
+  ProbeModelsResponse,
   Provider,
   ResolveApprovalRequest,
   RouteRecord,
@@ -71,8 +72,8 @@ export class LocalApi {
     endpoint_base_url?: string;
     endpoint_api_key?: string;
     provider_id?: string;
-  }): Promise<{ models: string[] }> {
-    return this.post<{ models: string[] }>("/v1/models/probe", body);
+  }): Promise<ProbeModelsResponse> {
+    return this.post<ProbeModelsResponse>("/v1/models/probe", body);
   }
 
   async providers(): Promise<Provider[]> {

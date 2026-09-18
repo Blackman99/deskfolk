@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   distanceFromBottom,
   isNearBottom,
+  maxScrollTop,
   stickAfterScroll,
   STREAM_NEAR_BOTTOM_PX,
 } from "./stream-scroll.ts";
@@ -31,4 +32,15 @@ test("stickAfterScroll unsticks when the user leaves the bottom even during a pi
   expect(stickAfterScroll(true, false)).toEqual({ ignore: false, stick: false });
   expect(stickAfterScroll(false, false)).toEqual({ ignore: false, stick: false });
   expect(stickAfterScroll(false, true)).toEqual({ ignore: false, stick: true });
+});
+
+test("maxScrollTop is the clamped scrollTop of the last pixel", () => {
+  expect(maxScrollTop(1000, 100)).toBe(900);
+  expect(maxScrollTop(80, 100)).toBe(0);
+});
+
+test("stickAfterScroll keeps stick while jumping even far from the bottom", () => {
+  expect(stickAfterScroll(true, false, true)).toEqual({ ignore: true, stick: true });
+  expect(stickAfterScroll(false, false, true)).toEqual({ ignore: true, stick: true });
+  expect(stickAfterScroll(false, true, true)).toEqual({ ignore: true, stick: true });
 });

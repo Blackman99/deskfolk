@@ -33,7 +33,7 @@ export const ADD_ENDPOINT: ToolDef = {
               price: { type: "number" },
               thinking_levels: {
                 type: "array",
-                items: { type: "string", enum: ["none", "low", "medium", "high"] },
+                items: { type: "string" },
               },
               strengths: { type: "array", items: { type: "string" } },
             },
@@ -82,7 +82,7 @@ export const UPDATE_ENDPOINT: ToolDef = {
               price: { type: "number" },
               thinking_levels: {
                 type: "array",
-                items: { type: "string", enum: ["none", "low", "medium", "high"] },
+                items: { type: "string" },
               },
               strengths: { type: "array", items: { type: "string" } },
             },

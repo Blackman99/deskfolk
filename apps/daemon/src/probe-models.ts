@@ -1,34 +1,38 @@
+import {
+  isThinkingLevel,
+  sortThinkingLevels,
+  type ProbedModel,
+} from "@real-bot/protocol";
 import { HttpError } from "./errors";
 
+export type { ProbedModel };
+
+export type ProbeResult = {
+  models: string[];
+  catalog: ProbedModel[];
+};
+
 export function extractModelIds(data: unknown): string[] {
-  const list: string[] = [];
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      if (typeof item === "string") list.push(item);
-      else if (item && typeof item === "object") {
-        const id = (item as Record<string, unknown>).id ?? (item as Record<string, unknown>).name;
-        if (typeof id === "string") list.push(id);
-      }
-    }
-  } else if (data && typeof data === "object") {
-    const rec = data as Record<string, unknown>;
-    const raw = Array.isArray(rec.data) ? rec.data : Array.isArray(rec.models) ? rec.models : [];
-    for (const item of raw) {
-      if (typeof item === "string") list.push(item);
-      else if (item && typeof item === "object") {
-        const id = (item as Record<string, unknown>).id ?? (item as Record<string, unknown>).name;
-        if (typeof id === "string") list.push(id);
-      }
-    }
+  return extractProbedModels(data).models;
+}
+
+export function extractProbedModels(data: unknown): ProbeResult {
+  const catalog: ProbedModel[] = [];
+  const seen = new Set<string>();
+  for (const item of modelItems(data)) {
+    const row = parseProbedItem(item);
+    if (!row || seen.has(row.name)) continue;
+    seen.add(row.name);
+    catalog.push(row);
   }
-  return Array.from(new Set(list.map((s) => s.trim()).filter((s) => s.length > 0)));
+  return { models: catalog.map((row) => row.name), catalog };
 }
 
 export async function probeEndpointModels(
   baseUrl: string,
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<string[]> {
+): Promise<ProbeResult> {
   const cleanBase = baseUrl.replace(/\/+$/, "");
   const url = `${cleanBase}/models`;
   const headers: Record<string, string> = {
@@ -60,9 +64,81 @@ export async function probeEndpointModels(
   }
 
   const json = await res.json().catch(() => null);
-  const models = extractModelIds(json);
-  if (models.length === 0) {
+  const probed = extractProbedModels(json);
+  if (probed.models.length === 0) {
     throw new HttpError(422, "no_models", "No models found in endpoint response");
   }
-  return models;
+  return probed;
+}
+
+function modelItems(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+  const rec = data as Record<string, unknown>;
+  if (Array.isArray(rec.data)) return rec.data;
+  if (Array.isArray(rec.models)) return rec.models;
+  return [];
+}
+
+function parseProbedItem(item: unknown): ProbedModel | null {
+  if (typeof item === "string") {
+    const name = item.trim();
+    return name.length > 0 ? { name, thinking_levels: [] } : null;
+  }
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const rec = item as Record<string, unknown>;
+  const rawName = rec.id ?? rec.name;
+  if (typeof rawName !== "string") return null;
+  const name = rawName.trim();
+  if (name.length === 0) return null;
+  return { name, thinking_levels: extractThinkingLevels(rec) };
+}
+
+/**
+ * Pulls advertised `reasoning_effort` names off a `/models` object. Field names vary across
+ * OpenAI-compatible gateways; an empty list means this object did not say.
+ */
+function extractThinkingLevels(rec: Record<string, unknown>): string[] {
+  const nested =
+    rec.reasoning && typeof rec.reasoning === "object" && !Array.isArray(rec.reasoning)
+      ? (rec.reasoning as Record<string, unknown>)
+      : rec.thinking && typeof rec.thinking === "object" && !Array.isArray(rec.thinking)
+        ? (rec.thinking as Record<string, unknown>)
+        : null;
+  const candidates: unknown[] = [
+    rec.thinking_levels,
+    rec.thinking_level,
+    rec.reasoning_efforts,
+    rec.supported_reasoning_efforts,
+    rec.supported_thinking_levels,
+    rec.reasoning_effort,
+    nested?.supported_efforts,
+    nested?.efforts,
+    nested?.thinking_levels,
+    nested?.thinking_level,
+  ];
+  const collected: string[] = [];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      collected.push(...splitLevelBlob(candidate));
+      continue;
+    }
+    if (!Array.isArray(candidate)) continue;
+    for (const item of candidate) {
+      if (typeof item === "string") {
+        collected.push(...splitLevelBlob(item));
+        continue;
+      }
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const row = item as Record<string, unknown>;
+        const named = row.id ?? row.name ?? row.effort ?? row.level;
+        if (typeof named === "string") collected.push(...splitLevelBlob(named));
+      }
+    }
+  }
+  return sortThinkingLevels(collected.filter((level) => isThinkingLevel(level)));
+}
+
+function splitLevelBlob(raw: string): string[] {
+  return raw.split(/[,/|\s]+/).map((part) => part.trim()).filter((part) => part.length > 0);
 }

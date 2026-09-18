@@ -372,9 +372,12 @@ describe("endpoint and MCP catalog tools", () => {
     expect(unsupported.error?.code).toBe("invalid_args");
     expect(unsupported.error?.message).toBe("thinking_level must be one the pinned model supports");
 
-    const bogus = await runCollabTool(ctx, "update_profile", { thinking_level: "ultra" });
+    const extra = await runCollabTool(ctx, "update_profile", { thinking_level: "xhigh" });
+    expect(extra.ok).toBe(true);
+    expect(extra.data?.thinking_level).toBe("xhigh");
+    const bogus = await runCollabTool(ctx, "update_profile", { thinking_level: "high!" });
     expect(bogus.ok).toBe(false);
-    expect(bogus.error?.message).toBe("thinking_level must be none, low, medium, or high");
+    expect(bogus.error?.message).toBe("thinking_level must be a reasoning_effort name");
 
     const pinned = await runCollabTool(ctx, "update_profile", {
       endpoint_id: provider.id,

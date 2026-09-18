@@ -36,7 +36,7 @@
 		composerImeOnUpdate,
 		type ComposerImeState
 	} from './composer-ime.ts';
-	import { copyFor, JAIL_COPY } from './copy.ts';
+	import { copyFor, JAIL_COPY, thinkingLevelLabel } from './copy.ts';
 	import McpSettings from './McpSettings.svelte';
 	import {
 		emptySkillDraft,
@@ -158,7 +158,7 @@
 		updateMentionTrigger
 	} from './mention-popup.ts';
 	import { tick } from 'svelte';
-	import { isNearBottom, stickAfterScroll } from './stream-scroll.ts';
+	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 
 	let { runtime }: { runtime: MessengerRuntime } = $props();
 
@@ -543,7 +543,7 @@
 	}
 	let fieldErrors = $state<SettingsFieldErrors>({});
 	let saveFailed = $state(false);
-	let activeSettingsTab = $state<'general' | 'models' | 'mcp'>('general');
+	let activeSettingsTab = $state<'general' | 'preferences' | 'models' | 'mcp' | 'about'>('general');
 	let dismissedOnboarding = $state(false);
 	const showOnboarding = $derived(!snapshot.settings.wizard_complete && !dismissedOnboarding);
 	const generalHasError = $derived(Boolean(fieldErrors.workspace));
@@ -681,6 +681,8 @@
 	let showScrollBottom = $state(false);
 	let stickToBottom = $state(true);
 	let ignoreStreamScroll = false;
+	let jumpToBottom = false;
+	let jumpToBottomTimer: ReturnType<typeof setTimeout> | null = null;
 	let nowMs = $state(Date.now());
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let editorEl = $state<HTMLDivElement | null>(null);
@@ -727,8 +729,21 @@
 		const el = streamContainer;
 		if (!el) return;
 		ignoreStreamScroll = true;
-		el.scrollTop = el.scrollHeight;
+		el.scrollTop = maxScrollTop(el.scrollHeight, el.clientHeight);
 		showScrollBottom = false;
+	}
+
+	function cancelJumpToBottom(): void {
+		if (jumpToBottomTimer !== null) {
+			clearTimeout(jumpToBottomTimer);
+			jumpToBottomTimer = null;
+		}
+		jumpToBottom = false;
+	}
+
+	function finishJumpToBottom(): void {
+		cancelJumpToBottom();
+		pinStreamToBottom();
 	}
 
 	const mentionCandidates = $derived.by<MentionCandidate[]>(() => {
@@ -789,13 +804,15 @@
 		mentionQuery = '';
 		mentionAnchorIndex = -1;
 		void runtime.selectedId;
+		cancelJumpToBottom();
 		if (runtime.highlightedMessageId) {
 			stickToBottom = false;
-			return;
+			return () => cancelJumpToBottom();
 		}
 		stickToBottom = true;
 		showScrollBottom = false;
 		void tick().then(() => pinStreamToBottom());
+		return () => cancelJumpToBottom();
 	});
 
 	$effect(() => {
@@ -818,6 +835,7 @@
 		if (!outer || !inner) return;
 		void stickToBottom;
 		const follow = () => {
+			if (jumpToBottom) return;
 			if (stickToBottom) {
 				pinStreamToBottom();
 				return;
@@ -1353,7 +1371,7 @@
 			addProviderFetchError = `${t.settings.modelsFetchFailed} (${res.error})`;
 			return;
 		}
-		addProviderDraft = applyProbedModels(addProviderDraft, res.models);
+		addProviderDraft = applyProbedModels(addProviderDraft, res);
 		addProviderErrors = {};
 	}
 
@@ -1379,7 +1397,7 @@
 			return;
 		}
 		const current = providerDraft(id);
-		providerDrafts = { ...providerDrafts, [id]: applyProbedModels(current, res.models) };
+		providerDrafts = { ...providerDrafts, [id]: applyProbedModels(current, res) };
 		const nextErrors = { ...providerErrors };
 		delete nextErrors[id];
 		providerErrors = nextErrors;
@@ -1828,29 +1846,46 @@
 		const el = e.currentTarget as HTMLElement;
 		if (!el) return;
 		const near = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
-		const next = stickAfterScroll(ignoreStreamScroll, near);
+		const next = stickAfterScroll(ignoreStreamScroll, near, jumpToBottom);
 		ignoreStreamScroll = next.ignore;
-		if (next.ignore) return;
+		if (next.ignore) {
+			if (jumpToBottom && distanceFromBottom(el.scrollHeight, el.scrollTop, el.clientHeight) <= 1) {
+				finishJumpToBottom();
+			}
+			return;
+		}
 		showScrollBottom = !next.stick;
 		stickToBottom = next.stick;
+	}
+
+	function onStreamScrollEnd(): void {
+		if (!jumpToBottom) return;
+		finishJumpToBottom();
 	}
 
 	function scrollToBottom(smooth = true): void {
 		if (!streamContainer) return;
 		stickToBottom = true;
 		showScrollBottom = false;
-		if (!smooth) {
-			pinStreamToBottom();
+		const reduceMotion =
+			typeof window !== 'undefined' &&
+			window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		if (!smooth || reduceMotion) {
+			finishJumpToBottom();
 			return;
 		}
+		jumpToBottom = true;
 		ignoreStreamScroll = true;
-		streamContainer.scrollTo({
-			top: streamContainer.scrollHeight,
+		const el = streamContainer;
+		el.scrollTo({
+			top: maxScrollTop(el.scrollHeight, el.clientHeight),
 			behavior: 'smooth'
 		});
-		window.setTimeout(() => {
-			pinStreamToBottom();
-		}, 320);
+		if (jumpToBottomTimer !== null) clearTimeout(jumpToBottomTimer);
+		jumpToBottomTimer = setTimeout(() => {
+			jumpToBottomTimer = null;
+			finishJumpToBottom();
+		}, 800);
 	}
 
 	function fallbackCopyText(text: string): void {
@@ -3171,8 +3206,9 @@
 				{/if}
 			{/if}
 		</header>
-		<div class="stream" bind:this={streamContainer} onscroll={onStreamScroll}>
-			<div class="stream-inner" bind:this={streamInner}>
+		<div class="stream-stage">
+			<div class="stream" bind:this={streamContainer} onscroll={onStreamScroll} onscrollend={onStreamScrollEnd}>
+				<div class="stream-inner" bind:this={streamInner}>
 			{#if !selected}
 				<div class="empty-state">
 					<div class="empty-icon" aria-hidden="true">
@@ -3859,21 +3895,21 @@
 					{/if}
 				{/each}
 			{/if}
+				</div>
 			</div>
-		</div>
+			{#if showScrollBottom}
+				<button
+					type="button"
+					class="scroll-bottom-btn"
+					title={t.chat.scrollToBottom}
+					aria-label={t.chat.scrollToBottom}
+					onclick={() => scrollToBottom(true)}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+				</button>
+			{/if}
 
-		{#if showScrollBottom}
-			<button
-				type="button"
-				class="scroll-bottom-btn"
-				title={t.chat.scrollToBottom}
-				onclick={() => scrollToBottom(true)}
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-			</button>
-		{/if}
-
-		<footer class="composer">
+			<footer class="composer">
 			{#if selected?.kind === 'group' && groupPresent.length > 0}
 				<div class="composer-mentions-bar">
 					<span class="mentions-label">{t.chat.mentionTooltip}:</span>
@@ -4059,6 +4095,7 @@
 				</div>
 			{/if}
 		</footer>
+		</div>
 	</section>
 	{#if artifactPreview}
 		<button
@@ -4174,30 +4211,6 @@
 				</div>
 
 				<div class="panel-scroll-content">
-					{#if nestedProfile && profileBot}
-						{@const pal = botAvatarColor(profileBot.id)}
-						<div class="nested-profile-hero">
-							<div class="nested-avatar-wrap">
-								<span
-									class="nested-avatar-circle"
-									style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-								>
-									{#if avatarSrc(profileDraft.avatar || profileBot.avatar)}
-										<img src={avatarSrc(profileDraft.avatar || profileBot.avatar)!} alt="" class="avatar-img" />
-									{:else}
-										{rosterLetter(profileDraft.name || profileBot.name)}
-									{/if}
-								</span>
-							</div>
-							<div class="nested-hero-meta">
-								<h2 class="nested-title">{profileDraft.name || profileBot.name}</h2>
-								{#if profileBot.archived_at}
-									<span class="badge-archived">{t.top.archived}</span>
-								{/if}
-							</div>
-						</div>
-					{/if}
-
 					{#if profileBot}
 						{#if profileFailed}
 							<div class="panel-alert is-error">
@@ -4308,7 +4321,7 @@
 												role="radio"
 												aria-checked={profileDraft.thinkingLevel === level}
 												onclick={() => pickProfileThinking(level)}
-											>{t.sidebar.thinkingLevels[level]}</button>
+											>{thinkingLevelLabel(t.sidebar.thinkingLevels, level)}</button>
 										{/each}
 									</div>
 									<p class="muted field-hint">{t.sidebar.botThinkingHint}</p>
@@ -4862,6 +4875,28 @@
 						<button
 							type="button"
 							role="tab"
+							aria-selected={activeSettingsTab === 'preferences'}
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'preferences'}
+							onclick={() => (activeSettingsTab = 'preferences')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<line x1="4" y1="21" x2="4" y2="14"></line>
+								<line x1="4" y1="10" x2="4" y2="3"></line>
+								<line x1="12" y1="21" x2="12" y2="12"></line>
+								<line x1="12" y1="8" x2="12" y2="3"></line>
+								<line x1="20" y1="21" x2="20" y2="16"></line>
+								<line x1="20" y1="12" x2="20" y2="3"></line>
+								<line x1="1" y1="14" x2="7" y2="14"></line>
+								<line x1="9" y1="8" x2="15" y2="8"></line>
+								<line x1="17" y1="16" x2="23" y2="16"></line>
+							</svg>
+							<span class="tab-name">{t.settings.tabPreferences}</span>
+						</button>
+
+						<button
+							type="button"
+							role="tab"
 							aria-selected={activeSettingsTab === 'models'}
 							class="settings-tab-btn"
 							class:is-active={activeSettingsTab === 'models'}
@@ -4899,6 +4934,25 @@
 								<span class="tab-count">{snapshot.mcpServers.length}</span>
 							{/if}
 						</button>
+
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeSettingsTab === 'about'}
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'about'}
+							onclick={() => (activeSettingsTab = 'about')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="12" cy="12" r="10"></circle>
+								<line x1="12" y1="16" x2="12" y2="12"></line>
+								<line x1="12" y1="8" x2="12.01" y2="8"></line>
+							</svg>
+							<span class="tab-name">{t.settings.tabAbout}</span>
+							{#if updateChecker.updateVisible}
+								<span class="tab-badge-dot" aria-label={t.sidebar.updateAvailable}></span>
+							{/if}
+						</button>
 					</div>
 				</aside>
 
@@ -4908,9 +4962,13 @@
 							<h3 class="settings-main-title">
 								{activeSettingsTab === 'general'
 									? t.settings.tabGeneral
-									: activeSettingsTab === 'models'
-										? t.settings.tabModels
-										: t.settings.tabMcp}
+									: activeSettingsTab === 'preferences'
+										? t.settings.tabPreferences
+										: activeSettingsTab === 'models'
+											? t.settings.tabModels
+											: activeSettingsTab === 'mcp'
+												? t.settings.tabMcp
+												: t.settings.tabAbout}
 							</h3>
 						</div>
 						<button
@@ -4934,12 +4992,28 @@
 
 					{#if activeSettingsTab === 'general'}
 						<div class="settings-tab-pane">
-							<div class="settings-card">
-								<div class="settings-card-head">
-									<h3 class="settings-card-title">{t.settings.sectionWorkspace}</h3>
+							<!-- Workspace Directory Section -->
+							<div class="settings-card settings-card-workspace">
+								<div class="settings-card-header">
+									<div class="settings-card-header-main">
+										<div class="settings-header-icon-wrap" aria-hidden="true">
+											<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+												<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+											</svg>
+										</div>
+										<div>
+											<h3 class="settings-card-title">{t.settings.sectionWorkspace}</h3>
+											<p class="settings-card-subtitle">{t.settings.workspaceSubtitle}</p>
+										</div>
+									</div>
+									{#if runtime.workspacePath}
+										<span class="settings-badge-ok">{t.settings.workspaceConfigured}</span>
+									{:else}
+										<span class="settings-badge-warn">{t.settings.workspaceUnsetNotice}</span>
+									{/if}
 								</div>
-								<div class="modal-section">
-									<p class="field-head" id="workspace-label">{t.settings.workspace}</p>
+
+								<div class="settings-workspace-box">
 									<WorkspacePicker
 										id="workspace"
 										path={runtime.workspacePath}
@@ -4953,106 +5027,238 @@
 											clearWorkspaceError();
 										}}
 									/>
-									<p class="jail">{JAIL_COPY[locale]}</p>
-									{#if fieldErrors.workspace}
-										<p class="field-error">
-											{fieldCopy(
-												fieldErrors.workspace,
-												t.settings.workspaceEmpty,
-												t.settings.workspaceInvalid
-											)}
-										</p>
-									{/if}
-								</div>
-							</div>
 
-							<div class="settings-card">
-								<div class="settings-card-head">
-									<h3 class="settings-card-title">{t.settings.sectionPreferences}</h3>
-								</div>
-								<div class="modal-section">
-									<p class="field-head" id="theme-label">{t.settings.theme}</p>
-									<div class="lang-row" role="group" aria-labelledby="theme-label">
-										<button
-											type="button"
-											class:is-on={snapshot.settings.theme === 'system'}
-											onclick={() => {
-												themeManager.setTheme('system');
-												void patchImmediate({ theme: 'system' });
-											}}>{t.settings.themeSystem}</button
-										>
-										<button
-											type="button"
-											class:is-on={snapshot.settings.theme === 'light'}
-											onclick={() => {
-												themeManager.setTheme('light');
-												void patchImmediate({ theme: 'light' });
-											}}>{t.settings.themeLight}</button
-										>
-										<button
-											type="button"
-											class:is-on={snapshot.settings.theme === 'dark'}
-											onclick={() => {
-												themeManager.setTheme('dark');
-												void patchImmediate({ theme: 'dark' });
-											}}>{t.settings.themeDark}</button
-										>
+									{#if fieldErrors.workspace}
+										<div class="field-error-alert" role="alert">
+											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+												<circle cx="12" cy="12" r="10"></circle>
+												<line x1="12" y1="8" x2="12" y2="12"></line>
+												<line x1="12" y1="16" x2="12.01" y2="16"></line>
+											</svg>
+											<span>
+												{fieldCopy(
+													fieldErrors.workspace,
+													t.settings.workspaceEmpty,
+													t.settings.workspaceInvalid
+												)}
+											</span>
+										</div>
+									{/if}
+
+									<div class="workspace-jail-callout">
+										<svg class="jail-callout-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+										</svg>
+										<div class="jail-callout-content">
+											<span class="jail-callout-title">{t.settings.workspaceSecurityBoundary}</span>
+											<p class="jail-callout-text">{JAIL_COPY[locale]}</p>
+										</div>
 									</div>
-								</div>
-								<div class="modal-section">
-									<p class="field-head" id="language-label">{t.settings.language}</p>
-									<div class="lang-row" role="group" aria-labelledby="language-label">
-										<button
-											type="button"
-											class:is-on={locale === 'zh'}
-											onclick={() => void patchImmediate({ locale: 'zh' })}>{t.settings.localeZh}</button
-										>
-										<button
-											type="button"
-											class:is-on={locale === 'en'}
-											onclick={() => void patchImmediate({ locale: 'en' })}>{t.settings.localeEn}</button
-										>
-									</div>
-								</div>
-								<div class="modal-section">
-									<label class="launch-label">
-										<input
-											type="checkbox"
-											checked={snapshot.settings.launch_at_login}
-											onchange={(ev) =>
-												void patchImmediate({
-													launch_at_login: (ev.currentTarget as HTMLInputElement).checked
-												})}
-										/>
-										{t.settings.launch}
-									</label>
 								</div>
 							</div>
+						</div>
+					{:else if activeSettingsTab === 'preferences'}
+						<div class="settings-tab-pane">
+							<!-- Preferences Section -->
+							<div class="settings-card settings-card-preferences">
+								<div class="settings-card-header">
+									<div class="settings-card-header-main">
+										<div class="settings-header-icon-wrap" aria-hidden="true">
+											<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+												<line x1="4" y1="21" x2="4" y2="14"></line>
+												<line x1="4" y1="10" x2="4" y2="3"></line>
+												<line x1="12" y1="21" x2="12" y2="12"></line>
+												<line x1="12" y1="8" x2="12" y2="3"></line>
+												<line x1="20" y1="21" x2="20" y2="16"></line>
+												<line x1="20" y1="12" x2="20" y2="3"></line>
+												<line x1="1" y1="14" x2="7" y2="14"></line>
+												<line x1="9" y1="8" x2="15" y2="8"></line>
+												<line x1="17" y1="16" x2="23" y2="16"></line>
+											</svg>
+										</div>
+										<div>
+											<h3 class="settings-card-title">{t.settings.sectionPreferences}</h3>
+											<p class="settings-card-subtitle">{t.settings.preferencesSubtitle}</p>
+										</div>
+									</div>
+								</div>
+
+								<div class="settings-rows">
+									<!-- Theme Row -->
+									<div class="settings-row">
+										<div class="settings-row-info">
+											<span class="settings-row-title" id="theme-setting-label">{t.settings.theme}</span>
+											<span class="settings-row-desc">{t.settings.themeDesc}</span>
+										</div>
+										<div class="settings-row-action">
+											<div class="segmented-control" role="group" aria-labelledby="theme-setting-label">
+												<button
+													type="button"
+													class="segmented-btn"
+													class:is-active={snapshot.settings.theme === 'system'}
+													onclick={() => {
+														themeManager.setTheme('system');
+														void patchImmediate({ theme: 'system' });
+													}}
+												>
+													<svg class="segmented-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+														<rect x="2" y="3" width="20" height="14" rx="2"></rect>
+														<line x1="8" y1="21" x2="16" y2="21"></line>
+														<line x1="12" y1="17" x2="12" y2="21"></line>
+													</svg>
+													<span>{t.settings.themeSystem}</span>
+												</button>
+												<button
+													type="button"
+													class="segmented-btn"
+													class:is-active={snapshot.settings.theme === 'light'}
+													onclick={() => {
+														themeManager.setTheme('light');
+														void patchImmediate({ theme: 'light' });
+													}}
+												>
+													<svg class="segmented-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+														<circle cx="12" cy="12" r="5"></circle>
+														<line x1="12" y1="1" x2="12" y2="3"></line>
+														<line x1="12" y1="21" x2="12" y2="23"></line>
+														<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+														<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+														<line x1="1" y1="12" x2="3" y2="12"></line>
+														<line x1="21" y1="12" x2="23" y2="12"></line>
+														<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+														<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+													</svg>
+													<span>{t.settings.themeLight}</span>
+												</button>
+												<button
+													type="button"
+													class="segmented-btn"
+													class:is-active={snapshot.settings.theme === 'dark'}
+													onclick={() => {
+														themeManager.setTheme('dark');
+														void patchImmediate({ theme: 'dark' });
+													}}
+												>
+													<svg class="segmented-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+														<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+													</svg>
+													<span>{t.settings.themeDark}</span>
+												</button>
+											</div>
+										</div>
+									</div>
+
+									<!-- Language Row -->
+									<div class="settings-row">
+										<div class="settings-row-info">
+											<span class="settings-row-title" id="lang-setting-label">{t.settings.language}</span>
+											<span class="settings-row-desc">{t.settings.languageDesc}</span>
+										</div>
+										<div class="settings-row-action">
+											<div class="segmented-control" role="group" aria-labelledby="lang-setting-label">
+												<button
+													type="button"
+													class="segmented-btn"
+													class:is-active={locale === 'zh'}
+													onclick={() => void patchImmediate({ locale: 'zh' })}
+												>
+													<span>{t.settings.localeZh}</span>
+												</button>
+												<button
+													type="button"
+													class="segmented-btn"
+													class:is-active={locale === 'en'}
+													onclick={() => void patchImmediate({ locale: 'en' })}
+												>
+													<span>{t.settings.localeEn}</span>
+												</button>
+											</div>
+										</div>
+									</div>
+
+									<!-- Launch at login Row -->
+									<div class="settings-row">
+										<div class="settings-row-info">
+											<span class="settings-row-title" id="launch-setting-label">{t.settings.launch}</span>
+											<span class="settings-row-desc">{t.settings.launchDesc}</span>
+										</div>
+										<div class="settings-row-action">
+											<label class="switch-toggle" for="launch-at-login-toggle" aria-labelledby="launch-setting-label">
+												<input
+													id="launch-at-login-toggle"
+													type="checkbox"
+													checked={snapshot.settings.launch_at_login}
+													onchange={(ev) =>
+														void patchImmediate({
+															launch_at_login: (ev.currentTarget as HTMLInputElement).checked
+														})}
+												/>
+												<span class="switch-track" aria-hidden="true">
+													<span class="switch-thumb"></span>
+												</span>
+											</label>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					{:else if activeSettingsTab === 'models'}
 
 							{#if updateChecker.available}
-								<div class="settings-card">
-									<div class="settings-card-head">
-										<h3 class="settings-card-title">{t.settings.sectionAbout}</h3>
-									</div>
-									<div class="modal-section">
-										<div class="about-row">
-											<span class="about-version">{t.settings.version(updateChecker.version ?? '—')}</span>
-											<button
-												type="button"
-												class="btn-xs"
-												disabled={updateChecker.status === 'checking'}
-												onclick={() => void updateChecker.checkNow()}
-											>
-												{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}
-											</button>
+								<div class="settings-card settings-card-about">
+									<div class="settings-card-header">
+										<div class="settings-card-header-main">
+											<div class="settings-header-icon-wrap" aria-hidden="true">
+												<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+													<circle cx="12" cy="12" r="10"></circle>
+													<line x1="12" y1="16" x2="12" y2="12"></line>
+													<line x1="12" y1="8" x2="12.01" y2="8"></line>
+												</svg>
+											</div>
+											<div>
+												<h3 class="settings-card-title">{t.settings.sectionAbout}</h3>
+												<p class="settings-card-subtitle">{t.settings.aboutSubtitle}</p>
+											</div>
 										</div>
-										{#if updateChecker.status === 'error'}
-											<p class="muted about-status">{t.settings.updateFailed}</p>
-										{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
-											<p class="about-status">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
+									</div>
+
+									<div class="settings-rows">
+										<div class="settings-row">
+											<div class="settings-row-info">
+												<span class="settings-row-title">Real Bot</span>
+												<span class="settings-row-desc">
+													<span class="about-version-chip">{t.settings.version(updateChecker.version ?? '—')}</span>
+												</span>
+											</div>
+											<div class="settings-row-action">
+												<button
+													type="button"
+													class="btn-check-update"
+													disabled={updateChecker.status === 'checking'}
+													onclick={() => void updateChecker.checkNow()}
+												>
+													{#if updateChecker.status === 'checking'}
+														<svg class="spin-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+															<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+															<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
+														</svg>
+													{/if}
+													<span>{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
+												</button>
+											</div>
+										</div>
+									</div>
+
+									{#if updateChecker.status === 'error'}
+										<div class="about-status-banner is-error">
+											<p class="about-status-text">{t.settings.updateFailed}</p>
+										</div>
+									{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
+										<div class="about-update-banner">
+											<p class="about-update-title">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
 											<div class="about-actions">
 												{#if updateChecker.result.downloadUrl}
-													<button type="button" class="btn-xs" onclick={() => void updateChecker.download()}>
+													<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.download()}>
 														{t.settings.updateDownload}
 													</button>
 												{/if}
@@ -5067,10 +5273,12 @@
 													</button>
 												{/if}
 											</div>
-										{:else if updateChecker.status === 'ok'}
-											<p class="muted about-status">{t.settings.upToDate}</p>
-										{/if}
-									</div>
+										</div>
+									{:else if updateChecker.status === 'ok'}
+										<div class="about-status-banner is-ok">
+											<p class="about-status-text">{t.settings.upToDate}</p>
+										</div>
+									{/if}
 								</div>
 							{/if}
 						</div>
@@ -5377,7 +5585,7 @@
 									role="radio"
 									aria-checked={botDraft.thinkingLevel === level}
 									onclick={() => pickBotThinking(level)}
-								>{t.sidebar.thinkingLevels[level]}</button>
+								>{thinkingLevelLabel(t.sidebar.thinkingLevels, level)}</button>
 							{/each}
 						</div>
 						<p class="muted field-hint">{t.sidebar.botThinkingHint}</p>

@@ -19,6 +19,7 @@ import {
   decideCompletion,
   emptyLearnedState,
   isCritiqueMessage,
+  pickThinkingLevel,
   type CatalogEntry,
 } from "./route-decision";
 import { HttpError } from "./errors";
@@ -43,6 +44,29 @@ describe("endpoint model names", () => {
   test("rejects a non-array or empty name", () => {
     expect(() => normalizeModelList("grok-4.5")).toThrow(HttpError);
     expect(() => normalizeModelList(["  "])).toThrow(HttpError);
+  });
+
+  test("catalog objects accept endpoint-specific thinking levels", () => {
+    expect(
+      normalizeModelCatalog([
+        { name: "grok-4.6", thinking_levels: ["xhigh", "low", "high"] },
+        { name: "gemini-flash", thinking_levels: ["max", "low"] },
+      ]),
+    ).toEqual([
+      {
+        name: "grok-4.6",
+        price: null,
+        thinking_levels: ["low", "high", "xhigh"],
+        strengths: [],
+      },
+      {
+        name: "gemini-flash",
+        price: null,
+        thinking_levels: ["low", "max"],
+        strengths: [],
+      },
+    ]);
+    expect(() => normalizeModelCatalog([{ name: "bad", thinking_levels: ["high!"] }])).toThrow(HttpError);
   });
 
   test("catalog objects carry price, thinking levels, and strengths", () => {
@@ -256,6 +280,35 @@ describe("per-message completion decision", () => {
     expect(coding!.model).not.toBe(writing!.model);
     expect(coding).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
     expect(writing).toMatchObject({ model: "writer-pro", thinkingLevel: "low" });
+  });
+
+  test("picks advertised levels such as xhigh and max by task kind", () => {
+    expect(pickThinkingLevel("simple", ["low", "high", "xhigh"])).toBe("low");
+    expect(pickThinkingLevel("writing", ["low", "high", "xhigh"])).toBe("low");
+    expect(pickThinkingLevel("coding", ["low", "high", "xhigh"])).toBe("high");
+    expect(pickThinkingLevel("reasoning", ["low", "high", "xhigh"])).toBe("xhigh");
+    expect(pickThinkingLevel("reasoning", ["low", "max"])).toBe("max");
+    expect(pickThinkingLevel("simple", ["none", "low", "medium", "high"])).toBe("none");
+    expect(pickThinkingLevel("coding", ["none", "low", "medium", "high"])).toBe("medium");
+    expect(pickThinkingLevel("reasoning", ["none", "low", "medium", "high"])).toBe("high");
+  });
+
+  test("a reasoning task on a Grok-style catalog prefers xhigh", () => {
+    const picked = decideCompletion({
+      text: "prove why this architecture is sound",
+      catalog: [
+        {
+          providerId: "p1",
+          name: "grok-4.6",
+          price: 5,
+          thinking_levels: ["low", "medium", "high", "xhigh"],
+          strengths: ["reasoning"],
+        },
+      ],
+      botModel: null,
+      learned: emptyLearnedState(),
+    });
+    expect(picked).toMatchObject({ model: "grok-4.6", thinkingLevel: "xhigh" });
   });
 
   test("empty pin may pick any listed model; a still-listed pin constrains the name", () => {

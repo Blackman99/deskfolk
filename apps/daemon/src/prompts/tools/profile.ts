@@ -51,10 +51,9 @@ export const UPDATE_PROFILE: ToolDef = {
     },
     thinking_level: {
       type: "string",
-      enum: ["none", "low", "medium", "high"],
       description: {
-        zh: "钉的思考等级，即补全的 reasoning_effort。JSON null 或空字符串清掉、改回每条消息由应用挑。钉了模型时须是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时任一等级都行，所选模型支持就用。",
-        en: "Pinned thinking level, the completion's reasoning_effort. JSON null or an empty string clears it so the app picks per message again. With a pinned model it must be one that model supports (see model_catalog.thinking_levels from list_endpoints); with no pinned model any level is accepted and applies whenever the chosen model supports it.",
+        zh: "钉的思考等级，即补全的 reasoning_effort（如 none / low / medium / high / xhigh / max，以该模型名单为准）。JSON null 或空字符串清掉、改回每条消息由应用挑。钉了模型时须是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时任一等级都行，所选模型支持就用。",
+        en: "Pinned thinking level, the completion's reasoning_effort (none / low / medium / high / xhigh / max, whatever the model lists). JSON null or an empty string clears it so the app picks per message again. With a pinned model it must be one that model supports (see model_catalog.thinking_levels from list_endpoints); with no pinned model any level is accepted and applies whenever the chosen model supports it.",
       },
     },
   },

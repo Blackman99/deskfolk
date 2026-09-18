@@ -1,9 +1,12 @@
 import {
   THINKING_LEVELS,
+  isThinkingLevel,
+  sortThinkingLevels,
   type CreateProviderRequest,
   type EndpointModel,
   type EndpointModelInput,
   type PatchProviderRequest,
+  type ProbedModel,
   type ThinkingLevel,
 } from "@real-bot/protocol";
 
@@ -23,6 +26,8 @@ export type ProviderDraft = {
   models: string[];
   /** What the endpoint's `/models` last returned; saved with the provider so the picker survives reopening. */
   availableModels: string[];
+  /** Thinking levels `/models` advertised per name; empty when that object did not say. */
+  advertisedThinking: Record<string, ThinkingLevel[]>;
   defaultModel: string;
   modelAttrs: Record<string, ModelAttrDraft>;
 };
@@ -60,13 +65,14 @@ export function emptyProviderDraft(): ProviderDraft {
     models: [],
     availableModels: [],
     defaultModel: "",
+    advertisedThinking: {},
     modelAttrs: {},
   };
 }
 
 export function withSyncedDefaultModel(draft: ProviderDraft): ProviderDraft {
   const models = uniqueNames(draft.models);
-  const modelAttrs = pruneAttrs(draft.modelAttrs, models);
+  const modelAttrs = pruneAttrs(draft.modelAttrs, models, draft.advertisedThinking);
   const next = { ...draft, models, modelAttrs };
   if (next.defaultModel && models.includes(next.defaultModel)) return next;
   if (models[0]) return { ...next, defaultModel: models[0] };
@@ -76,15 +82,31 @@ export function withSyncedDefaultModel(draft: ProviderDraft): ProviderDraft {
 
 /**
  * Records what the endpoint returned. Enabled names are kept as they are; only when nothing is
- * enabled yet and the list is short does the whole list get enabled.
+ * enabled yet and the list is short does the whole list get enabled. Advertised thinking levels
+ * fill in a name that still has the fallback four (or last followed the previous advertisement);
+ * a hand-edited list is left alone.
  */
-export function applyProbedModels(draft: ProviderDraft, probed: readonly string[]): ProviderDraft {
-  const availableModels = uniqueNames(probed);
+export function applyProbedModels(
+  draft: ProviderDraft,
+  probed: readonly string[] | { models?: readonly string[]; catalog?: readonly ProbedModel[] },
+): ProviderDraft {
+  const catalog = probedCatalog(probed);
+  const availableModels = uniqueNames(catalog.map((row) => row.name));
+  const advertisedThinking = { ...draft.advertisedThinking };
+  const modelAttrs = { ...draft.modelAttrs };
+  for (const row of catalog) {
+    if (row.thinking_levels.length === 0) continue;
+    advertisedThinking[row.name] = [...row.thinking_levels];
+    const current = modelAttrs[row.name];
+    if (!current) continue;
+    if (!followsAdvertisedThinking(current, draft.advertisedThinking[row.name])) continue;
+    modelAttrs[row.name] = { ...current, thinkingLevels: [...row.thinking_levels] };
+  }
   const models =
     draft.models.length === 0 && availableModels.length > 0 && availableModels.length <= AUTO_ENABLE_MAX
       ? [...availableModels]
       : draft.models;
-  return withSyncedDefaultModel({ ...draft, availableModels, models });
+  return withSyncedDefaultModel({ ...draft, availableModels, advertisedThinking, models, modelAttrs });
 }
 
 /** Rows the picker shows: the probed list in endpoint order, then enabled names the endpoint did not list. */
@@ -124,12 +146,32 @@ export function probeSignature(draft: ProviderDraft, keySet: boolean): string | 
 
 /** Toggles a level, keeping at least one so a name never claims to support nothing. */
 export function toggleAttrThinkingLevel(attr: ModelAttrDraft, level: ThinkingLevel): ModelAttrDraft {
-  if (attr.thinkingLevels.includes(level)) {
+  const wanted = level.trim();
+  if (!isThinkingLevel(wanted)) return attr;
+  if (attr.thinkingLevels.some((item) => item.toLowerCase() === wanted.toLowerCase())) {
     if (attr.thinkingLevels.length === 1) return attr;
-    return { ...attr, thinkingLevels: attr.thinkingLevels.filter((item) => item !== level) };
+    return {
+      ...attr,
+      thinkingLevels: attr.thinkingLevels.filter((item) => item.toLowerCase() !== wanted.toLowerCase()),
+    };
   }
-  const next = new Set<ThinkingLevel>([...attr.thinkingLevels, level]);
-  return { ...attr, thinkingLevels: THINKING_LEVELS.filter((item) => next.has(item)) };
+  return { ...attr, thinkingLevels: sortThinkingLevels([...attr.thinkingLevels, wanted]) };
+}
+
+/** Adds a level typed by hand; already-present names (any case) are left alone. */
+export function addAttrThinkingLevel(attr: ModelAttrDraft, raw: string): ModelAttrDraft {
+  const level = raw.trim();
+  if (!isThinkingLevel(level)) return attr;
+  if (attr.thinkingLevels.some((item) => item.toLowerCase() === level.toLowerCase())) return attr;
+  return { ...attr, thinkingLevels: sortThinkingLevels([...attr.thinkingLevels, level]) };
+}
+
+/** Chips for a name: the fallback four, what the endpoint advertised, and anything already ticked. */
+export function thinkingChipOptions(
+  attr: ModelAttrDraft,
+  advertised: readonly string[] | undefined,
+): ThinkingLevel[] {
+  return sortThinkingLevels([...THINKING_LEVELS, ...(advertised ?? []), ...attr.thinkingLevels]);
 }
 
 export function toggleAttrStrength(attr: ModelAttrDraft, tag: string): ModelAttrDraft {
@@ -151,10 +193,11 @@ export function addAttrStrength(attr: ModelAttrDraft, raw: string): ModelAttrDra
   return { ...attr, strengths: [...attr.strengths, tag] };
 }
 
-export function hasCustomAttrs(attr: ModelAttrDraft): boolean {
+export function hasCustomAttrs(attr: ModelAttrDraft, advertised?: readonly string[]): boolean {
+  const baseline = advertised && advertised.length > 0 ? advertised : THINKING_LEVELS;
   return (
     attr.price.trim().length > 0 ||
-    attr.thinkingLevels.length !== THINKING_LEVELS.length ||
+    !sameList(attr.thinkingLevels, baseline) ||
     attr.strengths.length > 0
   );
 }
@@ -192,6 +235,7 @@ export function draftFromProvider(input: {
     apiKey: "",
     models: [...input.models],
     availableModels: [...(input.available_models ?? [])],
+    advertisedThinking: {},
     defaultModel: input.default_model ?? "",
     modelAttrs,
   };
@@ -303,7 +347,7 @@ function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): Endpoi
   const source = attr ?? emptyModelAttr();
   const priceRaw = source.price.trim();
   const price = priceRaw.length === 0 ? null : Number(priceRaw);
-  const levels = THINKING_LEVELS.filter((level) => source.thinkingLevels.includes(level));
+  const levels = sortThinkingLevels(source.thinkingLevels.filter((level) => isThinkingLevel(level)));
   return {
     name,
     price: price != null && Number.isFinite(price) && price >= 0 ? price : null,
@@ -339,12 +383,55 @@ function uniqueTags(tags: readonly string[]): string[] {
 function pruneAttrs(
   attrs: Record<string, ModelAttrDraft>,
   names: readonly string[],
+  advertised: Record<string, ThinkingLevel[]> | undefined,
 ): Record<string, ModelAttrDraft> {
   const next: Record<string, ModelAttrDraft> = {};
   for (const name of names) {
-    next[name] = attrs[name] ?? emptyModelAttr();
+    next[name] = attrs[name] ?? attrFromAdvertised(advertised?.[name]);
   }
   return next;
+}
+
+function attrFromAdvertised(advertised: readonly string[] | undefined): ModelAttrDraft {
+  if (advertised && advertised.length > 0) {
+    return { price: "", thinkingLevels: [...advertised], strengths: [] };
+  }
+  return emptyModelAttr();
+}
+
+function followsAdvertisedThinking(
+  attr: ModelAttrDraft,
+  previousAdvertised: readonly string[] | undefined,
+): boolean {
+  if (attr.thinkingLevels.length === 0 || sameList(attr.thinkingLevels, THINKING_LEVELS)) return true;
+  return Boolean(
+    previousAdvertised && previousAdvertised.length > 0 && sameList(attr.thinkingLevels, previousAdvertised),
+  );
+}
+
+function probedCatalog(
+  probed: readonly string[] | { models?: readonly string[]; catalog?: readonly ProbedModel[] },
+): ProbedModel[] {
+  if (Array.isArray(probed)) {
+    return uniqueNames(probed).map((name) => ({ name, thinking_levels: [] }));
+  }
+  const obj = probed as { models?: readonly string[]; catalog?: readonly ProbedModel[] };
+  const catalog = obj.catalog ?? [];
+  if (catalog.length > 0) {
+    const out: ProbedModel[] = [];
+    const seen = new Set<string>();
+    for (const row of catalog) {
+      const name = row.name.trim();
+      if (name.length === 0 || seen.has(name)) continue;
+      seen.add(name);
+      out.push({
+        name,
+        thinking_levels: sortThinkingLevels(row.thinking_levels.filter((level: string) => isThinkingLevel(level))),
+      });
+    }
+    return out;
+  }
+  return uniqueNames(obj.models ?? []).map((name) => ({ name, thinking_levels: [] }));
 }
 
 function defaultCatalogItem(name: string): EndpointModel {

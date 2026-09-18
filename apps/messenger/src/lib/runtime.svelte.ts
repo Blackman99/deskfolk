@@ -8,6 +8,7 @@ import {
   type Message,
   type CreateProviderRequest,
   type PatchProviderRequest,
+  type ProbeModelsResponse,
   type Provider,
   type ResolveApprovalRequest,
   type SearchHit,
@@ -256,7 +257,7 @@ export class MessengerRuntime {
     baseUrl?: string,
     apiKey?: string,
     providerId?: string,
-  ): Promise<{ ok: true; models: string[] } | { ok: false; error: string }> {
+  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> {
     if (!this.api) return { ok: false, error: "Not connected" };
     try {
       const res = await this.api.probeModels({
@@ -264,7 +265,7 @@ export class MessengerRuntime {
         endpoint_api_key: apiKey,
         provider_id: providerId,
       });
-      return { ok: true, models: res.models };
+      return { ok: true, models: res.models, catalog: res.catalog ?? [] };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       return { ok: false, error: msg };

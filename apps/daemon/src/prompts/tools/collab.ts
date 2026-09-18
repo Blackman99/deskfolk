@@ -63,10 +63,9 @@ export const CREATE_BOT: ToolDef = {
     },
     thinking_level: {
       type: "string",
-      enum: ["none", "low", "medium", "high"],
       description: {
-        zh: "钉的思考等级。省略则每条消息由应用挑。钉了模型时须是该模型支持的等级。",
-        en: "Pinned thinking level. Omit to let the app pick per message. With a pinned model it must be one that model supports.",
+        zh: "钉的思考等级，即补全的 reasoning_effort（以该模型名单为准，可能含 xhigh / max）。省略则每条消息由应用挑。钉了模型时须是该模型支持的等级。",
+        en: "Pinned thinking level, the completion's reasoning_effort (whatever the model lists, including xhigh / max). Omit to let the app pick per message. With a pinned model it must be one that model supports.",
       },
     },
   },

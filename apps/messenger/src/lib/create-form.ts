@@ -1,5 +1,7 @@
 import {
   THINKING_LEVELS,
+  isThinkingLevel,
+  sortThinkingLevels,
   type CreateBotRequest,
   type CreateGroupRequest,
   type ThinkingLevel,
@@ -116,7 +118,7 @@ export function mapCreateBotError(
   return { top: true };
 }
 
-/** Thinking levels a Bot may pin for the picked model: the catalog's list, or every level when nothing is pinned. */
+/** Thinking levels a Bot may pin for the picked model: the catalog's list, or every known level when nothing is pinned. */
 export function pinnableThinkingLevels(
   modelValue: string,
   providers: readonly {
@@ -125,25 +127,29 @@ export function pinnableThinkingLevels(
   }[],
 ): ThinkingLevel[] {
   const parsed = parseModelSelectValue(modelValue);
-  if (parsed.model.length === 0) return [...THINKING_LEVELS];
   const scoped = parsed.provider_id
     ? providers.filter((provider) => provider.id === parsed.provider_id)
     : providers;
+  if (parsed.model.length === 0) {
+    const union: string[] = [];
+    for (const provider of scoped) {
+      for (const entry of provider.model_catalog) {
+        union.push(...(entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS));
+      }
+    }
+    const sorted = sortThinkingLevels(union);
+    return sorted.length > 0 ? sorted : [...THINKING_LEVELS];
+  }
   const entries = scoped
     .flatMap((provider) => provider.model_catalog)
     .filter((entry) => entry.name === parsed.model);
   if (entries.length === 0) return [...THINKING_LEVELS];
-  const union = new Set<ThinkingLevel>();
+  const union: string[] = [];
   for (const entry of entries) {
-    for (const level of entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS) {
-      union.add(level);
-    }
+    union.push(...(entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS));
   }
-  return THINKING_LEVELS.filter((level) => union.has(level));
-}
-
-function isThinkingLevel(value: string): value is ThinkingLevel {
-  return (THINKING_LEVELS as readonly string[]).includes(value);
+  const sorted = sortThinkingLevels(union);
+  return sorted.length > 0 ? sorted : [...THINKING_LEVELS];
 }
 
 export function mapCreateGroupError(

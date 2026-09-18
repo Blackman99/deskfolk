@@ -18,11 +18,24 @@ export function isNearBottom(
   return distanceFromBottom(scrollHeight, scrollTop, clientHeight) <= thresholdPx;
 }
 
-/** Programmatic pins ignore the matching scroll event; a user leaving the bottom always unsticks. */
-export function stickAfterScroll(ignoreProgrammatic: boolean, near: boolean): {
+export function maxScrollTop(scrollHeight: number, clientHeight: number): number {
+  return Math.max(0, scrollHeight - clientHeight);
+}
+
+/**
+ * Programmatic pins ignore the matching scroll event; a user leaving the
+ * bottom always unsticks — except while an animated jump-to-bottom is in
+ * flight, when intermediate frames are still far from the end.
+ */
+export function stickAfterScroll(
+  ignoreProgrammatic: boolean,
+  near: boolean,
+  jumping = false,
+): {
   ignore: boolean;
   stick: boolean;
 } {
+  if (jumping) return { ignore: true, stick: true };
   if (ignoreProgrammatic && near) return { ignore: true, stick: true };
   return { ignore: false, stick: near };
 }

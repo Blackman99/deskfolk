@@ -1,8 +1,8 @@
 import {
   BORING_AVATAR_VARIANTS,
-  THINKING_LEVELS,
   USER_MEMBER,
   generateBoringAvatar,
+  isThinkingLevel,
   type BoringAvatarVariant,
   type Bot,
   type ThinkingLevel,
@@ -1026,10 +1026,10 @@ async function pinFromArgs(
 function nullableThinkingLevel(value: unknown): ThinkingLevel | null {
   const raw = nullableId(value, "thinking_level");
   if (raw === null) return null;
-  if (!(THINKING_LEVELS as readonly string[]).includes(raw)) {
-    throw new HttpError(422, "invalid_args", "thinking_level must be none, low, medium, or high");
+  if (!isThinkingLevel(raw)) {
+    throw new HttpError(422, "invalid_args", "thinking_level must be a reasoning_effort name");
   }
-  return raw as ThinkingLevel;
+  return raw;
 }
 
 function nullableId(value: unknown, field: string): string | null {

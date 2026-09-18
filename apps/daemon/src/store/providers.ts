@@ -258,7 +258,12 @@ export function modelSupportsThinking(
     : providerRows(ctx);
   const entries = rows.flatMap((row) => parseStoredCatalog(row.models)).filter((row) => row.name === model);
   if (entries.length === 0) return true;
-  return entries.some((entry) => entry.thinking_levels.length === 0 || entry.thinking_levels.includes(level));
+  const wanted = level.toLowerCase();
+  return entries.some(
+    (entry) =>
+      entry.thinking_levels.length === 0 ||
+      entry.thinking_levels.some((item) => item.toLowerCase() === wanted),
+  );
 }
 
 export function dropUnknownBotModels(ctx: StoreContext, models: string[]): void {
