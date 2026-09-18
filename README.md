@@ -5,6 +5,10 @@
   </picture>
 </p>
 
+<p align="center">
+  <img alt="multi-bot chat + approval card" src="docs/assets/demo.gif" width="720">
+</p>
+
 <h1 align="center">Real Bot</h1>
 
 <p align="center">Persistent AI teammates, organized by conversation, on your own Mac.</p>
