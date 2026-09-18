@@ -41,17 +41,14 @@
 	import {
 		emptySkillDraft,
 		formatSkillUses,
+		botNameErrorCopy,
 		mapCreateBotError,
-		mapCreateGroupError,
 		mapSkillError,
 		planCreateBot,
-		planCreateGroup,
 		planSkill,
 		reconcileSkillDraft,
 		skillDraftDirty,
-		type CreateBotDraft,
 		type CreateBotFieldErrors,
-		type CreateGroupFieldErrors,
 		type SkillDraft,
 		type SkillFieldErrors
 	} from './create-form.ts';
@@ -134,6 +131,9 @@
 	import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from './preview-width.ts';
 	import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from './sidebar-width.ts';
 	import { isOutside } from './click-outside.ts';
+	import DangerDialog from './overlays/DangerDialog.svelte';
+	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
+	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
 	import { formatFileSize } from './attachments.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotedBotName, quotePreview } from './quote-reply.ts';
 	import {
@@ -567,13 +567,6 @@
 					providerEditor.errors.defaultModel)
 		)
 	);
-	let botDraft = $state<CreateBotDraft>({ name: '', duties: '', boundaries: '', model: '', thinkingLevel: '' });
-	let botErrors = $state<CreateBotFieldErrors>({});
-	let botFailed = $state(false);
-	let groupName = $state('');
-	let groupMembers = $state<string[]>([]);
-	let groupErrors = $state<CreateGroupFieldErrors>({});
-	let groupFailed = $state(false);
 	let profileDraft = $state<ProfileFields>({
 		name: '',
 		duties: '',
@@ -1957,10 +1950,6 @@
 	}
 
 
-	function emptyBot(): CreateBotDraft {
-		return { name: '', duties: '', boundaries: '', avatar: '', model: '', thinkingLevel: '' };
-	}
-
 	function botModelValue(bot: Bot): string {
 		if (!bot.model) return '';
 		if (bot.provider_id) return modelSelectValue(bot.provider_id, bot.model);
@@ -2103,7 +2092,6 @@
 	const profileThinkingOptions = $derived(
 		pinnableThinkingLevels(profileDraft.model, snapshot.providers)
 	);
-	const botThinkingOptions = $derived(pinnableThinkingLevels(botDraft.model, snapshot.providers));
 
 	function onProfileInput(): void {
 		profileErrors = {};
@@ -2129,18 +2117,6 @@
 		if (profileDraft.thinkingLevel === level) return;
 		profileDraft.thinkingLevel = level;
 		onProfilePick();
-	}
-
-	function onBotModelChange(value: string): void {
-		const pinned = applyModelPin(value, botDraft.thinkingLevel ?? '', snapshot.providers);
-		botDraft.model = pinned.model;
-		botDraft.thinkingLevel = pinned.thinkingLevel;
-		onBotInput();
-	}
-
-	function pickBotThinking(level: string): void {
-		botDraft.thinkingLevel = level;
-		onBotInput();
 	}
 
 	function scheduleProfileSave(delay = 600): void {
@@ -2326,73 +2302,12 @@
 
 	function openCreateBot(): void {
 		workspaceOpen = false;
-		botDraft = emptyBot();
-		botErrors = {};
-		botFailed = false;
 		runtime.openCreateBot();
 	}
 
 	function openCreateGroup(): void {
 		workspaceOpen = false;
-		groupName = '';
-		groupMembers = [];
-		groupErrors = {};
-		groupFailed = false;
 		runtime.openCreateGroup();
-	}
-
-	function onBotInput(): void {
-		botErrors = {};
-		botFailed = false;
-	}
-
-	function onGroupInput(): void {
-		if (groupErrors.name) groupErrors = { ...groupErrors, name: undefined };
-		groupFailed = false;
-	}
-
-	function toggleMember(id: string): void {
-		groupMembers = groupMembers.includes(id)
-			? groupMembers.filter((member) => member !== id)
-			: [...groupMembers, id];
-		if (groupErrors.members) groupErrors = { ...groupErrors, members: undefined };
-		groupFailed = false;
-	}
-
-	function botNameCopy(kind: CreateBotFieldErrors['name']): string {
-		if (kind === 'empty') return t.sidebar.nameEmpty;
-		if (kind === 'conflict') return t.sidebar.nameConflict;
-		return '';
-	}
-
-	async function saveBot(): Promise<void> {
-		botFailed = false;
-		botErrors = {};
-		const plan = planCreateBot(botDraft, availableModels);
-		if (!plan.ok) {
-			botErrors = plan.errors;
-			return;
-		}
-		const error = await runtime.createBot(plan.body);
-		if (!error) return;
-		const mapped = mapCreateBotError(error.status, error.message);
-		if ('top' in mapped) botFailed = true;
-		else botErrors = mapped;
-	}
-
-	async function saveGroup(): Promise<void> {
-		groupFailed = false;
-		groupErrors = {};
-		const plan = planCreateGroup({ name: groupName, members: groupMembers });
-		if (!plan.ok) {
-			groupErrors = plan.errors;
-			return;
-		}
-		const error = await runtime.createGroup(plan.body);
-		if (!error) return;
-		const mapped = mapCreateGroupError(error.status, error.message);
-		if ('top' in mapped) groupFailed = true;
-		else groupErrors = mapped;
 	}
 </script>
 
@@ -2948,42 +2863,12 @@
 			</div>
 		</div>
 		{#if runtime.createGroupOpen}
-			<div class="sheet">
-				<div class="sheet-head">
-					<h2>{t.sidebar.addGroup}</h2>
-					<button type="button" class="sheet-close" title={t.common.close} onclick={() => (runtime.createGroupOpen = false)}>✕</button>
-				</div>
-				{#if groupFailed}
-					<p class="field-error">{t.sidebar.saveFailed}</p>
-				{/if}
-				<label for="group-name">{t.sidebar.groupName}</label>
-				<input id="group-name" type="text" bind:value={groupName} oninput={onGroupInput} />
-				{#if groupErrors.name}
-					<p class="field-error">{t.sidebar.groupNameEmpty}</p>
-				{/if}
-				<p class="field-head">{t.sidebar.groupMembers}</p>
-				<div class="members">
-					{#each visibleBots as bot (bot.id)}
-						<label>
-							<input
-								type="checkbox"
-								checked={groupMembers.includes(bot.id)}
-								onchange={() => toggleMember(bot.id)}
-							/>
-							{bot.name}
-						</label>
-					{/each}
-				</div>
-				{#if groupErrors.members}
-					<p class="field-error">{t.sidebar.membersTooFew}</p>
-				{/if}
-				<div class="actions">
-					<button type="button" onclick={() => void saveGroup()}>{t.sidebar.create}</button>
-					<button type="button" onclick={() => (runtime.createGroupOpen = false)}
-						>{t.common.close}</button
-					>
-				</div>
-			</div>
+			<CreateGroupSheet
+				{runtime}
+				bots={visibleBots}
+				{t}
+				onClose={() => (runtime.createGroupOpen = false)}
+			/>
 		{/if}
 	</aside>
 	<button
@@ -4177,7 +4062,7 @@
 										placeholder={t.sidebar.botName}
 									/>
 									{#if profileErrors.name}
-										<p class="field-error">{botNameCopy(profileErrors.name)}</p>
+										<p class="field-error">{botNameErrorCopy(profileErrors.name, t.sidebar)}</p>
 									{/if}
 								</div>
 
@@ -4693,54 +4578,12 @@
 		</div>
 	{/if}
 	{#if dangerConfirmCopy}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="modal-backdrop confirm-backdrop"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="danger-confirm-title"
-			aria-describedby="danger-confirm-body"
-			tabindex="-1"
-			onclick={(e) => {
-				e.stopPropagation();
-				if (e.target === e.currentTarget) dismissDangerConfirm();
-			}}
-			onpointerdown={(e) => e.stopPropagation()}
-			onkeydown={(e) => {
-				if (e.key === 'Escape') {
-					e.stopPropagation();
-					dismissDangerConfirm();
-				}
-			}}
-		>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="modal-dialog confirm-dialog"
-				onclick={(e) => e.stopPropagation()}
-				onpointerdown={(e) => e.stopPropagation()}
-			>
-				<div class="modal-head">
-					<h2 id="danger-confirm-title">{dangerConfirmCopy.title}</h2>
-					<button
-						type="button"
-						class="modal-close"
-						title={t.common.close}
-						onclick={dismissDangerConfirm}
-					>✕</button>
-				</div>
-				<div class="modal-body">
-					<p id="danger-confirm-body" class="confirm-copy">{dangerConfirmCopy.body}</p>
-				</div>
-				<div class="modal-foot actions">
-					<button type="button" onclick={dismissDangerConfirm}>
-						{dangerConfirmCopy.cancel}
-					</button>
-					<button type="button" class="deny" onclick={() => void confirmDangerAction()}>
-						{dangerConfirmCopy.confirm}
-					</button>
-				</div>
-			</div>
-		</div>
+		<DangerDialog
+			copy={dangerConfirmCopy}
+			{t}
+			onDismiss={dismissDangerConfirm}
+			onConfirm={() => void confirmDangerAction()}
+		/>
 	{/if}
 	{#if runtime.settingsOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -5400,107 +5243,12 @@
 		</div>
 	{/if}
 	{#if runtime.createBotOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="modal-backdrop"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			onclick={(e) => {
-				if (e.target === e.currentTarget) runtime.createBotOpen = false;
-			}}
-			onkeydown={(e) => {
-				if (e.key === 'Escape') runtime.createBotOpen = false;
-			}}
-		>
-			<div class="modal-dialog create-bot-modal">
-				<div class="modal-head">
-					<h2>{t.sidebar.addBot}</h2>
-					<button
-						type="button"
-						class="modal-close"
-						title={t.common.close}
-						onclick={() => (runtime.createBotOpen = false)}>✕</button
-					>
-				</div>
-				<div class="modal-body">
-					{#if botFailed}
-						<p class="field-error">{t.sidebar.saveFailed}</p>
-					{/if}
-					<div class="modal-section">
-						<span class="field-head">{t.sidebar.botAvatar}</span>
-						<AvatarEditor bind:avatar={botDraft.avatar} name={botDraft.name} {t} onchange={onBotInput} />
-					</div>
-					<div class="modal-section">
-						<label for="bot-name">{t.sidebar.botName}</label>
-						<input id="bot-name" type="text" bind:value={botDraft.name} oninput={onBotInput} />
-						{#if botErrors.name}
-							<p class="field-error">{botNameCopy(botErrors.name)}</p>
-						{/if}
-					</div>
-					<div class="modal-section">
-						<label for="bot-duties">{t.sidebar.botDuties}</label>
-						<textarea id="bot-duties" bind:value={botDraft.duties} oninput={onBotInput}></textarea>
-						{#if botErrors.duties}
-							<p class="field-error">{t.sidebar.dutiesEmpty}</p>
-						{/if}
-					</div>
-					<div class="modal-section">
-						<label for="bot-boundaries">{t.sidebar.botBoundaries}</label>
-						<textarea
-							id="bot-boundaries"
-							bind:value={botDraft.boundaries}
-							oninput={onBotInput}
-						></textarea>
-						{#if botErrors.boundaries}
-							<p class="field-error">{t.sidebar.boundariesEmpty}</p>
-						{/if}
-					</div>
-					<div class="modal-section">
-						<label for="bot-model">{t.sidebar.botModel}</label>
-						<Select
-							id="bot-model"
-							bind:value={botDraft.model}
-							placeholder={t.sidebar.botModelDefault}
-							emptyLabel={t.sidebar.botModelDefault}
-							options={availableModelOptions}
-							error={!!botErrors.model}
-							onchange={onBotModelChange}
-						/>
-						{#if botErrors.model}
-							<p class="field-error">{t.sidebar.botModelInvalid}</p>
-						{:else if !botDraft.model}
-							<p class="muted field-hint">{t.sidebar.botModelAutoHint}</p>
-						{/if}
-					</div>
-					{#if botDraft.model}
-					<div class="modal-section">
-						<span class="field-label" id="bot-thinking-label">{t.sidebar.botThinking}</span>
-						<div class="thinking-picker" role="radiogroup" aria-labelledby="bot-thinking-label">
-							{#each botThinkingOptions as level (level)}
-								<button
-									type="button"
-									class="btn-chip level-chip"
-									class:active={botDraft.thinkingLevel === level}
-									role="radio"
-									aria-checked={botDraft.thinkingLevel === level}
-									onclick={() => pickBotThinking(level)}
-								>{thinkingLevelLabel(t.sidebar.thinkingLevels, level)}</button>
-							{/each}
-						</div>
-						<p class="muted field-hint">{t.sidebar.botThinkingHint}</p>
-						{#if botErrors.thinkingLevel}
-							<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
-						{/if}
-					</div>
-					{/if}
-				</div>
-				<div class="modal-foot actions">
-					<button type="button" onclick={() => void saveBot()}>{t.sidebar.create}</button>
-					<button type="button" onclick={() => (runtime.createBotOpen = false)}>{t.common.close}</button>
-				</div>
-			</div>
-		</div>
+		<CreateBotSheet
+			{runtime}
+			modelOptions={availableModelOptions}
+			{t}
+			onClose={() => (runtime.createBotOpen = false)}
+		/>
 	{/if}
 
 	{#if contextMenu}

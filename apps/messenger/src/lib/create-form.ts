@@ -102,6 +102,16 @@ export function planCreateGroup(draft: CreateGroupDraft): CreateGroupPlan {
   return { ok: true, body: { name, members } };
 }
 
+/** Both the create sheet and the profile drawer report a bad Bot name; same two cases. */
+export function botNameErrorCopy(
+  kind: CreateBotFieldErrors["name"],
+  copy: { nameEmpty: string; nameConflict: string },
+): string {
+  if (kind === "empty") return copy.nameEmpty;
+  if (kind === "conflict") return copy.nameConflict;
+  return "";
+}
+
 export function mapCreateBotError(
   status: number,
   message: string,
