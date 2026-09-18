@@ -3,8 +3,8 @@ import type { ToolDef } from "../tool-schema";
 export const UPDATE_PROFILE: ToolDef = {
   name: "update_profile",
   description: {
-    zh: "改自己的名字、职责、边界、头像、钉的端点+模型和/或思考等级。至少提供一项。头像用 avatar_style 生成，或用工作区里一张 PNG / JPEG / GIF / WebP 的 avatar_path；不要两个一起给。endpoint_id 与 model 可只改一项；两项都空则清成空钉。thinking_level 钉补全的思考等级，JSON null 或空字符串清掉、改回由应用挑。改名须未删除名唯一。不能删或归档自己。不要为这次改人设再发一条聊天消息。",
-    en: "Change your own name, duties, boundaries, avatar, pinned endpoint+model, and/or thinking level. Provide at least one field. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path; do not pass both. endpoint_id and model may be changed independently; empty values for both clear the pin. thinking_level pins the completion's thinking level; JSON null or an empty string clears it so the app picks again. A new name must be unique among undeleted Bots. You cannot delete or archive yourself. Do not send a chat message about this profile change.",
+    zh: "改自己的名字、职责、边界、头像、钉的端点+模型和/或思考等级。至少提供一项。头像用 avatar_style 生成，或用工作区里一张 PNG / JPEG / GIF / WebP 的 avatar_path；不要两个一起给。endpoint_id 与 model 可只改一项；两项都空则清成空钉。thinking_level 钉补全的思考等级，只能和 model 一起钉：没钉模型时给它会被拒绝，清掉模型也一并清掉它；钉了模型而不给它，会落到该模型的默认档。改名须未删除名唯一。不能删或归档自己。不要为这次改人设再发一条聊天消息。",
+    en: "Change your own name, duties, boundaries, avatar, pinned endpoint+model, and/or thinking level. Provide at least one field. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path; do not pass both. endpoint_id and model may be changed independently; empty values for both clear the pin. thinking_level pins the completion's thinking level and only goes with a pinned model: it is refused without one, clearing the model clears it too, and pinning a model without it lands on that model's default. A new name must be unique among undeleted Bots. You cannot delete or archive yourself. Do not send a chat message about this profile change.",
   },
   properties: {
     name: {
@@ -52,8 +52,8 @@ export const UPDATE_PROFILE: ToolDef = {
     thinking_level: {
       type: "string",
       description: {
-        zh: "钉的思考等级，即补全的 reasoning_effort（如 none / low / medium / high / xhigh / max，以该模型名单为准）。JSON null 或空字符串清掉、改回每条消息由应用挑。钉了模型时须是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时任一等级都行，所选模型支持就用。",
-        en: "Pinned thinking level, the completion's reasoning_effort (none / low / medium / high / xhigh / max, whatever the model lists). JSON null or an empty string clears it so the app picks per message again. With a pinned model it must be one that model supports (see model_catalog.thinking_levels from list_endpoints); with no pinned model any level is accepted and applies whenever the chosen model supports it.",
+        zh: "钉的思考等级，即补全的 reasoning_effort（如 none / low / medium / high / xhigh / max，以该模型名单为准）。须和 model 一起钉，且是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时传它会 422。JSON null 或空字符串把它退回该模型的默认档；要连模型一起放开就把 model 清掉，那时模型和等级都由应用每条消息挑。",
+        en: "Pinned thinking level, the completion's reasoning_effort (none / low / medium / high / xhigh / max, whatever the model lists). It goes with a pinned model and must be one that model supports (see model_catalog.thinking_levels from list_endpoints); passing it with no pinned model is a 422. JSON null or an empty string drops it back to that model's default; clear the model instead to let the app pick the model and the level per message.",
       },
     },
   },

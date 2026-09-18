@@ -273,8 +273,12 @@ test("create-bot and create-group chrome lives on sidebar.*, empty roster on top
   expect(COPY.en.sidebar.botAvatarDecodeFailed).toBe("Couldn’t read that image.");
   expect(COPY.zh.sidebar.botModel).toBe("模型");
   expect(COPY.en.sidebar.botModel).toBe("Model");
-  expect(COPY.zh.sidebar.botModelDefault).toBe("用默认模型");
-  expect(COPY.en.sidebar.botModelDefault).toBe("Use the default model");
+  // Automatic is both: the app picks the model and the level that goes with it.
+  expect(COPY.zh.sidebar.botModelDefault).toBe("自动");
+  expect(COPY.en.sidebar.botModelDefault).toBe("Automatic");
+  expect(COPY.zh.sidebar.botModelAutoHint).toContain("思考等级跟着那个模型走");
+  expect(COPY.en.sidebar.botModelAutoHint).toContain("thinking level that goes with it");
+  expect(COPY.zh.sidebar.botThinkingHint).toBe("只列这个模型支持的档。换模型时会落到新模型的默认档。");
   expect(COPY.zh.sidebar.groupName).toBe("群名");
   expect(COPY.en.sidebar.groupName).toBe("Group name");
   expect(COPY.zh.sidebar.groupMembers).toBe("成员");

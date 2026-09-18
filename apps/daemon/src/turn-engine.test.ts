@@ -2951,11 +2951,11 @@ describe("per-message model and thinking-level routing", () => {
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
     expect(seen[0]).toEqual({ model: "code-pro", reasoning_effort: "high" });
 
-    // Unpin the model but keep a level the routed model cannot honour: the app picks again.
+    // Unpinning the model unpins the level with it, so the app picks both again.
     await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
       method: "PATCH",
       headers: auth(h),
-      body: JSON.stringify({ model: null, thinking_level: "none" }),
+      body: JSON.stringify({ model: null }),
     });
     await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
       method: "POST",

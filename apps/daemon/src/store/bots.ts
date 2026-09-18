@@ -9,7 +9,12 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { carriedThinkingLevel, resolveIncomingBotTarget, resolveIncomingThinkingLevel } from "./providers";
+import {
+  carriedThinkingLevel,
+  defaultThinkingLevelFor,
+  resolveIncomingBotTarget,
+  resolveIncomingThinkingLevel,
+} from "./providers";
 import { forgetBotRoutes } from "./routing";
 import { getSession } from "./sessions";
 import {
@@ -49,7 +54,10 @@ export function createBot(
       ? input.avatar.trim()
       : generateBoringAvatar({ name });
   const { model, providerId } = resolveIncomingBotTarget(ctx, input.model, input.provider_id);
-  const thinkingLevel = resolveIncomingThinkingLevel(ctx, input.thinking_level, model, providerId);
+  // Pinning a model pins a level too: a Bot is either on automatic for both or explicit about both.
+  const thinkingLevel =
+    resolveIncomingThinkingLevel(ctx, input.thinking_level, model, providerId) ??
+    defaultThinkingLevelFor(ctx, model, providerId);
   assertNameFree(ctx, name);
   const now = isoNow();
   const botId = ulid();
@@ -123,9 +131,10 @@ export function patchBot(
   const model = nextTarget.model;
   const providerId = nextTarget.providerId;
   const thinkingLevel =
-    "thinking_level" in patch
+    ("thinking_level" in patch
       ? resolveIncomingThinkingLevel(ctx, patch.thinking_level, model, providerId)
-      : carriedThinkingLevel(ctx, row.thinking_level, model, providerId);
+      : carriedThinkingLevel(ctx, row.thinking_level, model, providerId)) ??
+    defaultThinkingLevelFor(ctx, model, providerId);
   if (name !== row.name) assertNameFree(ctx, name);
   const now = isoNow();
   ctx.db.transaction(() => {

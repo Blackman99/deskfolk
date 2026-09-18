@@ -118,6 +118,37 @@ export function mapCreateBotError(
   return { top: true };
 }
 
+/**
+ * Order a freshly pinned model's level is chosen in: the same preference the app itself applies to
+ * an ordinary message, so pinning a model does not quietly change how hard it thinks.
+ */
+const PIN_PREFERENCE = ["low", "medium", "none", "high"];
+
+/** The level a model lands on when it is pinned without one. Empty only when it offers none. */
+export function defaultThinkingLevel(levels: readonly string[]): string {
+  if (levels.length === 0) return "";
+  return PIN_PREFERENCE.find((level) => levels.includes(level)) ?? levels[0]!;
+}
+
+/**
+ * Model and thinking level move together. Automatic means the app picks both per message; pinning a
+ * model means pinning a level too, so the panel can never sit in a half-chosen state. A model swap
+ * keeps the level when the new model offers it and otherwise falls to that model's default.
+ */
+export function applyModelPin(
+  modelValue: string,
+  thinkingLevel: string,
+  providers: readonly {
+    id: string;
+    model_catalog: readonly { name: string; thinking_levels: readonly ThinkingLevel[] }[];
+  }[],
+): { model: string; thinkingLevel: string } {
+  if (modelValue.length === 0) return { model: "", thinkingLevel: "" };
+  const levels = pinnableThinkingLevels(modelValue, providers) as readonly string[];
+  const kept = thinkingLevel && levels.includes(thinkingLevel) ? thinkingLevel : defaultThinkingLevel(levels);
+  return { model: modelValue, thinkingLevel: kept };
+}
+
 /** Thinking levels a Bot may pin for the picked model: the catalog's list, or every known level when nothing is pinned. */
 export function pinnableThinkingLevels(
   modelValue: string,

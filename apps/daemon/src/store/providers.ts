@@ -7,9 +7,12 @@ import {
   providerKeychainName,
   type CreateProviderRequest,
   type PatchProviderRequest,
+  sortThinkingLevels,
+  THINKING_LEVELS,
   type Provider,
   type ThinkingLevel,
 } from "@real-bot/protocol";
+import { pickThinkingLevel } from "../route-decision";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import {
@@ -217,8 +220,8 @@ export function resolveIncomingBotTarget(
 }
 
 /**
- * An explicit pin must be a level the pinned model supports. With no pinned model any level is
- * accepted; the turn applies it whenever the chosen model supports it.
+ * A thinking level belongs to a model: either the app picks both, or a Bot pins both. An explicit
+ * pin therefore needs a pinned model, and must be a level that model supports.
  */
 export function resolveIncomingThinkingLevel(
   ctx: StoreContext,
@@ -228,22 +231,56 @@ export function resolveIncomingThinkingLevel(
 ): ThinkingLevel | null {
   const level = normalizeBotThinkingLevel(value);
   if (!level) return null;
+  if (!model) {
+    throw new HttpError(422, "invalid_args", "thinking_level needs a pinned model");
+  }
   if (!modelSupportsThinking(ctx, model, providerId, level)) {
     throw new HttpError(422, "invalid_args", "thinking_level must be one the pinned model supports");
   }
   return level;
 }
 
-/** A pin carried across a model change is dropped when the new model cannot honour it. */
+/**
+ * The level a pinned model lands on when none was given or the old pin does not survive the swap.
+ * Same preference the router applies to an ordinary message, so pinning a model does not quietly
+ * change how hard it thinks.
+ */
+export function defaultThinkingLevelFor(
+  ctx: StoreContext,
+  model: string | null,
+  providerId: string | null,
+): ThinkingLevel | null {
+  if (!model) return null;
+  const rows = providerId
+    ? providerRows(ctx).filter((row) => row.id === providerId)
+    : providerRows(ctx);
+  const levels: string[] = [];
+  for (const row of rows) {
+    for (const entry of parseStoredCatalog(row.models)) {
+      if (entry.name !== model) continue;
+      levels.push(...(entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS));
+    }
+  }
+  const supported = levels.length > 0 ? sortThinkingLevels(levels) : [...THINKING_LEVELS];
+  return pickThinkingLevel("general", supported);
+}
+
+/**
+ * A pin carried across a model change follows the new model: dropped entirely when the model went
+ * away, and moved to that model's default when the new one cannot honour the old level.
+ */
 export function carriedThinkingLevel(
   ctx: StoreContext,
   raw: string | null,
   model: string | null,
   providerId: string | null,
 ): ThinkingLevel | null {
+  if (!model) return null;
   const level = parseStoredThinkingLevel(raw);
   if (!level) return null;
-  return modelSupportsThinking(ctx, model, providerId, level) ? level : null;
+  return modelSupportsThinking(ctx, model, providerId, level)
+    ? level
+    : defaultThinkingLevelFor(ctx, model, providerId);
 }
 
 export function modelSupportsThinking(

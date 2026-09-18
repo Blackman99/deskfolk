@@ -354,14 +354,16 @@ describe("endpoint and MCP catalog tools", () => {
       models: [
         { name: "cheap-chat", thinking_levels: ["none", "low"] },
         { name: "code-pro", thinking_levels: ["medium", "high"] },
+        { name: "grok-4.6", thinking_levels: ["low", "xhigh"] },
       ],
     });
     const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const ctx = ctxFor(store, created.bot.id, created.direct_session.id);
+    // A level belongs to a model: without one pinned there is nothing for it to apply to.
     const unpinnedModel = await runCollabTool(ctx, "update_profile", { thinking_level: "high" });
-    expect(unpinnedModel.ok).toBe(true);
-    expect(unpinnedModel.data?.thinking_level).toBe("high");
-    expect(store.getBot(created.bot.id).thinking_level).toBe("high");
+    expect(unpinnedModel.ok).toBe(false);
+    expect(unpinnedModel.error?.message).toBe("thinking_level needs a pinned model");
+    expect(store.getBot(created.bot.id).thinking_level).toBeNull();
 
     const unsupported = await runCollabTool(ctx, "update_profile", {
       endpoint_id: provider.id,
@@ -372,7 +374,12 @@ describe("endpoint and MCP catalog tools", () => {
     expect(unsupported.error?.code).toBe("invalid_args");
     expect(unsupported.error?.message).toBe("thinking_level must be one the pinned model supports");
 
-    const extra = await runCollabTool(ctx, "update_profile", { thinking_level: "xhigh" });
+    // A name the endpoint advertised is fine as long as that model lists it.
+    const extra = await runCollabTool(ctx, "update_profile", {
+      endpoint_id: provider.id,
+      model: "grok-4.6",
+      thinking_level: "xhigh",
+    });
     expect(extra.ok).toBe(true);
     expect(extra.data?.thinking_level).toBe("xhigh");
     const bogus = await runCollabTool(ctx, "update_profile", { thinking_level: "high!" });
@@ -388,13 +395,20 @@ describe("endpoint and MCP catalog tools", () => {
     expect(pinned.data?.model).toBe("code-pro");
     expect(pinned.data?.thinking_level).toBe("medium");
 
+    // Swapping to a model that cannot honour the pin moves it to that model's default.
     const switched = await runCollabTool(ctx, "update_profile", { model: "cheap-chat" });
     expect(switched.ok).toBe(true);
-    expect(switched.data?.thinking_level).toBeNull();
+    expect(switched.data?.thinking_level).toBe("low");
 
+    // Clearing the level alone lands on the pinned model's default, never on nothing.
     const cleared = await runCollabTool(ctx, "update_profile", { thinking_level: null });
     expect(cleared.ok).toBe(true);
-    expect(cleared.data?.thinking_level).toBeNull();
+    expect(cleared.data?.thinking_level).toBe("low");
+
+    // Dropping the model drops the level with it.
+    const auto = await runCollabTool(ctx, "update_profile", { model: null });
+    expect(auto.ok).toBe(true);
+    expect(auto.data?.thinking_level).toBeNull();
     expect(
       (await runCollabTool(ctx, "list_bots", {})).data?.bots,
     ).toEqual([expect.objectContaining({ name: "Writer", thinking_level: null })]);

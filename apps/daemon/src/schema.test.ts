@@ -667,6 +667,31 @@ describe("schema", () => {
     store.close();
   });
 
+  test("half-pinned bots are squared up on open: a level needs a model, a model needs a level", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-half-pin-"));
+    const filename = join(dir, "state.sqlite");
+    const keys = memoryKeyStore("sk-test");
+    const first = await storeWithCodingCatalog(filename, keys);
+    const orphanLevel = first.createBot({ name: "Orphan", duties: "x", boundaries: "y" });
+    const orphanModel = first.createBot({ name: "Modelled", duties: "x", boundaries: "y" });
+    // Rewind to what an older database could hold: each Bot carrying only half a pin.
+    first.db.run(`UPDATE bots SET model = NULL, thinking_level = 'high' WHERE id = ?`, [
+      orphanLevel.bot.id,
+    ]);
+    first.db.run(`UPDATE bots SET model = 'code-pro', thinking_level = NULL WHERE id = ?`, [
+      orphanModel.bot.id,
+    ]);
+    first.close();
+
+    const second = new Store({ filename, endpointKey: keys });
+    expect(second.getBot(orphanLevel.bot.id).thinking_level).toBeNull();
+    const squared = second.getBot(orphanModel.bot.id);
+    expect(squared.model).toBe("code-pro");
+    expect(squared.thinking_level).not.toBeNull();
+    second.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("decisions written before the outcome column learn how their turn ended", async () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-route-outcome-"));
     const filename = join(dir, "state.sqlite");

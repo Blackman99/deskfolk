@@ -6,6 +6,8 @@ import {
   mapSkillError,
   parseSkillUses,
   pinnableThinkingLevels,
+  applyModelPin,
+  defaultThinkingLevel,
   planCreateBot,
   planCreateGroup,
   planSkill,
@@ -55,6 +57,53 @@ test("pinnable thinking levels follow the picked model's catalog, or every level
   expect(pinnableThinkingLevels("p1::grok-4.6", providers)).toEqual(["low", "high", "xhigh"]);
   expect(pinnableThinkingLevels("code-pro", providers)).toEqual(["low", "medium", "high"]);
   expect(pinnableThinkingLevels("p1::unknown", providers)).toEqual(["none", "low", "medium", "high"]);
+});
+
+test("a pinned model lands on the level the app would have picked for it", () => {
+  expect(defaultThinkingLevel(["none", "low", "medium", "high"])).toBe("low");
+  expect(defaultThinkingLevel(["medium", "high"])).toBe("medium");
+  expect(defaultThinkingLevel(["none", "high"])).toBe("none");
+  // Only names the endpoint advertised: fall back to the lightest it offers.
+  expect(defaultThinkingLevel(["xhigh", "max"])).toBe("xhigh");
+  expect(defaultThinkingLevel([])).toBe("");
+});
+
+test("model and thinking level are pinned together or not at all", () => {
+  const providers = [
+    {
+      id: "p1",
+      model_catalog: [
+        { name: "cheap-chat", thinking_levels: ["none", "low"] as const },
+        { name: "grok-4.6", thinking_levels: ["low", "high", "xhigh"] as const },
+        { name: "gemini", thinking_levels: ["medium", "max"] as const },
+      ],
+    },
+  ];
+
+  // Automatic clears the level: the app picks both.
+  expect(applyModelPin("", "high", providers)).toEqual({ model: "", thinkingLevel: "" });
+
+  // Pinning a model never leaves the level blank.
+  expect(applyModelPin("p1::grok-4.6", "", providers)).toEqual({
+    model: "p1::grok-4.6",
+    thinkingLevel: "low",
+  });
+
+  // A level the new model still offers survives the swap.
+  expect(applyModelPin("p1::grok-4.6", "high", providers)).toEqual({
+    model: "p1::grok-4.6",
+    thinkingLevel: "high",
+  });
+
+  // One it does not offer falls to that model's default instead of going blank.
+  expect(applyModelPin("p1::gemini", "xhigh", providers)).toEqual({
+    model: "p1::gemini",
+    thinkingLevel: "medium",
+  });
+  expect(applyModelPin("p1::cheap-chat", "max", providers)).toEqual({
+    model: "p1::cheap-chat",
+    thinkingLevel: "low",
+  });
 });
 
 test("whitespace name, duties, and boundaries do not produce a POST", () => {

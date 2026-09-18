@@ -4,7 +4,10 @@
  * Runs once per open, before the store hands out any row.
  */
 import type { Database } from "bun:sqlite";
+import { sortThinkingLevels, THINKING_LEVELS } from "@real-bot/protocol";
 import { isoNow } from "../ids";
+import { parseStoredCatalog } from "../models";
+import { pickThinkingLevel } from "../route-decision";
 
 export function migrateSchema(db: Database): void {
   const botCols = db
@@ -146,6 +149,41 @@ export function migrateSchema(db: Database): void {
     `);
   }
   migrateRouteTables(db, tables);
+  migrateBotThinkingPins(db);
+}
+
+/**
+ * A thinking level belongs to a model, so a Bot is either automatic about both or explicit about
+ * both. Databases written before that rule can hold half a pin: a level with no model (nothing for
+ * it to apply to) or a model with no level. The first is dropped; the second lands on the level the
+ * router would have picked for an ordinary message on that model.
+ */
+function migrateBotThinkingPins(db: Database): void {
+  db.run(`UPDATE bots SET thinking_level = NULL WHERE model IS NULL AND thinking_level IS NOT NULL`);
+  const halfPinned = db
+    .query<{ id: string; model: string; provider_id: string | null }, []>(
+      `SELECT id, model, provider_id FROM bots WHERE model IS NOT NULL AND thinking_level IS NULL`,
+    )
+    .all();
+  if (halfPinned.length === 0) return;
+  const providers = db
+    .query<{ id: string; models: string }, []>(`SELECT id, models FROM providers`)
+    .all();
+  for (const bot of halfPinned) {
+    const rows = bot.provider_id ? providers.filter((row) => row.id === bot.provider_id) : providers;
+    const levels: string[] = [];
+    for (const row of rows) {
+      for (const entry of parseStoredCatalog(row.models)) {
+        if (entry.name !== bot.model) continue;
+        levels.push(...(entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS));
+      }
+    }
+    const supported = levels.length > 0 ? sortThinkingLevels(levels) : [...THINKING_LEVELS];
+    db.run(`UPDATE bots SET thinking_level = ? WHERE id = ?`, [
+      pickThinkingLevel("general", supported),
+      bot.id,
+    ]);
+  }
 }
 
 type LegacyPenalty = { signature: string; model: string; thinkingLevel: string; penalty: number };

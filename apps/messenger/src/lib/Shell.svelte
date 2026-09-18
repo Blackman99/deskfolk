@@ -97,7 +97,7 @@
 		reconcileProfileDraft,
 		type ProfileFields
 	} from './roster-edit.ts';
-	import { pinnableThinkingLevels } from './create-form.ts';
+	import { applyModelPin, pinnableThinkingLevels } from './create-form.ts';
 	import { untrack } from 'svelte';
 	import {
 		cleanPinnedIds,
@@ -2177,10 +2177,9 @@
 	}
 
 	function onProfileModelChange(value: string): void {
-		const pinnable = pinnableThinkingLevels(value, snapshot.providers) as readonly string[];
-		if (profileDraft.thinkingLevel && !pinnable.includes(profileDraft.thinkingLevel)) {
-			profileDraft.thinkingLevel = '';
-		}
+		const pinned = applyModelPin(value, profileDraft.thinkingLevel, snapshot.providers);
+		profileDraft.model = pinned.model;
+		profileDraft.thinkingLevel = pinned.thinkingLevel;
 		onProfilePick();
 	}
 
@@ -2191,10 +2190,9 @@
 	}
 
 	function onBotModelChange(value: string): void {
-		const pinnable = pinnableThinkingLevels(value, snapshot.providers) as readonly string[];
-		if (botDraft.thinkingLevel && !pinnable.includes(botDraft.thinkingLevel)) {
-			botDraft.thinkingLevel = '';
-		}
+		const pinned = applyModelPin(value, botDraft.thinkingLevel ?? '', snapshot.providers);
+		botDraft.model = pinned.model;
+		botDraft.thinkingLevel = pinned.thinkingLevel;
 		onBotInput();
 	}
 
@@ -3897,6 +3895,7 @@
 			{/if}
 				</div>
 			</div>
+
 			{#if showScrollBottom}
 				<button
 					type="button"
@@ -3909,7 +3908,7 @@
 				</button>
 			{/if}
 
-			<footer class="composer">
+		<footer class="composer">
 			{#if selected?.kind === 'group' && groupPresent.length > 0}
 				<div class="composer-mentions-bar">
 					<span class="mentions-label">{t.chat.mentionTooltip}:</span>
@@ -4299,20 +4298,14 @@
 									/>
 									{#if profileErrors.model}
 										<p class="field-error">{t.sidebar.botModelInvalid}</p>
+									{:else if !profileDraft.model}
+										<p class="muted field-hint">{t.sidebar.botModelAutoHint}</p>
 									{/if}
 								</div>
+								{#if profileDraft.model}
 								<div class="form-group">
 									<span class="field-label" id="profile-thinking-label">{t.sidebar.botThinking}</span>
 									<div class="thinking-picker" role="radiogroup" aria-labelledby="profile-thinking-label">
-										<button
-											id="profile-thinking-auto"
-											type="button"
-											class="btn-chip level-chip"
-											class:active={profileDraft.thinkingLevel === ''}
-											role="radio"
-											aria-checked={profileDraft.thinkingLevel === ''}
-											onclick={() => pickProfileThinking('')}
-										>{t.sidebar.botThinkingAuto}</button>
 										{#each profileThinkingOptions as level (level)}
 											<button
 												type="button"
@@ -4329,6 +4322,7 @@
 										<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
 									{/if}
 								</div>
+								{/if}
 							</div>
 						</div>
 
@@ -5203,86 +5197,6 @@
 							</div>
 						</div>
 					{:else if activeSettingsTab === 'models'}
-
-							{#if updateChecker.available}
-								<div class="settings-card settings-card-about">
-									<div class="settings-card-header">
-										<div class="settings-card-header-main">
-											<div class="settings-header-icon-wrap" aria-hidden="true">
-												<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-													<circle cx="12" cy="12" r="10"></circle>
-													<line x1="12" y1="16" x2="12" y2="12"></line>
-													<line x1="12" y1="8" x2="12.01" y2="8"></line>
-												</svg>
-											</div>
-											<div>
-												<h3 class="settings-card-title">{t.settings.sectionAbout}</h3>
-												<p class="settings-card-subtitle">{t.settings.aboutSubtitle}</p>
-											</div>
-										</div>
-									</div>
-
-									<div class="settings-rows">
-										<div class="settings-row">
-											<div class="settings-row-info">
-												<span class="settings-row-title">Real Bot</span>
-												<span class="settings-row-desc">
-													<span class="about-version-chip">{t.settings.version(updateChecker.version ?? '—')}</span>
-												</span>
-											</div>
-											<div class="settings-row-action">
-												<button
-													type="button"
-													class="btn-check-update"
-													disabled={updateChecker.status === 'checking'}
-													onclick={() => void updateChecker.checkNow()}
-												>
-													{#if updateChecker.status === 'checking'}
-														<svg class="spin-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-															<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-															<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
-														</svg>
-													{/if}
-													<span>{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
-												</button>
-											</div>
-										</div>
-									</div>
-
-									{#if updateChecker.status === 'error'}
-										<div class="about-status-banner is-error">
-											<p class="about-status-text">{t.settings.updateFailed}</p>
-										</div>
-									{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
-										<div class="about-update-banner">
-											<p class="about-update-title">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
-											<div class="about-actions">
-												{#if updateChecker.result.downloadUrl}
-													<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.download()}>
-														{t.settings.updateDownload}
-													</button>
-												{/if}
-												{#if updateChecker.result.releaseUrl}
-													<button type="button" class="btn-xs" onclick={() => void updateChecker.openNotes()}>
-														{t.settings.updateNotes}
-													</button>
-												{/if}
-												{#if updateChecker.ignoredVersion !== updateChecker.result.latest}
-													<button type="button" class="btn-text-action" onclick={() => updateChecker.ignoreLatest()}>
-														{t.settings.updateIgnore}
-													</button>
-												{/if}
-											</div>
-										</div>
-									{:else if updateChecker.status === 'ok'}
-										<div class="about-status-banner is-ok">
-											<p class="about-status-text">{t.settings.upToDate}</p>
-										</div>
-									{/if}
-								</div>
-							{/if}
-						</div>
-					{:else if activeSettingsTab === 'models'}
 						<div class="settings-tab-pane">
 							<div class="provider-list-head">
 								<p class="muted">{t.settings.providersHint}</p>
@@ -5416,6 +5330,88 @@
 						</div>
 					{:else if activeSettingsTab === 'mcp'}
 						<McpSettings {runtime} {t} />
+					{:else if activeSettingsTab === 'about'}
+						<div class="settings-tab-pane">
+							<div class="settings-card settings-card-about">
+								<div class="settings-card-header">
+									<div class="settings-card-header-main">
+										<div class="settings-header-icon-wrap" aria-hidden="true">
+											<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+												<circle cx="12" cy="12" r="10"></circle>
+												<line x1="12" y1="16" x2="12" y2="12"></line>
+												<line x1="12" y1="8" x2="12.01" y2="8"></line>
+											</svg>
+										</div>
+										<div>
+											<h3 class="settings-card-title">{t.settings.sectionAbout}</h3>
+											<p class="settings-card-subtitle">{t.settings.aboutSubtitle}</p>
+										</div>
+									</div>
+								</div>
+
+								<div class="settings-rows">
+									<div class="settings-row">
+										<div class="settings-row-info">
+											<span class="settings-row-title">Real Bot</span>
+											<span class="settings-row-desc">
+												<span class="about-version-chip">{t.settings.version(updateChecker.version ?? '0.1.0-rc.1')}</span>
+											</span>
+										</div>
+										{#if updateChecker.available}
+											<div class="settings-row-action">
+												<button
+													type="button"
+													class="btn-check-update"
+													disabled={updateChecker.status === 'checking'}
+													onclick={() => void updateChecker.checkNow()}
+												>
+													{#if updateChecker.status === 'checking'}
+														<svg class="spin-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+															<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+															<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
+														</svg>
+													{/if}
+													<span>{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
+												</button>
+											</div>
+										{/if}
+									</div>
+								</div>
+
+								{#if updateChecker.available}
+									{#if updateChecker.status === 'error'}
+										<div class="about-status-banner is-error">
+											<p class="about-status-text">{t.settings.updateFailed}</p>
+										</div>
+									{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
+										<div class="about-update-banner">
+											<p class="about-update-title">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
+											<div class="about-actions">
+												{#if updateChecker.result.downloadUrl}
+													<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.download()}>
+														{t.settings.updateDownload}
+													</button>
+												{/if}
+												{#if updateChecker.result.releaseUrl}
+													<button type="button" class="btn-xs" onclick={() => void updateChecker.openNotes()}>
+														{t.settings.updateNotes}
+													</button>
+												{/if}
+												{#if updateChecker.ignoredVersion !== updateChecker.result.latest}
+													<button type="button" class="btn-text-action" onclick={() => updateChecker.ignoreLatest()}>
+														{t.settings.updateIgnore}
+													</button>
+												{/if}
+											</div>
+										</div>
+									{:else if updateChecker.status === 'ok'}
+										<div class="about-status-banner is-ok">
+											<p class="about-status-text">{t.settings.upToDate}</p>
+										</div>
+									{/if}
+								{/if}
+							</div>
+						</div>
 					{/if}
 				</div>
 					<div class="modal-foot actions">
@@ -5563,20 +5559,14 @@
 						/>
 						{#if botErrors.model}
 							<p class="field-error">{t.sidebar.botModelInvalid}</p>
+						{:else if !botDraft.model}
+							<p class="muted field-hint">{t.sidebar.botModelAutoHint}</p>
 						{/if}
 					</div>
+					{#if botDraft.model}
 					<div class="modal-section">
 						<span class="field-label" id="bot-thinking-label">{t.sidebar.botThinking}</span>
 						<div class="thinking-picker" role="radiogroup" aria-labelledby="bot-thinking-label">
-							<button
-								id="bot-thinking-auto"
-								type="button"
-								class="btn-chip level-chip"
-								class:active={botDraft.thinkingLevel === ''}
-								role="radio"
-								aria-checked={botDraft.thinkingLevel === ''}
-								onclick={() => pickBotThinking('')}
-							>{t.sidebar.botThinkingAuto}</button>
 							{#each botThinkingOptions as level (level)}
 								<button
 									type="button"
@@ -5593,6 +5583,7 @@
 							<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
 						{/if}
 					</div>
+					{/if}
 				</div>
 				<div class="modal-foot actions">
 					<button type="button" onclick={() => void saveBot()}>{t.sidebar.create}</button>

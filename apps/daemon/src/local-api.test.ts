@@ -556,10 +556,25 @@ describe("empty roster and settings", () => {
     expect(await unsupported.json()).toEqual({
       error: { code: "invalid_args", message: "thinking_level must be one the pinned model supports" },
     });
-    const created = await fetch(`${h.origin}/v1/bots`, {
+    const orphanLevel = await fetch(`${h.origin}/v1/bots`, {
       method: "POST",
       headers: auth(h, { "Content-Type": "application/json" }),
       body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay", thinking_level: "high" }),
+    });
+    expect(orphanLevel.status).toBe(422);
+    expect(await orphanLevel.json()).toEqual({
+      error: { code: "invalid_args", message: "thinking_level needs a pinned model" },
+    });
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        name: "Writer",
+        duties: "write",
+        boundaries: "stay",
+        model: "grok-4.5",
+        thinking_level: "high",
+      }),
     });
     expect(created.status).toBe(201);
     const body = (await created.json()) as { bot: { id: string; thinking_level: string | null } };
@@ -580,12 +595,26 @@ describe("empty roster and settings", () => {
     });
     expect(patched.status).toBe(200);
     expect(await patched.json()).toMatchObject({ model: "grok-4.5", thinking_level: "low" });
+    // A pinned model always carries a level: clearing it falls back to that model's default.
     const cleared = await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
       method: "PATCH",
       headers: auth(h, { "Content-Type": "application/json" }),
       body: JSON.stringify({ thinking_level: null }),
     });
-    expect(await cleared.json()).toMatchObject({ model: "grok-4.5", thinking_level: null });
+    expect(await cleared.json()).toMatchObject({ model: "grok-4.5", thinking_level: "low" });
+    // Unpinning the model unpins the level with it: automatic is both or neither.
+    const unpinned = await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ model: null }),
+    });
+    expect(await unpinned.json()).toMatchObject({ model: null, thinking_level: null });
+    const orphanPatch = await fetch(`${h.origin}/v1/bots/${body.bot.id}`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ thinking_level: "high" }),
+    });
+    expect(orphanPatch.status).toBe(422);
     await Bun.sleep(20);
     expect(
       events.some((e) => e.event === "bot.upsert" && e.id === body.bot.id && e.thinking_level === "low"),
