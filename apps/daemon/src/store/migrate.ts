@@ -276,6 +276,15 @@ function migrateRouteTables(db: Database, tables: string[]): void {
       PRIMARY KEY (bot_id, signature, model, thinking_level)
     )
   `);
+  const reviewCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(route_reviews)`)
+    .all()
+    .map((row) => row.name);
+  if (tables.includes("route_reviews") && !reviewCols.includes("chain_id")) {
+    db.run(`ALTER TABLE route_reviews ADD COLUMN chain_id TEXT`);
+    db.run(`UPDATE route_reviews SET chain_id = turn_id WHERE chain_id IS NULL OR chain_id = ''`);
+  }
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS route_reviews_chain ON route_reviews (chain_id)`);
   const legacy = db
     .query<{ value: string }, [string]>(`SELECT value FROM settings WHERE key = ?`)
     .get("route_learned");

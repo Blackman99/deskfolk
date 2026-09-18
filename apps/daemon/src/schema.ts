@@ -205,9 +205,6 @@ CREATE TABLE IF NOT EXISTS turn_route_decisions (
 CREATE INDEX IF NOT EXISTS turn_route_decisions_session
   ON turn_route_decisions (session_id, created_at);
 
-CREATE INDEX IF NOT EXISTS turn_route_decisions_chain
-  ON turn_route_decisions (chain_id);
-
 CREATE TABLE IF NOT EXISTS route_feedback (
   id TEXT PRIMARY KEY,
   turn_id TEXT NOT NULL REFERENCES turns (id),
@@ -250,9 +247,6 @@ CREATE TABLE IF NOT EXISTS route_reviews (
 
 CREATE INDEX IF NOT EXISTS route_reviews_bot
   ON route_reviews (bot_id, created_at);
-
-CREATE UNIQUE INDEX IF NOT EXISTS route_reviews_chain
-  ON route_reviews (chain_id);
 
 CREATE TABLE IF NOT EXISTS spend (
   id TEXT PRIMARY KEY,
