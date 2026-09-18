@@ -400,19 +400,24 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
 });
 
 test("the model choice log names the log, the outcomes and the message kinds in both locales", () => {
-  expect(COPY.zh.detail.routes.title).toBe("模型选择记录");
-  expect(COPY.en.detail.routes.title).toBe("Model choice log");
-  expect(COPY.zh.detail.routes.none).toBe("还没有模型选择记录。");
-  expect(COPY.en.detail.routes.none).toBe("No model choices yet.");
-  expect(COPY.zh.detail.routes.outcome.live).toBe("进行中");
-  expect(COPY.zh.detail.routes.outcome.completed).toBe("完成");
+  expect(COPY.zh.routes.title).toBe("模型选择记录");
+  expect(COPY.zh.routes.topAction).toBe("模型选择记录");
+  expect(COPY.en.routes.topAction).toBe("Model log");
+  expect(COPY.zh.routes.subtitle("视频组", 383)).toBe("视频组 · 383 轮");
+  expect(COPY.en.routes.subtitle("Writer", 1)).toBe("Writer · 1 turn");
+  expect(COPY.en.routes.subtitle("Writer", 2)).toBe("Writer · 2 turns");
+  expect(COPY.en.routes.title).toBe("Model choice log");
+  expect(COPY.zh.routes.none).toBe("还没有模型选择记录。");
+  expect(COPY.en.routes.none).toBe("No model choices yet.");
+  expect(COPY.zh.routes.outcome.live).toBe("进行中");
+  expect(COPY.zh.routes.outcome.completed).toBe("完成");
   // A failed completion is not a fifth terminal state for the turn; it is this choice's failure.
-  expect(COPY.zh.detail.routes.outcome.failed).toBe("补全失败");
-  expect(COPY.en.detail.routes.outcome.failed).toBe("Completion failed");
-  expect(COPY.zh.detail.routes.outcome.stopped).toBe("被 Stop");
-  expect(COPY.zh.detail.routes.outcome.redirected).toBe("改道");
-  expect(COPY.zh.detail.routes.outcome.interrupted).toBe("中断");
-  expect(Object.keys(COPY.zh.detail.routes.signature)).toEqual([
+  expect(COPY.zh.routes.outcome.failed).toBe("补全失败");
+  expect(COPY.en.routes.outcome.failed).toBe("Completion failed");
+  expect(COPY.zh.routes.outcome.stopped).toBe("被 Stop");
+  expect(COPY.zh.routes.outcome.redirected).toBe("改道");
+  expect(COPY.zh.routes.outcome.interrupted).toBe("中断");
+  expect(Object.keys(COPY.zh.routes.signature)).toEqual([
     "coding",
     "writing",
     "reasoning",
@@ -420,17 +425,17 @@ test("the model choice log names the log, the outcomes and the message kinds in 
     "general",
   ]);
   // The chip reads "思考 无", so the log keeps its own short level words instead of "不思考".
-  expect(COPY.zh.detail.routes.thinking.none).toBe("无");
+  expect(COPY.zh.routes.thinking.none).toBe("无");
   expect(COPY.zh.sidebar.thinkingLevels.none).toBe("不思考");
-  expect(COPY.en.detail.routes.thinking.none).toBe("None");
-  expect(COPY.zh.detail.routes.feedbackCount(2)).toBe("2 条模型反馈");
-  expect(COPY.en.detail.routes.feedbackCount(1)).toBe("1 model note");
-  expect(COPY.en.detail.routes.feedbackCount(2)).toBe("2 model notes");
+  expect(COPY.en.routes.thinking.none).toBe("None");
+  expect(COPY.zh.routes.feedbackCount(2)).toBe("2 条模型反馈");
+  expect(COPY.en.routes.feedbackCount(1)).toBe("1 model note");
+  expect(COPY.en.routes.feedbackCount(2)).toBe("2 model notes");
 });
 
 test("the model choice log covers every fail kind the daemon can record", () => {
   // Mirrors FAIL_REASON in apps/daemon/src/prompts/transcript-copy.ts.
-  expect(Object.keys(COPY.zh.detail.routes.failReason).sort()).toEqual([
+  expect(Object.keys(COPY.zh.routes.failReason).sort()).toEqual([
     "busy",
     "endpoint_error",
     "first_byte",
@@ -440,10 +445,10 @@ test("the model choice log covers every fail kind the daemon can record", () => 
     "stalled",
     "unreachable",
   ]);
-  expect(COPY.zh.detail.routes.failReason.refused).toBe("端点拒绝了这次补全");
-  expect(COPY.en.detail.routes.failReason.refused).toBe("Endpoint refused this completion");
-  expect(COPY.zh.detail.routes.failReason.incomplete).toBe("回复不完整");
-  expect(COPY.en.detail.routes.failReason.incomplete).toBe("Incomplete reply");
+  expect(COPY.zh.routes.failReason.refused).toBe("端点拒绝了这次补全");
+  expect(COPY.en.routes.failReason.refused).toBe("Endpoint refused this completion");
+  expect(COPY.zh.routes.failReason.incomplete).toBe("回复不完整");
+  expect(COPY.en.routes.failReason.incomplete).toBe("Incomplete reply");
 });
 
 function assertSameShape(a: unknown, b: unknown, path: string): void {

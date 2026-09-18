@@ -38,6 +38,8 @@ export class MessengerRuntime {
   createBotOpen = $state(false);
   createGroupOpen = $state(false);
   sessionSettingsOpen = $state(false);
+  routeLogOpen = $state(false);
+  routesLoading = $state(false);
   profileBotId = $state<string | null>(null);
   threadOpen = $state(false);
   searchQuery = $state("");
@@ -101,7 +103,23 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
-    if (this.selectedId) void this.refreshRoutes(this.selectedId);
+  }
+
+  /** The model choice log is its own overlay, not a card inside the session panel. */
+  toggleRouteLog(): void {
+    if (this.routeLogOpen) {
+      this.routeLogOpen = false;
+      return;
+    }
+    if (!this.selectedId) return;
+    this.closeSheets();
+    this.threadOpen = false;
+    this.routeLogOpen = true;
+    void this.refreshRoutes(this.selectedId);
+  }
+
+  closeRouteLog(): void {
+    this.routeLogOpen = false;
   }
 
   openProfile(botId: string): void {
@@ -111,7 +129,6 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
-    if (this.selectedId) void this.refreshRoutes(this.selectedId);
   }
 
   closeSessionSettings(): void {
@@ -131,12 +148,14 @@ export class MessengerRuntime {
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
+    this.routeLogOpen = false;
   }
 
   async selectSession(id: string, opts?: { messageId?: string }): Promise<void> {
     const messageId = opts?.messageId;
     this.setHighlightedMessage(messageId ?? null);
     this.closeSessionSettings();
+    this.routeLogOpen = false;
     this.threadOpen = false;
     if (this.selectedId === id && messageId) {
       await this.ensureMessageLoaded(id, messageId);
@@ -158,11 +177,8 @@ export class MessengerRuntime {
     if (!this.api) return;
     try {
       const detail = await this.api.session(id);
-      const [judgements, routes] = await Promise.all([
-        this.api.judgements(id),
-        this.api.routes(id),
-      ]);
-      this.applySessionDetail(id, { ...detail, unread_count: 0 }, judgements, routes);
+      const judgements = await this.api.judgements(id);
+      this.applySessionDetail(id, { ...detail, unread_count: 0 }, judgements);
       if (messageId) {
         await this.ensureMessageLoaded(id, messageId);
         this.setHighlightedMessage(messageId);
@@ -200,12 +216,13 @@ export class MessengerRuntime {
   }
 
   /**
-   * Model choices are not pushed over the socket. The panel pulls them when it opens and again
+   * Model choices are not pushed over the socket. The log pulls them when it opens and again
    * whenever a turn here changes state, so a finished turn's outcome and feedback land on their own.
    */
   async refreshRoutes(sessionId: string): Promise<void> {
     if (!this.api || this.routesInFlight === sessionId) return;
     this.routesInFlight = sessionId;
+    this.routesLoading = true;
     try {
       const routes = await this.api.routes(sessionId);
       this.snapshot = {
@@ -216,6 +233,7 @@ export class MessengerRuntime {
       // Keep the rows already on screen; a real drop shows up as the socket closing.
     } finally {
       this.routesInFlight = null;
+      this.routesLoading = false;
     }
   }
 
@@ -892,7 +910,6 @@ export class MessengerRuntime {
     id: string,
     detail: SessionDetail,
     judgements: Snapshot["judgements"],
-    routes: Snapshot["routes"],
   ): void {
     this.sessionMessageNext = detail.messages.next ?? null;
     this.snapshot = {
@@ -930,7 +947,6 @@ export class MessengerRuntime {
         ...this.snapshot.pendingJudgements.filter((j) => j.session_id !== id),
         ...(detail.pending_judgements ?? []),
       ],
-      routes: [...this.snapshot.routes.filter((r) => r.session_id !== id), ...routes],
     };
   }
 
@@ -988,7 +1004,7 @@ export class MessengerRuntime {
     }
     if (event.event === "turn.upsert") {
       this.claimFocus(event.trigger_message_id, event.id);
-      if (this.sessionSettingsOpen && event.session_id === this.selectedId) {
+      if (this.routeLogOpen && event.session_id === this.selectedId) {
         void this.refreshRoutes(event.session_id);
       }
     }

@@ -370,6 +370,46 @@ const zh = {
     none: "点一条带回复的消息。",
     reply: "回复",
   },
+  routes: {
+    title: "模型选择记录",
+    topAction: "模型选择记录",
+    subtitle: (session: string, count: number) => `${session} · ${count} 轮`,
+    none: "还没有模型选择记录。",
+    loading: "正在读取…",
+    hint: "开轮时给这条消息挑了哪个模型和思考等级，这轮怎么结束，以及你后来对模型说过什么。",
+    endpoint: "端点",
+    jump: "跳到触发消息",
+    thinkingPrefix: "思考",
+    kindLabel: "消息类别",
+    thinking: { none: "无", low: "低", medium: "中", high: "高" },
+    feedbackTitle: "模型反馈",
+    feedbackCount: (count: number) => `${count} 条模型反馈`,
+    outcome: {
+      live: "进行中",
+      completed: "完成",
+      failed: "补全失败",
+      stopped: "被 Stop",
+      redirected: "改道",
+      interrupted: "中断"
+    },
+    signature: {
+      coding: "写代码",
+      writing: "写作",
+      reasoning: "推理",
+      simple: "简单",
+      general: "通用"
+    },
+    failReason: {
+      unreachable: "连不上端点",
+      first_byte: "等不到第一条回复",
+      stalled: "回复中途没有下文了",
+      busy: "端点忙",
+      refused: "端点拒绝了这次补全",
+      endpoint_error: "端点出错",
+      incomplete: "回复不完整",
+      no_model: "没有可用的模型"
+    }
+  },
   detail: {
     titleGroup: "群组设置",
     titleBot: "Bot 设置",
@@ -377,45 +417,6 @@ const zh = {
     backToBot: "返回 Bot 设置",
     judgements: "判断日志",
     none: "还没有判断。",
-    routes: {
-      title: "模型选择记录",
-      none: "还没有模型选择记录。",
-      hint: "开轮时给这条消息挑了哪个模型和思考等级，这轮怎么结束，以及你后来对模型说过什么。",
-      endpoint: "端点",
-      jump: "跳到触发消息",
-      thinkingPrefix: "思考",
-      kindLabel: "消息类别",
-      thinking: { none: "无", low: "低", medium: "中", high: "高" },
-      showAll: (count: number) => `显示全部 ${count} 轮`,
-      showLess: "只看最近",
-      feedbackTitle: "模型反馈",
-      feedbackCount: (count: number) => `${count} 条模型反馈`,
-      outcome: {
-        live: "进行中",
-        completed: "完成",
-        failed: "补全失败",
-        stopped: "被 Stop",
-        redirected: "改道",
-        interrupted: "中断"
-      },
-      signature: {
-        coding: "写代码",
-        writing: "写作",
-        reasoning: "推理",
-        simple: "简单",
-        general: "通用"
-      },
-      failReason: {
-        unreachable: "连不上端点",
-        first_byte: "等不到第一条回复",
-        stalled: "回复中途没有下文了",
-        busy: "端点忙",
-        refused: "端点拒绝了这次补全",
-        endpoint_error: "端点出错",
-        incomplete: "回复不完整",
-        no_model: "没有可用的模型"
-      }
-    },
     saveName: "保存",
     pullIn: "拉入",
     remove: "移出",
@@ -816,6 +817,47 @@ const en: CopyShape<typeof zh> = {
     none: "Open a message that has replies.",
     reply: "Reply",
   },
+  routes: {
+    title: "Model choice log",
+    topAction: "Model log",
+    subtitle: (session: string, count: number) =>
+      `${session} · ${count} ${count === 1 ? "turn" : "turns"}`,
+    none: "No model choices yet.",
+    loading: "Loading…",
+    hint: "Which model and thinking level each turn started on, how the turn ended, and what you said about the model afterwards.",
+    endpoint: "Endpoint",
+    jump: "Jump to the triggering message",
+    thinkingPrefix: "Thinking",
+    kindLabel: "Message kind",
+    thinking: { none: "None", low: "Low", medium: "Medium", high: "High" },
+    feedbackTitle: "Model feedback",
+    feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
+    outcome: {
+      live: "Still running",
+      completed: "Completed",
+      failed: "Completion failed",
+      stopped: "Stopped",
+      redirected: "Redirected",
+      interrupted: "Interrupted"
+    },
+    signature: {
+      coding: "Coding",
+      writing: "Writing",
+      reasoning: "Reasoning",
+      simple: "Simple",
+      general: "General"
+    },
+    failReason: {
+      unreachable: "Couldn’t reach the endpoint",
+      first_byte: "No first reply arrived",
+      stalled: "The reply stalled mid-stream",
+      busy: "Endpoint is busy",
+      refused: "Endpoint refused this completion",
+      endpoint_error: "Endpoint error",
+      incomplete: "Incomplete reply",
+      no_model: "No model is configured"
+    }
+  },
   detail: {
     titleGroup: "Group settings",
     titleBot: "Bot settings",
@@ -823,45 +865,6 @@ const en: CopyShape<typeof zh> = {
     backToBot: "Back to bot settings",
     judgements: "Judgement log",
     none: "No judgements yet.",
-    routes: {
-      title: "Model choice log",
-      none: "No model choices yet.",
-      hint: "Which model and thinking level each turn started on, how the turn ended, and what you said about the model afterwards.",
-      endpoint: "Endpoint",
-      jump: "Jump to the triggering message",
-      thinkingPrefix: "Thinking",
-      kindLabel: "Message kind",
-      thinking: { none: "None", low: "Low", medium: "Medium", high: "High" },
-      showAll: (count: number) => `Show all ${count} turns`,
-      showLess: "Show recent only",
-      feedbackTitle: "Model feedback",
-      feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
-      outcome: {
-        live: "Still running",
-        completed: "Completed",
-        failed: "Completion failed",
-        stopped: "Stopped",
-        redirected: "Redirected",
-        interrupted: "Interrupted"
-      },
-      signature: {
-        coding: "Coding",
-        writing: "Writing",
-        reasoning: "Reasoning",
-        simple: "Simple",
-        general: "General"
-      },
-      failReason: {
-        unreachable: "Couldn’t reach the endpoint",
-        first_byte: "No first reply arrived",
-        stalled: "The reply stalled mid-stream",
-        busy: "Endpoint is busy",
-        refused: "Endpoint refused this completion",
-        endpoint_error: "Endpoint error",
-        incomplete: "Incomplete reply",
-        no_model: "No model is configured"
-      }
-    },
     saveName: "Save",
     pullIn: "Pull in",
     remove: "Remove",

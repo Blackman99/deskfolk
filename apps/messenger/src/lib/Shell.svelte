@@ -82,6 +82,7 @@
 	import SessionAvatar from './SessionAvatar.svelte';
 	import { searchHitView, searchJump } from './search-jump.ts';
 	import { routeLogRows } from './route-log.ts';
+	import RouteLog from './RouteLog.svelte';
 	import { getStarterOptions } from './starter-prompts.ts';
 	import {
 		canRemoveGroupBot,
@@ -525,32 +526,16 @@
 						bots: snapshot.bots,
 						providers: snapshot.providers,
 						labels: {
-							outcome: t.detail.routes.outcome,
-							signature: t.detail.routes.signature,
-							failReason: t.detail.routes.failReason,
-							thinking: t.detail.routes.thinking,
+							outcome: t.routes.outcome,
+							signature: t.routes.signature,
+							failReason: t.routes.failReason,
+							thinking: t.routes.thinking,
 							unknownBot: t.top.deleted
 						}
 					}
 				)
 			: []
 	);
-	/** Feedback bodies stay folded until asked for; one open turn at a time keeps the panel short. */
-	let openRouteFeedback = $state<string | null>(null);
-	/** A busy group can hold hundreds of turns; only the recent ones show until you ask for the rest. */
-	const ROUTE_LOG_PREVIEW = 20;
-	let routeLogExpanded = $state(false);
-	const visibleRouteRows = $derived(
-		routeLogExpanded ? routeRows : routeRows.slice(0, ROUTE_LOG_PREVIEW)
-	);
-
-	$effect(() => {
-		void runtime.selectedId;
-		untrack(() => {
-			routeLogExpanded = false;
-			openRouteFeedback = null;
-		});
-	});
 
 	function jumpToRouteTrigger(messageId: string): void {
 		if (!selected) return;
@@ -2471,6 +2456,8 @@
 				closeNestedProfile();
 			} else if (runtime.sessionSettingsOpen) {
 				runtime.closeSessionSettings();
+			} else if (runtime.routeLogOpen) {
+				runtime.closeRouteLog();
 			} else if (workspaceOpen) {
 				if (workspacePane?.closeFind()) {
 					e.preventDefault();
@@ -3135,6 +3122,23 @@
 							<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
 						</svg>
 						<span>{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.pinned : t.top.pin}</span>
+					</button>
+					<button
+						type="button"
+						class="btn-top-action"
+						class:is-active={runtime.routeLogOpen}
+						title={t.routes.title}
+						onclick={() => runtime.toggleRouteLog()}
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="8" y1="6" x2="21" y2="6"></line>
+							<line x1="8" y1="12" x2="21" y2="12"></line>
+							<line x1="8" y1="18" x2="21" y2="18"></line>
+							<line x1="3" y1="6" x2="3.01" y2="6"></line>
+							<line x1="3" y1="12" x2="3.01" y2="12"></line>
+							<line x1="3" y1="18" x2="3.01" y2="18"></line>
+						</svg>
+						<span>{t.routes.topAction}</span>
 					</button>
 					<button
 						type="button"
@@ -4075,6 +4079,17 @@
 			onSelect={(att) => openArtifactPath(att.workspace_relpath, att)}
 		/>
 	{/if}
+	{#if runtime.routeLogOpen && selected}
+		<RouteLog
+			rows={routeRows}
+			sessionTitle={titleOf(selected)}
+			loading={runtime.routesLoading}
+			showEndpoint={snapshot.providers.length > 1}
+			{t}
+			onClose={() => runtime.closeRouteLog()}
+			onJump={jumpToRouteTrigger}
+		/>
+	{/if}
 	{#if workspaceOpen}
 		<WorkspaceExplorer
 			bind:this={workspacePane}
@@ -4095,110 +4110,7 @@
 			<p class="muted">{t.thread.none}</p>
 		</div>
 	</aside>
-	{#snippet routeLogCard()}
-	<div class="panel-card route-log-card">
-		<div class="panel-card-head">
-			<span class="panel-card-title">{t.detail.routes.title}</span>
-			{#if routeRows.length > 0}
-				<span class="panel-counter-badge">{routeRows.length}</span>
-			{/if}
-		</div>
-		<div class="panel-card-body route-log-body">
-			{#if routeRows.length === 0}
-				<p class="muted route-log-empty">{t.detail.routes.none}</p>
-			{:else}
-				<p class="muted route-log-hint">{t.detail.routes.hint}</p>
-				<ul class="route-log-list">
-					{#each visibleRouteRows as row (row.turnId)}
-						<li class="route-row">
-							<button
-								type="button"
-								class="route-row-main"
-								title={t.detail.routes.jump}
-								onclick={() => jumpToRouteTrigger(row.triggerMessageId)}
-							>
-								<span class="route-row-head">
-									<span class="route-bot" class:is-unknown={!row.botKnown}>{row.botName}</span>
-									<span class="route-outcome is-{row.outcome}">{row.outcomeLabel}</span>
-									<span class="route-time mono" title={formatFullTimestamp(row.createdAt)}>
-										{formatMessageTime(row.createdAt)}
-									</span>
-								</span>
-								<span class="route-row-meta">
-									<span class="route-chip is-model mono" title={row.model}>{row.model}</span>
-									<span class="route-chip">{t.detail.routes.thinkingPrefix} {row.thinkingLabel}</span>
-									<span class="route-chip" title={t.detail.routes.kindLabel}>{row.signatureLabel}</span>
-									{#if row.providerName && snapshot.providers.length > 1}
-										<span class="route-chip is-endpoint" title={t.detail.routes.endpoint}>
-											{row.providerName}
-										</span>
-									{/if}
-									{#if row.durationMs !== null}
-										<span class="route-duration mono">{formatDurationMs(row.durationMs)}</span>
-									{/if}
-								</span>
-								{#if row.failReason}
-									<span class="route-fail">
-										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-										<span>{row.failReason}</span>
-									</span>
-								{/if}
-							</button>
-							{#if row.feedback.length > 0}
-								{@const open = openRouteFeedback === row.turnId}
-								<button
-									type="button"
-									class="route-feedback-toggle"
-									aria-expanded={open}
-									onclick={() => (openRouteFeedback = open ? null : row.turnId)}
-								>
-									<svg
-										class="route-caret"
-										class:is-open={open}
-										width="11"
-										height="11"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.4"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									><polyline points="9 18 15 12 9 6"></polyline></svg>
-									<span>{t.detail.routes.feedbackCount(row.feedback.length)}</span>
-								</button>
-								{#if open}
-									<ul class="route-feedback">
-										{#each row.feedback as note (note.message_id)}
-											<li class="route-feedback-item">
-												<p class="route-feedback-body">{note.body}</p>
-												<span class="route-feedback-time mono" title={formatFullTimestamp(note.created_at)}>
-													{formatMessageTime(note.created_at)}
-												</span>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							{/if}
-						</li>
-					{/each}
-				</ul>
-				{#if routeRows.length > ROUTE_LOG_PREVIEW}
-					<button
-						type="button"
-						class="route-log-more"
-						onclick={() => (routeLogExpanded = !routeLogExpanded)}
-					>
-						{routeLogExpanded
-							? t.detail.routes.showLess
-							: t.detail.routes.showAll(routeRows.length)}
-					</button>
-				{/if}
-			{/if}
-		</div>
-	</div>
-{/snippet}
-
-{#if runtime.sessionSettingsOpen && selected}
+	{#if runtime.sessionSettingsOpen && selected}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="profile-backdrop"
@@ -4530,10 +4442,6 @@
 							</div>
 						</div>
 
-						{#if !nestedProfile}
-							{@render routeLogCard()}
-						{/if}
-
 						<div class="panel-card danger-zone-card">
 							<div class="panel-card-head">
 								<span class="panel-card-title">{#if selectedKind === 'you-bot'}{t.sidebar.archive} / {t.detail.clearHistory} / {t.sidebar.delete}{:else}{t.sidebar.archive} / {t.sidebar.delete}{/if}</span>
@@ -4782,8 +4690,6 @@
 								</div>
 							</div>
 						{/if}
-
-						{@render routeLogCard()}
 
 						<!-- Session Actions (Archive / Restore) -->
 						{#if selected.kind === 'group'}
