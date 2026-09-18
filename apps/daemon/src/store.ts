@@ -2324,11 +2324,14 @@ export class Store {
     const catalog = this.catalogEntries().filter((row) =>
       input.providerIds ? input.providerIds.includes(row.providerId) : true,
     );
+    const defaultProviderId =
+      this.defaultProviderId() ?? this.providerRows()[0]?.id ?? null;
     return decideCompletion({
       text: input.text,
       catalog,
       botModel: input.botModel,
       botProviderId: input.botProviderId,
+      defaultProviderId,
       botThinkingLevel: input.botThinkingLevel ?? null,
       learned: this.routeLearnedState(),
     });

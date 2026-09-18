@@ -15,6 +15,7 @@ import {
   applyFeedbackToLearned,
   decideCompletion,
   emptyLearnedState,
+  isCritiqueMessage,
   type CatalogEntry,
 } from "./route-decision";
 import { HttpError } from "./errors";
@@ -288,3 +289,117 @@ describe("per-message completion decision", () => {
   });
 });
 
+
+describe("route scoping across endpoints", () => {
+  const levels = ["none", "low", "medium", "high"] as const;
+  // The roster that sent an unpinned Bot to a second endpoint nobody had assigned it to.
+  const roster: CatalogEntry[] = [
+    { name: "grok-4.6", price: null, thinking_levels: [...levels], strengths: [], providerId: "default" },
+    {
+      name: "gemini-3.8-flash-high",
+      price: null,
+      thinking_levels: [...levels],
+      strengths: ["design"],
+      providerId: "default",
+    },
+    { name: "deepseek-flash", price: null, thinking_levels: [...levels], strengths: [], providerId: "deepseek" },
+    { name: "deepseek-v4-pro", price: null, thinking_levels: [...levels], strengths: [], providerId: "deepseek" },
+  ];
+  const text = "把这周的进度汇总一下发给大家看看";
+  // One learned penalty against the default endpoint's best pair for this signature.
+  const learned = applyFeedbackToLearned(emptyLearnedState(), {
+    signature: "general",
+    model: "grok-4.6",
+    thinkingLevel: "low",
+  });
+
+  test("an unpinned Bot stays on the default endpoint even when another endpoint scores higher", () => {
+    const legacy = decideCompletion({ text, catalog: roster, botModel: null, learned });
+    expect(legacy?.signature).toBe("general");
+    expect(legacy?.providerId).toBe("deepseek");
+
+    const scoped = decideCompletion({
+      text,
+      catalog: roster,
+      botModel: null,
+      defaultProviderId: "default",
+      learned,
+    });
+    expect(scoped?.providerId).toBe("default");
+    expect(["grok-4.6", "gemini-3.8-flash-high"]).toContain(scoped!.model);
+  });
+
+  test("a Bot pinned to another endpoint picks from that endpoint only", () => {
+    const decision = decideCompletion({
+      text,
+      catalog: roster,
+      botModel: null,
+      botProviderId: "deepseek",
+      defaultProviderId: "default",
+      learned: emptyLearnedState(),
+    });
+    expect(decision?.providerId).toBe("deepseek");
+  });
+
+  test("a pinned model listed only on another endpoint is still honored", () => {
+    const decision = decideCompletion({
+      text,
+      catalog: roster,
+      botModel: "deepseek-v4-pro",
+      defaultProviderId: "default",
+      learned: emptyLearnedState(),
+    });
+    expect(decision).toMatchObject({ model: "deepseek-v4-pro", providerId: "deepseek" });
+  });
+
+  test("a pinned model listed on both endpoints prefers the default endpoint's copy", () => {
+    const shared: CatalogEntry[] = [
+      { name: "shared", price: null, thinking_levels: [...levels], strengths: [], providerId: "a" },
+      { name: "shared", price: null, thinking_levels: [...levels], strengths: [], providerId: "b" },
+    ];
+    const decision = decideCompletion({
+      text,
+      catalog: shared,
+      botModel: "shared",
+      defaultProviderId: "b",
+      learned: emptyLearnedState(),
+    });
+    expect(decision).toMatchObject({ model: "shared", providerId: "b" });
+  });
+
+  test("a default endpoint with an empty list yields no decision instead of borrowing another endpoint", () => {
+    const decision = decideCompletion({
+      text,
+      catalog: roster.filter((row) => row.providerId === "deepseek"),
+      botModel: null,
+      defaultProviderId: "default",
+      learned: emptyLearnedState(),
+    });
+    expect(decision).toBeNull();
+  });
+});
+
+describe("route feedback detection", () => {
+  test("only talk about the model choice counts as feedback", () => {
+    for (const body of [
+      "这里有 bug，选的模型不对",
+      "换个模型试试",
+      "太慢了",
+      "the model was wrong here",
+      "switch to a smarter model",
+    ]) {
+      expect(isCritiqueMessage(body)).toBe(true);
+    }
+  });
+
+  test("a complaint about the reply's content is not route feedback", () => {
+    for (const body of [
+      "@导演 你 @ 的分镜不对，群里它叫分镜师",
+      "这里有 bug",
+      "这个方案有问题，重来",
+      "that's wrong, the file is broken",
+    ]) {
+      expect(isCritiqueMessage(body)).toBe(false);
+    }
+  });
+});

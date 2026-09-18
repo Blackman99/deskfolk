@@ -6,6 +6,8 @@
 
 ### Daemon
 
+- 没钉端点的 Bot 只在默认端点的模型名单里挑模型，设置里新加的端点不再自动进所有 Bot 的候选；要用别的端点必须在 Bot 上显式钉端点，钉的模型名只在别的端点上时照钉的用。此前加了第二个端点后，一条学习到的惩罚就足以把未钉的 Bot 送去那个端点。
+- 路由反馈只认说到模型本身的跟进消息（选的模型、换个模型、太慢、太浅、太贵、幻觉等）；「不对」「有问题」「重来」这类对回复内容的批评不再记成对上一轮模型选择的惩罚。
 - Bot 可以钉思考等级。`bots.thinking_level`（none / low / medium / high，即补全的 `reasoning_effort`）随 `POST /v1/bots`、`PATCH /v1/bots/:id` 和 `bot.upsert` 一起走；`null` 仍由应用按每条消息挑。开轮时所选模型支持这一档就用它，不支持则照旧由应用选。钉了模型时该档必须在该模型名单的 `thinking_levels` 里，否则 `422 thinking_level must be one the pinned model supports`；只换模型而新模型不支持原来那档会自动清掉。`update_profile` / `create_bot` 多一个 `thinking_level`（null 或空字符串清掉），`list_bots` 一并返回；系统指令写明用它改自己的思考等级。
 
 ### Messenger

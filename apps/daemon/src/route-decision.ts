@@ -64,8 +64,14 @@ export function messageSignature(text: string): string {
   return classifyMessage(text);
 }
 
+/**
+ * True only when the user is talking about the model choice itself (which model, how hard it
+ * thought, speed, cost, hallucination). Generic complaints about the reply's content ("不对",
+ * "有问题", "broken") are not route feedback: a wrong @-mention or a bad plan says nothing about
+ * which model should have been picked.
+ */
 export function isCritiqueMessage(text: string): boolean {
-  return /(有问题|不对|不行|坏了|修一下|修这个|这里有\s*bug|有个\s*bug|选的模型|换个模型|太慢|太浅|太贵|幻觉|没做完|不够好|重来|糟糕|broken|wrong|incorrect|too slow|too shallow|hallucin|this is a bug|that('s| is) (wrong|broken)|the model (was|is) wrong)/i.test(
+  return /(选的模型|换个模型|换模型|换一个模型|模型不对|模型不行|模型太|太慢|太浅|太贵|太笨|不够聪明|想得太少|幻觉|wrong model|(switch|change|use) (to )?(a |the )?(different |another |smarter |better )?model|(the )?model (was|is) (wrong|bad)|too slow|too shallow|too expensive|think(s|ing)? harder|hallucinat)/i.test(
     text,
   );
 }
@@ -85,23 +91,55 @@ export function pickThinkingLevel(kind: MessageKind, supported: readonly Thinkin
   return preferred.find((level) => levels.includes(level)) ?? levels[0]!;
 }
 
+/**
+ * Which catalog rows a turn may pick from.
+ *
+ * - A pinned endpoint scopes to that endpoint; a pinned model that is still listed there
+ *   constrains the name (a pin listed only elsewhere yields nothing, so the caller falls back).
+ * - Without a pinned endpoint the Bot lives on the default endpoint: adding another endpoint in
+ *   settings must not make its models eligible for every unpinned Bot. Only a pinned model that
+ *   is not on the default endpoint reaches across (preferring the default endpoint's copy when
+ *   several endpoints list the same name).
+ * - With no default endpoint known (legacy state) the whole catalog stays open.
+ */
+export function candidateRows(input: {
+  catalog: readonly CatalogEntry[];
+  botModel: string | null;
+  botProviderId: string | null;
+  defaultProviderId: string | null;
+}): CatalogEntry[] {
+  const { catalog, botModel, botProviderId, defaultProviderId } = input;
+  const pinListed = botModel !== null && catalog.some((row) => row.name === botModel);
+  if (botProviderId) {
+    const scoped = catalog.filter((row) => row.providerId === botProviderId);
+    return pinListed ? scoped.filter((row) => row.name === botModel) : scoped;
+  }
+  if (pinListed) {
+    const rows = catalog.filter((row) => row.name === botModel);
+    const home = rows.filter((row) => row.providerId === defaultProviderId);
+    return home.length > 0 ? home : rows;
+  }
+  if (!defaultProviderId) return [...catalog];
+  return catalog.filter((row) => row.providerId === defaultProviderId);
+}
+
 export function decideCompletion(input: {
   text: string;
   catalog: readonly CatalogEntry[];
   botModel: string | null;
   botProviderId?: string | null;
+  /** The roster's default endpoint; an unpinned Bot only picks from its list. */
+  defaultProviderId?: string | null;
   /** A Bot's pinned level wins for any candidate model that supports it; other models keep their own list. */
   botThinkingLevel?: ThinkingLevel | null;
   learned: RouteLearnedState;
 }): RouteDecision | null {
-  const scoped = input.botProviderId
-    ? input.catalog.filter((row) => row.providerId === input.botProviderId)
-    : input.catalog;
-  const pin =
-    input.botModel && input.catalog.some((row) => row.name === input.botModel)
-      ? input.botModel
-      : null;
-  const candidates = pin ? scoped.filter((row) => row.name === pin) : scoped;
+  const candidates = candidateRows({
+    catalog: input.catalog,
+    botModel: input.botModel,
+    botProviderId: input.botProviderId ?? null,
+    defaultProviderId: input.defaultProviderId ?? null,
+  });
   if (candidates.length === 0) return null;
 
   const kind = classifyMessage(input.text);
