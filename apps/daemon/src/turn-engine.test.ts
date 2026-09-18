@@ -239,6 +239,12 @@ function isJudgementRequest(body: Record<string, unknown>): boolean {
   return system.includes("你正在做一次判断");
 }
 
+function isComposerSuggestRequest(body: Record<string, unknown>): boolean {
+  const messages = body.messages as Array<{ role: string; content?: string }>;
+  const system = messages.find((m) => m.role === "system")?.content ?? "";
+  return system.includes("你在给用户写下一步要发进输入框的草稿");
+}
+
 function judgementPass(): Response {
   return Response.json({
     choices: [{ message: { role: "assistant", content: JSON.stringify({ decision: "pass", reason: "no" }) } }],
@@ -1589,6 +1595,75 @@ describe("turn engine on the local API", () => {
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
     expect(sub.events.some((e) => e.kind === "bot")).toBe(false);
     sub.close();
+  });
+
+  test("GET composer-suggestions returns drafts from the default endpoint", async () => {
+    const fixture = await startFixture(({ body }) => {
+      if (isComposerSuggestRequest(body)) {
+        const messages = body.messages as Array<{ role: string; content?: string }>;
+        const user = messages.find((m) => m.role === "user")?.content ?? "";
+        expect(user).toContain("请各自介绍");
+        expect(user).toContain("Writer");
+        expect(body.model).toBe("test-model");
+        return Response.json({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: JSON.stringify({
+                  suggestions: [
+                    { label: "让 Writer 写", prompt: "@Writer 按刚才的介绍写一页大纲" },
+                    { label: "全员报进度", prompt: "@everyone 请各自报当前进度" },
+                    { label: "幻觉", prompt: "@Ghost 继续" },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }
+      if (isJudgementRequest(body)) return judgementPass();
+      return sse(textChunks("ok"));
+    });
+    const h = await startApi();
+    const { groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "Writer", duties: "write" },
+      { name: "Reviewer", duties: "review" },
+    ]);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "请各自介绍" }),
+    });
+    const res = await fetch(`${h.origin}/v1/sessions/${groupId}/composer-suggestions`, {
+      headers: auth(h),
+    });
+    expect(res.status).toBe(200);
+    const page = (await res.json()) as { items: Array<{ label: string; prompt: string }> };
+    expect(page.items.map((row) => row.prompt)).toEqual([
+      "@Writer 按刚才的介绍写一页大纲",
+      "@everyone 请各自报当前进度",
+    ]);
+    expect(page.items[0]!.label).toBe("让 Writer 写");
+  });
+
+  test("GET composer-suggestions is empty without an endpoint", async () => {
+    const h = await startApi(new Store({ endpointKey: memoryKeyStore(null) }));
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const group = h.store.createGroup({
+      name: "Brief",
+      members: [writer.bot.id, reviewer.bot.id],
+    });
+    const missing = await fetch(`${h.origin}/v1/sessions/nope/composer-suggestions`, {
+      headers: auth(h),
+    });
+    expect(missing.status).toBe(404);
+    const res = await fetch(`${h.origin}/v1/sessions/${group.id}/composer-suggestions`, {
+      headers: auth(h),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [] });
   });
 
   test("@everyone opens every present bot and each one finishes a reply", async () => {

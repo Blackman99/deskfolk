@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
-import { assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG } from "./context";
+import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG } from "./context";
 import { Store } from "./store";
 
 const PNG_1X1 = Buffer.from(
@@ -360,6 +360,39 @@ describe("assembleJudgementUser", () => {
       "situation",
       "recent_messages",
     ]);
+    store.close();
+  });
+});
+
+describe("assembleComposerSuggestUser", () => {
+  test("lists present members and recent transcript without the trigger flag", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const group = store.createGroup({ name: "Brief", members: [writer.bot.id, reviewer.bot.id] });
+    store.insertMessage({
+      sessionId: group.id,
+      kind: "user",
+      author: USER_MEMBER,
+      body: "请各自介绍",
+    });
+    const payload = JSON.parse(assembleComposerSuggestUser(store, group.id)) as {
+      session: { kind: string; name: string | null };
+      members: unknown[];
+      situation: { waker: string; latest_user: string | null };
+      recent_messages: Array<{ body: string; author: string }>;
+    };
+    expect(payload.session.kind).toBe("group");
+    expect(payload.session.name).toBe("Brief");
+    expect(payload.members).toContain("user");
+    expect(payload.members).toContainEqual({ name: "Writer", duties: "write" });
+    expect(payload.members).toContainEqual({ name: "Reviewer", duties: "review" });
+    expect(payload.members).toHaveLength(3);
+    expect(payload.recent_messages[0]?.body).toBe("请各自介绍");
+    expect(payload.recent_messages[0]?.author).toBe("user");
+    expect(payload.situation.waker).toBe("user");
+    expect(payload.situation.latest_user).toBe("请各自介绍");
+    expect(JSON.stringify(payload)).not.toContain(TRIGGER_FLAG);
     store.close();
   });
 });

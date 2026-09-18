@@ -367,6 +367,7 @@ const zh = {
     sendHint: "Enter ↵ 发送 · Shift+Enter 换行",
     sendHintShortcut: "发送（Enter）",
     mentionTooltip: "提及 Bot (@)",
+    suggestNext: "建议下一步",
     forkTooltip: "开启后发送将分叉新轮次，不改道进行中的任务",
     forkBadge: "分叉",
     emptySessionPrompt1: "你可以帮我做什么？",
@@ -395,7 +396,6 @@ const zh = {
     thinkingPrefix: "思考",
     kindLabel: "消息类别",
     thinking: { none: "无", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
-    feedbackTitle: "模型反馈",
     pickReason: "为什么选它",
     reviewTitle: "复盘",
     reviewRounds: (rounds: number) => `改了 ${rounds} 轮`,
@@ -412,6 +412,7 @@ const zh = {
       cheaper: "该更便宜",
       same: "不用动"
     },
+    feedbackTitle: "模型反馈",
     feedbackCount: (count: number) => `${count} 条模型反馈`,
     outcome: {
       live: "进行中",
@@ -843,6 +844,7 @@ const en: CopyShape<typeof zh> = {
     sendHint: "Enter to send · Shift+Enter for newline",
     sendHintShortcut: "Send (Enter)",
     mentionTooltip: "Mention a bot (@)",
+    suggestNext: "Suggested next",
     forkTooltip: "When enabled, send will fork a new turn without redirecting live work",
     forkBadge: "Fork",
     emptySessionPrompt1: "What can you help me with?",
@@ -872,8 +874,6 @@ const en: CopyShape<typeof zh> = {
     thinkingPrefix: "Thinking",
     kindLabel: "Message kind",
     thinking: { none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
-    feedbackTitle: "Model feedback",
-    feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
     pickReason: "Why this one",
     reviewTitle: "Review",
     reviewRounds: (rounds: number) => `${rounds} ${rounds === 1 ? "round" : "rounds"} of corrections`,
@@ -890,6 +890,8 @@ const en: CopyShape<typeof zh> = {
       cheaper: "go cheaper",
       same: "leave it"
     },
+    feedbackTitle: "Model feedback",
+    feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
     outcome: {
       live: "Still running",
       completed: "Completed",

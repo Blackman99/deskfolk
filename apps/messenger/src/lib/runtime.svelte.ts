@@ -11,6 +11,7 @@ import {
   type ProbeModelsResponse,
   type Provider,
   type ResolveApprovalRequest,
+  type ComposerSuggestion,
   type SearchHit,
   type SessionDetail,
   type SettingsPatch,
@@ -45,6 +46,7 @@ export class MessengerRuntime {
   threadOpen = $state(false);
   searchQuery = $state("");
   searchHits = $state<SearchHit[]>([]);
+  composerSuggestions = $state<ComposerSuggestion[]>([]);
   draft = $state("");
   replyingToId = $state<string | null>(null);
   busy = $state(false);
@@ -66,6 +68,9 @@ export class MessengerRuntime {
   private sessionMessageNext: string | null = null;
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
   private routesInFlight: string | null = null;
+  private suggestAbort: AbortController | null = null;
+  private suggestTimer: ReturnType<typeof setTimeout> | null = null;
+  private suggestSeq = 0;
 
   start(): void {
     this.stopped = false;
@@ -77,6 +82,7 @@ export class MessengerRuntime {
     this.teardownSocket();
     if (this.timer) clearTimeout(this.timer);
     this.clearHighlightTimer();
+    this.cancelComposerSuggestions();
   }
 
   get client(): LocalApi | null {
@@ -165,6 +171,8 @@ export class MessengerRuntime {
     }
     this.selectedId = id;
     this.replyingToId = null;
+    this.composerSuggestions = [];
+    this.scheduleComposerSuggestions(id);
     if (this.focusedTurnId) {
       const focused = this.snapshot.turns.find((turn) => turn.id === this.focusedTurnId);
       if (!focused || focused.session_id !== id) this.focusedTurnId = null;
@@ -1010,6 +1018,13 @@ export class MessengerRuntime {
         void this.refreshRoutes(event.session_id);
       }
     }
+    if (
+      (event.event === "message.created" || event.event === "session.cleared") &&
+      this.selectedId &&
+      (event.event === "session.cleared" ? event.id : event.session_id) === this.selectedId
+    ) {
+      this.scheduleComposerSuggestions(this.selectedId);
+    }
   }
 
   private claimFocus(triggerMessageId: string, turnId?: string): void {
@@ -1028,10 +1043,57 @@ export class MessengerRuntime {
     this.api = null;
     this.closeSheets();
     this.searchHits = [];
+    this.composerSuggestions = [];
+    this.cancelComposerSuggestions();
     this.focusedTurnId = null;
     this.setHighlightedMessage(null);
     this.pendingFocusTrigger = null;
     this.sessionMessageNext = null;
+  }
+
+  private cancelComposerSuggestions(): void {
+    if (this.suggestTimer) {
+      clearTimeout(this.suggestTimer);
+      this.suggestTimer = null;
+    }
+    this.suggestAbort?.abort();
+    this.suggestAbort = null;
+  }
+
+  /**
+   * Composer chips follow the transcript, not a live stream. Debounce so a burst of Bot messages
+   * only pays for one short call, and abort the in-flight one when the user switches sessions.
+   */
+  private scheduleComposerSuggestions(sessionId: string): void {
+    this.cancelComposerSuggestions();
+    if (!this.api || this.selectedId !== sessionId) {
+      this.composerSuggestions = [];
+      return;
+    }
+    this.suggestTimer = setTimeout(() => {
+      this.suggestTimer = null;
+      void this.refreshComposerSuggestions(sessionId);
+    }, 400);
+  }
+
+  private async refreshComposerSuggestions(sessionId: string): Promise<void> {
+    if (!this.api || this.selectedId !== sessionId) return;
+    this.suggestAbort?.abort();
+    const abort = new AbortController();
+    this.suggestAbort = abort;
+    const seq = ++this.suggestSeq;
+    try {
+      const items = await this.api.composerSuggestions(sessionId, abort.signal);
+      if (seq !== this.suggestSeq || this.selectedId !== sessionId) return;
+      this.composerSuggestions = items;
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      if (seq !== this.suggestSeq || this.selectedId !== sessionId) return;
+      this.composerSuggestions = [];
+      void error;
+    } finally {
+      if (this.suggestAbort === abort) this.suggestAbort = null;
+    }
   }
 
   setHighlightedMessage(messageId: string | null): void {

@@ -110,6 +110,23 @@ describe("local API runtime", () => {
     expect(vite.status).toBe(200);
     expect(vite.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
     expect(vite.headers.get("Access-Control-Allow-Headers")).toContain("Authorization");
+
+    const ipv6 = await fetch(`${rt.origin}/v1/runtime`, {
+      headers: {
+        Authorization: `Bearer ${rt.token}`,
+        Origin: "http://[::1]:5173",
+      },
+    });
+    expect(ipv6.status).toBe(200);
+    expect(ipv6.headers.get("Access-Control-Allow-Origin")).toBe("http://[::1]:5173");
+    expect(ipv6.headers.get("Access-Control-Allow-Private-Network")).toBe("true");
+  });
+
+  test("a 127.0.0.1 bind also answers on IPv6 loopback at the same port", async () => {
+    const rt = await start();
+    const res = await fetch(`http://[::1]:${rt.port}/v1/health`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, name: LOCAL_API_NAME });
   });
 
   test("POST /v1/runtime/quit needs a token, deletes discovery, and stops", async () => {

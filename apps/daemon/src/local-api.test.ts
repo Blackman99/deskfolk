@@ -99,6 +99,30 @@ describe("local api auth", () => {
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
     expect(res.headers.get("Access-Control-Allow-Origin")).not.toBe("*");
     expect(res.headers.get("Access-Control-Allow-Headers")).toContain("Authorization");
+    expect(res.headers.get("Access-Control-Allow-Private-Network")).toBe("true");
+  });
+
+  test("IPv6 loopback origin is allowed and CORS echoes it", async () => {
+    const h = await start();
+    const origin = "http://[::1]:5173";
+    const health = await fetch(`${h.origin}/v1/health`, { headers: { Origin: origin } });
+    expect(health.status).toBe(200);
+    expect(health.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+
+    const res = await fetch(`${h.origin}/v1/bots`, { headers: auth(h, { Origin: origin }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+
+    const preflight = await fetch(`${h.origin}/v1/bots`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe(origin);
   });
 
   test("websocket first frame must be auth; wrong token closes", async () => {

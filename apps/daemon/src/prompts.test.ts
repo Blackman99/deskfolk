@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { builtinTools, JUDGEMENT_SYSTEM, turnSystemPrompt, unknownMentionBody } from "./prompts";
+import { builtinTools, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, turnSystemPrompt, unknownMentionBody } from "./prompts";
 
 describe("prompts", () => {
   test("judgement system has no opening brace", () => {
     expect(JUDGEMENT_SYSTEM.includes("{")).toBe(false);
+  });
+
+  test("composer suggest system has no opening brace", () => {
+    expect(COMPOSER_SUGGEST_SYSTEM.includes("{")).toBe(false);
   });
 
   test("turn system with interrupt flag is the locked zh shape", () => {

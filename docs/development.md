@@ -56,7 +56,7 @@ pnpm --filter @real-bot/messenger dev
 
 ## 聊天输入区
 
-输入区采用上方文字、下方工具栏的布局：附件在左，右侧固定一个圆形操作按钮，快捷键提示位于输入框外。你↔Bot 私聊空闲时显示发送箭头，有进行中的轮次（含待批准、待回复）时替换为停止方块；停止仍只针对眼前这一轮。群聊不论是否有进行中的轮都保持发送，不出现停止按钮；要停就发消息让 Bot 们停下来。私聊生成期间可以编辑下一条草稿、添加附件，但发送按钮和 Enter / ⌘+Enter / Ctrl+Enter 都不会提交；结束或停止后恢复发送，草稿保留。群聊有活轮或判断进行中时仍可发送。输入法选词窗口开着时 Enter 只确认候选，不发送；选词刚结束的那一下 Enter 也不发送。Shift+Enter 始终换行，多行内容不再误显示占位提示。消息提交中暂不允许重复发送；只读会话保持禁用。停止待批准的私聊轮次后，批准卡立即显示已作废，侧栏待批准状态同步清除。移动端隐藏快捷键提示，操作按钮使用 44px 点击区域。
+消息流与输入框共用同一条居中栏（`--chat-max-width: 800px`），宽屏两侧留白，行宽不再随主栏拉满。顶栏、侧栏、「回到底部」按钮和滚动条仍铺满主栏。输入区采用上方文字、下方工具栏的布局：附件在左，右侧固定一个圆形操作按钮，快捷键提示位于输入框外。输入框上方是按当前转录建议的下一步草稿芯片（`GET /v1/sessions/:id/composer-suggestions`，短、无工具调用，失败则不显示）；点芯片把完整草稿填进输入框，需要叫醒谁时草稿里可以带 `@名字` 或 `@everyone`。输入框里打 `@` 仍弹出在场成员补全。你↔Bot 私聊空闲时显示发送箭头，有进行中的轮次（含待批准、待回复）时替换为停止方块；停止仍只针对眼前这一轮。群聊不论是否有进行中的轮都保持发送，不出现停止按钮；要停就发消息让 Bot 们停下来。私聊生成期间可以编辑下一条草稿、添加附件，但发送按钮和 Enter / ⌘+Enter / Ctrl+Enter 都不会提交；结束或停止后恢复发送，草稿保留。群聊有活轮或判断进行中时仍可发送。输入法选词窗口开着时 Enter 只确认候选，不发送；选词刚结束的那一下 Enter 也不发送。Shift+Enter 始终换行，多行内容不再误显示占位提示。消息提交中暂不允许重复发送；只读会话保持禁用。停止待批准的私聊轮次后，批准卡立即显示已作废，侧栏待批准状态同步清除。移动端隐藏快捷键提示，操作按钮使用 44px 点击区域。
 
 ## Bot 遇到障碍时
 
@@ -79,11 +79,11 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 ## 本机接口
 
-守护进程只绑 `127.0.0.1:17890`，前缀 `/v1`。`GET /v1/health` 不鉴权；其余 HTTP 用 `Authorization: Bearer`。WebSocket `ws://127.0.0.1:17890/v1/events` 连上后第一条消息 `{ "type": "auth", "token" }`。`POST /v1/turns/continue` 用中断系统消息的 `message_id` 给该 Bot 新开一轮。
+守护进程绑 `127.0.0.1:17890`，并在同一端口再听 `[::1]`（给 Vite 开发页的 IPv6 回环用）。前缀 `/v1`。`GET /v1/health` 不鉴权；其余 HTTP 用 `Authorization: Bearer`。WebSocket `ws://127.0.0.1:17890/v1/events`（或 `ws://[::1]:17890/v1/events`）连上后第一条消息 `{ "type": "auth", "token" }`。HTTP 还校验 Origin：缺省（curl / 测试）放行；`http://localhost`、`http://127.0.0.1`、`http://[::1]` 和 `tauri://localhost` 放行并回显 CORS（含 `Access-Control-Allow-Private-Network`）；其它 Origin 是 `403 forbidden_origin`。信使 Vite 常只听 `[::1]:5173`；浏览器开发态发现接口时按页面地址族拼 origin（`[::1]` 页连 `[::1]:17890`），避免 Chrome 把跨地址族回环请求当成本地网络访问拦掉。`POST /v1/turns/continue` 用中断系统消息的 `message_id` 给该 Bot 新开一轮。`GET /v1/sessions/:id/composer-suggestions` 按该会话最近转录返回用户下一步草稿（`{ items: [{ id, label, prompt }] }`）；打默认端点上名字带 flash / mini / lite / fast 的模型（没有就用默认模型），无工具，8 秒超时；失败或没配端点返回空列表。
 
 每次守护进程启动新铸本机 token，写到 `~/Library/Application Support/real-bot/local-api.json`（目录 `0700`，文件 `0600`）。库文件同目录 `state.sqlite`。每个端点的 API key 在钥匙串 `com.real-bot.daemon` / `endpoint-api-key:<provider-id>`（旧的单端点项 `endpoint-api-key` 会迁到默认端点）。测试或隔离跑可设 `REAL_BOT_DATA_DIR` 换这个目录。
 
-单独起信使时，Vite 开发服务器提供同源 `GET /__local-api` → `{ name, port, token }`（守护进程未起时是带 `name` 的 `not_found`），不把 token 写进仓库或 bundle。页面仍只使用 `port` 和 `token`。
+单独起信使时，Vite 开发服务器提供同源 `GET /__local-api` → `{ name, port, token }`（守护进程未起时是带 `name` 的 `not_found`），不把 token 写进仓库或 bundle。页面只用 `port` 和 `token`，origin 按当前页是 `127.0.0.1` 还是 `[::1]` 拼。
 
 ## CI、落地页与快照发布
 

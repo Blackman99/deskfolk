@@ -3,6 +3,11 @@ import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { turnSystemPrompt, type McpPromptGuide } from "./prompts";
+import {
+  COMPOSER_SUGGEST_BODY,
+  COMPOSER_SUGGEST_RECENT,
+  type ComposerSuggestPayload,
+} from "./prompts/composer-suggestions";
 import type { Store } from "./store";
 import { takeCodePoints } from "./text";
 
@@ -284,6 +289,57 @@ function prefix(store: Store, message: Message): string {
     default:
       return "【user】";
   }
+}
+
+export function assembleComposerSuggestUser(store: Store, sessionId: string): string {
+  const session = store.getSession(sessionId);
+  const present = store.presentParticipants(sessionId);
+  const members: ComposerSuggestPayload["members"] = [];
+  for (const p of present) {
+    if (p.member === USER_MEMBER) {
+      members.push("user");
+      continue;
+    }
+    members.push({ name: botDisplayName(store, p.member), duties: botDuties(store, p.member) });
+  }
+  const recent = store.listMainMessages(sessionId, COMPOSER_SUGGEST_RECENT).reverse().map((m) => {
+    const clipped = takeCodePoints(m.body, COMPOSER_SUGGEST_BODY);
+    const row: ComposerSuggestPayload["recent_messages"][number] = {
+      id: m.id,
+      author: m.author === USER_MEMBER ? "user" : botDisplayName(store, m.author),
+      kind: m.kind,
+      body: clipped.text,
+      created_at: m.created_at,
+    };
+    if (clipped.truncated) row.truncated = true;
+    return row;
+  });
+  const latest = [...recent].reverse().find((m) => m.kind === "user" || m.author === "user");
+  const seats: string[] = [];
+  const seen = new Set<string>();
+  for (const turn of store.listLiveTurns({ sessionId })) {
+    const name = botDisplayName(store, turn.bot_id);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    seats.push(name);
+  }
+  const last = store.listMainMessages(sessionId, 1)[0];
+  const waker = last
+    ? last.author === USER_MEMBER
+      ? "user"
+      : botDisplayName(store, last.author)
+    : "user";
+  const payload: ComposerSuggestPayload = {
+    session: { id: session.id, kind: session.kind, name: session.name },
+    members,
+    situation: {
+      seats,
+      waker,
+      latest_user: latest ? latest.body.replace(/\s+/g, " ").trim().slice(0, LATEST_USER_LIMIT) || null : null,
+    },
+    recent_messages: recent,
+  };
+  return JSON.stringify(payload);
 }
 
 export function assembleJudgementUser(store: Store, input: {

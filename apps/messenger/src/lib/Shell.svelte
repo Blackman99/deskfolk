@@ -1821,22 +1821,6 @@
 		}
 	}
 
-	function insertMention(name: string): void {
-		if (lockedComposer || !editorEl) return;
-		const isEveryone = name === 'everyone';
-		const bot = !isEveryone ? Array.from(botsById.values()).find((b) => b.name === name) : null;
-		const candidate: MentionCandidate = {
-			id: isEveryone ? 'everyone' : (bot?.id ?? name),
-			name: name,
-			isEveryone,
-			avatar: bot?.avatar ?? null,
-			duties: bot?.duties || undefined,
-		};
-		insertMentionChipAtCaret(editorEl, candidate, botsById);
-		syncDraftFromEditor();
-		editorEl.focus();
-	}
-
 	function pickStarterPrompt(prompt: string): void {
 		runtime.draft = prompt;
 		if (editorEl) {
@@ -3912,19 +3896,17 @@
 			{/if}
 
 		<footer class="composer">
-			{#if selected?.kind === 'group' && groupPresent.length > 0}
-				<div class="composer-mentions-bar">
-					<span class="mentions-label">{t.chat.mentionTooltip}:</span>
-					<button type="button" class="mention-chip" onclick={() => insertMention('everyone')}>
-						@everyone
-					</button>
-					{#each groupPresent as botId (botId)}
-						{@const b = botsById.get(botId)}
-						{#if b}
-							<button type="button" class="mention-chip" onclick={() => insertMention(b.name)}>
-								@{b.name}
-							</button>
-						{/if}
+			{#if selected && !lockedComposer && runtime.composerSuggestions.length > 0}
+				<div class="composer-suggest-bar" aria-label={t.chat.suggestNext}>
+					{#each runtime.composerSuggestions as suggestion (suggestion.id)}
+						<button
+							type="button"
+							class="suggest-chip"
+							title={suggestion.prompt}
+							onclick={() => pickStarterPrompt(suggestion.prompt)}
+						>
+							{suggestion.label}
+						</button>
 					{/each}
 				</div>
 			{/if}
@@ -4939,6 +4921,7 @@
 							class="settings-tab-btn"
 							class:is-active={activeSettingsTab === 'about'}
 							onclick={() => (activeSettingsTab = 'about')}
+							title={updateChecker.updateVisible ? `${t.settings.tabAbout} · ${t.sidebar.updateAvailable}` : t.settings.tabAbout}
 						>
 							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<circle cx="12" cy="12" r="10"></circle>

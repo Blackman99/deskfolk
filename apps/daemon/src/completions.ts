@@ -72,6 +72,8 @@ export type JudgeRequest = {
   model: string;
   messages: ChatMessage[];
   signal: AbortSignal;
+  /** Override the first-byte timeout used for this short call. */
+  timeoutMs?: number;
 };
 
 export type JudgeResult = {
@@ -601,7 +603,10 @@ async function completeJudgeBody(
         max_tokens: 256,
         stream: false,
       }),
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(clock.firstByteMs)]),
+      signal: AbortSignal.any([
+        request.signal,
+        AbortSignal.timeout(request.timeoutMs ?? clock.firstByteMs),
+      ]),
     });
   } catch (error) {
     const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");

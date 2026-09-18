@@ -60,6 +60,7 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 18px;
+  --chat-max-width: 800px;
 
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.05);
@@ -1337,6 +1338,7 @@ select:focus-visible {
   padding: 0;
   top: 3px;
   right: 3px;
+  background: var(--danger);
 }
 
 .foot .mono {
@@ -1817,6 +1819,8 @@ select:focus-visible {
   flex: 1 0 auto;
   min-height: 100%;
   width: 100%;
+  max-width: calc(var(--chat-max-width) + 48px);
+  margin-inline: auto;
   padding: 20px 24px 130px;
   box-sizing: border-box;
 }
@@ -3069,8 +3073,8 @@ button.attached-replying-chip:focus-visible {
 /* Scroll to Bottom Floating Button */
 .scroll-bottom-btn {
   position: absolute;
-  bottom: 100px;
-  right: 28px;
+  bottom: 28px;
+  right: 24px;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -3082,6 +3086,7 @@ button.attached-replying-chip:focus-visible {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  pointer-events: auto;
   transition: all 0.18s ease;
   z-index: 10;
 }
@@ -3095,7 +3100,7 @@ button.attached-replying-chip:focus-visible {
 
 @media (max-width: 680px) {
   .scroll-bottom-btn {
-    bottom: 74px;
+    bottom: 68px;
     right: 16px;
   }
 }
@@ -3410,9 +3415,9 @@ button.attached-replying-chip:focus-visible {
   z-index: 4;
 }
 
-.composer-mentions-bar {
+.composer-suggest-bar {
   width: 100%;
-  max-width: 800px;
+  max-width: var(--chat-max-width);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3421,36 +3426,37 @@ button.attached-replying-chip:focus-visible {
   pointer-events: none;
 }
 
-.composer-mentions-bar > * {
+.composer-suggest-bar > * {
   pointer-events: auto;
 }
 
-.mentions-label {
-  font-size: 11.5px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.mention-chip {
-  padding: 2px 8px;
+.suggest-chip {
+  max-width: 100%;
+  padding: 4px 10px;
   border-radius: 9999px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
+  line-height: 1.3;
   background: var(--chip);
   border: 1px solid var(--line);
-  color: var(--accent);
+  color: var(--ink);
   cursor: pointer;
   transition: all 0.12s ease;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.mention-chip:hover {
+.suggest-chip:hover {
   background: var(--accent-tint);
   border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .composer-card {
   width: 100%;
-  max-width: 800px;
+  max-width: var(--chat-max-width);
   background: var(--glass-composer, var(--input-bg));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -3508,9 +3514,10 @@ button.attached-replying-chip:focus-visible {
 }
 
 .composer .composer-input {
+  position: relative;
   flex: 1;
   min-width: 0;
-  min-height: 22px;
+  min-height: 34px;
   max-height: 180px;
   border: 0;
   outline: none;
@@ -3530,7 +3537,10 @@ button.attached-replying-chip:focus-visible {
   content: attr(data-placeholder);
   color: var(--muted);
   pointer-events: none;
-  display: block;
+  position: absolute;
+  top: 6px;
+  left: 4px;
+  right: 6px;
   line-height: 22px;
   white-space: nowrap;
   overflow: hidden;
@@ -3627,7 +3637,7 @@ button.attached-replying-chip:focus-visible {
 
 .composer-hint {
   width: 100%;
-  max-width: 800px;
+  max-width: var(--chat-max-width);
   min-height: 14px;
   text-align: center;
   line-height: 14px;
@@ -3661,8 +3671,13 @@ button.attached-replying-chip:focus-visible {
   .composer .composer-input {
     font-size: 15px;
     line-height: 22px;
-    min-height: 22px;
+    min-height: 34px;
     padding: 6px 4px;
+  }
+
+  .composer .composer-input.is-empty::before {
+    left: 4px;
+    right: 4px;
   }
 
   .composer .composer-action,
@@ -3694,7 +3709,7 @@ button.attached-replying-chip:focus-visible {
 .mention-autocomplete-popup {
   position: absolute;
   bottom: calc(100% - 6px);
-  left: max(24px, calc(50% - 400px));
+  left: max(24px, calc(50% - (var(--chat-max-width) / 2)));
   width: min(380px, calc(100% - 48px));
   max-height: 240px;
   overflow-y: auto;
@@ -3708,12 +3723,6 @@ button.attached-replying-chip:focus-visible {
   flex-direction: column;
   gap: 2px;
   pointer-events: auto;
-}
-  padding: 6px;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .autocomplete-header {
@@ -5540,18 +5549,6 @@ button.attached-replying-chip:focus-visible {
   color: var(--muted-light);
 }
 
-.route-fail {
-  display: flex;
-  align-items: flex-start;
-  gap: 5px;
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: var(--danger-text);
-}
-
-.route-fail svg {
-  flex-shrink: 0;
-  margin-top: 1px;
 .route-why {
   display: flex;
   align-items: baseline;
@@ -5616,6 +5613,18 @@ button.attached-replying-chip:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.route-fail {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--danger-text);
+}
+
+.route-fail svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .route-feedback-toggle {
@@ -6829,12 +6838,21 @@ button.attached-replying-chip:focus-visible {
 }
 
 .tab-badge-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--danger);
   margin-left: auto;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--sidebar-bg);
+}
+
+.settings-sidebar .settings-tab-btn.is-active .tab-badge-dot {
+  box-shadow: 0 0 0 2px var(--pane);
+}
+
+.settings-sidebar .settings-tab-btn:hover .tab-badge-dot {
+  box-shadow: 0 0 0 2px var(--row-hover);
 }
 
 .tab-count {
@@ -8557,6 +8575,10 @@ button.attached-replying-chip:focus-visible {
     width: auto;
     padding: 6px 12px;
     white-space: nowrap;
+  }
+
+  .settings-sidebar .settings-tab-btn .tab-badge-dot {
+    margin-left: 6px;
   }
 
   .settings-main-head {

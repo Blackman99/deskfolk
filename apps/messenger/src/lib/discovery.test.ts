@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parseDiscovery, parseTauriEndpoint } from "./discovery.ts";
+import { loopbackOrigin, parseDiscovery, parseTauriEndpoint } from "./discovery.ts";
 
 test("dev discovery is port plus token, origin is loopback", () => {
   expect(parseDiscovery({ port: 17890, token: "abc" })).toEqual({
@@ -8,6 +8,15 @@ test("dev discovery is port plus token, origin is loopback", () => {
   });
   expect(parseDiscovery({ name: "real-bot", port: 17890, token: "abc" })).toEqual({
     origin: "http://127.0.0.1:17890",
+    token: "abc",
+  });
+});
+
+test("IPv6 messenger page discovers the IPv6 loopback origin", () => {
+  expect(loopbackOrigin(17890, "http://[::1]:5173")).toBe("http://[::1]:17890");
+  expect(loopbackOrigin(17890, "http://localhost:5173")).toBe("http://127.0.0.1:17890");
+  expect(parseDiscovery({ port: 17890, token: "abc" }, "http://[::1]:5173")).toEqual({
+    origin: "http://[::1]:17890",
     token: "abc",
   });
 });
@@ -34,8 +43,12 @@ test("browser discovery uses the Vite path, not Application Support", async () =
       headers: { "Content-Type": "application/json" },
     });
   }) as typeof fetch;
-  await expect(discoverEndpoint(fetchFn, undefined)).resolves.toEqual({
+  await expect(discoverEndpoint(fetchFn, undefined, "http://localhost:5173")).resolves.toEqual({
     origin: "http://127.0.0.1:17890",
+    token: "from-vite",
+  });
+  await expect(discoverEndpoint(fetchFn, undefined, "http://[::1]:5173")).resolves.toEqual({
+    origin: "http://[::1]:17890",
     token: "from-vite",
   });
 });

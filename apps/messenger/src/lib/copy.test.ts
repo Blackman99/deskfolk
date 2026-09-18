@@ -25,6 +25,8 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
   expect(COPY.en.chat.replyMessage).toBe("Reply");
   expect(COPY.zh.chat.replyTo("Writer")).toBe("回复 Writer");
   expect(COPY.en.chat.replyTo("Writer")).toBe("Replying to Writer");
+  expect(COPY.zh.chat.suggestNext).toBe("建议下一步");
+  expect(COPY.en.chat.suggestNext).toBe("Suggested next");
 });
 
 test("wizard field errors are the locked 32 sentences", () => {

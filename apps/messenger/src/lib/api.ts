@@ -19,6 +19,7 @@ import type {
   ResolveApprovalRequest,
   RouteRecord,
   RouteReview,
+  ComposerSuggestion,
   SearchHit,
   SessionDetail,
   SessionSummary,
@@ -49,8 +50,8 @@ export class LocalApi {
     return { Authorization: `Bearer ${this.endpoint.token}` };
   }
 
-  async get<T>(path: string): Promise<T> {
-    return this.request<T>("GET", path);
+  async get<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.request<T>("GET", path, undefined, signal);
   }
 
   async patch<T>(path: string, body: unknown): Promise<T> {
@@ -205,6 +206,13 @@ export class LocalApi {
       `/v1/sessions/${sessionId}/routes`,
     );
     return { items: page.items, reviews: page.reviews ?? [] };
+  }
+
+  async composerSuggestions(sessionId: string, signal?: AbortSignal): Promise<ComposerSuggestion[]> {
+    const page = await this.get<ListPage<ComposerSuggestion>>(
+      `/v1/sessions/${sessionId}/composer-suggestions`,
+      signal,
+    );
     return page.items;
   }
 
@@ -382,7 +390,12 @@ export class LocalApi {
     }
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
     let payload: BodyInit | undefined;
     if (body !== undefined && method !== "GET") {
@@ -393,7 +406,7 @@ export class LocalApi {
         payload = JSON.stringify(body);
       }
     }
-    const res = await fetch(`${this.endpoint.origin}${path}`, { method, headers, body: payload });
+    const res = await fetch(`${this.endpoint.origin}${path}`, { method, headers, body: payload, signal });
     if (res.status === 204) return undefined as T;
     const json = (await res.json()) as T | ErrorBody;
     if (!res.ok) {

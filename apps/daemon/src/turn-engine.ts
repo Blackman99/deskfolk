@@ -1,6 +1,7 @@
 import {
   USER_MEMBER,
   type ClientEvent,
+  type ComposerSuggestion,
   type Locale,
   type Message,
   type PendingJudgement,
@@ -16,7 +17,8 @@ import {
   type MappedUsage,
   type ToolCall,
 } from "./completions";
-import { assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
+import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
+import { parseComposerSuggestions } from "./composer-suggestions";
 import { classifyMessage, messageSignature, type RouteDecision } from "./route-decision";
 import { parseRoutePick, parseRouteReview, type RoutePick } from "./route-agent";
 import {
@@ -32,6 +34,7 @@ import { isNoWorkCloser } from "./no-work";
 import {
   builtinTools,
   COLLAB_TOOL_NAMES,
+  COMPOSER_SUGGEST_SYSTEM,
   completionFailBody,
   JUDGEMENT_SYSTEM,
   unknownMentionBody,
@@ -65,6 +68,7 @@ export type TurnEngine = {
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
   /** Reviews chains the last run left open; called once after boot. */
   sweepStaleChains: () => void;
+  suggestComposer: (sessionId: string, signal?: AbortSignal) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
 };
@@ -1239,6 +1243,66 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
+  async function suggestComposer(
+    sessionId: string,
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<ComposerSuggestion[]> {
+    store.getSession(sessionId);
+    if (signal.aborted) return [];
+    let creds: Creds | null;
+    try {
+      creds = await credentials();
+    } catch {
+      return [];
+    }
+    if (!creds) return [];
+    const resolved = resolveCompletionTarget(creds.providers, {
+      botModel: null,
+      botProviderId: null,
+      defaultProviderId: creds.defaultProviderId,
+    });
+    if (!resolved) return [];
+    const provider = creds.providers.find((row) => row.id === resolved.providerId);
+    if (!provider) return [];
+    const lightModel =
+      provider.models.find((name) => /flash|mini|lite|fast/i.test(name)) ?? resolved.model;
+    let user: string;
+    try {
+      user = assembleComposerSuggestUser(store, sessionId);
+    } catch {
+      return [];
+    }
+    let result;
+    try {
+      result = await completions.judge({
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        model: lightModel,
+        messages: [
+          { role: "system", content: COMPOSER_SUGGEST_SYSTEM },
+          { role: "user", content: user },
+        ],
+        signal,
+        timeoutMs: 8_000,
+      });
+    } catch {
+      return [];
+    }
+    if (signal.aborted) return [];
+    if (result.failKind || result.hadToolCalls || !result.content) return [];
+    const roster = store
+      .presentBotIds(sessionId)
+      .map((id) => {
+        try {
+          return store.getBot(id).name;
+        } catch {
+          return null;
+        }
+      })
+      .filter((name): name is string => Boolean(name));
+    return parseComposerSuggestions(result.content, roster);
+  }
+
   async function judge(
     botId: string,
     message: Message,
@@ -1494,6 +1558,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
       });
     },
+    suggestComposer,
     async close() {
       await drainLives();
       for (const pending of [...pendingJudges.values()]) dropPendingJudgement(pending, true);

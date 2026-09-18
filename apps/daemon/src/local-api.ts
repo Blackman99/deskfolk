@@ -593,6 +593,17 @@ async function dispatch(
     );
   }
 
+  params = matchPath(path, "/v1/sessions/:id/composer-suggestions");
+  if (params && method === "GET") {
+    store.getSession(params.id!);
+    try {
+      const items = await engine.suggestComposer(params.id!, request.signal);
+      return jsonResponse({ items }, 200, null);
+    } catch {
+      return jsonResponse({ items: [] }, 200, null);
+    }
+  }
+
   params = matchPath(path, "/v1/sessions/:id/read");
   if (params && method === "POST") {
     const session = store.markSessionRead(params.id!);
