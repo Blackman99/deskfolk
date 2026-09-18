@@ -525,8 +525,11 @@
 					{
 						bots: snapshot.bots,
 						providers: snapshot.providers,
+						reviews: snapshot.routeReviews,
 						labels: {
 							outcome: t.routes.outcome,
+							fault: t.routes.fault,
+							direction: t.routes.direction,
 							signature: t.routes.signature,
 							failReason: t.routes.failReason,
 							thinking: t.routes.thinking,

@@ -223,6 +223,18 @@ function migrateRouteTables(db: Database, tables: string[]): void {
   if (!decisionCols.includes("finished_at")) {
     db.run(`ALTER TABLE turn_route_decisions ADD COLUMN finished_at TEXT`);
   }
+  // The agent that picks now says why, and marks whether a message continued the one before it.
+  if (!decisionCols.includes("reason")) {
+    db.run(`ALTER TABLE turn_route_decisions ADD COLUMN reason TEXT`);
+  }
+  if (!decisionCols.includes("chain_id")) {
+    db.run(`ALTER TABLE turn_route_decisions ADD COLUMN chain_id TEXT`);
+    // Old decisions were never chained; each stands alone so nothing reviews them as a group.
+    db.run(`UPDATE turn_route_decisions SET chain_id = turn_id WHERE chain_id IS NULL`);
+  }
+  db.run(
+    `CREATE INDEX IF NOT EXISTS turn_route_decisions_chain ON turn_route_decisions (chain_id)`,
+  );
   // Decisions written before `outcome` existed still know how their turn ended: the turn does.
   // A live turn's row stays open. `failed` is a judgement about the completion, not the turn,
   // so an old row that failed reads as its turn's terminal state instead of being invented.

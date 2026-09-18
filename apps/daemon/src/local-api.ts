@@ -570,7 +570,27 @@ async function dispatch(
   params = matchPath(path, "/v1/sessions/:id/routes");
   if (params && method === "GET") {
     store.getSession(params.id!);
-    return jsonResponse({ items: store.listSessionRoutes(params.id!) }, 200, null);
+    return jsonResponse(
+      {
+        items: store.listSessionRoutes(params.id!),
+        reviews: store.listSessionReviews(params.id!).map((row) => ({
+          chain_id: row.chain_id,
+          turn_id: row.turn_id,
+          bot_id: row.bot_id,
+          signature: row.signature,
+          model: row.model,
+          thinking_level: row.thinking_level,
+          fault: row.fault,
+          direction: row.direction,
+          rounds: row.rounds,
+          confidence: row.confidence,
+          reason: row.reason,
+          created_at: row.created_at,
+        })),
+      },
+      200,
+      null,
+    );
   }
 
   params = matchPath(path, "/v1/sessions/:id/read");

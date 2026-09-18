@@ -17,7 +17,14 @@ import {
   type ToolCall,
 } from "./completions";
 import { assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
-import { classifyMessage, type RouteDecision } from "./route-decision";
+import { classifyMessage, messageSignature, type RouteDecision } from "./route-decision";
+import { parseRoutePick, parseRouteReview, type RoutePick } from "./route-agent";
+import {
+  ROUTE_PICK_SYSTEM,
+  ROUTE_REVIEW_SYSTEM,
+  routePickPayload,
+  routeReviewPayload,
+} from "./prompts/routing";
 import { serializeToolResult } from "./tool-results";
 import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
@@ -186,6 +193,232 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     try {
       const bot = store.getBot(botId);
       botModel = bot.model;
+  /**
+   * Has one closed chain judged: was the model the thing at fault, or was it the request, or the
+   * job itself? The verdict is recorded either way, because recording it is what closes the chain;
+   * only a confident `model` verdict is read back when picking later.
+   */
+  async function reviewChain(chainId: string): Promise<void> {
+    let chain;
+    try {
+      chain = store.chainForReview(chainId);
+    } catch {
+      return;
+    }
+    if (!chain) return;
+    // Nothing came back from the user, so there is nothing to judge and no call to pay for.
+    if (chain.followUps.length === 0) {
+      try {
+        store.recordRouteReview({
+          botId: chain.botId,
+          chainId,
+          turnId: chain.turnId,
+          sessionId: chain.sessionId,
+          signature: chain.signature,
+          model: chain.model,
+          thinkingLevel: chain.thinkingLevel,
+          verdict: { fault: "none", direction: "same", rounds: 0, confidence: 1, reason: "" },
+        });
+      } catch {
+        // best effort
+      }
+      return;
+    }
+    const creds = await credentials().catch(() => null);
+    const routing = creds ? routingTarget(creds) : null;
+    if (!creds || !routing) return;
+    let bot;
+    try {
+      bot = store.getBot(chain.botId);
+    } catch {
+      return;
+    }
+    const payload = routeReviewPayload({
+      bot: { name: bot.name, duties: bot.duties },
+      message: chain.triggerMessage,
+      model: chain.model,
+      thinkingLevel: chain.thinkingLevel,
+      reply: chain.reply,
+      outcome: chain.outcome,
+      followUps: chain.followUps,
+    });
+    let result;
+    try {
+      result = await completions.judge({
+        baseUrl: routing.baseUrl,
+        apiKey: routing.apiKey,
+        model: routing.model,
+        messages: [
+          { role: "system", content: ROUTE_REVIEW_SYSTEM },
+          { role: "user", content: JSON.stringify(payload) },
+        ],
+        signal: new AbortController().signal,
+      });
+    } catch {
+      return;
+    }
+    if (result.failKind && result.failKind !== "incomplete") return;
+    const verdict = parseRouteReview(result.content ?? "");
+    // An unreadable verdict leaves the chain open: better a late review than a wrong conclusion.
+    if (!verdict) return;
+    try {
+      store.recordRouteReview({
+        botId: chain.botId,
+        chainId,
+        turnId: chain.turnId,
+        sessionId: chain.sessionId,
+        signature: chain.signature,
+        model: chain.model,
+        thinkingLevel: chain.thinkingLevel,
+        verdict,
+      });
+    } catch {
+      // best effort
+    }
+  }
+
+  /** Closes whatever chain this Bot has open here, if any. */
+  function closeChain(sessionId: string, botId: string): void {
+    clearChainTimer(sessionId, botId);
+    let chainId: string | null = null;
+    try {
+      chainId = store.openChain(sessionId, botId);
+    } catch {
+      return;
+    }
+    if (chainId) void track(reviewChain(chainId));
+  }
+
+  function chainKey(sessionId: string, botId: string): string {
+    return `${sessionId}:${botId}`;
+  }
+
+  function clearChainTimer(sessionId: string, botId: string): void {
+    const key = chainKey(sessionId, botId);
+    const timer = chainTimers.get(key);
+    if (!timer) return;
+    clearTimeout(timer);
+    chainTimers.delete(key);
+  }
+
+  /** Restarts the quiet clock: every new word about the same thing pushes the review back. */
+  function touchChain(sessionId: string, botId: string): void {
+    clearChainTimer(sessionId, botId);
+    const key = chainKey(sessionId, botId);
+    const timer = setTimeout(() => {
+      chainTimers.delete(key);
+      closeChain(sessionId, botId);
+    }, CHAIN_QUIET_MS);
+    timer.unref?.();
+    chainTimers.set(key, timer);
+  }
+
+  /** A chain closes when the user goes quiet, even if they never say so. */
+  const CHAIN_QUIET_MS = 3 * 60_000;
+  const chainTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * The routing agent cannot route itself, so it always runs on the default endpoint's default
+   * model. That is the one job the roster-wide default model still has.
+   */
+  function routingTarget(creds: Creds): { baseUrl: string; apiKey: string; model: string } | null {
+    const provider =
+      creds.providers.find((row) => row.id === creds.defaultProviderId) ?? creds.providers[0];
+    const model = provider?.defaultModel ?? provider?.models[0] ?? null;
+    if (!provider || !model) return null;
+    return { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model };
+  }
+
+  /**
+   * Asks a model what this message should run on. Everything that could go wrong — no endpoint, a
+   * timeout, an answer naming something that does not exist — returns null and the rules take over.
+   * The user is waiting; nothing here retries.
+   */
+  async function agentRoute(
+    botId: string,
+    creds: Creds,
+    text: string,
+  ): Promise<{ routed: Routed; pick: RoutePick } | null> {
+    if (!text.trim()) return null;
+    const routing = routingTarget(creds);
+    if (!routing) return null;
+    let bot;
+    try {
+      bot = store.getBot(botId);
+    } catch {
+      return null;
+    }
+    // A Bot that pinned both has already answered the question.
+    if (bot.model && bot.thinking_level) return null;
+    const providerIds = creds.providers.map((row) => row.id);
+    const candidates = store.routeCandidates({
+      botModel: bot.model,
+      botProviderId: bot.provider_id,
+      providerIds,
+    });
+    if (candidates.length === 0) return null;
+
+    let previous: { message: string; model: string; thinkingLevel: string } | null = null;
+    let payload;
+    try {
+      previous = store.previousDecisionFor(botId);
+      payload = routePickPayload({
+        message: text,
+        bot: { name: bot.name, duties: bot.duties, boundaries: bot.boundaries },
+        candidates,
+        previous,
+        pastReviews: store.recentRouteReviews(botId).map((row) => ({
+          model: row.model,
+          thinkingLevel: row.thinking_level,
+          direction: row.direction,
+          rounds: row.rounds,
+          reason: row.reason,
+        })),
+      });
+    } catch {
+      return null;
+    }
+
+    let result;
+    try {
+      result = await completions.judge({
+        baseUrl: routing.baseUrl,
+        apiKey: routing.apiKey,
+        model: routing.model,
+        messages: [
+          { role: "system", content: ROUTE_PICK_SYSTEM },
+          { role: "user", content: JSON.stringify(payload) },
+        ],
+        signal: new AbortController().signal,
+      });
+    } catch {
+      return null;
+    }
+    if (result.failKind && result.failKind !== "incomplete") return null;
+    const pick = parseRoutePick(result.content ?? "", candidates);
+    if (!pick) return null;
+    const provider = creds.providers.find((row) => row.id === pick.providerId);
+    if (!provider) return null;
+    return {
+      pick,
+      routed: {
+        target: {
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          model: pick.model,
+          thinkingLevel: pick.thinkingLevel,
+          locale: creds.locale,
+        },
+        decision: {
+          model: pick.model,
+          thinkingLevel: pick.thinkingLevel,
+          providerId: pick.providerId,
+          signature: messageSignature(text),
+        },
+      },
+    };
+  }
+
       botProviderId = bot.provider_id;
       botThinkingLevel = bot.thinking_level;
     } catch {
@@ -327,14 +560,27 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       triggerBody = "";
     }
-    const routed = targetFor(botId, creds, triggerBody);
+    const agent = await agentRoute(botId, creds, triggerBody);
+    const routed = agent?.routed ?? targetFor(botId, creds, triggerBody);
     if (!routed) {
       await failTurn(turnId, "no_model");
       return;
     }
     const target = routed.target;
     try {
-      store.recordTurnRoute({ turnId, decision: routed.decision });
+      sessionId = store.getTurn(turnId).session_id;
+    } catch {
+      sessionId = null;
+    }
+    // A turn the agent did not tie to the one before it starts a new chain, so the old one is done.
+    if (sessionId && !agent?.pick.continuesPrevious) closeChain(sessionId, botId);
+    try {
+      store.recordTurnRoute({
+        turnId,
+        decision: routed.decision,
+        reason: agent?.pick.reason ?? null,
+        continuesPrevious: agent?.pick.continuesPrevious ?? false,
+      });
     } catch {
       // route row is best-effort; the completion still carries the chosen fields
     }
@@ -344,11 +590,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (mcp) {
       for (const server of store.listMcpServers()) {
         if (!server.enabled) continue;
+    let sessionId: string | null = null;
         if (server.instructions || server.tool_catalog.length > 0) continue;
         try {
           const next = await persistMcpInspect(store, mcp, server);
           if (next.updated_at !== server.updated_at) {
             publish({ event: "mcp.upsert", occurred_at: occurred(), ...next });
+    if (sessionId) touchChain(sessionId, botId);
           }
         } catch {
           // handshake catalog is best-effort
@@ -1109,7 +1357,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   return {
     async handleInboundMessage(message, opts) {
       if (opts?.fromUser ?? message.author === USER_MEMBER) {
-        store.collectRouteFeedback(message);
+        if (store.collectRouteFeedback(message)) {
+          const owner = store.feedbackOwner(message.id);
+          if (owner) touchChain(message.session_id, owner);
+        }
       }
       await track(
         handleParticipation(message, {

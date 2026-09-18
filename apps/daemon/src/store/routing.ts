@@ -1,35 +1,23 @@
 /**
- * Model choice per turn, and what each Bot learns from it.
+ * Model choice per turn, and the record a Bot keeps of when a choice turned out wrong.
  *
- * A turn opened by a user message gets one decision (model + thinking level) from the Bot's
- * candidate list; the decision is written down with the Bot and endpoint it belonged to, and is
- * closed with how the turn ended. Experience is per Bot: a critique aimed at the Reviewer only
- * moves the Reviewer's rows, never the Writer's. Signals are
+ * A turn gets one decision (model + thinking level, picked by the routing agent or by the rules
+ * when that call is unusable), written down with the Bot and endpoint it belonged to and closed
+ * with how the turn ended. Decisions the user kept pushing back on share a `chain_id`: a correction
+ * chain. Every user follow-up attributed to a chain is kept verbatim — no keyword decides what
+ * counts, because «这里不对» and «还是不行» never matched one.
  *
- * - a user follow-up about the model itself (`isCritiqueMessage`) → negative `CRITIQUE_WEIGHT`;
- * - a completion the model itself botched (refused, incomplete) → negative `FAILURE_WEIGHT`;
- * - a turn that finished cleanly on the pick → positive 1, which pays the penalty back slowly.
- *
- * Endpoint-level failures (unreachable, busy, 5xx, stalls) are recorded on the turn but do not
- * teach anything: they say nothing about the model.
+ * When the chain closes, the engine has it reviewed and the verdict lands in `route_reviews`.
+ * Only a verdict that blames the model is kept, and it is kept as a conclusion, not a score: the
+ * next pick reads the recent ones and weighs them itself.
  */
 import { USER_MEMBER, type RouteFeedback, type RouteOutcome, type RouteRecord, type ThinkingLevel } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { parseMentions } from "../mentions";
-import {
-  CRITIQUE_WEIGHT,
-  FAILURE_WEIGHT,
-  decideCompletion,
-  isCritiqueMessage,
-  type RouteDecision,
-  type RouteLearnedState,
-  type RouteSignal,
-} from "../route-decision";
+import { candidateRows, decideCompletion, type CatalogEntry, type RouteDecision } from "../route-decision";
+import { REVIEW_CONFIDENCE_FLOOR, type RouteReviewVerdict } from "../route-agent";
 import { catalogEntries } from "./providers";
 import { defaultProviderId, providerRows, type StoreContext, type TurnRow } from "./shared";
-
-/** Completion failures the model itself is responsible for; the rest are the endpoint's. */
-const MODEL_FAULT_FAIL_KINDS = new Set(["refused", "incomplete"]);
 
 type DecisionRow = {
   turn_id: string;
@@ -42,6 +30,8 @@ type DecisionRow = {
   signature: string;
   outcome: RouteOutcome | null;
   fail_kind: string | null;
+  reason: string | null;
+  chain_id: string | null;
   created_at: string;
   finished_at: string | null;
 };
@@ -56,16 +46,6 @@ type FeedbackRow = {
   signature: string;
   body: string;
   created_at: string;
-};
-
-type LearnedRow = {
-  bot_id: string;
-  signature: string;
-  model: string;
-  thinking_level: string;
-  negative: number;
-  positive: number;
-  updated_at: string;
 };
 
 export type DecideRouteInput = {
@@ -91,18 +71,33 @@ export function decideTurnRoute(ctx: StoreContext, input: DecideRouteInput): Rou
     botProviderId: input.botProviderId,
     defaultProviderId: defaultId,
     botThinkingLevel: input.botThinkingLevel ?? null,
-    learned: routeLearnedState(ctx, input.botId),
   });
 }
 
-/** Writes the decision a turn ran on; the Bot, session and trigger come from the turn itself. */
-export function recordTurnRoute(ctx: StoreContext, input: { turnId: string; decision: RouteDecision }): void {
+/**
+ * Writes the decision a turn ran on; the Bot, session and trigger come from the turn itself.
+ *
+ * `continuesPrevious` decides whether this turn joins the Bot's open correction chain here or
+ * starts a new one. A turn the rules picked (no agent answer) always starts a new chain: nothing
+ * judged it to be about the same thing.
+ */
+export function recordTurnRoute(
+  ctx: StoreContext,
+  input: {
+    turnId: string;
+    decision: RouteDecision;
+    reason?: string | null;
+    continuesPrevious?: boolean;
+  },
+): void {
   const turn = ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(input.turnId);
   if (!turn) return;
+  const open = input.continuesPrevious ? openChain(ctx, turn.session_id, turn.bot_id) : null;
   ctx.db.run(
     `INSERT INTO turn_route_decisions (
-       turn_id, session_id, bot_id, trigger_message_id, provider_id, model, thinking_level, signature, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       turn_id, session_id, bot_id, trigger_message_id, provider_id, model, thinking_level, signature,
+       reason, chain_id, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(turn_id) DO NOTHING`,
     [
       input.turnId,
@@ -113,15 +108,36 @@ export function recordTurnRoute(ctx: StoreContext, input: { turnId: string; deci
       input.decision.model,
       input.decision.thinkingLevel,
       input.decision.signature,
+      input.reason?.trim() || null,
+      open ?? input.turnId,
       isoNow(),
     ],
   );
 }
 
 /**
- * Closes the turn's decision with its outcome and teaches the Bot. The first outcome wins: a turn
- * that failed is closed as `failed` by the engine before its status flips to `completed`, so the
- * later status hook does not overwrite it with a success.
+ * The chain a Bot still has open in this session: the most recent decision that no review has
+ * closed yet. A reviewed chain is finished, so the next turn opens a fresh one.
+ */
+export function openChain(ctx: StoreContext, sessionId: string, botId: string): string | null {
+  const row = ctx.db
+    .query<{ chain_id: string | null }, [string, string]>(
+      `SELECT d.chain_id FROM turn_route_decisions d
+       WHERE d.session_id = ? AND d.bot_id = ?
+         AND d.chain_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM route_reviews r WHERE r.chain_id = d.chain_id)
+       ORDER BY d.created_at DESC, d.turn_id DESC
+       LIMIT 1`,
+    )
+    .get(sessionId, botId);
+  return row?.chain_id ?? null;
+}
+
+/**
+ * Closes the turn's decision with its outcome. The first outcome wins: a turn that failed is closed
+ * as `failed` by the engine before its status flips to `completed`, so the later status hook does
+ * not overwrite it with a success. Nothing is learned here — a completion failure is one input the
+ * review weighs, not a score on its own.
  */
 export function finishTurnRoute(
   ctx: StoreContext,
@@ -135,12 +151,6 @@ export function finishTurnRoute(
     `UPDATE turn_route_decisions SET outcome = ?, fail_kind = ?, finished_at = ? WHERE turn_id = ? AND outcome IS NULL`,
     [outcome, outcome === "failed" ? failKind : null, isoNow(), turnId],
   );
-  const key = { signature: row.signature, model: row.model, thinkingLevel: row.thinking_level };
-  if (outcome === "completed") {
-    applyLearned(ctx, row.bot_id, key, { positive: 1 });
-  } else if (outcome === "failed" && failKind && MODEL_FAULT_FAIL_KINDS.has(failKind)) {
-    applyLearned(ctx, row.bot_id, key, { negative: FAILURE_WEIGHT });
-  }
 }
 
 export function getTurnRoute(ctx: StoreContext, turnId: string): RouteRecord | null {
@@ -187,62 +197,218 @@ export function listRouteFeedback(ctx: StoreContext, filter: { botId?: string } 
 }
 
 /** One Bot's accumulated experience; other Bots' rows never enter its decisions. */
-export function routeLearnedState(ctx: StoreContext, botId: string): RouteLearnedState {
-  const rows = ctx.db
-    .query<LearnedRow, [string]>(
-      `SELECT * FROM route_learned WHERE bot_id = ? ORDER BY signature, model, thinking_level`,
+export type RouteReviewRow = {
+  id: string;
+  bot_id: string;
+  chain_id: string;
+  turn_id: string;
+  session_id: string;
+  signature: string;
+  model: string;
+  thinking_level: string;
+  fault: string;
+  direction: string;
+  rounds: number;
+  confidence: number;
+  reason: string;
+  created_at: string;
+};
+
+/**
+ * What this Bot has learned the hard way, newest first, as conclusions rather than scores. The
+ * picker reads them and weighs them itself; nothing here adds, decays or caps a number.
+ */
+export function recentRouteReviews(ctx: StoreContext, botId: string, limit = 12): RouteReviewRow[] {
+  return ctx.db
+    .query<RouteReviewRow, [string, number, number]>(
+      `SELECT * FROM route_reviews
+       WHERE bot_id = ? AND fault = 'model' AND confidence >= ?
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .all(botId);
-  return {
-    entries: rows.map((row) => ({
-      signature: row.signature,
-      model: row.model,
-      thinkingLevel: row.thinking_level,
-      negative: row.negative,
-      positive: row.positive,
-    })),
-  };
+    .all(botId, REVIEW_CONFIDENCE_FLOOR, limit);
 }
 
-/** A deleted Bot takes its experience with it. Decisions stay on the turns for the record. */
+/** Every verdict in a session, for the log. Unlike the picker's read, nothing is filtered out. */
+export function listSessionReviews(ctx: StoreContext, sessionId: string): RouteReviewRow[] {
+  return ctx.db
+    .query<RouteReviewRow, [string]>(
+      `SELECT * FROM route_reviews WHERE session_id = ? ORDER BY created_at ASC, id ASC`,
+    )
+    .all(sessionId);
+}
+
+/** Which Bot a follow-up was filed against, so the engine knows whose chain to keep alive. */
+export function feedbackOwner(ctx: StoreContext, messageId: string): string | null {
+  const row = ctx.db
+    .query<{ bot_id: string }, [string]>(`SELECT bot_id FROM route_feedback WHERE message_id = ?`)
+    .get(messageId);
+  return row?.bot_id ?? null;
+}
+
+/** The Bot's last decision anywhere, so the picker can say whether this message continues it. */
+export function previousDecisionFor(
+  ctx: StoreContext,
+  botId: string,
+): { message: string; model: string; thinkingLevel: string } | null {
+  const row = ctx.db
+    .query<{ trigger_message_id: string; model: string; thinking_level: string }, [string]>(
+      `SELECT trigger_message_id, model, thinking_level FROM turn_route_decisions
+       WHERE bot_id = ? ORDER BY created_at DESC, turn_id DESC LIMIT 1`,
+    )
+    .get(botId);
+  if (!row) return null;
+  const message = ctx.db
+    .query<{ body: string }, [string]>(`SELECT body FROM messages WHERE id = ?`)
+    .get(row.trigger_message_id);
+  if (!message) return null;
+  return { message: message.body, model: row.model, thinkingLevel: row.thinking_level };
+}
+
+/** The models this turn may pick from, as the routing agent is shown them. */
+export function routeCandidates(
+  ctx: StoreContext,
+  input: { botModel: string | null; botProviderId: string | null; providerIds?: readonly string[] },
+): CatalogEntry[] {
+  const catalog = catalogEntries(ctx).filter((row) =>
+    input.providerIds ? input.providerIds.includes(row.providerId) : true,
+  );
+  return candidateRows({
+    catalog,
+    botModel: input.botModel,
+    botProviderId: input.botProviderId,
+    defaultProviderId: defaultProviderId(ctx) ?? providerRows(ctx)[0]?.id ?? null,
+  });
+}
+
+/** Records one closed chain's verdict. A chain is reviewed once; a second verdict is ignored. */
+export function recordRouteReview(
+  ctx: StoreContext,
+  input: {
+    botId: string;
+    chainId: string;
+    turnId: string;
+    sessionId: string;
+    signature: string;
+    model: string;
+    thinkingLevel: string;
+    verdict: RouteReviewVerdict;
+  },
+): void {
+  ctx.db.run(
+    `INSERT INTO route_reviews (
+       id, bot_id, chain_id, turn_id, session_id, signature, model, thinking_level,
+       fault, direction, rounds, confidence, reason, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(chain_id) DO NOTHING`,
+    [
+      ulid(),
+      input.botId,
+      input.chainId,
+      input.turnId,
+      input.sessionId,
+      input.signature,
+      input.model,
+      input.thinkingLevel,
+      input.verdict.fault,
+      input.verdict.direction,
+      input.verdict.rounds,
+      input.verdict.confidence,
+      input.verdict.reason,
+      isoNow(),
+    ],
+  );
+}
+
+/** A deleted Bot takes its conclusions with it. Decisions stay on the turns for the record. */
 export function forgetBotRoutes(ctx: StoreContext, botId: string): void {
-  ctx.db.run(`DELETE FROM route_learned WHERE bot_id = ?`, [botId]);
+  ctx.db.run(`DELETE FROM route_reviews WHERE bot_id = ?`, [botId]);
 }
 
 /**
- * A user follow-up that talks about the model itself becomes feedback on one earlier decision in
- * the same session. The decision it lands on, in order: the turn of the message being replied to;
- * the latest turn of the one Bot the message @-mentions; otherwise the latest turn any Bot ran
- * here. Only that Bot learns from it.
+ * Every user follow-up is kept against the decision it is answering — no keyword decides what
+ * counts. «这里不对» and «还是不行» never matched a pattern, and «@导演 你 @ 的分镜不对» matched one
+ * it had no business matching. Whether any of it was the model's fault is the review's call, and
+ * the review can only make it if the words are all still here.
+ *
+ * The decision it lands on, in order: the turn of the message being replied to; the latest turn of
+ * the one Bot the message @-mentions; otherwise the latest turn any Bot ran here.
  */
 export function collectRouteFeedback(
   ctx: StoreContext,
   message: { id: string; session_id: string; author: string; body: string; parent_id?: string | null },
 ): boolean {
   if (message.author !== USER_MEMBER) return false;
-  if (!isCritiqueMessage(message.body)) return false;
+  if (!message.body.trim()) return false;
   const already = ctx.db
     .query<{ id: string }, [string]>(`SELECT id FROM route_feedback WHERE message_id = ?`)
     .get(message.id);
   if (already) return false;
   const prior = attributeCritique(ctx, message);
   if (!prior) return false;
-  const now = isoNow();
-  ctx.db.transaction(() => {
-    ctx.db.run(
-      `INSERT INTO route_feedback (
-         id, turn_id, message_id, bot_id, model, thinking_level, signature, body, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [ulid(), prior.turn_id, message.id, prior.bot_id, prior.model, prior.thinking_level, prior.signature, message.body, now],
-    );
-    applyLearned(
-      ctx,
-      prior.bot_id,
-      { signature: prior.signature, model: prior.model, thinkingLevel: prior.thinking_level },
-      { negative: CRITIQUE_WEIGHT },
-    );
-  })();
+  ctx.db.run(
+    `INSERT INTO route_feedback (
+       id, turn_id, message_id, bot_id, model, thinking_level, signature, body, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ulid(), prior.turn_id, message.id, prior.bot_id, prior.model, prior.thinking_level, prior.signature, message.body, isoNow()],
+  );
   return true;
+}
+
+/** Everything one closed chain gives the reviewer: what ran, what it answered, what came back. */
+export type ChainForReview = {
+  chainId: string;
+  botId: string;
+  sessionId: string;
+  turnId: string;
+  triggerMessage: string;
+  model: string;
+  thinkingLevel: string;
+  signature: string;
+  outcome: string;
+  reply: string;
+  followUps: string[];
+};
+
+/**
+ * Reads a chain back for review: the decision that started it, the reply the user actually saw, and
+ * every follow-up across the whole chain in order.
+ */
+export function chainForReview(ctx: StoreContext, chainId: string): ChainForReview | null {
+  const rows = ctx.db
+    .query<DecisionRow, [string]>(
+      `SELECT * FROM turn_route_decisions WHERE chain_id = ? ORDER BY created_at ASC, turn_id ASC`,
+    )
+    .all(chainId);
+  const head = rows[0];
+  if (!head) return null;
+  const trigger = ctx.db
+    .query<{ body: string }, [string]>(`SELECT body FROM messages WHERE id = ?`)
+    .get(head.trigger_message_id);
+  const reply = ctx.db
+    .query<{ body: string }, [string]>(
+      `SELECT body FROM messages WHERE turn_id = ? AND kind = 'bot' ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(head.turn_id);
+  const turnIds = rows.map((row) => row.turn_id);
+  const placeholders = turnIds.map(() => "?").join(", ");
+  const followUps = ctx.db
+    .query<{ body: string }, string[]>(
+      `SELECT body FROM route_feedback WHERE turn_id IN (${placeholders}) ORDER BY created_at ASC, id ASC`,
+    )
+    .all(...turnIds);
+  return {
+    chainId,
+    botId: head.bot_id,
+    sessionId: head.session_id,
+    turnId: head.turn_id,
+    triggerMessage: trigger?.body ?? "",
+    model: head.model,
+    thinkingLevel: head.thinking_level,
+    signature: head.signature,
+    outcome: head.outcome ?? "running",
+    reply: reply?.body ?? "",
+    followUps: followUps.map((row) => row.body),
+  };
 }
 
 function attributeCritique(
@@ -317,23 +483,6 @@ function decisionRow(ctx: StoreContext, turnId: string): DecisionRow | null {
   return ctx.db.query<DecisionRow, [string]>(`SELECT * FROM turn_route_decisions WHERE turn_id = ?`).get(turnId) ?? null;
 }
 
-function applyLearned(
-  ctx: StoreContext,
-  botId: string,
-  key: { signature: string; model: string; thinkingLevel: string },
-  signal: RouteSignal,
-): void {
-  ctx.db.run(
-    `INSERT INTO route_learned (bot_id, signature, model, thinking_level, negative, positive, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(bot_id, signature, model, thinking_level) DO UPDATE SET
-       negative = route_learned.negative + excluded.negative,
-       positive = route_learned.positive + excluded.positive,
-       updated_at = excluded.updated_at`,
-    [botId, key.signature, key.model, key.thinkingLevel, signal.negative ?? 0, signal.positive ?? 0, isoNow()],
-  );
-}
-
 function toRecord(row: DecisionRow, feedback: FeedbackRow[]): RouteRecord {
   return {
     turn_id: row.turn_id,
@@ -346,6 +495,8 @@ function toRecord(row: DecisionRow, feedback: FeedbackRow[]): RouteRecord {
     signature: row.signature,
     outcome: row.outcome,
     fail_kind: row.fail_kind,
+    reason: row.reason,
+    chain_id: row.chain_id,
     created_at: row.created_at,
     finished_at: row.finished_at,
     feedback: feedback.map(

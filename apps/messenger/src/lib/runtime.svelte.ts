@@ -225,10 +225,11 @@ export class MessengerRuntime {
     this.routesInFlight = sessionId;
     this.routesLoading = true;
     try {
-      const routes = await this.api.routes(sessionId);
+      const { items, reviews } = await this.api.routes(sessionId);
       this.snapshot = {
         ...this.snapshot,
-        routes: [...this.snapshot.routes.filter((r) => r.session_id !== sessionId), ...routes],
+        routes: [...this.snapshot.routes.filter((r) => r.session_id !== sessionId), ...items],
+        routeReviews: reviews,
       };
     } catch {
       // Keep the rows already on screen; a real drop shows up as the socket closing.

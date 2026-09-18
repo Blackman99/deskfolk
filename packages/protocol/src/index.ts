@@ -600,9 +600,31 @@ export type RouteRecord = {
   outcome: RouteOutcome | null;
   /** Completion failure kind when `outcome` is `failed`. */
   fail_kind: string | null;
+  /** One line from the agent that picked this model, when an agent picked it. */
+  reason: string | null;
+  /** Turns the user kept pushing back on share one; the chain is reviewed as a whole. */
+  chain_id: string | null;
   created_at: string;
   finished_at: string | null;
   feedback: RouteFeedback[];
+};
+
+/** What the review made of one closed correction chain. */
+export type RouteReview = {
+  chain_id: string;
+  turn_id: string;
+  bot_id: string;
+  signature: string;
+  model: string;
+  thinking_level: ThinkingLevel;
+  /** `model` when the pick was the problem; `task` / `prompt` / `none` when it was not. */
+  fault: "model" | "task" | "prompt" | "none";
+  direction: "stronger" | "lighter" | "faster" | "cheaper" | "same";
+  /** How many rounds the user spent correcting before moving on. */
+  rounds: number;
+  confidence: number;
+  reason: string;
+  created_at: string;
 };
 
 export type SearchKind = "bot" | "session" | "message" | "routine" | "file";

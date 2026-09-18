@@ -1,4 +1,4 @@
-import type { Bot, Provider, RouteFeedback, RouteRecord } from "@real-bot/protocol";
+import type { Bot, Provider, RouteFeedback, RouteRecord, RouteReview } from "@real-bot/protocol";
 
 /** How a turn's model choice ended. `live` stands in for a record the daemon has not closed yet. */
 export type RouteOutcomeKind =
@@ -11,6 +11,10 @@ export type RouteOutcomeKind =
 
 export type RouteLogLabels = {
   outcome: Record<RouteOutcomeKind, string>;
+  /** Who the review held responsible; keyed by `fault`. */
+  fault: Record<string, string>;
+  /** Which way it said the pick should move; keyed by `direction`. */
+  direction: Record<string, string>;
   /** Keyed by message kind (coding / writing / reasoning / simple / general). */
   signature: Record<string, string>;
   /** Keyed by the daemon's `fail_kind`; the same wording the transcript uses. */
@@ -34,6 +38,16 @@ export type RouteLogRow = {
   outcomeLabel: string;
   failReason: string | null;
   feedback: RouteFeedback[];
+  /** The one line the agent gave for picking this, when an agent picked it. */
+  reason: string | null;
+  /** The verdict on the correction chain this turn started, once it has been reviewed. */
+  review: {
+    faultLabel: string;
+    directionLabel: string | null;
+    rounds: number;
+    reason: string;
+    blamedModel: boolean;
+  } | null;
   createdAt: string;
   finishedAt: string | null;
   durationMs: number | null;
@@ -42,6 +56,7 @@ export type RouteLogRow = {
 export type RouteLogInput = {
   bots: readonly Bot[];
   providers: readonly Provider[];
+  reviews?: readonly RouteReview[];
   labels: RouteLogLabels;
 };
 
@@ -51,10 +66,12 @@ export type RouteLogInput = {
  */
 export function routeLogRows(
   records: readonly RouteRecord[],
-  { bots, providers, labels }: RouteLogInput,
+  { bots, providers, reviews = [], labels }: RouteLogInput,
 ): RouteLogRow[] {
   const botNames = new Map(bots.map((bot) => [bot.id, bot.name]));
   const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
+  // A verdict is about the whole chain, so it shows on the turn that started it.
+  const reviewByTurn = new Map(reviews.map((review) => [review.turn_id, review]));
   return [...records].reverse().map((record) => {
     const outcome: RouteOutcomeKind = record.outcome ?? "live";
     const name = botNames.get(record.bot_id);
@@ -72,11 +89,29 @@ export function routeLogRows(
       outcomeLabel: labels.outcome[outcome],
       failReason: outcome === "failed" ? failReasonOf(record.fail_kind, labels) : null,
       feedback: record.feedback,
+      reason: record.reason?.trim() || null,
+      review: reviewFor(reviewByTurn.get(record.turn_id), labels),
       createdAt: record.created_at,
       finishedAt: record.finished_at,
       durationMs: durationOf(record.created_at, record.finished_at),
     };
   });
+}
+
+function reviewFor(
+  review: RouteReview | undefined,
+  labels: RouteLogLabels,
+): RouteLogRow["review"] {
+  if (!review) return null;
+  const blamedModel = review.fault === "model";
+  return {
+    faultLabel: labels.fault[review.fault] ?? review.fault,
+    // Which way to move only means anything when the model was the thing at fault.
+    directionLabel: blamedModel ? (labels.direction[review.direction] ?? review.direction) : null,
+    rounds: review.rounds,
+    reason: review.reason.trim(),
+    blamedModel,
+  };
 }
 
 function failReasonOf(kind: string | null, labels: RouteLogLabels): string | null {

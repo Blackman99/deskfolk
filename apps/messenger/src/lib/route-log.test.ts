@@ -3,6 +3,8 @@ import type { Bot, Provider, RouteRecord } from "@real-bot/protocol";
 import { routeLogRows, type RouteLogLabels } from "./route-log.ts";
 
 const LABELS: RouteLogLabels = {
+  fault: { model: "模型的问题", task: "事情本身难", prompt: "需求没说清", none: "没有不满" },
+  direction: { stronger: "该更强", lighter: "该更轻", faster: "该更快", cheaper: "该更便宜", same: "不用动" },
   outcome: {
     live: "进行中",
     completed: "干净完成",
@@ -55,6 +57,8 @@ function record(over: Partial<RouteRecord> = {}): RouteRecord {
     signature: "coding",
     outcome: "completed",
     fail_kind: null,
+    reason: null,
+    chain_id: "t1",
     created_at: "2026-09-18T01:00:00.000Z",
     finished_at: "2026-09-18T01:00:12.000Z",
     feedback: [],
@@ -179,4 +183,62 @@ test("an unknown signature or thinking level falls back to the raw value", () =>
   );
   expect(row.signatureLabel).toBe("poetry");
   expect(row.thinkingLabel).toBe("extreme");
+});
+
+test("the picker's reason rides along with the row it explains", () => {
+  const [row] = routeLogRows([record({ reason: "  要多步推理  " })], {
+    bots: BOTS,
+    providers: [],
+    labels: LABELS,
+  });
+  expect(row.reason).toBe("要多步推理");
+  // A turn the rules picked has nobody to explain it.
+  const [plain] = routeLogRows([record()], { bots: BOTS, providers: [], labels: LABELS });
+  expect(plain.reason).toBeNull();
+});
+
+test("a verdict shows on the turn that started the chain, and only blames the model when it did", () => {
+  const review = {
+    chain_id: "t1",
+    turn_id: "t1",
+    bot_id: "b1",
+    signature: "coding",
+    model: "gpt-5",
+    thinking_level: "medium",
+    rounds: 3,
+    confidence: 0.9,
+    reason: "反复改不对",
+    created_at: "2026-09-18T02:00:00.000Z",
+  };
+  const [blamed] = routeLogRows([record()], {
+    bots: BOTS,
+    providers: [],
+    reviews: [{ ...review, fault: "model" as const, direction: "stronger" as const }],
+    labels: LABELS,
+  });
+  expect(blamed.review).toEqual({
+    faultLabel: "模型的问题",
+    directionLabel: "该更强",
+    rounds: 3,
+    reason: "反复改不对",
+    blamedModel: true,
+  });
+
+  // The @-mention correction case: the request was the problem, so there is no direction to give.
+  const [spared] = routeLogRows([record()], {
+    bots: BOTS,
+    providers: [],
+    reviews: [{ ...review, fault: "prompt" as const, direction: "same" as const }],
+    labels: LABELS,
+  });
+  expect(spared.review).toMatchObject({ faultLabel: "需求没说清", directionLabel: null, blamedModel: false });
+
+  // A review of some other chain does not attach itself here.
+  const [none] = routeLogRows([record()], {
+    bots: BOTS,
+    providers: [],
+    reviews: [{ ...review, turn_id: "other", fault: "model" as const, direction: "stronger" as const }],
+    labels: LABELS,
+  });
+  expect(none.review).toBeNull();
 });

@@ -183,9 +183,16 @@ export class Store {
   readonly getTurnRoute = this.bind(routing.getTurnRoute);
   readonly listSessionRoutes = this.bind(routing.listSessionRoutes);
   readonly listRouteFeedback = this.bind(routing.listRouteFeedback);
-  readonly routeLearnedState = this.bind(routing.routeLearnedState);
   readonly collectRouteFeedback = this.bind(routing.collectRouteFeedback);
   readonly forgetBotRoutes = this.bind(routing.forgetBotRoutes);
+  readonly openChain = this.bind(routing.openChain);
+  readonly chainForReview = this.bind(routing.chainForReview);
+  readonly recordRouteReview = this.bind(routing.recordRouteReview);
+  readonly recentRouteReviews = this.bind(routing.recentRouteReviews);
+  readonly listSessionReviews = this.bind(routing.listSessionReviews);
+  readonly feedbackOwner = this.bind(routing.feedbackOwner);
+  readonly previousDecisionFor = this.bind(routing.previousDecisionFor);
+  readonly routeCandidates = this.bind(routing.routeCandidates);
 
   // MCP ------------------------------------------------------------------------------------
   readonly listMcpServers = this.bind(mcp.listMcpServers);

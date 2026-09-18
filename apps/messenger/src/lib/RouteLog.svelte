@@ -152,6 +152,29 @@
 										<span class="route-duration mono">{formatDurationMs(row.durationMs)}</span>
 									{/if}
 								</span>
+								{#if row.reason}
+									<span class="route-why">
+										<span class="route-why-label">{t.routes.pickReason}</span>
+										<span>{row.reason}</span>
+									</span>
+								{/if}
+								{#if row.review}
+									<span class="route-review" class:is-model={row.review.blamedModel}>
+										<span class="route-review-head">
+											<span class="route-review-tag">{t.routes.reviewTitle}</span>
+											<span class="route-review-fault">{row.review.faultLabel}</span>
+											{#if row.review.directionLabel}
+												<span class="route-review-direction">{row.review.directionLabel}</span>
+											{/if}
+											{#if row.review.rounds > 0}
+												<span class="route-review-rounds">{t.routes.reviewRounds(row.review.rounds)}</span>
+											{/if}
+										</span>
+										{#if row.review.reason}
+											<span class="route-review-reason">{row.review.reason}</span>
+										{/if}
+									</span>
+								{/if}
 								{#if row.failReason}
 									<span class="route-fail">
 										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>

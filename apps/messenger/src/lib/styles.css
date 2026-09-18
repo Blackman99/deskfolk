@@ -5552,6 +5552,70 @@ button.attached-replying-chip:focus-visible {
 .route-fail svg {
   flex-shrink: 0;
   margin-top: 1px;
+.route-why {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.route-why-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--muted-light);
+}
+
+.route-review {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-subtle);
+  background: var(--pane);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* A verdict that blamed the model is the one that changes later picks. */
+.route-review.is-model {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+
+.route-review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.route-review-tag {
+  font-weight: 600;
+  color: var(--muted-light);
+}
+
+.route-review-fault {
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.route-review.is-model .route-review-fault {
+  color: var(--warn-text);
+}
+
+.route-review-direction,
+.route-review-rounds {
+  color: var(--muted);
+}
+
+.route-review-reason {
+  color: var(--ink-secondary);
+  overflow-wrap: anywhere;
+}
+
 }
 
 .route-feedback-toggle {

@@ -396,6 +396,22 @@ const zh = {
     kindLabel: "消息类别",
     thinking: { none: "无", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
     feedbackTitle: "模型反馈",
+    pickReason: "为什么选它",
+    reviewTitle: "复盘",
+    reviewRounds: (rounds: number) => `改了 ${rounds} 轮`,
+    fault: {
+      model: "模型的问题",
+      task: "事情本身难",
+      prompt: "需求没说清",
+      none: "没有不满"
+    },
+    direction: {
+      stronger: "该更强",
+      lighter: "该更轻",
+      faster: "该更快",
+      cheaper: "该更便宜",
+      same: "不用动"
+    },
     feedbackCount: (count: number) => `${count} 条模型反馈`,
     outcome: {
       live: "进行中",
@@ -858,6 +874,22 @@ const en: CopyShape<typeof zh> = {
     thinking: { none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
     feedbackTitle: "Model feedback",
     feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
+    pickReason: "Why this one",
+    reviewTitle: "Review",
+    reviewRounds: (rounds: number) => `${rounds} ${rounds === 1 ? "round" : "rounds"} of corrections`,
+    fault: {
+      model: "The model",
+      task: "The job itself",
+      prompt: "The request",
+      none: "No complaint"
+    },
+    direction: {
+      stronger: "go stronger",
+      lighter: "go lighter",
+      faster: "go faster",
+      cheaper: "go cheaper",
+      same: "leave it"
+    },
     outcome: {
       live: "Still running",
       completed: "Completed",

@@ -14,11 +14,7 @@ import {
   unionProviderModels,
 } from "./models";
 import {
-  CRITIQUE_WEIGHT,
-  applySignal,
   decideCompletion,
-  emptyLearnedState,
-  isCritiqueMessage,
   pickThinkingLevel,
   type CatalogEntry,
 } from "./route-decision";
@@ -263,13 +259,11 @@ describe("per-message completion decision", () => {
       text: "please implement a TypeScript function that parses the AST",
       catalog: codingCatalog,
       botModel: null,
-      learned: emptyLearnedState(),
     });
     const writing = decideCompletion({
       text: "write a poem about the autumn rain",
       catalog: writingCatalog,
       botModel: null,
-      learned: emptyLearnedState(),
     });
     expect(coding).not.toBeNull();
     expect(writing).not.toBeNull();
@@ -306,7 +300,6 @@ describe("per-message completion decision", () => {
         },
       ],
       botModel: null,
-      learned: emptyLearnedState(),
     });
     expect(picked).toMatchObject({ model: "grok-4.6", thinkingLevel: "xhigh" });
   });
@@ -316,42 +309,17 @@ describe("per-message completion decision", () => {
       text: "please implement a TypeScript function that parses the AST",
       catalog: codingCatalog,
       botModel: null,
-      learned: emptyLearnedState(),
     });
     const pinned = decideCompletion({
       text: "please implement a TypeScript function that parses the AST",
       catalog: codingCatalog,
       botModel: "cheap-chat",
-      learned: emptyLearnedState(),
     });
     expect(open?.model).toBe("code-pro");
     expect(pinned?.model).toBe("cheap-chat");
     expect(pinned?.thinkingLevel).toBe("low");
   });
 
-  test("feedback on a decision moves a later comparable choice away from the blamed pair", () => {
-    const text = "please implement a TypeScript function that parses the AST";
-    const first = decideCompletion({
-      text,
-      catalog: codingCatalog,
-      botModel: null,
-      learned: emptyLearnedState(),
-    });
-    expect(first).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
-    const learned = applySignal(
-      emptyLearnedState(),
-      { signature: first!.signature, model: first!.model, thinkingLevel: first!.thinkingLevel },
-      { negative: CRITIQUE_WEIGHT },
-    );
-    const next = decideCompletion({
-      text,
-      catalog: codingCatalog,
-      botModel: null,
-      learned,
-    });
-    expect(next).not.toBeNull();
-    expect(`${next!.model}:${next!.thinkingLevel}`).not.toBe(`${first!.model}:${first!.thinkingLevel}`);
-  });
 });
 
 
@@ -371,24 +339,16 @@ describe("route scoping across endpoints", () => {
     { name: "deepseek-v4-pro", price: null, thinking_levels: [...levels], strengths: [], providerId: "deepseek" },
   ];
   const text = "把这周的进度汇总一下发给大家看看";
-  // One learned penalty against the default endpoint's best pair for this signature.
-  const learned = applySignal(
-    emptyLearnedState(),
-    { signature: "general", model: "grok-4.6", thinkingLevel: "low" },
-    { negative: CRITIQUE_WEIGHT },
-  );
-
   test("an unpinned Bot stays on the default endpoint even when another endpoint scores higher", () => {
-    const legacy = decideCompletion({ text, catalog: roster, botModel: null, learned });
+    // With no default endpoint known (legacy state) the whole catalog stays open.
+    const legacy = decideCompletion({ text, catalog: roster, botModel: null });
     expect(legacy?.signature).toBe("general");
-    expect(legacy?.providerId).toBe("deepseek");
 
     const scoped = decideCompletion({
       text,
       catalog: roster,
       botModel: null,
       defaultProviderId: "default",
-      learned,
     });
     expect(scoped?.providerId).toBe("default");
     expect(["grok-4.6", "gemini-3.8-flash-high"]).toContain(scoped!.model);
@@ -401,7 +361,6 @@ describe("route scoping across endpoints", () => {
       botModel: null,
       botProviderId: "deepseek",
       defaultProviderId: "default",
-      learned: emptyLearnedState(),
     });
     expect(decision?.providerId).toBe("deepseek");
   });
@@ -412,7 +371,6 @@ describe("route scoping across endpoints", () => {
       catalog: roster,
       botModel: "deepseek-v4-pro",
       defaultProviderId: "default",
-      learned: emptyLearnedState(),
     });
     expect(decision).toMatchObject({ model: "deepseek-v4-pro", providerId: "deepseek" });
   });
@@ -427,7 +385,6 @@ describe("route scoping across endpoints", () => {
       catalog: shared,
       botModel: "shared",
       defaultProviderId: "b",
-      learned: emptyLearnedState(),
     });
     expect(decision).toMatchObject({ model: "shared", providerId: "b" });
   });
@@ -438,33 +395,7 @@ describe("route scoping across endpoints", () => {
       catalog: roster.filter((row) => row.providerId === "deepseek"),
       botModel: null,
       defaultProviderId: "default",
-      learned: emptyLearnedState(),
     });
     expect(decision).toBeNull();
-  });
-});
-
-describe("route feedback detection", () => {
-  test("only talk about the model choice counts as feedback", () => {
-    for (const body of [
-      "这里有 bug，选的模型不对",
-      "换个模型试试",
-      "太慢了",
-      "the model was wrong here",
-      "switch to a smarter model",
-    ]) {
-      expect(isCritiqueMessage(body)).toBe(true);
-    }
-  });
-
-  test("a complaint about the reply's content is not route feedback", () => {
-    for (const body of [
-      "@导演 你 @ 的分镜不对，群里它叫分镜师",
-      "这里有 bug",
-      "这个方案有问题，重来",
-      "that's wrong, the file is broken",
-    ]) {
-      expect(isCritiqueMessage(body)).toBe(false);
-    }
   });
 });

@@ -27,6 +27,7 @@ describe("schema", () => {
       "reactions",
       "route_feedback",
       "route_learned",
+      "route_reviews",
       "routines",
       "session_participants",
       "sessions",
@@ -486,6 +487,7 @@ describe("schema", () => {
     botId: string,
     text = TASK,
     forced?: { model: string; thinkingLevel: "none" | "low" | "medium" | "high" },
+    opts?: { continuesPrevious?: boolean },
   ) {
     const bot = store.getBot(botId);
     const chosen = store.decideTurnRoute({
@@ -498,11 +500,11 @@ describe("schema", () => {
     const decision = forced ? { ...chosen, ...forced } : chosen;
     const trigger = store.insertMessage({ sessionId, kind: "user", author: "user", body: text });
     const turn = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
-    store.recordTurnRoute({ turnId: turn.id, decision });
+    store.recordTurnRoute({ turnId: turn.id, decision, continuesPrevious: opts?.continuesPrevious });
     return { decision, chosen, trigger, turn };
   }
 
-  test("learned routing state and catalog survive a store reopen", async () => {
+  test("decisions, follow-ups and review conclusions survive a store reopen", async () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-route-"));
     const filename = join(dir, "state.sqlite");
     const keys = memoryKeyStore("sk-test");
@@ -511,13 +513,23 @@ describe("schema", () => {
     const { decision, turn } = decidedTurn(first, created.direct_session.id, created.bot.id);
     expect(decision).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
     first.setTurnStatus(turn.id, "completed");
-    const critique = first.insertMessage({
+    const followUp = first.insertMessage({
       sessionId: created.direct_session.id,
       kind: "user",
       author: "user",
       body: "这里有 bug，选的模型不对",
     });
-    expect(first.collectRouteFeedback(critique)).toBe(true);
+    expect(first.collectRouteFeedback(followUp)).toBe(true);
+    first.recordRouteReview({
+      botId: created.bot.id,
+      chainId: turn.id,
+      turnId: turn.id,
+      sessionId: created.direct_session.id,
+      signature: decision!.signature,
+      model: decision!.model,
+      thinkingLevel: decision!.thinkingLevel,
+      verdict: { fault: "model", direction: "stronger", rounds: 1, confidence: 0.7, reason: "答得浅" },
+    });
     first.close();
 
     const second = new Store({ filename, endpointKey: keys });
@@ -527,45 +539,43 @@ describe("schema", () => {
     );
     expect(second.listRouteFeedback()).toHaveLength(1);
     expect(second.listRouteFeedback()[0]).toMatchObject({ bot_id: created.bot.id, model: "code-pro" });
-    const after = second.decideTurnRoute({ botId: created.bot.id, text: TASK, botModel: null, botProviderId: null });
-    expect(after).not.toBeNull();
-    expect(`${after!.model}:${after!.thinkingLevel}`).not.toBe("code-pro:medium");
+    expect(second.recentRouteReviews(created.bot.id)[0]).toMatchObject({
+      fault: "model",
+      direction: "stronger",
+      reason: "答得浅",
+    });
     const record = second.getTurnRoute(turn.id);
     expect(record).toMatchObject({
       bot_id: created.bot.id,
       provider_id: providers[0]!.id,
       outcome: "completed",
       fail_kind: null,
-      feedback: [{ message_id: critique.id, body: "这里有 bug，选的模型不对" }],
+      feedback: [{ message_id: followUp.id, body: "这里有 bug，选的模型不对" }],
     });
     expect(record?.finished_at).not.toBeNull();
     second.close();
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("route experience is per Bot: a critique aimed at one Bot never moves another's pick", async () => {
+  test("a conclusion belongs to one Bot and goes away with it", async () => {
     const store = await storeWithCodingCatalog();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
-    const { turn } = decidedTurn(store, writer.direct_session.id, writer.bot.id);
-    store.setTurnStatus(turn.id, "completed");
-    const critique = store.insertMessage({
+    const turn = decidedTurn(store, writer.direct_session.id, writer.bot.id);
+    store.recordRouteReview({
+      botId: writer.bot.id,
+      chainId: turn.turn.id,
+      turnId: turn.turn.id,
       sessionId: writer.direct_session.id,
-      kind: "user",
-      author: "user",
-      body: "换个模型吧",
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "model", direction: "stronger", rounds: 2, confidence: 0.9, reason: "r" },
     });
-    expect(store.collectRouteFeedback(critique)).toBe(true);
-    expect(store.routeLearnedState(writer.bot.id).entries).toEqual([
-      { signature: "coding", model: "code-pro", thinkingLevel: "medium", negative: 1, positive: 1 },
-    ]);
-    expect(store.routeLearnedState(reviewer.bot.id).entries).toEqual([]);
-    const writerNext = store.decideTurnRoute({ botId: writer.bot.id, text: TASK, botModel: null, botProviderId: null });
-    const reviewerNext = store.decideTurnRoute({ botId: reviewer.bot.id, text: TASK, botModel: null, botProviderId: null });
-    expect(`${writerNext!.model}:${writerNext!.thinkingLevel}`).not.toBe("code-pro:medium");
-    expect(reviewerNext).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
+    expect(store.recentRouteReviews(writer.bot.id)).toHaveLength(1);
+    expect(store.recentRouteReviews(reviewer.bot.id)).toHaveLength(0);
     store.deleteBot(writer.bot.id);
-    expect(store.routeLearnedState(writer.bot.id).entries).toEqual([]);
+    expect(store.recentRouteReviews(writer.bot.id)).toHaveLength(0);
     store.close();
   });
 
@@ -615,55 +625,51 @@ describe("schema", () => {
       [writer.bot.id, 1],
       [reviewer.bot.id, 2],
     ]);
-    // Content criticism that says nothing about the model is not feedback.
+    // Content criticism is kept too: whether it was the model's fault is the review's call, and
+    // «这里不对» is exactly the wording no keyword ever matched.
     const content = store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "这里不对，重来" });
-    expect(store.collectRouteFeedback(content)).toBe(false);
+    expect(store.collectRouteFeedback(content)).toBe(true);
     store.close();
   });
 
-  test("a refused completion teaches the Bot; clean turns pay the penalty back; endpoint failures do not count", async () => {
+  test("a chain gathers the turns the user kept pushing back on, and is reviewed once", async () => {
     const store = await storeWithCodingCatalog();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const session = writer.direct_session.id;
-    const refused = decidedTurn(store, session, writer.bot.id);
-    store.finishTurnRoute(refused.turn.id, "failed", "refused");
-    store.setTurnStatus(refused.turn.id, "completed");
-    expect(store.getTurnRoute(refused.turn.id)).toMatchObject({ outcome: "failed", fail_kind: "refused" });
-    expect(store.routeLearnedState(writer.bot.id).entries).toEqual([
-      { signature: "coding", model: "code-pro", thinkingLevel: "medium", negative: 0.5, positive: 0 },
-    ]);
 
-    const busy = decidedTurn(store, session, writer.bot.id);
-    store.finishTurnRoute(busy.turn.id, "failed", "busy");
-    store.setTurnStatus(busy.turn.id, "completed");
-    expect(store.getTurnRoute(busy.turn.id)).toMatchObject({ outcome: "failed", fail_kind: "busy" });
-    expect(store.routeLearnedState(writer.bot.id).entries[0]).toMatchObject({ negative: 0.5, positive: 0 });
+    const first = decidedTurn(store, session, writer.bot.id);
+    store.insertMessage({ sessionId: session, turnId: first.turn.id, kind: "bot", author: writer.bot.id, body: "初稿" });
+    store.setTurnStatus(first.turn.id, "completed");
+    // Every follow-up is kept, including ones no keyword would ever have matched.
+    const one = store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "这里不对" });
+    expect(store.collectRouteFeedback(one)).toBe(true);
 
-    const stopped = decidedTurn(store, session, writer.bot.id);
-    store.stopTurn(stopped.turn.id);
-    expect(store.getTurnRoute(stopped.turn.id)).toMatchObject({ outcome: "stopped", fail_kind: null });
+    // The next turn says it is still the same thing, so it joins the open chain.
+    const second = decidedTurn(store, session, writer.bot.id, TASK, undefined, { continuesPrevious: true });
+    store.setTurnStatus(second.turn.id, "completed");
+    const two = store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "还是不行" });
+    expect(store.collectRouteFeedback(two)).toBe(true);
 
-    const redirected = decidedTurn(store, session, writer.bot.id);
-    store.redirectTurn(redirected.turn.id);
-    expect(store.getTurnRoute(redirected.turn.id)).toMatchObject({ outcome: "redirected" });
+    const chainId = store.openChain(session, writer.bot.id);
+    expect(chainId).toBe(first.turn.id);
+    const chain = store.chainForReview(chainId!)!;
+    expect(chain.turnId).toBe(first.turn.id);
+    expect(chain.reply).toBe("初稿");
+    expect(chain.followUps).toEqual(["这里不对", "还是不行"]);
 
-    const interrupted = decidedTurn(store, session, writer.bot.id);
-    store.interruptRunningTurns();
-    expect(store.getTurnRoute(interrupted.turn.id)).toMatchObject({ outcome: "interrupted" });
-    expect(store.routeLearnedState(writer.bot.id).entries[0]).toMatchObject({ negative: 0.5, positive: 0 });
-
-    // Half a point is enough to move the pick off code-pro:medium (to the next level of the same model).
-    const shifted = store.decideTurnRoute({ botId: writer.bot.id, text: TASK, botModel: null, botProviderId: null });
-    expect(shifted).toMatchObject({ model: "code-pro", thinkingLevel: "high" });
-
-    // Two clean turns on the penalised pick relieve the half point completely and the pick comes back.
-    for (let i = 0; i < 2; i++) {
-      const ok = decidedTurn(store, session, writer.bot.id, TASK, { model: "code-pro", thinkingLevel: "medium" });
-      store.setTurnStatus(ok.turn.id, "completed");
-    }
-    expect(store.routeLearnedState(writer.bot.id).entries[0]).toMatchObject({ negative: 0.5, positive: 2 });
-    const restored = store.decideTurnRoute({ botId: writer.bot.id, text: TASK, botModel: null, botProviderId: null });
-    expect(restored).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
+    store.recordRouteReview({
+      botId: writer.bot.id,
+      chainId: chainId!,
+      turnId: chain.turnId,
+      sessionId: session,
+      signature: chain.signature,
+      model: chain.model,
+      thinkingLevel: chain.thinkingLevel,
+      verdict: { fault: "model", direction: "stronger", rounds: 2, confidence: 0.8, reason: "反复改不对" },
+    });
+    // A reviewed chain is closed: the next turn starts a new one.
+    expect(store.openChain(session, writer.bot.id)).toBeNull();
+    expect(store.recentRouteReviews(writer.bot.id)).toHaveLength(1);
     store.close();
   });
 
@@ -718,40 +724,4 @@ describe("schema", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("the roster-wide route_learned blob becomes every alive Bot's own starting experience", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "real-bot-route-legacy-"));
-    const filename = join(dir, "state.sqlite");
-    const keys = memoryKeyStore("sk-test");
-    const first = await storeWithCodingCatalog(filename, keys);
-    const writer = first.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
-    const reviewer = first.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
-    const gone = first.createBot({ name: "Gone", duties: "x", boundaries: "y" });
-    first.deleteBot(gone.bot.id);
-    first.db.run(`INSERT INTO settings (key, value) VALUES ('route_learned', ?)`, [
-      JSON.stringify({
-        penalties: [
-          { signature: "coding", model: "code-pro", thinkingLevel: "medium", penalty: 2 },
-          { signature: "simple", model: "cheap-chat", thinkingLevel: "*", penalty: 1 },
-          { signature: "bad", model: "x", thinkingLevel: "low", penalty: "nope" },
-        ],
-      }),
-    ]);
-    first.close();
-
-    const second = new Store({ filename, endpointKey: keys });
-    for (const bot of [writer.bot.id, reviewer.bot.id]) {
-      expect(second.routeLearnedState(bot).entries).toEqual([
-        { signature: "coding", model: "code-pro", thinkingLevel: "medium", negative: 2, positive: 0 },
-        { signature: "simple", model: "cheap-chat", thinkingLevel: "*", negative: 1, positive: 0 },
-      ]);
-    }
-    expect(second.routeLearnedState(gone.bot.id).entries).toEqual([]);
-    expect(
-      second.db.query<{ value: string }, []>(`SELECT value FROM settings WHERE key = 'route_learned'`).get(),
-    ).toBeNull();
-    const pick = second.decideTurnRoute({ botId: writer.bot.id, text: TASK, botModel: null, botProviderId: null });
-    expect(`${pick!.model}:${pick!.thinkingLevel}`).not.toBe("code-pro:medium");
-    second.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
 });

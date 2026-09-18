@@ -1,3 +1,10 @@
+/**
+ * The rules that pick a model when the routing agent cannot: no endpoint configured for the
+ * routing call, the call timed out, or its answer named something that does not exist. They score
+ * a candidate on what it says it is good at, what it costs and how heavy its levels are — a
+ * cold start, not experience. Nothing here is penalised or rewarded; what a Bot has learned lives
+ * in its reviews and is read by the agent.
+ */
 import {
   THINKING_LEVELS,
   thinkingLevelRank,
@@ -9,37 +16,7 @@ export type CatalogEntry = EndpointModel & {
   providerId: string;
 };
 
-/**
- * One Bot's experience with one (message kind, model, thinking level) choice: how much evidence
- * says "this pick was wrong" (`negative`) and how many turns finished fine on it (`positive`).
- * Experience belongs to a Bot; a Reviewer's complaint never re-routes a Writer.
- */
-export type RouteExperience = {
-  signature: string;
-  model: string;
-  /** A concrete level, or `*` for "every level of this model". */
-  thinkingLevel: string;
-  negative: number;
-  positive: number;
-};
-
-export type RouteLearnedState = {
-  entries: RouteExperience[];
-};
-
-/** A user critique of the model choice itself. */
-export const CRITIQUE_WEIGHT = 1;
-/** A completion the model itself botched (refused the request, incomplete reply). */
-export const FAILURE_WEIGHT = 0.5;
-/** Each turn that finishes cleanly on the same pick pays this much of the penalty back. */
-export const POSITIVE_RELIEF = 0.25;
-/** No pick sinks further than this, so it can climb back once alternatives also disappoint. */
-export const PENALTY_CAP = 3;
-/** Score points taken per unit of penalty; one critique outweighs a matched strength tag (+4). */
-export const PENALTY_WEIGHT = 10;
-
-export type RouteSignal = { negative?: number; positive?: number };
-
+/** What a turn ended up running on. The agent picks it; these rules are the fallback. */
 export type RouteDecision = {
   model: string;
   thinkingLevel: ThinkingLevel;
@@ -57,16 +34,6 @@ const STRENGTH_TAGS: Record<MessageKind, string[]> = {
   general: ["general", "通用"],
 };
 
-export function emptyLearnedState(): RouteLearnedState {
-  return { entries: [] };
-}
-
-/** Penalty a single experience row contributes: negatives net of relief, floored at 0, capped. */
-export function effectivePenalty(row: Pick<RouteExperience, "negative" | "positive">): number {
-  const raw = row.negative - POSITIVE_RELIEF * row.positive;
-  return Math.max(0, Math.min(PENALTY_CAP, raw));
-}
-
 export function classifyMessage(text: string): MessageKind {
   const t = text.toLowerCase();
   if (
@@ -77,7 +44,7 @@ export function classifyMessage(text: string): MessageKind {
     return "coding";
   }
   if (/\b(debug|stack trace|exception)\b|调试|报错/.test(t)) return "coding";
-  if (/\b(bug|fix)\b/.test(t) && !isCritiqueMessage(text)) return "coding";
+  if (/\b(bug|fix)\b/.test(t)) return "coding";
   if (/(证明|推理|分析为什么|architecture|架构|complex|复杂|深入|数学|prove|theorem)/.test(t)) {
     return "reasoning";
   }
@@ -91,18 +58,6 @@ export function classifyMessage(text: string): MessageKind {
 
 export function messageSignature(text: string): string {
   return classifyMessage(text);
-}
-
-/**
- * True only when the user is talking about the model choice itself (which model, how hard it
- * thought, speed, cost, hallucination). Generic complaints about the reply's content ("不对",
- * "有问题", "broken") are not route feedback: a wrong @-mention or a bad plan says nothing about
- * which model should have been picked.
- */
-export function isCritiqueMessage(text: string): boolean {
-  return /(选的模型|换个模型|换模型|换一个模型|模型不对|模型不行|模型太|太慢|太浅|太贵|太笨|不够聪明|想得太少|幻觉|wrong model|(switch|change|use) (to )?(a |the )?(different |another |smarter |better )?model|(the )?model (was|is) (wrong|bad)|too slow|too shallow|too expensive|think(s|ing)? harder|hallucinat)/i.test(
-    text,
-  );
 }
 
 export function pickThinkingLevel(kind: MessageKind, supported: readonly ThinkingLevel[]): ThinkingLevel {
@@ -167,7 +122,6 @@ export function decideCompletion(input: {
   defaultProviderId?: string | null;
   /** A Bot's pinned level wins for any candidate model that supports it; other models keep their own list. */
   botThinkingLevel?: ThinkingLevel | null;
-  learned: RouteLearnedState;
 }): RouteDecision | null {
   const candidates = candidateRows({
     catalog: input.catalog,
@@ -192,9 +146,7 @@ export function decideCompletion(input: {
     const levels: readonly ThinkingLevel[] = pinnedLevel ? [pinnedLevel] : supported;
     const preferred = pickThinkingLevel(kind, levels);
     for (const thinkingLevel of levels) {
-      const score =
-        scoreCandidate(model, kind, thinkingLevel, signature, input.learned) +
-        (thinkingLevel === preferred ? 1 : 0);
+      const score = scoreCandidate(model, kind) + (thinkingLevel === preferred ? 1 : 0);
       const price = model.price ?? Number.POSITIVE_INFINITY;
       const better =
         score > bestScore ||
@@ -215,23 +167,6 @@ export function decideCompletion(input: {
   return best;
 }
 
-/** Returns a new state with `signal` added to the matching experience row (created when absent). */
-export function applySignal(
-  learned: RouteLearnedState,
-  key: { signature: string; model: string; thinkingLevel: string },
-  signal: RouteSignal,
-): RouteLearnedState {
-  const entries = learned.entries.map((row) => ({ ...row }));
-  const existing = entries.find(
-    (row) => row.signature === key.signature && row.model === key.model && row.thinkingLevel === key.thinkingLevel,
-  );
-  const target = existing ?? { ...key, negative: 0, positive: 0 };
-  if (!existing) entries.push(target);
-  target.negative += signal.negative ?? 0;
-  target.positive += signal.positive ?? 0;
-  return { entries };
-}
-
 function matchThinkingLevel(
   supported: readonly ThinkingLevel[],
   wanted: ThinkingLevel | null | undefined,
@@ -241,13 +176,7 @@ function matchThinkingLevel(
   return supported.find((level) => level.toLowerCase() === key) ?? null;
 }
 
-function scoreCandidate(
-  model: CatalogEntry,
-  kind: MessageKind,
-  thinkingLevel: ThinkingLevel,
-  signature: string,
-  learned: RouteLearnedState,
-): number {
+function scoreCandidate(model: CatalogEntry, kind: MessageKind): number {
   let score = 0;
   const strengths = model.strengths.map((item) => item.toLowerCase());
   const tags = STRENGTH_TAGS[kind];
@@ -257,20 +186,5 @@ function scoreCandidate(
   if (strengths.length === 0) score += 1;
   if (kind === "simple" && model.price != null) score -= model.price;
   if (kind === "reasoning" && model.price != null) score += Math.min(model.price, 20) * 0.01;
-  score -= PENALTY_WEIGHT * penaltyFor(learned, signature, model.name, thinkingLevel);
   return score;
-}
-
-export function penaltyFor(
-  learned: RouteLearnedState,
-  signature: string,
-  model: string,
-  thinkingLevel: string,
-): number {
-  let total = 0;
-  for (const row of learned.entries) {
-    if (row.signature !== signature || row.model !== model) continue;
-    if (row.thinkingLevel === thinkingLevel || row.thinkingLevel === "*") total += effectivePenalty(row);
-  }
-  return total;
 }

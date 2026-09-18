@@ -18,6 +18,7 @@ import type {
   Provider,
   ResolveApprovalRequest,
   RouteRecord,
+  RouteReview,
   SearchHit,
   SessionDetail,
   SessionSummary,
@@ -199,8 +200,11 @@ export class LocalApi {
     return page.items;
   }
 
-  async routes(sessionId: string): Promise<RouteRecord[]> {
-    const page = await this.get<ListPage<RouteRecord>>(`/v1/sessions/${sessionId}/routes`);
+  async routes(sessionId: string): Promise<{ items: RouteRecord[]; reviews: RouteReview[] }> {
+    const page = await this.get<ListPage<RouteRecord> & { reviews?: RouteReview[] }>(
+      `/v1/sessions/${sessionId}/routes`,
+    );
+    return { items: page.items, reviews: page.reviews ?? [] };
     return page.items;
   }
 

@@ -196,12 +196,17 @@ CREATE TABLE IF NOT EXISTS turn_route_decisions (
     outcome IS NULL OR outcome IN ('completed', 'failed', 'stopped', 'redirected', 'interrupted')
   ),
   fail_kind TEXT,
+  reason TEXT,
+  chain_id TEXT,
   created_at TEXT NOT NULL,
   finished_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS turn_route_decisions_session
   ON turn_route_decisions (session_id, created_at);
+
+CREATE INDEX IF NOT EXISTS turn_route_decisions_chain
+  ON turn_route_decisions (chain_id);
 
 CREATE TABLE IF NOT EXISTS route_feedback (
   id TEXT PRIMARY KEY,
@@ -225,6 +230,29 @@ CREATE TABLE IF NOT EXISTS route_learned (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (bot_id, signature, model, thinking_level)
 );
+
+CREATE TABLE IF NOT EXISTS route_reviews (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL REFERENCES bots (id),
+  chain_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL REFERENCES turns (id),
+  session_id TEXT NOT NULL REFERENCES sessions (id),
+  signature TEXT NOT NULL,
+  model TEXT NOT NULL,
+  thinking_level TEXT NOT NULL,
+  fault TEXT NOT NULL CHECK (fault IN ('model', 'task', 'prompt', 'none')),
+  direction TEXT NOT NULL,
+  rounds INTEGER NOT NULL DEFAULT 0,
+  confidence REAL NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS route_reviews_bot
+  ON route_reviews (bot_id, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS route_reviews_chain
+  ON route_reviews (chain_id);
 
 CREATE TABLE IF NOT EXISTS spend (
   id TEXT PRIMARY KEY,

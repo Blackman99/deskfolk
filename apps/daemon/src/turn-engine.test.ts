@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
+import { ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -66,7 +67,28 @@ type FixtureHandler = (request: {
   body: Record<string, unknown>;
 }) => Response | Promise<Response>;
 
-async function startFixture(handler: FixtureHandler): Promise<{ origin: string }> {
+/** The routing calls are plain completions, not streams, so they answer like the judgement does. */
+function routingAnswer(content: string): Response {
+  return Response.json({ choices: [{ message: { role: "assistant", content } }] });
+}
+
+/** True for the routing agent's own calls: picking a model, and reviewing a closed chain. */
+function isRoutingCall(body: Record<string, unknown>): boolean {
+  const messages = body.messages as Array<{ role?: string; content?: string }> | undefined;
+  const system = messages?.find((row) => row.role === "system")?.content ?? "";
+  return system === ROUTE_PICK_SYSTEM || system === ROUTE_REVIEW_SYSTEM;
+}
+
+/**
+ * Every turn now asks a model what to run on, so each test's scripted queue would be eaten by a
+ * call it never wrote. Unless a test answers routing itself, those calls get an answer that names
+ * nothing — which is exactly the case the engine handles by falling back to the rules, so a test
+ * written before agent routing keeps testing what it always did.
+ */
+async function startFixture(
+  handler: FixtureHandler,
+  routing?: FixtureHandler,
+): Promise<{ origin: string }> {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -76,6 +98,9 @@ async function startFixture(handler: FixtureHandler): Promise<{ origin: string }
         return new Response("not found", { status: 404 });
       }
       const body = (await request.json()) as Record<string, unknown>;
+      if (isRoutingCall(body)) {
+        return routing ? routing({ url, body }) : routingAnswer("{}");
+      }
       return handler({ url, body });
     },
   });
@@ -2777,6 +2802,93 @@ describe("bot catalog tools on the local API", () => {
 });
 
 describe("per-message model and thinking-level routing", () => {
+  test("the routing agent picks the model, and a closed chain gets reviewed", async () => {
+    const seen: Array<{ model: string; reasoning_effort: string }> = [];
+    const routingCalls: Array<Record<string, unknown>> = [];
+    const fixture = await startFixture(
+      ({ body }) => {
+        if (isJudgementRequest(body)) return judgementPass();
+        seen.push({ model: String(body.model), reasoning_effort: String(body.reasoning_effort) });
+        return sse(textChunks("ok"));
+      },
+      ({ body }) => {
+        const messages = body.messages as Array<{ role?: string; content?: string }>;
+        const system = messages.find((row) => row.role === "system")?.content ?? "";
+        const payload = JSON.parse(messages.find((row) => row.role === "user")!.content!) as Record<
+          string,
+          unknown
+        >;
+        routingCalls.push({ system, payload });
+        if (system === ROUTE_REVIEW_SYSTEM) {
+          return routingAnswer(
+            '{"fault": "model", "direction": "stronger", "rounds": 2, "confidence": 0.9, "reason": "反复改不对"}',
+          );
+        }
+        // The agent takes the expensive model even though the rules would call this "simple".
+        return routingAnswer('{"model": "code-pro", "thinking_level": "high", "reason": "要多步推理"}');
+      },
+    );
+    const h = await startApi();
+    mkdirSync("/tmp/real-bot-ws", { recursive: true });
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h),
+      body: JSON.stringify({
+        workspace_path: "/tmp/real-bot-ws",
+        endpoint_base_url: fixture.origin,
+        endpoint_api_key: "sk-test",
+        endpoint_models: [
+          { name: "cheap-chat", price: 1, thinking_levels: ["none", "low"], strengths: ["chat"] },
+          { name: "code-pro", price: 12, thinking_levels: ["medium", "high"], strengths: ["code"] },
+        ],
+        endpoint_default_model: "cheap-chat",
+      }),
+    });
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay" }),
+    });
+    const body = (await created.json()) as { bot: { id: string }; direct_session: { id: string } };
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "你好" }),
+    });
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+
+    // "你好" is a `simple` message: the rules would have taken cheap-chat at its lightest level.
+    expect(seen[0]).toEqual({ model: "code-pro", reasoning_effort: "high" });
+    const pickCall = routingCalls.find((row) => row.system === ROUTE_PICK_SYSTEM)!;
+    const payload = pickCall.payload as { candidates: Array<{ model: string }>; message: string };
+    expect(payload.message).toBe("你好");
+    expect(payload.candidates.map((row) => row.model).sort()).toEqual(["cheap-chat", "code-pro"]);
+
+    const routes = h.store.listSessionRoutes(body.direct_session.id);
+    expect(routes).toHaveLength(1);
+    expect(routes[0]).toMatchObject({ model: "code-pro", thinking_level: "high" });
+    expect(h.store.getTurnRoute(routes[0]!.turn_id)).not.toBeNull();
+
+    // The user pushes back, then moves on: the chain closes and the review lands on the Bot.
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "这里不对" }),
+    });
+    await waitFor(
+      sub.events,
+      () => sub.events.filter((e) => e.event === "turn.upsert" && e.status === "completed").length >= 2,
+    );
+    await waitFor(sub.events, () => h.store.recentRouteReviews(body.bot.id).length > 0, 4000).catch(
+      () => undefined,
+    );
+    const reviews = h.store.recentRouteReviews(body.bot.id);
+    expect(reviews.length).toBeGreaterThan(0);
+    expect(reviews[0]).toMatchObject({ fault: "model", direction: "stronger", reason: "反复改不对" });
+    sub.close();
+  });
+
   test("turn start posts the chosen model and thinking level; two runs agree", async () => {
     async function runOnce(): Promise<{ model: string; reasoning_effort: string }> {
       const seen: Array<{ model: string; reasoning_effort: string }> = [];
@@ -2971,7 +3083,7 @@ describe("per-message model and thinking-level routing", () => {
     sub.close();
   });
 
-  test("a follow-up critique of the prior turn updates the later comparable decision", async () => {
+  test("a follow-up is kept against the decision it answers, and the routes endpoint shows it", async () => {
     const seen: Array<{ model: string; reasoning_effort: string }> = [];
     const fixture = await startFixture(({ body }) => {
       seen.push({
@@ -3052,7 +3164,7 @@ describe("per-message model and thinking-level routing", () => {
       thinking_level: "medium",
       body: "这里有 bug，选的模型不对",
     });
-    expect(h.store.routeLearnedState(body.bot.id).entries.length).toBeGreaterThan(0);
+    // The follow-up is kept for the review; nothing is scored here any more.
 
     await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
       method: "POST",
@@ -3064,7 +3176,9 @@ describe("per-message model and thinking-level routing", () => {
       (e) => e.event === "turn.upsert" && e.status === "completed" && e.id !== running.id && e.id !== critiqueTurn.id,
     );
     expect(seen).toHaveLength(3);
-    expect(`${seen[2]!.model}:${seen[2]!.reasoning_effort}`).not.toBe("code-pro:medium");
+    // The follow-up alone no longer re-routes anything: nothing has reviewed this chain yet, so the
+    // fallback rules still pick the same pair for the same message.
+    expect(`${seen[2]!.model}:${seen[2]!.reasoning_effort}`).toBe("code-pro:medium");
     const routesRes = await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/routes`, { headers: auth(h) });
     expect(routesRes.status).toBe(200);
     const routes = (await routesRes.json()) as { items: Array<Record<string, unknown>> };
@@ -3079,7 +3193,13 @@ describe("per-message model and thinking-level routing", () => {
       fail_kind: null,
       feedback: [{ body: "这里有 bug，选的模型不对" }],
     });
-    expect(routes.items[1]).toMatchObject({ turn_id: critiqueTurn.id, outcome: "completed", feedback: [] });
+    // The third message lands on the turn before it: whether re-asking means the model failed is
+    // the review's call, not a keyword's.
+    expect(routes.items[1]).toMatchObject({
+      turn_id: critiqueTurn.id,
+      outcome: "completed",
+      feedback: [{ body: task }],
+    });
     expect(routes.items.every((row) => typeof row.provider_id === "string")).toBe(true);
     sub.close();
   });
