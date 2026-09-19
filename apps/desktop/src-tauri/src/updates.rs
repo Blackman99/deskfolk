@@ -30,6 +30,10 @@ pub struct Release {
     #[serde(default)]
     pub prerelease: bool,
     pub published_at: Option<String>,
+    /// The release body, which the workflow fills from this version's CHANGELOG
+    /// section. The About card renders it, so it travels with the check.
+    #[serde(default)]
+    pub body: Option<String>,
     #[serde(default)]
     pub assets: Vec<Asset>,
 }
@@ -43,6 +47,7 @@ pub struct UpdateCheck {
     pub release_url: Option<String>,
     pub download_url: Option<String>,
     pub published_at: Option<String>,
+    pub notes: Option<String>,
 }
 
 /// The feed URL to poll: `REAL_BOT_UPDATE_FEED` if set and non-empty, else the
@@ -116,6 +121,7 @@ pub fn pick_update(
             release_url: None,
             download_url: None,
             published_at: None,
+            notes: None,
         },
         Some((version, release)) => {
             let update_available = version > *current;
@@ -128,6 +134,12 @@ pub fn pick_update(
                 release_url: Some(release.html_url.clone()),
                 download_url,
                 published_at: release.published_at.clone(),
+                notes: release
+                    .body
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|body| !body.is_empty())
+                    .map(str::to_string),
             }
         }
     }
@@ -199,6 +211,7 @@ mod tests {
             draft,
             prerelease,
             published_at: Some("2026-01-01T00:00:00Z".into()),
+            body: None,
             assets: vec![],
         }
     }
@@ -338,6 +351,7 @@ mod tests {
                 "prerelease": true,
                 "published_at": "2026-09-10T00:00:00Z",
                 "name": "Real Bot 0.1.0-alpha.4",
+                "body": "- 群聊输入框上方改成草稿建议。",
                 "assets": [
                     {
                         "name": "Real.Bot_0.1.0-alpha.4_aarch64.dmg",
@@ -355,6 +369,28 @@ mod tests {
         assert!(!releases[0].draft);
         assert_eq!(releases[0].assets.len(), 1);
         assert_eq!(releases[0].assets[0].name, "Real.Bot_0.1.0-alpha.4_aarch64.dmg");
+        assert!(releases[0].body.as_deref().unwrap().contains("草稿建议"));
+    }
+
+    #[test]
+    fn the_release_body_travels_with_the_check_and_blank_bodies_do_not() {
+        let mut newer = release("v0.2.0", false, false);
+        newer.body = Some("### Messenger\n\n- 一条更新说明。\n".into());
+        let check = pick_update(&version("0.1.0"), &[newer], Some("aarch64"));
+        assert!(check.update_available);
+        assert_eq!(
+            check.notes.as_deref(),
+            Some("### Messenger\n\n- 一条更新说明。")
+        );
+
+        let mut blank = release("v0.2.0", false, false);
+        blank.body = Some("   \n".into());
+        assert_eq!(
+            pick_update(&version("0.1.0"), &[blank], Some("aarch64")).notes,
+            None
+        );
+
+        assert_eq!(pick_update(&version("0.1.0"), &[], Some("aarch64")).notes, None);
     }
 
     #[test]
@@ -384,6 +420,7 @@ mod tests {
             release_url: None,
             download_url: None,
             published_at: None,
+            notes: None,
         };
         let mut cache = UpdateCache::default();
         assert!(cache.fresh(Instant::now(), CACHE_TTL).is_none());

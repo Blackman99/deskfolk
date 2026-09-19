@@ -71,6 +71,10 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -82,6 +86,18 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
+      # The body is this version's CHANGELOG section: the app renders it in the About card when it
+      # finds an update, so it has to say what changed rather than point at the file.
+      - name: Release notes from CHANGELOG
+        id: notes
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            bun apps/desktop/scripts/release-notes.ts
+            echo
+            echo RELEASE_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,19 +106,9 @@ jobs:
           tauriScript: pnpm tauri
           tagName: v__VERSION__
           releaseName: Real Bot v__VERSION__
-          releaseBody: |
-            Unsigned macOS alpha. This is not a supported signed installer.
-
-            Gatekeeper may block ad-hoc signed builds (`signingIdentity: "-"`). Prefer running from source:
-
-            ```
-            pnpm install
-            pnpm dev
-            ```
-
-            Windows and Linux are out of scope. See CHANGELOG.md and ROADMAP.md.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: true
-          generateReleaseNotes: true
+          generateReleaseNotes: false
           uploadUpdaterJson: false
           args: ${{ matrix.args }}

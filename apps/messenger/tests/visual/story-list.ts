@@ -26,7 +26,8 @@ export const STORY_SIZES = {
 	'artifact-code': { width: 700, height: 420 },
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
-	'settings-mcp': { width: 1000, height: 720 }
+	'settings-mcp': { width: 1000, height: 720 },
+	'settings-about': { width: 1000, height: 720 }
 } as const;
 
 export type StoryName = keyof typeof STORY_SIZES;

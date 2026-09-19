@@ -19,6 +19,7 @@ const FULL_PAYLOAD = {
   releaseUrl: "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-alpha.4",
   downloadUrl: "https://github.com/Blackman99/real-bot/releases/download/v0.1.0-alpha.4/Real.Bot_0.1.0-alpha.4_aarch64.dmg",
   publishedAt: "2026-09-01T00:00:00Z",
+  notes: "### Messenger\n\n- 一条更新说明。",
 } satisfies UpdateCheck;
 
 test("parseUpdateCheck round-trips a full payload", () => {
@@ -47,6 +48,7 @@ test("parseUpdateCheck turns non-string optional fields into null", () => {
       releaseUrl: false,
       downloadUrl: {},
       publishedAt: [],
+      notes: 0,
     }),
   ).toEqual({
     current: "0.1.0",
@@ -55,6 +57,7 @@ test("parseUpdateCheck turns non-string optional fields into null", () => {
     releaseUrl: null,
     downloadUrl: null,
     publishedAt: null,
+    notes: null,
   });
 });
 

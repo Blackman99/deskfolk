@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tauri dev",
+    "test": "bun test scripts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "tauri": "tauri"
   },

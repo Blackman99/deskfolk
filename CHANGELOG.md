@@ -4,7 +4,13 @@
 
 ## Unreleased
 
-（尚无）
+### Messenger
+
+- 检查到新版时，「关于」卡片直接列出这一版改了什么：检查结果带上 release 正文（也就是该版本的 CHANGELOG 段落），卡片按 `###` 分组画成条目列表，跳浏览器的「查看发布说明」留着但不再是唯一入口。列表只取标题和条目，段落和围栏命令留在发布页；正文不走聊天的 markdown 渲染器，否则 changelog 里的路径会被当成工作区产物链接。
+
+### Desktop
+
+- release 正文改成自动从 `CHANGELOG.md` 里取该版本那一段（`apps/desktop/scripts/release-notes.ts`），不再是一句「去看 CHANGELOG 和 ROADMAP」；`check_for_update` 把正文随检查结果一起回给信使。CHANGELOG 里没有该版本的段落时打包任务直接失败，免得发出一个空的更新说明。
 
 ## 0.1.0-rc.2 — 2026-09-19
 

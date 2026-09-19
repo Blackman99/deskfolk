@@ -22,6 +22,7 @@
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
+	import { releaseNoteGroups } from './release-notes.ts';
 	import {
 		mapSettingsError,
 		planWorkspaceSave,
@@ -62,6 +63,9 @@
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 
 	let activeSettingsTab = $state<'general' | 'preferences' | 'models' | 'mcp' | 'about'>('general');
+
+	/** What the release body says changed, drawn in the About card instead of only linked to. */
+	const updateChanges = $derived(releaseNoteGroups(updateChecker.result?.notes));
 	let fieldErrors = $state<SettingsFieldErrors>({});
 	const generalHasError = $derived(Boolean(fieldErrors.workspace));
 	const modelsHasError = $derived(
@@ -860,6 +864,21 @@
 								{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
 									<div class="about-update-banner">
 										<p class="about-update-title m-0 text-12p5 font-semibold text-accent">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
+										{#if updateChanges.length > 0}
+											<div class="about-notes">
+												<p class="about-notes-title">{t.settings.updateChanges}</p>
+												{#each updateChanges as group, groupIndex (groupIndex)}
+													{#if group.heading}
+														<p class="about-notes-heading">{group.heading}</p>
+													{/if}
+													<ul class="about-notes-list">
+														{#each group.items as item, itemIndex (itemIndex)}
+															<li>{item}</li>
+														{/each}
+													</ul>
+												{/each}
+											</div>
+										{/if}
 										<div class="about-actions flex items-center flex-wrap gap-4">
 											{#if updateChecker.result.downloadUrl}
 												<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.download()}>
@@ -1767,6 +1786,50 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+
+	/*
+	 * The changelog section that came with the check. Long enough to need its own scroll, so it
+	 * keeps to a height the card can spare and never pushes the buttons out of reach.
+	 */
+	.about-notes {
+		max-height: 168px;
+		overflow-y: auto;
+		padding-right: 4px;
+		scrollbar-width: thin;
+		scrollbar-color: var(--accent-border) transparent;
+	}
+
+	.about-notes-title {
+		margin: 0 0 4px;
+		font-size: 11.5px;
+		font-weight: 600;
+		color: var(--ink-secondary);
+	}
+
+	.about-notes-heading {
+		margin: 8px 0 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+
+	.about-notes-heading:first-of-type {
+		margin-top: 0;
+	}
+
+	.about-notes-list {
+		margin: 0;
+		padding-left: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	.about-notes-list li {
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--ink-secondary);
 	}
 
 	@media (max-width: 540px) {

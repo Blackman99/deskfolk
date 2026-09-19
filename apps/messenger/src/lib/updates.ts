@@ -7,6 +7,8 @@ export type UpdateCheck = {
   releaseUrl: string | null;
   downloadUrl: string | null;
   publishedAt: string | null;
+  /** The release body — this version's CHANGELOG section, which the About card renders. */
+  notes: string | null;
 };
 
 export const AUTO_CHECK_DELAY_MS = 15_000;
@@ -28,6 +30,7 @@ export function parseUpdateCheck(body: unknown): UpdateCheck | null {
     releaseUrl?: unknown;
     downloadUrl?: unknown;
     publishedAt?: unknown;
+    notes?: unknown;
   };
   if (typeof record.current !== "string") return null;
   if (typeof record.updateAvailable !== "boolean") return null;
@@ -38,6 +41,7 @@ export function parseUpdateCheck(body: unknown): UpdateCheck | null {
     releaseUrl: optionalString(record.releaseUrl),
     downloadUrl: optionalString(record.downloadUrl),
     publishedAt: optionalString(record.publishedAt),
+    notes: optionalString(record.notes),
   };
 }
 

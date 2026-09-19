@@ -33,6 +33,7 @@ import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
 import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
+import { updateChecker } from '../../src/lib/update-checker.svelte.ts';
 import ArtifactPreview from '../../src/lib/overlays/ArtifactPreview.svelte';
 import ArtifactCodeEditor from '../../src/lib/overlays/ArtifactCodeEditor.svelte';
 
@@ -441,7 +442,46 @@ const defs: Record<StoryName, Story> = {
 	},
 	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(0) },
 	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(2) },
-	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(3) }
+	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(3) },
+	/*
+	 * The About card with an update waiting. The card only draws inside a Tauri window, so the
+	 * story says the window is one and hands the checker a finished check — including the release
+	 * body, which is where the list of what changed comes from.
+	 */
+	'settings-about': {
+		component: SettingsModal as never,
+		props: settingsProps(),
+		afterMount: (host: HTMLElement) => {
+			settingsTab(4)(host);
+			(globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+				invoke: async () => null
+			};
+			updateChecker.version = '0.1.0-rc.2';
+			updateChecker.status = 'ok';
+			updateChecker.result = {
+				current: '0.1.0-rc.2',
+				latest: '0.1.0-rc.3',
+				updateAvailable: true,
+				releaseUrl: 'https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-rc.3',
+				downloadUrl:
+					'https://github.com/Blackman99/real-bot/releases/download/v0.1.0-rc.3/Real.Bot_0.1.0-rc.3_aarch64.dmg',
+				publishedAt: '2026-09-19T00:00:00Z',
+				notes: [
+					'未签名的 macOS rc。优先从源码运行。',
+					'',
+					'### Messenger',
+					'',
+					'- 新建群改成和新建 Bot 一样的居中弹窗，成员用可搜索的多选下拉挑。',
+					'- 检查更新时把这一版改了什么直接列在「关于」里，不用再跳浏览器。',
+					'',
+					'### Daemon',
+					'',
+					'- 本机接口同时听 `127.0.0.1:17890` 和 `[::1]:17890`。'
+				].join('\n')
+			};
+			flushSync();
+		}
+	}
 };
 
 export const stories = Object.fromEntries(
