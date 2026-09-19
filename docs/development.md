@@ -34,7 +34,10 @@
 - `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
 - `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。
 - 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`、`markdown.ts`、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。
-- `styles/`：原来 9218 行的一张表按原顺序切成十二个文件，`index.css` 按序 `@import`，全部仍是全局样式 —— 组件不带 `<style>`，因为表里大量规则跨组件（`.shell.has-session .side`、`.msg.is-you .attachment-file-btn` 等）。改样式先看分区，切文件时不要重排规则：层叠顺序就是文件顺序。
+- `styles/`：原来一张 9218 行的表按原顺序切成十三个文件，`index.css` 按序 `@import`，全部仍是全局样式 —— 组件不带 `<style>`，因为表里大量规则跨组件（`.shell.has-session .side`、`.msg.is-you .attachment-file-btn` 等），作用域化只会把它们统统变成 `:global()`。**层叠顺序就是文件顺序，切文件时不要重排规则。**
+  - `tokens.css` 是配色令牌与暗色覆盖，`base.css` 是 reset，其余按面：`shell` / `sidebar` / `chat` / `composer` / `drawers` / `route-log` / `panels` / `settings` / `onboarding` / `context-menu`。
+  - `shared.css` 放不止一个面会往自己元素上挂的那几个 class（`.field-error`、`.avatar-img`、`.btn-chip`、`.sheet-close`、模态框骨架）。只放这个东西本身和它的通用状态，`.modal-body .provider-card`、`.modal-dialog.settings-modal` 这种另一半属于别人的规则留在别人那儿。**动 `shared.css` 会波及每个面** —— 它单独成文件就是为了让这件事看得见。
+  - `styles-coverage.test.ts` 会在有样式没人用时失败。全局表没有任何编译期检查，删组件时留下的孤儿样式就是这么积累的（这条测试建立时清掉了 23 个 class、35 条规则，其中一个正是上一次删组件留下的）。它认得 `class="tab is-{kind}"` 这种插值（记下 `is-` 前缀），也认得只出现在后代位置的第三方 DOM（Monaco 注入的那些）；Monaco 挂到 body 上的浮层在测试里有一张写明理由的白名单。
 
 打开的是哪个会话记在 URL 的 `?s=<id>` 上（`session-url.ts`），刷新、热更新和后退键都回到同一个会话。用查询参数而不是路径，是因为打包后的 Tauri 窗通过资源协议直接服务 `build/`，没有 SPA 回退：`/s/<id>` 一刷新就是 404，而 `index.html?s=<id>` 永远是磁盘上那个文件。`+page.svelte` 里两条 effect 互为镜像，各自只跟踪自己那一侧（都跟踪就会互相覆盖）；URL 里的 id 在会话列表到达前不动它，`connect()` 拿到列表后会把不存在的 id 清掉。别的浮层（设置、抽屉、路由日志、工作区、产物预览）不进 URL：它们的开关已经在 `MessengerRuntime` 上互斥，搬进 URL 只会让 Escape 级联多一个真相来源。
 

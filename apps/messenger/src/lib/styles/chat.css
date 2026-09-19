@@ -490,16 +490,7 @@ button.bot-avatar.is-clickable:focus-visible {
   outline-offset: 2px;
 }
 
-.avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-  display: block;
-}
-
-.pinned-session-btn img,
-.roster-avatar-img {
+.pinned-session-btn img {
   width: 100%;
   height: 100%;
   object-fit: cover;

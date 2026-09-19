@@ -568,28 +568,6 @@
   color: var(--danger-text);
 }
 
-.sheet-close,
-.detail-close {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--muted);
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.sheet-close:hover,
-.detail-close:hover {
-  background: var(--line-subtle);
-  color: var(--ink);
-  border-color: var(--line);
-}
-
 .empty-state {
   margin: auto;
   display: flex;

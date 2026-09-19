@@ -1,0 +1,129 @@
+/*
+ * The few classes more than one pane puts on its own elements: the field error line, the avatar
+ * image, the chip button, the sheet close, and the modal frame that the settings modal, the
+ * create-Bot sheet, the endpoint editor and the confirm dialog all share.
+ *
+ * Only the shared thing itself lives here — `.modal-body` and its generic states, never
+ * `.modal-body .provider-card` or `.modal-dialog.settings-modal`, which belong to the pane that
+ * owns the other half of the selector. Editing this file reaches every pane; that is why it has
+ * a name of its own rather than sitting wherever it was first written.
+ */
+
+
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+.field-error {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--warn);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.sheet-close {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.sheet-close:hover {
+  background: var(--line-subtle);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.modal-dialog {
+  background: var(--pane);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 56px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--pane);
+}
+
+.modal-close {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modal-close:hover {
+  background: var(--line-subtle);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btn-chip {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  font-family: var(--mono);
+  line-height: 1.2;
+}
+
+.btn-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-chip.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+.btn-chip.is-custom {
+  font-family: var(--mono);
+}
+
+.btn-chip.is-add {
+  border-style: dashed;
+  background: transparent;
+}

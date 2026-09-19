@@ -2,6 +2,7 @@
 
 @import "./tokens.css";
 @import "./base.css";
+@import "./shared.css";
 @import "./shell.css";
 @import "./sidebar.css";
 @import "./chat.css";

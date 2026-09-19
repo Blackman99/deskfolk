@@ -483,20 +483,6 @@
   color: var(--accent-hover);
 }
 
-.active-mention-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 8px 2px 4px;
-  background: var(--accent-tint);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-xl);
-  font-size: 12px;
-  color: var(--accent-hover);
-  font-weight: 600;
-  animation: chipIn 0.15s ease;
-}
-
 @keyframes chipIn {
   from { opacity: 0; transform: scale(0.92); }
   to { opacity: 1; transform: scale(1); }
@@ -648,31 +634,6 @@
   margin-top: 8px;
 }
 
-.msg-attachment-card {
-  max-width: 280px;
-}
-
-.attachment-img-wrap {
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: 1px solid var(--line);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.attachment-img-wrap:hover {
-  transform: scale(1.02);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
-}
-
-.attachment-bubble-img {
-  max-width: 260px;
-  max-height: 200px;
-  display: block;
-  object-fit: contain;
-  background: #00000008;
-}
-
 .attachment-file-btn,
 .attachment-bundle-btn {
   display: flex;
@@ -732,12 +693,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.file-dl-icon {
-  color: var(--muted);
-  margin-left: auto;
-  flex-shrink: 0;
 }
 
 .attachment-chip-thumb {
@@ -1155,31 +1110,12 @@
   white-space: nowrap;
 }
 
-.artifact-code {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .artifact-code-meta {
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--muted);
 }
 
-.code-hl {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink);
-  tab-size: 2;
-}
-
-.code-hl .tok,
 .msg .body.is-md pre code .tok,
 .artifact-md pre code .tok {
   color: var(--shiki-light);
@@ -1192,27 +1128,6 @@
 :root.dark .msg .body.is-md pre code .tok,
 :root.dark .artifact-md pre code .tok {
   color: var(--shiki-dark);
-}
-
-.code-hl.is-editable {
-  outline: none;
-}
-
-.artifact-pane-foot {
-  display: flex;
-  gap: 8px;
-  padding: 10px 16px 14px;
-  border-top: 1px solid var(--line);
-}
-
-.artifact-pane-foot button {
-  border: 1px solid var(--line);
-  background: var(--btn-secondary-bg);
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--ink);
-  cursor: pointer;
 }
 
 .artifact-img {

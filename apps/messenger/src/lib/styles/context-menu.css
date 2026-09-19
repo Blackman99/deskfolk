@@ -91,42 +91,12 @@
   margin: 3px 4px;
 }
 
-.step-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-@media (max-width: 580px) {
-  .step-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .onboarding-foot {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
   margin-top: 4px;
-}
-
-.btn-onboarding-submit {
-  width: 100%;
-  padding: 11px 20px;
-  background: var(--accent);
-  color: #ffffff;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
-
-.btn-onboarding-submit:hover {
-  background: var(--accent-hover);
 }
 
 .btn-onboarding-skip {
