@@ -6,10 +6,14 @@ export const STORY_SIZES = {
 	'shell-narrow': { width: 600, height: 820 },
 	'danger-dialog': { width: 900, height: 520 },
 	'route-log': { width: 900, height: 640 },
-	'create-group-sheet': { width: 340, height: 520 },
+	// A modal, not a flyout any more: shot at a window it fits in, with room under the field for
+	// the member list to open into.
+	'create-group-sheet': { width: 560, height: 560 },
+	// The same sheet with its member list open: a floating layer no other shot reaches.
+	'create-group-picker': { width: 560, height: 620 },
 	'create-bot-sheet': { width: 340, height: 720 },
 	'group-pane': { width: 420, height: 900 },
-	'profile-pane': { width: 420, height: 900 },
+	'profile-pane': { width: 420, height: 1100 },
 	onboarding: { width: 900, height: 720 },
 	sidebar: { width: 300, height: 820 },
 	// The row under an open context menu: a rule that used to live in the last file imported,

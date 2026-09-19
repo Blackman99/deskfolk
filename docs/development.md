@@ -29,7 +29,7 @@
 `apps/messenger/src/lib` 按界面上的「面」分目录，每个目录放那一面的组件和只有它用的纯函数模块（测试与被测模块同目录）：
 
 - `chat/`：`ChatStage.svelte` 是主栏的转录 + 回到底部按钮 + 作曲栏，滚动状态归它，因为发送、搜索跳转和内容变高都要动它；`Composer.svelte` 管输入框、`@` 补全、附件、引用条和发送 / 停止按钮，草稿只写 `runtime.draft`，外面要落光标就调它导出的 `focus()`；`ChatHeader.svelte` 是会话顶栏。模块有转录分组与时间文案、批准卡判定、作曲栏形态与输入法状态机、`@` 芯片与候选、引用回复、快捷提示词、滚动计算。
-- `sidebar/`：`Sidebar.svelte` 是整条侧栏（名册行、搜索、会话分组、归档视图、底部工具栏、主题菜单），两张新建滑出和右键菜单也在这里。模块有会话分组 / 状态 / 标题、未读、搜索跳转、置顶、宽度。
+- `sidebar/`：`Sidebar.svelte` 是整条侧栏（名册行、搜索、会话分组、归档视图、底部工具栏、主题菜单），两张新建弹窗和右键菜单也在这里。模块有会话分组 / 状态 / 标题、未读、搜索跳转、置顶、宽度。
 - `panels/`：会话设置抽屉的两片 —— `ProfilePane.svelte`（人设与技能，自己管草稿与自动保存）和 `GroupPane.svelte`（群名、成员、拉人）。抽屉外壳还在 `Shell.svelte`。
 - `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
 - `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。
@@ -37,14 +37,14 @@
 - `styles/`：**只剩没有任何一个组件能认领的规则**，1052 条里的 134 条；其余都回到了渲染那个元素的组件里（见下面「信使样式分层」）。每个文件的头注释写明它为什么搬不动：
   - `tokens.css` 配色令牌与暗色覆盖，`base.css` reset —— 全局底座。
   - `shared.css` 不止一个面会往自己元素上挂的 class（`.field-error`、`.avatar-img`、`.btn-chip`、`.sheet-close`、`.row-avatar`、`.avatar-status-dot`）。只放这个东西本身和它的通用状态。**动它会波及每个面。**
-  - `drawers.css` 抽屉与滑出共用的外壳、`panels.css` 两个抽屉面共用的家具、`modals.css` 所有对话框共用的框。里面装什么是各自组件的事。
+  - `drawers.css` 会话设置抽屉的外壳、`panels.css` 两个抽屉面共用的家具、`modals.css` 所有对话框共用的框。里面装什么是各自组件的事。
   - `code-highlight.css` Shiki 写进三处不同表面的 `.tok`、`third-party.css` Monaco 挂到 `document.body` 上的浮层 —— 都没有可作用域化的宿主。
   - `responsive.css` 只有 680px 那一条跨面断点；**它排在 `index.css` 最后**，因为它的活就是覆盖上面的面。各个面自己的响应式写在各自组件里。
   - `styles-coverage.test.ts` 会在全局表里有样式没人用时失败。它认得 `class="tab is-{kind}"` 这种插值（记下 `is-` 前缀），第三方 DOM 有一张写明理由的白名单。**两个提取上的坑都踩过**：引号正则若允许跨行，英文文案里的撇号会让它吞进无关代码，那堆残骸里的每个词都算「有人用」；规则上方的注释若不剥掉，会变成选择器的一部分，于是**带段落注释的规则从来没被检查过**。`.detail` 整族死样式就是这么活下来的。
 
 打开的是哪个会话记在 URL 的 `?s=<id>` 上（`session-url.ts`），刷新、热更新和后退键都回到同一个会话。用查询参数而不是路径，是因为打包后的 Tauri 窗通过资源协议直接服务 `build/`，没有 SPA 回退：`/s/<id>` 一刷新就是 404，而 `index.html?s=<id>` 永远是磁盘上那个文件。`+page.svelte` 里两条 effect 互为镜像，各自只跟踪自己那一侧（都跟踪就会互相覆盖）；URL 里的 id 在会话列表到达前不动它，`connect()` 拿到列表后会把不存在的 id 清掉。别的浮层（设置、抽屉、路由日志、工作区、产物预览）不进 URL：它们的开关已经在 `MessengerRuntime` 上互斥，搬进 URL 只会让 Escape 级联多一个真相来源。
 
-`Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
+`Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 新建群 → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
 ## 信使样式分层
 
@@ -114,7 +114,7 @@ DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 
 写测试用 `src/lib/test-render.ts`：`render()` 挂载并 `flushSync`，`click` / `fill` / `press` 每次交互后也 `flushSync`（Svelte 5 批量更新，不刷新就断言不到）。假数据在 `src/lib/test-fixtures.ts`（`aBot` / `aDirect` / `aGroup` / `aSkill` / `fakeRuntime`，`fakeRuntime().calls` 记下组件调了运行时的哪些方法）。要让绑定的 prop 真的引起重渲染，用 `test-reactive.svelte.ts` 的 `reactive()` 包一层，普通对象写得进去但不会触发更新。
 
-覆盖的是拆分留下的接缝，不是重测已有的纯函数：确认框的四条关闭路径、新建群滑出「重新挂载即重置」、群组面板那份**属于外壳**的草稿（关掉再打开仍在，这是有意为之）、人设面板的自动保存与**卸载时把待发的改动冲出去**、作曲栏的 Enter / Shift+Enter / 输入法选词与上屏后那一下的接线。
+覆盖的是拆分留下的接缝，不是重测已有的纯函数：确认框的四条关闭路径、新建群弹窗「重新挂载即重置」、群组面板那份**属于外壳**的草稿（关掉再打开仍在，这是有意为之）、人设面板的自动保存与**卸载时把待发的改动冲出去**、作曲栏的 Enter / Shift+Enter / 输入法选词与上屏后那一下的接线。
 
 ## 信使视觉基线
 

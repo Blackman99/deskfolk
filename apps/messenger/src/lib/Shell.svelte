@@ -44,6 +44,7 @@
 	} from './sidebar/sidebar-width.ts';
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
+	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
 	import GroupPane, { type GroupDetailDraft } from './panels/GroupPane.svelte';
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
@@ -684,6 +685,8 @@
 				dismissDangerConfirm();
 			} else if (runtime.createBotOpen) {
 				runtime.createBotOpen = false;
+			} else if (runtime.createGroupOpen) {
+				runtime.createGroupOpen = false;
 			} else if (providerEditor) {
 				e.stopPropagation();
 				providerEditor = null;
@@ -954,6 +957,14 @@
 			modelOptions={availableModelOptions}
 			{t}
 			onClose={() => (runtime.createBotOpen = false)}
+		/>
+	{/if}
+	{#if runtime.createGroupOpen}
+		<CreateGroupSheet
+			{runtime}
+			bots={visibleBots}
+			{t}
+			onClose={() => (runtime.createGroupOpen = false)}
 		/>
 	{/if}
 

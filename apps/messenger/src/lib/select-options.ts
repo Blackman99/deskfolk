@@ -92,3 +92,32 @@ export function findOptionByPrefix(
 		(opt) => !opt.disabled && opt.label.toLowerCase().startsWith(lower)
 	);
 }
+
+/**
+ * Narrows the list to the options a typed query matches, case-insensitively, anywhere in the
+ * label, the hint or the value. A prefix match is too strict for a picker you search by hand:
+ * a Bot called 「视频剪辑」 has to come back for "剪辑".
+ */
+export function filterOptions(
+	options: readonly NormalizedSelectOption[],
+	query: string
+): NormalizedSelectOption[] {
+	const needle = query.trim().toLowerCase();
+	if (!needle) return [...options];
+	return options.filter(
+		(opt) =>
+			opt.label.toLowerCase().includes(needle) ||
+			opt.value.toLowerCase().includes(needle) ||
+			(opt.hint?.toLowerCase().includes(needle) ?? false)
+	);
+}
+
+/**
+ * Adds a value to a multi-select's selection or takes it away. The order is the order they were
+ * picked in, not the order of the option list — what the group sheet sends is what you ticked.
+ */
+export function toggleValue(values: readonly string[], value: string): string[] {
+	return values.includes(value)
+		? values.filter((held) => held !== value)
+		: [...values, value];
+}

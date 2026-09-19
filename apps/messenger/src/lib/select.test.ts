@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+	filterOptions,
 	findNextEnabledIndex,
 	findOptionByPrefix,
 	normalizeOptions,
+	toggleValue,
 	type SelectOption
 } from "./select-options.ts";
 
@@ -85,5 +87,45 @@ describe("select keyboard navigation helpers", () => {
 	test("findOptionByPrefix ignores disabled options", () => {
 		// Beta is disabled, so searching for 'b' returns -1
 		expect(findOptionByPrefix(testOptions, "b")).toBe(-1);
+	});
+});
+
+describe("multi-select helpers", () => {
+	const bots = normalizeOptions([
+		{ value: "b1", label: "剪辑师", hint: "剪片子" },
+		{ value: "b2", label: "Writer", hint: "收集资料" },
+		{ value: "b3", label: "调色", disabled: true }
+	]);
+
+	test("an empty query keeps the whole list, as a copy", () => {
+		const all = filterOptions(bots, "   ");
+		expect(all).toEqual(bots);
+		expect(all).not.toBe(bots as never);
+	});
+
+	test("the query matches inside the label, not only at its head", () => {
+		expect(filterOptions(bots, "辑").map((o) => o.value)).toEqual(["b1"]);
+	});
+
+	test("the query matches the hint and the value too, case-insensitively", () => {
+		expect(filterOptions(bots, "资料").map((o) => o.value)).toEqual(["b2"]);
+		expect(filterOptions(bots, "WRITER").map((o) => o.value)).toEqual(["b2"]);
+		expect(filterOptions(bots, "b3").map((o) => o.value)).toEqual(["b3"]);
+	});
+
+	test("a query that matches nothing comes back empty", () => {
+		expect(filterOptions(bots, "没有这个人")).toEqual([]);
+	});
+
+	test("toggling adds at the end and removes in place", () => {
+		expect(toggleValue([], "b1")).toEqual(["b1"]);
+		expect(toggleValue(["b1"], "b2")).toEqual(["b1", "b2"]);
+		expect(toggleValue(["b1", "b2"], "b1")).toEqual(["b2"]);
+	});
+
+	test("toggling leaves the list it was given alone", () => {
+		const held = ["b1"];
+		expect(toggleValue(held, "b2")).toEqual(["b1", "b2"]);
+		expect(held).toEqual(["b1"]);
 	});
 });

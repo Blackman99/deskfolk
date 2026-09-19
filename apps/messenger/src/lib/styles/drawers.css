@@ -1,7 +1,9 @@
 /*
- * The sheet skeleton. Shell's session-settings drawer and the two sidebar flyouts are the same
- * box with different contents, so the box itself cannot live in any one of them. What each sheet
- * puts inside it belongs to that sheet's component.
+ * The sheet skeleton: Shell's session-settings drawer, and the panel cards the two panes inside
+ * it are built from. The sidebar's two create sheets used to be the other half of this and are
+ * modals now, so what is left is the drawer — the box stays here because the panes it holds
+ * (`GroupPane`, `ProfilePane`) are not the one that renders it. What each pane puts inside it
+ * belongs to that pane's component.
  */
 
 .sheet {
@@ -81,24 +83,6 @@
 .sheet textarea {
   min-height: 72px;
   resize: vertical;
-}
-
-.sheet .members {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 6px 0;
-}
-
-.sheet .members label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-weight: 500;
-  font-size: 13px;
-  color: var(--ink);
-  cursor: pointer;
 }
 
 .sheet .actions {

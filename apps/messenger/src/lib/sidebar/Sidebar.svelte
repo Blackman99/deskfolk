@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { SessionSummary } from '@real-bot/protocol';
-	import CreateGroupSheet from './CreateGroupSheet.svelte';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import { avatarSrc } from '../avatar.ts';
 	import { botAvatarColor } from '../chat/chat-view.ts';
@@ -58,7 +57,6 @@
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
-	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
 	const statusLabels = $derived({
@@ -758,14 +756,6 @@
 			</button>
 		</div>
 	</div>
-	{#if runtime.createGroupOpen}
-		<CreateGroupSheet
-			{runtime}
-			bots={visibleBots}
-			{t}
-			onClose={() => (runtime.createGroupOpen = false)}
-		/>
-	{/if}
 </aside>
 
 <style>

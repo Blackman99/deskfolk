@@ -36,6 +36,13 @@ export function fill(el: Element | null | undefined, value: string): void {
   flushSync();
 }
 
+/** A field that opens on `mousedown` — a menu, a picker — never sees a plain `click`. */
+export function mouseDown(el: Element | null | undefined): void {
+  if (!el) throw new Error("mouseDown: no element");
+  el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  flushSync();
+}
+
 export function press(el: Element | null | undefined, key: string, init: KeyboardEventInit = {}): void {
   if (!el) throw new Error("press: no element");
   el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...init }));

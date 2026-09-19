@@ -2,7 +2,7 @@
  * A pane mounted on its own with fixture data, so a screenshot means "this component looks like
  * this" and not "the database happened to contain that". No daemon, no WebSocket, no real rows.
  */
-import type { Component } from 'svelte';
+import { flushSync, type Component } from 'svelte';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import type { RouteLogRow } from '../../src/lib/overlays/route-log.ts';
@@ -219,6 +219,9 @@ const settingsProps = (over: Record<string, unknown> = {}) => ({
 	...over
 });
 
+/** The shared world's Bots all carry an image; this one adds the letter fallback to the shot. */
+const pickerBots = [...bots, aBot({ id: 'bot-4', name: '配音', duties: '配音与混音', avatar: null })];
+
 const defs: Record<StoryName, Story> = {
 	shell: {
 		component: Shell as never,
@@ -347,6 +350,23 @@ const defs: Record<StoryName, Story> = {
 	'create-group-sheet': {
 		component: CreateGroupSheet as never,
 		props: { runtime: fakeRuntime({ bots }), bots, t, onClose: () => {} }
+	},
+	/*
+	 * The member list is a floating layer the closed sheet never shows, so this story opens it the
+	 * way a person does and picks one Bot — the only shot that covers a row's avatar, the chip it
+	 * becomes, and the letter a Bot without an image falls back to.
+	 */
+	'create-group-picker': {
+		component: CreateGroupSheet as never,
+		props: { runtime: fakeRuntime({ bots: pickerBots }), bots: pickerBots, t, onClose: () => {} },
+		afterMount: (host) => {
+			host
+				.querySelector('.multi-select-field')
+				?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+			flushSync();
+			host.querySelectorAll<HTMLElement>('.multi-select-option')[1]?.click();
+			flushSync();
+		}
 	},
 	'create-bot-sheet': {
 		component: CreateBotSheet as never,
