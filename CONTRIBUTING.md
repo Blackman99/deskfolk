@@ -38,7 +38,7 @@ pnpm --filter @real-bot/messenger build
 
 改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build 与 macOS `cargo test`），不能代替本机 UI 或原生桌面验证。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 
-- 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。
+- 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。信使的组件也能测，和纯函数同一个 `pnpm test`，写法见[开发说明·信使组件测试](docs/development.md)。
 - 修改 UI、客户端状态或页面数据时，在运行中的应用或浏览器中完成实际点击、输入、提交和导航验证，覆盖共享该状态的其他界面、错误态和边界情况。
 - 修改布局或样式时检查桌面和窄屏视口；这项检查不代表支持移动端应用。
 - 涉及托盘、退出、监督与登录启动时，额外在 macOS 桌面窗口验证，浏览器不能代替原生行为检查。

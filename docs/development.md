@@ -38,6 +38,14 @@
 
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
+## 信使组件测试
+
+和纯函数用同一个 `bun test`：`apps/messenger/test-setup.ts` 里一个 Bun loader 在 import 时用 `svelte/compiler` 编译 `.svelte`（`.svelte.ts` 走 `compileModule`），happy-dom 提供 document。`bunfig.toml` 预加载它，`package.json` 的 `test` 脚本带 `--conditions browser` —— 少了它 Svelte 会解析到服务端构建，`mount()` 直接报 `lifecycle_function_unavailable`。
+
+写测试用 `src/lib/test-render.ts`：`render()` 挂载并 `flushSync`，`click` / `fill` / `press` 每次交互后也 `flushSync`（Svelte 5 批量更新，不刷新就断言不到）。假数据在 `src/lib/test-fixtures.ts`（`aBot` / `aDirect` / `aGroup` / `aSkill` / `fakeRuntime`，`fakeRuntime().calls` 记下组件调了运行时的哪些方法）。要让绑定的 prop 真的引起重渲染，用 `test-reactive.svelte.ts` 的 `reactive()` 包一层，普通对象写得进去但不会触发更新。
+
+覆盖的是拆分留下的接缝，不是重测已有的纯函数：确认框的四条关闭路径、新建群滑出「重新挂载即重置」、群组面板那份**属于外壳**的草稿（关掉再打开仍在，这是有意为之）、人设面板的自动保存与**卸载时把待发的改动冲出去**、作曲栏的 Enter / Shift+Enter / 输入法选词与上屏后那一下的接线。
+
 ## 本机工具链
 
 - Node `>=22` 与 pnpm `12.3.4`（`packageManager`）

@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
-    "test": "bun test src/lib",
+    "test": "bun test --conditions browser src/lib",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
@@ -25,10 +25,12 @@
     "shiki": "^4.4.3"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.14.5",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.63.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/sanitize-html": "^2.16.1",
+    "happy-dom": "^20.14.5",
     "svelte": "^5.56.1",
     "svelte-check": "^4.6.0",
     "typescript": "^6.0.3",
