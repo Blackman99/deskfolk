@@ -42,7 +42,7 @@
 			locale?: 'zh' | 'en';
 			theme?: 'system' | 'light' | 'dark';
 			launch_at_login?: boolean;
-		}) => Promise<void>;
+		}) => Promise<boolean>;
 		openDeleteProviderConfirm: (id: string) => void;
 		closeSettings: () => void;
 	};

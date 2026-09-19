@@ -539,10 +539,11 @@
 		locale?: 'zh' | 'en';
 		theme?: 'system' | 'light' | 'dark';
 		launch_at_login?: boolean;
-	}): Promise<void> {
+	}): Promise<boolean> {
 		saveFailed = false;
 		const error = await runtime.patchSettings(patch);
 		if (error) saveFailed = true;
+		return !error;
 	}
 
 
@@ -604,10 +605,15 @@
 		profileFailed = false;
 	}
 
+	/**
+	 * Deferred so the click that dismisses does not also reach the backdrop underneath. A timeout,
+	 * not `requestAnimationFrame`: a window in the tray paints nothing, and a dismissal should not
+	 * wait for the window to come back.
+	 */
 	function dismissDangerConfirm(): void {
-		requestAnimationFrame(() => {
+		setTimeout(() => {
 			dangerConfirm = null;
-		});
+		}, 0);
 	}
 
 	function openDeleteBotConfirm(): void {
@@ -752,7 +758,7 @@
 		onCreateBot={openCreateBot}
 		onCreateGroup={openCreateGroup}
 		onOpenArtifact={openArtifactPath}
-		onPatchTheme={(theme) => void patchImmediate({ theme })}
+		onPatchTheme={(theme) => patchImmediate({ theme })}
 	/>
 	<button
 		type="button"

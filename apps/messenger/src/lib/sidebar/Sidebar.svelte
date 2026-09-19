@@ -35,7 +35,7 @@
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
 		onOpenArtifact: (path: string) => void;
-		onPatchTheme: (theme: 'system' | 'light' | 'dark') => void;
+		onPatchTheme: (theme: 'system' | 'light' | 'dark') => Promise<boolean>;
 	};
 
 	let {
@@ -127,10 +127,17 @@
 		}
 	}
 
-	function selectTheme(theme: 'system' | 'light' | 'dark'): void {
+	/**
+	 * The theme is applied at once so the menu feels immediate, but the failure flag it sets lives
+	 * in the settings modal. If the save does not land, put the applied theme back rather than
+	 * leave the sidebar showing something the daemon never accepted.
+	 */
+	async function selectTheme(theme: 'system' | 'light' | 'dark'): Promise<void> {
+		const previous = snapshot.settings.theme || themeManager.preference;
 		themeManager.setTheme(theme);
-		onPatchTheme(theme);
 		themeMenuOpen = false;
+		const ok = await onPatchTheme(theme);
+		if (!ok) themeManager.setTheme(previous);
 	}
 
 	function onThemeMenuKeyDown(e: KeyboardEvent): void {
@@ -674,7 +681,7 @@
 						class="theme-menu-item"
 						class:is-selected={currentTheme === 'system'}
 						role="menuitem"
-						onclick={() => selectTheme('system')}
+						onclick={() => void selectTheme('system')}
 					>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
@@ -693,7 +700,7 @@
 						class="theme-menu-item"
 						class:is-selected={currentTheme === 'light'}
 						role="menuitem"
-						onclick={() => selectTheme('light')}
+						onclick={() => void selectTheme('light')}
 					>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="12" cy="12" r="5"></circle>
@@ -718,7 +725,7 @@
 						class="theme-menu-item"
 						class:is-selected={currentTheme === 'dark'}
 						role="menuitem"
-						onclick={() => selectTheme('dark')}
+						onclick={() => void selectTheme('dark')}
 					>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
