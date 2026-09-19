@@ -22,7 +22,7 @@
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
-	import { releaseNoteGroups } from './release-notes.ts';
+	import { localeSection, releaseNoteGroups } from './release-notes.ts';
 	import {
 		mapSettingsError,
 		planWorkspaceSave,
@@ -65,7 +65,9 @@
 	let activeSettingsTab = $state<'general' | 'preferences' | 'models' | 'mcp' | 'about'>('general');
 
 	/** What the release body says changed, drawn in the About card instead of only linked to. */
-	const updateChanges = $derived(releaseNoteGroups(updateChecker.result?.notes));
+	const updateChanges = $derived(
+		releaseNoteGroups(localeSection(updateChecker.result?.notes, locale))
+	);
 	let fieldErrors = $state<SettingsFieldErrors>({});
 	const generalHasError = $derived(Boolean(fieldErrors.workspace));
 	const modelsHasError = $derived(

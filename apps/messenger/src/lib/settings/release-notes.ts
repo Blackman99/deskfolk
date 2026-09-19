@@ -2,9 +2,9 @@
  * What the About card draws from a release body.
  *
  * The body is this version's CHANGELOG section, written for a release page: `###` headings,
- * long bullets, the odd fenced command. The card is a box a few lines tall inside a settings
- * modal, so it takes the headings and the bullets and leaves the prose and the fences where
- * they are. Markdown is not rendered here on purpose — the chat renderer turns anything that
+ * long bullets, the odd fenced command. It carries every locale the repo keeps, so the card
+ * picks one first. The card is a box a few lines tall inside a settings modal, so it takes the
+ * headings and the bullets and leaves the prose and the fences where they are. Markdown is not rendered here on purpose — the chat renderer turns anything that
  * looks like a workspace path into an artifact link, and a changelog is full of those.
  */
 
@@ -16,6 +16,36 @@ export type ReleaseNoteGroup = {
 
 const HEADING = /^#{1,6}\s+(.*)$/;
 const BULLET = /^[-*]\s+(.*)$/;
+const LANG_MARKER = /^<!--\s*lang:([a-z-]+)\s*-->$/;
+
+/** Every locale gets this section on top of its own. */
+const COMMON = "common";
+
+/**
+ * The release body carries one section per language, marked off with HTML comments, plus a
+ * `common` tail. Pick the one matching the app's locale.
+ *
+ * Bodies published before the markers existed have none, and come back whole — they were
+ * written in one language and that is all there is to show.
+ */
+export function localeSection(body: string | null | undefined, locale: string): string {
+  if (!body) return "";
+  const sections = new Map<string, string[]>();
+  let current: string | null = null;
+  for (const raw of body.split("\n")) {
+    const marker = LANG_MARKER.exec(raw.trim());
+    if (marker) {
+      current = marker[1]!;
+      if (!sections.has(current)) sections.set(current, []);
+      continue;
+    }
+    if (current) sections.get(current)!.push(raw);
+  }
+  if (sections.size === 0) return body;
+  const translated = [...sections].find(([lang]) => lang !== COMMON)?.[1] ?? [];
+  const chosen = sections.get(locale) ?? sections.get("en") ?? translated;
+  return [...chosen, ...(sections.get(COMMON) ?? [])].join("\n").trim();
+}
 
 /** `**bold**`, `` `code` `` and `[text](url)` read as noise in a plain list, so they come off. */
 export function plainText(markdown: string): string {

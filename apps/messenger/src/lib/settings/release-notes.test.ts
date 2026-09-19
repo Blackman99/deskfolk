@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { plainText, releaseNoteGroups } from "./release-notes.ts";
+import { localeSection, plainText, releaseNoteGroups } from "./release-notes.ts";
 
 const BODY = `未签名的 macOS 快照，不是受支持的签名安装包。
 
@@ -63,4 +63,67 @@ test("plainText drops the markers a list cannot show", () => {
   expect(plainText("**粗**、`代码` 和 [链接](https://example.com)")).toBe("粗、代码 和 链接");
   expect(plainText("*斜体* 保留文字")).toBe("斜体 保留文字");
   expect(plainText("  多余   空白  ")).toBe("多余 空白");
+});
+
+const BILINGUAL = `<!-- lang:en -->
+
+### Messenger
+
+- the composer locks in a Bot-to-Bot direct.
+
+<!-- lang:zh -->
+
+### Messenger
+
+- Bot↔Bot 私聊里输入框锁上。
+
+<!-- lang:common -->
+
+---
+
+Unsigned macOS snapshot. This is not a supported signed installer.
+`;
+
+test("the card shows the section matching the app's locale", () => {
+  expect(localeSection(BILINGUAL, "zh")).toContain("Bot↔Bot 私聊里输入框锁上。");
+  expect(localeSection(BILINGUAL, "zh")).not.toContain("the composer locks");
+  expect(localeSection(BILINGUAL, "en")).toContain("the composer locks");
+  expect(localeSection(BILINGUAL, "en")).not.toContain("私聊里输入框锁上");
+});
+
+test("every locale gets the common tail", () => {
+  for (const locale of ["zh", "en"]) {
+    expect(localeSection(BILINGUAL, locale)).toContain("Unsigned macOS snapshot");
+  }
+});
+
+/** A locale the release was never translated into still gets something to read. */
+test("an untranslated locale falls back to english", () => {
+  expect(localeSection(BILINGUAL, "fr")).toContain("the composer locks");
+});
+
+/**
+ * rc.2 and everything before it went out as one untagged language. Those bodies have to keep
+ * rendering exactly as they did, or an old release's card goes blank.
+ */
+test("a body published before the markers existed comes back whole", () => {
+  expect(localeSection(BODY, "zh")).toBe(BODY);
+  expect(localeSection(BODY, "en")).toBe(BODY);
+  expect(releaseNoteGroups(localeSection(BODY, "zh"))).toEqual(releaseNoteGroups(BODY));
+});
+
+test("no body is no section", () => {
+  expect(localeSection(null, "zh")).toBe("");
+  expect(localeSection(undefined, "zh")).toBe("");
+  expect(localeSection("", "zh")).toBe("");
+});
+
+/** The whole point: the card's groups come out in the locale, headings and all. */
+test("the groups the card draws are the locale's", () => {
+  const zh = releaseNoteGroups(localeSection(BILINGUAL, "zh"));
+  expect(zh).toEqual([{ heading: "Messenger", items: ["Bot↔Bot 私聊里输入框锁上。"] }]);
+  const en = releaseNoteGroups(localeSection(BILINGUAL, "en"));
+  expect(en).toEqual([
+    { heading: "Messenger", items: ["the composer locks in a Bot-to-Bot direct."] },
+  ]);
 });

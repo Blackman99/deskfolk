@@ -1,7 +1,24 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { changelogSection, configuredVersion, releaseBody, repoRoot } from "./release-notes.ts";
+import {
+  changelogSection,
+  configuredVersion,
+  langMarker,
+  releaseBody,
+  repoRoot,
+} from "./release-notes.ts";
+
+const ENGLISH = `# Changelog
+
+## 0.2.0 — 2026-10-01
+
+Unsigned macOS rc.
+
+### Messenger
+
+- a new one.
+`;
 
 const CHANGELOG = `# Changelog
 
@@ -36,15 +53,54 @@ test("a prerelease version matches its own section, not the one after it", () =>
 
 test("a version with no section comes back empty, and so does the body", () => {
   expect(changelogSection(CHANGELOG, "9.9.9")).toBe("");
-  expect(releaseBody(CHANGELOG, "9.9.9")).toBe("");
+  expect(releaseBody(CHANGELOG, null, "9.9.9")).toBe("");
 });
 
+const CHANGELOG_ZH = `# 更新日志
+
+## 0.2.0 — 2026-10-01
+
+未签名的 macOS rc。
+
+### Messenger
+
+- 新的一条。
+`;
+
 test("the body carries the section first and the unsigned note after it", () => {
-  const body = releaseBody(CHANGELOG, "0.2.0");
-  expect(body.startsWith("未签名的 macOS rc。")).toBe(true);
+  const body = releaseBody(CHANGELOG, null, "0.2.0");
+  expect(body.startsWith(langMarker("en"))).toBe(true);
   expect(body).toContain("- 新的一条。");
   expect(body).toContain("Unsigned macOS snapshot");
   expect(body.indexOf("- 新的一条。")).toBeLessThan(body.indexOf("Unsigned macOS snapshot"));
+});
+
+/** One release, one body, two locales: the card picks, so the body has to carry both. */
+test("the body carries each language behind its own marker", () => {
+  const body = releaseBody(ENGLISH, CHANGELOG_ZH, "0.2.0");
+  expect(body).toContain(`${langMarker("en")}\n\nUnsigned macOS rc.`);
+  expect(body).toContain("- a new one.");
+  expect(body).toContain(`${langMarker("zh")}\n\n未签名的 macOS rc。`);
+  expect(body).toContain("- 新的一条。");
+  expect(body.indexOf(langMarker("en"))).toBeLessThan(body.indexOf(langMarker("zh")));
+  expect(body.indexOf(langMarker("zh"))).toBeLessThan(body.indexOf(langMarker("common")));
+  expect(body).toContain("Unsigned macOS snapshot");
+});
+
+/** A missing translation is not worth blocking a release over; that locale falls back in the card. */
+test("a changelog with no translation still ships, with only the english marker", () => {
+  const body = releaseBody(ENGLISH, CHANGELOG_ZH, "0.9.9");
+  expect(body).toBe("");
+
+  const partial = releaseBody(ENGLISH, "# 更新日志\n", "0.2.0");
+  expect(partial).toContain(langMarker("en"));
+  expect(partial).not.toContain(langMarker("zh"));
+  expect(partial).toContain(langMarker("common"));
+});
+
+/** The English section decides whether there is a release at all. */
+test("a version missing from the english changelog comes back empty even when translated", () => {
+  expect(releaseBody("# Changelog\n", CHANGELOG_ZH, "0.2.0")).toBe("");
 });
 
 /**

@@ -21,6 +21,7 @@
 
 ### Desktop
 
+- 「关于」里的更新卡片跟着应用语言走。一个 release 只有一份正文而应用有两种语言，所以正文两种都带：`release-notes.ts` 从 `CHANGELOG.md` 和 `CHANGELOG.zh.md` 各取该版本那一段，用 HTML 注释分段标好——注释在 release 页面上看不见，那边就是两段叠着显示。卡片按 `settings.locale` 挑对应那段，没翻译过的语言落回英文，末尾公共部分两种语言都带上。标记出现之前发布的正文（rc.2 及更早）没有标记，整段原样渲染，和以前一模一样。缺翻译不挡发布；`CHANGELOG.md` 里缺该版本仍然挡。
 - release 正文改成自动从 `CHANGELOG.md` 里取该版本那一段（`apps/desktop/scripts/release-notes.ts`），不再是一句「去看 CHANGELOG 和 ROADMAP」；`check_for_update` 把正文随检查结果一起回给信使。CHANGELOG 里没有该版本的段落时打包任务直接失败，免得发出一个空的更新说明。
 
 ## 0.1.0-rc.2 — 2026-09-19

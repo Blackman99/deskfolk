@@ -1,14 +1,18 @@
 /**
- * The body of a GitHub release: this version's CHANGELOG section, followed by the note about the
- * build being unsigned.
+ * The body of a GitHub release: this version's CHANGELOG section in every language the repo
+ * keeps, followed by the note about the build being unsigned.
  *
  * It used to be the note alone, pointing at CHANGELOG.md and ROADMAP.md. The app now renders the
  * release body in the About card when it finds an update, so the body has to carry what actually
  * changed — a pointer is no use to someone reading it inside the app.
  *
+ * A release has one body and the app has two locales, so the body carries both and the card
+ * picks. The languages are marked off with HTML comments: invisible wherever the body is
+ * rendered as Markdown, so the release page just shows the sections stacked.
+ *
  * `release.yml` runs this before `tauri-action` and hands the output to `releaseBody`.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,9 +45,28 @@ export function changelogSection(changelog: string, version: string): string {
   return section;
 }
 
-export function releaseBody(changelog: string, version: string): string {
-  const section = changelogSection(changelog, version);
-  return section ? `${section}\n\n${UNSIGNED_NOTE}\n` : "";
+/** Locale tag for a body section. `common` is the part every locale gets. */
+export function langMarker(lang: string): string {
+  return `<!-- lang:${lang} -->`;
+}
+
+/**
+ * The English section is what decides whether there is a release at all — a version missing from
+ * CHANGELOG.md is a changelog nobody rolled. A missing translation just means that locale falls
+ * back to English in the card, which is better than blocking the release over it.
+ */
+export function releaseBody(
+  changelogEn: string,
+  changelogZh: string | null,
+  version: string,
+): string {
+  const en = changelogSection(changelogEn, version);
+  if (!en) return "";
+  const zh = changelogZh ? changelogSection(changelogZh, version) : "";
+  const parts = [`${langMarker("en")}\n\n${en}`];
+  if (zh) parts.push(`${langMarker("zh")}\n\n${zh}`);
+  parts.push(`${langMarker("common")}\n\n${UNSIGNED_NOTE}`);
+  return `${parts.join("\n\n")}\n`;
 }
 
 export function repoRoot(): string {
@@ -60,10 +83,18 @@ export function configuredVersion(root: string = repoRoot()): string {
   return config.version;
 }
 
+function readIfPresent(path: string): string | null {
+  return existsSync(path) ? readFileSync(path, "utf8") : null;
+}
+
 if (import.meta.main) {
   const root = repoRoot();
   const version = configuredVersion(root);
-  const body = releaseBody(readFileSync(join(root, "CHANGELOG.md"), "utf8"), version);
+  const body = releaseBody(
+    readFileSync(join(root, "CHANGELOG.md"), "utf8"),
+    readIfPresent(join(root, "CHANGELOG.zh.md")),
+    version,
+  );
   if (!body) {
     // Releasing without rolling the changelog would ship an empty update card, so stop here
     // rather than publish one.
