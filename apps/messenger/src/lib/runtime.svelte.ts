@@ -36,6 +36,8 @@ export class MessengerRuntime {
   connection = $state<Connection>("disconnected");
   snapshot = $state<Snapshot>(emptySnapshot());
   selectedId = $state<string | null>(null);
+  /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
+  previewRelpath = $state<string | null>(null);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
   createGroupOpen = $state(false);

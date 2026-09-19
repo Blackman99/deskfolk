@@ -27,7 +27,8 @@
 		youBotPeer
 	} from './sidebar/session-groups.ts';
 	import { sessionTitle } from './sidebar/session-title.ts';
-		import type { MessengerRuntime } from './runtime.svelte.ts';
+	import { sanitizePreviewPath } from './session-url.ts';
+	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
@@ -90,11 +91,6 @@
 		session: SessionSummary;
 		x: number;
 		y: number;
-	} | null>(null);
-	let artifactPreview = $state<{
-		relpath: string;
-		attachment: Attachment | null;
-		siblings: Attachment[];
 	} | null>(null);
 	let workspaceOpen = $state(false);
 	let workspaceSelected = $state('');
@@ -436,13 +432,19 @@
 		return att ? [att] : [];
 	}
 
-	function openArtifactPath(relpath: string, att?: Attachment): void {
-		const attachment = att ?? findAttachmentByPath(relpath);
-		artifactPreview = {
+	const artifactPreview = $derived.by(() => {
+		const relpath = runtime.previewRelpath;
+		if (!relpath) return null;
+		const attachment = findAttachmentByPath(relpath);
+		return {
 			relpath,
 			attachment,
 			siblings: siblingsForPath(relpath, attachment),
 		};
+	});
+
+	function openArtifactPath(relpath: string, _att?: Attachment): void {
+		runtime.previewRelpath = sanitizePreviewPath(relpath);
 	}
 
 	function toggleWorkspaceExplorer(): void {
@@ -467,7 +469,7 @@
 	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 
 	function closeArtifactPreview(): void {
-		artifactPreview = null;
+		runtime.previewRelpath = null;
 	}
 
 	function startPreviewResize(ev: PointerEvent): void {
@@ -546,38 +548,6 @@
 		if (error) saveFailed = true;
 		return !error;
 	}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 	function openProfile(botId: string): void {
 		if (!botsById.has(botId)) return;
