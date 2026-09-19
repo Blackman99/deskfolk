@@ -147,3 +147,69 @@ test("deleting a skill asks the shell for a confirm that knows which skill", asy
   expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["skill-9"]);
   close();
 });
+
+test("head add button opens the skill modal, cancel button closes it", () => {
+  const { host, close } = open();
+  expect(host.querySelector(".skill-modal")).toBeNull();
+  click(host.querySelector(".skill-head-add-btn"));
+  expect(host.querySelector(".skill-modal")).not.toBeNull();
+  expect(host.querySelector("#skill-modal-title")?.textContent?.trim()).toBe(t.sidebar.skillAdd);
+
+  click(buttonByText(host, t.sidebar.skillCancel));
+  expect(host.querySelector(".skill-modal")).toBeNull();
+  close();
+});
+
+test("row edit button opens the modal with skill data; row delete button invokes danger confirm", async () => {
+  const skill = aSkill({ id: "skill-1", name: "代码审查", description: "审查PR变更" });
+  const bot = aBot();
+  const runtime = fakeRuntime({ bots: [bot], skills: [skill] });
+  runtime.profileBotId = bot.id;
+  let asked: { kind: string; run: () => Promise<void> } | null = null;
+  const { host, close } = render(ProfilePane, {
+    runtime,
+    bot,
+    t,
+    modelOptions: [],
+    selectedKind: "you-bot",
+    profileFailed: false,
+    openDangerConfirm: (kind: "skill", run: () => Promise<void>) => (asked = { kind, run }),
+    clearDanger: () => {},
+    onDeleteBot: () => {},
+    onClearHistory: () => {},
+  });
+
+  // Check row action buttons exist and are visible
+  const editBtn = host.querySelector(".skill-action-btn.edit");
+  const deleteBtn = host.querySelector(".skill-action-btn.delete");
+  expect(editBtn).not.toBeNull();
+  expect(deleteBtn).not.toBeNull();
+
+  // Click edit button -> opens modal with prefilled data
+  click(editBtn);
+  expect(host.querySelector(".skill-modal")).not.toBeNull();
+  expect((host.querySelector("#skill-name") as HTMLInputElement).value).toBe("代码审查");
+  expect((host.querySelector("#skill-description") as HTMLTextAreaElement).value).toBe("审查PR变更");
+
+  // Close modal
+  click(buttonByText(host, t.sidebar.skillCancel));
+  expect(host.querySelector(".skill-modal")).toBeNull();
+
+  // Click row delete button directly -> opens danger confirm
+  click(deleteBtn);
+  expect(asked).not.toBeNull();
+  expect(asked!.kind).toBe("skill");
+  await asked!.run();
+  expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["skill-1"]);
+  close();
+});
+
+test("empty state shows guidance and add button when bot has no skills", () => {
+  const { host, close } = open({ skills: [] });
+  expect(host.querySelector(".skill-empty-card")).not.toBeNull();
+  expect(host.querySelector(".skill-empty-text")?.textContent?.trim()).toBe(t.sidebar.skillsEmpty);
+
+  click(host.querySelector(".skill-empty-add-btn"));
+  expect(host.querySelector(".skill-modal")).not.toBeNull();
+  close();
+});

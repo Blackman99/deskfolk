@@ -323,6 +323,15 @@
 	}
 </script>
 
+<svelte:window
+	onkeydown={(e) => {
+		if (skillEditor && e.key === 'Escape' && !skillBusy) {
+			e.stopPropagation();
+			closeSkillEditor();
+		}
+	}}
+/>
+
 {#if profileFailed}
 	<div class="panel-alert is-error">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -434,15 +443,44 @@
 
 <div class="panel-card">
 	<div class="panel-card-head">
-		<span class="panel-card-title">{t.sidebar.skills}</span>
-		<span class="panel-counter-badge">{profileSkills.length}</span>
+		<div class="flex items-center gap-2">
+			<span class="panel-card-title">{t.sidebar.skills}</span>
+			<span class="panel-counter-badge">{profileSkills.length}</span>
+		</div>
+		<button
+			type="button"
+			class="skill-head-add-btn"
+			onclick={openAddSkill}
+			title={t.sidebar.skillAdd}
+			aria-label={t.sidebar.skillAdd}
+		>
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+				<line x1="12" y1="5" x2="12" y2="19"></line>
+				<line x1="5" y1="12" x2="19" y2="12"></line>
+			</svg>
+			<span>{t.sidebar.skillAdd}</span>
+		</button>
 	</div>
-	<div class="panel-card-body skill-card-body flex flex-col gap-4">
+	<div class="panel-card-body skill-card-body flex flex-col gap-3">
 		{#if skillFailed && !skillEditor}
 			<p class="field-error" role="alert">{t.sidebar.saveFailed}</p>
 		{/if}
-		{#if profileSkills.length === 0 && !skillEditor}
-			<p class="muted skill-empty m-0 text-13">{t.sidebar.skillsEmpty}</p>
+		{#if profileSkills.length === 0}
+			<div class="skill-empty-card">
+				<div class="skill-empty-icon">
+					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+					</svg>
+				</div>
+				<p class="skill-empty-text">{t.sidebar.skillsEmpty}</p>
+				<button type="button" class="btn-secondary skill-empty-add-btn" onclick={openAddSkill}>
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="12" y1="5" x2="12" y2="19"></line>
+						<line x1="5" y1="12" x2="19" y2="12"></line>
+					</svg>
+					<span>{t.sidebar.skillAdd}</span>
+				</button>
+			</div>
 		{/if}
 		{#each profileSkills as skill (skill.id)}
 			<div class="skill-row" class:is-disabled={!skill.enabled} class:is-open={skillEditor === skill.id}>
@@ -452,106 +490,60 @@
 					aria-label={`${t.sidebar.skillEdit}: ${skill.name}`}
 					onclick={() => openEditSkill(skill.id)}
 				>
-					<span class="skill-name" title={skill.name}>{skill.name}</span>
-					<span class="skill-desc text-12 text-muted" title={skill.description}>{skill.description}</span>
+					<div class="skill-row-icon" class:is-disabled={!skill.enabled}>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+						</svg>
+					</div>
+					<div class="skill-row-content">
+						<div class="skill-row-title-line">
+							<span class="skill-name" title={skill.name}>{skill.name}</span>
+							{#if skill.uses && skill.uses.length > 0}
+								<span class="skill-uses-badge" title={skill.uses.join(', ')}>MCP</span>
+							{/if}
+						</div>
+						<span class="skill-desc" title={skill.description}>{skill.description}</span>
+					</div>
 				</button>
-				<label class="mcp-enable-label">
-					<input
-						type="checkbox"
-						aria-label={`${t.sidebar.skillEnabled}: ${skill.name}`}
-						checked={skill.enabled}
-						onchange={(event) => {
-							event.currentTarget.checked = skill.enabled;
-							void toggleSkillEnabled(skill.id, !skill.enabled);
-						}}
-					/>
-					{t.sidebar.skillEnabled}
-				</label>
+				<div class="skill-row-actions">
+					<label class="mcp-enable-label" title={t.sidebar.skillEnabled}>
+						<input
+							type="checkbox"
+							aria-label={`${t.sidebar.skillEnabled}: ${skill.name}`}
+							checked={skill.enabled}
+							onchange={(event) => {
+								event.currentTarget.checked = skill.enabled;
+								void toggleSkillEnabled(skill.id, !skill.enabled);
+							}}
+						/>
+						<span class="skill-enable-text">{t.sidebar.skillEnabled}</span>
+					</label>
+					<button
+						type="button"
+						class="skill-action-btn edit"
+						aria-label={`${t.sidebar.skillEdit}: ${skill.name}`}
+						title={t.sidebar.skillEdit}
+						onclick={() => openEditSkill(skill.id)}
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+						</svg>
+					</button>
+					<button
+						type="button"
+						class="skill-action-btn delete"
+						aria-label={`${t.sidebar.skillDelete}: ${skill.name}`}
+						title={t.sidebar.skillDelete}
+						onclick={() => openDeleteSkillConfirm(skill.id)}
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="3 6 5 6 21 6"></polyline>
+							<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+						</svg>
+					</button>
+				</div>
 			</div>
 		{/each}
-		{#if skillEditor}
-			<div class="skill-editor">
-				<p class="muted skill-editor-title m-0 text-12 font-semibold uppercase tracking-[0.04em]">
-					{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
-				</p>
-				{#if skillFailed}
-					<p class="field-error" role="alert">{t.sidebar.saveFailed}</p>
-				{/if}
-				<div class="form-group">
-					<label for="skill-name">{t.sidebar.skillName}</label>
-					<input
-						id="skill-name"
-						type="text"
-						bind:value={skillDraft.name}
-						disabled={skillBusy}
-					/>
-					{#if skillErrors.name}
-						<p class="field-error">{skillNameCopy(skillErrors.name)}</p>
-					{/if}
-				</div>
-				<div class="form-group">
-					<label for="skill-description">{t.sidebar.skillDescription}</label>
-					<textarea
-						id="skill-description"
-						bind:value={skillDraft.description}
-						rows="2"
-						disabled={skillBusy}
-					></textarea>
-					{#if skillErrors.description}
-						<p class="field-error">{t.sidebar.skillDescriptionEmpty}</p>
-					{/if}
-				</div>
-				<div class="form-group">
-					<label for="skill-body">{t.sidebar.skillBody}</label>
-					<textarea
-						id="skill-body"
-						bind:value={skillDraft.body}
-						rows="6"
-						disabled={skillBusy}
-					></textarea>
-					{#if skillErrors.body}
-						<p class="field-error">{t.sidebar.skillBodyEmpty}</p>
-					{/if}
-				</div>
-				<div class="form-group">
-					<label for="skill-uses">{t.sidebar.skillUses}</label>
-					<input
-						id="skill-uses"
-						type="text"
-						bind:value={skillDraft.uses}
-						placeholder={t.sidebar.skillUsesPlaceholder}
-						disabled={skillBusy}
-					/>
-					<p class="muted skill-editor-hint mt-2 mx-0 mb-0 text-12 leading-[1.45]">{t.sidebar.skillUsesHint}</p>
-				</div>
-				<label class="mcp-enable-label skill-editor-enabled mt-1">
-					<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
-					{t.sidebar.skillEnabled}
-				</label>
-				<div class="skill-editor-actions flex flex-wrap gap-4">
-					<button type="button" class="btn-primary" disabled={skillBusy} onclick={() => void saveSkill()}>
-						{t.sidebar.skillSave}
-					</button>
-					<button type="button" class="btn-secondary" disabled={skillBusy} onclick={closeSkillEditor}>
-						{t.sidebar.skillCancel}
-					</button>
-					{#if skillEditor !== 'add'}
-						<button
-							type="button"
-							class="deny"
-							disabled={skillBusy}
-							onclick={() => openDeleteSkillConfirm(skillEditor as string)}
-						>
-							{t.sidebar.skillDelete}
-						</button>
-					{/if}
-				</div>
-			</div>
-		{:else}
-			<button type="button" class="btn-secondary skill-add self-start" onclick={openAddSkill}>
-				{t.sidebar.skillAdd}
-			</button>
-		{/if}
 	</div>
 </div>
 
@@ -617,72 +609,460 @@
 	</div>
 </div>
 
+{#if skillEditor}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="modal-backdrop skill-modal-backdrop"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="skill-modal-title"
+		tabindex="-1"
+		onclick={(e) => {
+			e.stopPropagation();
+			if (e.target === e.currentTarget && !skillBusy) closeSkillEditor();
+		}}
+		onpointerdown={(e) => e.stopPropagation()}
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="modal-dialog skill-modal"
+			onclick={(e) => e.stopPropagation()}
+			onpointerdown={(e) => e.stopPropagation()}
+		>
+			<div class="modal-head">
+				<h2 id="skill-modal-title">
+					{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
+				</h2>
+				<button
+					type="button"
+					class="modal-close"
+					title={t.common.close}
+					disabled={skillBusy}
+					onclick={closeSkillEditor}
+				>✕</button>
+			</div>
+			<div class="modal-body skill-modal-body">
+				{#if skillFailed}
+					<div class="panel-alert is-error" role="alert">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<circle cx="12" cy="12" r="10"></circle>
+							<line x1="12" y1="8" x2="12" y2="12"></line>
+							<line x1="12" y1="16" x2="12.01" y2="16"></line>
+						</svg>
+						<span>{t.sidebar.saveFailed}</span>
+					</div>
+				{/if}
+
+				<div class="form-group">
+					<label for="skill-name" class="field-label">
+						{t.sidebar.skillName} <span class="required-star">*</span>
+					</label>
+					<input
+						id="skill-name"
+						type="text"
+						bind:value={skillDraft.name}
+						placeholder="例如：web_search, git_commit"
+						disabled={skillBusy}
+					/>
+					{#if skillErrors.name}
+						<p class="field-error">{skillNameCopy(skillErrors.name)}</p>
+					{/if}
+				</div>
+
+				<div class="form-group">
+					<label for="skill-description" class="field-label">
+						{t.sidebar.skillDescription} <span class="required-star">*</span>
+					</label>
+					<textarea
+						id="skill-description"
+						bind:value={skillDraft.description}
+						rows="2"
+						placeholder="描述此技能适用的场景或触发条件"
+						disabled={skillBusy}
+					></textarea>
+					{#if skillErrors.description}
+						<p class="field-error">{t.sidebar.skillDescriptionEmpty}</p>
+					{/if}
+				</div>
+
+				<div class="form-group">
+					<label for="skill-body" class="field-label">
+						{t.sidebar.skillBody} <span class="required-star">*</span>
+					</label>
+					<textarea
+						id="skill-body"
+						class="skill-body-textarea"
+						bind:value={skillDraft.body}
+						rows="7"
+						placeholder="输入具体的 Markdown 指令、规则或提示词内容"
+						disabled={skillBusy}
+					></textarea>
+					{#if skillErrors.body}
+						<p class="field-error">{t.sidebar.skillBodyEmpty}</p>
+					{/if}
+				</div>
+
+				<div class="form-group">
+					<label for="skill-uses" class="field-label">{t.sidebar.skillUses}</label>
+					<input
+						id="skill-uses"
+						type="text"
+						bind:value={skillDraft.uses}
+						placeholder={t.sidebar.skillUsesPlaceholder}
+						disabled={skillBusy}
+					/>
+					<p class="muted field-hint">{t.sidebar.skillUsesHint}</p>
+				</div>
+
+				<div class="skill-modal-enable-row">
+					<label class="mcp-enable-label">
+						<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
+						<span>{t.sidebar.skillEnabled}</span>
+					</label>
+				</div>
+			</div>
+
+			<div class="modal-foot skill-modal-foot">
+				<div class="skill-modal-foot-left">
+					{#if skillEditor !== 'add'}
+						<button
+							type="button"
+							class="deny skill-delete-btn"
+							disabled={skillBusy}
+							onclick={() => openDeleteSkillConfirm(skillEditor as string)}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<polyline points="3 6 5 6 21 6"></polyline>
+								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+							</svg>
+							<span>{t.sidebar.skillDelete}</span>
+						</button>
+					{/if}
+				</div>
+				<div class="skill-modal-foot-right">
+					<button type="button" class="btn-cancel" disabled={skillBusy} onclick={closeSkillEditor}>
+						{t.sidebar.skillCancel}
+					</button>
+					<button type="button" class="btn-primary" disabled={skillBusy} onclick={() => void saveSkill()}>
+						{t.sidebar.skillSave}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
+	.skill-head-add-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 10px;
+		font-size: 11.5px;
+		font-weight: 600;
+		color: var(--ink-secondary);
+		background: var(--btn-secondary-bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		line-height: 1;
+	}
+
+	.skill-head-add-btn:hover {
+		background: var(--line-subtle);
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.skill-empty-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 20px 16px;
+		border: 1px dashed var(--line);
+		border-radius: var(--radius-md);
+		background: var(--sidebar-bg);
+		text-align: center;
+		gap: 8px;
+	}
+
+	.skill-empty-icon {
+		color: var(--muted);
+		opacity: 0.7;
+	}
+
+	.skill-empty-text {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--muted);
+	}
+
+	.skill-empty-add-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 12px;
+		font-size: 12px;
+		font-weight: 600;
+		margin-top: 2px;
+	}
 
 	.skill-row {
-	  display: flex;
-	  align-items: center;
-	  gap: 12px;
-	  min-width: 0;
-	  padding-right: 12px;
-	  border: 1px solid var(--line);
-	  border-radius: var(--radius-md);
-	  background: var(--pane);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		padding: 6px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		transition: all 0.15s ease;
 	}
 
 	.skill-row:hover,
 	.skill-row:focus-within {
-	  border-color: var(--accent-border);
+		border-color: var(--accent-border);
+		box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
 	}
 
 	.skill-row.is-disabled {
-	  background: var(--sidebar-bg);
+		opacity: 0.65;
+		background: var(--sidebar-bg);
 	}
 
 	.skill-row.is-open {
-	  border-color: var(--accent-border);
+		border-color: var(--accent);
 	}
 
 	.skill-open {
-	  display: flex;
-	  flex-direction: column;
-	  gap: 4px;
-	  flex: 1;
-	  min-width: 0;
-	  padding: 12px;
-	  border: 0;
-	  border-radius: var(--radius-md);
-	  background: transparent;
-	  text-align: left;
-	  color: var(--ink);
-	  cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex: 1;
+		min-width: 0;
+		padding: 4px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		text-align: left;
+		color: var(--ink);
+		cursor: pointer;
 	}
 
-	.skill-name,
-	.skill-desc {
-	  overflow: hidden;
-	  text-overflow: ellipsis;
-	  white-space: nowrap;
-	  max-width: 100%;
+	.skill-row-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: var(--radius-sm);
+		background: var(--accent-tint, rgba(37, 99, 235, 0.08));
+		color: var(--accent);
+		flex-shrink: 0;
+		transition: all 0.15s ease;
+	}
+
+	.skill-row-icon.is-disabled {
+		background: var(--line-subtle);
+		color: var(--muted);
+	}
+
+	.skill-row-content {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.skill-row-title-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
 	}
 
 	.skill-name {
-	  font-size: 13.5px;
-	  font-weight: 600;
+		font-size: 13px;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
+		color: var(--ink);
+	}
+
+	.skill-open:hover .skill-name {
+		color: var(--accent);
+	}
+
+	.skill-uses-badge {
+		font-size: 9.5px;
+		font-weight: 700;
+		padding: 1px 5px;
+		border-radius: 4px;
+		background: var(--line-subtle);
+		color: var(--ink-secondary);
+		border: 1px solid var(--line);
+		text-transform: uppercase;
+		flex-shrink: 0;
+	}
+
+	.skill-desc {
+		font-size: 11.5px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
+	}
+
+	.skill-row-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 
 	.skill-row .mcp-enable-label {
-	  flex-shrink: 0;
-	  white-space: nowrap;
-	  font-size: 12px;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11.5px;
+		color: var(--ink-secondary);
+		cursor: pointer;
+		user-select: none;
+		margin: 0;
+		padding-right: 4px;
 	}
 
-	.skill-editor {
-	  display: flex;
-	  flex-direction: column;
-	  gap: 10px;
-	  padding-top: 8px;
-	  border-top: 1px solid var(--line-subtle);
+	.skill-action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--line);
+		background: var(--btn-secondary-bg);
+		color: var(--ink-secondary);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		padding: 0;
+	}
+
+	.skill-action-btn:hover {
+		background: var(--line-subtle);
+		color: var(--ink);
+		border-color: var(--line-hover);
+	}
+
+	.skill-action-btn.edit:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.skill-action-btn.delete:hover {
+		background: var(--danger-bg);
+		border-color: var(--danger-line);
+		color: var(--danger);
+	}
+
+	/* Modal Dialog Styles */
+	.skill-modal-backdrop {
+		z-index: 105;
+	}
+
+	.modal-dialog.skill-modal {
+		width: 520px;
+		max-width: 94vw;
+		max-height: 88vh;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.skill-modal-body {
+		padding: 18px 22px;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		overflow-y: auto;
+	}
+
+	.skill-modal-body .form-group {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.skill-modal-body .field-label {
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ink-secondary);
+		margin: 0;
+	}
+
+	.required-star {
+		color: var(--danger);
+		font-weight: 700;
+	}
+
+	.skill-body-textarea {
+		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+		font-size: 12.5px;
+		line-height: 1.5;
+		min-height: 140px;
+		resize: vertical;
+	}
+
+	.skill-modal-enable-row {
+		padding-top: 4px;
+	}
+
+	.skill-modal-enable-row .mcp-enable-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ink);
+		cursor: pointer;
+	}
+
+	.skill-modal-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 20px;
+		border-top: 1px solid var(--line);
+		background: var(--sidebar-bg);
+		gap: 12px;
+	}
+
+	.skill-modal-foot-left,
+	.skill-modal-foot-right {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.skill-delete-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.skill-modal-foot-right .btn-primary {
+		background: var(--accent);
+		color: #ffffff;
+		border-color: transparent;
+		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
+	}
+
+	.skill-modal-foot-right .btn-primary:hover:not(:disabled) {
+		background: var(--accent-hover);
 	}
 
 	.profile-save-state.is-error {
