@@ -449,11 +449,11 @@
 	}
 </script>
 
-<div class="stream-stage">
+<div class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
 	<div class="stream" bind:this={streamContainer} onscroll={onStreamScroll} onscrollend={onStreamScrollEnd}>
 		<div class="stream-inner" bind:this={streamInner}>
 	{#if !selected}
-		<div class="empty-state">
+		<div class="empty-state m-auto flex flex-col items-center justify-center text-center py-20 px-10 max-w-[360px]">
 			<div class="empty-icon" aria-hidden="true">
 				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -463,7 +463,7 @@
 			<p class="muted">{t.top.pickSession}</p>
 		</div>
 	{:else if stream.length === 0}
-		<div class="empty-chat-welcome">
+		<div class="empty-chat-welcome m-auto flex flex-col items-center text-center py-16 px-10 max-w-[460px]">
 			{#if selectedKind === 'you-bot' && selectedPeerBot}
 				{@const pal = botAvatarColor(selectedPeerBot.id)}
 				<button
@@ -484,7 +484,7 @@
 					</span>
 					<span class="welcome-title">{selectedPeerBot.name}</span>
 				</button>
-				<div class="welcome-badges">
+				<div class="welcome-badges flex items-center gap-3 mb-6">
 					<span class="bot-badge">{t.chat.botBadge}</span>
 					{#if selectedPeerBot.model}
 						<span class="model-badge mono">{selectedPeerBot.model}</span>
@@ -492,11 +492,11 @@
 				</div>
 				{#if selectedPeerBot.duties}
 					<div class="welcome-duties">
-						<p class="duties-text">{selectedPeerBot.duties}</p>
+						<p class="duties-text m-0 text-13 text-ink-secondary leading-normal text-left">{selectedPeerBot.duties}</p>
 					</div>
 				{/if}
 				{#if starterOptions.length > 0}
-					<div class="welcome-starters">
+					<div class="welcome-starters flex flex-col gap-4 w-full mb-6">
 						{#each starterOptions as starter (starter.id)}
 							<button
 								type="button"
@@ -526,7 +526,7 @@
 			{@const prevGroup = gIdx > 0 ? groupedStream[gIdx - 1] : null}
 			{@const prevDate = prevGroup ? prevGroup.created_at : null}
 			{#if !prevDate || isDifferentDay(prevDate, groupDate)}
-				<div class="date-divider">
+				<div class="date-divider flex items-center justify-center mt-6 mx-0 mb-2 relative">
 					<span class="date-pill">{formatDateDivider(groupDate, locale)}</span>
 				</div>
 			{/if}
@@ -534,7 +534,7 @@
 			{#if group.kind === 'replying'}
 				{@const block = group.items[0]}
 				{#if block.type === 'replying'}
-					<div class="replying-list" aria-live="polite">
+					<div class="replying-list flex flex-col gap-5 self-start pt-2 px-2 pb-1 mt-[-8px]" aria-live="polite">
 						<ReplyingIndicator
 							entries={block.entries}
 							{botsById}
@@ -599,7 +599,7 @@
 								<div class="who">{t.stream.ask} · {who(singleMsg.message)}</div>
 								<div class="body">{singleMsg.message.body}</div>
 								{#if isPendingAsk(singleMsg.message, snapshot.turns)}
-									<div class="ask-reply">
+									<div class="ask-reply mt-5 flex gap-4">
 										<input
 											type="text"
 											placeholder={t.stream.reply}
@@ -672,7 +672,7 @@
 										{/if}
 									</label>
 								{/if}
-								<div class="approval-acts">
+								<div class="approval-acts flex gap-4 mt-7 flex-wrap">
 									<button
 										type="button"
 										onclick={() => void resolveApprovalCard(card, 'allow_once')}
@@ -752,7 +752,7 @@
 									{formatMessageTime(singleMsg.message.created_at)}
 								</span>
 							</div>
-							<div class="msg-interrupt-row">
+							<div class="msg-interrupt-row flex items-center gap-4 w-fit max-w-full">
 								<article class="msg is-system">
 									<div class="who">{who(singleMsg.message)}</div>
 									<div class="body">{singleMsg.message.body}</div>
@@ -802,17 +802,17 @@
 								<span class="sender-name">{t.common.you}</span>
 							{/if}
 						</div>
-						<div class="msg-segments is-user-segments">
+						<div class="msg-segments is-user-segments flex flex-col gap-4 w-full">
 							{#each group.items as item (transcriptItemKey(item))}
 								{#if item.type === 'message'}
 									{@const rxGroups = groupReactions(item.message.reactions, USER_MEMBER)}
 									<div
-										class="msg-segment is-user-segment"
+										class="msg-segment is-user-segment flex flex-col relative w-fit max-w-full"
 										data-message-id={item.message.id}
 										class:is-search-hit={runtime.highlightedMessageId === item.message.id}
 									>
 										{#if isMulti}
-											<div class="segment-meta is-right">
+											<div class="segment-meta is-right flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
 												<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
 													{formatMessageTime(item.message.created_at)}
 												</span>
@@ -839,7 +839,7 @@
 													onclick={(e) => copyMessageBody(item.message.id, item.message.body, e)}
 												>
 													{#if copiedMessageId === item.message.id}
-														<span class="copied-badge">✓ {t.chat.copied}</span>
+														<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
 													{:else}
 														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
 													{/if}
@@ -867,7 +867,7 @@
 											{/if}
 										</article>
 										{#if rxGroups.length > 0}
-											<div class="rx-row is-right">
+											<div class="rx-row is-right flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}
 													<button
 														type="button"
@@ -876,7 +876,7 @@
 														onclick={() => void runtime.toggleReaction(item.message.id, rx.emoji)}
 													>
 														<span class="rx-emoji">{rx.emoji}</span>
-														<span class="rx-count mono">{rx.count}</span>
+														<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
 													</button>
 												{/each}
 											</div>
@@ -965,7 +965,7 @@
 								{@const single = group.items[0]}
 								{#if single.type === 'streaming'}
 									{@const liveElapsed = formatLiveDuration(single.turn.created_at, nowMs)}
-									<span class="streaming-status">
+									<span class="streaming-status inline-flex items-center gap-2 text-11p5 text-accent font-medium">
 										<span class="pulse"></span>
 										{t.stream.streaming}
 									</span>
@@ -996,21 +996,21 @@
 							{/if}
 						</div>
 
-						<div class="msg-segments">
+						<div class="msg-segments flex flex-col gap-4 w-full">
 							{#each group.items as item, sIdx (transcriptItemKey(item))}
 								<div
-									class="msg-segment"
+									class="msg-segment flex flex-col relative w-fit max-w-full"
 									class:is-streaming={item.type === 'streaming'}
 									data-message-id={item.type === 'message' ? item.message.id : undefined}
 									class:is-search-hit={item.type === 'message' &&
 										runtime.highlightedMessageId === item.message.id}
 								>
 									{#if isMulti}
-										<div class="segment-meta">
+										<div class="segment-meta flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
 											<span class="segment-tag">{t.chat.segmentPart(sIdx + 1)}</span>
 											{#if item.type === 'streaming'}
 												{@const liveElapsed = formatLiveDuration(item.turn.created_at, nowMs)}
-												<span class="streaming-status">
+												<span class="streaming-status inline-flex items-center gap-2 text-11p5 text-accent font-medium">
 													<span class="pulse"></span>
 													{t.stream.streaming}
 												</span>
@@ -1075,7 +1075,7 @@
 													onclick={(e) => copyMessageBody(item.message.id, item.message.body, e)}
 												>
 													{#if copiedMessageId === item.message.id}
-														<span class="copied-badge">✓ {t.chat.copied}</span>
+														<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
 													{:else}
 														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
 													{/if}
@@ -1103,7 +1103,7 @@
 											{/if}
 										</article>
 										{#if rxGroups.length > 0}
-											<div class="rx-row">
+											<div class="rx-row flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}
 													<button
 														type="button"
@@ -1112,7 +1112,7 @@
 														onclick={() => void runtime.toggleReaction(item.message.id, rx.emoji)}
 													>
 														<span class="rx-emoji">{rx.emoji}</span>
-														<span class="rx-count mono">{rx.count}</span>
+														<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
 													</button>
 												{/each}
 											</div>
@@ -1177,17 +1177,6 @@
 		color: #0f172a;
 	}
 
-	.empty-state {
-		margin: auto;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		text-align: center;
-		padding: 40px 20px;
-		max-width: 360px;
-	}
-
 	.empty-icon {
 		width: 60px;
 		height: 60px;
@@ -1226,17 +1215,6 @@
 	}
 	}
 
-	/* Stream / Transcript */
-	.stream-stage {
-		flex: 1;
-		min-height: 0;
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		background: var(--pane);
-		overflow: hidden;
-	}
-
 	.stream {
 		flex: 1;
 		min-height: 0;
@@ -1258,15 +1236,6 @@
 		margin-inline: auto;
 		padding: 20px 24px 130px;
 		box-sizing: border-box;
-	}
-
-	/* Date Divider */
-	.date-divider {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin: 12px 0 4px;
-		position: relative;
 	}
 
 	.date-divider::before {
@@ -1530,14 +1499,6 @@
 		filter: brightness(0.95);
 	}
 
-	.msg-interrupt-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: fit-content;
-		max-width: 100%;
-	}
-
 	.btn-mini-continue {
 		display: inline-flex;
 		align-items: center;
@@ -1567,33 +1528,8 @@
 		line-height: 1;
 	}
 
-	.streaming-status {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 11.5px;
-		color: var(--accent);
-		font-weight: 500;
-	}
-
-	/* Message Segments inside a grouped message */
-	.msg-segments {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: 100%;
-	}
-
 	.msg-segments.is-user-segments {
 		align-items: flex-end;
-	}
-
-	.msg-segment {
-		display: flex;
-		flex-direction: column;
-		position: relative;
-		width: fit-content;
-		max-width: 100%;
 	}
 
 	.msg-segment.is-user-segment {
@@ -1612,17 +1548,6 @@
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg.is-you {
 		border-radius: 16px 10px 16px 16px;
-	}
-
-	.segment-meta {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 1px;
-		margin-bottom: 5px;
-		padding: 0 4px;
-		font-size: 11px;
-		line-height: 1;
 	}
 
 	.segment-meta.is-right {
@@ -1712,12 +1637,6 @@
 		background: var(--line-subtle);
 	}
 
-	.copied-badge {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--ok);
-	}
-
 	.quote-ref {
 		display: flex;
 		flex-direction: column;
@@ -1754,14 +1673,6 @@
 		border-left-color: rgba(255, 255, 255, 0.55);
 	}
 
-	/* Reactions Display Row */
-	.rx-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin-top: 4px;
-	}
-
 	.rx-row.is-right {
 		justify-content: flex-end;
 	}
@@ -1789,11 +1700,6 @@
 		background: var(--accent-tint);
 		border-color: var(--accent-border);
 		color: var(--accent);
-	}
-
-	.rx-count {
-		font-size: 11px;
-		font-weight: 600;
 	}
 
 	/* Hide duplicate .who when .msg-header is available */
@@ -2111,16 +2017,6 @@
 		align-items: flex-end;
 	}
 
-	/* Compact “replying” list under a trigger — several bots thinking at once */
-	.replying-list {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		align-self: flex-start;
-		padding: 4px 4px 2px;
-		margin-top: -8px;
-	}
-
 	/* Streaming Blinking Cursor */
 	.streaming-cursor {
 		display: inline-block;
@@ -2165,17 +2061,6 @@
 	bottom: 68px;
 	right: 16px;
 	}
-	}
-
-	/* Empty Chat Welcome Card */
-	.empty-chat-welcome {
-		margin: auto;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		text-align: center;
-		padding: 32px 20px;
-		max-width: 460px;
 	}
 
 	.welcome-identity-btn {
@@ -2235,13 +2120,6 @@
 		transition: color 0.15s ease;
 	}
 
-	.welcome-badges {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-bottom: 12px;
-	}
-
 	.welcome-duties {
 		background: var(--chip);
 		border: 1px solid var(--line);
@@ -2249,22 +2127,6 @@
 		padding: 10px 16px;
 		margin-bottom: 14px;
 		width: 100%;
-	}
-
-	.duties-text {
-		margin: 0;
-		font-size: 13px;
-		color: var(--ink-secondary);
-		line-height: 1.5;
-		text-align: left;
-	}
-
-	.welcome-starters {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: 100%;
-		margin-bottom: 12px;
 	}
 
 	.starter-chip {
@@ -2312,12 +2174,6 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-	}
-
-	.ask-reply {
-		margin-top: 10px;
-		display: flex;
-		gap: 8px;
 	}
 
 	.ask-reply :global(input) {
@@ -2409,13 +2265,6 @@
 		font-size: 12px;
 		font-weight: 400;
 		color: var(--danger);
-	}
-
-	.approval-acts {
-		display: flex;
-		gap: 8px;
-		margin-top: 14px;
-		flex-wrap: wrap;
 	}
 
 	.approval-acts :global(button) {

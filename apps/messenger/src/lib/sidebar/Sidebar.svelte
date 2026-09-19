@@ -281,7 +281,7 @@
 	<div class="roster-panel">
 		<div class="roster" class:is-expanded={pinnedExpanded} title={t.sidebar.pinned}>
 			{#if pinnedSessions.length === 0}
-				<span class="roster-empty-hint">{t.sidebar.pinnedEmpty}</span>
+				<span class="roster-empty-hint text-12 text-muted py-2 px-0 select-none self-center">{t.sidebar.pinnedEmpty}</span>
 			{:else}
 				{#each pinnedSessions as pSession (pSession.id)}
 					{@const pStatus = statusOf(pSession)}
@@ -297,7 +297,7 @@
 						onclick={() => void runtime.selectSession(pSession.id)}
 						oncontextmenu={(e) => onOpenContextMenu(e, pSession)}
 					>
-						<span class="pinned-avatar-wrap">
+						<span class="pinned-avatar-wrap relative flex items-center justify-center w-17 h-17 shrink-0">
 							<SessionAvatar session={pSession} bots={botsById} botStatus={botStatusOf} />
 							{#if pStatus.count}
 								<span class="pinned-badge">{pStatus.count}</span>
@@ -305,7 +305,7 @@
 								<span class="pinned-unread" title={t.sidebar.unread}>{unreadBadge(pUnread)}</span>
 							{/if}
 						</span>
-						<span class="pinned-session-name">{titleOf(pSession)}</span>
+						<span class="pinned-session-name text-11 font-medium text-ink leading-[1.2] w-full max-w-27 overflow-hidden text-ellipsis whitespace-nowrap text-center block select-none">{titleOf(pSession)}</span>
 					</button>
 				{/each}
 			{/if}
@@ -333,9 +333,9 @@
 			</button>
 		{/if}
 	</div>
-	<div class="side-body">
-	<div class="search-wrap" bind:this={searchWrapEl}>
-		<span class="search-icon-badge" aria-hidden="true">
+	<div class="side-body relative flex-1 min-h-0 flex flex-col">
+	<div class="search-wrap relative mt-5 mx-6 mb-3" bind:this={searchWrapEl}>
+		<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
 			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 				<circle cx="11" cy="11" r="8"></circle>
 				<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -442,9 +442,9 @@
 									</span>
 								{/if}
 							{/if}
-							<span class="search-hit-body">
-								<span class="search-hit-meta">
-									<span class="search-hit-kind">{view.kindLabel}</span>
+							<span class="search-hit-body flex flex-col items-stretch gap-[3px] min-w-0 flex-1">
+								<span class="search-hit-meta flex items-center gap-3 min-w-0">
+									<span class="search-hit-kind shrink-0 text-10 font-bold tracking-[0.04em] text-muted">{view.kindLabel}</span>
 									{#if view.sessionTitle}
 										<span class="search-hit-session">{view.sessionTitle}</span>
 									{/if}
@@ -461,21 +461,21 @@
 	</div>
 	<div class="groups">
 		{#if viewingArchived}
-			<div class="ghead archived-ghead">
+			<div class="ghead archived-ghead flex items-center justify-between">
 				<span>{t.sidebar.archivedSessions}</span>
 				<button type="button" class="btn-back-sessions" onclick={() => (viewingArchived = false)}>
 					{t.sidebar.backToSessions}
 				</button>
 			</div>
 			{#if archivedSessions.length === 0}
-				<p class="muted archived-empty-hint">{t.sidebar.archivedEmpty}</p>
+				<p class="muted archived-empty-hint py-9 px-5 text-center text-12 text-muted">{t.sidebar.archivedEmpty}</p>
 			{:else}
 				{#each archivedSessions as session (session.id)}
 					{@const status = statusOf(session)}
 					{@const unread = unreadOf(session)}
 					<button
 						type="button"
-						class="row is-archived-row"
+						class="row is-archived-row opacity-85"
 						class:is-on={runtime.selectedId === session.id}
 						class:is-context-open={contextMenuSessionId === session.id}
 						class:is-unread={unread > 0}
@@ -629,7 +629,7 @@
 			</button>
 		</div>
 		<div class="foot-right">
-			<div class="theme-menu-wrap">
+			<div class="theme-menu-wrap relative inline-flex">
 			<button
 				bind:this={themeToggleBtnEl}
 				type="button"
@@ -781,16 +781,6 @@
 		align-items: center;
 	}
 
-	.search-icon-badge {
-		position: absolute;
-		left: 10px;
-		color: var(--muted-light);
-		pointer-events: none;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
 	.search-clear {
 		position: absolute;
 		right: 8px;
@@ -885,14 +875,6 @@
 		gap: 8px 6px;
 	}
 
-	.roster-empty-hint {
-		font-size: 12px;
-		color: var(--muted);
-		padding: 4px 0;
-		user-select: none;
-		align-self: center;
-	}
-
 	.pinned-expand-btn {
 		width: 28px;
 		height: 28px;
@@ -964,16 +946,6 @@
 		color: var(--accent);
 	}
 
-	.pinned-avatar-wrap {
-		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 34px;
-		height: 34px;
-		flex-shrink: 0;
-	}
-
 	.pinned-avatar-wrap :global(.row-avatar),
 	.pinned-avatar-wrap :global(.row-avatar.size-md) {
 		--avatar-size: 34px;
@@ -992,21 +964,6 @@
 		box-shadow: 0 0 6px var(--ok);
 		animation: pulse-dot 1.4s ease-in-out infinite;
 		z-index: 2;
-	}
-
-	.pinned-session-name {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--ink);
-		line-height: 1.2;
-		width: 100%;
-		max-width: 54px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		text-align: center;
-		display: block;
-		user-select: none;
 	}
 
 	.pinned-session-btn.is-active .pinned-session-name {
@@ -1031,12 +988,6 @@
 		justify-content: center;
 		border: 1.5px solid var(--sidebar-bg);
 		z-index: 2;
-	}
-
-	/* Search Bar in Sidebar */
-	.search-wrap {
-		position: relative;
-		margin: 10px 12px 6px;
 	}
 
 	.search-icon-badge {
@@ -1100,15 +1051,6 @@
 		--avatar-ring: var(--line-subtle);
 	}
 
-	.search-hit-body {
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		gap: 3px;
-		min-width: 0;
-		flex: 1;
-	}
-
 	.search-drop :global(button:hover),
 	.search-drop button.search-hit.is-highlighted,
 	.search-drop button.search-hit.is-selected {
@@ -1120,21 +1062,6 @@
 	.search-drop button.search-hit.is-highlighted,
 	.search-drop button.search-hit.is-selected {
 		color: var(--ink);
-	}
-
-	.search-hit-meta {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	.search-hit-kind {
-		flex-shrink: 0;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.04em;
-		color: var(--muted);
 	}
 
 	.search-hit-session {
@@ -1164,14 +1091,6 @@
 	.search-drop button.search-hit.is-highlighted .search-hit-session,
 	.search-drop button.search-hit.is-selected .search-hit-session {
 		color: var(--accent-hover);
-	}
-
-	.side-body {
-		position: relative;
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
 	}
 
 	/* Groups and Session Rows */
@@ -1446,13 +1365,6 @@
 		box-shadow: 0 1px 3px rgba(217, 119, 6, 0.3);
 	}
 
-	/* Archived View in Sidebar */
-	.archived-ghead {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
 	.btn-back-sessions {
 		font-size: 11px;
 		font-weight: 500;
@@ -1467,13 +1379,6 @@
 
 	.btn-back-sessions:hover {
 		text-decoration: underline;
-	}
-
-	.archived-empty-hint {
-		padding: 18px 10px;
-		text-align: center;
-		font-size: 12px;
-		color: var(--muted);
 	}
 
 	/* Sidebar Footer */
@@ -1574,12 +1479,6 @@
 		border-radius: var(--radius-sm);
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
-	}
-
-	/* Sidebar Theme Menu */
-	.theme-menu-wrap {
-		position: relative;
-		display: inline-flex;
 	}
 
 	.theme-menu {
@@ -1695,10 +1594,6 @@
 
 	.search::placeholder {
 		color: var(--muted-light);
-	}
-
-	.is-archived-row {
-		opacity: 0.85;
 	}
 
 	@keyframes themeMenuIn {

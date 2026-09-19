@@ -107,7 +107,7 @@
 		accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
 		onchange={onFile}
 	/>
-	<div class="avatar-editor-main">
+	<div class="avatar-editor-main flex items-center gap-7">
 		{#if customMode}
 			<button
 				type="button"
@@ -119,7 +119,7 @@
 				{#if currentSrc}
 					<img src={currentSrc} alt={name || 'Bot avatar'} class="avatar-editor-img" />
 				{:else}
-					<div class="avatar-editor-fallback">?</div>
+					<div class="avatar-editor-fallback font-bold text-muted text-20">?</div>
 				{/if}
 			</button>
 		{:else}
@@ -127,16 +127,16 @@
 				{#if currentSrc}
 					<img src={currentSrc} alt={name || 'Bot avatar'} class="avatar-editor-img" />
 				{:else}
-					<div class="avatar-editor-fallback">?</div>
+					<div class="avatar-editor-fallback font-bold text-muted text-20">?</div>
 				{/if}
 			</div>
 		{/if}
-		<div class="avatar-editor-controls">
-			<div class="avatar-editor-actions">
+		<div class="avatar-editor-controls flex flex-col gap-3 flex-1 min-w-0">
+			<div class="avatar-editor-actions flex items-center gap-4">
 				{#each primaryActions as action (action)}
 					{#if action === 'randomize'}
 						<button type="button" class="btn-avatar-action" onclick={randomize} title={t.sidebar.botAvatarRefresh}>
-							<span class="action-icon">🎲</span>
+							<span class="action-icon text-13">🎲</span>
 							<span>{t.sidebar.botAvatarRefresh}</span>
 						</button>
 					{:else if action === 'style'}
@@ -156,7 +156,7 @@
 				{/each}
 			</div>
 			{#if !customMode}
-				<div class="avatar-variants">
+				<div class="avatar-variants flex flex-wrap gap-2">
 					{#each BORING_AVATAR_VARIANTS as v (v)}
 						<button
 							type="button"
@@ -169,10 +169,10 @@
 					{/each}
 				</div>
 			{:else}
-				<p class="custom-avatar-hint">{t.sidebar.botAvatarCustomHint}</p>
+				<p class="custom-avatar-hint m-0 text-11 text-muted">{t.sidebar.botAvatarCustomHint}</p>
 			{/if}
 			{#if uploadError}
-				<p class="avatar-error">{uploadErrorCopy(uploadError)}</p>
+				<p class="avatar-error m-0 text-12 text-danger">{uploadErrorCopy(uploadError)}</p>
 			{/if}
 		</div>
 	</div>
@@ -181,12 +181,6 @@
 <style>
 	.avatar-editor {
 		margin-bottom: 12px;
-	}
-
-	.avatar-editor-main {
-		display: flex;
-		align-items: center;
-		gap: 14px;
 	}
 
 	.avatar-editor-preview {
@@ -226,26 +220,6 @@
 		pointer-events: none;
 	}
 
-	.avatar-editor-fallback {
-		font-weight: 700;
-		color: var(--muted);
-		font-size: 20px;
-	}
-
-	.avatar-editor-controls {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.avatar-editor-actions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
 	.btn-avatar-action {
 		display: inline-flex;
 		align-items: center;
@@ -271,16 +245,6 @@
 		cursor: wait;
 	}
 
-	.action-icon {
-		font-size: 13px;
-	}
-
-	.avatar-variants {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-	}
-
 	.variant-chip {
 		padding: 2px 7px;
 		font-size: 11px;
@@ -302,18 +266,6 @@
 		color: var(--pane);
 		border-color: var(--ink);
 		font-weight: 600;
-	}
-
-	.custom-avatar-hint {
-		margin: 0;
-		font-size: 11px;
-		color: var(--muted);
-	}
-
-	.avatar-error {
-		margin: 0;
-		font-size: 12px;
-		color: var(--danger);
 	}
 
 	.sr-only {

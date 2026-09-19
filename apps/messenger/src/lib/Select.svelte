@@ -284,11 +284,11 @@
 		onclick={toggle}
 		onkeydown={handleKeydown}
 	>
-		<span class="real-select-value {isPlaceholder ? 'is-placeholder' : ''}">
+		<span class="real-select-value {isPlaceholder ? 'is-placeholder' : ''} flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-ink">
 			{displayLabel}
 		</span>
 
-		<div class="real-select-actions">
+		<div class="real-select-actions flex items-center gap-3 shrink-0">
 			{#if clearable && value && !disabled}
 				<span
 					role="button"
@@ -327,7 +327,7 @@
 			aria-activedescendant={highlightedIndex >= 0 ? `${listboxId}-opt-${highlightedIndex}` : undefined}
 		>
 			{#if normalizedOptions.length === 0}
-				<li class="real-select-empty" role="presentation">
+				<li class="real-select-empty py-5 px-6 text-12p5 text-muted text-center" role="presentation">
 					暂无选项
 				</li>
 			{:else}
@@ -345,15 +345,15 @@
 							if (!opt.disabled) highlightedIndex = idx;
 						}}
 					>
-						<span class="real-select-option-label">
+						<span class="real-select-option-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
 							{opt.label}
 							{#if opt.hint}
-								<span class="real-select-option-hint">{opt.hint}</span>
+								<span class="real-select-option-hint inline-block ml-3 text-11 text-muted font-normal">{opt.hint}</span>
 							{/if}
 						</span>
 
 						{#if opt.value === value}
-							<span class="real-select-check" aria-hidden="true">
+							<span class="real-select-check inline-flex items-center justify-center text-accent shrink-0" aria-hidden="true">
 								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 									<polyline points="20 6 9 17 4 12"></polyline>
 								</svg>
@@ -438,25 +438,9 @@
 		font-size: 13px;
 	}
 
-	.real-select-value {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-weight: 500;
-		color: var(--ink);
-	}
-
 	.real-select-value.is-placeholder {
 		color: var(--muted);
 		font-weight: 400;
-	}
-
-	.real-select-actions {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
 	}
 
 	.real-select-clear {
@@ -529,13 +513,6 @@
 		}
 	}
 
-	.real-select-empty {
-		padding: 10px 12px;
-		font-size: 12.5px;
-		color: var(--muted);
-		text-align: center;
-	}
-
 	.real-select-option {
 		display: flex;
 		align-items: center;
@@ -575,28 +552,5 @@
 	.real-select-option.is-disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
-	}
-
-	.real-select-option-label {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.real-select-option-hint {
-		display: inline-block;
-		margin-left: 6px;
-		font-size: 11px;
-		color: var(--muted);
-		font-weight: 400;
-	}
-
-	.real-select-check {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--accent);
-		flex-shrink: 0;
 	}
 </style>

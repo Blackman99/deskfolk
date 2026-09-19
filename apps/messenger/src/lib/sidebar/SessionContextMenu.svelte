@@ -145,7 +145,7 @@
 		<span>{t.sidebar.viewInfo}</span>
 	</button>
 
-	<div class="session-context-menu-divider" role="separator"></div>
+	<div class="session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2" role="separator"></div>
 
 	<button
 		type="button"
@@ -191,7 +191,7 @@
 		{/if}
 	</button>
 
-	<div class="session-context-menu-divider" role="separator"></div>
+	<div class="session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2" role="separator"></div>
 
 	<button
 		type="button"
@@ -277,12 +277,6 @@
 	.session-context-menu-item:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
-	}
-
-	.session-context-menu-divider {
-		height: 1px;
-		background: var(--line-subtle);
-		margin: 3px 4px;
 	}
 
 	@keyframes context-menu-in {

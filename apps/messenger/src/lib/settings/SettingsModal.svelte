@@ -308,8 +308,8 @@
 		<div class="modal-dialog settings-modal">
 			<aside class="settings-sidebar">
 				<div class="settings-sidebar-head">
-					<div class="settings-head-left">
-						<svg class="settings-head-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<div class="settings-head-left flex items-center gap-5">
+						<svg class="settings-head-icon text-muted shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="12" cy="12" r="3"></circle>
 							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 						</svg>
@@ -378,7 +378,7 @@
 						{#if modelsHasError}
 							<span class="tab-badge-error" aria-label="error">!</span>
 						{:else if snapshot.providers.length > 0}
-							<span class="tab-count">{snapshot.providers.length}</span>
+							<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary">{snapshot.providers.length}</span>
 						{/if}
 					</button>
 
@@ -398,7 +398,7 @@
 						</svg>
 						<span class="tab-name">{t.settings.tabMcp}</span>
 						{#if snapshot.mcpServers.length > 0}
-							<span class="tab-count">{snapshot.mcpServers.length}</span>
+							<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary">{snapshot.mcpServers.length}</span>
 						{/if}
 					</button>
 
@@ -426,7 +426,7 @@
 
 			<section class="settings-main">
 				<div class="settings-main-head">
-					<div class="settings-main-head-left">
+					<div class="settings-main-head-left flex items-center gap-5">
 						<h3 class="settings-main-title">
 							{activeSettingsTab === 'general'
 								? t.settings.tabGeneral
@@ -481,7 +481,7 @@
 								{/if}
 							</div>
 
-							<div class="settings-workspace-box">
+							<div class="settings-workspace-box flex flex-col gap-5 mt-2">
 								<WorkspacePicker
 									id="workspace"
 									path={runtime.workspacePath}
@@ -514,12 +514,12 @@
 								{/if}
 
 								<div class="workspace-jail-callout">
-									<svg class="jail-callout-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<svg class="jail-callout-icon shrink-0 text-accent mt-1" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
 									</svg>
-									<div class="jail-callout-content">
-										<span class="jail-callout-title">{t.settings.workspaceSecurityBoundary}</span>
-										<p class="jail-callout-text">{JAIL_COPY[locale]}</p>
+									<div class="jail-callout-content flex flex-col gap-[3px] min-w-0">
+										<span class="jail-callout-title text-11p5 font-semibold text-accent tracking-[0.01em]">{t.settings.workspaceSecurityBoundary}</span>
+										<p class="jail-callout-text m-0 text-11p5 leading-[1.45] text-muted">{JAIL_COPY[locale]}</p>
 									</div>
 								</div>
 							</div>
@@ -651,7 +651,7 @@
 										<span class="settings-row-desc">{t.settings.launchDesc}</span>
 									</div>
 									<div class="settings-row-action">
-										<label class="switch-toggle" for="launch-at-login-toggle" aria-labelledby="launch-setting-label">
+										<label class="switch-toggle relative inline-flex items-center cursor-pointer select-none" for="launch-at-login-toggle" aria-labelledby="launch-setting-label">
 											<input
 												id="launch-at-login-toggle"
 												type="checkbox"
@@ -672,7 +672,7 @@
 					</div>
 				{:else if activeSettingsTab === 'models'}
 					<div class="settings-tab-pane">
-						<div class="provider-list-head">
+						<div class="provider-list-head flex items-start justify-between gap-6">
 							<p class="muted">{t.settings.providersHint}</p>
 							<button type="button" class="btn-provider-add" onclick={openAddProvider}>
 								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -684,13 +684,13 @@
 								<p class="muted">{t.settings.providerEmpty}</p>
 							</div>
 						{/if}
-						<div class="provider-card-list">
+						<div class="provider-card-list flex flex-col gap-5">
 							{#each snapshot.providers as provider (provider.id)}
 								{@const isDefault = snapshot.settings.default_provider_id === provider.id}
 								{@const palette = botAvatarColor(provider.id)}
 								{@const host = providerHost(provider.base_url)}
 								<div class="provider-card" class:is-default={isDefault}>
-									<div class="provider-card-head">
+									<div class="provider-card-head flex items-center justify-between gap-5 min-w-0">
 										<button
 											type="button"
 											class="provider-card-identity"
@@ -703,9 +703,9 @@
 												style:color={palette.text}
 												style:border-color={palette.border}
 											>{rosterLetter(provider.name)}</span>
-											<span class="provider-identity-text">
-												<span class="provider-name-row">
-													<span class="provider-card-name">{provider.name}</span>
+											<span class="provider-identity-text min-w-0 flex flex-col gap-[3px] flex-1">
+												<span class="provider-name-row flex items-center gap-4 flex-wrap min-w-0">
+													<span class="provider-card-name text-14 font-semibold text-ink leading-[1.2]">{provider.name}</span>
 													{#if isDefault}
 														<span class="provider-badge-default" title={t.settings.providerDefault}>
 															<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
@@ -713,12 +713,12 @@
 														</span>
 													{/if}
 													<span class="provider-badge-key" class:is-set={provider.key_set} title={provider.key_set ? t.settings.keySet : t.settings.keyUnset}>
-														<span class="provider-status-dot" class:is-set={provider.key_set}></span>
+														<span class="provider-status-dot w-3 h-3 rounded-[50%] bg-warn shrink-0" class:is-set={provider.key_set}></span>
 														<span>{provider.key_set ? t.settings.keySet : t.settings.keyUnset}</span>
 													</span>
 												</span>
 												{#if host}
-													<span class="provider-card-host mono" title={provider.base_url ?? ''}>
+													<span class="provider-card-host mono inline-flex items-center gap-[5px] text-11p5 text-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-full" title={provider.base_url ?? ''}>
 														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
 														<span>{host}</span>
 													</span>
@@ -726,7 +726,7 @@
 											</span>
 										</button>
 
-										<div class="provider-card-acts">
+										<div class="provider-card-acts flex items-center gap-3 shrink-0">
 											{#if !isDefault}
 												<button
 													type="button"
@@ -767,7 +767,7 @@
 											onclick={() => openEditProvider(provider.id)}
 											title={`${t.settings.providerEdit}: ${provider.name}`}
 										>
-											<div class="provider-meta-row">
+											<div class="provider-meta-row flex items-center justify-between gap-4 flex-wrap w-full">
 												{#if provider.default_model}
 													<div class="provider-default-model-tag" title={`${t.settings.defaultModel}: ${provider.default_model}`}>
 														<span class="tag-icon">
@@ -777,13 +777,13 @@
 														<span class="tag-val mono">{provider.default_model}</span>
 													</div>
 												{/if}
-												<span class="provider-model-count-label">
+												<span class="provider-model-count-label text-11p5 text-muted font-medium ml-auto">
 													{t.settings.providerModelCount(provider.models.length)}
 												</span>
 											</div>
 
 											{#if provider.models.length > 0}
-												<div class="provider-model-chips">
+												<div class="provider-model-chips flex items-center gap-[5px] flex-wrap w-full">
 													{#each provider.models.slice(0, 4) as model}
 														<span class="provider-model-chip mono" class:is-default={model === provider.default_model}>
 															{model}
@@ -828,7 +828,7 @@
 									<div class="settings-row-info">
 										<span class="settings-row-title">Real Bot</span>
 										<span class="settings-row-desc">
-											<span class="about-version-chip">{t.settings.version(updateChecker.version ?? '0.1.0-rc.1')}</span>
+											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.1')}</span>
 										</span>
 									</div>
 									{#if updateChecker.available}
@@ -854,13 +854,13 @@
 
 							{#if updateChecker.available}
 								{#if updateChecker.status === 'error'}
-									<div class="about-status-banner is-error">
-										<p class="about-status-text">{t.settings.updateFailed}</p>
+									<div class="about-status-banner is-error mt-5 py-4 px-6 rounded-md text-12">
+										<p class="about-status-text m-0 leading-[1.4]">{t.settings.updateFailed}</p>
 									</div>
 								{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
 									<div class="about-update-banner">
-										<p class="about-update-title">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
-										<div class="about-actions">
+										<p class="about-update-title m-0 text-12p5 font-semibold text-accent">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
+										<div class="about-actions flex items-center flex-wrap gap-4">
 											{#if updateChecker.result.downloadUrl}
 												<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.download()}>
 													{t.settings.updateDownload}
@@ -879,8 +879,8 @@
 										</div>
 									</div>
 								{:else if updateChecker.status === 'ok'}
-									<div class="about-status-banner is-ok">
-										<p class="about-status-text">{t.settings.upToDate}</p>
+									<div class="about-status-banner is-ok mt-5 py-4 px-6 rounded-md text-12">
+										<p class="about-status-text m-0 leading-[1.4]">{t.settings.upToDate}</p>
 									</div>
 								{/if}
 							{/if}
@@ -899,7 +899,7 @@
 {#if runtime.settingsOpen && providerEditor}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
-		class="modal-backdrop provider-editor-backdrop"
+		class="modal-backdrop provider-editor-backdrop z-[110]"
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -956,12 +956,6 @@
 		flex-direction: row;
 	}
 
-	.settings-head-left {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
 	.settings-wizard-badge {
 		font-size: 11.5px;
 		font-weight: 500;
@@ -1000,11 +994,6 @@
 		align-items: center;
 		gap: 9px;
 		min-width: 0;
-	}
-
-	.settings-head-icon {
-		color: var(--muted);
-		flex-shrink: 0;
 	}
 
 	.settings-sidebar-head :global(h2) {
@@ -1104,12 +1093,6 @@
 		background: var(--pane);
 		box-sizing: border-box;
 		flex-shrink: 0;
-	}
-
-	.settings-main-head-left {
-		display: flex;
-		align-items: center;
-		gap: 10px;
 	}
 
 	.settings-main-title {
@@ -1224,15 +1207,6 @@
 		box-shadow: 0 0 0 2px var(--row-hover);
 	}
 
-	.tab-count {
-		font-size: 11px;
-		font-weight: 600;
-		padding: 1px 6px;
-		border-radius: 9999px;
-		background: var(--chip);
-		color: var(--ink-secondary);
-	}
-
 	.settings-tab-btn.is-active .tab-count {
 		background: var(--accent-tint);
 		color: var(--accent);
@@ -1253,13 +1227,6 @@
 		flex-direction: column;
 		gap: 12px;
 		box-shadow: var(--shadow-xs);
-	}
-
-	.provider-list-head {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 12px;
 	}
 
 	.provider-list-head :global(.muted) {
@@ -1293,12 +1260,6 @@
 		outline-offset: 1px;
 	}
 
-	.provider-card-list {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
 	.provider-card {
 		display: flex;
 		flex-direction: column;
@@ -1321,15 +1282,6 @@
 		border-color: var(--accent-border);
 		background: linear-gradient(180deg, var(--accent-tint) 0%, var(--pane) 38px);
 		box-shadow: 0 0 0 1px var(--accent-border), var(--shadow-xs);
-	}
-
-	/* Card Header */
-	.provider-card-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		min-width: 0;
 	}
 
 	.provider-card-identity {
@@ -1364,29 +1316,6 @@
 		font-weight: 700;
 		flex: 0 0 auto;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-	}
-
-	.provider-identity-text {
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		flex: 1;
-	}
-
-	.provider-name-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex-wrap: wrap;
-		min-width: 0;
-	}
-
-	.provider-card-name {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--ink);
-		line-height: 1.2;
 	}
 
 	.provider-badge-default {
@@ -1425,42 +1354,14 @@
 		color: var(--ok-text);
 	}
 
-	.provider-status-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--warn);
-		flex-shrink: 0;
-	}
-
 	.provider-status-dot.is-set {
 		background: var(--ok);
 		box-shadow: 0 0 4px var(--ok);
 	}
 
-	.provider-card-host {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11.5px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 100%;
-	}
-
 	.provider-card-host :global(svg) {
 		flex-shrink: 0;
 		opacity: 0.75;
-	}
-
-	/* Action buttons */
-	.provider-card-acts {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
 	}
 
 	.btn-provider-action {
@@ -1524,15 +1425,6 @@
 		outline-offset: 2px;
 	}
 
-	.provider-meta-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		flex-wrap: wrap;
-		width: 100%;
-	}
-
 	.provider-default-model-tag {
 		display: inline-flex;
 		align-items: center;
@@ -1563,22 +1455,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.provider-model-count-label {
-		font-size: 11.5px;
-		color: var(--muted);
-		font-weight: 500;
-		margin-left: auto;
-	}
-
-	/* Models preview chips */
-	.provider-model-chips {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		flex-wrap: wrap;
-		width: 100%;
 	}
 
 	.provider-model-chip {
@@ -1612,10 +1488,6 @@
 		color: var(--muted);
 		background: transparent;
 		border-style: dashed;
-	}
-
-	.provider-editor-backdrop {
-		z-index: 110;
 	}
 
 	.modal-dialog.provider-editor-modal {
@@ -1682,14 +1554,6 @@
 		color: var(--warn);
 	}
 
-	/* Workspace Box & Callout */
-	.settings-workspace-box {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		margin-top: 4px;
-	}
-
 	.field-error-alert {
 		display: flex;
 		align-items: center;
@@ -1716,33 +1580,6 @@
 		border-radius: var(--radius-md);
 		background: var(--accent-tint);
 		border: 1px solid var(--accent-border);
-	}
-
-	.jail-callout-icon {
-		flex-shrink: 0;
-		color: var(--accent);
-		margin-top: 2px;
-	}
-
-	.jail-callout-content {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		min-width: 0;
-	}
-
-	.jail-callout-title {
-		font-size: 11.5px;
-		font-weight: 600;
-		color: var(--accent);
-		letter-spacing: 0.01em;
-	}
-
-	.jail-callout-text {
-		margin: 0;
-		font-size: 11.5px;
-		line-height: 1.45;
-		color: var(--muted);
 	}
 
 	/* Preferences Rows */
@@ -1839,15 +1676,6 @@
 		flex-shrink: 0;
 	}
 
-	/* Switch Toggle (macOS Native Toggle Switch) */
-	.switch-toggle {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		cursor: pointer;
-		user-select: none;
-	}
-
 	.switch-toggle :global(input) {
 		position: absolute;
 		opacity: 0;
@@ -1887,14 +1715,6 @@
 		outline-offset: 2px;
 	}
 
-	/* About Card / Updates */
-	.about-version-chip {
-		display: inline-block;
-		font-family: var(--mono);
-		font-size: 11.5px;
-		color: var(--muted);
-	}
-
 	.btn-check-update {
 		display: inline-flex;
 		align-items: center;
@@ -1926,13 +1746,6 @@
 		animation: spin 1s linear infinite;
 	}
 
-	.about-status-banner {
-		margin-top: 10px;
-		padding: 8px 12px;
-		border-radius: var(--radius-md);
-		font-size: 12px;
-	}
-
 	.about-status-banner.is-ok {
 		background: var(--ok-bg);
 		border: 1px solid var(--ok-line);
@@ -1945,11 +1758,6 @@
 		color: var(--warn-text);
 	}
 
-	.about-status-text {
-		margin: 0;
-		line-height: 1.4;
-	}
-
 	.about-update-banner {
 		margin-top: 10px;
 		padding: 10px 12px;
@@ -1958,20 +1766,6 @@
 		border: 1px solid var(--accent-border);
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-	}
-
-	.about-update-title {
-		margin: 0;
-		font-size: 12.5px;
-		font-weight: 600;
-		color: var(--accent);
-	}
-
-	.about-actions {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
 		gap: 8px;
 	}
 

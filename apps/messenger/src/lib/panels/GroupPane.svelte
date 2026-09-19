@@ -128,23 +128,23 @@
 	{/if}
 
 	<!-- Group Profile Section -->
-	<div class="panel-card group-hero-card">
+	<div class="panel-card group-hero-card p-8">
 		<div class="group-hero-header">
 			<div class="group-hero-avatar has-composite" aria-hidden="true">
 				<SessionAvatar session={selected} bots={botsById} size="hero" botStatus={botStatusOf} />
 			</div>
-			<div class="group-hero-info">
-				<div class="group-hero-title-row">
-					<h3 class="group-hero-name">{detail.name || titleOf(selected)}</h3>
+			<div class="group-hero-info flex-1 min-w-0 flex flex-col gap-2">
+				<div class="group-hero-title-row flex items-center gap-4 min-w-0">
+					<h3 class="group-hero-name text-16 font-bold text-ink whitespace-nowrap overflow-hidden text-ellipsis m-0">{detail.name || titleOf(selected)}</h3>
 					{#if selected.archived_at}
 						<span class="badge-archived">{t.top.archived}</span>
 					{/if}
 				</div>
-				<span class="group-hero-count">{groupPresent.length + 1} {t.detail.members}</span>
+				<span class="group-hero-count text-12 text-muted font-medium">{groupPresent.length + 1} {t.detail.members}</span>
 			</div>
 		</div>
 
-		<div class="form-group group-name-edit">
+		<div class="form-group group-name-edit mt-0">
 			<label for="detail-group-name">{t.sidebar.groupName}</label>
 			<div class="name-row">
 				<input
@@ -190,7 +190,7 @@
 						</div>
 						<div class="member-info">
 							<div class="member-name-row">
-								<span class="member-name-text">{t.common.you}</span>
+								<span class="member-name-text text-13 font-semibold text-ink whitespace-nowrap overflow-hidden text-ellipsis">{t.common.you}</span>
 								<span class="member-badge is-owner">{locale === 'zh' ? '创建者' : 'Owner'}</span>
 							</div>
 						</div>
@@ -228,7 +228,7 @@
 										{/if}
 									</div>
 									{#if bot.duties}
-										<span class="member-duties-text" title={bot.duties}>{bot.duties}</span>
+										<span class="member-duties-text text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
 									{/if}
 								</div>
 							{:else}
@@ -318,7 +318,7 @@
 										{/if}
 									</div>
 									{#if bot.duties}
-										<span class="member-duties-text" title={bot.duties}>{bot.duties}</span>
+										<span class="member-duties-text text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
 									{/if}
 								</div>
 							{:else}
@@ -369,7 +369,7 @@
 		<span class="panel-card-title">{locale === 'zh' ? '危险区域' : 'Danger Zone'}</span>
 	</div>
 	<div class="panel-card-body">
-		<div class="action-list-stack">
+		<div class="action-list-stack flex flex-col gap-6">
 			<div class="action-list-row">
 				<div class="action-list-info">
 					<span class="action-list-title">{t.detail.clearHistory}</span>
@@ -413,11 +413,6 @@
 		border: 1px solid var(--warn-line);
 	}
 
-	/* Group Hero Header Card */
-	.group-hero-card {
-		padding: 16px;
-	}
-
 	.group-hero-header {
 		display: flex;
 		align-items: center;
@@ -446,41 +441,6 @@
 		background: transparent;
 		border: none;
 		box-shadow: none;
-	}
-
-	.group-hero-info {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.group-hero-title-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
-	}
-
-	.group-hero-name {
-		font-size: 16px;
-		font-weight: 700;
-		color: var(--ink);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		margin: 0;
-	}
-
-	.group-hero-count {
-		font-size: 12px;
-		color: var(--muted);
-		font-weight: 500;
-	}
-
-	.group-name-edit {
-		margin-top: 0;
 	}
 
 	:global(.sheet.session-settings) .name-row {
@@ -573,15 +533,6 @@
 		min-width: 0;
 	}
 
-	.member-name-text {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--ink);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
 	.member-name-btn {
 		border: 0;
 		background: transparent;
@@ -626,15 +577,6 @@
 		max-width: 140px;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.member-duties-text {
-		font-size: 11.5px;
-		color: var(--muted);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		line-height: 1.25;
 	}
 
 	.member-deleted-label {
@@ -718,13 +660,6 @@
 		background: var(--line-subtle);
 		border-color: var(--line);
 		color: var(--muted);
-	}
-
-	/* Action rows in panel cards */
-	.action-list-stack {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
 	}
 
 	.action-list-row {

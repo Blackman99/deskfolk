@@ -65,25 +65,25 @@
 					<span class="attached-replying-name">{replyBot?.name ?? deletedText}</span>
 				</div>
 			{/if}
-			<span class="attached-replying-dots" aria-hidden="true">
+			<span class="attached-replying-dots inline-flex items-center gap-[2.5px] ml-1 mr-1" aria-hidden="true">
 				<span class="replying-dot"></span>
 				<span class="replying-dot"></span>
 				<span class="replying-dot"></span>
 			</span>
-			<span class="attached-replying-text">{thinkingText}</span>
+			<span class="attached-replying-text text-11p5 text-muted font-normal">{thinkingText}</span>
 		</div>
 	{:else}
 		<div class="attached-replying-card is-multiple" class:is-user={isUser}>
-			<div class="attached-replying-header">
-				<span class="attached-replying-dots" aria-hidden="true">
+			<div class="attached-replying-header flex items-center gap-3 py-0 px-1 leading-none select-none">
+				<span class="attached-replying-dots inline-flex items-center gap-[2.5px] ml-1 mr-1" aria-hidden="true">
 					<span class="replying-dot"></span>
 					<span class="replying-dot"></span>
 					<span class="replying-dot"></span>
 				</span>
-				<span class="attached-replying-title">{thinkingText}</span>
+				<span class="attached-replying-title text-11p5 font-medium text-muted tracking-[0.01em]">{thinkingText}</span>
 				<span class="attached-replying-count mono">{entries.length}</span>
 			</div>
-			<div class="attached-replying-roster">
+			<div class="attached-replying-roster flex flex-wrap gap-[5px] items-center">
 				{#each entries as entry (entry.turn_id ?? entry.judgement_id ?? entry.bot_id)}
 					{@const replyBot = botsById.get(entry.bot_id)}
 					{@const pal = botAvatarColor(entry.bot_id)}
@@ -181,22 +181,6 @@
 		max-width: 100%;
 	}
 
-	.attached-replying-header {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 0 2px;
-		line-height: 1;
-		user-select: none;
-	}
-
-	.attached-replying-title {
-		font-size: 11.5px;
-		font-weight: 500;
-		color: var(--muted);
-		letter-spacing: 0.01em;
-	}
-
 	.attached-replying-count {
 		font-size: 10px;
 		font-weight: 600;
@@ -207,13 +191,6 @@
 		color: var(--muted);
 		letter-spacing: 0.01em;
 		line-height: 1.2;
-	}
-
-	.attached-replying-roster {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 5px;
-		align-items: center;
 	}
 
 	/* Bot chips inside the card */
@@ -286,14 +263,6 @@
 		text-overflow: ellipsis;
 	}
 
-	.attached-replying-dots {
-		display: inline-flex;
-		align-items: center;
-		gap: 2.5px;
-		margin-left: 2px;
-		margin-right: 2px;
-	}
-
 	.replying-dot {
 		width: 4px;
 		height: 4px;
@@ -327,12 +296,6 @@
 	}
 	}
 
-	.attached-replying-text {
-		font-size: 11.5px;
-		color: var(--muted);
-		font-weight: 400;
-	}
-
 	@keyframes replyingFadeIn {
 		from {
 		opacity: 0;
@@ -354,6 +317,5 @@
 		opacity: 1;
 		}
 	}
-
 
 </style>

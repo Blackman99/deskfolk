@@ -87,7 +87,7 @@
 
 <header class="top">
 	{#if selected}
-		<div class="top-session-identity">
+		<div class="top-session-identity flex items-center gap-6 min-w-0 flex-1">
 			<button
 				type="button"
 				class="btn-mobile-back"
@@ -130,11 +130,11 @@
 						<span class="avatar-status-dot" class:is-busy={thinkingHere}></span>
 					</span>
 				{/if}
-				<span class="top-titles">
+				<span class="top-titles flex flex-col min-w-0 gap-1">
 					<span class="top-title-text" role="heading" aria-level="1">{titleOf(selected)}{archivedSuffix(selected)}</span>
-					<span class="top-subline">
+					<span class="top-subline flex items-center gap-3 text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
 						{#if selectedKind === 'you-bot' && selectedPeerBot}
-							<span class="status-indicator">
+							<span class="status-indicator inline-flex items-center gap-2 text-muted font-medium">
 								<span class="status-dot" class:is-busy={thinkingHere}></span>
 								{selectedWork && selectedWork.kind !== 'idle' ? selectedWork.label : t.chat.online}
 							</span>
@@ -160,7 +160,7 @@
 			</button>
 		</div>
 
-		<div class="top-actions">
+		<div class="top-actions flex items-center gap-4 shrink-0">
 			<button
 				type="button"
 				class="btn-top-action"
@@ -244,14 +244,6 @@
 		border-color: var(--warn);
 	}
 
-	.top-session-identity {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		min-width: 0;
-		flex: 1;
-	}
-
 	.top-identity-btn {
 		display: flex;
 		align-items: center;
@@ -323,32 +315,6 @@
 		box-shadow: none;
 	}
 
-	.top-titles {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		gap: 2px;
-	}
-
-	.top-subline {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 11.5px;
-		color: var(--muted);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.status-indicator {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--muted);
-		font-weight: 500;
-	}
-
 	.status-dot {
 		width: 6px;
 		height: 6px;
@@ -375,13 +341,6 @@
 		font-size: 11.5px;
 		font-weight: 500;
 		white-space: nowrap;
-	}
-
-	.top-actions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex-shrink: 0;
 	}
 
 	.btn-top-action {

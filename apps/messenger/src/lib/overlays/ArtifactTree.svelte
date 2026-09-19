@@ -52,7 +52,7 @@
 </script>
 
 <nav class="artifact-tree" aria-label={label}>
-	<ul class="artifact-tree-list">
+	<ul class="artifact-tree-list list-none m-0 p-0">
 		{#each nodes as node (node.path)}
 			{@render row(node, 0)}
 		{/each}
@@ -76,12 +76,12 @@
 			<span class="artifact-tree-file">
 				<FileIcon icon={fileIconFor(node.path, { isDir: node.kind === 'dir' })} size={12} />
 			</span>
-			<span class="artifact-tree-name">{node.name}</span>
+			<span class="artifact-tree-name overflow-hidden text-ellipsis whitespace-nowrap">{node.name}</span>
 		</button>
 		{#if node.kind === 'dir' && isOpen(node.path)}
-			<ul class="artifact-tree-list">
+			<ul class="artifact-tree-list list-none m-0 p-0">
 				{#if node.truncated && truncatedLabel}
-					<li class="artifact-tree-note">{truncatedLabel}</li>
+					<li class="artifact-tree-note pt-2 pr-5 pb-2 pl-12 text-11 text-muted">{truncatedLabel}</li>
 				{/if}
 				{#each node.children ?? [] as child (child.path)}
 					{@render row(child, depth + 1)}
@@ -98,12 +98,6 @@
 		border-right: 1px solid var(--line);
 		background: var(--sidebar-bg);
 		padding: 8px 0;
-	}
-
-	.artifact-tree-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
 	}
 
 	.artifact-tree-row {
@@ -150,17 +144,5 @@
 
 	.artifact-tree-chevron.is-open {
 		transform: rotate(90deg);
-	}
-
-	.artifact-tree-name {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.artifact-tree-note {
-		padding: 4px 10px 4px 24px;
-		font-size: 11px;
-		color: var(--muted);
 	}
 </style>

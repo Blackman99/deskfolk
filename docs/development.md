@@ -50,7 +50,7 @@
 
 新写或改一条样式，按这个顺序挑落点，挑不到再往下走：
 
-1. **Uno 工具类**（`apps/messenger/uno.config.ts`）。布局、间距、字号、配色这些普通样式写在 `class` 上。主题取自 `tokens.css`：颜色映射到 `var(--pane)` 这类令牌，不写死色值；圆角、阴影、字体同理。
+1. **Uno 工具类**（`apps/messenger/uno.config.ts`）。布局、间距、字号、配色这些普通样式写在 `class` 上。主题取自 `tokens.css`：颜色映射到 `var(--pane)` 这类令牌，不写死色值；圆角、阴影、字体同理。**数字就是 2px 一档，`p-7` 和 `w-7` 都是 14px** —— 间距和尺寸共用一把尺（presetWind3 默认给尺寸另一把 0.25rem 的尺，配置里覆盖掉了）。
 2. **组件自己的 `<style>`**。只有这个组件才有的东西 —— 伪元素、动画、带结构的 `:hover` / `:focus-visible`、媒体查询、`-webkit-` 前缀那些。Svelte 会作用域化，改它波及不到别人，而且**选择器没人用时 `svelte-check` 直接报 `css_unused_selector`** —— 全局表要靠 `styles-coverage.test.ts` 才查得出来的事，搬进组件就变成编译期检查了。
 3. **`lib/styles/*.css` 全局**。只留真正没有宿主的：令牌、reset、几个面共用的骨架、第三方 DOM、那条跨面断点。**跨组件的先想办法拆进它作用的那个组件**，拆不动才留在这儿。
 
@@ -71,14 +71,25 @@
 - **`@media` 包裹会在搬运中掉。** 掉了的规则在所有宽度生效，而固定宽度的截图永远看不出来。改完用「(媒体查询, 选择器) 配对」的前后集合对一遍；680px 断点现在有 `shell-narrow` 这张窄屏基线守着。
 - **层叠位置本身可能在做事。** 原来排在最后一个 import 里的规则，搬进组件后落在中间就可能被压过。作用域化会加一层类（`.a` → `.a.svelte-x`），特异性变了，顺序也变了。
 
-### Uno 配置上的两个坑
+### Uno 配置上的三个坑
 
-两个都是 `preflight: false` 带来的（不能开 preflight：它会重置这张手写表依赖的默认值）。
+三个都是同一类：工具类**看着**在做那件事，其实做的是别的事，或者什么都没做。
 
-- **`text-*` 会捎带一个 `line-height`。** `theme.fontSize` 写成裸字符串时 `presetWind3` 补 `line-height: 1`，而这张表是靠 `base.css` 上无单位的 `line-height: 1.5` 继承下来的。`.route-log-subtitle` 换成 `text-11p5` 后行高从 17.25px 掉到 11.5px，头部矮了 5.75px，整个面板往上挪 —— 截图是整屏差异，而单看那个元素的 `font-size` 完全正确。所以字号一律配成 `[大小, '1.5']` 这样的对。
-- **border 工具类静默失效。** 没有 preflight 就没有 `border-style: solid` 的底，`border` / `border-t` 这些只设宽度，画不出线。补一条 `border-style: solid; border-width: 0` 的 preflight 试过，六个面当场变样（表里大量规则只写 `border-color` 或只写 `border-width`，原本靠 UA 默认的 `border-style: none` 兜着）。现在是 `blocklist: [/^border($|-)/]`：**边框继续写 CSS**，写了 border 工具类会直接报错，不会悄悄没效果。
+- **`text-*` 默认会捎带一个 `line-height`。** presetWind3 的 `text-*` 总要一并设行高 —— 裸的字号配置给 `1`，配成对就给你写的那个值。两种都会覆盖掉元素本该继承来的行高，而这张表**两个方向都依赖继承**：大部分文字取 `base.css` 上无单位的 1.5，而自己写了 `line-height: 1` 的卡片指望子元素跟着。配成 `[大小, '1.5']` 治好了前者、弄坏了后者（回复卡里的「思考中」行从 11.5px 变成 17.25px）。现在 `text-<size>` 是配置里一条**只发 `font-size`** 的自定义规则，和它替代的那句声明一模一样。
+- **尺寸类原本走另一把尺。** presetWind3 的 `w-4` 是 0.25rem 一档，和 `theme.spacing` 无关 —— 于是 `p-17` 是 34px 而 `w-17` 是 68px，一套名字两把尺。配置里把 `width` / `height` / `min*` / `max*` 都指到同一个 `SCALE` 上。
+- **border 工具类静默失效。** 没有 preflight 就没有 `border-style: solid` 的底，`border-t` 只设宽度，画不出线。补 preflight 试过，六个面当场变样（表里大量规则只写 `border-color` 或只写 `border-width`，原本靠 UA 默认的 `border-style: none` 兜着）。现在是 `blocklist: [/^border($|-)/]`，边框继续写 CSS；`uno-utilities.test.ts` 让「写了 border 工具类会报错」这句话成真 —— 它把 markup 里每个长得像工具类的 token 交给 Uno 生成一遍，生成不出东西就失败。
 
-另外间距单位是 2px（设计上大量 14px / 11.5px 这种奇数值，4px 一档配不出来），所以 `px-8` 是 16px、`w-14` 是 28px —— 名字读起来不像 px，改的时候按令牌算，别按 Tailwind 的习惯猜。
+### 把一条规则改写成工具类，要先证明它等价
+
+不要凭眼睛。`tests/uno-equivalence.mjs` 读一组工具类、回答它们实际声明了什么：
+
+```bash
+echo '{"x":["w-17","py-7","px-8"]}' | bun tests/uno-equivalence.mjs
+```
+
+把它和原规则展开成长写形式逐项比，不一致就别改。这一轮 174 条改写里它拦下了五类错：`font-[650]` 被当成 font-family、`margin: 0 auto` 只写 `mx-auto` 丢了纵向的 0、`rounded-full` 在非正方形上是胶囊而 `50%` 是椭圆、裸 hex 颜色会被拆成一个共享的透明度变量、以及上面那把错的尺。
+
+改完再用 `dump.spec.ts` 对所有 story 做一次前后比对（**逐元素的几何 + 计算样式，不是截图**）：这一轮的结果是 19 个 story、0 行差异。截图的 20 像素阈值吃得下的东西，它吃不下。
 
 ### 搬样式怎么验
 

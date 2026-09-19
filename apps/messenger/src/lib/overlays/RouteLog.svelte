@@ -118,7 +118,7 @@
 			onscroll={onScroll}
 		>
 			{#if rows.length === 0}
-				<p class="muted route-log-empty">{loading ? t.routes.loading : t.routes.none}</p>
+				<p class="muted route-log-empty m-0 text-12 leading-normal">{loading ? t.routes.loading : t.routes.none}</p>
 			{:else}
 				<ul
 					class="route-log-list"
@@ -133,13 +133,13 @@
 								onclick={() => onJump(row.triggerMessageId)}
 							>
 								<span class="flex items-center gap-3">
-									<span class="route-bot" class:is-unknown={!row.botKnown}>{row.botName}</span>
+									<span class="route-bot min-w-0 text-12p5 font-semibold text-ink whitespace-nowrap overflow-hidden text-ellipsis" class:is-unknown={!row.botKnown}>{row.botName}</span>
 									<span class="route-outcome is-{row.outcome}">{row.outcomeLabel}</span>
-									<span class="route-time mono" title={formatFullTimestamp(row.createdAt)}>
+									<span class="route-time mono ml-auto shrink-0 text-10p5 text-muted-light" title={formatFullTimestamp(row.createdAt)}>
 										{formatMessageTime(row.createdAt)}
 									</span>
 								</span>
-								<span class="route-row-meta">
+								<span class="route-row-meta flex flex-wrap items-center gap-2">
 									<span class="route-chip is-model mono" title={row.model}>{row.model}</span>
 									<span class="route-chip">{t.routes.thinkingPrefix} {row.thinkingLabel}</span>
 									<span class="route-chip" title={t.routes.kindLabel}>{row.signatureLabel}</span>
@@ -149,20 +149,20 @@
 										</span>
 									{/if}
 									{#if row.durationMs !== null}
-										<span class="route-duration mono">{formatDurationMs(row.durationMs)}</span>
+										<span class="route-duration mono text-10p5 text-muted-light">{formatDurationMs(row.durationMs)}</span>
 									{/if}
 								</span>
 								{#if row.reason}
 									<span class="route-why">
-										<span class="route-why-label">{t.routes.pickReason}</span>
+										<span class="route-why-label shrink-0 font-semibold text-muted-light">{t.routes.pickReason}</span>
 										<span>{row.reason}</span>
 									</span>
 								{/if}
 								{#if row.review}
 									<span class="route-review" class:is-model={row.review.blamedModel}>
-										<span class="route-review-head">
-											<span class="route-review-tag">{t.routes.reviewTitle}</span>
-											<span class="route-review-fault">{row.review.faultLabel}</span>
+										<span class="route-review-head flex flex-wrap items-center gap-[5px]">
+											<span class="route-review-tag font-semibold text-muted-light">{t.routes.reviewTitle}</span>
+											<span class="route-review-fault font-semibold text-ink-secondary">{row.review.faultLabel}</span>
 											{#if row.review.directionLabel}
 												<span class="route-review-direction">{row.review.directionLabel}</span>
 											{/if}
@@ -176,7 +176,7 @@
 									</span>
 								{/if}
 								{#if row.failReason}
-									<span class="route-fail">
+									<span class="route-fail flex items-start gap-[5px] text-11p5 leading-[1.4] text-danger-text">
 										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
 										<span>{row.failReason}</span>
 									</span>
@@ -210,7 +210,7 @@
 											<li class="route-feedback-item">
 												<p class="route-feedback-body">{note.body}</p>
 												<span
-													class="route-feedback-time mono"
+													class="route-feedback-time mono shrink-0 pt-[1px] text-10 text-muted-light"
 													title={formatFullTimestamp(note.created_at)}
 												>
 													{formatMessageTime(note.created_at)}
@@ -267,10 +267,6 @@
 	  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-
-
-
-
 	.route-log-titles h2 {
 	  margin: 0;
 	  font-size: 14px;
@@ -278,19 +274,12 @@
 	  color: var(--ink);
 	}
 
-
 	.route-log-body {
 	  flex: 1;
 	  min-height: 0;
 	  overflow-y: auto;
 	  /* The top padding is a fixed offset the windowing subtracts from scrollTop. */
 	  padding: 14px 16px 20px;
-	}
-
-	.route-log-empty {
-	  margin: 0;
-	  font-size: 12px;
-	  line-height: 1.5;
 	}
 
 	.route-log-hint {
@@ -335,17 +324,6 @@
 
 	.route-row-main:hover {
 	  background: var(--chip);
-	}
-
-
-	.route-bot {
-	  min-width: 0;
-	  font-size: 12.5px;
-	  font-weight: 600;
-	  color: var(--ink);
-	  white-space: nowrap;
-	  overflow: hidden;
-	  text-overflow: ellipsis;
 	}
 
 	.route-bot.is-unknown {
@@ -396,20 +374,6 @@
 	  border-color: var(--chip-line);
 	}
 
-	.route-time {
-	  margin-left: auto;
-	  flex-shrink: 0;
-	  font-size: 10.5px;
-	  color: var(--muted-light);
-	}
-
-	.route-row-meta {
-	  display: flex;
-	  flex-wrap: wrap;
-	  align-items: center;
-	  gap: 4px;
-	}
-
 	.route-chip {
 	  max-width: 100%;
 	  font-size: 10.5px;
@@ -439,11 +403,6 @@
 	  border-style: dashed;
 	}
 
-	.route-duration {
-	  font-size: 10.5px;
-	  color: var(--muted-light);
-	}
-
 	.route-why {
 	  display: flex;
 	  align-items: baseline;
@@ -451,12 +410,6 @@
 	  font-size: 11.5px;
 	  line-height: 1.45;
 	  color: var(--muted);
-	}
-
-	.route-why-label {
-	  flex-shrink: 0;
-	  font-weight: 600;
-	  color: var(--muted-light);
 	}
 
 	.route-review {
@@ -477,23 +430,6 @@
 	  background: var(--warn-bg);
 	}
 
-	.route-review-head {
-	  display: flex;
-	  flex-wrap: wrap;
-	  align-items: center;
-	  gap: 5px;
-	}
-
-	.route-review-tag {
-	  font-weight: 600;
-	  color: var(--muted-light);
-	}
-
-	.route-review-fault {
-	  font-weight: 600;
-	  color: var(--ink-secondary);
-	}
-
 	.route-review.is-model .route-review-fault {
 	  color: var(--warn-text);
 	}
@@ -506,15 +442,6 @@
 	.route-review-reason {
 	  color: var(--ink-secondary);
 	  overflow-wrap: anywhere;
-	}
-
-	.route-fail {
-	  display: flex;
-	  align-items: flex-start;
-	  gap: 5px;
-	  font-size: 11.5px;
-	  line-height: 1.4;
-	  color: var(--danger-text);
 	}
 
 	.route-fail svg {
@@ -582,12 +509,5 @@
 	  line-height: 1.45;
 	  color: var(--ink-secondary);
 	  overflow-wrap: anywhere;
-	}
-
-	.route-feedback-time {
-	  flex-shrink: 0;
-	  padding-top: 1px;
-	  font-size: 10px;
-	  color: var(--muted-light);
 	}
 </style>

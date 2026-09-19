@@ -161,20 +161,12 @@
 	});
 </script>
 
-<div class="artifact-cm-wrap">
-	<pre class="artifact-text artifact-cm-fallback">{code}</pre>
+<div class="artifact-cm-wrap min-h-[280px] flex-1 h-full relative flex flex-col">
+	<pre class="artifact-text artifact-cm-fallback absolute inset-0 z-0 m-0 py-4 px-6 overflow-auto bg-pane pointer-events-none">{code}</pre>
 	<div class="artifact-cm" bind:this={host}></div>
 </div>
 
 <style>
-	.artifact-cm-wrap {
-		min-height: 280px;
-		flex: 1;
-		height: 100%;
-		position: relative;
-		display: flex;
-		flex-direction: column;
-	}
 
 	.artifact-cm {
 		min-height: 0;
@@ -182,17 +174,6 @@
 		height: 100%;
 		position: relative;
 		z-index: 1;
-	}
-
-	.artifact-cm-fallback {
-		position: absolute;
-		inset: 0;
-		z-index: 0;
-		margin: 0;
-		padding: 8px 12px;
-		overflow: auto;
-		background: var(--pane);
-		pointer-events: none;
 	}
 
 	.artifact-cm-wrap:has(:global(.monaco-editor)) .artifact-cm-fallback {

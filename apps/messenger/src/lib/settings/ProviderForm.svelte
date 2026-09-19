@@ -208,7 +208,7 @@
 
 <div class="modal-section">
 	<div class="field-head-row">
-		<span class="field-head model-picker-head" id={`${fieldPrefix}-models-label`}>
+		<span class="field-head model-picker-head inline-flex items-center" id={`${fieldPrefix}-models-label`}>
 			{t.settings.models}
 			{#if rows.length > 0}
 				<span class="badge-count-inline">
@@ -234,7 +234,7 @@
 	{/if}
 	<div class="model-picker" class:has-error={Boolean(errors.models)}>
 		{#if rows.length === 0}
-			<div class="model-picker-empty">
+			<div class="model-picker-empty py-9 px-7 text-center">
 				<p class="muted">{emptyHint()}</p>
 			</div>
 		{:else}
@@ -273,9 +273,9 @@
 					</button>
 				</div>
 			{/if}
-			<ul class="model-picker-list" aria-labelledby={`${fieldPrefix}-models-label`}>
+			<ul class="model-picker-list list-none m-0 p-2 max-h-[260px] overflow-y-auto flex flex-col gap-1" aria-labelledby={`${fieldPrefix}-models-label`}>
 				{#if visibleRows.length === 0}
-					<li class="model-picker-none muted">
+					<li class="model-picker-none muted p-7 text-center text-12">
 						{filterMode === 'enabled' && filterQuery.trim().length === 0
 							? t.settings.modelsEnabledEmpty
 							: t.settings.modelAttrsEmptyFilter}
@@ -287,7 +287,7 @@
 					{@const open = on && Boolean(expanded[name])}
 					{@const customTags = customStrengths(attr)}
 					<li class="model-row" class:is-on={on} class:is-open={open}>
-						<div class="model-row-line">
+						<div class="model-row-line flex items-center gap-2">
 							<button
 								type="button"
 								role="checkbox"
@@ -296,7 +296,7 @@
 								onclick={() => onchange(toggleDraftModel(draft, name))}
 							>
 								<span class="model-row-box" aria-hidden="true">{on ? '✓' : ''}</span>
-								<span class="model-row-name mono">{name}</span>
+								<span class="model-row-name mono flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-12p5">{name}</span>
 								{#if name === draft.defaultModel}
 									<span class="model-default-tag">{t.settings.modelAttrsDefaultBadge}</span>
 								{/if}
@@ -322,7 +322,7 @@
 									{#each attr.strengths as tag (tag)}
 										<span class="attr-pill pill-strengths">{tag}</span>
 									{/each}
-									<span class="model-row-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+									<span class="model-row-caret w-6 text-center text-11" aria-hidden="true">{open ? '▾' : '▸'}</span>
 								</button>
 							{/if}
 						</div>
@@ -347,7 +347,7 @@
 								</div>
 								<div class="attr-field">
 									<span class="attr-field-label">{t.settings.modelThinking}</span>
-									<div class="chip-row" role="group" aria-label={t.settings.modelThinking}>
+									<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelThinking}>
 										{#each thinkingChipOptions(attr, draft.advertisedThinking[name]) as level (level)}
 											<button
 												type="button"
@@ -391,7 +391,7 @@
 								</div>
 								<div class="attr-field attr-field-strengths">
 									<span class="attr-field-label">{t.settings.modelStrengths}</span>
-									<div class="chip-row" role="group" aria-label={t.settings.modelStrengths}>
+									<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelStrengths}>
 										{#each PRESET_STRENGTHS as tag (tag)}
 											<button
 												type="button"
@@ -598,12 +598,6 @@
 		border: 1px solid #bae6fd;
 	}
 
-	/* Endpoint editor: model picker (probed list + enabled rows + per-row routing attributes) */
-	.model-picker-head {
-		display: inline-flex;
-		align-items: center;
-	}
-
 	.model-picker {
 		display: flex;
 		flex-direction: column;
@@ -615,11 +609,6 @@
 
 	.model-picker.has-error {
 		border-color: var(--danger);
-	}
-
-	.model-picker-empty {
-		padding: 18px 14px;
-		text-align: center;
 	}
 
 	.model-picker-empty :global(p) {
@@ -675,23 +664,6 @@
 		font-weight: 600;
 	}
 
-	.model-picker-list {
-		list-style: none;
-		margin: 0;
-		padding: 4px;
-		max-height: 260px;
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.model-picker-none {
-		padding: 14px;
-		text-align: center;
-		font-size: 12px;
-	}
-
 	.model-row {
 		border-radius: var(--radius-sm);
 	}
@@ -702,12 +674,6 @@
 
 	.model-row.is-open {
 		box-shadow: inset 0 0 0 1px var(--accent-border);
-	}
-
-	.model-row-line {
-		display: flex;
-		align-items: center;
-		gap: 4px;
 	}
 
 	.model-row-toggle {
@@ -754,15 +720,6 @@
 		border-color: var(--accent);
 	}
 
-	.model-row-name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 12.5px;
-	}
-
 	.model-custom-tag {
 		flex: none;
 		font-size: 10px;
@@ -802,12 +759,6 @@
 		white-space: nowrap;
 	}
 
-	.model-row-caret {
-		width: 12px;
-		text-align: center;
-		font-size: 11px;
-	}
-
 	.model-row-body {
 		display: grid;
 		grid-template-columns: 120px 1fr;
@@ -840,14 +791,6 @@
 		font-family: var(--mono);
 		border-radius: var(--radius-sm);
 		box-shadow: none;
-	}
-
-	.chip-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px;
-		min-height: 22px;
 	}
 
 	:global(.modal-body) .chip-input {

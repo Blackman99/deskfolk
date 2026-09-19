@@ -159,7 +159,7 @@
 </script>
 
 <div class="mcp-settings">
-	<div class="mcp-list-toolbar">
+	<div class="mcp-list-toolbar shrink-0 flex flex-col gap-5">
 		<div class="mcp-list-heading">
 			<h3 class="settings-card-title">{t.settings.sectionMcpServers}</h3>
 			<button bind:this={addButton} type="button" class="btn-mcp-add" onclick={() => void openEditor()}>
@@ -197,8 +197,8 @@
 					aria-label={`${t.settings.mcpEdit}: ${server.name}`}
 					onclick={() => void openEditor(server)}
 				>
-					<span class="mcp-server-name" title={server.name}>{server.name}</span>
-					<span class="mcp-server-meta">
+					<span class="mcp-server-name text-13p5 font-semibold" title={server.name}>{server.name}</span>
+					<span class="mcp-server-meta flex items-center gap-4 min-w-0 max-w-full text-muted text-12">
 						<span class="mcp-badge">{server.transport === 'http' ? 'HTTP' : 'stdio'}</span>
 						<span class="mcp-server-connection mono" title={mcpConnectionSummary(server)}>{mcpConnectionSummary(server)}</span>
 					</span>
@@ -223,7 +223,7 @@
 
 {#if editor}
 	<div
-		class="modal-backdrop mcp-editor-backdrop"
+		class="modal-backdrop mcp-editor-backdrop z-[110]"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="mcp-editor-title"
@@ -239,7 +239,7 @@
 				<button type="button" class="modal-close" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
 			</div>
 			<div class="modal-body">
-				<p class="muted mcp-confirm-hint">{t.settings.mcpMustConfirm}</p>
+				<p class="muted mcp-confirm-hint m-0 text-12">{t.settings.mcpMustConfirm}</p>
 				{#if failed}
 					<p class="field-error" role="alert">{t.settings.saveFailed}</p>
 				{/if}
@@ -324,13 +324,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-	}
-
-	.mcp-list-toolbar {
-		flex-shrink: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
 	}
 
 	.mcp-list-heading,
@@ -422,21 +415,6 @@
 		max-width: 100%;
 	}
 
-	.mcp-server-name {
-		font-size: 13.5px;
-		font-weight: 600;
-	}
-
-	.mcp-server-meta {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
-		max-width: 100%;
-		color: var(--muted);
-		font-size: 12px;
-	}
-
 	.mcp-badge {
 		flex-shrink: 0;
 		font-size: 10px;
@@ -458,10 +436,6 @@
 	.btn-mcp-add:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: 1px;
-	}
-
-	.mcp-editor-backdrop {
-		z-index: 110;
 	}
 
 	.modal-dialog.mcp-editor-modal {
@@ -488,11 +462,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-	}
-
-	.mcp-confirm-hint {
-		margin: 0;
-		font-size: 12px;
 	}
 
 	.mcp-editor-modal :global(.modal-foot) {

@@ -342,7 +342,7 @@
 <div class="panel-card">
 	<div class="panel-card-head">
 		<span class="panel-card-title">{t.top.profile}</span>
-		<span class="profile-save-state" class:is-error={profileFailed} aria-live="polite">
+		<span class="profile-save-state ml-auto text-12 text-muted whitespace-nowrap" class:is-error={profileFailed} aria-live="polite">
 			{#if profileSaving}
 				{t.sidebar.autoSaving}
 			{:else if profileFailed}
@@ -443,12 +443,12 @@
 		<span class="panel-card-title">{t.sidebar.skills}</span>
 		<span class="panel-counter-badge">{profileSkills.length}</span>
 	</div>
-	<div class="panel-card-body skill-card-body">
+	<div class="panel-card-body skill-card-body flex flex-col gap-4">
 		{#if skillFailed && !skillEditor}
 			<p class="field-error" role="alert">{t.sidebar.saveFailed}</p>
 		{/if}
 		{#if profileSkills.length === 0 && !skillEditor}
-			<p class="muted skill-empty">{t.sidebar.skillsEmpty}</p>
+			<p class="muted skill-empty m-0 text-13">{t.sidebar.skillsEmpty}</p>
 		{/if}
 		{#each profileSkills as skill (skill.id)}
 			<div class="skill-row" class:is-disabled={!skill.enabled} class:is-open={skillEditor === skill.id}>
@@ -459,7 +459,7 @@
 					onclick={() => openEditSkill(skill.id)}
 				>
 					<span class="skill-name" title={skill.name}>{skill.name}</span>
-					<span class="skill-desc" title={skill.description}>{skill.description}</span>
+					<span class="skill-desc text-12 text-muted" title={skill.description}>{skill.description}</span>
 				</button>
 				<label class="mcp-enable-label">
 					<input
@@ -477,7 +477,7 @@
 		{/each}
 		{#if skillEditor}
 			<div class="skill-editor">
-				<p class="muted skill-editor-title">
+				<p class="muted skill-editor-title m-0 text-12 font-semibold uppercase tracking-[0.04em]">
 					{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
 				</p>
 				{#if skillFailed}
@@ -528,13 +528,13 @@
 						placeholder={t.sidebar.skillUsesPlaceholder}
 						disabled={skillBusy}
 					/>
-					<p class="muted skill-editor-hint">{t.sidebar.skillUsesHint}</p>
+					<p class="muted skill-editor-hint mt-2 mx-0 mb-0 text-12 leading-[1.45]">{t.sidebar.skillUsesHint}</p>
 				</div>
-				<label class="mcp-enable-label skill-editor-enabled">
+				<label class="mcp-enable-label skill-editor-enabled mt-1">
 					<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
 					{t.sidebar.skillEnabled}
 				</label>
-				<div class="skill-editor-actions">
+				<div class="skill-editor-actions flex flex-wrap gap-4">
 					<button type="button" class="btn-primary" disabled={skillBusy} onclick={() => void saveSkill()}>
 						{t.sidebar.skillSave}
 					</button>
@@ -554,7 +554,7 @@
 				</div>
 			</div>
 		{:else}
-			<button type="button" class="btn-secondary skill-add" onclick={openAddSkill}>
+			<button type="button" class="btn-secondary skill-add self-start" onclick={openAddSkill}>
 				{t.sidebar.skillAdd}
 			</button>
 		{/if}
@@ -566,7 +566,7 @@
 		<span class="panel-card-title">{#if selectedKind === 'you-bot'}{t.sidebar.archive} / {t.detail.clearHistory} / {t.sidebar.delete}{:else}{t.sidebar.archive} / {t.sidebar.delete}{/if}</span>
 	</div>
 	<div class="panel-card-body">
-		<div class="bot-management-actions">
+		<div class="bot-management-actions flex gap-4">
 			{#if bot.archived_at}
 				<button type="button" class="btn-secondary" onclick={() => void restoreProfile()}>
 					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
@@ -595,17 +595,6 @@
 </div>
 
 <style>
-	/* The skill list. It lived in `route-log.css` only because the sheet was cut by line range. */
-	.skill-card-body {
-	  display: flex;
-	  flex-direction: column;
-	  gap: 8px;
-	}
-
-	.skill-empty {
-	  margin: 0;
-	  font-size: 13px;
-	}
 
 	.skill-row {
 	  display: flex;
@@ -659,11 +648,6 @@
 	  font-weight: 600;
 	}
 
-	.skill-desc {
-	  font-size: 12px;
-	  color: var(--muted);
-	}
-
 	.skill-row .mcp-enable-label {
 	  flex-shrink: 0;
 	  white-space: nowrap;
@@ -678,49 +662,8 @@
 	  border-top: 1px solid var(--line-subtle);
 	}
 
-	.skill-editor-title {
-	  margin: 0;
-	  font-size: 12px;
-	  font-weight: 600;
-	  text-transform: uppercase;
-	  letter-spacing: 0.04em;
-	}
-
-	.skill-editor-enabled {
-	  margin-top: 2px;
-	}
-
-	.skill-editor-hint {
-	  margin: 4px 0 0;
-	  font-size: 12px;
-	  line-height: 1.45;
-	}
-
-	.skill-editor-actions {
-	  display: flex;
-	  flex-wrap: wrap;
-	  gap: 8px;
-	}
-
-	.skill-add {
-	  align-self: flex-start;
-	}
-
-	/* Profile panel: autosave state + thinking-level quick picker */
-	.profile-save-state {
-		margin-left: auto;
-		font-size: 12px;
-		color: var(--muted);
-		white-space: nowrap;
-	}
-
 	.profile-save-state.is-error {
 		color: var(--danger-text);
-	}
-
-	.bot-management-actions {
-		display: flex;
-		gap: 8px;
 	}
 
 	.bot-management-actions :global(button) {

@@ -11,7 +11,7 @@
 
 <span class="file-glyph" style:color={icon.tint} aria-hidden="true">
 	{#if icon.letter}
-		<span class="file-glyph-letter" style:font-size="{Math.max(8, size - 4)}px">{icon.letter}</span>
+		<span class="file-glyph-letter font-mono font-bold tracking-[-0.04em] leading-none" style:font-size="{Math.max(8, size - 4)}px">{icon.letter}</span>
 	{:else if icon.shape === 'folder'}
 		<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
 	{:else if icon.shape === 'image'}
@@ -39,13 +39,6 @@
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-		line-height: 1;
-	}
-
-	.file-glyph-letter {
-		font-family: var(--mono);
-		font-weight: 700;
-		letter-spacing: -0.04em;
 		line-height: 1;
 	}
 </style>

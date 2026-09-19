@@ -58,20 +58,20 @@
 	{#if collapse}
 		<button
 			type="button"
-			class="attachment-bundle-btn"
+			class="attachment-bundle-btn mt-4 max-w-[280px]"
 			onclick={openBundle}
 			title={attachments.map((row) => row.workspace_relpath).join("\n")}
 		>
-			<div class="file-icon-box" aria-hidden="true">
+			<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
 				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
 			</div>
-			<div class="file-meta-col">
-				<span class="file-title">{bundle ?? t.stream.artifactBundle}</span>
-				<span class="file-sub">{t.stream.artifactBundleCount(fileCount)}</span>
+			<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">
+				<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{bundle ?? t.stream.artifactBundle}</span>
+				<span class="file-sub text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{t.stream.artifactBundleCount(fileCount)}</span>
 			</div>
 		</button>
 	{:else}
-		<div class="msg-attachments-grid">
+		<div class="msg-attachments-grid flex flex-wrap gap-4 mt-4">
 			{#each attachments as att (att.id)}
 				{@const thumb = thumbs[att.id]}
 				<button
@@ -83,13 +83,13 @@
 					{#if thumb}
 						<img src={thumb} alt="" class="attachment-chip-thumb" />
 					{:else}
-						<div class="file-icon-box">
+						<div class="file-icon-box text-accent flex items-center">
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
 						</div>
 					{/if}
-					<div class="file-meta-col">
-						<span class="file-title">{att.original_filename}</span>
-						<span class="file-sub mono">{att.workspace_relpath}</span>
+					<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">
+						<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{att.original_filename}</span>
+						<span class="file-sub mono text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{att.workspace_relpath}</span>
 					</div>
 				</button>
 			{/each}
@@ -98,13 +98,6 @@
 {/if}
 
 <style>
-	/* Message Bubble Attachments */
-	.msg-attachments-grid {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 8px;
-	}
 
 	.attachment-file-btn,
 	.attachment-bundle-btn {
@@ -121,44 +114,10 @@
 		color: var(--ink);
 	}
 
-	.attachment-bundle-btn {
-		margin-top: 8px;
-		max-width: 280px;
-	}
-
 	.attachment-file-btn:hover,
 	.attachment-bundle-btn:hover {
 		border-color: var(--accent);
 		box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-	}
-
-	.file-icon-box {
-		color: var(--accent);
-		display: flex;
-		align-items: center;
-	}
-
-	.file-meta-col {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		max-width: 170px;
-	}
-
-	.file-title {
-		font-size: 12px;
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.file-sub {
-		font-size: 10px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.attachment-chip-thumb {

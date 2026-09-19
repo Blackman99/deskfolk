@@ -766,7 +766,7 @@
 		aria-label={t.sidebar.resize}
 		onpointerdown={startSidebarResize}
 	></button>
-	<section class="main">
+	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
 		<ChatHeader
 			{runtime}
 			{t}
@@ -867,7 +867,7 @@
 							<span>{nestedBackLabel}</span>
 						</button>
 					{:else}
-						<div class="panel-header-title-wrap">
+						<div class="panel-header-title-wrap flex items-center gap-5">
 							<div class="panel-header-icon" aria-hidden="true">
 								{#if selectedKind === 'group'}
 									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -899,7 +899,7 @@
 					</button>
 				</div>
 
-				<div class="panel-scroll-content">
+				<div class="panel-scroll-content flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
 					{#if profileBot}
 						{#key profileBot.id}
 							<ProfilePane
@@ -1205,12 +1205,6 @@
 		box-sizing: border-box;
 	}
 
-	.panel-header-title-wrap {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
 	.panel-header-icon {
 		width: 28px;
 		height: 28px;
@@ -1231,29 +1225,8 @@
 		margin: 0;
 	}
 
-	.panel-scroll-content {
-		flex: 1;
-		overflow-y: auto;
-		padding: 18px 18px 24px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
 	.panel-scroll-content > :global(*) {
 		flex-shrink: 0;
-	}
-
-	/* Top bar, transcript, messages, reactions, code blocks, ask and approval cards.
-	* Holds the 680px block that also rules the shell, the sidebar and the composer. */
-	/* Main Section */
-	.main {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		min-height: 0;
-		background: var(--pane);
-		position: relative;
 	}
 
 	@media (max-width: 680px) {

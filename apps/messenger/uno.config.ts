@@ -7,9 +7,7 @@ import { defineConfig, presetWind3 } from 'unocss';
  * `var(--x)`, so `[data-theme="dark"]` keeps working without a single `dark:` variant.
  *
  * Spacing is a 2px unit because that is what the sheet measures out to — 85% of its pixel values
- * are even, and 8/6/4/10/12 are the five it uses most. Font sizes are listed rather than scaled:
- * there are twenty of them and a third land on a half pixel, so a ratio scale would round the
- * design rather than describe it.
+ * are even, and 8/6/4/10/12 are the five it uses most.
  */
 const colors = Object.fromEntries(
 	[
@@ -25,6 +23,14 @@ const colors = Object.fromEntries(
 	].map((name) => [name, `var(--${name})`])
 );
 
+/** The sizes the sheet actually uses; a third land on a half pixel, so they are listed, not scaled. */
+const SIZES = new Set(
+	['9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '13.5', '14', '14.5', '15', '16', '16.5', '18', '20', '22', '24']
+);
+
+/** One step is 2px, and every numeric utility measures in it. */
+const SCALE = Object.fromEntries(Array.from({ length: 41 }, (_, i) => [String(i), `${i * 2}px`]));
+
 export default defineConfig({
 	presets: [presetWind3({ preflight: false })],
 	/*
@@ -34,12 +40,40 @@ export default defineConfig({
 	 * CSS, which is where this app's borders were already written.
 	 */
 	blocklist: [/^border($|-)/],
+	/*
+	 * `text-<size>` sets the font size and nothing else.
+	 *
+	 * presetWind3's own `text-*` always emits a line-height alongside — `1` for a bare theme
+	 * entry, or whatever the entry pairs with it. Either way it overrides what the element would
+	 * have inherited, and this sheet leans on inheritance in both directions: most text takes the
+	 * unitless 1.5 from `base.css`, while the cards that set their own `line-height: 1` expect
+	 * their children to keep it. A paired value fixes the first case and breaks the second (the
+	 * thinking line inside a replying card went from 11.5px to 17.25px). A bare font-size rule is
+	 * a faithful stand-in for the declaration it replaces, which is the whole point.
+	 */
+	rules: [
+		[
+			/^text-(\d+(?:p\d)?)$/,
+			([, raw]) => {
+				const px = raw!.replace('p', '.');
+				return SIZES.has(px) ? { 'font-size': `${px}px` } : undefined;
+			}
+		]
+	],
 	content: { pipeline: { include: [/\.(svelte|ts)($|\?)/] } },
 	theme: {
 		colors,
-		spacing: Object.fromEntries(
-			Array.from({ length: 41 }, (_, i) => [String(i), `${i * 2}px`])
-		),
+		spacing: SCALE,
+		/*
+		 * presetWind3 sizes `w-4` off its own 0.25rem step, so without these `p-17` is 34px while
+		 * `w-17` is 68px — two scales behind one set of names. One scale, or none.
+		 */
+		width: SCALE,
+		height: SCALE,
+		minWidth: SCALE,
+		minHeight: SCALE,
+		maxWidth: SCALE,
+		maxHeight: SCALE,
 		borderRadius: {
 			sm: 'var(--radius-sm)',
 			md: 'var(--radius-md)',
@@ -54,12 +88,6 @@ export default defineConfig({
 			sheet: 'var(--shadow-sheet)'
 		},
 		fontFamily: { sans: 'var(--font)', mono: 'var(--mono)' },
-		fontSize: Object.fromEntries(
-			[9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 16.5, 18, 20, 22, 24]
-				// The pair matters: a bare size makes presetWind3 emit `line-height: 1`, while this
-				// codebase inherits the unitless 1.5 from base.css. Pairing keeps `text-*` a pure
-				// font-size swap. See the route-log migration.
-				.map((px) => [String(px).replace('.', 'p'), [`${px}px`, '1.5'] as [string, string]])
-		)
+		// No `fontSize` here on purpose — see the `text-*` rule below.
 	}
 });

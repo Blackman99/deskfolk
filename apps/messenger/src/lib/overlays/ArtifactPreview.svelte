@@ -432,8 +432,8 @@
 	onkeydown={onPaneKey}
 >
 	<header class="artifact-pane-head">
-		<div class="artifact-pane-titles">
-			<div class="artifact-pane-title-row">
+		<div class="artifact-pane-titles min-w-0">
+			<div class="artifact-pane-title-row flex items-center gap-4 min-w-0">
 				<FileIcon {icon} size={16} />
 				<h2 class:is-dirty={dirty}>{titleName}</h2>
 			</div>
@@ -444,7 +444,7 @@
 	{#if canShowSource || canOpenOnDisk}
 		<div class="artifact-toolbar">
 			{#if canShowSource}
-				<span class="artifact-code-meta mono">{highlightLangLabel(textLang)}</span>
+				<span class="artifact-code-meta mono text-10 tracking-[0.04em] text-muted">{highlightLangLabel(textLang)}</span>
 				{#if sourceMode}
 					<button
 						type="button"
@@ -494,9 +494,9 @@
 		</div>
 	{/if}
 	{#if saveError}
-		<p class="muted artifact-save-error">{t.stream.artifactSaveFailed}</p>
+		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.stream.artifactSaveFailed}</p>
 	{/if}
-	<div class="artifact-pane-main" class:has-tree={showTree}>
+	<div class="artifact-pane-main flex-1 min-h-0 min-w-0 flex" class:has-tree={showTree}>
 		{#if showTree}
 			<ArtifactTree
 				nodes={tree}
@@ -515,7 +515,7 @@
 				onpointerdown={startTreeResize}
 			></button>
 		{/if}
-		<div class="artifact-pane-body" class:is-editor={sourceMode && text !== null}>
+		<div class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8" class:is-editor={sourceMode && text !== null}>
 			{#if truncatedHint && mode === 'workspace'}
 				<p class="muted">{t.stream.workspaceTruncated}</p>
 			{/if}
@@ -537,7 +537,7 @@
 				{/if}
 			{:else if kind === "image" || kind === "svg"}
 				{#if blobUrl}
-					<img src={blobUrl} alt={relpath} class="artifact-img" />
+					<img src={blobUrl} alt={relpath} class="artifact-img max-w-full max-h-full block my-0 mx-auto" />
 				{/if}
 			{:else if kind === "audio" && blobUrl}
 				<audio controls src={blobUrl}></audio>
@@ -556,7 +556,7 @@
 					style:color-scheme={resolvedTheme}
 				></iframe>
 			{:else if kind === "markdown" && text !== null}
-				<div class="artifact-md" use:markdownCode={codeLabels}>{@html renderMarkdown(text)}</div>
+				<div class="artifact-md text-14 leading-[1.55]" use:markdownCode={codeLabels}>{@html renderMarkdown(text)}</div>
 			{:else}
 				<p class="muted">{attachment?.original_filename ?? relpath}</p>
 			{/if}
@@ -599,17 +599,6 @@
 		gap: 12px;
 		padding: 14px 16px 10px;
 		border-bottom: 1px solid var(--line);
-	}
-
-	.artifact-pane-titles {
-		min-width: 0;
-	}
-
-	.artifact-pane-title-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
 	}
 
 	.artifact-pane-title-row h2 {
@@ -677,13 +666,6 @@
 		white-space: nowrap;
 	}
 
-	.artifact-pane-main {
-		flex: 1;
-		min-height: 0;
-		min-width: 0;
-		display: flex;
-	}
-
 	.artifact-pane-main.has-tree {
 		display: grid;
 		grid-template-columns: var(--artifact-tree-width, 168px) 8px minmax(0, 1fr);
@@ -719,10 +701,6 @@
 		color: var(--accent);
 	}
 
-	.artifact-save-error {
-		padding: 0 16px 6px;
-	}
-
 	.artifact-dirty-foot button:first-child {
 		background: var(--btn-secondary-bg);
 		color: var(--ink);
@@ -741,27 +719,6 @@
 		border-color: transparent !important;
 	}
 
-	.artifact-pane-body {
-		flex: 1;
-		min-height: 0;
-		min-width: 0;
-		overflow: auto;
-		padding: 16px;
-	}
-
-	.artifact-code-meta {
-		font-size: 10px;
-		letter-spacing: 0.04em;
-		color: var(--muted);
-	}
-
-	.artifact-img {
-		max-width: 100%;
-		max-height: 100%;
-		display: block;
-		margin: 0 auto;
-	}
-
 	.artifact-frame {
 		width: 100%;
 		height: 100%;
@@ -775,10 +732,5 @@
 	.artifact-pane-body video {
 		width: 100%;
 		max-height: 100%;
-	}
-
-	.artifact-md {
-		font-size: 14px;
-		line-height: 1.55;
 	}
 </style>

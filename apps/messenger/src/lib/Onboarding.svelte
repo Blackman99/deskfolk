@@ -365,9 +365,9 @@
 	}
 </script>
 
-<div class="onboarding-screen">
+<div class="onboarding-screen w-[100vw] h-screen bg-bg flex items-center justify-center p-10 overflow-y-auto box-border">
 	<div class="onboarding-card">
-		<div class="onboarding-hero">
+		<div class="onboarding-hero text-center flex flex-col items-center gap-3">
 			<div class="onboarding-icon-box">
 				<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M12 2a3 3 0 0 0-3 3v1a6 6 0 0 0-6 6v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a6 6 0 0 0-6-6V5a3 3 0 0 0-3-3z"></path>
@@ -377,7 +377,7 @@
 				</svg>
 			</div>
 			<h1 class="onboarding-title">{t.onboarding.welcome}</h1>
-			<p class="onboarding-subtitle">{t.onboarding.subtitle}</p>
+			<p class="onboarding-subtitle m-0 text-13 text-muted max-w-[480px] leading-[1.45]">{t.onboarding.subtitle}</p>
 		</div>
 
 		<!-- Step Bar -->
@@ -426,7 +426,7 @@
 		{/if}
 
 		<!-- Step Content -->
-		<div class="onboarding-step-content">
+		<div class="onboarding-step-content flex flex-col">
 			{#if currentStep === 1}
 				<!-- Step 1: Workspace -->
 				<div class="step-pane">
@@ -468,7 +468,7 @@
 						>
 							{t.onboarding.useDefaultWorkspace}
 						</button>
-						<p class="jail">{JAIL_COPY[locale]}</p>
+						<p class="jail mt-3 mx-0 mb-0 text-11p5 text-muted leading-[1.45] bg-line-subtle py-3 px-4 rounded-sm">{JAIL_COPY[locale]}</p>
 						{#if fieldErrors.workspace}
 							<p class="field-error">
 								{fieldCopy(
@@ -495,7 +495,7 @@
 						<p class="step-pane-desc">{t.onboarding.providerDesc}</p>
 					</div>
 
-					<div class="provider-presets-row">
+					<div class="provider-presets-row flex flex-wrap gap-3">
 						{#each PRESETS as preset}
 							<button
 								type="button"
@@ -592,7 +592,7 @@
 					<div class="modal-section">
 						<div class="field-head-row">
 							<label for="endpoint-models">{t.settings.modelsSelectTitle}</label>
-							<div class="model-head-actions">
+							<div class="model-head-actions flex items-center gap-4">
 								<button
 									type="button"
 									class="btn-text-action"
@@ -614,7 +614,7 @@
 						{:else}
 							<div class="models-selector-box">
 								{#if allKnownModels.length > 4}
-									<div class="models-filter-bar">
+									<div class="models-filter-bar flex gap-3 items-center">
 										<input
 											type="text"
 											class="models-filter-input"
@@ -626,7 +626,7 @@
 									</div>
 								{/if}
 
-								<div class="models-chips-container">
+								<div class="models-chips-container flex flex-wrap gap-3 max-h-[140px] overflow-y-auto p-1">
 									{#each filteredModels as model (model)}
 										{@const isSelected = selectedModels.includes(model)}
 										<button
@@ -635,8 +635,8 @@
 											class:is-selected={isSelected}
 											onclick={() => toggleModelSelection(model)}
 										>
-											<span class="model-chip-check">{isSelected ? '✓' : ''}</span>
-											<span class="model-chip-text">{model}</span>
+											<span class="model-chip-check text-11 font-bold min-w-5 text-accent">{isSelected ? '✓' : ''}</span>
+											<span class="model-chip-text font-mono text-11p5">{model}</span>
 										</button>
 									{/each}
 								</div>
@@ -707,7 +707,7 @@
 
 		<!-- Skip footer link -->
 		{#if onDismiss}
-			<div class="onboarding-foot">
+			<div class="onboarding-foot flex flex-col items-center gap-5 mt-2">
 				<button type="button" class="btn-onboarding-skip" onclick={onDismiss}>
 					{t.onboarding.skip}
 				</button>
@@ -717,19 +717,6 @@
 </div>
 
 <style>
-	/* The wizard empty state. */
-	/* Onboarding Screen */
-	.onboarding-screen {
-		width: 100vw;
-		height: 100vh;
-		background: var(--bg);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 20px;
-		overflow-y: auto;
-		box-sizing: border-box;
-	}
 
 	.onboarding-card {
 		width: 620px;
@@ -743,14 +730,6 @@
 		flex-direction: column;
 		gap: 16px;
 		animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.onboarding-hero {
-		text-align: center;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 6px;
 	}
 
 	.onboarding-icon-box {
@@ -772,14 +751,6 @@
 		font-weight: 700;
 		color: var(--ink);
 		letter-spacing: -0.02em;
-	}
-
-	.onboarding-subtitle {
-		margin: 0;
-		font-size: 13px;
-		color: var(--muted);
-		max-width: 480px;
-		line-height: 1.45;
 	}
 
 	/* Onboarding Step Bar */
@@ -868,12 +839,6 @@
 
 	.step-bar-line.is-complete {
 		background: var(--ok);
-	}
-
-	/* Step Content Pane */
-	.onboarding-step-content {
-		display: flex;
-		flex-direction: column;
 	}
 
 	.step-pane {
@@ -967,12 +932,6 @@
 		align-self: flex-start;
 	}
 
-	.provider-presets-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
 	.preset-chip {
 		padding: 5px 12px;
 		border-radius: 9999px;
@@ -997,14 +956,6 @@
 		color: #ffffff;
 		font-weight: 600;
 		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
-	}
-
-	.onboarding-foot {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 10px;
-		margin-top: 4px;
 	}
 
 	.btn-onboarding-skip {
@@ -1036,22 +987,6 @@
 		margin: 0;
 	}
 
-	.jail {
-		margin: 6px 0 0;
-		font-size: 11.5px;
-		color: var(--muted);
-		line-height: 1.45;
-		background: var(--line-subtle);
-		padding: 6px 8px;
-		border-radius: var(--radius-sm);
-	}
-
-	.model-head-actions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
 	.models-selector-box {
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
@@ -1062,12 +997,6 @@
 		gap: 8px;
 	}
 
-	.models-filter-bar {
-		display: flex;
-		gap: 6px;
-		align-items: center;
-	}
-
 	.models-filter-input {
 		flex: 1;
 		padding: 4px 8px !important;
@@ -1075,15 +1004,6 @@
 		border: 1px solid var(--line) !important;
 		border-radius: var(--radius-sm) !important;
 		background: var(--input-bg) !important;
-	}
-
-	.models-chips-container {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		max-height: 140px;
-		overflow-y: auto;
-		padding: 2px;
 	}
 
 	.model-chip {
@@ -1111,18 +1031,6 @@
 		border-color: var(--accent);
 		color: var(--accent);
 		font-weight: 600;
-	}
-
-	.model-chip-check {
-		font-size: 11px;
-		font-weight: 700;
-		min-width: 10px;
-		color: var(--accent);
-	}
-
-	.model-chip-text {
-		font-family: var(--mono);
-		font-size: 11.5px;
 	}
 
 	.model-custom-add-row {

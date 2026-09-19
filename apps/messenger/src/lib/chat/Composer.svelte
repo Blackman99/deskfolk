@@ -542,7 +542,7 @@
 		tabindex="-1"
 		onmousedown={(e) => e.preventDefault()}
 	>
-		<div class="autocomplete-header">{t.chat.mentionTooltip}</div>
+		<div class="autocomplete-header text-11 font-semibold uppercase text-muted pt-3 px-5 pb-2 tracking-[0.04em]">{t.chat.mentionTooltip}</div>
 		{#each mentionCandidates as cand, idx (cand.id)}
 			{@const pal = !cand.isEveryone ? botAvatarColor(cand.id) : null}
 			<button
@@ -557,16 +557,16 @@
 				{#if cand.isEveryone}
 					<span class="autocomplete-avatar is-everyone">👥</span>
 				{:else if cand.avatar && avatarSrc(cand.avatar)}
-					<img src={avatarSrc(cand.avatar)} alt="" class="autocomplete-avatar-img" />
+					<img src={avatarSrc(cand.avatar)} alt="" class="autocomplete-avatar-img w-13 h-13 rounded-[50%] object-cover shrink-0" />
 				{:else if pal}
 					<span class="autocomplete-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border}">
 						{rosterLetter(cand.name)}
 					</span>
 				{/if}
-				<div class="autocomplete-info">
-					<span class="autocomplete-name">@{cand.name}</span>
+				<div class="autocomplete-info flex flex-col min-w-0 flex-1">
+					<span class="autocomplete-name text-13 font-semibold text-ink">@{cand.name}</span>
 					{#if cand.duties}
-						<span class="autocomplete-desc">{cand.duties}</span>
+						<span class="autocomplete-desc text-11 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{cand.duties}</span>
 					{/if}
 				</div>
 			</button>
@@ -587,9 +587,9 @@
 >
 	{#if quoteTarget}
 		<div class="composer-quote-bar">
-			<div class="composer-quote-meta">
+			<div class="composer-quote-meta min-w-0 flex-1 flex flex-col gap-1">
 				<span class="composer-quote-who">{quoteLabel(quoteTarget)}</span>
-				<span class="composer-quote-body">{quotePreview(quoteTarget.body)}</span>
+				<span class="composer-quote-body text-12 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{quotePreview(quoteTarget.body)}</span>
 			</div>
 			<button
 				type="button"
@@ -603,7 +603,7 @@
 		</div>
 	{/if}
 	{#if lockedComposer}
-		<div class="composer-locked-message">
+		<div class="composer-locked-message flex items-center justify-center gap-4 py-1 px-0 text-muted text-13 font-medium">
 			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
 			<span>{selected?.archived_at ? t.chat.groupLockedNotice : t.chat.lockedNotice}</span>
 		</div>
@@ -620,9 +620,9 @@
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
 						</div>
 					{/if}
-					<div class="attachment-meta">
-						<span class="attachment-name" title={att.name}>{att.name}</span>
-						<span class="attachment-size mono">{formatFileSize(att.size)}</span>
+					<div class="attachment-meta flex flex-col min-w-0 flex-1">
+						<span class="attachment-name text-12 font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={att.name}>{att.name}</span>
+						<span class="attachment-size mono text-10 text-muted">{formatFileSize(att.size)}</span>
 					</div>
 					<button
 						type="button"
@@ -638,7 +638,7 @@
 		</div>
 	{/if}
 
-	<div class="composer-row">
+	<div class="composer-row flex items-end gap-2 w-full">
 		<button
 			type="button"
 			class="attach-btn"
@@ -800,24 +800,6 @@
 
 	.composer-card.is-locked .composer-row {
 		display: none;
-	}
-
-	.composer-locked-message {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		padding: 2px 0;
-		color: var(--muted);
-		font-size: 13px;
-		font-weight: 500;
-	}
-
-	.composer-row {
-		display: flex;
-		align-items: flex-end;
-		gap: 4px;
-		width: 100%;
 	}
 
 	.composer .composer-input {
@@ -1040,15 +1022,6 @@
 		pointer-events: auto;
 	}
 
-	.autocomplete-header {
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		color: var(--muted);
-		padding: 6px 10px 4px;
-		letter-spacing: 0.04em;
-	}
-
 	.autocomplete-item {
 		display: flex;
 		align-items: center;
@@ -1084,35 +1057,6 @@
 	.autocomplete-avatar.is-everyone {
 		background: var(--chip);
 		font-size: 14px;
-	}
-
-	.autocomplete-avatar-img {
-		width: 26px;
-		height: 26px;
-		border-radius: 50%;
-		object-fit: cover;
-		flex-shrink: 0;
-	}
-
-	.autocomplete-info {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.autocomplete-name {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.autocomplete-desc {
-		font-size: 11px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	/* Inline Mention Chip inside Composer Input */
@@ -1260,27 +1204,6 @@
 		flex-shrink: 0;
 	}
 
-	.attachment-meta {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.attachment-name {
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--ink);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.attachment-size {
-		font-size: 10px;
-		color: var(--muted);
-	}
-
 	.attachment-delete-btn {
 		display: inline-flex;
 		align-items: center;
@@ -1345,26 +1268,10 @@
 		border-left: 2px solid var(--accent);
 	}
 
-	.composer-quote-meta {
-		min-width: 0;
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
 	.composer-quote-who {
 		font-size: 12px;
 		font-weight: 650;
 		color: var(--accent);
-	}
-
-	.composer-quote-body {
-		font-size: 12px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.composer-quote-cancel {
