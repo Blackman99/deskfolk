@@ -710,15 +710,19 @@
 		position: absolute;
 		left: 0;
 		right: 0;
-		bottom: 24px;
-		background: transparent;
-		padding: 0 24px;
+		bottom: 0;
+		background: var(--glass-composer);
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+		border-top: 1px solid var(--line);
+		box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+		padding: 10px 24px 12px;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
-		pointer-events: none;
+		pointer-events: auto;
 		z-index: 4;
 	}
 
@@ -730,7 +734,7 @@
 		gap: 6px;
 		flex-wrap: wrap;
 		padding: 2px 4px;
-		pointer-events: none;
+		pointer-events: auto;
 	}
 
 	.composer-suggest-bar > * {
@@ -764,12 +768,10 @@
 	.composer-card {
 		width: 100%;
 		max-width: var(--chat-max-width);
-		background: var(--glass-composer, var(--input-bg));
-		backdrop-filter: blur(16px);
-		-webkit-backdrop-filter: blur(16px);
+		background: var(--input-bg);
 		border: 1px solid var(--line);
 		border-radius: 24px;
-		box-shadow: var(--shadow-md);
+		box-shadow: var(--shadow-sm);
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -786,13 +788,11 @@
 
 	.composer-card:focus-within {
 		border-color: var(--accent-border);
-		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-sm);
 	}
 
 	.composer-card.is-locked {
 		background: var(--sidebar-bg);
-		backdrop-filter: blur(16px);
-		-webkit-backdrop-filter: blur(16px);
 		border-style: dashed;
 		border-radius: 18px;
 		padding: 10px 14px;
@@ -941,11 +941,11 @@
 	}
 
 	@media (max-width: 680px) {
-	.composer {
-	bottom: 16px;
-	padding: 0 10px;
-	gap: 4px;
-	}
+		.composer {
+			bottom: 0;
+			padding: 8px 10px 10px;
+			gap: 4px;
+		}
 	}
 
 	@media (max-width: 680px) {

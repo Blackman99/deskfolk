@@ -1164,12 +1164,6 @@
 </div>
 
 <style>
-	@media (max-width: 680px) {
-	.stream-inner {
-	padding: 14px 12px 100px;
-	}
-	}
-
 	.msg.is-you :global(.attachment-file-btn),
 
 	.msg.is-you :global(.attachment-bundle-btn) {
@@ -1210,9 +1204,9 @@
 	}
 
 	@media (max-width: 680px) {
-	.stream-inner {
-	padding: 14px 12px 100px;
-	}
+		.stream-inner {
+			padding: 14px 12px 120px;
+		}
 	}
 
 	.stream {
@@ -1234,7 +1228,7 @@
 		width: 100%;
 		max-width: calc(var(--chat-max-width) + 48px);
 		margin-inline: auto;
-		padding: 20px 24px 130px;
+		padding: 20px 24px 140px;
 		box-sizing: border-box;
 	}
 
@@ -2031,7 +2025,7 @@
 	/* Scroll to Bottom Floating Button */
 	.scroll-bottom-btn {
 		position: absolute;
-		bottom: 28px;
+		bottom: 140px;
 		right: 24px;
 		width: 36px;
 		height: 36px;
@@ -2057,10 +2051,10 @@
 	}
 
 	@media (max-width: 680px) {
-	.scroll-bottom-btn {
-	bottom: 68px;
-	right: 16px;
-	}
+		.scroll-bottom-btn {
+			bottom: 120px;
+			right: 16px;
+		}
 	}
 
 	.welcome-identity-btn {
