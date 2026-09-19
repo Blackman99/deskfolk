@@ -1,13 +1,18 @@
-/* Split from one 9218-line sheet. Order is the old file's order: the cascade depends on it. */
+/*
+ * What is left of the one 9218-line sheet: only rules no single component can own. Everything
+ * else now lives in the component that renders the element — see 「信使样式分层」 in
+ * docs/development.md. Each file's own header says why its rules could not be placed.
+ *
+ * Order still matters between these files, and `responsive.css` goes last on purpose: its job is
+ * to override what the panes above it set.
+ */
 
 @import "./tokens.css";
 @import "./base.css";
 @import "./shared.css";
-@import "./shell.css";
-@import "./sidebar.css";
-@import "./chat.css";
 @import "./drawers.css";
 @import "./panels.css";
-@import "./settings.css";
+@import "./modals.css";
 @import "./code-highlight.css";
 @import "./third-party.css";
+@import "./responsive.css";

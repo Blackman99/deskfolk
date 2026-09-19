@@ -54,3 +54,54 @@
 		/>
 	</div>
 </div>
+
+<style>
+	.workspace-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 70;
+		display: flex;
+		justify-content: flex-end;
+		background: var(--modal-backdrop);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
+		animation: backdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.workspace-overlay-pane {
+		width: min(1400px, calc(100vw - 72px));
+		height: 100%;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		background: var(--pane);
+		border-left: 1px solid var(--line);
+		box-shadow: -16px 0 36px -6px rgba(15, 23, 42, 0.18);
+		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.workspace-overlay-pane :global(.artifact-pane) {
+		flex: 1;
+		min-height: 0;
+		height: 100%;
+	}
+
+	@media (max-width: 680px) {
+	.workspace-overlay {
+	display: flex;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.workspace-overlay-pane {
+	width: 100%;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.workspace-overlay :global(.artifact-pane) {
+	display: flex;
+	}
+	}
+</style>

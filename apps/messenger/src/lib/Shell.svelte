@@ -1026,4 +1026,288 @@
 		background: var(--accent);
 		inset: 0 2px;
 	}
+
+	/* Form Groups & Inputs in Panel */
+	.sheet.session-settings :global(.form-group) {
+		margin-bottom: 14px;
+	}
+
+	.sheet.session-settings :global(.form-group:last-child) {
+		margin-bottom: 0;
+	}
+
+	.sheet.session-settings :global(.form-group) :global(label),
+
+	.sheet.session-settings :global(.form-group) :global(.field-label) {
+		display: block;
+		font-size: 11.5px;
+		font-weight: 600;
+		color: var(--ink-secondary);
+		margin-bottom: 6px;
+		letter-spacing: 0.02em;
+	}
+
+	/* Group Members List */
+	.sheet.session-settings :global(.members) {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 0;
+	}
+
+	.sheet.session-settings :global(.member) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 10px;
+		border-radius: var(--radius-md);
+		background: var(--line-subtle);
+		border: 1px solid transparent;
+		transition: all 0.15s ease;
+	}
+
+	.sheet.session-settings :global(.member:hover) {
+		border-color: var(--line);
+		background: var(--pane);
+		box-shadow: var(--shadow-xs);
+	}
+
+	.sheet.session-settings :global(.deny) {
+		background: var(--btn-secondary-bg);
+		color: var(--danger);
+		border: 1px solid var(--danger-line);
+	}
+
+	.sheet.session-settings :global(.deny:hover:not(:disabled)) {
+		background: var(--danger-bg);
+		border-color: var(--danger);
+		color: var(--danger);
+	}
+
+	/* Thread drawer, sidebar flyouts, profile drawer, session details, panel cards. */
+	/* Thread Drawer */
+	.thread {
+		background: var(--thread);
+		border-left: 1px solid var(--line);
+		display: none;
+		flex-direction: column;
+		min-height: 0;
+		min-width: 0;
+		box-shadow: -4px 0 16px rgba(15, 23, 42, 0.04);
+	}
+
+	.shell.is-thread .thread {
+		display: flex;
+	}
+
+	.thread :global(header) {
+		padding: 14px 16px;
+		border-bottom: 1px solid var(--line);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 14px;
+		font-weight: 600;
+		background: var(--pane);
+	}
+
+	.thread :global(header) :global(button) {
+		border: 1px solid var(--line);
+		background: var(--btn-secondary-bg);
+		border-radius: var(--radius-sm);
+		padding: 4px 10px;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.thread :global(header) :global(button:hover) {
+		color: var(--ink);
+		border-color: var(--line-hover);
+	}
+
+	.thread :global(.body) {
+		flex: 1;
+		overflow-y: auto;
+		padding: 16px;
+	}
+
+	/* Persona / Profile Drawer Backdrop & Right Sidebar */
+	.profile-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(15, 23, 42, 0.45);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
+		display: flex;
+		justify-content: flex-end;
+		z-index: 80;
+		animation: backdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+		overflow: hidden;
+	}
+
+	.sheet.is-right {
+		position: relative;
+		inset: auto;
+		width: 340px;
+		max-width: 90vw;
+		height: 100%;
+		border-right: none;
+		border-left: 1px solid var(--line);
+		box-shadow: -16px 0 36px -6px rgba(15, 23, 42, 0.18);
+		z-index: auto;
+		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.sheet-back {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex: 1;
+		min-width: 0;
+		justify-content: flex-start;
+		border: 0;
+		background: transparent;
+		padding: 4px 6px;
+		border-radius: var(--radius-sm);
+		color: var(--accent);
+		font-size: 13px;
+		font-weight: 600;
+		box-shadow: none;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.sheet-back:hover {
+		color: var(--accent-hover);
+		background: var(--accent-tint);
+	}
+
+	.sheet.is-right.session-settings {
+		width: 420px;
+		max-width: 94vw;
+		height: 100%;
+		max-height: 100vh;
+		box-sizing: border-box;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		background: var(--bg);
+	}
+
+	.sheet.session-settings :global(.sheet-head) {
+		padding: 16px 20px;
+		margin-bottom: 0;
+		border-bottom: 1px solid var(--line);
+		background: var(--pane);
+		min-height: 56px;
+		box-sizing: border-box;
+	}
+
+	.panel-header-title-wrap {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.panel-header-icon {
+		width: 28px;
+		height: 28px;
+		border-radius: var(--radius-sm);
+		background: var(--accent-tint);
+		color: var(--accent);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--accent-border);
+	}
+
+	.sheet.session-settings :global(.sheet-head) :global(h2) {
+		font-size: 15px;
+		font-weight: 700;
+		color: var(--ink);
+		letter-spacing: -0.01em;
+		margin: 0;
+	}
+
+	.panel-scroll-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 18px 18px 24px;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.panel-scroll-content > :global(*) {
+		flex-shrink: 0;
+	}
+
+	/* Top bar, transcript, messages, reactions, code blocks, ask and approval cards.
+	* Holds the 680px block that also rules the shell, the sidebar and the composer. */
+	/* Main Section */
+	.main {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		min-height: 0;
+		background: var(--pane);
+		position: relative;
+	}
+
+	@media (max-width: 680px) {
+	.shell,
+	.shell.is-thread,
+	.shell.is-preview,
+	.shell.is-preview.is-thread {
+	grid-template-columns: 1fr;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.main {
+	display: none;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.shell.has-session .main {
+	display: flex;
+	}
+	}
+
+	/* Shell Layout */
+	.shell {
+		height: 100%;
+		display: grid;
+		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 0fr;
+		background: var(--bg);
+		color: var(--ink);
+		position: relative;
+		transition: grid-template-columns 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.shell.is-thread {
+		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 320px;
+	}
+
+	.shell.is-preview {
+		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 8px var(--preview-width, 420px) 0fr;
+	}
+
+	.shell.is-preview.is-thread {
+		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 8px var(--preview-width, 420px) 320px;
+	}
+
+	.shell.is-preview-dragging,
+	.shell.is-sidebar-dragging {
+		transition: none;
+		user-select: none;
+		cursor: col-resize;
+	}
+
+	.shell.is-preview .thread {
+		grid-column: 6;
+	}
 </style>

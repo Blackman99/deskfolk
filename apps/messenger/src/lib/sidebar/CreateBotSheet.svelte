@@ -164,3 +164,20 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	.modal-dialog.create-bot-modal {
+		width: 500px;
+		max-width: 95vw;
+		max-height: 88vh;
+	}
+
+	.create-bot-modal :global(.modal-body) {
+		padding: 20px 24px;
+		gap: 16px;
+	}
+
+	.create-bot-modal :global(.modal-body) :global(textarea) {
+		min-height: 72px;
+	}
+</style>

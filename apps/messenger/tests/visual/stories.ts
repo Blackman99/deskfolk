@@ -229,6 +229,12 @@ const defs: Record<StoryName, Story> = {
 			})
 		}
 	},
+	'shell-narrow': {
+		component: Shell as never,
+		props: {
+			runtime: fakeRuntime(world, { selectedId: 'sess-1', approvals: [anApproval()] })
+		}
+	},
 	onboarding: {
 		component: Onboarding as never,
 		props: { runtime: fakeRuntime(world), onDismiss: () => {} }
@@ -243,6 +249,25 @@ const defs: Record<StoryName, Story> = {
 			themeMenuOpen: false,
 			workspaceOpen: false,
 			contextMenuSessionId: null,
+			onOpenContextMenu: () => {},
+			onToggleWorkspace: () => {},
+			onOpenSettings: () => {},
+			onCreateBot: () => {},
+			onCreateGroup: () => {},
+			onOpenArtifact: () => {},
+			onPatchTheme: async () => true
+		}
+	},
+	'sidebar-context': {
+		component: Sidebar as never,
+		props: {
+			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
+			t,
+			selected: group,
+			pinnedSessionIds: ['direct-1'],
+			themeMenuOpen: false,
+			workspaceOpen: false,
+			contextMenuSessionId: 'sess-2',
 			onOpenContextMenu: () => {},
 			onToggleWorkspace: () => {},
 			onOpenSettings: () => {},

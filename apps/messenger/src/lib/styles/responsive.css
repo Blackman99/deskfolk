@@ -1,0 +1,12 @@
+/*
+ * The one breakpoint that cuts across panes: below 680px the three-column frame collapses, so
+ * the split handles and the artifact column go away. Each pane's own responsive tweaks live in
+ * that pane; only the rules that no single pane owns are here.
+ */
+@media (max-width: 680px) {
+  .preview-split,
+  .sidebar-split,
+  .artifact-pane {
+    display: none;
+  }
+}

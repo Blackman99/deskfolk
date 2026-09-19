@@ -55,7 +55,10 @@ function selectors(css: string): string[] {
       for (const nested of topLevelBlocks(inner)) visit(nested);
       return;
     }
-    const head = text.slice(0, text.indexOf("{"));
+    // Strip the comments parked above a rule. Left in, they become part of the selector, the
+    // leftmost "compound" is `/*`, and the rule's classes are never declared — so every rule
+    // with a section comment over it was invisible to the orphan check.
+    const head = text.slice(0, text.indexOf("{")).replace(/\/\*[\s\S]*?\*\//g, " ");
     for (const part of head.split(",")) if (part.trim()) out.push(part.trim());
   };
   for (const block of topLevelBlocks(css)) visit(block);
@@ -86,11 +89,15 @@ for (const dir of SOURCE_DIRS) {
   for (const path of walk(dir)) {
     if (!/\.(svelte|ts)$/.test(path) || path.includes(".test.") || path.includes(`${STYLES}/`)) continue;
     const text = readFileSync(path, "utf8");
+    // No newlines inside a chunk. A quote regex that may cross lines walks straight over the
+    // apostrophe in an English copy string and swallows unrelated code, and every word in the
+    // wreckage then counts as a class in use — which is how `.detail` stayed in this sheet long
+    // after the component that rendered it was deleted.
     const chunks = [
-      ...[...text.matchAll(/class="([^"]*)"/g)].map((m) => m[1]!),
-      ...[...text.matchAll(/`([^`]*)`/g)].map((m) => m[1]!),
-      ...[...text.matchAll(/'([^']*)'/g)].map((m) => m[1]!),
-      ...[...text.matchAll(/"([^"]*)"/g)].map((m) => m[1]!),
+      ...[...text.matchAll(/class="([^"\n]*)"/g)].map((m) => m[1]!),
+      ...[...text.matchAll(/`([^`\n]*)`/g)].map((m) => m[1]!),
+      ...[...text.matchAll(/'([^'\n]*)'/g)].map((m) => m[1]!),
+      ...[...text.matchAll(/"([^"\n]*)"/g)].map((m) => m[1]!),
     ];
     for (const chunk of chunks) {
       for (const m of chunk.matchAll(/([A-Za-z][\w-]*-)\$?\{/g)) prefixes.add(m[1]!);
@@ -121,16 +128,21 @@ test("index.css imports every stylesheet in the directory", () => {
 });
 
 /**
- * A guard on the parser itself: if selector extraction breaks, the orphan test passes vacuously.
- * Not a count — the global sheet shrinks every time a pane takes its styles back, so a threshold
- * here would just be a tripwire on progress. These are anchors that only disappear if the
- * extraction is broken or the rule genuinely moved, and either way someone has to look.
+ * A guard on the extraction itself: if it breaks, the orphan test above passes vacuously.
+ * Deliberately not a count and not a class name — the global sheet shrinks every time a pane
+ * takes its styles back, so either would just be a tripwire on progress. This checks the two
+ * functions directly, on input that does not move.
  */
-test("the check can still see the sheet", () => {
-  // `declared` records the first file to mention a class, and files are read in name order, so
-  // assert the class is seen at all rather than where — the "where" moves as panes take theirs back.
-  expect(declared.has("shell")).toBe(true);
-  expect(declared.has("btn-chip")).toBe(true);
-  expect(literals.has("shell")).toBe(true);
+test("the check can still read a sheet and the markup", () => {
+  const sample = `
+    /* a comment with a .decoy in it */
+    .a, .b .c { color: red }
+    @media (max-width: 1px) { .d:hover > .e { color: red } }
+    :root { --x: 1 }
+  `;
+  expect(selectors(sample).sort()).toEqual([".a", ".b .c", ".d:hover > .e", ":root"]);
+  expect(selectors(sample).flatMap(leftmostClasses).sort()).toEqual(["a", "b", "d"]);
+  // and the source side still sees real markup
+  expect(literals.has("composer")).toBe(true);
   expect(prefixes.size).toBeGreaterThan(5);
 });

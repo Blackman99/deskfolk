@@ -157,4 +157,10 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+
+	.artifact-tree-note {
+		padding: 4px 10px 4px 24px;
+		font-size: 11px;
+		color: var(--muted);
+	}
 </style>

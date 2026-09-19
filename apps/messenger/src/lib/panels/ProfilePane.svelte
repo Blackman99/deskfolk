@@ -705,4 +705,47 @@
 	.skill-add {
 	  align-self: flex-start;
 	}
+
+	/* Profile panel: autosave state + thinking-level quick picker */
+	.profile-save-state {
+		margin-left: auto;
+		font-size: 12px;
+		color: var(--muted);
+		white-space: nowrap;
+	}
+
+	.profile-save-state.is-error {
+		color: var(--danger-text);
+	}
+
+	.bot-management-actions {
+		display: flex;
+		gap: 8px;
+	}
+
+	.bot-management-actions :global(button) {
+		flex: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 8px 12px;
+		font-size: 12.5px;
+		font-weight: 600;
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.bot-management-actions :global(.btn-secondary) {
+		background: var(--btn-secondary-bg);
+		border: 1px solid var(--line);
+		color: var(--ink-secondary);
+	}
+
+	.bot-management-actions :global(.btn-secondary:hover) {
+		background: var(--line-subtle);
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
 </style>

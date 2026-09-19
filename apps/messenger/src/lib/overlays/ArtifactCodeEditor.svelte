@@ -200,7 +200,9 @@
 	}
 
 	.artifact-cm :global(.monaco-editor),
+
 	.artifact-cm :global(.monaco-editor-background),
+
 	.artifact-cm :global(.monaco-editor) :global(.margin) {
 		background: var(--pane);
 		--vscode-editorHoverWidget-background: var(--pane);
@@ -225,23 +227,29 @@
 	}
 
 	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget),
+
 	.artifact-cm :global(.monaco-editor) :global(.find-widget.narrow-find-widget),
+
 	.artifact-cm :global(.monaco-editor) :global(.find-widget.reduced-find-widget) {
 		max-width: min(419px, calc(100% - 16px)) !important;
 	}
 
 	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget) :global(.button.previous),
+
 	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget) :global(.button.next),
+
 	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget) > :global(.find-part) :global(.monaco-findInput) :global(.controls) {
 		display: flex;
 	}
 
 	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button),
+
 	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.monaco-custom-toggle) {
 		position: relative;
 	}
 
 	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button:hover::after),
+
 	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.monaco-custom-toggle:hover::after) {
 		content: attr(aria-label);
 		position: absolute;

@@ -955,9 +955,13 @@
 	}
 
 	/*
-	 * `:global` because the button being reached for is WorkspacePicker's, not ours. Scoped, this
-	 * matched only the copy we render ourselves, and the picker's grew from 32px to 38.25px —
-	 * `svelte-check` says nothing, because the selector is still in use here.
+	 * `:global` because the button being reached for is WorkspacePicker's,
+ not ours. Scoped,
+ this
+	 * matched only the copy we render ourselves,
+ and the picker's grew from 32px to 38.25px —
+	 * `svelte-check` says nothing,
+ because the selector is still in use here.
 	 */
 	.onboarding-step-content :global(.btn-preset-workspace) {
 		align-self: flex-start;
@@ -1030,5 +1034,131 @@
 
 	.onboarding-alert-error p {
 		margin: 0;
+	}
+
+	.jail {
+		margin: 6px 0 0;
+		font-size: 11.5px;
+		color: var(--muted);
+		line-height: 1.45;
+		background: var(--line-subtle);
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+	}
+
+	.model-head-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.models-selector-box {
+		background: var(--chip);
+		border: 1px solid var(--chip-line);
+		border-radius: var(--radius-md);
+		padding: 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.models-filter-bar {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+
+	.models-filter-input {
+		flex: 1;
+		padding: 4px 8px !important;
+		font-size: 12px !important;
+		border: 1px solid var(--line) !important;
+		border-radius: var(--radius-sm) !important;
+		background: var(--input-bg) !important;
+	}
+
+	.models-chips-container {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		max-height: 140px;
+		overflow-y: auto;
+		padding: 2px;
+	}
+
+	.model-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 10px;
+		border-radius: var(--radius-sm);
+		font-size: 12px;
+		background: var(--btn-secondary-bg);
+		border: 1px solid var(--line);
+		color: var(--ink-secondary);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		user-select: none;
+	}
+
+	.model-chip:hover {
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	.model-chip.is-selected {
+		background: var(--accent-tint);
+		border-color: var(--accent);
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.model-chip-check {
+		font-size: 11px;
+		font-weight: 700;
+		min-width: 10px;
+		color: var(--accent);
+	}
+
+	.model-chip-text {
+		font-family: var(--mono);
+		font-size: 11.5px;
+	}
+
+	.model-custom-add-row {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		margin-top: 2px;
+		padding-top: 6px;
+		border-top: 1px solid var(--line);
+	}
+
+	.custom-model-input {
+		flex: 1;
+		padding: 4px 8px !important;
+		font-size: 12px !important;
+		border: 1px solid var(--line) !important;
+		border-radius: var(--radius-sm) !important;
+		background: var(--input-bg) !important;
+		font-family: var(--mono) !important;
+	}
+
+	.btn-add-custom {
+		padding: 4px 10px;
+		font-size: 12px;
+		font-weight: 700;
+		background: var(--btn-secondary-bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		color: var(--ink);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-add-custom:hover {
+		background: var(--accent-tint);
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 </style>

@@ -315,3 +315,214 @@
 		</form>
 	</div>
 {/if}
+
+<style>
+	:global(.modal-body) > .mcp-settings {
+		flex: 1;
+		min-height: 0;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.mcp-list-toolbar {
+		flex-shrink: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.mcp-list-heading,
+	.mcp-search-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.mcp-search-row :global(input) {
+		min-width: 0;
+		flex: 1;
+	}
+
+	.mcp-search-row :global(button) {
+		flex-shrink: 0;
+	}
+
+	.btn-mcp-add {
+		flex-shrink: 0;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--pane);
+		color: var(--accent);
+		padding: 7px 10px;
+		font-size: 12.5px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-mcp-add:hover {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+	}
+
+	.mcp-server-list {
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-gutter: stable;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 2px;
+	}
+
+	.mcp-server-card {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-shrink: 0;
+		min-width: 0;
+		padding-right: 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+	}
+
+	.mcp-server-card:hover,
+	.mcp-server-card:focus-within {
+		border-color: var(--accent-border);
+	}
+
+	.mcp-server-card.is-disabled {
+		background: var(--sidebar-bg);
+	}
+
+	.mcp-server-open {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		flex: 1;
+		min-width: 0;
+		padding: 12px;
+		border: 0;
+		border-radius: var(--radius-md);
+		background: transparent;
+		text-align: left;
+		color: var(--ink);
+		cursor: pointer;
+	}
+
+	.mcp-server-name,
+	.mcp-server-connection {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
+	}
+
+	.mcp-server-name {
+		font-size: 13.5px;
+		font-weight: 600;
+	}
+
+	.mcp-server-meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		max-width: 100%;
+		color: var(--muted);
+		font-size: 12px;
+	}
+
+	.mcp-badge {
+		flex-shrink: 0;
+		font-size: 10px;
+		font-weight: 600;
+		padding: 1px 6px;
+		border-radius: 4px;
+		background: var(--chip);
+		border: 1px solid var(--chip-line);
+		color: var(--muted);
+	}
+
+	.mcp-server-card :global(.mcp-enable-label) {
+		flex-shrink: 0;
+		white-space: nowrap;
+		font-size: 12px;
+	}
+
+	.mcp-server-open:focus-visible,
+	.btn-mcp-add:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.mcp-editor-backdrop {
+		z-index: 110;
+	}
+
+	.modal-dialog.mcp-editor-modal {
+		width: 540px;
+		max-width: 95vw;
+		max-height: 88vh;
+	}
+
+	.mcp-editor-modal > :global(.modal-head),
+
+	.mcp-editor-modal > :global(.modal-foot) {
+		flex-shrink: 0;
+	}
+
+	.mcp-editor-modal > :global(.modal-body) {
+		min-height: 0;
+	}
+
+	.mcp-editor-fields {
+		border: 0;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.mcp-confirm-hint {
+		margin: 0;
+		font-size: 12px;
+	}
+
+	.mcp-editor-modal :global(.modal-foot) {
+		flex-wrap: wrap;
+	}
+
+	@media (max-width: 540px) {
+	.mcp-list-heading {
+	align-items: flex-start;
+	flex-direction: column;
+	gap: 8px;
+	}
+	}
+
+	@media (max-width: 540px) {
+	.mcp-server-card {
+	gap: 6px;
+	padding-right: 8px;
+	}
+	}
+
+	@media (max-width: 540px) {
+	.mcp-server-open {
+	padding: 10px;
+	}
+	}
+
+	@media (max-width: 540px) {
+	.mcp-editor-modal :global(.modal-foot) :global(button) {
+	padding-inline: 10px;
+	}
+	}
+</style>

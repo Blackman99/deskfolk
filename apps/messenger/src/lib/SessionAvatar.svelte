@@ -93,3 +93,116 @@
 	{/if}
 </span>
 
+<style>
+	.row-avatar.size-top :global(.avatar-status-dot) {
+		width: 9px;
+		height: 9px;
+	}
+
+	.row-avatar.size-hero :global(.avatar-status-dot) {
+		width: 12px;
+		height: 12px;
+		border-width: 2.5px;
+	}
+
+	.row-avatar.size-md {
+		--avatar-size: 40px;
+	}
+
+	.row-avatar.size-top {
+		--avatar-size: 36px;
+	}
+
+	.row-avatar.size-hero {
+		--avatar-size: 44px;
+	}
+
+	/* 2-bot pair stack */
+	.row-avatar.layout-pair :global(.row-avatar-bot),
+	.row-avatar.is-stack:not(.layout-triad):not(.layout-quad) :global(.row-avatar-bot) {
+		position: absolute;
+		width: 62%;
+		height: 62%;
+		font-size: calc(var(--avatar-size) * 0.28);
+	}
+
+	.row-avatar.layout-pair .slot-0,
+	.row-avatar.is-stack:not(.layout-triad):not(.layout-quad) :global(.row-avatar-bot:first-child) {
+		top: 0;
+		left: 0;
+		z-index: 1;
+	}
+
+	.row-avatar.layout-pair .slot-1,
+	.row-avatar.is-stack:not(.layout-triad):not(.layout-quad) :global(.row-avatar-bot:last-child) {
+		bottom: 0;
+		right: 0;
+		z-index: 2;
+		box-shadow: 0 0 0 calc(var(--avatar-size) * 0.045) var(--avatar-ring, var(--sidebar-bg));
+	}
+
+	/* 3-bot triad cluster (matches user reference image: 1 top center, 2 bottom left/right) */
+	.row-avatar.layout-triad :global(.row-avatar-bot) {
+		position: absolute;
+		width: 58%;
+		height: 58%;
+		font-size: calc(var(--avatar-size) * 0.26);
+	}
+
+	.row-avatar.layout-triad .slot-0 {
+		top: 0;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 1;
+	}
+
+	.row-avatar.layout-triad .slot-1 {
+		bottom: 0;
+		left: 0;
+		z-index: 2;
+		box-shadow: 0 0 0 calc(var(--avatar-size) * 0.045) var(--avatar-ring, var(--sidebar-bg));
+	}
+
+	.row-avatar.layout-triad .slot-2 {
+		bottom: 0;
+		right: 0;
+		z-index: 3;
+		box-shadow: 0 0 0 calc(var(--avatar-size) * 0.045) var(--avatar-ring, var(--sidebar-bg));
+	}
+
+	/* 4-bot & 5+ bot quad cluster */
+	.row-avatar.layout-quad :global(.row-avatar-bot) {
+		position: absolute;
+		width: 52%;
+		height: 52%;
+		font-size: calc(var(--avatar-size) * 0.24);
+	}
+
+	.row-avatar.layout-quad .slot-0 {
+		top: 0;
+		left: 0;
+		z-index: 1;
+	}
+
+	.row-avatar.layout-quad .slot-1 {
+		top: 0;
+		right: 0;
+		z-index: 2;
+		box-shadow: 0 0 0 calc(var(--avatar-size) * 0.045) var(--avatar-ring, var(--sidebar-bg));
+	}
+
+	.row-avatar.layout-quad .slot-2 {
+		bottom: 0;
+		left: 0;
+		z-index: 3;
+		box-shadow: 0 0 0 calc(var(--avatar-size) * 0.045) var(--avatar-ring, var(--sidebar-bg));
+	}
+
+	.row-avatar.layout-quad .slot-3,
+	.row-avatar.layout-quad .slot-overflow {
+		bottom: 0;
+		right: 0;
+		z-index: 4;
+		box-shadow: 0 0 0 calc(var(--avatar-size) * 0.045) var(--avatar-ring, var(--sidebar-bg));
+	}
+</style>

@@ -1117,7 +1117,8 @@
 
 	/* Inline Mention Chip inside Composer Input */
 	/*
-	 * The chips are built by `mention-chips.ts` and dropped into the contenteditable, so they
+	 * The chips are built by `mention-chips.ts` and dropped into the contenteditable,
+ so they
 	 * never carry a scope class — `:global` is the only thing that reaches them. Anchoring on
 	 * `.composer-input` keeps them the composer's business rather than the whole app's.
 	 */
@@ -1332,5 +1333,55 @@
 
 	.composer-input :global(.chip-name) {
 		line-height: 1;
+	}
+
+	.composer-quote-bar {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 8px 10px 8px 12px;
+		margin: 0 0 4px;
+		border-bottom: 1px solid var(--line-subtle);
+		border-left: 2px solid var(--accent);
+	}
+
+	.composer-quote-meta {
+		min-width: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.composer-quote-who {
+		font-size: 12px;
+		font-weight: 650;
+		color: var(--accent);
+	}
+
+	.composer-quote-body {
+		font-size: 12px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.composer-quote-cancel {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		display: grid;
+		place-items: center;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.composer-quote-cancel:hover {
+		background: var(--line-subtle);
+		color: var(--text);
 	}
 </style>

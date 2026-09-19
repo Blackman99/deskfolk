@@ -65,3 +65,31 @@
 {:else}
 	<Shell {runtime} />
 {/if}
+
+<style>
+	/* The disconnected screen and the three-pane grid. */
+	/* Disconnected State */
+	.disconnected {
+		min-height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--muted);
+		gap: 12px;
+		background: var(--bg);
+	}
+
+	.disconnected::before {
+		content: "";
+		display: block;
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+		border: 3px solid var(--line);
+		border-top-color: var(--accent);
+		animation: spin 1s linear infinite;
+	}
+</style>

@@ -146,3 +146,113 @@
   border-color: var(--line-hover);
   color: var(--accent);
 }
+
+.avatar-status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 9.5px;
+  height: 9.5px;
+  border-radius: 50%;
+  background: var(--ok);
+  border: 2px solid var(--avatar-ring, var(--pane));
+  z-index: 3;
+}
+
+.avatar-status-dot.is-idle {
+  background: var(--ok);
+}
+
+.avatar-status-dot.is-running,
+.avatar-status-dot.is-replying,
+.avatar-status-dot.is-busy {
+  background: var(--accent);
+  animation: pulse 1s infinite;
+}
+
+.avatar-status-dot.is-waiting_approval {
+  background: var(--warn);
+}
+
+.avatar-status-dot.is-waiting_ask {
+  background: var(--purple);
+}
+
+.row-avatar.size-sm .avatar-status-dot {
+  width: 7.5px;
+  height: 7.5px;
+  border-width: 1.5px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.row-avatar {
+  --avatar-size: 40px;
+  --avatar-ring: var(--sidebar-bg);
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.row-avatar.size-sm {
+  --avatar-size: 28px;
+}
+
+.row-avatar-bot {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: calc(var(--avatar-size) * 0.38);
+  font-weight: 700;
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Fallback empty group */
+.row-avatar.is-group.layout-empty {
+  background: var(--chip);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.row-avatar.is-group:not(.layout-empty) {
+  background: transparent;
+  border: none;
+}
+
+/* Overflow counter badge (+N) when there are 5+ members */
+.row-avatar-bot.is-overflow {
+  background: var(--chip);
+  color: var(--accent);
+  border: 1px solid var(--accent-border, var(--line));
+  font-weight: 750;
+  font-size: calc(var(--avatar-size) * 0.22);
+  letter-spacing: -0.3px;
+  line-height: 1;
+  user-select: none;
+}

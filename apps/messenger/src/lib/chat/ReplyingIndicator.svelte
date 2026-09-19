@@ -127,3 +127,233 @@
 		</div>
 	{/if}
 {/if}
+
+<style>
+	/* Base card animation and layout */
+	.attached-replying-card {
+		box-sizing: border-box;
+		animation: replyingFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	/* Single bot replying: compact pill */
+	.attached-replying-card.is-single {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 3px 10px 3px 4px;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+		font-size: 12px;
+		color: var(--muted);
+		line-height: 1;
+	}
+
+	.attached-replying-card.is-single .attached-replying-chip {
+		background: transparent;
+		border: none;
+		padding: 0;
+		box-shadow: none;
+		gap: 6px;
+	}
+
+	.attached-replying-card.is-single .attached-replying-avatar {
+		width: 20px;
+		height: 20px;
+		font-size: 10px;
+	}
+
+	.attached-replying-card.is-single .attached-replying-name {
+		font-weight: 600;
+	}
+
+	/* Multiple bots replying: merged card with header and chips roster */
+	.attached-replying-card.is-multiple {
+		display: inline-flex;
+		flex-direction: column;
+		gap: 7px;
+		padding: 7px 10px 9px 10px;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+		max-width: 100%;
+	}
+
+	.attached-replying-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0 2px;
+		line-height: 1;
+		user-select: none;
+	}
+
+	.attached-replying-title {
+		font-size: 11.5px;
+		font-weight: 500;
+		color: var(--muted);
+		letter-spacing: 0.01em;
+	}
+
+	.attached-replying-count {
+		font-size: 10px;
+		font-weight: 600;
+		padding: 1px 6px;
+		border-radius: 9999px;
+		background: var(--chip);
+		border: 1px solid var(--line);
+		color: var(--muted);
+		letter-spacing: 0.01em;
+		line-height: 1.2;
+	}
+
+	.attached-replying-roster {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+		align-items: center;
+	}
+
+	/* Bot chips inside the card */
+	.attached-replying-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2.5px 8px 2.5px 3px;
+		background: var(--bg);
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		font-size: 12px;
+		line-height: 1;
+		color: var(--ink);
+		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+		user-select: none;
+		transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+	}
+
+	button.attached-replying-chip {
+		cursor: pointer;
+		outline: none;
+		font: inherit;
+		color: inherit;
+	}
+
+	button.attached-replying-chip:hover {
+		background: var(--line-hover);
+		border-color: var(--muted-light);
+		transform: translateY(-0.5px);
+	}
+
+	button.attached-replying-chip:active {
+		transform: translateY(0.5px) scale(0.98);
+	}
+
+	button.attached-replying-chip:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.attached-replying-avatar {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: 700;
+		font-size: 9.5px;
+		border: 1px solid;
+		overflow: hidden;
+		flex-shrink: 0;
+		user-select: none;
+	}
+
+	.attached-replying-avatar :global(.avatar-img) {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.attached-replying-name {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink);
+		white-space: nowrap;
+		max-width: 140px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.attached-replying-dots {
+		display: inline-flex;
+		align-items: center;
+		gap: 2.5px;
+		margin-left: 2px;
+		margin-right: 2px;
+	}
+
+	.replying-dot {
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--accent);
+		box-shadow: 0 0 4px var(--accent-glow);
+		animation: dotBounce 1.4s infinite ease-in-out both;
+	}
+
+	.replying-dot:nth-child(1) {
+		animation-delay: -0.32s;
+	}
+
+	.replying-dot:nth-child(2) {
+		animation-delay: -0.16s;
+	}
+
+	.replying-dot:nth-child(3) {
+		animation-delay: 0s;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+	.attached-replying-card {
+	animation: none;
+	}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+	.replying-dot {
+	animation: none;
+	}
+	}
+
+	.attached-replying-text {
+		font-size: 11.5px;
+		color: var(--muted);
+		font-weight: 400;
+	}
+
+	@keyframes replyingFadeIn {
+		from {
+		opacity: 0;
+		transform: translateY(3px);
+		}
+		to {
+		opacity: 1;
+		transform: translateY(0);
+		}
+	}
+
+	@keyframes dotBounce {
+		0%, 80%, 100% {
+		transform: scale(0.6);
+		opacity: 0.35;
+		}
+		40% {
+		transform: scale(1.1);
+		opacity: 1;
+		}
+	}
+
+
+</style>
