@@ -445,7 +445,7 @@ const zh: Dict = {
     ],
     download: {
       title: '下载 Alpha 快照',
-      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg。构建未签名：首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行：',
+      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg。构建未签名：首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（完整 FAQ：docs/gatekeeper.zh.md；昂贵动作仍会先问你）：',
       link: '前往最新 Release',
       note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
     },
@@ -755,7 +755,7 @@ const en: Dict = {
     ],
     download: {
       title: 'Download the alpha snapshot',
-      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel. The build is unsigned: if Gatekeeper blocks the first launch, right-click and choose Open, or run:',
+      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel. The build is unsigned: if Gatekeeper blocks the first launch, right-click and choose Open, or run (full FAQ: docs/gatekeeper.md; expensive actions still ask first):',
       link: 'Go to the latest release',
       note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
     },
