@@ -24,6 +24,20 @@
 - `prompts/`：`system.ts`（轮次 system 中英两套与人设 / 技能 / MCP 段拼装）、`judgement.ts`（判断 system）、`transcript-copy.ts`（补全失败与点名失败的转录文案）、`tool-schema.ts`（工具定义类型与中英本地化）、`tools/*.ts`（内置工具按文件、协作、人设与技能、日程、端点与 MCP 分组）、`builtin-tools.ts`（按模型可见顺序拼成 `TOOLS`；顺序由 `prompts-order.test.ts` 钉死）。`index.ts` 只做再导出，导入路径仍是 `./prompts`。
 - 纯函数模块留在顶层：`route-decision.ts`（候选、评分、经验的正负与封顶）、`models.ts`、`mentions.ts`、`context.ts`、`schedule.ts` 等；`turn-engine.ts` 是轮次回路，`local-api.ts` 是本机接口。
 
+## 信使源码布局
+
+`apps/messenger/src/lib` 按界面上的「面」分目录，每个目录放那一面的组件和只有它用的纯函数模块（测试与被测模块同目录）：
+
+- `chat/`：`ChatStage.svelte` 是主栏的转录 + 回到底部按钮 + 作曲栏，滚动状态归它，因为发送、搜索跳转和内容变高都要动它；`Composer.svelte` 管输入框、`@` 补全、附件、引用条和发送 / 停止按钮，草稿只写 `runtime.draft`，外面要落光标就调它导出的 `focus()`；`ChatHeader.svelte` 是会话顶栏。模块有转录分组与时间文案、批准卡判定、作曲栏形态与输入法状态机、`@` 芯片与候选、引用回复、快捷提示词、滚动计算。
+- `sidebar/`：`Sidebar.svelte` 是整条侧栏（名册行、搜索、会话分组、归档视图、底部工具栏、主题菜单），两张新建滑出和右键菜单也在这里。模块有会话分组 / 状态 / 标题、未读、搜索跳转、置顶、宽度。
+- `panels/`：会话设置抽屉的两片 —— `ProfilePane.svelte`（人设与技能，自己管草稿与自动保存）和 `GroupPane.svelte`（群名、成员、拉人）。抽屉外壳还在 `Shell.svelte`。
+- `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
+- `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。
+- 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`、`markdown.ts`、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。
+- `styles/`：原来 9218 行的一张表按原顺序切成十二个文件，`index.css` 按序 `@import`，全部仍是全局样式 —— 组件不带 `<style>`，因为表里大量规则跨组件（`.shell.has-session .side`、`.msg.is-you .attachment-file-btn` 等）。改样式先看分区，切文件时不要重排规则：层叠顺序就是文件顺序。
+
+`Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
+
 ## 本机工具链
 
 - Node `>=22` 与 pnpm `12.3.4`（`packageManager`）

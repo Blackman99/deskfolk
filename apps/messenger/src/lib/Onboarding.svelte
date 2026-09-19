@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
-	import WorkspacePicker from './WorkspacePicker.svelte';
+	import WorkspacePicker from './settings/WorkspacePicker.svelte';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import {
 		mapSettingsError,

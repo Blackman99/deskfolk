@@ -1,6 +1,6 @@
 <script lang="ts">
 	import McpSettings from './McpSettings.svelte';
-	import WorkspacePicker from '../WorkspacePicker.svelte';
+	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
 	import Select from '../Select.svelte';
 	import { JAIL_COPY, thinkingLevelLabel, type Copy } from '../copy.ts';

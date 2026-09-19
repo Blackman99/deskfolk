@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { pickWorkspaceFolder, workspacePickerAvailable } from './settings/pick-workspace.ts';
+	import { pickWorkspaceFolder, workspacePickerAvailable } from './pick-workspace.ts';
 
 	interface Props {
 		id?: string;
