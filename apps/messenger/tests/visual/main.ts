@@ -18,6 +18,16 @@ if (!story) {
 	host.style.cssText = `width:${story.width}px;height:${story.height}px;position:relative;overflow:hidden`;
 	mount(story.component as never, { target: host, props: story.props as never });
 	story.afterMount?.(host);
+	// Monaco arrives on a dynamic import, so the camera has to be told to wait for it.
+	if (host.querySelector('.artifact-cm')) {
+		void (async () => {
+			for (let i = 0; i < 200 && !host.querySelector('.monaco-editor .view-line'); i += 1) {
+				await new Promise((r) => setTimeout(r, 25));
+			}
+			await new Promise((r) => setTimeout(r, 150));
+			document.documentElement.dataset.ready = 'yes';
+		})();
+	}
 	flushSync();
-	document.documentElement.dataset.ready = 'yes';
+	if (!host.querySelector('.artifact-cm')) document.documentElement.dataset.ready = 'yes';
 }

@@ -120,8 +120,17 @@ test("index.css imports every stylesheet in the directory", () => {
   expect([...imported].sort()).toEqual(cssFiles);
 });
 
-test("the sheet declares enough classes for this check to mean something", () => {
-  // A guard on the parser itself: if selector extraction breaks, the orphan test passes vacuously.
-  expect(declared.size).toBeGreaterThan(400);
+/**
+ * A guard on the parser itself: if selector extraction breaks, the orphan test passes vacuously.
+ * Not a count — the global sheet shrinks every time a pane takes its styles back, so a threshold
+ * here would just be a tripwire on progress. These are anchors that only disappear if the
+ * extraction is broken or the rule genuinely moved, and either way someone has to look.
+ */
+test("the check can still see the sheet", () => {
+  // `declared` records the first file to mention a class, and files are read in name order, so
+  // assert the class is seen at all rather than where — the "where" moves as panes take theirs back.
+  expect(declared.has("shell")).toBe(true);
+  expect(declared.has("btn-chip")).toBe(true);
+  expect(literals.has("shell")).toBe(true);
   expect(prefixes.size).toBeGreaterThan(5);
 });

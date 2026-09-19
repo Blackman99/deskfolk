@@ -90,3 +90,71 @@
 		{/if}
 	</li>
 {/snippet}
+
+<style>
+	.artifact-tree {
+		min-width: 0;
+		overflow: auto;
+		border-right: 1px solid var(--line);
+		background: var(--sidebar-bg);
+		padding: 8px 0;
+	}
+
+	.artifact-tree-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.artifact-tree-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		width: 100%;
+		border: 0;
+		background: transparent;
+		color: var(--ink);
+		font: inherit;
+		font-size: 12px;
+		line-height: 1.3;
+		padding: 4px 10px 4px 8px;
+		cursor: pointer;
+		text-align: left;
+		border-radius: 0;
+	}
+
+	.artifact-tree-row:hover {
+		background: var(--row-hover);
+	}
+
+	.artifact-tree-row.is-selected {
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.artifact-tree-chevron,
+	.artifact-tree-file {
+		width: 12px;
+		flex-shrink: 0;
+		color: var(--muted);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.artifact-tree-chevron {
+		font-size: 10px;
+		transform: rotate(0deg);
+		transition: transform 0.12s ease;
+	}
+
+	.artifact-tree-chevron.is-open {
+		transform: rotate(90deg);
+	}
+
+	.artifact-tree-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+</style>

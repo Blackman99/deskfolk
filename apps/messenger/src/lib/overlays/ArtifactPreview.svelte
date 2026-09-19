@@ -581,3 +581,204 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.artifact-pane {
+		background: var(--pane);
+		min-width: 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		border-left: 0;
+	}
+
+	.artifact-pane-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 14px 16px 10px;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.artifact-pane-titles {
+		min-width: 0;
+	}
+
+	.artifact-pane-title-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.artifact-pane-title-row h2 {
+		min-width: 0;
+	}
+
+	.artifact-toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 16px;
+		border-bottom: 1px solid var(--line);
+		background: var(--pane);
+	}
+
+	.artifact-tool-btn {
+		border: 1px solid var(--line);
+		background: var(--btn-secondary-bg);
+		border-radius: var(--radius-sm);
+		padding: 2px 8px;
+		font-size: 12px;
+		color: var(--ink);
+		cursor: pointer;
+	}
+
+	.artifact-tool-btn:hover:not(:disabled) {
+		background: var(--btn-secondary-hover);
+	}
+
+	.artifact-tool-btn.is-on {
+		background: var(--accent-tint);
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.artifact-tool-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+
+	.artifact-pane-body.is-editor {
+		padding: 0;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
+
+	.artifact-pane-titles h2 {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.artifact-pane-titles p {
+		margin: 4px 0 0;
+		font-size: 11px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.artifact-pane-main {
+		flex: 1;
+		min-height: 0;
+		min-width: 0;
+		display: flex;
+	}
+
+	.artifact-pane-main.has-tree {
+		display: grid;
+		grid-template-columns: var(--artifact-tree-width, 168px) 8px minmax(0, 1fr);
+	}
+
+	.artifact-tree-split {
+		width: 8px;
+		padding: 0;
+		border: 0;
+		cursor: col-resize;
+		position: relative;
+		background: transparent;
+		z-index: 2;
+	}
+
+	.artifact-tree-split::before {
+		content: "";
+		position: absolute;
+		inset: 0 3px;
+		background: var(--line);
+		border-radius: 99px;
+	}
+
+	.artifact-tree-split:hover::before,
+	.artifact-pane.is-tree-dragging .artifact-tree-split::before {
+		background: var(--accent);
+		inset: 0 2px;
+	}
+
+	.artifact-pane-title-row :global(h2.is-dirty::after) {
+		content: "•";
+		margin-left: 6px;
+		color: var(--accent);
+	}
+
+	.artifact-save-error {
+		padding: 0 16px 6px;
+	}
+
+	.artifact-dirty-foot button:first-child {
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
+		border-color: var(--line);
+		box-shadow: var(--shadow-xs);
+	}
+
+	.artifact-dirty-foot button:first-child:hover {
+		background: var(--line-subtle);
+		border-color: var(--line-hover);
+	}
+
+	.artifact-dirty-save {
+		background: var(--accent) !important;
+		color: #ffffff !important;
+		border-color: transparent !important;
+	}
+
+	.artifact-pane-body {
+		flex: 1;
+		min-height: 0;
+		min-width: 0;
+		overflow: auto;
+		padding: 16px;
+	}
+
+	.artifact-code-meta {
+		font-size: 10px;
+		letter-spacing: 0.04em;
+		color: var(--muted);
+	}
+
+	.artifact-img {
+		max-width: 100%;
+		max-height: 100%;
+		display: block;
+		margin: 0 auto;
+	}
+
+	.artifact-frame {
+		width: 100%;
+		height: 100%;
+		min-height: 280px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+	}
+
+	.artifact-pane-body audio,
+	.artifact-pane-body video {
+		width: 100%;
+		max-height: 100%;
+	}
+
+	.artifact-md {
+		font-size: 14px;
+		line-height: 1.55;
+	}
+</style>

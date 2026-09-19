@@ -12,6 +12,8 @@ export const STORY_SIZES = {
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
 	'context-menu': { width: 340, height: 420 },
+	'artifact-preview': { width: 900, height: 640 },
+	'artifact-code': { width: 700, height: 420 },
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 }

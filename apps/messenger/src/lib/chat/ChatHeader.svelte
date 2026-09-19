@@ -222,3 +222,25 @@
 		{/if}
 	{/if}
 </header>
+
+<style>
+	.setup-guide-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 12px;
+		border-radius: 9999px;
+		background: var(--warn-bg);
+		border: 1px solid var(--warn-line);
+		color: var(--warn-text);
+		font-size: 11.5px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.setup-guide-pill:hover {
+		background: var(--warn-bg);
+		border-color: var(--warn);
+	}
+</style>

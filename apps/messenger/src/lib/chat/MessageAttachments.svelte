@@ -96,3 +96,77 @@
 		</div>
 	{/if}
 {/if}
+
+<style>
+	/* Message Bubble Attachments */
+	.msg-attachments-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 8px;
+	}
+
+	.attachment-file-btn,
+	.attachment-bundle-btn {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		text-align: left;
+		transition: all 0.15s ease;
+		color: var(--ink);
+	}
+
+	.attachment-bundle-btn {
+		margin-top: 8px;
+		max-width: 280px;
+	}
+
+	.attachment-file-btn:hover,
+	.attachment-bundle-btn:hover {
+		border-color: var(--accent);
+		box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+	}
+
+	.file-icon-box {
+		color: var(--accent);
+		display: flex;
+		align-items: center;
+	}
+
+	.file-meta-col {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		max-width: 170px;
+	}
+
+	.file-title {
+		font-size: 12px;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.file-sub {
+		font-size: 10px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.attachment-chip-thumb {
+		width: 36px;
+		height: 36px;
+		object-fit: cover;
+		border-radius: 6px;
+		flex-shrink: 0;
+		background: #00000008;
+	}
+</style>

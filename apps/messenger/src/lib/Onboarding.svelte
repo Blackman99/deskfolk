@@ -715,3 +715,320 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* The wizard empty state. */
+	/* Onboarding Screen */
+	.onboarding-screen {
+		width: 100vw;
+		height: 100vh;
+		background: var(--bg);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 20px;
+		overflow-y: auto;
+		box-sizing: border-box;
+	}
+
+	.onboarding-card {
+		width: 620px;
+		max-width: 100%;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-lg);
+		padding: 28px 32px;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.onboarding-hero {
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.onboarding-icon-box {
+		width: 48px;
+		height: 48px;
+		border-radius: var(--radius-lg);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-border);
+		color: var(--accent);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 2px;
+	}
+
+	.onboarding-title {
+		margin: 0;
+		font-size: 19px;
+		font-weight: 700;
+		color: var(--ink);
+		letter-spacing: -0.02em;
+	}
+
+	.onboarding-subtitle {
+		margin: 0;
+		font-size: 13px;
+		color: var(--muted);
+		max-width: 480px;
+		line-height: 1.45;
+	}
+
+	/* Onboarding Step Bar */
+	.onboarding-step-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 12px;
+		background: var(--sidebar-bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		position: relative;
+	}
+
+	.step-bar-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		padding: 4px 8px;
+		border-radius: var(--radius-md);
+		transition: all 0.15s ease;
+		z-index: 2;
+	}
+
+	.step-bar-item:hover {
+		background: rgba(0, 0, 0, 0.04);
+	}
+
+	.step-bar-circle {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		background: var(--chip);
+		border: 1.5px solid var(--chip-line);
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 12px;
+		font-weight: 700;
+		transition: all 0.2s ease;
+		flex-shrink: 0;
+	}
+
+	.step-bar-item.is-active .step-bar-circle {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: #ffffff;
+		box-shadow: 0 0 0 3px var(--accent-glow);
+	}
+
+	.step-bar-item.is-complete .step-bar-circle {
+		background: var(--ok);
+		border-color: var(--ok);
+		color: #ffffff;
+	}
+
+	.step-bar-label {
+		font-size: 12.5px;
+		font-weight: 500;
+		color: var(--muted);
+		transition: color 0.15s ease;
+		white-space: nowrap;
+	}
+
+	.step-bar-item.is-active .step-bar-label {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.step-bar-item.is-complete .step-bar-label {
+		color: var(--ink-secondary);
+	}
+
+	.step-bar-line {
+		flex: 1;
+		height: 2px;
+		background: var(--line);
+		margin: 0 4px;
+		z-index: 1;
+		transition: background 0.2s ease;
+	}
+
+	.step-bar-line.is-complete {
+		background: var(--ok);
+	}
+
+	/* Step Content Pane */
+	.onboarding-step-content {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.step-pane {
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		padding: 20px 22px;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		box-shadow: var(--shadow-xs);
+		animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.step-pane-header {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding-bottom: 2px;
+		border-bottom: 1px solid var(--line-subtle);
+	}
+
+	.step-pane-title {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	.step-pane-desc {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--muted);
+		line-height: 1.45;
+	}
+
+	.step-nav-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 6px;
+		padding-top: 14px;
+		border-top: 1px solid var(--line-subtle);
+	}
+
+	.btn-step-primary {
+		padding: 8px 18px;
+		background: var(--accent);
+		color: #ffffff;
+		border: none;
+		border-radius: var(--radius-md);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
+		transition: all 0.15s ease;
+	}
+
+	.btn-step-primary:hover {
+		background: var(--accent-hover);
+	}
+
+	.btn-step-secondary {
+		padding: 7px 14px;
+		background: var(--btn-secondary-bg);
+		color: var(--ink-secondary);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		font-size: 12.5px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-step-secondary:hover {
+		background: var(--line-subtle);
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	/*
+	 * `:global` because the button being reached for is WorkspacePicker's, not ours. Scoped, this
+	 * matched only the copy we render ourselves, and the picker's grew from 32px to 38.25px —
+	 * `svelte-check` says nothing, because the selector is still in use here.
+	 */
+	.onboarding-step-content :global(.btn-preset-workspace) {
+		align-self: flex-start;
+	}
+
+	.provider-presets-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.preset-chip {
+		padding: 5px 12px;
+		border-radius: 9999px;
+		font-size: 12px;
+		font-weight: 500;
+		background: var(--chip);
+		border: 1px solid var(--chip-line);
+		color: var(--ink-secondary);
+		transition: all 0.15s ease;
+		cursor: pointer;
+	}
+
+	.preset-chip:hover {
+		background: var(--pane);
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	.preset-chip.is-active {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: #ffffff;
+		font-weight: 600;
+		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+	}
+
+	.onboarding-foot {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		margin-top: 4px;
+	}
+
+	.btn-onboarding-skip {
+		background: transparent;
+		border: none;
+		color: var(--muted);
+		font-size: 12.5px;
+		cursor: pointer;
+		padding: 4px 8px;
+		transition: color 0.15s ease;
+	}
+
+	.btn-onboarding-skip:hover {
+		color: var(--ink);
+		text-decoration: underline;
+	}
+
+	.onboarding-alert-error {
+		padding: 8px 14px;
+		background: var(--danger-bg);
+		border: 1px solid var(--danger-line);
+		border-radius: var(--radius-md);
+		color: var(--danger);
+		font-size: 12.5px;
+		font-weight: 500;
+	}
+
+	.onboarding-alert-error p {
+		margin: 0;
+	}
+</style>

@@ -1,0 +1,18 @@
+/*
+ * Shiki writes `.tok` spans into three different surfaces — the transcript, the artifact
+ * preview's rendered Markdown, and the standalone highlighter — so these cannot belong to any
+ * one component. Global on purpose.
+ */
+.msg .body.is-md pre code .tok,
+.artifact-md pre code .tok {
+  color: var(--shiki-light);
+}
+
+:root[data-theme="dark"] .code-hl .tok,
+:root[data-theme="dark"] .msg .body.is-md pre code .tok,
+:root[data-theme="dark"] .artifact-md pre code .tok,
+:root.dark .code-hl .tok,
+:root.dark .msg .body.is-md pre code .tok,
+:root.dark .artifact-md pre code .tok {
+  color: var(--shiki-dark);
+}

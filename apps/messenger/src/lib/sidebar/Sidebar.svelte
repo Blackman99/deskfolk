@@ -767,3 +767,10 @@
 		/>
 	{/if}
 </aside>
+
+<style>
+	.pinned-session-btn.is-context-open {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+	}
+</style>

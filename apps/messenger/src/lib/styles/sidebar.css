@@ -1078,3 +1078,8 @@
   stroke: var(--accent);
   flex-shrink: 0;
 }
+
+/* Kept global: `.row` is the sidebar session row, but the context menu is what opens it. */
+.row.is-context-open {
+  background: var(--line-subtle);
+}

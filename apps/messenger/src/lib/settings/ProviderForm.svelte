@@ -502,3 +502,26 @@
 		</p>
 	{/if}
 </div>
+
+<style>
+	:global([data-theme='dark']) .attr-pill.pill-price,
+	:global(body.dark) .attr-pill.pill-price {
+		background: rgba(245, 158, 11, 0.2);
+		color: #fbbf24;
+		border-color: rgba(245, 158, 11, 0.4);
+	}
+
+	:global([data-theme='dark']) .attr-pill.pill-thinking,
+	:global(body.dark) .attr-pill.pill-thinking {
+		background: rgba(139, 92, 246, 0.2);
+		color: #c4b5fd;
+		border-color: rgba(139, 92, 246, 0.4);
+	}
+
+	:global([data-theme='dark']) .attr-pill.pill-strengths,
+	:global(body.dark) .attr-pill.pill-strengths {
+		background: rgba(14, 165, 233, 0.2);
+		color: #7dd3fc;
+		border-color: rgba(14, 165, 233, 0.4);
+	}
+</style>

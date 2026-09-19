@@ -702,3 +702,635 @@
 	</div>
 {/if}
 		</footer>
+
+<style>
+	/* Composer, mention popup and chips, attachments in the bar and in bubbles. */
+	/* Composer Area */
+	.composer {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 24px;
+		background: transparent;
+		padding: 0 24px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		pointer-events: none;
+		z-index: 4;
+	}
+
+	.composer-suggest-bar {
+		width: 100%;
+		max-width: var(--chat-max-width);
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+		padding: 2px 4px;
+		pointer-events: none;
+	}
+
+	.composer-suggest-bar > * {
+		pointer-events: auto;
+	}
+
+	.suggest-chip {
+		max-width: 100%;
+		padding: 4px 10px;
+		border-radius: 9999px;
+		font-size: 12px;
+		font-weight: 500;
+		line-height: 1.3;
+		background: var(--chip);
+		border: 1px solid var(--line);
+		color: var(--ink);
+		cursor: pointer;
+		transition: all 0.12s ease;
+		text-align: left;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.suggest-chip:hover {
+		background: var(--accent-tint);
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.composer-card {
+		width: 100%;
+		max-width: var(--chat-max-width);
+		background: var(--glass-composer, var(--input-bg));
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+		border: 1px solid var(--line);
+		border-radius: 24px;
+		box-shadow: var(--shadow-md);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+		padding: 5px 6px 5px 8px;
+		box-sizing: border-box;
+		pointer-events: auto;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.composer-card:hover:not(:focus-within):not(.is-locked) {
+		border-color: var(--line-hover);
+	}
+
+	.composer-card:focus-within {
+		border-color: var(--accent-border);
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
+	}
+
+	.composer-card.is-locked {
+		background: var(--sidebar-bg);
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+		border-style: dashed;
+		border-radius: 18px;
+		padding: 10px 14px;
+	}
+
+	.composer-card.is-locked .composer-row {
+		display: none;
+	}
+
+	.composer-locked-message {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 2px 0;
+		color: var(--muted);
+		font-size: 13px;
+		font-weight: 500;
+	}
+
+	.composer-row {
+		display: flex;
+		align-items: flex-end;
+		gap: 4px;
+		width: 100%;
+	}
+
+	.composer .composer-input {
+		position: relative;
+		flex: 1;
+		min-width: 0;
+		min-height: 34px;
+		max-height: 180px;
+		border: 0;
+		outline: none;
+		box-shadow: none;
+		padding: 6px 6px 6px 4px;
+		background: transparent;
+		color: var(--ink);
+		font-size: 14px;
+		line-height: 22px;
+		overflow-y: auto;
+		overflow-wrap: anywhere;
+		white-space: pre-wrap;
+		scrollbar-width: thin;
+	}
+
+	.composer .composer-input.is-empty::before {
+		content: attr(data-placeholder);
+		color: var(--muted);
+		pointer-events: none;
+		position: absolute;
+		top: 6px;
+		left: 4px;
+		right: 6px;
+		line-height: 22px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.composer .composer-input:focus-visible {
+		outline: none !important;
+	}
+
+	.composer .composer-input[contenteditable="false"] {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.attach-btn {
+		background: transparent;
+		border: none;
+		color: var(--muted);
+		width: 34px;
+		height: 34px;
+		border-radius: 50%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		flex: 0 0 34px;
+		margin-bottom: 0;
+		padding: 0;
+		transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+	}
+
+	.attach-btn:hover:not(:disabled) {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
+	.attach-btn:active:not(:disabled) {
+		transform: scale(0.96);
+	}
+
+	.attach-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.composer-action {
+		width: 34px;
+		height: 34px;
+		flex: 0 0 34px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 1px solid transparent;
+		border-radius: 50%;
+		margin-bottom: 0;
+		transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+	}
+
+	.composer-action:active:not(:disabled) {
+		transform: scale(0.96);
+	}
+
+	.composer-action.send {
+		background: var(--accent);
+		color: #ffffff;
+	}
+
+	.composer-action.send:hover:not(:disabled) {
+		background: var(--accent-hover);
+	}
+
+	.composer-action.stop {
+		background: var(--ink);
+		color: var(--pane);
+	}
+
+	.composer-action.stop:hover:not(:disabled) {
+		background: var(--ink-secondary);
+	}
+
+	.composer-action:disabled {
+		background: var(--chip);
+		color: var(--muted);
+		cursor: not-allowed;
+	}
+
+	.composer-action:focus-visible,
+	.composer .attach-btn:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	.composer-hint {
+		width: 100%;
+		max-width: var(--chat-max-width);
+		min-height: 14px;
+		text-align: center;
+		line-height: 14px;
+		pointer-events: none;
+	}
+
+	.send-shortcut-hint {
+		font-size: 11px;
+		color: var(--muted);
+		opacity: 0.85;
+		text-shadow: 0 1px 2px var(--pane);
+	}
+
+	@media (max-width: 680px) {
+	.composer {
+	bottom: 16px;
+	padding: 0 10px;
+	gap: 4px;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.composer-card {
+	padding: 4px 5px 4px 6px;
+	border-radius: 22px;
+	max-width: 100%;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.composer .composer-input {
+	font-size: 15px;
+	line-height: 22px;
+	min-height: 34px;
+	padding: 6px 4px;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.composer .composer-input.is-empty::before {
+	left: 4px;
+	right: 4px;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.composer .composer-action,
+	.composer .attach-btn {
+	width: 34px;
+	height: 34px;
+	flex-basis: 34px;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.composer-hint {
+	display: none;
+	}
+	}
+
+	@media (max-width: 680px) {
+	.mention-autocomplete-popup {
+	left: 10px;
+	width: calc(100% - 20px);
+	}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+	.composer-card,
+	.composer-action,
+	.composer .attach-btn {
+	transition: none;
+	}
+	}
+
+	/* Mention Autocomplete Popup */
+	.mention-autocomplete-popup {
+		position: absolute;
+		bottom: calc(100% - 6px);
+		left: max(24px, calc(50% - (var(--chat-max-width) / 2)));
+		width: min(380px, calc(100% - 48px));
+		max-height: 240px;
+		overflow-y: auto;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 1px 3px rgba(15, 23, 42, 0.08);
+		padding: 6px;
+		z-index: 100;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		pointer-events: auto;
+	}
+
+	.autocomplete-header {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		color: var(--muted);
+		padding: 6px 10px 4px;
+		letter-spacing: 0.04em;
+	}
+
+	.autocomplete-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		border-radius: var(--radius-md);
+		border: none;
+		background: transparent;
+		width: 100%;
+		text-align: left;
+		cursor: pointer;
+		transition: background 0.12s ease;
+	}
+
+	.autocomplete-item:hover,
+	.autocomplete-item.is-highlighted {
+		background: var(--accent-tint);
+	}
+
+	.autocomplete-avatar {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 12px;
+		font-weight: 700;
+		flex-shrink: 0;
+		border: 1px solid var(--line);
+	}
+
+	.autocomplete-avatar.is-everyone {
+		background: var(--chip);
+		font-size: 14px;
+	}
+
+	.autocomplete-avatar-img {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+
+	.autocomplete-info {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.autocomplete-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	.autocomplete-desc {
+		font-size: 11px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* Inline Mention Chip inside Composer Input */
+	/*
+	 * The chips are built by `mention-chips.ts` and dropped into the contenteditable, so they
+	 * never carry a scope class — `:global` is the only thing that reaches them. Anchoring on
+	 * `.composer-input` keeps them the composer's business rather than the whole app's.
+	 */
+	.composer-input :global(.inline-mention-chip) {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 1px 6px 1px 3px;
+		margin: 0 2px;
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-border);
+		border-radius: 999px;
+		font-size: 12.5px;
+		color: var(--accent-hover);
+		font-weight: 600;
+		line-height: 1.2;
+		vertical-align: middle;
+		user-select: none;
+		cursor: default;
+		animation: chipIn 0.12s ease;
+	}
+
+	.composer-input :global(.inline-mention-chip .chip-avatar-icon) {
+		font-size: 12px;
+		line-height: 1;
+	}
+
+	.composer-input :global(.inline-mention-chip .chip-avatar-img) {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.composer-input :global(.inline-mention-chip .chip-avatar-letter) {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 9.5px;
+		font-weight: 700;
+		border: 1px solid transparent;
+	}
+
+	.composer-input :global(.inline-mention-chip .chip-name) {
+		line-height: 1;
+		white-space: nowrap;
+	}
+
+	.composer-input :global(.inline-mention-chip .chip-close-btn) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: none;
+		background: rgba(37, 99, 235, 0.12);
+		color: var(--accent);
+		cursor: pointer;
+		padding: 0;
+		margin-left: 2px;
+		transition: all 0.1s ease;
+	}
+
+	.composer-input :global(.inline-mention-chip .chip-close-btn:hover) {
+		background: rgba(37, 99, 235, 0.25);
+		color: var(--accent-hover);
+	}
+
+	.composer-input :global(.chip-close-btn) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		border: none;
+		background: rgba(37, 99, 235, 0.12);
+		color: var(--accent);
+		cursor: pointer;
+		padding: 0;
+		transition: all 0.12s ease;
+	}
+
+	.composer-input :global(.chip-close-btn:hover) {
+		background: var(--accent);
+		color: #ffffff;
+	}
+
+	/* Pending Attachments in Composer */
+	.composer-attachments-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		padding: 6px 4px;
+		border-bottom: 1px solid var(--line-subtle);
+		margin-bottom: 4px;
+	}
+
+	.composer-attachment-item {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: var(--chip);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		padding: 4px 8px 4px 6px;
+		max-width: 220px;
+	}
+
+	.composer-attachment-item.is-img {
+		padding: 4px 8px 4px 4px;
+	}
+
+	.attachment-preview-img {
+		width: 36px;
+		height: 36px;
+		border-radius: var(--radius-sm);
+		object-fit: cover;
+		border: 1px solid var(--line);
+		flex-shrink: 0;
+	}
+
+	.attachment-file-icon {
+		width: 32px;
+		height: 32px;
+		border-radius: var(--radius-sm);
+		background: var(--pane);
+		border: 1px solid var(--line);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--muted);
+		flex-shrink: 0;
+	}
+
+	.attachment-meta {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.attachment-name {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.attachment-size {
+		font-size: 10px;
+		color: var(--muted);
+	}
+
+	.attachment-delete-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		border: none;
+		background: rgba(15, 23, 42, 0.08);
+		color: var(--muted);
+		cursor: pointer;
+		padding: 0;
+		flex-shrink: 0;
+		transition: all 0.12s ease;
+	}
+
+	.attachment-delete-btn:hover {
+		background: var(--danger);
+		color: #ffffff;
+	}
+
+	@keyframes chipIn {
+		from { opacity: 0; transform: scale(0.92); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
+	.composer-input :global(.chip-avatar-icon) {
+		font-size: 13px;
+		line-height: 1;
+	}
+
+	.composer-input :global(.chip-avatar-img) {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		object-fit: cover;
+	}
+
+	.composer-input :global(.chip-avatar-letter) {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 10px;
+		font-weight: 700;
+		border: 1px solid transparent;
+	}
+
+	.composer-input :global(.chip-name) {
+		line-height: 1;
+	}
+</style>

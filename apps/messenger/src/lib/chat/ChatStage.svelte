@@ -1162,3 +1162,17 @@
 		onPickPrompt={pickStarterPrompt}
 	/>
 </div>
+
+<style>
+	@media (max-width: 680px) {
+	.stream-inner {
+	padding: 14px 12px 100px;
+	}
+	}
+
+	.msg.is-you :global(.attachment-file-btn),
+	.msg.is-you :global(.attachment-bundle-btn) {
+		background: rgba(255, 255, 255, 0.9);
+		color: #0f172a;
+	}
+</style>

@@ -127,3 +127,22 @@
   border-style: dashed;
   background: transparent;
 }
+
+.btn-preset-workspace {
+  background: var(--chip);
+  border: 1px solid var(--chip-line);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-preset-workspace:hover {
+  background: var(--pane);
+  border-color: var(--line-hover);
+  color: var(--accent);
+}

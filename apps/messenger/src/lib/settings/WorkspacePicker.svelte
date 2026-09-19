@@ -77,3 +77,59 @@
 {#if !canPick || failed}
 	<p class="muted field-hint">{unavailableLabel}</p>
 {/if}
+
+<style>
+	.workspace-picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: stretch;
+	}
+
+	.workspace-picker-path {
+		flex: 1 1 12rem;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		text-align: left;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		padding: 8px 12px;
+		background: var(--input-bg);
+		color: var(--ink);
+		cursor: pointer;
+		box-shadow: var(--shadow-xs);
+		transition: all 0.15s ease;
+	}
+
+	.workspace-picker-path svg {
+		flex-shrink: 0;
+		color: var(--muted);
+	}
+
+	.workspace-picker-path span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.workspace-picker-path.is-empty {
+		color: var(--muted);
+	}
+
+	.workspace-picker-path:hover:not(:disabled) {
+		border-color: var(--line-hover);
+	}
+
+	.workspace-picker-path:focus-visible {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 3px var(--accent-glow);
+	}
+
+	.workspace-picker-path:disabled,
+	.workspace-picker .btn-preset-workspace:disabled {
+		opacity: 0.7;
+		cursor: wait;
+	}
+</style>

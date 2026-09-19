@@ -6,9 +6,8 @@
 @import "./shell.css";
 @import "./sidebar.css";
 @import "./chat.css";
-@import "./composer.css";
 @import "./drawers.css";
 @import "./panels.css";
 @import "./settings.css";
-@import "./onboarding.css";
-@import "./context-menu.css";
+@import "./code-highlight.css";
+@import "./third-party.css";

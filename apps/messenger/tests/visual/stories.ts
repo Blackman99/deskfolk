@@ -33,6 +33,8 @@ import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
 import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
+import ArtifactPreview from '../../src/lib/overlays/ArtifactPreview.svelte';
+import ArtifactCodeEditor from '../../src/lib/overlays/ArtifactCodeEditor.svelte';
 
 const t = copyFor('zh');
 
@@ -172,6 +174,32 @@ const routeRows: RouteLogRow[] = [
 		finishedAt: '2026-09-19T02:00:06.900Z',
 		durationMs: 900
 	}
+];
+
+/**
+ * The preview reads bytes through the local API. A tiny PNG keeps the shot off Monaco, which
+ * loads asynchronously and would race the camera; the editor's own rules stay in the global sheet
+ * for want of a baseline that can hold still.
+ */
+const PNG = Uint8Array.from(
+	atob(
+		'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAPElEQVR42u3OMQEAAAgDoC251a3g' +
+			'LwSgcjeZXQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECHwLHmHXAAFAsPm9AAAAAElFTkSuQmCC'
+	),
+	(c) => c.charCodeAt(0)
+);
+
+const previewApi = {
+	getAttachmentBlob: async () => new Blob([PNG], { type: 'image/png' }),
+	getWorkspaceFileBlob: async () => new Blob([PNG], { type: 'image/png' }),
+	workspaceTree: async () => ({ entries: [] }),
+	putWorkspaceFile: async () => ({ ok: true })
+};
+
+const previewAttachments = [
+	anAttachment({ id: 'att-1', workspace_relpath: 'shots/cover.png', original_filename: 'cover.png', mime: 'image/png' }),
+	anAttachment({ id: 'att-2', workspace_relpath: 'outline/ep-12.md', original_filename: 'ep-12.md', mime: 'text/markdown' }),
+	anAttachment({ id: 'att-3', workspace_relpath: 'shots/board.mp4', original_filename: 'board.mp4', mime: 'video/mp4' })
 ];
 
 /** The settings modal keeps the open tab to itself, so the story clicks it like a person would. */
@@ -342,6 +370,28 @@ const defs: Record<StoryName, Story> = {
 			clearDanger: () => {},
 			onDeleteBot: () => {},
 			onClearHistory: () => {}
+		}
+	},
+	'artifact-preview': {
+		component: ArtifactPreview as never,
+		props: {
+			attachment: previewAttachments[0]!,
+			relpath: 'shots/cover.png',
+			siblings: previewAttachments,
+			api: previewApi,
+			workspacePath: '/Users/you/real-bot-workspace',
+			t,
+			onClose: () => {},
+			onSelect: () => {},
+			mode: 'cited'
+		}
+	},
+	'artifact-code': {
+		component: ArtifactCodeEditor as never,
+		props: {
+			code: 'export function pick(list: string[]): string {\n\t// the second one was the safe bet\n\treturn list[1] ?? list[0]!;\n}\n',
+			path: 'src/pick.ts',
+			wrap: false
 		}
 	},
 	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(0) },

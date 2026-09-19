@@ -165,3 +165,119 @@
 	<pre class="artifact-text artifact-cm-fallback">{code}</pre>
 	<div class="artifact-cm" bind:this={host}></div>
 </div>
+
+<style>
+	.artifact-cm-wrap {
+		min-height: 280px;
+		flex: 1;
+		height: 100%;
+		position: relative;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.artifact-cm {
+		min-height: 0;
+		flex: 1;
+		height: 100%;
+		position: relative;
+		z-index: 1;
+	}
+
+	.artifact-cm-fallback {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		margin: 0;
+		padding: 8px 12px;
+		overflow: auto;
+		background: var(--pane);
+		pointer-events: none;
+	}
+
+	.artifact-cm-wrap:has(:global(.monaco-editor)) .artifact-cm-fallback {
+		display: none;
+	}
+
+	.artifact-cm :global(.monaco-editor),
+	.artifact-cm :global(.monaco-editor-background),
+	.artifact-cm :global(.monaco-editor) :global(.margin) {
+		background: var(--pane);
+		--vscode-editorHoverWidget-background: var(--pane);
+		--vscode-editorHoverWidget-foreground: var(--ink);
+		--vscode-editorHoverWidget-border: var(--line);
+		--vscode-editorWidget-background: var(--pane);
+		--vscode-editorWidget-foreground: var(--ink);
+		--vscode-widget-border: var(--line);
+		--vscode-input-background: var(--input-bg);
+		--vscode-input-foreground: var(--ink);
+		--vscode-focusBorder: var(--accent);
+		--vscode-errorForeground: var(--danger);
+	}
+
+	.artifact-cm :global(.find-widget) {
+		z-index: 10;
+	}
+
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) {
+		overflow: visible;
+		max-width: min(419px, calc(100% - 16px)) !important;
+	}
+
+	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget),
+	.artifact-cm :global(.monaco-editor) :global(.find-widget.narrow-find-widget),
+	.artifact-cm :global(.monaco-editor) :global(.find-widget.reduced-find-widget) {
+		max-width: min(419px, calc(100% - 16px)) !important;
+	}
+
+	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget) :global(.button.previous),
+	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget) :global(.button.next),
+	.artifact-cm :global(.monaco-editor) :global(.find-widget.collapsed-find-widget) > :global(.find-part) :global(.monaco-findInput) :global(.controls) {
+		display: flex;
+	}
+
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button),
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.monaco-custom-toggle) {
+		position: relative;
+	}
+
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button:hover::after),
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.monaco-custom-toggle:hover::after) {
+		content: attr(aria-label);
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 50%;
+		z-index: 60;
+		padding: 4px 8px;
+		font-family: var(--font);
+		font-size: 12px;
+		font-weight: 400;
+		line-height: 16px;
+		white-space: nowrap;
+		color: var(--ink);
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		box-shadow: var(--shadow-md);
+		pointer-events: none;
+		transform: translateX(-50%);
+	}
+
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button.toggle.left:hover::after) {
+		left: 0;
+		transform: none;
+	}
+
+	.artifact-cm :global(.cm-editor) {
+		height: 100%;
+	}
+
+	.artifact-text {
+		margin: 0;
+		white-space: pre-wrap;
+		word-break: break-word;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 12px;
+		line-height: 1.5;
+	}
+</style>

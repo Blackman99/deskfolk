@@ -976,3 +976,54 @@
 	{/if}
 </div>
 {/if}
+
+<style>
+	.preview-split {
+		width: 8px;
+		padding: 0;
+		border: 0;
+		cursor: col-resize;
+		position: relative;
+		background: transparent;
+		z-index: 2;
+	}
+
+	.preview-split::before {
+		content: "";
+		position: absolute;
+		inset: 0 3px;
+		background: var(--line);
+		border-radius: 99px;
+	}
+
+	.preview-split:hover::before,
+	.shell.is-preview-dragging .preview-split::before {
+		background: var(--accent);
+		inset: 0 2px;
+	}
+
+	.sidebar-split {
+		width: 8px;
+		padding: 0;
+		border: 0;
+		cursor: col-resize;
+		position: relative;
+		background: var(--sidebar-bg);
+		z-index: 4;
+		touch-action: none;
+	}
+
+	.sidebar-split::before {
+		content: "";
+		position: absolute;
+		inset: 0 3px;
+		background: var(--line);
+		border-radius: 99px;
+	}
+
+	.sidebar-split:hover::before,
+	.shell.is-sidebar-dragging .sidebar-split::before {
+		background: var(--accent);
+		inset: 0 2px;
+	}
+</style>

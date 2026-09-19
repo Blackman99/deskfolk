@@ -1,0 +1,9 @@
+/*
+ * DOM this app does not render. Monaco mounts its hover into `document.body`, outside every
+ * component, so there is nothing to scope the rule to. Global on purpose; `styles-coverage.test.ts`
+ * has the matching whitelist.
+ */
+.context-view:has(.monaco-hover.workbench-hover) {
+  display: none;
+  pointer-events: none;
+}
