@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import type { McpServer } from '@real-bot/protocol';
-	import type { Copy } from './copy.ts';
-	import type { MessengerRuntime } from './runtime.svelte.ts';
+	import type { Copy } from '../copy.ts';
+	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import {
 		formatMcpArgs,
 		formatMcpHeaders,

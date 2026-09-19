@@ -7,7 +7,7 @@ import {
   registerLoadedShikiLanguages,
   shouldHighlightMonaco,
 } from "./artifact-monaco.ts";
-import { HIGHLIGHT_CHAR_LIMIT } from "./highlight-mount.ts";
+import { HIGHLIGHT_CHAR_LIMIT } from "../highlight-mount.ts";
 
 test("monacoLanguageFromPath uses highlight-lang ids", () => {
   expect(monacoLanguageFromPath("src/app.ts")).toBe("typescript");

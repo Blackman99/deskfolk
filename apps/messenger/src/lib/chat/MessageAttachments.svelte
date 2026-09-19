@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
-	import type { Copy } from './copy.ts';
-	import type { LocalApi } from './api.ts';
-	import { artifactKind } from './artifacts.ts';
-	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
+	import type { Copy } from '../copy.ts';
+	import type { LocalApi } from '../api.ts';
+	import { artifactKind } from '../overlays/artifacts.ts';
+	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from '../overlays/artifact-tree.ts';
 	import { onDestroy, onMount } from 'svelte';
 
 	interface Props {

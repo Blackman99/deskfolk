@@ -3,14 +3,14 @@
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import Select from '../Select.svelte';
 	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from '../chat-view.ts';
+	import { botAvatarColor } from '../chat/chat-view.ts';
 	import type { Copy } from '../copy.ts';
-	import { canRemoveGroupBot, mapGroupEditError, planGroupName, presentBotIds, pullInCandidates } from '../group-edit.ts';
-	import { rosterLetter } from '../roster-letter.ts';
+	import { canRemoveGroupBot, mapGroupEditError, planGroupName, presentBotIds, pullInCandidates } from './group-edit.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { classifySession } from '../session-groups.ts';
-	import { botWorkStatus } from '../session-status.ts';
-	import { sessionTitle } from '../session-title.ts';
+	import { classifySession } from '../sidebar/session-groups.ts';
+	import { botWorkStatus } from '../sidebar/session-status.ts';
+	import { sessionTitle } from '../sidebar/session-title.ts';
 
 	/** Kept by the shell: the reset runs on every session change, drawer open or not. */
 	export type GroupDetailDraft = {

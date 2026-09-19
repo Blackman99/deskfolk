@@ -5,7 +5,7 @@
 		mapCreateGroupError,
 		planCreateGroup,
 		type CreateGroupFieldErrors
-	} from '../create-form.ts';
+	} from '../panels/create-form.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 
 	type Props = {

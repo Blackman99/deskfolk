@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
-	import type { Copy } from './copy.ts';
-	import type { LocalApi } from './api.ts';
+	import type { Copy } from '../copy.ts';
+	import type { LocalApi } from '../api.ts';
 	import {
 		absWorkspacePath,
 		artifactByteSource,
@@ -25,17 +25,17 @@
 	import ArtifactCodeEditor from './ArtifactCodeEditor.svelte';
 	import FileIcon from './FileIcon.svelte';
 	import { fileIconFor } from './file-icon.ts';
-	import { markdownCode } from './code-blocks.ts';
-	import { copyText } from './clipboard.ts';
-	import { highlightLangFromPath, highlightLangLabel } from './highlight-lang.ts';
-	import { renderMarkdown } from './markdown.ts';
+	import { markdownCode } from '../chat/code-blocks.ts';
+	import { copyText } from '../clipboard.ts';
+	import { highlightLangFromPath, highlightLangLabel } from '../highlight-lang.ts';
+	import { renderMarkdown } from '../markdown.ts';
 	import { openWorkspacePath } from './open-workspace.ts';
 	import {
 		clampArtifactTreeWidth,
 		loadArtifactTreeWidth,
 		saveArtifactTreeWidth,
 	} from './artifact-tree-width.ts';
-	import { themeManager } from './theme.ts';
+	import { themeManager } from '../theme.ts';
 	import { onDestroy, untrack } from 'svelte';
 
 	interface Props {

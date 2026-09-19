@@ -2,14 +2,14 @@
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from '../chat-view.ts';
+	import { botAvatarColor } from './chat-view.ts';
 	import type { Copy } from '../copy.ts';
-	import { isSessionPinned } from '../pinned-sessions.ts';
-	import { rosterLetter } from '../roster-letter.ts';
+	import { isSessionPinned } from '../sidebar/pinned-sessions.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { classifySession, youBotPeer } from '../session-groups.ts';
-	import { botWorkStatus, sidebarStatus } from '../session-status.ts';
-	import { sessionPresence, sessionTitle } from '../session-title.ts';
+	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
+	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
+	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;

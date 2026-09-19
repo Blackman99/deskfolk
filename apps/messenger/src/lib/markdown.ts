@@ -1,7 +1,7 @@
 import { Marked } from "marked";
 import remend, { isWithinCodeBlock } from "remend";
 import sanitizeHtml from "sanitize-html";
-import { artifactHref, linkifyWorkspacePaths, looksLikeWorkspaceHref } from "./artifacts.ts";
+import { artifactHref, linkifyWorkspacePaths, looksLikeWorkspaceHref } from "./overlays/artifacts.ts";
 import {
   BOT_HREF_SCHEME,
   decorateMentionChips,
@@ -9,7 +9,7 @@ import {
   mentionHref,
   parseMentionHref,
   type MentionableBot,
-} from "./mention-chips.ts";
+} from "./chat/mention-chips.ts";
 
 const marked = new Marked({ gfm: true, breaks: true });
 

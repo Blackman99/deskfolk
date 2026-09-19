@@ -2,8 +2,8 @@
 	import { tick } from 'svelte';
 	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
-	import MessageAttachments from '../MessageAttachments.svelte';
-	import ReplyingIndicator from '../ReplyingIndicator.svelte';
+	import MessageAttachments from './MessageAttachments.svelte';
+	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import {
 		approvalForMessage,
@@ -11,7 +11,7 @@
 		approvalSecretRequired,
 		canAlwaysAllow,
 		isHttpMcpApproval
-	} from '../approval-card.ts';
+	} from './approval-card.ts';
 	import { avatarSrc } from '../avatar.ts';
 	import {
 		botAvatarColor,
@@ -24,23 +24,23 @@
 		groupReactions,
 		groupTranscript,
 		isDifferentDay
-	} from '../chat-view.ts';
-	import { markdownCode } from '../code-blocks.ts';
-	import { composerLocked } from '../composer-mode.ts';
+	} from './chat-view.ts';
+	import { markdownCode } from './code-blocks.ts';
+	import { composerLocked } from './composer-mode.ts';
 	import { copyText } from '../clipboard.ts';
 	import type { Copy } from '../copy.ts';
-	import { presentBotIds } from '../group-edit.ts';
+	import { presentBotIds } from '../panels/group-edit.ts';
 	import { renderMarkdown } from '../markdown.ts';
-	import { parseMentionHref } from '../mention-chips.ts';
-	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from '../quote-reply.ts';
-	import { rosterLetter } from '../roster-letter.ts';
+	import { parseMentionHref } from './mention-chips.ts';
+	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { classifySession, youBotPeer } from '../session-groups.ts';
-	import { sessionTitle } from '../session-title.ts';
-	import { getStarterOptions } from '../starter-prompts.ts';
-	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from '../stream-scroll.ts';
-	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from '../transcript.ts';
-	import { parseArtifactHref } from '../artifacts.ts';
+	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
+	import { sessionTitle } from '../sidebar/session-title.ts';
+	import { getStarterOptions } from './starter-prompts.ts';
+	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
+	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
+	import { parseArtifactHref } from '../overlays/artifacts.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;

@@ -6,7 +6,7 @@ import {
   type CreateGroupRequest,
   type ThinkingLevel,
 } from "@real-bot/protocol";
-import { modelSelectValue, parseModelSelectValue } from "./provider-form.ts";
+import { modelSelectValue, parseModelSelectValue } from "../settings/provider-form.ts";
 
 export type CreateBotDraft = {
   name: string;

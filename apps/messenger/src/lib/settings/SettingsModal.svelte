@@ -1,7 +1,7 @@
 <script lang="ts">
-	import McpSettings from '../McpSettings.svelte';
+	import McpSettings from './McpSettings.svelte';
 	import WorkspacePicker from '../WorkspacePicker.svelte';
-	import ProviderForm from '../ProviderForm.svelte';
+	import ProviderForm from './ProviderForm.svelte';
 	import Select from '../Select.svelte';
 	import { JAIL_COPY, thinkingLevelLabel, type Copy } from '../copy.ts';
 	import {
@@ -16,9 +16,9 @@
 		withSyncedDefaultModel,
 		type ProviderDraft,
 		type ProviderEditorState
-	} from '../provider-form.ts';
-	import { botAvatarColor } from '../chat-view.ts';
-	import { rosterLetter } from '../roster-letter.ts';
+	} from './provider-form.ts';
+	import { botAvatarColor } from '../chat/chat-view.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
@@ -27,7 +27,7 @@
 		planWorkspaceSave,
 		type FieldErrorKind,
 		type SettingsFieldErrors
-	} from '../wizard-save.ts';
+	} from './wizard-save.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;

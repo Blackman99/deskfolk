@@ -13,7 +13,7 @@
 		prepareMonacoLanguage,
 		shouldHighlightMonaco,
 	} from './artifact-monaco.ts';
-	import { themeManager, type ResolvedTheme } from './theme.ts';
+	import { themeManager, type ResolvedTheme } from '../theme.ts';
 
 	interface Props {
 		code: string;

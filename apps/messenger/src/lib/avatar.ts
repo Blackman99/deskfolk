@@ -8,7 +8,7 @@ import {
   type Bot,
   type SessionSummary,
 } from "@real-bot/protocol";
-import { activeMembers } from "./session-groups.ts";
+import { activeMembers } from "./sidebar/session-groups.ts";
 
 export {
   generateBoringAvatar,

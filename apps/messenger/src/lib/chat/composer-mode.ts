@@ -1,5 +1,5 @@
 import type { Bot, SessionKind, SessionSummary } from "@real-bot/protocol";
-import { youBotPeer } from "./session-groups.ts";
+import { youBotPeer } from "../sidebar/session-groups.ts";
 
 export type ComposerMode = "idle" | "redirect" | "fork";
 

@@ -2,8 +2,8 @@
 	import type { Bot } from '@real-bot/protocol';
 	import type { ReplyingEntry } from './transcript.ts';
 	import { botAvatarColor } from './chat-view.ts';
-	import { rosterLetter } from './roster-letter.ts';
-	import { avatarSrc } from './avatar.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
+	import { avatarSrc } from '../avatar.ts';
 
 	interface Props {
 		entries: readonly ReplyingEntry[];

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { USER_MEMBER, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
-	import { formatFileSize } from '../attachments.ts';
+	import { formatFileSize } from './attachments.ts';
 	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from '../chat-view.ts';
-	import { composerAction, composerLocked } from '../composer-mode.ts';
-	import { insertComposerNewline } from '../composer-editor.ts';
+	import { botAvatarColor } from './chat-view.ts';
+	import { composerAction, composerLocked } from './composer-mode.ts';
+	import { insertComposerNewline } from './composer-editor.ts';
 	import {
 		COMPOSER_IME_IDLE,
 		composerImeKeyAction,
@@ -13,10 +13,10 @@
 		composerImeOnStart,
 		composerImeOnUpdate,
 		type ComposerImeState
-	} from '../composer-ime.ts';
+	} from './composer-ime.ts';
 	import type { Copy } from '../copy.ts';
-	import { presentBotIds } from '../group-edit.ts';
-	import { classifySession, youBotPeer } from '../session-groups.ts';
+	import { presentBotIds } from '../panels/group-edit.ts';
+	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import {
 		deleteChipElement,
 		getTextBeforeCaret,
@@ -26,18 +26,18 @@
 		parseMentionHref,
 		serializeEditorText,
 		setEditorContentFromText
-	} from '../mention-chips.ts';
+	} from './mention-chips.ts';
 	import {
 		applyMentionCandidate,
 		detectMentionTrigger,
 		scrollTopToRevealRect,
 		shouldIgnoreKeyUp,
 		updateMentionTrigger
-	} from '../mention-popup.ts';
-	import { quotePreview, quotedBotName } from '../quote-reply.ts';
-	import { rosterLetter } from '../roster-letter.ts';
+	} from './mention-popup.ts';
+	import { quotePreview, quotedBotName } from './quote-reply.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { isLiveStatus } from '../transcript.ts';
+	import { isLiveStatus } from './transcript.ts';
 	import { isOutside } from '../click-outside.ts';
 
 	type Props = {

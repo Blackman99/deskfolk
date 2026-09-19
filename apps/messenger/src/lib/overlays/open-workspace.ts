@@ -1,4 +1,4 @@
-import { readTauriInternals } from "./tauri.ts";
+import { readTauriInternals } from "../tauri.ts";
 
 export async function openWorkspacePath(abs: string, reveal = false): Promise<boolean> {
   const internals = readTauriInternals();

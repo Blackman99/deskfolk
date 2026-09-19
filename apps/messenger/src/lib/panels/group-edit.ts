@@ -1,5 +1,5 @@
 import { USER_MEMBER, type Bot, type SessionSummary } from "@real-bot/protocol";
-import { activeMembers } from "./session-groups.ts";
+import { activeMembers } from "../sidebar/session-groups.ts";
 
 export type GroupNamePlan = { ok: true; name: string } | { ok: false; error: "empty" };
 

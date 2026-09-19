@@ -10,7 +10,7 @@
 		planCreateBot,
 		type CreateBotDraft,
 		type CreateBotFieldErrors
-	} from '../create-form.ts';
+	} from '../panels/create-form.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { SelectOption } from '../select-options.ts';
 

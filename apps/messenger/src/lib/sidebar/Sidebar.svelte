@@ -3,20 +3,20 @@
 	import CreateGroupSheet from './CreateGroupSheet.svelte';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from '../chat-view.ts';
+	import { botAvatarColor } from '../chat/chat-view.ts';
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
-	import { isSessionPinned } from '../pinned-sessions.ts';
-	import { rosterLetter } from '../roster-letter.ts';
+	import { isSessionPinned } from './pinned-sessions.ts';
+	import { rosterLetter } from './roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { scrollTopToRevealRect } from '../mention-popup.ts';
-	import { searchHitView, searchJump } from '../search-jump.ts';
-	import { groupSessions, isSessionArchived, youBotPeer } from '../session-groups.ts';
-	import { botWorkStatus, sidebarStatus } from '../session-status.ts';
-	import { sessionTitle } from '../session-title.ts';
+	import { scrollTopToRevealRect } from '../chat/mention-popup.ts';
+	import { searchHitView, searchJump } from './search-jump.ts';
+	import { groupSessions, isSessionArchived, youBotPeer } from './session-groups.ts';
+	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { sessionTitle } from './session-title.ts';
 	import { themeManager } from '../theme.ts';
-	import { latestPreview } from '../transcript.ts';
-	import { sessionUnreadCount, unreadBadge } from '../unread.ts';
+	import { latestPreview } from '../chat/transcript.ts';
+	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 
 	type Props = {

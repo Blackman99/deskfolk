@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parseArtifactHref } from "./artifacts.ts";
+import { parseArtifactHref } from "./overlays/artifacts.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 test("complete markdown turns emphasis and a fenced block into HTML", () => {

@@ -1,4 +1,4 @@
-import { extensionOf } from "./artifacts.ts";
+import { extensionOf } from "./overlays/artifacts.ts";
 
 /** Shiki language ids we ship (fine-grained core, not the web bundle). */
 export type HighlightLang =

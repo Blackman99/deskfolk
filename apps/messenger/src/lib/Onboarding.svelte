@@ -8,14 +8,14 @@
 		parseModelLines,
 		type FieldErrorKind,
 		type SettingsFieldErrors
-	} from './wizard-save.ts';
+	} from './settings/wizard-save.ts';
 	import {
 		applyProbedModels,
 		emptyProviderDraft,
 		mapProviderError,
 		planCreateProvider,
 		type ProviderFieldErrors
-	} from './provider-form.ts';
+	} from './settings/provider-form.ts';
 	import type { ProbedModel } from '@real-bot/protocol';
 
 	interface Props {

@@ -1,4 +1,4 @@
-import { isTauri, readTauriInternals, type TauriInternals } from "./tauri.ts";
+import { isTauri, readTauriInternals, type TauriInternals } from "../tauri.ts";
 
 export function parsePickedWorkspacePath(value: unknown): string | null {
   if (typeof value !== "string") return null;

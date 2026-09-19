@@ -1,7 +1,7 @@
-import { highlightLangFromClass } from "./highlight-lang.ts";
-import { bindCssHighlight } from "./highlight-mount.ts";
-import type { CssHighlightHandle } from "./css-highlight.ts";
-import { copyText } from "./clipboard.ts";
+import { highlightLangFromClass } from "../highlight-lang.ts";
+import { bindCssHighlight } from "../highlight-mount.ts";
+import type { CssHighlightHandle } from "../css-highlight.ts";
+import { copyText } from "../clipboard.ts";
 
 export type CodeBlockLabels = {
   copy: string;

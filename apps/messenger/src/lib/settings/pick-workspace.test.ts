@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { TauriInternals } from "./tauri.ts";
+import type { TauriInternals } from "../tauri.ts";
 import {
   parsePickedWorkspacePath,
   pickWorkspaceFolder,

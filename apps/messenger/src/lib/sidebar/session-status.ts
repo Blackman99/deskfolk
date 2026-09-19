@@ -1,5 +1,5 @@
 import type { Approval, PendingJudgement, SessionSummary, Turn } from "@real-bot/protocol";
-import { isLiveStatus } from "./transcript.ts";
+import { isLiveStatus } from "../chat/transcript.ts";
 
 export type SessionStateKind = "running" | "replying" | "waiting_approval" | "waiting_ask" | "idle";
 

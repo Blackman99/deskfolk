@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from './chat-view.ts';
-	import type { Copy } from './copy.ts';
+	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
+	import type { Copy } from '../copy.ts';
 	import type { RouteLogRow } from './route-log.ts';
 	import { listWindow } from './route-log-window.ts';
 

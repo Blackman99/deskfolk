@@ -1,4 +1,4 @@
-import type { HighlightLang } from "./highlight-lang.ts";
+import type { HighlightLang } from "../highlight-lang.ts";
 
 type MonacoApi = typeof import("monaco-editor/esm/vs/editor/editor.api");
 type LanguageConfiguration = Parameters<MonacoApi["languages"]["setLanguageConfiguration"]>[1];

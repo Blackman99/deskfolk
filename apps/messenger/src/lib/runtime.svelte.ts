@@ -24,9 +24,9 @@ import {
 import { ApiError, LocalApi, probeHealth } from "./api.ts";
 import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
-import { collectUntilMessage } from "./search-jump.ts";
+import { collectUntilMessage } from "./sidebar/search-jump.ts";
 import { applyEvent, emptySnapshot, type Snapshot } from "./snapshot.ts";
-import { stopTarget } from "./transcript.ts";
+import { stopTarget } from "./chat/transcript.ts";
 
 export type Connection = "disconnected" | "connected";
 

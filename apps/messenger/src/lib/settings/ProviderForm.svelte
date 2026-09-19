@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { FieldErrorKind } from './wizard-save.ts';
-	import type { Copy } from './copy.ts';
+	import type { Copy } from '../copy.ts';
 	import {
 		PRESET_STRENGTHS,
 		addAttrStrength,
@@ -19,8 +19,8 @@
 		type ProviderDraft,
 		type ProviderFieldErrors
 	} from './provider-form.ts';
-	import Select from './Select.svelte';
-	import { thinkingLevelLabel } from './copy.ts';
+	import Select from '../Select.svelte';
+	import { thinkingLevelLabel } from '../copy.ts';
 
 	interface Props {
 		draft: ProviderDraft;

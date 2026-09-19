@@ -5,47 +5,43 @@
 		type Bot,
 		type SessionSummary
 	} from '@real-bot/protocol';
-	import { composerLocked } from './composer-mode.ts';
+	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
 	import {
 		modelSelectValue,
 		type ProviderEditorState
-	} from './provider-form.ts';
-	import SessionAvatar from './SessionAvatar.svelte';
-	import { routeLogRows } from './route-log.ts';
-	import RouteLog from './RouteLog.svelte';
-	import { presentBotIds } from './group-edit.ts';
+	} from './settings/provider-form.ts';
+	import { routeLogRows } from './overlays/route-log.ts';
+	import RouteLog from './overlays/RouteLog.svelte';
+	import { presentBotIds } from './panels/group-edit.ts';
 	import {
 		cleanPinnedIds,
 		isSessionPinned,
 		loadPinnedIds,
 		savePinnedIds,
 		togglePinnedId
-	} from './pinned-sessions.ts';
+	} from './sidebar/pinned-sessions.ts';
 	import { themeManager } from './theme.ts';
 	import {
 		classifySession,
 		youBotPeer
-	} from './session-groups.ts';
-	import { sessionTitle } from './session-title.ts';
+	} from './sidebar/session-groups.ts';
+	import { sessionTitle } from './sidebar/session-title.ts';
 		import type { MessengerRuntime } from './runtime.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
-	import Select from './Select.svelte';
-	import SessionContextMenu from './SessionContextMenu.svelte';
-	import MessageAttachments from './MessageAttachments.svelte';
-	import ArtifactPreview from './ArtifactPreview.svelte';
-	import WorkspaceExplorer from './WorkspaceExplorer.svelte';
-	import ReplyingIndicator from './ReplyingIndicator.svelte';
+	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
+	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
+	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
 		clampPreviewWidth,
 		loadPreviewWidth,
 		savePreviewWidth
-	} from './preview-width.ts';
+	} from './overlays/preview-width.ts';
 	import {
 		clampSidebarWidth,
 		loadSidebarWidth,
 		saveSidebarWidth
-	} from './sidebar-width.ts';
+	} from './sidebar/sidebar-width.ts';
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import GroupPane, { type GroupDetailDraft } from './panels/GroupPane.svelte';

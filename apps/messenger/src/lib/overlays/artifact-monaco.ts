@@ -1,11 +1,11 @@
-import type { HighlightLang } from "./highlight-lang.ts";
-import { highlightLangFromPath } from "./highlight-lang.ts";
-import { HIGHLIGHT_CHAR_LIMIT } from "./highlight-mount.ts";
+import type { HighlightLang } from "../highlight-lang.ts";
+import { highlightLangFromPath } from "../highlight-lang.ts";
+import { HIGHLIGHT_CHAR_LIMIT } from "../highlight-mount.ts";
 import { registerMatchingFolding } from "./monaco-folding.ts";
 import { installMonacoShortcutGuard, registerMonacoEditorFeatures } from "./monaco-features.ts";
 import { applyMonacoLanguageConfiguration } from "./monaco-language-config.ts";
-import { ensureHighlightLang, getShikiHighlighter, MONACO_SHIKI_THEMES } from "./shiki-highlighter.ts";
-import { themeManager, type ResolvedTheme } from "./theme.ts";
+import { ensureHighlightLang, getShikiHighlighter, MONACO_SHIKI_THEMES } from "../shiki-highlighter.ts";
+import { themeManager, type ResolvedTheme } from "../theme.ts";
 
 export const MONACO_THEME = {
   light: MONACO_SHIKI_THEMES.light,
@@ -49,7 +49,7 @@ async function loadMonacoWorker(): Promise<void> {
   if (typeof window === "undefined") return;
   const g = globalThis as unknown as { __RB_MONACO_WORKER__?: new () => Worker };
   if (g.__RB_MONACO_WORKER__) return;
-  const mod = await import("./monaco.worker.ts?worker");
+  const mod = await import("../monaco.worker.ts?worker");
   g.__RB_MONACO_WORKER__ = mod.default as unknown as new () => Worker;
 }
 

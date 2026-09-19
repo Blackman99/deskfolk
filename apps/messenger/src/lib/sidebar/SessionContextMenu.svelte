@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
-	import type { Copy } from './copy.ts';
+	import type { Copy } from '../copy.ts';
 	import { computeContextMenuPosition, deriveSessionContextMenu } from './session-context-menu.ts';
 
 	let {

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
 	import { compositeAvatarLayout, sessionAvatars } from './avatar.ts';
-	import { botAvatarColor } from './chat-view.ts';
-	import { rosterLetter } from './roster-letter.ts';
-	import { youBotPeer } from './session-groups.ts';
-	import type { SessionStatusResult } from './session-status.ts';
+	import { botAvatarColor } from './chat/chat-view.ts';
+	import { rosterLetter } from './sidebar/roster-letter.ts';
+	import { youBotPeer } from './sidebar/session-groups.ts';
+	import type { SessionStatusResult } from './sidebar/session-status.ts';
 
 	let {
 		session,

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { Copy } from './copy.ts';
-	import type { LocalApi } from './api.ts';
+	import type { Copy } from '../copy.ts';
+	import type { LocalApi } from '../api.ts';
 	import ArtifactPreview from './ArtifactPreview.svelte';
 
 	interface Props {

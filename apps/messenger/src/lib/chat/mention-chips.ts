@@ -1,7 +1,7 @@
 import type { Bot } from "@real-bot/protocol";
-import { avatarSrc } from "./avatar.ts";
+import { avatarSrc } from "../avatar.ts";
 import { botAvatarColor } from "./chat-view.ts";
-import { rosterLetter } from "./roster-letter.ts";
+import { rosterLetter } from "../sidebar/roster-letter.ts";
 
 export type ActiveMentionChip = {
   id: string;

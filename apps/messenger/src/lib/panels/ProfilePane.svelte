@@ -19,14 +19,14 @@
 		type CreateBotFieldErrors,
 		type SkillDraft,
 		type SkillFieldErrors
-	} from '../create-form.ts';
-	import { modelSelectValue, type ProviderEditorState } from '../provider-form.ts';
+	} from './create-form.ts';
+	import { modelSelectValue, type ProviderEditorState } from '../settings/provider-form.ts';
 	import {
 		profileDraftDirty,
 		profileNeedsSave,
 		reconcileProfileDraft,
 		type ProfileFields
-	} from '../roster-edit.ts';
+	} from './roster-edit.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { SelectOption } from '../select-options.ts';
 
