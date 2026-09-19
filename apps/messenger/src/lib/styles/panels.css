@@ -1,7 +1,7 @@
 /*
- * Furniture the two drawer panes share — the alert line, the danger-zone card, the thinking-level
- * picker, the field hint. GroupPane and ProfilePane both render these on their own elements, so
- * scoping either copy would leave the other unstyled.
+ * Furniture the two drawer panes share — the alert line, the danger-zone card, the action-list
+ * rows, the thinking-level picker, the field hint. GroupPane and ProfilePane both render these
+ * on their own elements, so scoping either copy would leave the other unstyled.
  */
 
 .panel-alert {
@@ -35,6 +35,82 @@
   color: var(--danger-text);
 }
 
+.action-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.action-list-stack .action-list-row + .action-list-row {
+  padding-top: 12px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.action-list-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.action-list-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.action-list-title.text-danger {
+  color: var(--danger-text);
+}
+
+.action-list-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.action-btn.btn-secondary {
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--line);
+  color: var(--ink-secondary);
+}
+
+.action-btn.btn-secondary:hover {
+  background: var(--line-subtle);
+  border-color: var(--line-hover);
+  color: var(--ink);
+}
+
+.action-btn.deny {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-line);
+}
+
+.action-btn.deny:hover:not(:disabled) {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+}
+
 .thinking-picker {
   display: flex;
   flex-wrap: wrap;
@@ -54,19 +130,4 @@
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.4;
-}
-
-.danger-zone-card {
-  border-color: var(--danger-line);
-}
-
-.danger-zone-card .panel-card-head {
-  background: var(--danger-bg);
-  border-bottom-color: var(--danger-line);
-  border-top-left-radius: calc(var(--radius-lg) - 1px);
-  border-top-right-radius: calc(var(--radius-lg) - 1px);
-}
-
-.danger-zone-card .panel-card-title {
-  color: var(--danger-text);
 }

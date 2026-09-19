@@ -339,7 +339,7 @@
 {#if selected.kind === 'group'}
 	<div class="panel-card">
 		<div class="panel-card-head">
-			<span class="panel-card-title">{locale === 'zh' ? '会话操作' : 'Actions'}</span>
+			<span class="panel-card-title">{t.detail.sessionActions}</span>
 		</div>
 		<div class="panel-card-body">
 			<div class="action-list-row">
@@ -366,7 +366,7 @@
 <!-- Danger Zone (Clear History / Delete Group) -->
 <div class="panel-card danger-zone-card">
 	<div class="panel-card-head">
-		<span class="panel-card-title">{locale === 'zh' ? '危险区域' : 'Danger Zone'}</span>
+		<span class="panel-card-title">{t.detail.dangerZone}</span>
 	</div>
 	<div class="panel-card-body">
 		<div class="action-list-stack flex flex-col gap-6">
@@ -660,82 +660,6 @@
 		background: var(--line-subtle);
 		border-color: var(--line);
 		color: var(--muted);
-	}
-
-	.action-list-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 14px;
-	}
-
-	.action-list-stack .action-list-row + .action-list-row {
-		padding-top: 12px;
-		border-top: 1px solid var(--line-subtle);
-	}
-
-	.action-list-info {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.action-list-title {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--ink);
-		line-height: 1.3;
-	}
-
-	.action-list-title.text-danger {
-		color: var(--danger-text);
-	}
-
-	.action-list-desc {
-		font-size: 11.5px;
-		color: var(--muted);
-		line-height: 1.35;
-	}
-
-	.action-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 6px 14px;
-		font-size: 12px;
-		font-weight: 600;
-		border-radius: var(--radius-md);
-		cursor: pointer;
-		white-space: nowrap;
-		flex-shrink: 0;
-		transition: all 0.15s ease;
-	}
-
-	.action-btn.btn-secondary {
-		background: var(--btn-secondary-bg);
-		border: 1px solid var(--line);
-		color: var(--ink-secondary);
-	}
-
-	.action-btn.btn-secondary:hover {
-		background: var(--line-subtle);
-		border-color: var(--line-hover);
-		color: var(--ink);
-	}
-
-	.action-btn.deny {
-		background: var(--danger-bg);
-		color: var(--danger);
-		border: 1px solid var(--danger-line);
-	}
-
-	.action-btn.deny:hover:not(:disabled) {
-		background: var(--danger);
-		color: #ffffff;
-		border-color: var(--danger);
 	}
 
 	.group-hero-avatar :global(.row-avatar) {

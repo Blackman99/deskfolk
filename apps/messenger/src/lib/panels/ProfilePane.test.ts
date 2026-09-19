@@ -66,6 +66,48 @@ test("an unchanged draft sends nothing", async () => {
   close();
 });
 
+test("avatar and persona sit in one basics card", () => {
+  const { host, close } = open();
+  expect(host.textContent).toContain(t.detail.botBasics);
+  expect(host.querySelectorAll(".panel-card-title")[0]?.textContent).toBe(t.detail.botBasics);
+  expect(host.querySelector("#profile-name")).not.toBeNull();
+  expect(host.querySelector(".avatar-editor")).not.toBeNull();
+  close();
+});
+
+test("archive is a session action; clear history and delete sit in the danger zone", () => {
+  const { host, close } = open();
+  const titles = [...host.querySelectorAll(".panel-card-title")].map((el) => el.textContent);
+  expect(titles).toContain(t.detail.sessionActions);
+  expect(titles).toContain(t.detail.dangerZone);
+  expect(host.querySelector(".danger-zone-card")?.textContent).toContain(t.detail.clearHistory);
+  expect(host.querySelector(".danger-zone-card")?.textContent).toContain(t.sidebar.delete);
+  expect(host.querySelector(".danger-zone-card")?.textContent).not.toContain(t.sidebar.archive);
+  close();
+});
+
+test("opening a Bot from a group keeps archive and delete, not clear history", () => {
+  const bot = aBot();
+  const runtime = fakeRuntime({ bots: [bot] });
+  runtime.profileBotId = bot.id;
+  const { host, close } = render(ProfilePane, {
+    runtime,
+    bot,
+    t,
+    modelOptions: [],
+    selectedKind: "group",
+    profileFailed: false,
+    openDangerConfirm: () => {},
+    clearDanger: () => {},
+    onDeleteBot: () => {},
+    onClearHistory: () => {},
+  });
+  expect(host.querySelector(".danger-zone-card")?.textContent).not.toContain(t.detail.clearHistory);
+  expect(host.querySelector(".danger-zone-card")?.textContent).toContain(t.sidebar.delete);
+  expect(host.textContent).toContain(t.sidebar.archive);
+  close();
+});
+
 test("archiving and restoring go through the runtime", async () => {
   const archived = aBot({ archived_at: "2026-09-19T00:00:00.000Z" });
   const live = open();

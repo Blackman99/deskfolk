@@ -332,16 +332,7 @@
 
 <div class="panel-card">
 	<div class="panel-card-head">
-		<span class="panel-card-title">{t.sidebar.botAvatar}</span>
-	</div>
-	<div class="panel-card-body">
-		<AvatarEditor bind:avatar={profileDraft.avatar} name={profileDraft.name} {t} onchange={onProfilePick} />
-	</div>
-</div>
-
-<div class="panel-card">
-	<div class="panel-card-head">
-		<span class="panel-card-title">{t.top.profile}</span>
+		<span class="panel-card-title">{t.detail.botBasics}</span>
 		<span class="profile-save-state ml-auto text-12 text-muted whitespace-nowrap" class:is-error={profileFailed} aria-live="polite">
 			{#if profileSaving}
 				{t.sidebar.autoSaving}
@@ -355,6 +346,9 @@
 		</span>
 	</div>
 	<div class="panel-card-body">
+		<div class="profile-avatar-block">
+			<AvatarEditor bind:avatar={profileDraft.avatar} name={profileDraft.name} {t} onchange={onProfilePick} />
+		</div>
 		<div class="form-group">
 			<label for="profile-name">{t.sidebar.botName}</label>
 			<input
@@ -561,35 +555,64 @@
 	</div>
 </div>
 
-<div class="panel-card danger-zone-card">
+<div class="panel-card">
 	<div class="panel-card-head">
-		<span class="panel-card-title">{#if selectedKind === 'you-bot'}{t.sidebar.archive} / {t.detail.clearHistory} / {t.sidebar.delete}{:else}{t.sidebar.archive} / {t.sidebar.delete}{/if}</span>
+		<span class="panel-card-title">{t.detail.sessionActions}</span>
 	</div>
 	<div class="panel-card-body">
-		<div class="bot-management-actions flex gap-4">
+		<div class="action-list-row">
+			<div class="action-list-info">
+				<span class="action-list-title">{bot.archived_at ? t.sidebar.restore : t.sidebar.archive}</span>
+				<span class="action-list-desc">{bot.archived_at ? t.sidebar.restoreBody : t.sidebar.archiveBody}</span>
+			</div>
 			{#if bot.archived_at}
-				<button type="button" class="btn-secondary" onclick={() => void restoreProfile()}>
+				<button type="button" class="btn-secondary action-btn" onclick={() => void restoreProfile()}>
 					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
 					<span>{t.sidebar.restore}</span>
 				</button>
 			{:else}
-				<button type="button" class="btn-secondary" onclick={() => void archiveProfile()}>
+				<button type="button" class="btn-secondary action-btn" onclick={() => void archiveProfile()}>
 					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
 					<span>{t.sidebar.archive}</span>
 				</button>
 			{/if}
+		</div>
+	</div>
+</div>
 
+<div class="panel-card danger-zone-card">
+	<div class="panel-card-head">
+		<span class="panel-card-title">{t.detail.dangerZone}</span>
+	</div>
+	<div class="panel-card-body">
+		<div class="action-list-stack flex flex-col gap-6">
 			{#if selectedKind === 'you-bot'}
-				<button type="button" class="btn-secondary btn-history-clear" onclick={onClearHistory}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-					<span>{t.detail.clearHistory}</span>
-				</button>
+				<div class="action-list-row">
+					<div class="action-list-info">
+						<span class="action-list-title">{t.detail.clearHistory}</span>
+						<span class="action-list-desc">{t.detail.clearHistoryBody}</span>
+					</div>
+					<button
+						type="button"
+						class="btn-secondary btn-history-clear action-btn"
+						onclick={onClearHistory}
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+						<span>{t.detail.clearHistory}</span>
+					</button>
+				</div>
 			{/if}
 
-			<button type="button" class="deny" onclick={onDeleteBot}>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-				<span>{t.sidebar.delete}</span>
-			</button>
+			<div class="action-list-row is-danger">
+				<div class="action-list-info">
+					<span class="action-list-title text-danger">{t.sidebar.delete}</span>
+					<span class="action-list-desc">{t.sidebar.deleteBody}</span>
+				</div>
+				<button type="button" class="deny action-btn" onclick={onDeleteBot}>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+					<span>{t.sidebar.delete}</span>
+				</button>
+			</div>
 		</div>
 	</div>
 </div>
@@ -666,29 +689,13 @@
 		color: var(--danger-text);
 	}
 
-	.bot-management-actions :global(button) {
-		flex: 1;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 8px 12px;
-		font-size: 12.5px;
-		font-weight: 600;
-		border-radius: var(--radius-md);
-		cursor: pointer;
-		transition: all 0.15s ease;
+	.profile-avatar-block {
+		margin-bottom: 14px;
+		padding-bottom: 14px;
+		border-bottom: 1px solid var(--line-subtle);
 	}
 
-	.bot-management-actions :global(.btn-secondary) {
-		background: var(--btn-secondary-bg);
-		border: 1px solid var(--line);
-		color: var(--ink-secondary);
-	}
-
-	.bot-management-actions :global(.btn-secondary:hover) {
-		background: var(--line-subtle);
-		border-color: var(--line-hover);
-		color: var(--ink);
+	.profile-avatar-block :global(.avatar-editor) {
+		margin-bottom: 0;
 	}
 </style>

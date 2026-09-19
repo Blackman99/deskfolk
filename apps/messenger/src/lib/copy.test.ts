@@ -170,6 +170,10 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.sidebar.archive).toBe("Archive");
   expect(COPY.zh.sidebar.restore).toBe("恢复");
   expect(COPY.en.sidebar.restore).toBe("Restore");
+  expect(COPY.zh.sidebar.archiveBody).toBe("从名册移入已归档。会话还在，历史消息保留。");
+  expect(COPY.en.sidebar.archiveBody).toBe("Move the bot into Archived. Sessions stay; history is kept.");
+  expect(COPY.zh.sidebar.restoreBody).toBe("把这个 Bot 放回名册。");
+  expect(COPY.en.sidebar.restoreBody).toBe("Put this bot back on the roster.");
   expect(COPY.zh.sidebar.delete).toBe("删除");
   expect(COPY.en.sidebar.delete).toBe("Delete");
   expect(COPY.zh.sidebar.deleteBody).toBe(
@@ -186,6 +190,12 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.detail.titleGroup).toBe("Group settings");
   expect(COPY.zh.detail.titleBot).toBe("Bot 设置");
   expect(COPY.en.detail.titleBot).toBe("Bot settings");
+  expect(COPY.zh.detail.botBasics).toBe("Bot 基础信息");
+  expect(COPY.en.detail.botBasics).toBe("Bot basics");
+  expect(COPY.zh.detail.sessionActions).toBe("会话操作");
+  expect(COPY.en.detail.sessionActions).toBe("Actions");
+  expect(COPY.zh.detail.dangerZone).toBe("危险区域");
+  expect(COPY.en.detail.dangerZone).toBe("Danger Zone");
   expect(COPY.zh.detail.backToGroup).toBe("返回群组设置");
   expect(COPY.en.detail.backToGroup).toBe("Back to group settings");
   expect(COPY.zh.detail.backToBot).toBe("返回 Bot 设置");
