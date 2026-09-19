@@ -19,6 +19,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Messenger
 
+- Composer chips and chat markdown now parse `@` the same way the daemon does: longest roster name, unique prefix or suffix, CJK punctuation as a token end, and emails / `@scope/pkg` left as plain text. Adding a Bot name or a file suffix no longer needs a second copy of those rules in the messenger.
 - Markdown in the artifact preview uses the same renderer as chat bubbles (`MarkdownBody`): tables keep their columns, with borders, header fill, and sideways scroll when the table is wider than the pane. Fenced code, mentions, and links match the Bot message.
 - Settings, the session drawer, and the workspace overlay now survive a refresh the same way the open session and artifact preview already do. They share `?o=` (`settings`, `session`, `bot` plus `?b=<id>`, `workspace` plus `?w=<relpath>` when a file is selected). Closing one drops the query; a missing session, Bot, or workspace path is treated as closed. Model selection logs, create dialogs, and confirmations stay out of the URL.
 - Bot↔Bot directs are now entered from the message that started them: an entry card hangs under that message and opens the direct. Several directs opened from one message collapse into a single card.

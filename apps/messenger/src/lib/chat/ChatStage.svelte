@@ -14,9 +14,8 @@
 		canAlwaysAllow,
 		isHttpMcpApproval
 	} from './approval-card.ts';
-	import { avatarSrc } from '../avatar.ts';
+	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import {
-		botAvatarColor,
 		calculateBotDuration,
 		canContinueInterrupt,
 		formatDateDivider,
@@ -30,11 +29,10 @@
 	import { composerLocked } from './composer-mode.ts';
 	import type { Copy } from '../copy.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
-	import { presentBotIds } from '../panels/group-edit.ts';
+	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import { getStarterOptions } from './starter-prompts.ts';
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';

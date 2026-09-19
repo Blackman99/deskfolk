@@ -1,8 +1,7 @@
 <script lang="ts">
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
-	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from './chat-view.ts';
+	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
 	import { isSessionPinned } from '../sidebar/pinned-sessions.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';

@@ -1,4 +1,4 @@
-/** Local API types, plus thinking-level helpers used by the daemon and messenger. */
+/** Local API types, thinking-level helpers, mention parsing, and cited-path detection. */
 
 export const LOCAL_API_BIND = "127.0.0.1:17890" as const;
 export const LOCAL_API_HOST = "127.0.0.1" as const;
@@ -709,3 +709,5 @@ export type ClientEvent =
   | { event: "allow_rule.removed"; occurred_at: string; id: string };
 
 export * from "./boring-avatars.ts";
+export * from "./cited-path.ts";
+export * from "./mentions.ts";

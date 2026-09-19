@@ -13,7 +13,7 @@
 	} from './settings/provider-form.ts';
 	import { routeLogRows } from './overlays/route-log.ts';
 	import RouteLog from './overlays/RouteLog.svelte';
-	import { presentBotIds } from './panels/group-edit.ts';
+	import { presentBotIds } from './sidebar/session-groups.ts';
 	import {
 		cleanPinnedIds,
 		isSessionPinned,

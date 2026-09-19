@@ -12,7 +12,7 @@
 | `@real-bot/messenger` | `apps/messenger` | Node `>=22` · SvelteKit SPA |
 | `@real-bot/desktop` | `apps/desktop` | Tauri 2 壳 |
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
-| `@real-bot/protocol` | `packages/protocol` | 本机接口 TypeScript 类型 |
+| `@real-bot/protocol` | `packages/protocol` | 本机接口类型，加上点名解析和工作区路径判定（无 I/O） |
 
 守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，会用本机 `bun` 拉起 `apps/daemon/src/main.ts`；已有我们则连，不新开第二个。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
 
@@ -22,7 +22,7 @@
 
 - `store/`：SQLite 与钥匙串的唯一入口。`index.ts` 是 `Store` 门面（开库、跑 `migrate.ts` 的补列补表、把各模块函数绑上库上下文暴露成方法）；`shared.ts` 放行类型、设置读写和跨域共用的查询原语；其余每个文件一个领域：`settings`（设置与旧单端点镜像）、`providers`（端点、名单、钉模型校验）、`bots`、`skills`、`routines`、`sessions`（会话、成员、删除 / 清空）、`messages`（消息、附件、回应）、`turns`（轮次、Stop、中断）、`approvals`（批准与 Always allow）、`spend`、`judgements`、`mcp`、`routing`（每轮模型选择、结果与 Bot 各自的经验）、`search`。模块函数一律 `fn(ctx, ...)`，模块之间只从 `shared` 或彼此按领域导入；给 `Store` 加能力时先放进对应模块，再在 `index.ts` 绑一行。
 - `prompts/`：`system.ts`（轮次 system 中英两套与人设 / 技能 / MCP 段拼装）、`judgement.ts`（判断 system）、`transcript-copy.ts`（补全失败与点名失败的转录文案）、`tool-schema.ts`（工具定义类型与中英本地化）、`tools/*.ts`（内置工具按文件、协作、人设与技能、日程、端点与 MCP 分组）、`builtin-tools.ts`（按模型可见顺序拼成 `TOOLS`；顺序由 `prompts-order.test.ts` 钉死）。`index.ts` 只做再导出，导入路径仍是 `./prompts`。
-- 纯函数模块留在顶层：`route-decision.ts`（候选、评分、经验的正负与封顶）、`models.ts`、`mentions.ts`、`context.ts`、`schedule.ts` 等；`turn-engine.ts` 是轮次回路，`local-api.ts` 是本机接口。
+- 纯函数模块留在顶层：`route-decision.ts`（候选、评分、经验的正负与封顶）、`models.ts`、`mentions.ts`（引用回复补 `@`；解析本身在 `@real-bot/protocol`）、`context.ts`、`schedule.ts` 等；`turn-engine.ts` 是轮次回路，`local-api.ts` 是本机接口。`artifact-paths.ts` 做正文 linkify，路径像不像工作区文件由协议包判定。
 
 ## 信使源码布局
 
@@ -33,7 +33,7 @@
 - `panels/`：会话设置抽屉的两片 —— `ProfilePane.svelte`（人设与技能，自己管草稿与自动保存）和 `GroupPane.svelte`（群名、成员、拉人）。抽屉外壳还在 `Shell.svelte`。
 - `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
 - `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。
-- 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`、`markdown.ts`、`MarkdownBody.svelte`（聊天气泡与产物预览共用的 markdown 渲染，样式写在组件里）、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。
+- 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`（含 `avatarSrc` 与 `botAvatarColor`）、`markdown.ts`、`MarkdownBody.svelte`（聊天气泡与产物预览共用的 markdown 渲染，样式写在组件里）、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。会话在场 Bot 名单是 `sidebar/session-groups.ts` 的 `presentBotIds`；点名解析走 `@real-bot/protocol` 的 `parseMentions`，芯片 DOM 仍在 `chat/mention-chips.ts`。
 - `styles/`：**只剩没有任何一个组件能认领的规则**，1052 条里的 134 条；其余都回到了渲染那个元素的组件里（见下面「信使样式分层」）。每个文件的头注释写明它为什么搬不动：
   - `tokens.css` 配色令牌与暗色覆盖，`base.css` reset —— 全局底座。
   - `shared.css` 不止一个面会往自己元素上挂的 class（`.field-error`、`.avatar-img`、`.btn-chip`、`.sheet-close`、`.row-avatar`、`.avatar-status-dot`）。只放这个东西本身和它的通用状态。**动它会波及每个面。**

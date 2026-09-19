@@ -18,6 +18,34 @@ export {
   type BoringAvatarVariant,
 };
 
+export type AvatarPalette = {
+  bg: string;
+  text: string;
+  border: string;
+};
+
+const PALETTES: readonly AvatarPalette[] = [
+  { bg: "#eff6ff", text: "#1d4ed8", border: "#bfdbfe" },
+  { bg: "#ecfdf5", text: "#047857", border: "#a7f3d0" },
+  { bg: "#f5f3ff", text: "#6d28d9", border: "#ddd6fe" },
+  { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
+  { bg: "#fdf2f8", text: "#be185d", border: "#fbcfe8" },
+  { bg: "#f0fdfa", text: "#0f766e", border: "#99f6e4" },
+  { bg: "#faf5ff", text: "#7e22ce", border: "#e9d5ff" },
+  { bg: "#f1f5f9", text: "#334155", border: "#cbd5e1" },
+];
+
+/** Deterministic letter-block palette from a Bot id or name. */
+export function botAvatarColor(seed: string): AvatarPalette {
+  if (!seed) return PALETTES[0]!;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return PALETTES[Math.abs(hash) % PALETTES.length]!;
+}
+
 export const AVATAR_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 export const AVATAR_MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 export const AVATAR_MAX_EDGE = 256;

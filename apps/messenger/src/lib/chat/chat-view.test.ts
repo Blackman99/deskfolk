@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Message, Reaction, Turn } from "@real-bot/protocol";
 import {
-  botAvatarColor,
   calculateBotDuration,
   canContinueInterrupt,
   formatDateDivider,
@@ -18,17 +17,6 @@ import {
 import type { TranscriptItem } from "./transcript.ts";
 
 describe("chat-view helpers", () => {
-  test("botAvatarColor produces deterministic color palette", () => {
-    const color1 = botAvatarColor("bot-123");
-    const color2 = botAvatarColor("bot-123");
-    expect(color1).toEqual(color2);
-    expect(color1.bg).toBeTruthy();
-    expect(color1.text).toBeTruthy();
-
-    const empty = botAvatarColor("");
-    expect(empty.bg).toBeTruthy();
-  });
-
   test("formatDurationMs formats seconds and minutes correctly", () => {
     expect(formatDurationMs(500)).toBe("0.5s");
     expect(formatDurationMs(1850)).toBe("1.9s");

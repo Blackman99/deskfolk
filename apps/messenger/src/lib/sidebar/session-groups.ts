@@ -6,6 +6,11 @@ export function activeMembers(participants: SessionParticipant[]): string[] {
   return participants.filter((p) => p.left_at === null).map((p) => p.member);
 }
 
+/** Present Bot ids in a session, excluding you and anyone who already left. */
+export function presentBotIds(session: SessionSummary): string[] {
+  return activeMembers(session.participants).filter((member) => member !== USER_MEMBER);
+}
+
 export function classifySession(session: SessionSummary): SessionGroup {
   if (session.kind === "group") return "group";
   return activeMembers(session.participants).includes(USER_MEMBER) ? "you-bot" : "bot-bot";

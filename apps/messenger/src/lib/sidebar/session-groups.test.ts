@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { SessionSummary } from "@real-bot/protocol";
-import { classifySession, groupSessions, youBotPeer, youBotSession } from "./session-groups.ts";
+import { classifySession, groupSessions, presentBotIds, youBotPeer, youBotSession } from "./session-groups.ts";
 
 function session(
   id: string,
@@ -20,6 +20,16 @@ function session(
     })),
   };
 }
+
+test("presentBotIds skips you and members who already left", () => {
+  const s = session("g", "group", [
+    { member: "user" },
+    { member: "writer" },
+    { member: "researcher" },
+    { member: "reviewer", left: true },
+  ]);
+  expect(presentBotIds(s)).toEqual(["writer", "researcher"]);
+});
 
 test("groups stay groups even with two bots and you", () => {
   const s = session("g", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]);

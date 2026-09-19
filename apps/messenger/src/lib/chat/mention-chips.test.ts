@@ -48,7 +48,7 @@ const botsById = new Map<string, Bot>([
 test("isBotMentionedInDraft detects exact @bot mentions", () => {
   expect(isBotMentionedInDraft("Researcher", "@Researcher please help")).toBe(true);
   expect(isBotMentionedInDraft("Researcher", "hello @Researcher")).toBe(true);
-  expect(isBotMentionedInDraft("Researcher", "hello @Researcher!")).toBe(false);
+  expect(isBotMentionedInDraft("Researcher", "hello @Researcher!")).toBe(true);
   expect(isBotMentionedInDraft("Researcher", "Researcher without at")).toBe(false);
   expect(isBotMentionedInDraft("Researcher", "email@Researcher.com")).toBe(false);
 });

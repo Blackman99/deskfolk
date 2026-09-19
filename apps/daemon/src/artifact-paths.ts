@@ -1,111 +1,11 @@
-/** Workspace-relative paths a Bot may cite as artifacts. Not a kind enum. */
+/** Workspace-relative paths a Bot may cite as artifacts. Path detection lives in the protocol. */
 
-const KNOWN_EXT = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "bmp",
-  "ico",
-  "svg",
-  "mp3",
-  "wav",
-  "m4a",
-  "aac",
-  "ogg",
-  "flac",
-  "opus",
-  "mp4",
-  "webm",
-  "mov",
-  "m4v",
-  "pdf",
-  "html",
-  "htm",
-  "md",
-  "txt",
-  "csv",
-  "tsv",
-  "log",
-  "js",
-  "mjs",
-  "cjs",
-  "ts",
-  "tsx",
-  "jsx",
-  "svelte",
-  "vue",
-  "py",
-  "rs",
-  "go",
-  "java",
-  "kt",
-  "rb",
-  "php",
-  "c",
-  "h",
-  "cc",
-  "cpp",
-  "hpp",
-  "cs",
-  "swift",
-  "json",
-  "yaml",
-  "yml",
-  "toml",
-  "xml",
-  "css",
-  "scss",
-  "less",
-  "sql",
-  "sh",
-  "bash",
-  "zsh",
-  "fish",
-  "diff",
-  "patch",
-  "docx",
-  "xlsx",
-  "pptx",
-  "doc",
-  "xls",
-  "ppt",
-  "psd",
-  "ai",
-  "sketch",
-  "fig",
-  "xd",
-  "zip",
-  "tar",
-  "gz",
-  "tgz",
-  "7z",
-  "glb",
-  "gltf",
-  "obj",
-  "ttf",
-  "otf",
-  "woff",
-  "woff2",
-  "sqlite",
-  "db",
-]);
+import { looksLikeWorkspacePath, normalizeCitedPath } from "@real-bot/protocol";
+
+export { looksLikeWorkspacePath };
 
 const MD_LINK = /\[(?:[^\]]*)\]\((<[^>]+>|[^)\s]+)\)/g;
 const BACKTICK = /`([^`\n]+)`/g;
-
-export function looksLikeWorkspacePath(raw: string): boolean {
-  const path = normalizeCitedPath(raw);
-  if (!path) return false;
-  if (hasScheme(path)) return false;
-  if (path.startsWith("@")) return false;
-  const base = path.split("/").pop() ?? path;
-  const dot = base.lastIndexOf(".");
-  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
-  const hasKnownExt = Boolean(ext) && KNOWN_EXT.has(ext);
-  return path.includes("/") || hasKnownExt;
-}
 
 export function extractWorkspacePathsFromBody(body: string): string[] {
   const found: string[] = [];
@@ -176,22 +76,10 @@ export function writtenPathFromToolData(data: Record<string, unknown> | undefine
   return mergeCitedPaths(out, []);
 }
 
-function normalizeCitedPath(raw: string): string | null {
-  let path = raw.trim();
-  if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1).trim();
-  if (path.startsWith("./")) path = path.slice(2);
-  if (!path || path === ".") return path === "." ? "." : null;
-  return path;
-}
-
 function stripMdHref(href: string): string {
   const trimmed = href.trim();
   const sp = trimmed.search(/\s/);
   return sp === -1 ? trimmed : trimmed.slice(0, sp);
-}
-
-function hasScheme(path: string): boolean {
-  return /^(https?:|mailto:|javascript:|data:)/i.test(path) || path.includes("://");
 }
 
 function splitFences(body: string): Array<{ text: string; fence: boolean }> {

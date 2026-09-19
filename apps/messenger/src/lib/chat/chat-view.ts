@@ -39,34 +39,6 @@ export type ReactionGroup = {
   userReacted: boolean;
 };
 
-export type AvatarPalette = {
-  bg: string;
-  text: string;
-  border: string;
-};
-
-const PALETTES: readonly AvatarPalette[] = [
-  { bg: "#eff6ff", text: "#1d4ed8", border: "#bfdbfe" }, // Blue
-  { bg: "#ecfdf5", text: "#047857", border: "#a7f3d0" }, // Emerald
-  { bg: "#f5f3ff", text: "#6d28d9", border: "#ddd6fe" }, // Purple
-  { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" }, // Amber / Orange
-  { bg: "#fdf2f8", text: "#be185d", border: "#fbcfe8" }, // Pink / Rose
-  { bg: "#f0fdfa", text: "#0f766e", border: "#99f6e4" }, // Teal
-  { bg: "#faf5ff", text: "#7e22ce", border: "#e9d5ff" }, // Fuchsia
-  { bg: "#f1f5f9", text: "#334155", border: "#cbd5e1" }, // Slate
-];
-
-/** Deterministic stylish avatar color palette for bots based on name or ID */
-export function botAvatarColor(seed: string): AvatarPalette {
-  if (!seed) return PALETTES[0];
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return PALETTES[Math.abs(hash) % PALETTES.length];
-}
-
 /** Formats duration in milliseconds into a concise readable string, e.g. "1.2s", "45s", "1m 12s" */
 export function formatDurationMs(ms: number): string {
   if (ms < 0) return "0.0s";

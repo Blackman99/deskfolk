@@ -17,7 +17,7 @@
 		type ProviderDraft,
 		type ProviderEditorState
 	} from './provider-form.ts';
-	import { botAvatarColor } from '../chat/chat-view.ts';
+	import { botAvatarColor } from '../avatar.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';

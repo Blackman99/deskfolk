@@ -1,3 +1,7 @@
+import { extensionOf, looksLikeWorkspacePath } from "@real-bot/protocol";
+
+export { extensionOf };
+
 export type ArtifactKind =
   | "image"
   | "svg"
@@ -151,13 +155,6 @@ export function injectHtmlPreviewNonce(source: string, nonce: string | null | un
     .replace(/<style\b(?![^>]*\bnonce\s*=)/gi, `<style${attr}`);
 }
 
-export function extensionOf(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? name;
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0) return "";
-  return base.slice(dot + 1).toLowerCase();
-}
-
 export function artifactKind(filename: string, opts: { isDir?: boolean } = {}): ArtifactKind {
   if (opts.isDir) return "directory";
   const ext = extensionOf(filename);
@@ -210,13 +207,8 @@ export function artifactByteSource(opts: {
 
 export function looksLikeWorkspaceHref(href: string): boolean {
   const path = href.trim();
-  if (!path || path.includes("://") || /^(https?:|mailto:|javascript:|data:|artifact:)/i.test(path)) {
-    return false;
-  }
   if (path.startsWith("/") || path.startsWith("#") || path.startsWith("?")) return false;
-  if (path.startsWith("@")) return false;
-  const ext = extensionOf(path);
-  return path.includes("/") || ext.length > 0;
+  return looksLikeWorkspacePath(path);
 }
 
 export function artifactHref(path: string): string {

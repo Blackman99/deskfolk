@@ -2,8 +2,7 @@
 	import { tick } from 'svelte';
 	import { USER_MEMBER, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
 	import { formatFileSize } from './attachments.ts';
-	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from './chat-view.ts';
+	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
 	import { insertComposerNewline } from './composer-editor.ts';
 	import {
@@ -15,8 +14,7 @@
 		type ComposerImeState
 	} from './composer-ime.ts';
 	import type { Copy } from '../copy.ts';
-	import { presentBotIds } from '../panels/group-edit.ts';
-	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
+	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import {
 		deleteChipElement,
 		getTextBeforeCaret,

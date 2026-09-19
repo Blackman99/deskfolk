@@ -43,6 +43,7 @@ test("looksLikeWorkspaceHref accepts relative files and rejects urls", () => {
   expect(looksLikeWorkspaceHref("https://example.com/spec")).toBe(false);
   expect(looksLikeWorkspaceHref("/etc/passwd")).toBe(false);
   expect(looksLikeWorkspaceHref("#heading")).toBe(false);
+  expect(looksLikeWorkspaceHref("v1.2")).toBe(false);
 });
 
 test("artifact href round-trips a relative path", () => {

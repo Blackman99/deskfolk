@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
+import { presentBotIds } from "../sidebar/session-groups.ts";
 import {
   canRemoveGroupBot,
   mapGroupEditError,
   planGroupName,
-  presentBotIds,
   pullInCandidates,
 } from "./group-edit.ts";
 

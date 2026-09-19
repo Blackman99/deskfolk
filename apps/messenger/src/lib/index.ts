@@ -1,5 +1,6 @@
 export { rosterLetter } from "./sidebar/roster-letter.ts";
-export { classifySession, groupSessions } from "./sidebar/session-groups.ts";
+export { classifySession, groupSessions, presentBotIds } from "./sidebar/session-groups.ts";
+export { botAvatarColor } from "./avatar.ts";
 export { formatSpend } from "./spend-format.ts";
 export { composeTranscript } from "./chat/transcript.ts";
 export { default as Select } from "./Select.svelte";

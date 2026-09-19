@@ -1,5 +1,5 @@
-import { USER_MEMBER, type Bot, type SessionSummary } from "@real-bot/protocol";
-import { activeMembers } from "../sidebar/session-groups.ts";
+import { type Bot, type SessionSummary } from "@real-bot/protocol";
+import { presentBotIds } from "../sidebar/session-groups.ts";
 
 export type GroupNamePlan = { ok: true; name: string } | { ok: false; error: "empty" };
 
@@ -7,10 +7,6 @@ export function planGroupName(name: string): GroupNamePlan {
   const next = name.trim();
   if (next.length === 0) return { ok: false, error: "empty" };
   return { ok: true, name: next };
-}
-
-export function presentBotIds(session: SessionSummary): string[] {
-  return activeMembers(session.participants).filter((member) => member !== USER_MEMBER);
 }
 
 export function pullInCandidates(bots: readonly Bot[], session: SessionSummary): Bot[] {

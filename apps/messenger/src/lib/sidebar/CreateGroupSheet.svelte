@@ -1,8 +1,7 @@
 <script lang="ts">
 	import type { Bot } from '@real-bot/protocol';
 	import MultiSelect from '../MultiSelect.svelte';
-	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from '../chat/chat-view.ts';
+	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
 	import {
 		mapCreateGroupError,

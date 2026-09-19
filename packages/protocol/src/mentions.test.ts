@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ensureReplyMention, lenientMatch, mentionToken, parseMentions } from "./mentions";
+import { lenientMatch, mentionToken, parseMentions } from "./mentions.ts";
 
 describe("parseMentions", () => {
   test("longest roster name wins and everyone is literal", () => {
@@ -8,6 +8,7 @@ describe("parseMentions", () => {
     expect(parsed.everyone).toBe(true);
     expect(parsed.unresolved).toEqual([]);
     expect(parsed.corrected).toEqual([]);
+    expect(parsed.spans.map((s) => s.kind)).toEqual(["name", "name", "everyone"]);
   });
 
   test("unknown names are unresolved and do not create a bot", () => {
@@ -15,6 +16,9 @@ describe("parseMentions", () => {
     expect(parsed.mentions).toEqual([]);
     expect(parsed.unresolved).toEqual(["Nope"]);
     expect(parsed.everyone).toBe(false);
+    expect(parsed.spans).toEqual([
+      { start: 0, end: 5, kind: "unresolved", token: "Nope", name: null },
+    ]);
   });
 
   test("an unresolved token stops at CJK punctuation instead of swallowing the sentence", () => {
@@ -28,6 +32,13 @@ describe("parseMentions", () => {
     expect(parsed.mentions).toEqual(["分镜师"]);
     expect(parsed.corrected).toEqual([{ token: "分镜", name: "分镜师" }]);
     expect(parsed.unresolved).toEqual([]);
+    expect(parsed.spans[0]).toEqual({
+      start: 0,
+      end: 3,
+      kind: "lenient",
+      token: "分镜",
+      name: "分镜师",
+    });
   });
 
   test("a dropped qualifier resolves as a suffix, and case is ignored", () => {
@@ -63,6 +74,7 @@ describe("parseMentions", () => {
     expect(parsed.mentions).toEqual(["审片"]);
     expect(parsed.unresolved).toEqual([]);
     expect(parsed.corrected).toEqual([]);
+    expect(parsed.spans.every((s) => s.kind !== "unresolved")).toBe(true);
   });
 
   test("a digit-leading token still resolves leniently to the one member it abbreviates", () => {
@@ -101,60 +113,9 @@ describe("lenientMatch", () => {
   });
 });
 
-describe("ensureReplyMention", () => {
-  test("prepends @Name when quoting a bot that is not already mentioned", () => {
-    expect(
-      ensureReplyMention("please revise", {
-        parentAuthor: "writer",
-        parentName: "Writer",
-        selfAuthor: "user",
-        rosterNames: ["Writer", "Reviewer"],
-      }),
-    ).toBe("@Writer please revise");
-  });
-
-  test("does not duplicate an existing mention or @everyone", () => {
-    expect(
-      ensureReplyMention("@Writer already", {
-        parentAuthor: "writer",
-        parentName: "Writer",
-        selfAuthor: "user",
-        rosterNames: ["Writer"],
-      }),
-    ).toBe("@Writer already");
-    expect(
-      ensureReplyMention("@everyone look", {
-        parentAuthor: "writer",
-        parentName: "Writer",
-        selfAuthor: "user",
-        rosterNames: ["Writer"],
-      }),
-    ).toBe("@everyone look");
-  });
-
-  test("does not mention yourself or a parent with no roster name", () => {
-    expect(
-      ensureReplyMention("ok", {
-        parentAuthor: "writer",
-        parentName: "Writer",
-        selfAuthor: "writer",
-        rosterNames: ["Writer"],
-      }),
-    ).toBe("ok");
-    expect(
-      ensureReplyMention("ok", {
-        parentAuthor: "user",
-        parentName: null,
-        selfAuthor: "writer",
-        rosterNames: ["Writer"],
-      }),
-    ).toBe("ok");
-  });
-});
-
 describe("non-mention @ usage", () => {
   test("emails and npm scopes are neither resolved nor flagged", () => {
-    const roster = ["分镜师", "导演"];
+    const roster = ["分镜师", "导演", "Researcher"];
     const parsed = parseMentions(
       "写信到 user@host.com 或 email@Researcher.com，装 @sveltejs/kit，然后 @分镜 出图",
       roster,

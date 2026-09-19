@@ -1,7 +1,16 @@
-import type { Bot } from "@real-bot/protocol";
-import { avatarSrc } from "../avatar.ts";
-import { botAvatarColor } from "./chat-view.ts";
+import {
+  parseMentions,
+  type Bot,
+} from "@real-bot/protocol";
+import { avatarSrc, botAvatarColor } from "../avatar.ts";
 import { rosterLetter } from "../sidebar/roster-letter.ts";
+
+export {
+  hasDigit,
+  lenientMatch,
+  looksLikeMention,
+  mentionToken,
+} from "@real-bot/protocol";
 
 export type ActiveMentionChip = {
   id: string;
@@ -21,9 +30,7 @@ export type InlineMentionChipData = {
 };
 
 export function isBotMentionedInDraft(botName: string, text: string): boolean {
-  const escaped = botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`(^|\\s)@${escaped}(?=\\s|$)`);
-  return regex.test(text);
+  return parseMentions(text, [botName]).mentions.includes(botName);
 }
 
 export function extractActiveMentionChips(
@@ -31,8 +38,13 @@ export function extractActiveMentionChips(
   groupPresentBotIds: string[],
   botsById: ReadonlyMap<string, Bot>,
 ): ActiveMentionChip[] {
+  const present = groupPresentBotIds
+    .map((id) => botsById.get(id))
+    .filter((b): b is Bot => Boolean(b));
+  const names = present.map((b) => b.name);
+  const parsed = parseMentions(draft, names, { lenient: names });
   const chips: ActiveMentionChip[] = [];
-  if (/(^|\s)@everyone(?=\s|$)/.test(draft)) {
+  if (parsed.everyone) {
     chips.push({
       id: "everyone",
       name: "everyone",
@@ -40,16 +52,14 @@ export function extractActiveMentionChips(
       avatarSrc: null,
     });
   }
-  for (const botId of groupPresentBotIds) {
-    const b = botsById.get(botId);
-    if (!b) continue;
-    if (isBotMentionedInDraft(b.name, draft)) {
+  for (const bot of present) {
+    if (parsed.mentions.includes(bot.name)) {
       chips.push({
-        id: b.id,
-        name: b.name,
+        id: bot.id,
+        name: bot.name,
         isEveryone: false,
-        avatarSrc: avatarSrc(b.avatar),
-        botId: b.id,
+        avatarSrc: avatarSrc(bot.avatar),
+        botId: bot.id,
       });
     }
   }
@@ -57,9 +67,16 @@ export function extractActiveMentionChips(
 }
 
 export function removeMentionFromDraft(draft: string, memberName: string): string {
-  const escaped = memberName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`(^|\\s)@${escaped}(?=\\s|$)`, "g");
-  return draft.replace(regex, " ").replace(/\s{2,}/g, " ").trim();
+  const roster = memberName === "everyone" ? [] : [memberName];
+  const parsed = parseMentions(draft, roster);
+  const targets = parsed.spans.filter((span) =>
+    memberName === "everyone" ? span.kind === "everyone" : span.name === memberName,
+  );
+  let next = draft;
+  for (const span of [...targets].reverse()) {
+    next = `${next.slice(0, span.start)}${next.slice(span.end)}`;
+  }
+  return next.replace(/\s{2,}/g, " ").trim();
 }
 
 /**
@@ -460,39 +477,36 @@ export function setEditorContentFromText(
   editorEl.innerHTML = "";
   if (!text) return;
 
-  const mentionRegex = /(^|\s)@([^\s@]+)(?=\s|$)/g;
+  const bots = [...botsById.values()];
+  const names = bots.map((b) => b.name);
+  const byName = new Map(bots.map((b) => [b.name, b] as const));
+  const parsed = parseMentions(text, names, { lenient: names });
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
 
-  while ((match = mentionRegex.exec(text)) !== null) {
-    const matchStart = match.index;
-    const leadingSpace = match[1] || "";
-    const memberName = match[2] || "";
-    const atStart = matchStart + leadingSpace.length;
-    const matchEnd = atStart + 1 + memberName.length;
+  for (const span of parsed.spans) {
+    if (span.kind === "unresolved") continue;
+    const isEveryone = span.kind === "everyone";
+    const bot = span.name ? byName.get(span.name) ?? null : null;
+    if (!isEveryone && !bot) continue;
 
-    const isEveryone = memberName === "everyone";
-    const bot = !isEveryone ? Array.from(botsById.values()).find((b) => b.name === memberName) : null;
-
-    if (isEveryone || bot) {
-      const beforeText = text.slice(lastIndex, atStart);
-      if (beforeText) {
-        editorEl.appendChild(document.createTextNode(beforeText));
-      }
-
-      const chip = createInlineMentionChipElement({
-        id: isEveryone ? "everyone" : bot!.id,
-        name: memberName,
-        isEveryone,
-        avatarSrc: bot?.avatar ? avatarSrc(bot.avatar) : null,
-        palette: bot ? botAvatarColor(bot.id) : null,
-        letter: memberName ? rosterLetter(memberName) : "?",
-      });
-      editorEl.appendChild(chip);
-
-      editorEl.appendChild(document.createTextNode(" "));
-      lastIndex = matchEnd + (text[matchEnd] === " " ? 1 : 0);
+    const beforeText = text.slice(lastIndex, span.start);
+    if (beforeText) {
+      editorEl.appendChild(document.createTextNode(beforeText));
     }
+
+    const memberName = isEveryone ? "everyone" : bot!.name;
+    const chip = createInlineMentionChipElement({
+      id: isEveryone ? "everyone" : bot!.id,
+      name: memberName,
+      isEveryone,
+      avatarSrc: bot?.avatar ? avatarSrc(bot.avatar) : null,
+      palette: bot ? botAvatarColor(bot.id) : null,
+      letter: memberName ? rosterLetter(memberName) : "?",
+    });
+    editorEl.appendChild(chip);
+
+    editorEl.appendChild(document.createTextNode(" "));
+    lastIndex = span.end + (text[span.end] === " " ? 1 : 0);
   }
 
   const remainder = text.slice(lastIndex);
@@ -522,37 +536,6 @@ export function parseMentionHref(href: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** Characters that end an `@token` besides whitespace. Covers ASCII and CJK punctuation. Mirrors the daemon's `TOKEN_DELIMITERS`. */
-const TOKEN_DELIMITERS = new Set([
-  ..."@,.;:!?()[]{}<>\"'`*/\\|",
-  ..."，。、：；！？（）【】「」『』《》〈〉“”‘’…～／",
-]);
-
-/** The text after `@` up to whitespace or punctuation, so `@分镜，请出图` yields `分镜`. Mirrors the daemon's `mentionToken`. */
-export function mentionToken(rest: string): string {
-  let end = 0;
-  for (const ch of rest) {
-    if (/\s/.test(ch) || TOKEN_DELIMITERS.has(ch)) break;
-    end += ch.length;
-  }
-  return rest.slice(0, end);
-}
-
-/**
- * The single lenient name the token is a prefix or suffix of, ignoring case.
- * Tokens shorter than two code points never match; ambiguity yields null.
- * Mirrors the daemon's `lenientMatch`.
- */
-export function lenientMatch(token: string, names: readonly string[]): string | null {
-  if ([...token].length < 2) return null;
-  const needle = token.toLowerCase();
-  const hits = names.filter((name) => {
-    const hay = name.toLowerCase();
-    return hay.startsWith(needle) || hay.endsWith(needle);
-  });
-  return hits.length === 1 ? hits[0] : null;
 }
 
 export type LinkifyRosterMentionsOptions = {
@@ -601,67 +584,30 @@ function replaceMentionTokens(
   for (const bot of bots) {
     if (!byName.has(bot.name)) byName.set(bot.name, bot);
   }
-  const names = [...byName.keys()].sort((a, b) => b.length - a.length);
   const memberByName = new Map<string, MentionableBot>();
   for (const member of options.members ?? []) {
     if (!memberByName.has(member.name)) memberByName.set(member.name, member);
   }
-  const memberNames = [...memberByName.keys()];
+  const parsed = parseMentions(text, [...byName.keys()], { lenient: [...memberByName.keys()] });
   let out = "";
   let i = 0;
-  while (i < text.length) {
-    if (text[i] !== "@") {
-      out += text[i];
-      i += 1;
-      continue;
-    }
-    const rest = text.slice(i + 1);
-    if (rest.startsWith("everyone") && !startsName("everyone", rest, names)) {
+  for (const span of parsed.spans) {
+    out += text.slice(i, span.start);
+    if (span.kind === "everyone") {
       out += `[@everyone](${BOT_HREF_SCHEME}everyone)`;
-      i += 1 + "everyone".length;
-      continue;
-    }
-    const hit = names.find((name) => rest.startsWith(name));
-    if (hit) {
-      const bot = byName.get(hit)!;
-      out += `[@${escapeMdLinkLabel(hit)}](${mentionHref(bot.id)})`;
-      i += 1 + hit.length;
-      continue;
-    }
-    const token = mentionToken(rest);
-    if (token && looksLikeMention(text, i, token)) {
-      const matchedName = lenientMatch(token, memberNames);
-      const member = matchedName ? memberByName.get(matchedName) : undefined;
-      if (member) {
-        out += `[@${escapeMdLinkLabel(member.name)}](${mentionHref(member.id)})`;
-      } else if (hasDigit(token)) {
-        out += `@${token}`;
+    } else if (span.kind === "name" || span.kind === "lenient") {
+      const bot = (span.name && (byName.get(span.name) ?? memberByName.get(span.name))) || null;
+      if (bot) {
+        out += `[@${escapeMdLinkLabel(bot.name)}](${mentionHref(bot.id)})`;
       } else {
-        out += `[@${escapeMdLinkLabel(token)}](${mentionHref(`unresolved:${token}`)})`;
+        out += text.slice(span.start, span.end);
       }
-      i += 1 + token.length;
-      continue;
+    } else {
+      out += `[@${escapeMdLinkLabel(span.token)}](${mentionHref(`unresolved:${span.token}`)})`;
     }
-    out += "@";
-    i += 1;
+    i = span.end;
   }
-  return out;
-}
-
-/** Mirrors the daemon: `user@host.com` and `@scope/pkg` are not mention attempts. */
-export function looksLikeMention(body: string, at: number, token: string): boolean {
-  const prev = at > 0 ? body[at - 1] : "";
-  if (/[A-Za-z0-9_]/.test(prev)) return false;
-  return body[at + 1 + token.length] !== "/";
-}
-
-/** Mirrors the daemon: a token with a digit in it (`@37.79s`, `@f96`, `@14:30`, `@2026-09-18`) reads as "at", never as a miss. */
-export function hasDigit(token: string): boolean {
-  return /\p{Nd}/u.test(token);
-}
-
-function startsName(literal: string, rest: string, names: string[]): boolean {
-  return names.some((name) => name !== literal && name.startsWith(literal) && rest.startsWith(name));
+  return out + text.slice(i);
 }
 
 function escapeMdLinkLabel(name: string): string {

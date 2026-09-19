@@ -4,6 +4,7 @@ import {
   avatarEditorMode,
   avatarEditorPrimaryActions,
   avatarSrc,
+  botAvatarColor,
   classifyAvatarFile,
   compositeAvatarLayout,
   coverDrawParams,
@@ -13,6 +14,17 @@ import {
   sessionAvatars,
 } from "./avatar.ts";
 import { generateBoringAvatar, type Bot, type SessionSummary } from "@real-bot/protocol";
+
+describe("botAvatarColor", () => {
+  test("is deterministic for the same seed", () => {
+    const color1 = botAvatarColor("bot-123");
+    const color2 = botAvatarColor("bot-123");
+    expect(color1).toEqual(color2);
+    expect(color1.bg).toBeTruthy();
+    expect(color1.text).toBeTruthy();
+    expect(botAvatarColor("").bg).toBeTruthy();
+  });
+});
 
 describe("avatarSrc", () => {
   test("returns null for null, undefined, or empty strings", () => {

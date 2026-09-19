@@ -2,13 +2,12 @@
 	import { USER_MEMBER, type SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import Select from '../Select.svelte';
-	import { avatarSrc } from '../avatar.ts';
-	import { botAvatarColor } from '../chat/chat-view.ts';
+	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
-	import { canRemoveGroupBot, mapGroupEditError, planGroupName, presentBotIds, pullInCandidates } from './group-edit.ts';
+	import { canRemoveGroupBot, mapGroupEditError, planGroupName, pullInCandidates } from './group-edit.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { classifySession } from '../sidebar/session-groups.ts';
+	import { classifySession, presentBotIds } from '../sidebar/session-groups.ts';
 	import { botWorkStatus } from '../sidebar/session-status.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 
