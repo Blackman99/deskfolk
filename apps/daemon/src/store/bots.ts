@@ -15,6 +15,7 @@ import {
   resolveIncomingBotTarget,
   resolveIncomingThinkingLevel,
 } from "./providers";
+import { forgetBotMemories } from "./memories";
 import { forgetBotRoutes } from "./routing";
 import { getSession } from "./sessions";
 import {
@@ -173,6 +174,7 @@ export function deleteBot(ctx: StoreContext, id: string): void {
   ctx.db.transaction(() => {
     ctx.db.run(`UPDATE bots SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
     forgetBotRoutes(ctx, id);
+    forgetBotMemories(ctx, id);
   })();
 }
 

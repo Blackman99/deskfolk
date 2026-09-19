@@ -14,6 +14,7 @@ import {
   ASK_USER,
 } from "./tools/collab";
 import { UPDATE_PROFILE, LIST_SKILLS, READ_SKILL, CREATE_SKILL, UPDATE_SKILL, DELETE_SKILL } from "./tools/profile";
+import { REMEMBER, FORGET } from "./tools/memory";
 import { LIST_ROUTINES, CREATE_ROUTINE, UPDATE_ROUTINE, DELETE_ROUTINE } from "./tools/routines";
 import {
   LIST_ENDPOINTS,
@@ -51,6 +52,8 @@ export const TOOLS: ToolDef[] = [
   CREATE_SKILL,
   UPDATE_SKILL,
   DELETE_SKILL,
+  REMEMBER,
+  FORGET,
   LIST_ENDPOINTS,
   ADD_ENDPOINT,
   UPDATE_ENDPOINT,

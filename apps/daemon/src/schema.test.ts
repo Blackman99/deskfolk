@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MEMORY_AGE_MAX, MEMORY_DIGEST_LIMIT, memoryEntryCost } from "./context";
 import { Store } from "./store";
+import {
+  MEMORY_BODY_MAX,
+  MEMORY_MAX_PER_BOT,
+  MEMORY_SUBJECT_MAX,
+} from "./store/memories";
 import { memoryKeyStore } from "./secrets";
 
 describe("schema", () => {
@@ -21,6 +27,7 @@ describe("schema", () => {
       "bots",
       "judgements",
       "mcp_servers",
+      "memories",
       "messages",
       "profile_revisions",
       "providers",
@@ -903,5 +910,159 @@ describe("a Bot↔Bot direct and its source", () => {
     expect(after.origin_session_id).toBeNull();
     expect(after.origin_message_id).toBeNull();
     store.close();
+  });
+});
+
+describe("memory", () => {
+  function twoBots(store: Store) {
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    return { writer, researcher };
+  }
+
+  /**
+   * The render budget is a backstop, not a working limit: the per-Bot cap's worst case has to fit
+   * under it, or a Bot silently stops seeing memories it wrote.
+   */
+  test("the per-Bot cap's worst case fits inside the render budget", () => {
+    const dearest = memoryEntryCost(
+      "x".repeat(MEMORY_SUBJECT_MAX),
+      "y".repeat(MEMORY_BODY_MAX),
+      "z".repeat(MEMORY_AGE_MAX),
+    );
+    expect(MEMORY_MAX_PER_BOT * dearest).toBeLessThanOrEqual(MEMORY_DIGEST_LIMIT);
+  });
+
+  test("the same subject is replaced, not added a second time", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    const first = store.rememberMemory({ bot_id: writer.bot.id, subject: "用户的时区", body: "UTC+8" });
+    const again = store.rememberMemory({ bot_id: writer.bot.id, subject: "用户的时区", body: "改成 UTC+9 了" });
+    expect(again.id).toBe(first.id);
+    expect(again.body).toBe("改成 UTC+9 了");
+    expect(store.listMemories(writer.bot.id)).toHaveLength(1);
+    store.close();
+  });
+
+  test("subjects collide case-insensitively, like skill names", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "Release Script", body: "a" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "release script", body: "b" });
+    expect(store.listMemories(writer.bot.id)).toHaveLength(1);
+    store.close();
+  });
+
+  /** The cap is the forcing function: a full Bot has to choose, and is told what to choose. */
+  test("a full Bot is refused and told which memory is stalest", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    for (let i = 0; i < MEMORY_MAX_PER_BOT; i += 1) {
+      store.rememberMemory({ bot_id: writer.bot.id, subject: `事实 ${i}`, body: "x" });
+    }
+    expect(() => store.rememberMemory({ bot_id: writer.bot.id, subject: "再来一条", body: "x" })).toThrow(
+      /事实 0/,
+    );
+    // Re-confirming an existing subject still works: it takes no new slot.
+    expect(store.rememberMemory({ bot_id: writer.bot.id, subject: "事实 3", body: "还是对的" }).body).toBe(
+      "还是对的",
+    );
+    store.close();
+  });
+
+  test("a disabled memory frees a slot but keeps its row", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    for (let i = 0; i < MEMORY_MAX_PER_BOT; i += 1) {
+      store.rememberMemory({ bot_id: writer.bot.id, subject: `事实 ${i}`, body: "x" });
+    }
+    const first = store.listMemories(writer.bot.id).find((m) => m.subject === "事实 0")!;
+    store.patchMemory(first.id, { enabled: false });
+    expect(store.rememberMemory({ bot_id: writer.bot.id, subject: "新的", body: "x" }).subject).toBe("新的");
+    expect(store.listMemories(writer.bot.id)).toHaveLength(MEMORY_MAX_PER_BOT + 1);
+    expect(store.listEnabledMemories(writer.bot.id)).toHaveLength(MEMORY_MAX_PER_BOT);
+    store.close();
+  });
+
+  test("over-long subject or body is refused", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    expect(() =>
+      store.rememberMemory({ bot_id: writer.bot.id, subject: "x".repeat(MEMORY_SUBJECT_MAX + 1), body: "y" }),
+    ).toThrow();
+    expect(() =>
+      store.rememberMemory({ bot_id: writer.bot.id, subject: "ok", body: "y".repeat(MEMORY_BODY_MAX + 1) }),
+    ).toThrow();
+    store.close();
+  });
+
+  /** A memory holds what the user said, so it goes with the Bot — the ADR 0018 rule. */
+  test("a deleted Bot loses its memories but keeps its skills", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "用户的时区", body: "UTC+8" });
+    store.createSkill({ bot_id: writer.bot.id, name: "发布", description: "怎么发版", body: "步骤" });
+    store.deleteBot(writer.bot.id);
+    expect(store.listMemories().filter((m) => m.bot_id === writer.bot.id)).toHaveLength(0);
+    expect(store.listSkills().filter((s) => s.bot_id === writer.bot.id)).toHaveLength(1);
+    store.close();
+  });
+
+  test("archiving a Bot keeps its memories", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer } = twoBots(store);
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "用户的时区", body: "UTC+8" });
+    store.archiveBot(writer.bot.id);
+    expect(store.listMemories(writer.bot.id)).toHaveLength(1);
+    store.close();
+  });
+
+  test("clearing the source session keeps the memory and drops only the receipt", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { writer, researcher } = twoBots(store);
+    const group = store.createGroup({ name: "Desk", members: [writer.bot.id, researcher.bot.id] });
+    const trigger = store.postMessage(group.id, { body: "记一下" });
+    const memory = store.rememberMemory({
+      bot_id: writer.bot.id,
+      subject: "用户的时区",
+      body: "UTC+8",
+      source_session_id: group.id,
+      source_message_id: trigger.id,
+    });
+
+    store.clearSessionMessages(group.id);
+    const afterClear = store.getMemory(memory.id);
+    expect(afterClear.source_session_id).toBe(group.id);
+    expect(afterClear.source_message_id).toBeNull();
+
+    store.deleteSession(group.id);
+    const afterDelete = store.getMemory(memory.id);
+    expect(afterDelete.source_session_id).toBeNull();
+    store.close();
+  });
+
+  test("a database from before memories still opens", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-old-memory-"));
+    const filename = join(dir, "state.sqlite");
+    const first = new Store({ filename });
+    first.db.exec(`DROP INDEX IF EXISTS memories_bot_subject`);
+    first.db.exec(`DROP INDEX IF EXISTS memories_bot_recent`);
+    first.db.exec(`DROP TABLE IF EXISTS memories`);
+    first.close();
+
+    const second = new Store({ filename });
+    const tables = second.db
+      .query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE type = 'table'`)
+      .all()
+      .map((row) => row.name);
+    expect(tables).toContain("memories");
+    const index = second.db
+      .query<{ name: string }, []>(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'memories_bot_subject'`,
+      )
+      .get();
+    expect(index?.name).toBe("memories_bot_subject");
+    second.close();
+    rmSync(dir, { recursive: true, force: true });
   });
 });

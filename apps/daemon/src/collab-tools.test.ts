@@ -851,3 +851,88 @@ describe("send_message membership", () => {
     store.close();
   });
 });
+
+describe("memory tools", () => {
+  async function turnCtx(store: Store, botId: string, sessionId: string): Promise<ToolCtx> {
+    const trigger = store.postMessage(sessionId, { body: "记一下" });
+    const turn = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    return { store, botId, sessionId, turnId: turn.id, parentId: null };
+  }
+
+  /** The receipt comes off the turn, so a Bot cannot forge where a memory came from. */
+  test("remember stamps the turn's trigger message and leaves no transcript line", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = await turnCtx(store, writer.bot.id, writer.direct_session.id);
+    const result = await runCollabTool(ctx, "remember", {
+      subject: "用户的时区",
+      body: "UTC+8，别换算",
+      bot_id: "someone-else",
+    });
+
+    expect(result.ok).toBe(true);
+    const stored = store.listMemories(writer.bot.id);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.bot_id).toBe(writer.bot.id);
+    expect(stored[0]!.source_session_id).toBe(writer.direct_session.id);
+    expect(stored[0]!.source_message_id).not.toBeNull();
+    expect(result.emitted.some((item) => item.kind === "memory")).toBe(true);
+    expect(result.emitted.some((item) => item.kind === "message")).toBe(false);
+    store.close();
+  });
+
+  test("remembering the same subject replaces instead of adding", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = await turnCtx(store, writer.bot.id, writer.direct_session.id);
+    await runCollabTool(ctx, "remember", { subject: "用户的时区", body: "UTC+8" });
+    await runCollabTool(ctx, "remember", { subject: "用户的时区", body: "改成 UTC+9" });
+    const stored = store.listMemories(writer.bot.id);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.body).toBe("改成 UTC+9");
+    store.close();
+  });
+
+  test("forget resolves by subject and refuses another Bot's memory", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const writerCtx = await turnCtx(store, writer.bot.id, writer.direct_session.id);
+    await runCollabTool(writerCtx, "remember", { subject: "用户的时区", body: "UTC+8" });
+
+    const otherCtx = await turnCtx(store, researcher.bot.id, researcher.direct_session.id);
+    const denied = await runCollabTool(otherCtx, "forget", { subject: "用户的时区" });
+    expect(denied.ok).toBe(false);
+    expect(denied.error?.code).toBe("not_found");
+    expect(store.listMemories(writer.bot.id)).toHaveLength(1);
+
+    const gone = await runCollabTool(writerCtx, "forget", { subject: "用户的时区" });
+    expect(gone.ok).toBe(true);
+    expect(store.listMemories(writer.bot.id)).toHaveLength(0);
+    store.close();
+  });
+
+  test("forget with neither subject nor id is invalid_args", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = await turnCtx(store, writer.bot.id, writer.direct_session.id);
+    const result = await runCollabTool(ctx, "forget", {});
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("invalid_args");
+    store.close();
+  });
+
+  /** A full Bot has to choose, and the error tells it what to choose. */
+  test("a full memory fails loudly and names the stalest subject", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = await turnCtx(store, writer.bot.id, writer.direct_session.id);
+    for (let i = 0; i < 20; i += 1) {
+      await runCollabTool(ctx, "remember", { subject: `事实 ${i}`, body: "x" });
+    }
+    const refused = await runCollabTool(ctx, "remember", { subject: "再来一条", body: "x" });
+    expect(refused.ok).toBe(false);
+    expect(refused.error?.message).toContain("事实 0");
+    store.close();
+  });
+});

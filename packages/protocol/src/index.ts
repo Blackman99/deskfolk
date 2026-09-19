@@ -550,6 +550,35 @@ export type PatchSkillRequest = {
   enabled?: boolean;
 };
 
+/**
+ * One fact a Bot wrote down about the user or the work, kept across sessions.
+ *
+ * A memory is the Bot's earlier conclusion, not a source of truth: when it disagrees with this
+ * turn's transcript, the transcript wins. Only the Bot writes them; you can read, correct,
+ * disable and delete.
+ */
+export type Memory = {
+  id: string;
+  bot_id: string;
+  /** What the memory is about. Unique per Bot, case-insensitively: writing it again replaces. */
+  subject: string;
+  body: string;
+  /** Where it was formed. Null once that session is gone. */
+  source_session_id: string | null;
+  /** The message that woke the turn it was formed in. Null once that history is cleared. */
+  source_message_id: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+/** The user corrects a memory; they never create one. */
+export type PatchMemoryRequest = {
+  subject?: string;
+  body?: string;
+  enabled?: boolean;
+};
+
 export type Spend = {
   id: string;
   session_id: string;
@@ -701,6 +730,8 @@ export type ClientEvent =
   | { event: "routine.removed"; occurred_at: string; id: string }
   | ({ event: "skill.upsert"; occurred_at: string } & Skill)
   | { event: "skill.removed"; occurred_at: string; id: string }
+  | ({ event: "memory.upsert"; occurred_at: string } & Memory)
+  | { event: "memory.removed"; occurred_at: string; id: string }
   | ({ event: "mcp.upsert"; occurred_at: string } & McpServer)
   | { event: "mcp.removed"; occurred_at: string; id: string }
   | ({ event: "provider.upsert"; occurred_at: string } & Provider)

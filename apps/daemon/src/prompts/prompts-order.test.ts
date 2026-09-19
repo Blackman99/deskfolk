@@ -28,6 +28,8 @@ describe("builtinTools order", () => {
       "create_skill",
       "update_skill",
       "delete_skill",
+      "remember",
+      "forget",
       "list_endpoints",
       "add_endpoint",
       "update_endpoint",

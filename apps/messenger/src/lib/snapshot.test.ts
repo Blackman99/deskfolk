@@ -765,3 +765,54 @@ test("session.upsert keeps where a direct came from unless the event carries it"
   });
   expect(cleared.sessions[0]?.origin_message_id).toBeNull();
 });
+
+/** The pane is scanned for what a Bot just learned, so the newest memory sorts first. */
+test("memory.upsert replaces by id and keeps the newest first", () => {
+  const base = applyEvent(emptySnapshot(), {
+    event: "memory.upsert",
+    occurred_at: "t",
+    id: "m-1",
+    bot_id: "bot-1",
+    subject: "旧的",
+    body: "a",
+    source_session_id: "sess-1",
+    source_message_id: "msg-1",
+    enabled: true,
+    created_at: "2026-09-01T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+  });
+  const withNewer = applyEvent(base, {
+    event: "memory.upsert",
+    occurred_at: "t2",
+    id: "m-2",
+    bot_id: "bot-1",
+    subject: "新的",
+    body: "b",
+    source_session_id: "sess-1",
+    source_message_id: "msg-2",
+    enabled: true,
+    created_at: "2026-09-19T00:00:00.000Z",
+    updated_at: "2026-09-19T00:00:00.000Z",
+  });
+  expect(withNewer.memories.map((m) => m.id)).toEqual(["m-2", "m-1"]);
+
+  const corrected = applyEvent(withNewer, {
+    event: "memory.upsert",
+    occurred_at: "t3",
+    id: "m-1",
+    bot_id: "bot-1",
+    subject: "旧的",
+    body: "改过了",
+    source_session_id: "sess-1",
+    source_message_id: "msg-1",
+    enabled: true,
+    created_at: "2026-09-01T00:00:00.000Z",
+    updated_at: "2026-09-20T00:00:00.000Z",
+  });
+  expect(corrected.memories).toHaveLength(2);
+  expect(corrected.memories[0]?.id).toBe("m-1");
+  expect(corrected.memories[0]?.body).toBe("改过了");
+
+  const gone = applyEvent(corrected, { event: "memory.removed", occurred_at: "t4", id: "m-1" });
+  expect(gone.memories.map((m) => m.id)).toEqual(["m-2"]);
+});

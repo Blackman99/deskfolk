@@ -9,6 +9,7 @@ import {
   type McpHeader,
   type McpServer,
   type McpTransport,
+  type Memory,
   type Message,
   type Provider,
   type Routine,
@@ -49,6 +50,8 @@ export type ToolResult = {
     | { kind: "routine_removed"; id: string }
     | { kind: "skill"; skill: Skill }
     | { kind: "skill_removed"; id: string }
+    | { kind: "memory"; memory: Memory }
+    | { kind: "memory_removed"; id: string }
     | { kind: "provider"; provider: Provider }
     | { kind: "provider_removed"; id: string }
     | { kind: "mcp"; server: McpServer }
@@ -117,6 +120,10 @@ export async function runCollabTool(
         return updateSkill(ctx, args);
       case "delete_skill":
         return deleteSkill(ctx, args);
+      case "remember":
+        return remember(ctx, args);
+      case "forget":
+        return forget(ctx, args);
       case "list_endpoints":
         return await listEndpoints(ctx);
       case "add_endpoint":
@@ -441,10 +448,9 @@ function createGroup(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
 }
 
 /**
- * The message that woke this turn, which is where the entry point to a new Bot↔Bot direct hangs.
- * Both halves come off the turn so they cannot disagree. A turn that is not on record — a test
- * harness, or one deleted mid-flight — leaves the direct without a source, same as one opened
- * before sessions recorded where they came from.
+ * The message that woke this turn: where the entry point to a new Bot↔Bot direct hangs, and the
+ * receipt a memory carries. Both halves come off the turn so they cannot disagree. A turn that is
+ * not on record — a test harness, or one deleted mid-flight — leaves the row without a source.
  */
 function turnOrigin(ctx: ToolCtx): { sessionId: string; messageId: string } | null {
   try {
@@ -649,6 +655,63 @@ function deleteSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (!current.ok) return current.error;
   ctx.store.deleteSkill(current.skill.id);
   return { ok: true, data: { id: current.skill.id }, emitted: [{ kind: "skill_removed", id: current.skill.id }] };
+}
+
+/**
+ * The Bot never passes bot_id or the source ids: they come off the turn, so a Bot can neither
+ * write into another Bot's memory nor forge where a memory came from.
+ */
+function remember(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const origin = turnOrigin(ctx);
+  const memory = ctx.store.rememberMemory({
+    bot_id: ctx.botId,
+    subject: requireString(args.subject, "subject"),
+    body: requireString(args.body, "body"),
+    source_session_id: origin?.sessionId ?? ctx.sessionId,
+    source_message_id: origin?.messageId ?? null,
+  });
+  return { ok: true, data: serializeMemory(memory), emitted: [{ kind: "memory", memory }] };
+}
+
+function forget(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const current = resolveOwnMemory(ctx, args);
+  if (!current.ok) return current.error;
+  ctx.store.deleteMemory(current.memory.id);
+  return {
+    ok: true,
+    data: { id: current.memory.id, subject: current.memory.subject },
+    emitted: [{ kind: "memory_removed", id: current.memory.id }],
+  };
+}
+
+function resolveOwnMemory(
+  ctx: ToolCtx,
+  args: Record<string, unknown>,
+): { ok: true; memory: Memory } | { ok: false; error: ToolResult } {
+  const id = optionalString(args.id);
+  const subject = optionalString(args.subject);
+  if (!id && !subject) return { ok: false, error: fail("invalid_args", "id or subject is required") };
+  let memory: Memory | null = null;
+  if (id) {
+    try {
+      memory = ctx.store.getMemory(id);
+    } catch (error) {
+      if (error instanceof HttpError && error.code === "not_found") {
+        return { ok: false, error: fail("not_found", "memory not found") };
+      }
+      throw error;
+    }
+  } else if (subject) {
+    memory = ctx.store.findMemoryBySubject(ctx.botId, subject);
+  }
+  if (!memory || memory.bot_id !== ctx.botId) {
+    return { ok: false, error: fail("not_found", "memory not found") };
+  }
+  return { ok: true, memory };
+}
+
+function serializeMemory(memory: Memory): Record<string, unknown> {
+  return { id: memory.id, subject: memory.subject, body: memory.body };
 }
 
 function resolveOwnSkill(

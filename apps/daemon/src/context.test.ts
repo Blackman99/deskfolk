@@ -459,3 +459,89 @@ describe("situation members", () => {
     store.close();
   });
 });
+
+describe("memory in the turn context", () => {
+  function systemFor(store: Store, botId: string, sessionId: string, locale: "zh" | "en" = "zh"): string {
+    const trigger = store.postMessage(sessionId, { body: "说点什么" });
+    const turn = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    const messages = assembleTurnMessages(store, {
+      sessionId,
+      botId,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale,
+      interrupt: false,
+      loop: [],
+    });
+    return String(messages[0]?.content);
+  }
+
+  test("enabled memories enter the system block; disabled ones do not", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "用户的时区", body: "UTC+8，别换算" });
+    const hidden = store.rememberMemory({ bot_id: writer.bot.id, subject: "旧结论", body: "已经不对了" });
+    store.patchMemory(hidden.id, { enabled: false });
+
+    const system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    expect(system).toContain("# 记忆");
+    expect(system).toContain("## 用户的时区");
+    expect(system).toContain("UTC+8，别换算");
+    expect(system).not.toContain("## 旧结论");
+    store.close();
+  });
+
+  test("no memories means no heading at all", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    expect(systemFor(store, writer.bot.id, writer.direct_session.id)).not.toContain("# 记忆");
+    store.close();
+  });
+
+  test("another Bot's memories never appear", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    store.rememberMemory({ bot_id: researcher.bot.id, subject: "只有我知道", body: "别人看不到" });
+    expect(systemFor(store, writer.bot.id, writer.direct_session.id)).not.toContain("只有我知道");
+    store.close();
+  });
+
+  /**
+   * Memory changes most often, so it renders after everything a prefix cache would otherwise
+   * have to throw away with it.
+   */
+  test("the memory block comes after the MCP block and the system rules", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "用户的时区", body: "UTC+8" });
+    const system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    expect(system.indexOf("# 系统指令")).toBeLessThan(system.indexOf("# 记忆"));
+    expect(system.indexOf("# 人设")).toBeLessThan(system.indexOf("# 记忆"));
+    store.close();
+  });
+
+  /** The cut takes newest-first; the survivors render by subject so the text stays put. */
+  test("memories render in subject order, not in the order they were written", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "zebra", body: "written first" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "written second" });
+    const system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    expect(system.indexOf("## alpha")).toBeLessThan(system.indexOf("## zebra"));
+    store.close();
+  });
+
+  test("the system text points at remember instead of denying a memory layer", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const zh = systemFor(store, writer.bot.id, writer.direct_session.id, "zh");
+    expect(zh).not.toContain("也不是记忆层");
+    expect(zh).toContain("remember");
+
+    const en = systemFor(store, writer.bot.id, writer.direct_session.id, "en");
+    expect(en).not.toContain("not a memory layer");
+    expect(en).toContain("store it with remember");
+    store.close();
+  });
+});

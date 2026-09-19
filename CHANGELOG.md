@@ -6,6 +6,15 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Daemon
+
+- **Bots now remember across sessions.** A Bot writes down a fact with `remember` and it enters the system block of every later turn, in any session — so a preference you stated in a private chat is still in effect in a group tomorrow. Memories belong to one Bot: another never sees them, deleting the Bot deletes them, archiving keeps them. Re-using a subject replaces that memory rather than adding a second one, which is also how a Bot corrects itself; `forget` drops one that no longer holds. A full Bot (20 memories) is refused and told which entry has gone longest without an update, so it chooses what to drop instead of something disappearing behind your back. There is no retrieval, no background distiller and no extra model call: the whole enabled set is rendered, bounded by a budget derived from the caps.
+- The system prompt no longer tells a Bot there is no memory layer, and now states the separation once: the profile is who you are, a skill is how to do something, a memory is what you learned. A memory is an earlier conclusion, not a source of truth — when it conflicts with this turn's transcript, the transcript wins.
+
+### Messenger
+
+- The Bot settings drawer has a Memory card under Skills: what the Bot remembers, when it was formed, and which session it came from — a Bot↔Bot direct is labelled as one, since you were not in that conversation. Click the source to jump to the message that triggered it. You can correct, disable or delete a memory; you cannot add one, because the Bot is the writer. Disabling drops it from the prompt while keeping the record of what the Bot had concluded.
+
 ### Docs
 
 - README, the landing page and the roadmap now describe how a model actually gets chosen, which they had stopped doing. The roadmap still listed rule-based scoring, negative feedback gathered by keyword, and penalties worked off by clean turns as shipped groundwork, and self-reflection as not yet built — ADR 0019 replaced all of that in 0.1.0-rc.2. What ships today: an agent picks the model and thinking level before each turn with a one-line reason, a correction chain is reviewed when it ends, and only a verdict against the model is kept as that bot's experience. It is a conclusion, not a score — there are no weights, no offsets and no caps, and the glossary already says so. What is still open is narrowed to the truth: tools and collaboration are not chosen up front, execution results are not verified, and nothing yet measures whether reuse picks better or finishes faster.

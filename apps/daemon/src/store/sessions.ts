@@ -217,6 +217,11 @@ export function deleteSession(ctx: StoreContext, id: string): void {
       `UPDATE sessions SET origin_session_id = NULL, origin_message_id = NULL WHERE origin_session_id = ?`,
       [id],
     );
+    // Memories formed here outlive the session; only the receipt they point at is gone.
+    ctx.db.run(
+      `UPDATE memories SET source_session_id = NULL, source_message_id = NULL WHERE source_session_id = ?`,
+      [id],
+    );
     ctx.db.run(`DELETE FROM session_participants WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM sessions WHERE id = ?`, [id]);
   })();
@@ -252,6 +257,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     // The directs this session spawned keep their source; only the message to jump to is gone.
     ctx.db.run(`UPDATE sessions SET origin_message_id = NULL WHERE origin_session_id = ?`, [id]);
+    ctx.db.run(`UPDATE memories SET source_message_id = NULL WHERE source_session_id = ?`, [id]);
     ctx.db.run(`UPDATE sessions SET last_read_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
   })();
 }

@@ -986,6 +986,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         publish({ event: "skill.upsert", occurred_at: occurred(), ...item.skill });
       } else if (item.kind === "skill_removed") {
         publish({ event: "skill.removed", occurred_at: occurred(), id: item.id });
+      } else if (item.kind === "memory") {
+        publish({ event: "memory.upsert", occurred_at: occurred(), ...item.memory });
+      } else if (item.kind === "memory_removed") {
+        publish({ event: "memory.removed", occurred_at: occurred(), id: item.id });
       } else if (item.kind === "provider") {
         publish({ event: "provider.upsert", occurred_at: occurred(), ...item.provider });
       } else if (item.kind === "provider_removed") {

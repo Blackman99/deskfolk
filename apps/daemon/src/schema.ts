@@ -185,6 +185,24 @@ CREATE TABLE IF NOT EXISTS skills (
 CREATE UNIQUE INDEX IF NOT EXISTS skills_bot_name
   ON skills (bot_id, lower(name));
 
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL REFERENCES bots (id),
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  source_session_id TEXT,
+  source_message_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS memories_bot_subject
+  ON memories (bot_id, lower(subject));
+
+CREATE INDEX IF NOT EXISTS memories_bot_recent
+  ON memories (bot_id, updated_at);
+
 CREATE TABLE IF NOT EXISTS turn_route_decisions (
   turn_id TEXT PRIMARY KEY REFERENCES turns (id),
   session_id TEXT NOT NULL REFERENCES sessions (id),

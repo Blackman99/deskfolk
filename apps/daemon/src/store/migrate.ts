@@ -137,6 +137,25 @@ export function migrateSchema(db: Database): void {
     `);
     db.run(`CREATE UNIQUE INDEX IF NOT EXISTS skills_bot_name ON skills (bot_id, lower(name))`);
   }
+  if (!tables.includes("memories")) {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        bot_id TEXT NOT NULL REFERENCES bots (id),
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        source_session_id TEXT,
+        source_message_id TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+  }
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS memories_bot_subject ON memories (bot_id, lower(subject))`,
+  );
+  db.run(`CREATE INDEX IF NOT EXISTS memories_bot_recent ON memories (bot_id, updated_at)`);
   const skillCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(skills)`)
     .all()

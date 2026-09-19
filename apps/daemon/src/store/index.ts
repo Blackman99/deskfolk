@@ -11,6 +11,7 @@ import * as approvals from "./approvals";
 import * as bots from "./bots";
 import * as judgements from "./judgements";
 import * as mcp from "./mcp";
+import * as memories from "./memories";
 import * as messages from "./messages";
 import { migrateSchema } from "./migrate";
 import * as providers from "./providers";
@@ -99,7 +100,14 @@ export class Store {
   readonly findBotByName = this.bind(bots.findBotByName);
   readonly requireBotByName = this.bind(bots.requireBotByName);
 
-  // Per-Bot procedures and calendar --------------------------------------------------------
+  // Per-Bot memory, procedures and calendar -------------------------------------------------
+  readonly listMemories = this.bind(memories.listMemories);
+  readonly listEnabledMemories = this.bind(memories.listEnabledMemories);
+  readonly getMemory = this.bind(memories.getMemory);
+  readonly findMemoryBySubject = this.bind(memories.findMemoryBySubject);
+  readonly rememberMemory = this.bind(memories.rememberMemory);
+  readonly patchMemory = this.bind(memories.patchMemory);
+  readonly deleteMemory = this.bind(memories.deleteMemory);
   readonly listSkills = this.bind(skills.listSkills);
   readonly listEnabledSkills = this.bind(skills.listEnabledSkills);
   readonly getSkill = this.bind(skills.getSkill);

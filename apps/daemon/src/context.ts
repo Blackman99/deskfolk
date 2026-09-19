@@ -2,17 +2,31 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
-import { turnSystemPrompt, type McpPromptGuide } from "./prompts";
+import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
   COMPOSER_SUGGEST_RECENT,
   type ComposerSuggestPayload,
 } from "./prompts/composer-suggestions";
 import type { Store } from "./store";
-import { takeCodePoints } from "./text";
+import { codePointCount, takeCodePoints } from "./text";
 
 const MAIN_LIMIT = 40;
 const BODY_LIMIT = 4000;
+/**
+ * A backstop, not a working limit: the per-Bot cap's worst case already fits under it, so a Bot
+ * always sees every memory it wrote. It only bites if someone raises the per-Bot cap or the body
+ * cap without redoing the arithmetic — exactly when a silent trim beats a blown context. The
+ * derivation is pinned by a test, which is why the cost is a shared function and not a literal.
+ */
+export const MEMORY_DIGEST_LIMIT = 4_600;
+/** Longest an age label gets ("10 个月前" / "10mo ago"), with room to spare. */
+export const MEMORY_AGE_MAX = 12;
+
+/** What one rendered entry costs against the budget: the text plus its `##` and blank lines. */
+export function memoryEntryCost(subject: string, body: string, age: string): number {
+  return codePointCount(subject) + codePointCount(body) + codePointCount(age) + 11;
+}
 
 /** Marks the message that opened this turn. Chinese in every locale, like transcript prefixes. */
 export const TRIGGER_FLAG = "（本轮触发）";
@@ -67,6 +81,7 @@ export function assembleTurnMessages(
       uses: skill.uses,
       unavailable: skill.uses.filter((name) => !connectedMcp.has(name.toLowerCase())),
     })),
+    memories: memoryDigest(store, input.botId, input.locale),
     mcpGuides: input.mcpGuides,
   });
   const window = transcriptWindow(store, {
@@ -173,6 +188,39 @@ function situationUserMessage(
     role: "user",
     content: `${SITUATION_HEADING}\n\n${membersLine}\n${seatLine}\n${wakerLine}\n${latestLine}`,
   };
+}
+
+/**
+ * How old a memory reads in the prompt. Bucketed rather than dated: an ISO timestamp would
+ * change the system text every day and cost the prefix cache for no gain, and the Bot only has
+ * to know whether a conclusion is fresh or stale. The messenger shows the same buckets.
+ */
+export function memoryAgeLabel(locale: Locale, createdAt: string, now: Date = new Date()): string {
+  const days = Math.floor((now.getTime() - new Date(createdAt).getTime()) / 86_400_000);
+  if (!Number.isFinite(days) || days <= 0) return locale === "en" ? "today" : "今天";
+  if (days < 7) return locale === "en" ? "this week" : "本周";
+  const weeks = Math.floor(days / 7);
+  if (weeks < 8) return locale === "en" ? `${weeks}w ago` : `${weeks} 周前`;
+  const months = Math.floor(days / 30);
+  return locale === "en" ? `${months}mo ago` : `${months} 个月前`;
+}
+
+/**
+ * Two passes on purpose. The cut takes newest-written first, so when the budget ever bites it is
+ * the stalest conclusion that falls out. The survivors are then sorted by subject, so the
+ * rendered text does not reshuffle every time one memory is rewritten.
+ */
+export function memoryDigest(store: Store, botId: string, locale: Locale, now: Date = new Date()): MemoryPromptEntry[] {
+  const kept: MemoryPromptEntry[] = [];
+  let used = 0;
+  for (const memory of store.listEnabledMemories(botId)) {
+    const age = memoryAgeLabel(locale, memory.created_at, now);
+    const cost = memoryEntryCost(memory.subject, memory.body, age);
+    if (used + cost > MEMORY_DIGEST_LIMIT) break;
+    used += cost;
+    kept.push({ subject: memory.subject, body: memory.body, age });
+  }
+  return kept.sort((a, b) => a.subject.localeCompare(b.subject));
 }
 
 function transcriptWindow(

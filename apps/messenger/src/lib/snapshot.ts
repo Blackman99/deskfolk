@@ -7,6 +7,7 @@ import {
   type ClientEvent,
   type Judgement,
   type McpServer,
+  type Memory,
   type Message,
   type Provider,
   type PendingJudgement,
@@ -28,6 +29,7 @@ export type Snapshot = {
   mcpServers: McpServer[];
   providers: Provider[];
   skills: Skill[];
+  memories: Memory[];
   messages: Message[];
   turns: Turn[];
   judgements: Judgement[];
@@ -61,6 +63,7 @@ export function emptySnapshot(): Snapshot {
     mcpServers: [],
     providers: [],
     skills: [],
+    memories: [],
     messages: [],
     turns: [],
     judgements: [],
@@ -271,6 +274,19 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
             a.id.localeCompare(b.id),
         ),
       };
+    }
+    case "memory.upsert": {
+      const { event: _e, occurred_at: _at, ...row } = event;
+      // Newest first: the pane is scanned for what the Bot just learned, not browsed A-Z.
+      return {
+        ...snapshot,
+        memories: upsert(snapshot.memories, row).sort(
+          (a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id),
+        ),
+      };
+    }
+    case "memory.removed": {
+      return { ...snapshot, memories: snapshot.memories.filter((m) => m.id !== event.id) };
     }
     case "skill.removed": {
       return {

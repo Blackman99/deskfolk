@@ -850,6 +850,23 @@ async function dispatch(
     return emptyResponse(204, null);
   }
 
+  // Memories have no POST: the Bot writes them, you correct them.
+  if (method === "GET" && path === "/v1/memories") {
+    return jsonResponse({ items: store.listMemories() }, 200, null);
+  }
+  params = matchPath(path, "/v1/memories/:id");
+  if (params && method === "PATCH") {
+    const body = (await readJson(request)) as { subject?: string; body?: string; enabled?: boolean };
+    const memory = store.patchMemory(params.id!, body);
+    publish({ event: "memory.upsert", occurred_at: occurred(), ...memory });
+    return jsonResponse(memory, 200, null);
+  }
+  if (params && method === "DELETE") {
+    store.deleteMemory(params.id!);
+    publish({ event: "memory.removed", occurred_at: occurred(), id: params.id! });
+    return emptyResponse(204, null);
+  }
+
   if (method === "GET" && path === "/v1/routines") {
     return jsonResponse({ items: store.listRoutines() }, 200, null);
   }

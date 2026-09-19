@@ -185,6 +185,18 @@ export type SkillRow = {
   updated_at: string;
 };
 
+export type MemoryRow = {
+  id: string;
+  bot_id: string;
+  subject: string;
+  body: string;
+  source_session_id: string | null;
+  source_message_id: string | null;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ApprovalRow = {
   id: string;
   turn_id: string;

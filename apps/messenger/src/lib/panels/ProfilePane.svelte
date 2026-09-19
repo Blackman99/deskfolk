@@ -1,4 +1,5 @@
 <script lang="ts">
+	import MemoryCard from './MemoryCard.svelte';
 	import { untrack } from 'svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
@@ -39,8 +40,8 @@
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
-		openDangerConfirm: (kind: 'skill', run: () => Promise<void>) => void;
-		clearDanger: (kind: 'skill') => void;
+		openDangerConfirm: (kind: 'skill' | 'memory', run: () => Promise<void>) => void;
+		clearDanger: (kind: 'skill' | 'memory') => void;
 		onDeleteBot: () => void;
 		onClearHistory: () => void;
 	};
@@ -546,6 +547,8 @@
 		{/each}
 	</div>
 </div>
+
+<MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
 
 <div class="panel-card">
 	<div class="panel-card-head">

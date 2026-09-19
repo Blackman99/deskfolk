@@ -4,6 +4,7 @@ import type {
   Attachment,
   Bot,
   McpServer,
+  Memory,
   Message,
   Provider,
   SessionSummary,
@@ -88,6 +89,22 @@ export function aBotDirect(over: Partial<SessionSummary> = {}): SessionSummary {
     ],
     ...over,
   } as SessionSummary;
+}
+
+/** A memory the Bot wrote, with the receipt pointing at the message that triggered it. */
+export function aMemory(over: Partial<Memory> = {}): Memory {
+  return {
+    id: "mem-1",
+    bot_id: "bot-1",
+    subject: "用户的回复偏好",
+    body: "倾向简短直接，不要铺垫。",
+    source_session_id: "sess-1",
+    source_message_id: "msg-1",
+    enabled: true,
+    created_at: "2026-09-19T00:00:00.000Z",
+    updated_at: "2026-09-19T00:00:00.000Z",
+    ...over,
+  } as Memory;
 }
 
 export function aSkill(over: Partial<Skill> = {}): Skill {
@@ -252,6 +269,8 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     createSkill: record("createSkill"),
     patchSkill: record("patchSkill"),
     deleteSkill: record("deleteSkill"),
+    patchMemory: record("patchMemory"),
+    deleteMemory: record("deleteMemory"),
     patchSettings: record("patchSettings"),
     createProvider: record("createProvider"),
     patchProvider: record("patchProvider"),

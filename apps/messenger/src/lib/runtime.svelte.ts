@@ -5,7 +5,9 @@ import {
   type CreateBotRequest,
   type CreateGroupRequest,
   type McpServer,
+  type Memory,
   type Message,
+  type PatchMemoryRequest,
   type CreateProviderRequest,
   type PatchProviderRequest,
   type ProbeModelsResponse,
@@ -409,6 +411,29 @@ export class MessengerRuntime {
     try {
       await this.api.deleteSkill(id);
       this.ingest({ event: "skill.removed", occurred_at: new Date().toISOString(), id });
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error);
+    }
+  }
+
+  /** Correcting a memory, not creating one — the Bot is the only writer. */
+  async patchMemory(id: string, body: PatchMemoryRequest): Promise<ApiError | null> {
+    if (!this.api) return null;
+    try {
+      const memory = await this.api.patchMemory(id, body);
+      this.ingestMemory(memory);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error);
+    }
+  }
+
+  async deleteMemory(id: string): Promise<ApiError | null> {
+    if (!this.api) return null;
+    try {
+      await this.api.deleteMemory(id);
+      this.ingest({ event: "memory.removed", occurred_at: new Date().toISOString(), id });
       return null;
     } catch (error) {
       return this.sheetFailure(error);
@@ -841,7 +866,8 @@ export class MessengerRuntime {
 
   private async connect(endpoint: LocalEndpoint): Promise<void> {
     const api = new LocalApi(endpoint);
-    const [settings, bots, sessions, spend, approvals, mcpServers, providers, skills] = await Promise.all([
+    const [settings, bots, sessions, spend, approvals, mcpServers, providers, skills, memories] =
+      await Promise.all([
       api.settings(),
       api.bots(),
       api.sessions(),
@@ -850,6 +876,7 @@ export class MessengerRuntime {
       api.mcpServers(),
       api.providers(),
       api.skills(),
+      api.memories(),
     ]);
     const initialMessages = sessions
       .map((s) => s.last_message)
@@ -867,6 +894,7 @@ export class MessengerRuntime {
       mcpServers,
       providers,
       skills,
+      memories,
       messages: initialMessages,
       turns: initialTurns,
       pendingJudgements: initialPending,
@@ -920,6 +948,10 @@ export class MessengerRuntime {
       occurred_at: skill.updated_at,
       ...skill,
     });
+  }
+
+  private ingestMemory(memory: Memory): void {
+    this.ingest({ event: "memory.upsert", occurred_at: memory.updated_at, ...memory });
   }
 
   private ingestProvider(provider: Provider): void {

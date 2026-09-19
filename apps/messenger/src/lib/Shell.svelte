@@ -259,7 +259,7 @@
 	 */
 	type DangerConfirm = {
 		/** Picks the copy, and says which close paths drop this confirm. */
-		kind: 'bot' | 'group' | 'history' | 'skill' | 'provider';
+		kind: 'bot' | 'group' | 'history' | 'skill' | 'memory' | 'provider';
 		/** What the confirm button does. Whoever opens the dialog knows; the shell does not. */
 		run: () => Promise<void>;
 		/** The endpoint this is about, so the confirm goes when someone else deletes it. */
@@ -282,7 +282,9 @@
 					: dangerConfirm.kind
 	);
 	/** Escape has never dismissed the skill confirm; it closes the drawer behind it instead. */
-	const escapeDismissesDanger = $derived(dangerConfirm !== null && dangerConfirm.kind !== 'skill');
+	const escapeDismissesDanger = $derived(
+		dangerConfirm !== null && dangerConfirm.kind !== 'skill' && dangerConfirm.kind !== 'memory'
+	);
 	/** The session drawer's backdrop refuses to close while one of its own confirms is up. */
 	const drawerHasDanger = $derived(
 		dangerConfirm?.kind === 'bot' ||
@@ -318,14 +320,21 @@
 								confirm: t.sidebar.skillConfirmDelete,
 								cancel: t.sidebar.skillCancel
 							}
-						: dangerConfirmKind === 'provider'
+						: dangerConfirmKind === 'memory'
 							? {
-									title: t.settings.providerDelete,
-									body: t.settings.providerDeleteBody,
-									confirm: t.settings.providerConfirmDelete,
-									cancel: t.settings.providerCancel
+									title: t.sidebar.memoryDelete,
+									body: t.sidebar.memoryDeleteBody,
+									confirm: t.sidebar.memoryConfirmDelete,
+									cancel: t.sidebar.memoryCancel
 								}
-							: null
+							: dangerConfirmKind === 'provider'
+								? {
+										title: t.settings.providerDelete,
+										body: t.settings.providerDeleteBody,
+										confirm: t.settings.providerConfirmDelete,
+										cancel: t.settings.providerCancel
+									}
+								: null
 	);
 	/**
 	 * The group pane's draft. It lives here, not in the pane: the reset below runs on every session

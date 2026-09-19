@@ -1,5 +1,5 @@
 export { INTERRUPT_FLAG, turnSystemPrompt } from "./system";
-export type { McpPromptGuide, SkillPromptEntry } from "./system";
+export type { McpPromptGuide, MemoryPromptEntry, SkillPromptEntry } from "./system";
 export { JUDGEMENT_SYSTEM } from "./judgement";
 export {
   COMPOSER_SUGGEST_SYSTEM,

@@ -11,7 +11,9 @@ import type {
   Judgement,
   ListPage,
   McpServer,
+  Memory,
   Message,
+  PatchMemoryRequest,
   PatchProviderRequest,
   PatchSkillRequest,
   ProbeModelsResponse,
@@ -325,6 +327,20 @@ export class LocalApi {
 
   async deleteSkill(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/skills/${id}`);
+  }
+
+  async memories(): Promise<Memory[]> {
+    const page = await this.get<ListPage<Memory>>("/v1/memories");
+    return page.items;
+  }
+
+  /** No create: the Bot writes its own memories; you correct them. */
+  async patchMemory(id: string, body: PatchMemoryRequest): Promise<Memory> {
+    return this.patch<Memory>(`/v1/memories/${id}`, body);
+  }
+
+  async deleteMemory(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/memories/${id}`);
   }
 
   async createMcpServer(body: {
