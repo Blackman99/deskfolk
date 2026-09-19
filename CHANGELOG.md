@@ -6,6 +6,10 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Docs
+
+- README, the landing page and the roadmap now describe how a model actually gets chosen, which they had stopped doing. The roadmap still listed rule-based scoring, negative feedback gathered by keyword, and penalties worked off by clean turns as shipped groundwork, and self-reflection as not yet built — ADR 0019 replaced all of that in 0.1.0-rc.2. What ships today: an agent picks the model and thinking level before each turn with a one-line reason, a correction chain is reviewed when it ends, and only a verdict against the model is kept as that bot's experience. It is a conclusion, not a score — there are no weights, no offsets and no caps, and the glossary already says so. What is still open is narrowed to the truth: tools and collaboration are not chosen up front, execution results are not verified, and nothing yet measures whether reuse picks better or finishes faster.
+
 ### Daemon
 
 - A Bot↔Bot direct is now one conversation per initiation instead of one long-running thread per pair. Each `create_direct` call opens a fresh session stamped with its source — the message that woke the bot that opened it — and calling it again for the same bot in the same turn returns that same session rather than a duplicate. Sessions carry `origin_session_id` and `origin_message_id`, which ride along on `GET /v1/sessions` and `session.upsert`.

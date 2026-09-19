@@ -226,7 +226,7 @@ const zh: Dict = {
       {
         title: '先选工作区和模型端点',
         body:
-          '设置就是向导：一个本机目录做共享工作区，再加至少一个 OpenAI 兼容端点。模型名单写清楚擅长领域、思考等级和价格，之后由应用按任务挑模型，你不用每轮自选。',
+          '设置就是向导：一个本机目录做共享工作区，再加至少一个 OpenAI 兼容端点。模型名单写清楚擅长领域、思考等级和价格，之后每开一轮由 agent 按任务挑模型和思考等级并留下一句理由，你不用每轮自选。',
         callout: '密钥只在这个输入框里填，不进聊天。'
       },
       {
@@ -406,14 +406,14 @@ const zh: Dict = {
       },
       {
         dim: 'Bot 形态',
-        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接',
-        wip: '基于任务反馈的自主反思与经验复用',
+        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；纠正链结束后自动复盘，结论留成该 Bot 的经验',
+        wip: '验证经验复用是否真的让选择更准、完成更快',
         avoid: '用完即弃的对话框、中央裁决路由、轮数熔断'
       },
       {
         dim: '模型与工具',
-        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；规则评分挑模型和思考等级',
-        wip: '由 agent 自主决定模型、思考强度、工具和协作方式',
+        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；开轮前由 agent 挑模型和思考等级并给出理由，规则兜底',
+        wip: '工具和协作方式也由 agent 开轮前决定',
         avoid: '绑定单一厂商、供应商目录、假装兼容所有实现'
       },
       {
@@ -535,7 +535,7 @@ const en: Dict = {
       {
         title: 'Set the workspace and a model endpoint',
         body:
-          'Settings double as the setup wizard: one local folder as the shared workspace, plus at least one OpenAI-compatible endpoint. The model list records strengths, thinking levels and price, so the app can pick a model per task instead of asking you every turn.',
+          'Settings double as the setup wizard: one local folder as the shared workspace, plus at least one OpenAI-compatible endpoint. The model list records strengths, thinking levels and price, so an agent can pick the model and thinking level for each turn — and leave a reason — instead of asking you every time.',
         callout: 'The API key goes in this field only. Never in chat.'
       },
       {
@@ -716,14 +716,14 @@ const en: Dict = {
       },
       {
         dim: 'Bots',
-        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs',
-        wip: 'Self-reflection and experience reuse driven by task feedback',
+        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs; a review at the end of a correction, kept as that bot\'s experience',
+        wip: 'Measuring whether reused experience actually picks better and finishes faster',
         avoid: 'Disposable chat boxes, a central dispatcher, turn-count breakers'
       },
       {
         dim: 'Models and tools',
-        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; rule-based model and thinking-level selection',
-        wip: 'Agent-led choice of model, thinking effort, tools and collaboration',
+        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; an agent picks the model and thinking level before each turn and says why, with rules as the fallback',
+        wip: 'Agent-led choice of tools and collaboration, decided before the turn too',
         avoid: 'Vendor lock-in, a provider catalogue, pretending every implementation is compatible'
       },
       {
