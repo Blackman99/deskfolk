@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { themeManager } from '$lib/theme';
-	import 'virtual:uno.css';
 	import '$lib/styles/index.css';
 
 	let { children } = $props();

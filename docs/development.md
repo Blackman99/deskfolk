@@ -50,6 +50,8 @@
 
 新写或改一条样式，按这个顺序挑落点，挑不到再往下走：
 
+0. **`virtual:uno.css` 在 `src/hooks.client.ts` 里引，不要放进 `+layout.svelte`。** 它在 dev 下是异步生成的（插件要等首次扫描），而 SvelteKit 用再导出绑定从 `.svelte-kit/generated/client/nodes/N.js` 上取 `component`；路由组件引它就可能在还没求值完时被读到，抛 `Cannot access 'component' before initialization` —— 堆栈里**一帧应用代码都没有**，而且只是偶发（实测窗口冷启动三次中两次，浏览器标签页晚一点打开就碰不到）。`hooks.client.ts` 在路由图之外、应用启动前加载，没有可竞争的东西。
+
 1. **Uno 工具类**（`apps/messenger/uno.config.ts`）。布局、间距、字号、配色这些普通样式写在 `class` 上。主题取自 `tokens.css`：颜色映射到 `var(--pane)` 这类令牌，不写死色值；圆角、阴影、字体同理。**数字就是 2px 一档，`p-7` 和 `w-7` 都是 14px** —— 间距和尺寸共用一把尺（presetWind3 默认给尺寸另一把 0.25rem 的尺，配置里覆盖掉了）。
 2. **组件自己的 `<style>`**。只有这个组件才有的东西 —— 伪元素、动画、带结构的 `:hover` / `:focus-visible`、媒体查询、`-webkit-` 前缀那些。Svelte 会作用域化，改它波及不到别人，而且**选择器没人用时 `svelte-check` 直接报 `css_unused_selector`** —— 全局表要靠 `styles-coverage.test.ts` 才查得出来的事，搬进组件就变成编译期检查了。
 3. **`lib/styles/*.css` 全局**。只留真正没有宿主的：令牌、reset、几个面共用的骨架、第三方 DOM、那条跨面断点。**跨组件的先想办法拆进它作用的那个组件**，拆不动才留在这儿。
