@@ -4,7 +4,16 @@
 	import { page } from '$app/state';
 	import { copyFor } from '$lib/copy';
 	import { MessengerRuntime } from '$lib/runtime.svelte';
-	import { previewFromUrl, selectionFromUrl, sessionFromUrl, sessionUrl } from '$lib/session-url';
+	import {
+		overlayApply,
+		overlayFromFlags,
+		overlayFromUrl,
+		previewFromUrl,
+		selectionFromUrl,
+		sessionFromUrl,
+		sessionUrl,
+		viewFromUrl
+	} from '$lib/session-url';
 	import { updateChecker } from '$lib/update-checker.svelte';
 	import Shell from '$lib/Shell.svelte';
 
@@ -13,18 +22,19 @@
 		(window as unknown as { __runtime?: MessengerRuntime }).__runtime = runtime;
 	}
 
-	// The open session is in the URL as `?s=<id>` and the open artifact preview as `?p=<relpath>`
-	// so a reload, a hot reload and the back button all land back on them; `session-url.ts` says
-	// why they are queries and not paths.
+	// The open session is `?s=<id>`, the artifact preview `?p=<relpath>`, and settings / the
+	// session drawer / the workspace overlay share `?o=`. `session-url.ts` says why they are
+	// queries and not paths.
 	//
 	// Seeded before connecting. `connect()` already checks a restored id against the sessions it
 	// fetched and drops it if that session is gone, which is what a stale link needs. A preview
 	// path is restored even when the session list has not arrived yet — the pane fetches the file
-	// from the workspace, not from the transcript.
-	const fromUrl = sessionFromUrl(page.url);
-	if (fromUrl) runtime.selectedId = fromUrl;
-	const preview = previewFromUrl(page.url);
-	if (preview) runtime.previewRelpath = preview;
+	// from the workspace, not from the transcript. Settings can open immediately; the drawer and
+	// workspace wait for the snapshot so a missing session or Bot does not flash the wrong pane.
+	const fromUrl = viewFromUrl(page.url);
+	if (fromUrl.selectedId) runtime.selectedId = fromUrl.selectedId;
+	if (fromUrl.previewRelpath) runtime.previewRelpath = fromUrl.previewRelpath;
+	if (fromUrl.overlay.kind !== 'none') runtime.applyOverlay(fromUrl.overlay);
 
 	onMount(() => {
 		runtime.start();
@@ -61,12 +71,54 @@
 		});
 	});
 
+	$effect(() => {
+		const wanted = overlayFromUrl(page.url);
+		const urlSession = sessionFromUrl(page.url);
+		const sessions = runtime.snapshot.sessions;
+		const bots = runtime.snapshot.bots;
+		const connected = runtime.connection;
+		const workspacePath = runtime.snapshot.settings.workspace_path;
+		untrack(() => {
+			const selectedId = runtime.selectedId;
+			// Session and overlay queries can land a tick apart. Wait until they name the same
+			// session so a click that already closed the drawer is not reopened from a stale `?o=`.
+			if (
+				(wanted.kind === 'session' || wanted.kind === 'bot') &&
+				urlSession !== selectedId
+			) {
+				return;
+			}
+			const current = overlayFromFlags({
+				settingsOpen: runtime.settingsOpen,
+				sessionSettingsOpen: runtime.sessionSettingsOpen,
+				profileBotId: runtime.profileBotId,
+				workspaceOpen: runtime.workspaceOpen,
+				workspaceSelected: runtime.workspaceSelected
+			});
+			const next = overlayApply(wanted, current, {
+				selectedId,
+				knownSessionIds: sessions.map((session) => session.id),
+				knownBotIds: bots.map((bot) => bot.id),
+				hasWorkspacePath: Boolean(workspacePath),
+				snapshotReady: connected === 'connected'
+			});
+			if (next.action === 'set') runtime.applyOverlay(next.overlay);
+		});
+	});
+
 	/** The selection moved — a sidebar row, a search hit, a new Bot, a deleted session, a preview. */
 	$effect(() => {
 		const id = runtime.selectedId;
 		const previewRelpath = runtime.previewRelpath;
+		const overlay = overlayFromFlags({
+			settingsOpen: runtime.settingsOpen,
+			sessionSettingsOpen: runtime.sessionSettingsOpen,
+			profileBotId: runtime.profileBotId,
+			workspaceOpen: runtime.workspaceOpen,
+			workspaceSelected: runtime.workspaceSelected
+		});
 		untrack(() => {
-			const target = sessionUrl(page.url, id, previewRelpath);
+			const target = sessionUrl(page.url, { selectedId: id, previewRelpath, overlay });
 			if (target) void goto(target, { noScroll: true, keepFocus: true });
 		});
 	});

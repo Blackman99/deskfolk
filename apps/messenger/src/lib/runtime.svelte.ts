@@ -28,6 +28,7 @@ import { collectUntilMessage } from "./sidebar/search-jump.ts";
 import { classifySession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, type Snapshot } from "./snapshot.ts";
 import { stopTarget } from "./chat/transcript.ts";
+import type { UrlOverlay } from "./session-url.ts";
 
 export type Connection = "disconnected" | "connected";
 
@@ -46,6 +47,8 @@ export class MessengerRuntime {
   routeLogOpen = $state(false);
   routesLoading = $state(false);
   profileBotId = $state<string | null>(null);
+  workspaceOpen = $state(false);
+  workspaceSelected = $state("");
   threadOpen = $state(false);
   searchQuery = $state("");
   searchHits = $state<SearchHit[]>([]);
@@ -96,6 +99,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
+    this.workspaceOpen = false;
     this.createBotOpen = true;
   }
 
@@ -103,6 +107,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.closeSessionSettings();
+    this.workspaceOpen = false;
     this.createGroupOpen = true;
   }
 
@@ -111,6 +116,7 @@ export class MessengerRuntime {
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.threadOpen = false;
+    this.workspaceOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
   }
@@ -137,6 +143,7 @@ export class MessengerRuntime {
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.threadOpen = false;
+    this.workspaceOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
   }
@@ -150,7 +157,63 @@ export class MessengerRuntime {
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
+    this.workspaceOpen = false;
     this.settingsOpen = !this.settingsOpen;
+  }
+
+  openWorkspace(selected?: string | null): void {
+    this.settingsOpen = false;
+    this.createGroupOpen = false;
+    this.closeSessionSettings();
+    this.workspaceOpen = true;
+    if (selected) this.workspaceSelected = selected;
+  }
+
+  closeWorkspace(): void {
+    this.workspaceOpen = false;
+  }
+
+  /** Restore settings, the session drawer, or the workspace overlay from the URL. */
+  applyOverlay(overlay: UrlOverlay): void {
+    if (overlay.kind === "settings") {
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.closeSessionSettings();
+      this.workspaceOpen = false;
+      this.settingsOpen = true;
+      return;
+    }
+    if (overlay.kind === "session") {
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.threadOpen = false;
+      this.workspaceOpen = false;
+      this.profileBotId = null;
+      this.sessionSettingsOpen = true;
+      return;
+    }
+    if (overlay.kind === "bot") {
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.threadOpen = false;
+      this.workspaceOpen = false;
+      this.profileBotId = overlay.botId;
+      this.sessionSettingsOpen = true;
+      return;
+    }
+    if (overlay.kind === "workspace") {
+      this.settingsOpen = false;
+      this.createGroupOpen = false;
+      this.closeSessionSettings();
+      this.workspaceOpen = true;
+      this.workspaceSelected = overlay.selected ?? "";
+      return;
+    }
+    this.settingsOpen = false;
+    this.closeSessionSettings();
+    this.workspaceOpen = false;
   }
 
   closeSheets(): void {
@@ -159,14 +222,17 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.routeLogOpen = false;
+    this.workspaceOpen = false;
   }
 
   async selectSession(id: string, opts?: { messageId?: string }): Promise<void> {
     const messageId = opts?.messageId;
     this.setHighlightedMessage(messageId ?? null);
-    this.closeSessionSettings();
     this.routeLogOpen = false;
-    this.threadOpen = false;
+    if (this.selectedId !== id) {
+      this.closeSessionSettings();
+      this.threadOpen = false;
+    }
     if (this.selectedId === id && messageId) {
       await this.ensureMessageLoaded(id, messageId);
       this.setHighlightedMessage(messageId);

@@ -1,11 +1,33 @@
 /**
  * The open session lives in the URL as `?s=<id>`. The open artifact preview is `?p=<relpath>`.
- * Queries rather than paths because the Tauri window serves a static build over the asset
- * protocol, which has no SPA fallback: `/s/<id>` would 404 the moment the window reloaded, while
- * `index.html?s=<id>&p=<relpath>` is always the file on disk.
+ * Settings, the session drawer and the workspace overlay share `?o=`. Queries rather than paths
+ * because the Tauri window serves a static build over the asset protocol, which has no SPA
+ * fallback: `/s/<id>` would 404 the moment the window reloaded, while
+ * `index.html?s=<id>&p=<relpath>&o=settings` is always the file on disk.
  */
 export const SESSION_PARAM = "s";
 export const PREVIEW_PARAM = "p";
+export const OVERLAY_PARAM = "o";
+export const OVERLAY_BOT_PARAM = "b";
+export const WORKSPACE_FILE_PARAM = "w";
+
+export const OVERLAY_SETTINGS = "settings";
+export const OVERLAY_SESSION = "session";
+export const OVERLAY_BOT = "bot";
+export const OVERLAY_WORKSPACE = "workspace";
+
+export type UrlOverlay =
+  | { kind: "none" }
+  | { kind: "settings" }
+  | { kind: "session" }
+  | { kind: "bot"; botId: string }
+  | { kind: "workspace"; selected: string | null };
+
+export type UrlView = {
+  selectedId: string | null;
+  previewRelpath: string | null;
+  overlay: UrlOverlay;
+};
 
 export function sessionFromUrl(url: URL): string | null {
   return url.searchParams.get(SESSION_PARAM);
@@ -13,6 +35,53 @@ export function sessionFromUrl(url: URL): string | null {
 
 export function previewFromUrl(url: URL): string | null {
   return sanitizePreviewPath(url.searchParams.get(PREVIEW_PARAM));
+}
+
+export function overlayFromUrl(url: URL): UrlOverlay {
+  const raw = url.searchParams.get(OVERLAY_PARAM);
+  if (raw === OVERLAY_SETTINGS) return { kind: "settings" };
+  if (raw === OVERLAY_SESSION) return { kind: "session" };
+  if (raw === OVERLAY_BOT) {
+    const botId = sanitizeBotId(url.searchParams.get(OVERLAY_BOT_PARAM));
+    return botId ? { kind: "bot", botId } : { kind: "none" };
+  }
+  if (raw === OVERLAY_WORKSPACE) {
+    return { kind: "workspace", selected: sanitizePreviewPath(url.searchParams.get(WORKSPACE_FILE_PARAM)) };
+  }
+  return { kind: "none" };
+}
+
+export function viewFromUrl(url: URL): UrlView {
+  return {
+    selectedId: sessionFromUrl(url),
+    previewRelpath: previewFromUrl(url),
+    overlay: overlayFromUrl(url),
+  };
+}
+
+export function overlayFromFlags(flags: {
+  settingsOpen: boolean;
+  sessionSettingsOpen: boolean;
+  profileBotId: string | null;
+  workspaceOpen: boolean;
+  workspaceSelected: string | null;
+}): UrlOverlay {
+  if (flags.settingsOpen) return { kind: "settings" };
+  if (flags.sessionSettingsOpen) {
+    const botId = sanitizeBotId(flags.profileBotId);
+    return botId ? { kind: "bot", botId } : { kind: "session" };
+  }
+  if (flags.workspaceOpen) {
+    return { kind: "workspace", selected: sanitizePreviewPath(flags.workspaceSelected) };
+  }
+  return { kind: "none" };
+}
+
+export function overlaysEqual(a: UrlOverlay, b: UrlOverlay): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "bot" && b.kind === "bot") return a.botId === b.botId;
+  if (a.kind === "workspace" && b.kind === "workspace") return a.selected === b.selected;
+  return true;
 }
 
 /** Workspace-relative POSIX path, or null when the value is empty or would escape the workspace. */
@@ -36,30 +105,56 @@ export function sanitizePreviewPath(raw: string | null | undefined): string | nu
   return parts.length === 0 ? null : parts.join("/");
 }
 
+export function sanitizeBotId(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const id = raw.trim();
+  if (!id || id.includes("/") || id.includes("://")) return null;
+  return id;
+}
+
 /**
- * Where the URL should go for this selection, or `null` when it is already right. Returning null
- * is what keeps the two mirrored effects from navigating each other in circles.
- *
- * Pass `previewRelpath` to write or clear `?p=`. Omit it to leave the preview query alone.
+ * Where the URL should go for this view, or `null` when it is already right. Returning null
+ * is what keeps the mirrored effects from navigating each other in circles.
  */
-export function sessionUrl(
-  current: URL,
-  selectedId: string | null,
-  previewRelpath?: string | null,
-): string | null {
+export function sessionUrl(current: URL, view: UrlView): string | null {
   const next = new URL(current);
-  if (selectedId) next.searchParams.set(SESSION_PARAM, selectedId);
+  if (view.selectedId) next.searchParams.set(SESSION_PARAM, view.selectedId);
   else next.searchParams.delete(SESSION_PARAM);
-  if (previewRelpath !== undefined) {
-    const preview = sanitizePreviewPath(previewRelpath);
-    if (preview) next.searchParams.set(PREVIEW_PARAM, preview);
-    else next.searchParams.delete(PREVIEW_PARAM);
-  }
+
+  const preview = sanitizePreviewPath(view.previewRelpath);
+  if (preview) next.searchParams.set(PREVIEW_PARAM, preview);
+  else next.searchParams.delete(PREVIEW_PARAM);
+
+  writeOverlay(next, view.overlay);
+
   // Compare decoded params, not `search` strings: `/` in a preview path is legal unencoded in
   // the href, but `URLSearchParams` always writes it as `%2F`. String equality would bounce
   // forever between the two spellings.
   if (sameSearch(current, next)) return null;
   return `${next.pathname}${next.search}`;
+}
+
+function writeOverlay(url: URL, overlay: UrlOverlay): void {
+  url.searchParams.delete(OVERLAY_PARAM);
+  url.searchParams.delete(OVERLAY_BOT_PARAM);
+  url.searchParams.delete(WORKSPACE_FILE_PARAM);
+  if (overlay.kind === "settings") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_SETTINGS);
+    return;
+  }
+  if (overlay.kind === "session") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_SESSION);
+    return;
+  }
+  if (overlay.kind === "bot") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_BOT);
+    url.searchParams.set(OVERLAY_BOT_PARAM, overlay.botId);
+    return;
+  }
+  if (overlay.kind === "workspace") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_WORKSPACE);
+    if (overlay.selected) url.searchParams.set(WORKSPACE_FILE_PARAM, overlay.selected);
+  }
 }
 
 function sameSearch(a: URL, b: URL): boolean {
@@ -91,4 +186,45 @@ export function selectionFromUrl(
   if (!wanted) return { action: "clear" };
   if (!knownSessionIds.includes(wanted)) return { action: "wait", id: wanted };
   return { action: "select", id: wanted };
+}
+
+export type OverlayApply =
+  | { action: "none" }
+  | { action: "wait" }
+  | { action: "set"; overlay: UrlOverlay };
+
+export type OverlayContext = {
+  selectedId: string | null;
+  knownSessionIds: readonly string[];
+  knownBotIds: readonly string[];
+  hasWorkspacePath: boolean;
+  snapshotReady: boolean;
+};
+
+export function overlayApply(
+  wanted: UrlOverlay,
+  current: UrlOverlay,
+  ctx: OverlayContext,
+): OverlayApply {
+  const resolved = resolveOverlay(wanted, ctx);
+  if (resolved === "wait") return { action: "wait" };
+  if (overlaysEqual(resolved, current)) return { action: "none" };
+  return { action: "set", overlay: resolved };
+}
+
+function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "wait" {
+  if (wanted.kind === "none" || wanted.kind === "settings") return wanted;
+  if (wanted.kind === "workspace") {
+    if (!ctx.snapshotReady) return "wait";
+    if (!ctx.hasWorkspacePath) return { kind: "none" };
+    return wanted;
+  }
+  if (!ctx.selectedId) return { kind: "none" };
+  if (!ctx.knownSessionIds.includes(ctx.selectedId)) {
+    return ctx.snapshotReady ? { kind: "none" } : "wait";
+  }
+  if (wanted.kind === "session") return wanted;
+  if (!ctx.snapshotReady) return "wait";
+  if (!ctx.knownBotIds.includes(wanted.botId)) return { kind: "none" };
+  return wanted;
 }

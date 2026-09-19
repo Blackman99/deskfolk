@@ -1,13 +1,27 @@
 import { expect, test } from "bun:test";
 import {
+  overlayApply,
+  overlayFromFlags,
+  overlayFromUrl,
   previewFromUrl,
   sanitizePreviewPath,
   selectionFromUrl,
   sessionFromUrl,
   sessionUrl,
+  type UrlOverlay,
+  type UrlView,
 } from "./session-url.ts";
 
 const at = (search: string) => new URL(`http://localhost:5173/${search}`);
+
+function view(over: Partial<UrlView> = {}): UrlView {
+  return {
+    selectedId: null,
+    previewRelpath: null,
+    overlay: { kind: "none" },
+    ...over,
+  };
+}
 
 test("reads the session out of the query", () => {
   expect(sessionFromUrl(at("?s=abc"))).toBe("abc");
@@ -20,41 +34,98 @@ test("reads the preview path out of the query", () => {
   expect(previewFromUrl(at("?s=abc"))).toBeNull();
 });
 
+test("reads overlays out of the query", () => {
+  expect(overlayFromUrl(at("?o=settings"))).toEqual({ kind: "settings" });
+  expect(overlayFromUrl(at("?o=session"))).toEqual({ kind: "session" });
+  expect(overlayFromUrl(at("?o=bot&b=bot-1"))).toEqual({ kind: "bot", botId: "bot-1" });
+  expect(overlayFromUrl(at("?o=workspace"))).toEqual({ kind: "workspace", selected: null });
+  expect(overlayFromUrl(at("?o=workspace&w=inbox/a.md"))).toEqual({
+    kind: "workspace",
+    selected: "inbox/a.md",
+  });
+  expect(overlayFromUrl(at("?o=bot"))).toEqual({ kind: "none" });
+  expect(overlayFromUrl(at("?o=nope"))).toEqual({ kind: "none" });
+  expect(overlayFromUrl(at(""))).toEqual({ kind: "none" });
+});
+
 test("returns null when the URL already says the right thing", () => {
-  expect(sessionUrl(at("?s=abc"), "abc")).toBeNull();
-  expect(sessionUrl(at(""), null)).toBeNull();
-  expect(sessionUrl(at("?s=abc&p=out/a.html"), "abc", "out/a.html")).toBeNull();
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc" }))).toBeNull();
+  expect(sessionUrl(at(""), view())).toBeNull();
+  expect(
+    sessionUrl(at("?s=abc&p=out/a.html"), view({ selectedId: "abc", previewRelpath: "out/a.html" })),
+  ).toBeNull();
+  expect(sessionUrl(at("?o=settings"), view({ overlay: { kind: "settings" } }))).toBeNull();
 });
 
 test("adds, replaces and drops the session", () => {
-  expect(sessionUrl(at(""), "abc")).toBe("/?s=abc");
-  expect(sessionUrl(at("?s=abc"), "def")).toBe("/?s=def");
-  expect(sessionUrl(at("?s=abc"), null)).toBe("/");
+  expect(sessionUrl(at(""), view({ selectedId: "abc" }))).toBe("/?s=abc");
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "def" }))).toBe("/?s=def");
+  expect(sessionUrl(at("?s=abc"), view())).toBe("/");
 });
 
 test("adds, replaces and drops the preview without touching the session", () => {
-  expect(sessionUrl(at("?s=abc"), "abc", "out/a.html")).toBe("/?s=abc&p=out%2Fa.html");
-  expect(sessionUrl(at("?s=abc&p=out/a.html"), "abc", "inbox/b.md")).toBe(
-    "/?s=abc&p=inbox%2Fb.md",
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc", previewRelpath: "out/a.html" }))).toBe(
+    "/?s=abc&p=out%2Fa.html",
   );
-  expect(sessionUrl(at("?s=abc&p=out/a.html"), "abc", null)).toBe("/?s=abc");
+  expect(
+    sessionUrl(
+      at("?s=abc&p=out/a.html"),
+      view({ selectedId: "abc", previewRelpath: "inbox/b.md" }),
+    ),
+  ).toBe("/?s=abc&p=inbox%2Fb.md");
+  expect(sessionUrl(at("?s=abc&p=out/a.html"), view({ selectedId: "abc" }))).toBe("/?s=abc");
 });
 
-test("omitting preview leaves an existing preview query alone", () => {
-  expect(sessionUrl(at("?s=abc&p=out/a.html"), "def")).toBe("/?s=def&p=out%2Fa.html");
+test("adds, replaces and drops overlays", () => {
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc", overlay: { kind: "settings" } }))).toBe(
+    "/?s=abc&o=settings",
+  );
+  expect(
+    sessionUrl(at("?s=abc&o=settings"), view({ selectedId: "abc", overlay: { kind: "session" } })),
+  ).toBe("/?s=abc&o=session");
+  expect(
+    sessionUrl(
+      at("?s=abc"),
+      view({ selectedId: "abc", overlay: { kind: "bot", botId: "bot-1" } }),
+    ),
+  ).toBe("/?s=abc&o=bot&b=bot-1");
+  expect(
+    sessionUrl(
+      at("?s=abc"),
+      view({
+        selectedId: "abc",
+        overlay: { kind: "workspace", selected: "inbox/a.md" },
+      }),
+    ),
+  ).toBe("/?s=abc&o=workspace&w=inbox%2Fa.md");
+  expect(sessionUrl(at("?s=abc&o=settings"), view({ selectedId: "abc" }))).toBe("/?s=abc");
+});
+
+test("closing an overlay drops its extra params", () => {
+  expect(sessionUrl(at("?s=abc&o=bot&b=bot-1"), view({ selectedId: "abc" }))).toBe("/?s=abc");
+  expect(sessionUrl(at("?s=abc&o=workspace&w=inbox/a.md"), view({ selectedId: "abc" }))).toBe(
+    "/?s=abc",
+  );
 });
 
 test("encoded and raw slashes in the preview query are the same location", () => {
-  expect(sessionUrl(at("?s=abc&p=out/a.html"), "abc", "out/a.html")).toBeNull();
-  expect(sessionUrl(at("?s=abc&p=out%2Fa.html"), "abc", "out/a.html")).toBeNull();
+  expect(
+    sessionUrl(at("?s=abc&p=out/a.html"), view({ selectedId: "abc", previewRelpath: "out/a.html" })),
+  ).toBeNull();
+  expect(
+    sessionUrl(
+      at("?s=abc&p=out%2Fa.html"),
+      view({ selectedId: "abc", previewRelpath: "out/a.html" }),
+    ),
+  ).toBeNull();
 });
 
 test("leaves other query parameters alone", () => {
-  expect(sessionUrl(at("?debug=1"), "abc")).toBe("/?debug=1&s=abc");
-  expect(sessionUrl(at("?debug=1&s=abc"), null)).toBe("/?debug=1");
-  expect(sessionUrl(at("?debug=1&s=abc"), "abc", "out/a.html")).toBe(
-    "/?debug=1&s=abc&p=out%2Fa.html",
-  );
+  expect(sessionUrl(at("?debug=1"), view({ selectedId: "abc" }))).toBe("/?debug=1&s=abc");
+  expect(sessionUrl(at("?debug=1&s=abc"), view())).toBe("/?debug=1");
+  expect(
+    sessionUrl(at("?debug=1&s=abc"), view({ selectedId: "abc", previewRelpath: "out/a.html" })),
+  ).toBe("/?debug=1&s=abc&p=out%2Fa.html");
 });
 
 test("sanitizePreviewPath rejects escapes and empty values", () => {
@@ -64,6 +135,106 @@ test("sanitizePreviewPath rejects escapes and empty values", () => {
   expect(sanitizePreviewPath("/etc/passwd")).toBeNull();
   expect(sanitizePreviewPath("https://example.com/a")).toBeNull();
   expect(sanitizePreviewPath("../secret")).toBeNull();
+});
+
+test("overlayFromFlags prefers settings, then the drawer, then workspace", () => {
+  expect(
+    overlayFromFlags({
+      settingsOpen: true,
+      sessionSettingsOpen: true,
+      profileBotId: "bot-1",
+      workspaceOpen: true,
+      workspaceSelected: "a.md",
+    }),
+  ).toEqual({ kind: "settings" });
+  expect(
+    overlayFromFlags({
+      settingsOpen: false,
+      sessionSettingsOpen: true,
+      profileBotId: "bot-1",
+      workspaceOpen: true,
+      workspaceSelected: "a.md",
+    }),
+  ).toEqual({ kind: "bot", botId: "bot-1" });
+  expect(
+    overlayFromFlags({
+      settingsOpen: false,
+      sessionSettingsOpen: true,
+      profileBotId: null,
+      workspaceOpen: false,
+      workspaceSelected: null,
+    }),
+  ).toEqual({ kind: "session" });
+  expect(
+    overlayFromFlags({
+      settingsOpen: false,
+      sessionSettingsOpen: false,
+      profileBotId: null,
+      workspaceOpen: true,
+      workspaceSelected: "inbox/a.md",
+    }),
+  ).toEqual({ kind: "workspace", selected: "inbox/a.md" });
+});
+
+const ready = {
+  selectedId: "abc",
+  knownSessionIds: ["abc"],
+  knownBotIds: ["bot-1"],
+  hasWorkspacePath: true,
+  snapshotReady: true,
+};
+
+test("overlayApply is a no-op when the URL already matches", () => {
+  expect(overlayApply({ kind: "settings" }, { kind: "settings" }, ready)).toEqual({
+    action: "none",
+  });
+});
+
+test("overlayApply waits until the snapshot can confirm a session or bot", () => {
+  expect(
+    overlayApply({ kind: "session" }, { kind: "none" }, { ...ready, knownSessionIds: [], snapshotReady: false }),
+  ).toEqual({ action: "wait" });
+  expect(
+    overlayApply(
+      { kind: "bot", botId: "bot-1" },
+      { kind: "none" },
+      { ...ready, knownBotIds: [], snapshotReady: false },
+    ),
+  ).toEqual({ action: "wait" });
+  expect(
+    overlayApply(
+      { kind: "workspace", selected: null },
+      { kind: "none" },
+      { ...ready, snapshotReady: false },
+    ),
+  ).toEqual({ action: "wait" });
+});
+
+test("overlayApply drops a drawer the snapshot will never have", () => {
+  expect(
+    overlayApply({ kind: "session" }, { kind: "session" }, { ...ready, selectedId: null }),
+  ).toEqual({ action: "set", overlay: { kind: "none" } });
+  expect(
+    overlayApply(
+      { kind: "bot", botId: "gone" },
+      { kind: "bot", botId: "gone" },
+      ready,
+    ),
+  ).toEqual({ action: "set", overlay: { kind: "none" } });
+  expect(
+    overlayApply(
+      { kind: "workspace", selected: null },
+      { kind: "workspace", selected: null },
+      { ...ready, hasWorkspacePath: false },
+    ),
+  ).toEqual({ action: "set", overlay: { kind: "none" } });
+});
+
+
+
+test("overlayApply opens the overlay the URL asked for", () => {
+  const overlay: UrlOverlay = { kind: "workspace", selected: "inbox/a.md" };
+  expect(overlayApply(overlay, { kind: "none" }, ready)).toEqual({ action: "set", overlay });
 });
 
 test("a URL that matches the selection asks for nothing", () => {

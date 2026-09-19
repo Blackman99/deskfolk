@@ -92,8 +92,6 @@
 		x: number;
 		y: number;
 	} | null>(null);
-	let workspaceOpen = $state(false);
-	let workspaceSelected = $state('');
 	let workspacePane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 	let previewWidth = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
@@ -205,7 +203,9 @@
 	const profileBot = $derived(
 		runtime.profileBotId
 			? (snapshot.bots.find((bot) => bot.id === runtime.profileBotId) ?? null)
-			: null
+			: selectedKind === 'you-bot' && runtime.sessionSettingsOpen
+				? selectedPeerBot
+				: null
 	);
 	const sessionSettingsLabel = $derived(
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
@@ -449,21 +449,19 @@
 
 	function toggleWorkspaceExplorer(): void {
 		if (!snapshot.settings.workspace_path) return;
-		if (workspaceOpen) {
+		if (runtime.workspaceOpen) {
 			workspacePane?.requestCloseFromParent();
 			return;
 		}
-		runtime.createGroupOpen = false;
-		workspaceOpen = true;
-		if (artifactPreview) workspaceSelected = artifactPreview.relpath;
+		runtime.openWorkspace(artifactPreview?.relpath ?? runtime.workspaceSelected);
 	}
 
 	function closeWorkspaceExplorer(): void {
-		workspaceOpen = false;
+		runtime.closeWorkspace();
 	}
 
 	function openWorkspaceFile(path: string): void {
-		workspaceSelected = path;
+		runtime.workspaceSelected = sanitizePreviewPath(path) ?? '';
 	}
 
 	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
@@ -636,12 +634,10 @@
 	}
 
 	function openCreateBot(): void {
-		workspaceOpen = false;
 		runtime.openCreateBot();
 	}
 
 	function openCreateGroup(): void {
-		workspaceOpen = false;
 		runtime.openCreateGroup();
 	}
 </script>
@@ -668,14 +664,14 @@
 				runtime.closeSessionSettings();
 			} else if (runtime.routeLogOpen) {
 				runtime.closeRouteLog();
-			} else if (workspaceOpen) {
+			} else if (runtime.workspaceOpen) {
 				if (workspacePane?.closeFind()) {
 					e.preventDefault();
 					e.stopPropagation();
 				} else if (workspacePane) {
 					workspacePane.requestCloseFromParent();
 				} else {
-					workspaceOpen = false;
+					runtime.closeWorkspace();
 				}
 			} else if (artifactPreview) {
 				const target = e.target as HTMLElement | null;
@@ -720,14 +716,11 @@
 		{selected}
 		{pinnedSessionIds}
 		bind:themeMenuOpen
-		{workspaceOpen}
+		workspaceOpen={runtime.workspaceOpen}
 		contextMenuSessionId={contextMenu?.session.id ?? null}
 		onOpenContextMenu={openContextMenu}
 		onToggleWorkspace={toggleWorkspaceExplorer}
-		onOpenSettings={() => {
-			workspaceOpen = false;
-			runtime.openSettings();
-		}}
+		onOpenSettings={() => runtime.openSettings()}
 		onCreateBot={openCreateBot}
 		onCreateGroup={openCreateGroup}
 		onOpenArtifact={openArtifactPath}
@@ -789,12 +782,12 @@
 			onJump={jumpToRouteTrigger}
 		/>
 	{/if}
-	{#if workspaceOpen}
+	{#if runtime.workspaceOpen}
 		<WorkspaceExplorer
 			bind:this={workspacePane}
 			api={runtime.client}
 			workspacePath={snapshot.settings.workspace_path}
-			selected={workspaceSelected}
+			selected={runtime.workspaceSelected}
 			{t}
 			onClose={closeWorkspaceExplorer}
 			onSelect={openWorkspaceFile}
