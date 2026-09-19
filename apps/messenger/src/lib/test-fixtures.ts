@@ -40,6 +40,8 @@ export function aGroup(over: Partial<SessionSummary> = {}): SessionSummary {
     created_at: "2026-09-19T00:00:00.000Z",
     updated_at: "2026-09-19T00:00:00.000Z",
     last_read_at: null,
+    origin_session_id: null,
+    origin_message_id: null,
     participants: [
       { member: USER_MEMBER, joined_at: "2026-09-19T00:00:00.000Z", left_at: null },
       { member: "bot-1", joined_at: "2026-09-19T00:00:00.000Z", left_at: null },
@@ -58,9 +60,31 @@ export function aDirect(over: Partial<SessionSummary> = {}): SessionSummary {
     created_at: "2026-09-19T00:00:00.000Z",
     updated_at: "2026-09-19T00:00:00.000Z",
     last_read_at: null,
+    origin_session_id: null,
+    origin_message_id: null,
     participants: [
       { member: USER_MEMBER, joined_at: "2026-09-19T00:00:00.000Z", left_at: null },
       { member: "bot-1", joined_at: "2026-09-19T00:00:00.000Z", left_at: null },
+    ],
+    ...over,
+  } as SessionSummary;
+}
+
+/** A Bot↔Bot direct: two bots, no user, and the message it was opened from. */
+export function aBotDirect(over: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: "botbot-1",
+    kind: "direct",
+    name: null,
+    archived_at: null,
+    created_at: "2026-09-19T00:00:00.000Z",
+    updated_at: "2026-09-19T00:00:00.000Z",
+    last_read_at: null,
+    origin_session_id: "sess-1",
+    origin_message_id: "msg-1",
+    participants: [
+      { member: "bot-1", joined_at: "2026-09-19T00:00:00.000Z", left_at: null },
+      { member: "bot-2", joined_at: "2026-09-19T00:00:00.000Z", left_at: null },
     ],
     ...over,
   } as SessionSummary;
@@ -264,6 +288,8 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     createBotOpen: false,
     createGroupOpen: false,
     routeLogOpen: false,
+    workspaceOpen: false,
+    workspaceSelected: "",
     threadOpen: false,
     routesLoading: false,
     highlightedMessageId: null,

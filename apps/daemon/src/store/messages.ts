@@ -19,6 +19,7 @@ import {
   clampLimit,
   cursorId,
   cursorTime,
+  isPresent,
   messageRow,
   requireString,
   sessionRow,
@@ -72,6 +73,11 @@ export function postMessage(
   input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] },
 ): Message {
   sessionRow(ctx, sessionId);
+  // This is the user's own write — every route that posts as the user lands here. A Bot↔Bot
+  // direct is theirs to read, not to join.
+  if (!isPresent(ctx, sessionId, USER_MEMBER)) {
+    throw new HttpError(403, "not_a_member", "you are not in this session");
+  }
   const parentId = input.parent_id ?? null;
   const parent = parentId ? requireMainParent(ctx, sessionId, parentId) : null;
   const body = withReplyMention(ctx, requireString("body", input.body), parent, USER_MEMBER);

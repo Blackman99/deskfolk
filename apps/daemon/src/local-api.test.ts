@@ -1418,3 +1418,97 @@ describe("mcp servers", () => {
     });
   });
 });
+
+describe("a Bot↔Bot direct is view-only", () => {
+  async function twoBotsTalking(h: Harness) {
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = h.store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const direct = h.store.createBotDirect(writer.bot.id, researcher.bot.id, null);
+    return { writer, researcher, direct };
+  }
+
+  test("posting into one is 403 not_a_member and writes nothing", async () => {
+    const h = await start();
+    const { direct } = await twoBotsTalking(h);
+    const res = await fetch(`${h.origin}/v1/sessions/${direct.id}/messages`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ body: "let me in" }),
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("not_a_member");
+    expect(h.store.listMainMessages(direct.id, 10)).toEqual([]);
+  });
+
+  test("the multipart path is refused too", async () => {
+    const h = await start();
+    const { direct } = await twoBotsTalking(h);
+    const form = new FormData();
+    form.set("body", "notes attached");
+    form.set("files", new File([Buffer.from("hi")], "note.txt", { type: "text/plain" }));
+    const res = await fetch(`${h.origin}/v1/sessions/${direct.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: form,
+    });
+    expect(res.status).toBe(403);
+    expect(h.store.listMainMessages(direct.id, 10)).toEqual([]);
+  });
+
+  test("posting into your own direct and into a group still works", async () => {
+    const h = await start();
+    const { writer } = await twoBotsTalking(h);
+    const res = await fetch(`${h.origin}/v1/sessions/${writer.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ body: "hello" }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  /** Read-only is about not joining in. Tidying your own view stays yours. */
+  test("read, archive, restore and clear still work on one", async () => {
+    const h = await start();
+    const { direct } = await twoBotsTalking(h);
+    for (const path of ["read", "archive", "restore", "clear"]) {
+      const res = await fetch(`${h.origin}/v1/sessions/${direct.id}/${path}`, {
+        method: "POST",
+        headers: auth(h),
+      });
+      expect([200, 204]).toContain(res.status);
+    }
+  });
+
+  test("composer suggestions come back empty rather than failing", async () => {
+    const h = await start();
+    const { direct } = await twoBotsTalking(h);
+    const res = await fetch(`${h.origin}/v1/sessions/${direct.id}/composer-suggestions`, {
+      headers: auth(h),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { items: unknown[] }).items).toEqual([]);
+  });
+
+  test("the session list carries where a direct came from", async () => {
+    const h = await start();
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = h.store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const group = h.store.createGroup({
+      name: "Desk",
+      members: [writer.bot.id, researcher.bot.id],
+    });
+    const trigger = h.store.postMessage(group.id, { body: "go ask" });
+    const direct = h.store.createBotDirect(writer.bot.id, researcher.bot.id, {
+      sessionId: group.id,
+      messageId: trigger.id,
+    });
+    const res = await fetch(`${h.origin}/v1/sessions`, { headers: auth(h) });
+    const body = (await res.json()) as {
+      items: Array<{ id: string; origin_session_id: string | null; origin_message_id: string | null }>;
+    };
+    const listed = body.items.find((s) => s.id === direct.id);
+    expect(listed).toBeDefined();
+    expect(listed?.origin_session_id).toBe(group.id);
+    expect(listed?.origin_message_id).toBe(trigger.id);
+  });
+});

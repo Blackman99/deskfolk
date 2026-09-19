@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   name TEXT,
   last_read_at TEXT,
   archived_at TEXT,
+  origin_session_id TEXT,
+  origin_message_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

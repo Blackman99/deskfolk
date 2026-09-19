@@ -239,7 +239,7 @@ describe("schema", () => {
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const researcher = store.createBot({ name: "Researcher", duties: "read", boundaries: "stay" });
     const group = store.createGroup({ name: "调研", members: [writer.bot.id, researcher.bot.id] });
-    const botBot = store.createDirect(writer.bot.id, researcher.bot.id);
+    const botBot = store.createBotDirect(writer.bot.id, researcher.bot.id, null);
     const youMsg = store.postMessage(writer.direct_session.id, { body: "unique-alpha in private" });
     const groupMsg = store.postMessage(group.id, { body: "unique-alpha in the group" });
     const themMsg = store.insertMessage({
@@ -832,4 +832,76 @@ describe("schema", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+});
+
+describe("a Bot↔Bot direct and its source", () => {
+  test("a database from before sessions recorded a source still opens", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-old-origin-"));
+    const filename = join(dir, "state.sqlite");
+    const first = new Store({ filename });
+    first.db.exec(`DROP INDEX IF EXISTS sessions_origin_message`);
+    first.db.exec(`ALTER TABLE sessions DROP COLUMN origin_message_id`);
+    first.db.exec(`ALTER TABLE sessions DROP COLUMN origin_session_id`);
+    first.close();
+
+    const second = new Store({ filename });
+    const cols = second.db
+      .query<{ name: string }, []>(`PRAGMA table_info(sessions)`)
+      .all()
+      .map((row) => row.name);
+    expect(cols).toContain("origin_session_id");
+    expect(cols).toContain("origin_message_id");
+    const index = second.db
+      .query<{ name: string }, []>(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'sessions_origin_message'`,
+      )
+      .get();
+    expect(index?.name).toBe("sessions_origin_message");
+    second.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("createDirect refuses two bots so the per-trigger door stays the only one", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    expect(() => store.createDirect(writer.bot.id, researcher.bot.id)).toThrow();
+    store.close();
+  });
+
+  test("clearing the source session leaves the source but drops the message to jump to", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const group = store.createGroup({ name: "Desk", members: [writer.bot.id, researcher.bot.id] });
+    const trigger = store.postMessage(group.id, { body: "go ask" });
+    const direct = store.createBotDirect(writer.bot.id, researcher.bot.id, {
+      sessionId: group.id,
+      messageId: trigger.id,
+    });
+
+    store.clearSessionMessages(group.id);
+    const after = store.getSession(direct.id);
+    expect(after.origin_session_id).toBe(group.id);
+    expect(after.origin_message_id).toBeNull();
+    store.close();
+  });
+
+  test("deleting the source session clears the source entirely", () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const group = store.createGroup({ name: "Desk", members: [writer.bot.id, researcher.bot.id] });
+    const trigger = store.postMessage(group.id, { body: "go ask" });
+    const direct = store.createBotDirect(writer.bot.id, researcher.bot.id, {
+      sessionId: group.id,
+      messageId: trigger.id,
+    });
+
+    store.deleteSession(group.id);
+    const after = store.getSession(direct.id);
+    expect(after.origin_session_id).toBeNull();
+    expect(after.origin_message_id).toBeNull();
+    store.close();
+  });
 });

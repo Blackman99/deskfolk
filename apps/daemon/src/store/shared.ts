@@ -89,6 +89,8 @@ export type SessionRow = {
   name: string | null;
   last_read_at: string | null;
   archived_at: string | null;
+  origin_session_id: string | null;
+  origin_message_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -99,6 +101,19 @@ export type ParticipantRow = {
   joined_at: string;
   left_at: string | null;
 };
+
+/**
+ * Whether a member is in a session right now. It lives here rather than in `sessions.ts`
+ * because `messages.ts` needs it too, and the store modules import in one direction only.
+ */
+export function isPresent(ctx: StoreContext, sessionId: string, member: string): boolean {
+  const row = ctx.db
+    .query<ParticipantRow, [string, string]>(
+      `SELECT * FROM session_participants WHERE session_id = ? AND member = ?`,
+    )
+    .get(sessionId, member);
+  return Boolean(row && row.left_at === null);
+}
 
 export type AttachmentRow = {
   id: string;

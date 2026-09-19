@@ -30,6 +30,7 @@ import {
 import { serializeToolResult } from "./tool-results";
 import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
+import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
 import {
   builtinTools,
@@ -970,14 +971,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         publish({
           event: "session.upsert",
           occurred_at: occurred(),
-          id: s.id,
-          kind: s.kind,
-          name: s.name,
-          last_read_at: s.last_read_at ?? null,
-          created_at: s.created_at,
-          updated_at: s.updated_at,
-          participants: s.participants,
-          unread_count: s.unread_count ?? 0,
+          ...sessionUpsertFields(s),
         });
       } else if (item.kind === "message") {
         publishMessage(item.message);
@@ -1129,7 +1123,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const bots = store.presentBotIds(session.id);
       const target = bots.find((id) => id !== message.author);
       if (!target) return;
-      const fork = opts.fork !== undefined ? opts.fork : true;
+      // Your new message forks by default. With no user in the room, a Bot's second message
+      // retunes the live turn instead of cloning it — the way a group already treats Bots.
+      const fork = opts.fork !== undefined ? opts.fork : store.isPresent(session.id, USER_MEMBER);
       startTurn(session.id, target, message, fork ? "fork" : "redirect");
       return;
     }
@@ -1154,14 +1150,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           publish({
             event: "session.upsert",
             occurred_at: occurred(),
-            id: next.id,
-            kind: next.kind,
-            name: next.name,
-            last_read_at: next.last_read_at ?? null,
-            created_at: next.created_at,
-            updated_at: next.updated_at,
-            participants: next.participants,
-            unread_count: next.unread_count ?? 0,
+            ...sessionUpsertFields(next),
           });
         }
       }
@@ -1248,6 +1237,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     signal: AbortSignal = new AbortController().signal,
   ): Promise<ComposerSuggestion[]> {
     store.getSession(sessionId);
+    // These draft what the user would send; in a Bot↔Bot direct they have nothing to draft.
+    if (!store.isPresent(sessionId, USER_MEMBER)) return [];
     if (signal.aborted) return [];
     let creds: Creds | null;
     try {
@@ -1422,14 +1413,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       publish({
         event: "session.upsert",
         occurred_at: occurred(),
-        id: session.id,
-        kind: session.kind,
-        name: session.name,
-        last_read_at: session.last_read_at ?? null,
-        created_at: session.created_at,
-        updated_at: session.updated_at,
-        participants: session.participants,
-        unread_count: session.unread_count ?? 0,
+        ...sessionUpsertFields(session),
       });
     }
     const trigger = store.insertMessage({

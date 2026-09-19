@@ -402,10 +402,14 @@ async function resolveAvatarPath(
   return { ok: true, dataUri: encoded.dataUri };
 }
 
+/** Bot↔Bot directs pile up one per trigger, so this stops at the ones a Bot touched last. */
+const LISTED_SESSIONS = 30;
+
 function listSessions(ctx: ToolCtx): ToolResult {
   const items = ctx.store
     .listSessions()
     .filter((s) => s.participants.some((p) => p.member === ctx.botId && p.left_at === null))
+    .slice(0, LISTED_SESSIONS)
     .map((s) => serializeSession(ctx.store, s));
   return { ok: true, data: { sessions: items }, emitted: [] };
 }
@@ -436,9 +440,24 @@ function createGroup(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   };
 }
 
+/**
+ * The message that woke this turn, which is where the entry point to a new Bot↔Bot direct hangs.
+ * Both halves come off the turn so they cannot disagree. A turn that is not on record — a test
+ * harness, or one deleted mid-flight — leaves the direct without a source, same as one opened
+ * before sessions recorded where they came from.
+ */
+function turnOrigin(ctx: ToolCtx): { sessionId: string; messageId: string } | null {
+  try {
+    const turn = ctx.store.getTurn(ctx.turnId);
+    return { sessionId: turn.session_id, messageId: turn.trigger_message_id };
+  } catch {
+    return null;
+  }
+}
+
 function createDirect(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const other = ctx.store.requireBotByName(requireString(args.name, "name"));
-  const session = ctx.store.createDirect(ctx.botId, other.id);
+  const session = ctx.store.createBotDirect(ctx.botId, other.id, turnOrigin(ctx));
   return {
     ok: true,
     data: {
@@ -486,6 +505,11 @@ function removeMember(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
 
 function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const question = requireString(args.question, "question");
+  // A Bot↔Bot direct is the user's to read, not to answer in. Parking a turn on a question
+  // nobody can reach would hang it for good, so send the Bot back to where the user is.
+  if (!ctx.store.isPresent(ctx.sessionId, USER_MEMBER)) {
+    return fail("not_a_member", "the user is not in this session; ask where they are");
+  }
   return { ok: true, data: {}, waitAsk: { question }, emitted: [] };
 }
 
@@ -978,6 +1002,7 @@ function serializeSession(store: Store, session: SessionSummary) {
     kind: session.kind,
     name: session.name,
     members: memberNames(store, session),
+    updated_at: session.updated_at,
   };
 }
 

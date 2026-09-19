@@ -19,8 +19,12 @@ export const STORY_SIZES = {
 	// The row under an open context menu: a rule that used to live in the last file imported,
 	// so its cascade position was doing work that scoping has to reproduce.
 	'sidebar-context': { width: 300, height: 820 },
+	// Bot↔Bot directs: capped list with a source line under each row, and the entry point the
+	// transcript hangs under the message that set them off. Neither appears in any other shot.
+	'sidebar-botdm': { width: 300, height: 820 },
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
+	'chat-stage-botdm': { width: 900, height: 820 },
 	'context-menu': { width: 340, height: 420 },
 	'artifact-preview': { width: 900, height: 640 },
 	'artifact-code': { width: 700, height: 420 },

@@ -12,6 +12,8 @@ if (!(globalThis as { document?: unknown }).document) {
   GlobalRegistrator.register();
 }
 
+const tsToJs = new Bun.Transpiler({ loader: "ts" });
+
 plugin({
   name: "svelte",
   setup(build) {
@@ -19,11 +21,9 @@ plugin({
     // component one. Tests use it to hand a pane a genuinely reactive draft.
     build.onLoad({ filter: /\.svelte\.ts$/ }, (args) => {
       const source = readFileSync(args.path, "utf8");
-      // `compileModule` takes JS, so the types come off first — these files are tiny helpers.
-      const stripped = source
-        .replace(/^\s*\/\*\*[\s\S]*?\*\/\s*$/gm, "")
-        .replace(/<[A-Za-z][\w$,. ]*extends[^>]*>/g, "")
-        .replace(/: [A-Za-z_$][\w$<>[\]{}|,.' ]*(?= =|\)| \{)/g, "");
+      // `compileModule` takes JS, so the types come off first. Bun's own transpiler does that
+      // properly — hand-rolled regexes used to trip over `type X` inside an import list.
+      const stripped = tsToJs.transformSync(source);
       const { js } = compileModule(stripped, { filename: args.path, generate: "client", dev: false });
       return { contents: js.code, loader: "js" };
     });

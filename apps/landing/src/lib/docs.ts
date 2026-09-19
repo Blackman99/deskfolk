@@ -34,7 +34,7 @@ export function termKey(name: string): string {
  */
 export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
   people: ['Bot', 'Roster', '用户', 'Profile', 'Archive'],
-  conversations: ['Group', 'Direct', 'Session', 'Thread', 'Reaction', 'Judgement log'],
+  conversations: ['Group', 'Direct', 'Session', 'Origin', 'Thread', 'Reaction', 'Judgement log'],
   collaboration: [
     'Handoff',
     'Participation',

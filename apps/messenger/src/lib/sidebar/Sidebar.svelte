@@ -11,6 +11,7 @@
 	import { scrollTopToRevealRect } from '../chat/mention-popup.ts';
 	import { searchHitView, searchJump } from './search-jump.ts';
 	import { groupSessions, isSessionArchived, youBotPeer } from './session-groups.ts';
+	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { themeManager } from '../theme.ts';
@@ -75,6 +76,13 @@
 	});
 
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
+	let botBotExpanded = $state(false);
+	const botBotVisible = $derived(
+		recentBotDms(grouped.botBot, {
+			keepId: runtime.selectedId,
+			expanded: botBotExpanded
+		})
+	);
 	const archivedSessions = $derived(
 		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
 	);
@@ -561,33 +569,68 @@
 					{/if}
 				</button>
 			{/each}
-			<div class="ghead">{t.sidebar.botBot}</div>
-			{#each grouped.botBot as session (session.id)}
+			<div class="ghead">
+				<span>{t.sidebar.botBot}</span>
+				{#if grouped.botBot.length > BOT_DM_VISIBLE}
+					<button
+						type="button"
+						class="ghead-more"
+						onclick={() => (botBotExpanded = !botBotExpanded)}
+					>
+						{botBotExpanded
+							? t.sidebar.collapse
+							: t.sidebar.botBotMore(grouped.botBot.length - BOT_DM_VISIBLE)}
+					</button>
+				{/if}
+			</div>
+			{#each botBotVisible as session (session.id)}
 				{@const status = statusOf(session)}
-				{@const unread = unreadOf(session)}
-				<button
-					type="button"
-					class="row"
-					class:is-on={runtime.selectedId === session.id}
-					class:is-context-open={contextMenuSessionId === session.id}
-					class:is-unread={unread > 0}
-					onclick={() => void runtime.selectSession(session.id)}
-					oncontextmenu={(e) => onOpenContextMenu(e, session)}
-				>
-					<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
-					<span class="t">{titleOf(session)}</span>
-					<span class="row-status is-{status.kind}">
-						<span class="row-status-dot" class:is-busy={status.isBusy}></span>
-						<span class="row-status-text">{status.label}</span>
-						{#if status.count}
-							<span class="badge">{status.count}</span>
-						{/if}
-					</span>
-					<span class="s">{previewOf(session) || t.sidebar.noMessages}</span>
-					{#if unread > 0}
-						<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
+				{@const source = resolveBotDmOrigin(session, sessionsById)}
+				<div class="row-stack" class:is-on={runtime.selectedId === session.id}>
+					<button
+						type="button"
+						class="row"
+						class:is-on={runtime.selectedId === session.id}
+						class:is-context-open={contextMenuSessionId === session.id}
+						onclick={() => void runtime.selectSession(session.id)}
+						oncontextmenu={(e) => onOpenContextMenu(e, session)}
+					>
+						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
+						<span class="t">{titleOf(session)}</span>
+						<span class="row-status is-{status.kind}">
+							<span class="row-status-dot" class:is-busy={status.isBusy}></span>
+							<span class="row-status-text">{status.label}</span>
+							{#if status.count}
+								<span class="badge">{status.count}</span>
+							{/if}
+						</span>
+						<span class="s">{previewOf(session) || t.sidebar.noMessages}</span>
+					</button>
+					{#if source.kind === 'session'}
+						{@const sourceTitle = titleOf(source.session)}
+						<button
+							type="button"
+							class="row-source"
+							title={source.root
+								? t.sidebar.botBotSourceRoot(sourceTitle, titleOf(source.root))
+								: t.sidebar.botBotSource(sourceTitle)}
+							onclick={() =>
+								void runtime.selectSession(
+									source.session.id,
+									source.messageId ? { messageId: source.messageId } : undefined
+								)}
+						>
+							<span class="row-source-glyph" aria-hidden="true">{source.depth > 0 ? '↳' : '↰'}</span>
+							<span class="row-source-text">{t.sidebar.botBotSource(sourceTitle)}</span>
+						</button>
+					{:else}
+						<span class="row-source is-static">
+							{source.kind === 'missing'
+								? t.sidebar.botBotSourceMissing
+								: t.sidebar.botBotSourceUnknown}
+						</span>
 					{/if}
-				</button>
+				</div>
 			{/each}
 		{/if}
 	</div>
@@ -1123,6 +1166,86 @@
 	.ghead :global(.add:hover) {
 		background: var(--line-subtle);
 		color: var(--accent);
+	}
+
+	/* Only the Bot↔Bot rows stack: a row plus the source line under it. */
+	.row-stack {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.row-stack .row {
+		margin-bottom: 0;
+	}
+
+	.row-source {
+		/* 10px row padding + 40px avatar + 10px gap: lines up under the title. */
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin: 0 10px 2px 60px;
+		padding: 2px 6px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		font-size: 11px;
+		line-height: 1.3;
+		text-align: left;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	button.row-source {
+		cursor: pointer;
+	}
+
+	button.row-source:hover {
+		background: var(--line-subtle);
+		color: var(--accent);
+	}
+
+	button.row-source:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.row-source.is-static {
+		opacity: 0.7;
+	}
+
+	.row-source-glyph {
+		flex-shrink: 0;
+		opacity: 0.8;
+	}
+
+	.row-source-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.ghead-more {
+		border: 0;
+		background: transparent;
+		color: var(--muted);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		text-transform: none;
+		padding: 2px 6px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+
+	.ghead-more:hover {
+		background: var(--line-subtle);
+		color: var(--accent);
+	}
+
+	.ghead-more:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
 	}
 
 	.row {

@@ -132,6 +132,7 @@ export class Store {
   readonly presentBotIds = this.bind(sessions.presentBotIds);
   readonly findDirectSession = this.bind(sessions.findDirectSession);
   readonly createDirect = this.bind(sessions.createDirect);
+  readonly createBotDirect = this.bind(sessions.createBotDirect);
   readonly unreadCount = this.bind(sessions.unreadCount);
 
   // Transcript -----------------------------------------------------------------------------

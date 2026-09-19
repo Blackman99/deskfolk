@@ -92,6 +92,14 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
           session.last_read_at !== undefined ? session.last_read_at : (existing?.last_read_at ?? null),
         archived_at:
           session.archived_at !== undefined ? session.archived_at : (existing?.archived_at ?? null),
+        origin_session_id:
+          session.origin_session_id !== undefined
+            ? session.origin_session_id
+            : (existing?.origin_session_id ?? null),
+        origin_message_id:
+          session.origin_message_id !== undefined
+            ? session.origin_message_id
+            : (existing?.origin_message_id ?? null),
         unread_count:
           session.unread_count !== undefined ? session.unread_count : (existing?.unread_count ?? 0),
         last_message: (() => {

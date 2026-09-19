@@ -8,6 +8,7 @@ import { copyFor } from '../../src/lib/copy.ts';
 import type { RouteLogRow } from '../../src/lib/overlays/route-log.ts';
 import {
 	aBot,
+	aBotDirect,
 	aDirect,
 	aGroup,
 	aMessage,
@@ -118,6 +119,32 @@ const settings = {
 };
 
 const world = { bots, sessions, messages, turns, providers, mcpServers, settings, skills: [aSkill()] };
+
+/**
+ * Bot↔Bot directs opened from `msg-1`, kept out of `world` so every other baseline stays put.
+ * Seven of them, so the sidebar has to cap the list and offer the rest.
+ */
+const botDirects = ['01', '02', '03', '04', '05', '06', '07'].map((n, i) =>
+	aBotDirect({
+		id: `botbot-${n}`,
+		participants: [
+			{ member: 'bot-1', joined_at: '2026-09-19T00:00:00.000Z', left_at: null },
+			{ member: i % 2 === 0 ? 'bot-2' : 'bot-3', joined_at: '2026-09-19T00:00:00.000Z', left_at: null }
+		],
+		origin_session_id: 'sess-1',
+		origin_message_id: 'msg-1',
+		created_at: `2026-09-19T${n}:00:00.000Z`,
+		last_message: aMessage({
+			id: `botbot-msg-${n}`,
+			session_id: `botbot-${n}`,
+			kind: 'bot',
+			author: 'bot-1',
+			body: '这条线我去问问，问完回你。',
+			created_at: `2026-09-19T${n}:30:00.000Z`
+		})
+	})
+);
+const botDmWorld = { ...world, sessions: [...sessions, ...botDirects] };
 
 /** Shaped like `RouteLogRow`, not like the daemon's row: the pane is handed labels, not codes. */
 const routeRows: RouteLogRow[] = [
@@ -281,6 +308,25 @@ const defs: Record<StoryName, Story> = {
 			onPatchTheme: async () => true
 		}
 	},
+	'sidebar-botdm': {
+		component: Sidebar as never,
+		props: {
+			runtime: fakeRuntime(botDmWorld, { selectedId: 'botbot-06' }),
+			t,
+			selected: botDirects[5],
+			pinnedSessionIds: [],
+			themeMenuOpen: false,
+			workspaceOpen: false,
+			contextMenuSessionId: null,
+			onOpenContextMenu: () => {},
+			onToggleWorkspace: () => {},
+			onOpenSettings: () => {},
+			onCreateBot: () => {},
+			onCreateGroup: () => {},
+			onOpenArtifact: () => {},
+			onPatchTheme: async () => true
+		}
+	},
 	'chat-header': {
 		component: ChatHeader as never,
 		props: {
@@ -298,6 +344,17 @@ const defs: Record<StoryName, Story> = {
 		component: ChatStage as never,
 		props: {
 			runtime: fakeRuntime(world, { selectedId: 'sess-1', approvals: [anApproval()] }),
+			t,
+			selected: group,
+			onOpenProfile: () => {},
+			onOpenArtifact: () => {},
+			onCreateBot: () => {}
+		}
+	},
+	'chat-stage-botdm': {
+		component: ChatStage as never,
+		props: {
+			runtime: fakeRuntime(botDmWorld, { selectedId: 'sess-1' }),
 			t,
 			selected: group,
 			onOpenProfile: () => {},

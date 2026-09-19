@@ -4,6 +4,8 @@
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
+	import BotDmEntry from './BotDmEntry.svelte';
+	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import {
 		approvalForMessage,
@@ -66,6 +68,17 @@
 	);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const statusLabels = $derived({
+		running: t.sidebar.statusRunning,
+		replying: t.sidebar.statusReplying,
+		waitingApproval: t.sidebar.statusWaitingApproval,
+		waitingAsk: t.sidebar.statusWaitingAsk,
+		idle: t.sidebar.statusIdle
+	});
+	// Depends on the roster, not on turns, so a streaming token does not rebuild it.
+	const botDmIndex = $derived(
+		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
+	);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
 
 	let composer = $state<{ focus: () => void } | null>(null);
@@ -598,7 +611,7 @@
 							<article class="msg is-ask">
 								<div class="who">{t.stream.ask} · {who(singleMsg.message)}</div>
 								<div class="body">{singleMsg.message.body}</div>
-								{#if isPendingAsk(singleMsg.message, snapshot.turns)}
+								{#if isPendingAsk(singleMsg.message, snapshot.turns) && !lockedComposer}
 									<div class="ask-reply mt-5 flex gap-4">
 										<input
 											type="text"
@@ -869,15 +882,22 @@
 										{#if rxGroups.length > 0}
 											<div class="rx-row is-right flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}
-													<button
-														type="button"
-														class="rx-chip"
-														class:is-active={rx.userReacted}
-														onclick={() => void runtime.toggleReaction(item.message.id, rx.emoji)}
-													>
-														<span class="rx-emoji">{rx.emoji}</span>
-														<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
-													</button>
+													{#if lockedComposer}
+														<span class="rx-chip is-static" class:is-active={rx.userReacted}>
+															<span class="rx-emoji">{rx.emoji}</span>
+															<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
+														</span>
+													{:else}
+														<button
+															type="button"
+															class="rx-chip"
+															class:is-active={rx.userReacted}
+															onclick={() => void runtime.toggleReaction(item.message.id, rx.emoji)}
+														>
+															<span class="rx-emoji">{rx.emoji}</span>
+															<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
+														</button>
+													{/if}
 												{/each}
 											</div>
 										{/if}
@@ -890,6 +910,22 @@
 													thinkingText={t.chat.thinking}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
+												/>
+											</div>
+										{/if}
+										{#if botDmIndex.get(item.message.id)}
+											<div class="msg-attached-botdm is-user">
+												<BotDmEntry
+													sessions={botDmIndex.get(item.message.id) ?? []}
+													{botsById}
+													turns={snapshot.turns}
+													approvals={snapshot.approvals}
+													pendingJudgements={snapshot.pendingJudgements}
+													isUser={true}
+													{statusLabels}
+													{rosterLabels}
+													openedText={t.chat.botDmOpened}
+													onOpen={(id) => void runtime.selectSession(id)}
 												/>
 											</div>
 										{/if}
@@ -1105,15 +1141,22 @@
 										{#if rxGroups.length > 0}
 											<div class="rx-row flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}
-													<button
-														type="button"
-														class="rx-chip"
-														class:is-active={rx.userReacted}
-														onclick={() => void runtime.toggleReaction(item.message.id, rx.emoji)}
-													>
-														<span class="rx-emoji">{rx.emoji}</span>
-														<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
-													</button>
+													{#if lockedComposer}
+														<span class="rx-chip is-static" class:is-active={rx.userReacted}>
+															<span class="rx-emoji">{rx.emoji}</span>
+															<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
+														</span>
+													{:else}
+														<button
+															type="button"
+															class="rx-chip"
+															class:is-active={rx.userReacted}
+															onclick={() => void runtime.toggleReaction(item.message.id, rx.emoji)}
+														>
+															<span class="rx-emoji">{rx.emoji}</span>
+															<span class="rx-count mono text-11 font-semibold">{rx.count}</span>
+														</button>
+													{/if}
 												{/each}
 											</div>
 										{/if}
@@ -1126,6 +1169,21 @@
 													thinkingText={t.chat.thinking}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
+												/>
+											</div>
+										{/if}
+										{#if botDmIndex.get(item.message.id)}
+											<div class="msg-attached-botdm">
+												<BotDmEntry
+													sessions={botDmIndex.get(item.message.id) ?? []}
+													{botsById}
+													turns={snapshot.turns}
+													approvals={snapshot.approvals}
+													pendingJudgements={snapshot.pendingJudgements}
+													{statusLabels}
+													{rosterLabels}
+													openedText={t.chat.botDmOpened}
+													onOpen={(id) => void runtime.selectSession(id)}
 												/>
 											</div>
 										{/if}
@@ -2000,6 +2058,17 @@
 	}
 
 	/* Attached replying / thinking indicator under trigger message */
+	.msg-attached-botdm {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		margin-top: 5px;
+	}
+
+	.msg-attached-botdm.is-user {
+		align-items: flex-end;
+	}
+
 	.msg-attached-replying {
 		display: flex;
 		flex-direction: column;

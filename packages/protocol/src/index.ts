@@ -325,6 +325,10 @@ export type Session = {
   name: string | null;
   last_read_at?: string | null;
   archived_at?: string | null;
+  /** The session whose message opened this one. Only a Bot↔Bot direct has one. */
+  origin_session_id: string | null;
+  /** The message that opened this session; the entry point to it hangs under that message. */
+  origin_message_id: string | null;
   created_at: string;
   updated_at: string;
 };

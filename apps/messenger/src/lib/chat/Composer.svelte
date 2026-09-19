@@ -4,7 +4,7 @@
 	import { formatFileSize } from './attachments.ts';
 	import { avatarSrc } from '../avatar.ts';
 	import { botAvatarColor } from './chat-view.ts';
-	import { composerAction, composerLocked } from './composer-mode.ts';
+	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
 	import { insertComposerNewline } from './composer-editor.ts';
 	import {
 		COMPOSER_IME_IDLE,
@@ -115,6 +115,12 @@
 	let mentionPopupEl = $state<HTMLDivElement | null>(null);
 
 	const lockedComposer = $derived(composerLocked(selected, botsById));
+	const lockedNotice = $derived.by(() => {
+		const reason = lockedReason(selected, botsById);
+		if (reason === 'archived') return t.chat.groupLockedNotice;
+		if (reason === 'bot-bot') return t.chat.botBotLockedNotice;
+		return t.chat.lockedNotice;
+	});
 
 	const primaryAction = $derived(composerAction({
 		connected,
@@ -605,7 +611,7 @@
 	{#if lockedComposer}
 		<div class="composer-locked-message flex items-center justify-center gap-4 py-1 px-0 text-muted text-13 font-medium">
 			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-			<span>{selected?.archived_at ? t.chat.groupLockedNotice : t.chat.lockedNotice}</span>
+			<span>{lockedNotice}</span>
 		</div>
 	{/if}
 

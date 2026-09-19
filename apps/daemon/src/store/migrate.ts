@@ -44,6 +44,16 @@ export function migrateSchema(db: Database): void {
   if (!sessionCols.includes("archived_at")) {
     db.run(`ALTER TABLE sessions ADD COLUMN archived_at TEXT`);
   }
+  // A Bot↔Bot direct records the message that opened it; sessions made before this have none.
+  if (!sessionCols.includes("origin_session_id")) {
+    db.run(`ALTER TABLE sessions ADD COLUMN origin_session_id TEXT`);
+  }
+  if (!sessionCols.includes("origin_message_id")) {
+    db.run(`ALTER TABLE sessions ADD COLUMN origin_message_id TEXT`);
+  }
+  db.run(
+    `CREATE INDEX IF NOT EXISTS sessions_origin_message ON sessions (origin_message_id)`,
+  );
   const tables = db
     .query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE type = 'table'`)
     .all()

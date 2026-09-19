@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
-import { composerAction, composerLocked, composerMode } from "./composer-mode.ts";
+import { composerAction, composerLocked, composerMode, lockedReason } from "./composer-mode.ts";
+import { aBot, aBotDirect, aDirect, aGroup } from "../test-fixtures.ts";
 
 const writer: Bot = {
   id: "writer",
@@ -132,4 +133,31 @@ test("the you↔Bot composer locks only when that Bot is gone from the snapshot"
   };
   expect(composerLocked(group, bots)).toBe(false);
   expect(composerLocked({ ...group, archived_at: "t2" }, bots)).toBe(true);
+});
+
+/**
+ * The lock that makes a Bot↔Bot direct view-only. Both bots are alive and the session is not
+ * archived, so nothing else in composerLocked would have caught it.
+ */
+test("a Bot↔Bot direct is read-only even with both bots alive", () => {
+  const botBot = aBotDirect();
+  const bots = new Map([
+    ["bot-1", aBot({ id: "bot-1" })],
+    ["bot-2", aBot({ id: "bot-2" })],
+  ]);
+  expect(composerLocked(botBot, bots)).toBe(true);
+  expect(lockedReason(botBot, bots)).toBe("bot-bot");
+});
+
+test("the reason for the lock says which notice to show", () => {
+  const bots = new Map([
+    ["bot-1", aBot({ id: "bot-1" })],
+    ["bot-2", aBot({ id: "bot-2" })],
+  ]);
+  expect(lockedReason(null, bots)).toBeNull();
+  expect(lockedReason(aDirect(), bots)).toBeNull();
+  expect(lockedReason(aGroup(), bots)).toBeNull();
+  // Archived wins, so an archived Bot↔Bot direct still reads as archived.
+  expect(lockedReason(aBotDirect({ archived_at: "t" }), bots)).toBe("archived");
+  expect(lockedReason(aDirect(), new Map())).toBe("peer-gone");
 });

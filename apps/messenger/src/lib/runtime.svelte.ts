@@ -25,6 +25,7 @@ import { ApiError, LocalApi, probeHealth } from "./api.ts";
 import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
+import { classifySession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, type Snapshot } from "./snapshot.ts";
 import { stopTarget } from "./chat/transcript.ts";
 
@@ -934,6 +935,8 @@ export class MessengerRuntime {
               name: detail.name,
               last_read_at: detail.last_read_at ?? s.last_read_at ?? null,
               archived_at: detail.archived_at ?? s.archived_at ?? null,
+              origin_session_id: detail.origin_session_id ?? s.origin_session_id ?? null,
+              origin_message_id: detail.origin_message_id ?? s.origin_message_id ?? null,
               created_at: detail.created_at,
               updated_at: detail.updated_at,
               participants: detail.participants,
@@ -971,6 +974,8 @@ export class MessengerRuntime {
       name: session.name,
       last_read_at: session.last_read_at ?? null,
       archived_at: session.archived_at ?? null,
+      origin_session_id: session.origin_session_id ?? null,
+      origin_message_id: session.origin_message_id ?? null,
       created_at: session.created_at,
       updated_at: session.updated_at,
       participants: session.participants,
@@ -1069,6 +1074,12 @@ export class MessengerRuntime {
   private scheduleComposerSuggestions(sessionId: string): void {
     this.cancelComposerSuggestions();
     if (!this.api || this.selectedId !== sessionId) {
+      this.composerSuggestions = [];
+      return;
+    }
+    // These draft what you would send. A Bot↔Bot direct has no composer to put them in.
+    const session = this.snapshot.sessions.find((s) => s.id === sessionId);
+    if (session && classifySession(session) === "bot-bot") {
       this.composerSuggestions = [];
       return;
     }

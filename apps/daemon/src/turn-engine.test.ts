@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
 import { ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
+import { runCollabTool } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 
@@ -3387,6 +3388,125 @@ describe("mention spelling in groups", () => {
       4000,
     );
     expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === storyboard.id)).toBe(false);
+    sub.close();
+  });
+});
+
+describe("a Bot↔Bot direct", () => {
+  async function addResearcher(h: Harness): Promise<string> {
+    const res = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ name: "Researcher", duties: "dig", boundaries: "stay" }),
+    });
+    return ((await res.json()) as { bot: { id: string } }).bot.id;
+  }
+
+  test("one bot's message wakes the other", async () => {
+    const fixture = await startFixture(() => sse(textChunks("on it")));
+    const h = await startApi();
+    const { botId } = await createWriter(h, fixture.origin);
+    const researcherId = await addResearcher(h);
+    const direct = h.store.createBotDirect(botId, researcherId, null);
+    const sub = await subscribe(h);
+
+    const opener = h.store.insertMessage({
+      sessionId: direct.id,
+      kind: "bot",
+      author: botId,
+      body: "what did you find?",
+    });
+    await h.engine.handleInboundMessage(opener, { fromUser: false });
+
+    const turn = await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.bot_id === researcherId && e.session_id === direct.id,
+    );
+    expect(turn.trigger_message_id).toBe(opener.id);
+    sub.close();
+  });
+
+  /**
+   * With no user in the room there is nobody to want two answers at once, so a second message
+   * retunes the live turn rather than cloning it. The user↔Bot default stays fork.
+   */
+  test("a second message retunes the live turn instead of forking it", async () => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let n = 0;
+    const fixture = await startFixture(async () => {
+      n += 1;
+      if (n === 1) {
+        await held;
+        return sse(textChunks("first"));
+      }
+      return sse(textChunks("second"));
+    });
+    const h = await startApi();
+    const { botId } = await createWriter(h, fixture.origin);
+    const researcherId = await addResearcher(h);
+    const direct = h.store.createBotDirect(botId, researcherId, null);
+    const sub = await subscribe(h);
+
+    const one = h.store.insertMessage({
+      sessionId: direct.id,
+      kind: "bot",
+      author: botId,
+      body: "one",
+    });
+    await h.engine.handleInboundMessage(one, { fromUser: false });
+    const first = await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === researcherId,
+    );
+
+    const two = h.store.insertMessage({
+      sessionId: direct.id,
+      kind: "bot",
+      author: botId,
+      body: "two",
+    });
+    await h.engine.handleInboundMessage(two, { fromUser: false });
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected",
+    );
+    release();
+    sub.close();
+  });
+
+  /**
+   * Every publisher builds the payload from one helper. If a hand-rolled copy comes back, the
+   * direct silently loses the entry point it hangs under, so pin it on the wire.
+   */
+  test("session.upsert carries where the direct came from", async () => {
+    const fixture = await startFixture(() => sse(textChunks("ok")));
+    const h = await startApi();
+    const { botId } = await createWriter(h, fixture.origin);
+    const researcherId = await addResearcher(h);
+    const group = h.store.createGroup({ name: "Desk", members: [botId, researcherId] });
+    const trigger = h.store.postMessage(group.id, { body: "price the competition" });
+    const turn = h.store.createTurn({ sessionId: group.id, botId, triggerMessageId: trigger.id });
+    const opened = await runCollabTool(
+      { store: h.store, botId, sessionId: group.id, turnId: turn.id, parentId: null },
+      "create_direct",
+      { name: "Researcher" },
+    );
+    const directId = String(opened.data?.session_id);
+    const sub = await subscribe(h);
+
+    await fetch(`${h.origin}/v1/sessions/${directId}/archive`, {
+      method: "POST",
+      headers: auth(h),
+    });
+    const event = await waitFor(
+      sub.events,
+      (e) => e.event === "session.upsert" && e.id === directId,
+    );
+    expect(event.origin_session_id).toBe(group.id);
+    expect(event.origin_message_id).toBe(trigger.id);
     sub.close();
   });
 });

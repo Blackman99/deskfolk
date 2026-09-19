@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson } from "./http";
 import { corsHeaders, originDecision } from "./origin";
+import { sessionUpsertFields } from "./session-events";
 import { HttpError } from "./errors";
 import { type AttachmentInput, type Store } from "./store";
 import type { CompletionsClient } from "./completions";
@@ -904,30 +905,6 @@ async function dispatch(
   }
 
   return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404, null);
-}
-
-function sessionUpsertFields(session: {
-  id: string;
-  kind: "direct" | "group";
-  name: string | null;
-  last_read_at?: string | null;
-  archived_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  participants: { member: string; joined_at: string; left_at: string | null }[];
-  unread_count?: number;
-}) {
-  return {
-    id: session.id,
-    kind: session.kind,
-    name: session.name,
-    last_read_at: session.last_read_at ?? null,
-    archived_at: session.archived_at ?? null,
-    created_at: session.created_at,
-    updated_at: session.updated_at,
-    participants: session.participants,
-    unread_count: session.unread_count ?? 0,
-  };
 }
 
 function publishBotModelChanges(

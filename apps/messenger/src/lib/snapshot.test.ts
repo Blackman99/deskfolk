@@ -708,3 +708,60 @@ test("approval.upsert replaces the row so a pending card can leave pending", () 
   expect(allowed.approvals).toHaveLength(1);
   expect(allowed.approvals[0]?.status).toBe("allowed_once");
 });
+
+/**
+ * A direct's source is what its entry point in the transcript hangs on. An event that leaves the
+ * fields out — an archive, a rename — must not quietly cost the session its source.
+ */
+test("session.upsert keeps where a direct came from unless the event carries it", () => {
+  const first = applyEvent(emptySnapshot(), {
+    event: "session.upsert",
+    occurred_at: "t",
+    id: "d1",
+    kind: "direct",
+    name: null,
+    origin_session_id: "sess-1",
+    origin_message_id: "msg-1",
+    created_at: "t",
+    updated_at: "t",
+    participants: [
+      { member: "bot-1", joined_at: "t", left_at: null },
+      { member: "bot-2", joined_at: "t", left_at: null },
+    ],
+  });
+  expect(first.sessions[0]?.origin_session_id).toBe("sess-1");
+
+  const archived = applyEvent(first, {
+    event: "session.upsert",
+    occurred_at: "t2",
+    id: "d1",
+    kind: "direct",
+    name: null,
+    archived_at: "t2",
+    created_at: "t",
+    updated_at: "t2",
+    participants: [
+      { member: "bot-1", joined_at: "t", left_at: null },
+      { member: "bot-2", joined_at: "t", left_at: null },
+    ],
+  });
+  expect(archived.sessions[0]?.origin_session_id).toBe("sess-1");
+  expect(archived.sessions[0]?.origin_message_id).toBe("msg-1");
+
+  const cleared = applyEvent(archived, {
+    event: "session.upsert",
+    occurred_at: "t3",
+    id: "d1",
+    kind: "direct",
+    name: null,
+    origin_session_id: "sess-1",
+    origin_message_id: null,
+    created_at: "t",
+    updated_at: "t3",
+    participants: [
+      { member: "bot-1", joined_at: "t", left_at: null },
+      { member: "bot-2", joined_at: "t", left_at: null },
+    ],
+  });
+  expect(cleared.sessions[0]?.origin_message_id).toBeNull();
+});

@@ -110,8 +110,8 @@ export const CREATE_GROUP: ToolDef = {
 export const CREATE_DIRECT: ToolDef = {
   name: "create_direct",
   description: {
-    zh: "与另一个 Bot 建立私聊。已有则返回已有会话，不建第二条。",
-    en: "Open a direct session with another Bot. If one exists, return it; do not create a second.",
+    zh: "与另一个 Bot 新开一条私聊，把一件事单独谈完。每次调用都新开一条：叫醒你这一轮的那条消息就是它的来源，入口挂在那条消息下面，不接在上次跟这个 Bot 的私聊后面。同一轮里对同一个 Bot 再调一次仍是这一条。对方看不到你这边的会话，开场消息必须自带背景和要办的事。用户不在这条私聊里，只能看不能发言：不要在里面问用户，要问就回到用户在场的会话。",
+    en: "Open a new direct with another Bot to settle one thing there. Every call opens a new one: the message that woke this turn is its source, the entry point hangs under that message, and it does not continue the last direct you had with that Bot. Calling again for the same Bot in the same turn returns the same one. They cannot see the session you are in, so your opening message must carry the background and the request. The user is not in this direct and can only read it: never ask the user anything there; go back to a session they belong to.",
   },
   properties: {
     name: { type: "string", description: { zh: "对方 Bot 的名字。", en: "The other Bot's name." } },
@@ -148,8 +148,8 @@ export const REMOVE_MEMBER: ToolDef = {
 export const ASK_USER: ToolDef = {
   name: "ask_user",
   description: {
-    zh: "向用户问一件需要判断的事。技术障碍先主动排查、尝试可用办法；只有缺少用户独有的信息或决策时才提问，不要让用户代做能用工具完成的工作。不是批准，不要索要聊天正文里的密钥。用户回复后本轮继续。",
-    en: "Ask the user something that needs their judgment. Investigate first and try available remedies for technical obstacles; ask only for information or decisions that require the user, not work you can do with tools. This is not an approval; never request secrets in chat text. The turn continues after they reply.",
+    zh: "向用户问一件需要判断的事。技术障碍先主动排查、尝试可用办法；只有缺少用户独有的信息或决策时才提问，不要让用户代做能用工具完成的工作。不是批准，不要索要聊天正文里的密钥。用户回复后本轮继续。只能在用户在场的会话里问：Bot↔Bot 私聊里用户只能看，问了没人能答。",
+    en: "Ask the user something that needs their judgment. Investigate first and try available remedies for technical obstacles; ask only for information or decisions that require the user, not work you can do with tools. This is not an approval; never request secrets in chat text. The turn continues after they reply. Only ask in a session the user belongs to: a Bot↔Bot direct is read-only to them, so a question there reaches nobody.",
   },
   properties: {
     question: { type: "string", description: { zh: "问句。", en: "The question." } },

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateBoringAvatar } from "@real-bot/protocol";
+import { USER_MEMBER, generateBoringAvatar } from "@real-bot/protocol";
 import { runCollabTool, staleMcpToolNames, type ToolCtx } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -686,6 +686,168 @@ describe("send_message mentions", () => {
     const removed = await runCollabTool(writerCtx, "delete_skill", { id: skillId });
     expect(removed.ok).toBe(true);
     expect(removed.emitted).toEqual([{ kind: "skill_removed", id: skillId }]);
+    store.close();
+  });
+});
+
+describe("create_direct", () => {
+  /**
+   * The unit of independence is the initiation: a Bot that goes to ask someone twice about two
+   * different things is having two conversations, not appending to one long-running thread.
+   */
+  test("each trigger opens its own direct, stamped with the message that set it off", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const group = store.createGroup({ name: "Desk", members: [writer.bot.id, researcher.bot.id] });
+
+    const first = store.postMessage(group.id, { body: "price the competition" });
+    const turnOne = store.createTurn({
+      sessionId: group.id,
+      botId: writer.bot.id,
+      triggerMessageId: first.id,
+    });
+    const openedOne = await runCollabTool(
+      { store, botId: writer.bot.id, sessionId: group.id, turnId: turnOne.id, parentId: null },
+      "create_direct",
+      { name: "Researcher" },
+    );
+
+    const second = store.postMessage(group.id, { body: "and their launch dates" });
+    const turnTwo = store.createTurn({
+      sessionId: group.id,
+      botId: writer.bot.id,
+      triggerMessageId: second.id,
+    });
+    const openedTwo = await runCollabTool(
+      { store, botId: writer.bot.id, sessionId: group.id, turnId: turnTwo.id, parentId: null },
+      "create_direct",
+      { name: "Researcher" },
+    );
+
+    expect(openedOne.ok).toBe(true);
+    expect(openedTwo.ok).toBe(true);
+    expect(openedTwo.data?.session_id).not.toBe(openedOne.data?.session_id);
+
+    const one = store.getSession(String(openedOne.data?.session_id));
+    const two = store.getSession(String(openedTwo.data?.session_id));
+    expect(one.origin_session_id).toBe(group.id);
+    expect(one.origin_message_id).toBe(first.id);
+    expect(two.origin_message_id).toBe(second.id);
+    store.close();
+  });
+
+  /** A model that emits the call twice in one loop, or retries it, gets one session. */
+  test("asking again in the same turn returns the direct already open", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const group = store.createGroup({
+      name: "Desk",
+      members: [writer.bot.id, store.requireBotByName("Researcher").id],
+    });
+    const trigger = store.postMessage(group.id, { body: "go ask" });
+    const turn = store.createTurn({
+      sessionId: group.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    const ctx: ToolCtx = {
+      store,
+      botId: writer.bot.id,
+      sessionId: group.id,
+      turnId: turn.id,
+      parentId: null,
+    };
+    const before = store.listSessions().length;
+    const first = await runCollabTool(ctx, "create_direct", { name: "Researcher" });
+    const again = await runCollabTool(ctx, "create_direct", { name: "Researcher" });
+    expect(again.data?.session_id).toBe(first.data?.session_id);
+    expect(store.listSessions().length).toBe(before + 1);
+    store.close();
+  });
+
+  /** No turn on record — the direct still opens, it just has no entry point to hang under. */
+  test("a call with no turn on record opens a direct with no source", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const opened = await runCollabTool(
+      ctxFor(store, writer.bot.id, writer.direct_session.id),
+      "create_direct",
+      { name: "Researcher" },
+    );
+    expect(opened.ok).toBe(true);
+    const session = store.getSession(String(opened.data?.session_id));
+    expect(session.origin_session_id).toBeNull();
+    expect(session.origin_message_id).toBeNull();
+    store.close();
+  });
+
+  test("the user is never a member of a Bot↔Bot direct", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const opened = await runCollabTool(
+      ctxFor(store, writer.bot.id, writer.direct_session.id),
+      "create_direct",
+      { name: "Researcher" },
+    );
+    expect(store.isPresent(String(opened.data?.session_id), USER_MEMBER)).toBe(false);
+    store.close();
+  });
+});
+
+describe("ask_user", () => {
+  /**
+   * The question would be inserted into a session the user cannot answer in, parking the turn
+   * on a reply that can never arrive. Better to send the Bot back to where the user is.
+   */
+  test("a question inside a Bot↔Bot direct is refused instead of hanging the turn", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const direct = store.createBotDirect(writer.bot.id, researcher.bot.id, null);
+    const result = await runCollabTool(
+      ctxFor(store, writer.bot.id, direct.id),
+      "ask_user",
+      { question: "which one?" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("not_a_member");
+    expect(result.waitAsk).toBeUndefined();
+    store.close();
+  });
+
+  test("a question where the user is present still parks the turn", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const result = await runCollabTool(
+      ctxFor(store, writer.bot.id, writer.direct_session.id),
+      "ask_user",
+      { question: "which one?" },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.waitAsk?.question).toBe("which one?");
+    store.close();
+  });
+});
+
+describe("send_message membership", () => {
+  test("posting into a direct you are not in is not_a_member", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const outsider = store.createBot({ name: "Analyst", duties: "count", boundaries: "stay" });
+    const direct = store.createBotDirect(writer.bot.id, researcher.bot.id, null);
+    const result = await runCollabTool(
+      ctxFor(store, outsider.bot.id, outsider.direct_session.id),
+      "send_message",
+      { session_id: direct.id, body: "let me in" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("not_a_member");
+    expect(store.listMainMessages(direct.id, 10)).toEqual([]);
     store.close();
   });
 });

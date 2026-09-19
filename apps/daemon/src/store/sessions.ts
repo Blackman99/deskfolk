@@ -10,8 +10,11 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { hydrateMessage, listMessages } from "./messages";
+
+export { isPresent } from "./shared";
 import {
   aliveBot,
+  isPresent,
   requireNonEmpty,
   sessionRow,
   toTurn,
@@ -210,6 +213,10 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM spend WHERE session_id = ?`, [id]);
+    ctx.db.run(
+      `UPDATE sessions SET origin_session_id = NULL, origin_message_id = NULL WHERE origin_session_id = ?`,
+      [id],
+    );
     ctx.db.run(`DELETE FROM session_participants WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM sessions WHERE id = ?`, [id]);
   })();
@@ -243,6 +250,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
+    // The directs this session spawned keep their source; only the message to jump to is gone.
+    ctx.db.run(`UPDATE sessions SET origin_message_id = NULL WHERE origin_session_id = ?`, [id]);
     ctx.db.run(`UPDATE sessions SET last_read_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
   })();
 }
@@ -321,15 +330,6 @@ export function presentParticipants(ctx: StoreContext, sessionId: string): Sessi
   return listParticipants(ctx, sessionId).filter((p) => p.left_at === null);
 }
 
-export function isPresent(ctx: StoreContext, sessionId: string, member: string): boolean {
-  const row = ctx.db
-    .query<ParticipantRow, [string, string]>(
-      `SELECT * FROM session_participants WHERE session_id = ? AND member = ?`,
-    )
-    .get(sessionId, member);
-  return Boolean(row && row.left_at === null);
-}
-
 export function presentBotIds(ctx: StoreContext, sessionId: string): string[] {
   return presentParticipants(ctx, sessionId)
     .map((p) => p.member)
@@ -364,6 +364,11 @@ export function createDirect(ctx: StoreContext, memberA: string, memberB: string
   if (memberA === memberB) {
     throw new HttpError(422, "invalid_args", "a direct session needs two different members");
   }
+  // You keep one direct per Bot. Two Bots open one per trigger instead, so that door is shut
+  // here rather than re-opened by a future caller reaching for the nearest function.
+  if (memberA !== USER_MEMBER && memberB !== USER_MEMBER) {
+    throw new HttpError(422, "invalid_args", "a Bot↔Bot direct opens per trigger; use createBotDirect");
+  }
   const existing = findDirectSession(ctx, memberA, memberB);
   if (existing) return existing;
   if (memberA !== USER_MEMBER) aliveBot(ctx, memberA);
@@ -383,6 +388,75 @@ export function createDirect(ctx: StoreContext, memberA: string, memberB: string
       `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`,
       [sessionId, memberB, now],
     );
+  })();
+  return getSession(ctx, sessionId);
+}
+
+function findDirectByOrigin(
+  ctx: StoreContext,
+  botA: string,
+  botB: string,
+  originMessageId: string,
+): SessionDetail | null {
+  const row = ctx.db
+    .query<SessionRow, [string, string, string]>(
+      `SELECT s.* FROM sessions s
+       JOIN session_participants p1
+         ON p1.session_id = s.id AND p1.member = ? AND p1.left_at IS NULL
+       JOIN session_participants p2
+         ON p2.session_id = s.id AND p2.member = ? AND p2.left_at IS NULL
+       WHERE s.kind = 'direct'
+         AND s.origin_message_id = ?
+         AND (
+           SELECT COUNT(*) FROM session_participants p
+           WHERE p.session_id = s.id AND p.left_at IS NULL
+         ) = 2
+       ORDER BY s.created_at ASC, s.id ASC
+       LIMIT 1`,
+    )
+    .get(botA, botB, originMessageId);
+  return row ? getSession(ctx, row.id) : null;
+}
+
+/**
+ * A Bot↔Bot direct is one session per trigger, not one thread per pair: each time a Bot opens
+ * one it gets a fresh session stamped with the message that set it off, and the entry point to
+ * it hangs under that message.
+ *
+ * Asking twice off the same trigger returns the one already open, so a Bot that calls the tool
+ * twice in a turn — or retries it — does not litter the sidebar with duplicates.
+ */
+export function createBotDirect(
+  ctx: StoreContext,
+  botA: string,
+  botB: string,
+  origin: { sessionId: string; messageId: string } | null,
+): SessionDetail {
+  if (botA === botB) {
+    throw new HttpError(422, "invalid_args", "a direct session needs two different members");
+  }
+  if (botA === USER_MEMBER || botB === USER_MEMBER) {
+    throw new HttpError(422, "invalid_args", "createBotDirect takes two bots");
+  }
+  aliveBot(ctx, botA);
+  aliveBot(ctx, botB);
+  const again = origin ? findDirectByOrigin(ctx, botA, botB, origin.messageId) : null;
+  if (again) return again;
+  const now = isoNow();
+  const sessionId = ulid();
+  ctx.db.transaction(() => {
+    ctx.db.run(
+      `INSERT INTO sessions
+         (id, kind, name, last_read_at, origin_session_id, origin_message_id, created_at, updated_at)
+       VALUES (?, 'direct', NULL, ?, ?, ?, ?, ?)`,
+      [sessionId, now, origin?.sessionId ?? null, origin?.messageId ?? null, now, now],
+    );
+    for (const member of [botA, botB]) {
+      ctx.db.run(
+        `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`,
+        [sessionId, member, now],
+      );
+    }
   })();
   return getSession(ctx, sessionId);
 }

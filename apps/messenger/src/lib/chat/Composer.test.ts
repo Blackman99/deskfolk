@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aDirect, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import Composer from "./Composer.svelte";
@@ -81,4 +81,30 @@ test("an empty draft cannot be sent", () => {
   flushSync();
   expect(sent).toHaveLength(0);
   close();
+});
+
+/** You can read a Bot↔Bot direct, but there is nowhere to type: you are not a participant. */
+test("a Bot to Bot direct shows the read-only notice and no way in", () => {
+  const selected = aBotDirect();
+  const runtime = reactive(
+    fakeRuntime({
+      bots: [aBot({ id: "bot-1" }), aBot({ id: "bot-2" })],
+      sessions: [selected],
+    }),
+  );
+  runtime.selectedId = selected.id;
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    onSend: async () => {},
+    onPickPrompt: () => {},
+  });
+  expect(view.host.querySelector(".composer-locked-message")?.textContent).toContain(
+    t.chat.botBotLockedNotice,
+  );
+  const editor = view.host.querySelector(".composer-input") as HTMLElement;
+  expect(editor.getAttribute("contenteditable")).toBe("false");
+  expect((view.host.querySelector(".attach-btn") as HTMLButtonElement)?.disabled).toBe(true);
+  view.close();
 });

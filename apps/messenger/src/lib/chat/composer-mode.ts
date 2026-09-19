@@ -1,5 +1,5 @@
 import type { Bot, SessionKind, SessionSummary } from "@real-bot/protocol";
-import { youBotPeer } from "../sidebar/session-groups.ts";
+import { classifySession, youBotPeer } from "../sidebar/session-groups.ts";
 
 export type ComposerMode = "idle" | "redirect" | "fork";
 
@@ -31,13 +31,25 @@ export function composerAction(state: {
   };
 }
 
+/** Why the composer is shut, so the notice and the lock cannot drift apart. */
+export type LockedReason = "archived" | "bot-bot" | "peer-gone";
+
+export function lockedReason(
+  session: SessionSummary | null,
+  bots: ReadonlyMap<string, Bot>,
+): LockedReason | null {
+  if (!session) return null;
+  if (Boolean(session.archived_at)) return "archived";
+  // A Bot↔Bot direct is yours to read. You are not a participant, so there is nowhere to type.
+  if (classifySession(session) === "bot-bot") return "bot-bot";
+  const peer = youBotPeer(session);
+  if (peer && !bots.has(peer)) return "peer-gone";
+  return null;
+}
+
 export function composerLocked(
   session: SessionSummary | null,
   bots: ReadonlyMap<string, Bot>,
 ): boolean {
-  if (!session) return false;
-  if (Boolean(session.archived_at)) return true;
-  const peer = youBotPeer(session);
-  if (!peer) return false;
-  return !bots.has(peer);
+  return lockedReason(session, bots) !== null;
 }
