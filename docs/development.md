@@ -36,6 +36,8 @@
 - 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`、`markdown.ts`、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。
 - `styles/`：原来 9218 行的一张表按原顺序切成十二个文件，`index.css` 按序 `@import`，全部仍是全局样式 —— 组件不带 `<style>`，因为表里大量规则跨组件（`.shell.has-session .side`、`.msg.is-you .attachment-file-btn` 等）。改样式先看分区，切文件时不要重排规则：层叠顺序就是文件顺序。
 
+打开的是哪个会话记在 URL 的 `?s=<id>` 上（`session-url.ts`），刷新、热更新和后退键都回到同一个会话。用查询参数而不是路径，是因为打包后的 Tauri 窗通过资源协议直接服务 `build/`，没有 SPA 回退：`/s/<id>` 一刷新就是 404，而 `index.html?s=<id>` 永远是磁盘上那个文件。`+page.svelte` 里两条 effect 互为镜像，各自只跟踪自己那一侧（都跟踪就会互相覆盖）；URL 里的 id 在会话列表到达前不动它，`connect()` 拿到列表后会把不存在的 id 清掉。别的浮层（设置、抽屉、路由日志、工作区、产物预览）不进 URL：它们的开关已经在 `MessengerRuntime` 上互斥，搬进 URL 只会让 Escape 级联多一个真相来源。
+
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
 ## 信使组件测试
