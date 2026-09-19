@@ -50,7 +50,7 @@ pnpm --filter @real-bot/messenger build
 1. 保持改动聚焦，说明解决的问题、范围和限制。
 2. 遵循现有 TypeScript / Svelte / Rust 风格，注释只解释必要约束。
 3. 同步更新受影响的文档。项目范围、用法和限制变化时，保持 `README.md` 与 `README.zh.md` 内容一致。
-4. 面向用户的功能、修复或不兼容变更记入 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased`，不要提前宣称发布。
+4. 面向用户的功能、修复或不兼容变更记入 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased`（并在 [CHANGELOG.zh.md](CHANGELOG.zh.md) 同步记录），不要提前宣称发布。
 5. 新引入或改编第三方代码时保留许可证与版权声明，必要时更新 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 6. 提交前检查文件清单，排除密钥、运行数据、日志、个人路径、截图中的隐私和临时产物。
 7. PR 中附验证结果及未完成项；建议使用 `docs:`、`fix:`、`feat:` 等清晰的提交前缀，不附自动生成署名。
@@ -76,4 +76,4 @@ Real Bot is WIP. Issues and pull requests in Chinese or English are welcome. Kee
 
 Run all four verification commands above before submitting a PR; also build the landing page when those files change. GitHub Actions repeats those checks on pull requests and `main`, but does not replace local UI or native macOS verification. Exercise behavior changes end to end, including shared state and edge cases; check desktop and narrow viewports for layout changes and the native macOS app for desktop integration. Documentation-only changes need link, command, and factual checks rather than UI interaction.
 
-Keep both READMEs aligned (`README.md` and `README.zh.md`), document user-facing changes under `Unreleased`, retain third-party notices, and exclude secrets and local artifacts. Contributions are submitted under MIT. `.scratch/` is local-only; share necessary designs and verification in Issues, PRs, or `docs/`. `REAL_BOT_DATA_DIR` isolates data files, not Keychain secrets or the API port. Before making the repository public, maintainers must review the files and any history, scan for secrets, check asset licenses, and enable GitHub private vulnerability reporting.
+Keep both READMEs aligned (`README.md` and `README.zh.md`), document user-facing changes under `Unreleased` in `CHANGELOG.md` (and `CHANGELOG.zh.md`), retain third-party notices, and exclude secrets and local artifacts. Contributions are submitted under MIT. `.scratch/` is local-only; share necessary designs and verification in Issues, PRs, or `docs/`. `REAL_BOT_DATA_DIR` isolates data files, not Keychain secrets or the API port. Before making the repository public, maintainers must review the files and any history, scan for secrets, check asset licenses, and enable GitHub private vulnerability reporting.

@@ -1,227 +1,229 @@
 # Changelog
 
-本文件记录面向用户的变更。项目当前为 **WIP**，尚未发布稳定版本；`Unreleased` 不代表已发布。
+All notable changes to Real Bot are documented in this file. The project is currently **WIP** and has not published a stable release; `Unreleased` does not represent a published release.
+
+[简体中文 (Chinese version)](CHANGELOG.zh.md)
 
 ## Unreleased
 
 ### Daemon
 
-- Bot↔Bot 私聊改成一次发起一条对话，不再是每对 Bot 一条长期线程。`create_direct` 每次调用新开一条会话，并记下来源——叫醒发起方那一轮的那条消息；同一轮里对同一个 Bot 再调一次仍返回这一条，不会重复。会话上多了 `origin_session_id` 和 `origin_message_id`，随 `GET /v1/sessions` 和 `session.upsert` 一起下发。
-- **Bot↔Bot 私聊你只能看，不能发言。** 往里发消息返回 403 `not_a_member`；标记已读、归档、清空历史、Stop、放行审批都照常可用。已有的 Bot↔Bot 私聊升级后也变成只读。Bot 在这类私聊里调 `ask_user` 会被拒掉，不再把轮次停在一个没人能答的提问上。
-- 私聊里没有用户在场时，对方第二条消息改道进现有活轮，而不是再分叉一轮——和群里对 Bot 的做法一致。
-- `list_sessions` 只返回最近动过的 30 条并带上 `updated_at`，免得同一对 Bot 的一堆私聊变成分不清的记录白烧上下文窗。
+- A Bot↔Bot direct is now one conversation per initiation instead of one long-running thread per pair. Each `create_direct` call opens a fresh session stamped with its source — the message that woke the bot that opened it — and calling it again for the same bot in the same turn returns that same session rather than a duplicate. Sessions carry `origin_session_id` and `origin_message_id`, which ride along on `GET /v1/sessions` and `session.upsert`.
+- **A Bot↔Bot direct is now read-only to you.** Posting into one returns 403 `not_a_member`; marking read, archiving, clearing history, Stop, and resolving approvals all keep working. This applies to Bot↔Bot directs you already have, which become read-only on upgrade. A bot calling `ask_user` inside one is refused rather than parking its turn on an answer nobody could give.
+- With no user in a direct, a bot's second message now retunes the live turn instead of forking a second one, matching how a group already treats bots.
+- `list_sessions` returns the 30 most recently touched sessions and includes `updated_at`, so a pile of same-pair directs no longer fills a bot's context window with indistinguishable rows.
 
 ### Messenger
 
-- Bot↔Bot 私聊的入口挪到了开起它的那条消息下方：卡片直接挂在那条消息底下，点开就是这条私聊。同一条消息开出的多条私聊并成一张卡片。
-- Bot↔Bot 私聊里输入框锁上，并写明你不是参与者；引用回复、回答提问的输入框、表情回应的点击也一并收起，审批仍然可以放行。
-- 侧栏 `Bot ↔ Bot` 只列最近活跃的几条，其余收在展开按钮后面。每行下面标出来源，点一下跳回触发的那条消息。这类行不再显示未读红点——你没法回复它消掉。排序看最后一条消息而不是 `updated_at`，所以点开看一眼不会再把它顶到最前面。
-
-- 检查到新版时，「关于」卡片直接列出这一版改了什么：检查结果带上 release 正文（也就是该版本的 CHANGELOG 段落），卡片按 `###` 分组画成条目列表，跳浏览器的「查看发布说明」留着但不再是唯一入口。列表只取标题和条目，段落和围栏命令留在发布页；正文不走聊天的 markdown 渲染器，否则 changelog 里的路径会被当成工作区产物链接。
+- Markdown in the artifact preview uses the same renderer as chat bubbles (`MarkdownBody`): tables keep their columns, with borders, header fill, and sideways scroll when the table is wider than the pane. Fenced code, mentions, and links match the Bot message.
+- Settings, the session drawer, and the workspace overlay now survive a refresh the same way the open session and artifact preview already do. They share `?o=` (`settings`, `session`, `bot` plus `?b=<id>`, `workspace` plus `?w=<relpath>` when a file is selected). Closing one drops the query; a missing session, Bot, or workspace path is treated as closed. Model selection logs, create dialogs, and confirmations stay out of the URL.
+- Bot↔Bot directs are now entered from the message that started them: an entry card hangs under that message and opens the direct. Several directs opened from one message collapse into a single card.
+- The composer is locked in a Bot↔Bot direct, with a notice saying you are not a participant. Quote reply, the ask reply box, and reaction toggles are withdrawn there too; approvals stay actionable.
+- The sidebar's Bot ↔ Bot list shows only the most recently active directs, with the rest behind a toggle. Each row names its source and clicking it jumps back to the triggering message. Rows carry no unread badge, since you cannot reply one away. Recency comes from the last message rather than `updated_at`, so merely opening a direct no longer floats it to the top.
+- Composer no longer uses a full-width frosted glass bar: frost hugs the pipe-shaped dock — suggestion chips sit on the left shoulder of the input in a single row sized to the chips (not a fixed width, no wrap), with a separate ring on the shortcut hint. Wide-screen gutters stay clear.
+- The "About" card directly lists what changed in new versions when an update is found: update check results now carry the release body (the CHANGELOG section for that version). The card groups items by `###` headings into a bullet list; the "View release notes" browser link remains available but is no longer the sole entry point. The list only extracts headings and bullet items, leaving prose paragraphs and fenced code blocks on the release page. The body avoids the chat Markdown renderer to prevent changelog paths from being treated as workspace artifact links.
+- Redesigned the "Skills" interaction and layout in the Bot settings panel:
+  - Eliminated sidebar overflow: Creating and editing skills now opens in a dedicated centered modal dialog (Skill Modal, 520px wide, closable via Escape or clicking the backdrop) instead of expanding inline inside the card, providing ample room for Markdown editing while keeping the card compact.
+  - Clearer action controls: Added a permanent "+ Add Skill" button in the card header. Each list item now features explicit toggle switches, edit (pencil icon), and delete (trash icon) action buttons, with direct click-to-edit support on the skill info block. Empty state is redesigned into a lightweight card with onboarding guidance and a quick-add button.
 
 ### Desktop
 
-- 「关于」里的更新卡片跟着应用语言走。一个 release 只有一份正文而应用有两种语言，所以正文两种都带：`release-notes.ts` 从 `CHANGELOG.md` 和 `CHANGELOG.zh.md` 各取该版本那一段，用 HTML 注释分段标好——注释在 release 页面上看不见，那边就是两段叠着显示。卡片按 `settings.locale` 挑对应那段，没翻译过的语言落回英文，末尾公共部分两种语言都带上。标记出现之前发布的正文（rc.2 及更早）没有标记，整段原样渲染，和以前一模一样。缺翻译不挡发布；`CHANGELOG.md` 里缺该版本仍然挡。
-- release 正文改成自动从 `CHANGELOG.md` 里取该版本那一段（`apps/desktop/scripts/release-notes.ts`），不再是一句「去看 CHANGELOG 和 ROADMAP」；`check_for_update` 把正文随检查结果一起回给信使。CHANGELOG 里没有该版本的段落时打包任务直接失败，免得发出一个空的更新说明。
+- The update card in About now follows the app's locale. A release has one body and the app has two languages, so the body carries both: `release-notes.ts` reads this version's section from `CHANGELOG.md` and `CHANGELOG.zh.md` and marks each off with an HTML comment, invisible on the release page, which just shows the sections stacked. The card picks the section matching `settings.locale`, falls back to English for a release that was never translated, and appends the shared tail. Bodies published before the markers existed — rc.2 and earlier — carry none and are rendered whole, exactly as before. A missing translation does not block a release; a version missing from `CHANGELOG.md` still does.
+- Automatically extract release bodies from `CHANGELOG.md` for the given version (`apps/desktop/scripts/release-notes.ts`) instead of a generic "See CHANGELOG and ROADMAP" message; `check_for_update` returns the release body along with the update check results to the Messenger. Packaging builds now fail immediately if the section for that version is missing from CHANGELOG, preventing empty release notes from shipping.
 
 ## 0.1.0-rc.2 — 2026-09-19
 
-未签名的 macOS rc。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
 
 ### Daemon
 
-- 本机接口同时听 `127.0.0.1:17890` 和 `[::1]:17890`，Origin 白名单补上 `http://[::1]`，CORS 回显 `Access-Control-Allow-Private-Network`。Vite 开发页常开在 `http://[::1]:5173`；此前只听 IPv4 且把 IPv6 Origin 判成禁止，健康检查失败，信使只显示「连不上运行时」。`localhost` 与 `127.0.0.1` 不变。
-- 选模型和评判选得对不对都交给 agent，不再是正则加权重（见 [ADR 0019](docs/adr/0019-agent-routing-and-review.md)）。**开轮前**发一次短调用：看这条消息、Bot 人设、候选名单和这个 Bot 最近的复盘结论，答出模型、思考等级和一句理由；它固定跑在默认端点的默认模型上（避免递归），答不出、超时或答了不存在的模型 / 档位就落回规则兜底，不重试、不卡用户；Bot 钉死了模型和思考等级时跳过。**纠正链结束时**再发一次复盘调用：看整段——触发消息、选了什么、Bot 的回复、之后用户说的每一句、这轮怎么结束——答出是 `model`（模型不行）、`task`（事情本身难）、`prompt`（需求没说清）还是 `none`，外加方向（stronger / lighter / faster / cheaper）、纠正轮数和把握度。链的边界由同一次选路调用顺带判定（这条消息是不是还在说上一件事），加上静默 3 分钟兜底；静默定时器只在内存里，所以守护进程启动时会扫一遍上次没来得及复盘的链（只看最近 24 小时内、一次最多 20 条）。
-- 用户的跟进消息不再按关键词筛：每一句都原样留给复盘。此前「这里不对」「还是不行」一个都匹配不上，而「@导演 你 @ 的分镜不对」匹配上了，让九个 Bot 各挨一分、把 `grok-4.6` 永久排除在外。只有复盘判成 `model` 且把握度够才留成经验。
-- 留下的是结论不是分数：新表 `route_reviews`（fault / direction / rounds / confidence / reason），下次选路原样读最近几条。`route_learned`（按权重加减的惩罚表）、`isCritiqueMessage`（正则）、`PENALTY_WEIGHT` / `CRITIQUE_WEIGHT` / `FAILURE_WEIGHT` / `POSITIVE_RELIEF` / `PENALTY_CAP` 一并删除；擅长领域、价格、档位轻重降级成选路不可用时的兜底。
-- `turn_route_decisions` 补上 `reason`（选路理由）和 `chain_id`（同一条纠正链的多轮共用）。`GET /v1/sessions/:id/routes` 除 `items` 外多返回 `reviews`。
-
-- 新增 `GET /v1/sessions/:id/composer-suggestions`：按当前会话最近转录做一次短、无工具调用，返回最多 4 条用户下一步可发送的草稿（芯片短句 + 完整正文）。点名只保留在场成员或 `@everyone`；编造的 `@` 丢弃。没配默认端点、调用失败或返回不可信时返回空列表，不插转录、不挡输入。短调用打默认端点上名字带 flash / mini / lite / fast 的模型（没有就用默认模型），8 秒超时。
-- 思考等级不再能脱离模型单独钉。要么两个都不钉（模型和等级都由应用每条消息挑），要么钉一个模型并同时定下等级：没钉模型却传 `thinking_level` 是 `422 thinking_level needs a pinned model`；钉了模型而没给等级会落到该模型的默认档（应用对普通消息的偏好顺序）；换成不支持原档的模型落到新模型的默认档；清掉模型一并清掉等级。`update_profile` / `create_bot` 的说明和系统指令同步。旧库打开时把半钉的 Bot 补齐：只有等级的清掉等级，只有模型的补上该模型的默认档。
-
-- 思考等级不再锁死为 none / low / medium / high。`POST /v1/models/probe` 除名字列表外还返回 `catalog`：端点 `/models` 对象若带了 `reasoning_efforts` / `thinking_levels` / `reasoning.supported_efforts` 等字段，就把那些名字（如 Grok 的 `xhigh`、Gemini 的 `max`）写进该模型的 `thinking_levels`，补全原样发给 `reasoning_effort`。名单没写则仍用原来的四档。Bot 钉档、工具参数和路由打分都认这些名字；没钉时应用按档位轻重挑（闲聊偏轻、推理偏最重）。设置里仍可手改或加自定义档。
-- 每轮的模型选择经验改为按 Bot 保存（新表 `route_learned`，主键 Bot + 消息类别 + 模型 + 思考等级），选模型只看该 Bot 自己的经验；对 Reviewer 说「换个模型」不再改变 Writer 的选择。升级时旧的名册级 `route_learned` 设置项复制给当时在册的每个 Bot 各一份后删除，升级当天没有 Bot 改选；删除 Bot 一并删掉它的经验。
-- 路由反馈按对象归属：引用回复记在被引那一轮上，`@` 了唯一一个 Bot 记在它最近那一轮上，否则记在会话里最近可见的那一轮上（此前只看最近一条触发消息，群里常记到别人头上）。
-- 每轮的模型选择记录（`turn_route_decisions`）补上 `bot_id`、`provider_id`，并在轮次结束时写 `outcome`（completed / failed / stopped / redirected / interrupted）与失败种类。端点拒绝或回复不完整记半分负面经验；连不上、忙、5xx、流卡住只记录不学习；干净完成记一分正面，按 0.25 抵扣负面；惩罚封顶 3。旧库打开时自动补列并回填。
-- 打开旧库时把 `outcome` 为空的模型选择记录按其轮次的终态回填（completed / redirected / interrupted / stopped，`finished_at` 取轮次的更新时间），进行中的轮次不动。此前补上 `outcome` 列时没有回填，早先的记录在信使里会一律显示成「进行中」。
-- 新增 `GET /v1/sessions/:id/routes`：按时间列出该会话每轮选的模型、思考等级、消息类别、所属 Bot 与端点、结束方式和收到的反馈。
-- 守护进程内部把 `store.ts`（3400 余行）拆成 `store/` 下按领域划分的模块（settings、providers、bots、sessions、messages、turns、approvals、routing 等），`prompts.ts` 拆成 `prompts/`（系统指令、判断指令、转录文案、按域分组的内置工具定义）。`Store` 对外方法与本机接口不变。
-- 全局搜索 `GET /v1/search` 返回的 Bot 结果增加 `avatar` 字段，搜索结果带上 Bot 头像。
-- 端点多一个 `available_models`：端点 `/models` 上次返回的完整名单（`providers.available_models` 列，`POST/PATCH /v1/providers` 同名字段，`GET /v1/providers` 与 `provider.upsert` 一并返回；非字符串数组 `422 available_models must be an array of strings`）。它只是给信使的挑选列表，不影响启用名单 `models`、默认模型和路由；`list_endpoints` 工具也带上它。旧库打开时自动补列，缺省为空。
-- 没钉端点的 Bot 只在默认端点的模型名单里挑模型，设置里新加的端点不再自动进所有 Bot 的候选；要用别的端点必须在 Bot 上显式钉端点，钉的模型名只在别的端点上时照钉的用。此前加了第二个端点后，一条学习到的惩罚就足以把未钉的 Bot 送去那个端点。
-- 路由反馈只认说到模型本身的跟进消息（选的模型、换个模型、太慢、太浅、太贵、幻觉等）；「不对」「有问题」「重来」这类对回复内容的批评不再记成对上一轮模型选择的惩罚。
-- Bot 可以钉思考等级。`bots.thinking_level`（补全的 `reasoning_effort`，档名以该模型名单为准）随 `POST /v1/bots`、`PATCH /v1/bots/:id` 和 `bot.upsert` 一起走；`null` 仍由应用按每条消息挑。开轮时所选模型支持这一档就用它，不支持则照旧由应用选。钉了模型时该档必须在该模型名单的 `thinking_levels` 里，否则 `422 thinking_level must be one the pinned model supports`；只换模型而新模型不支持原来那档会自动清掉。`update_profile` / `create_bot` 多一个 `thinking_level`（null 或空字符串清掉），`list_bots` 一并返回；系统指令写明用它改自己的思考等级。
+- Local API now listens on both `127.0.0.1:17890` and `[::1]:17890`, added `http://[::1]` to the origin whitelist, and echoes `Access-Control-Allow-Private-Network` for CORS. The Vite dev server often runs on `http://[::1]:5173`; previously the daemon only listened on IPv4 and rejected IPv6 origins, causing health check failures and leaving the Messenger showing "Cannot connect to runtime". `localhost` and `127.0.0.1` behavior remains unchanged.
+- Delegated model selection and performance evaluation to an agent instead of regex patterns and weights (see [ADR 0019](docs/adr/0019-agent-routing-and-review.md)). **Before each turn**, a lightweight call inspects the message, Bot persona, candidate list, and recent review conclusions to output the chosen model, thinking level, and a one-sentence rationale. This call runs strictly on the default model of the default endpoint (avoiding recursion); if it fails, times out, or returns nonexistent models/levels, it falls back to rule-based defaults without retrying or blocking the user. It is skipped when a Bot has both model and thinking level pinned. **When a correction chain ends**, a review call evaluates the entire exchange—trigger message, chosen configuration, Bot response, subsequent user follow-ups, and turn outcome—classifying the issue as `model` (model shortfall), `task` (inherent task complexity), `prompt` (unclear prompt), or `none`, alongside an adjustment direction (`stronger`, `lighter`, `faster`, `cheaper`), correction rounds, and confidence score. Chain boundaries are determined during routing (checking whether the message continues the previous topic) with a 3-minute silence fallback; because the silence timer is in-memory, the daemon sweeps unreviewed chains from the last 24 hours on startup (up to 20 chains).
+- User follow-up messages are no longer filtered by keyword: every message is preserved intact for post-turn reviews. Previously, phrases like "this is incorrect" or "still not working" matched nothing, while "@director your @ to storyboard was wrong" matched incorrectly, penalizing all nine Bots and permanently excluding `grok-4.6`. Only reviews attributed to `model` with sufficient confidence are retained as learned experience.
+- Store qualitative conclusions rather than numeric scores: introduced a new `route_reviews` table (`fault`, `direction`, `rounds`, `confidence`, `reason`), allowing subsequent routing calls to read recent reviews directly. Removed `route_learned` (the penalty weight table), `isCritiqueMessage` (regex), and weight constants (`PENALTY_WEIGHT`, `CRITIQUE_WEIGHT`, `FAILURE_WEIGHT`, `POSITIVE_RELIEF`, `PENALTY_CAP`). Domain specialties, pricing, and thinking-level weights are now fallbacks when agent routing is unavailable.
+- Added `reason` (routing rationale) and `chain_id` (shared across multiple rounds in a correction chain) to `turn_route_decisions`. `GET /v1/sessions/:id/routes` now returns `reviews` alongside `items`.
+- Added `GET /v1/sessions/:id/composer-suggestions`: performs a brief, tool-free completion based on recent session transcript to generate up to 4 draft suggestions (chip label + full text) for the user's next message. Mentions only retain present members or `@everyone`, discarding fabricated `@` handles. Returns an empty list without blocking input or inserting transcript notes if no default endpoint is configured, or if the call fails or yields untrusted output. Hits models with `flash`, `mini`, `lite`, or `fast` in their name on the default endpoint (falling back to the default model) with an 8-second timeout.
+- Thinking level can no longer be pinned independently of a model. Either neither is pinned (both selected per message by the app), or a model is pinned with a designated thinking level: specifying `thinking_level` without a pinned model returns `422 thinking_level needs a pinned model`; pinning a model without specifying a thinking level falls back to that model's default level (the app's preference order for general messages); switching to a model that does not support the current level falls back to the new model's default level; clearing the model clears the thinking level. Synced documentation and system instructions for `update_profile` and `create_bot`. Existing databases automatically migrate partially pinned Bots on startup by clearing thinking levels that lack a model and filling default levels for Bots with only a model.
+- Thinking levels are no longer locked to `none`, `low`, `medium`, `high`. `POST /v1/models/probe` now returns `catalog` in addition to the model list: when `/models` returns objects with fields like `reasoning_efforts`, `thinking_levels`, or `reasoning.supported_efforts`, those level names (such as Grok's `xhigh` or Gemini's `max`) are recorded in `thinking_levels` for that model and forwarded directly to `reasoning_effort` in completion requests. Unspecified models retain the default four tiers. Bot pins, tool parameters, and routing respect these custom names; when unpinned, the app selects by tier weight (lighter for casual chat, heavier for reasoning). Levels can still be edited or customized in settings.
+- Scoped model routing experience per Bot (new `route_learned` table keyed by Bot, message category, model, and thinking level): routing only consults the Bot's own experience, so telling a Reviewer to "switch models" no longer affects the Writer's selections. Migrations copied previous roster-wide routing settings to each existing Bot before deletion; deleting a Bot removes its associated routing history.
+- Routing feedback is now attributed accurately: quote-replies attach feedback to the quoted turn, `@` mentions of a single Bot attach to that Bot's most recent turn, and otherwise feedback attaches to the most recent visible turn in the session (previously only the immediate preceding trigger message was checked, often misattributing feedback in group chats).
+- Added `bot_id` and `provider_id` to turn routing decisions (`turn_route_decisions`), recording `outcome` (`completed`, `failed`, `stopped`, `redirected`, `interrupted`) and failure types at turn completion. Endpoint rejections or incomplete outputs recorded half a penalty point; connectivity issues, timeouts, 5xx errors, and stream stalls are logged without penalizing; clean completions recorded one positive point offsetting penalties at 0.25; penalties capped at 3. Existing databases automatically add and backfill these columns on open.
+- Backfilled empty `outcome` fields in model routing records based on the final turn state (`completed`, `redirected`, `interrupted`, `stopped`, with `finished_at` set to the turn update timestamp), leaving in-progress turns untouched. Previously missing backfills caused older records to persistently display as "in progress" in Messenger.
+- Added `GET /v1/sessions/:id/routes`: returns a chronological breakdown of model selection, thinking level, message category, associated Bot and endpoint, outcome, and feedback received for each turn in the session.
+- Refactored the internal daemon architecture: split `store.ts` (over 3,400 lines) into domain modules under `store/` (`settings`, `providers`, `bots`, `sessions`, `messages`, `turns`, `approvals`, `routing`, etc.), and split `prompts.ts` into `prompts/` (system instructions, judgment instructions, transcript copy, domain-grouped built-in tool definitions). Public `Store` APIs and local HTTP endpoints remain unchanged.
+- Added `avatar` field to Bot results returned by `GET /v1/search`, displaying Bot avatars in global search results.
+- Added `available_models` to endpoints: tracks the full catalog returned by the endpoint's `/models` probe (`providers.available_models` column, supported in `POST/PATCH /v1/providers`, returned in `GET /v1/providers` and `provider.upsert`; rejects non-string arrays with `422 available_models must be an array of strings`). Used purely for selection in Messenger without affecting the enabled `models` list, default model, or routing; also included in the `list_endpoints` tool. Existing databases automatically add the column defaulting to empty.
+- Bots without a pinned endpoint now select models strictly from the default endpoint's catalog; newly added endpoints in settings no longer automatically enter candidate pools for all Bots. Using other endpoints requires an explicit endpoint pin on the Bot, and pinned models unique to other endpoints continue to work as pinned. Previously, a single routing penalty could inadvertently redirect an unpinned Bot to a newly added second endpoint.
+- Routing feedback now only reacts to follow-up messages addressing the model directly (e.g. chosen model, switch model, too slow, too shallow, too expensive, hallucination); content critiques like "incorrect", "problematic", or "try again" are no longer penalized against the previous turn's model choice.
+- Bots can pin a thinking level. `bots.thinking_level` (`reasoning_effort` in completions, named according to the model's catalog) is supported in `POST /v1/bots`, `PATCH /v1/bots/:id`, and `bot.upsert`; `null` allows per-message selection by the app. If the selected model supports the pinned tier at turn start, it is used; otherwise the app chooses. When a model is pinned, the tier must be in that model's `thinking_levels`, or returns `422 thinking_level must be one the pinned model supports`; switching models automatically clears the tier if unsupported by the new model. Added `thinking_level` to `update_profile` and `create_bot` (cleared with null or empty string) and returned in `list_bots`, with system instructions updated accordingly.
 
 ### Messenger
 
-- 新建群改成和新建 Bot 一样的居中弹窗，不再是只盖侧栏的滑出。成员不再是一长串复选框，而是可搜索的多选下拉：每行是 Bot 头像 + 名字 + 职责（没有图片的用名字首字，配色和名册一致），按名字或职责过滤；挑中的成为字段里的一枚带头像的芯片（点芯片的 ✕、或在空输入上按 Backspace 移出），挑完之前列表不关；Escape 先关列表，弹窗留着。
-- Bot 设置把原先分开的「头像」和「人设」并成一张「Bot 基础信息」卡片；归档单独放进「会话操作」，清空历史和删除对齐群组设置的「危险区域」行（标题、说明、右侧按钮），不再挤在同一排红框按钮里。
-- 输入框与上方自动提示选项区域采用半透明雾面玻璃（`--glass-composer` + `backdrop-filter: blur(16px)`）底栏，对话内容滚动穿过底部时自然模糊消解，消除内容文字与建议芯片、输入框视觉交叠混淆；内部输入框使用 `var(--input-bg)` 实体底色保持高对比度与清晰输入焦点；「回到底部」浮动按钮调整至底栏上方安全间距。
-- 聊天里代码块的复制按钮补回图标：那段 SVG 的圆角弧线少写了一个半径，浏览器会整条路径丢弃，按钮上只剩半个方框。
-- 打开的是哪个会话现在记在 URL 的 `?s=<id>` 上，打开的产物预览记在 `?p=<relpath>` 上：刷新、开发态热更新和窗口重载都回到刚才那个会话和预览，浏览器的后退 / 前进在会话之间走，关预览也进历史。链接指向已经删掉的会话时退回未选状态，不报错；预览路径非法（空、绝对路径、逃出工作区）则当没打开。用查询参数而不是路径，是因为打包后的窗口直接服务静态文件，没有 SPA 回退，路径形式一刷新就 404。设置、抽屉、模型选择记录和工作区浮层仍然不进 URL。
-- 对话正文不再随窗口拉满：消息流与输入框共用同一条居中栏（最大约 800px），宽屏两侧留白，行宽接近 Gemini / Grok / DeepSeek 一类聊天页。顶栏、侧栏和滚动条仍铺满主栏；窄屏仍用满可用宽度。
-- 浏览器开发态发现本机接口时，按当前页面的回环地址族拼 origin：`http://[::1]:5173` 连 `http://[::1]:17890`，`localhost` 仍连 `127.0.0.1`。Chrome 把跨地址族的回环请求当成本地网络访问拦掉，否则会一直显示「连不上运行时」。
-- 「模型选择记录」每行多两样东西：agent 选它时给的那句理由，以及这条纠正链的复盘结论（判成谁的问题、该往哪个方向调、用户改了几轮、一句说明）。判成模型问题的结论用警示色标出来——只有这一种会改变以后的选择。
-
-- 群聊输入框上方不再铺一排静态 `@everyone` / `@Bot` 芯片。改为根据当前对话建议下一步要发的草稿（需要叫醒谁时草稿里仍可带 `@`）；点芯片填进输入框，再按 Enter 发送。输入框里打 `@` 的补全列表不变。
-- 设置分类侧边栏拆出「基础偏好」与「关于」为独立分类：左侧导航栏在一级分类中新增「基础偏好」（外观主题、语言、登录启动）和「关于」（版本信息、检查更新与更新下载），原「通用」分类专注保留工作区目录配置与安全边界说明；在有未忽略新版本时，「关于」分类按钮同步显示红点提示。
-- Bot 面板和新建 Bot 里的「模型」与「思考等级」变成一组：模型选「自动」时不再单独列思考等级（两个都由应用每条消息挑），选了具体模型才出现思考等级，且只列**这个模型**支持的档——此前那排固定档位是所有模型的并集，会让你在 Grok 上挑到只有 Gemini 有的 `max`。切换模型时保留仍被支持的档，否则落到新模型的默认档，不会停在「选了模型没选等级」的半截状态。
-
-- 输入框改为浮在对话内容底部：外层容器采用透明背景悬浮于消息流之上，输入卡片采用半透毛玻璃与悬浮投影，位置不再紧贴窗口最下边缘；对话消息流延伸至窗口底部，内容滚动时自然从输入框后方穿行，底部留足呼吸间距，最新消息不被遮挡；「回到底部」悬浮按钮移至窗口右下角独立展示（位于居中输入框右侧区域），不再叠在输入框上方。
-- 重构设置面板「通用」（General）设置内容布局：将工作区目录、基础偏好与关于信息重构为卡片化视觉分组（配备图标徽标、次级说明与状态指示）；工作区卡片集成路径展示、更换目录入口与专属安全边界说明浮层；基础偏好卡片采用结构化行布局，外观主题与显示语言升级为原生分段胶囊控制（Segmented Control，带主题图标），系统登录启动升级为开关（Toggle Switch）；关于卡片整合版本号胶囊与更新检查状态操作栏，全面适配明暗主题及窄屏/移动端自适应折叠排版。
-- 「回到底部」按钮贴到对话流右下角（输入框正上方），不再悬在半空；点了会滚到真正的最后一行，中途不再停住。
-- 会话顶栏多一颗「模型选择记录」：点了从右侧滑出独立浮层（自己滚动，Escape 或点遮罩关掉），按时间倒序列出这个会话每轮开轮时挑的模型和思考等级、这条消息算哪类、是哪个 Bot、这轮用了多久、怎么结束（补全失败带失败原因），以及后来落在这一轮上的模型反馈（点开才展开正文）；配了多个端点时还标出这轮打到哪个端点。点一行跳回触发消息并高亮。不放进当前对话设置：一个跑了几百轮的群会把设置面板撑得看不见「会话操作」和「危险区域」。长列表只把看得见的那些行放进 DOM（上下各多留几行，其余用等高的空位顶着，行高按实际测量修正），几百轮的会话从几千个节点降到两百上下。数据走 `GET /v1/sessions/:id/routes`：打开时拉一次（不再随每次切会话预拉），开着时该会话每次轮次状态变化再拉一次（没有推送事件）。这里不显示 token 或花费。
-- 重构群聊设置（Group Settings）面板布局：扩展面板宽度至 420px 提供舒适排版空间；顶部群名片卡整合复合头像、成员统计徽章与群名修改行（未修改置灰、修改后高亮并支持 Enter 键直接保存）；群成员列表重新排版，创建者展示「创建者/Owner」徽标，Bot 成员的名字与模型标签同排芯片化对齐，彻底消除此前文字重叠冲突，并提供职责描述与轻量化移出按钮；将原先混杂挤压在单行的底部按钮彻底拆分为独立的「会话操作」卡片（群组归档/移出归档）与专属的「危险区域」卡片（清空聊天记录、删除解散群聊），每个操作配有明确影响说明与单行操作按钮，消除按钮文字折行与操作混淆。
-- 修复产物编辑器打开查找后语法高亮被语言配置冲掉；查找栏按钮悬停提示不再挡住按钮、也不再闪烁。
-- 设置「通用」和工作区向导里的工作区不再是可编辑输入框：路径只展示，点「选择文件夹 / 更换文件夹」打开系统文件夹对话框；浏览器开发态打不开系统对话框。向导仍可一键使用推荐目录 `~/real-bot-workspace`。
-- 侧栏底部工作区（⌘O）改为从右侧滑出的独立浮层：左侧完整工作区树、右侧自己的预览/编辑器，面板更宽，背后有遮罩。对话框旁那条产物预览只给聊天里点开的内容用，两者互不占用。Escape 先关工作区浮层。
-- 设置面板重构为左右分栏布局并放大尺寸：左侧常驻分类导航侧边栏（通用、模型服务、MCP 扩展，带图标、数量徽标及未配置警告），右侧为主内容区与操作底栏；整体尺寸扩至 880×640px，内容展示与端点列表更加开阔舒展；支持移动端及窄屏自适应响应式折叠。
-- 产物预览和工作区文本编辑器补上查找、替换和匹配段落折叠。Cmd+F 打开查找（工具条也有「查找」），Cmd+G / Shift+Cmd+G 下一个 / 上一个，Ctrl+G 跳行，Cmd+⌥F 替换；行号旁可折叠匹配的括号、HTML/XML 标签、Markdown 标题与围栏、`#region` 以及缩进块。Escape 先关查找再关预览。
-- 全局搜索结果对 Bot 和会话展示头像（Bot 显示其自身头像或名字首字底色徽标，会话显示包含多成员拼贴与溢出计数器的会话头像）；搜索框失去焦点（点击外部或失焦）时自动收起结果下拉浮层，再次聚焦搜索框且有搜索内容时重新展示；支持键盘方向键（↑ / ↓）在结果列表中上下移动高亮选中项，超出可视区自动平滑滚动，按 Enter 键直接跳转至当前选中的搜索结果项。
-- 输入法选词时按 Enter 只确认候选，不再把未上屏的拼音或半截词发出去。上屏后浏览器多打的那一下 Enter 也会吞掉；词已经在输入框里之后再按 Enter 才发送。
-- 设置面板「模型服务」里的端点卡片重新设计：顶部结构化展示端点图标与首字母标记、端点名称、默认端点徽标（★ 默认 / ★ Default）、密钥配置状态指示灯（● 已配置 / ○ 未配置）以及端点 Host 域名；右上角平铺「设为默认」「编辑」「删除」操作按钮（删除带确认浮层）；卡片主体展示默认模型标签（含高亮标识与闪电图标）、可用模型总数及前排模型芯片预览，支持点击主体快速呼出编辑，卡片外观与明暗主题、桌面及移动端视口自适应对齐。
-- 端点编辑浮层重做。填好端点 URL 和密钥停手约 0.7 秒就自动获取一次模型列表（同一对 URL + 密钥不重复拉，也可手动「重新获取」）；拉到的完整名单随端点保存，再进编辑时直接展示，不用再拉，旧端点名单为空时打开会自动拉一次。模型不再是「每行一个」的多行文本框，而是勾选列表：超过 6 条出现搜索、「全部 / 已启用」切换和全选 / 清空；名单里没有的名字从底部「手动添加模型名」补进去；什么都没勾且名单不超过 3 条时整单直接启用，更长的名单等你挑。每个已启用模型的决策属性收进该行右侧的折叠里：价格是数字框，思考等级和擅长领域都是点选芯片（擅长可加自定义标签），思考等级至少保留一档；端点广告了 `xhigh` / `max` 这类档会自动勾上，也可再手动加。默认模型从已启用的名字里选。向导里拉到的名单也会随第一个端点存下来。
-- 设置「模型服务」里删除端点改到卡片上，点了弹出确认，不再放在编辑浮层里。
-- 产物预览里点「源码」会切到 Monaco 编辑器，不再被空 iframe 挡住；切文件才退出源码，会话刷新不会把正在看的源码打回预览。Monaco 还没起来时先显示纯文本。HTML 源码按 Shiki 着色（含内嵌 CSS / JS）：开发态不再把巨大的 HTML 语法打进过期的 Vite 预构建块，Monaco 也会先注册 `html` 再挂分词器。源码着色用 `vitesse-light` / `vitesse-dark`，跟随应用明暗；聊天围栏仍是 github 主题。HTML 预览会写入 `color-scheme`，随外观切换。
-- 单文件 HTML 预览 iframe 允许脚本（`allow-scripts`，不含 `allow-same-origin`），CSS 动画和内联 JS 动效能在侧栏播；外链脚本仍受窗口 CSP 限制，和在 Chrome 里打开不是同一套网络权限。
-- Bot 面板不再有「保存」「关闭」按钮：所有改动自动保存。名字 / 职责 / 边界停手约 0.6 秒后 PATCH，头像 / 模型 / 思考等级点了就存；切换 Bot、返回群设置或关面板前先把未保存的发出去。人设卡片头显示「保存中… / 已自动保存」，字段错误仍画在字段下。Bot 自己改人设推来的 `bot.upsert` 只在你没有未保存改动时刷新，自动保存回显的修剪空白不会吞掉你正在输入的尾部空格。
-- 移除从群聊设置进入 Bot 详情时顶部冗余的头像与名字横幅（与下方头像编辑卡片和人设卡片内容重复），使人设配置在滑出面板中直接居顶呈现。
-- Bot 面板和新建 Bot 滑出多一排「思考等级」快捷档位：「自动」加上所选模型支持的档；换成不支持当前档的模型会自动退回「自动」。
+- Group creation modal redesigned to match the centered Bot creation dialog instead of a sidebar slide-over. Replaced the checkbox list with a searchable multi-select dropdown: each row displays Bot avatar, name, and duties (initial letter badge with roster colors when no image is set), filterable by name or duties. Selected members become avatar chips inside the field (removable via chip ✕ or Backspace on empty input); dropdown stays open until selection is finished; Escape closes the dropdown first while keeping the modal open.
+- Consolidated separate "Avatar" and "Persona" cards in Bot settings into a unified "Basic Information" card. Moved archive actions into "Session Actions", and aligned clear history and deletion into the "Danger Zone" row pattern (title, description, right-aligned button) matching group settings, replacing cramped red outline buttons.
+- Added a frosted glass bottom bar (`--glass-composer` + `backdrop-filter: blur(16px)`) behind the composer and suggestion chips, gracefully blurring chat messages scrolling underneath to eliminate visual overlap; inner input card uses a solid `var(--input-bg)` background to maintain contrast and input focus; repositioned the floating "Scroll to bottom" button with safe spacing above the bar.
+- Restored the copy icon on chat code blocks: fixed a missing corner radius in the SVG arc path that caused browsers to drop the entire path and render only a broken box.
+- Active session is now tracked via `?s=<id>` and artifact previews via `?p=<relpath>` in the URL: browser refresh, Vite HMR, and window reloads restore the active session and open preview; browser back and forward navigate across sessions, and closing a preview pushes history. Invalid session links gracefully deselect without errors, and illegal preview paths (empty, absolute, or escaping workspace) are treated as closed. Uses query parameters instead of pathnames because packaged desktop windows serve static files without SPA fallback routing, which would 404 on refresh. Settings, drawers, model selection logs, and workspace overlays remain out of the URL.
+- Message transcript no longer stretches edge-to-edge: the message stream and composer now share a centered reading column (max width ~800px) with comfortable gutters on wide screens, matching reading widths in Gemini, Grok, and DeepSeek. Top bar, sidebar, and scrollbars still span the full width; narrow screens continue to utilize full available space.
+- Local API discovery in browser dev mode now resolves origins matching the page's loopback address family: `http://[::1]:5173` connects to `http://[::1]:17890`, while `localhost` connects to `127.0.0.1`. Prevents Chrome from blocking cross-family loopback requests as private network access, which previously led to persistent "Cannot connect to runtime" states.
+- Model Selection Log rows now display two additional insights: the routing agent's one-sentence rationale, and the post-chain review verdict (blame attribution, suggested direction, number of correction rounds, and explanation). Model-attributed issues are highlighted in warning colors, indicating they affect future routing decisions.
+- Replaced the static `@everyone` / `@Bot` chips above the group composer with context-aware draft suggestions for the user's next message (which may include `@` mentions when waking bots); clicking a chip populates the composer, ready to send with Enter. In-composer `@` autocomplete remains unchanged.
+- Split "Preferences" and "About" into dedicated top-level categories in Settings: the navigation sidebar now features "Preferences" (appearance theme, language, launch at login) and "About" (version info, update checks, and download updates), leaving "General" focused on workspace directory configuration and security boundaries. The "About" category button displays a red badge when an unignored update is available.
+- Grouped "Model" and "Thinking Level" together in Bot panels and creation dialogs: selecting "Auto" hides individual thinking level controls (both chosen per message by the app), while selecting a specific model exposes thinking levels strictly supported by **that model**. Previously, the fixed tier list was a union of all models, allowing invalid configurations like selecting Gemini's `max` on Grok. Switching models preserves compatible tiers or falls back to the new model's default, eliminating half-configured states.
+- Floated the composer above the chat view: outer container is transparent and suspended over the message stream, while the input card features frosted glass and drop shadows lifted above the bottom window edge. Chat messages scroll smoothly underneath the composer with bottom padding ensuring the latest messages are unobstructed; the "Scroll to bottom" button sits independently in the bottom-right corner instead of overlapping the composer.
+- Reorganized General Settings layout into card-based visual groupings with icons, secondary descriptions, and status indicators: Workspace card integrates path display, directory picker, and security boundary modal; Preferences card uses structured row layouts with segmented controls (and icons) for appearance theme and language, plus a toggle switch for launch at login; About card integrates version badges and update check actions, responsive across light/dark themes and narrow screens.
+- Anchored the "Scroll to bottom" button to the bottom-right of the transcript stream, resolving mid-scroll hangs to reliably reach the true bottom of the conversation.
+- Added a "Model Selection Log" button to session header: opens a dedicated slide-over overlay (independent scroll, dismissible via Escape or backdrop click) listing chronological model routing decisions, chosen thinking level, message category, Bot, duration, outcome (including failure reasons), endpoint tags, and associated feedback (expandable on click). Clicking a row navigates to and highlights the trigger message. Keeps logs separate from session settings to prevent long histories from burying session actions and danger zones. Virtualizes long lists to render only visible rows plus overscan, reducing DOM nodes from thousands to ~200. Data is fetched via `GET /v1/sessions/:id/routes` on open and updated on turn state transitions without showing tokens or cost.
+- Redesigned Group Settings panel layout: expanded width to 420px; top group card integrates composite avatars, member count badges, and inline group name editing (dimmed when clean, highlighted when modified with Enter to save); member list shows "Owner" badge for creator, aligns Bot names and model chips side-by-side to eliminate text collisions, and provides duty descriptions and removal buttons; split bottom actions into distinct "Session Actions" (archive/unarchive) and "Danger Zone" (clear chat history, delete group) cards with clear impact warnings and full-width action rows.
+- Fixed an issue in the artifact editor where opening find reset syntax highlighting; hover tooltips on find bar buttons no longer flicker or obscure the buttons.
+- Workspace path inputs in General Settings and the onboarding wizard are now read-only displays: clicking "Choose folder / Change folder" invokes the native system folder dialog (system dialog unavailable in browser dev mode). The wizard retains the one-click option for the recommended `~/real-bot-workspace` path.
+- Workspace explorer at sidebar footer (⌘O) now opens as an independent slide-over overlay from the right: contains a full file tree on the left and its own preview/editor on the right with a background backdrop. The inline artifact preview beside chat is reserved for links clicked in conversations, keeping the two surfaces independent. Escape closes the workspace overlay first.
+- Redesigned Settings modal into a split two-column layout expanded to 880×640px: persistent navigation sidebar on the left (General, Model Services, MCP Extensions, with icons, count badges, and unconfigured alerts), main content and action bar on the right, fully responsive with adaptive collapsing on narrow/mobile viewports.
+- Added find, replace, and code folding to artifact previews and workspace editor: Cmd+F for find (also in toolbar), Cmd+G / Shift+Cmd+G for next/previous, Ctrl+G for go to line, Cmd+⌥F for replace; folding gutter supports matching brackets, HTML/XML tags, Markdown headings and fences, `#region`, and indentation blocks. Escape closes find before closing the preview.
+- Global search results now render avatars for Bots and sessions (Bot avatars or initial-letter badges, composite member collages with overflow counts for sessions); dropdown dismisses on blur/click outside and reopens on focus; keyboard arrow navigation (↑ / ↓) scrolls smoothly through results, and Enter navigates directly to the selected item.
+- Fixed IME composition on Enter: pressing Enter while selecting IME candidates now only commits the candidate text instead of sending unfinished phonetic strings. Subsequent stray Enter events from the browser after composition ends are suppressed; only pressing Enter when text is committed sends the message.
+- Redesigned Endpoint cards under Model Services in Settings: header displays endpoint icon/monogram, name, default badge (★ Default), API key status indicator (● Configured / ○ Unconfigured), and host domain; top-right actions include "Set as default", "Edit", and "Delete" (with confirmation modal); card body shows default model badge (with highlight and lightning icon), total available models, and model chip previews, with click-to-edit support and responsive styling across themes.
+- Reworked endpoint editing overlay: automatically probes model catalog ~0.7s after typing URL and API key (avoids duplicate requests for unchanged pairs, with manual "Refetch" option); probed catalog is saved with the endpoint for instant display on subsequent edits. Replaced multi-line model inputs with a checkbox list featuring search (when >6 models), "All / Enabled" filter, and Select All / Clear; custom model names can be added at the bottom; catalogs with ≤3 models auto-enable by default when none are checked. Enabled model attributes are tucked into collapsible row settings: numeric price inputs, chip selectors for thinking levels and specialties (with custom tag support); advertised tiers like `xhigh` or `max` are auto-checked. Default model is selected from enabled models. Catalogs probed during the onboarding wizard are also saved.
+- Moved endpoint deletion from the edit overlay directly to the card in Model Services settings, with a confirmation prompt.
+- Clicking "Source" in artifact preview switches to Monaco editor without being obscured by empty iframes; viewing source persists across session refreshes until switching files. Falls back to plaintext before Monaco loads. HTML source is highlighted with Shiki (including embedded CSS/JS) using `vitesse-light` / `vitesse-dark` matching app theme; chat fenced code blocks continue to use GitHub themes. HTML previews inject `color-scheme` following appearance changes.
+- Single-file HTML preview iframe allows scripts (`allow-scripts`, without `allow-same-origin`), enabling CSS animations and inline JavaScript effects in the sidebar; external scripts remain restricted by window CSP.
+- Removed "Save" and "Close" buttons in Bot panels: all modifications auto-save. Name, duties, and boundaries auto-patch ~0.6s after typing stops; avatar, model, and thinking level save on click; unsaved changes flush before switching Bots, returning to group settings, or closing panels. Card header indicates "Saving... / Auto-saved", with inline error validation. External `bot.upsert` events only refresh fields when there are no uncommitted user edits, and auto-save trimming does not eat trailing spaces while typing.
+- Removed redundant avatar and name banner when opening Bot details from Group Settings, allowing persona configuration to render directly at the top of the slide-over panel.
+- Added quick thinking level selector chips to Bot panel and creation slide-over: offers "Auto" alongside tiers supported by the selected model, falling back to "Auto" when switching to an incompatible model.
 
 ### Desktop
 
-- 新增 `pick_workspace_folder`：打开系统文件夹对话框（可新建文件夹），把选中的绝对路径回给信使。
-- 窗口 CSP 允许 HTML 预览 iframe 跑内联脚本和样式（`script-src` / `style-src` 的 `'unsafe-inline'`，以及 `script-src-attr`），外链和本机接口范围不变。
+- Added `pick_workspace_folder`: opens native system folder picker (with new folder creation support) and returns the selected absolute path to Messenger.
+- Window CSP allows inline scripts and styles (`'unsafe-inline'` in `script-src` / `style-src` and `script-src-attr`) for HTML preview iframes, keeping external link and local API restrictions unchanged.
 
 ## 0.1.0-rc.1 — 2026-09-18
 
-未签名的 macOS rc。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
 
 ### Daemon
 
-- 启动时先占本机接口端口，抢不到就不打开状态库、也不把别人的活轮标成中断。开发态 `--watch` 热重载或健康检查超时再拉起一份时，不再把群里正在跑的轮次误标成「中断」。健康在 socket 就绪后立刻可答，避免窗把启动空档当成守护进程已死。
-- `GET /v1/workspace/file` 不再因超过 1MB 拒绝，预览栏可以打开区内视频等较大文件。1MB 上限仍只约束 `PUT /v1/workspace/file` 覆盖 UTF-8 文本。
-- 系统指令写清技能与 MCP 的选用顺序：技能是工序，MCP 是能力。先看技能目录，命中就 `read_skill` 照做，正文点到的 MCP 工具按 tools 数组里的名字调用；没有命中的技能才直接按「本轮 MCP」段挑工具。技能不新增工具，也不替代 MCP；「技能」段和「本轮 MCP」段的引言同步说明这条顺序。
-- MCP 服务器多一条名册级用法备注 `usage_note`（做什么、何时用、何时不用），进每一跳的「本轮 MCP」段并排在服务器自带 `instructions` 前面；备注优先于服务器说明，留空则只渲染服务器说明。`add_mcp_server` / `update_mcp_server` 可带 `usage_note`，改备注直接执行、不等批准，改 command·args / url / headers 也不清掉它；空字符串清掉，上限 2000 字。本机接口 `POST/PATCH /v1/mcp-servers` 同一字段。
-- 技能可声明依赖的 MCP 服务器名 `uses`（`create_skill` / `update_skill` 与 `POST/PATCH /v1/skills` 同一字段，最多 16 个，按名字不分大小写去重）。技能目录里每条技能下多一行「依赖 MCP：…」，本轮未连接的标「（本轮未连接）」并提示正文照做不了时直说或用 `ask_user`，不拿别的工具凑。
-- `read_skill` 会把正文里写的、但不在本轮 tools 数组里的 `mcp_` 工具名列在 `stale_tool_names` 里并附提示：服务器改名、停用或撞名后缀变了都会让硬编码的名字失效，Bot 据此按「本轮 MCP」段找现名并用 `update_skill` 改正文，而不是调用时才报错。
-- 新增工具选择评估：`pnpm --filter @real-bot/daemon eval:tool-selection --base-url … --model …`（密钥走环境变量 `REAL_BOT_EVAL_API_KEY`）。用真实轮次同一套 system（技能目录 + 本轮 MCP）和 tools 数组，对 `apps/daemon/eval/tool-selection-cases.json` 里的每条触发消息各打一次补全，只看第一个工具调用是否命中期望（读对技能 / 选对 MCP 工具 / 用内建工具 / 直接回复），并检查禁止调用的工具和编造的工具名。按模型、类别、语言汇总命中率，结果写到 `.scratch/tool-selection-eval/`。自带 16 条中英文用例，覆盖技能命中、相近技能干扰、MCP 直选、用法备注区分同名服务器与只读约束、内建文件工具和纯聊天。
-- Bot 可以有自己的技能：具名工序（何时用 + 怎么干），挂在该 Bot 上，不是名册共享、不是工作区 skill 包。启用中的技能以目录进入每一跳 system；正文用 `read_skill` 按需读进本轮。Bot 用 `create_skill` / `update_skill` / `delete_skill` 自己维护，改完不插转录条。本机接口 `GET/POST /v1/skills`、`PATCH/DELETE /v1/skills/:id`。
-- 中断行可点「继续」：`POST /v1/turns/continue` 以该条系统消息为触发条新开一轮，不重试断掉的工具；下一轮仍只看一次「上次断了」。
-- Bot 点名写错名字不再静默丢失。`@分镜` 这类缩写若只能对上一位在场成员（是其名字的前缀或后缀，至少两个字，忽略大小写），就按那位成员处理并叫醒；完全对不上时 `send_message` 先返回 `unknown_mention` 并列出在场成员的完整名字，让 Bot 在同一轮改正重发，再次仍对不上才发出，并在群里插一条系统提示「@xx 没有匹配到群成员。在场：…」。群轮的局面块新增「在场成员（点名请逐字写全名）」一行；系统提示与 `send_message` 说明要求点名逐字复制。未解析的 @ 按空白与中英文标点断词，不再把整句吞成一个名字。
-- `@` 后带数字的词不再当成写错的点名。制片写「峰值 −1.0 dB @37.79s」曾被截成 `@37` 并在群里插一条「@37 没有匹配到群成员」；现在 `@37.79s`、`@f96`、`@t37`、`@14:30`、`@2026-09-18` 这类「在……」的写法既不插系统提示，`send_message` 也不再为它返回 `unknown_mention`。只有它恰好唯一缩写了一位在场成员（如 `@3D` 对「3D师」）时仍按那位成员处理。
-- `send_message` 传 `parent_id` 是引用回复，留在主转录。引用 Bot 时正文自动加上 `@对方`（已有点名或 `@everyone` 则不重复），对方必须下场。Bot 可按情况选用，不是每条都要引用。
+- Daemon claims the local API port on startup before opening the database, avoiding falsely marking active turns as interrupted if the port cannot be acquired. Prevents dev mode `--watch` reloads or health check retries from interrupting active group turns. Health checks respond immediately once the socket is ready, preventing the window from assuming the daemon died during startup.
+- `GET /v1/workspace/file` no longer rejects files larger than 1MB, allowing previews of larger files like videos within the workspace. The 1MB limit remains in effect only for UTF-8 text writes via `PUT /v1/workspace/file`.
+- Clarified tool precedence in system instructions: Skills represent procedures, MCP represents capabilities. The Bot first checks the skill catalog; on match, it reads the skill via `read_skill` and calls MCP tools named in the body using the names in the tools array. If no skill matches, it picks tools directly from the "MCP Tools This Turn" section. Skills do not introduce new tools or replace MCP; introductory text in both sections explains this precedence.
+- Added a roster-wide `usage_note` for MCP servers (what it does, when to use, when not to use), prepended before server-provided `instructions` in the "MCP Tools This Turn" section with higher priority. `add_mcp_server` and `update_mcp_server` support `usage_note`; modifying notes executes immediately without approval and preserves command/args/URL/headers; empty string clears the note (max 2,000 characters). Supported in local API `POST/PATCH /v1/mcp-servers`.
+- Skills can declare dependent MCP server names via `uses` (`create_skill`, `update_skill`, and `POST/PATCH /v1/skills`, up to 16 servers, deduplicated case-insensitively). Skill catalog entries display a "Uses MCP: ..." line; disconnected servers are marked "(disconnected this turn)" with instructions to report or ask user rather than substituting unrelated tools.
+- `read_skill` returns `stale_tool_names` for `mcp_` tool names cited in skill text that are missing from the current tools array, prompting the Bot to find current names in the MCP section and update the skill body via `update_skill` instead of failing at invocation time.
+- Added tool selection evaluation suite: `pnpm --filter @real-bot/daemon eval:tool-selection --base-url … --model …` (`REAL_BOT_EVAL_API_KEY`). Uses identical system prompts (skills catalog + MCP tools) and tool definitions to evaluate trigger messages in `apps/daemon/eval/tool-selection-cases.json`. Verifies first tool calls against expectations (correct skill, MCP tool, built-in tool, or direct reply) and detects forbidden or hallucinated tools. Summarizes accuracy by model, category, and language into `.scratch/tool-selection-eval/`, with 16 bilingual test cases covering skill triggers, distractor skills, MCP selection, usage note constraints, built-in file tools, and direct chat.
+- Bots can have their own Skills: named procedures (when to use + how to do it) scoped to individual Bots rather than shared across the roster or stored in workspace packages. Enabled skills enter each turn's system prompt as a catalog; full instructions are loaded on demand via `read_skill`. Bots manage skills using `create_skill`, `update_skill`, and `delete_skill` without injecting chat transcript messages. Exposed in local API `GET/POST /v1/skills` and `PATCH/DELETE /v1/skills/:id`.
+- Interrupted turns can be resumed via a "Continue" button: `POST /v1/turns/continue` opens a new turn triggered by the interruption system message without retrying the failed tool call; the subsequent turn receives a one-time "interrupted last time" context cue.
+- Resilient Bot mention parsing in group chats: abbreviations matching a unique present member as an unambiguous prefix or suffix (min 2 characters, case-insensitive) resolve and wake that member. Unmatched mentions cause `send_message` to return `unknown_mention` with full member names for correction in the same turn; uncorrected mentions post with a system warning ("@xx did not match any group member. Present: ..."). Added a "Present members (copy exact names when mentioning)" prompt line. Unresolved `@` tokens break on whitespace and punctuation rather than consuming the entire sentence.
+- Numeric mentions (e.g. `@37.79s`, `@f96`, `@t37`, `@14:30`, `@2026-09-18`) representing timestamps or frames are no longer treated as misnamed Bot mentions, avoiding false `unknown_mention` errors and missing member warnings, unless they uniquely abbreviate an active member (such as `@3D` matching "3D Artist").
+- `send_message` with `parent_id` creates a quote-reply in the main transcript. Quoting a Bot automatically prepends `@bot` (unless already mentioned or `@everyone`), prompting them to participate. Bots use this contextually without requiring quotes on every message.
 
 ### Desktop
 
-- 健康检查暂时失败时，若 `local-api.json` 里的 pid 还活着，窗口不再拉起第二份守护进程。避免开发态 `--watch` 热重载空档把群里的活轮标成中断。
+- Prevented spawning duplicate daemon processes during temporary health check failures if the PID in `local-api.json` is still alive, avoiding marking active group turns as interrupted during dev mode `--watch` reloads.
 
 ### Messenger
 
-- 聊天正文里的工作区路径（表格单元格、内联链接、反引号）点开后从工作区读字节预览。不再要求该路径已挂成该条消息的附件；没有附件记录时与工作区浏览同一条 `GET /v1/workspace/file`。
-- MCP 编辑弹窗新增「用法备注」多行框：写给所有 Bot 看，排在服务器自带说明前面；只改备注不用确认直接 PATCH，留空则只用服务器自带说明。
-- 人设抽屉的技能编辑器新增「依赖的 MCP」一栏：填正文要调的 MCP 服务器名，逗号分隔，可留空；保存进 `uses`。
-- 人设抽屉可列表、编辑、停用和删除该 Bot 的技能；对话里 Bot 改了会即时刷新。
-- 群消息里的 @ 与守护进程同一套解析：缩写能唯一对上成员时显示为该成员的完整名字芯片；对不上的 @ 用虚线下划线弱提示，悬停说明「这个 @ 没有匹配到群成员」。
-- `@37.79s`、`@f96`、`@14:30` 这类 `@` 后带数字的写法按普通文字显示，不再加「没有匹配到群成员」的虚线下划线。
-- 主转录消息悬停工具栏在复制旁增加「回复」。点了会在作曲栏挂上被引的那一条，发送带 `parent_id`；引用 Bot 时正文自动加上 `@对方`。气泡里显示引用条，点一下滚回原消息。引用回复留在主转录，不再藏进侧栏线程。
-- 中断行和其他 Bot 消息一样带头像与名字，并可点「继续」：按钮贴在「中断」气泡后面，该 Bot 新开一轮从断处接着做，不重试断掉的那一下。
+- Workspace file paths in chat messages (table cells, inline links, backticks) can be clicked to preview directly from the workspace via `GET /v1/workspace/file`, without requiring explicit message attachments.
+- Added a multi-line "Usage Notes" input to MCP server editing modals: visible to all Bots and prioritized above server-provided descriptions; updating notes executes an immediate PATCH without confirmation, and leaving blank defaults to server instructions.
+- Added "Uses MCP" field to the skill editor in Bot persona drawers: comma-separated list of required MCP server names saved to `uses`.
+- Bot persona drawers now support listing, editing, toggling, and deleting skills, with live updates when modified by Bots during conversation.
+- Mirrored daemon mention parsing in Messenger UI: unique abbreviations render as full member chips, while unmatched `@` mentions display a subtle dashed underline with a tooltip explaining that no member matched.
+- Mentions with trailing numbers or timestamps (`@37.79s`, `@f96`, `@14:30`) render as plain text without dashed missing-member underlines.
+- Added "Reply" button to message hover toolbar next to Copy: attaches the quoted message to the composer, sends with `parent_id`, and auto-prepends `@bot` when replying to a Bot. Quoted snippets appear in chat bubbles and scroll to original messages on click. Quote-replies stay in the main transcript rather than sidebar threads.
+- Interrupted messages now render Bot avatar and name with an attached "Continue" button: clicking starts a new turn picking up from where it was interrupted without retrying the failed action.
 
 ### Landing
 
-- 设计理念不再整页铺开 CONTEXT.md：总览只保留前言和按主题的术语索引，术语拆到人与名册、会话、协作、工作区、运行时、模型与工具、批准与边界七页。文档区左侧是分组导航，右侧是本页目录，页脚可上一页 / 下一页；旧的 `/manifesto#term-…` 深链接会跳到对应主题页。
+- Reorganized Design Manifesto (`/manifesto`) instead of rendering the entire `CONTEXT.md` on a single page: the overview retains the introduction and topical glossary index, splitting terms across seven dedicated pages (People & Roster, Sessions, Collaboration, Workspace, Runtime, Models & Tools, Approvals & Boundaries). Includes sidebar navigation, on-page table of contents, and next/previous footers, with automatic redirects for legacy `/manifesto#term-…` deep links.
 
 ## 0.1.0-alpha.3 — 2026-09-17
 
-未签名的 macOS alpha。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。
+Unsigned macOS alpha. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
 
 ### Daemon
 
-- 保存工作区路径时，尚不存在的绝对目录会自动创建。相对路径和指向文件的路径仍拒绝。首次向导里点「使用推荐目录 (~/real-bot-workspace)」再完成设置，不再因目录未建好而退回第一步。
-- 群里同一 Bot 同时最多一轮进行中：再被 `@` 或判断下场时听进那一轮，不再分身。私聊、日程和显式「另开一轮」仍可同时多轮。
-- 群轮补全会看到一条只含事实的局面（谁有活轮、谁叫醒、用户最近一句），判断调用同样带上；达成一致仍由 Bot 自己停嘴，没有跳数或花费熔断。
+- Automatically create nonexistent absolute directories when saving workspace path, while continuing to reject relative paths and files. Prevents the onboarding wizard from kicking users back to step 1 when choosing the recommended directory (`~/real-bot-workspace`).
+- Limit active turns to at most one per Bot at a time in group chats: subsequent `@` mentions or join decisions fold into the active turn rather than spawning parallel instances. Direct chats, routines, and explicit forks can still run concurrently.
+- Injected factual situation context into group completions and judgment calls (who has active turns, who woke whom, latest user message); consensus remains driven by Bots concluding naturally without arbitrary hop or spend fuses.
 
 ### Desktop
 
-- 窗口进程在启动 15 秒后、之后每 6 小时向 GitHub Releases 查询新版本；请求只走 Rust 侧的 `ureq`，结果在进程内缓存 30 分钟，手动点「检查更新」强制刷新。当前版本是预发布（如 `0.1.0-alpha.3`）时所有 release 都参与比较，是正式版则只看正式 release。可设 `REAL_BOT_UPDATE_FEED` 指向本地假源做验证。
-- 新增打开发布页 / 对应芯片 `.dmg` 的命令，只放行 `https://github.com/Blackman99/real-bot/` 前缀的地址。
+- App window queries GitHub Releases for updates 15 seconds after startup and every 6 hours thereafter: requests use Rust `ureq`, caching results for 30 minutes, with manual "Check for updates" forcing a refresh. Prerelease builds compare against all releases while stable builds check only stable releases. Supports `REAL_BOT_UPDATE_FEED` for local test feeds.
+- Added commands to open release pages and download chip-specific `.dmg` files, restricted to URLs starting with `https://github.com/Blackman99/real-bot/`.
 
 ### Messenger
 
-- 侧栏底部工具条收紧：设置按钮移到右侧与外观菜单并列，图标按钮改为无边框、悬停才显示边框与阴影，间距与角标随之缩小。打开设置时按钮保持选中态。
-- 设置 → 通用 新增「关于」卡：显示当前版本、「检查更新」按钮；有新版本时可「下载更新」（对应芯片 `.dmg`）、「查看发布说明」、「忽略此版本」，未忽略的新版本会让侧栏设置齿轮显示小红点；忽略记录只存在本机，浏览器开发态（无 Tauri）不显示该卡。
+- Compacted sidebar footer toolbar: moved settings button adjacent to theme menu, switched icon buttons to borderless style showing borders and shadows on hover, and reduced spacing and badge sizes. Settings button maintains active state when settings modal is open.
+- Added "About" card in Settings → General: displays current version and "Check for updates" button; shows "Download update", "View release notes", and "Ignore this version" when an update is detected, triggering a red indicator dot on the sidebar settings gear. Ignored versions are stored locally; card is hidden in browser dev mode without Tauri.
 
 ### Landing
 
-- 窄屏演示改为「聚焦缩放」：不再把整扇窗口缩到看不清，而是按每步标注的位置把镜头推到相关区域（设置里的密钥框、批准卡、右侧编辑器等），场景切换时平滑移动。
-- 往回滚动时直接显示上一步的终态，不再从头重播；相邻步骤同时进入判定带时按离视口中心最近的一步切换。
-- 进度条改成八个可点击的步骤块（最小 32px 高，当前步显示标题），步骤标题本身也可点击跳转。
-- 900px 以下新增折叠菜单，包含全部导航项、语言切换与 GitHub；页脚补「下载」与「边界」入口。
-- 首屏与下载卡片显示当前版本号（构建时读 `tauri.conf.json`）；`pnpm` 命令、Gatekeeper 放行命令和终端示例都有复制按钮；演示区说明补一句「窗口为示意重建」。
-- 外观切换的选中态改由首屏脚本写入的 `data-theme-preference` 驱动，水合前不再闪一下；小字颜色加深到满足对比度要求；每步标注对读屏用户以隐藏文本提供；流式光标遵守减少动效设置。
-- 设计理念与路线图页面加目录：宽屏在右侧粘性显示，窄屏为可展开的「目录」块；标题与 CONTEXT.md 的每个术语都有锚点，可直接深链接。
+- Focused zoom for narrow-screen interactive demo: smoothly pans and zooms into relevant UI areas (API key input, approval card, editor) rather than shrinking the entire window.
+- Reverse scrolling renders the final state of previous steps directly without restarting animations; step transitions trigger based on proximity to the viewport center.
+- Redesigned demo progress bar into eight clickable step segments (minimum height 32px) showing the active step title, with direct navigation on click.
+- Added collapsible navigation menu for viewports under 900px containing navigation links, language toggle, and GitHub; added "Download" and "Boundaries" links to footer.
+- Hero section and download cards display current version number (read from `tauri.conf.json` at build time); added copy buttons to `pnpm` commands, Gatekeeper bypass snippets, and terminal examples.
+- Theme switcher active state is driven by `data-theme-preference` in initial HTML script to prevent pre-hydration flicker; improved small text contrast; screen-reader accessible text for demo annotations; streaming cursor respects `prefers-reduced-motion`.
+- Added sticky table of contents on wide screens and collapsible TOC blocks on narrow screens for Manifesto and Roadmap pages; headings and CONTEXT.md terms provide anchor links for direct deep linking.
 
 ### Documentation
 
-- CONTEXT.md 开头的 `**WIP：**` 改为 `**WIP**：`，让加粗能被 Markdown 正确解析。
+- Fixed bold formatting syntax in `CONTEXT.md` header from `**WIP：**` to `**WIP**：`.
 
 ## 0.1.0-alpha.2 — 2026-09-17
 
 ### Landing
 
-- 站点所有「开发中 / WIP」措辞改为 Alpha。导航与首屏新增「下载」入口，指向最新 GitHub Release；「获取」区块加下载卡片（Apple 芯片 / Intel 两种未签名 .dmg 与 Gatekeeper 放行命令），从源码启动的说明保留。
-- 品牌图页面新增 `variant=hero`：由群聊、待批准卡和产物编辑器三扇窗口组成的 1600×900 组合图，亮 / 暗两版，供 README 使用；OG 图与社交预览图按 Alpha 措辞重新生成。
+- Replaced "In development / WIP" wording across the site with "Alpha". Added "Download" entry in navigation and hero linking to the latest GitHub Release; added download cards for Apple silicon and Intel unsigned `.dmg` files along with Gatekeeper bypass commands.
+- Added `variant=hero` to branding asset page: 1600×900 composite image featuring group chat, approval card, and artifact editor windows (light/dark versions) for READMEs; regenerated Open Graph and social preview images reflecting Alpha status.
 
 ### Messenger
 
-- 聊天里带中文等非 ASCII 的工作区路径链接点开后，预览栏不再显示百分号编码路径，会打开原来的文件。
+- Fixed non-ASCII workspace path links in chat: clicking Chinese or special characters now resolves to the actual file instead of displaying percent-encoded paths in the preview pane.
 
 ### Documentation
 
-- README 重写为精简版：顶部是应用界面组合大图（亮 / 暗两版，随 GitHub 外观切换），其下只留一句定位、官网 / 下载 / 语言三个入口、四枚徽章，以及「它做什么」「获取」「状态」「参与」四段；中英文同步。新增 `docs/assets/`：README 组合图与 1280×640 的仓库社交预览图，均由落地页开发态的 `/og/[lang]` 品牌图页面截图生成。
-- GitHub 仓库补充发现性 topics（ai-agents、multi-agent、llm、model-context-protocol、desktop-app、svelte、typescript、rust），移除 wip；描述改为 Alpha 措辞，主页保持指向落地页。社交预览图需在仓库设置里手动上传，步骤见开发说明。
-- 默认 `README.md` 改为英文，中文说明移至 `README.zh.md`。
+- Streamlined README layout: hero composite banner at the top (light/dark responsive), one-sentence positioning, website/download/language links, badges, and four concise sections ("What it does", "Getting started", "Status", "Contributing"), aligned across English and Chinese. Added `docs/assets/` containing README banners and 1280×640 repository social preview images generated from `/og/[lang]`.
+- Added repository topics (`ai-agents`, `multi-agent`, `llm`, `model-context-protocol`, `desktop-app`, `svelte`, `typescript`, `rust`) and updated repository description for Alpha.
+- Made `README.md` canonical in English, moving Chinese documentation to `README.zh.md`.
 
 ## 0.1.0-alpha.1 — 2026-09-17
 
-未签名的 macOS alpha。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。
+Unsigned macOS alpha. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
 
 ### Daemon
 
-- 补全流中途卡住时，已写出的正文或完整工具调用会收下并继续这一轮，不再插入「这一轮没写完：回复中途没有下文了」。还没有可用输出时会自动再试；注释心跳会续上等待。同一端点同时最多两条流，群里多个 Bot 并行时其余排队，避免把端点打挂。
+- When completion streams stall mid-way, partial text or completed tool calls are preserved to continue the turn instead of inserting an aborted turn message. Retries automatically when no usable output was generated; comment heartbeats maintain stream liveliness. Limited concurrent streams per endpoint to at most 2, queuing excess group bot turns to avoid overwhelming providers.
 
 ### Desktop
 
-- 应用图标换成新的品牌标识：青绿圆角方块里两个叠放的队友头像（白与芥黄），源文件 `apps/desktop/src-tauri/icons/app-icon.svg`，用 Tauri CLI 重新生成了 `.icns` / `.ico` / 各尺寸 PNG；Dock、托盘与安装包都使用这套图标。
+- Updated application icon to brand identity: teal rounded square with stacked teammate avatars (white and mustard yellow), generated via Tauri CLI from `apps/desktop/src-tauri/icons/app-icon.svg` across `.icns`, `.ico`, and PNG sizes for Dock, tray, and DMG installers.
 
 ### Messenger
 
-- 窗口 favicon 从 Svelte 占位标换成 Real Bot 标识。
-
-- 作曲栏 `@` 点名候选超出列表高度时，方向键移动高亮会把当前项滚进视口。
-- 开发态 5173 已是本包 Vite 时复用，不再因端口占用退出；被其他进程占用才报错。
-- 全局搜索的消息命中会标出所属会话；点击打开该会话并滚到命中的那条消息，短暂高亮提示。线程回复落到主转录里的父消息。
-- 聊天正文里的 `@群成员` 会渲染成带头像和名称的 chip，点击打开该 Bot 人设；`@everyone` 同样显示为 chip，但不打开人设。代码块里的 `@` 仍是纯文本。
-- 预览面板不再提供下载按钮；目录和未知类型仍可用系统打开或在 Finder 显示。
-- 群聊不论是否有进行中的轮，作曲栏和流式气泡都不出现 Stop。群任务发出后不能用按钮打断；要停就发消息让 Bot 们停下来。`POST /v1/turns/stop` 和托盘 Stop 会拒绝或跳过群轮。清空历史、归档、删除群仍会结束该会话的活轮。
-- 同一条消息挂了多个工作区路径时，气泡里收成一个入口（点开后预览栏左侧是引用路径树），不再铺一整排文件芯片。
-- 产物预览的文本改为只读 CodeMirror 查看器：行号、查找（无替换）、折叠、括号匹配、换行、复制，以及用系统打开 / 在 Finder 显示。Markdown 和单文件 HTML 默认仍看渲染结果，可切源码。聊天围栏代码块继续用 Shiki。
-- 侧栏底部可打开整个工作区目录（⌘O）：左侧是工作区树，右侧是编辑器。
-- 产物预览和工作区浏览的文本改为 Monaco + Shiki（vitesse 亮/暗跟随外观）。区内 UTF-8 文本可编辑，Cmd+S 或工具条保存写回同一路径；未保存切文件或关闭会确认。文件树和内容之间可拖改宽度。聊天围栏代码块继续用 Shiki。
+- Replaced Svelte placeholder window favicon with the Real Bot brand icon.
+- Keyboard navigation in composer `@` autocomplete scrolls highlighted items into view when the list overflows.
+- Reuses existing Vite dev server on port 5173 instead of aborting due to port conflicts; only errors when occupied by unrelated processes.
+- Global search results display the associated session; clicking navigates to the session, scrolls to the matched message, and highlights it briefly. Thread replies focus on their parent message in the main transcript.
+- In-text `@member` mentions render as chips with avatars and names, opening Bot personas on click; `@everyone` renders as a chip without opening a persona. Mentions inside code blocks remain plain text.
+- Removed download button from preview pane; directories and unsupported file types can still be opened in system default apps or revealed in Finder.
+- Removed Stop buttons from group chat composer and streaming bubbles regardless of active turns. Group tasks cannot be interrupted via button; users stop active work by messaging the group. `POST /v1/turns/stop` and tray Stop skip group turns. Clearing history, archiving, or deleting a group terminates its active turns.
+- Consolidated multiple workspace paths cited in a single message into a single preview entry (expanding into a cited path tree in the preview pane) rather than rendering a row of individual file chips.
+- Switched artifact preview text viewer to read-only CodeMirror: line numbers, find, folding, bracket matching, line wrapping, copy, and open in Finder/system. Markdown and single-file HTML display rendered views by default with source toggles. Fenced code blocks in chat continue to use Shiki.
+- Open entire workspace directory from sidebar footer (⌘O): file tree on the left, editor on the right.
+- Upgraded artifact preview and workspace text editing to Monaco + Shiki (vitesse light/dark themes). UTF-8 files are editable with Cmd+S or toolbar save; prompts for confirmation on unsaved changes when closing or switching files. Supports draggable split width between file tree and content.
 
 ### Landing
 
-- 落地页整体重新设计：冷灰底、宋体标题、取自名册头像调色板的青绿 / 芥黄两色，去掉渐变与玻璃卡片，零 webfont。
-- 首页改为随滚动推进的完整流程演示：右侧固定一扇信使窗口，8 个步骤依次演示填工作区与端点、建第一个 Bot、对话组队、群里参与判断、批准卡、@ 交接与产物、Monaco 预览与 Cmd+S 写回、关窗进托盘；每步配一条指向界面元素的标注。窄屏改为顶部吸附的窗口加文字说明；`prefers-reduced-motion` 下直接显示各步终态。
-- 新增品牌标识：一只装着两个叠放队友头像的消息气泡（青绿 / 芥黄），提供 `favicon.svg`、PNG 图标（48 / 180 / 192 / 512）与 `site.webmanifest`；导航、页脚与重定向页统一使用。
-- 补齐 SEO：每页独立的标题与描述、canonical、`hreflang` 交替链接、Open Graph 与 Twitter 大图卡片、首页 SoftwareApplication JSON-LD、`theme-color`、按语言输出的 `<html lang>`，以及预渲染的 `sitemap.xml` 与 `robots.txt`。中英文各一张 1200×630 的 OG 图（`static/og-zh.png` / `static/og-en.png`），由开发态专用的 `/og/[lang]` 页面截图生成。
-- 导航栏新增外观切换（跟随系统 / 亮色 / 暗色），默认跟随系统，显式选择存在 `localStorage` 的 `real-bot-theme`，首屏脚本在绘制前应用避免闪烁。演示窗口改用信使自己的亮 / 暗两套配色令牌，批准卡、预览编辑器、托盘桌面、标注和光标都随主题切换；OG 图生成页固定亮色。
-- 「已接入 / 正在建设 / 明确不做」改为按维度排列的账目式表格；「从源码启动」保留终端示例并列出首次使用步骤。中英文文案同步更新；`/manifesto` 与 `/roadmap` 页面沿用新样式，浅色与深色主题均可用。
+- Complete landing page redesign: cool gray background, serif typography, teal and mustard yellow accents derived from the roster avatar palette, zero gradients or glassmorphism cards, zero webfonts.
+- Interactive scroll-driven demo on the homepage: fixed Messenger window demonstrating 8 steps (setting workspace and endpoint, creating first Bot, conversational team assembly, group participation judgment, approval cards, `@` handoffs with artifacts, Monaco preview with Cmd+S save, closing to tray) with visual annotations pointing to UI controls. Adapts to sticky header layout on narrow viewports; displays static end states under `prefers-reduced-motion`.
+- Added brand logo: chat bubble containing two stacked teammate avatars (teal and mustard yellow), providing `favicon.svg`, PNG icons (48 / 180 / 192 / 512), and `site.webmanifest` used across navigation, footer, and redirect pages.
+- Comprehensive SEO enhancements: per-page titles, descriptions, canonicals, `hreflang` alternates, Open Graph and Twitter summary cards, SoftwareApplication JSON-LD, `theme-color`, language-specific `<html lang>`, prerendered `sitemap.xml` and `robots.txt`, and 1200×630 OG images (`og-zh.png` / `og-en.png`).
+- Added theme switcher to navbar (system / light / dark) persisted in `localStorage` (`real-bot-theme`) applied before first paint to prevent flashes. Demo window adopts Messenger light/dark design tokens, synchronizing approval cards, editor, tray, and annotations.
+- Reorganized capabilities into structured tables ("Supported / In Progress / Out of Scope"); streamlined "Running from source" instructions with terminal examples. Synchronized English and Chinese copy across `/manifesto` and `/roadmap` pages.
 
 ### Documentation
 
-- 明确本地 Grok Bot 式协作、开放模型与 MCP 接入、agent 决策与任务反馈、通过对话管理应用的核心方向。
-- 增加中英文项目介绍、WIP 能力状态与路线图，将原有开发细节保留到 `docs/development.md`。
-- 添加 MIT 许可证、第三方源码声明、贡献指南、行为准则、安全说明和 Issue / PR 模板。
-- 补充本地规划、验证产物和敏感运行数据的忽略规则，说明首次公开前需要独立完成的检查。
-- 增加 GitHub Actions：PR / `main` 测试与类型检查、落地页 Pages 部署、`v*` 标签打未签名 macOS 快照 draft。
+- Established core product direction: local Grok-style Bot collaboration, open model and MCP connectivity, agent decision-making with task feedback, and application management through conversation.
+- Added bilingual project overviews, WIP status tables, and public roadmap, moving low-level implementation details to `docs/development.md`.
+- Added MIT license, third-party notices, contributing guide, code of conduct, security policy, and Issue/PR templates.
+- Added ignore rules for local planning, evaluation artifacts, and runtime data, with pre-release checklist for maintainers.
+- Added GitHub Actions workflows: CI test and typecheck on PRs and `main`, landing page deployment to GitHub Pages, and unsigned macOS draft snapshots on `v*` tags.
