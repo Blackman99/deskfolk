@@ -5,65 +5,266 @@
 import type { Component } from 'svelte';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
-import { aBot, aDirect, aGroup, aSkill, fakeRuntime } from '../../src/lib/test-fixtures.ts';
+import type { RouteLogRow } from '../../src/lib/overlays/route-log.ts';
+import {
+	aBot,
+	aDirect,
+	aGroup,
+	aMessage,
+	anApproval,
+	anAttachment,
+	anMcpServer,
+	aProvider,
+	aSkill,
+	aTurn,
+	fakeRuntime
+} from '../../src/lib/test-fixtures.ts';
 import { reactive } from '../../src/lib/test-reactive.svelte.ts';
+import Shell from '../../src/lib/Shell.svelte';
+import Onboarding from '../../src/lib/Onboarding.svelte';
 import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
 import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
 import RouteLog from '../../src/lib/overlays/RouteLog.svelte';
 import CreateGroupSheet from '../../src/lib/sidebar/CreateGroupSheet.svelte';
+import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
+import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
+import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
+import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
+import ChatStage from '../../src/lib/chat/ChatStage.svelte';
+import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
 
 const t = copyFor('zh');
 
 export type Story = {
 	component: Component<never, Record<string, never>, string>;
 	props: Record<string, unknown>;
+	/** Runs after mount, before the shot: for state a pane only exposes through its own UI. */
+	afterMount?: (host: HTMLElement) => void;
 };
 
+/** One world every story draws from, so the panes agree with each other. */
 const bots = [
 	aBot({ id: 'bot-1', name: 'Researcher', duties: '收集与整理资料' }),
 	aBot({ id: 'bot-2', name: '选题策划', duties: '负责视频选题与内容方向' }),
 	aBot({ id: 'bot-3', name: '分镜师', duties: '按剧本出分镜表' })
 ];
+const botsById = new Map(bots.map((b) => [b.id, b]));
 
-const routeRows = [
+const group = aGroup({ id: 'sess-1', name: '视频全流程制作组' });
+const direct = aDirect({ id: 'direct-1' });
+const sessions = [group, direct, aGroup({ id: 'sess-2', name: '周报组' })];
+
+const messages = [
+	aMessage({ id: 'msg-1', body: '帮我把这一集的选题定下来，参考上次那份大纲。' }),
+	aMessage({
+		id: 'msg-2',
+		kind: 'bot',
+		author: 'bot-1',
+		turn_id: 'turn-done',
+		body: '查了三个方向，**第二个**最稳：\n\n- 观众问得最多\n- 素材我们手上有\n- 竞品还没做过\n\n```ts\nconst pick = candidates[1];\n```',
+		created_at: '2026-09-19T02:00:05.000Z',
+		attachments: [anAttachment({ message_id: 'msg-2' })]
+	}),
+	aMessage({
+		id: 'msg-3',
+		kind: 'system',
+		author: 'bot-2',
+		turn_id: 'turn-1',
+		body: '连不上端点，这一轮中断了。',
+		created_at: '2026-09-19T02:00:08.000Z'
+	})
+];
+
+const turns = [
+	aTurn({ id: 'turn-done', status: 'completed', bot_id: 'bot-1' }),
+	aTurn({ id: 'turn-1', status: 'running', bot_id: 'bot-2', trigger_message_id: 'msg-1' })
+];
+
+const providers = [
+	aProvider(),
+	aProvider({ id: 'prov-2', name: 'Anthropic', base_url: 'https://api.anthropic.com/v1' })
+];
+
+const mcpServers = [
+	anMcpServer(),
+	anMcpServer({
+		id: 'mcp-2',
+		name: 'image-gen',
+		transport: 'http',
+		command: '',
+		args: [],
+		url: 'https://mcp.example.com/sse',
+		auth_set: true,
+		enabled: false
+	})
+];
+
+const settings = {
+	workspace_path: '/Users/you/real-bot-workspace',
+	endpoint_base_url: 'https://api.example.com/v1',
+	endpoint_key_set: true,
+	endpoint_models: ['grok-4.6'],
+	endpoint_model_catalog: [],
+	endpoint_default_model: 'grok-4.6',
+	default_provider_id: 'prov-1',
+	launch_at_login: true,
+	locale: 'zh' as const,
+	theme: 'system' as const,
+	wizard_complete: true
+};
+
+const world = { bots, sessions, messages, turns, providers, mcpServers, settings, skills: [aSkill()] };
+
+/** Shaped like `RouteLogRow`, not like the daemon's row: the pane is handed labels, not codes. */
+const routeRows: RouteLogRow[] = [
 	{
 		turnId: 'turn-1',
-		botName: 'Researcher',
 		botId: 'bot-1',
-		avatar: null,
-		model: 'grok-4.6',
-		thinkingLevel: 'high',
-		category: '推理',
-		duration: '4.2s',
-		outcome: '完成',
-		failReason: null,
-		reason: '这条要查证，挑了推理强的。',
-		endpoint: null,
+		botName: 'Researcher',
+		botKnown: true,
 		triggerMessageId: 'msg-1',
+		model: 'grok-4.6',
+		providerName: null,
+		thinkingLabel: '高',
+		signatureLabel: '推理',
+		outcome: 'completed',
+		outcomeLabel: '完成',
+		failReason: null,
 		feedback: [],
-		review: { fault: 'none', direction: 'same', rounds: 1, confidence: '高', reason: '一次就答对了。' }
+		reason: '这条要查证，挑了推理强的。',
+		review: {
+			faultLabel: '不怪模型',
+			directionLabel: null,
+			rounds: 1,
+			reason: '一次就答对了。',
+			blamedModel: false
+		},
+		createdAt: '2026-09-19T02:00:00.000Z',
+		finishedAt: '2026-09-19T02:00:04.200Z',
+		durationMs: 4200
 	},
 	{
 		turnId: 'turn-2',
-		botName: '选题策划',
 		botId: 'bot-2',
-		avatar: null,
-		model: 'gemini-3.8-flash',
-		thinkingLevel: 'none',
-		category: '闲聊',
-		duration: '0.9s',
-		outcome: '补全失败',
-		failReason: '连不上端点',
-		reason: '短问题，挑了快的。',
-		endpoint: 'Default',
+		botName: '选题策划',
+		botKnown: true,
 		triggerMessageId: 'msg-2',
-		feedback: [{ body: '这里不对' }],
-		review: { fault: 'model', direction: 'stronger', rounds: 3, confidence: '高', reason: '模型太弱。' }
+		model: 'gemini-3.8-flash',
+		providerName: 'Default',
+		thinkingLabel: '不思考',
+		signatureLabel: '闲聊',
+		outcome: 'failed',
+		outcomeLabel: '补全失败',
+		failReason: '连不上端点',
+		feedback: [
+			{ message_id: 'msg-4', body: '这里不对，换个强一点的。', created_at: '2026-09-19T02:01:00.000Z' }
+		],
+		reason: '短问题，挑了快的。',
+		review: {
+			faultLabel: '模型不行',
+			directionLabel: '换更强的',
+			rounds: 3,
+			reason: '同一件事来回三轮才对。',
+			blamedModel: true
+		},
+		createdAt: '2026-09-19T02:00:06.000Z',
+		finishedAt: '2026-09-19T02:00:06.900Z',
+		durationMs: 900
 	}
 ];
 
+/** The settings modal keeps the open tab to itself, so the story clicks it like a person would. */
+const settingsTab = (index: number) => (host: HTMLElement) => {
+	host.querySelectorAll<HTMLButtonElement>('.settings-tab-btn')[index]?.click();
+};
+
+const settingsProps = (over: Record<string, unknown> = {}) => ({
+	runtime: fakeRuntime(world, { settingsOpen: true }),
+	t,
+	saveFailed: false,
+	providerEditor: null,
+	confirmingProvider: false,
+	patchImmediate: async () => true,
+	openDeleteProviderConfirm: () => {},
+	closeSettings: () => {},
+	...over
+});
+
 const defs: Record<StoryName, Story> = {
+	shell: {
+		component: Shell as never,
+		props: {
+			runtime: fakeRuntime(world, {
+				selectedId: 'sess-1',
+				approvals: [anApproval()]
+			})
+		}
+	},
+	onboarding: {
+		component: Onboarding as never,
+		props: { runtime: fakeRuntime(world), onDismiss: () => {} }
+	},
+	sidebar: {
+		component: Sidebar as never,
+		props: {
+			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
+			t,
+			selected: group,
+			pinnedSessionIds: ['direct-1'],
+			themeMenuOpen: false,
+			workspaceOpen: false,
+			contextMenuSessionId: null,
+			onOpenContextMenu: () => {},
+			onToggleWorkspace: () => {},
+			onOpenSettings: () => {},
+			onCreateBot: () => {},
+			onCreateGroup: () => {},
+			onOpenArtifact: () => {},
+			onPatchTheme: async () => true
+		}
+	},
+	'chat-header': {
+		component: ChatHeader as never,
+		props: {
+			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
+			t,
+			selected: group,
+			pinnedSessionIds: ['direct-1'],
+			onTogglePin: () => {},
+			onToggleSessionSettings: () => {},
+			onCreateBot: () => {},
+			onShowOnboarding: () => {}
+		}
+	},
+	'chat-stage': {
+		component: ChatStage as never,
+		props: {
+			runtime: fakeRuntime(world, { selectedId: 'sess-1', approvals: [anApproval()] }),
+			t,
+			selected: group,
+			onOpenProfile: () => {},
+			onOpenArtifact: () => {},
+			onCreateBot: () => {}
+		}
+	},
+	'context-menu': {
+		component: SessionContextMenu as never,
+		props: {
+			session: group,
+			botsById,
+			isPinned: false,
+			x: 16,
+			y: 16,
+			t,
+			onClose: () => {},
+			onTogglePin: () => {},
+			onViewInfo: () => {},
+			onClearHistory: () => {},
+			onToggleArchive: () => {},
+			onDelete: () => {}
+		}
+	},
 	'danger-dialog': {
 		component: DangerDialog as never,
 		props: {
@@ -93,6 +294,18 @@ const defs: Record<StoryName, Story> = {
 	'create-group-sheet': {
 		component: CreateGroupSheet as never,
 		props: { runtime: fakeRuntime({ bots }), bots, t, onClose: () => {} }
+	},
+	'create-bot-sheet': {
+		component: CreateBotSheet as never,
+		props: {
+			runtime: fakeRuntime(world),
+			modelOptions: [
+				{ value: '', label: '自动' },
+				{ value: 'grok-4.6', label: 'grok-4.6' }
+			],
+			t,
+			onClose: () => {}
+		}
 	},
 	'group-pane': {
 		component: GroupPane as never,
@@ -130,7 +343,10 @@ const defs: Record<StoryName, Story> = {
 			onDeleteBot: () => {},
 			onClearHistory: () => {}
 		}
-	}
+	},
+	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(0) },
+	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(2) },
+	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(3) }
 };
 
 export const stories = Object.fromEntries(

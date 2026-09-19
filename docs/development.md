@@ -83,12 +83,18 @@
 
 `pnpm --filter @real-bot/messenger test:visual`。改样式前后各跑一次；基线要改就 `test:visual:update`，并在 PR 里说明为什么该变。
 
-拍的是**单个面**，不是整个应用：`tests/visual/stories.ts` 用 `test-fixtures.ts` 的假数据把一个组件挂到 `tests/visual/index.html` 上，Playwright 按 `?story=<名字>&theme=dark|light` 逐张截。不连守护进程、不读数据库，所以基线只会因为样式变而变。新增一个面：在 `story-list.ts` 里加尺寸，在 `stories.ts` 里加组件和 props。
+拍的是**单个面**，不是整个应用：`tests/visual/stories.ts` 用 `test-fixtures.ts` 的假数据把一个组件挂到 `tests/visual/index.html` 上，Playwright 按 `?story=<名字>&theme=dark|light` 逐张截。不连守护进程、不读数据库，所以基线只会因为样式变而变。新增一个面：在 `story-list.ts` 里加尺寸，在 `stories.ts` 里加组件和 props；面自己藏着的状态（比如设置弹窗开在哪个页签）用 `afterMount` 像人一样点出来，不为了拍照给组件加 prop。`shell` 那张把整个三栏框架连同侧栏、主栏、顶栏一起拍下来 —— 跨组件的规则只有它看得见。
 
-两个坑，都踩过：
+**截图之外还断言这一面挂载时没有报错**（`pageerror` 和 `console.error` 都算）。报错的面照样会画出点东西，那张残骸拍成基线一样会「通过」；代码块复制图标那条少写半径的 SVG 弧线就是这么找出来的。
+
+三个坑，都踩过：
 
 - **story 的 Vite root 必须是包根**。指到 `tests/visual` 的话，`src/lib/styles/*.css` 在 root 之外、又是经 CSS `@import` 拉进来的，Vite 不监视它们 —— 基线会对着服务器启动那一刻的 CSS 拍，改了样式也照样全绿。一个不会失败的检查比没有检查更糟。
 - **阈值用 `maxDiffPixels`，不要用比例**。这台机器上同一个 story 连拍两次是逐像素相同的，所以预算只需要吃掉将来的抗锯齿抖动。比例预算试过：900×520 的图上 0.2% 是 936 像素，而把弹窗圆角从 18px 改成 2px 只差 212 像素，照样通过。
+
+- **`vite.visual.config.ts` 要跟着 `vite.config.ts` 走。** 少了 Monaco 的两条 alias，产物预览那条 import 链就是 500，而它会连坐**整张模块图** —— 所有 story 一起白屏，不只是用到编辑器的那个。
+
+假数据要对得上协议类型，否则拍的是另一个渲染分支：`test-fixtures.ts` 一度把用户写成 `"you"`，而 `USER_MEMBER` 是 `"user"`，于是每个面都把用户画成「已删除」的 Bot，基线把这个错误一起存了下来。story 的 props 是 `as never` 进去的，TypeScript 不替你挡这一层。
 
 不接 CI：这是系统字体的渲染，Linux runner 会对每一张都有异议。和 CONTRIBUTING 里「本机 UI 验证不能由 CI 代替」是同一条理由。
 

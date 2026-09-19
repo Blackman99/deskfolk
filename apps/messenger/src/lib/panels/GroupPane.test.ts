@@ -72,12 +72,38 @@ test("an unsaved name survives closing and reopening the pane", () => {
   second.close();
 });
 
-test("pulling a member in and removing one go through the runtime", () => {
+/** Three Bots in: a group is allowed to drop to two, so removal is only offered above that. */
+function aThreeBotGroup() {
+  const base = aGroup();
+  return {
+    ...base,
+    participants: [...base.participants, { member: "bot-3", joined_at: base.created_at, left_at: null }],
+  } as typeof base;
+}
+
+test("pulling a member in goes through the runtime", () => {
   const detail = aDraft({ pullPick: "bot-3" });
   const { host, runtime, close } = open(detail);
   click(buttonByText(host, t.detail.pullIn));
   expect(runtime.calls.find((c) => c.name === "addMember")?.args).toEqual(["sess-1", "bot-3"]);
+  close();
+});
+
+test("removing a member goes through the runtime", () => {
+  const { host, runtime, close } = open(aDraft(), aThreeBotGroup());
   click([...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === t.detail.remove));
   expect(runtime.calls.find((c) => c.name === "removeMember")?.args[0]).toBe("sess-1");
+  close();
+});
+
+/**
+ * The floor is two Bots, so the last removal is not offered at all. This used to pass by accident:
+ * the fixture called the user `"you"` while the protocol calls them `"user"`, so the pane counted
+ * the user as a third, unknown member and kept the button.
+ */
+test("a two-Bot group offers no way to remove either of them", () => {
+  const { host, close } = open(aDraft());
+  const removes = [...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === t.detail.remove);
+  expect(removes.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   close();
 });
