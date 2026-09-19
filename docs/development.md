@@ -51,6 +51,19 @@
 
 覆盖的是拆分留下的接缝，不是重测已有的纯函数：确认框的四条关闭路径、新建群滑出「重新挂载即重置」、群组面板那份**属于外壳**的草稿（关掉再打开仍在，这是有意为之）、人设面板的自动保存与**卸载时把待发的改动冲出去**、作曲栏的 Enter / Shift+Enter / 输入法选词与上屏后那一下的接线。
 
+## 信使视觉基线
+
+`pnpm --filter @real-bot/messenger test:visual`。改样式前后各跑一次；基线要改就 `test:visual:update`，并在 PR 里说明为什么该变。
+
+拍的是**单个面**，不是整个应用：`tests/visual/stories.ts` 用 `test-fixtures.ts` 的假数据把一个组件挂到 `tests/visual/index.html` 上，Playwright 按 `?story=<名字>&theme=dark|light` 逐张截。不连守护进程、不读数据库，所以基线只会因为样式变而变。新增一个面：在 `story-list.ts` 里加尺寸，在 `stories.ts` 里加组件和 props。
+
+两个坑，都踩过：
+
+- **story 的 Vite root 必须是包根**。指到 `tests/visual` 的话，`src/lib/styles/*.css` 在 root 之外、又是经 CSS `@import` 拉进来的，Vite 不监视它们 —— 基线会对着服务器启动那一刻的 CSS 拍，改了样式也照样全绿。一个不会失败的检查比没有检查更糟。
+- **阈值用 `maxDiffPixels`，不要用比例**。这台机器上同一个 story 连拍两次是逐像素相同的，所以预算只需要吃掉将来的抗锯齿抖动。比例预算试过：900×520 的图上 0.2% 是 936 像素，而把弹窗圆角从 18px 改成 2px 只差 212 像素，照样通过。
+
+不接 CI：这是系统字体的渲染，Linux runner 会对每一张都有异议。和 CONTRIBUTING 里「本机 UI 验证不能由 CI 代替」是同一条理由。
+
 ## 本机工具链
 
 - Node `>=22` 与 pnpm `12.3.4`（`packageManager`）

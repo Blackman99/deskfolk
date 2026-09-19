@@ -20,3 +20,9 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Playwright（视觉基线本身进仓库，运行产物不进）
+/test-results
+/playwright-report
+/tests/visual/**/*-actual.png
+/tests/visual/**/*-diff.png
