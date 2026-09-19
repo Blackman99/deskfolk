@@ -27,13 +27,10 @@
 		groupTranscript,
 		isDifferentDay
 	} from './chat-view.ts';
-	import { markdownCode } from './code-blocks.ts';
 	import { composerLocked } from './composer-mode.ts';
-	import { copyText } from '../clipboard.ts';
 	import type { Copy } from '../copy.ts';
+	import MarkdownBody from '../MarkdownBody.svelte';
 	import { presentBotIds } from '../panels/group-edit.ts';
-	import { renderMarkdown } from '../markdown.ts';
-	import { parseMentionHref } from './mention-chips.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -42,7 +39,6 @@
 	import { getStarterOptions } from './starter-prompts.ts';
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
-	import { parseArtifactHref } from '../overlays/artifacts.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -399,47 +395,6 @@
 		setTimeout(() => {
 			if (copiedMessageId === id) copiedMessageId = null;
 		}, 1800);
-	}
-
-	function markdownLinks(node: HTMLElement) {
-		node.addEventListener('click', onMarkdownClick);
-		const code = markdownCode(node, { copy: t.chat.copyCode, copied: t.chat.copied });
-		return {
-			update() {
-				code.update({ copy: t.chat.copyCode, copied: t.chat.copied });
-			},
-			destroy() {
-				node.removeEventListener('click', onMarkdownClick);
-				code.destroy();
-			}
-		};
-	}
-
-	function onMarkdownClick(ev: MouseEvent): void {
-		const target = ev.target;
-		if (!(target instanceof Element)) return;
-		const a = target.closest('a');
-		if (!(a instanceof HTMLAnchorElement)) return;
-		ev.preventDefault();
-		const raw = a.getAttribute('href') ?? a.href;
-		const botId = parseMentionHref(raw);
-		if (botId && botId !== 'everyone') {
-			onOpenProfile(botId);
-			return;
-		}
-		const artifact = parseArtifactHref(raw);
-		if (artifact) {
-			onOpenArtifact(artifact);
-			return;
-		}
-		const href = a.href;
-		if (
-			href.startsWith('https:') ||
-			href.startsWith('http:') ||
-			href.startsWith('mailto:')
-		) {
-			window.open(href, '_blank', 'noopener,noreferrer');
-		}
 	}
 
 	async function replyAsk(askId: string): Promise<void> {
@@ -869,7 +824,15 @@
 													<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
 												</button>
 											{/if}
-											<div class="body is-md" use:markdownLinks>{@html renderMarkdown(item.message.body, markdownOpts(item.message))}</div>
+											<MarkdownBody
+												source={item.message.body}
+												options={markdownOpts(item.message)}
+												copyLabel={t.chat.copyCode}
+												copiedLabel={t.chat.copied}
+												inverted
+												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenProfile={onOpenProfile}
+											/>
 											{#if item.message.attachments && item.message.attachments.length > 0}
 												<MessageAttachments
 													attachments={item.message.attachments}
@@ -1083,10 +1046,16 @@
 												{botAuthor?.name ?? t.top.deleted} · {t.stream.streaming}
 												<span class="pulse"></span>
 											</div>
-											<div class="body is-md" use:markdownLinks>
-												{@html renderMarkdown(item.turn.partial_text ?? '', markdownOpts(undefined, { streaming: true }))}
+											<MarkdownBody
+												source={item.turn.partial_text ?? ''}
+												options={markdownOpts(undefined, { streaming: true })}
+												copyLabel={t.chat.copyCode}
+												copiedLabel={t.chat.copied}
+												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenProfile={onOpenProfile}
+											>
 												<span class="streaming-cursor"></span>
-											</div>
+											</MarkdownBody>
 										</article>
 									{:else if item.type === 'message'}
 										{@const rxGroups = groupReactions(item.message.reactions, USER_MEMBER)}
@@ -1128,7 +1097,14 @@
 													<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
 												</button>
 											{/if}
-											<div class="body is-md" use:markdownLinks>{@html renderMarkdown(item.message.body, markdownOpts(item.message))}</div>
+											<MarkdownBody
+												source={item.message.body}
+												options={markdownOpts(item.message)}
+												copyLabel={t.chat.copyCode}
+												copiedLabel={t.chat.copied}
+												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenProfile={onOpenProfile}
+											/>
 											{#if item.message.attachments && item.message.attachments.length > 0}
 												<MessageAttachments
 													attachments={item.message.attachments}
@@ -1261,12 +1237,6 @@
 	}
 	}
 
-	@media (max-width: 680px) {
-		.stream-inner {
-			padding: 14px 12px 120px;
-		}
-	}
-
 	.stream {
 		flex: 1;
 		min-height: 0;
@@ -1288,6 +1258,12 @@
 		margin-inline: auto;
 		padding: 20px 24px 140px;
 		box-sizing: border-box;
+	}
+
+	@media (max-width: 680px) {
+		.stream-inner {
+			padding: 14px 12px 120px;
+		}
 	}
 
 	.date-divider::before {
@@ -1785,252 +1761,6 @@
 		white-space: pre-wrap;
 		line-height: 1.55;
 		font-size: 13.5px;
-	}
-
-	.msg .body.is-md {
-		white-space: normal;
-	}
-
-	.msg .body.is-md > :global(:first-child) {
-		margin-top: 0;
-	}
-
-	.msg .body.is-md > :global(:last-child) {
-		margin-bottom: 0;
-	}
-
-	.msg .body.is-md :global(p),
-
-	.msg .body.is-md :global(ul),
-
-	.msg .body.is-md :global(ol),
-
-	.msg .body.is-md :global(pre),
-
-	.msg .body.is-md :global(blockquote),
-
-	.msg .body.is-md :global(table) {
-		margin: 0.45em 0;
-	}
-
-	.msg .body.is-md :global(h1),
-
-	.msg .body.is-md :global(h2),
-
-	.msg .body.is-md :global(h3),
-
-	.msg .body.is-md :global(h4),
-
-	.msg .body.is-md :global(h5),
-
-	.msg .body.is-md :global(h6) {
-		margin: 0.65em 0 0.3em;
-		font-weight: 700;
-		line-height: 1.3;
-		color: inherit;
-	}
-
-	.msg .body.is-md :global(h1) {
-		font-size: 1.2em;
-	}
-
-	.msg .body.is-md :global(h2) {
-		font-size: 1.1em;
-	}
-
-	.msg .body.is-md :global(h3),
-
-	.msg .body.is-md :global(h4),
-
-	.msg .body.is-md :global(h5),
-
-	.msg .body.is-md :global(h6) {
-		font-size: 1em;
-	}
-
-	.msg .body.is-md :global(ul),
-
-	.msg .body.is-md :global(ol) {
-		padding-left: 1.3em;
-	}
-
-	.msg .body.is-md :global(li) + :global(li) {
-		margin-top: 0.15em;
-	}
-
-	.msg .body.is-md :global(blockquote) {
-		margin-left: 0;
-		padding-left: 0.8em;
-		border-left: 3px solid var(--line);
-		color: var(--muted);
-	}
-
-	.msg .body.is-md :global(hr) {
-		border: 0;
-		border-top: 1px solid var(--line);
-		margin: 0.65em 0;
-	}
-
-	.msg .body.is-md :global(a) {
-		color: var(--accent);
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-
-	.msg .body.is-md :global(code) {
-		font-family: var(--mono);
-		font-size: 12px;
-		background: var(--inline-code-bg);
-		border: 1px solid var(--inline-code-border);
-		padding: 0.1em 0.35em;
-		border-radius: 4px;
-	}
-
-	.msg .body.is-md :global(pre) {
-		background: var(--chip);
-		color: var(--ink);
-		border: 1px solid var(--line);
-		padding: 8px 12px;
-		border-radius: var(--radius-sm);
-		overflow-x: auto;
-		font-size: 12px;
-		line-height: 1.45;
-	}
-
-	.msg .body.is-md :global(pre) :global(code) {
-		background: none;
-		padding: 0;
-		color: inherit;
-		font-size: inherit;
-		display: block;
-		white-space: pre-wrap;
-	}
-
-	.msg .body.is-md :global(table) {
-		border-collapse: collapse;
-		font-size: 12.5px;
-		display: block;
-		overflow-x: auto;
-	}
-
-	.msg .body.is-md :global(th),
-
-	.msg .body.is-md :global(td) {
-		border: 1px solid var(--line);
-		padding: 4px 8px;
-	}
-
-	.msg .body.is-md :global(th) {
-		font-weight: 650;
-		background: var(--line-subtle);
-	}
-
-	.msg.is-you .body.is-md :global(a) {
-		color: #ffffff;
-	}
-
-	.msg .body.is-md :global(.md-mention-chip) {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 1px 7px 1px 3px;
-		margin: 0 1px;
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
-		border-radius: 999px;
-		font-size: 12.5px;
-		color: var(--accent-hover);
-		font-weight: 600;
-		line-height: 1.2;
-		vertical-align: middle;
-		text-decoration: none;
-		cursor: pointer;
-		user-select: none;
-	}
-
-	.msg .body.is-md :global(a.md-mention-chip) {
-		color: var(--accent-hover);
-		text-decoration: none;
-	}
-
-	.msg .body.is-md :global(.md-mention-chip:hover) {
-		background: var(--accent-border);
-	}
-
-	.msg .body.is-md :global(.md-mention-chip.is-everyone) {
-		cursor: default;
-	}
-
-	.msg .body.is-md :global(.md-mention-chip) :global(.chip-avatar-img),
-
-	.msg .body.is-md :global(.md-mention-chip) :global(.chip-avatar-letter) {
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		object-fit: cover;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 9.5px;
-		font-weight: 700;
-		flex-shrink: 0;
-	}
-
-	.msg .body.is-md :global(.md-mention-chip) :global(.chip-avatar-icon) {
-		font-size: 12px;
-		line-height: 1;
-	}
-
-	.msg .body.is-md :global(.md-mention-chip) :global(.chip-name) {
-		line-height: 1;
-		white-space: nowrap;
-	}
-
-	.msg .body.is-md :global(.md-mention-unresolved) {
-		color: var(--muted);
-		border-bottom: 1px dashed var(--muted);
-		cursor: help;
-	}
-
-	.msg.is-you .body.is-md :global(.md-mention-chip),
-
-	.msg.is-you .body.is-md :global(a.md-mention-chip) {
-		background: rgba(255, 255, 255, 0.18);
-		border-color: rgba(255, 255, 255, 0.35);
-		color: #ffffff;
-	}
-
-	.msg.is-you .body.is-md :global(.md-mention-chip:hover) {
-		background: rgba(255, 255, 255, 0.28);
-	}
-
-	.msg.is-you .body.is-md :global(code) {
-		background: rgba(255, 255, 255, 0.18);
-	}
-
-	.msg.is-you .body.is-md :global(pre) {
-		background: rgba(15, 23, 42, 0.28);
-		border-color: rgba(255, 255, 255, 0.2);
-		color: #ffffff;
-	}
-
-	.msg.is-you .body.is-md :global(blockquote) {
-		border-left-color: rgba(255, 255, 255, 0.45);
-		color: rgba(255, 255, 255, 0.85);
-	}
-
-	.msg.is-you .body.is-md :global(hr) {
-		border-top-color: rgba(255, 255, 255, 0.35);
-	}
-
-	.msg.is-you .body.is-md :global(th),
-
-	.msg.is-you .body.is-md :global(td) {
-		border-color: rgba(255, 255, 255, 0.35);
-	}
-
-	.msg.is-you .body.is-md :global(th) {
-		background: rgba(255, 255, 255, 0.12);
 	}
 
 	/* Streaming Active Turn */

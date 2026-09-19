@@ -11,6 +11,15 @@ test("complete markdown turns emphasis and a fenced block into HTML", () => {
   expect(html).not.toContain("**hello**");
 });
 
+test("a GFM table becomes table markup with header and body cells", () => {
+  const html = renderMarkdown("| 镜号 | 判 |\n| --- | --- |\n| 1A | 通过 |");
+  expect(html).toContain("<table>");
+  expect(html).toContain("<th>");
+  expect(html).toContain("镜号");
+  expect(html).toContain("<td>");
+  expect(html).toContain("1A");
+});
+
 test("streaming heals unclosed bold and an unclosed fence so the bubble does not flash raw markers", () => {
   const bold = renderMarkdown("**hel", { streaming: true });
   expect(bold).toContain("<strong>hel</strong>");

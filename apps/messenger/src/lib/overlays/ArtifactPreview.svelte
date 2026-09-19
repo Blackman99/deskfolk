@@ -25,10 +25,9 @@
 	import ArtifactCodeEditor from './ArtifactCodeEditor.svelte';
 	import FileIcon from './FileIcon.svelte';
 	import { fileIconFor } from './file-icon.ts';
-	import { markdownCode } from '../chat/code-blocks.ts';
 	import { copyText } from '../clipboard.ts';
 	import { highlightLangFromPath, highlightLangLabel } from '../highlight-lang.ts';
-	import { renderMarkdown } from '../markdown.ts';
+	import MarkdownBody from '../MarkdownBody.svelte';
 	import { openWorkspacePath } from './open-workspace.ts';
 	import {
 		clampArtifactTreeWidth,
@@ -109,7 +108,6 @@
 		mode === 'workspace' || tree.length > 1 || tree.some((node) => node.kind === 'dir')
 	);
 	let textLang = $derived(highlightLangFromPath(relpath));
-	let codeLabels = $derived({ copy: t.chat.copyCode, copied: t.chat.copied });
 	let icon = $derived(fileIconFor(relpath, { isDir: kind === 'directory' }));
 	let titleName = $derived(
 		attachment?.original_filename ??
@@ -310,6 +308,15 @@
 		}
 		const next = siblings.find((row) => row.workspace_relpath === node.path);
 		if (next) onSelect(next);
+		else onSelect({ workspace_relpath: node.path } as Attachment);
+	}
+
+	function openMarkdownPath(path: string): void {
+		selectNode({
+			name: path.split('/').pop() ?? path,
+			path,
+			kind: 'file'
+		});
 	}
 
 	function requestClose(): void {
@@ -556,7 +563,12 @@
 					style:color-scheme={resolvedTheme}
 				></iframe>
 			{:else if kind === "markdown" && text !== null}
-				<div class="artifact-md text-14 leading-[1.55]" use:markdownCode={codeLabels}>{@html renderMarkdown(text)}</div>
+				<MarkdownBody
+					source={text}
+					copyLabel={t.chat.copyCode}
+					copiedLabel={t.chat.copied}
+					onOpenArtifact={openMarkdownPath}
+				/>
 			{:else}
 				<p class="muted">{attachment?.original_filename ?? relpath}</p>
 			{/if}
