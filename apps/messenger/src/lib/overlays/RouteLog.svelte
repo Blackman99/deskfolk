@@ -82,9 +82,9 @@
 	}}
 >
 	<div class="route-log-pane">
-		<header class="route-log-header">
-			<div class="route-log-heading">
-				<span class="route-log-icon" aria-hidden="true">
+		<header class="route-log-header shrink-0 flex items-start justify-between gap-6 px-8 py-7 bg-sidebar-bg">
+			<div class="flex items-center gap-5 min-w-0">
+				<span class="route-log-icon inline-flex items-center justify-center shrink-0 rounded-sm bg-accent-tint text-accent" aria-hidden="true">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="8" y1="6" x2="21" y2="6"></line>
 						<line x1="8" y1="12" x2="21" y2="12"></line>
@@ -94,9 +94,9 @@
 						<line x1="3" y1="18" x2="3.01" y2="18"></line>
 					</svg>
 				</span>
-				<div class="route-log-titles">
+				<div class="route-log-titles min-w-0 flex flex-col gap-[1px]">
 					<h2>{t.routes.title}</h2>
-					<span class="route-log-subtitle">{t.routes.subtitle(sessionTitle, rows.length)}</span>
+					<span class="text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis">{t.routes.subtitle(sessionTitle, rows.length)}</span>
 				</div>
 			</div>
 			<button type="button" class="sheet-close" title={t.common.close} onclick={onClose}>
@@ -132,7 +132,7 @@
 								title={t.routes.jump}
 								onclick={() => onJump(row.triggerMessageId)}
 							>
-								<span class="route-row-head">
+								<span class="flex items-center gap-3">
 									<span class="route-bot" class:is-unknown={!row.botKnown}>{row.botName}</span>
 									<span class="route-outcome is-{row.outcome}">{row.outcomeLabel}</span>
 									<span class="route-time mono" title={formatFullTimestamp(row.createdAt)}>
@@ -227,3 +227,367 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	/* The overlay's own look. Scoped, so Svelte reports a rule this markup stopped using. */
+
+	/* Borders stay in CSS: this project blocks the border utilities, see uno.config.ts. */
+	.route-log-header {
+		border-bottom: 1px solid var(--line);
+	}
+
+	.route-log-icon {
+		width: 28px;
+		height: 28px;
+		border: 1px solid var(--accent-border);
+	}
+
+	.route-log-overlay {
+	  position: fixed;
+	  inset: 0;
+	  z-index: 70;
+	  display: flex;
+	  justify-content: flex-end;
+	  background: var(--modal-backdrop);
+	  backdrop-filter: blur(6px);
+	  -webkit-backdrop-filter: blur(6px);
+	  animation: backdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.route-log-pane {
+	  width: min(560px, calc(100vw - 72px));
+	  height: 100%;
+	  min-width: 0;
+	  display: flex;
+	  flex-direction: column;
+	  overflow: hidden;
+	  background: var(--pane);
+	  border-left: 1px solid var(--line);
+	  box-shadow: -16px 0 36px -6px rgba(15, 23, 42, 0.18);
+	  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+
+
+
+
+	.route-log-titles h2 {
+	  margin: 0;
+	  font-size: 14px;
+	  font-weight: 600;
+	  color: var(--ink);
+	}
+
+
+	.route-log-body {
+	  flex: 1;
+	  min-height: 0;
+	  overflow-y: auto;
+	  /* The top padding is a fixed offset the windowing subtracts from scrollTop. */
+	  padding: 14px 16px 20px;
+	}
+
+	.route-log-empty {
+	  margin: 0;
+	  font-size: 12px;
+	  line-height: 1.5;
+	}
+
+	.route-log-hint {
+	  flex-shrink: 0;
+	  margin: 0;
+	  padding: 12px 16px;
+	  font-size: 12px;
+	  line-height: 1.5;
+	  border-bottom: 1px solid var(--line-subtle);
+	}
+
+	.route-log-list {
+	  list-style: none;
+	  margin: 0;
+	  /* padding-top / padding-bottom are set inline: they stand in for the rows outside the window. */
+	  padding: 0;
+	}
+
+	.route-row {
+	  /* Every row carries the same gap, so one pitch per row is all the windowing needs to know. */
+	  margin-bottom: 8px;
+	  border: 1px solid var(--line);
+	  border-radius: var(--radius-md);
+	  background: var(--sidebar-bg);
+	  overflow: hidden;
+	}
+
+	.route-row-main {
+	  display: flex;
+	  flex-direction: column;
+	  gap: 6px;
+	  width: 100%;
+	  padding: 9px 10px;
+	  border: 0;
+	  background: transparent;
+	  color: inherit;
+	  font: inherit;
+	  text-align: left;
+	  cursor: pointer;
+	  transition: background 0.15s ease;
+	}
+
+	.route-row-main:hover {
+	  background: var(--chip);
+	}
+
+
+	.route-bot {
+	  min-width: 0;
+	  font-size: 12.5px;
+	  font-weight: 600;
+	  color: var(--ink);
+	  white-space: nowrap;
+	  overflow: hidden;
+	  text-overflow: ellipsis;
+	}
+
+	.route-bot.is-unknown {
+	  color: var(--muted);
+	  font-weight: 500;
+	  font-style: italic;
+	}
+
+	.route-outcome {
+	  flex-shrink: 0;
+	  font-size: 10.5px;
+	  font-weight: 600;
+	  line-height: 1.35;
+	  padding: 1px 6px;
+	  border-radius: 9999px;
+	  border: 1px solid transparent;
+	  white-space: nowrap;
+	}
+
+	.route-outcome.is-completed {
+	  background: var(--ok-bg);
+	  color: var(--ok-text);
+	  border-color: var(--ok-line);
+	}
+
+	.route-outcome.is-failed {
+	  background: var(--danger-bg);
+	  color: var(--danger-text);
+	  border-color: var(--danger-line);
+	}
+
+	.route-outcome.is-interrupted {
+	  background: var(--warn-bg);
+	  color: var(--warn-text);
+	  border-color: var(--warn-line);
+	}
+
+	.route-outcome.is-live,
+	.route-outcome.is-redirected {
+	  background: var(--accent-tint);
+	  color: var(--accent);
+	  border-color: var(--accent-border);
+	}
+
+	.route-outcome.is-stopped {
+	  background: var(--chip);
+	  color: var(--muted);
+	  border-color: var(--chip-line);
+	}
+
+	.route-time {
+	  margin-left: auto;
+	  flex-shrink: 0;
+	  font-size: 10.5px;
+	  color: var(--muted-light);
+	}
+
+	.route-row-meta {
+	  display: flex;
+	  flex-wrap: wrap;
+	  align-items: center;
+	  gap: 4px;
+	}
+
+	.route-chip {
+	  max-width: 100%;
+	  font-size: 10.5px;
+	  font-weight: 500;
+	  line-height: 1.35;
+	  padding: 1px 6px;
+	  border-radius: var(--radius-sm);
+	  background: var(--chip);
+	  color: var(--ink-secondary);
+	  border: 1px solid var(--chip-line);
+	  white-space: nowrap;
+	  overflow: hidden;
+	  text-overflow: ellipsis;
+	}
+
+	.route-chip.is-model {
+	  max-width: 160px;
+	  background: var(--accent-tint);
+	  color: var(--accent);
+	  border-color: var(--accent-border);
+	}
+
+	.route-chip.is-endpoint {
+	  max-width: 120px;
+	  background: transparent;
+	  color: var(--muted);
+	  border-style: dashed;
+	}
+
+	.route-duration {
+	  font-size: 10.5px;
+	  color: var(--muted-light);
+	}
+
+	.route-why {
+	  display: flex;
+	  align-items: baseline;
+	  gap: 5px;
+	  font-size: 11.5px;
+	  line-height: 1.45;
+	  color: var(--muted);
+	}
+
+	.route-why-label {
+	  flex-shrink: 0;
+	  font-weight: 600;
+	  color: var(--muted-light);
+	}
+
+	.route-review {
+	  display: flex;
+	  flex-direction: column;
+	  gap: 3px;
+	  padding: 6px 8px;
+	  border-radius: var(--radius-sm);
+	  border: 1px solid var(--line-subtle);
+	  background: var(--pane);
+	  font-size: 11.5px;
+	  line-height: 1.45;
+	}
+
+	/* A verdict that blamed the model is the one that changes later picks. */
+	.route-review.is-model {
+	  border-color: var(--warn-line);
+	  background: var(--warn-bg);
+	}
+
+	.route-review-head {
+	  display: flex;
+	  flex-wrap: wrap;
+	  align-items: center;
+	  gap: 5px;
+	}
+
+	.route-review-tag {
+	  font-weight: 600;
+	  color: var(--muted-light);
+	}
+
+	.route-review-fault {
+	  font-weight: 600;
+	  color: var(--ink-secondary);
+	}
+
+	.route-review.is-model .route-review-fault {
+	  color: var(--warn-text);
+	}
+
+	.route-review-direction,
+	.route-review-rounds {
+	  color: var(--muted);
+	}
+
+	.route-review-reason {
+	  color: var(--ink-secondary);
+	  overflow-wrap: anywhere;
+	}
+
+	.route-fail {
+	  display: flex;
+	  align-items: flex-start;
+	  gap: 5px;
+	  font-size: 11.5px;
+	  line-height: 1.4;
+	  color: var(--danger-text);
+	}
+
+	.route-fail svg {
+	  flex-shrink: 0;
+	  margin-top: 1px;
+	}
+
+	.route-feedback-toggle {
+	  display: flex;
+	  align-items: center;
+	  gap: 5px;
+	  width: 100%;
+	  padding: 6px 10px;
+	  border: 0;
+	  border-top: 1px solid var(--line-subtle);
+	  background: transparent;
+	  color: var(--muted);
+	  font-size: 11.5px;
+	  font-weight: 500;
+	  text-align: left;
+	  cursor: pointer;
+	  transition:
+	    color 0.15s ease,
+	    background 0.15s ease;
+	}
+
+	.route-feedback-toggle:hover {
+	  color: var(--ink-secondary);
+	  background: var(--chip);
+	}
+
+	.route-caret {
+	  flex-shrink: 0;
+	  transition: transform 0.15s ease;
+	}
+
+	.route-caret.is-open {
+	  transform: rotate(90deg);
+	}
+
+	.route-feedback {
+	  list-style: none;
+	  margin: 0;
+	  padding: 0 10px 9px;
+	  display: flex;
+	  flex-direction: column;
+	  gap: 6px;
+	}
+
+	.route-feedback-item {
+	  display: flex;
+	  align-items: flex-start;
+	  gap: 6px;
+	  padding: 6px 8px;
+	  border-radius: var(--radius-sm);
+	  background: var(--pane);
+	  border: 1px solid var(--line-subtle);
+	}
+
+	.route-feedback-body {
+	  flex: 1;
+	  min-width: 0;
+	  margin: 0;
+	  font-size: 11.5px;
+	  line-height: 1.45;
+	  color: var(--ink-secondary);
+	  overflow-wrap: anywhere;
+	}
+
+	.route-feedback-time {
+	  flex-shrink: 0;
+	  padding-top: 1px;
+	  font-size: 10px;
+	  color: var(--muted-light);
+	}
+</style>

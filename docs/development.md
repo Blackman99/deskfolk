@@ -34,14 +34,42 @@
 - `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
 - `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。
 - 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`、`markdown.ts`、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。
-- `styles/`：原来一张 9218 行的表按原顺序切成十三个文件，`index.css` 按序 `@import`，全部仍是全局样式 —— 组件不带 `<style>`，因为表里大量规则跨组件（`.shell.has-session .side`、`.msg.is-you .attachment-file-btn` 等），作用域化只会把它们统统变成 `:global()`。**层叠顺序就是文件顺序，切文件时不要重排规则。**
-  - `tokens.css` 是配色令牌与暗色覆盖，`base.css` 是 reset，其余按面：`shell` / `sidebar` / `chat` / `composer` / `drawers` / `route-log` / `panels` / `settings` / `onboarding` / `context-menu`。
+- `styles/`：原来一张 9218 行的表按原顺序切成十几个文件，`index.css` 按序 `@import`。**层叠顺序就是文件顺序，切文件时不要重排规则。** 这里只该剩跨组件的规则和全局底座，一个面自己的样式归它自己 —— 见下面「信使样式分层」。
+  - `tokens.css` 是配色令牌与暗色覆盖，`base.css` 是 reset，其余按面：`shell` / `sidebar` / `chat` / `composer` / `drawers` / `panels` / `settings` / `onboarding` / `context-menu`。
   - `shared.css` 放不止一个面会往自己元素上挂的那几个 class（`.field-error`、`.avatar-img`、`.btn-chip`、`.sheet-close`、模态框骨架）。只放这个东西本身和它的通用状态，`.modal-body .provider-card`、`.modal-dialog.settings-modal` 这种另一半属于别人的规则留在别人那儿。**动 `shared.css` 会波及每个面** —— 它单独成文件就是为了让这件事看得见。
   - `styles-coverage.test.ts` 会在有样式没人用时失败。全局表没有任何编译期检查，删组件时留下的孤儿样式就是这么积累的（这条测试建立时清掉了 23 个 class、35 条规则，其中一个正是上一次删组件留下的）。它认得 `class="tab is-{kind}"` 这种插值（记下 `is-` 前缀），也认得只出现在后代位置的第三方 DOM（Monaco 注入的那些）；Monaco 挂到 body 上的浮层在测试里有一张写明理由的白名单。
 
 打开的是哪个会话记在 URL 的 `?s=<id>` 上（`session-url.ts`），刷新、热更新和后退键都回到同一个会话。用查询参数而不是路径，是因为打包后的 Tauri 窗通过资源协议直接服务 `build/`，没有 SPA 回退：`/s/<id>` 一刷新就是 404，而 `index.html?s=<id>` 永远是磁盘上那个文件。`+page.svelte` 里两条 effect 互为镜像，各自只跟踪自己那一侧（都跟踪就会互相覆盖）；URL 里的 id 在会话列表到达前不动它，`connect()` 拿到列表后会把不存在的 id 清掉。别的浮层（设置、抽屉、路由日志、工作区、产物预览）不进 URL：它们的开关已经在 `MessengerRuntime` 上互斥，搬进 URL 只会让 Escape 级联多一个真相来源。
 
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
+
+## 信使样式分层
+
+新写或改一条样式，按这个顺序挑落点，挑不到再往下走：
+
+1. **Uno 工具类**（`apps/messenger/uno.config.ts`）。布局、间距、字号、配色这些普通样式写在 `class` 上。主题取自 `tokens.css`：颜色映射到 `var(--pane)` 这类令牌，不写死色值；圆角、阴影、字体同理。
+2. **组件自己的 `<style>`**。只有这个组件才有的东西 —— 伪元素、动画、带结构的 `:hover` / `:focus-visible`、媒体查询、`-webkit-` 前缀那些。Svelte 会作用域化，改它波及不到别人，而且**选择器没人用时 `svelte-check` 直接报 `css_unused_selector`** —— 全局表要靠 `styles-coverage.test.ts` 才查得出来的事，搬进组件就变成编译期检查了。
+3. **`lib/styles/*.css` 全局**。只留真正跨组件的（`.shell.has-session .side`、`.msg.is-you .attachment-file-btn`、`.workspace-overlay .artifact-pane`）以及令牌与 reset。**跨组件的先想办法拆进它作用的那个组件**，拆不动才留在这儿。
+   - `shared.css` 放不止一个面会往自己元素上挂的那几个 class（`.field-error`、`.avatar-img`、`.btn-chip`、`.sheet-close`、模态框骨架）。只放这个东西本身和它的通用状态，`.modal-body .provider-card`、`.modal-dialog.settings-modal` 这种另一半属于别人的规则留在别人那儿。**动 `shared.css` 会波及每个面** —— 它单独成文件就是为了让这件事看得见。
+
+目前只有 `RouteLog.svelte` 按这套走完（顺带把 17 条其实属于 `ProfilePane` 的 `.skill-*` 规则归了位 —— 它们是当初按行号切表时被误分进 `route-log.css` 的）。其余的面还整片在全局表里，按面逐个搬，**每搬一个面跑一次视觉基线**。
+
+### Uno 配置上的两个坑
+
+两个都是 `preflight: false` 带来的（不能开 preflight：它会重置这张手写表依赖的默认值）。
+
+- **`text-*` 会捎带一个 `line-height`。** `theme.fontSize` 写成裸字符串时 `presetWind3` 补 `line-height: 1`，而这张表是靠 `base.css` 上无单位的 `line-height: 1.5` 继承下来的。`.route-log-subtitle` 换成 `text-11p5` 后行高从 17.25px 掉到 11.5px，头部矮了 5.75px，整个面板往上挪 —— 截图是整屏差异，而单看那个元素的 `font-size` 完全正确。所以字号一律配成 `[大小, '1.5']` 这样的对。
+- **border 工具类静默失效。** 没有 preflight 就没有 `border-style: solid` 的底，`border` / `border-t` 这些只设宽度，画不出线。补一条 `border-style: solid; border-width: 0` 的 preflight 试过，六个面当场变样（表里大量规则只写 `border-color` 或只写 `border-width`，原本靠 UA 默认的 `border-style: none` 兜着）。现在是 `blocklist: [/^border($|-)/]`：**边框继续写 CSS**，写了 border 工具类会直接报错，不会悄悄没效果。
+
+另外间距单位是 2px（设计上大量 14px / 11.5px 这种奇数值，4px 一档配不出来），所以 `px-8` 是 16px、`w-14` 是 28px —— 名字读起来不像 px，改的时候按令牌算，别按 Tailwind 的习惯猜。
+
+### 搬样式怎么验
+
+**先有视觉基线再搬**（见下一节）。`RouteLog` 那 50 条规则从全局表搬进组件 `<style>` 后截图逐像素相同 —— 这是搬运正确的证据；上面两个坑也都是基线报出来的，光看计算样式看不出来（那次每个元素的 `font-size` / `gap` / `padding` 都对，错的是没去看的 `line-height`）。
+
+差异定位不要盯着差异图猜：把整棵子树的 `getBoundingClientRect()` 和一批计算样式 dump 成文本，改前改后 `diff`，错位的那一行会自己跳出来。
+
+还有一条基线兜不住的：应用跑在 WKWebView，基线拍的是 Chromium。`-webkit-backdrop-filter`、`-webkit-line-clamp`、`::-webkit-scrollbar` 这些前缀属性在搬运中丢了，Chromium 的截图不会有任何反应，只能靠读 diff 保证它们跟着搬过去了。
 
 ## 信使组件测试
 

@@ -593,3 +593,116 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	/* The skill list. It lived in `route-log.css` only because the sheet was cut by line range. */
+	.skill-card-body {
+	  display: flex;
+	  flex-direction: column;
+	  gap: 8px;
+	}
+
+	.skill-empty {
+	  margin: 0;
+	  font-size: 13px;
+	}
+
+	.skill-row {
+	  display: flex;
+	  align-items: center;
+	  gap: 12px;
+	  min-width: 0;
+	  padding-right: 12px;
+	  border: 1px solid var(--line);
+	  border-radius: var(--radius-md);
+	  background: var(--pane);
+	}
+
+	.skill-row:hover,
+	.skill-row:focus-within {
+	  border-color: var(--accent-border);
+	}
+
+	.skill-row.is-disabled {
+	  background: var(--sidebar-bg);
+	}
+
+	.skill-row.is-open {
+	  border-color: var(--accent-border);
+	}
+
+	.skill-open {
+	  display: flex;
+	  flex-direction: column;
+	  gap: 4px;
+	  flex: 1;
+	  min-width: 0;
+	  padding: 12px;
+	  border: 0;
+	  border-radius: var(--radius-md);
+	  background: transparent;
+	  text-align: left;
+	  color: var(--ink);
+	  cursor: pointer;
+	}
+
+	.skill-name,
+	.skill-desc {
+	  overflow: hidden;
+	  text-overflow: ellipsis;
+	  white-space: nowrap;
+	  max-width: 100%;
+	}
+
+	.skill-name {
+	  font-size: 13.5px;
+	  font-weight: 600;
+	}
+
+	.skill-desc {
+	  font-size: 12px;
+	  color: var(--muted);
+	}
+
+	.skill-row .mcp-enable-label {
+	  flex-shrink: 0;
+	  white-space: nowrap;
+	  font-size: 12px;
+	}
+
+	.skill-editor {
+	  display: flex;
+	  flex-direction: column;
+	  gap: 10px;
+	  padding-top: 8px;
+	  border-top: 1px solid var(--line-subtle);
+	}
+
+	.skill-editor-title {
+	  margin: 0;
+	  font-size: 12px;
+	  font-weight: 600;
+	  text-transform: uppercase;
+	  letter-spacing: 0.04em;
+	}
+
+	.skill-editor-enabled {
+	  margin-top: 2px;
+	}
+
+	.skill-editor-hint {
+	  margin: 4px 0 0;
+	  font-size: 12px;
+	  line-height: 1.45;
+	}
+
+	.skill-editor-actions {
+	  display: flex;
+	  flex-wrap: wrap;
+	  gap: 8px;
+	}
+
+	.skill-add {
+	  align-self: flex-start;
+	}
+</style>

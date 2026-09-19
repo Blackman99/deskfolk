@@ -1,3 +1,4 @@
+import UnoCSS from "unocss/vite";
 import adapter from "@sveltejs/adapter-static";
 import { fileURLToPath } from "node:url";
 import { sveltekit } from "@sveltejs/kit/vite";
@@ -18,6 +19,8 @@ export default defineConfig({
   },
   plugins: [
     localApiDiscovery(),
+    // Ordinary styles are utilities; see uno.config.ts and docs/development.md.
+    UnoCSS(),
     sveltekit({
       compilerOptions: {
         runes: ({ filename }) =>

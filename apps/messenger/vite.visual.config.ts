@@ -1,3 +1,4 @@
+import UnoCSS from 'unocss/vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
 
@@ -10,6 +11,6 @@ import { defineConfig } from 'vite';
  * with — a check that cannot fail is worse than no check.
  */
 export default defineConfig({
-	plugins: [svelte({ compilerOptions: { runes: true } })],
+	plugins: [UnoCSS(), svelte({ compilerOptions: { runes: true } })],
 	server: { port: 5199, strictPort: true }
 });

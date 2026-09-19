@@ -1,4 +1,5 @@
 import { mount } from 'svelte';
+import 'virtual:uno.css';
 import '../../src/lib/styles/index.css';
 import { stories } from './stories.ts';
 import type { StoryName } from './story-list.ts';
