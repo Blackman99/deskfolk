@@ -525,21 +525,6 @@
 <svelte:window onclick={onWindowClick} />
 
 		<footer class="composer">
-{#if selected && !lockedComposer && runtime.composerSuggestions.length > 0}
-	<div class="composer-suggest-bar" aria-label={t.chat.suggestNext}>
-		{#each runtime.composerSuggestions as suggestion (suggestion.id)}
-			<button
-				type="button"
-				class="suggest-chip"
-				title={suggestion.prompt}
-				onclick={() => onPickPrompt(suggestion.prompt)}
-			>
-				{suggestion.label}
-			</button>
-		{/each}
-	</div>
-{/if}
-
 {#if showMentionPopup && mentionCandidates.length > 0}
 	<div
 		bind:this={mentionPopupEl}
@@ -580,6 +565,23 @@
 	</div>
 {/if}
 
+<div class="composer-dock">
+{#if selected && !lockedComposer && runtime.composerSuggestions.length > 0}
+	<div class="composer-frost-shell composer-suggest-bar" aria-label={t.chat.suggestNext}>
+		{#each runtime.composerSuggestions as suggestion (suggestion.id)}
+			<button
+				type="button"
+				class="suggest-chip"
+				title={suggestion.prompt}
+				onclick={() => onPickPrompt(suggestion.prompt)}
+			>
+				{suggestion.label}
+			</button>
+		{/each}
+	</div>
+{/if}
+
+<div class="composer-frost-shell composer-card-shell">
 <div
 	class="composer-card"
 	class:is-locked={lockedComposer}
@@ -702,11 +704,15 @@
 		</button>
 	</div>
 </div>
+</div>
 {#if !lockedComposer}
 	<div class="composer-hint" id="composer-hint">
-		<span class="send-shortcut-hint">{selected?.kind !== 'group' && (liveTurn || pendingHere.length > 0) ? t.composer.waitingHint : t.chat.sendHint}</span>
+		<span class="composer-frost-shell composer-hint-shell">
+			<span class="send-shortcut-hint">{selected?.kind !== 'group' && (liveTurn || pendingHere.length > 0) ? t.composer.waitingHint : t.chat.sendHint}</span>
+		</span>
 	</div>
 {/if}
+</div>
 		</footer>
 
 <style>
@@ -717,38 +723,79 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background: var(--glass-composer);
-		backdrop-filter: blur(16px);
-		-webkit-backdrop-filter: blur(16px);
-		border-top: 1px solid var(--line);
-		box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+		background: transparent;
 		padding: 10px 24px 12px;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
-		pointer-events: auto;
+		pointer-events: none;
 		z-index: 4;
 	}
 
-	.composer-suggest-bar {
+	/* Pipe-stem dock: chips sit on the left shoulder of the input card. */
+	.composer-dock {
+		position: relative;
 		width: 100%;
 		max-width: var(--chat-max-width);
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-wrap: wrap;
-		padding: 2px 4px;
-		pointer-events: auto;
+		flex-direction: column;
+		align-items: stretch;
+		min-width: 0;
 	}
 
-	.composer-suggest-bar > * {
-		pointer-events: auto;
+	.composer-frost-shell {
+		position: relative;
+		pointer-events: none;
+	}
+
+	/* Frosted ring hugging chips / card / hint — not a full-width bottom bar.
+	   On the shell so backdrop-filter can see the transcript. */
+	.composer-frost-shell::before {
+		content: "";
+		position: absolute;
+		inset: -8px;
+		border-radius: inherit;
+		pointer-events: none;
+		background: color-mix(in srgb, var(--glass-composer) 50%, transparent);
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+	}
+
+	.composer-suggest-bar {
+		position: relative;
+		z-index: 2;
+		align-self: flex-start;
+		width: max-content;
+		max-width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: nowrap;
+		padding: 4px 8px 10px 4px;
+		margin: 0 0 -8px;
+		border-radius: 22px 22px 8px 8px;
+		pointer-events: none;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.composer-suggest-bar::-webkit-scrollbar {
+		display: none;
+	}
+
+	.composer-suggest-bar::before {
+		inset: -8px -8px 4px -8px;
+		border-radius: 22px 22px 8px 8px;
 	}
 
 	.suggest-chip {
-		max-width: 100%;
+		position: relative;
+		z-index: 1;
+		pointer-events: auto;
+		flex: 0 0 auto;
+		max-width: none;
 		padding: 4px 10px;
 		border-radius: 9999px;
 		font-size: 12px;
@@ -771,13 +818,25 @@
 		color: var(--accent);
 	}
 
-	.composer-card {
+	.composer-card-shell {
 		width: 100%;
-		max-width: var(--chat-max-width);
+		border-radius: 24px;
+		z-index: 1;
+	}
+
+	.composer-card-shell::before {
+		inset: -8px;
+		border-radius: 32px;
+	}
+
+	.composer-card {
+		position: relative;
+		z-index: 1;
+		width: 100%;
 		background: var(--input-bg);
 		border: 1px solid var(--line);
 		border-radius: 24px;
-		box-shadow: var(--shadow-sm);
+		box-shadow: var(--shadow-md);
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -794,7 +853,7 @@
 
 	.composer-card:focus-within {
 		border-color: var(--accent-border);
-		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-sm);
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
 	}
 
 	.composer-card.is-locked {
@@ -934,23 +993,44 @@
 		width: 100%;
 		max-width: var(--chat-max-width);
 		min-height: 14px;
+		margin-top: 8px;
 		text-align: center;
 		line-height: 14px;
 		pointer-events: none;
 	}
 
+	.composer-hint-shell {
+		display: inline-flex;
+		border-radius: 9999px;
+	}
+
+	.composer-hint-shell::before {
+		inset: -4px -10px;
+	}
+
 	.send-shortcut-hint {
+		position: relative;
+		z-index: 1;
 		font-size: 11px;
 		color: var(--muted);
-		opacity: 0.85;
-		text-shadow: 0 1px 2px var(--pane);
+		opacity: 0.92;
 	}
 
 	@media (max-width: 680px) {
 		.composer {
 			bottom: 0;
-			padding: 8px 10px 10px;
+			padding: 8px 10px 12px;
 			gap: 4px;
+		}
+
+		.composer-suggest-bar {
+			padding: 2px 4px 8px 2px;
+			margin: 0 0 -6px;
+		}
+
+		.composer-card-shell::before {
+			inset: -6px;
+			border-radius: 28px;
 		}
 	}
 
