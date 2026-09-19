@@ -41,7 +41,6 @@
 	import { rosterLetter } from './roster-letter.ts';
 	import { avatarSrc } from './avatar.ts';
 	import SessionAvatar from './SessionAvatar.svelte';
-	import { searchHitView, searchJump } from './search-jump.ts';
 	import { routeLogRows } from './route-log.ts';
 	import RouteLog from './RouteLog.svelte';
 	import { getStarterOptions } from './starter-prompts.ts';
@@ -54,20 +53,17 @@
 		togglePinnedId
 	} from './pinned-sessions.ts';
 	import { themeManager } from './theme.ts';
-	import { classifySession, groupSessions, isSessionArchived, youBotPeer } from './session-groups.ts';
+	import { classifySession, youBotPeer } from './session-groups.ts';
 	import { sessionPresence, sessionTitle } from './session-title.ts';
 	import { renderMarkdown } from './markdown.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
-	import { sessionUnreadCount, unreadBadge } from './unread.ts';
-	import {
+		import {
 		composeTranscript,
 		isLiveStatus,
 		isPendingAsk,
-		latestPreview,
 		transcriptItemKey
 	} from './transcript.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
-	import { updateChecker } from './update-checker.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import Select from './Select.svelte';
 	import SessionContextMenu from './SessionContextMenu.svelte';
@@ -82,9 +78,9 @@
 	import { isOutside } from './click-outside.ts';
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
-	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
 	import GroupPane, { type GroupDetailDraft } from './panels/GroupPane.svelte';
 	import ProfilePane from './panels/ProfilePane.svelte';
+	import Sidebar from './sidebar/Sidebar.svelte';
 	import SettingsModal from './settings/SettingsModal.svelte';
 	import { formatFileSize } from './attachments.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotedBotName, quotePreview } from './quote-reply.ts';
@@ -114,25 +110,11 @@
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const t = $derived(copyFor(locale));
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
-	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	let pinnedSessionIds = $state<string[]>(loadPinnedIds());
-	let pinnedExpanded = $state(false);
 	let approvalKeys = $state<Record<string, string>>({});
 	let approvalKeyErrors = $state<Record<string, boolean>>({});
 
-	let searchFocused = $state(false);
-	let searchHighlightIndex = $state(-1);
-	let searchWrapEl = $state<HTMLElement | null>(null);
-	let searchInputEl = $state<HTMLInputElement | null>(null);
-	let searchDropEl = $state<HTMLElement | null>(null);
-
-	$effect(() => {
-		void runtime.searchHits;
-		searchHighlightIndex = -1;
-	});
-
-	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
 	const validSessionIds = $derived(new Set(snapshot.sessions.map((s) => s.id)));
 
 	$effect(() => {
@@ -143,63 +125,14 @@
 		}
 	});
 
-	let resolvedTheme = $state(themeManager.resolved);
-	let themePreference = $state(themeManager.preference);
-
-	$effect(() => {
-		return themeManager.subscribe(() => {
-			resolvedTheme = themeManager.resolved;
-			themePreference = themeManager.preference;
-		});
-	});
-
 	$effect(() => {
 		if (snapshot.settings.theme) {
 			themeManager.syncFromSnapshot(snapshot.settings.theme);
 		}
 	});
 
+	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
 	let themeMenuOpen = $state(false);
-	let themeMenuEl = $state<HTMLElement | null>(null);
-	let themeToggleBtnEl = $state<HTMLButtonElement | null>(null);
-	const currentTheme = $derived(snapshot.settings.theme || themePreference);
-
-	function selectTheme(theme: 'system' | 'light' | 'dark'): void {
-		themeManager.setTheme(theme);
-		void patchImmediate({ theme });
-		themeMenuOpen = false;
-	}
-
-	function onThemeMenuKeyDown(e: KeyboardEvent): void {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			e.stopPropagation();
-			themeMenuOpen = false;
-			themeToggleBtnEl?.focus();
-			return;
-		}
-		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-			e.preventDefault();
-			if (!themeMenuEl) return;
-			const items = Array.from(themeMenuEl.querySelectorAll<HTMLButtonElement>('.theme-menu-item'));
-			const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-			let nextIndex = 0;
-			if (e.key === 'ArrowDown') {
-				nextIndex = currentIndex >= 0 ? (currentIndex + 1) % items.length : 0;
-			} else {
-				nextIndex = currentIndex >= 0 ? (currentIndex - 1 + items.length) % items.length : items.length - 1;
-			}
-			items[nextIndex]?.focus();
-		}
-	}
-
-	$effect(() => {
-		if (themeMenuOpen && themeMenuEl) {
-			const activeItem = themeMenuEl.querySelector<HTMLButtonElement>('.theme-menu-item.is-selected')
-				?? themeMenuEl.querySelector<HTMLButtonElement>('.theme-menu-item');
-			activeItem?.focus();
-		}
-	});
 
 	function togglePin(sessionId: string): void {
 		const next = togglePinnedId(pinnedSessionIds, sessionId);
@@ -332,33 +265,7 @@
 		}
 	}
 
-	let viewingArchived = $state(false);
 
-	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
-	const archivedSessions = $derived(
-		snapshot.sessions.filter((s) => {
-			if (s.kind === 'direct') {
-				const parts = s.participants.filter((p) => p.left_at === null).map((p) => p.member);
-				const bots = parts.filter((m) => m !== USER_MEMBER);
-				if (bots.some((m) => !aliveBotIds.has(m))) return false;
-			}
-			return isSessionArchived(s, botsById);
-		})
-	);
-	const pinnedSessions = $derived(
-		pinnedSessionIds
-			.map((id) => snapshot.sessions.find((s) => s.id === id))
-			.filter((s): s is SessionSummary => Boolean(s))
-			.filter((s) => !isSessionArchived(s, botsById))
-			.filter((s) => {
-				if (s.kind === 'direct') {
-					const parts = s.participants.filter((p) => p.left_at === null).map((p) => p.member);
-					const bots = parts.filter((m) => m !== USER_MEMBER);
-					if (bots.some((m) => !aliveBotIds.has(m))) return false;
-				}
-				return true;
-			})
-	);
 	const selected = $derived(snapshot.sessions.find((s) => s.id === runtime.selectedId) ?? null);
 	const stream = $derived(
 		selected
@@ -404,13 +311,6 @@
 	let askDrafts = $state<Record<string, string>>({});
 	const connected = $derived(runtime.connection === 'connected');
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
-	const searchKindLabels = $derived({
-		bot: t.sidebar.searchKindBot,
-		session: t.sidebar.searchKindSession,
-		message: t.sidebar.searchKindMessage,
-		routine: t.sidebar.searchKindRoutine,
-		file: t.sidebar.searchKindFile
-	});
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(
@@ -814,18 +714,15 @@
 		}
 	});
 
-	function titleOf(session: SessionSummary): string {
-		return sessionTitle(session, botsById, rosterLabels);
+	function archivedSuffix(session: SessionSummary): string {
+		if (session.archived_at) return ` · ${t.top.archived}`;
+		const peer = youBotPeer(session);
+		if (!peer) return '';
+		return botsById.get(peer)?.archived_at ? ` · ${t.top.archived}` : '';
 	}
 
-	function statusOf(session: SessionSummary) {
-		return sidebarStatus(
-			session,
-			snapshot.turns,
-			snapshot.approvals,
-			statusLabels,
-			snapshot.pendingJudgements
-		);
+	function titleOf(session: SessionSummary): string {
+		return sessionTitle(session, botsById, rosterLabels);
 	}
 
 	function botStatusOf(botId: string) {
@@ -838,14 +735,6 @@
 		);
 	}
 
-	function unreadOf(session: SessionSummary): number {
-		return sessionUnreadCount(session, runtime.selectedId);
-	}
-
-	function previewOf(session: SessionSummary): string {
-		return latestPreview(snapshot.messages, session.id, session, snapshot.turns);
-	}
-
 	function who(message: Message): string {
 		if (message.author === USER_MEMBER) return t.common.you;
 		return botsById.get(message.author)?.name ?? t.top.deleted;
@@ -856,13 +745,6 @@
 		return botsById.get(author)?.name ?? t.top.deleted;
 	}
 
-	function archivedSuffix(session: SessionSummary): string {
-		if (session.archived_at) return ` · ${t.top.archived}`;
-		const peer = youBotPeer(session);
-		if (!peer) return '';
-		return botsById.get(peer)?.archived_at ? ` · ${t.top.archived}` : '';
-	}
-
 	function openBot(bot: Bot): void {
 		const session = snapshot.sessions.find(
 			(s) =>
@@ -871,78 +753,6 @@
 				s.participants.some((p) => p.member === bot.id && p.left_at === null)
 		);
 		if (session) void runtime.selectSession(session.id);
-	}
-
-	function onSearchInput(ev: Event): void {
-		searchHighlightIndex = -1;
-		void runtime.runSearch((ev.currentTarget as HTMLInputElement).value);
-	}
-
-	function scrollSearchHighlightIntoView(index = searchHighlightIndex): void {
-		const drop = searchDropEl;
-		if (!drop) return;
-		const item = drop.querySelectorAll<HTMLElement>('.search-hit')[index];
-		if (!item) return;
-		const dropRect = drop.getBoundingClientRect();
-		const itemRect = item.getBoundingClientRect();
-		drop.scrollTop = scrollTopToRevealRect(
-			drop.scrollTop,
-			dropRect.top,
-			dropRect.bottom,
-			itemRect.top,
-			itemRect.bottom
-		);
-	}
-
-	function onSearchKeyDown(e: KeyboardEvent): void {
-		if (e.isComposing) return;
-		if (e.key === 'Escape') {
-			searchFocused = false;
-			searchHighlightIndex = -1;
-			searchInputEl?.blur();
-			return;
-		}
-		if (!searchFocused || !runtime.searchQuery.trim() || runtime.searchHits.length === 0) {
-			return;
-		}
-		if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			const count = runtime.searchHits.length;
-			searchHighlightIndex = searchHighlightIndex < count - 1 ? searchHighlightIndex + 1 : 0;
-			scrollSearchHighlightIntoView(searchHighlightIndex);
-			return;
-		}
-		if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			const count = runtime.searchHits.length;
-			searchHighlightIndex = searchHighlightIndex > 0 ? searchHighlightIndex - 1 : count - 1;
-			scrollSearchHighlightIntoView(searchHighlightIndex);
-			return;
-		}
-		if (e.key === 'Enter') {
-			const targetIndex = searchHighlightIndex >= 0 ? searchHighlightIndex : 0;
-			const hit = runtime.searchHits[targetIndex];
-			if (hit) {
-				e.preventDefault();
-				onHit(hit);
-			}
-			return;
-		}
-	}
-
-	function onHit(hit: (typeof runtime.searchHits)[number]): void {
-		searchFocused = false;
-		searchHighlightIndex = -1;
-		searchInputEl?.blur();
-		if (hit.kind === 'file' && hit.path) {
-			runtime.closeSearch();
-			openArtifactPath(hit.path);
-			return;
-		}
-		const jump = searchJump(hit, snapshot.sessions);
-		if (!jump) return;
-		runtime.closeSearch();
-		void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
 	}
 
 	function scrollHighlightedMessage(): void {
@@ -1407,12 +1217,6 @@
 			showMentionPopup = false;
 			mentionDismissed = false;
 		}
-		if (themeMenuOpen && isOutside(target, themeMenuEl, themeToggleBtnEl)) {
-			themeMenuOpen = false;
-		}
-		if (searchFocused && isOutside(target, searchWrapEl)) {
-			searchFocused = false;
-		}
 	}
 
 	function pickStarterPrompt(prompt: string): void {
@@ -1752,499 +1556,25 @@
 	style:--preview-width="{previewWidth}px"
 	style:--sidebar-width="{sidebarWidth}px"
 >
-	<aside class="side">
-		<div class="roster-panel">
-			<div class="roster" class:is-expanded={pinnedExpanded} title={t.sidebar.pinned}>
-				{#if pinnedSessions.length === 0}
-					<span class="roster-empty-hint">{t.sidebar.pinnedEmpty}</span>
-				{:else}
-					{#each pinnedSessions as pSession (pSession.id)}
-						{@const pStatus = statusOf(pSession)}
-						{@const pUnread = unreadOf(pSession)}
-						<button
-							type="button"
-							title="{titleOf(pSession)}{archivedSuffix(pSession)}"
-							class="pinned-session-btn"
-							class:is-active={runtime.selectedId === pSession.id}
-							class:is-context-open={contextMenu?.session.id === pSession.id}
-							class:is-run={pStatus.isBusy}
-							class:is-unread={pUnread > 0}
-							onclick={() => void runtime.selectSession(pSession.id)}
-							oncontextmenu={(e) => openContextMenu(e, pSession)}
-						>
-							<span class="pinned-avatar-wrap">
-								<SessionAvatar session={pSession} bots={botsById} botStatus={botStatusOf} />
-								{#if pStatus.count}
-									<span class="pinned-badge">{pStatus.count}</span>
-								{:else if pUnread > 0}
-									<span class="pinned-unread" title={t.sidebar.unread}>{unreadBadge(pUnread)}</span>
-								{/if}
-							</span>
-							<span class="pinned-session-name">{titleOf(pSession)}</span>
-						</button>
-					{/each}
-				{/if}
-			</div>
-			{#if pinnedSessions.length > 5}
-				<button
-					type="button"
-					class="pinned-expand-btn"
-					title={pinnedExpanded ? t.sidebar.collapse : t.sidebar.expand}
-					onclick={() => (pinnedExpanded = !pinnedExpanded)}
-				>
-					<svg
-						width="12"
-						height="12"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						class:is-rotated={pinnedExpanded}
-					>
-						<polyline points="6 9 12 15 18 9"></polyline>
-					</svg>
-				</button>
-			{/if}
-		</div>
-		<div class="side-body">
-		<div class="search-wrap" bind:this={searchWrapEl}>
-			<span class="search-icon-badge" aria-hidden="true">
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="11" cy="11" r="8"></circle>
-					<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-				</svg>
-			</span>
-			<input
-				bind:this={searchInputEl}
-				class="search"
-				placeholder={t.sidebar.search}
-				value={runtime.searchQuery}
-				role="combobox"
-				aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
-				aria-controls="search-dropdown-list"
-				aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
-				oninput={onSearchInput}
-				onfocus={() => {
-					searchFocused = true;
-				}}
-				onblur={(e) => {
-					const next = e.relatedTarget as Node | null;
-					if (searchWrapEl && next && searchWrapEl.contains(next)) {
-						return;
-					}
-					searchFocused = false;
-					searchHighlightIndex = -1;
-				}}
-				onkeydown={onSearchKeyDown}
-			/>
-			{#if runtime.searchQuery.trim()}
-				<button
-					type="button"
-					class="search-clear"
-					title="清除"
-					onmousedown={(e) => e.preventDefault()}
-					onclick={() => {
-						void runtime.runSearch('');
-						searchFocused = true;
-						searchHighlightIndex = -1;
-						searchInputEl?.focus();
-					}}
-				>✕</button>
-			{/if}
-			{#if searchFocused && runtime.searchQuery.trim()}
-				<div
-					bind:this={searchDropEl}
-					id="search-dropdown-list"
-					class="search-drop"
-					role="listbox"
-					tabindex="-1"
-					onmousedown={(e) => {
-						e.preventDefault();
-					}}
-				>
-					{#if runtime.searchHits.length === 0}
-						<p class="muted">{t.sidebar.emptySearch}</p>
-					{:else}
-						{#each runtime.searchHits as hit, i (hit.id ?? hit.path ?? i)}
-							{@const view = searchHitView(hit, searchKindLabels)}
-							<button
-								type="button"
-								id={`search-hit-${i}`}
-								class="search-hit"
-								class:is-highlighted={searchHighlightIndex === i}
-								class:is-selected={searchHighlightIndex === i}
-								role="option"
-								aria-selected={searchHighlightIndex === i}
-								title={view.sessionTitle ? `${view.kindLabel} · ${view.sessionTitle}` : view.kindLabel}
-								onmouseenter={() => {
-									searchHighlightIndex = i;
-								}}
-								onclick={() => onHit(hit)}
-							>
-								{#if hit.kind === 'bot'}
-									{@const bot = hit.id ? botsById.get(hit.id) : null}
-									{@const botName = bot?.name ?? hit.snippet ?? ''}
-									{@const pal = botAvatarColor(hit.id ?? botName)}
-									{@const src = avatarSrc(bot?.avatar ?? hit.avatar)}
-									<span class="row-avatar size-sm search-hit-avatar" aria-hidden="true">
-										<span
-											class="row-avatar-bot"
-											style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-											title={botName}
-										>
-											{#if src}
-												<img src={src} alt={botName} class="avatar-img" />
-											{:else}
-												{botName ? rosterLetter(botName) : '?'}
-											{/if}
-										</span>
-									</span>
-								{:else if hit.kind === 'session'}
-									{@const session = hit.id ? sessionsById.get(hit.id) : null}
-									{#if session}
-										<SessionAvatar {session} bots={botsById} size="sm" class="search-hit-avatar" />
-									{:else}
-										<span class="row-avatar size-sm is-group layout-empty search-hit-avatar" aria-hidden="true">
-											<span class="row-avatar-bot is-empty">
-												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-													<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-													<circle cx="9" cy="7" r="4" />
-													<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-												</svg>
-											</span>
-										</span>
-									{/if}
-								{/if}
-								<span class="search-hit-body">
-									<span class="search-hit-meta">
-										<span class="search-hit-kind">{view.kindLabel}</span>
-										{#if view.sessionTitle}
-											<span class="search-hit-session">{view.sessionTitle}</span>
-										{/if}
-									</span>
-									{#if view.snippet && view.snippet !== view.sessionTitle}
-										<span class="search-hit-snippet">{view.snippet}</span>
-									{/if}
-								</span>
-							</button>
-						{/each}
-					{/if}
-				</div>
-			{/if}
-		</div>
-		<div class="groups">
-			{#if viewingArchived}
-				<div class="ghead archived-ghead">
-					<span>{t.sidebar.archivedSessions}</span>
-					<button type="button" class="btn-back-sessions" onclick={() => (viewingArchived = false)}>
-						{t.sidebar.backToSessions}
-					</button>
-				</div>
-				{#if archivedSessions.length === 0}
-					<p class="muted archived-empty-hint">{t.sidebar.archivedEmpty}</p>
-				{:else}
-					{#each archivedSessions as session (session.id)}
-						{@const status = statusOf(session)}
-						{@const unread = unreadOf(session)}
-						<button
-							type="button"
-							class="row is-archived-row"
-							class:is-on={runtime.selectedId === session.id}
-							class:is-context-open={contextMenu?.session.id === session.id}
-							class:is-unread={unread > 0}
-							onclick={() => void runtime.selectSession(session.id)}
-							oncontextmenu={(e) => openContextMenu(e, session)}
-						>
-							<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
-							<span class="t">{titleOf(session)}{archivedSuffix(session)}</span>
-							<span class="row-status is-{status.kind}">
-								<span class="row-status-dot" class:is-busy={status.isBusy}></span>
-								<span class="row-status-text">{status.label}</span>
-								{#if status.count}
-									<span class="badge">{status.count}</span>
-								{/if}
-							</span>
-							<span class="s">{previewOf(session) || t.sidebar.noMessages}</span>
-							{#if unread > 0}
-								<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
-							{/if}
-						</button>
-					{/each}
-				{/if}
-			{:else}
-				<div class="ghead">
-					<span>{t.sidebar.groups}</span>
-					<button type="button" class="add" title={t.sidebar.addGroup} onclick={openCreateGroup}
-						>+</button
-					>
-				</div>
-				{#each grouped.groups as session (session.id)}
-					{@const status = statusOf(session)}
-					{@const unread = unreadOf(session)}
-					<button
-						type="button"
-						class="row"
-						class:is-on={runtime.selectedId === session.id}
-						class:is-context-open={contextMenu?.session.id === session.id}
-						class:is-unread={unread > 0}
-						onclick={() => void runtime.selectSession(session.id)}
-						oncontextmenu={(e) => openContextMenu(e, session)}
-					>
-						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
-						<span class="t">{titleOf(session)}</span>
-						<span class="row-status is-{status.kind}">
-							<span class="row-status-dot" class:is-busy={status.isBusy}></span>
-							<span class="row-status-text">{status.label}</span>
-							{#if status.count}
-								<span class="badge">{status.count}</span>
-							{/if}
-						</span>
-						<span class="s">{previewOf(session) || t.sidebar.noMessages}</span>
-						{#if unread > 0}
-							<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
-						{/if}
-					</button>
-				{/each}
-				<div class="ghead">
-					<span>{t.sidebar.youBot}</span>
-					<button type="button" class="add" title={t.sidebar.addBot} onclick={openCreateBot}>+</button>
-				</div>
-				{#each grouped.youBot as session (session.id)}
-					{@const status = statusOf(session)}
-					{@const unread = unreadOf(session)}
-					<button
-						type="button"
-						class="row"
-						class:is-on={runtime.selectedId === session.id}
-						class:is-context-open={contextMenu?.session.id === session.id}
-						class:is-unread={unread > 0}
-						onclick={() => void runtime.selectSession(session.id)}
-						oncontextmenu={(e) => openContextMenu(e, session)}
-					>
-						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
-						<span class="t">{titleOf(session)}{archivedSuffix(session)}</span>
-						<span class="row-status is-{status.kind}">
-							<span class="row-status-dot" class:is-busy={status.isBusy}></span>
-							<span class="row-status-text">{status.label}</span>
-							{#if status.count}
-								<span class="badge">{status.count}</span>
-							{/if}
-						</span>
-						<span class="s">{previewOf(session) || t.sidebar.noMessages}</span>
-						{#if unread > 0}
-							<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
-						{/if}
-					</button>
-				{/each}
-				<div class="ghead">{t.sidebar.botBot}</div>
-				{#each grouped.botBot as session (session.id)}
-					{@const status = statusOf(session)}
-					{@const unread = unreadOf(session)}
-					<button
-						type="button"
-						class="row"
-						class:is-on={runtime.selectedId === session.id}
-						class:is-context-open={contextMenu?.session.id === session.id}
-						class:is-unread={unread > 0}
-						onclick={() => void runtime.selectSession(session.id)}
-						oncontextmenu={(e) => openContextMenu(e, session)}
-					>
-						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
-						<span class="t">{titleOf(session)}</span>
-						<span class="row-status is-{status.kind}">
-							<span class="row-status-dot" class:is-busy={status.isBusy}></span>
-							<span class="row-status-text">{status.label}</span>
-							{#if status.count}
-								<span class="badge">{status.count}</span>
-							{/if}
-						</span>
-						<span class="s">{previewOf(session) || t.sidebar.noMessages}</span>
-						{#if unread > 0}
-							<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
-						{/if}
-					</button>
-				{/each}
-			{/if}
-		</div>
-		</div>
-		<div class="foot">
-			<div class="foot-left">
-				<button
-					type="button"
-					class="foot-icon-btn"
-					class:is-active={workspaceOpen}
-					title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (⌘O)` : t.sidebar.workspaceUnset}
-					aria-label={t.sidebar.workspace}
-					aria-expanded={workspaceOpen}
-					disabled={!snapshot.settings.workspace_path}
-					onclick={() => toggleWorkspaceExplorer()}
-				>
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-					</svg>
-				</button>
-				<button
-					type="button"
-					class="foot-icon-btn"
-					class:is-active={viewingArchived}
-					title={t.sidebar.archivedSessions}
-					aria-label={t.sidebar.archivedSessions}
-					onclick={() => (viewingArchived = !viewingArchived)}
-				>
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<polyline points="21 8 21 21 3 21 3 8"></polyline>
-						<rect x="1" y="3" width="22" height="5"></rect>
-						<line x1="10" y1="12" x2="14" y2="12"></line>
-					</svg>
-					{#if archivedSessions.length > 0}
-						<span class="foot-badge">{archivedSessions.length}</span>
-					{/if}
-				</button>
-			</div>
-			<div class="foot-right">
-				<div class="theme-menu-wrap">
-				<button
-					bind:this={themeToggleBtnEl}
-					type="button"
-					class="foot-icon-btn theme-toggle-btn"
-					class:is-active={themeMenuOpen}
-					title="{t.settings.theme}: {currentTheme === 'system' ? t.settings.themeSystem : (currentTheme === 'dark' ? t.settings.themeDark : t.settings.themeLight)}"
-					aria-label={t.settings.theme}
-					aria-haspopup="menu"
-					aria-expanded={themeMenuOpen}
-					onclick={() => {
-						themeMenuOpen = !themeMenuOpen;
-					}}
-				>
-					{#if currentTheme === 'system'}
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-							<line x1="8" y1="21" x2="16" y2="21"></line>
-							<line x1="12" y1="17" x2="12" y2="21"></line>
-						</svg>
-					{:else if currentTheme === 'dark'}
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-						</svg>
-					{:else}
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="5"></circle>
-							<line x1="12" y1="1" x2="12" y2="3"></line>
-							<line x1="12" y1="21" x2="12" y2="23"></line>
-							<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-							<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-							<line x1="1" y1="12" x2="3" y2="12"></line>
-							<line x1="21" y1="12" x2="23" y2="12"></line>
-							<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-							<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-						</svg>
-					{/if}
-				</button>
-				{#if themeMenuOpen}
-					<div
-						bind:this={themeMenuEl}
-						class="theme-menu"
-						role="menu"
-						aria-label={t.settings.theme}
-						tabindex="-1"
-						onkeydown={onThemeMenuKeyDown}
-					>
-						<button
-							type="button"
-							class="theme-menu-item"
-							class:is-selected={currentTheme === 'system'}
-							role="menuitem"
-							onclick={() => selectTheme('system')}
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-								<line x1="8" y1="21" x2="16" y2="21"></line>
-								<line x1="12" y1="17" x2="12" y2="21"></line>
-							</svg>
-							<span class="theme-menu-label">{t.settings.themeSystem}</span>
-							{#if currentTheme === 'system'}
-								<svg class="theme-menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
-							{/if}
-						</button>
-						<button
-							type="button"
-							class="theme-menu-item"
-							class:is-selected={currentTheme === 'light'}
-							role="menuitem"
-							onclick={() => selectTheme('light')}
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<circle cx="12" cy="12" r="5"></circle>
-								<line x1="12" y1="1" x2="12" y2="3"></line>
-								<line x1="12" y1="21" x2="12" y2="23"></line>
-								<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-								<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-								<line x1="1" y1="12" x2="3" y2="12"></line>
-								<line x1="21" y1="12" x2="23" y2="12"></line>
-								<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-								<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-							</svg>
-							<span class="theme-menu-label">{t.settings.themeLight}</span>
-							{#if currentTheme === 'light'}
-								<svg class="theme-menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
-							{/if}
-						</button>
-						<button
-							type="button"
-							class="theme-menu-item"
-							class:is-selected={currentTheme === 'dark'}
-							role="menuitem"
-							onclick={() => selectTheme('dark')}
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-							</svg>
-							<span class="theme-menu-label">{t.settings.themeDark}</span>
-							{#if currentTheme === 'dark'}
-								<svg class="theme-menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
-							{/if}
-						</button>
-					</div>
-				{/if}
-			</div>
-				<button
-					type="button"
-					class="foot-icon-btn"
-					class:is-active={runtime.settingsOpen}
-					title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
-					aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
-					onclick={() => {
-						workspaceOpen = false;
-						runtime.openSettings();
-					}}
-				>
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="3"></circle>
-						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-					</svg>
-					{#if updateChecker.updateVisible}
-						<span class="foot-badge is-dot" aria-hidden="true"></span>
-					{/if}
-				</button>
-			</div>
-		</div>
-		{#if runtime.createGroupOpen}
-			<CreateGroupSheet
-				{runtime}
-				bots={visibleBots}
-				{t}
-				onClose={() => (runtime.createGroupOpen = false)}
-			/>
-		{/if}
-	</aside>
+	<Sidebar
+		{runtime}
+		{t}
+		{selected}
+		{pinnedSessionIds}
+		bind:themeMenuOpen
+		{workspaceOpen}
+		contextMenuSessionId={contextMenu?.session.id ?? null}
+		onOpenContextMenu={openContextMenu}
+		onToggleWorkspace={toggleWorkspaceExplorer}
+		onOpenSettings={() => {
+			workspaceOpen = false;
+			runtime.openSettings();
+		}}
+		onCreateBot={openCreateBot}
+		onCreateGroup={openCreateGroup}
+		onOpenArtifact={openArtifactPath}
+		onPatchTheme={(theme) => void patchImmediate({ theme })}
+	/>
 	<button
 		type="button"
 		class="sidebar-split"
