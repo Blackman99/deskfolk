@@ -2,9 +2,15 @@ import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createGenerator } from "unocss";
-import config from "../../../uno.config.ts";
+import config from "../uno.config.ts";
 
 /**
+ * Lives in `tests/`, not `src/`: it imports `unocss`, and anything under `src` that a build-time
+ * package can be reached from gets pulled into the client module graph — postcss and its node
+ * builtins land in the browser, the route module fails to evaluate, and the window reports
+ * `Cannot access 'component' before initialization` from SvelteKit's client. `dev-only-imports`
+ * in `src/lib/build-imports.test.ts` guards that boundary.
+ *
  * A utility that generates nothing is invisible: the class sits in the markup, the style simply
  * does not happen, and neither `svelte-check` nor the type checker has an opinion. The border
  * utilities are the live example — they are blocklisted, so writing `border-t` looks right and

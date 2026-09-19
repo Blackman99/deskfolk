@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
-    "test": "bun test --conditions browser src/lib",
+    "test": "bun test --conditions browser src/lib tests/uno-utilities.test.ts",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots"

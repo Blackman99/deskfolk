@@ -151,7 +151,7 @@ pnpm --filter @real-bot/messenger build
 pnpm --filter @real-bot/landing build   # 可选；GitHub Pages 构建落地页
 ```
 
-开发态修改信使代码走 Vite 热更新。`beforeDevCommand` 拉信使时，若 `http://localhost:5173` 已是本包开发服务器（含上次留下的孤儿 Vite），会直接复用，不再因 `strictPort` 退出；被其他进程占用才报 `port is taken`。非 5173 的残留 Vite（例如 5174）不会被复用。窗拉起的守护进程在 debug 构建里带 Bun `--watch`，改 `apps/daemon` 会重启本机接口（已有我们则连，不新开第二个；旧无 watch 进程会一直占端口，需退出后再开 `pnpm dev`）。热重载会结束进行中的轮次并标成中断——这是进程退出，不是补全失败。启动先占端口再开库：抢不到端口的第二份进程不会改库。窗在 `local-api.json` 里的 pid 还活着时，即使健康检查暂时超时也不再拉第二份。修改 Rust 代码由 Tauri 重编译并重启窗口。桌面监督线程在释放应用状态锁后才更新托盘菜单，避免热更新后的本机接口查询与菜单更新互相等待。若旧版本窗口已经卡死，需要结束旧窗口进程，再重新运行 `pnpm dev`；热更新无法解除已经发生的原生线程死锁。
+开发态修改信使代码走 Vite 热更新。`beforeDevCommand` 拉信使时，若 `http://localhost:5173` 已是本包开发服务器（含上次留下的孤儿 Vite），会直接复用，不再因 `strictPort` 退出；被其他进程占用才报 `port is taken`。非 5173 的残留 Vite（例如 5174）不会被复用。窗拉起的守护进程在 debug 构建里带 Bun `--watch`，改 `apps/daemon` 会重启本机接口（已有我们则连，不新开第二个；旧无 watch 进程会一直占端口，需退出后再开 `pnpm dev`）。热重载会结束进行中的轮次并标成中断——这是进程退出，不是补全失败。**开发服务器开着时不要跑 `pnpm typecheck` 或 `pnpm build`**：两者都以 `svelte-kit sync` 开头，重新生成 `.svelte-kit/generated/*` 会让在跑的页面重载路由节点，窗口里就会冒出 `Unhandled Promise Rejection: ReferenceError: Cannot access 'component' before initialization`（来自 SvelteKit 的 `client.js`）。它读起来像代码 bug，其实是那一瞬间路由节点还没初始化；浏览器多半自己恢复，窗口不一定，刷新即可。要在开发中途做检查，用 `git worktree` 另开一份目录跑。启动先占端口再开库：抢不到端口的第二份进程不会改库。窗在 `local-api.json` 里的 pid 还活着时，即使健康检查暂时超时也不再拉第二份。修改 Rust 代码由 Tauri 重编译并重启窗口。桌面监督线程在释放应用状态锁后才更新托盘菜单，避免热更新后的本机接口查询与菜单更新互相等待。若旧版本窗口已经卡死，需要结束旧窗口进程，再重新运行 `pnpm dev`；热更新无法解除已经发生的原生线程死锁。
 
 单独起信使（浏览器改 UI，不是黄金路径）：
 

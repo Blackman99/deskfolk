@@ -1,6 +1,8 @@
 {
 	"extends": "./.svelte-kit/tsconfig.json",
-	"exclude": ["src/**/*.test.ts"],
+	// Bun tests, wherever they live: `bun:test` has no types here, and `bun test` type-checks
+	// nothing anyway. Playwright specs under `tests/visual` stay in — they bring their own types.
+	"exclude": ["src/**/*.test.ts", "tests/*.test.ts"],
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
