@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+（尚无）
+
+## 0.1.0-rc.2 — 2026-09-19
+
+未签名的 macOS rc。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。
+
 ### Daemon
 
 - 本机接口同时听 `127.0.0.1:17890` 和 `[::1]:17890`，Origin 白名单补上 `http://[::1]`，CORS 回显 `Access-Control-Allow-Private-Network`。Vite 开发页常开在 `http://[::1]:5173`；此前只听 IPv4 且把 IPv6 Origin 判成禁止，健康检查失败，信使只显示「连不上运行时」。`localhost` 与 `127.0.0.1` 不变。
