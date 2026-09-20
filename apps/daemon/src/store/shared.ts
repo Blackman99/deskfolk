@@ -20,6 +20,8 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { parseStoredThinkingLevel } from "../models";
+import { Transactions } from "./transactions";
+import { sha256 } from "../request-digest";
 
 export type StoreOptions = {
   filename?: string;
@@ -35,18 +37,23 @@ export type EndpointKeyStore = {
 /** Keychain access with a per-process cache; `peek` is the synchronous cache read `auth_set` needs. */
 export class KeyCache {
   private readonly cached = new Map<string, string | null>();
+  private readonly versions = new Map<string, number>();
 
-  constructor(private readonly keys: EndpointKeyStore) {}
+  constructor(private readonly keys: EndpointKeyStore, private readonly db: Database) {}
 
   async read(name: string): Promise<string | null> {
+    if (this.pending(name)) return null;
     if (this.cached.has(name)) return this.cached.get(name) ?? null;
+    const version = this.versions.get(name) ?? 0;
     const value = await this.keys.get(name);
+    if (version !== (this.versions.get(name) ?? 0)) return this.read(name);
     this.cached.set(name, value);
     return value;
   }
 
   /** Empty value deletes the entry. */
   async write(name: string, value: string): Promise<void> {
+    this.versions.set(name, (this.versions.get(name) ?? 0) + 1);
     if (value.length === 0) {
       await this.keys.delete(name);
       this.cached.set(name, null);
@@ -56,7 +63,30 @@ export class KeyCache {
     this.cached.set(name, value);
   }
 
+  pending(name: string): boolean {
+    return Boolean(this.db.query("SELECT 1 FROM pending_keys WHERE name = ?").get(name));
+  }
+
+  markPending(name: string, value: string): void {
+    if (this.pending(name)) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
+    this.db.run("INSERT INTO pending_keys(name, value_sha256) VALUES (?, ?)", [name, sha256(value)]);
+    this.versions.set(name, (this.versions.get(name) ?? 0) + 1);
+    this.cached.delete(name);
+  }
+
+  async finishPending(name: string, value: string): Promise<void> {
+    const row = this.db.query<{ value_sha256: string }, [string]>("SELECT value_sha256 FROM pending_keys WHERE name = ?").get(name);
+    if (!row) return;
+    if (row.value_sha256 !== sha256(value)) throw new HttpError(409, "conflict", "credential digest changed");
+    await this.write(name, value);
+  }
+
+  clearPending(name: string): void {
+    this.db.run("DELETE FROM pending_keys WHERE name = ?", [name]);
+  }
+
   peek(name: string): string | null | undefined {
+    if (this.pending(name)) return null;
     return this.cached.get(name);
   }
 }
@@ -64,6 +94,10 @@ export class KeyCache {
 export type StoreContext = {
   readonly db: Database;
   readonly keys: KeyCache;
+  readonly tx: Transactions;
+  readonly inboxRoot: string;
+  readonly activeStages: Set<string>;
+  keyPlan: Array<{ name: string; value: string }> | null;
   /** Process-lifetime flags for one-shot legacy migrations. */
   readonly legacy: { copiedKey: boolean };
 };
@@ -393,18 +427,33 @@ export function sessionSearchTitle(
 // ---------------------------------------------------------------------------
 
 export function memoryKeyStore(): EndpointKeyStore {
-  let value: string | null = null;
+  const values = new Map<string, string>();
   return {
-    async get() {
-      return value;
-    },
-    async set(next) {
-      value = next;
-    },
-    async delete() {
-      value = null;
-    },
+    async get(name = "") { return values.get(name) ?? null; },
+    async set(value, name = "") { values.set(name, value); },
+    async delete(name = "") { values.delete(name); },
   };
+}
+
+export function planKey(ctx: StoreContext, name: string, value: string): void {
+  if (typeof value !== "string") throw new HttpError(422, "invalid_args", "credential must be a string");
+  if (!ctx.keyPlan) throw new Error("credential mutation needs a key plan");
+  ctx.keyPlan.push({ name, value });
+}
+
+export async function keyMutation<T>(ctx: StoreContext, work: () => T): Promise<T> {
+  const plan: Array<{ name: string; value: string }> = [];
+  const result = ctx.tx.run(() => {
+    ctx.keyPlan = plan;
+    try {
+      const value = work();
+      for (const op of plan) ctx.keys.markPending(op.name, op.value);
+      return value;
+    } finally { ctx.keyPlan = null; }
+  });
+  for (const op of plan) await ctx.keys.finishPending(op.name, op.value);
+  ctx.tx.run(() => { for (const op of plan) ctx.keys.clearPending(op.name); });
+  return result;
 }
 
 export function emptyToNull(value: string | null | undefined): string | null {

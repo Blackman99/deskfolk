@@ -1765,6 +1765,8 @@ describe("turn engine on the local API", () => {
     const routineHeld = new Promise<void>((resolve) => {
       releaseRoutine = resolve;
     });
+    let firstStarted = () => {};
+    const firstRequest = new Promise<void>((resolve) => { firstStarted = resolve; });
     const fixture = await startFixture(async ({ body }) => {
       const messages = body.messages as Array<{ role: string; content?: string }>;
       const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -1772,6 +1774,7 @@ describe("turn engine on the local API", () => {
         await routineHeld;
         return sse(textChunks("routine reply"));
       }
+      firstStarted();
       await firstHeld;
       return sse(textChunks("still going"));
     });
@@ -1807,6 +1810,7 @@ describe("turn engine on the local API", () => {
       [new Date(2026, 8, 10, 8, 0, 0).toISOString(), routine.id],
     );
 
+    await firstRequest;
     const dueNow = new Date(2026, 8, 14, 9, 0, 0);
     const opened = h.engine.fireRoutine(routine.id, dueNow);
     expect(opened).not.toBeNull();
@@ -2343,12 +2347,15 @@ describe("MCP stdio tools on the local API", () => {
     });
     expect(created.status).toBe(201);
     if (!flag) {
-      const body = (await created.json()) as {
-        instructions: string | null;
-        tool_catalog: Array<{ name: string }>;
-      };
-      expect(body.instructions).toContain("Echo text");
-      expect(body.tool_catalog.map((t) => t.name)).toEqual(["echo", "boom", "pid"]);
+      const body = (await created.json()) as { id: string };
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const server = h.store.listMcpServers().find((row) => row.id === body.id)!;
+        if (server.instructions) break;
+        await Bun.sleep(10);
+      }
+      const server = h.store.listMcpServers().find((row) => row.id === body.id)!;
+      expect(server.instructions).toContain("Echo text");
+      expect(server.tool_catalog.map((t) => t.name)).toEqual(["echo", "boom", "pid"]);
     }
   }
 

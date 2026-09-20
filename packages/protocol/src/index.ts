@@ -186,6 +186,7 @@ export type ProbeModelsResponse = {
 };
 
 export type Settings = {
+  settings_rev?: number;
   workspace_path: string | null;
   endpoint_base_url: string | null;
   endpoint_key_set: boolean;

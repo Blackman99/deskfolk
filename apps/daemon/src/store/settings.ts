@@ -22,7 +22,7 @@ import {
   serializeCatalog,
   unionProviderModels,
 } from "../models";
-import { createProvider, listProviders, patchProvider } from "./providers";
+import { createProviderSync, listProviders, patchProviderSync, toProviderCached } from "./providers";
 import {
   type ProviderRow,
   type StoreContext,
@@ -35,13 +35,19 @@ import {
   resolveWorkspacePath,
   setSetting,
   settingsMap,
+  keyMutation,
 } from "./shared";
 
 export async function settings(ctx: StoreContext): Promise<Settings> {
   await ensureLegacyProvider(ctx);
+  await listProviders(ctx);
+  return settingsCached(ctx);
+}
+
+export function settingsCached(ctx: StoreContext): Settings {
   const map = settingsMap(ctx);
   const workspace_path = emptyToNull(map.get("workspace_path"));
-  const providers = await listProviders(ctx);
+  const providers = providerRows(ctx).map((row) => toProviderCached(ctx, row));
   const defaultProvider = defaultProviderRow(ctx, providers, emptyToNull(map.get("default_provider_id")));
   const endpoint_base_url = defaultProvider?.base_url ?? emptyToNull(map.get("endpoint_base_url"));
   const endpoint_model_catalog = defaultProvider
@@ -65,6 +71,7 @@ export async function settings(ctx: StoreContext): Promise<Settings> {
   const theme: Theme = themeRaw === "light" || themeRaw === "dark" ? themeRaw : "system";
   const launch_at_login = map.get("launch_at_login") !== "0";
   return {
+    settings_rev: ctx.db.query<{ settings_rev: number }, []>("SELECT settings_rev FROM request_meta WHERE singleton = 1").get()!.settings_rev,
     workspace_path,
     endpoint_base_url,
     endpoint_key_set: keySet,
@@ -83,7 +90,12 @@ export async function patchSettings(
   ctx: StoreContext,
   patch: SettingsPatch | Record<string, unknown>,
 ): Promise<Settings> {
-  await ensureLegacyProvider(ctx);
+  await settings(ctx);
+  await keyMutation(ctx, () => patchSettingsSync(ctx, patch));
+  return settings(ctx);
+}
+
+export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Record<string, unknown>): Settings {
   const nowKeys = Object.keys(patch);
   if (nowKeys.length === 0) {
     throw new HttpError(422, "invalid_args", "PATCH body must include at least one field");
@@ -136,7 +148,7 @@ export async function patchSettings(
     "endpoint_default_model" in patch;
   if (touchesEndpoint) {
     const current = settingsMap(ctx);
-    const providers = await listProviders(ctx);
+    const providers = providerRows(ctx).map((row) => toProviderCached(ctx, row));
     const target =
       defaultProviderRow(ctx, providers, emptyToNull(current.get("default_provider_id"))) ??
       providers[0] ??
@@ -158,9 +170,9 @@ export async function patchSettings(
       providerPatch.api_key = patch.endpoint_api_key;
     }
     if (target) {
-      await patchProvider(ctx, target.id, providerPatch);
+      patchProviderSync(ctx, target.id, providerPatch);
     } else {
-      const created = await createProvider(ctx, {
+      const created = createProviderSync(ctx, {
         name: "Default",
         base_url: providerPatch.base_url ?? "",
         api_key: providerPatch.api_key,
@@ -171,7 +183,8 @@ export async function patchSettings(
       mirrorDefaultProvider(ctx);
     }
   }
-  return settings(ctx);
+  ctx.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
+  return settingsCached(ctx);
 }
 
 export async function endpointKey(ctx: StoreContext, providerId?: string | null): Promise<string | null> {
@@ -216,11 +229,11 @@ export async function ensureLegacyProvider(ctx: StoreContext): Promise<void> {
   ensureLegacyProviderRow(ctx);
   const id = defaultProviderId(ctx) ?? providerRows(ctx)[0]?.id;
   if (!id || ctx.legacy.copiedKey) return;
-  ctx.legacy.copiedKey = true;
   const existing = await ctx.keys.read(providerKeychainName(id));
-  if (existing) return;
+  if (existing || ctx.keys.pending(providerKeychainName(id))) { ctx.legacy.copiedKey = true; return; }
   const legacy = await ctx.keys.read(KEYCHAIN_NAME);
   if (legacy) await ctx.keys.write(providerKeychainName(id), legacy);
+  ctx.legacy.copiedKey = true;
 }
 
 export function ensureLegacyProviderRow(ctx: StoreContext): void {

@@ -165,6 +165,7 @@ describe("local API runtime", () => {
     });
     expect(settings.status).toBe(200);
     expect(await settings.json()).toEqual({
+      settings_rev: 0,
       workspace_path: null,
       endpoint_base_url: null,
       endpoint_key_set: false,

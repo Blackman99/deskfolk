@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { LocalApi } from '../api.ts';
+	import { ApiError, etagForBlob, type LocalApi } from '../api.ts';
 	import {
 		absWorkspacePath,
 		artifactByteSource,
@@ -91,6 +91,8 @@
 	let dirty = $state(false);
 	let saving = $state(false);
 	let saveError = $state(false);
+	let saveConflict = $state(false);
+	let loadedEtag = $state<string | null>(null);
 	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treeWidth = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
@@ -226,6 +228,7 @@
 					? await api.getAttachmentBlob(att.id)
 					: await api.getWorkspaceFileBlob(path);
 			if (gen !== loadGen) return;
+			loadedEtag = etagForBlob(blob);
 			if (previewKind === 'text' || previewKind === 'markdown' || previewKind === 'svg') {
 				const raw = await blob.text();
 				if (gen !== loadGen) return;
@@ -331,14 +334,16 @@
 		if (!api || !relpath || !canSave) return false;
 		saving = true;
 		saveError = false;
+		saveConflict = false;
 		try {
 			const value = editor?.getValue() ?? text ?? '';
-			await api.putWorkspaceFile(relpath, value);
+			loadedEtag = await api.putWorkspaceFile(relpath, value, loadedEtag);
 			text = value;
 			editor?.markSaved(value);
 			dirty = false;
 			return true;
-		} catch {
+		} catch (error) {
+			saveConflict = error instanceof ApiError && error.status === 409;
 			saveError = true;
 			return false;
 		} finally {
@@ -501,7 +506,7 @@
 		</div>
 	{/if}
 	{#if saveError}
-		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.stream.artifactSaveFailed}</p>
+		<p class="muted artifact-save-error pt-0 px-8 pb-3">{saveConflict ? t.stream.artifactSaveConflict : t.stream.artifactSaveFailed}</p>
 	{/if}
 	<div class="artifact-pane-main flex-1 min-h-0 min-w-0 flex" class:has-tree={showTree}>
 		{#if showTree}

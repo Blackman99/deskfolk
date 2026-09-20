@@ -55,13 +55,13 @@ export type TurnEngine = {
     opts?: { fork?: boolean; fromUser?: boolean },
   ) => Promise<void>;
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
-  replyAsk: (askId: string, answer: Message) => Promise<void>;
+  replyAsk: (askId: string, answer: Message) => void;
   resolveApproval: (
     id: string,
     action: "allow_once" | "deny" | "always_allow",
     scope?: string,
     apiKey?: string,
-  ) => Promise<unknown>;
+  ) => unknown;
   stop: (turnId?: string, opts?: { allowGroup?: boolean }) => Turn | null;
   continueFromInterrupt: (messageId: string) => Turn;
   abortAll: () => void;
@@ -546,9 +546,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       spoke: false,
       running: Promise.resolve(),
     };
-    lives.set(turn.id, live);
-    publishTurn(turn);
-    live.running = track(runTurn(turn.id).catch(() => undefined));
+    store.afterCommit(() => {
+      lives.set(turn.id, live);
+      publishTurn(turn);
+      live.running = track(runTurn(turn.id).catch(() => undefined));
+    });
   }
 
   function continueFromInterrupt(messageId: string): Turn {
@@ -559,7 +561,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   function abortLive(turnId: string): void {
     const live = lives.get(turnId);
-    if (live) live.abort.abort();
+    if (live) store.afterCommit(() => live.abort.abort());
   }
 
   async function drainLives(): Promise<void> {
@@ -1453,7 +1455,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     sweepStaleChains,
     fireRoutine,
-    async resolveApproval(id, action, scope, apiKey) {
+    resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);
       const liveForGate = lives.get(rowForGate.turn_id);
       const requiresKey =
@@ -1473,39 +1475,42 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         const match = store.listAllowRules().find((r) => r.kind_key === row.kind_key && r.scope === nextScope);
         if (match) publish({ event: "allow_rule.upsert", occurred_at: occurred(), ...match });
       }
-      const live = lives.get(row.turn_id);
-      if (!live?.approval || live.approval.id !== id) {
-        return row;
-      }
-      const pending = live.approval;
-      live.approval = undefined;
-      const running = store.setTurnStatus(row.turn_id, "running");
-      publishTurn(running);
-      if (action === "deny") {
-        pending.waiter({
-          ok: false,
-          error: { code: "denied", message: "denied" },
-          emitted: [],
-        });
-        return row;
-      }
-      try {
-        const result = await pending.run({ api_key: apiKey });
-        pending.waiter(result);
-      } catch (error) {
-        pending.waiter(
-          error instanceof HttpError
-            ? { ok: false, error: { code: error.code, message: error.message }, emitted: [] }
-            : { ok: false, error: { code: "failed", message: "tool failed" }, emitted: [] },
-        );
-      }
+      store.afterCommit(() => {
+        const live = lives.get(row.turn_id);
+        if (!live?.approval || live.approval.id !== id) return;
+        const pending = live.approval;
+        live.approval = undefined;
+        const running = store.setTurnStatus(row.turn_id, "running");
+        publishTurn(running);
+        if (action === "deny") {
+          pending.waiter({
+            ok: false,
+            error: { code: "denied", message: "denied" },
+            emitted: [],
+          });
+          return;
+        }
+        void (async () => {
+          try {
+            const result = await pending.run({ api_key: apiKey });
+            pending.waiter(result);
+          } catch (error) {
+            pending.waiter(
+              error instanceof HttpError
+                ? { ok: false, error: { code: error.code, message: error.message }, emitted: [] }
+                : { ok: false, error: { code: "failed", message: "tool failed" }, emitted: [] },
+            );
+          }
+        })();
+      });
       return row;
     },
-    async replyAsk(askId, answer) {
+    replyAsk(askId, answer) {
       const ask = store.getMessage(askId);
       if (ask.kind !== "ask" || !ask.turn_id) {
         throw new HttpError(422, "invalid_args", "ask replies need a running turn");
       }
+      if (answer.session_id !== ask.session_id) throw new HttpError(422, "invalid_args", "ask reply must be in its session");
       const turn = store.getTurn(ask.turn_id);
       if (turn.status !== "waiting_ask") {
         throw new HttpError(422, "invalid_args", "ask is no longer pending");
@@ -1515,10 +1520,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         throw new HttpError(422, "invalid_args", "ask replies need a running turn");
       }
       const waiter = live.ask.waiter;
-      live.ask = undefined;
       const running = store.setTurnStatus(turn.id, "running");
       publishTurn(running);
-      waiter(answer.body);
+      store.afterCommit(() => {
+        live.ask = undefined;
+        waiter(answer.body);
+      });
     },
     stop(turnId, opts) {
       const turn = store.stopTurn(turnId, opts);

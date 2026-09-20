@@ -5,6 +5,13 @@ export function errorBody(code: string, message: string): { error: { code: strin
   return { error: { code, message } };
 }
 
+const responseBodies = new WeakMap<Response, string | null>();
+
+export function responseRecord(response: Response) {
+  if (!responseBodies.has(response)) throw new Error("mutation response must be buffered");
+  return { status: response.status, body: responseBodies.get(response)!, headers: Object.fromEntries(response.headers) };
+}
+
 export function jsonResponse(
   body: unknown,
   status: number,
@@ -12,13 +19,18 @@ export function jsonResponse(
 ): Response {
   const headers: Record<string, string> = { "Content-Type": "application/json; charset=utf-8" };
   if (origin && originDecision(origin) === "allowed") Object.assign(headers, corsHeaders(origin));
-  return new Response(JSON.stringify(body), { status, headers });
+  const text = JSON.stringify(body);
+  const response = new Response(text, { status, headers });
+  responseBodies.set(response, text);
+  return response;
 }
 
 export function emptyResponse(status: number, origin: string | null): Response {
   const headers: Record<string, string> = {};
   if (origin && originDecision(origin) === "allowed") Object.assign(headers, corsHeaders(origin));
-  return new Response(null, { status, headers });
+  const response = new Response(null, { status, headers });
+  responseBodies.set(response, null);
+  return response;
 }
 
 export function fromError(error: unknown, origin: string | null): Response {

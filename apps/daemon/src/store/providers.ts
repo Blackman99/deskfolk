@@ -43,6 +43,8 @@ import {
   requireProvider,
   resolveEndpointUrl,
   setSetting,
+  keyMutation,
+  planKey,
 } from "./shared";
 
 export async function listProviders(ctx: StoreContext): Promise<Provider[]> {
@@ -61,7 +63,12 @@ export async function getProvider(ctx: StoreContext, id: string): Promise<Provid
 }
 
 export async function createProvider(ctx: StoreContext, input: CreateProviderRequest): Promise<Provider> {
-  await ensureLegacyProvider(ctx);
+  await listProviders(ctx);
+  const provider = await keyMutation(ctx, () => createProviderSync(ctx, input));
+  return getProvider(ctx, provider.id);
+}
+
+export function createProviderSync(ctx: StoreContext, input: CreateProviderRequest): Provider {
   const name = requireNonEmpty("name", input.name);
   const baseUrl =
     typeof input.base_url === "string" && input.base_url.trim().length === 0
@@ -82,12 +89,13 @@ export async function createProvider(ctx: StoreContext, input: CreateProviderReq
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, now],
   );
+  if (input.api_key !== undefined && typeof input.api_key !== "string") throw new HttpError(422, "invalid_args", "api_key must be a string");
   if (typeof input.api_key === "string" && input.api_key.length > 0) {
-    await ctx.keys.write(providerKeychainName(id), input.api_key);
+    planKey(ctx, providerKeychainName(id), input.api_key);
   }
   if (!defaultProviderId(ctx)) setSetting(ctx, "default_provider_id", id);
   mirrorDefaultProvider(ctx);
-  return getProvider(ctx, id);
+  return toProviderCached(ctx, requireProvider(ctx, id));
 }
 
 export async function patchProvider(
@@ -95,7 +103,13 @@ export async function patchProvider(
   id: string,
   patch: PatchProviderRequest,
 ): Promise<Provider> {
-  await ensureLegacyProvider(ctx);
+  await listProviders(ctx);
+  await keyMutation(ctx, () => patchProviderSync(ctx, id, patch));
+  return getProvider(ctx, id);
+}
+
+export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchProviderRequest): Provider {
+  if (ctx.keys.pending(providerKeychainName(id))) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
   const current = requireProvider(ctx, id);
   const name = patch.name !== undefined ? requireNonEmpty("name", patch.name) : current.name;
   const baseUrl =
@@ -127,14 +141,19 @@ export async function patchProvider(
     if (typeof patch.api_key !== "string") {
       throw new HttpError(422, "invalid_args", "api_key must be a string");
     }
-    await ctx.keys.write(providerKeychainName(id), patch.api_key);
+    planKey(ctx, providerKeychainName(id), patch.api_key);
   }
   mirrorDefaultProvider(ctx);
-  return getProvider(ctx, id);
+  return toProviderCached(ctx, requireProvider(ctx, id));
 }
 
 export async function deleteProvider(ctx: StoreContext, id: string): Promise<void> {
-  await ensureLegacyProvider(ctx);
+  await listProviders(ctx);
+  await keyMutation(ctx, () => deleteProviderSync(ctx, id));
+}
+
+export function deleteProviderSync(ctx: StoreContext, id: string): void {
+  if (ctx.keys.pending(providerKeychainName(id))) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
   requireProvider(ctx, id);
   const remaining = ctx.db
     .query<ProviderRow, [string]>(`SELECT * FROM providers WHERE id != ? ORDER BY created_at ASC, id`)
@@ -145,7 +164,7 @@ export async function deleteProvider(ctx: StoreContext, id: string): Promise<voi
     const changes = ctx.db.run(`DELETE FROM providers WHERE id = ?`, [id]).changes;
     if (changes === 0) throw new HttpError(404, "not_found", "provider not found");
   })();
-  await ctx.keys.write(providerKeychainName(id), "");
+  planKey(ctx, providerKeychainName(id), "");
   const defaultId = defaultProviderId(ctx);
   if (defaultId === id) {
     setSetting(ctx, "default_provider_id", remaining[0]?.id ?? "");
@@ -155,6 +174,11 @@ export async function deleteProvider(ctx: StoreContext, id: string): Promise<voi
 }
 
 export async function toProvider(ctx: StoreContext, row: ProviderRow): Promise<Provider> {
+  await ctx.keys.read(providerKeychainName(row.id));
+  return toProviderCached(ctx, row);
+}
+
+export function toProviderCached(ctx: StoreContext, row: ProviderRow): Provider {
   const catalog = parseStoredCatalog(row.models);
   const models = catalogNames(catalog);
   const storedDefault = emptyToNull(row.default_model);
@@ -162,7 +186,7 @@ export async function toProvider(ctx: StoreContext, row: ProviderRow): Promise<P
     id: row.id,
     name: row.name,
     base_url: emptyToNull(row.base_url),
-    key_set: (await ctx.keys.read(providerKeychainName(row.id))) !== null,
+    key_set: ctx.keyPlan?.find((op) => op.name === providerKeychainName(row.id))?.value.length ? true : ctx.keyPlan?.some((op) => op.name === providerKeychainName(row.id)) ? false : ctx.keys.peek(providerKeychainName(row.id)) != null,
     models,
     model_catalog: catalog,
     available_models: parseStoredAvailableModels(row.available_models),

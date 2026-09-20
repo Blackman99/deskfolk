@@ -5,6 +5,12 @@
  * `store.getBot(id)` while the code behind it stays small enough to read in one sitting.
  */
 import { chmodSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { APP_SUPPORT_DIRNAME } from "@real-bot/protocol";
+import { Transactions } from "./transactions";
+import { Receipts } from "./receipts";
+import * as files from "./files";
 import { Database } from "bun:sqlite";
 import { SCHEMA_SQL } from "../schema";
 import * as approvals from "./approvals";
@@ -41,6 +47,7 @@ type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (..
 
 export class Store {
   readonly db: Database;
+  readonly receipts: Receipts;
   private readonly ctx: StoreContext;
 
   constructor(options: StoreOptions = {}) {
@@ -49,6 +56,7 @@ export class Store {
     if (options.filename && options.filename !== ":memory:") {
       this.db.run("PRAGMA journal_mode = WAL");
     }
+    this.db.run("PRAGMA synchronous = FULL");
     this.db.exec(SCHEMA_SQL);
     migrateSchema(this.db);
     if (options.filename && options.filename !== ":memory:") {
@@ -60,11 +68,40 @@ export class Store {
     }
     this.ctx = {
       db: this.db,
-      keys: new KeyCache(options.endpointKey ?? memoryKeyStore()),
+      keys: new KeyCache(options.endpointKey ?? memoryKeyStore(), this.db),
+      tx: new Transactions(this.db),
+      inboxRoot: options.filename && options.filename !== ":memory:" ? dirname(options.filename) : join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME),
+      keyPlan: null,
+      activeStages: new Set(),
       legacy: { copiedKey: false },
     };
+    this.receipts = new Receipts(this.db, this.ctx.tx, this.ctx.keys, () => files.recoverFiles(this.ctx));
+    files.recoverFiles(this.ctx);
     settings.ensureLegacyProviderRow(this.ctx);
   }
+
+  readonly transaction = <T>(work: () => T): T => this.ctx.tx.run(work);
+  readonly afterCommit = (effect: () => void): void => this.ctx.tx.afterCommit(effect);
+  readonly recoverFiles = (): void => files.recoverFiles(this.ctx);
+  readonly prepareFile = this.bind(files.prepareFile);
+  readonly commitPreparedFile = this.bind(files.commitPreparedFile);
+  readonly discardFile = this.bind(files.discardFile);
+  readonly prepareAttachments = this.bind(messages.prepareAttachments);
+
+  planKeys<T>(plan: Array<{ name: string; value: string }>, work: () => T): T {
+    this.ctx.keyPlan = plan;
+    try { return work(); } finally { this.ctx.keyPlan = null; }
+  }
+
+  readonly settingsCached = this.bind(settings.settingsCached);
+  readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
+  readonly createProviderSync = this.bind(providers.createProviderSync);
+  readonly patchProviderSync = this.bind(providers.patchProviderSync);
+  readonly deleteProviderSync = this.bind(providers.deleteProviderSync);
+  readonly createMcpServerSync = this.bind(mcp.createMcpServerSync);
+  readonly patchMcpServerSync = this.bind(mcp.patchMcpServerSync);
+  readonly deleteMcpServerSync = this.bind(mcp.deleteMcpServerSync);
+  readonly providersCached = () => this.ctx.db.query<import("./shared").ProviderRow, []>("SELECT * FROM providers ORDER BY created_at, id").all().map((row) => providers.toProviderCached(this.ctx, row));
 
   close(): void {
     this.db.close();

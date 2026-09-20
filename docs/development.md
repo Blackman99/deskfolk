@@ -196,6 +196,19 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 单独起信使时，Vite 开发服务器提供同源 `GET /__local-api` → `{ name, port, token }`（守护进程未起时是带 `name` 的 `not_found`），不把 token 写进仓库或 bundle。页面只用 `port` 和 `token`，origin 按当前页是 `127.0.0.1` 还是 `[::1]` 拼。
 
+### 事务回执、版本与文件完整性
+
+- 本机 `POST/PATCH/PUT/DELETE`（除只读模型探测）可带 `X-Request-Id: <uppercase ULID>`；未带时服务端生成并回传。所有本机调用归 `device_id = local`，不能从 HTTP 头指定设备。`request_receipts` 的 `(device_id, request_id)` 唯一：同摘要重放首次 status/body（包括首次 409/422），异摘要 409。业务写入与回执是同一个**同步** SQLite 事务，事务函数拒绝 Promise；外部工具、模型、MCP 检查、退出与事件发布在提交后运行。不承诺进程崩溃前后外部副作用精确一次，也不在重启后偷偷重放工具。
+- 摘要实现是 `request-digest.ts` 的 RFC 8785 编码（ECMAScript 数字、UTF-16 键排序、拒绝孤立 surrogate / 非有限数），`LocalApiOptions.canonicalEncoder` 可接后续共享编码器。摘要以 `0x1f` 连接 method、path+query、`json|multipart`、规范 JSON、文件列表、规范 If-Match；文件项为 filename + `0x1e` + SHA-256，按 UTF-8 filename 字节序、同名时 hash 排序。显式媒体类型/条件头绑定修正了空 multipart 与 JSON、不同前置条件可能同摘要的歧义。multipart 非文件字段禁止重名，文件名禁止分隔控制字节。
+- 7 天或 20,000 个完成回执正文后清理为 `expired`，保留唯一键墓碑；旧键返回 `410 receipt_expired`，用户确认后才用新键。墓碑**不随正文删除**，因此键元数据会增长；只有永久吊销且不能再认证的设备身份才能整体退休，当前不提供删除墓碑接口。待写密钥回执不参与清理。可信运输可用 `store.receipts.read(scope)` 查完成/503 待密钥/410 状态，不能把内部 pending 回执体当成功响应。
+- `createLocalApi().dispatchBusiness(request, {deviceId, requestId, requireRevision})` 是供后续已认证运输注入的内部接口，不是鉴权器；调用方负责认证/吊销/UV、准入、限额与只读 GET 政策。它拒绝 runtime 和非 `/v1/` 路径，不新增任何 `/remote/*` 回环路由。`requireRevision: true` 时 PATCH 必带 `if_revision`：实体比较 `updated_at`，设置比较 `settings_rev` 整数；成功设置 PATCH +1。字段从业务体剥离前先进入摘要。远程 Stop 的 204 映射和远程文件 50 MiB 限额仍由后续运输票实现，本机 Stop 语义未改。
+- 端点/MCP 凭据先提交业务行 + `pending_keys`（仅名称/值摘要），再 await Keychain，最后提交完成状态。待写期间 GET 的 `key_set/auth_set` 为 false；失败返回 `503 key_write_pending`，**同一请求 id 和原始载荷**可跨重启续办，不新建实体。回执只留字段名、摘要和不含原始密钥的成功响应。其它请求不能改删待写凭据实体。原生 Keychain 删除错误不能吞掉。Bot 直接调用的凭据写失败同样留下未设状态，但没有客户端请求 id 的工具调用不会自动重放；这不是外部工具 exactly-once。
+- 批准接口先提交接受结果，不再等 `pending.run()`；工具失败走轮次结果。MCP create/patch 返回提交的配置，检查后的 instructions/tool_catalog 通过后续 `mcp.upsert` 与 GET 更新，不属于首次回执响应。
+- 文件先记 `file_stages` 意图，再同目录 `.real-bot-stage-<id>` 写入+fsync（含目录）；业务 TX 内把意图转成 `file_commits`，提交后 rename+目录 fsync，最后删提交记录。开库先恢复：未提交暂存删除，已提交未 rename 补 rename，已 rename 校验最终 hash；两份都缺或损坏则失败关闭，不启动会读缺失附件的任务。无工作区时持久库的 inbox 使用库所在目录，测试不会落到个人 inbox。工作区切换/路径变化会拒绝正在准备的旧目标。
+- 工作区和附件 GET 返回强 ETag `"<明文 SHA-256>"`；当前本机实现读取同一份字节产生 body/hash（本机 GET 仍无上限，超大文件会占内存，远程流式实现不能直接照搬）。工作区 PUT 的 UTF-8 内容仍上限 1,000,000 bytes，仅覆盖已存在的内部文件；本机 If-Match 可选，注入强制版本时必需，失配 409，成功 204 + 新 ETag。信使保存携带**该次加载 blob**的 ETag，冲突保留编辑并提示复制后重开。API、Bot 文件写入使用相同同步路径锁与原子替换，原生窗通过本机 API 保存；shell/任意外部进程不遵守锁，不能声称 POSIX compare-and-swap，检查后到 rename 的外部 TOCTOU 仍存在。
+
+验证使用隔离 Store + 内存密钥 + 假模型，不能仅靠 `REAL_BOT_DATA_DIR` 隔离个人 Keychain。新增回执/恢复/ETag 回归在 `apps/daemon/src/receipts.test.ts`，信使 blob/保存回归在 `file-etag.test.ts`。
+
 ## CI、落地页与快照发布
 
 仓库在 GitHub Actions 里跑与本地相同的验证，不代替本机 UI 或原生桌面检查。

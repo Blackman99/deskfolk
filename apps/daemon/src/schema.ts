@@ -1,6 +1,45 @@
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS request_receipts (
+  device_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  payload_sha256 TEXT NOT NULL,
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('pending_keys', 'complete', 'expired')),
+  status INTEGER,
+  body TEXT,
+  headers TEXT,
+  key_ops TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (device_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS receipts_created ON request_receipts(created_at);
+CREATE TABLE IF NOT EXISTS request_meta (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  settings_rev INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO request_meta(singleton) VALUES (1);
+CREATE TABLE IF NOT EXISTS pending_keys (
+  name TEXT PRIMARY KEY,
+  value_sha256 TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS file_stages (
+  id TEXT PRIMARY KEY,
+  root TEXT NOT NULL,
+  temp_rel TEXT NOT NULL,
+  final_rel TEXT NOT NULL,
+  sha256 TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS file_commits (
+  id TEXT PRIMARY KEY,
+  root TEXT NOT NULL,
+  temp_rel TEXT NOT NULL,
+  final_rel TEXT NOT NULL,
+  sha256 TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

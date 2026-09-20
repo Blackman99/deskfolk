@@ -74,7 +74,7 @@ test("writeWorkspaceFile overwrites an existing inside file and rejects missing 
   const root = ws();
   writeFileSync(join(root, "note.md"), "old");
   mkdirSync(join(root, "src"));
-  expect(writeWorkspaceFile(root, "note.md", "new")).toEqual({ rel: "note.md" });
+  expect(writeWorkspaceFile(root, "note.md", "new")).toMatchObject({ rel: "note.md" });
   expect(readFileSync(join(root, "note.md"), "utf8")).toBe("new");
   expect(() => writeWorkspaceFile(root, "missing.md", "x")).toThrow(HttpError);
   expect(() => writeWorkspaceFile(root, "src", "x")).toThrow(HttpError);

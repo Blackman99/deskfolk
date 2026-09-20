@@ -45,6 +45,12 @@ export class ApiError extends Error {
   }
 }
 
+const blobEtags = new WeakMap<Blob, string>();
+
+export function etagForBlob(blob: Blob): string | null {
+  return blobEtags.get(blob) ?? null;
+}
+
 export class LocalApi {
   constructor(readonly endpoint: LocalEndpoint) {}
 
@@ -258,8 +264,17 @@ export class LocalApi {
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);
   }
 
-  async putWorkspaceFile(path: string, content: string): Promise<void> {
-    await this.request<void>("PUT", "/v1/workspace/file", { path, content });
+  async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
+    const res = await fetch(`${this.endpoint.origin}/v1/workspace/file`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${this.endpoint.token}`, "Content-Type": "application/json", ...(ifMatch ? { "If-Match": ifMatch } : {}) },
+      body: JSON.stringify({ path, content }),
+    });
+    if (!res.ok) {
+      const body = await res.json() as ErrorBody;
+      throw new ApiError(res.status, body.error?.code ?? "failed", body.error?.message ?? "save failed");
+    }
+    return res.headers.get("ETag");
   }
 
   async getWorkspaceFileBlob(path: string): Promise<Blob> {
@@ -276,7 +291,10 @@ export class LocalApi {
         json?.error?.message ?? "failed to fetch workspace file",
       );
     }
-    return await res.blob();
+    const blob = await res.blob();
+    const etag = res.headers.get("ETag");
+    if (etag) blobEtags.set(blob, etag);
+    return blob;
   }
 
   async getAttachmentBlob(id: string): Promise<Blob> {
@@ -288,7 +306,10 @@ export class LocalApi {
     if (!res.ok) {
       throw new ApiError(res.status, "not_found", "failed to fetch attachment");
     }
-    return await res.blob();
+    const blob = await res.blob();
+    const etag = res.headers.get("ETag");
+    if (etag) blobEtags.set(blob, etag);
+    return blob;
   }
 
   async stop(turnId?: string): Promise<void> {

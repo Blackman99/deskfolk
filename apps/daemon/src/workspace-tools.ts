@@ -3,15 +3,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ToolResult } from "./collab-tools";
-import { ulid } from "./ids";
+import { atomicWrite, withFileLock } from "./file-integrity";
 import { HttpError } from "./errors";
 import { type Store } from "./store";
 import { classifyPath, classifyShell } from "./workspace-paths";
@@ -124,22 +122,7 @@ function writeFile(
   try {
     if (existsAsDir(abs)) return fail("failed", "path is a directory");
     mkdirSync(dirname(abs), { recursive: true });
-    const tmp = join(dirname(abs), `.real-bot-write-${ulid()}`);
-    try {
-      writeFileSync(tmp, content, { encoding: "utf8" });
-      if (ctx.signal.aborted) {
-        unlinkSync(tmp);
-        return fail("failed", "interrupted");
-      }
-      renameSync(tmp, abs);
-    } catch (error) {
-      try {
-        unlinkSync(tmp);
-      } catch {
-        // tmp may already be gone
-      }
-      throw error;
-    }
+    atomicWrite(abs, content);
     return ok({ path: replyPath(classified) });
   } catch {
     return fail("failed", "write failed");
@@ -169,15 +152,17 @@ function deleteFile(
   }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   try {
-    const st = lstatSync(classified.abs);
-    if (st.isDirectory()) {
-      const empty = readdirSync(classified.abs).length === 0;
-      if (!empty && !recursive) return fail("failed", "directory is not empty");
-      rmSync(classified.abs, { recursive: true });
-    } else {
-      unlinkSync(classified.abs);
-    }
-    return ok({ path: replyPath(classified) });
+    return withFileLock(classified.abs, () => {
+      const st = lstatSync(classified.abs);
+      if (st.isDirectory()) {
+        const empty = readdirSync(classified.abs).length === 0;
+        if (!empty && !recursive) return fail("failed", "directory is not empty");
+        rmSync(classified.abs, { recursive: true });
+      } else {
+        unlinkSync(classified.abs);
+      }
+      return ok({ path: replyPath(classified) });
+    });
   } catch (error) {
     if (isNotFound(error)) return fail("not_found", "path not found");
     return fail("failed", "delete failed");

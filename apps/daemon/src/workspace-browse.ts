@@ -1,9 +1,9 @@
-import { readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { HttpError } from "./errors";
 import { classifyPath } from "./workspace-paths";
 import { attachmentMime } from "./artifact-mime";
-import { ulid } from "./ids";
+import { atomicWrite, fileEtag, withFileLock } from "./file-integrity";
 
 export const WORKSPACE_LIST_LIMIT = 500;
 /** Cap for PUT UTF-8 overwrite only. GET /v1/workspace/file has no size cap so the preview pane can open media. */
@@ -87,7 +87,7 @@ export function locateWorkspaceFile(
 }
 
 /** Overwrite an existing inside-workspace UTF-8 file. Does not create, delete, or rename. */
-export function writeWorkspaceFile(root: string, relInput: string, content: string): { rel: string } {
+export function writeWorkspaceFile(root: string, relInput: string, content: string, ifMatch?: string | null, stage?: (abs: string, content: string) => void): { rel: string; etag: string } {
   if (typeof content !== "string") {
     throw new HttpError(422, "invalid_args", "content must be a string");
   }
@@ -96,19 +96,14 @@ export function writeWorkspaceFile(root: string, relInput: string, content: stri
     throw new HttpError(422, "too_large", "file is too large");
   }
   const located = locateWorkspaceFile(root, relInput);
-  const tmp = join(dirname(located.abs), `.real-bot-write-${ulid()}`);
-  try {
-    writeFileSync(tmp, content, { encoding: "utf8" });
-    renameSync(tmp, located.abs);
-  } catch (error) {
-    try {
-      unlinkSync(tmp);
-    } catch {
-      // tmp may already be gone
+  const etag = stage ? withFileLock(located.abs, () => {
+    if (ifMatch != null && fileEtag(readFileSync(located.abs)) !== ifMatch) {
+      throw new HttpError(409, "conflict", "file changed; reload before saving");
     }
-    throw error;
-  }
-  return { rel: located.rel };
+    stage(located.abs, content);
+    return fileEtag(Buffer.from(content));
+  }) : atomicWrite(located.abs, content, ifMatch);
+  return { rel: located.rel, etag };
 }
 
 function skipName(name: string): boolean {
