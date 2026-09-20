@@ -330,10 +330,25 @@ function linkifyOutsideFences(text: string, known: string[]): string {
   return next.replace(/\u0000L(\d+)\u0000/g, (_, i: string) => protectedLinks[Number(i)] ?? "");
 }
 
+const SVG_EVENT_ATTR = /(?:[\s/])on[a-z][a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>/]*)/gi;
+const SVG_UNSAFE_URL = /(?:xlink:href|href|src)\s*=\s*(?:"\s*(?:javascript|data|vbscript):[^"]*"|'\s*(?:javascript|data|vbscript):[^']*'|(?:javascript|data|vbscript):[^\s>]+)/gi;
+
 export function stripSvgActiveContent(svg: string): string {
-  return svg
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(href|xlink:href)\s*=\s*(['"])\s*javascript:[^'"]*\2/gi, '$1=$2$2');
+  let previous = "";
+  let next = svg;
+  while (next !== previous) {
+    previous = next;
+    next = next
+      .replace(/<script\b[\s\S]*?(?:<\/script\b[^>]*>|$)/gi, "")
+      .replace(/<foreignObject\b[\s\S]*?(?:<\/foreignObject\b[^>]*>|$)/gi, "")
+      .replace(SVG_EVENT_ATTR, " ")
+      .replace(SVG_UNSAFE_URL, "");
+  }
+  const leftover = next.search(/<(?:script|foreignObject)\b/i);
+  return leftover >= 0 ? next.slice(0, leftover) : next;
+}
+
+export async function svgDisplayBlob(source: Blob | string): Promise<Blob> {
+  const raw = typeof source === "string" ? source : await source.text();
+  return new Blob([stripSvgActiveContent(raw)], { type: "image/svg+xml" });
 }

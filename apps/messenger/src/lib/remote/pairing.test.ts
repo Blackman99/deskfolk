@@ -13,7 +13,6 @@ import { hostSigningFingerprint } from "./fingerprint.ts";
 import { parsePairingQr } from "./qr.ts";
 import { pairFromQr, previewPairing } from "./pairing.ts";
 import { memoryEnrollment, useEnrollmentDriver } from "./idb.ts";
-import { shouldCacheRequest } from "./sw-policy.ts";
 
 const now = 1_700_000_000;
 const host = generateIdentity();
@@ -141,13 +140,6 @@ test("successful grant is stored as pairing identity only", async () => {
   expect(saved.transcript).toBeUndefined();
 });
 
-test("service worker policy caches immutable assets only", () => {
-  expect(shouldCacheRequest({ method: "GET", mode: "same-origin", url: "https://relay.test/_app/immutable/entry.js" })).toBe(true);
-  expect(shouldCacheRequest({ method: "GET", mode: "navigate", url: "https://relay.test/" })).toBe(false);
-  expect(shouldCacheRequest({ method: "GET", mode: "same-origin", url: "https://relay.test/index.html" })).toBe(false);
-  expect(shouldCacheRequest({ method: "POST", mode: "same-origin", url: "https://relay.test/_app/immutable/entry.js" })).toBe(false);
-});
-
 test("enrollment driver rejects transcript-like records", () => {
   const store = memoryEnrollment();
   expect(() => store.set({
@@ -156,5 +148,12 @@ test("enrollment driver rejects transcript-like records", () => {
     hostDhPublic: base64url(hostPub.dh), hostSigningPublic: base64url(hostPub.signing),
     dh: base64url(hostPub.dh), signing: base64url(hostPub.signing), enrollment: base64url(hostPub.enrollment),
     name: "ok", transcript: "secret",
+  } as never)).toThrow();
+  expect(() => store.set({
+    v: 1, deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", hostId: "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+    relayOrigin: "https://relay.example.test", relayId: "x", trustEpoch: 1,
+    hostDhPublic: base64url(hostPub.dh), hostSigningPublic: base64url(hostPub.signing),
+    dh: base64url(hostPub.dh), signing: base64url(hostPub.signing), enrollment: base64url(hostPub.enrollment),
+    name: "ok", drafts: "queued", snapshotHtml: "<p>",
   } as never)).toThrow();
 });

@@ -31,9 +31,10 @@ import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
-import { RemoteApi, type MessengerApi } from "./remote/api.ts";
+import type { MessengerApi } from "./messenger-api.ts";
+import { RemoteApi, type DurablePendingRequest } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
-import { pairFromQr, previewPairing, type PairingProgress } from "./remote/pairing.ts";
+import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
 
 export type Connection = "disconnected" | "connected";
 export type HostUnreachable = "runtime" | "host";
@@ -102,6 +103,7 @@ export class MessengerRuntime {
   private sessionSeq = 0;
   private historyRevision = 0;
   private profileNavigation = 0;
+  private durablePending: DurablePendingRequest[] = [];
 
   start(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -708,6 +710,7 @@ export class MessengerRuntime {
       await api.retryPending(pending.id);
       if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
       if (this.pendingMutation?.id === pending.id) this.pendingMutation = null;
+      this.rememberDurablePending(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Retry result unconfirmed");
@@ -841,6 +844,7 @@ export class MessengerRuntime {
     } catch (error) {
       if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
+      this.keepUnknownRequest(error, api);
       this.markDisconnected();
     } finally {
       if (this.api === api) this.busy = false;
@@ -858,6 +862,7 @@ export class MessengerRuntime {
     } catch (error) {
       if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
+      this.keepUnknownRequest(error, api);
       this.markDisconnected();
     } finally {
       if (this.api === api) this.busy = false;
@@ -965,12 +970,6 @@ export class MessengerRuntime {
     } catch {
       if (seq === this.searchSeq) this.searchHits = [];
     }
-  }
-
-  previewPairing(raw: string): PairingProgress {
-    const next = previewPairing(raw);
-    this.pairing = next;
-    return next;
   }
 
   async submitPairing(raw: string): Promise<PairingProgress> {
@@ -1084,6 +1083,7 @@ export class MessengerRuntime {
     if (!frames) throw new Error("event gap during snapshot");
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.remoteStatus = snapshot.remoteStatus ?? null;
+    this.reconcilePendingMutation(api);
     this.syncSettingsDraft(snapshot.settings);
     for (const frame of frames) this.ingest(frame.payload, frame);
     this.endpointKey = "";
@@ -1114,7 +1114,7 @@ export class MessengerRuntime {
 
   private async connectRemote(enrollment: StoredEnrollment): Promise<void> {
     this.resetConnection();
-    const api = new RemoteApi(enrollment);
+    const api = new RemoteApi(enrollment, {}, this.durablePending);
     const sync = new EventSync();
     this.api = api;
     this.sync = sync;
@@ -1188,18 +1188,31 @@ export class MessengerRuntime {
     this.endpointDefaultModel = settings.endpoint_default_model ?? "";
   }
 
+  private rememberDurablePending(api: MessengerApi): void {
+    if (api instanceof RemoteApi) this.durablePending = api.durablePending();
+  }
+
   private reconcilePendingMutation(api: MessengerApi): void {
-    if (this.api === api && this.pendingMutation && !api.hasPendingRequest(this.pendingMutation.id)) this.pendingMutation = null;
+    if (this.api !== api) return;
+    if (this.pendingMutation && !api.hasPendingRequest(this.pendingMutation.id)) this.pendingMutation = null;
+    this.rememberDurablePending(api);
+  }
+
+  private keepUnknownRequest(error: unknown, api: MessengerApi): boolean {
+    if (!(error instanceof ApiError) || !error.requestId) return false;
+    const pending = api.hasPendingRequest(error.requestId);
+    const resumable = ["key_write_pending", "request_pending", "request_unknown"].includes(error.code);
+    if (pending && resumable) this.pendingMutation = { id: error.requestId, code: error.code };
+    else if (this.pendingMutation?.id === error.requestId) this.pendingMutation = null;
+    this.rememberDurablePending(api);
+    return pending && resumable;
   }
 
   private sheetFailure(error: unknown, api: MessengerApi): ApiError | null {
     if (this.api !== api) return null;
     if (error instanceof ApiError && error.requestId) {
-      const pending = api.hasPendingRequest(error.requestId);
-      const resumable = ["key_write_pending", "request_pending", "request_unknown"].includes(error.code);
-      if (pending && resumable) this.pendingMutation = { id: error.requestId, code: error.code };
-      else if (this.pendingMutation?.id === error.requestId) this.pendingMutation = null;
-      if (!pending && resumable) return null;
+      const pending = this.keepUnknownRequest(error, api);
+      if (!pending && ["key_write_pending", "request_pending", "request_unknown"].includes(error.code)) return null;
     }
     if (
       error instanceof ApiError &&
@@ -1351,9 +1364,14 @@ export class MessengerRuntime {
     this.rememberDraftOnDisconnect();
     this.connection = "disconnected";
     this.teardownSocket();
-    if (this.api instanceof RemoteApi) this.api.close();
+    if (this.api instanceof RemoteApi) {
+      this.durablePending = this.api.durablePending();
+      this.api.close();
+    } else if (this.api) {
+      this.pendingMutation = null;
+      this.durablePending = [];
+    }
     this.api = null;
-    this.pendingMutation = null;
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();

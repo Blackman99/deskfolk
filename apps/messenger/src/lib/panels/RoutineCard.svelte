@@ -2,7 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import type { Bot, Routine } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { MessengerApi } from '../remote/api.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineScheduleLabel } from './routine-form.ts';

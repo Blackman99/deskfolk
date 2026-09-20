@@ -49,27 +49,43 @@ import {
 } from "@real-bot/remote";
 import { ApiError, rememberBlobEtag } from "../api.ts";
 import type { LocalEndpoint } from "../discovery.ts";
-import type { LocalApi } from "../local-api.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { ulid } from "./ids.ts";
 import type { StoredEnrollment } from "./idb.ts";
 import { RemoteTransport, type TransportHooks } from "./transport.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
 
-type PendingRemote = {
+export type DurablePendingRequest = {
   id: string;
   method: RemoteRequest["method"];
   path: string;
+  fingerprint: string;
   query?: Record<string, string>;
   body?: Record<string, unknown>;
   ifMatch?: string;
-  fingerprint: string;
-  pending: boolean;
-  terminal?: boolean;
   returnEtag?: boolean;
   supersedes?: string | null;
+};
+
+type PendingRemote = DurablePendingRequest & {
+  pending: boolean;
+  terminal?: boolean;
   credential?: { operationId: string; instance: string; seq: number };
 };
+
+function durablePending(row: PendingRemote): DurablePendingRequest {
+  return {
+    id: row.id,
+    method: row.method,
+    path: row.path,
+    fingerprint: row.fingerprint,
+    ...(row.query ? { query: row.query } : {}),
+    ...(row.body ? { body: row.body } : {}),
+    ...(row.ifMatch ? { ifMatch: row.ifMatch } : {}),
+    ...(row.returnEtag ? { returnEtag: true } : {}),
+    ...(row.supersedes ? { supersedes: row.supersedes } : {}),
+  };
+}
 
 function identityFrom(enrollment: StoredEnrollment): IdentitySecrets {
   return {
@@ -111,9 +127,24 @@ export class RemoteApi {
       webauthn?: WebAuthnBridge;
       rpc?: (request: RemoteRequest) => Promise<RemoteResponse>;
     } = {},
+    restore: DurablePendingRequest[] = [],
   ) {
     this.identity = identityFrom(enrollment);
     this.endpoint = { origin: enrollment.relayOrigin, token: "" };
+    this.restorePending(restore);
+  }
+
+  restorePending(rows: DurablePendingRequest[]): void {
+    for (const row of rows) {
+      this.pending.set(`${row.method} ${row.path}`, {
+        ...row,
+        pending: true,
+      });
+    }
+  }
+
+  durablePending(): DurablePendingRequest[] {
+    return [...this.pending.values()].filter((row) => row.pending && !row.terminal).map(durablePending);
   }
 
   pendingRequests(): Array<{ id: string; method: string; path: string }> {
@@ -169,31 +200,6 @@ export class RemoteApi {
   close(): void {
     this.transport?.close();
     this.transport = null;
-  }
-
-  headers(): HeadersInit {
-    return {};
-  }
-  eventsUrl(): string {
-    return "";
-  }
-  authFrame(): string {
-    return "";
-  }
-  parseSyncFrame(raw: string): SyncFrame | null {
-    try {
-      const frame = JSON.parse(raw);
-      if (!frame || typeof frame !== "object" || typeof frame.event_instance_id !== "string" || !/^[0-9a-f]{32}$/.test(frame.event_instance_id)) return null;
-      if (frame.type === "event") {
-        if (!Number.isSafeInteger(frame.seq) || frame.seq < 1 || !frame.payload || typeof frame.payload.event !== "string") return null;
-        if (frame.payload.event === "turn.token" || frame.payload.event === "turn.tool") return null;
-        return frame;
-      }
-      if ((frame.type === "ready" || frame.type === "resnapshot") && Number.isSafeInteger(frame.watermark_seq) && frame.watermark_seq >= 0) return frame;
-      return null;
-    } catch {
-      return null;
-    }
   }
 
   async get<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -435,9 +441,6 @@ export class RemoteApi {
     return this.send(row);
   }
 
-  async remoteStatus(): Promise<{ drain: unknown; devices: Array<{ id: string; name: string; revoked: boolean; hasUv: boolean }> }> {
-    return this.get("/remote/status");
-  }
   async registerUv(): Promise<void> {
     const challenge = await this.post<{ challenge: string }>("/remote/uv/register-challenge", {});
     const response = await createRegistration(challenge.challenge, this.enrollment.relayOrigin, {
@@ -564,5 +567,3 @@ export class RemoteApi {
     return transport.rpc(full);
   }
 }
-
-export type MessengerApi = LocalApi | RemoteApi;

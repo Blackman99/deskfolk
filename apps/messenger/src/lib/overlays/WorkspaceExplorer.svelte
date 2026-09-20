@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
-	import type { MessengerApi } from '../remote/api.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import ArtifactPreview from './ArtifactPreview.svelte';
 
 	interface Props {

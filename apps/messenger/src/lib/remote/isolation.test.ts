@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { discoverEndpoint } from "./local-discovery-stub.ts";
 import { LocalApi } from "./local-api-stub.ts";
-import { shouldCacheRequest } from "./sw-policy.ts";
 
 test("hosted discovery stub never fetches __local-api", async () => {
   const fetchFn = (async () => {
@@ -34,7 +33,16 @@ test("service worker source caches immutable assets only", () => {
   const sw = readFileSync(new URL("../../../static/sw.js", import.meta.url), "utf8");
   expect(sw).toContain("/_app/immutable/");
   expect(sw).toContain('request.mode === "navigate"');
-  expect(shouldCacheRequest({ method: "GET", mode: "navigate", url: "https://relay.test/" })).toBe(false);
+  expect(sw).toContain("if (request.method !== \"GET\") return");
+  expect(sw).toContain("if (request.mode === \"navigate\" || !isImmutable(request.url)) return");
+});
+
+test("hosted and remote settings omit workspace_path from PATCH", () => {
+  const modal = readFileSync(new URL("../settings/SettingsModal.svelte", import.meta.url), "utf8");
+  expect(modal).toContain("workspaceReadOnly = $derived(runtime.hosted || runtime.remote)");
+  expect(modal).toContain("if (workspaceReadOnly)");
+  expect(modal).toContain("t.settings.workspaceHostOnly");
+  expect(modal).toMatch(/patchSettings\(\{\s*workspace_path:/);
 });
 
 test("hosted layout registers the worker from the compile flag, not import.meta.env", () => {

@@ -580,4 +580,3 @@ async function formFingerprint(form: FormData): Promise<string> {
   for (const [name, value] of form) fields.push([name, typeof value === "string" ? value : [value.name, Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await value.arrayBuffer())))]]);
   return JSON.stringify(fields);
 }
-

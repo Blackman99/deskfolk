@@ -35,4 +35,3 @@ export function parseTauriEndpoint(body: unknown): LocalEndpoint | null {
   if (typeof record.token !== "string" || record.token.length === 0) return null;
   return { origin: record.origin, token: record.token };
 }
-

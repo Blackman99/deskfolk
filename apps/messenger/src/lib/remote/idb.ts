@@ -27,12 +27,28 @@ export type EnrollmentDriver = {
   clear(): Promise<void>;
 };
 
-const FORBIDDEN = ["transcript", "snapshot", "draft", "command", "file", "messages", "body"];
+const ENROLLMENT_KEYS = [
+  "v",
+  "deviceId",
+  "hostId",
+  "relayOrigin",
+  "relayId",
+  "trustEpoch",
+  "hostDhPublic",
+  "hostSigningPublic",
+  "dh",
+  "signing",
+  "enrollment",
+  "name",
+] as const;
 
 export function assertEnrollment(value: unknown): StoredEnrollment {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid enrollment");
   const row = value as Record<string, unknown>;
-  if (Object.keys(row).some((key) => FORBIDDEN.includes(key))) throw new Error("enrollment must not store application data");
+  const keys = Object.keys(row);
+  if (keys.length !== ENROLLMENT_KEYS.length || keys.some((key) => !ENROLLMENT_KEYS.includes(key as (typeof ENROLLMENT_KEYS)[number]))) {
+    throw new Error("enrollment must not store application data");
+  }
   if (row.v !== 1) throw new Error("invalid enrollment");
   const enrollment: StoredEnrollment = {
     v: 1,
@@ -61,11 +77,9 @@ export function assertEnrollment(value: unknown): StoredEnrollment {
   return enrollment;
 }
 
-export function memoryEnrollment(): EnrollmentDriver & { records: unknown[] } {
-  const records: unknown[] = [];
+export function memoryEnrollment(): EnrollmentDriver {
   let current: StoredEnrollment | null = null;
   return {
-    records,
     async get() {
       return current;
     },
@@ -100,11 +114,11 @@ function idbDriver(): EnrollmentDriver {
       }
     },
     async set(value) {
-      assertEnrollment(value);
+      const enrollment = assertEnrollment(value);
       const db = await open();
       try {
         await new Promise<void>((resolve, reject) => {
-          const req = db.transaction(REMOTE_STORE, "readwrite").objectStore(REMOTE_STORE).put(value, ENROLLMENT_KEY);
+          const req = db.transaction(REMOTE_STORE, "readwrite").objectStore(REMOTE_STORE).put(enrollment, ENROLLMENT_KEY);
           req.onsuccess = () => resolve();
           req.onerror = () => reject(req.error);
         });
@@ -147,8 +161,4 @@ export async function loadEnrollment(): Promise<StoredEnrollment | null> {
 
 export async function saveEnrollment(value: StoredEnrollment): Promise<void> {
   await activeDriver().set(assertEnrollment(value));
-}
-
-export async function clearEnrollment(): Promise<void> {
-  await activeDriver().clear();
 }

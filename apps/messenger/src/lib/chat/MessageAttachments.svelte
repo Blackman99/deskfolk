@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { MessengerApi } from '../remote/api.ts';
-	import { artifactKind } from '../overlays/artifacts.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
+	import { artifactKind, svgDisplayBlob } from '../overlays/artifacts.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from '../overlays/artifact-tree.ts';
 	import { onDestroy, onMount } from 'svelte';
 
@@ -29,7 +29,8 @@
 			if ((kind === "image" || kind === "svg") && att.exists !== false && !att.is_dir) {
 				try {
 					const blob = await api.getAttachmentBlob(att.id);
-					thumbs = { ...thumbs, [att.id]: URL.createObjectURL(blob) };
+					const thumb = kind === "svg" ? await svgDisplayBlob(blob) : blob;
+					thumbs = { ...thumbs, [att.id]: URL.createObjectURL(thumb) };
 				} catch {
 					// file card without thumb
 				}

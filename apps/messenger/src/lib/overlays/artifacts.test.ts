@@ -134,6 +134,13 @@ test("stripSvgActiveContent removes scripts and handlers", () => {
   expect(cleaned).toContain("ok");
 });
 
+test("stripSvgActiveContent fails closed on unquoted and unclosed active content", () => {
+  expect(stripSvgActiveContent("<svg/onload=alert(1)>").toLowerCase()).not.toContain("onload");
+  expect(stripSvgActiveContent("<svg><script src=x>").toLowerCase()).not.toContain("<script");
+  expect(stripSvgActiveContent("<svg><a href=javascript:alert(1)>x</a></svg>")).not.toContain("javascript:");
+  expect(stripSvgActiveContent("<svg><foreignObject><div/></foreignObject></svg>").toLowerCase()).not.toContain("foreignobject");
+});
+
 test("html preview sandbox runs scripts in an opaque origin", () => {
   expect(HTML_PREVIEW_SANDBOX.split(/\s+/)).toContain("allow-scripts");
   expect(HTML_PREVIEW_SANDBOX.split(/\s+/)).toContain("allow-modals");

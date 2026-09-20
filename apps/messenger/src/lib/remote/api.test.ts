@@ -87,11 +87,37 @@ test("reconnect looks up the same request id and never mints a second mutation",
   expect(calls.filter((row) => row.path === `/v1/requests/${originalId}`)).toHaveLength(1);
 });
 
+test("createBot unknown survives a new RemoteApi and retries the same receipt", async () => {
+  const calls: RemoteRequest[] = [];
+  const rpc = async (request: RemoteRequest): Promise<RemoteResponse> => {
+    calls.push(request);
+    if (request.path.startsWith("/v1/requests/")) {
+      return { v: 1, id: request.id, status: 201, body: { id: "bot" } };
+    }
+    throw new Error("socket closed");
+  };
+  const first = new RemoteApi(enrollment, { rpc });
+  await expect(first.createBot({ name: "Writer", duties: "d", boundaries: "b" })).rejects.toMatchObject({
+    code: "request_unknown",
+  });
+  const pending = first.durablePending();
+  expect(pending).toHaveLength(1);
+  const originalId = pending[0]!.id;
+  first.close();
+  const second = new RemoteApi(enrollment, { rpc }, pending);
+  expect(await second.retryPending(originalId)).toEqual({ id: "bot" });
+  expect(calls.filter((row) => row.method === "POST" && row.path === "/v1/bots")).toHaveLength(1);
+  expect(calls.filter((row) => row.path === `/v1/requests/${originalId}`)).toHaveLength(1);
+  expect(calls.some((row) => row.method === "POST" && row.id !== originalId)).toBe(false);
+});
+
 test("RemoteApi does not expose a local bearer", () => {
   const api = new RemoteApi(enrollment);
   expect(api.kind).toBe("remote");
-  expect(api.headers()).toEqual({});
-  expect(api.authFrame()).toBe("");
+  expect("headers" in api).toBe(false);
+  expect("authFrame" in api).toBe(false);
+  expect("eventsUrl" in api).toBe(false);
+  expect("parseSyncFrame" in api).toBe(false);
   expect(JSON.stringify(api.endpoint)).not.toContain("Bearer");
   expect(api.endpoint.token).toBe("");
 });
