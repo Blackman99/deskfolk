@@ -54,6 +54,35 @@ function auth(h: Harness, extra: Record<string, string> = {}): Record<string, st
   return { Authorization: `Bearer ${h.token}`, ...extra };
 }
 
+describe("routine write boundaries", () => {
+  test("PATCH and DELETE compare the current updated_at and remain legacy compatible", async () => {
+    const h = await start();
+    const { bot } = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const request = (method: string, path: string, body?: unknown) => fetch(`${h.origin}/v1/routines${path}`, { method, headers: auth(h, { 'Content-Type': 'application/json' }), body: body === undefined ? undefined : JSON.stringify(body) });
+    const created = await request('POST', '', { bot_id: bot.id, title: 'Daily', instruction: '', enabled: false, schedule: { kind: 'daily', time: '23:59' } });
+    expect(created.status).toBe(201);
+    const row = await created.json() as import('@real-bot/protocol').Routine;
+    const updated = await request('PATCH', `/${row.id}`, { if_revision: row.updated_at, schedule: { kind: 'weekly', time: '07:15', weekdays: ['mon', 'fri'] } });
+    expect(updated.status).toBe(200);
+    const next = await updated.json() as import('@real-bot/protocol').Routine;
+    expect(next.schedule).toEqual({ kind: 'weekly', time: '07:15', weekdays: ['mon', 'fri'] });
+    expect((await request('PATCH', `/${row.id}`, { title: 'Stale', if_revision: row.updated_at })).status).toBe(409);
+    expect((await request('DELETE', `/${row.id}`, { if_revision: row.updated_at })).status).toBe(409);
+    expect(h.store.getRoutine(row.id).title).toBe('Daily');
+    for (const body of [null, [], { enabled: 'false' }, { schedule: null }, { schedule: { kind: 'daily', time: ['09:00'] } }, { schedule: { kind: 'daily', time: '24:00' } }, { schedule: { kind: 'weekly', time: '09:00', weekdays: [] } }, { if_revision: 3 }]) {
+      expect((await request('PATCH', `/${row.id}`, body)).status).toBe(422);
+    }
+    expect((await request('DELETE', `/${row.id}`, { if_revision: next.updated_at })).status).toBe(204);
+    expect((await request('PATCH', `/${row.id}`, {})).status).toBe(404);
+    expect((await request('DELETE', `/${row.id}`)).status).toBe(404);
+    const legacy = h.store.createRoutine({ bot_id: bot.id, title: 'Legacy', instruction: '', enabled: false, schedule: { kind: 'daily', time: '09:00' } });
+    expect((await request('PATCH', `/${legacy.id}`, { title: 'No revision' })).status).toBe(200);
+    expect((await request('DELETE', `/${legacy.id}`)).status).toBe(204);
+    expect((await request('POST', '', null)).status).toBe(422);
+    expect((await request('POST', '', { bot_id: 'missing', title: 'x', instruction: '', schedule: { kind: 'daily', time: '09:00' } })).status).toBe(404);
+  });
+});
+
 describe("local api auth", () => {
   test("health is unauthenticated and named real-bot", async () => {
     const h = await start();

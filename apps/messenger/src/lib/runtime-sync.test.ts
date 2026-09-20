@@ -3,7 +3,11 @@ import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/prot
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { LocalApi } from "./api.ts";
 import { emptySnapshot } from "./snapshot.ts";
-import { aBot, aDirect, aMessage, aTurn } from "./test-fixtures.ts";
+import { aBot, aDirect, aMessage, aRoutine, aTurn } from "./test-fixtures.ts";
+import { flushSync } from "svelte";
+import RoutineCard from "./panels/RoutineCard.svelte";
+import { copyFor } from "./copy.ts";
+import { buttonByText, click, fill, render } from "./test-render.ts";
 
 const instance = "a".repeat(32);
 const cursor = { event_instance_id: instance, watermark_seq: 0 };
@@ -84,7 +88,7 @@ afterEach(async () => {
   while (fixtureCloses.length) await fixtureCloses.pop()!();
 });
 
-async function credentialFixture() {
+async function credentialFixture(heldPath = "/v1/providers") {
   // Load the actual daemon at runtime across the packages' different TS library targets.
   const { Store } = await import(new URL("../../../daemon/src/store/index.ts", import.meta.url).href);
   const { createLocalApi } = await import(new URL("../../../daemon/src/local-api.ts", import.meta.url).href);
@@ -96,6 +100,7 @@ async function credentialFixture() {
     async delete(name: string) { if (locked) throw new Error("locked"); keys.delete(name); },
   } });
   const api = createLocalApi({ store, token: "fixture", schedule: false });
+  api.engine.fireRoutine = () => null;
   const frames: SyncFrame[] = [];
   let socket: FixtureSocket;
   class FixtureSocket extends EventTarget {
@@ -116,15 +121,15 @@ async function credentialFixture() {
     close() { api.websocket.close(this); this.dispatchEvent(new Event("close")); }
   }
   globalThis.WebSocket = FixtureSocket as unknown as typeof WebSocket;
-  const requests: Array<{ id: string | null; method: string; path: string }> = [];
+  const requests: Array<{ id: string | null; method: string; path: string; body: string }> = [];
   let hold: ((response: Response) => Promise<Response>) | null = null;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     if (String(input) === "/__local-api") return Response.json({ port: 17901, token: "fixture" });
     const request = new Request(input, init);
     const path = new URL(request.url).pathname;
-    requests.push({ id: request.headers.get("X-Request-Id"), method: request.method, path });
+    requests.push({ id: request.headers.get("X-Request-Id"), method: request.method, path, body: await request.clone().text() });
     const response = await api.fetch(request, {});
-    return hold && path === "/v1/providers" && request.method === "POST" ? hold(response) : response;
+    return hold && path.startsWith(heldPath) && ["POST", "PATCH", "DELETE"].includes(request.method) ? hold(response) : response;
   }) as typeof fetch;
   const runtime = new MessengerRuntime(); runtimes.push(runtime); runtime.start();
   await until(() => runtime.connection === "connected");
@@ -150,6 +155,89 @@ async function credentialFixture() {
     holdResponse(value: typeof hold) { hold = value; },
   };
 }
+
+for (const streamed of [false, true]) test(`mounted routine pending create preserves edited draft and retries exact receipt (${streamed ? 'event first' : 'HTTP first'})`, async () => {
+  const h = await credentialFixture('/v1/routines');
+  const { bot } = h.store.createBot({ name: 'Routine owner', duties: '', boundaries: '' });
+  h.drain();
+  const t = copyFor('en');
+  const { host, close } = render(RoutineCard, { runtime: h.runtime, bot, t });
+  const submit = () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); flushSync(); };
+  try {
+    h.holdResponse(async () => { throw new Error('committed response lost'); });
+    click(buttonByText(host, t.routines.add));
+    fill(host.querySelector('#routine-title'), 'Original'); submit();
+    await until(() => h.runtime.pendingMutation?.code === 'request_unknown'); flushSync();
+    expect(host.textContent).toContain(t.routines.unknown);
+    expect(host.textContent).not.toContain(t.routines.conflict);
+    expect(host.textContent).toContain(t.routines.retryHint);
+    expect(h.store.listRoutines()).toHaveLength(1);
+    expect(h.runtime.snapshot.routines).toHaveLength(0);
+    if (streamed) { h.drain(); flushSync(); }
+    fill(host.querySelector('#routine-title'), 'Edited'); submit();
+    await until(() => h.runtime.pendingMutation?.code === 'request_pending'); flushSync();
+    expect(host.textContent).toContain(t.routines.pending);
+    expect(host.textContent).not.toContain(t.routines.conflict);
+    expect(host.textContent).not.toContain(t.routines.reload);
+    const requests = () => h.requests.filter((r) => r.path === '/v1/routines' && r.method === 'POST');
+    expect(requests()).toHaveLength(1);
+    const entered = deferred<void>(); const release = deferred<void>();
+    h.holdResponse(async (response) => { entered.resolve(); await release.promise; return response; });
+    click(buttonByText(host, t.routines.retry));
+    await entered.promise; flushSync();
+    expect(buttonByText(host, t.routines.retry).disabled).toBe(true);
+    click(buttonByText(host, t.routines.retry));
+    expect(requests()).toHaveLength(2);
+    expect(requests()[1]).toEqual(requests()[0]);
+    release.resolve();
+    await until(() => h.runtime.pendingMutation === null); await new Promise((r) => setTimeout(r, 0)); flushSync();
+    expect(h.store.listRoutines()).toHaveLength(1);
+    expect(h.store.listRoutines()[0].title).toBe('Original');
+    expect((host.querySelector('#routine-title') as HTMLInputElement).value).toBe('Edited');
+    expect(host.textContent).toContain(t.routines.retired);
+    expect(host.textContent).not.toContain(t.routines.pending);
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === t.routines.retry)).toBe(false);
+    expect(buttonByText(host, t.routines.save).disabled).toBe(true);
+    submit(); expect(requests()).toHaveLength(2);
+    expect(h.runtime.snapshot.routines).toHaveLength(streamed ? 1 : 0);
+    h.drain(); flushSync();
+    click(host.querySelector('.routine-open'));
+    expect((host.querySelector('#routine-title') as HTMLInputElement).value).toBe('Original');
+    expect(buttonByText(host, t.routines.save).disabled).toBe(false);
+  } finally { close(); }
+});
+
+test('mounted routine retry preserves a terminal revision409 and still offers streamed load-latest recovery', async () => {
+  const h = await credentialFixture('/v1/routines');
+  const { bot } = h.store.createBot({ name: 'Routine owner', duties: '', boundaries: '' });
+  const row = h.store.createRoutine({ bot_id: bot.id, title: 'Original', instruction: '', enabled: false, schedule: { kind: 'daily', time: '09:00' } });
+  h.drain();
+  const t = copyFor('en');
+  const { host, close } = render(RoutineCard, { runtime: h.runtime, bot, t });
+  try {
+    click(host.querySelector('.routine-open'));
+    fill(host.querySelector('#routine-title'), 'My draft');
+    h.store.patchRoutine(row.id, { title: 'Other client', if_revision: row.updated_at });
+    h.holdResponse(async (response) => { expect(response.status).toBe(409); throw new Error('lost conflict response'); });
+    host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); flushSync();
+    await until(() => h.runtime.pendingMutation?.code === 'request_unknown'); flushSync();
+    h.holdResponse(null);
+    click(buttonByText(host, t.routines.retry));
+    await until(() => h.runtime.pendingMutation === null); await new Promise((r) => setTimeout(r, 0)); flushSync();
+    expect(host.textContent).toContain(t.routines.conflict);
+    expect(host.textContent).not.toContain(t.routines.unknown);
+    expect((host.querySelector('#routine-title') as HTMLInputElement).value).toBe('My draft');
+    expect(buttonByText(host, t.routines.save).disabled).toBe(true);
+    h.drain(); flushSync();
+    click(buttonByText(host, t.routines.reload));
+    expect((host.querySelector('#routine-title') as HTMLInputElement).value).toBe('Other client');
+    expect(buttonByText(host, t.routines.save).disabled).toBe(false);
+    expect(h.store.listRoutines()).toHaveLength(1);
+    const writes = h.requests.filter((r) => r.method === 'PATCH');
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+  } finally { close(); }
+});
 
 const credentialBody = (name: string) => ({ name, base_url: "https://fixture.invalid", api_key: "memory-only" });
 
@@ -298,6 +386,88 @@ test("integration: second-client credential events clear confirmed pending memor
   Socket.current.frame({ type: "event", event_instance_id: instance, seq: 3, payload: { event: "credential_operations.changed", occurred_at: "now", items: [] } });
   expect(runtime.pendingMutation).toEqual({ id: unknown, code: "request_unknown" });
   expect(api.pendingRequests()).toHaveLength(1);
+});
+
+for (const operation of ['create', 'patch', 'delete'] as const) test(`routine ${operation} retains unknown request for explicit retry without HTTP row ingestion`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === 'connected');
+  const api = runtime.client!;
+  const row = aRoutine();
+  const calls: Array<{ id: string | null; body: unknown }> = [];
+  let lost = true;
+  globalThis.fetch = (async (_url, init) => {
+    calls.push({ id: new Headers(init!.headers).get('X-Request-Id'), body: JSON.parse(init!.body as string) });
+    if (lost) throw new Error('lost response');
+    return operation === 'delete' ? new Response(null, { status: 204 }) : Response.json(row);
+  }) as typeof fetch;
+  const write = () => operation === 'create'
+    ? runtime.createRoutine({ bot_id: row.bot_id, title: row.title, instruction: '', schedule: row.schedule })
+    : operation === 'patch' ? runtime.patchRoutine(row.id, { title: 'Updated', if_revision: row.updated_at })
+    : runtime.deleteRoutine(row.id, row.updated_at);
+  expect((await write())?.code).toBe('request_unknown');
+  expect(runtime.client).toBe(api);
+  expect(runtime.connection).toBe('connected');
+  expect(runtime.pendingMutation).toEqual({ id: calls[0]!.id!, code: 'request_unknown' });
+  expect(api.pendingRequests()).toHaveLength(1);
+  Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { event: 'credential_operations.changed', occurred_at: 'now', items: [] } });
+  expect(api.pendingRequests()).toHaveLength(1);
+  if (operation !== 'delete') {
+    const changed = operation === 'create'
+      ? await runtime.createRoutine({ bot_id: row.bot_id, title: 'Changed', instruction: '', schedule: row.schedule })
+      : await runtime.patchRoutine(row.id, { title: 'Changed', if_revision: row.updated_at });
+    expect(changed?.code).toBe('request_pending');
+    expect(calls).toHaveLength(1);
+  }
+  lost = false;
+  expect(await write()).toBeNull();
+  expect(calls).toHaveLength(2);
+  expect(calls[1]).toEqual(calls[0]);
+  expect(api.pendingRequests()).toEqual([]);
+  expect(runtime.pendingMutation).toBeNull();
+  expect(runtime.snapshot.routines).toEqual([]);
+});
+
+test("routine writes use revision bodies and only events or reconnect snapshots change state", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === 'connected');
+  const row = aRoutine();
+  const requests: { method: string; body: unknown }[] = [];
+  globalThis.fetch = (async (_url, init) => {
+    requests.push({ method: init!.method!, body: JSON.parse(init!.body as string) });
+    return init!.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(row);
+  }) as typeof fetch;
+  await runtime.createRoutine({ bot_id: row.bot_id, title: row.title, instruction: row.instruction, schedule: row.schedule });
+  expect(runtime.snapshot.routines).toHaveLength(0);
+  Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { ...row, event: 'routine.upsert', occurred_at: 'now' } });
+  await runtime.patchRoutine(row.id, { enabled: false, if_revision: row.updated_at });
+  expect(runtime.snapshot.routines[0]!.enabled).toBe(true);
+  await runtime.deleteRoutine(row.id, row.updated_at);
+  expect(runtime.snapshot.routines).toHaveLength(1);
+  expect(requests.map((r) => r.method)).toEqual(['POST', 'PATCH', 'DELETE']);
+  expect(requests[1]!.body).toEqual({ enabled: false, if_revision: row.updated_at });
+  expect(requests[2]!.body).toEqual({ if_revision: row.updated_at });
+  await reconnect(runtime, { ...initial, routines: [aRoutine({ title: 'Reconnect', enabled: false })] });
+  expect(runtime.snapshot.routines[0]!.title).toBe('Reconnect');
+  Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { event: 'routine.removed', id: row.id, occurred_at: 'now' } });
+  expect(runtime.snapshot.routines).toHaveLength(0);
+});
+
+for (const operation of ['create', 'patch', 'delete'] as const) for (const reject of [false, true]) test(`obsolete routine ${operation} ${reject ? 'failure' : 'success'} cannot affect replacement connection`, async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === 'connected');
+  const pending = deferred<Response>();
+  globalThis.fetch = (() => pending.promise) as typeof fetch;
+  const row = aRoutine();
+  const write = operation === 'create' ? runtime.createRoutine({ bot_id: row.bot_id, title: row.title, instruction: '', schedule: row.schedule }) : operation === 'patch' ? runtime.patchRoutine(row.id, { title: 'old', if_revision: row.updated_at }) : runtime.deleteRoutine(row.id, row.updated_at);
+  await reconnect(runtime, { ...initial, routines: [aRoutine({ title: 'Current' })] });
+  runtime.selectedId = 'direct-1';
+  await runtime.openRoutine('bot-1', row.id);
+  if (reject) pending.reject(new Error('old connection'));
+  else pending.resolve(operation === 'delete' ? new Response(null, { status: 204 }) : Response.json(row));
+  expect((await write)?.code).toBe('disconnected');
+  expect(runtime.connection).toBe('connected');
+  expect(runtime.profileRoutineId).toBe(row.id);
+  expect(runtime.snapshot.routines[0]!.title).toBe('Current');
 });
 
 test("runtime subscribes before reading snapshot and preserves events arriving during HTTP", async () => {

@@ -17,6 +17,7 @@ import {
 	anMcpServer,
 	aProvider,
 	aSkill,
+	aRoutine,
 	aTurn,
 	fakeRuntime
 } from '../../src/lib/test-fixtures.ts';
@@ -26,6 +27,7 @@ import Onboarding from '../../src/lib/Onboarding.svelte';
 import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
 import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
+import RoutineCard from '../../src/lib/panels/RoutineCard.svelte';
 import RouteLog from '../../src/lib/overlays/RouteLog.svelte';
 import CreateGroupSheet from '../../src/lib/sidebar/CreateGroupSheet.svelte';
 import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
@@ -383,6 +385,13 @@ const defs: Record<StoryName, Story> = {
 			onDelete: () => {}
 		}
 	},
+	'danger-dialog-narrow': {
+		component: DangerDialog as never,
+		props: {
+			copy: { title: 'Delete routine', body: 'Deleting this routine does not stop work already started.', confirm: 'Confirm delete', cancel: 'Cancel' },
+			t: copyFor('en'), onDismiss: () => {}, onConfirm: () => {}
+		}
+	},
 	'danger-dialog': {
 		component: DangerDialog as never,
 		props: {
@@ -459,6 +468,19 @@ const defs: Record<StoryName, Story> = {
 			onDeleteGroup: () => {},
 			onClearHistory: () => {}
 		}
+	},
+	'routine-card': {
+		component: RoutineCard as never,
+		props: { runtime: fakeRuntime({ routines: [aRoutine(), aRoutine({ id: 'weekly', title: 'Weekly review', enabled: false, schedule: { kind: 'weekly', time: '17:30', weekdays: ['mon', 'fri'] } })] }), bot: bots[0], t }
+	},
+	'routine-editor-narrow': {
+		component: RoutineCard as never,
+		props: { runtime: fakeRuntime({ routines: [aRoutine({ schedule: { kind: 'weekly', time: '17:30', weekdays: ['mon', 'fri'] } })] }), bot: bots[0], t },
+		afterMount(host) { (host.querySelector('.routine-open') as HTMLButtonElement).click(); flushSync(); }
+	},
+	'routine-empty': {
+		component: RoutineCard as never,
+		props: { runtime: fakeRuntime(), bot: bots[0], t }
 	},
 	'profile-pane': {
 		component: ProfilePane as never,

@@ -7,7 +7,8 @@ import {
   type CreateProviderRequest,
   type HealthResponse,
   type PatchProviderRequest,
-  type Routine,
+  type CreateRoutineRequest,
+  type PatchRoutineRequest,
   type CreateBotRequest,
   type PatchBotRequest,
   type RuntimeResponse,
@@ -995,13 +996,7 @@ function dispatch(
     return jsonResponse({ items: store.listRoutines() }, 200, null);
   }
   if (method === "POST" && path === "/v1/routines") {
-    const body = (input.body) as {
-      bot_id: string;
-      title: string;
-      instruction: string;
-      schedule: Routine["schedule"];
-      enabled?: boolean;
-    };
+    const body = input.body as CreateRoutineRequest;
     const routine = store.createRoutine(body);
     publish({ event: "routine.upsert", occurred_at: occurred(), ...routine });
     engine.fireRoutine(routine.id);
@@ -1009,19 +1004,14 @@ function dispatch(
   }
   params = matchPath(path, "/v1/routines/:id");
   if (params && method === "PATCH") {
-    const body = (input.body) as {
-      title?: string;
-      instruction?: string;
-      schedule?: Routine["schedule"];
-      enabled?: boolean;
-    };
+    const body = input.body as PatchRoutineRequest;
     const routine = store.patchRoutine(params.id!, body);
     publish({ event: "routine.upsert", occurred_at: occurred(), ...routine });
     engine.fireRoutine(routine.id);
     return jsonResponse(store.getRoutine(routine.id), 200, null);
   }
   if (params && method === "DELETE") {
-    store.deleteRoutine(params.id!);
+    store.deleteRoutine(params.id!, input.body.if_revision as string | undefined);
     publish({ event: "routine.removed", occurred_at: occurred(), id: params.id! });
     return emptyResponse(204, null);
   }
@@ -1088,6 +1078,11 @@ async function parseMutation(request: Request): Promise<ParsedMutation> {
 function checkRevision(store: Store, request: Request, url: URL, body: Record<string, unknown>, scope: RequestScope): void {
   if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && scope.requireRevision && !request.headers.has("If-Match")) {
     throw new HttpError(422, "invalid_args", "If-Match is required");
+  }
+  if ((request.method === "PATCH" || request.method === "DELETE") && matchPath(url.pathname, "/v1/routines/:id")) {
+    if (scope.requireRevision && body.if_revision === undefined) throw new HttpError(422, "invalid_args", "if_revision is required");
+    // The routine Store method compares once inside this receipt transaction.
+    return;
   }
   if (request.method !== "PATCH") return;
   const revision = body.if_revision;

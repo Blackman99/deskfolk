@@ -57,6 +57,18 @@
 
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 新建群 → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
+共用 `DangerDialog.svelte` 用原生 `dialog.showModal()` 隔离背景（含已有资料/技能/端点浮层），在组件内处理 Tab/Shift+Tab 和 Escape，不加全局键盘或 inert DOM 补丁。取消/卸载后归还仍存在的触发控件；busy 时焦点停在对话框，拒绝取消与重复确认。Shell 每个确认对象拥有自己的 running 状态，重复提交只拦截同一对象；事件先移除旧确认时，新确认可独立执行。所有异步完成后的清理/错误反馈校验确切确认身份；技能/记忆回调使用 `isCurrent`，不能按种类清除替代确认。触摸按钮至少 44×44px。
+
+## 日程编辑与版本
+
+日程搜索同时检查快照日程与当前 Bot 名册。软删除 Bot 保留历史日程，结果标为不可用而不是静默关闭。资料导航序号覆盖后来日程/资料、会话设置、关闭和 URL 浮层变化，较早详情返回不能重开旧编辑器或丢弃新草稿。
+
+Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现有每天/每周与 `HH:MM` 字段，归属固定为当前 Bot。时间按执行 Mac 的本地日历解释，不提供浏览器时区转换或新 cron 语法；使用步骤见 [README](../README.zh.md#每日与每周日程)。
+
+`LocalApi.createRoutine` / `patchRoutine` / `deleteRoutine` 经 runtime 捕获当前 API 实例调用；HTTP 返回行不写入快照，只有 `routine.upsert` / `routine.removed` 和重连快照更新列表。编辑草稿或删除确认保留当时的 `updated_at`；PATCH 和 DELETE JSON 体传 `if_revision`，不匹配返回 `409 revision_conflict`，格式错误返回 422，已删除返回 404。旧本机调用可省略该字段；注入 `requireRevision: true` 时日程 PATCH/DELETE 均不可省略。请求体先参与回执摘要，日程版本字段保留至 Store，在业务+回执的同一外层事务中仅比较一次，不先被通用 PATCH 检查剥离。Store 使日程 `updated_at` 至少递增一毫秒（含 scheduler claim）；不另包一套 Store 事务。未修改的表单跟随实时更新，有修改的表单保留草稿并要求显式载入最新版，连接变化不会自动重试写入。网络结果未知时沿用 `LocalApi` 待确认请求与原始 id，只允许显式重试同一载荷；不得为了显示日程错误丢弃该 API 实例。成功或终态回执只清理对应请求，不合成快照行。日程错误按 code 区分 `request_unknown` / `request_pending` 与 `revision_conflict`；卡片中的“重试原请求”调用既有 `runtime.retryPendingMutation` → `LocalApi.retryPending`，不重建载荷或 id。该 runtime 方法返回 `ApiError | null`，使卡片保留重试收到的真实终态错误。重试明确说明不会发送后来修改的草稿，待确认退休后保留草稿并禁用提交，用户核对列表/重新打开后继续；不把原请求成功说成后来草稿已保存。
+
+隔离 UI fixture 除 `schedule: false` 停定时 ticker 外，还须禁用注入 engine 的 `fireRoutine`：创建/修改 HTTP 路由会立即询问日程是否到期。fake keystore、fake completions 与独立端口/数据目录仍全部必需。
+
 ## 信使样式分层
 
 新写或改一条样式，按这个顺序挑落点，挑不到再往下走：
@@ -227,7 +239,7 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 - 新增 Store 方法若是 async，在门面显式 `bind(fn, true)`，每段 SQLite 写入必须用 `ctx.commit`；不要直接从运行时改 `store.db`。新增同步实体表需注册 `store/events.ts` journal 与事件映射。Bun `run().changes` 会包括触发器写入，单行 claim 使用 `RETURNING` 而不是 `changes === 1`。
 - `message.upsert` 携带完整消息（含 reactions），避免回应或中断 Continue 更新遗漏；级联删除审批 / 花费有 `approval.removed` / `spend.removed`。旧本机事件不变。`turn.token` 不进环，若发布则转成 Store 中绝对 `partial_text` 的轮次更新；`turn.tool` 仅保留旧本机流，不进入新同步流。当前引擎仍不把工具中间跳当作用户回复。
 
-回归在 `apps/daemon/src/session-events.test.ts` 与信使 `event-sync.test.ts` / `runtime-sync.test.ts` / `page-startup.test.ts`（真实页面 URL effects + 延迟首次快照）；全仓跑 `pnpm test` / `pnpm typecheck`，再构建信使。隔离 UI fixture 可调用 `startRuntime({ dataDir, bind, endpointKey, completions, schedule: false })` 注入 fake keystore / fake completions，Vite 用相同 `REAL_BOT_DATA_DIR` 并选独立端口；单设数据目录不能隔离个人钥匙串。此协议不扩大 loopback / Origin，也不启用远控、离线命令或日程 CRUD 界面。
+回归在 `apps/daemon/src/session-events.test.ts` 与信使 `event-sync.test.ts` / `runtime-sync.test.ts` / `page-startup.test.ts`（真实页面 URL effects + 延迟首次快照）；全仓跑 `pnpm test` / `pnpm typecheck`，再构建信使。隔离 UI fixture 可调用 `startRuntime({ dataDir, bind, endpointKey, completions, schedule: false })` 注入 fake keystore / fake completions，Vite 用相同 `REAL_BOT_DATA_DIR` 并选独立端口；单设数据目录不能隔离个人钥匙串。此协议不扩大 loopback / Origin，也不启用远控或离线命令；日程 CRUD 界面沿用上述快照与事件通道。
 
 ### 事务回执、版本与文件完整性
 

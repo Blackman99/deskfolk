@@ -77,6 +77,55 @@ test("review4/5/6: unhealthy inbox cannot block stop/repair; route guards and cr
   expect(h.store.settingsCached().endpoint_base_url).toBe("https://example.invalid/new");
 });
 
+test("routine integration: required revisions, receipt replay and committed journal share one transaction", async () => {
+  const h = await harness();
+  h.api.engine.fireRoutine = () => null;
+  const { bot } = h.store.createBot({ name: "routine", duties: "", boundaries: "" });
+  const row = h.store.createRoutine({ bot_id: bot.id, title: "First", instruction: "", enabled: false, schedule: { kind: "daily", time: "09:00" } });
+  const path = `/v1/routines/${row.id}`;
+  const request = (method: string, body: unknown, requestId = ulid()) => h.api.dispatchBusiness(new Request(`http://fixture${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), { deviceId: "routine-device", requestId, requireRevision: true });
+  const emitted: ClientEvent[] = [];
+  const id = ulid();
+  h.store.onCommit((event) => {
+    if (!event.event.startsWith("routine.")) return;
+    expect(h.store.db.inTransaction).toBe(false);
+    expect(h.store.receipts.lookup({ deviceId: "routine-device", requestId: id })?.status).toBe(200);
+    emitted.push(event);
+  });
+  for (const method of ["PATCH", "DELETE"]) {
+    for (const if_revision of [undefined, null, 3, ""]) {
+      const response = await request(method, if_revision === undefined ? {} : { if_revision });
+      expect(response.status).toBe(422);
+    }
+  }
+  expect(emitted).toEqual([]);
+  const body = { title: "Second", if_revision: row.updated_at };
+  const first = await request("PATCH", body, id);
+  expect(first.status).toBe(200);
+  const bytes = await first.text();
+  const next = h.store.getRoutine(row.id);
+  expect(next.title).toBe("Second");
+  expect(next.updated_at > row.updated_at).toBe(true);
+  expect(emitted.map((event) => event.event)).toEqual(["routine.upsert"]);
+  const replay = await request("PATCH", body, id);
+  expect(await replay.text()).toBe(bytes);
+  expect(emitted).toHaveLength(1);
+  for (const method of ["PATCH", "DELETE"]) {
+    const staleId = ulid();
+    const stale = await request(method, { if_revision: row.updated_at }, staleId);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { code: "revision_conflict" } });
+    expect((await request(method, { if_revision: row.updated_at }, staleId)).status).toBe(409);
+  }
+  expect(h.store.getRoutine(row.id)).toEqual(next);
+  expect(emitted).toHaveLength(1);
+  const deletion = ulid();
+  expect((await request("DELETE", { if_revision: next.updated_at }, deletion)).status).toBe(204);
+  expect((await request("DELETE", { if_revision: next.updated_at }, deletion)).status).toBe(204);
+  expect((await request("DELETE", { if_revision: next.updated_at })).status).toBe(404);
+  expect(emitted.map((event) => event.event)).toEqual(["routine.upsert", "routine.removed"]);
+});
+
 test("integration review: legacy credential events have exactly one fresh payload per committed phase", async () => {
   const h = await harness();
   const provider = await h.client.createProvider({ name: "phases", base_url: "https://example.invalid", api_key: "fake" });

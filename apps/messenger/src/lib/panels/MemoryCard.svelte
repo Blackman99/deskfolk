@@ -2,6 +2,7 @@
 	import type { Bot, Memory } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import {
 		draftFromMemory,
 		mapMemoryError,
@@ -21,7 +22,7 @@
 		runtime: MessengerRuntime;
 		bot: Bot;
 		t: Copy;
-		openDangerConfirm: (kind: 'skill' | 'memory', run: () => Promise<void>) => void;
+		openDangerConfirm: (kind: 'skill' | 'memory', run: DangerAction) => void;
 		clearDanger: (kind: 'memory') => void;
 	};
 
@@ -85,9 +86,9 @@
 	}
 
 	function confirmDelete(memory: Memory): void {
-		openDangerConfirm('memory', async () => {
+		openDangerConfirm('memory', async (isCurrent) => {
 			await runtime.deleteMemory(memory.id);
-			clearDanger('memory');
+			if (isCurrent()) clearDanger('memory');
 		});
 	}
 

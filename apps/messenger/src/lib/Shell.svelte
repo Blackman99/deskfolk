@@ -13,7 +13,8 @@
 		shouldDropConfirm,
 		visibleDangerKind,
 		type DangerKind,
-		type DangerSource
+		type DangerSource,
+		type DangerAction
 	} from './overlays/danger-confirm.ts';
 	import {
 		modelSelectValue,
@@ -274,7 +275,8 @@
 		/** Picks the copy, and says which close paths drop this confirm. */
 		kind: DangerKind;
 		/** What the confirm button does. Whoever opens the dialog knows; the shell does not. */
-		run: () => Promise<void>;
+		run: DangerAction;
+		running?: boolean;
 		/** The session this group / history confirm acts on. Independent of the open chat. */
 		sessionId?: string;
 		/** The Bot this confirm acts on, so it goes when that Bot leaves the roster. */
@@ -285,6 +287,17 @@
 		source?: DangerSource;
 	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
+
+	async function confirmDanger(): Promise<void> {
+		const pending = dangerConfirm;
+		if (!pending || pending.running) return;
+		pending.running = true;
+		try {
+			await pending.run(() => dangerConfirm === pending);
+		} finally {
+			pending.running = false;
+		}
+	}
 
 	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
 	function clearDanger(...kinds: DangerKind[]): void {
@@ -302,7 +315,7 @@
 			providerIds: providerIdSet
 		})
 	);
-	/** Escape has never dismissed the skill confirm; it closes the drawer behind it instead. */
+	/** The native confirmation consumes its own keyboard events before this fallback. */
 	const escapeDismissesDanger = $derived(
 		dangerConfirmKind !== null && dangerConfirmKind !== 'skill' && dangerConfirmKind !== 'memory'
 	);
@@ -522,8 +535,10 @@
 	}
 
 	async function deleteProvider(id: string): Promise<void> {
+		const pending = dangerConfirm;
 		saveFailed = false;
 		const error = await runtime.deleteProvider(id);
+		if (dangerConfirm !== pending) return;
 		if (error) {
 			saveFailed = true;
 			dangerConfirm = null;
@@ -565,7 +580,7 @@
 
 	function closeNestedProfile(): void {
 		// Unmounting the pane flushes its pending autosave and drops its drafts.
-		runtime.profileBotId = null;
+		runtime.closeProfile();
 		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
 		profileFailed = false;
 	}
@@ -576,8 +591,10 @@
 	 * wait for the window to come back.
 	 */
 	function dismissDangerConfirm(): void {
+		const pending = dangerConfirm;
+		if (pending?.running) return;
 		setTimeout(() => {
-			dangerConfirm = null;
+			if (dangerConfirm === pending) dangerConfirm = null;
 		}, 0);
 	}
 
@@ -600,8 +617,10 @@
 	}
 
 	async function deleteProfile(botId: string): Promise<void> {
+		const pending = dangerConfirm;
 		profileFailed = false;
 		const error = await runtime.deleteBot(botId);
+		if (dangerConfirm !== pending) return;
 		if (error) {
 			profileFailed = true;
 			return;
@@ -614,8 +633,10 @@
 	}
 
 	async function deleteGroupSession(sessionId: string): Promise<void> {
+		const pending = dangerConfirm;
 		if (groupDetail.sessionId === sessionId) groupDetail.failed = false;
 		const error = await runtime.deleteSession(sessionId);
+		if (dangerConfirm !== pending) return;
 		if (error) {
 			if (groupDetail.sessionId === sessionId) groupDetail.failed = true;
 			return;
@@ -625,8 +646,10 @@
 	}
 
 	async function clearGroupHistory(sessionId: string): Promise<void> {
+		const pending = dangerConfirm;
 		if (groupDetail.sessionId === sessionId) groupDetail.failed = false;
 		const error = await runtime.clearSessionHistory(sessionId);
+		if (dangerConfirm !== pending) return;
 		if (error) {
 			if (groupDetail.sessionId === sessionId) groupDetail.failed = true;
 			return;
@@ -902,7 +925,8 @@
 			copy={dangerConfirmCopy}
 			{t}
 			onDismiss={dismissDangerConfirm}
-			onConfirm={() => void dangerConfirm?.run()}
+			busy={Boolean(dangerConfirm?.running)}
+			onConfirm={() => void confirmDanger()}
 		/>
 	{/if}
 	<SettingsModal

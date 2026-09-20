@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 
 	type Props = {
@@ -6,61 +7,79 @@
 		t: Copy;
 		onDismiss: () => void;
 		onConfirm: () => void;
+		busy?: boolean;
 	};
 
-	let { copy, t, onDismiss, onConfirm }: Props = $props();
-	let backdropEl = $state<HTMLElement | null>(null);
+	let { copy, t, onDismiss, onConfirm, busy = false }: Props = $props();
+	let dialogEl = $state<HTMLDialogElement>();
+	const dismiss = () => { if (!busy) onDismiss(); };
 
 	$effect(() => {
-		backdropEl?.focus();
-		function onKey(e: KeyboardEvent) {
-			if (e.key !== 'Escape') return;
-			e.preventDefault();
-			e.stopImmediatePropagation();
-			onDismiss();
-		}
-		window.addEventListener('keydown', onKey, true);
-		return () => window.removeEventListener('keydown', onKey, true);
+		const dialog = dialogEl;
+		if (!dialog) return;
+		const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		// showModal isolates the entire background, even when mounted inside another overlay.
+		dialog.showModal();
+		dialog.focus();
+		return () => {
+			dialog.close();
+			if (opener?.isConnected && !opener.closest('[inert]')) opener.focus({ preventScroll: true });
+		};
 	});
+
+	$effect(() => {
+		if (busy) untrack(() => dialogEl?.focus());
+	});
+
+	function onKey(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			dismiss();
+		} else if (event.key === 'Tab' && dialogEl) {
+			const buttons = [...dialogEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+			const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+			event.preventDefault();
+			event.stopPropagation();
+			const next = event.shiftKey ? (index <= 0 ? buttons.length - 1 : index - 1) : (index + 1) % buttons.length;
+			(buttons[next] ?? dialogEl).focus();
+		}
+	}
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-	bind:this={backdropEl}
+<dialog
+	bind:this={dialogEl}
 	class="modal-backdrop confirm-backdrop"
-	role="dialog"
-	aria-modal="true"
 	aria-labelledby="danger-confirm-title"
 	aria-describedby="danger-confirm-body"
+	aria-busy={busy}
 	tabindex="-1"
-	onclick={(e) => {
-		e.stopPropagation();
-		if (e.target === e.currentTarget) onDismiss();
+	oncancel={(event) => { event.preventDefault(); event.stopPropagation(); dismiss(); }}
+	onclick={(event) => {
+		event.stopPropagation();
+		if (event.target === event.currentTarget) dismiss();
 	}}
-	onpointerdown={(e) => e.stopPropagation()}
-	onkeydown={(e) => {
-		if (e.key === 'Escape') {
-			e.stopPropagation();
-			onDismiss();
-		}
-	}}
+	onpointerdown={(event) => event.stopPropagation()}
+	onkeydown={onKey}
 >
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="modal-dialog confirm-dialog"
-		onclick={(e) => e.stopPropagation()}
-		onpointerdown={(e) => e.stopPropagation()}
-	>
+	<div class="modal-dialog confirm-dialog">
 		<div class="modal-head">
 			<h2 id="danger-confirm-title">{copy.title}</h2>
-			<button type="button" class="modal-close" title={t.common.close} onclick={onDismiss}>✕</button>
+			<button type="button" class="modal-close" title={t.common.close} disabled={busy} onclick={dismiss}>✕</button>
 		</div>
 		<div class="modal-body">
 			<p id="danger-confirm-body" class="confirm-copy">{copy.body}</p>
 		</div>
 		<div class="modal-foot actions">
-			<button type="button" onclick={onDismiss}>{copy.cancel}</button>
-			<button type="button" class="deny" onclick={onConfirm}>{copy.confirm}</button>
+			<button type="button" disabled={busy} onclick={dismiss}>{copy.cancel}</button>
+			<button type="button" class="deny" disabled={busy} onclick={() => { if (!busy) onConfirm(); }}>{copy.confirm}</button>
 		</div>
 	</div>
-</div>
+</dialog>
+
+<style>
+	dialog.confirm-backdrop { margin: 0; border: 0; outline: none; width: 100vw; max-width: none; height: 100dvh; max-height: none; box-sizing: border-box; }
+	dialog.confirm-backdrop::backdrop { background: transparent; }
+	.confirm-dialog button { min-width: 44px; min-height: 44px; }
+	.confirm-dialog .modal-close { width: 44px; height: 44px; }
+</style>

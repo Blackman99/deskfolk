@@ -5,6 +5,7 @@ export const STORY_SIZES = {
 	// whole `responsive.css` file is untested.
 	'shell-narrow': { width: 600, height: 820 },
 	'danger-dialog': { width: 900, height: 520 },
+	'danger-dialog-narrow': { width: 390, height: 844 },
 	'route-log': { width: 900, height: 720 },
 	// A modal, not a flyout any more: shot at a window it fits in, with room under the field for
 	// the member list to open into.
@@ -14,6 +15,9 @@ export const STORY_SIZES = {
 	'create-bot-sheet': { width: 340, height: 720 },
 	'group-pane': { width: 420, height: 900 },
 	'profile-pane': { width: 420, height: 1100 },
+	'routine-card': { width: 520, height: 800 },
+	'routine-editor-narrow': { width: 390, height: 1100 },
+	'routine-empty': { width: 390, height: 440 },
 	onboarding: { width: 900, height: 720 },
 	sidebar: { width: 300, height: 820 },
 	// The row under an open context menu: a rule that used to live in the last file imported,

@@ -13,12 +13,12 @@ function open(memories: ReturnType<typeof aMemory>[], sessions = [aGroup({ id: "
     sessions,
     memories,
   });
-  const danger: { kind: string; run: () => Promise<void> }[] = [];
+  const danger: { kind: string; run: (isCurrent: () => boolean) => Promise<void> }[] = [];
   const view = render(MemoryCard, {
     runtime,
     bot,
     t,
-    openDangerConfirm: (kind: string, run: () => Promise<void>) => danger.push({ kind, run }),
+    openDangerConfirm: (kind: string, run: (isCurrent: () => boolean) => Promise<void>) => danger.push({ kind, run }),
     clearDanger: () => {},
   });
   return { ...view, runtime, danger };
@@ -95,9 +95,24 @@ test("delete goes through the danger confirm", async () => {
   const { host, runtime, danger, close } = open([aMemory()]);
   click(host.querySelectorAll(".memory-icon-btn")[1]);
   expect(danger[0]?.kind).toBe("memory");
-  await danger[0]!.run();
+  await danger[0]!.run(() => true);
   expect(runtime.calls.find((c) => c.name === "deleteMemory")?.args).toEqual(["mem-1"]);
   close();
+});
+
+test('an obsolete memory delete cannot clear the replacement confirmation', async () => {
+  const bot = aBot();
+  let release!: (value: null) => void;
+  const runtime = fakeRuntime({ bots: [bot], memories: [aMemory()] }, { deleteMemory: () => new Promise<null>((resolve) => { release = resolve; }) });
+  let run!: (isCurrent: () => boolean) => Promise<void>;
+  let cleared = 0;
+  const { host, close } = render(MemoryCard, { runtime, bot, t,
+    openDangerConfirm: (_kind, action) => { run = action; }, clearDanger: () => { cleared++; } });
+  click(host.querySelector('.memory-icon-btn.is-danger'));
+  let current = true;
+  const pending = run(() => current);
+  current = false; release(null); await pending;
+  expect(cleared).toBe(0); close();
 });
 
 test("a long list folds until it is expanded", () => {

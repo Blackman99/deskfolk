@@ -9,6 +9,7 @@ import type {
   Provider,
   SessionSummary,
   Skill,
+  Routine,
   Turn,
 } from "@real-bot/protocol";
 import { USER_MEMBER } from "@real-bot/protocol";
@@ -105,6 +106,14 @@ export function aMemory(over: Partial<Memory> = {}): Memory {
     updated_at: "2026-09-19T00:00:00.000Z",
     ...over,
   } as Memory;
+}
+
+export function aRoutine(over: Partial<Routine> = {}): Routine {
+  return {
+    id: "routine-1", bot_id: "bot-1", title: "Morning brief", instruction: "Summarize today's work",
+    schedule: { kind: "daily", time: "09:00" }, enabled: true, last_fired_for_due_at: null,
+    created_at: "2026-09-19T00:00:00.000Z", updated_at: "2026-09-19T00:00:00.000Z", ...over,
+  };
 }
 
 export function aSkill(over: Partial<Skill> = {}): Skill {
@@ -266,6 +275,11 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     removeMember: record("removeMember"),
     archiveBot: record("archiveBot"),
     restoreBot: record("restoreBot"),
+    profileRoutineId: null,
+    openRoutine: record("openRoutine"),
+    createRoutine: record("createRoutine"),
+    patchRoutine: record("patchRoutine"),
+    deleteRoutine: record("deleteRoutine"),
     createSkill: record("createSkill"),
     patchSkill: record("patchSkill"),
     deleteSkill: record("deleteSkill"),
@@ -298,6 +312,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openSettings: record("openSettings"),
     openSessionSettings: record("openSessionSettings"),
     closeSessionSettings: record("closeSessionSettings"),
+    closeProfile: record("closeProfile"),
     openCreateBot: record("openCreateBot"),
     openCreateGroup: record("openCreateGroup"),
     toggleRouteLog: record("toggleRouteLog"),

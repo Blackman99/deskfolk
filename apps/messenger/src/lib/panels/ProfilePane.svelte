@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MemoryCard from './MemoryCard.svelte';
+	import RoutineCard from './RoutineCard.svelte';
 	import { untrack } from 'svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
@@ -29,6 +30,7 @@
 		type ProfileFields
 	} from './roster-edit.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import type { SelectOption } from '../select-options.ts';
 
 	type Props = {
@@ -40,7 +42,7 @@
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
-		openDangerConfirm: (kind: 'skill' | 'memory', run: () => Promise<void>) => void;
+		openDangerConfirm: (kind: 'skill' | 'memory', run: DangerAction) => void;
 		clearDanger: (kind: 'skill' | 'memory') => void;
 		onDeleteBot: () => void;
 		onClearHistory: () => void;
@@ -112,7 +114,7 @@
 	$effect(() => {
 		const live = snapshot.bots.find((row) => row.id === bot.id);
 		if (!live) {
-			runtime.profileBotId = null;
+			runtime.closeProfile();
 			return;
 		}
 		const incoming = {
@@ -215,12 +217,13 @@
 	}
 
 	function openDeleteSkillConfirm(id: string): void {
-		openDangerConfirm('skill', () => deleteSkillRow(id));
+		openDangerConfirm('skill', (isCurrent) => deleteSkillRow(id, isCurrent));
 	}
 
-	async function deleteSkillRow(skillId: string): Promise<void> {
+	async function deleteSkillRow(skillId: string, isCurrent: () => boolean): Promise<void> {
 		skillFailed = false;
 		const error = await runtime.deleteSkill(skillId);
+		if (!isCurrent()) return;
 		if (error) {
 			skillFailed = true;
 			return;
@@ -547,6 +550,8 @@
 		{/each}
 	</div>
 </div>
+
+<RoutineCard {runtime} {bot} {t} />
 
 <MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
 

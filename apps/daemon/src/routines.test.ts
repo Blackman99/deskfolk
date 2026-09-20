@@ -12,6 +12,57 @@ function backdate(store: Store, id: string, createdAt: Date): void {
   ]);
 }
 
+test('deleting a Bot retains its historical routine and search hit', () => {
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  try {
+    const { bot } = store.createBot({ name: 'Disposable', duties: 'fixture', boundaries: 'fixture' });
+    const row = store.createRoutine({ bot_id: bot.id, title: 'Retained history', instruction: '', schedule: { kind: 'daily', time: '09:00' } });
+    store.deleteBot(bot.id);
+    expect(store.listBots().some((bot) => bot.id === row.bot_id)).toBe(false);
+    expect(store.getRoutine(row.id)).toEqual(row);
+    expect(store.search('Retained history').some((hit) => hit.kind === 'routine' && hit.id === row.id)).toBe(true);
+  } finally { store.close(); }
+});
+
+describe("routine revisions", () => {
+  test("patch and scheduler claim advance a future revision without relying on the wall clock", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const { bot } = store.createBot({ name: "Clock", duties: "", boundaries: "" });
+      const row = store.createRoutine({ bot_id: bot.id, title: "Future revision", instruction: "", schedule: { kind: "daily", time: "09:00" } });
+      const previous = "2099-01-01T00:00:00.000Z";
+      store.db.run("UPDATE routines SET created_at = ?, updated_at = ? WHERE id = ?", [new Date(2026, 8, 10, 8).toISOString(), previous, row.id]);
+      const next = store.patchRoutine(row.id, { title: "Patched", if_revision: previous });
+      expect(next.updated_at).toBe("2099-01-01T00:00:00.001Z");
+      const events: string[] = [];
+      store.onCommit((event) => events.push(event.event));
+      const claimed = store.claimRoutineDue(row.id, new Date(2026, 8, 14, 10));
+      expect(claimed?.updated_at).toBe("2099-01-01T00:00:00.002Z");
+      expect(store.claimRoutineDue(row.id, new Date(2026, 8, 14, 10))).toBeNull();
+      expect(() => store.patchRoutine(row.id, { enabled: false, if_revision: next.updated_at })).toThrow("routine changed");
+      expect(() => store.deleteRoutine(row.id, next.updated_at)).toThrow("routine changed");
+      expect(events).toEqual(["routine.upsert"]);
+      store.deleteRoutine(row.id, claimed!.updated_at);
+      expect(events).toEqual(["routine.upsert", "routine.removed"]);
+    } finally { store.close(); }
+  });
+
+  test("rapid writes advance revisions; stale patches and deletes do not mutate or publish", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const { bot } = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+      const row = store.createRoutine({ bot_id: bot.id, title: "First", instruction: "", schedule: { kind: "daily", time: "00:00" }, enabled: false });
+      const next = store.patchRoutine(row.id, { title: "Second", if_revision: row.updated_at });
+      expect(next.updated_at > row.updated_at).toBe(true);
+      expect(() => store.patchRoutine(row.id, { title: "stale", if_revision: row.updated_at })).toThrow("routine changed");
+      expect(() => store.deleteRoutine(row.id, row.updated_at)).toThrow("routine changed");
+      expect(store.getRoutine(row.id)).toEqual(next);
+      store.deleteRoutine(row.id, next.updated_at);
+      expect(store.listRoutines()).toHaveLength(0);
+    } finally { store.close(); }
+  });
+});
+
 describe("routine claim and catch-up", () => {
   test("claim stamps the latest civil due and a second claim at the same now is a no-op", () => {
     const store = new Store({ endpointKey: memoryKeyStore() });

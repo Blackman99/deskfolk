@@ -16,12 +16,14 @@ import {
   type ThinkingLevel,
   type CreateSkillRequest,
   type PatchSkillRequest,
+  type CreateRoutineRequest,
+  type PatchRoutineRequest,
 } from "@real-bot/protocol";
 import { ApiError, LocalApi, probeHealth } from "./api.ts";
 import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
-import { classifySession } from "./sidebar/session-groups.ts";
+import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
 import { EventSync } from "./event-sync.ts";
 import { stopTarget } from "./chat/transcript.ts";
@@ -44,6 +46,7 @@ export class MessengerRuntime {
   routeLogOpen = $state(false);
   routesLoading = $state(false);
   profileBotId = $state<string | null>(null);
+  profileRoutineId = $state<string | null>(null);
   workspaceOpen = $state(false);
   workspaceSelected = $state("");
   threadOpen = $state(false);
@@ -80,6 +83,7 @@ export class MessengerRuntime {
   private sessionLoad = Promise.resolve();
   private sessionSeq = 0;
   private historyRevision = 0;
+  private profileNavigation = 0;
 
   start(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -116,6 +120,8 @@ export class MessengerRuntime {
   }
 
   openSessionSettings(): void {
+    this.profileNavigation++;
+    this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
@@ -142,7 +148,29 @@ export class MessengerRuntime {
     this.routeLogOpen = false;
   }
 
+  async openRoutine(botId: string, routineId: string): Promise<void> {
+    let navigation = ++this.profileNavigation;
+    if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
+    // The profile URL needs the selected conversation's navigation to settle first.
+    if (!this.selectedId) {
+      const session = youBotSession(this.snapshot.sessions, botId);
+      if (!session) return;
+      const api = this.api;
+      const loading = this.selectSession(session.id);
+      navigation = this.profileNavigation;
+      const selection = this.sessionSeq;
+      await loading;
+      if (this.api !== api || this.selectedId !== session.id || this.sessionSeq !== selection ||
+        this.profileNavigation !== navigation) return;
+    }
+    if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
+    this.openProfile(botId);
+    this.profileRoutineId = routineId;
+  }
+
   openProfile(botId: string): void {
+    this.profileNavigation++;
+    this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
@@ -152,7 +180,15 @@ export class MessengerRuntime {
     this.sessionSettingsOpen = true;
   }
 
+  closeProfile(): void {
+    this.profileNavigation++;
+    this.profileRoutineId = null;
+    this.profileBotId = null;
+  }
+
   closeSessionSettings(): void {
+    this.profileNavigation++;
+    this.profileRoutineId = null;
     this.sessionSettingsOpen = false;
     this.profileBotId = null;
   }
@@ -179,6 +215,7 @@ export class MessengerRuntime {
 
   /** Restore settings, the session drawer, or the workspace overlay from the URL. */
   applyOverlay(overlay: UrlOverlay): void {
+    this.profileNavigation++;
     if (overlay.kind === "settings") {
       this.createBotOpen = false;
       this.createGroupOpen = false;
@@ -430,6 +467,48 @@ export class MessengerRuntime {
     }
   }
 
+  async createRoutine(body: CreateRoutineRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return new ApiError(0, "disconnected", "Not connected");
+    try {
+      await api.createRoutine(body);
+      this.reconcilePendingMutation(api);
+      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
+    } catch (error) {
+      return this.routineFailure(error, api);
+    }
+  }
+
+  async patchRoutine(id: string, body: PatchRoutineRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return new ApiError(0, "disconnected", "Not connected");
+    try {
+      await api.patchRoutine(id, body);
+      this.reconcilePendingMutation(api);
+      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
+    } catch (error) {
+      return this.routineFailure(error, api);
+    }
+  }
+
+  async deleteRoutine(id: string, ifRevision: string): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return new ApiError(0, "disconnected", "Not connected");
+    try {
+      await api.deleteRoutine(id, ifRevision);
+      this.reconcilePendingMutation(api);
+      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
+    } catch (error) {
+      return this.routineFailure(error, api);
+    }
+  }
+
+  private routineFailure(error: unknown, api: LocalApi): ApiError {
+    if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && !error.requestId) return error;
+    return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Save result unknown");
+  }
+
   /** Correcting a memory, not creating one — the Bot is the only writer. */
   async patchMemory(id: string, body: PatchMemoryRequest): Promise<ApiError | null> {
     const api = this.api;
@@ -503,7 +582,7 @@ export class MessengerRuntime {
     try {
       await api.deleteBot(id);
       if (this.api !== api) return null;
-      if (this.profileBotId === id) this.profileBotId = null;
+      if (this.profileBotId === id) this.closeProfile();
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -599,14 +678,18 @@ export class MessengerRuntime {
     }
   }
 
-  async retryPendingMutation(): Promise<void> {
+  async retryPendingMutation(): Promise<ApiError | null> {
     const api = this.api;
     const pending = this.pendingMutation;
-    if (!api || !pending) return;
+    if (!api || !pending) return new ApiError(0, "disconnected", "No pending request");
     try {
       await api.retryPending(pending.id);
-      if (this.api === api && this.pendingMutation?.id === pending.id) this.pendingMutation = null;
-    } catch (error) { this.sheetFailure(error, api); }
+      if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
+      if (this.pendingMutation?.id === pending.id) this.pendingMutation = null;
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Retry result unconfirmed");
+    }
   }
 
   async resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string): Promise<boolean> {

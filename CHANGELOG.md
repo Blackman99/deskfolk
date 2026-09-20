@@ -6,6 +6,19 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Routines
+
+- Distinguish unknown/pending routine requests from revision conflicts and expose exact-original-request retry in the routine card. Edited drafts remain unsent and visible after retry; check the list and reopen before another save.
+
+- Routine writes share the existing receipt and sync boundary: revision-required PATCH/DELETE compare once in the transaction, scheduler claims advance revisions monotonically, and unknown client outcomes retain their request IDs for explicit retry without ingesting HTTP rows.
+
+- Pending destructive actions now belong to their exact confirmation. If a committed event removes an older dialog before its HTTP reply, a replacement confirmation remains usable and cannot be cleared or unlocked by that older reply.
+
+- Earlier routine searches can no longer replace a newer editor or reopen a dismissed profile. Retained routines whose Bot was deleted remain visible as unavailable search results rather than silently closing search.
+- Shared delete/clear confirmations now isolate background controls, contain keyboard focus, restore the invoking control, and reject dismissal or duplicate confirmation while saving. Confirmation buttons and routine weekday labels have at least 44×44px targets.
+
+- Bot profiles now include routine CRUD: daily/weekday schedules, Mac-local time guidance, pause/resume, confirmed deletion, validation, and in-flight/error states. Search opens the owning Bot and routine editor; event/snapshot updates keep multiple clients and reconnects current. Dirty drafts retain their revision and require an explicit reload after a concurrent edit; routine PATCH/DELETE accept optional `if_revision` (`updated_at`) and reject stale writes with 409.
+
 ### Local synchronization
 
 - Credential retries now track their own operation and ordered event sequence. Older empty operation lists cannot discard a newer pending create, delayed failures cannot restore a completed request, and edited-payload warnings preserve confirmation until repair/cancel or a terminal receipt clears the payload and banner.
