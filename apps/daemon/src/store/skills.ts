@@ -172,8 +172,8 @@ export function patchSkill(
 }
 
 export function deleteSkill(ctx: StoreContext, id: string): void {
-  const changes = ctx.db.run(`DELETE FROM skills WHERE id = ?`, [id]).changes;
-  if (changes === 0) throw new HttpError(404, "not_found", "skill not found");
+  const deleted = ctx.db.query("DELETE FROM skills WHERE id = ? RETURNING id").get(id);
+  if (!deleted) throw new HttpError(404, "not_found", "skill not found");
 }
 
 export function assertSkillNameFree(ctx: StoreContext, botId: string, name: string, exceptId?: string): void {

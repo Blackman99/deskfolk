@@ -1,8 +1,6 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import {
-  APP_SUPPORT_DIRNAME,
   USER_MEMBER,
   isHiddenTranscriptKind,
   type Attachment,
@@ -14,6 +12,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { ensureReplyMention } from "../mentions";
 import { classifyPath } from "../workspace-paths";
+import { prepareFile, commitPreparedFile, discardFile, type FileCommit } from "./files";
 import { getBot, listBots } from "./bots";
 import {
   clampLimit,
@@ -34,6 +33,7 @@ import {
 export type AttachmentInput = {
   originalFilename: string;
   buffer: Uint8Array | Buffer;
+  staged?: FileCommit;
 };
 
 export function listMessages(
@@ -72,6 +72,13 @@ export function postMessage(
   sessionId: string,
   input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] },
 ): Message {
+  const nested = ctx.db.inTransaction;
+  if (!nested) prepareAttachments(ctx, input.attachments ?? []);
+  try { return ctx.tx.run(() => postMessageRows(ctx, sessionId, input)); }
+  finally { if (!nested) for (const att of input.attachments ?? []) if (att.staged) discardFile(ctx, att.staged); }
+}
+
+function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] }): Message {
   sessionRow(ctx, sessionId);
   // This is the user's own write — every route that posts as the user lands here. A Bot↔Bot
   // direct is theirs to read, not to join.
@@ -90,25 +97,12 @@ export function postMessage(
   );
 
   if (input.attachments && input.attachments.length > 0) {
-    const ws = workspacePath(ctx);
-    const inboxDir = ws
-      ? join(ws, "inbox")
-      : join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME, "inbox");
-    mkdirSync(inboxDir, { recursive: true });
-
     for (const att of input.attachments) {
-      const rawName =
-        basename(att.originalFilename).replace(/[^\w.\- 一-龥]/g, "_").trim() || "attachment";
-      const ext = extname(rawName);
-      const base = basename(rawName, ext);
-      let targetName = rawName;
-      let counter = 1;
-      while (existsSync(join(inboxDir, targetName))) {
-        targetName = `${base}-${counter}${ext}`;
-        counter++;
-      }
-      writeFileSync(join(inboxDir, targetName), att.buffer);
-      const workspaceRelpath = `inbox/${targetName}`;
+      if (!att.staged) throw new Error("attachment must be staged before transaction");
+      if (realpathSync(workspacePath(ctx) || ctx.inboxRoot) !== att.staged.root) throw new HttpError(409, "conflict", "workspace changed during upload");
+      commitPreparedFile(ctx, att.staged);
+      const targetName = basename(att.staged.final_rel);
+      const workspaceRelpath = att.staged.final_rel;
       const attId = ulid();
       const attNow = isoNow();
       ctx.db.run(
@@ -265,21 +259,26 @@ export function resolveAttachmentLocation(
 ): { abs: string; isDir: boolean } | null {
   const root = workspacePath(ctx);
   if (root) {
-    const classified = classifyPath(root, relpath);
-    if (classified.zone !== "inside") return null;
-    return statOrMissing(classified.abs);
+    try {
+      const classified = classifyPath(root, relpath);
+      if (classified.zone !== "inside") return null;
+      return statOrMissing(classified.abs);
+    } catch { return null; }
   }
-  if (!relpath.startsWith("inbox/") && relpath !== "inbox") return null;
-  const fallback = join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME, relpath);
-  return statOrMissing(fallback);
+  try {
+    const inbox = classifyPath(ctx.inboxRoot, "inbox");
+    const classified = classifyPath(ctx.inboxRoot, relpath);
+    if (inbox.zone !== "inside" || classified.zone !== "inside") return null;
+    if (inbox.abs === realpathSync(ctx.inboxRoot)) return null;
+    if (classified.abs !== inbox.abs && !classified.abs.startsWith(`${inbox.abs}/`)) return null;
+    return statOrMissing(classified.abs);
+  } catch { return null; }
 }
 
 export function getAttachmentFilePath(ctx: StoreContext, attachment: Attachment): string {
   const located = resolveAttachmentLocation(ctx, attachment.workspace_relpath);
   if (located) return located.abs;
-  const ws = workspacePath(ctx);
-  const root = ws || join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME);
-  return join(root, attachment.workspace_relpath);
+  throw new HttpError(404, "not_found", "attachment is outside its permitted root");
 }
 
 export function insertPathAttachments(
@@ -313,6 +312,12 @@ export function hydrateAttachment(ctx: StoreContext, row: AttachmentRow): Attach
       exists = false;
     }
   }
+  const root = workspacePath(ctx) || ctx.inboxRoot;
+  const staged = ctx.db.query<{ temp_rel: string; root: string }, [string, string]>("SELECT temp_rel, root FROM file_commits WHERE root = ? AND final_rel = ?").get(root, row.workspace_relpath);
+  if (staged && !exists) {
+    size = statSync(join(staged.root, staged.temp_rel)).size;
+    exists = true;
+  }
   return {
     ...row,
     exists,
@@ -331,4 +336,33 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
   return { ...row, attachments, reactions };
+}
+
+export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInput[]): void {
+  if (!attachments.length) return;
+  const root = realpathSync(workspacePath(ctx) || ctx.inboxRoot);
+  const inboxDir = join(root, "inbox");
+  const inbox = classifyPath(root, "inbox");
+  if (inbox.zone !== "inside" || (!workspacePath(ctx) && inbox.abs === root)) throw new HttpError(422, "invalid_args", "inbox is outside its permitted root");
+  if (attachments.length) mkdirSync(inboxDir, { recursive: true });
+  try {
+    for (const att of attachments) {
+      if (att.staged) continue;
+      const raw = basename(att.originalFilename).replace(/[^\w.\- 一-龥]/g, "_").trim() || "attachment";
+      const ext = extname(raw);
+      const base = basename(raw, ext);
+      let name = raw;
+      let counter = 1;
+      for (;;) {
+        const candidate = classifyPath(root, join(inboxDir, name));
+        if (candidate.zone !== "inside" || (!workspacePath(ctx) && !candidate.abs.startsWith(`${inbox.abs}/`))) throw new HttpError(422, "invalid_args", "attachment is outside its permitted root");
+        if (!existsSync(candidate.abs) && !ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, candidate.rel, root, candidate.rel)) break;
+        name = `${base}-${counter++}${ext}`;
+      }
+      att.staged = prepareFile(ctx, root, join(inboxDir, name), att.buffer);
+    }
+  } catch (error) {
+    for (const att of attachments) if (att.staged) discardFile(ctx, att.staged);
+    throw error;
+  }
 }

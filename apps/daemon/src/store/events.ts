@@ -1,9 +1,10 @@
 import type { ClientEvent, Judgement, Spend } from "@real-bot/protocol";
 import { listApprovals, listAllowRules } from "./approvals";
+import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
 import { listMemories } from "./memories";
 import { getMessage } from "./messages";
-import { listProvidersCached } from "./providers";
+import { providersCached } from "./providers";
 import { listRoutines } from "./routines";
 import { listSessions } from "./sessions";
 import { settingsCached } from "./settings";
@@ -26,6 +27,14 @@ export function installChangeJournal(ctx: StoreContext): void {
         BEGIN INSERT INTO event_changes VALUES ('${table}', ${id}, '${op}', ${session}); END`);
     }
   }
+  ctx.db.exec(`CREATE TEMP TRIGGER event_settings_rev AFTER UPDATE ON main.request_meta
+    WHEN OLD.settings_rev != NEW.settings_rev
+    BEGIN INSERT INTO event_changes VALUES ('settings', 'settings', 'UPDATE', NULL); END`);
+  for (const op of ["INSERT", "UPDATE", "DELETE"]) {
+    const row = op === "DELETE" ? "OLD" : "NEW";
+    ctx.db.exec(`CREATE TEMP TRIGGER event_pending_keys_${op} AFTER ${op} ON main.pending_keys
+      BEGIN INSERT INTO event_changes VALUES ('pending_keys', ${row}.name, '${op}', NULL); END`);
+  }
   for (const table of ["session_participants", "attachments", "reactions"]) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       const row = op === "DELETE" ? "OLD" : "NEW";
@@ -44,7 +53,21 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   const occurred_at = new Date().toISOString();
   const out: ClientEvent[] = [];
   const unique = new Map<string, Change>();
-  for (const change of changes) unique.set(`${change.entity}:${change.id}`, change);
+  for (const change of changes) {
+    unique.set(`${change.entity}:${change.id}`, change);
+    if (change.entity === "pending_keys") {
+      const match = /^(endpoint-api-key|mcp-auth):(.+)$/.exec(change.id);
+      if (match) {
+        const entity = match[1] === "endpoint-api-key" ? "providers" : "mcp_servers";
+        if (ctx.db.query(`SELECT 1 FROM ${entity} WHERE id = ?`).get(match[2]!)) {
+          unique.set(`${entity}:${match[2]}`, { ...change, entity, id: match[2]! });
+        }
+      }
+    }
+  }
+  if (changes.some((change) => change.entity === "pending_keys")) {
+    out.push({ event: "credential_operations.changed", occurred_at, items: listCredentialOperations(ctx) });
+  }
   const cleared = new Set(changes.filter((c) => c.entity === "messages" && c.op === "DELETE").map((c) => c.session_id!));
   for (const id of cleared) out.push({ event: "session.cleared", occurred_at, id });
   const sessions = listSessions(ctx);
@@ -75,7 +98,7 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         break;
       }
       case "providers": {
-        const row = listProvidersCached(ctx).find((r) => r.id === id);
+        const row = providersCached(ctx).find((r) => r.id === id);
         out.push(row ? { event: "provider.upsert", occurred_at, ...row } : { event: "provider.removed", occurred_at, id });
         break;
       }

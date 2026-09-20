@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
+import { LocalApi } from "./api.ts";
 import { emptySnapshot } from "./snapshot.ts";
 import { aBot, aDirect, aMessage, aTurn } from "./test-fixtures.ts";
 
@@ -9,6 +10,7 @@ const cursor = { event_instance_id: instance, watermark_seq: 0 };
 const originalFetch = globalThis.fetch;
 const OriginalSocket = globalThis.WebSocket;
 const runtimes: MessengerRuntime[] = [];
+const fixtureCloses: Array<() => Promise<void>> = [];
 
 class Socket extends EventTarget {
   static current: Socket;
@@ -75,10 +77,227 @@ async function until(predicate: () => boolean) {
   throw new Error("runtime did not reach expected state");
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const runtime of runtimes.splice(0)) runtime.destroy();
   globalThis.fetch = originalFetch;
   globalThis.WebSocket = OriginalSocket;
+  while (fixtureCloses.length) await fixtureCloses.pop()!();
+});
+
+async function credentialFixture() {
+  // Load the actual daemon at runtime across the packages' different TS library targets.
+  const { Store } = await import(new URL("../../../daemon/src/store/index.ts", import.meta.url).href);
+  const { createLocalApi } = await import(new URL("../../../daemon/src/local-api.ts", import.meta.url).href);
+  let locked = false;
+  const keys = new Map<string, string>();
+  const store = new Store({ endpointKey: {
+    async get(name: string) { return keys.get(name) ?? null; },
+    async set(value: string, name: string) { if (locked) throw new Error("locked"); keys.set(name, value); },
+    async delete(name: string) { if (locked) throw new Error("locked"); keys.delete(name); },
+  } });
+  const api = createLocalApi({ store, token: "fixture", schedule: false });
+  const frames: SyncFrame[] = [];
+  let socket: FixtureSocket;
+  class FixtureSocket extends EventTarget {
+    data = { authed: false };
+    constructor(_url: string) {
+      super(); socket = this;
+      api.websocket.open(this);
+      queueMicrotask(() => this.dispatchEvent(new Event("open")));
+    }
+    send(raw: string) {
+      const value = JSON.parse(raw);
+      if (value.type === "auth") api.websocket.message(this, raw);
+      else if (value.type === "ready") queueMicrotask(() => this.deliver(value));
+      else frames.push(value);
+      return raw.length;
+    }
+    deliver(frame: SyncFrame) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(frame) })); }
+    close() { api.websocket.close(this); this.dispatchEvent(new Event("close")); }
+  }
+  globalThis.WebSocket = FixtureSocket as unknown as typeof WebSocket;
+  const requests: Array<{ id: string | null; method: string; path: string }> = [];
+  let hold: ((response: Response) => Promise<Response>) | null = null;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input) === "/__local-api") return Response.json({ port: 17901, token: "fixture" });
+    const request = new Request(input, init);
+    const path = new URL(request.url).pathname;
+    requests.push({ id: request.headers.get("X-Request-Id"), method: request.method, path });
+    const response = await api.fetch(request, {});
+    return hold && path === "/v1/providers" && request.method === "POST" ? hold(response) : response;
+  }) as typeof fetch;
+  const runtime = new MessengerRuntime(); runtimes.push(runtime); runtime.start();
+  await until(() => runtime.connection === "connected");
+  let seq = 0;
+  const snapshot = await runtime.client!.snapshot();
+  seq = snapshot.watermark_seq;
+  function drain() {
+    const batch = frames.splice(0);
+    for (const frame of batch) {
+      expect(frame.type).toBe("event");
+      if (frame.type !== "event") throw new Error("unexpected fixture reset");
+      expect(frame.seq).toBe(++seq);
+      expect(frame.event_instance_id).toBe(snapshot.event_instance_id);
+      socket!.deliver(frame);
+    }
+    expect(runtime.connection).toBe("connected");
+    return batch;
+  }
+  fixtureCloses.push(async () => { await api.engine.close(); store.close(); });
+  return { runtime, store, requests, drain, frames,
+    second: new LocalApi({ origin: "http://127.0.0.1:17901", token: "fixture" }),
+    lock(value: boolean) { locked = value; },
+    holdResponse(value: typeof hold) { hold = value; },
+  };
+}
+
+const credentialBody = (name: string) => ({ name, base_url: "https://fixture.invalid", api_key: "memory-only" });
+
+test("review: HTTP503 ahead of contiguous old empty lists retains the original create ID", async () => {
+  const h = await credentialFixture();
+  await h.runtime.createProvider(credentialBody("A"));
+  h.lock(true);
+  await h.runtime.createProvider(credentialBody("B"));
+  const id = h.runtime.pendingMutation!.id;
+  const frames = h.drain();
+  expect(frames.filter((f) => f.type === "event" && f.payload.event === "credential_operations.changed").length).toBe(3);
+  expect(h.runtime.snapshot.credentialOperations).toHaveLength(1);
+  expect(h.runtime.pendingMutation!.id).toBe(id);
+  expect(h.runtime.client!.pendingRequests().map((r) => r.id)).toEqual([id]);
+  h.lock(false);
+  await h.runtime.createProvider(credentialBody("B"));
+  h.drain();
+  expect(h.requests.filter((r) => r.method === "POST" && r.path === "/v1/providers").map((r) => r.id).slice(-2)).toEqual([id, id]);
+  expect(h.store.providersCached().filter((p: { name: string }) => p.name === "B")).toHaveLength(1);
+  expect(h.store.receipts.lookup({ deviceId: "local", requestId: id }).state).toBe("complete");
+  expect(h.runtime.pendingMutation).toBeNull();
+});
+
+for (const result of ["503", "lost"] as const) test(`review: terminal stream prefix before delayed ${result} cannot resurrect pending`, async () => {
+  const h = await credentialFixture();
+  h.lock(true);
+  const entered = deferred<void>(); const release = deferred<void>();
+  h.holdResponse(async (response) => { entered.resolve(); await release.promise; if (result === "lost") throw new Error("lost response"); return response; });
+  const work = h.runtime.createProvider(credentialBody("held"));
+  await entered.promise;
+  h.drain();
+  const operation = h.store.listCredentialOperations()[0];
+  h.lock(false);
+  await h.second.resolveCredential(operation.id, "cancel");
+  h.drain();
+  expect(h.store.receipts.lookup({ deviceId: "local", requestId: operation.request_id }).status).toBe(409);
+  release.resolve(); await work;
+  expect(h.runtime.pendingMutation).toBeNull();
+  expect(h.runtime.client!.pendingRequests()).toEqual([]);
+  expect(h.runtime.snapshot.credentialOperations).toEqual([]);
+});
+
+for (const action of ["repair", "cancel"] as const) test(`review: local changed-payload409 retains provenance until second-client ${action}`, async () => {
+  const h = await credentialFixture();
+  h.lock(true);
+  await h.runtime.createProvider(credentialBody("original"));
+  h.drain();
+  const original = h.runtime.pendingMutation!.id;
+  const sent = h.requests.length;
+  expect((await h.runtime.createProvider(credentialBody("edited")))?.code).toBe("request_pending");
+  expect(h.requests).toHaveLength(sent);
+  expect(h.runtime.pendingMutation).toEqual({ id: original, code: "request_pending" });
+  const operation = h.store.listCredentialOperations()[0];
+  h.lock(false);
+  await h.second.resolveCredential(operation.id, action, "replacement");
+  h.drain();
+  expect(h.runtime.pendingMutation).toBeNull();
+  expect(h.runtime.client!.pendingRequests()).toEqual([]);
+  expect(await h.runtime.createProvider(credentialBody("edited"))).toBeNull();
+  h.drain();
+  expect(h.store.providersCached().filter((p: { name: string }) => p.name === "edited")).toHaveLength(1);
+});
+
+test("review: an unknown HTTP outcome survives unrelated empty prefixes and successful mutations", async () => {
+  const h = await credentialFixture();
+  await h.runtime.createProvider(credentialBody("older"));
+  h.lock(true);
+  h.holdResponse(async () => { throw new Error("lost pending response"); });
+  await h.runtime.createProvider(credentialBody("unknown"));
+  const id = h.runtime.pendingMutation!.id;
+  expect(h.runtime.pendingMutation!.code).toBe("request_unknown");
+  const before = h.requests.filter((r) => r.path === "/v1/providers" && r.method === "POST").length;
+  await h.runtime.patchSettings({ theme: "dark" });
+  h.drain();
+  expect(h.runtime.pendingMutation!.id).toBe(id);
+  expect(h.runtime.client!.pendingRequests().map((r) => r.id)).toEqual([id]);
+  expect(h.requests.filter((r) => r.path === "/v1/providers" && r.method === "POST")).toHaveLength(before);
+  h.holdResponse(null); h.lock(false);
+  await h.runtime.retryPendingMutation(); h.drain();
+  expect(h.runtime.pendingMutation).toBeNull();
+  expect(h.store.providersCached().filter((p: { name: string }) => p.name === "unknown")).toHaveLength(1);
+});
+
+test("review: explicit terminal retry clears runtime and payload before its queued stream arrives", async () => {
+  const h = await credentialFixture();
+  h.lock(true);
+  await h.runtime.createProvider(credentialBody("terminal"));
+  h.drain();
+  const operation = h.store.listCredentialOperations()[0];
+  h.lock(false);
+  await h.second.resolveCredential(operation.id, "cancel");
+  await h.runtime.retryPendingMutation();
+  expect(h.runtime.pendingMutation).toBeNull();
+  expect(h.runtime.client!.pendingRequests()).toEqual([]);
+  h.drain();
+  expect(h.runtime.pendingMutation).toBeNull();
+});
+
+for (const action of ["retry", "repair", "cancel"] as const) for (const failed of [false, true]) {
+  test(`integration: obsolete credential ${action} ${failed ? "failure" : "success"} cannot change replacement state`, async () => {
+    const { runtime, initial } = await connected();
+    await until(() => runtime.connection === "connected");
+    const api = runtime.client!;
+    const held = deferred<void>(); const entered = deferred<void>();
+    const wait = async () => { entered.resolve(); await held.promise; };
+    api.retryPending = wait;
+    api.resolveCredential = wait;
+    runtime.pendingMutation = { id: "original", code: "key_write_pending" };
+    const work = action === "retry" ? runtime.retryPendingMutation() : runtime.resolveCredentialOperation("operation", action, "fake");
+    await entered.promise;
+    await reconnect(runtime, initial);
+    runtime.pendingMutation = { id: "replacement", code: "request_unknown" };
+    runtime.settingsOpen = true;
+    if (failed) held.reject(new Error("old failure")); else held.resolve();
+    await work;
+    expect(runtime.connection).toBe("connected");
+    expect(runtime.pendingMutation).toEqual({ id: "replacement", code: "request_unknown" });
+    expect(runtime.settingsOpen).toBe(true);
+  });
+}
+
+test("integration: second-client credential events clear confirmed pending memory without HTTP state backfill", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const api = runtime.client!;
+  const reads: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    reads.push(String(url));
+    return Response.json({ error: { code: "key_write_pending", message: "fixture locked" } }, { status: 503 });
+  }) as typeof fetch;
+  const error = await runtime.createProvider({ name: "pending", base_url: "https://fixture.invalid", api_key: "fake" });
+  expect(error?.code).toBe("key_write_pending");
+  const id = runtime.pendingMutation!.id;
+  const operation = { id: "op", entity_id: "provider", kind: "provider", request_id: id, can_repair: true };
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { event: "credential_operations.changed", occurred_at: "now", items: [operation] } });
+  expect(runtime.snapshot.credentialOperations).toEqual([operation]);
+  expect(api.pendingRequests()).toHaveLength(1);
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 2, payload: { event: "credential_operations.changed", occurred_at: "now", items: [] } });
+  expect(runtime.snapshot.credentialOperations).toEqual([]);
+  expect(api.pendingRequests()).toEqual([]);
+  expect(runtime.pendingMutation).toBeNull();
+  expect(reads).toHaveLength(1);
+  globalThis.fetch = (async () => { throw new Error("unknown result"); }) as typeof fetch;
+  await runtime.createProvider({ name: "unknown", base_url: "https://fixture.invalid", api_key: "fake" });
+  const unknown = runtime.pendingMutation!.id;
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 3, payload: { event: "credential_operations.changed", occurred_at: "now", items: [] } });
+  expect(runtime.pendingMutation).toEqual({ id: unknown, code: "request_unknown" });
+  expect(api.pendingRequests()).toHaveLength(1);
 });
 
 test("runtime subscribes before reading snapshot and preserves events arriving during HTTP", async () => {

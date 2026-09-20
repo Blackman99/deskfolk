@@ -67,25 +67,13 @@ export type McpHostOptions = {
 };
 
 export async function persistMcpInspect(
-  store: {
-    patchMcpServer: (
-      id: string,
-      patch: {
-        instructions?: string | null;
-        tool_catalog?: Array<{ name: string; description: string }>;
-      },
-    ) => McpServer | Promise<McpServer>;
-  },
+  store: { applyMcpInspection: (id: string, revision: string, inspected: McpInspectResult) => McpServer | null },
   host: McpHost,
   server: McpServer,
-): Promise<McpServer> {
-  if (!server.enabled) return server;
+): Promise<McpServer | null> {
+  if (!server.enabled) return null;
   const inspected = await host.inspect(server);
-  if (!inspected.instructions && inspected.tools.length === 0) return server;
-  return store.patchMcpServer(server.id, {
-    instructions: inspected.instructions,
-    tool_catalog: inspected.tools,
-  });
+  return store.applyMcpInspection(server.id, server.updated_at, inspected);
 }
 
 type Era = "modern" | "legacy";

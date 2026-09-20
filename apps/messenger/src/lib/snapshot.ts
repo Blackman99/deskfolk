@@ -8,6 +8,7 @@ import {
   type RuntimeSnapshot,
   type Bot,
   type ClientEvent,
+  type CredentialOperation,
   type Judgement,
   type McpServer,
   type Memory,
@@ -25,6 +26,7 @@ import {
 } from "@real-bot/protocol";
 
 export type Snapshot = {
+  credentialOperations: CredentialOperation[];
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
@@ -62,6 +64,7 @@ export function emptySnapshot(): Snapshot {
       theme: "system",
       wizard_complete: false,
     },
+    credentialOperations: [],
     bots: [],
     sessions: [],
     spend: [],
@@ -93,6 +96,7 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
 
 export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
   switch (event.event) {
+    case "credential_operations.changed": return { ...snapshot, credentialOperations: event.items };
     case "settings.changed": {
       const { event: _e, occurred_at: _at, ...settings } = event;
       return { ...snapshot, settings };

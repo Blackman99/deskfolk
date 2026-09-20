@@ -182,6 +182,7 @@ describe("empty roster and settings", () => {
     const res = await fetch(`${h.origin}/v1/settings`, { headers: auth(h) });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
+      settings_rev: 0,
       workspace_path: null,
       endpoint_base_url: null,
       endpoint_key_set: false,

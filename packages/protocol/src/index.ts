@@ -84,6 +84,10 @@ export type ErrorCode =
   | "forbidden_origin"
   | "not_found"
   | "conflict"
+  | "key_write_pending"
+  | "credential_superseded"
+  | "receipt_expired"
+  | "not_retryable"
   | "invalid_args"
   | "not_a_member"
   | "ambiguous"
@@ -186,6 +190,7 @@ export type ProbeModelsResponse = {
 };
 
 export type Settings = {
+  settings_rev?: number;
   workspace_path: string | null;
   endpoint_base_url: string | null;
   endpoint_key_set: boolean;
@@ -689,7 +694,10 @@ export type EventCursor = {
   watermark_seq: number;
 };
 
+export type CredentialOperation = { id: string; kind: string; entity_id: string; request_id: string | null; can_repair: boolean };
+
 export type RuntimeSnapshot = EventCursor & {
+  credentialOperations?: CredentialOperation[];
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
@@ -728,6 +736,7 @@ export type WsAuthMessage = {
 };
 
 export type ClientEvent =
+  | { event: "credential_operations.changed"; occurred_at: string; items: CredentialOperation[] }
   | ({ event: "settings.changed"; occurred_at: string } & Settings)
   | ({ event: "bot.upsert"; occurred_at: string } & Bot & { deleted_at: string | null })
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)

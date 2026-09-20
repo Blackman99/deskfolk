@@ -1,6 +1,7 @@
 import {
   USER_MEMBER,
   type ClientEvent,
+  type SequencedEvent,
   type CreateBotRequest,
   type CreateGroupRequest,
   type PatchMemoryRequest,
@@ -52,6 +53,7 @@ export class MessengerRuntime {
   draft = $state("");
   replyingToId = $state<string | null>(null);
   busy = $state(false);
+  pendingMutation = $state<{ id: string; code: string } | null>(null);
   focusedTurnId = $state<string | null>(null);
   highlightedMessageId = $state<string | null>(null);
   searchHighlightToken = $state(0);
@@ -275,12 +277,12 @@ export class MessengerRuntime {
         if (!ready) throw new Error("event instance changed");
         const frames = sync.install();
         if (!frames) throw new Error("event gap");
-        for (const frame of frames) this.ingest(frame.payload);
+        for (const frame of frames) this.ingest(frame.payload, frame);
         if (selection !== this.sessionSeq) return;
         this.applySessionDetail(id, { ...detail.session, unread_count: 0 }, detail.judgements);
         for (const frame of frames) {
           if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
-          if (frame.seq > detail.watermark_seq) this.ingest(frame.payload);
+          if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, frame);
         }
         if (messageId) {
           const revision = this.historyRevision;
@@ -337,13 +339,11 @@ export class MessengerRuntime {
     try {
       await api.patchSettings(patch);
       if (this.api !== api) return null;
+      this.reconcilePendingMutation(api);
       if (patch.endpoint_api_key !== undefined) this.endpointKey = "";
       return null;
     } catch (error) {
-      if (this.api !== api) return null;
-      if (error instanceof ApiError && error.status === 422) return error;
-      this.markDisconnected();
-      return null;
+      return this.sheetFailure(error, api);
     }
   }
 
@@ -599,11 +599,33 @@ export class MessengerRuntime {
     }
   }
 
+  async retryPendingMutation(): Promise<void> {
+    const api = this.api;
+    const pending = this.pendingMutation;
+    if (!api || !pending) return;
+    try {
+      await api.retryPending(pending.id);
+      if (this.api === api && this.pendingMutation?.id === pending.id) this.pendingMutation = null;
+    } catch (error) { this.sheetFailure(error, api); }
+  }
+
+  async resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string): Promise<boolean> {
+    const api = this.api;
+    if (!api) return false;
+    try {
+      await api.resolveCredential(id, action, value);
+      if (this.api !== api) return false;
+      this.reconcilePendingMutation(api);
+      return true;
+    } catch (error) { this.sheetFailure(error, api); return false; }
+  }
+
   async createProvider(body: CreateProviderRequest): Promise<ApiError | null> {
     const api = this.api;
     if (!api) return null;
     try {
       await api.createProvider(body);
+      this.reconcilePendingMutation(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -615,6 +637,7 @@ export class MessengerRuntime {
     if (!api) return null;
     try {
       await api.patchProvider(id, body);
+      this.reconcilePendingMutation(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -647,6 +670,7 @@ export class MessengerRuntime {
     if (!api) return null;
     try {
       await api.createMcpServer(body);
+      this.reconcilePendingMutation(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -671,6 +695,7 @@ export class MessengerRuntime {
     if (!api) return null;
     try {
       await api.patchMcpServer(id, body);
+      this.reconcilePendingMutation(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -876,7 +901,7 @@ export class MessengerRuntime {
     if (!frames) throw new Error("event gap during snapshot");
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.syncSettingsDraft(snapshot.settings);
-    for (const frame of frames) this.ingest(frame.payload);
+    for (const frame of frames) this.ingest(frame.payload, frame);
     this.endpointKey = "";
     this.connection = "connected";
     this.focusedTurnId = null;
@@ -919,7 +944,7 @@ export class MessengerRuntime {
           this.markDisconnected();
           return;
         }
-        for (const event of frames) this.ingest(event.payload);
+        for (const event of frames) this.ingest(event.payload, event);
       });
       ws.addEventListener("close", () => {
         clearTimeout(timeout);
@@ -942,11 +967,22 @@ export class MessengerRuntime {
     this.endpointDefaultModel = settings.endpoint_default_model ?? "";
   }
 
+  private reconcilePendingMutation(api: LocalApi): void {
+    if (this.api === api && this.pendingMutation && !api.hasPendingRequest(this.pendingMutation.id)) this.pendingMutation = null;
+  }
+
   private sheetFailure(error: unknown, api: LocalApi): ApiError | null {
     if (this.api !== api) return null;
+    if (error instanceof ApiError && error.requestId) {
+      const pending = api.hasPendingRequest(error.requestId);
+      const resumable = ["key_write_pending", "request_pending", "request_unknown"].includes(error.code);
+      if (pending && resumable) this.pendingMutation = { id: error.requestId, code: error.code };
+      else if (this.pendingMutation?.id === error.requestId) this.pendingMutation = null;
+      if (!pending && resumable) return null;
+    }
     if (
       error instanceof ApiError &&
-      (error.status === 422 || error.status === 404 || error.status === 409)
+      (error.status === 422 || error.status === 404 || error.status === 409 || ["key_write_pending", "request_pending", "request_unknown"].includes(error.code))
     ) {
       return error;
     }
@@ -1023,7 +1059,9 @@ export class MessengerRuntime {
     };
   }
 
-  private ingest(event: ClientEvent): void {
+  private ingest(event: ClientEvent, frame?: SequencedEvent): void {
+    if (frame) this.api?.observeCredentialFrame(frame);
+    if (this.api) this.reconcilePendingMutation(this.api);
     if (event.event === "session.cleared" || event.event === "session.removed") this.historyRevision++;
     if (event.event === "session.removed") {
       if (this.selectedId === event.id) {
@@ -1091,6 +1129,7 @@ export class MessengerRuntime {
     this.connection = "disconnected";
     this.teardownSocket();
     this.api = null;
+    this.pendingMutation = null;
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();

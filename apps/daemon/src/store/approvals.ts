@@ -53,8 +53,8 @@ export function createAllowRule(ctx: StoreContext, kind_key: string, scope: stri
 }
 
 export function deleteAllowRule(ctx: StoreContext, id: string): void {
-  const changes = ctx.db.run(`DELETE FROM allow_rules WHERE id = ?`, [id]).changes;
-  if (changes === 0) throw new HttpError(404, "not_found", "allow rule not found");
+  const deleted = ctx.db.query("DELETE FROM allow_rules WHERE id = ? RETURNING id").get(id);
+  if (!deleted) throw new HttpError(404, "not_found", "allow rule not found");
 }
 
 export function matchesAllowRule(ctx: StoreContext, kind_key: string, target: string): boolean {
@@ -133,25 +133,27 @@ export function resolveApproval(
   action: "allow_once" | "deny" | "always_allow",
   scope?: string,
 ) {
-  const row = ctx.db.query<ApprovalRow, [string]>(`SELECT * FROM approvals WHERE id = ?`).get(id);
-  if (!row) throw new HttpError(404, "not_found", "approval not found");
-  if (row.status !== "pending") {
-    throw new HttpError(409, "conflict", "approval is no longer pending");
-  }
-  if (action === "always_allow") {
-    if (!row.kind_key || !ALLOWED_KIND_KEYS.has(row.kind_key)) {
-      throw new HttpError(422, "invalid_args", "this kind cannot be Always allow");
+  return ctx.tx.run(() => {
+    const row = ctx.db.query<ApprovalRow, [string]>(`SELECT * FROM approvals WHERE id = ?`).get(id);
+    if (!row) throw new HttpError(404, "not_found", "approval not found");
+    if (row.status !== "pending") {
+      throw new HttpError(409, "conflict", "approval is no longer pending");
     }
-    const nextScope =
-      row.kind_key === "unconstrained-shell" ? "*" : (scope ?? row.target ?? "*");
-    if (row.kind_key === "unconstrained-shell" && scope && scope !== "*") {
-      throw new HttpError(422, "invalid_args", "unconstrained-shell scope must be *");
+    if (action === "always_allow") {
+      if (!row.kind_key || !ALLOWED_KIND_KEYS.has(row.kind_key)) {
+        throw new HttpError(422, "invalid_args", "this kind cannot be Always allow");
+      }
+      const nextScope =
+        row.kind_key === "unconstrained-shell" ? "*" : (scope ?? row.target ?? "*");
+      if (row.kind_key === "unconstrained-shell" && scope && scope !== "*") {
+        throw new HttpError(422, "invalid_args", "unconstrained-shell scope must be *");
+      }
+      createAllowRule(ctx, row.kind_key, nextScope);
     }
-    createAllowRule(ctx, row.kind_key, nextScope);
-  }
-  const now = isoNow();
-  const status = action === "deny" ? "denied" : "allowed_once";
-  ctx.db.run(`UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?`, [status, now, id]);
-  const next = ctx.db.query<ApprovalRow, [string]>(`SELECT * FROM approvals WHERE id = ?`).get(id)!;
-  return toApproval(next);
+    const now = isoNow();
+    const status = action === "deny" ? "denied" : "allowed_once";
+    ctx.db.run(`UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?`, [status, now, id]);
+    const next = ctx.db.query<ApprovalRow, [string]>(`SELECT * FROM approvals WHERE id = ?`).get(id)!;
+    return toApproval(next);
+  });
 }

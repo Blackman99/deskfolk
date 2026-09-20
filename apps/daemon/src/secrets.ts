@@ -22,11 +22,7 @@ export const bunKeyStore: EndpointKeyStore = {
     });
   },
   async delete(name) {
-    try {
-      await Bun.secrets.delete({ service: KEYCHAIN_SERVICE, name: secretName(name) });
-    } catch {
-      // already absent
-    }
+    await Bun.secrets.delete({ service: KEYCHAIN_SERVICE, name: secretName(name) });
   },
 };
 

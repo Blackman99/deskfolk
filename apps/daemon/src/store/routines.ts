@@ -123,8 +123,8 @@ export function patchRoutine(
 }
 
 export function deleteRoutine(ctx: StoreContext, id: string): void {
-  const changes = ctx.db.run(`DELETE FROM routines WHERE id = ?`, [id]).changes;
-  if (changes === 0) throw new HttpError(404, "not_found", "routine not found");
+  const deleted = ctx.db.query("DELETE FROM routines WHERE id = ? RETURNING id").get(id);
+  if (!deleted) throw new HttpError(404, "not_found", "routine not found");
 }
 
 export function getRoutine(ctx: StoreContext, id: string): Routine {
@@ -151,12 +151,11 @@ export function claimRoutineDue(ctx: StoreContext, id: string, now: Date = new D
   const dueAt = dueIso(due);
   if (row.last_fired_for_due_at && row.last_fired_for_due_at >= dueAt) return null;
   const stamped = isoNow();
-  const changes = ctx.db.run(
+  const claimed = ctx.db.query(
     `UPDATE routines SET last_fired_for_due_at = ?, updated_at = ?
      WHERE id = ? AND enabled = 1
-       AND (last_fired_for_due_at IS NULL OR last_fired_for_due_at < ?)`,
-    [dueAt, stamped, id, dueAt],
-  ).changes;
-  if (changes === 0) return null;
+       AND (last_fired_for_due_at IS NULL OR last_fired_for_due_at < ?) RETURNING id`,
+  ).get(dueAt, stamped, id, dueAt);
+  if (!claimed) return null;
   return getRoutine(ctx, id);
 }

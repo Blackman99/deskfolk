@@ -6,7 +6,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { codePointCount } from "../text";
-import { emptyToNull, requireNonEmpty, type McpRow, type StoreContext } from "./shared";
+import { emptyToNull, keyMutation, planKey, requireNonEmpty, type McpRow, type StoreContext } from "./shared";
 
 export function listMcpServers(ctx: StoreContext) {
   return ctx.db
@@ -31,7 +31,7 @@ export async function mcpAuth(ctx: StoreContext, id: string): Promise<string | n
   return ctx.keys.read(mcpAuthKeychainName(id));
 }
 
-export async function createMcpServer(
+export function createMcpServerSync(
   ctx: StoreContext,
   input: {
     name: string;
@@ -94,14 +94,14 @@ export async function createMcpServer(
       row.updated_at,
     ],
   ));
+  if (input.auth !== undefined && typeof input.auth !== "string") throw new HttpError(422, "invalid_args", "auth must be a string");
   if (typeof input.auth === "string" && input.auth.length > 0) {
-    await ctx.keys.write(mcpAuthKeychainName(id), input.auth);
+    planKey(ctx, mcpAuthKeychainName(id), input.auth);
   }
-  await ctx.keys.read(mcpAuthKeychainName(id));
   return toMcp(ctx, row, true);
 }
 
-export async function patchMcpServer(
+export function patchMcpServerSync(
   ctx: StoreContext,
   id: string,
   patch: {
@@ -118,6 +118,7 @@ export async function patchMcpServer(
     tool_catalog?: Array<{ name: string; description: string }>;
   },
 ) {
+  if (ctx.keys.pending(mcpAuthKeychainName(id))) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
   const current = ctx.db.query<McpRow, [string]>(`SELECT * FROM mcp_servers WHERE id = ?`).get(id);
   if (!current) throw new HttpError(404, "not_found", "mcp server not found");
   // The note is written by you or a Bot, so it survives connection changes; only an explicit
@@ -172,19 +173,17 @@ export async function patchMcpServer(
     ],
   ));
   if (patch.auth !== undefined) {
-    await ctx.keys.write(mcpAuthKeychainName(id), patch.auth);
+    planKey(ctx, mcpAuthKeychainName(id), patch.auth);
   }
-  await ctx.keys.read(mcpAuthKeychainName(id));
   const next = ctx.db.query<McpRow, [string]>(`SELECT * FROM mcp_servers WHERE id = ?`).get(id)!;
   return toMcp(ctx, next, true);
 }
 
-export async function deleteMcpServer(ctx: StoreContext, id: string): Promise<void> {
-  ctx.commit(() => {
-    const changes = ctx.db.run(`DELETE FROM mcp_servers WHERE id = ?`, [id]).changes;
-    if (changes === 0) throw new HttpError(404, "not_found", "mcp server not found");
-  });
-  await ctx.keys.write(mcpAuthKeychainName(id), "");
+export function deleteMcpServerSync(ctx: StoreContext, id: string): void {
+  if (ctx.keys.pending(mcpAuthKeychainName(id))) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
+  const deleted = ctx.db.query("DELETE FROM mcp_servers WHERE id = ? RETURNING id").get(id);
+  if (!deleted) throw new HttpError(404, "not_found", "mcp server not found");
+  planKey(ctx, mcpAuthKeychainName(id), "");
 }
 
 export function toMcp(ctx: StoreContext, row: McpRow, authKnown = false) {
@@ -197,7 +196,7 @@ export function toMcp(ctx: StoreContext, row: McpRow, authKnown = false) {
     args: parseMcpArgs(row.args),
     url: emptyToNull(row.url),
     headers: parseMcpHeaders(row.headers),
-    auth_set: authKnown ? ctx.keys.peek(mcpAuthKeychainName(row.id)) != null : false,
+    auth_set: ctx.keyPlan?.some((op) => op.name === mcpAuthKeychainName(row.id)) ? Boolean(ctx.keyPlan.find((op) => op.name === mcpAuthKeychainName(row.id))?.value) : authKnown ? ctx.keys.peek(mcpAuthKeychainName(row.id)) != null : false,
     enabled: row.enabled === 1,
     instructions: row.instructions?.trim() ? row.instructions : null,
     usage_note: row.usage_note?.trim() ? row.usage_note : null,
@@ -357,4 +356,26 @@ export function resolveMcpUrl(value: unknown): string {
     throw new HttpError(422, "invalid_args", "url must be an http or https URL");
   }
   return parsed.href;
+}
+
+export async function createMcpServer(ctx: StoreContext, input: Parameters<typeof createMcpServerSync>[1]) {
+  return keyMutation(ctx, () => createMcpServerSync(ctx, input));
+}
+
+export async function patchMcpServer(ctx: StoreContext, id: string, patch: Parameters<typeof patchMcpServerSync>[2]) {
+  await ctx.keys.read(mcpAuthKeychainName(id));
+  return keyMutation(ctx, () => patchMcpServerSync(ctx, id, patch));
+}
+
+export async function deleteMcpServer(ctx: StoreContext, id: string): Promise<void> {
+  await keyMutation(ctx, () => deleteMcpServerSync(ctx, id));
+}
+
+export function applyMcpInspection(ctx: StoreContext, id: string, revision: string, inspected: { instructions: string | null; tools: Array<{ name: string; description: string }> }) {
+  return ctx.tx.run(() => {
+    const row = ctx.db.query<McpRow, [string]>("SELECT * FROM mcp_servers WHERE id = ?").get(id);
+    if (!row || row.updated_at !== revision || ctx.keys.pending(mcpAuthKeychainName(id))) return null;
+    const changed = ctx.db.query("UPDATE mcp_servers SET instructions = ?, tool_catalog = ?, updated_at = ? WHERE id = ? AND updated_at = ? RETURNING id").get(inspected.instructions, JSON.stringify(inspected.tools), isoNow(), id, revision);
+    return changed ? toMcp(ctx, ctx.db.query<McpRow, [string]>("SELECT * FROM mcp_servers WHERE id = ?").get(id)!, true) : null;
+  });
 }

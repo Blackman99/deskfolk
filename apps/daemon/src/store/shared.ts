@@ -20,6 +20,9 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { parseStoredThinkingLevel } from "../models";
+import { Transactions } from "./transactions";
+import { ulid } from "../ids";
+import { sha256 } from "../request-digest";
 
 export type StoreOptions = {
   filename?: string;
@@ -35,32 +38,64 @@ export type EndpointKeyStore = {
 /** Keychain access with a per-process cache; `peek` is the synchronous cache read `auth_set` needs. */
 export class KeyCache {
   private readonly cached = new Map<string, string | null>();
+  private readonly versions = new Map<string, number>();
+  private readonly writing = new Set<string>();
 
-  constructor(private readonly keys: EndpointKeyStore, private readonly changed: (name: string) => void = () => {}) {}
+  constructor(private readonly keys: EndpointKeyStore, private readonly db: Database, private readonly changed: (name: string) => void = () => {}) {}
 
   async read(name: string): Promise<string | null> {
+    if (this.pending(name)) return null;
     if (this.cached.has(name)) return this.cached.get(name) ?? null;
+    const version = this.versions.get(name) ?? 0;
     const value = await this.keys.get(name);
+    if (version !== (this.versions.get(name) ?? 0)) return this.read(name);
     if (this.cached.has(name)) return this.cached.get(name) ?? null;
     this.cached.set(name, value);
-    this.changed(name);
+    if (value != null) this.changed(name);
     return value;
   }
 
   /** Empty value deletes the entry. */
   async write(name: string, value: string): Promise<void> {
-    if (value.length === 0) {
-      await this.keys.delete(name);
-      this.cached.set(name, null);
-      this.changed(name);
-      return;
-    }
-    await this.keys.set(value, name);
-    this.cached.set(name, value);
-    this.changed(name);
+    this.versions.set(name, (this.versions.get(name) ?? 0) + 1);
+    const before = this.peek(name) != null;
+    if (value.length === 0) await this.keys.delete(name);
+    else await this.keys.set(value, name);
+    this.cached.set(name, value.length ? value : null);
+    if (before !== (this.peek(name) != null)) this.changed(name);
+  }
+
+  pending(name: string): boolean {
+    return Boolean(this.db.query("SELECT 1 FROM pending_keys WHERE name = ?").get(name));
+  }
+
+  markPending(name: string, value: string, owner?: { deviceId: string; requestId: string }): void {
+    if (this.pending(name)) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
+    this.db.run("INSERT INTO pending_keys(name, value_sha256, operation_id, device_id, request_id) VALUES (?, ?, ?, ?, ?)", [name, sha256(value), ulid(), owner?.deviceId ?? null, owner?.requestId ?? null]);
+    this.versions.set(name, (this.versions.get(name) ?? 0) + 1);
+    if (name.startsWith("endpoint-api-key:")) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
+  }
+
+  async finishPending(name: string, value: string): Promise<void> {
+    const row = this.db.query<{ value_sha256: string }, [string]>("SELECT value_sha256 FROM pending_keys WHERE name = ?").get(name);
+    if (!row) return;
+    if (row.value_sha256 !== sha256(value)) throw new HttpError(409, "conflict", "credential digest changed");
+    if (this.writing.has(name)) throw new HttpError(409, "conflict", "credential write is in progress");
+    this.writing.add(name);
+    try { await this.write(name, value); } catch (error) { this.writing.delete(name); throw error; }
+  }
+
+  isWriting(name: string): boolean { return this.writing.has(name); }
+  releaseWriting(name: string): void { this.writing.delete(name); }
+
+  clearPending(name: string): void {
+    this.writing.delete(name);
+    const changed = this.db.query("DELETE FROM pending_keys WHERE name = ? RETURNING name").get(name);
+    if (changed && name.startsWith("endpoint-api-key:")) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
   }
 
   peek(name: string): string | null | undefined {
+    if (this.pending(name)) return null;
     return this.cached.get(name);
   }
 }
@@ -69,6 +104,10 @@ export type StoreContext = {
   readonly db: Database;
   readonly keys: KeyCache;
   commit<T>(write: () => T): T;
+  readonly tx: Transactions;
+  readonly inboxRoot: string;
+  readonly activeStages: Set<string>;
+  keyPlan: Array<{ name: string; value: string }> | null;
   /** Process-lifetime flags for one-shot legacy migrations. */
   readonly legacy: { copiedKey: boolean };
 };
@@ -399,18 +438,35 @@ export function sessionSearchTitle(
 // ---------------------------------------------------------------------------
 
 export function memoryKeyStore(): EndpointKeyStore {
-  let value: string | null = null;
+  const values = new Map<string, string>();
   return {
-    async get() {
-      return value;
-    },
-    async set(next) {
-      value = next;
-    },
-    async delete() {
-      value = null;
-    },
+    async get(name = "") { return values.get(name) ?? null; },
+    async set(value, name = "") { values.set(name, value); },
+    async delete(name = "") { values.delete(name); },
   };
+}
+
+export function planKey(ctx: StoreContext, name: string, value: string): void {
+  if (typeof value !== "string") throw new HttpError(422, "invalid_args", "credential must be a string");
+  if (!ctx.keyPlan) throw new Error("credential mutation needs a key plan");
+  ctx.keyPlan.push({ name, value });
+}
+
+export async function keyMutation<T>(ctx: StoreContext, work: () => T): Promise<T> {
+  const plan: Array<{ name: string; value: string }> = [];
+  const result = ctx.tx.run(() => {
+    ctx.keyPlan = plan;
+    try {
+      const value = work();
+      for (const op of plan) ctx.keys.markPending(op.name, op.value);
+      return value;
+    } finally { ctx.keyPlan = null; }
+  });
+  try {
+    for (const op of plan) await ctx.keys.finishPending(op.name, op.value);
+    ctx.tx.run(() => { for (const op of plan) ctx.keys.clearPending(op.name); });
+  } finally { for (const op of plan) ctx.keys.releaseWriting(op.name); }
+  return result;
 }
 
 export function emptyToNull(value: string | null | undefined): string | null {

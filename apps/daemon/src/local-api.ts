@@ -15,9 +15,9 @@ import {
   type RuntimeSnapshot,
   type SessionSnapshot,
 } from "@real-bot/protocol";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { attachmentMime } from "./artifact-mime";
-import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson } from "./http";
+import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { corsHeaders, originDecision } from "./origin";
 import { EventStream, sessionUpsertFields } from "./session-events";
 import { HttpError } from "./errors";
@@ -28,6 +28,11 @@ import { COLLAB_TOOL_NAMES } from "./prompts";
 import { startScheduler, type Scheduler } from "./scheduler";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import { probeEndpointModels } from "./probe-models";
+import type { FileCommit } from "./store/files";
+import { ulid } from "./ids";
+import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
+import { type RequestScope, type KeyOperation } from "./store/receipts";
+import { fileEtag } from "./file-integrity";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
 
 const AUTH_TIMEOUT_MS = 5_000;
@@ -49,9 +54,11 @@ export type LocalApiOptions = {
   /** Skip the calendar ticker (tests that drive `engine.fireRoutine` themselves). */
   schedule?: boolean;
   now?: () => Date;
+  canonicalEncoder?: CanonicalEncoder;
 };
 
 export type LocalApi = {
+  dispatchBusiness: (request: Request, scope: RequestScope) => Promise<Response>;
   fetch: (request: Request, server: Bun.Server<SocketData>) => Promise<Response | undefined>;
   websocket: {
     data: SocketData;
@@ -81,19 +88,26 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     const payload = JSON.stringify(frame);
     for (const ws of sockets) if (ws.data.authed && ws.data.sync) send(ws, payload);
   });
-  options.store.onCommit((event) => events.publish(event));
+  const credentialEvents = new Set(["settings.changed", "provider.upsert", "provider.removed", "mcp.upsert", "mcp.removed"]);
+  function publishLegacy(event: ClientEvent): void {
+    const payload = JSON.stringify(event);
+    for (const ws of sockets) if (ws.data.authed && !ws.data.sync) send(ws, payload);
+  }
+  options.store.onCommit((event) => {
+    events.publish(event);
+    if (credentialEvents.has(event.event)) publishLegacy(event);
+  });
 
   function publish(event: ClientEvent): void {
-    const payload = JSON.stringify(event);
-    for (const ws of sockets) {
-      if (ws.data.authed && !ws.data.sync) send(ws, payload);
-    }
-    // Persisted rows come from Store commits, never a delayed tool/API result.
-    if (event.event === "judgement.started" || event.event === "judgement.ended") events.publish(event);
-    if (event.event === "turn.token") {
-      const turn = options.store.getTurn(event.turn_id);
-      options.store.setTurnPartial(turn.id, `${turn.partial_text ?? ""}${event.text}`);
-    }
+    options.store.afterCommit(() => {
+      if (!credentialEvents.has(event.event)) publishLegacy(event);
+      // Persisted rows come from Store commits, never a delayed tool/API result.
+      if (event.event === "judgement.started" || event.event === "judgement.ended") events.publish(event);
+      if (event.event === "turn.token") {
+        const turn = options.store.getTurn(event.turn_id);
+        options.store.setTurnPartial(turn.id, `${turn.partial_text ?? ""}${event.text}`);
+      }
+    });
   }
 
   const mcp =
@@ -133,6 +147,104 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       live_turns: session.live_turns?.map(withPartial),
       pending_judgements: pending.filter((row) => row.session_id === session.id),
     }));
+  }
+
+  async function dispatchBusiness(request: Request, scope: RequestScope): Promise<Response> {
+    const url = new URL(request.url);
+    validateRequestPath(url.pathname + url.search);
+    if (!url.pathname.startsWith("/v1/") || url.pathname.startsWith("/v1/runtime")) {
+      throw new HttpError(404, "not_found", "not a business endpoint");
+    }
+    if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) {
+      return readBusiness(request, url);
+    }
+    if (url.pathname === "/v1/models/probe") throw new HttpError(422, "not_retryable", "model probes are not retryable mutations");
+    return mutate(request, url, scope);
+  }
+
+  async function mutate(request: Request, url: URL, scope: RequestScope): Promise<Response> {
+    validateRequestPath(url.pathname + url.search);
+    const parsed = await parseMutation(request);
+    const digest = requestDigest({ method: request.method, path: url.pathname + url.search, body: parsed.body,
+      multipart: parsed.multipart, normalizedFiles: parsed.normalizedFiles,
+      ifMatch: request.headers.get("If-Match"),
+    }, options.canonicalEncoder);
+    const keyOps: KeyOperation[] = [];
+    const events: ClientEvent[] = [];
+    let committed = false;
+    options.store.recoverFiles();
+    let stagedWrite: FileCommit | undefined;
+    try {
+      const response = await options.store.receipts.execute(scope, digest, request.method, url.pathname, parsed.body, async () => {
+        await options.store.settings();
+        await options.store.listMcpServersHydrated();
+        options.store.recoverFiles();
+        options.store.prepareAttachments(parsed.files);
+        if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
+          const root = options.store.workspacePath();
+          if (root) {
+            const located = locateWorkspaceFile(root, parsed.body.path);
+            stagedWrite = options.store.prepareFile(root, located.abs, parsed.body.content);
+            parsed.stagedWrite = stagedWrite;
+          }
+        }
+        return () => {
+          checkRevision(options.store, request, url, parsed.body, scope);
+          const plan: Array<{ name: string; value: string }> = [];
+          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed));
+          if (result instanceof Promise) throw new HttpError(422, "not_retryable", "this endpoint cannot use request receipts");
+          for (const op of plan) keyOps.push({ ...op, field: op.value === "" ? "" : url.pathname.startsWith("/v1/credential-operations/") ? "value" : url.pathname === "/v1/settings" ? "endpoint_api_key" : url.pathname.startsWith("/v1/mcp-servers") ? "auth" : "api_key" });
+          options.store.afterCommit(() => {
+            committed = true;
+            for (const event of events) publish(event);
+            events.length = 0;
+          });
+          return responseRecord(result);
+        };
+      }, keyOps);
+      if ((committed || keyOps.length) && response.status < 400 && url.pathname.startsWith("/v1/mcp-servers") && request.method !== "DELETE" && response.body) {
+        const id = (JSON.parse(response.body) as { id: string }).id;
+        const server = options.store.listMcpServers().find((row) => row.id === id);
+        if (server) void persistMcpInspect(options.store, mcp, server).catch(() => undefined);
+      }
+      return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json; charset=utf-8", ...response.headers, "X-Request-Id": scope.requestId } });
+    } finally {
+      if (stagedWrite) options.store.discardFile(stagedWrite);
+      for (const file of parsed.files) if (file.staged) options.store.discardFile(file.staged);
+    }
+  }
+
+  async function readBusiness(request: Request, url: URL): Promise<Response> {
+    const path = url.pathname;
+    if (request.method === "GET" && path === "/v1/snapshot") {
+      await options.store.hydrateSnapshot();
+      const snapshot = options.store.db.transaction((): RuntimeSnapshot => {
+        const state = options.store.readSnapshot();
+        return { ...state, sessions: snapshotSessions(state.sessions), ...events.cursor() };
+      })();
+      return jsonResponse(snapshot, 200, null);
+    }
+    const session = matchPath(path, "/v1/sessions/:id/snapshot");
+    if (request.method === "GET" && session) {
+      const id = session.id!;
+      const snapshot = options.store.db.transaction((): SessionSnapshot => {
+        const session = options.store.getSession(id);
+        return {
+          session: { ...session, turns: session.turns.map(withPartial), pending_judgements: engine.pendingJudgements(id) },
+          judgements: options.store.listJudgements(id), ...events.cursor(),
+        };
+      })();
+      return jsonResponse(snapshot, 200, null);
+    }
+    if (request.method === "GET" && path === "/v1/events/catchup") {
+      const instance = url.searchParams.get("event_instance_id") ?? "";
+      const rawSeq = url.searchParams.get("after_seq") ?? "";
+      if (!/^[0-9a-f]{32}$/.test(instance) || !/^(0|[1-9][0-9]*)$/.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq))) {
+        throw new HttpError(422, "invalid_args", "invalid event cursor");
+      }
+      return jsonResponse(events.catchup({ event_instance_id: instance, watermark_seq: Number(rawSeq) }), 200, null);
+    }
+    return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false });
   }
 
   async function handle(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
@@ -191,37 +303,14 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     }
 
     try {
+      validateRequestPath(path + url.search);
       if (request.method === "POST" && path === "/v1/runtime/quit") {
         scheduler?.stop();
       }
-      let response: Response;
-      if (request.method === "GET" && path === "/v1/snapshot") {
-        await options.store.hydrateSnapshot();
-        const snapshot = options.store.db.transaction((): RuntimeSnapshot => {
-          const state = options.store.readSnapshot();
-          return { ...state, sessions: snapshotSessions(state.sessions), ...events.cursor() };
-        })();
-        response = jsonResponse(snapshot, 200, null);
-      } else if (request.method === "GET" && matchPath(path, "/v1/sessions/:id/snapshot")) {
-        const id = matchPath(path, "/v1/sessions/:id/snapshot")!.id!;
-        const snapshot = options.store.db.transaction((): SessionSnapshot => {
-          const session = options.store.getSession(id);
-          return {
-            session: { ...session, turns: session.turns.map(withPartial), pending_judgements: engine.pendingJudgements(id) },
-            judgements: options.store.listJudgements(id), ...events.cursor(),
-          };
-        })();
-        response = jsonResponse(snapshot, 200, null);
-      } else if (request.method === "GET" && path === "/v1/events/catchup") {
-        const instance = url.searchParams.get("event_instance_id") ?? "";
-        const rawSeq = url.searchParams.get("after_seq") ?? "";
-        if (!/^[0-9a-f]{32}$/.test(instance) || !/^(0|[1-9][0-9]*)$/.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq))) {
-          throw new HttpError(422, "invalid_args", "invalid event cursor");
-        }
-        response = jsonResponse(events.catchup({ event_instance_id: instance, watermark_seq: Number(rawSeq) }), 200, null);
-      } else {
-        response = await dispatch(request, url, options, publish, engine, mcp);
-      }
+      const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && path !== "/v1/models/probe";
+      const response = isMutation
+        ? await mutate(request, url, { deviceId: "local", requestId: request.headers.get("X-Request-Id") ?? ulid() })
+        : await readBusiness(request, url);
       if (origin && originState === "allowed") {
         const headers = new Headers(response.headers);
         for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v);
@@ -235,6 +324,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
 
   return {
     fetch: handle,
+    dispatchBusiness,
     publish,
     engine,
     websocket: {
@@ -285,17 +375,27 @@ function occurred(): string {
   return new Date().toISOString();
 }
 
-async function dispatch(
+function dispatch(
   request: Request,
   url: URL,
   options: LocalApiOptions,
   publish: (event: ClientEvent) => void,
   engine: TurnEngine,
   mcp: McpHost,
-): Promise<Response> {
+  input: ParsedMutation,
+): Response | Promise<Response> {
   const { store, onQuit } = options;
   const method = request.method;
   const path = url.pathname;
+
+  if (method === "GET" && path === "/v1/credential-operations") {
+    return jsonResponse({ items: store.listCredentialOperations() }, 200, null);
+  }
+  const credential = matchPath(path, "/v1/credential-operations/:id/resolve");
+  if (method === "POST" && credential) {
+    store.resolveCredentialOperation(credential.id!, input.body);
+    return emptyResponse(204, null);
+  }
 
   if (method === "GET" && path === "/v1/runtime") {
     const body: RuntimeResponse = { pid: process.pid, bind: LOCAL_API_BIND };
@@ -305,19 +405,19 @@ async function dispatch(
   if (method === "POST" && path === "/v1/runtime/quit") {
     engine.abortAll();
     store.interruptRunningTurns();
-    onQuit?.();
+    store.afterCommit(() => onQuit?.());
     return emptyResponse(204, null);
   }
 
   if (method === "POST" && path === "/v1/turns/stop") {
-    const body = (await readJson(request)) as { turn_id?: string };
+    const body = (input.body) as { turn_id?: string };
     const turn = engine.stop(body.turn_id);
     if (!turn) return emptyResponse(204, null);
     return jsonResponse(turn, 200, null);
   }
 
   if (method === "POST" && path === "/v1/turns/continue") {
-    const body = (await readJson(request)) as { message_id?: string };
+    const body = (input.body) as { message_id?: string };
     if (typeof body.message_id !== "string" || body.message_id.trim().length === 0) {
       throw new HttpError(422, "invalid_args", "message_id is required");
     }
@@ -326,7 +426,7 @@ async function dispatch(
   }
 
   if (method === "GET" && path === "/v1/settings") {
-    return jsonResponse(await store.settings(), 200, null);
+    return store.settings().then((value) => jsonResponse(value, 200, null));
   }
 
   if (method === "GET" && path === "/v1/workspace/tree") {
@@ -344,10 +444,11 @@ async function dispatch(
     if (!existsSync(located.abs)) {
       throw new HttpError(404, "not_found", "path not found");
     }
-    const file = Bun.file(located.abs);
+    const file = readFileSync(located.abs);
     return new Response(file, {
       status: 200,
       headers: {
+        "ETag": fileEtag(file),
         "Content-Type": located.mime,
         "Content-Disposition": `inline; filename="${encodeURIComponent(located.rel.split("/").pop() ?? located.rel)}"`,
       },
@@ -357,95 +458,88 @@ async function dispatch(
   if (method === "PUT" && path === "/v1/workspace/file") {
     const root = store.workspacePath();
     if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
-    const body = (await readJson(request)) as { path?: unknown; content?: unknown };
+    const body = (input.body) as { path?: unknown; content?: unknown };
     if (typeof body.path !== "string" || body.path.trim().length === 0) {
       throw new HttpError(422, "invalid_args", "path is required");
     }
     if (typeof body.content !== "string") {
       throw new HttpError(422, "invalid_args", "content must be a string");
     }
-    writeWorkspaceFile(root, body.path, body.content);
-    return emptyResponse(204, null);
+    const result = writeWorkspaceFile(root, body.path, body.content, request.headers.get("If-Match"), (abs) => {
+      if (!input.stagedWrite) throw new Error("file must be staged");
+      if (abs !== `${input.stagedWrite.root}/${input.stagedWrite.final_rel}`) throw new HttpError(409, "conflict", "workspace target changed");
+      store.commitPreparedFile(input.stagedWrite);
+    });
+    const response = emptyResponse(204, null);
+    response.headers.set("ETag", result.etag);
+    return response;
   }
 
   if (method === "POST" && path === "/v1/models/probe") {
-    const body = (await readJson(request)) as {
-      endpoint_base_url?: string;
-      endpoint_api_key?: string;
-      provider_id?: string;
-    };
-    const settings = await store.settings();
-    let baseUrl = body.endpoint_base_url?.trim() ?? "";
-    let apiKey = body.endpoint_api_key?.trim() ?? "";
-    if (!baseUrl || !apiKey) {
-      const providerId = body.provider_id?.trim() || settings.default_provider_id;
-      if (providerId) {
-        const provider = await store.getProvider(providerId);
-        if (!baseUrl) baseUrl = provider.base_url?.trim() ?? "";
-        if (!apiKey) apiKey = (await store.endpointKey(providerId))?.trim() ?? "";
-      } else if (!baseUrl) {
-        baseUrl = settings.endpoint_base_url?.trim() ?? "";
-        if (!apiKey) apiKey = (await store.endpointKey())?.trim() ?? "";
+    return (async () => {
+      const body = (input.body) as {
+        endpoint_base_url?: string;
+        endpoint_api_key?: string;
+        provider_id?: string;
+      };
+      const settings = await store.settings();
+      let baseUrl = body.endpoint_base_url?.trim() ?? "";
+      let apiKey = body.endpoint_api_key?.trim() ?? "";
+      if (!baseUrl || !apiKey) {
+        const providerId = body.provider_id?.trim() || settings.default_provider_id;
+        if (providerId) {
+          const provider = await store.getProvider(providerId);
+          if (!baseUrl) baseUrl = provider.base_url?.trim() ?? "";
+          if (!apiKey) apiKey = (await store.endpointKey(providerId))?.trim() ?? "";
+        } else if (!baseUrl) {
+          baseUrl = settings.endpoint_base_url?.trim() ?? "";
+          if (!apiKey) apiKey = (await store.endpointKey())?.trim() ?? "";
+        }
       }
-    }
-    if (!baseUrl) {
-      throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
-    }
-    const probed = await probeEndpointModels(baseUrl, apiKey);
-    return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
+      if (!baseUrl) {
+        throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
+      }
+      const probed = await probeEndpointModels(baseUrl, apiKey);
+      return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
+    })();
   }
 
   if (method === "PATCH" && path === "/v1/settings") {
-    const patch = (await readJson(request)) as Record<string, unknown>;
+    const patch = (input.body) as Record<string, unknown>;
     const previousBots = store.listBots().map((bot) => ({ id: bot.id, model: bot.model, provider_id: bot.provider_id }));
-    const previousProviderIds = new Set((await store.listProviders()).map((provider) => provider.id));
-    const next = await store.patchSettings(patch);
+    const next = store.patchSettingsSync(patch);
     const at = occurred();
-    publish({ event: "settings.changed", occurred_at: at, ...next });
-    for (const provider of await store.listProviders()) {
-      previousProviderIds.delete(provider.id);
-      publish({ event: "provider.upsert", occurred_at: at, ...provider });
-    }
-    for (const id of previousProviderIds) {
-      publish({ event: "provider.removed", occurred_at: at, id });
-    }
     publishBotModelChanges(store, previousBots, at, publish);
     return jsonResponse(next, 200, null);
   }
 
   let params = matchPath(path, "/v1/providers/:id");
   if (method === "GET" && path === "/v1/providers") {
-    return jsonResponse({ items: await store.listProviders() }, 200, null);
+    return store.listProviders().then((items) => jsonResponse({ items }, 200, null));
   }
   if (method === "POST" && path === "/v1/providers") {
-    const body = (await readJson(request)) as CreateProviderRequest;
+    const body = (input.body) as CreateProviderRequest;
     const previousBots = store.listBots().map((bot) => ({ id: bot.id, model: bot.model, provider_id: bot.provider_id }));
-    const provider = await store.createProvider(body);
+    const provider = store.createProviderSync(body);
     const at = occurred();
-    publish({ event: "provider.upsert", occurred_at: at, ...provider });
-    publish({ event: "settings.changed", occurred_at: at, ...(await store.settings()) });
     publishBotModelChanges(store, previousBots, at, publish);
     return jsonResponse(provider, 201, null);
   }
   if (params && method === "GET") {
-    return jsonResponse(await store.getProvider(params.id!), 200, null);
+    return store.getProvider(params.id!).then((value) => jsonResponse(value, 200, null));
   }
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as PatchProviderRequest;
+    const body = (input.body) as PatchProviderRequest;
     const previousBots = store.listBots().map((bot) => ({ id: bot.id, model: bot.model, provider_id: bot.provider_id }));
-    const provider = await store.patchProvider(params.id!, body);
+    const provider = store.patchProviderSync(params.id!, body);
     const at = occurred();
-    publish({ event: "provider.upsert", occurred_at: at, ...provider });
-    publish({ event: "settings.changed", occurred_at: at, ...(await store.settings()) });
     publishBotModelChanges(store, previousBots, at, publish);
     return jsonResponse(provider, 200, null);
   }
   if (params && method === "DELETE") {
     const previousBots = store.listBots().map((bot) => ({ id: bot.id, model: bot.model, provider_id: bot.provider_id }));
-    await store.deleteProvider(params.id!);
+    store.deleteProviderSync(params.id!);
     const at = occurred();
-    publish({ event: "provider.removed", occurred_at: at, id: params.id! });
-    publish({ event: "settings.changed", occurred_at: at, ...(await store.settings()) });
     publishBotModelChanges(store, previousBots, at, publish);
     return emptyResponse(204, null);
   }
@@ -455,7 +549,7 @@ async function dispatch(
   }
 
   if (method === "POST" && path === "/v1/bots") {
-    const body = (await readJson(request)) as CreateBotRequest;
+    const body = (input.body) as CreateBotRequest;
     const created = store.createBot(body);
     const at = occurred();
     publish({ event: "bot.upsert", occurred_at: at, ...created.bot, deleted_at: null });
@@ -488,7 +582,7 @@ async function dispatch(
     return jsonResponse(store.getBot(params.id!), 200, null);
   }
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as PatchBotRequest;
+    const body = (input.body) as PatchBotRequest;
     const bot = store.patchBot(params.id!, body);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
     return jsonResponse(bot, 200, null);
@@ -519,7 +613,7 @@ async function dispatch(
     return jsonResponse({ items }, 200, null);
   }
   if (method === "POST" && path === "/v1/sessions") {
-    const body = (await readJson(request)) as { name: string; members: string[] };
+    const body = (input.body) as { name: string; members: string[] };
     const session = store.createGroup(body);
     publish({
       event: "session.upsert",
@@ -537,40 +631,12 @@ async function dispatch(
     return jsonResponse(store.listMessages(params.id!, { cursor, limit }), 200, null);
   }
   if (params && method === "POST") {
-    const contentType = request.headers.get("content-type") ?? "";
-    let bodyText = "";
-    let parentId: string | null = null;
-    let fork: boolean | undefined = undefined;
-    let askId: string | null = null;
-    const fileInputs: AttachmentInput[] = [];
-
-    if (contentType.toLowerCase().includes("multipart/form-data")) {
-      const formData = await request.formData();
-      bodyText = formData.get("body")?.toString() ?? "";
-      parentId = formData.get("parent_id")?.toString() || null;
-      const rawFork = formData.get("fork");
-      if (rawFork !== null) fork = rawFork === "true";
-      askId = formData.get("ask_id")?.toString() || null;
-      for (const [_, val] of formData.entries()) {
-        if (val instanceof File && val.size > 0) {
-          fileInputs.push({
-            originalFilename: val.name || "attachment",
-            buffer: new Uint8Array(await val.arrayBuffer()),
-          });
-        }
-      }
-    } else {
-      const body = (await readJson(request)) as {
-        body: string;
-        parent_id?: string | null;
-        fork?: boolean;
-        ask_id?: string | null;
-      };
-      bodyText = body.body ?? "";
-      parentId = body.parent_id ?? null;
-      if (body.fork !== undefined) fork = Boolean(body.fork);
-      askId = body.ask_id ?? null;
-    }
+    const body = input.body;
+    const bodyText = typeof body.body === "string" ? body.body : "";
+    const parentId = typeof body.parent_id === "string" ? body.parent_id || null : null;
+    const askId = typeof body.ask_id === "string" ? body.ask_id || null : null;
+    const fork = body.fork === undefined ? undefined : body.fork === true || body.fork === "true";
+    const fileInputs = input.files;
 
     const message = store.postMessage(params.id!, {
       body: bodyText,
@@ -579,9 +645,9 @@ async function dispatch(
     });
     publish({ event: "message.created", occurred_at: occurred(), ...message });
     if (askId) {
-      await engine.replyAsk(askId, message);
+      engine.replyAsk(askId, message);
     } else {
-      void engine.handleInboundMessage(message, { fork, fromUser: true });
+      store.afterCommit(() => { void engine.handleInboundMessage(message, { fork, fromUser: true }); });
     }
     return jsonResponse(message, 201, null);
   }
@@ -610,7 +676,7 @@ async function dispatch(
 
   params = matchPath(path, "/v1/sessions/:id/members");
   if (params && method === "POST") {
-    const body = (await readJson(request)) as { bot_id: string };
+    const body = (input.body) as { bot_id: string };
     const session = store.addMember(params.id!, body.bot_id);
     publish({
       event: "session.upsert",
@@ -620,7 +686,7 @@ async function dispatch(
     return jsonResponse(session, 200, null);
   }
   if (params && method === "DELETE") {
-    const body = (await readJson(request)) as { bot_id: string };
+    const body = (input.body) as { bot_id: string };
     const session = store.removeMember(params.id!, body.bot_id);
     publish({
       event: "session.upsert",
@@ -664,12 +730,7 @@ async function dispatch(
   params = matchPath(path, "/v1/sessions/:id/composer-suggestions");
   if (params && method === "GET") {
     store.getSession(params.id!);
-    try {
-      const items = await engine.suggestComposer(params.id!, request.signal);
-      return jsonResponse({ items }, 200, null);
-    } catch {
-      return jsonResponse({ items: [] }, 200, null);
-    }
+    return engine.suggestComposer(params.id!, request.signal).then((items) => jsonResponse({ items }, 200, null), () => jsonResponse({ items: [] }, 200, null));
   }
 
   params = matchPath(path, "/v1/sessions/:id/read");
@@ -720,7 +781,7 @@ async function dispatch(
     return jsonResponse(session, 200, null);
   }
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as { name?: string };
+    const body = (input.body) as { name?: string };
     if (typeof body.name !== "string") {
       throw new HttpError(422, "invalid_args", "name is required");
     }
@@ -752,7 +813,7 @@ async function dispatch(
 
   params = matchPath(path, "/v1/messages/:id/reactions");
   if (params && (method === "PUT" || method === "DELETE")) {
-    const body = (await readJson(request)) as { emoji?: string };
+    const body = (input.body) as { emoji?: string };
     if (!body.emoji || !REACTIONS.has(body.emoji)) {
       throw new HttpError(422, "invalid_args", "emoji is not in the allowed set");
     }
@@ -779,11 +840,12 @@ async function dispatch(
     if (located.isDir) {
       throw new HttpError(422, "invalid_args", "attachment is a directory");
     }
-    const file = Bun.file(located.abs);
+    const file = readFileSync(located.abs);
     const mime = attachmentMime(att.original_filename, att.workspace_relpath);
     return new Response(file, {
       status: 200,
       headers: {
+        "ETag": fileEtag(file),
         "Content-Type": mime,
         "Content-Disposition": `inline; filename="${encodeURIComponent(att.original_filename)}"`,
       },
@@ -801,7 +863,7 @@ async function dispatch(
   }
   params = matchPath(path, "/v1/approvals/:id/resolve");
   if (params && method === "POST") {
-    const body = (await readJson(request)) as { action?: string; scope?: string; api_key?: string };
+    const body = (input.body) as { action?: string; scope?: string; api_key?: string };
     if (
       body.action !== "allow_once" &&
       body.action !== "deny" &&
@@ -813,7 +875,7 @@ async function dispatch(
       throw new HttpError(422, "invalid_args", "api_key must be a string");
     }
     return jsonResponse(
-      await engine.resolveApproval(params.id!, body.action, body.scope, body.api_key),
+      engine.resolveApproval(params.id!, body.action, body.scope, body.api_key),
       200,
       null,
     );
@@ -823,7 +885,7 @@ async function dispatch(
     return jsonResponse({ items: store.listAllowRules() }, 200, null);
   }
   if (method === "POST" && path === "/v1/allow-rules") {
-    const body = (await readJson(request)) as { kind_key?: string; scope?: string };
+    const body = (input.body) as { kind_key?: string; scope?: string };
     if (!body.kind_key || !body.scope) {
       throw new HttpError(422, "invalid_args", "kind_key and scope are required");
     }
@@ -839,10 +901,10 @@ async function dispatch(
   }
 
   if (method === "GET" && path === "/v1/mcp-servers") {
-    return jsonResponse({ items: await store.listMcpServersHydrated() }, 200, null);
+    return store.listMcpServersHydrated().then((items) => jsonResponse({ items }, 200, null));
   }
   if (method === "POST" && path === "/v1/mcp-servers") {
-    const body = (await readJson(request)) as {
+    const body = (input.body) as {
       name: string;
       transport?: "stdio" | "http";
       command?: string;
@@ -853,14 +915,12 @@ async function dispatch(
       enabled?: boolean;
       usage_note?: string | null;
     };
-    let server = await store.createMcpServer(body);
-    server = await persistMcpInspect(store, mcp, server);
-    publish({ event: "mcp.upsert", occurred_at: occurred(), ...server });
+    const server = store.createMcpServerSync(body);
     return jsonResponse(server, 201, null);
   }
   params = matchPath(path, "/v1/mcp-servers/:id");
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as {
+    const body = (input.body) as {
       name?: string;
       transport?: "stdio" | "http";
       command?: string;
@@ -871,14 +931,11 @@ async function dispatch(
       enabled?: boolean;
       usage_note?: string | null;
     };
-    let server = await store.patchMcpServer(params.id!, body);
-    server = await persistMcpInspect(store, mcp, server);
-    publish({ event: "mcp.upsert", occurred_at: occurred(), ...server });
+    const server = store.patchMcpServerSync(params.id!, body);
     return jsonResponse(server, 200, null);
   }
   if (params && method === "DELETE") {
-    await store.deleteMcpServer(params.id!);
-    publish({ event: "mcp.removed", occurred_at: occurred(), id: params.id! });
+    store.deleteMcpServerSync(params.id!);
     return emptyResponse(204, null);
   }
 
@@ -886,7 +943,7 @@ async function dispatch(
     return jsonResponse({ items: store.listSkills() }, 200, null);
   }
   if (method === "POST" && path === "/v1/skills") {
-    const body = (await readJson(request)) as {
+    const body = (input.body) as {
       bot_id: string;
       name: string;
       description: string;
@@ -900,7 +957,7 @@ async function dispatch(
   }
   params = matchPath(path, "/v1/skills/:id");
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as {
+    const body = (input.body) as {
       name?: string;
       description?: string;
       body?: string;
@@ -923,7 +980,7 @@ async function dispatch(
   }
   params = matchPath(path, "/v1/memories/:id");
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as { subject?: string; body?: string; enabled?: boolean };
+    const body = (input.body) as { subject?: string; body?: string; enabled?: boolean };
     const memory = store.patchMemory(params.id!, body);
     publish({ event: "memory.upsert", occurred_at: occurred(), ...memory });
     return jsonResponse(memory, 200, null);
@@ -938,7 +995,7 @@ async function dispatch(
     return jsonResponse({ items: store.listRoutines() }, 200, null);
   }
   if (method === "POST" && path === "/v1/routines") {
-    const body = (await readJson(request)) as {
+    const body = (input.body) as {
       bot_id: string;
       title: string;
       instruction: string;
@@ -952,7 +1009,7 @@ async function dispatch(
   }
   params = matchPath(path, "/v1/routines/:id");
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as {
+    const body = (input.body) as {
       title?: string;
       instruction?: string;
       schedule?: Routine["schedule"];
@@ -1002,4 +1059,49 @@ function publishBotModelChanges(
     if (previous?.model === bot.model && previous.provider_id === bot.provider_id) continue;
     publish({ event: "bot.upsert", occurred_at: at, ...bot, deleted_at: null });
   }
+}
+
+type ParsedMutation = { body: Record<string, unknown>; files: AttachmentInput[]; multipart: boolean; stagedWrite?: FileCommit; normalizedFiles?: NormalizedFile<AttachmentInput>[] };
+
+async function parseMutation(request: Request): Promise<ParsedMutation> {
+  const media = (request.headers.get("content-type") ?? "application/json").split(";")[0]!.trim().toLowerCase();
+  if (media !== "application/json" && media !== "multipart/form-data") throw new HttpError(422, "invalid_args", "unsupported mutation media type");
+  if (media === "application/json") {
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(422, "invalid_args", "body must be an object");
+    return { body: body as Record<string, unknown>, files: [], multipart: false };
+  }
+  const form = await request.formData();
+  const body: Record<string, unknown> = {};
+  const files: AttachmentInput[] = [];
+  for (const [key, value] of form) {
+    if (value instanceof File) files.push({ originalFilename: value.name, buffer: new Uint8Array(await value.arrayBuffer()) });
+    else {
+      if (Object.hasOwn(body, key)) throw new HttpError(422, "invalid_args", "duplicate multipart field");
+      Object.defineProperty(body, key, { value, enumerable: true });
+    }
+  }
+  const normalizedFiles = normalizeFiles(files, (file) => ({ filename: file.originalFilename, bytes: file.buffer }));
+  return { body, files: normalizedFiles.map((item) => item.file), normalizedFiles, multipart: true };
+}
+
+function checkRevision(store: Store, request: Request, url: URL, body: Record<string, unknown>, scope: RequestScope): void {
+  if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && scope.requireRevision && !request.headers.has("If-Match")) {
+    throw new HttpError(422, "invalid_args", "If-Match is required");
+  }
+  if (request.method !== "PATCH") return;
+  const revision = body.if_revision;
+  if (revision === undefined && !scope.requireRevision) return;
+  if (url.pathname === "/v1/settings") {
+    if (!Number.isInteger(revision) || revision !== store.settingsCached().settings_rev) throw new HttpError(409, "conflict", "settings revision changed");
+  } else {
+    const parts = url.pathname.split("/");
+    const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions" };
+    const table = tables[parts[2] ?? ""];
+    if (!table || !parts[3]) return;
+    const row = store.db.query<{ updated_at: string }, [string]>(`SELECT updated_at FROM ${table} WHERE id = ?`).get(decodeURIComponent(parts[3]));
+    if (!row) throw new HttpError(404, "not_found", "entity not found");
+    if (typeof revision !== "string" || revision !== row.updated_at) throw new HttpError(409, "conflict", "entity revision changed");
+  }
+  delete body.if_revision;
 }

@@ -5,8 +5,14 @@
  * `store.getBot(id)` while the code behind it stays small enough to read in one sitting.
  */
 import { chmodSync } from "node:fs";
-import type { ClientEvent, RuntimeSnapshot } from "@real-bot/protocol";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { APP_SUPPORT_DIRNAME, providerKeychainName, mcpAuthKeychainName, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
 import { installChangeJournal, committedEvents } from "./events";
+import { Transactions } from "./transactions";
+import { Receipts } from "./receipts";
+import * as credentials from "./credentials";
+import * as files from "./files";
 import { Database } from "bun:sqlite";
 import { SCHEMA_SQL } from "../schema";
 import * as approvals from "./approvals";
@@ -43,9 +49,10 @@ type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (..
 
 export class Store {
   readonly db: Database;
+  readonly receipts: Receipts;
   private readonly ctx: StoreContext;
   private readonly listeners = new Set<(event: ClientEvent) => void>();
-  private committing = false;
+  private journalReady = false;
 
   constructor(options: StoreOptions = {}) {
     this.db = new Database(options.filename ?? ":memory:", { create: true, strict: true });
@@ -53,6 +60,7 @@ export class Store {
     if (options.filename && options.filename !== ":memory:") {
       this.db.run("PRAGMA journal_mode = WAL");
     }
+    this.db.run("PRAGMA synchronous = FULL");
     this.db.exec(SCHEMA_SQL);
     migrateSchema(this.db);
     if (options.filename && options.filename !== ":memory:") {
@@ -64,13 +72,47 @@ export class Store {
     }
     this.ctx = {
       db: this.db,
-      keys: new KeyCache(options.endpointKey ?? memoryKeyStore(), () => this.keysChanged()),
+      keys: new KeyCache(options.endpointKey ?? memoryKeyStore(), this.db, (name) => this.keysChanged(name)),
+      tx: new Transactions(this.db, () => { if (this.journalReady) this.emit(committedEvents(this.ctx)); }),
+      inboxRoot: options.filename && options.filename !== ":memory:" ? dirname(options.filename) : join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME),
+      keyPlan: null,
+      activeStages: new Set(),
       legacy: { copiedKey: false },
       commit: (write) => this.commit(write),
     };
+    this.receipts = new Receipts(this.db, this.ctx.tx, this.ctx.keys, () => files.recoverFiles(this.ctx));
+    files.recoverFiles(this.ctx);
     settings.ensureLegacyProviderRow(this.ctx);
     installChangeJournal(this.ctx);
+    this.journalReady = true;
   }
+
+  readonly transaction = <T>(work: () => T): T => this.ctx.tx.run(work);
+  readonly afterCommit = (effect: () => void): void => this.ctx.tx.afterCommit(effect);
+  readonly recoverFiles = (): void => files.recoverFiles(this.ctx);
+  readonly prepareFile = (...args: Parameters<Bound<typeof files.prepareFile>>) => files.prepareFile(this.ctx, ...args);
+  readonly commitPreparedFile = this.bind(files.commitPreparedFile);
+  readonly discardFile = this.bind(files.discardFile);
+  readonly prepareAttachments = (...args: Parameters<Bound<typeof messages.prepareAttachments>>) => messages.prepareAttachments(this.ctx, ...args);
+
+  planKeys<T>(plan: Array<{ name: string; value: string }>, work: () => T): T {
+    this.ctx.keyPlan = plan;
+    try { return work(); } finally { this.ctx.keyPlan = null; }
+  }
+
+  readonly listCredentialOperations = this.bind(credentials.listCredentialOperations);
+  readonly resolveCredentialOperation = this.bind(credentials.resolveCredentialOperation);
+  readonly applyMcpInspection = this.bind(mcp.applyMcpInspection);
+
+  readonly settingsCached = this.bind(settings.settingsCached);
+  readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
+  readonly createProviderSync = this.bind(providers.createProviderSync);
+  readonly patchProviderSync = this.bind(providers.patchProviderSync);
+  readonly deleteProviderSync = this.bind(providers.deleteProviderSync);
+  readonly createMcpServerSync = this.bind(mcp.createMcpServerSync);
+  readonly patchMcpServerSync = this.bind(mcp.patchMcpServerSync);
+  readonly deleteMcpServerSync = this.bind(mcp.deleteMcpServerSync);
+  readonly providersCached = this.bind(providers.providersCached);
 
   close(): void {
     this.db.close();
@@ -85,32 +127,28 @@ export class Store {
     for (const event of events) for (const listener of this.listeners) listener(event);
   }
 
-  private keysChanged(): void {
-    const occurred_at = new Date().toISOString();
-    this.emit([
-      { event: "settings.changed", occurred_at, ...settings.settingsCached(this.ctx) },
-      ...providers.listProvidersCached(this.ctx).map((row): ClientEvent => ({ event: "provider.upsert", occurred_at, ...row })),
-      ...mcp.listMcpServers(this.ctx).map((row): ClientEvent => ({ event: "mcp.upsert", occurred_at, ...row })),
-    ]);
+  private keysChanged(name: string): void {
+    if (!this.journalReady) return;
+    this.ctx.tx.run(() => {
+      const provider = providers.providersCached(this.ctx).find((row) => providerKeychainName(row.id) === name);
+      const server = mcp.listMcpServers(this.ctx).find((row) => mcpAuthKeychainName(row.id) === name);
+      if (provider) {
+        this.db.run("INSERT INTO event_changes VALUES ('providers', ?, 'UPDATE', NULL)", [provider.id]);
+        this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
+      }
+      if (server) this.db.run("INSERT INTO event_changes VALUES ('mcp_servers', ?, 'UPDATE', NULL)", [server.id]);
+    });
   }
 
   private commit<T>(write: () => T): T {
-    if (this.committing) return write();
-    this.committing = true;
-    try {
-      const value = this.db.transaction(write)();
-      if (!this.db.inTransaction) this.emit(committedEvents(this.ctx));
-      return value;
-    } finally {
-      this.committing = false;
-    }
+    return this.ctx.tx.run(write);
   }
 
   private bind<F extends (ctx: StoreContext, ...args: never[]) => unknown>(fn: F, asynchronous = false): Bound<F> {
     return ((...args: unknown[]) => {
       const call = () => (fn as unknown as (...all: unknown[]) => unknown)(this.ctx, ...args);
       // Async domain methods delimit each SQLite write with ctx.commit themselves.
-      return asynchronous ? call() : this.commit(call);
+      return asynchronous || this.db.inTransaction ? call() : this.commit(call);
     }) as Bound<F>;
   }
 
@@ -121,9 +159,10 @@ export class Store {
 
   readSnapshot(): Omit<RuntimeSnapshot, "event_instance_id" | "watermark_seq"> {
     return {
+      credentialOperations: credentials.listCredentialOperations(this.ctx),
       settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
       spend: this.listSpend({}), approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
-      providers: providers.listProvidersCached(this.ctx), skills: this.listSkills(), memories: this.listMemories(),
+      providers: providers.providersCached(this.ctx), skills: this.listSkills(), memories: this.listMemories(),
       routines: this.listRoutines(), allowRules: this.listAllowRules(),
     };
   }
@@ -199,7 +238,7 @@ export class Store {
 
   // Transcript -----------------------------------------------------------------------------
   readonly listMessages = this.bind(messages.listMessages);
-  readonly postMessage = this.bind(messages.postMessage);
+  readonly postMessage = (...args: Parameters<Bound<typeof messages.postMessage>>) => messages.postMessage(this.ctx, ...args);
   readonly insertMessage = this.bind(messages.insertMessage);
   readonly getMessage = this.bind(messages.getMessage);
   readonly listMainMessages = this.bind(messages.listMainMessages);

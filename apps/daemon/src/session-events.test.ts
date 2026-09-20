@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RuntimeSnapshot, SequencedEvent, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
 import { createLocalApi } from "./local-api";
 import { EVENT_RING_BYTES, EVENT_RING_COUNT, EventStream } from "./session-events";
 import { Store, type EndpointKeyStore } from "./store";
+import { ulid } from "./ids";
 
 const closes: (() => Promise<void>)[] = [];
 afterEach(async () => { while (closes.length) await closes.pop()!(); });
@@ -106,6 +107,125 @@ describe("event ring", () => {
 });
 
 describe("commit / subscribe / snapshot barrier", () => {
+  test("integration: injected business reads share local snapshot, detail and catchup barriers", async () => {
+    const h = await harness();
+    const bot = h.store.createBot({ name: "shared reads", duties: "", boundaries: "" });
+    const scope = { deviceId: "fixture", requestId: ulid() };
+    const snapshot = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    for (const path of ["/v1/snapshot", `/v1/sessions/${bot.direct_session.id}/snapshot`, `/v1/events/catchup?event_instance_id=${snapshot.event_instance_id}&after_seq=${snapshot.watermark_seq}`]) {
+      const injected = await h.api.dispatchBusiness(new Request(`http://fixture${path}`), scope);
+      expect(injected.status).toBe(200);
+      expect(await injected.json()).toEqual(await h.get(path));
+    }
+  });
+
+  test("integration: receipt commits publish once before effects, rollback and replay publish nothing", async () => {
+    const h = await harness();
+    const scope = { deviceId: "fixture", requestId: ulid() };
+    const seen: string[] = [];
+    h.store.onCommit((event) => {
+      expect(h.store.db.inTransaction).toBe(false);
+      expect(h.store.receipts.lookup(scope)?.state).toBe("complete");
+      seen.push(event.event);
+    });
+    await h.store.receipts.execute(scope, "fixture", "POST", "/fixture", {}, async () => () => {
+      h.store.transaction(() => h.store.createAllowRule("outside-read", "/fixture"));
+      h.store.afterCommit(() => { expect(seen).toEqual(["allow_rule.upsert"]); seen.push("effect"); });
+      return { status: 204, body: null };
+    }, []);
+    expect(seen).toEqual(["allow_rule.upsert", "effect"]);
+    await h.store.receipts.execute(scope, "fixture", "POST", "/fixture", {}, async () => { throw new Error("replayed business"); }, []);
+    expect(() => h.store.transaction(() => {
+      h.store.createAllowRule("outside-read", "/rolled-back");
+      throw new Error("rollback");
+    })).toThrow("rollback");
+    expect(seen).toEqual(["allow_rule.upsert", "effect"]);
+    expect(h.store.db.query("SELECT * FROM event_changes").all()).toEqual([]);
+  });
+
+  test("integration: rolled-back pending keys preserve cached credentials and emit no events", async () => {
+    const h = await harness();
+    const provider = await h.store.createProvider({ name: "cached", base_url: "https://fixture.invalid", api_key: "fake" });
+    const before = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    h.store.db.exec("CREATE TEMP TRIGGER reject_fixture_receipt BEFORE INSERT ON request_receipts BEGIN SELECT RAISE(ABORT, 'fixture receipt failure'); END");
+    const scope = { deviceId: "fixture", requestId: ulid() };
+    await expect(h.api.dispatchBusiness(new Request(`http://fixture/v1/providers/${provider.id}`, { method: "PATCH", body: JSON.stringify({ api_key: "replacement" }) }), scope)).rejects.toThrow();
+    h.store.db.exec("DROP TRIGGER reject_fixture_receipt");
+    expect(h.store.providersCached()[0]!.key_set).toBe(true);
+    expect(h.store.listCredentialOperations()).toEqual([]);
+    expect(await h.get<RuntimeSnapshot>("/v1/snapshot")).toEqual(before);
+  });
+
+  test("integration: credential receipt phases replay to the exact snapshot across unrelated commits", async () => {
+    const entered = deferred<void>(); const release = deferred<void>();
+    let h: Awaited<ReturnType<typeof harness>>;
+    h = await harness({ async get() { return null; }, async delete() {}, async set() {
+      expect(h.store.db.inTransaction).toBe(false); entered.resolve(); await release.promise;
+    } });
+    const before = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    const id = ulid();
+    const body = { name: "held", base_url: "https://fixture.invalid", api_key: "fake" };
+    const request = () => new Request("http://fixture/v1/providers", { method: "POST", body: JSON.stringify(body) });
+    const scope = { deviceId: "fixture", requestId: id };
+    const pending = h.api.dispatchBusiness(request(), scope);
+    await entered.promise;
+    const middle = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(middle.providers[0]!.key_set).toBe(false);
+    expect(middle.credentialOperations).toHaveLength(1);
+    expect(h.store.receipts.read(scope).status).toBe(503);
+    await h.store.patchSettings({ theme: "dark" });
+    release.resolve();
+    expect((await pending).status).toBe(201);
+    const after = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    const caught = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${before.event_instance_id}&after_seq=${before.watermark_seq}`);
+    expect(replayProviderSettings(before, caught.events)).toEqual({ settings: after.settings, providers: after.providers });
+    expect(after.credentialOperations).toEqual([]);
+    const keys = caught.events.filter((e) => e.payload.event === "provider.upsert").map((e) => e.payload.event === "provider.upsert" && e.payload.key_set);
+    expect(keys).toEqual([false, true]);
+    const operations = caught.events.filter((e) => e.payload.event === "credential_operations.changed");
+    expect(operations.map((e) => e.payload.event === "credential_operations.changed" && e.payload.items.length)).toEqual([1, 0]);
+    await h.store.patchProvider(after.providers[0]!.id, { name: "newer" });
+    const watermark = (await h.get<RuntimeSnapshot>("/v1/snapshot")).watermark_seq;
+    const replay = await h.api.dispatchBusiness(request(), scope);
+    expect((await replay.json() as { name: string }).name).toBe("held");
+    const final = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(final.providers[0]!.name).toBe("newer");
+    expect(final.watermark_seq).toBe(watermark);
+  });
+
+  test("integration: attachment events precede rename and engine effects; replay leaves no orphan stages", async () => {
+    const h = await harness();
+    const root = mkdtempSync(join(tmpdir(), "rc-int-files-"));
+    closes.push(async () => rmSync(root, { recursive: true, force: true }));
+    await h.store.patchSettings({ workspace_path: root });
+    const bot = h.store.createBot({ name: "attachments", duties: "", boundaries: "" });
+    const scope = { deviceId: "fixture", requestId: ulid() };
+    const attachments = [{ originalFilename: "one.txt", buffer: Buffer.from("fixture bytes") }];
+    const order: string[] = [];
+    h.store.onCommit((event) => {
+      if (event.event !== "message.upsert") return;
+      expect(h.store.receipts.lookup(scope)?.state).toBe("complete");
+      expect(event.attachments[0]!.exists).toBe(true);
+      expect(existsSync(join(root, event.attachments[0]!.workspace_relpath))).toBe(false);
+      order.push("event");
+    });
+    await h.store.receipts.execute(scope, "upload", "POST", "/fixture", {}, async () => {
+      h.store.prepareAttachments(attachments);
+      return () => {
+        const message = h.store.postMessage(bot.direct_session.id, { body: "upload", attachments });
+        h.store.afterCommit(() => {
+          expect(readFileSync(join(root, message.attachments[0]!.workspace_relpath), "utf8")).toBe("fixture bytes");
+          order.push("engine");
+        });
+        return { status: 201, body: JSON.stringify(message) };
+      };
+    }, []);
+    expect(order).toEqual(["event", "engine"]);
+    await h.store.receipts.execute(scope, "upload", "POST", "/fixture", {}, async () => { throw new Error("replayed"); }, []);
+    expect(readdirSync(join(root, "inbox"))).toEqual(["one.txt"]);
+    expect(h.store.db.query("SELECT * FROM file_stages UNION ALL SELECT * FROM file_commits").all()).toEqual([]);
+  });
+
   test("a keychain wait cannot delay SQLite events behind later commits or snapshots", async () => {
     const entered = deferred<void>();
     const release = deferred<void>();
@@ -121,15 +241,17 @@ describe("commit / subscribe / snapshot barrier", () => {
     const provider = baseline.providers[0]!;
     expect(provider.name).toBe("first");
     expect(provider.key_set).toBe(false);
-    await h.store.patchProvider(provider.id, { name: "second" });
+    await expect(h.store.patchProvider(provider.id, { name: "blocked" })).rejects.toMatchObject({ status: 409 });
+    await h.store.patchSettings({ theme: "dark" });
     const latest = await h.get<RuntimeSnapshot>("/v1/snapshot");
     release.resolve();
     await pending;
     const caught = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${baseline.event_instance_id}&after_seq=${baseline.watermark_seq}`);
     const providers = caught.events.filter((e) => e.payload.event === "provider.upsert");
     expect(providers.length).toBeGreaterThan(0);
-    expect(providers.every((e) => e.payload.event === "provider.upsert" && e.payload.name === "second")).toBe(true);
-    expect(latest.providers[0]!.name).toBe("second");
+    expect(providers.every((e) => e.payload.event === "provider.upsert" && e.payload.name === "first")).toBe(true);
+    expect(latest.settings.theme).toBe("dark");
+    expect(caught.events.filter((e) => e.payload.event === "settings.changed").every((e) => e.payload.event === "settings.changed" && e.payload.theme === "dark")).toBe(true);
     expect(caught.events.every((e, i, all) => i === 0 || e.seq === all[i - 1]!.seq + 1)).toBe(true);
     client.ws.close();
   });
@@ -143,15 +265,14 @@ describe("commit / subscribe / snapshot barrier", () => {
       async set() {}, async delete() {},
     });
     const bot = h.store.createBot({ name: "Snapshot", duties: "fixture", boundaries: "fixture" }).bot;
+    await h.store.createMcpServer({ name: "fixture", command: "not-executed", enabled: false });
     block = true;
-    const create = h.store.createMcpServer({ name: "fixture", command: "not-executed", enabled: false });
-    await entered.promise;
     const client = await h.subscribe();
     const pending = h.get<RuntimeSnapshot>("/v1/snapshot");
+    await entered.promise;
     const routine = h.store.createRoutine({ bot_id: bot.id, title: "during read", instruction: "fixture", schedule: { kind: "daily", time: "09:00" } });
     const rule = h.store.createAllowRule("outside-read", "/fixture");
     release.resolve();
-    await create;
     const snapshot = await pending;
     expect(snapshot.routines.map((r) => r.id)).toContain(routine.id);
     expect(snapshot.allowRules.map((r) => r.id)).toContain(rule.id);

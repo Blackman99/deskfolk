@@ -181,8 +181,8 @@ export function patchMemory(
 }
 
 export function deleteMemory(ctx: StoreContext, id: string): void {
-  const changes = ctx.db.run(`DELETE FROM memories WHERE id = ?`, [id]).changes;
-  if (changes === 0) throw new HttpError(404, "not_found", "memory not found");
+  const deleted = ctx.db.query("DELETE FROM memories WHERE id = ? RETURNING id").get(id);
+  if (!deleted) throw new HttpError(404, "not_found", "memory not found");
 }
 
 /**
