@@ -1,5 +1,6 @@
 <script lang="ts">
 	import McpSettings from './McpSettings.svelte';
+	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
 	import Select from '../Select.svelte';
@@ -58,6 +59,9 @@
 		openDeleteProviderConfirm,
 		closeSettings
 	}: Props = $props();
+	/** Backdrop presses start outside these sheets; a drag out of one never closes them. */
+	const settingsBackdrop = backdropClick();
+	const providerBackdrop = backdropClick();
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
@@ -302,8 +306,9 @@
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
+		onmousedowncapture={settingsBackdrop.press}
 		onclick={(e) => {
-			if (e.target === e.currentTarget && !providerEditor && !confirmingProvider)
+			if (settingsBackdrop.isOutside(e) && !providerEditor && !confirmingProvider)
 				closeSettings();
 		}}
 		onkeydown={(e) => {
@@ -924,8 +929,9 @@
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
+		onmousedowncapture={providerBackdrop.press}
 		onclick={(e) => {
-			if (e.target === e.currentTarget) closeProviderEditor();
+			if (providerBackdrop.isOutside(e)) closeProviderEditor();
 		}}
 	>
 		<div class="modal-dialog provider-editor-modal">

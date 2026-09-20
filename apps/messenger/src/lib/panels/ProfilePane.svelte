@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MemoryCard from './MemoryCard.svelte';
+	import { backdropClick } from '../click-outside.ts';
 	import { untrack } from 'svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
@@ -58,6 +59,8 @@
 		onDeleteBot,
 		onClearHistory
 	}: Props = $props();
+	/** A click outside closes the skill editor; a text-selection drag that starts inside never does. */
+	const skillBackdrop = backdropClick();
 
 	const snapshot = $derived(runtime.snapshot);
 	const modelValues = $derived(modelOptions.map((option) => option.value));
@@ -620,9 +623,10 @@
 		aria-modal="true"
 		aria-labelledby="skill-modal-title"
 		tabindex="-1"
+		onmousedowncapture={skillBackdrop.press}
 		onclick={(e) => {
 			e.stopPropagation();
-			if (e.target === e.currentTarget && !skillBusy) closeSkillEditor();
+			if (skillBackdrop.isOutside(e) && !skillBusy) closeSkillEditor();
 		}}
 		onpointerdown={(e) => e.stopPropagation()}
 	>

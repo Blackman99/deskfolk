@@ -36,6 +36,7 @@
 	} from './sidebar/session-groups.ts';
 	import { sessionTitle } from './sidebar/session-title.ts';
 	import { sanitizePreviewPath } from './session-url.ts';
+	import { backdropClick } from './click-outside.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
@@ -285,6 +286,8 @@
 		source?: DangerSource;
 	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
+	/** The profile drawer closes on a click outside it, not on the tail of a text-selection drag. */
+	const profileBackdrop = backdropClick();
 
 	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
 	function clearDanger(...kinds: DangerKind[]): void {
@@ -810,9 +813,10 @@
 			role="dialog"
 			aria-modal="true"
 			tabindex="-1"
+			onmousedowncapture={profileBackdrop.press}
 			onclick={(e) => {
 				if (drawerHasDanger) return;
-				if (e.target === e.currentTarget) runtime.closeSessionSettings();
+				if (profileBackdrop.isOutside(e)) runtime.closeSessionSettings();
 			}}
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
