@@ -44,6 +44,55 @@ pub struct LocalConfirmation {
     pub expires_in: Option<u64>,
 }
 
+pub struct BundledNativeCaller;
+
+fn authorize_document(
+    label: &str,
+    url: &tauri::Url,
+    development: bool,
+    local_acl: bool,
+) -> Result<(), String> {
+    if development {
+        return Err("disabled".into());
+    }
+    if !local_acl
+        || label != "main"
+        || url.scheme() != "tauri"
+        || url.host_str() != Some("localhost")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.path(), "" | "/" | "/index.html")
+    {
+        return Err("forbidden_origin".into());
+    }
+    Ok(())
+}
+
+impl BundledNativeCaller {
+    fn from_item<R: tauri::Runtime>(
+        command: tauri::ipc::CommandItem<'_, R>,
+        development: bool,
+    ) -> Result<Self, tauri::ipc::InvokeError> {
+        let webview = command.message.webview_ref();
+        // Tauri resolves this ACL from the sending frame, not renderer-provided headers or arguments.
+        let local_acl = command.acl.as_ref().is_some_and(|acl| {
+            acl.iter()
+                .any(|entry| matches!(entry.context, tauri::utils::acl::ExecutionContext::Local))
+        });
+        authorize_document(webview.label(), &webview.url()?, development, local_acl)?;
+        Ok(Self)
+    }
+}
+
+impl<'a, R: tauri::Runtime> tauri::ipc::CommandArg<'a, R> for BundledNativeCaller {
+    fn from_command(
+        command: tauri::ipc::CommandItem<'a, R>,
+    ) -> Result<Self, tauri::ipc::InvokeError> {
+        Self::from_item(command, cfg!(debug_assertions) || tauri::is_dev())
+    }
+}
+
 pub fn native_dir(resources: &Path) -> PathBuf {
     resources.join("native")
 }
@@ -145,11 +194,22 @@ fn start_helper(directory: &Path, state: &HelperState) -> Result<(), String> {
     Ok(())
 }
 
-fn reply(value: Value) -> Result<LocalConfirmation, String> {
+fn reply(value: Value, confirmation: bool) -> Result<LocalConfirmation, String> {
     if value["v"] != 1 || value["id"] != "00000000-0000-4000-8000-000000000005" {
         return Err("malformed".into());
     }
     let ok = value["ok"].as_bool().ok_or("malformed")?;
+    let (proof, expires_in) = if ok && confirmation {
+        let ttl = value["expiresIn"]
+            .as_u64()
+            .filter(|ttl| (1..=60).contains(ttl))
+            .ok_or("malformed")?;
+        let token = value["value"].as_str().ok_or("malformed")?;
+        request(&Operation::Confirm, Some(token.to_owned()))?;
+        (Some(token.to_owned()), Some(ttl))
+    } else {
+        (None, None)
+    };
     Ok(LocalConfirmation {
         ok,
         enabled: false,
@@ -158,18 +218,27 @@ fn reply(value: Value) -> Result<LocalConfirmation, String> {
         } else {
             value["error"].as_str().unwrap_or("unavailable").to_string()
         },
-        proof: if ok && value["expiresIn"] == 60 {
-            value["value"].as_str().map(str::to_owned)
-        } else {
-            None
-        },
-        expires_in: value["expiresIn"].as_u64(),
+        proof,
+        expires_in,
     })
 }
 
+fn after_ready(
+    operation: &Operation,
+    value: Value,
+    call: impl FnOnce() -> Result<Value, String>,
+) -> Result<LocalConfirmation, String> {
+    if matches!(operation, Operation::Ready) {
+        reply(value, false)
+    } else {
+        reply(call()?, matches!(operation, Operation::Confirm))
+    }
+}
+
 #[tauri::command]
-pub async fn remote_native_confirmation(
-    app: tauri::AppHandle,
+pub async fn remote_native_confirmation<R: tauri::Runtime>(
+    _caller: BundledNativeCaller,
+    app: tauri::AppHandle<R>,
     operation: Operation,
     challenge: Option<String>,
 ) -> Result<LocalConfirmation, String> {
@@ -183,7 +252,7 @@ pub async fn remote_native_confirmation(
             }),
         )?;
         if capability["ok"] != true || matches!(operation, Operation::Capability) {
-            return reply(capability);
+            return reply(capability, false);
         }
         start_helper(&directory, &app.state::<HelperState>())?;
         // Probe readiness without replaying an authentication or uncertain mutation.
@@ -191,10 +260,10 @@ pub async fn remote_native_confirmation(
         for attempt in 0..20 {
             let value = native_call(&directory, &ping)?;
             if value["ok"] == true {
-                return reply(native_call(&directory, &request)?);
+                return after_ready(&operation, value, || native_call(&directory, &request));
             }
             if value["error"] != "unavailable" || attempt == 19 {
-                return reply(value);
+                return reply(value, false);
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
@@ -221,12 +290,193 @@ mod tests {
 
     #[test]
     fn capability_never_claims_packaging_gate_passed() {
-        let value =
-            reply(json!({ "v": 1, "id": "00000000-0000-4000-8000-000000000005", "ok": true }))
-                .unwrap();
+        let value = reply(
+            json!({ "v": 1, "id": "00000000-0000-4000-8000-000000000005", "ok": true }),
+            false,
+        )
+        .unwrap();
         assert!(!value.enabled);
         assert_eq!(value.diagnostic, "g_pack_not_verified");
-        assert!(reply(json!({ "v": 2 })).is_err());
+        assert!(reply(json!({ "v": 2 }), false).is_err());
+    }
+
+    #[test]
+    fn confirmation_accepts_only_bounded_remaining_lifetime_and_a_proof() {
+        let value = json!({ "v": 1, "id": "00000000-0000-4000-8000-000000000005", "ok": true,
+            "value": format!("{}=", "A".repeat(43)), "expiresIn": 20 });
+        for ttl in [1, 20, 59, 60] {
+            let mut value = value.clone();
+            value["expiresIn"] = json!(ttl);
+            let response = reply(value, true).unwrap();
+            assert!(response.proof.is_some());
+            assert_eq!(response.expires_in, Some(ttl));
+        }
+        for ttl in [
+            json!(0),
+            json!(61),
+            json!(-1),
+            json!(0.5),
+            json!("20"),
+            Value::Null,
+        ] {
+            let mut value = value.clone();
+            value["expiresIn"] = ttl;
+            assert!(reply(value, true).is_err());
+        }
+        let mut malformed = value.clone();
+        malformed["value"] = json!("fake");
+        assert!(reply(malformed, true).is_err());
+        assert!(reply(value.clone(), false).unwrap().proof.is_none());
+        let mut rejected = value;
+        rejected["ok"] = json!(false);
+        rejected["error"] = json!("expired");
+        assert!(reply(rejected, true).unwrap().proof.is_none());
+    }
+
+    #[test]
+    fn ready_uses_first_authenticated_probe_without_repeating_it() {
+        let ready = json!({ "v": 1, "id": "00000000-0000-4000-8000-000000000005", "ok": true });
+        assert!(
+            after_ready(&Operation::Ready, ready.clone(), || panic!("second ping"))
+                .unwrap()
+                .ok
+        );
+        let mut called = false;
+        assert!(
+            after_ready(&Operation::Create, ready.clone(), || {
+                called = true;
+                Ok(ready)
+            })
+            .unwrap()
+            .ok
+        );
+        assert!(called);
+    }
+
+    #[test]
+    fn bundled_document_policy_rejects_dev_remote_blob_and_other_windows() {
+        for url in [
+            "tauri://localhost",
+            "tauri://localhost/",
+            "tauri://localhost/index.html?s=fixture#chat",
+        ] {
+            assert!(authorize_document("main", &url.parse().unwrap(), false, true).is_ok());
+            assert_eq!(
+                authorize_document("main", &url.parse().unwrap(), true, true),
+                Err("disabled".into())
+            );
+            assert!(authorize_document("main", &url.parse().unwrap(), false, false).is_err());
+            assert!(authorize_document("other", &url.parse().unwrap(), false, true).is_err());
+        }
+        for url in [
+            "http://localhost:5173/",
+            "https://evil.example/",
+            "blob:tauri://localhost/fixture",
+            "about:srcdoc",
+            "data:text/html,fixture",
+            "tauri://localhost/preview.html",
+            "tauri://evil/",
+            "tauri://user@localhost/",
+        ] {
+            assert!(
+                authorize_document("main", &url.parse().unwrap(), false, true).is_err(),
+                "{url}"
+            );
+        }
+    }
+
+    struct ReleaseFixtureCaller;
+    impl<'a, R: tauri::Runtime> tauri::ipc::CommandArg<'a, R> for ReleaseFixtureCaller {
+        fn from_command(
+            command: tauri::ipc::CommandItem<'a, R>,
+        ) -> Result<Self, tauri::ipc::InvokeError> {
+            BundledNativeCaller::from_item(command, false).map(|_| Self)
+        }
+    }
+
+    #[tauri::command]
+    fn release_origin_fixture(_caller: ReleaseFixtureCaller) -> &'static str {
+        "bundled"
+    }
+
+    #[tauri::command]
+    fn debug_origin_fixture(_caller: BundledNativeCaller) -> &'static str {
+        "must not run"
+    }
+
+    #[test]
+    fn actual_tauri_ipc_uses_frame_acl_and_command_document_guard() {
+        use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
+        let mut context = crate::app_context();
+        context.config_mut().app.windows.clear();
+        // Keep the real devUrl and generated application ACL; only the fixture commands are added.
+        for command in ["release_origin_fixture", "debug_origin_fixture"] {
+            context
+                .runtime_authority_mut()
+                .__allow_command(command.into(), tauri::utils::acl::ExecutionContext::Local);
+        }
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![
+                release_origin_fixture,
+                debug_origin_fixture,
+                remote_native_confirmation
+            ])
+            .build(context)
+            .unwrap();
+        let bundled = tauri::WebviewWindowBuilder::new(
+            &app,
+            "main",
+            tauri::WebviewUrl::External("tauri://localhost/index.html".parse().unwrap()),
+        )
+        .build()
+        .unwrap();
+        let invoke = |command: &str, frame: &str| {
+            get_ipc_response(
+                &bundled,
+                tauri::webview::InvokeRequest {
+                    cmd: command.into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: frame.parse().unwrap(),
+                    body: tauri::ipc::InvokeBody::Json(json!({"operation":"ready"})),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.into(),
+                },
+            )
+        };
+        assert!(invoke("release_origin_fixture", "tauri://localhost/index.html").is_ok());
+        assert!(invoke("debug_origin_fixture", "tauri://localhost/index.html").is_err());
+        for frame in [
+            "blob:tauri://localhost/fixture",
+            "about:srcdoc",
+            "https://evil.example/",
+        ] {
+            assert!(invoke("release_origin_fixture", frame).is_err(), "{frame}");
+        }
+        bundled
+            .navigate("http://localhost:5173/".parse().unwrap())
+            .unwrap();
+        assert!(invoke("release_origin_fixture", "http://localhost:5173/").is_err());
+        assert!(invoke("debug_origin_fixture", "http://localhost:5173/").is_err());
+        assert_eq!(
+            invoke("remote_native_confirmation", "http://localhost:5173/").unwrap_err(),
+            json!("disabled")
+        );
+        for operation in ["capability", "ready", "create", "confirm"] {
+            let denied = get_ipc_response(
+                &bundled,
+                tauri::webview::InvokeRequest {
+                    cmd: "remote_native_confirmation".into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: "http://localhost:5173/".parse().unwrap(),
+                    body: tauri::ipc::InvokeBody::Json(json!({"operation":operation})),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.into(),
+                },
+            );
+            assert_eq!(denied.unwrap_err(), json!("disabled"));
+        }
     }
 
     #[test]

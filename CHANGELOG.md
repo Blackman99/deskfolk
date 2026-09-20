@@ -8,6 +8,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Native remote-control groundwork
 
+- Require macOS 13.0+ in bundle metadata and check mandatory native deployment targets during packaging. Reject native confirmation IPC from development, remote and artifact documents; report only the proof lifetime remaining after authentication and storage. Run credential-free Swift fixtures in macOS CI and release verification; stock Bun remains unqualified and remote capabilities stay disabled.
 - Add a Swift Security/LocalAuthentication helper, authenticated versioned local socket, action-bound one-use Mac confirmation, and a narrow native daemon credential/high-water interface. Remote credentials use a non-synchronizing, device-only data-protection Keychain access group instead of incompatible legacy ACL attributes.
 - Package the helper, native library and compiled daemon; release launch no longer needs PATH Bun unless explicitly opting into source mode. Remote/standalone capabilities remain disabled: stable signing, a sealed runtime (stock Bun's interpreter escape is rejected), provisioned sharing and clean-Mac G-pack acceptance are still required. Source development has no automatic authentication fallback.
 

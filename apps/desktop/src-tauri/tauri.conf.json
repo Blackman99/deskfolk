@@ -29,6 +29,7 @@
     "externalBin": [],
     "resources": { "native/": "native/" },
     "macOS": {
+      "minimumSystemVersion": "13.0",
       "signingIdentity": "-"
     },
     "icon": [

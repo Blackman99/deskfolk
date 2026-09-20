@@ -27,7 +27,9 @@ private func expectThrows<T>(
 private final class MemoryStorage: CredentialStorage {
   var value: Data?
   var failure: RemoteError?
+  var duringRead: (() -> Void)?
   func read() throws -> Data {
+    duringRead?()
     if let failure { throw failure }
     guard let value else { throw RemoteError.notFound }
     return value
@@ -264,6 +266,55 @@ final class RemoteCoreTests {
       ).error, .proof)
   }
 
+  func testConfirmationReportsRemainingChallengeAndProofLifetime() throws {
+    for (begin, authTime, storeTime, expected) in [
+      (100.0, 0.0, 0.0, 20), (90.0, 10.0, 3.25, 16), (0.0, 5.0, 2.25, 57),
+    ] {
+      let (storage, keys, auth) = try fixture()
+      var now = 0.0
+      let service = HelperService(credentials: keys, auth: auth, now: { now })
+      let challenge = service.handle(request("prepare", action: action), peer: daemon).value!
+      now = begin
+      auth.during = { now += authTime }
+      storage.duringRead = { now += storeTime }
+      let confirmation = service.handle(request("confirm", challenge: challenge), peer: desktop)
+      expect(confirmation.ok)
+      expectEqual(confirmation.expiresIn, expected)
+      storage.duringRead = nil
+      now += Double(expected) - 0.1
+      expect(
+        service.handle(
+          request("consume", action: action, challenge: challenge, proof: confirmation.value),
+          peer: daemon
+        ).ok)
+    }
+  }
+
+  func testConfirmationRejectsExpiryDuringStoreOrTokenGeneration() throws {
+    for (begin, storeTime, randomTime) in [
+      (100.0, 20.0, 0.0), (0.0, 60.0, 0.0), (119.5, 0.0, 0.0), (100.0, 0.0, 20.0),
+    ] {
+      let (storage, keys, auth) = try fixture()
+      var now = 0.0
+      var draws = 0
+      let service = HelperService(
+        credentials: keys, auth: auth, now: { now },
+        random: {
+          draws += 1
+          if draws == 2 { now += randomTime }
+          return Data(repeating: UInt8(draws), count: 32).base64EncodedString()
+        })
+      let challenge = service.handle(request("prepare", action: action), peer: daemon).value!
+      now = begin
+      storage.duringRead = { now += storeTime }
+      let response = service.handle(request("confirm", challenge: challenge), peer: desktop)
+      expectEqual(response.error, .expired)
+      expect(response.value == nil)
+      expectEqual(
+        service.handle(request("confirm", challenge: challenge), peer: desktop).error, .proof)
+    }
+  }
+
   func testKeychainStatusClassificationWithoutKeychainCalls() {
     expectThrows(try KeychainStorage.check(-25308)) { expectEqual($0 as? RemoteError, .locked) }
     expectThrows(try KeychainStorage.check(-25300)) { expectEqual($0 as? RemoteError, .notFound) }
@@ -303,7 +354,9 @@ struct TestRunner {
     try tests.testFailedWritesDoNotClaimDurabilityAndPendingChallengesAreBounded()
     tests.testKeychainStatusClassificationWithoutKeychainCalls()
     try tests.testExpiredPromptAndLockedConsumptionNeverAuthorize()
+    try tests.testConfirmationReportsRemainingChallengeAndProofLifetime()
+    try tests.testConfirmationRejectsExpiryDuringStoreOrTokenGeneration()
     guard failures == 0 else { exit(1) }
-    print("12 native fixture tests passed; no Keychain or LA calls.")
+    print("14 native fixture tests passed; no Keychain or LA calls.")
   }
 }

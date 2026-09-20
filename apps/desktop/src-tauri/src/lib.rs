@@ -203,6 +203,10 @@ fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -267,7 +271,7 @@ pub fn run() {
             "stop" => request_stop(app),
             _ => {}
         })
-        .build(tauri::generate_context!())
+        .build(app_context())
         .expect("error while building Real Bot");
 
     app.run(|app, event| match event {

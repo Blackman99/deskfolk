@@ -129,8 +129,15 @@ public final class HelperService {
         _ = try credentials.load()
         entry.token = try random()
         entry.confirmedAt = confirmedAt
+        let finishedAt = now()
+        let remaining = min(confirmedAt + 60, entry.deadline) - finishedAt
+        guard finishedAt >= confirmedAt, remaining >= 1 else {
+          pending.removeValue(forKey: challenge)
+          throw RemoteError.expired
+        }
         pending[challenge] = entry
-        return Response(id: request.id, value: entry.token, expiresIn: 60)
+        return Response(
+          id: request.id, value: entry.token, expiresIn: Int(remaining.rounded(.down)))
       case "consume", "reset":
         guard peer.role == .daemon else { throw RemoteError.wrongIdentity }
         guard let challenge = request.challenge, let entry = pending[challenge],

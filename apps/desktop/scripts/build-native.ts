@@ -1,5 +1,6 @@
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { minimumMacOS, verifyNativeMinimum } from "./native-package";
 
 const root = resolve(import.meta.dir, "../../..");
 const target = process.env.TAURI_ENV_TARGET_TRIPLE ?? `${process.arch === "arm64" ? "aarch64" : "x86_64"}-apple-darwin`;
@@ -7,7 +8,7 @@ if (!["aarch64-apple-darwin", "x86_64-apple-darwin"].includes(target)) {
   throw new Error("Native credentials packaging supports macOS arm64/x86_64 only");
 }
 const arch = target.startsWith("aarch64") ? "arm64" : "x86_64";
-const triple = `${arch}-apple-macosx13.0`;
+const triple = `${arch}-apple-macosx${minimumMacOS}`;
 const output = resolve(root, "apps/desktop/src-tauri/native");
 await mkdir(output, { recursive: true });
 
@@ -28,6 +29,8 @@ for (const name of ["real-bot-runtime-helper", "libRemoteCredentials.dylib"]) {
 await run(["bun", "build", "--compile", `--target=bun-darwin-${arch === "arm64" ? "arm64" : "x64"}`,
   "--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig", "--no-compile-autoload-tsconfig",
   "--no-compile-autoload-package-json", "apps/daemon/src/main.ts", "--outfile", resolve(output, "real-bot-daemon")]);
+
+await verifyNativeMinimum(output);
 
 // Stock Bun is not a sealed credential principal. Never grant it the remote access group here.
 const identity = process.env.APPLE_SIGNING_IDENTITY ?? "-";

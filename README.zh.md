@@ -33,6 +33,8 @@
 
 ## 获取
 
+**系统要求：macOS 13.0（Ventura）或更新版本**，支持 Apple 芯片与 Intel。当前构建内置 daemon 与原生 helper，发布包不需要另装 Bun 运行时。
+
 **下载**最新 Alpha：[GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest) 提供 Apple 芯片与 Intel 两种未签名 `.dmg`。首次打开若被 Gatekeeper 拦截，右键选「打开」，或执行：
 
 ```bash
@@ -43,7 +45,7 @@ xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
 
 **更新：**应用会在后台检查 GitHub Releases，有新构建时设置齿轮上会出现小红点。设置 → 通用 → 关于 显示当前版本，并在浏览器中打开对应芯片的 `.dmg`；构建未签名期间没有应用内安装器。
 
-**从源码启动**（macOS、Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
+**从源码启动**（macOS 13.0+、Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 
 ```bash
 pnpm install

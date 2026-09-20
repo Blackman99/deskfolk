@@ -8,6 +8,7 @@
 
 ### 原生远控基础
 
+- 应用包元数据要求 macOS 13.0+，打包时检查必需原生产物的最低系统版本。本机确认 IPC 拒绝开发页、远程页和产物文档；认证和存储后只报告证明剩余有效期。macOS CI 与发布验证增加无凭据 Swift fixture；stock Bun 仍未合格，远控能力保持禁用。
 - 新增 Swift Security/LocalAuthentication helper、双向鉴权的版本化本机 socket、绑定动作的一次性 Mac 确认，以及 daemon 的窄原生凭据读取/高水位更新接口。远控凭据使用不同步、仅本设备的数据保护钥匙串共享组，不混用不兼容的旧式 ACL 属性。
 - 打包 helper、原生库与编译 daemon；发布版不再依赖 PATH Bun，除非显式选择源码模式。远控/独立模式仍禁用：稳定签名、封闭运行时（拒绝 stock Bun 的解释器逃逸）、合法共享 entitlement 与干净 Mac 的 G-pack 验收仍未完成。源码开发没有自动通过的认证回退。
 

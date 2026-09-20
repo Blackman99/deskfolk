@@ -1,6 +1,5 @@
 import { dirname, join } from "node:path";
 
-export const NATIVE_PROTOCOL_VERSION = 1;
 export type RemoteMaterial = "host_identity" | "enrollment" | "vapid" | "highwater";
 export type LocalAction = {
   kind: "pair_device" | "reset_identity" | "change_relay" | "change_workspace";
@@ -8,11 +7,12 @@ export type LocalAction = {
   digest: string;
   display: string;
 };
-export type NativeErrorCode =
-  | "disabled" | "unsigned" | "wrong_identity" | "wrong_user" | "entitlement"
-  | "runtime_unsealed" | "native_library_unavailable" | "locked" | "not_found" | "conflict" | "corrupt" | "storage" | "version"
-  | "malformed" | "too_large" | "unavailable" | "busy" | "timeout"
-  | "authentication" | "cancelled" | "expired" | "proof" | "rollback";
+const errorCodes = [
+  "native_library_unavailable", "runtime_unsealed", "disabled", "unsigned", "wrong_identity", "wrong_user", "entitlement", "locked", "not_found",
+  "conflict", "corrupt", "storage", "version", "malformed", "too_large", "unavailable", "busy",
+  "timeout", "authentication", "cancelled", "expired", "proof", "rollback",
+] as const;
+export type NativeErrorCode = typeof errorCodes[number];
 
 export class RemoteNativeError extends Error {
   constructor(readonly code: NativeErrorCode) { super(`remote_native:${code}`); }
@@ -27,11 +27,7 @@ export type NativeResponse = {
 };
 export type NativeTransport = (request: NativeRequest) => Promise<NativeResponse>;
 const LIMIT = 8192;
-const codes = new Set<NativeErrorCode>([
-  "native_library_unavailable", "runtime_unsealed", "disabled", "unsigned", "wrong_identity", "wrong_user", "entitlement", "locked", "not_found",
-  "conflict", "corrupt", "storage", "version", "malformed", "too_large", "unavailable", "busy",
-  "timeout", "authentication", "cancelled", "expired", "proof", "rollback",
-]);
+const codes = new Set<NativeErrorCode>(errorCodes);
 
 function epoch(value: number): void {
   if (!Number.isInteger(value) || value < 1 || value > 0xffff_ffff) throw new RemoteNativeError("malformed");

@@ -138,9 +138,11 @@ DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 
 ## 原生远控凭据接口（默认禁用）
 
-`apps/runtime-helper` 是 Swift 6/macOS 13+ helper 与 `libRemoteCredentials.dylib`。`pnpm --filter @real-bot/desktop build:native` 编译并打包 helper、库、独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
+应用发布包（含默认必需 daemon）最低要求 macOS 13.0，Tauri 元数据与打包检查一致。`apps/runtime-helper` 是 Swift 6/macOS 13+ helper 与 `libRemoteCredentials.dylib`。`pnpm --filter @real-bot/desktop build:native` 编译并打包 helper、库、独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
 
-Swift 验证用 `swift build --package-path apps/runtime-helper` 与 `swift run --package-path apps/runtime-helper RemoteCoreTests`。后者是兼容仅安装 Command Line Tools（没有 XCTest）的原生 fixture 测试，不调用个人钥匙串或 LA，也不启动登录任务。格式检查用 `xcrun swift-format lint --strict --recursive apps/runtime-helper/Sources apps/runtime-helper/Tests`。真实签名/共享 entitlement/退出窗后无提示自读属于尚未运行的 G-pack；stock Bun 的 `BUN_BE_BUN` 解释器入口是授予凭据前必须解决的真实阻塞，不能加 entitlement 冒充解决。
+Swift 验证用 `swift build --package-path apps/runtime-helper` 与 `swift run --package-path apps/runtime-helper RemoteCoreTests`。后者是兼容仅安装 Command Line Tools（没有 XCTest）的原生 fixture 测试，不调用个人钥匙串或 LA，也不启动登录任务。格式检查用 `xcrun swift-format lint --strict --recursive apps/runtime-helper/Sources apps/runtime-helper/Tests`。真实签名/共享 entitlement/退出窗后无提示自读属于尚未运行的 G-pack；stock Bun 的 `BUN_BE_BUN` 解释器与 `BUN_OPTIONS --preload/--config` 入口是授予凭据前必须解决的实现前置条件，不只是缺证书，不能加 entitlement 冒充解决。自动配置加载关闭不封闭这些入口；macOS desktop 测试用独立 print-only fixture 验证 stock Bun 仍不合格。
+
+本机确认桥在开发/debug模式全禁用（含只读 capability），发布态还验证实际 bundled main 文档与 Tauri 按发送 frame 解析的 ACL；`local:true` 本身不排除 devUrl。确认返回认证/存储后剩余整秒 `expiresIn:1..60`，小于1秒拒绝。CI与release验证显式运行 Swift fixture 和 Cargo IPC/origin测试，不启动真实helper/窗口、LA或个人Keychain。包构建后可用 `bun apps/desktop/scripts/native-package.ts '<Real Bot.app路径>'` 检查外层minimum与全部必需Mach-O产物。
 
 ## 本机工具链
 
@@ -209,7 +211,7 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 | 工作流 | 触发 | 做什么 |
 |---|---|---|
-| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、信使与落地页 build；macOS 上 `cargo test` |
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、信使与落地页 build；macOS 上 Swift 凭据 fixture 与 `cargo test` |
 | [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) | `main` 推送 | 构建 `apps/landing` 并部署 GitHub Pages |
 | [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证后打 **未签名** 的 macOS `.dmg` / `.app`，发布为 GitHub **prerelease** |
 
