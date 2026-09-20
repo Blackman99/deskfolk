@@ -8,6 +8,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Local synchronization
 
+- Searching within a session while its initial history is still loading now starts a replacement detail load before pagination. Rapidly superseding searches retain the latest requested message instead of cancelling the only history load.
+
 - Initial connection preserves URL-linked settings, session/Bot panels and workspace overlays while the snapshot loads. Obsolete paginated search jumps no longer replace the current highlight or mark a previous session read after a selection, history or connection change.
 
 - Session details now wait for their event-stream watermark even when HTTP wins the delivery race. Reconnecting no longer waits for obsolete session requests, and late mutation results or failures cannot revert state or disconnect the replacement connection.

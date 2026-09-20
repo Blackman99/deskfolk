@@ -305,6 +305,96 @@ for (const sameSession of [false, true]) test(`clear during pagination cancels h
   expect(reads).toBe(0);
 });
 
+for (const searches of [1, 3]) for (const paginated of [false, true]) test(`search during initial detail loads history before highlighting (${searches} searches, ${paginated ? "older page" : "detail hit"})`, async () => {
+  const latest = aMessage({ id: "latest", session_id: "direct-1", body: "latest message" });
+  const hits = Array.from({ length: searches }, (_, i) => aMessage({ id: `older-${i}`, session_id: "direct-1", body: `older message ${i}` }));
+  const { runtime } = await connected(async () => ({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect({ last_message: latest })] }));
+  await until(() => runtime.connection === "connected");
+  const requested = deferred<void>();
+  const held = deferred<SessionSnapshot>();
+  let details = 0;
+  const pages: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).endsWith("/snapshot")) {
+      details++;
+      if (details === 1) { requested.resolve(); return Response.json(await held.promise); }
+      return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: paginated ? [latest] : [latest, ...hits], next: paginated ? "older-cursor" : null }, turns: [] }, judgements: [] });
+    }
+    if (String(url).includes("/messages")) {
+      pages.push(new URL(String(url)).searchParams.get("cursor")!);
+      return Response.json({ items: hits, next: null });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const initial = runtime.selectSession("direct-1");
+  await requested.promise;
+  const jumps = hits.map((hit) => runtime.selectSession("direct-1", { messageId: hit.id }));
+  expect(runtime.snapshot.messages.map((message) => message.id)).toEqual([latest.id]);
+  held.resolve({ ...cursor, session: { ...aDirect(), messages: { items: [latest, ...hits], next: null }, turns: [] }, judgements: [] });
+  await Promise.all([initial, ...jumps]);
+  expect(runtime.connection).toBe("connected");
+  expect(runtime.snapshot.messages.map((message) => message.id).sort()).toEqual([latest.id, ...hits.map((hit) => hit.id)].sort());
+  expect(runtime.highlightedMessageId).toBe(hits.at(-1)!.id);
+  expect(runtime.snapshot.messages.some((message) => message.id === runtime.highlightedMessageId)).toBe(true);
+  expect(pages).toEqual(paginated ? ["older-cursor"] : []);
+});
+
+test("search superseding a pending replacement detail still loads the latest hit", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const first = deferred<SessionSnapshot>();
+  const second = deferred<SessionSnapshot>();
+  const firstRequested = deferred<void>();
+  const secondRequested = deferred<void>();
+  const finalHit = aMessage({ id: "final-hit", session_id: "direct-1" });
+  const detail: SessionSnapshot = { ...cursor, session: { ...aDirect(), messages: { items: [finalHit], next: null }, turns: [] }, judgements: [] };
+  let calls = 0;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).endsWith("/snapshot")) {
+      calls++;
+      if (calls === 1) { firstRequested.resolve(); return Response.json(await first.promise); }
+      if (calls === 2) { secondRequested.resolve(); return Response.json(await second.promise); }
+      return Response.json(detail);
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const initial = runtime.selectSession("direct-1");
+  await firstRequested.promise;
+  const older = runtime.selectSession("direct-1", { messageId: "superseded-hit" });
+  first.resolve(detail);
+  await secondRequested.promise;
+  const final = runtime.selectSession("direct-1", { messageId: finalHit.id });
+  second.resolve(detail);
+  await Promise.all([initial, older, final]);
+  expect(runtime.snapshot.messages.map((message) => message.id)).toEqual([finalHit.id]);
+  expect(runtime.highlightedMessageId).toBe(finalHit.id);
+  expect(calls).toBe(3);
+});
+
+test("queued searches during initial detail cannot affect replacement connection", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  const held = deferred<SessionSnapshot>();
+  const requested = deferred<void>();
+  globalThis.fetch = (async () => { requested.resolve(); return Response.json(await held.promise); }) as typeof fetch;
+  const loading = runtime.selectSession("direct-1");
+  await requested.promise;
+  const searches = ["old-a", "old-b"].map((messageId) => runtime.selectSession("direct-1", { messageId }));
+  const replacement = aMessage({ id: "replacement", session_id: "direct-1" });
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [replacement], next: null }, turns: [] }, judgements: [] }));
+  await until(() => runtime.snapshot.messages.some((message) => message.id === replacement.id));
+  runtime.setHighlightedMessage(replacement.id);
+  const api = runtime.client;
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => { calls.push(String(url)); return Response.json({ items: [] }); }) as typeof fetch;
+  held.resolve({ ...cursor, session: { ...aDirect(), messages: { items: [aMessage({ id: "old-a", session_id: "direct-1" })], next: null }, turns: [] }, judgements: [] });
+  await Promise.all([loading, ...searches]);
+  expect(runtime.client).toBe(api);
+  expect(runtime.snapshot.messages.map((message) => message.id)).toEqual([replacement.id]);
+  expect(runtime.highlightedMessageId).toBe(replacement.id);
+  expect(calls).toEqual([]);
+});
+
 test("a newer same-session search supersedes an older pending page", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");

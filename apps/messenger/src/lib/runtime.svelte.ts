@@ -68,6 +68,7 @@ export class MessengerRuntime {
   private searchSeq = 0;
   private pendingFocusTrigger: string | null = null;
   private sessionMessageNext: string | null = null;
+  private sessionDetailId: string | null = null;
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
   private routesInFlight: string | null = null;
   private suggestAbort: AbortController | null = null;
@@ -237,7 +238,8 @@ export class MessengerRuntime {
       this.closeSessionSettings();
       this.threadOpen = false;
     }
-    if (this.selectedId === id && messageId) {
+    // A selected row may still have only summary data, not its history cursor.
+    if (this.selectedId === id && this.sessionDetailId === id && messageId) {
       const revision = this.historyRevision;
       await this.ensureMessageLoaded(id, messageId);
       if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
@@ -246,6 +248,8 @@ export class MessengerRuntime {
       return;
     }
     this.selectedId = id;
+    this.sessionDetailId = null;
+    this.sessionMessageNext = null;
     this.replyingToId = null;
     this.composerSuggestions = [];
     this.scheduleComposerSuggestions(id);
@@ -977,6 +981,7 @@ export class MessengerRuntime {
     detail: SessionDetail,
     judgements: Snapshot["judgements"],
   ): void {
+    this.sessionDetailId = id;
     this.sessionMessageNext = detail.messages.next ?? null;
     this.snapshot = {
       ...this.snapshot,
@@ -1027,6 +1032,7 @@ export class MessengerRuntime {
         this.focusedTurnId = null;
         this.setHighlightedMessage(null);
         this.sessionMessageNext = null;
+        this.sessionDetailId = null;
       }
     }
     if (event.event === "session.cleared") {
@@ -1034,6 +1040,7 @@ export class MessengerRuntime {
         this.focusedTurnId = null;
         this.setHighlightedMessage(null);
         this.sessionMessageNext = null;
+        this.sessionDetailId = null;
       }
     }
     let next = applyEvent(this.snapshot, event);
@@ -1087,6 +1094,8 @@ export class MessengerRuntime {
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();
+    this.sessionDetailId = null;
+    this.sessionMessageNext = null;
     this.sessionSeq++;
     this.busy = false;
   }
