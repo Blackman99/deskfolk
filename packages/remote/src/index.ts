@@ -1,3 +1,5 @@
+export { REMOTE_RPC_VERSION, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, parseRemoteRequest } from './rpc.ts';
+export type { RemoteRequest, RemoteResponse, RemoteReady, PairingQr, AssertionWire, RegistrationWire } from './rpc.ts';
 export { NOISE_PROTOCOL, MAX_NOISE_MESSAGE } from './noise.ts';
 export { base64url, fromBase64url, hex, unhex, utf8, text, randomBytes } from './bytes.ts';
 export { canonicalize, canonicalBytes, canonicalHash, sha256Hex, normalizeAttachmentDigests, requestDigestBytes, requestDigest } from './canonical.ts';
@@ -11,8 +13,8 @@ export {
 export type { FrameType, LogicalType, SessionBinding, TransportFrame, Fragment, FileChunk } from './codec.ts';
 export { encodeEnrollmentProof, signEnrollmentProof, verifyEnrollmentProof, PAIR_MAILBOX_CONTRACT } from './enrollment.ts';
 export type { EnrollmentChallenge, EnrollmentVerification } from './enrollment.ts';
-export { MAX_PAIRING_ENVELOPE, sealPairing, openPairing, encodeGrant, decodeGrant, signGrant, verifyGrant } from './pairing.ts';
-export type { PairingContext, PairingRequest, DeviceGrant } from './pairing.ts';
+export { MAX_PAIRING_ENVELOPE, sealPairing, openPairing, sealPairingGrant, openPairingGrant, encodeGrant, decodeGrant, signGrant, verifyGrant } from './pairing.ts';
+export type { PairingContext, PairingRequest, DeviceGrant, SignedDeviceGrant } from './pairing.ts';
 export { REMOTE_DEFAULT_ENABLED, generateIdentity, identityPublic, DeviceSession, HostSession } from './session.ts';
 export type { IdentitySecrets, IdentityPublic, ReplayClaim, SessionOptions, HostSessionOptions } from './session.ts';
 export {

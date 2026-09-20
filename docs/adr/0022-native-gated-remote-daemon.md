@@ -1,0 +1,23 @@
+# ADR 0022: Native-gated outbound remote daemon and shared draining
+
+Status: experimental implementation; production activation blocked. Date: 2026-09-20.
+
+## Decision
+
+Remote connections use the same Store, receipt transactions, event barrier and turn engine as local HTTP. An authenticated host-control relay connection creates a distinct outbound host link per device; only real Noise Split principals can reach the business allowlist. `/remote/*` is encrypted-only, not a new local bearer or Bot control plane. Local loopback/Origin behavior and window supervision remain unchanged.
+
+Native material is read through the reviewed native client. Source/stock compiled Bun cannot qualify as a sealed credential principal, so unavailable native capability disables remote without breaking local startup. Tests inject the real client transport only through construction. There is no environment fake, production key file, mock UV, entitlement override or architecture pivot.
+
+Local setup uses an inherited anonymous socketpair plus the native audit-token/signed-desktop peer check. Tauri enforces the actual bundled main frame independently. The window cannot supply action prose or retrieve long-term keys; daemon prepares the complete action digest, native confirmation performs fresh presence, and the daemon consumes that same proof before durable trust.
+
+Every revoke advances the Keychain high-water before the SQLite generation transaction. This corrects the draft's single-device exception: an old revoked row could otherwise be restored at the same high-water. Surviving devices retain their signed grant epoch but advance their database generation; all sessions close and reconnect with current trust. Keychain-ahead mismatches fail closed rather than silently adopting old authorization. Durable dual IK replay reservations refuse capacity and survive daemon restart.
+
+Fresh UV uses the shared WebAuthn verifier. Registration persists COSE/version/counter; first registration requires short-lived, locally approved and Split-bound pair permission. Replacement requires existing-credential UV bound to the exact staged response. Challenge consumption and credential/time/session/trust CAS are synchronous transactions. Accepted external operations cannot be undone by disconnect.
+
+Shared quiesce pauses new user turns, routines, membership/delegation and child admission while existing turns may receive approvals/answers. The live set is captured at entry; no timeout or disconnect escalates to force. Explicit force aborts and records interruptions, never exits. The caller owns supervision and stop-latch writes; no launchd job is introduced here.
+
+## Consequences and remaining gates
+
+The shared grant reply codec has direction-specific AEAD associated data and verifies QR-pinned signatures and every expected field. RPC and file data stay bounded; no arbitrary HTTP proxy or plaintext application control is introduced. The public client must subscribe before snapshot, respect sequence watermarks, explicitly query unknown receipts and never auto-replay commands.
+
+This ticket is not PWA, deployment, sealed-runtime or external security acceptance. Full file upload/duplex state machines, client UX, standalone supervision, maintenance and their physical/native release gates are downstream work. Local generated-key/socket/SQLite tests do not prove human UV, Keychain access-group provisioning, Docker/domain TLS or independent audit.

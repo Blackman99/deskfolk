@@ -1,6 +1,34 @@
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS remote_host (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  host_id TEXT NOT NULL, relay_origin TEXT NOT NULL, relay_id TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK (generation > 0)
+);
+CREATE TABLE IF NOT EXISTS remote_devices (
+  device_id TEXT PRIMARY KEY, name TEXT NOT NULL, ua_hint TEXT NOT NULL,
+  dh_pk TEXT NOT NULL UNIQUE, signing_pk TEXT NOT NULL UNIQUE, enrollment_pk TEXT NOT NULL UNIQUE,
+  grant_epoch INTEGER NOT NULL, generation INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 1,
+  revoked INTEGER NOT NULL DEFAULT 0, relay_pending INTEGER NOT NULL DEFAULT 1,
+  pairing_id TEXT NOT NULL UNIQUE, onboarding_until INTEGER NOT NULL,
+  onboarding_session TEXT, credential_id TEXT, cose_key TEXT, sign_count INTEGER NOT NULL DEFAULT 0,
+  credential_version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS remote_revocations (
+  request_id TEXT PRIMARY KEY, requester_id TEXT NOT NULL, target_id TEXT NOT NULL,
+  generation INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS remote_replays (
+  session_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, ephemeral_pk TEXT NOT NULL,
+  expires_ms INTEGER NOT NULL, UNIQUE(device_id, ephemeral_pk)
+);
+CREATE INDEX IF NOT EXISTS remote_replays_expiry ON remote_replays(expires_ms);
+CREATE TABLE IF NOT EXISTS remote_challenges (
+  challenge TEXT PRIMARY KEY, device_id TEXT NOT NULL, session_id TEXT NOT NULL,
+  record TEXT NOT NULL, expires_unix INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS request_receipts (
   device_id TEXT NOT NULL,
   request_id TEXT NOT NULL,

@@ -42,6 +42,7 @@ import {
   type FailKind,
 } from "./prompts";
 import { HttpError } from "./errors";
+import type { TurnAdmission } from "./quiesce";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
 import { type Store } from "./store";
@@ -80,6 +81,7 @@ export type TurnEngineOptions = {
   completions?: CompletionsClient;
   sleep?: (ms: number) => Promise<void>;
   mcp?: McpHost;
+  admission?: TurnAdmission;
 };
 
 type Live = {
@@ -95,6 +97,7 @@ type Live = {
   /** Tool names in the current hop's tools array; read_skill flags `mcp_` names a body cites that are missing. */
   toolNames: Set<string>;
   spoke: boolean;
+  drainRejection: boolean;
   running: Promise<void>;
   ask?: {
     id: string;
@@ -123,7 +126,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   function track<T>(promise: Promise<T>): Promise<T> {
     tasks.add(promise);
-    void promise.finally(() => tasks.delete(promise));
+    void promise.then(() => tasks.delete(promise), () => tasks.delete(promise));
     return promise;
   }
 
@@ -513,6 +516,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function startTurn(sessionId: string, botId: string, trigger: Message, mode: "redirect" | "fork"): Turn {
+    options.admission?.assertNew();
     if (mode === "redirect") {
       const livesForBot = store.listLiveTurns({ sessionId, botId });
       let sessionKind: string | null = null;
@@ -545,6 +549,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       mentionWarned: new Set(),
       toolNames: new Set(),
       spoke: false,
+      drainRejection: false,
       running: Promise.resolve(),
     };
     store.afterCommit(() => {
@@ -555,6 +560,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function continueFromInterrupt(messageId: string): Turn {
+    options.admission?.assertNew();
     const turn = store.claimInterruptContinue(messageId);
     attachLive(turn);
     return turn;
@@ -832,6 +838,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         args = {};
       }
       let result = await dispatchTool(turn, live, call.name, args);
+      if (result.error?.code === "draining") {
+        if (live.drainRejection) {
+          const note = store.insertMessage({ sessionId: turn.session_id, turnId, kind: "system", author: turn.bot_id,
+            body: "draining: repeated child or handoff admission refused" });
+          publishMessage(note);
+          return "noop";
+        }
+        live.drainRejection = true;
+      }
       await publishEmitted(result.emitted);
       result = withLatestMcp(call.name, result);
       noteWrittenPaths(live, call.name, result);
@@ -953,6 +968,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               writtenPaths: live.writtenPaths,
               mentionWarned: live.mentionWarned,
               availableToolNames: live.toolNames,
+              admission: options.admission,
             },
             name,
             args,
@@ -1127,6 +1143,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   async function handleParticipation(message: Message, opts: { fromUser: boolean; fork?: boolean }): Promise<void> {
+    if (options.admission?.draining) return;
     const session = store.getSession(message.session_id);
     if (message.kind !== "user" && message.kind !== "bot") return;
 
@@ -1416,6 +1433,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function fireRoutine(routineId: string, now: Date = new Date()): Turn | null {
+    options.admission?.assertNew();
     const claimed = store.claimRoutineDue(routineId, now);
     if (!claimed) return null;
     const existing = store.findDirectSession(USER_MEMBER, claimed.bot_id);

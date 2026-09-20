@@ -697,6 +697,7 @@ export type EventCursor = {
 export type CredentialOperation = { id: string; kind: string; entity_id: string; request_id: string | null; can_repair: boolean };
 
 export type RuntimeSnapshot = EventCursor & {
+  remoteStatus?: { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
   credentialOperations?: CredentialOperation[];
   settings: Settings;
   bots: Bot[];

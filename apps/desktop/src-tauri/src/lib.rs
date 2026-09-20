@@ -1,6 +1,7 @@
 mod daemon;
 mod local_api;
 mod remote_native;
+mod remote_setup;
 mod supervisor;
 mod updates;
 
@@ -243,7 +244,8 @@ pub fn run() {
             app_version,
             check_for_update,
             open_external_url,
-            remote_native::remote_native_confirmation
+            remote_native::remote_native_confirmation,
+            remote_setup::remote_local_setup
         ])
         .setup(|app| {
             install_menus(app.handle())?;

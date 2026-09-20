@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { blake2s } from '@noble/hashes/blake2.js';
 import { pairingKey } from '../src/pairing.ts';
-import { base64url, decodeGrant, encodeGrant, encodeEnrollmentProof, hex, openPairing, sealPairing, signEnrollmentProof, signGrant, verifyEnrollmentProof, verifyGrant, utf8 } from '../src/index.ts';
+import { sealPairingGrant, openPairingGrant, base64url, decodeGrant, encodeGrant, encodeEnrollmentProof, hex, openPairing, sealPairing, signEnrollmentProof, signGrant, verifyEnrollmentProof, verifyGrant, utf8 } from '../src/index.ts';
 import { deviceId, devicePublic, hostId, hostKeys, hostPublic, pairingId, relayOrigin } from './helpers.ts';
 const request = { device_id: deviceId, name: 'Test only 测试', ua_hint: 'fixture', device_e_pk: base64url(devicePublic.signing), device_s_pk: base64url(devicePublic.dh), enrollment_pk: base64url(devicePublic.enrollment) };
 const context = { pairingId, hostId, expiresUnix: 1600 }, secret = new Uint8Array(32).fill(71);
@@ -32,6 +32,22 @@ test('RB-GRANT-v1 is exactly 11 bytes, strict signed layout and pinned pending r
   expect(() => verifyGrant({ ...grant, trustEpoch: 8 }, signature, hostPublic.signing, grant)).toThrow();
   signature[0] ^= 1; expect(() => verifyGrant(grant, signature, hostPublic.signing, grant)).toThrow();
   encoded[1] = 10; expect(() => decodeGrant(encoded)).toThrow('domain');
+});
+
+test('grant mailbox envelope rejects direction confusion, wrong pins, material and lengths', () => {
+  const signed = { grant, signature: signGrant(grant, hostKeys.signing) };
+  const reply = sealPairingGrant(signed, secret, context, 1000);
+  expect(openPairingGrant(reply, secret, context, 1000, hostPublic.signing, grant)).toEqual(signed);
+  expect(() => openPairing(reply, secret, context, 1000)).toThrow();
+  const incoming = sealPairing(request, secret, context, 1000);
+  expect(() => openPairingGrant(incoming, secret, context, 1000, hostPublic.signing, grant)).toThrow();
+  expect(() => openPairingGrant(reply, secret, context, 1000, devicePublic.signing, grant)).toThrow();
+  expect(() => openPairingGrant(reply, secret, context, 1000, hostPublic.signing, { ...grant, trustEpoch: 8 })).toThrow();
+  expect(() => openPairingGrant(reply, secret, context, 1600, hostPublic.signing, grant)).toThrow();
+  for (const bytes of [new Uint8Array(), reply.subarray(0, 103), new Uint8Array(65537)]) {
+    expect(() => openPairingGrant(bytes, secret, context, 1000, hostPublic.signing, grant)).toThrow();
+  }
+  expect(() => sealPairingGrant({ ...signed, signature: new Uint8Array(63) }, secret, context, 1000)).toThrow();
 });
 
 test('enrollment uses canonical binary, pinned table key and atomic single-use server challenge', () => {

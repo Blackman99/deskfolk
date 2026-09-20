@@ -65,6 +65,9 @@ export class RemoteNativeClient {
         diagnostic: error instanceof RemoteNativeError ? error.code : "unavailable" };
     }
   }
+  async authorizeDesktopChannel(): Promise<void> {
+    await this.call({ op: "desktop_channel" });
+  }
   async read(material: RemoteMaterial): Promise<Uint8Array> {
     const sizes = { host_identity: 64, enrollment: 32, vapid: 32, highwater: 4 };
     if (!Object.hasOwn(sizes, material)) throw new RemoteNativeError("malformed");
@@ -73,7 +76,9 @@ export class RemoteNativeClient {
     if (typeof value !== "string" || data.toString("base64") !== value || data.length !== sizes[material]) {
       throw new RemoteNativeError("corrupt");
     }
-    return data;
+    const owned = new Uint8Array(data);
+    data.fill(0);
+    return owned;
   }
   async highwater(): Promise<number> {
     const bytes = await this.read("highwater");

@@ -12,6 +12,7 @@ describe("remote native boundary", () => {
   test("source Bun is disabled and never invokes Keychain or local authentication", async () => {
     expect(await remoteNative.capability()).toEqual({ enabled: false, nativeAvailable: false, diagnostic: "disabled" });
     await expect(remoteNative.read("host_identity")).rejects.toMatchObject({ code: "disabled" });
+    await expect(remoteNative.authorizeDesktopChannel()).rejects.toMatchObject({ code: "disabled" });
   });
 
   test("fixture service exports raw identity keys and durable highwater without helper", async () => {

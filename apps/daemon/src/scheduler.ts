@@ -6,6 +6,8 @@ const TICK_MS = 15_000;
 export type Scheduler = {
   tick: (now?: Date) => void;
   stop: () => void;
+  pause: () => void;
+  resume: () => void;
 };
 
 export type SchedulerOptions = {
@@ -19,7 +21,9 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
   const intervalMs = options.intervalMs ?? TICK_MS;
   const now = options.now ?? (() => new Date());
 
+  let paused = false;
   function tick(at: Date = now()): void {
+    if (paused) return;
     for (const routine of options.store.listRoutines()) {
       try {
         options.engine.fireRoutine(routine.id, at);
@@ -34,6 +38,8 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
 
   return {
     tick,
+    pause() { paused = true; },
+    resume() { paused = false; },
     stop() {
       clearInterval(timer);
     },

@@ -21,6 +21,7 @@ import { avatarMimeFromPath, rasterFileToAvatarDataUri } from "./avatar-image";
 import { parseMentions } from "./mentions";
 import { isNoWorkCloser } from "./no-work";
 import { HttpError } from "./errors";
+import type { TurnAdmission } from "./quiesce";
 import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
 import { extractWorkspacePathsFromBody, linkifyWorkspacePaths, mergeCitedPaths } from "./artifact-paths";
@@ -73,6 +74,7 @@ export type ToolCtx = {
   mentionWarned?: Set<string>;
   /** Names in this hop's tools array (built-in + `mcp_…`). Absent = skip the stale-name check in read_skill. */
   availableToolNames?: ReadonlySet<string>;
+  admission?: TurnAdmission;
 };
 
 export async function runCollabTool(
@@ -81,6 +83,7 @@ export async function runCollabTool(
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
   try {
+    if (["create_group", "create_direct", "add_member"].includes(name)) ctx.admission?.assertNew();
     switch (name) {
       case "send_message":
         return sendMessage(ctx, args);
@@ -165,6 +168,9 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const presentNames = presentMemberNames(ctx.store, sessionId, roster);
   const parsed = parseMentions(body, roster.map((b) => b.name), { lenient: presentNames });
   const emitted: ToolResult["emitted"] = [];
+  if (ctx.admission?.draining && (sessionId !== ctx.sessionId || parsed.everyone || parsed.mentions.some(name => name !== selfName))) {
+    return fail("draining", "new handoffs and child turns are paused; finish this turn without delegation");
+  }
   if (session.kind === "group") {
     for (const name of parsed.mentions) {
       const bot = ctx.store.findBotByName(name);
