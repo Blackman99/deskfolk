@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
+	import { backdropClick } from '../click-outside.ts';
 
 	type Props = {
 		copy: { title: string; body: string; confirm: string; cancel: string };
@@ -9,6 +10,8 @@
 	};
 
 	let { copy, t, onDismiss, onConfirm }: Props = $props();
+	/** A click outside dismisses the confirm; a text-selection drag that starts inside never does. */
+	const confirmBackdrop = backdropClick();
 	let backdropEl = $state<HTMLElement | null>(null);
 
 	$effect(() => {
@@ -33,9 +36,10 @@
 	aria-labelledby="danger-confirm-title"
 	aria-describedby="danger-confirm-body"
 	tabindex="-1"
+	onmousedowncapture={confirmBackdrop.press}
 	onclick={(e) => {
 		e.stopPropagation();
-		if (e.target === e.currentTarget) onDismiss();
+		if (confirmBackdrop.isOutside(e)) onDismiss();
 	}}
 	onpointerdown={(e) => e.stopPropagation()}
 	onkeydown={(e) => {

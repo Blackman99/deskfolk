@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { backdropClick } from '../click-outside.ts';
 	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import type { Copy } from '../copy.ts';
 	import type { RouteLogRow } from './route-log.ts';
@@ -29,6 +30,8 @@
 	}
 
 	let { rows, sessionTitle, loading, showEndpoint, t, onClose, onJump }: Props = $props();
+	/** A click outside closes the log; a text-selection drag that starts inside never does. */
+	const routeLogBackdrop = backdropClick();
 
 	/** Feedback bodies stay folded until asked for; one open turn at a time keeps the list scannable. */
 	let openFeedback = $state<string | null>(null);
@@ -152,8 +155,9 @@
 	aria-modal="true"
 	aria-label={t.routes.title}
 	tabindex="-1"
+	onmousedowncapture={routeLogBackdrop.press}
 	onclick={(e) => {
-		if (e.target === e.currentTarget) onClose();
+		if (routeLogBackdrop.isOutside(e)) onClose();
 	}}
 >
 	<div class="route-log-pane">

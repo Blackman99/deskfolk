@@ -6,7 +6,9 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Messenger
+
+- Selecting text in the Bot settings drawer no longer closes it when the drag ends outside the sheet. The backdrop dismissed on any `click` whose target was the backdrop, and a press inside the sheet followed by a release over the backdrop reports exactly that — so copying a field closed the drawer you were reading. The backdrop now remembers where the press started and only a press that begins outside closes it; a genuine click outside still does. The press is recorded on the capture phase, so a control inside a sheet that swallows `mousedown` cannot defeat the guard. The same guard covers the settings modal, the provider editor, the Bot and group create sheets, the MCP and skill editors, the workspace explorer, the route log and the danger confirm.
 
 ## 0.1.0-rc.3 — 2026-09-20
 

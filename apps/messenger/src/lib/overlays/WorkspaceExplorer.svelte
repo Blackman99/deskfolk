@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
+	import { backdropClick } from '../click-outside.ts';
 	import type { LocalApi } from '../api.ts';
 	import ArtifactPreview from './ArtifactPreview.svelte';
 
@@ -13,6 +14,8 @@
 	}
 
 	let { api, workspacePath, selected, t, onClose, onSelect }: Props = $props();
+	/** A click outside closes the explorer; a text-selection drag that starts inside never does. */
+	const workspaceBackdrop = backdropClick();
 
 	let pane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 
@@ -34,8 +37,9 @@
 	aria-modal="true"
 	tabindex="-1"
 	aria-label={t.stream.workspaceExplorer}
+	onmousedowncapture={workspaceBackdrop.press}
 	onclick={(e) => {
-		if (e.target === e.currentTarget) requestCloseFromParent();
+		if (workspaceBackdrop.isOutside(e)) requestCloseFromParent();
 	}}
 >
 	<div class="workspace-overlay-pane">
