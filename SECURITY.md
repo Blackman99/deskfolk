@@ -4,6 +4,16 @@
 
 Real Bot 当前是 **WIP**，只面向 macOS 本地开发与试用，没有稳定版本的安全维护承诺、独立安全审计声明或响应时限保证。安全修复优先面向最新开发代码。请使用可丢弃数据和可信模型 / 工具，不要把它当作隔离不可信代码的执行环境。
 
+## 实验性远控密码原型 / Experimental remote cryptography
+
+`packages/remote` 提供真实 Noise IK、配对 AEAD、签名授权与 COSE/WebAuthn 验证的纯接口，但**不启用远控**。远控运输、公网配对仍默认关闭；协议契约、host 必须承担的原子重放/挑战消费、首次 UV 登记与替换权限见 [docs/remote-protocol.md](docs/remote-protocol.md)。官方协议向量和独立 Rust snow 对打不是独立安全审计；桌面浏览器软件密钥测试不是真机 PWA/WebAuthn UV。L1 真机、S-rev 独立审查及 G-uv 门尚未通过，不能据此开公网或启用高危动作。
+
+The shared remote cryptography is a **default-off security prototype**, not a released remote-access feature. Noble primitives have audit history; the exact pinned versions and our Noise/pairing/WebAuthn integration are not independently audited. Physical-device PWA/WebAuthn and external-review gates remain unverified. The host must atomically own trust checks, replay claims, challenge consumption and credential replacement; a stolen device key must not create or replace an existing UV credential. None attestation does not prove authenticator hardware provenance. The trusted web origin can replace client code; E2EE does not solve origin compromise or XSS. Never place pairing secrets, keys or application plaintext in URLs, queries, logs or service-worker caches.
+
+协议输入含 Bun/Node Buffer 时，保留的密钥、公钥和返回字节均建立独立所有权，清理只擦除会话自有副本；不能用 Buffer.slice 冒充复制。WebAuthn clientDataJSON 同时要求严格 JSON 语法和无重复字段，签名始终绑定原始字节。回执与 UV 完整操作摘要必须包含实际条件头/前置条件（如 If-Match），不能只绑动作名。
+
+Retained authentication buffers are independently copied even for Buffer views; session cleanup must not erase caller-owned identities. WebAuthn requires strict JSON grammar and duplicate-member rejection while verifying the original bytes. Receipt and UV operation digests must include the actual conditional headers/preconditions, not only the action/target. These fixes do not constitute an external audit or physical-device approval.
+
 ## 私密报告漏洞
 
 仓库托管在 GitHub 且启用私密漏洞报告后，请从 **Security → Report a vulnerability** 提交。维护者应在首次公开前启用该功能；文档本身不会开启 GitHub 设置。

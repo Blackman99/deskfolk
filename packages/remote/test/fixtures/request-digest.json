@@ -1,0 +1,59 @@
+[
+  {
+    "name": "no-condition",
+    "input": {
+      "method": "POST",
+      "path": "/v1/messages",
+      "body": {
+        "b": 2,
+        "a": 1
+      },
+      "encoding": "json"
+    },
+    "preimage": "POST\u001f/v1/messages\u001f{\"a\":1,\"b\":2}\u001fjson\u001f\u001f{}",
+    "sha256": "caf582f4423c2c5b8e82a222afecb70514aa0d3f5ac1dadfbf8be33b6cceeddf"
+  },
+  {
+    "name": "put-if-match",
+    "input": {
+      "method": "PUT",
+      "path": "/v1/workspace/file",
+      "body": {
+        "content": "hello"
+      },
+      "encoding": "json",
+      "conditionalHeaders": {
+        "If-Match": "\"rev-1\""
+      }
+    },
+    "preimage": "PUT\u001f/v1/workspace/file\u001f{\"content\":\"hello\"}\u001fjson\u001f\u001f{\"if-match\":\"\\\"rev-1\\\"\"}",
+    "sha256": "d191012ae4c6be32ceb47e651854eabb56e927e327f3603f8309a4795803c251"
+  },
+  {
+    "name": "duplicate-filenames",
+    "input": {
+      "method": "POST",
+      "path": "/v1/messages",
+      "body": {
+        "body": "photos"
+      },
+      "encoding": "multipart",
+      "files": [
+        {
+          "filename": "photo.png",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "filename": "photo.png",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "filename": "photo.png",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    "preimage": "POST\u001f/v1/messages\u001f{\"body\":\"photos\"}\u001fmultipart\u001fphoto.png\u001eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u001fphoto.png\u001eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u001fphoto.png\u001ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\u001f{}",
+    "sha256": "a1a7458b04e2eafa6945ac1b646d90a8d59d81b7bcabdc783f2351614b25f657"
+  }
+]

@@ -33,6 +33,8 @@
 
 ## 获取
 
+**系统要求：macOS 13.0（Ventura）或更新版本**，支持 Apple 芯片与 Intel。当前构建内置 daemon 与原生 helper，发布包不需要另装 Bun 运行时。
+
 **下载**最新 Alpha：[GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest) 提供 Apple 芯片与 Intel 两种未签名 `.dmg`。首次打开若被 Gatekeeper 拦截，右键选「打开」，或执行：
 
 ```bash
@@ -43,7 +45,7 @@ xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
 
 **更新：**应用会在后台检查 GitHub Releases，有新构建时设置齿轮上会出现小红点。设置 → 通用 → 关于 显示当前版本，并在浏览器中打开对应芯片的 `.dmg`；构建未签名期间没有应用内安装器。
 
-**从源码启动**（macOS、Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
+**从源码启动**（macOS 13.0+、Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 
 ```bash
 pnpm install
@@ -55,6 +57,8 @@ pnpm dev
 ## 状态
 
 Alpha，仅 macOS。已接入、正在建设与明确不做：[官网](https://blackman99.github.io/real-bot/zh#boundaries) · [路线图](ROADMAP.md) · [CONTEXT.md](CONTEXT.md)（领域语言）。
+
+共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。新增默认关闭的 Bun 中继与非 root Compose/Caddy 静态部署模板，供隔离集成测试；daemon 适配器和远控/PWA 客户端尚未完成。见[自托管部署、bootstrap 恢复与路由契约](docs/deploy-remote.md)，含独立 `test:edge` 命令验证本机真实 Caddy HTTP/HTTPS/WSS（需要 Caddy 2.10.2 与 OpenSSL）。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）；真机 PWA/WebAuthn 与独立安全审查门仍待验证。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要，本机 daemon 回执现也通过仅含规范编码的 workspace 导出使用它。daemon 仍保留更严格的路由及强 SHA-256 If-Match 校验。
 
 ## 参与
 

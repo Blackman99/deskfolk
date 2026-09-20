@@ -9,12 +9,23 @@
 | 包 | 路径 | 运行时 |
 |---|---|---|
 | `@real-bot/daemon` | `apps/daemon` | Bun `>=1.2` |
+| `@real-bot/relay` | `apps/relay` | Bun 1.4.2（部署钉定）；默认关闭的自托管密文中继 |
 | `@real-bot/messenger` | `apps/messenger` | Node `>=22` · SvelteKit SPA |
 | `@real-bot/desktop` | `apps/desktop` | Tauri 2 壳 |
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
 | `@real-bot/protocol` | `packages/protocol` | 本机接口类型，加上点名解析和工作区路径判定（无 I/O） |
+| `@real-bot/remote` | `packages/remote` | 浏览器/Bun 纯密码与编码接口；实验性、默认关闭，见[协议契约](remote-protocol.md) |
+| `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+，原生远控凭据/认证（默认禁用） |
 
-守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，会用本机 `bun` 拉起 `apps/daemon/src/main.ts`；已有我们则连，不新开第二个。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
+
+守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，开发态用本机 `bun` 拉起 `apps/daemon/src/main.ts`，发布态用应用资源中的 `native/real-bot-daemon`；已有我们则连，不新开第二个。发布态只有显式 `REAL_BOT_SOURCE_DAEMON=1` 才走源码 Bun（并允许 `REAL_BOT_BUN` / `REAL_BOT_DAEMON_MAIN`）；默认不依赖 PATH Bun。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+
+## 实验性中继
+
+根 `pnpm test` / `pnpm typecheck` 包含 `apps/relay`。`pnpm --filter @real-bot/relay build` 打包 Bun 入口；测试随机 loopback 端口、临时 SQLite、生成身份，真实双设备 Noise/WS、一次性 enrollment、吊销、未登记配对邮箱、慢 TCP 读端背压与 canary 日志脱敏，不用17890或个人数据。生产信使 build 后 `pnpm --filter @real-bot/relay smoke:serve` 在 `[::1]:5186` 只服务静态断线壳，**不提供 `__local-api`、Vite 或远控/PWA 功能**。隔离浏览器用 `agent-browser --session rc06`；占用端口直接失败，不停他人服务。
+
+另跑 `CADDY_BIN=/absolute/path/to/caddy pnpm --filter @real-bot/relay test:edge`（Caddy2.10.2、OpenSSL；可用 Go>=1.25 安装钉定版本，CI同样执行）。该套使用一次性 localhost 证书、随机 loopback 端口和真实Caddy→Bun，验证HTTP/HTTPS实际响应头、查询串拒绝、资源缓存/错误、WSS实际Noise往返/吊销；证书仅传给测试客户端，不关闭TLS验证、不改系统信任。浏览器静态fixture复用生产CSP生成器。Compose 的 Linux/公网TLS/磁盘 quota、外部安全复核与真机门需独立验收；没有 Docker daemon 时可检查 Compose schema、Dockerfile parser、本机Caddy配置和localhost TLS，但不能宣称容器部署或公网ACME通过。具体环境变量、非 root 构建、离线/恢复语义及 daemon07 消费的 HTTP/WS 契约见[自托管部署](deploy-remote.md)。不改变本机 bearer、loopback/Origin、窗监督或默认远控准入。
 
 ## 守护进程源码布局
 
@@ -135,6 +146,14 @@ DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 
 不接 CI：这是系统字体的渲染，Linux runner 会对每一张都有异议。和 CONTRIBUTING 里「本机 UI 验证不能由 CI 代替」是同一条理由。
 
+## 原生远控凭据接口（默认禁用）
+
+应用发布包（含默认必需 daemon）最低要求 macOS 13.0，Tauri 元数据与打包检查一致。`apps/runtime-helper` 是 Swift 6/macOS 13+ helper 与 `libRemoteCredentials.dylib`。`pnpm --filter @real-bot/desktop build:native` 编译并打包 helper、库、独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
+
+Swift 验证用 `swift build --package-path apps/runtime-helper` 与 `swift run --package-path apps/runtime-helper RemoteCoreTests`。后者是兼容仅安装 Command Line Tools（没有 XCTest）的原生 fixture 测试，不调用个人钥匙串或 LA，也不启动登录任务。格式检查用 `xcrun swift-format lint --strict --recursive apps/runtime-helper/Sources apps/runtime-helper/Tests`。真实签名/共享 entitlement/退出窗后无提示自读属于尚未运行的 G-pack；stock Bun 的 `BUN_BE_BUN` 解释器与 `BUN_OPTIONS --preload/--config` 入口是授予凭据前必须解决的实现前置条件，不只是缺证书，不能加 entitlement 冒充解决。自动配置加载关闭不封闭这些入口；macOS desktop 测试用独立 print-only fixture 验证 stock Bun 仍不合格。
+
+本机确认桥在开发/debug模式全禁用（含只读 capability），发布态还验证实际 bundled main 文档与 Tauri 按发送 frame 解析的 ACL；`local:true` 本身不排除 devUrl。确认返回认证/存储后剩余整秒 `expiresIn:1..60`，小于1秒拒绝。CI与release验证显式运行 Swift fixture 和 Cargo IPC/origin测试；PR CI 的 macOS 任务另跑 desktop script tests，确保 Linux 跳过的 stock Bun 不合格回归实际执行。根类型检查包含 desktop 的全部 `scripts/**/*.ts`（使用锁定的 Bun 类型），不是空项目。不启动真实helper/窗口、LA或个人Keychain。包构建后可用 `bun apps/desktop/scripts/native-package.ts '<Real Bot.app路径>'` 检查外层minimum与全部必需Mach-O产物。
+
 ## 本机工具链
 
 - Node `>=22` 与 pnpm `12.3.4`（`packageManager`）
@@ -146,8 +165,8 @@ DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 ```bash
 pnpm install
 pnpm dev        # 并行守护进程 + tauri dev（信使由窗拉起）
-pnpm test       # daemon bun test + messenger bun test
-pnpm typecheck  # protocol / daemon / desktop tsc，信使与落地页 svelte-check；不跑 cargo check
+pnpm test       # remote（含 Rust snow）/ relay / protocol / daemon / messenger / desktop / landing
+pnpm typecheck  # remote / relay / protocol / daemon / desktop scripts tsc；信使与落地页 svelte-check；不跑 cargo check
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml  # 桌面监督与线程锁回归
 pnpm --filter @real-bot/messenger build
 pnpm --filter @real-bot/landing build   # 可选；GitHub Pages 构建落地页
@@ -215,7 +234,7 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 Store 的 `ctx.commit`、`Store.transaction` 和回执共用 `Transactions.run`：只有最外层业务+回执 SQLite 提交后同步清空 journal 并发布当前映射，再按顺序执行文件提交与引擎回调。文件预暂存不包入业务事务；`postMessage` 自管暂存/事务；快照读事务内不嵌套会触发发布的写事务。pending_keys 与设置版本也进入 journal，凭据写入等待不持有 SQLite 事务，完成事务一次性发布当前凭据状态和设置版本。新增可选 `RuntimeSnapshot.credentialOperations`（缺省为空）与 `credential_operations.changed {items}`，只用于协商同步流，不改变旧客户端原始帧；设置直接消费同步状态，第二客户端修复/取消也能移除原客户端已确认待写的内存请求。客户端只在EventSync接纳的连续流中，先观察到该request_id自己的operation id，再观察到同实例更大seq中该操作移除/替换时退休请求；不能把较旧的空列表当作较新HTTP503已完成。LocalApi的请求对象保留终态标记，迟到503/网络失败不能复活已退休载荷，终态HTTP回执也同时清理内存请求与对应横幅。display code与已观察操作证据独立，改载荷产生的本地409不抹掉确认。重复详情回放的旧seq不推进生命周期。没有本请求的操作转换或终态回执时保留未知结果，不因无关列表或成功变更而清除，也不自动重放。
 
 - 本机 `POST/PATCH/PUT/DELETE`（除只读模型探测）可带 `X-Request-Id: <uppercase ULID>`；未带时服务端生成并回传。所有本机调用归 `device_id = local`，不能从 HTTP 头指定设备。`request_receipts` 的 `(device_id, request_id)` 唯一：同摘要重放首次 status/body（包括首次 409/422），异摘要 409。业务写入与回执是同一个**同步** SQLite 事务，事务函数拒绝 Promise；外部工具、模型、MCP 检查、退出与事件发布在提交后运行。不承诺进程崩溃前后外部副作用精确一次，也不在重启后偷偷重放工具。
-- 摘要实现是 `request-digest.ts` 的 RFC 8785 编码（ECMAScript 数字、UTF-16 键排序、拒绝孤立 surrogate / 非有限数），`LocalApiOptions.canonicalEncoder` 可接后续共享编码器。摘要以 `0x1f` 连接 method、path+query、规范 JSON、`json|multipart`、文件列表、规范 conditionalHeaders；文件项为 filename + `0x1e` + SHA-256，按 UTF-8 filename 字节序、同名时 hash 排序。显式媒体类型/条件头绑定修正了空 multipart 与 JSON、不同前置条件可能同摘要的歧义。multipart 非文件字段禁止重名，文件名禁止控制字节。conditionalHeaders 只包含小写 `if-match` 键（无条件时 `{}`），值必须是引号包裹的64位小写SHA-256；不接受星号、弱ETag或列表。媒体类型精确接受 application/json 或 multipart/form-data，非规范路由 pathname（重复/尾随斜杠、编码分隔符等）在摘要和业务分派前拒绝；query值中的编码斜杠/反斜杠是数据，不当作路由分隔符拒绝，完整query仍参与六字段摘要。解码后的工作区path仍由文件包含边界校验。文件只规范排序/计算摘要一次，同一列表用于执行分配。最终整段摘要接口由04共享实现接管，不仅替换JCS编码器。
+- daemon 通过 workspace 依赖直接使用 `@real-bot/remote/canonical` 的 RFC 8785 编码、完整六字段预像/SHA-256 与附件校验排序；`request-digest.ts` 只保留业务校验、参数适配及422错误映射，不再维护独立编码/摘要算法。`LocalApiOptions.canonicalEncoder` 保留为可信测试注入点，交给共享预像实现编码 body 和规范条件头，生产默认仍是共享 JCS。编码结果必须同步返回原始 string；Promise/其它非字符串拒绝为422，原生Promise仅挂拒绝处理，不等待或调用任意thenable。原始及已规范附件数组逐下标拒绝空洞，不将其忽略或当成空列表。摘要以 `0x1f` 连接 method、path+query、规范 JSON、`json|multipart`、文件列表、规范 conditionalHeaders；文件项为 filename + `0x1e` + SHA-256，按 UTF-8 filename 字节序、同名时 hash 排序。显式媒体类型/条件头绑定修正了空 multipart 与 JSON、不同前置条件可能同摘要的歧义。multipart 非文件字段禁止重名，文件名禁止控制字节。conditionalHeaders 只包含小写 `if-match` 键（无条件时 `{}`），值必须是引号包裹的64位小写SHA-256；不接受星号、弱ETag或列表。媒体类型精确接受 application/json 或 multipart/form-data，非规范路由 pathname（重复/尾随斜杠、编码分隔符等）在摘要和业务分派前拒绝；query值中的编码斜杠/反斜杠是数据，不当作路由分隔符拒绝，完整query仍参与六字段摘要。解码后的工作区path仍由文件包含边界校验。文件字节只计算摘要一次，执行分配与摘要均使用共享附件校验/排序；同名及完全相同的附件保留数量。共享预像会重新验证并排序传入的文件摘要，避免信任调用方声称的规范顺序。
 - 7 天或 20,000 个完成回执正文后清理为 `expired`，保留唯一键墓碑；旧键返回 `410 receipt_expired`，用户确认后才用新键。墓碑**不随正文删除**，因此键元数据会增长；只有永久吊销且不能再认证的设备身份才能整体退休，当前不提供删除墓碑接口。待写密钥回执不参与清理。可信运输可用 `store.receipts.read(scope)` 查完成/503 待密钥/410 状态，不能把内部 pending 回执体当成功响应。
 - `createLocalApi().dispatchBusiness(request, {deviceId, requestId, requireRevision})` 是供后续已认证运输注入的内部接口，不是鉴权器；调用方负责认证/吊销/UV、准入、限额与只读 GET 政策。它拒绝 runtime 和非 `/v1/` 路径，不新增任何 `/remote/*` 回环路由。注入运输与本机HTTP共用快照、会话详情和catchup读取实现及同一同步水印屏障，不再另建读取业务层。`requireRevision: true` 时 PATCH 必带 `if_revision`：实体比较 `updated_at`，设置比较 `settings_rev` 整数；每次成功设置 PATCH 至少递增一次，端点表的任意insert/update/delete及凭据待写/完成也事务性递增，覆盖本机API与Bot直接Store调用。不要假定复合PATCH只增加1。字段从业务体剥离前先进入摘要。远程 Stop 的 204 映射和远程文件 50 MiB 限额仍由后续运输票实现，本机 Stop 语义未改。
 - 端点/MCP 凭据先提交业务行 + `pending_keys`（仅名称/值摘要），再 await Keychain，最后提交完成状态。待写期间 GET 的 `key_set/auth_set` 为 false；失败返回 `503 key_write_pending`，**同一请求 id 和原始载荷**可跨重启续办，不新建实体。回执只留字段名、摘要和不含原始密钥的成功响应。其它普通请求不能改删待写凭据实体。`GET /v1/credential-operations` 仅返回 operation id、provider/mcp类型、实体id、拥有者request_id及can_repair，不返回密钥或摘要；删除意图（空密钥摘要）或实体已删除时can_repair=false，界面隐藏修复输入，API拒绝repair且保留清除操作，不能重新写成孤立密钥；`POST /v1/credential-operations/:id/resolve` 的 `{action:"repair",value:"新密钥"}` 或 `{action:"cancel"}` 只接管凭据阶段，取消会删钥匙串项而非回滚已经提交的配置。接管先将旧pending receipt变为409 credential_superseded，防止旧请求恢复原密钥；新操作也有回执和可续办pending状态。正在实际写Keychain的操作拒绝接管。原生 Keychain 删除错误不能吞掉。Bot 直接调用的凭据写失败同样留下未设状态，有独立耐久operation id，可跨重启从上述接口显式修复/取消；没有客户端请求 id 的工具调用不会自动重放。这不是外部工具 exactly-once。
@@ -233,7 +252,7 @@ Store 的 `ctx.commit`、`Store.transaction` 和回执共用 `Transactions.run`�
 
 | 工作流 | 触发 | 做什么 |
 |---|---|---|
-| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、信使与落地页 build；macOS 上 `cargo test` |
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、remote/browser、信使与落地页 build、真实 Caddy edge；macOS 上 desktop script tests/typecheck、Swift 凭据 fixture 与 `cargo test` |
 | [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) | `main` 推送 | 构建 `apps/landing` 并部署 GitHub Pages |
 | [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证后打 **未签名** 的 macOS `.dmg` / `.app`，发布为 GitHub **prerelease** |
 

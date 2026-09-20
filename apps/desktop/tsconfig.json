@@ -1,4 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
-  "files": []
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": ["scripts/**/*.ts"]
 }

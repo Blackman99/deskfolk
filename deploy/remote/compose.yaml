@@ -1,0 +1,88 @@
+name: real-bot-remote
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: apps/relay/Dockerfile
+    environment:
+      RELAY_BIND: 0.0.0.0
+      RELAY_PORT: "8080"
+      RELAY_DATABASE: /data/enrollment.sqlite
+      RELAY_ID: ${RELAY_ID:?Set RELAY_ID in the private env file}
+      RELAY_ORIGIN: https://${RELAY_DOMAIN:?Set RELAY_DOMAIN}
+      RELAY_ENABLED: ${RELAY_ENABLED:-0}
+      RELAY_PAIRING_ENABLED: ${RELAY_PAIRING_ENABLED:-0}
+      RELAY_TRUSTED_PROXY_IP: 172.30.6.2
+      RELAY_BOOTSTRAP_FILE: /run/secrets/bootstrap
+    secrets:
+      - bootstrap
+    volumes:
+      - type: bind
+        source: ${RELAY_STATE_DIR:?Use a quota-limited private directory}
+        target: /data
+        bind:
+          create_host_path: false
+    networks:
+      relay:
+        ipv4_address: 172.30.6.3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.75
+    mem_limit: 320m
+    pids_limit: 64
+    ulimits:
+      nofile: { soft: 1024, hard: 1024 }
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, bun, -e, "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "2" }
+  caddy:
+    build:
+      context: ../..
+      dockerfile: deploy/remote/Dockerfile
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?Set RELAY_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    ports:
+      - "${REMOTE_BIND_IP:-127.0.0.1}:80:8080"
+      - "${REMOTE_BIND_IP:-127.0.0.1}:443:8443"
+    volumes:
+      - type: bind
+        source: ${CADDY_DATA_DIR:?Use a quota-limited private directory}
+        target: /data
+        bind:
+          create_host_path: false
+    networks:
+      relay:
+        ipv4_address: 172.30.6.2
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.25
+    mem_limit: 192m
+    pids_limit: 64
+    ulimits:
+      nofile: { soft: 1024, hard: 1024 }
+    tmpfs: ["/config:size=8m,mode=0700,uid=1000,gid=1000", "/tmp:size=8m,mode=1777"]
+    depends_on:
+      relay:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "2" }
+secrets:
+  bootstrap:
+    file: ${RELAY_BOOTSTRAP_FILE:?Point at a mode-0600 secret outside the checkout}
+networks:
+  relay:
+    ipam:
+      config:
+        - subnet: 172.30.6.0/24

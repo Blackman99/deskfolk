@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-native",
+  "description": "Frame-local ACL; the command also rejects development and non-bundled main documents.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-remote-native-confirmation"]
+}

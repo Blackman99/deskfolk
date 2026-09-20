@@ -1,4 +1,6 @@
 node_modules
+.build/
+/apps/desktop/src-tauri/native/
 .DS_Store
 dist
 build

@@ -33,6 +33,8 @@
 
 ## Get it
 
+**System requirement: macOS 13.0 (Ventura) or later**, on Apple silicon or Intel. Current builds bundle the daemon and native helper; published bundles do not require an installed Bun runtime.
+
 **Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. If Gatekeeper blocks the first launch, right-click → Open, or run:
 
 ```bash
@@ -43,7 +45,7 @@ More detail: [Gatekeeper FAQ](docs/gatekeeper.md) · notarization path: [docs/no
 
 **Updates:** the app checks GitHub Releases in the background and shows a dot on the settings gear when a newer build exists. Settings → General → About lists the current version and opens the matching `.dmg` in your browser; while builds are unsigned there is no in-app installer.
 
-**Run from source** (macOS, Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
+**Run from source** (macOS 13.0+, Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
 
 ```bash
 cd real-bot
@@ -56,6 +58,8 @@ First run: pick a workspace folder (missing folders are created), add an OpenAI-
 ## Status
 
 Alpha, macOS only. What is live, in progress and out of scope: [website](https://blackman99.github.io/real-bot/en#boundaries) · [Roadmap](ROADMAP.md) · [CONTEXT.md](CONTEXT.md) (domain language).
+
+The shared remote-crypto package is an **experimental, default-off prototype**, not available remote access. A default-off Bun relay and non-root Compose/Caddy static deployment template are now available for isolated integration testing; the daemon adapter and remote/PWA client are not complete. See [self-hosted deployment, bootstrap recovery and routing contracts](docs/deploy-remote.md), including the separate `test:edge` command for real local Caddy HTTP/HTTPS/WSS checks (Caddy 2.10.2 and OpenSSL required). Its tests include official Noise vectors and an independent Rust snow peer (`pnpm test` requires Cargo); physical PWA/WebAuthn and independent security-review gates remain open. See the [protocol/API contract](docs/remote-protocol.md), including the single shared receipt digest with conditional headers and duplicate-filename ordering, now also consumed by local daemon receipts through the canonical-only workspace export. The daemon retains its stricter route and strong-SHA256 If-Match checks.
 
 ## Contributing
 

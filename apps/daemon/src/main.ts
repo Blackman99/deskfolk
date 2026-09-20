@@ -2,6 +2,12 @@ import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
 import { defaultDataDir, pidAlive, readDescriptor } from "./descriptor";
 import { startRuntime } from "./runtime";
 import { bunKeyStore } from "./secrets";
+import { remoteNative } from "./remote-native";
+
+if (process.argv.includes("--remote-native-capability")) {
+  console.log(JSON.stringify(await remoteNative.capability()));
+  process.exit(0);
+}
 
 const dataDir = process.env.REAL_BOT_DATA_DIR ?? defaultDataDir();
 

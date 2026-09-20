@@ -9,12 +9,14 @@
   },
   "scripts": {
     "dev": "tauri dev",
+    "build:native": "bun scripts/build-native.ts",
     "test": "bun test scripts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "tauri": "tauri"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/bun": "1.4.2",
     "typescript": "^6.0.3"
   }
 }

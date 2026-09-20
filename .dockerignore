@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/build
+**/.svelte-kit
+**/target
+.git
+.scratch
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.log
+**/test-results
+**/playwright-report
+**/*.sqlite*
+**/*.pem
+**/*.key

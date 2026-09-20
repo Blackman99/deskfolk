@@ -32,6 +32,12 @@ jobs:
         with:
           bun-version: 1.4.2
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: packages/remote/test/snow -> target
+
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
@@ -40,6 +46,19 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Test real relay HTTP, TLS and WSS edge
+        run: |
+          go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.10.2
+          CADDY_BIN="$(go env GOPATH)/bin/caddy" pnpm --filter @real-bot/relay test:edge
+
+      - name: Build shared remote package and browser fixture
+        run: pnpm --filter @real-bot/remote build && pnpm --filter @real-bot/remote build:browser
 
       - name: Build messenger
         run: pnpm --filter @real-bot/messenger build
@@ -54,11 +73,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Desktop script tests and typecheck
+        run: pnpm --filter @real-bot/desktop test && pnpm --filter @real-bot/desktop typecheck
+
+      - name: Native credential fixtures (no Keychain or prompts)
+        run: swift run --package-path apps/runtime-helper RemoteCoreTests
 
       - name: Cargo test
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml

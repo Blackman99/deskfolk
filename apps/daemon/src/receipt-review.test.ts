@@ -11,7 +11,9 @@ const clientModule = new URL("../../messenger/src/lib/api.ts", import.meta.url).
 const { LocalApi: Client, ApiError } = await import(clientModule);
 import type { ClientEvent } from "@real-bot/protocol";
 import { listWorkspaceDir } from "./workspace-browse";
-import { canonicalJson, requestDigest, requestPreimage, normalizeFiles } from "./request-digest";
+import { canonicalJson, requestDigest, requestPreimage, normalizeFiles, sha256, type CanonicalEncoder, type DigestFile, type NormalizedFile } from "./request-digest";
+import { HttpError } from "./errors";
+import { canonicalize, normalizeAttachmentDigests, requestDigest as sharedDigest, requestDigestBytes, sha256Hex, type RequestDigestInput } from "@real-bot/remote/canonical";
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => { while (closes.length) await closes.pop()!(); });
@@ -227,6 +229,190 @@ test("review10/11: agreed field order, canonical conditions, duplicate-name orde
   expect(canonicalJson({ "if-match": `"${"a".repeat(64)}"` })).toBe(`{"if-match":"\\"${"a".repeat(64)}\\""}`);
 });
 
+
+test("integration: daemon and canonical export share every six-field golden without relaxing If-Match", () => {
+  const vectors = JSON.parse(readFileSync(new URL("../../../packages/remote/test/fixtures/request-digest.json", import.meta.url), "utf8")) as Array<{ input: RequestDigestInput; preimage: string; sha256: string }>;
+  for (const vector of vectors) {
+    expect(new TextDecoder().decode(requestDigestBytes(vector.input))).toBe(vector.preimage);
+    expect(sharedDigest(vector.input)).toBe(vector.sha256);
+    const input = {
+      method: vector.input.method, path: vector.input.path, body: vector.input.body, multipart: vector.input.encoding === "multipart",
+      normalizedFiles: vector.input.files?.map((file) => ({ file, filename: file.filename, hash: file.sha256 })),
+      ifMatch: vector.input.conditionalHeaders?.["If-Match"],
+    };
+    if (input.ifMatch) {
+      expect(() => requestDigest(input)).toThrow("strong SHA-256 ETag");
+    } else {
+      expect(requestPreimage(input)).toBe(vector.preimage);
+      expect(requestDigest(input)).toBe(vector.sha256);
+    }
+  }
+  const body = { b: 2, a: 1 };
+  const files = [{ filename: "same.txt", bytes: Buffer.from("second") }, { filename: "same.txt", bytes: Buffer.from("first") }];
+  const cases = [
+    { local: { method: "POST", path: "/v1/messages", body }, golden: "caf582f4423c2c5b8e82a222afecb70514aa0d3f5ac1dadfbf8be33b6cceeddf" },
+    { local: { method: "POST", path: "/v1/messages", body, multipart: true, files }, golden: "a6dab6682df2cb83ad06bd60896c59e6cb8bca8f79984ebc6d2041ba509334c6" },
+    { local: { method: "PUT", path: "/v1/workspace/file", body: { path: "note.txt", content: "new" }, ifMatch: `"${"a".repeat(64)}"` }, golden: "cf696f981376d85e0a80a69403e1e5ae9712e5f8f51fec7e104a69f12e14f808" },
+  ];
+  for (const { local, golden } of cases) {
+    const shared: RequestDigestInput = { ...local, encoding: local.multipart ? "multipart" : "json",
+      files: local.files?.map((file) => ({ filename: file.filename, sha256: sha256Hex(file.bytes) })),
+      conditionalHeaders: local.ifMatch ? { "IF-MATCH": local.ifMatch } : {},
+    };
+    expect(requestPreimage(local)).toBe(new TextDecoder().decode(requestDigestBytes(shared)));
+    expect(requestDigest(local)).toBe(golden);
+    expect(sharedDigest(shared)).toBe(golden);
+  }
+  expect(sha256).toBe(sha256Hex);
+  const duplicates = [files[0]!, files[1]!, files[1]!, { filename: "😀", bytes: Buffer.from("x") }, { filename: "דּ", bytes: Buffer.from("y") }];
+  const normalized = normalizeFiles(duplicates, (file) => file);
+  const shared = normalizeAttachmentDigests(duplicates.map((file) => ({ file, filename: file.filename, sha256: sha256Hex(file.bytes) })));
+  expect(normalized.map((item) => item.file)).toEqual(shared.map((item) => item.file));
+  expect(normalized).toHaveLength(5);
+  expect(requestDigest({ method: "POST", path: "/v1/messages", body, multipart: true, normalizedFiles: normalized })).toBe(sharedDigest({ method: "POST", path: "/v1/messages", body, encoding: "multipart", files: shared }));
+  for (const value of [new Array(1), { get a() { throw new Error("accessor invoked"); } }, { a: undefined }]) {
+    expect(() => canonicalJson(value)).toThrow();
+  }
+});
+
+test("integration: encoder injection reaches shared body and condition encoding in real HTTP receipts", async () => {
+  const seen: unknown[] = [];
+  const encode = (value: unknown) => { seen.push(value); return ` ${canonicalize(value)}`; };
+  const h = await harness(memoryKeyStore(), { canonicalEncoder: encode });
+  const body = { name: "injected", duties: "", boundaries: "" }; const id = ulid();
+  expect((await h.request("POST", "/v1/bots", body, id)).status).toBe(201);
+  expect(seen).toEqual([body, {}]);
+  const shared: RequestDigestInput = { method: "POST", path: "/v1/bots", body, encoding: "json" };
+  const stored = h.store.receipts.lookup({ deviceId: "local", requestId: id })!.payload_sha256;
+  expect(stored).toBe(sharedDigest(shared, encode));
+  expect(stored).not.toBe(sharedDigest(shared));
+  expect((await h.request("POST", "/v1/bots", body, id)).status).toBe(201);
+  expect(h.store.listBots()).toHaveLength(1);
+});
+
+test("integration review B1: raw and normalized attachment holes fail422 instead of becoming empty files", () => {
+  const file: DigestFile = { filename: "same.txt", bytes: Buffer.from("bytes") };
+  const normalized = { file, filename: file.filename, hash: sha256(file.bytes) };
+  const rawLists = [new Array<DigestFile>(1), [file, , file], [, file], [file, ,]] as DigestFile[][];
+  const normalizedLists = [new Array<NormalizedFile<DigestFile>>(1), [normalized, , normalized], [, normalized], [normalized, ,]] as NormalizedFile<DigestFile>[][];
+  const inherited = new Array<DigestFile>(1);
+  Object.setPrototypeOf(inherited, Object.assign(Object.create(Array.prototype), { 0: file }));
+  rawLists.push(inherited);
+  const inheritedNormalized = new Array<NormalizedFile<DigestFile>>(1);
+  Object.setPrototypeOf(inheritedNormalized, Object.assign(Object.create(Array.prototype), { 0: normalized }));
+  normalizedLists.push(inheritedNormalized);
+  const input = { method: "POST", path: "/v1/messages", body: {}, multipart: true };
+  const rejects422 = (run: () => unknown) => {
+    let error: unknown;
+    try { run(); } catch (caught) { error = caught; }
+    expect(error).toBeInstanceOf(HttpError);
+    expect(error).toMatchObject({ status: 422, code: "invalid_args" });
+  };
+  for (const files of rawLists) {
+    rejects422(() => normalizeFiles(files, (item) => item));
+    rejects422(() => requestPreimage({ ...input, files }));
+    rejects422(() => requestDigest({ ...input, files }));
+  }
+  for (const normalizedFiles of normalizedLists) {
+    rejects422(() => requestPreimage({ ...input, normalizedFiles }));
+    rejects422(() => requestDigest({ ...input, normalizedFiles }));
+  }
+  const dense = normalizeFiles([file, file], (item) => item);
+  expect(dense).toHaveLength(2);
+  expect(dense[0]!.file).toBe(file); expect(dense[1]!.file).toBe(file);
+  expect(requestDigest({ ...input, normalizedFiles: dense })).toBe(requestDigest({ ...input, files: [file, file] }));
+  expect(requestDigest({ ...input, normalizedFiles: dense })).not.toBe(requestDigest({ ...input, files: [file] }));
+});
+
+for (const field of ["body", "conditions"] as const) {
+  test(`integration review S1: invalid ${field} encoders fail422 before receipts, files or business effects`, async () => {
+    let selected: () => unknown = () => Promise.resolve("{}");
+    let valid = false; let calls = 0; let coercions = 0;
+    const encoder = ((value: unknown) => {
+      calls++;
+      if (valid || (field === "conditions" && Object.hasOwn(value as object, "name"))) return canonicalize(value);
+      return selected();
+    }) as CanonicalEncoder;
+    const h = await harness(memoryKeyStore(), { canonicalEncoder: encoder });
+    const id = ulid(); const initial = { name: "before", duties: "", boundaries: "" };
+    const factories: Array<() => unknown> = [
+      () => undefined, () => null, () => 1, () => new String("{}"), () => Buffer.from("{}"),
+      () => new Uint8Array([123, 125]), () => ({ toString() { coercions++; return "{}"; } }),
+      () => ({ then() { coercions++; throw new Error("must not execute thenable"); } }),
+      () => Promise.resolve("{}"), () => Promise.reject(new Error("encoder rejected")),
+      () => (async () => "{}")(), () => (async () => { throw new Error("async encoder rejection"); })(),
+      () => new Promise((_, reject) => setTimeout(() => reject(new Error("late encoder rejection")), 0)),
+      () => new Promise(() => {}),
+    ];
+    for (const factory of factories) {
+      selected = factory;
+      for (const body of [initial, { ...initial, name: "changed" }]) {
+        const beforeCalls = calls;
+        const response = await h.request("POST", "/v1/bots", body, id);
+        expect(response.status).toBe(422);
+        expect(await response.json()).toMatchObject({ error: { code: "invalid_args" } });
+        expect(calls - beforeCalls).toBe(field === "body" ? 1 : 2);
+        expect(h.store.receipts.lookup({ deviceId: "local", requestId: id })).toBeNull();
+        expect(h.store.listBots()).toHaveLength(0);
+        expect(h.store.db.query("SELECT COUNT(*) AS n FROM file_stages").get()).toEqual({ n: 0 });
+        expect(h.store.db.query("SELECT COUNT(*) AS n FROM file_commits").get()).toEqual({ n: 0 });
+      }
+    }
+    valid = true;
+    expect((await h.request("POST", "/v1/bots", initial, id)).status).toBe(201);
+    expect((await h.request("POST", "/v1/bots", { ...initial, name: "changed" }, id)).status).toBe(409);
+    expect(h.store.listBots()).toHaveLength(1);
+    expect(h.store.listBots()[0]!.name).toBe("before");
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(coercions).toBe(0);
+  });
+}
+
+test("integration: live API receipts bind shared files, query, media and actual If-Match without replaying effects", async () => {
+  const h = await harness();
+  const id = ulid(); const path = "/v1/bots?q=folder%2Fnested";
+  const body = { name: "shared", duties: "", boundaries: "" };
+  const created = await h.request("POST", path, body, id);
+  expect(created.status).toBe(201);
+  expect(h.store.receipts.lookup({ deviceId: "local", requestId: id })!.payload_sha256).toBe(sharedDigest({ method: "POST", path, body, encoding: "json" }));
+  expect((await h.request("POST", "/v1/bots?q=other%2Fnested", body, id)).status).toBe(409);
+  const bot = h.store.listBots()[0]!;
+  const session = h.store.createBot({ name: "files", duties: "", boundaries: "" }).direct_session.id;
+  const messagePath = `/v1/sessions/${session}/messages`; const uploadId = ulid();
+  const values = ["second", "first", "first"];
+  const form = (items: string[]) => { const data = new FormData(); data.set("body", "photos"); for (const item of items) data.append("files", new File([item], "same.txt")); return data; };
+  const uploaded = await h.request("POST", messagePath, form(values), uploadId);
+  expect(uploaded.status).toBe(201);
+  const first = await uploaded.text();
+  const attachments = (JSON.parse(first) as { attachments: Array<{ workspace_relpath: string }> }).attachments;
+  expect(attachments).toHaveLength(3);
+  const files = normalizeAttachmentDigests(values.map((value) => ({ value, filename: "same.txt", sha256: sha256Hex(value) })));
+  expect(attachments.map((attachment) => readFileSync(join(h.root, attachment.workspace_relpath), "utf8"))).toEqual(files.map((file) => file.value));
+  expect(h.store.receipts.lookup({ deviceId: "local", requestId: uploadId })!.payload_sha256).toBe(sharedDigest({ method: "POST", path: messagePath, body: { body: "photos" }, encoding: "multipart", files }));
+  const replay = await h.request("POST", messagePath, form([...values].reverse()), uploadId);
+  expect(replay.status).toBe(201); expect(await replay.text()).toBe(first);
+  expect((await h.request("POST", messagePath, form(values.slice(0, 2)), uploadId)).status).toBe(409);
+  const duplicateFields = form([]); duplicateFields.append("body", "other");
+  expect((await h.request("POST", messagePath, duplicateFields)).status).toBe(422);
+  writeFileSync(join(h.root, "note.txt"), "old");
+  const get = await h.request("GET", "/v1/workspace/file?path=note.txt");
+  expect(get.status).toBe(200); const etag = get.headers.get("ETag")!;
+  expect(etag).toBe(`"${sha256Hex("old")}"`);
+  const putBody = { path: "note.txt", content: "new" }; const putId = ulid();
+  const saved = await h.request("PUT", "/v1/workspace/file", putBody, putId, { "If-Match": etag });
+  expect(saved.status).toBe(204); expect(saved.headers.get("ETag")).toBe(`"${sha256Hex("new")}"`);
+  expect(h.store.receipts.lookup({ deviceId: "local", requestId: putId })!.payload_sha256).toBe(sharedDigest({ method: "PUT", path: "/v1/workspace/file", body: putBody, encoding: "json", conditionalHeaders: { "if-match": etag } }));
+  expect((await h.request("PUT", "/v1/workspace/file", putBody, putId, { "If-Match": etag })).status).toBe(204);
+  expect((await h.request("PUT", "/v1/workspace/file", putBody, putId, { "If-Match": `"${sha256Hex("new")}"` })).status).toBe(409);
+  expect((await h.request("PUT", "/v1/workspace/file", { ...putBody, content: "stale" }, ulid(), { "If-Match": etag })).status).toBe(409);
+  for (const ifMatch of ["*", 'W/"abc"', '"rev-1"', '"abc", "def"']) {
+    expect((await h.request("PUT", "/v1/workspace/file", putBody, ulid(), { "If-Match": ifMatch })).status).toBe(422);
+  }
+  expect(readFileSync(join(h.root, "note.txt"), "utf8")).toBe("new");
+  const missing = await h.api.dispatchBusiness(new Request("http://fixture/v1/workspace/file", { method: "PUT", body: JSON.stringify(putBody) }), { deviceId: "fixture-device", requestId: ulid(), requireRevision: true });
+  expect(missing.status).toBe(422);
+  expect(h.store.getBot(bot.id).name).toBe("shared");
+});
 
 test("round2 query data: real client opens nested files/trees and slash searches without weakening route guards", async () => {
   const h = await harness();

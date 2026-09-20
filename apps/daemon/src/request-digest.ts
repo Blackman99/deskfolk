@@ -1,38 +1,31 @@
-import { createHash } from "node:crypto";
+import {
+  canonicalize, normalizeAttachmentDigests, requestDigest as sharedRequestDigest,
+  requestDigestBytes, sha256Hex, type CanonicalEncoder, type RequestDigestInput,
+} from "@real-bot/remote/canonical";
 import { HttpError } from "./errors";
 
-export type CanonicalEncoder = (value: unknown) => string;
+export type { CanonicalEncoder } from "@real-bot/remote/canonical";
 
-/** RFC 8785 uses ECMAScript number serialization and UTF-16 property ordering. */
-export const canonicalJson: CanonicalEncoder = (value) => {
-  if (value === null || typeof value === "boolean") return JSON.stringify(value);
-  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
-  if (typeof value === "string") {
-    if (hasLoneSurrogate(value)) throw new HttpError(422, "invalid_args", "JSON contains a lone surrogate");
-    return JSON.stringify(value);
+function invalidArgs<T>(run: () => T): T {
+  try { return run(); } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(422, "invalid_args", error instanceof Error ? error.message : "invalid digest input");
   }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
-    return `{${Object.keys(value).sort().map((key) => `${canonicalJson(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
-  }
-  throw new HttpError(422, "invalid_args", "value is not I-JSON");
-};
-
-export function sha256(bytes: string | Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
 }
+
+export const canonicalJson: CanonicalEncoder = (value) => invalidArgs(() => canonicalize(value));
+export const sha256 = sha256Hex;
 
 export type DigestFile = { filename: string; bytes: Uint8Array };
 export type NormalizedFile<T> = { file: T; filename: string; hash: string };
 
 export function normalizeFiles<T>(files: T[], describe: (file: T) => DigestFile): NormalizedFile<T>[] {
-  return files.map((file) => {
+  return invalidArgs(() => normalizeAttachmentDigests(Array.from({ length: files.length }, (_, index) => {
+    if (!Object.hasOwn(files, index)) throw new HttpError(422, "invalid_args", "sparse attachment list");
+    const file = files[index]!;
     const { filename, bytes } = describe(file);
-    if (!filename || /[\x00-\x1f\x7f]/.test(filename) || hasLoneSurrogate(filename)) {
-      throw new HttpError(422, "invalid_args", "invalid attachment filename");
-    }
-    return { file, filename, filenameBytes: Buffer.from(filename), hash: sha256(bytes) };
-  }).sort((a, b) => Buffer.compare(a.filenameBytes, b.filenameBytes) || a.hash.localeCompare(b.hash));
+    return { file, filename, sha256: sha256Hex(bytes) };
+  })).map(({ file, filename, sha256: hash }) => ({ file, filename, hash })));
 }
 
 export function validateRequestPath(path: string): void {
@@ -49,28 +42,31 @@ export function conditionalHeaders(ifMatch?: string | null): Record<string, stri
   return { "if-match": ifMatch };
 }
 
-export function requestPreimage(input: {
+type DigestInput = {
   method: string; path: string; body: unknown; multipart?: boolean;
   files?: DigestFile[]; normalizedFiles?: NormalizedFile<unknown>[]; ifMatch?: string | null;
-}, encode: CanonicalEncoder = canonicalJson): string {
-  if (!/^[A-Z]+$/.test(input.method)) throw new HttpError(422, "invalid_args", "invalid request method");
+};
+
+function sharedInput(input: DigestInput): RequestDigestInput {
   validateRequestPath(input.path);
+  const headers = conditionalHeaders(input.ifMatch);
   const files = input.normalizedFiles ?? normalizeFiles(input.files ?? [], (file) => file);
-  if (!input.multipart && files.length) throw new HttpError(422, "invalid_args", "JSON request cannot contain files");
-  return [input.method, input.path, encode(input.body), input.multipart ? "multipart" : "json",
-    files.map((file) => `${file.filename}\x1e${file.hash}`).join("\x1f"),
-    encode(conditionalHeaders(input.ifMatch)),
-  ].join("\x1f");
+  return {
+    method: input.method, path: input.path, body: input.body,
+    encoding: input.multipart ? "multipart" : "json",
+    files: Array.from({ length: files.length }, (_, index) => {
+      if (!Object.hasOwn(files, index)) throw new HttpError(422, "invalid_args", "sparse attachment list");
+      const file = files[index]!;
+      return { filename: file.filename, sha256: file.hash };
+    }),
+    conditionalHeaders: headers,
+  };
 }
 
-export function requestDigest(input: Parameters<typeof requestPreimage>[0], encode: CanonicalEncoder = canonicalJson): string {
-  return sha256(requestPreimage(input, encode));
+export function requestPreimage(input: DigestInput, encode: CanonicalEncoder = canonicalJson): string {
+  return invalidArgs(() => new TextDecoder().decode(requestDigestBytes(sharedInput(input), encode)));
 }
 
-function hasLoneSurrogate(value: string): boolean {
-  for (const char of value) {
-    const point = char.codePointAt(0)!;
-    if (point >= 0xd800 && point <= 0xdfff) return true;
-  }
-  return false;
+export function requestDigest(input: DigestInput, encode: CanonicalEncoder = canonicalJson): string {
+  return invalidArgs(() => sharedRequestDigest(sharedInput(input), encode));
 }
