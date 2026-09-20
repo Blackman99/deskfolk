@@ -30,6 +30,7 @@
 		type ProfileFields
 	} from './roster-edit.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import type { SelectOption } from '../select-options.ts';
 
 	type Props = {
@@ -41,7 +42,7 @@
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
-		openDangerConfirm: (kind: 'skill' | 'memory', run: () => Promise<void>) => void;
+		openDangerConfirm: (kind: 'skill' | 'memory', run: DangerAction) => void;
 		clearDanger: (kind: 'skill' | 'memory') => void;
 		onDeleteBot: () => void;
 		onClearHistory: () => void;
@@ -216,12 +217,13 @@
 	}
 
 	function openDeleteSkillConfirm(id: string): void {
-		openDangerConfirm('skill', () => deleteSkillRow(id));
+		openDangerConfirm('skill', (isCurrent) => deleteSkillRow(id, isCurrent));
 	}
 
-	async function deleteSkillRow(skillId: string): Promise<void> {
+	async function deleteSkillRow(skillId: string, isCurrent: () => boolean): Promise<void> {
 		skillFailed = false;
 		const error = await runtime.deleteSkill(skillId);
+		if (!isCurrent()) return;
 		if (error) {
 			skillFailed = true;
 			return;

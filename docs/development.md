@@ -46,7 +46,7 @@
 
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 新建群 → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
-共用 `DangerDialog.svelte` 用原生 `dialog.showModal()` 隔离背景（含已有资料/技能/端点浮层），在组件内处理 Tab/Shift+Tab 和 Escape，不加全局键盘或 inert DOM 补丁。取消/卸载后归还仍存在的触发控件；busy 时焦点停在对话框，拒绝取消与重复确认。Shell 的所有确认写入共用 pending 状态；触摸按钮至少 44×44px。
+共用 `DangerDialog.svelte` 用原生 `dialog.showModal()` 隔离背景（含已有资料/技能/端点浮层），在组件内处理 Tab/Shift+Tab 和 Escape，不加全局键盘或 inert DOM 补丁。取消/卸载后归还仍存在的触发控件；busy 时焦点停在对话框，拒绝取消与重复确认。Shell 每个确认对象拥有自己的 running 状态，重复提交只拦截同一对象；事件先移除旧确认时，新确认可独立执行。所有异步完成后的清理/错误反馈校验确切确认身份；技能/记忆回调使用 `isCurrent`，不能按种类清除替代确认。触摸按钮至少 44×44px。
 
 ## 日程编辑与版本
 

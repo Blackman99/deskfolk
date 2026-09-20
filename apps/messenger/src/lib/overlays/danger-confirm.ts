@@ -1,5 +1,8 @@
 import type { Copy } from "../copy.ts";
 
+/** Async dialog work may update its caller only while this exact confirmation is current. */
+export type DangerAction = (isCurrent: () => boolean) => Promise<void>;
+
 export type DangerKind = "bot" | "group" | "history" | "skill" | "memory" | "provider";
 
 /** Drawer/settings confirms go when that surface closes. A sidebar menu confirm does not. */

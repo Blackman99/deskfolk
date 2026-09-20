@@ -126,7 +126,7 @@ test("deleting a skill asks the shell for a confirm that knows which skill", asy
   const bot = aBot();
   const runtime = fakeRuntime({ bots: [bot], skills: [skill] });
   runtime.profileBotId = bot.id;
-  let asked: { kind: string; run: () => Promise<void> } | null = null;
+  let asked: { kind: string; run: (isCurrent: () => boolean) => Promise<void> } | null = null;
   const { host, close } = render(ProfilePane, {
     runtime,
     bot,
@@ -134,7 +134,7 @@ test("deleting a skill asks the shell for a confirm that knows which skill", asy
     modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
-    openDangerConfirm: (kind: "skill", run: () => Promise<void>) => (asked = { kind, run }),
+    openDangerConfirm: (kind: "skill", run: (isCurrent: () => boolean) => Promise<void>) => (asked = { kind, run }),
     clearDanger: () => {},
     onDeleteBot: () => {},
     onClearHistory: () => {},
@@ -143,9 +143,27 @@ test("deleting a skill asks the shell for a confirm that knows which skill", asy
   click(buttonByText(host, t.sidebar.skillDelete));
   expect(asked).not.toBeNull();
   expect(asked!.kind).toBe("skill");
-  await asked!.run();
+  await asked!.run(() => true);
   expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["skill-9"]);
   close();
+});
+
+test('a superseded skill delete cannot clear a newer confirmation or editor', async () => {
+  const bot = aBot(); const skill = aSkill();
+  let release!: (value: null) => void;
+  const runtime = fakeRuntime({ bots: [bot], skills: [skill] }, { deleteSkill: () => new Promise<null>((resolve) => { release = resolve; }) });
+  runtime.profileBotId = bot.id;
+  let run!: (isCurrent: () => boolean) => Promise<void>;
+  let cleared = 0;
+  const { host, close } = render(ProfilePane, { runtime, bot, t, modelOptions: [], selectedKind: 'you-bot', profileFailed: false,
+    openDangerConfirm: (_kind, action) => { run = action; }, clearDanger: () => { cleared++; }, onDeleteBot: () => {}, onClearHistory: () => {} });
+  click(host.querySelector('.skill-open')); click(buttonByText(host, t.sidebar.skillDelete));
+  let current = true;
+  const pending = run(() => current);
+  current = false;
+  release(null); await pending;
+  expect(cleared).toBe(0);
+  expect(host.querySelector('.skill-modal')).not.toBeNull(); close();
 });
 
 test("head add button opens the skill modal, cancel button closes it", () => {
@@ -165,7 +183,7 @@ test("row edit button opens the modal with skill data; row delete button invokes
   const bot = aBot();
   const runtime = fakeRuntime({ bots: [bot], skills: [skill] });
   runtime.profileBotId = bot.id;
-  let asked: { kind: string; run: () => Promise<void> } | null = null;
+  let asked: { kind: string; run: (isCurrent: () => boolean) => Promise<void> } | null = null;
   const { host, close } = render(ProfilePane, {
     runtime,
     bot,
@@ -173,7 +191,7 @@ test("row edit button opens the modal with skill data; row delete button invokes
     modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
-    openDangerConfirm: (kind: "skill", run: () => Promise<void>) => (asked = { kind, run }),
+    openDangerConfirm: (kind: "skill", run: (isCurrent: () => boolean) => Promise<void>) => (asked = { kind, run }),
     clearDanger: () => {},
     onDeleteBot: () => {},
     onClearHistory: () => {},
@@ -199,7 +217,7 @@ test("row edit button opens the modal with skill data; row delete button invokes
   click(deleteBtn);
   expect(asked).not.toBeNull();
   expect(asked!.kind).toBe("skill");
-  await asked!.run();
+  await asked!.run(() => true);
   expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["skill-1"]);
   close();
 });

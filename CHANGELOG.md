@@ -8,6 +8,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Routines
 
+- Pending destructive actions now belong to their exact confirmation. If a committed event removes an older dialog before its HTTP reply, a replacement confirmation remains usable and cannot be cleared or unlocked by that older reply.
+
 - Earlier routine searches can no longer replace a newer editor or reopen a dismissed profile. Retained routines whose Bot was deleted remain visible as unavailable search results rather than silently closing search.
 - Shared delete/clear confirmations now isolate background controls, contain keyboard focus, restore the invoking control, and reject dismissal or duplicate confirmation while saving. Confirmation buttons and routine weekday labels have at least 44×44px targets.
 
