@@ -22,7 +22,7 @@ import {
   serializeCatalog,
   unionProviderModels,
 } from "../models";
-import { createProvider, listProviders, patchProvider } from "./providers";
+import { createProvider, listProviders, listProvidersCached, patchProvider } from "./providers";
 import {
   type ProviderRow,
   type StoreContext,
@@ -39,9 +39,14 @@ import {
 
 export async function settings(ctx: StoreContext): Promise<Settings> {
   await ensureLegacyProvider(ctx);
+  await listProviders(ctx);
+  return settingsCached(ctx);
+}
+
+export function settingsCached(ctx: StoreContext): Settings {
   const map = settingsMap(ctx);
   const workspace_path = emptyToNull(map.get("workspace_path"));
-  const providers = await listProviders(ctx);
+  const providers = listProvidersCached(ctx);
   const defaultProvider = defaultProviderRow(ctx, providers, emptyToNull(map.get("default_provider_id")));
   const endpoint_base_url = defaultProvider?.base_url ?? emptyToNull(map.get("endpoint_base_url"));
   const endpoint_model_catalog = defaultProvider
@@ -103,32 +108,34 @@ export async function patchSettings(
       throw new HttpError(422, "invalid_args", `unknown settings field: ${key}`);
     }
   }
-  if ("workspace_path" in patch) {
-    setSetting(ctx, "workspace_path", resolveWorkspacePath(patch.workspace_path));
-  }
-  if ("launch_at_login" in patch) {
-    if (typeof patch.launch_at_login !== "boolean") {
-      throw new HttpError(422, "invalid_args", "launch_at_login must be a boolean");
+  ctx.commit(() => {
+    if ("workspace_path" in patch) {
+      setSetting(ctx, "workspace_path", resolveWorkspacePath(patch.workspace_path));
     }
-    setSetting(ctx, "launch_at_login", patch.launch_at_login ? "1" : "0");
-  }
-  if ("locale" in patch) {
-    if (patch.locale !== "zh" && patch.locale !== "en") {
-      throw new HttpError(422, "invalid_args", "locale must be zh or en");
+    if ("launch_at_login" in patch) {
+      if (typeof patch.launch_at_login !== "boolean") {
+        throw new HttpError(422, "invalid_args", "launch_at_login must be a boolean");
+      }
+      setSetting(ctx, "launch_at_login", patch.launch_at_login ? "1" : "0");
     }
-    setSetting(ctx, "locale", patch.locale);
-  }
-  if ("theme" in patch) {
-    if (patch.theme !== "system" && patch.theme !== "light" && patch.theme !== "dark") {
-      throw new HttpError(422, "invalid_args", "theme must be system, light, or dark");
+    if ("locale" in patch) {
+      if (patch.locale !== "zh" && patch.locale !== "en") {
+        throw new HttpError(422, "invalid_args", "locale must be zh or en");
+      }
+      setSetting(ctx, "locale", patch.locale);
     }
-    setSetting(ctx, "theme", patch.theme);
-  }
-  if ("default_provider_id" in patch) {
-    const nextId = normalizeOptionalId(patch.default_provider_id, "default_provider_id");
-    if (nextId) requireProvider(ctx, nextId);
-    setSetting(ctx, "default_provider_id", nextId ?? "");
-  }
+    if ("theme" in patch) {
+      if (patch.theme !== "system" && patch.theme !== "light" && patch.theme !== "dark") {
+        throw new HttpError(422, "invalid_args", "theme must be system, light, or dark");
+      }
+      setSetting(ctx, "theme", patch.theme);
+    }
+    if ("default_provider_id" in patch) {
+      const nextId = normalizeOptionalId(patch.default_provider_id, "default_provider_id");
+      if (nextId) requireProvider(ctx, nextId);
+      setSetting(ctx, "default_provider_id", nextId ?? "");
+    }
+  });
   const touchesEndpoint =
     "endpoint_base_url" in patch ||
     "endpoint_api_key" in patch ||
@@ -167,8 +174,10 @@ export async function patchSettings(
         models: providerPatch.models,
         default_model: providerPatch.default_model,
       });
-      setSetting(ctx, "default_provider_id", created.id);
-      mirrorDefaultProvider(ctx);
+      ctx.commit(() => {
+        setSetting(ctx, "default_provider_id", created.id);
+        mirrorDefaultProvider(ctx);
+      });
     }
   }
   return settings(ctx);
@@ -213,7 +222,7 @@ export function mirrorDefaultProvider(ctx: StoreContext): void {
 }
 
 export async function ensureLegacyProvider(ctx: StoreContext): Promise<void> {
-  ensureLegacyProviderRow(ctx);
+  ctx.commit(() => ensureLegacyProviderRow(ctx));
   const id = defaultProviderId(ctx) ?? providerRows(ctx)[0]?.id;
   if (!id || ctx.legacy.copiedKey) return;
   ctx.legacy.copiedKey = true;

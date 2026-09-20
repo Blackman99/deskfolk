@@ -77,16 +77,18 @@ export async function createProvider(ctx: StoreContext, input: CreateProviderReq
       : (models[0] ?? null);
   const now = isoNow();
   const id = ulid();
-  ctx.db.run(
+  ctx.commit(() => ctx.db.run(
     `INSERT INTO providers (id, name, base_url, models, available_models, default_model, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, now],
-  );
+  ));
   if (typeof input.api_key === "string" && input.api_key.length > 0) {
     await ctx.keys.write(providerKeychainName(id), input.api_key);
   }
-  if (!defaultProviderId(ctx)) setSetting(ctx, "default_provider_id", id);
-  mirrorDefaultProvider(ctx);
+  ctx.commit(() => {
+    if (!defaultProviderId(ctx)) setSetting(ctx, "default_provider_id", id);
+    mirrorDefaultProvider(ctx);
+  });
   return getProvider(ctx, id);
 }
 
@@ -97,13 +99,15 @@ export async function patchProvider(
 ): Promise<Provider> {
   await ensureLegacyProvider(ctx);
   const current = requireProvider(ctx, id);
+  if (patch.api_key !== undefined && typeof patch.api_key !== "string") {
+    throw new HttpError(422, "invalid_args", "api_key must be a string");
+  }
   const name = patch.name !== undefined ? requireNonEmpty("name", patch.name) : current.name;
   const baseUrl =
     patch.base_url !== undefined ? resolveEndpointUrl(patch.base_url) : current.base_url;
   let catalog = parseStoredCatalog(current.models);
   if (patch.models !== undefined) {
     catalog = normalizeModelCatalog(patch.models);
-    dropUnknownBotModelsForProvider(ctx, id, catalogNames(catalog));
   }
   const models = catalogNames(catalog);
   const availableModels =
@@ -119,17 +123,17 @@ export async function patchProvider(
     defaultModel = models[0]!;
   }
   const now = isoNow();
-  ctx.db.run(
-    `UPDATE providers SET name = ?, base_url = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
-    [name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
-  );
+  ctx.commit(() => {
+    if (patch.models !== undefined) dropUnknownBotModelsForProvider(ctx, id, models);
+    ctx.db.run(
+      `UPDATE providers SET name = ?, base_url = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
+      [name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
+    );
+    mirrorDefaultProvider(ctx);
+  });
   if (patch.api_key !== undefined) {
-    if (typeof patch.api_key !== "string") {
-      throw new HttpError(422, "invalid_args", "api_key must be a string");
-    }
     await ctx.keys.write(providerKeychainName(id), patch.api_key);
   }
-  mirrorDefaultProvider(ctx);
   return getProvider(ctx, id);
 }
 
@@ -140,21 +144,30 @@ export async function deleteProvider(ctx: StoreContext, id: string): Promise<voi
     .query<ProviderRow, [string]>(`SELECT * FROM providers WHERE id != ? ORDER BY created_at ASC, id`)
     .all(id);
   const now = isoNow();
-  ctx.db.transaction(() => {
+  ctx.commit(() => {
     ctx.db.run(`UPDATE bots SET provider_id = NULL, updated_at = ? WHERE provider_id = ?`, [now, id]);
     const changes = ctx.db.run(`DELETE FROM providers WHERE id = ?`, [id]).changes;
     if (changes === 0) throw new HttpError(404, "not_found", "provider not found");
-  })();
+  });
   await ctx.keys.write(providerKeychainName(id), "");
-  const defaultId = defaultProviderId(ctx);
-  if (defaultId === id) {
-    setSetting(ctx, "default_provider_id", remaining[0]?.id ?? "");
-  }
-  dropUnknownBotModels(ctx, allConfiguredModels(ctx));
-  mirrorDefaultProvider(ctx);
+  ctx.commit(() => {
+    const defaultId = defaultProviderId(ctx);
+    if (defaultId === id) setSetting(ctx, "default_provider_id", remaining[0]?.id ?? "");
+    dropUnknownBotModels(ctx, allConfiguredModels(ctx));
+    mirrorDefaultProvider(ctx);
+  });
 }
 
 export async function toProvider(ctx: StoreContext, row: ProviderRow): Promise<Provider> {
+  await ctx.keys.read(providerKeychainName(row.id));
+  return toProviderCached(ctx, row);
+}
+
+export function listProvidersCached(ctx: StoreContext): Provider[] {
+  return providerRows(ctx).map((row) => toProviderCached(ctx, row));
+}
+
+function toProviderCached(ctx: StoreContext, row: ProviderRow): Provider {
   const catalog = parseStoredCatalog(row.models);
   const models = catalogNames(catalog);
   const storedDefault = emptyToNull(row.default_model);
@@ -162,7 +175,7 @@ export async function toProvider(ctx: StoreContext, row: ProviderRow): Promise<P
     id: row.id,
     name: row.name,
     base_url: emptyToNull(row.base_url),
-    key_set: (await ctx.keys.read(providerKeychainName(row.id))) !== null,
+    key_set: ctx.keys.peek(providerKeychainName(row.id)) != null,
     models,
     model_catalog: catalog,
     available_models: parseStoredAvailableModels(row.available_models),

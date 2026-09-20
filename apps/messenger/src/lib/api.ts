@@ -1,5 +1,10 @@
 import type {
   Approval,
+  AllowRule,
+  Routine,
+  RuntimeSnapshot,
+  SessionSnapshot,
+  SyncFrame,
   Bot,
   ClientEvent,
   CreateBotRequest,
@@ -62,6 +67,22 @@ export class LocalApi {
 
   async post<T>(path: string, body: unknown = {}): Promise<T> {
     return this.request<T>("POST", path, body);
+  }
+
+  async snapshot(): Promise<RuntimeSnapshot> {
+    return this.get<RuntimeSnapshot>("/v1/snapshot");
+  }
+
+  async sessionSnapshot(id: string): Promise<SessionSnapshot> {
+    return this.get<SessionSnapshot>(`/v1/sessions/${id}/snapshot`);
+  }
+
+  async routines(): Promise<Routine[]> {
+    return (await this.get<ListPage<Routine>>("/v1/routines")).items;
+  }
+
+  async allowRules(): Promise<AllowRule[]> {
+    return (await this.get<ListPage<AllowRule>>("/v1/allow-rules")).items;
   }
 
   async settings(): Promise<Settings> {
@@ -393,7 +414,23 @@ export class LocalApi {
   }
 
   authFrame(): string {
-    return JSON.stringify({ type: "auth", token: this.endpoint.token });
+    return JSON.stringify({ type: "auth", token: this.endpoint.token, protocol: "sync-v1" });
+  }
+
+  parseSyncFrame(raw: string): SyncFrame | null {
+    try {
+      const frame = JSON.parse(raw);
+      if (!frame || typeof frame !== "object" || typeof frame.event_instance_id !== "string" || !/^[0-9a-f]{32}$/.test(frame.event_instance_id)) return null;
+      if (frame.type === "event") {
+        if (!Number.isSafeInteger(frame.seq) || frame.seq < 1 || !frame.payload || typeof frame.payload.event !== "string") return null;
+        if (frame.payload.event === "turn.token" || frame.payload.event === "turn.tool") return null;
+        return frame;
+      }
+      if ((frame.type === "ready" || frame.type === "resnapshot") && Number.isSafeInteger(frame.watermark_seq) && frame.watermark_seq >= 0) return frame;
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   parseEvent(raw: string): ClientEvent | null {

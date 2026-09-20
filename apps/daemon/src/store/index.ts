@@ -5,6 +5,8 @@
  * `store.getBot(id)` while the code behind it stays small enough to read in one sitting.
  */
 import { chmodSync } from "node:fs";
+import type { ClientEvent, RuntimeSnapshot } from "@real-bot/protocol";
+import { installChangeJournal, committedEvents } from "./events";
 import { Database } from "bun:sqlite";
 import { SCHEMA_SQL } from "../schema";
 import * as approvals from "./approvals";
@@ -42,6 +44,8 @@ type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (..
 export class Store {
   readonly db: Database;
   private readonly ctx: StoreContext;
+  private readonly listeners = new Set<(event: ClientEvent) => void>();
+  private committing = false;
 
   constructor(options: StoreOptions = {}) {
     this.db = new Database(options.filename ?? ":memory:", { create: true, strict: true });
@@ -60,31 +64,81 @@ export class Store {
     }
     this.ctx = {
       db: this.db,
-      keys: new KeyCache(options.endpointKey ?? memoryKeyStore()),
+      keys: new KeyCache(options.endpointKey ?? memoryKeyStore(), () => this.keysChanged()),
       legacy: { copiedKey: false },
+      commit: (write) => this.commit(write),
     };
     settings.ensureLegacyProviderRow(this.ctx);
+    installChangeJournal(this.ctx);
   }
 
   close(): void {
     this.db.close();
   }
 
-  private bind<F extends (ctx: StoreContext, ...args: never[]) => unknown>(fn: F): Bound<F> {
-    return ((...args: unknown[]) => (fn as unknown as (...all: unknown[]) => unknown)(this.ctx, ...args)) as Bound<F>;
+  onCommit(listener: (event: ClientEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(events: ClientEvent[]): void {
+    for (const event of events) for (const listener of this.listeners) listener(event);
+  }
+
+  private keysChanged(): void {
+    const occurred_at = new Date().toISOString();
+    this.emit([
+      { event: "settings.changed", occurred_at, ...settings.settingsCached(this.ctx) },
+      ...providers.listProvidersCached(this.ctx).map((row): ClientEvent => ({ event: "provider.upsert", occurred_at, ...row })),
+      ...mcp.listMcpServers(this.ctx).map((row): ClientEvent => ({ event: "mcp.upsert", occurred_at, ...row })),
+    ]);
+  }
+
+  private commit<T>(write: () => T): T {
+    if (this.committing) return write();
+    this.committing = true;
+    try {
+      const value = this.db.transaction(write)();
+      if (!this.db.inTransaction) this.emit(committedEvents(this.ctx));
+      return value;
+    } finally {
+      this.committing = false;
+    }
+  }
+
+  private bind<F extends (ctx: StoreContext, ...args: never[]) => unknown>(fn: F, asynchronous = false): Bound<F> {
+    return ((...args: unknown[]) => {
+      const call = () => (fn as unknown as (...all: unknown[]) => unknown)(this.ctx, ...args);
+      // Async domain methods delimit each SQLite write with ctx.commit themselves.
+      return asynchronous ? call() : this.commit(call);
+    }) as Bound<F>;
+  }
+
+  async hydrateSnapshot(): Promise<void> {
+    await this.settings();
+    await this.listMcpServersHydrated();
+  }
+
+  readSnapshot(): Omit<RuntimeSnapshot, "event_instance_id" | "watermark_seq"> {
+    return {
+      settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
+      spend: this.listSpend({}), approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
+      providers: providers.listProvidersCached(this.ctx), skills: this.listSkills(), memories: this.listMemories(),
+      routines: this.listRoutines(), allowRules: this.listAllowRules(),
+    };
   }
 
   // Settings & endpoints -------------------------------------------------------------------
-  readonly settings = this.bind(settings.settings);
-  readonly patchSettings = this.bind(settings.patchSettings);
-  readonly endpointKey = this.bind(settings.endpointKey);
+  readonly settings = this.bind(settings.settings, true);
+  readonly patchSettings = this.bind(settings.patchSettings, true);
+  readonly endpointKey = this.bind(settings.endpointKey, true);
   readonly workspacePath = this.bind(workspacePath);
   readonly defaultProviderId = this.bind(defaultProviderId);
-  readonly listProviders = this.bind(providers.listProviders);
-  readonly getProvider = this.bind(providers.getProvider);
-  readonly createProvider = this.bind(providers.createProvider);
-  readonly patchProvider = this.bind(providers.patchProvider);
-  readonly deleteProvider = this.bind(providers.deleteProvider);
+  readonly listProviders = this.bind(providers.listProviders, true);
+  readonly getProvider = this.bind(providers.getProvider, true);
+  readonly createProvider = this.bind(providers.createProvider, true);
+  readonly patchProvider = this.bind(providers.patchProvider, true);
+  readonly deleteProvider = this.bind(providers.deleteProvider, true);
   readonly catalogEntries = this.bind(providers.catalogEntries);
 
   // Roster ---------------------------------------------------------------------------------
@@ -162,6 +216,7 @@ export class Store {
   readonly listLiveTurns = this.bind(turns.listLiveTurns);
   readonly setTurnStatus = this.bind(turns.setTurnStatus);
   readonly touchTurn = this.bind(turns.touchTurn);
+  readonly setTurnPartial = this.bind(turns.setTurnPartial);
   readonly redirectTurn = this.bind(turns.redirectTurn);
   readonly stopTurn = this.bind(turns.stopTurn);
   readonly interruptRunningTurns = this.bind(turns.interruptRunningTurns);
@@ -206,11 +261,11 @@ export class Store {
 
   // MCP ------------------------------------------------------------------------------------
   readonly listMcpServers = this.bind(mcp.listMcpServers);
-  readonly listMcpServersHydrated = this.bind(mcp.listMcpServersHydrated);
-  readonly mcpAuth = this.bind(mcp.mcpAuth);
-  readonly createMcpServer = this.bind(mcp.createMcpServer);
-  readonly patchMcpServer = this.bind(mcp.patchMcpServer);
-  readonly deleteMcpServer = this.bind(mcp.deleteMcpServer);
+  readonly listMcpServersHydrated = this.bind(mcp.listMcpServersHydrated, true);
+  readonly mcpAuth = this.bind(mcp.mcpAuth, true);
+  readonly createMcpServer = this.bind(mcp.createMcpServer, true);
+  readonly patchMcpServer = this.bind(mcp.patchMcpServer, true);
+  readonly deleteMcpServer = this.bind(mcp.deleteMcpServer, true);
 
   // Search ---------------------------------------------------------------------------------
   readonly search = this.bind(search.search);

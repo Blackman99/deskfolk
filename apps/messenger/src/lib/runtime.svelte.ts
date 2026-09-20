@@ -28,7 +28,8 @@ import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
 import { classifySession } from "./sidebar/session-groups.ts";
-import { applyEvent, emptySnapshot, type Snapshot } from "./snapshot.ts";
+import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
+import { EventSync } from "./event-sync.ts";
 import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 
@@ -79,6 +80,10 @@ export class MessengerRuntime {
   private suggestAbort: AbortController | null = null;
   private suggestTimer: ReturnType<typeof setTimeout> | null = null;
   private suggestSeq = 0;
+  private sync: EventSync | null = null;
+  private sessionLoad = Promise.resolve();
+  private sessionSeq = 0;
+  private historyRevision = 0;
 
   start(): void {
     this.stopped = false;
@@ -254,25 +259,42 @@ export class MessengerRuntime {
         s.id === id ? { ...s, unread_count: 0 } : s,
       ),
     };
-    if (!this.api) return;
-    try {
-      const detail = await this.api.session(id);
-      const judgements = await this.api.judgements(id);
-      this.applySessionDetail(id, { ...detail, unread_count: 0 }, judgements);
-      if (messageId) {
-        await this.ensureMessageLoaded(id, messageId);
-        this.setHighlightedMessage(messageId);
+    const api = this.api;
+    const sync = this.sync;
+    if (!api || !sync) return;
+    const selection = ++this.sessionSeq;
+    this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
+      if (selection !== this.sessionSeq || this.api !== api || this.sync !== sync) return;
+      sync.pause();
+      try {
+        const detail = await api.sessionSnapshot(id);
+        if (this.api !== api || this.sync !== sync) return;
+        const frames = sync.install();
+        if (!frames || !sync.matches(detail)) throw new Error("event gap");
+        for (const frame of frames) this.ingest(frame.payload, true);
+        if (selection !== this.sessionSeq) return;
+        this.applySessionDetail(id, { ...detail.session, unread_count: 0 }, detail.judgements);
+        for (const frame of frames) {
+          if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
+          if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, true);
+        }
+        if (messageId) {
+          await this.ensureMessageLoaded(id, messageId);
+          this.setHighlightedMessage(messageId);
+        }
+        await this.markSessionRead(id);
+      } catch {
+        if (this.api === api) this.markDisconnected();
       }
-      await this.markSessionRead(id);
-    } catch {
-      this.markDisconnected();
-    }
+    });
+    await this.sessionLoad;
   }
 
   async markSessionRead(id: string): Promise<void> {
     if (!this.api) return;
     try {
       const detail = await this.api.markSessionRead(id);
+      if (this.sync) return;
       this.snapshot = {
         ...this.snapshot,
         sessions: this.snapshot.sessions.map((s) =>
@@ -322,8 +344,10 @@ export class MessengerRuntime {
     if (!this.api) return null;
     try {
       const settings = await this.api.patchSettings(patch);
-      this.snapshot = { ...this.snapshot, settings };
-      this.syncSettingsDraft(settings);
+      if (!this.sync) {
+        this.snapshot = { ...this.snapshot, settings };
+        this.syncSettingsDraft(settings);
+      }
       if (patch.endpoint_api_key !== undefined) this.endpointKey = "";
       return null;
     } catch (error) {
@@ -589,8 +613,10 @@ export class MessengerRuntime {
     try {
       const provider = await this.api.createProvider(body);
       this.ingestProvider(provider);
-      this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
-      this.syncSettingsDraft(this.snapshot.settings);
+      if (!this.sync) {
+        this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
+        this.syncSettingsDraft(this.snapshot.settings);
+      }
       return null;
     } catch (error) {
       return this.sheetFailure(error);
@@ -602,8 +628,10 @@ export class MessengerRuntime {
     try {
       const provider = await this.api.patchProvider(id, body);
       this.ingestProvider(provider);
-      this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
-      this.syncSettingsDraft(this.snapshot.settings);
+      if (!this.sync) {
+        this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
+        this.syncSettingsDraft(this.snapshot.settings);
+      }
       return null;
     } catch (error) {
       return this.sheetFailure(error);
@@ -615,8 +643,10 @@ export class MessengerRuntime {
     try {
       await this.api.deleteProvider(id);
       this.ingest({ event: "provider.removed", occurred_at: new Date().toISOString(), id });
-      this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
-      this.syncSettingsDraft(this.snapshot.settings);
+      if (!this.sync) {
+        this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
+        this.syncSettingsDraft(this.snapshot.settings);
+      }
       return null;
     } catch (error) {
       return this.sheetFailure(error);
@@ -846,7 +876,9 @@ export class MessengerRuntime {
       this.schedule();
       return;
     }
+    if (this.stopped) return;
     const health = await probeHealth(endpoint.origin);
+    if (this.stopped) return;
     if (classifyHealth(health.status, health.body) !== "ours") {
       this.markDisconnected();
       this.schedule();
@@ -865,71 +897,69 @@ export class MessengerRuntime {
   }
 
   private async connect(endpoint: LocalEndpoint): Promise<void> {
+    this.teardownSocket();
     const api = new LocalApi(endpoint);
-    const [settings, bots, sessions, spend, approvals, mcpServers, providers, skills, memories] =
-      await Promise.all([
-      api.settings(),
-      api.bots(),
-      api.sessions(),
-      api.spend(),
-      api.approvals(),
-      api.mcpServers(),
-      api.providers(),
-      api.skills(),
-      api.memories(),
-    ]);
-    const initialMessages = sessions
-      .map((s) => s.last_message)
-      .filter((m): m is Message => Boolean(m));
-    const initialTurns = sessions.flatMap((s) => s.live_turns ?? []);
-    const initialPending = sessions.flatMap((s) => s.pending_judgements ?? []);
+    const sync = new EventSync();
     this.api = api;
-    this.snapshot = {
-      ...emptySnapshot(),
-      settings,
-      bots,
-      sessions,
-      spend,
-      approvals,
-      mcpServers,
-      providers,
-      skills,
-      memories,
-      messages: initialMessages,
-      turns: initialTurns,
-      pendingJudgements: initialPending,
-    };
-    this.syncSettingsDraft(settings);
+    this.sync = sync;
+    await this.openSocket(api, sync);
+    const snapshot = await api.snapshot();
+    if (this.stopped || this.api !== api || this.sync !== sync) return;
+    const frames = sync.install(snapshot);
+    if (!frames) throw new Error("event gap during snapshot");
+    this.snapshot = fromRuntimeSnapshot(snapshot);
+    this.syncSettingsDraft(snapshot.settings);
+    for (const frame of frames) this.ingest(frame.payload, true);
     this.endpointKey = "";
     this.connection = "connected";
     this.focusedTurnId = null;
     this.pendingFocusTrigger = null;
-    this.openSocket(api);
     const selected = this.selectedId;
-    if (selected && sessions.some((s) => s.id === selected)) {
+    if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
       await this.selectSession(selected);
     } else if (selected) {
       this.selectedId = null;
     }
   }
 
-  private openSocket(api: LocalApi): void {
-    this.teardownSocket();
+  private openSocket(api: LocalApi, sync: EventSync): Promise<void> {
     const ws = new WebSocket(api.eventsUrl());
     this.ws = ws;
-    ws.addEventListener("open", () => {
-      ws.send(api.authFrame());
-    });
-    ws.addEventListener("message", (ev) => {
-      const event = api.parseEvent(String(ev.data));
-      if (!event) return;
-      this.ingest(event);
-    });
-    ws.addEventListener("close", () => {
-      if (this.ws === ws) this.markDisconnected();
-    });
-    ws.addEventListener("error", () => {
-      ws.close();
+    return new Promise((resolve, reject) => {
+      let ready = false;
+      const timeout = setTimeout(() => {
+        reject(new Error("event subscription timeout"));
+        ws.close();
+      }, 5000);
+      ws.addEventListener("open", () => ws.send(api.authFrame()));
+      ws.addEventListener("message", (ev) => {
+        if (this.ws !== ws) return;
+        const frame = api.parseSyncFrame(String(ev.data));
+        if (!frame || (!ready && frame.type !== "ready")) {
+          reject(new Error("invalid event stream"));
+          this.markDisconnected();
+          return;
+        }
+        if (frame.type === "ready") {
+          ready = true;
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+        const frames = sync.receive(frame);
+        if (!frames) {
+          reject(new Error("event gap"));
+          this.markDisconnected();
+          return;
+        }
+        for (const event of frames) this.ingest(event.payload, true);
+      });
+      ws.addEventListener("close", () => {
+        clearTimeout(timeout);
+        reject(new Error("event socket closed"));
+        if (this.ws === ws) this.markDisconnected();
+      });
+      ws.addEventListener("error", () => ws.close());
     });
   }
 
@@ -998,23 +1028,22 @@ export class MessengerRuntime {
   }
 
   private async ensureMessageLoaded(sessionId: string, messageId: string): Promise<void> {
-    if (!this.api) return;
+    const api = this.api;
+    const revision = this.historyRevision;
+    if (!api) return;
     const loaded = this.snapshot.messages.filter((m) => m.session_id === sessionId);
     if (loaded.some((m) => m.id === messageId)) return;
     const result = await collectUntilMessage(
       loaded,
       messageId,
-      (cursor) => this.api!.messages(sessionId, { cursor }),
+      (cursor) => api.messages(sessionId, { cursor }),
       this.sessionMessageNext,
     );
+    if (this.selectedId !== sessionId || this.api !== api || this.historyRevision !== revision) return;
     this.sessionMessageNext = result.next;
-    this.snapshot = {
-      ...this.snapshot,
-      messages: [
-        ...this.snapshot.messages.filter((m) => m.session_id !== sessionId),
-        ...result.messages,
-      ],
-    };
+    const current = new Map(this.snapshot.messages.map((message) => [message.id, message]));
+    for (const message of result.messages) if (!current.has(message.id)) current.set(message.id, message);
+    this.snapshot = { ...this.snapshot, messages: [...current.values()] };
   }
 
   private applySessionDetail(
@@ -1081,7 +1110,9 @@ export class MessengerRuntime {
     });
   }
 
-  private ingest(event: ClientEvent): void {
+  private ingest(event: ClientEvent, fromStream = false): void {
+    if (this.sync && !fromStream) return;
+    if (event.event === "session.cleared" || event.event === "session.removed") this.historyRevision++;
     if (event.event === "session.removed") {
       if (this.selectedId === event.id) {
         this.selectedId = null;
@@ -1100,7 +1131,7 @@ export class MessengerRuntime {
     }
     let next = applyEvent(this.snapshot, event);
     if (
-      event.event === "message.created" &&
+      (event.event === "message.created" || event.event === "message.upsert") &&
       event.session_id === this.selectedId &&
       event.parent_id === null &&
       event.author !== USER_MEMBER
@@ -1124,7 +1155,7 @@ export class MessengerRuntime {
       }
     }
     if (
-      (event.event === "message.created" || event.event === "session.cleared") &&
+      (event.event === "message.created" || event.event === "message.upsert" || event.event === "session.cleared") &&
       this.selectedId &&
       (event.event === "session.cleared" ? event.id : event.session_id) === this.selectedId
     ) {
@@ -1146,6 +1177,8 @@ export class MessengerRuntime {
     this.connection = "disconnected";
     this.teardownSocket();
     this.api = null;
+    this.sync = null;
+    this.sessionSeq++;
     this.closeSheets();
     this.searchHits = [];
     this.composerSuggestions = [];

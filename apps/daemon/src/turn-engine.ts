@@ -132,6 +132,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function publishTurn(turn: Turn, partial: string | null = null): void {
+    store.setTurnPartial(turn.id, partial);
     publish({ event: "turn.upsert", occurred_at: occurred(), ...turn, partial_text: partial });
   }
 

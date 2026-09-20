@@ -85,6 +85,10 @@ function outcomeFor(status: Turn["status"]): RouteOutcome | null {
   }
 }
 
+export function setTurnPartial(ctx: StoreContext, id: string, partial: string | null): void {
+  ctx.db.run("UPDATE turns SET partial_text = ? WHERE id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask') AND partial_text IS NOT ?", [partial, id, partial]);
+}
+
 export function touchTurn(ctx: StoreContext, id: string): Turn {
   const now = isoNow();
   ctx.db.run(`UPDATE turns SET last_activity_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
@@ -240,11 +244,10 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
        VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
       [id, note.session_id, cut.bot_id, note.id, now, now, now],
     );
-    const updated = ctx.db.run(
-      `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL`,
-      [id, note.id],
-    ).changes;
-    if (updated !== 1) {
+    const updated = ctx.db.query<{ id: string }, [string, string]>(
+      `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL RETURNING id`,
+    ).get(id, note.id);
+    if (!updated) {
       throw new HttpError(422, "invalid_args", "interrupted turn already continued");
     }
   })();

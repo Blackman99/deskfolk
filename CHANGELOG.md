@@ -6,6 +6,12 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Local synchronization
+
+- Messenger subscribes before installing a single watermarked snapshot, including memories, routines and Always allow rules. Session switches use the same barrier, preventing updates from disappearing behind a late HTTP response.
+- A per-process random event cursor and a bounded 2,000-event / 16 MiB replay ring detect gaps, overflow and daemon restarts and trigger a fresh snapshot. Durable events now follow SQLite commits, including Bot tools and writes that await Keychain; partial turn text is reconstructed from absolute turn updates rather than replayed tokens.
+- Existing local WebSocket clients keep their original raw frames; the new messenger explicitly negotiates `sync-v1`. This is local synchronization groundwork, not an enabled remote-control transport.
+
 ### Daemon
 
 - `read_file` (and the other workspace tools besides `write_file`) no longer stamp their paths as message attachments. A path the Bot only read is an input; only a write becomes a cited artifact on the message.

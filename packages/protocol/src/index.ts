@@ -684,9 +684,47 @@ export type ComposerSuggestion = {
 
 export type ComposerSuggestionsPage = ListPage<ComposerSuggestion>;
 
+export type EventCursor = {
+  event_instance_id: string;
+  watermark_seq: number;
+};
+
+export type RuntimeSnapshot = EventCursor & {
+  settings: Settings;
+  bots: Bot[];
+  sessions: SessionSummary[];
+  spend: Spend[];
+  approvals: Approval[];
+  mcpServers: McpServer[];
+  providers: Provider[];
+  skills: Skill[];
+  memories: Memory[];
+  routines: Routine[];
+  allowRules: AllowRule[];
+};
+
+export type SessionSnapshot = EventCursor & {
+  session: SessionDetail;
+  judgements: Judgement[];
+};
+
+export type DurableEvent = Exclude<ClientEvent, { event: "turn.token" | "turn.tool" }>;
+export type SequencedEvent = {
+  type: "event";
+  event_instance_id: string;
+  seq: number;
+  payload: DurableEvent;
+};
+export type SyncFrame = SequencedEvent
+  | ({ type: "ready" } & EventCursor)
+  | ({ type: "resnapshot" } & EventCursor);
+export type CatchupResponse = EventCursor & { events: SequencedEvent[]; resnapshot: boolean };
+
 export type WsAuthMessage = {
   type: "auth";
   token: string;
+  /** Omit for the original, unsequenced local event stream. */
+  protocol?: "sync-v1";
 };
 
 export type ClientEvent =
@@ -695,7 +733,7 @@ export type ClientEvent =
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)
   | { event: "session.removed"; occurred_at: string; id: string }
   | { event: "session.cleared"; occurred_at: string; id: string }
-  | ({ event: "message.created"; occurred_at: string } & Message)
+  | ({ event: "message.created" | "message.upsert"; occurred_at: string } & Message)
   | ({ event: "turn.upsert"; occurred_at: string } & Turn)
   | { event: "turn.token"; occurred_at: string; turn_id: string; session_id: string; text: string }
   | {
@@ -707,6 +745,7 @@ export type ClientEvent =
       arguments?: string;
     }
   | ({ event: "approval.upsert"; occurred_at: string } & Approval)
+  | { event: "approval.removed"; occurred_at: string; id: string }
   | {
       event: "reaction.changed";
       occurred_at: string;
@@ -726,6 +765,7 @@ export type ClientEvent =
       bot_id: string;
     }
   | ({ event: "spend.created"; occurred_at: string } & Spend)
+  | { event: "spend.removed"; occurred_at: string; id: string }
   | ({ event: "routine.upsert"; occurred_at: string } & Routine)
   | { event: "routine.removed"; occurred_at: string; id: string }
   | ({ event: "skill.upsert"; occurred_at: string } & Skill)

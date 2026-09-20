@@ -36,12 +36,14 @@ export type EndpointKeyStore = {
 export class KeyCache {
   private readonly cached = new Map<string, string | null>();
 
-  constructor(private readonly keys: EndpointKeyStore) {}
+  constructor(private readonly keys: EndpointKeyStore, private readonly changed: (name: string) => void = () => {}) {}
 
   async read(name: string): Promise<string | null> {
     if (this.cached.has(name)) return this.cached.get(name) ?? null;
     const value = await this.keys.get(name);
+    if (this.cached.has(name)) return this.cached.get(name) ?? null;
     this.cached.set(name, value);
+    this.changed(name);
     return value;
   }
 
@@ -50,10 +52,12 @@ export class KeyCache {
     if (value.length === 0) {
       await this.keys.delete(name);
       this.cached.set(name, null);
+      this.changed(name);
       return;
     }
     await this.keys.set(value, name);
     this.cached.set(name, value);
+    this.changed(name);
   }
 
   peek(name: string): string | null | undefined {
@@ -64,6 +68,7 @@ export class KeyCache {
 export type StoreContext = {
   readonly db: Database;
   readonly keys: KeyCache;
+  commit<T>(write: () => T): T;
   /** Process-lifetime flags for one-shot legacy migrations. */
   readonly legacy: { copiedKey: boolean };
 };
@@ -141,6 +146,7 @@ export type TurnRow = {
   bot_id: string;
   status: Turn["status"];
   trigger_message_id: string;
+  partial_text?: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;
@@ -264,7 +270,7 @@ export function settingsMap(ctx: StoreContext): Map<string, string> {
 
 export function setSetting(ctx: StoreContext, key: string, value: string): void {
   ctx.db.run(
-    `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE value IS NOT excluded.value`,
     [key, value],
   );
 }
@@ -342,7 +348,7 @@ export function toApproval(row: ApprovalRow): Approval {
 }
 
 export function toTurn(row: TurnRow): Turn {
-  return { ...row, partial_text: null };
+  return { ...row, partial_text: isLive(row.status) ? (row.partial_text ?? null) : null };
 }
 
 export function toBot(row: BotRow): Bot {

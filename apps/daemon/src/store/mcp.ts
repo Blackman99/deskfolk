@@ -75,7 +75,7 @@ export async function createMcpServer(
     created_at: now,
     updated_at: now,
   };
-  ctx.db.run(
+  ctx.commit(() => ctx.db.run(
     `INSERT INTO mcp_servers (id, name, transport, command, args, url, headers, enabled, instructions, usage_note, tool_catalog, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -93,7 +93,7 @@ export async function createMcpServer(
       row.created_at,
       row.updated_at,
     ],
-  );
+  ));
   if (typeof input.auth === "string" && input.auth.length > 0) {
     await ctx.keys.write(mcpAuthKeychainName(id), input.auth);
   }
@@ -154,7 +154,7 @@ export async function patchMcpServer(
         ? "[]"
         : (current.tool_catalog ?? "[]");
   const now = isoNow();
-  ctx.db.run(
+  ctx.commit(() => ctx.db.run(
     `UPDATE mcp_servers SET name = ?, transport = ?, command = ?, args = ?, url = ?, headers = ?, enabled = ?, instructions = ?, usage_note = ?, tool_catalog = ?, updated_at = ? WHERE id = ?`,
     [
       name,
@@ -170,7 +170,7 @@ export async function patchMcpServer(
       now,
       id,
     ],
-  );
+  ));
   if (patch.auth !== undefined) {
     await ctx.keys.write(mcpAuthKeychainName(id), patch.auth);
   }
@@ -180,8 +180,10 @@ export async function patchMcpServer(
 }
 
 export async function deleteMcpServer(ctx: StoreContext, id: string): Promise<void> {
-  const changes = ctx.db.run(`DELETE FROM mcp_servers WHERE id = ?`, [id]).changes;
-  if (changes === 0) throw new HttpError(404, "not_found", "mcp server not found");
+  ctx.commit(() => {
+    const changes = ctx.db.run(`DELETE FROM mcp_servers WHERE id = ?`, [id]).changes;
+    if (changes === 0) throw new HttpError(404, "not_found", "mcp server not found");
+  });
   await ctx.keys.write(mcpAuthKeychainName(id), "");
 }
 

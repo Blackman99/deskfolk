@@ -196,6 +196,20 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 单独起信使时，Vite 开发服务器提供同源 `GET /__local-api` → `{ name, port, token }`（守护进程未起时是带 `name` 的 `not_found`），不把 token 写进仓库或 bundle。页面只用 `port` 和 `token`，origin 按当前页是 `127.0.0.1` 还是 `[::1]` 拼。
 
+### 快照与事件同步（sync-v1）
+
+信使首帧是 `{ "type": "auth", "token": "…", "protocol": "sync-v1" }`，收到 `ready` 才读取 `GET /v1/snapshot`；订阅确认到 HTTP 返回期间缓冲事件。省略 `protocol` 的旧客户端仍收到原来的 `ClientEvent`，不会收到 ready / 水印信封；未知协议关闭连接。
+
+- `RuntimeSnapshot` 包含 `event_instance_id`（CSPRNG 16 bytes，hex32）、`watermark_seq`、settings / bots / sessions / spend / approvals / mcpServers / providers / skills / memories / routines / allowRules。密钥本身不进入快照或事件。
+- 新事件形状为 `{ type: "event", event_instance_id, seq, payload: ClientEvent }`。装快照后仅接受同实例且连续的 `seq > watermark_seq`；重复忽略，缺口、乱序前跳、实例变化、`resnapshot` 或本地缓冲溢出都断开重订阅、重取快照。只在内存缓冲，不离线存正文。
+- `GET /v1/events/catchup?event_instance_id=<hex32>&after_seq=<非负安全整数>` 返回 `{ event_instance_id, watermark_seq, events, resnapshot }`。环只存可回放事件，最多 2000 条 / 16 MiB（按 UTF-8 JSON 计）；超限清环并重新随机实例，旧游标必须重取快照。单条超过环限额不保留，广播 resnapshot。进程重启也重新随机，不是耐久身份。
+- `GET /v1/sessions/:id/snapshot` 在同一屏障返回 `{ session, judgements, event_instance_id, watermark_seq }`，包含最近消息、活轮及 pending_judgements。切会话读取期间仍缓冲所有事件；先更新全局状态，再只重放详情水印之后的事件，避免丢掉其它会话更新。`LocalApi.routines()` / `allowRules()` 保留对应列表读取方法，后续日程 UI 直接消费快照与事件。
+- Store 的同步方法在 SQLite 事务内运行，TEMP change journal 触发器跟随所有嵌套领域写入，回滚不出事件；提交完成后、返回调用方前统一分配 seq。异步 settings / providers / MCP 方法的每段 SQLite 写入显式 `ctx.commit`，不跨钥匙串或网络等待持有事务。快照使用同步缓存映射和读事务，读数据与水印之间不 await。Keychain 与 SQLite **不是**一个原子事务；已提交的 SQLite 变化即使后续凭据操作失败也会同步，密钥状态另发更新。
+- 新增 Store 方法若是 async，在门面显式 `bind(fn, true)`，每段 SQLite 写入必须用 `ctx.commit`；不要直接从运行时改 `store.db`。新增同步实体表需注册 `store/events.ts` journal 与事件映射。Bun `run().changes` 会包括触发器写入，单行 claim 使用 `RETURNING` 而不是 `changes === 1`。
+- `message.upsert` 携带完整消息（含 reactions），避免回应或中断 Continue 更新遗漏；级联删除审批 / 花费有 `approval.removed` / `spend.removed`。旧本机事件不变。`turn.token` 不进环，若发布则转成 Store 中绝对 `partial_text` 的轮次更新；`turn.tool` 仅保留旧本机流，不进入新同步流。当前引擎仍不把工具中间跳当作用户回复。
+
+回归在 `apps/daemon/src/session-events.test.ts` 与信使 `event-sync.test.ts`；全仓跑 `pnpm test` / `pnpm typecheck`，再构建信使。隔离 UI fixture 可调用 `startRuntime({ dataDir, bind, endpointKey, completions, schedule: false })` 注入 fake keystore / fake completions，Vite 用相同 `REAL_BOT_DATA_DIR` 并选独立端口；单设数据目录不能隔离个人钥匙串。此协议不扩大 loopback / Origin，也不启用远控、离线命令或日程 CRUD 界面。
+
 ## CI、落地页与快照发布
 
 仓库在 GitHub Actions 里跑与本地相同的验证，不代替本机 UI 或原生桌面检查。

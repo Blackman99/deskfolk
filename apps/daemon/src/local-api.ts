@@ -12,12 +12,14 @@ import {
   type PatchBotRequest,
   type RuntimeResponse,
   type WsAuthMessage,
+  type RuntimeSnapshot,
+  type SessionSnapshot,
 } from "@real-bot/protocol";
 import { existsSync } from "node:fs";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson } from "./http";
 import { corsHeaders, originDecision } from "./origin";
-import { sessionUpsertFields } from "./session-events";
+import { EventStream, sessionUpsertFields } from "./session-events";
 import { HttpError } from "./errors";
 import { type AttachmentInput, type Store } from "./store";
 import type { CompletionsClient } from "./completions";
@@ -33,6 +35,7 @@ const REACTIONS = new Set<string>(REACTION_EMOJI);
 
 type SocketData = {
   authed: boolean;
+  sync?: boolean;
 };
 
 export type LocalApiOptions = {
@@ -65,10 +68,31 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
 
+  function send(ws: Bun.ServerWebSocket<SocketData>, payload: string): void {
+    try {
+      if (ws.send(payload) === 0) ws.close(1013, "event delivery failed");
+    } catch {
+      ws.close(1013, "event delivery failed");
+    }
+  }
+
+  const events = new EventStream();
+  events.subscribe((frame) => {
+    const payload = JSON.stringify(frame);
+    for (const ws of sockets) if (ws.data.authed && ws.data.sync) send(ws, payload);
+  });
+  options.store.onCommit((event) => events.publish(event));
+
   function publish(event: ClientEvent): void {
     const payload = JSON.stringify(event);
     for (const ws of sockets) {
-      if (ws.data.authed) ws.send(payload);
+      if (ws.data.authed && !ws.data.sync) send(ws, payload);
+    }
+    // Persisted rows come from Store commits, never a delayed tool/API result.
+    if (event.event === "judgement.started" || event.event === "judgement.ended") events.publish(event);
+    if (event.event === "turn.token") {
+      const turn = options.store.getTurn(event.turn_id);
+      options.store.setTurnPartial(turn.id, `${turn.partial_text ?? ""}${event.text}`);
     }
   }
 
@@ -97,6 +121,19 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
           engine,
           now: options.now,
         });
+
+  function withPartial(turn: import("@real-bot/protocol").Turn) {
+    return { ...turn, partial_text: turn.partial_text ?? engine.partialText(turn.id) };
+  }
+
+  function snapshotSessions() {
+    const pending = engine.pendingJudgements();
+    return options.store.listSessions().map((session) => ({
+      ...session,
+      live_turns: session.live_turns?.map(withPartial),
+      pending_judgements: pending.filter((row) => row.session_id === session.id),
+    }));
+  }
 
   async function handle(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
     const origin = request.headers.get("Origin");
@@ -157,7 +194,35 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       if (request.method === "POST" && path === "/v1/runtime/quit") {
         scheduler?.stop();
       }
-      const response = await dispatch(request, url, options, publish, engine, mcp);
+      let response: Response;
+      if (request.method === "GET" && path === "/v1/snapshot") {
+        await options.store.hydrateSnapshot();
+        const snapshot = options.store.db.transaction((): RuntimeSnapshot => ({
+          ...options.store.readSnapshot(),
+          sessions: snapshotSessions(),
+          ...events.cursor(),
+        }))();
+        response = jsonResponse(snapshot, 200, null);
+      } else if (request.method === "GET" && matchPath(path, "/v1/sessions/:id/snapshot")) {
+        const id = matchPath(path, "/v1/sessions/:id/snapshot")!.id!;
+        const snapshot = options.store.db.transaction((): SessionSnapshot => {
+          const session = options.store.getSession(id);
+          return {
+            session: { ...session, turns: session.turns.map(withPartial), pending_judgements: engine.pendingJudgements(id) },
+            judgements: options.store.listJudgements(id), ...events.cursor(),
+          };
+        })();
+        response = jsonResponse(snapshot, 200, null);
+      } else if (request.method === "GET" && path === "/v1/events/catchup") {
+        const instance = url.searchParams.get("event_instance_id") ?? "";
+        const rawSeq = url.searchParams.get("after_seq") ?? "";
+        if (!/^[0-9a-f]{32}$/.test(instance) || !/^(0|[1-9][0-9]*)$/.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq))) {
+          throw new HttpError(422, "invalid_args", "invalid event cursor");
+        }
+        response = jsonResponse(events.catchup({ event_instance_id: instance, watermark_seq: Number(rawSeq) }), 200, null);
+      } else {
+        response = await dispatch(request, url, options, publish, engine, mcp);
+      }
       if (origin && originState === "allowed") {
         const headers = new Headers(response.headers);
         for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v);
@@ -194,11 +259,14 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
           ws.close(4001, "unauthorized");
           return;
         }
-        if (parsed.type !== "auth" || parsed.token !== options.token) {
+        if (!parsed || typeof parsed !== "object" || parsed.type !== "auth" || parsed.token !== options.token ||
+          (parsed.protocol !== undefined && parsed.protocol !== "sync-v1")) {
           ws.close(4001, "unauthorized");
           return;
         }
         ws.data.authed = true;
+        ws.data.sync = parsed.protocol === "sync-v1";
+        if (ws.data.sync) send(ws, JSON.stringify({ type: "ready", ...events.cursor() }));
         const timer = timers.get(ws);
         if (timer) clearTimeout(timer);
         timers.delete(ws);

@@ -10,6 +10,8 @@ import { parseStoredCatalog } from "../models";
 import { pickThinkingLevel } from "../route-decision";
 
 export function migrateSchema(db: Database): void {
+  const turnCols = db.query<{ name: string }, []>("PRAGMA table_info(turns)").all();
+  if (!turnCols.some((column) => column.name === "partial_text")) db.run("ALTER TABLE turns ADD COLUMN partial_text TEXT");
   const botCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(bots)`)
     .all()

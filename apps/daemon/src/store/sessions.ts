@@ -106,7 +106,7 @@ export function getSession(ctx: StoreContext, id: string): SessionDetail {
        ORDER BY last_activity_at DESC`,
     )
     .all(id)
-    .map((t) => ({ ...t, partial_text: null }));
+    .map(toTurn);
   return {
     ...session,
     last_read_at: session.last_read_at ?? null,

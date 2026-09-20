@@ -3,6 +3,9 @@ import {
   USER_MEMBER,
   isHiddenTranscriptKind,
   type Approval,
+  type AllowRule,
+  type Routine,
+  type RuntimeSnapshot,
   type Bot,
   type ClientEvent,
   type Judgement,
@@ -30,6 +33,8 @@ export type Snapshot = {
   providers: Provider[];
   skills: Skill[];
   memories: Memory[];
+  routines: Routine[];
+  allowRules: AllowRule[];
   messages: Message[];
   turns: Turn[];
   judgements: Judgement[];
@@ -64,6 +69,8 @@ export function emptySnapshot(): Snapshot {
     providers: [],
     skills: [],
     memories: [],
+    routines: [],
+    allowRules: [],
     messages: [],
     turns: [],
     judgements: [],
@@ -72,6 +79,15 @@ export function emptySnapshot(): Snapshot {
     routeReviews: [],
     approvals: [],
     searchHits: [],
+  };
+}
+
+export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
+  return {
+    ...emptySnapshot(), ...snapshot,
+    messages: snapshot.sessions.flatMap((session) => session.last_message ? [session.last_message] : []),
+    turns: snapshot.sessions.flatMap((session) => session.live_turns ?? []),
+    pendingJudgements: snapshot.sessions.flatMap((session) => session.pending_judgements ?? []),
   };
 }
 
@@ -145,6 +161,15 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
         routes: snapshot.routes.filter((r) => r.session_id !== event.id),
         routeReviews: [],
+      };
+    }
+    case "message.upsert": {
+      const { event: _e, occurred_at: _at, ...message } = event;
+      if (isHiddenTranscriptKind(message.kind)) return snapshot;
+      return {
+        ...snapshot,
+        messages: upsert(snapshot.messages, message),
+        sessions: snapshot.sessions.map((s) => s.last_message?.id === message.id ? { ...s, last_message: message } : s),
       };
     }
     case "message.created": {
@@ -226,6 +251,10 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.id !== event.id),
       };
     }
+    case "approval.removed":
+      return { ...snapshot, approvals: snapshot.approvals.filter((row) => row.id !== event.id) };
+    case "spend.removed":
+      return { ...snapshot, spend: snapshot.spend.filter((row) => row.id !== event.id) };
     case "approval.upsert": {
       const { event: _e, occurred_at: _at, ...row } = event;
       return {
@@ -285,6 +314,18 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         ),
       };
     }
+    case "routine.upsert": {
+      const { event: _e, occurred_at: _at, ...row } = event;
+      return { ...snapshot, routines: upsert(snapshot.routines, row) };
+    }
+    case "routine.removed":
+      return { ...snapshot, routines: snapshot.routines.filter((row) => row.id !== event.id) };
+    case "allow_rule.upsert": {
+      const { event: _e, occurred_at: _at, ...row } = event;
+      return { ...snapshot, allowRules: upsert(snapshot.allowRules, row) };
+    }
+    case "allow_rule.removed":
+      return { ...snapshot, allowRules: snapshot.allowRules.filter((row) => row.id !== event.id) };
     case "memory.removed": {
       return { ...snapshot, memories: snapshot.memories.filter((m) => m.id !== event.id) };
     }

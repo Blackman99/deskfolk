@@ -10,6 +10,7 @@ import {
 import { createLocalApi } from "./local-api";
 import { bunKeyStore } from "./secrets";
 import { Store, type EndpointKeyStore } from "./store";
+import type { CompletionsClient } from "./completions";
 
 type SocketData = { authed: boolean };
 
@@ -18,6 +19,8 @@ export type RuntimeOptions = {
   bind?: string;
   token?: string;
   endpointKey?: EndpointKeyStore;
+  completions?: CompletionsClient;
+  schedule?: boolean;
   onQuit?: () => void;
   exitProcess?: boolean;
 };
@@ -170,6 +173,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     api = createLocalApi({
       store,
       token,
+      completions: options.completions,
+      schedule: options.schedule,
       onQuit: () => {
         options.onQuit?.();
         removeDescriptor(options.dataDir);

@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS turns (
     'completed', 'redirected', 'interrupted', 'stopped'
   )),
   trigger_message_id TEXT NOT NULL REFERENCES messages (id),
+  partial_text TEXT,
   last_activity_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

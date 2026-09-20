@@ -1,11 +1,63 @@
-/**
- * The `session.upsert` payload, in one place.
- *
- * It used to be inlined at a dozen call sites, and the copies in the turn engine had already
- * drifted — they dropped `archived_at`. A session now also carries where it came from, and a
- * dropped origin would quietly cost a Bot↔Bot direct its entry point, so every publisher
- * builds the payload here.
- */
+import { randomBytes } from "node:crypto";
+import type { CatchupResponse, ClientEvent, EventCursor, SequencedEvent, SyncFrame } from "@real-bot/protocol";
+
+export const EVENT_RING_COUNT = 2000;
+export const EVENT_RING_BYTES = 16 * 1024 * 1024;
+
+/** All methods are synchronous: no commit, publish or snapshot can yield inside this barrier. */
+export class EventStream {
+  private instance = randomBytes(16).toString("hex");
+  private seq = 0;
+  private bytes = 0;
+  private ring: { frame: SequencedEvent; bytes: number }[] = [];
+  private readonly listeners = new Set<(frame: SyncFrame) => void>();
+
+  constructor(private readonly limits = { count: EVENT_RING_COUNT, bytes: EVENT_RING_BYTES }) {}
+
+  cursor(): EventCursor {
+    return { event_instance_id: this.instance, watermark_seq: this.seq };
+  }
+
+  subscribe(listener: (frame: SyncFrame) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private send(frame: SyncFrame): void {
+    for (const listener of this.listeners) listener(frame);
+  }
+
+  publish(payload: ClientEvent): void {
+    if (payload.event === "turn.token" || payload.event === "turn.tool") return;
+    let frame: SequencedEvent = {
+      type: "event", event_instance_id: this.instance, seq: this.seq + 1, payload,
+    };
+    const bytes = Buffer.byteLength(JSON.stringify(frame));
+    if (this.ring.length >= this.limits.count || this.bytes + bytes > this.limits.bytes || this.seq === Number.MAX_SAFE_INTEGER) {
+      this.instance = randomBytes(16).toString("hex");
+      this.seq = 0;
+      this.bytes = 0;
+      this.ring = [];
+      this.send({ type: "resnapshot", ...this.cursor() });
+      frame = { ...frame, event_instance_id: this.instance, seq: 1 };
+    }
+    if (bytes > this.limits.bytes) return;
+    this.seq = frame.seq;
+    this.bytes += bytes;
+    this.ring.push({ frame, bytes });
+    this.send(frame);
+  }
+
+  catchup(cursor: EventCursor): CatchupResponse {
+    const resnapshot = cursor.event_instance_id !== this.instance ||
+      !Number.isSafeInteger(cursor.watermark_seq) || cursor.watermark_seq < 0 || cursor.watermark_seq > this.seq;
+    return {
+      ...this.cursor(), resnapshot,
+      events: resnapshot ? [] : this.ring.filter(({ frame }) => frame.seq > cursor.watermark_seq).map(({ frame }) => frame),
+    };
+  }
+}
+
 export type SessionUpsertInput = {
   id: string;
   kind: "direct" | "group";
@@ -20,6 +72,7 @@ export type SessionUpsertInput = {
   unread_count?: number;
 };
 
+/** Legacy publishers share these fields so archive state and direct origins cannot drift. */
 export function sessionUpsertFields(session: SessionUpsertInput) {
   return {
     id: session.id,
