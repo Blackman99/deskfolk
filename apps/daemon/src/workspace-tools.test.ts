@@ -120,6 +120,49 @@ describe("workspace tools", () => {
     close();
   });
 
+  test("shell returns the command's output", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const got = await runWorkspaceTool(
+      { store, signal: new AbortController().signal },
+      "shell",
+      { command: "echo hi" },
+    );
+    expect(got.ok).toBe(true);
+    expect(got.data?.exit_code).toBe(0);
+    expect(String(got.data?.stdout).trim()).toBe("hi");
+    close();
+  });
+
+  /**
+   * A command that never returns used to hold the turn open for good — and so did one that exits
+   * while a backgrounded grandchild keeps its stdout pipe open.
+   */
+  test("shell gives up on a command that outlives its timeout", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const started = Date.now();
+    const got = await runWorkspaceTool(
+      { store, signal: new AbortController().signal, shellTimeoutMs: 150 },
+      "shell",
+      { command: "sleep 30" },
+    );
+    expect(got.ok).toBe(false);
+    expect(got.error?.message).toContain("timed out");
+    expect(Date.now() - started).toBeLessThan(5000);
+    close();
+  });
+
+  test("shell comes back when a grandchild holds the output pipe open", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const got = await runWorkspaceTool(
+      { store, signal: new AbortController().signal, shellTimeoutMs: 150 },
+      "shell",
+      { command: "sleep 30 & echo started" },
+    );
+    expect(got.ok).toBe(false);
+    expect(got.error?.message).toContain("timed out");
+    close();
+  });
+
   test("Always allow outside-write with a matching prefix writes without a card", async () => {
     const { store, close } = await storeWithWorkspace();
     const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-allow-")));

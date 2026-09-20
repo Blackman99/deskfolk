@@ -20,6 +20,11 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
   const now = options.now ?? (() => new Date());
 
   function tick(at: Date = now()): void {
+    try {
+      options.engine.sweepStalledTurns(at);
+    } catch {
+      // a closed store must not stall the routines below
+    }
     for (const routine of options.store.listRoutines()) {
       try {
         options.engine.fireRoutine(routine.id, at);

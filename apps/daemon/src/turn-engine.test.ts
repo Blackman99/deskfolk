@@ -1608,6 +1608,69 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  /**
+   * The hop loop runs detached. A throw inside it used to vanish into a swallowed rejection and
+   * leave the row at `running`: Thinking in the sidebar until the next boot, and nothing said.
+   */
+  test("a hop that throws closes the turn instead of leaving it running", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi(undefined, {
+      completions: {
+        complete: () => Promise.reject(new Error("boom")),
+        judge: () => Promise.reject(new Error("boom")),
+      },
+    });
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "go" }),
+    });
+    const sys = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === botId,
+    );
+    expect(sys.body).toBe("这一轮没写完：运行时出错");
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    expect(h.store.listLiveTurns({ sessionId })).toEqual([]);
+    sub.close();
+  });
+
+  test("the stale sweep closes a turn that stopped making progress", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const trigger = h.store.postMessage(sessionId, { body: "go" });
+    // Straight to the store: a wedged turn is exactly one with a row and no loop behind it.
+    const wedged = h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    const sub = await subscribe(h);
+
+    h.engine.sweepStalledTurns(new Date(Date.now() + 60_000));
+    expect(h.store.getTurn(wedged.id).status).toBe("running");
+
+    h.engine.sweepStalledTurns(new Date(Date.now() + 21 * 60_000));
+    const sys = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === botId,
+    );
+    expect(sys.body).toBe("这一轮没写完：卡住了，很久没有任何进展");
+    expect(h.store.getTurn(wedged.id).status).toBe("completed");
+    sub.close();
+  });
+
+  test("the stale sweep leaves a turn that is waiting on you alone", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const trigger = h.store.postMessage(sessionId, { body: "go" });
+    const waiting = h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    h.store.setTurnStatus(waiting.id, "waiting_approval");
+
+    h.engine.sweepStalledTurns(new Date(Date.now() + 24 * 60 * 60_000));
+    expect(h.store.getTurn(waiting.id).status).toBe("waiting_approval");
+  });
+
   test("GET composer-suggestions returns drafts from the default endpoint", async () => {
     const fixture = await startFixture(({ body }) => {
       if (isComposerSuggestRequest(body)) {

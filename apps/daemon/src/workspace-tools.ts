@@ -35,7 +35,16 @@ export function isWorkspaceTool(name: string): name is WorkspaceToolName {
 export type WorkspaceToolCtx = {
   store: Store;
   signal: AbortSignal;
+  /** Overrides {@link SHELL_TIMEOUT_MS}; tests use a short one. */
+  shellTimeoutMs?: number;
 };
+
+/**
+ * A shell that never returns used to wedge the whole turn: `proc.exited` and the output pipes are
+ * awaited, and a backgrounded grandchild keeps those pipes open even after the shell itself exits.
+ * Long enough for a render, short enough that the turn comes back.
+ */
+export const SHELL_TIMEOUT_MS = 10 * 60_000;
 
 export async function runWorkspaceTool(
   ctx: WorkspaceToolCtx,
@@ -256,13 +265,35 @@ async function runShell(
       return fail("failed", "interrupted");
     }
     ctx.signal.addEventListener("abort", abort, { once: true });
-    const [stdout, stderr, exit] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
+    const timeoutMs = ctx.shellTimeoutMs ?? SHELL_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Raced rather than awaited after the kill: a grandchild that inherited stdout keeps the pipes
+    // open for as long as it lives, so reading them to the end is not something to wait on.
+    const expired = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // already exited
+        }
+        resolve("timeout");
+      }, timeoutMs);
+    });
+    const settled = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      expired,
     ]);
+    clearTimeout(timer);
     ctx.signal.removeEventListener("abort", abort);
     if (ctx.signal.aborted) return fail("failed", "interrupted");
+    if (settled === "timeout") {
+      return fail("failed", `command timed out after ${Math.round(timeoutMs / 1000)}s and was killed`);
+    }
+    const [stdout, stderr, exit] = settled;
     return ok({ exit_code: exit, stdout, stderr });
   } catch {
     return fail("failed", "shell failed");

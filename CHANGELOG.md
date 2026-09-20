@@ -6,6 +6,12 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Daemon
+
+- A wedged turn no longer sits at Thinking for good — the shape you saw most often in a Bot↔Bot private chat, where nobody is watching for a reply that never comes. The hop loop runs detached, so an exception inside it vanished into a swallowed rejection and left the turn `running` until the next restart. A turn that throws now closes with a "This turn did not finish: the runtime errored" line, and a watchdog on the scheduler's tick closes any turn that has made no progress for 20 minutes with "It stopped making progress". A turn waiting on your approval or your answer is never swept, and a long shell or MCP call marks both of its ends, so real work is not cut off.
+- `shell` gives up on a command that outlives 10 minutes, kills it, and returns the timeout as a failed tool call. A command that exits while a backgrounded grandchild holds its stdout pipe open no longer holds the turn open either — the output is raced against the timeout rather than read to the end.
+- An HTTP MCP call gives up when the response stream goes quiet for 5 minutes, and your Stop now reaches it while the body is being read. The request timeout only ever covered the response headers and the abort was unwired as soon as they arrived, so a stream that opened and then said nothing held the call — and the turn behind it — open for good. A lookup or handshake that throws is a failed tool call now, not an exception thrown into the turn.
+
 ### Messenger
 
 - Right-clicking any message now selects the message and opens a context menu with actions to Reply (quote-replying into the composer), Copy message content (or selected text), Open associated file tree (opening the message's cited artifact file tree in the preview pane), Copy message ID, and toggle quick emoji reactions.

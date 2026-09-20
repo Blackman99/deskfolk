@@ -69,6 +69,8 @@ export type TurnEngine = {
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
   /** Reviews chains the last run left open; called once after boot. */
   sweepStaleChains: () => void;
+  /** Closes turns that stopped making progress; called on every scheduler tick. */
+  sweepStalledTurns: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
@@ -548,7 +550,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     };
     lives.set(turn.id, live);
     publishTurn(turn);
-    live.running = track(runTurn(turn.id).catch(() => undefined));
+    live.running = track(runTurn(turn.id).catch((error) => crashTurn(turn.id, error)));
+  }
+
+  /**
+   * The hop loop runs detached, so a throw used to vanish and leave the row `running` for good:
+   * the sidebar said Thinking until the next boot and the Bot waiting on the other side of a
+   * handoff never heard back. Close the turn instead, and say so in the transcript.
+   */
+  async function crashTurn(turnId: string, error: unknown): Promise<void> {
+    console.error(`[turn ${turnId}] crashed`, error);
+    try {
+      await failTurn(turnId, "crashed");
+    } catch {
+      // the turn or the store is already gone; the sweep and the next boot still catch the row
+    }
   }
 
   function continueFromInterrupt(messageId: string): Turn {
@@ -670,6 +686,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       live.partial = "";
       publishTurn(current, "");
       let result;
+      // A reply long enough to outlast the stale sweep is still a reply, so tokens count as
+      // progress too — cheaply, since this runs per chunk.
+      let touchedAt = Date.now();
       try {
         result = await completions.complete({
           baseUrl: target.baseUrl,
@@ -679,6 +698,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           messages,
           tools,
           signal: live.abort.signal,
+          onToken() {
+            const at = Date.now();
+            if (at - touchedAt < TOUCH_EVERY_MS) return;
+            touchedAt = at;
+            store.touchTurn(turnId);
+          },
           onEvent(chunk) {
             const choices = chunk.choices;
             if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") return;
@@ -699,9 +724,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             }
           },
         });
-      } catch {
-        drop();
-        return;
+      } catch (error) {
+        // Stop and redirect already wrote the turn's end state; anything else is a crash.
+        if (live.abort.signal.aborted) {
+          drop();
+          return;
+        }
+        throw error;
       }
       if (live.abort.signal.aborted) {
         drop();
@@ -828,7 +857,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } catch {
         args = {};
       }
+      // A tool is the one place a hop can legitimately sit still for minutes, so mark both ends of
+      // it: the stale sweep reads `last_activity_at` and must not cut a long shell or MCP call off.
+      store.touchTurn(turnId);
       let result = await dispatchTool(turn, live, call.name, args);
+      store.touchTurn(turnId);
       await publishEmitted(result.emitted);
       result = withLatestMcp(call.name, result);
       noteWrittenPaths(live, call.name, result);
@@ -1086,6 +1119,30 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const completed = store.setTurnStatus(turnId, "completed");
     lives.delete(turnId);
     publishTurn(completed, null);
+  }
+
+  /**
+   * Nothing in a hop may legitimately go this long without touching the turn: a completion is
+   * bounded by the client's first-byte and idle timers, a shell by its own timeout, an MCP call by
+   * its idle cap, and both ends of every tool call touch the row. Past this the turn is wedged.
+   */
+  const STALE_TURN_MS = 20 * 60_000;
+  /** How often a still-streaming hop bothers the row; small next to {@link STALE_TURN_MS}. */
+  const TOUCH_EVERY_MS = 30_000;
+
+  /**
+   * Closes turns that stopped making progress. Without it a wedged turn sat at `running` until the
+   * next boot: Thinking forever in the sidebar, and silence for whoever was waiting on the handoff.
+   */
+  function sweepStalledTurns(at: Date = new Date()): void {
+    const floor = new Date(at.getTime() - STALE_TURN_MS).toISOString();
+    for (const turn of store.listLiveTurns()) {
+      // waiting_approval and waiting_ask are waiting on you, so they never go stale.
+      if (turn.status !== "running") continue;
+      if (turn.last_activity_at > floor) continue;
+      abortLive(turn.id);
+      void track(failTurn(turn.id, "stuck").catch(() => undefined));
+    }
   }
 
   function recordSpend(
@@ -1452,6 +1509,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       );
     },
     sweepStaleChains,
+    sweepStalledTurns,
     fireRoutine,
     async resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);

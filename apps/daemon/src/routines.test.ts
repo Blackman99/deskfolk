@@ -84,6 +84,7 @@ describe("routine claim and catch-up", () => {
     });
     backdate(store, routine.id, new Date(2026, 8, 10, 8, 0, 0));
     const fired: string[] = [];
+    const swept: Array<Date | undefined> = [];
     const now = new Date(2026, 8, 14, 10, 0, 0);
     const scheduler = startScheduler({
       store,
@@ -92,14 +93,20 @@ describe("routine claim and catch-up", () => {
           fired.push(id);
           return store.claimRoutineDue(id, at ?? now) ? ({ id: "t" } as never) : null;
         },
+        sweepStalledTurns(at) {
+          swept.push(at);
+        },
       } as TurnEngine,
       intervalMs: 60_000,
       now: () => now,
     });
     try {
       expect(fired).toEqual([routine.id]);
+      // Every tick also closes turns that stopped making progress.
+      expect(swept).toEqual([now]);
       scheduler.tick(now);
       expect(fired).toEqual([routine.id, routine.id]);
+      expect(swept).toEqual([now, now]);
       expect(store.getRoutine(routine.id).last_fired_for_due_at).toBe(
         new Date(2026, 8, 14, 9, 0, 0).toISOString(),
       );

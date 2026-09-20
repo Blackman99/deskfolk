@@ -494,7 +494,9 @@ const zh = {
       refused: "端点拒绝了这次补全",
       endpoint_error: "端点出错",
       incomplete: "回复不完整",
-      no_model: "没有可用的模型"
+      no_model: "没有可用的模型",
+      stuck: "卡住了，很久没有任何进展",
+      crashed: "运行时出错"
     }
   },
   detail: {
@@ -1036,7 +1038,9 @@ const en: CopyShape<typeof zh> = {
       refused: "Endpoint refused this completion",
       endpoint_error: "Endpoint error",
       incomplete: "Incomplete reply",
-      no_model: "No model is configured"
+      no_model: "No model is configured",
+      stuck: "It stopped making progress",
+      crashed: "The runtime errored"
     }
   },
   detail: {

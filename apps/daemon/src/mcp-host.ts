@@ -63,6 +63,8 @@ export type McpHostOptions = {
   builtinNames?: Iterable<string>;
   probeTimeoutMs?: number;
   requestTimeoutMs?: number;
+  /** How long a streamed response may go silent before the call is given up on. */
+  streamIdleMs?: number;
   shutdownWaitMs?: number;
 };
 
@@ -99,6 +101,9 @@ type Pending = {
 export function createMcpHost(options: McpHostOptions): McpHost {
   const probeTimeoutMs = options.probeTimeoutMs ?? 1_500;
   const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
+  // The request timer only covers the response headers. A tool that streams its answer over SSE
+  // can work for minutes before the result event arrives, so the body gets its own idle cap.
+  const streamIdleMs = options.streamIdleMs ?? 5 * 60_000;
   const shutdownWaitMs = options.shutdownWaitMs ?? 2_000;
   const sessions = new Map<string, Live>();
   const ensuring = new Map<string, Promise<McpSession | null>>();
@@ -145,7 +150,7 @@ export function createMcpHost(options: McpHostOptions): McpHost {
     if (closed) return null;
     const spawned =
       serverTransport(connected) === "http"
-        ? await spawnHttpSession(connected, requestTimeoutMs)
+        ? await spawnHttpSession(connected, requestTimeoutMs, streamIdleMs)
         : await spawnStdioSession(connected, probeTimeoutMs, requestTimeoutMs, shutdownWaitMs);
     if (!spawned) return null;
     if (closed) {
@@ -276,16 +281,18 @@ export function createMcpHost(options: McpHostOptions): McpHost {
     async call(modelName, args, signal) {
       if (closed) return fail("mcp host is closed");
       if (signal?.aborted) return fail("mcp call aborted");
-      const tool = await lookup(modelName);
-      if (!tool) return fail(`unknown tool: ${modelName}`);
-      const server = enabledServers().find((s) => s.id === tool.serverId);
-      if (!server) {
-        await dropUnwantedSessions();
-        return fail(`unknown tool: ${modelName}`);
-      }
-      const session = await ensure(server);
-      if (!session) return fail("mcp server is not running");
+      // Everything here answers the model, so a lookup or handshake that throws is a failed tool
+      // call, never an exception thrown into the turn loop.
       try {
+        const tool = await lookup(modelName);
+        if (!tool) return fail(`unknown tool: ${modelName}`);
+        const server = enabledServers().find((s) => s.id === tool.serverId);
+        if (!server) {
+          await dropUnwantedSessions();
+          return fail(`unknown tool: ${modelName}`);
+        }
+        const session = await ensure(server);
+        if (!session) return fail("mcp server is not running");
         const result = await session.callTool(tool.toolName, args, signal);
         return { ok: true, data: result };
       } catch (error) {
@@ -360,9 +367,10 @@ async function spawnStdioSession(
 async function spawnHttpSession(
   server: McpServerSpec,
   requestTimeoutMs: number,
+  streamIdleMs: number,
 ): Promise<{ session: HttpSession; instructions: string | null } | null> {
   if (!server.url) return null;
-  const session = new HttpSession(server, requestTimeoutMs);
+  const session = new HttpSession(server, requestTimeoutMs, streamIdleMs);
   try {
     const instructions = await session.handshake();
     return { session, instructions };
@@ -674,12 +682,14 @@ class HttpSession implements McpSession {
   private readonly headers: McpHeader[];
   private readonly auth: string | null;
   private readonly requestTimeoutMs: number;
+  private readonly streamIdleMs: number;
 
-  constructor(server: McpServerSpec, requestTimeoutMs: number) {
+  constructor(server: McpServerSpec, requestTimeoutMs: number, streamIdleMs: number) {
     this.url = server.url ?? "";
     this.headers = server.headers ?? [];
     this.auth = server.auth ?? null;
     this.requestTimeoutMs = requestTimeoutMs;
+    this.streamIdleMs = streamIdleMs;
   }
 
   onDead(hook: () => void): void {
@@ -815,23 +825,38 @@ class HttpSession implements McpSession {
         signal: controller.signal,
       });
     } catch (error) {
-      if (signal?.aborted || controller.signal.aborted) throw new Error("mcp call aborted");
-      throw error instanceof Error ? error : new Error("mcp http failed");
-    } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted || controller.signal.aborted) throw new Error("mcp call aborted");
+      throw error instanceof Error ? error : new Error("mcp http failed");
     }
-    const sessionHeader = response.headers.get("mcp-session-id");
-    if (response.ok && sessionHeader) this.sessionId = sessionHeader;
-    if (response.status === 202) return {};
-    if (!response.ok) {
-      throw new Error(`mcp http ${response.status}`);
+    // Headers are in. The body is read below, so the caller's abort stays wired until it is done:
+    // clearing that listener here is what let a silent stream hold a turn open for good.
+    clearTimeout(timer);
+    try {
+      const sessionHeader = response.headers.get("mcp-session-id");
+      if (response.ok && sessionHeader) this.sessionId = sessionHeader;
+      if (response.status === 202) return {};
+      if (!response.ok) {
+        throw new Error(`mcp http ${response.status}`);
+      }
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("text/event-stream")) {
+        return await readSseJsonRpc(response, { idleMs: this.streamIdleMs, signal });
+      }
+      const bodyTimer = setTimeout(() => controller.abort(), this.streamIdleMs);
+      try {
+        return await response.json();
+      } catch (error) {
+        if (signal?.aborted) throw new Error("mcp call aborted");
+        if (controller.signal.aborted) throw new Error("mcp http body timed out");
+        throw error instanceof Error ? error : new Error("mcp http failed");
+      } finally {
+        clearTimeout(bodyTimer);
+      }
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("text/event-stream")) {
-      return readSseJsonRpc(response);
-    }
-    return response.json();
   }
 
   private async shutdown(): Promise<void> {
@@ -881,16 +906,36 @@ async function listMcpTools(
   return tools;
 }
 
-async function readSseJsonRpc(response: Response): Promise<unknown> {
+async function readSseJsonRpc(
+  response: Response,
+  opts: { idleMs: number; signal?: AbortSignal },
+): Promise<unknown> {
   if (!response.body) throw new Error("mcp http empty stream");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
   let eventData = "";
+  // A stream that goes quiet forever is the one shape that has no error to react to: the read
+  // simply never settles. Give up on it rather than holding the turn open.
+  let idled = false;
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const arm = (): void => {
+    clearTimeout(idle);
+    idle = setTimeout(() => {
+      idled = true;
+      void reader.cancel().catch(() => undefined);
+    }, opts.idleMs);
+  };
+  const onAbort = (): void => {
+    void reader.cancel().catch(() => undefined);
+  };
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
   try {
+    arm();
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      arm();
       buf += decoder.decode(value, { stream: true });
       while (true) {
         const nl = buf.indexOf("\n");
@@ -920,10 +965,24 @@ async function readSseJsonRpc(response: Response): Promise<unknown> {
         }
       }
     }
+  } catch (error) {
+    // A cancelled reader may reject instead of reporting done, so both ways out say the same thing.
+    throw giveUpReason(opts.signal, idled, opts.idleMs) ?? error;
   } finally {
+    clearTimeout(idle);
+    opts.signal?.removeEventListener("abort", onAbort);
     reader.releaseLock();
   }
-  throw new Error("mcp http stream ended without a result");
+  throw (
+    giveUpReason(opts.signal, idled, opts.idleMs) ??
+    new Error("mcp http stream ended without a result")
+  );
+}
+
+function giveUpReason(signal: AbortSignal | undefined, idled: boolean, idleMs: number): Error | null {
+  if (signal?.aborted) return new Error("mcp call aborted");
+  if (idled) return new Error(`mcp http stream went quiet for ${Math.round(idleMs / 1000)}s`);
+  return null;
 }
 
 async function drain(stream: ReadableStream<Uint8Array> | number | undefined): Promise<void> {

@@ -14,6 +14,8 @@ export const FAIL_REASON = {
   endpoint_error: { zh: "端点出错", en: "Endpoint error" },
   incomplete: { zh: "回复不完整", en: "Incomplete reply" },
   no_model: { zh: "没有可用的模型", en: "No model is configured" },
+  stuck: { zh: "卡住了，很久没有任何进展", en: "It stopped making progress" },
+  crashed: { zh: "运行时出错", en: "The runtime errored" },
 } as const;
 
 export type FailKind = keyof typeof FAIL_REASON;
