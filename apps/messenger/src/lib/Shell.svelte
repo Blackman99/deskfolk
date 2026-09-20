@@ -1159,7 +1159,7 @@
 	}
 
 	.sheet.is-right.session-settings {
-		width: 420px;
+		width: 460px;
 		max-width: 94vw;
 		height: 100%;
 		max-height: 100vh;

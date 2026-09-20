@@ -40,6 +40,7 @@
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
+		initialTab?: 'basics' | 'skills' | 'memory' | 'actions';
 		openDangerConfirm: (kind: 'skill' | 'memory', run: () => Promise<void>) => void;
 		clearDanger: (kind: 'skill' | 'memory') => void;
 		onDeleteBot: () => void;
@@ -53,6 +54,7 @@
 		modelOptions,
 		selectedKind,
 		profileFailed = $bindable(false),
+		initialTab = 'basics',
 		openDangerConfirm,
 		clearDanger,
 		onDeleteBot,
@@ -322,6 +324,25 @@
 		const error = await runtime.restoreBot(runtime.profileBotId);
 		if (error) profileFailed = true;
 	}
+
+	export type BotTab = 'basics' | 'skills' | 'memory' | 'actions';
+	let activeTab = $state<BotTab>(untrack(() => initialTab));
+
+	const basicsHasError = $derived(
+		Boolean(
+			profileErrors.name ||
+			profileErrors.duties ||
+			profileErrors.boundaries ||
+			profileErrors.model ||
+			profileErrors.thinkingLevel
+		)
+	);
+
+	function switchTab(tab: BotTab): void {
+		if (activeTab === tab) return;
+		flushProfileSave();
+		activeTab = tab;
+	}
 </script>
 
 <svelte:window
@@ -333,6 +354,89 @@
 	}}
 />
 
+<div class="bot-nav-sticky">
+	<div class="bot-nav-bar">
+		<div class="bot-tabs" role="tablist" aria-label={t.detail.titleBot}>
+			<button
+				type="button"
+				role="tab"
+				aria-selected={activeTab === 'basics'}
+				class="bot-tab-btn"
+				class:is-active={activeTab === 'basics'}
+				onclick={() => switchTab('basics')}
+			>
+				<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+					<circle cx="12" cy="7" r="4"></circle>
+				</svg>
+				<span class="tab-name">{t.detail.botTabBasics}</span>
+				{#if basicsHasError}
+					<span class="tab-badge-error" aria-label="error">!</span>
+				{/if}
+			</button>
+
+			<button
+				type="button"
+				role="tab"
+				aria-selected={activeTab === 'skills'}
+				class="bot-tab-btn"
+				class:is-active={activeTab === 'skills'}
+				onclick={() => switchTab('skills')}
+			>
+				<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+				</svg>
+				<span class="tab-name">{t.detail.botTabSkills}</span>
+				{#if profileSkills.length > 0}
+					<span class="tab-count">{profileSkills.length}</span>
+				{/if}
+			</button>
+
+			<button
+				type="button"
+				role="tab"
+				aria-selected={activeTab === 'memory'}
+				class="bot-tab-btn"
+				class:is-active={activeTab === 'memory'}
+				onclick={() => switchTab('memory')}
+			>
+				<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+					<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+				</svg>
+				<span class="tab-name">{t.detail.botTabMemory}</span>
+			</button>
+
+			<button
+				type="button"
+				role="tab"
+				aria-selected={activeTab === 'actions'}
+				class="bot-tab-btn"
+				class:is-active={activeTab === 'actions'}
+				onclick={() => switchTab('actions')}
+			>
+				<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<circle cx="12" cy="12" r="3"></circle>
+					<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+				</svg>
+				<span class="tab-name">{t.detail.botTabActions}</span>
+			</button>
+		</div>
+
+		<div class="bot-nav-state text-12 text-muted whitespace-nowrap" class:is-error={profileFailed} aria-live="polite">
+			{#if profileSaving}
+				{t.sidebar.autoSaving}
+			{:else if profileFailed}
+				{t.sidebar.saveFailed}
+			{:else if profileSavedTick > 0}
+				{t.sidebar.autoSaved}
+			{:else}
+				{t.sidebar.autoSaveHint}
+			{/if}
+		</div>
+	</div>
+</div>
+
 {#if profileFailed}
 	<div class="panel-alert is-error">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -340,6 +444,7 @@
 	</div>
 {/if}
 
+{#if activeTab === 'basics'}
 <div class="panel-card">
 	<div class="panel-card-head">
 		<span class="panel-card-title">{t.detail.botBasics}</span>
@@ -441,7 +546,7 @@
 		{/if}
 	</div>
 </div>
-
+{:else if activeTab === 'skills'}
 <div class="panel-card">
 	<div class="panel-card-head">
 		<div class="flex items-center gap-2">
@@ -547,9 +652,9 @@
 		{/each}
 	</div>
 </div>
-
+{:else if activeTab === 'memory'}
 <MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
-
+{:else if activeTab === 'actions'}
 <div class="panel-card">
 	<div class="panel-card-head">
 		<span class="panel-card-title">{t.detail.sessionActions}</span>
@@ -611,6 +716,7 @@
 		</div>
 	</div>
 </div>
+{/if}
 
 {#if skillEditor}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -756,6 +862,119 @@
 {/if}
 
 <style>
+	.bot-nav-sticky {
+		position: sticky;
+		top: -36px;
+		z-index: 10;
+		margin: -36px -36px 0 -36px;
+		padding: 12px 24px;
+		background: var(--bg);
+		border-bottom: 1px solid var(--line);
+		backdrop-filter: blur(12px);
+	}
+
+	.bot-nav-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.bot-tabs {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		overflow-x: auto;
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+		padding: 2px;
+		background: var(--sidebar-bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+	}
+
+	.bot-tabs::-webkit-scrollbar {
+		display: none;
+	}
+
+	.bot-tab-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 10px;
+		border-radius: var(--radius-sm);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-secondary);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.15s ease;
+		line-height: 1.2;
+	}
+
+	.bot-tab-btn:hover {
+		color: var(--ink);
+		background: var(--chip);
+	}
+
+	.bot-tab-btn.is-active {
+		color: var(--ink);
+		font-weight: 600;
+		background: var(--pane);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.bot-tab-btn .tab-icon {
+		color: var(--muted);
+		flex-shrink: 0;
+		transition: color 0.15s ease;
+	}
+
+	.bot-tab-btn.is-active .tab-icon {
+		color: var(--accent);
+	}
+
+	.bot-tab-btn .tab-badge-error {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 9999px;
+		background: var(--danger);
+		color: #ffffff;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1;
+		margin-left: 2px;
+	}
+
+	.bot-tab-btn .tab-count {
+		font-size: 10.5px;
+		font-weight: 600;
+		padding: 0 5px;
+		border-radius: 9999px;
+		background: var(--chip);
+		color: var(--ink-secondary);
+		line-height: 15px;
+	}
+
+	.bot-tab-btn.is-active .tab-count {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
+	.bot-nav-state {
+		flex-shrink: 0;
+		font-size: 11.5px;
+	}
+
+	.bot-nav-state.is-error {
+		color: var(--danger);
+	}
+
 	.skill-head-add-btn {
 		display: inline-flex;
 		align-items: center;

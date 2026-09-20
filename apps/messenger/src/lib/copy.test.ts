@@ -190,6 +190,14 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.detail.titleGroup).toBe("Group settings");
   expect(COPY.zh.detail.titleBot).toBe("Bot 设置");
   expect(COPY.en.detail.titleBot).toBe("Bot settings");
+  expect(COPY.zh.detail.botTabBasics).toBe("基础信息");
+  expect(COPY.en.detail.botTabBasics).toBe("Basics");
+  expect(COPY.zh.detail.botTabSkills).toBe("技能");
+  expect(COPY.en.detail.botTabSkills).toBe("Skills");
+  expect(COPY.zh.detail.botTabMemory).toBe("记忆");
+  expect(COPY.en.detail.botTabMemory).toBe("Memory");
+  expect(COPY.zh.detail.botTabActions).toBe("操作");
+  expect(COPY.en.detail.botTabActions).toBe("Actions");
   expect(COPY.zh.detail.botBasics).toBe("Bot 基础信息");
   expect(COPY.en.detail.botBasics).toBe("Bot basics");
   expect(COPY.zh.detail.sessionActions).toBe("会话操作");

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aGroup, aMemory, fakeRuntime } from "../test-fixtures.ts";
-import { buttonByText, click, fill, render } from "../test-render.ts";
+import { buttonByText, click, fill, press, render } from "../test-render.ts";
 import MemoryCard from "./MemoryCard.svelte";
 
 const t = copyFor("zh");
@@ -88,6 +88,45 @@ test("editing saves the trimmed fields", async () => {
   await Promise.resolve();
   const call = runtime.calls.find((c) => c.name === "patchMemory");
   expect(call?.args).toEqual(["mem-1", { subject: "用户的回复偏好", body: "改过的正文" }]);
+  close();
+});
+
+/** The dialog used to sit next to the backdrop, so the blur covered it and the pane looked empty. */
+test("edit opens the dialog inside the backdrop", () => {
+  const { host, close } = open([aMemory()]);
+  click(host.querySelector(".memory-icon-btn"));
+  const backdrop = host.querySelector(".memory-modal-backdrop");
+  const dialog = host.querySelector(".memory-modal");
+  expect(backdrop).not.toBeNull();
+  expect(dialog).not.toBeNull();
+  expect(backdrop?.contains(dialog)).toBe(true);
+  expect(host.querySelector("#memory-modal-title")?.textContent?.trim()).toBe(t.sidebar.memoryEdit);
+  expect((host.querySelector("#memory-subject") as HTMLInputElement).value).toBe("用户的回复偏好");
+  close();
+});
+
+test("cancel, the close button, and the backdrop dismiss the editor", () => {
+  const { host, close } = open([aMemory()]);
+  click(host.querySelector(".memory-icon-btn"));
+  click(buttonByText(host, t.sidebar.memoryCancel));
+  expect(host.querySelector(".memory-modal")).toBeNull();
+
+  click(host.querySelector(".memory-icon-btn"));
+  click(host.querySelector(".memory-modal .modal-close"));
+  expect(host.querySelector(".memory-modal")).toBeNull();
+
+  click(host.querySelector(".memory-icon-btn"));
+  click(host.querySelector(".memory-modal-backdrop"));
+  expect(host.querySelector(".memory-modal")).toBeNull();
+  close();
+});
+
+test("Escape dismisses the editor without closing the drawer behind it", () => {
+  const { host, close } = open([aMemory()]);
+  click(host.querySelector(".memory-icon-btn"));
+  expect(host.querySelector(".memory-modal")).not.toBeNull();
+  press(window as unknown as Element, "Escape");
+  expect(host.querySelector(".memory-modal")).toBeNull();
   close();
 });
 

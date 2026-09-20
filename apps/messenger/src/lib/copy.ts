@@ -497,6 +497,10 @@ const zh = {
   detail: {
     titleGroup: "群组设置",
     titleBot: "Bot 设置",
+    botTabBasics: "基础信息",
+    botTabSkills: "技能",
+    botTabMemory: "记忆",
+    botTabActions: "操作",
     botBasics: "Bot 基础信息",
     sessionActions: "会话操作",
     dangerZone: "危险区域",
@@ -1032,6 +1036,10 @@ const en: CopyShape<typeof zh> = {
   detail: {
     titleGroup: "Group settings",
     titleBot: "Bot settings",
+    botTabBasics: "Basics",
+    botTabSkills: "Skills",
+    botTabMemory: "Memory",
+    botTabActions: "Actions",
     botBasics: "Bot basics",
     sessionActions: "Actions",
     dangerZone: "Danger Zone",

@@ -306,32 +306,45 @@
 
 	/*
 	 * Keep the table formatting context (`display: table`). Putting `display:
-	 * block` on <table> is what collapsed columns in the preview. Wide tables
-	 * scroll inside `.md-table-wrap` instead.
+	 * block` on <table> is what collapsed columns in the preview.
+	 *
+	 * Do not force `width: 100%` with wrap-anywhere: a fit-content bubble then
+	 * shrinks every column to one CJK character. Size to content, floor short
+	 * columns, cap long cells, and scroll sideways in `.md-table-wrap`.
 	 */
 	.md-body :global(.md-table-wrap) {
 		overflow-x: auto;
 		max-width: 100%;
+		width: 100%;
+		min-width: 0;
 	}
 
 	.md-body :global(table) {
 		border-collapse: collapse;
 		font-size: 12.5px;
-		width: 100%;
+		width: max-content;
+		min-width: 100%;
 	}
 
 	.md-body :global(th),
 	.md-body :global(td) {
 		border: 1px solid var(--line);
-		padding: 4px 8px;
+		padding: 6px 10px;
 		vertical-align: top;
-		overflow-wrap: anywhere;
-		word-break: break-word;
+		line-height: 1.45;
+		overflow-wrap: break-word;
+		word-break: normal;
 	}
 
 	.md-body :global(th) {
 		font-weight: 650;
 		background: var(--line-subtle);
+		white-space: nowrap;
+	}
+
+	.md-body :global(td) {
+		min-width: 5.5em;
+		max-width: 22em;
 	}
 
 	.md-body :global(th[align='center']),

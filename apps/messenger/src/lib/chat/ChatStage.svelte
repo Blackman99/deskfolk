@@ -1607,6 +1607,11 @@
 		word-break: break-word;
 	}
 
+	/* A definite width so the table wrap can scroll instead of shrinking columns. */
+	.msg:has(:global(.md-table-wrap)) {
+		width: 100%;
+	}
+
 	.msg.is-you {
 		background: linear-gradient(135deg, #2563eb, #1d4ed8);
 		color: #ffffff;
