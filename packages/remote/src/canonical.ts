@@ -37,12 +37,30 @@ export const canonicalBytes = (value: unknown): Uint8Array => utf8(canonicalize(
 export const canonicalHash = (value: unknown): string => hex(sha256(canonicalBytes(value)));
 
 export interface AttachmentDigest { filename: string; sha256: string }
+export type ConditionalHeaders = Readonly<Record<string, string>>;
+
+function canonicalConditionalHeaders(headers: ConditionalHeaders = {}): Record<string, string> {
+  check(headers !== null && typeof headers === 'object' && !Array.isArray(headers) &&
+    (Object.getPrototypeOf(headers) === Object.prototype || Object.getPrototypeOf(headers) === null) &&
+    Object.getOwnPropertySymbols(headers).length === 0, 'invalid conditional headers');
+  const result: Record<string, string> = {};
+  for (const name of Object.keys(headers)) {
+    const key = name.toLowerCase(), descriptor = Object.getOwnPropertyDescriptor(headers, name)!;
+    check(['if-match', 'if-none-match', 'if-modified-since', 'if-unmodified-since', 'if-range'].includes(key), 'unsupported conditional header');
+    check(!Object.hasOwn(result, key), 'duplicate conditional header');
+    check('value' in descriptor && typeof descriptor.value === 'string' && descriptor.value.length > 0 &&
+      !/[\x00-\x1f\x7f]/.test(descriptor.value), 'invalid conditional header value');
+    result[key] = validString(descriptor.value);
+  }
+  return result;
+}
 export interface RequestDigestInput {
   method: string;
   path: string;
   body: unknown;
   encoding: 'json' | 'multipart';
   files?: readonly AttachmentDigest[];
+  conditionalHeaders?: ConditionalHeaders;
 }
 
 export function requestDigestBytes(input: RequestDigestInput): Uint8Array {
@@ -51,20 +69,19 @@ export function requestDigestBytes(input: RequestDigestInput): Uint8Array {
   check(input.encoding === 'json' || input.encoding === 'multipart', 'invalid encoding');
   const files = [...(input.files ?? [])];
   check(input.encoding !== 'json' || files.length === 0, 'JSON cannot contain file digests');
-  const names = new Set<string>();
   for (const file of files) {
-    check(file.filename.length > 0 && !/[\x00-\x1f\x7f]/.test(file.filename), 'invalid filename');
+    check(typeof file.filename === 'string' && file.filename.length > 0 && !/[\x00-\x1f\x7f]/.test(file.filename), 'invalid filename');
     validString(file.filename);
-    check(!names.has(file.filename) && /^[0-9a-f]{64}$/.test(file.sha256), 'duplicate file or invalid digest');
-    names.add(file.filename);
+    check(typeof file.sha256 === 'string' && /^[0-9a-f]{64}$/.test(file.sha256), 'invalid file digest');
   }
   files.sort((a, b) => {
     const x = utf8(a.filename), y = utf8(b.filename);
     for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
-    return x.length - y.length;
+    return x.length - y.length || (a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0);
   });
   // Encoding separates JSON from empty multipart requests, which otherwise collide.
   return utf8([input.method, input.path, canonicalize(input.body), input.encoding,
-    files.map(f => f.filename + '\x1e' + f.sha256).join('\x1f')].join('\x1f'));
+    files.map(f => f.filename + '\x1e' + f.sha256).join('\x1f'),
+    canonicalize(canonicalConditionalHeaders(input.conditionalHeaders))].join('\x1f'));
 }
 export const requestDigest = (input: RequestDigestInput): string => hex(sha256(requestDigestBytes(input)));

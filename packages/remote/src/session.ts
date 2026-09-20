@@ -45,15 +45,15 @@ abstract class Session {
   constructor(options: SessionOptions, initiator: boolean) {
     identityPublic(options.identity);
     this.prologue = encodePrologue(options.binding);
-    this.signing = options.identity.signing.slice();
-    this.peerSigning = bytes(options.peer.signing, 32).slice();
-    this.peerDh = bytes(options.peer.dh, 32).slice();
+    this.signing = new Uint8Array(options.identity.signing);
+    this.peerSigning = new Uint8Array(bytes(options.peer.signing, 32));
+    this.peerDh = new Uint8Array(bytes(options.peer.dh, 32));
     this.noise = new NoiseIK(initiator, options.identity.dh, this.prologue, initiator ? this.peerDh : undefined);
   }
   get ready(): boolean { return !this.closed && this.transport !== undefined; }
   get authenticatedSessionId(): Uint8Array {
     check(this.ready && this.sessionId, 'session is not authenticated');
-    return this.sessionId.slice();
+    return new Uint8Array(this.sessionId);
   }
   protected guard<T>(operation: () => T): T {
     try { check(!this.closed, 'session closed'); return operation(); }
@@ -129,12 +129,12 @@ export class HostSession extends Session {
       check(!this.transport && message1.length === 208, 'invalid initiator Hello'); this.assertTrust();
       const payload = this.noise.readMessage(message1);
       check(payload.length === 112 && equal(this.noise.remoteStatic!, this.peerDh), 'device static identity mismatch');
-      this.sessionId = payload.slice(0, 16);
+      this.sessionId = new Uint8Array(payload.subarray(0, 16));
       check(equal(payload.subarray(16, 48), this.peerSigning), 'device signing identity mismatch');
       check(ed25519.verify(payload.subarray(48), concat(utf8('RB-HELLO-I'), this.prologue,
         this.noise.remoteEphemeral!, this.sessionId), this.peerSigning, { zip215: false }), 'invalid device Hello signature');
       check(this.#claimReplay({ deviceId: this.#deviceId, ephemeralPublic: this.noise.remoteEphemeral!,
-        sessionId: this.sessionId.slice(), minimumTtlMs: this.#ttl }) === true, 'replayed initiator Hello');
+        sessionId: new Uint8Array(this.sessionId), minimumTtlMs: this.#ttl }) === true, 'replayed initiator Hello');
       const signature = ed25519.sign(concat(utf8('RB-HELLO-R'), this.prologue, this.noise.ephemeralPublic,
         this.sessionId, this.noise.handshakeHash), this.signing);
       const response = this.noise.writeMessage(concat(ed25519.getPublicKey(this.signing), signature));

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { blake2s } from '@noble/hashes/blake2.js';
-import { base64url, decodeGrant, encodeGrant, encodeEnrollmentProof, hex, openPairing, pairingKey, sealPairing, signEnrollmentProof, signGrant, verifyEnrollmentProof, verifyGrant, utf8 } from '../src/index.ts';
+import { pairingKey } from '../src/pairing.ts';
+import { base64url, decodeGrant, encodeGrant, encodeEnrollmentProof, hex, openPairing, sealPairing, signEnrollmentProof, signGrant, verifyEnrollmentProof, verifyGrant, utf8 } from '../src/index.ts';
 import { deviceId, devicePublic, hostId, hostKeys, hostPublic, pairingId, relayOrigin } from './helpers.ts';
 const request = { device_id: deviceId, name: 'Test only 测试', ua_hint: 'fixture', device_e_pk: base64url(devicePublic.signing), device_s_pk: base64url(devicePublic.dh), enrollment_pk: base64url(devicePublic.enrollment) };
 const context = { pairingId, hostId, expiresUnix: 1600 }, secret = new Uint8Array(32).fill(71);

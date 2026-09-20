@@ -1,25 +1,22 @@
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { x25519 } from '@noble/curves/ed25519.js';
 import { blake2s } from '@noble/hashes/blake2.js';
-import { hmac } from '@noble/hashes/hmac.js';
+import { hkdf as nobleHkdf } from '@noble/hashes/hkdf.js';
 import { bytes, check, concat, EMPTY, randomBytes, U64_MAX, utf8 } from './bytes.ts';
 
 export const NOISE_PROTOCOL = 'Noise_IK_25519_ChaChaPoly_BLAKE2s';
 export const MAX_NOISE_MESSAGE = 65535;
 
 function hkdf(key: Uint8Array, input: Uint8Array): [Uint8Array, Uint8Array] {
-  const temp = hmac(blake2s, key, input);
-  const a = hmac(blake2s, temp, Uint8Array.of(1));
-  const b = hmac(blake2s, temp, concat(a, Uint8Array.of(2)));
-  temp.fill(0);
-  return [a, b];
+  const output = nobleHkdf(blake2s, input, key, EMPTY, 64);
+  return [output.subarray(0, 32), output.subarray(32)];
 }
 
 export class CipherState {
   #key: Uint8Array;
   #nonce = 0n;
   #closed = false;
-  constructor(key: Uint8Array) { this.#key = bytes(key, 32).slice(); }
+  constructor(key: Uint8Array) { this.#key = new Uint8Array(bytes(key, 32)); }
   get nonce(): bigint { return this.#nonce; }
   #crypt(input: Uint8Array, ad: Uint8Array, decrypt: boolean): Uint8Array {
     try {
@@ -56,20 +53,21 @@ export class NoiseIK {
     remoteStatic?: Uint8Array,
     ephemeralSecret = randomBytes(32),
   ) {
-    this.#s = bytes(staticSecret, 32).slice();
-    this.#e = bytes(ephemeralSecret, 32).slice();
-    this.#rs = remoteStatic && bytes(remoteStatic, 32).slice();
+    // Buffer.slice aliases caller storage; cleanup must only erase owned copies.
+    this.#s = new Uint8Array(bytes(staticSecret, 32));
+    this.#e = new Uint8Array(bytes(ephemeralSecret, 32));
+    this.#rs = remoteStatic && new Uint8Array(bytes(remoteStatic, 32));
     check(!initiator || this.#rs, 'IK requires pinned responder static');
     const name = utf8(NOISE_PROTOCOL);
     this.#h = name.length <= 32 ? concat(name, new Uint8Array(32 - name.length)) : blake2s(name);
-    this.#ck = this.#h.slice();
+    this.#ck = new Uint8Array(this.#h);
     this.#mixHash(prologue);
     this.#mixHash(initiator ? this.#rs! : x25519.getPublicKey(this.#s));
   }
   get ephemeralPublic(): Uint8Array { return x25519.getPublicKey(this.#e); }
-  get remoteStatic(): Uint8Array | undefined { return this.#rs?.slice(); }
-  get remoteEphemeral(): Uint8Array | undefined { return this.#re?.slice(); }
-  get handshakeHash(): Uint8Array { return this.#h.slice(); }
+  get remoteStatic(): Uint8Array | undefined { return this.#rs && new Uint8Array(this.#rs); }
+  get remoteEphemeral(): Uint8Array | undefined { return this.#re && new Uint8Array(this.#re); }
+  get handshakeHash(): Uint8Array { return new Uint8Array(this.#h); }
   #mixHash(input: Uint8Array): void { this.#h = blake2s(concat(this.#h, input)); }
   #mixKey(secret: Uint8Array, publicKey: Uint8Array): void {
     const dh = x25519.getSharedSecret(secret, publicKey);
@@ -109,7 +107,7 @@ export class NoiseIK {
     try {
       check(!this.#closed && (this.initiator ? this.#step === 1 : this.#step === 0), 'unexpected Noise read');
       check(message.length >= (this.initiator ? 48 : 96) && message.length <= MAX_NOISE_MESSAGE, 'Noise message length');
-      this.#re = message.slice(0, 32);
+      this.#re = new Uint8Array(message.subarray(0, 32));
       this.#mixHash(this.#re);
       let payload: Uint8Array;
       if (this.initiator) {

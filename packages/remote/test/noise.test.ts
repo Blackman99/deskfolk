@@ -3,7 +3,8 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import cacophony from './fixtures/cacophony-ik.json';
 import noiseC from './fixtures/noise-c-ik.json';
 import { NoiseIK } from '../src/noise.ts';
-import { DeviceSession, HostSession, MAX_BODY, concat, encodeFrame, encodePrologue, hex, randomBytes, unhex, utf8 } from '../src/index.ts';
+import { concat } from '../src/bytes.ts';
+import { DeviceSession, HostSession, MAX_BODY, encodeFrame, encodePrologue, hex, randomBytes, unhex, utf8 } from '../src/index.ts';
 import { binding, deviceKeys, devicePublic, fakeIdentity, hostKeys, hostPublic, sessions } from './helpers.ts';
 
 test('official Noise registry Cacophony and noise-c IK vectors: handshake, h, nonce streams', () => {

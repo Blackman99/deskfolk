@@ -12,7 +12,7 @@ const cborOptions = { useMaps: true, rejectDuplicateMapKeys: true, allowIndefini
 const MAX_AUTH_BYTES = 16 * 1024;
 function map(value: unknown): Map<unknown, unknown> { check(value instanceof Map, 'expected CBOR map'); return value; }
 function cbor(input: Uint8Array): unknown { check(input.length <= MAX_AUTH_BYTES, 'CBOR limit'); return decode(input, cborOptions); }
-function byteValue(value: unknown, length?: number): Uint8Array { check(value instanceof Uint8Array, 'expected CBOR bytes'); return bytes(value, length); }
+function byteValue(value: unknown, length?: number): Uint8Array { check(value instanceof Uint8Array, 'expected CBOR bytes'); return new Uint8Array(bytes(value, length)); }
 
 export type CredentialKey =
   | { algorithm: -7; publicKey: Uint8Array }
@@ -110,7 +110,8 @@ function validateContext(context: WebAuthnContext, kind: UvChallenge['kind']): v
 }
 function clientData(input: Uint8Array, context: WebAuthnContext, type: string): void {
   check(input.length > 0 && input.length <= MAX_AUTH_BYTES, 'client data limit');
-  text(input);
+  // cborg rejects duplicate members but its JSON grammar is permissive.
+  JSON.parse(text(input));
   const data = map(decodeJson(input, { useMaps: true, rejectDuplicateMapKeys: true }));
   check(data.get('type') === type && data.get('origin') === context.relayOrigin && data.get('challenge') === context.record.challenge, 'invalid WebAuthn client data');
   check(!data.has('crossOrigin') || data.get('crossOrigin') === false, 'cross-origin WebAuthn forbidden');
@@ -131,10 +132,10 @@ function authenticatorData(input: Uint8Array, rpId: string, registration: boolea
     check(input.length >= 55, 'truncated attested data');
     const length = new DataView(input.buffer, input.byteOffset).getUint16(53);
     check(length > 0 && length <= 1024 && 55 + length < input.length, 'invalid credential id');
-    credentialId = input.slice(55, 55 + length); offset = 55 + length;
+    credentialId = new Uint8Array(input.subarray(55, 55 + length)); offset = 55 + length;
     const rest = input.subarray(offset);
     const [, remainder] = decodeFirst(rest, cborOptions);
-    cose = rest.slice(0, rest.length - remainder.length); offset += cose.length;
+    cose = new Uint8Array(rest.subarray(0, rest.length - remainder.length)); offset += cose.length;
     parseCoseKey(cose);
   }
   if (flags & 0x80) { map(cbor(input.subarray(offset))); offset = input.length; }
@@ -152,7 +153,7 @@ export async function verifyAssertion(
   commit: (update: { challenge: string; credentialId: string; previousSignCount: number; signCount: number; binding: OperationBinding }) => boolean | Promise<boolean>,
 ): Promise<VerifiedUv> {
   context = { ...context, expectedBinding: { ...context.expectedBinding }, record: { ...context.record, binding: { ...context.record.binding } } };
-  credential = { ...credential, cosePublicKey: credential.cosePublicKey.slice() };
+  credential = { ...credential, cosePublicKey: new Uint8Array(credential.cosePublicKey) };
   validateContext(context, 'assertion'); clientData(response.clientDataJSON, context, 'webauthn.get');
   check(response.credentialId === credential.credentialId, 'credential mismatch');
   check(response.credentialId.length > 0 && response.credentialId.length <= 1366, 'credential id length');
@@ -214,6 +215,6 @@ export async function verifyRegistration(
   check(equal(fromBase64url(response.credentialId), auth.credentialId!), 'registration credential mismatch');
   const credential = { credentialId: response.credentialId, cosePublicKey: auth.cose!, signCount: auth.signCount };
   check(await commit({ challenge: context.record.challenge, binding: { ...context.expectedBinding },
-    credential: { ...credential, cosePublicKey: credential.cosePublicKey.slice() }, authority: authorization }) === true, 'registration authority expired, consumed, or changed');
+    credential: { ...credential, cosePublicKey: new Uint8Array(credential.cosePublicKey) }, authority: authorization }) === true, 'registration authority expired, consumed, or changed');
   return credential;
 }

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { MAX_BODY, MAX_FILE_CHUNK, MAX_FRAGMENT_CHUNK, MAX_LOGICAL_MESSAGE, Reassembler, decodeFileChunk, decodeFragment, decodeFrame, encodeFileChunk, encodeFragment, encodeFrame, fragmentMessage, randomBytes, u64 } from '../src/index.ts';
+import { u64 } from '../src/bytes.ts';
+import { MAX_BODY, MAX_FILE_CHUNK, MAX_FRAGMENT_CHUNK, MAX_LOGICAL_MESSAGE, Reassembler, decodeFileChunk, decodeFragment, decodeFrame, encodeFileChunk, encodeFragment, encodeFrame, fragmentMessage, randomBytes } from '../src/index.ts';
 
 test('32KiB includes all transport/fragment/file headers', () => {
   const sessionId = randomBytes(16);

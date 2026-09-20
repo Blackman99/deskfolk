@@ -1,3 +1,7 @@
+import { concatBytes as concat } from '@noble/hashes/utils.js';
+export { concat };
+export { bytesToHex as hex, hexToBytes as unhex } from '@noble/hashes/utils.js';
+
 export const EMPTY = new Uint8Array();
 export const U64_MAX = (1n << 64n) - 1n;
 
@@ -8,13 +12,6 @@ export function check(condition: unknown, message = 'invalid remote protocol inp
 export function bytes(value: Uint8Array, length?: number): Uint8Array {
   check(value instanceof Uint8Array && (length === undefined || value.length === length), 'invalid byte length');
   return value;
-}
-
-export function concat(...parts: Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let offset = 0;
-  for (const p of parts) { out.set(p, offset); offset += p.length; }
-  return out;
 }
 
 export function equal(a: Uint8Array, b: Uint8Array): boolean {
@@ -38,11 +35,6 @@ export function validString(value: string): string {
 
 export const utf8 = (value: string): Uint8Array => new TextEncoder().encode(validString(value));
 export const text = (value: Uint8Array): string => new TextDecoder('utf-8', { fatal: true }).decode(value);
-export const hex = (value: Uint8Array): string => Array.from(value, n => n.toString(16).padStart(2, '0')).join('');
-export function unhex(value: string): Uint8Array {
-  check(/^(?:[0-9a-f]{2})*$/i.test(value), 'invalid hex');
-  return Uint8Array.from(value.match(/../g) ?? [], n => Number.parseInt(n, 16));
-}
 export function base64url(value: Uint8Array): string {
   let s = '';
   for (const n of value) s += String.fromCharCode(n);
@@ -92,7 +84,7 @@ export class Reader {
   get remaining(): number { return this.data.length - this.#offset; }
   take(n: number): Uint8Array {
     uint(n); check(n <= this.remaining, 'truncated input');
-    const out = this.data.slice(this.#offset, this.#offset + n); this.#offset += n; return out;
+    const out = new Uint8Array(this.data.subarray(this.#offset, this.#offset + n)); this.#offset += n; return out;
   }
   u8(): number { return this.take(1)[0]; }
   u16(): number { return new DataView(this.take(2).buffer).getUint16(0); }

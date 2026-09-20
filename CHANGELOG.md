@@ -8,6 +8,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Experimental remote protocol
 
+- Fixed Buffer-backed key ownership so handshake failure, Split and close cannot erase caller identities or break concurrent sessions; binary decoders now respect Buffer view offsets. WebAuthn rejects invalid JSON grammar as well as duplicate members. The shared receipt digest now binds canonical conditional headers (including If-Match) and deterministically sorts duplicate filenames by filename bytes then content hash; unpublished earlier digests are incompatible. Internal helpers are no longer public, and HKDF/byte codecs reuse pinned Noble utilities. All remote/device/audit gates remain unchanged and default-off.
 - Added the browser/Bun shared remote-crypto prototype: pinned Noise IK identities and signed Hello, bounded encrypted frames, pairing grants, enrollment proofs, canonical receipt hashes, and real COSE/WebAuthn verification with operation-bound one-use challenges. Official protocol vectors and an independent Rust snow peer exercise the implementation. Remote transport and public pairing remain proposed/default-off: real-device PWA/WebAuthn validation and independent security review have not passed. See [the protocol contract](docs/remote-protocol.md).
 
 ### Daemon

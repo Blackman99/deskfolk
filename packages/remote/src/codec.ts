@@ -62,10 +62,10 @@ export function decodeFragment(input: Uint8Array): Fragment {
 }
 export function fragmentMessage(type: LogicalType, body: Uint8Array): { type: FrameType; body: Uint8Array }[] {
   check([1, 2, 3, 8].includes(type) && body.length <= MAX_LOGICAL_MESSAGE, 'invalid logical message');
-  if (body.length <= MAX_BODY) return [{ type, body: body.slice() }];
+  if (body.length <= MAX_BODY) return [{ type, body: new Uint8Array(body) }];
   const messageId = randomBytes(16), count = Math.ceil(body.length / MAX_FRAGMENT_CHUNK);
   return Array.from({ length: count }, (_, index) => ({ type: 4,
-    body: encodeFragment({ originalType: type, messageId, index, count, chunk: body.slice(index * MAX_FRAGMENT_CHUNK, (index + 1) * MAX_FRAGMENT_CHUNK) }) }));
+    body: encodeFragment({ originalType: type, messageId, index, count, chunk: body.subarray(index * MAX_FRAGMENT_CHUNK, (index + 1) * MAX_FRAGMENT_CHUNK) }) }));
 }
 
 export class Reassembler {

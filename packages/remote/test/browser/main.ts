@@ -1,7 +1,8 @@
 import { encode } from 'cborg';
 import { p256 } from '@noble/curves/nist.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { DeviceSession, HostSession, Reassembler, base64url, canonicalHash, concat, createUvChallenge, fragmentMessage, fromBase64url, generateIdentity, hex, identityPublic, u32, utf8, verifyAssertion } from '../../src/index.ts';
+import { concat, u32 } from '../../src/bytes.ts';
+import { DeviceSession, HostSession, Reassembler, base64url, canonicalHash, createUvChallenge, fragmentMessage, fromBase64url, generateIdentity, hex, identityPublic, utf8, verifyAssertion } from '../../src/index.ts';
 
 const output = document.querySelector('output')!;
 const button = document.querySelector('button')!;

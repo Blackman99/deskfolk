@@ -18,5 +18,10 @@
       "transformation": "Select name Noise_IK_25519_ChaChaPoly_BLAKE2s and indent JSON. Values unchanged."
     }
   ],
+  "requestDigest": {
+    "file": "request-digest.json",
+    "source": "Project-authored synthetic protocol fixtures; MIT. Exact preimages constructed independently and SHA-256 computed with Python hashlib, not the implementation under test.",
+    "cases": ["no-condition", "put-if-match", "duplicate-filenames"]
+  },
   "otherTestKeys": "Generated software keys or clearly deterministic public test seeds in test/helpers.ts; never personal/production keys."
 }

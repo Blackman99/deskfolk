@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
 import { encode } from 'cborg';
 import { p256 } from '@noble/curves/nist.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { base64url, canonicalHash, concat, createUvChallenge, fromBase64url, parseCoseKey, registrationOperationDigest, u16, u32, utf8, verifyAssertion, verifyRegistration } from '../src/index.ts';
+import { concat, u16, u32 } from '../src/bytes.ts';
+import { base64url, canonicalHash, createUvChallenge, fromBase64url, parseCoseKey, registrationOperationDigest, requestDigest, utf8, verifyAssertion, verifyCredentialSignature, verifyRegistration } from '../src/index.ts';
 import type { AssertionResponse, OperationBinding, RegistrationResponse, StoredCredential, UvChallenge, WebAuthnContext } from '../src/index.ts';
 import { deviceId, relayOrigin, sessionId } from './helpers.ts';
 
@@ -23,8 +25,8 @@ async function credential(alg: -7 | -8 | -257) {
       : [[1, 3], [3, -257], [-1, fromBase64url(jwk.n!)], [-2, fromBase64url(jwk.e!)]];
   const cosePublicKey = encode(new Map(values));
   const stored: StoredCredential = { credentialId: base64url(new Uint8Array(24).fill(alg & 255)), cosePublicKey, signCount: 0 };
-  async function assertion(record: UvChallenge, flags = 5, count = 1, changes: Record<string, unknown> = {}): Promise<AssertionResponse> {
-    const clientDataJSON = utf8(JSON.stringify({ type: 'webauthn.get', challenge: record.challenge, origin: relayOrigin, crossOrigin: false, ...changes }));
+  async function assertion(record: UvChallenge, flags = 5, count = 1, changes: Record<string, unknown> = {}, transform = (json: string) => json): Promise<AssertionResponse> {
+    const clientDataJSON = utf8(transform(JSON.stringify({ type: 'webauthn.get', challenge: record.challenge, origin: relayOrigin, crossOrigin: false, ...changes })));
     const authenticatorData = concat(sha256(utf8(rpId)), Uint8Array.of(flags), u32(count));
     const message = concat(authenticatorData, sha256(clientDataJSON));
     const raw = new Uint8Array(await crypto.subtle.sign(alg === -7 ? { name: 'ECDSA', hash: 'SHA-256' } : algorithm, keys.privateKey, new Uint8Array(message)));
@@ -39,6 +41,25 @@ async function credential(alg: -7 | -8 | -257) {
   }
   return { stored, assertion, registration };
 }
+
+test('Buffer-backed registration and COSE results own their bytes across host commit', async () => {
+  const c = await credential(-8), record = createUvChallenge({ ...binding, action: 'webauthn.register' }, 'registration', 1000);
+  const response = c.registration(record);
+  const owner = Buffer.alloc(response.attestationObject.length + 16, 0x77);
+  owner.set(response.attestationObject, 8);
+  response.attestationObject = owner.subarray(8, 8 + response.attestationObject.length);
+  const registered = await verifyRegistration(response, registrationContext(record), { kind: 'pending-pair', pairingId: 'fixture-pair' }, update => {
+    expect(update.credential.cosePublicKey).toEqual(c.stored.cosePublicKey);
+    update.credential.cosePublicKey.fill(0); response.attestationObject.fill(0);
+    return true;
+  });
+  expect(registered.cosePublicKey).toEqual(c.stored.cosePublicKey);
+  const encodedKey = Buffer.from(c.stored.cosePublicKey), parsed = parseCoseKey(encodedKey);
+  expect(parsed.algorithm).toBe(-8);
+  if (parsed.algorithm !== -8) throw new Error('wrong algorithm');
+  const snapshot = new Uint8Array(parsed.publicKey); encodedKey.fill(0);
+  expect(parsed.publicKey).toEqual(snapshot);
+});
 
 for (const alg of [-7, -8, -257] as const) {
   test(`real WebCrypto signatures verify with COSE algorithm ${alg}`, async () => {
@@ -56,6 +77,41 @@ for (const alg of [-7, -8, -257] as const) {
 }
 
 describe('WebAuthn negative verification', () => {
+  test('genuinely signed invalid JSON and duplicate members never reach commit', async () => {
+    const c = await credential(-8), record = createUvChallenge(binding, 'assertion', 1000);
+    const transforms = [
+      (s: string) => s.slice(0, -1) + ',}',
+      (s: string) => s.slice(0, -1) + ',"extra":1e}',
+      (s: string) => s.slice(0, -1) + ',"extra":"\\\'"}',
+      (s: string) => s.slice(0, -1) + ',"extra":01}',
+      (s: string) => s.slice(0, -1) + ',"type":"webauthn.get"}',
+      (s: string) => s.slice(0, -1) + ',"\\u0074ype":"webauthn.get"}',
+      (s: string) => s.slice(0, -1) + ',"extra":{"x":1,"x":2}}',
+    ];
+    for (const [index, transform] of transforms.entries()) {
+      const response = await c.assertion(record, 5, 1, {}, transform);
+      await verifyCredentialSignature(c.stored.cosePublicKey, response.signature,
+        concat(response.authenticatorData, sha256(response.clientDataJSON)));
+      if (index < 4) expect(() => JSON.parse(new TextDecoder().decode(response.clientDataJSON))).toThrow();
+      let commits = 0;
+      await expect(verifyAssertion(response, c.stored, contextFor(record), () => { commits++; return true; })).rejects.toThrow();
+      expect(commits).toBe(0);
+    }
+    const spaced = await c.assertion(record, 5, 1, {}, s => ' \n' + s + '\t');
+    await verifyAssertion(spaced, c.stored, contextFor(record), () => true);
+    const altered = { ...spaced, clientDataJSON: utf8(JSON.stringify(JSON.parse(new TextDecoder().decode(spaced.clientDataJSON)))) };
+    await expect(verifyAssertion(altered, c.stored, contextFor(record), () => true)).rejects.toThrow('signature');
+  });
+  test('If-Match is part of the authoritative UV operation digest', async () => {
+    const c = await credential(-8);
+    const request = { method: 'PUT', path: '/v1/workspace/file', encoding: 'json' as const, body: { content: 'hello' }, conditionalHeaders: { 'If-Match': '"rev-1"' } };
+    const record = createUvChallenge({ ...binding, action: 'workspace.put', operationDigest: requestDigest(request) }, 'assertion', 1000);
+    const response = await c.assertion(record);
+    await verifyAssertion(response, c.stored, contextFor(record), () => true);
+    await expect(verifyAssertion(response, c.stored, { ...contextFor(record), expectedBinding: {
+      ...record.binding, operationDigest: requestDigest({ ...request, conditionalHeaders: { 'If-Match': '"rev-2"' } }),
+    } }, () => true)).rejects.toThrow('binding');
+  });
   test('type, origin, challenge, UP, UV, reserved/backup flags are signed but still rejected', async () => {
     const c = await credential(-7), record = createUvChallenge(binding, 'assertion', 1000);
     for (const fields of [{ type: 'webauthn.create' }, { origin: 'https://evil.example.com' }, { challenge: base64url(new Uint8Array(32)) }, { crossOrigin: true }, { topOrigin: relayOrigin }]) {
