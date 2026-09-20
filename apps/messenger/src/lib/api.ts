@@ -52,8 +52,8 @@ export function etagForBlob(blob: Blob): string | null {
   return blobEtags.get(blob) ?? null;
 }
 
-type PendingRequest = { id: string; method: string; path: string; payload?: BodyInit; fingerprint: string; pending: boolean; headers?: Record<string, string>; returnEtag?: boolean };
-export type CredentialOperation = { id: string; kind: string; entity_id: string; request_id: string | null };
+type PendingRequest = { id: string; method: string; path: string; payload?: BodyInit; fingerprint: string; pending: boolean; headers?: Record<string, string>; returnEtag?: boolean; supersedes?: string | null };
+export type CredentialOperation = { id: string; kind: string; entity_id: string; request_id: string | null; can_repair: boolean };
 
 function requestId(): string {
   const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -72,8 +72,9 @@ export class LocalApi {
 
   credentialOperations(): Promise<{ items: CredentialOperation[] }> { return this.get("/v1/credential-operations"); }
 
-  resolveCredential(id: string, action: "repair" | "cancel", value?: string): Promise<void> {
-    return this.post(`/v1/credential-operations/${id}/resolve`, { action, ...(action === "repair" ? { value } : {}) });
+  async resolveCredential(id: string, action: "repair" | "cancel", value?: string): Promise<void> {
+    const predecessor = (await this.credentialOperations()).items.find((op) => op.id === id)?.request_id;
+    await this.request("POST", `/v1/credential-operations/${id}/resolve`, { action, ...(action === "repair" ? { value } : {}) }, undefined, {}, false, predecessor);
   }
 
   async retryPending(id: string): Promise<unknown> {
@@ -84,6 +85,13 @@ export class LocalApi {
 
   forgetResolvedRequest(id: string): void {
     for (const [key, row] of this.pending) if (row.id === id) this.pending.delete(key);
+  }
+
+  private retireSuperseded(id: string): void {
+    const row = [...this.pending.values()].find((item) => item.id === id);
+    if (!row) return;
+    this.forgetResolvedRequest(id);
+    if (row.supersedes) this.retireSuperseded(row.supersedes);
   }
 
   constructor(readonly endpoint: LocalEndpoint) {}
@@ -459,6 +467,7 @@ export class LocalApi {
     signal?: AbortSignal,
     conditional: Record<string, string> = {},
     returnEtag = false,
+    supersedes?: string | null,
   ): Promise<T> {
     if (method === "GET" || path === "/v1/models/probe") {
       return this.sendRequest({ id: "", method, path, payload: body === undefined ? undefined : JSON.stringify(body), fingerprint: "", pending: false }, signal) as Promise<T>;
@@ -469,7 +478,7 @@ export class LocalApi {
     let row = this.pending.get(slot);
     if (row && row.fingerprint !== fingerprint) throw new ApiError(409, "request_pending", "resolve the pending request before changing its payload", row.id);
     if (!row) {
-      row = { id: requestId(), method, path, payload, fingerprint, pending: false, headers: conditional, returnEtag };
+      row = { id: requestId(), method, path, payload, fingerprint, pending: false, headers: conditional, returnEtag, supersedes };
       this.pending.set(slot, row);
     }
     return this.sendRequest(row, signal) as Promise<T>;
@@ -490,6 +499,11 @@ export class LocalApi {
     catch {
       row.pending = Boolean(row.id);
       throw new ApiError(503, "request_unknown", "response incomplete; explicitly retry the original request", row.id);
+    }
+    // A pending-key response proves the takeover transaction committed, unlike a lost response.
+    if (row.supersedes && (res.ok || json?.error?.code === "key_write_pending")) {
+      this.retireSuperseded(row.supersedes);
+      row.supersedes = null;
     }
     if (!res.ok) {
       const error = json as ErrorBody;

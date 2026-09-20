@@ -37,7 +37,7 @@ export function normalizeFiles<T>(files: T[], describe: (file: T) => DigestFile)
 
 export function validateRequestPath(path: string): void {
   const pathname = path.split("?")[0]!;
-  if (!path.startsWith("/") || /[\x00-\x20\x7f#\\]/.test(path) || /%00|%1[ef]|%2f|%5c/i.test(path) || pathname.includes("//") || pathname.endsWith("/") || /(?:^|\/)\.{1,2}(?:\/|$)/.test(pathname)) {
+  if (!path.startsWith("/") || /[\x00-\x20\x7f#\\]/.test(path) || /%00|%1[ef]|%2f|%5c/i.test(pathname) || pathname.includes("//") || pathname.endsWith("/") || /(?:^|\/)\.{1,2}(?:\/|$)/.test(pathname)) {
     throw new HttpError(422, "invalid_args", "request path must be canonical");
   }
   try { decodeURIComponent(path); } catch { throw new HttpError(422, "invalid_args", "invalid path encoding"); }

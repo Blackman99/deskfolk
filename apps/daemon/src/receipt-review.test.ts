@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalApi, type LocalApiOptions } from "./local-api";
@@ -17,11 +17,11 @@ const closes: Array<() => Promise<void>> = [];
 afterEach(async () => { while (closes.length) await closes.pop()!(); });
 function gate<T = void>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
 
-async function harness(keys: EndpointKeyStore = memoryKeyStore(), extra: Partial<LocalApiOptions> = {}) {
+async function harness(keys: EndpointKeyStore = memoryKeyStore(), extra: Partial<LocalApiOptions> = {}, workspace = true) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "rc02-review-test-")));
   const filename = join(root, "db.sqlite");
   const store = new Store({ filename, endpointKey: keys });
-  await store.patchSettings({ workspace_path: root });
+  if (workspace) await store.patchSettings({ workspace_path: root });
   const events: ClientEvent[] = [];
   const api = createLocalApi({ ...extra, store, token: "fixture", schedule: false });
   const socket = { data: { authed: false }, send(value: string) { events.push(JSON.parse(value)); }, close() {} } as unknown as Bun.ServerWebSocket<{ authed: boolean }>;
@@ -208,3 +208,101 @@ test("review10/11: agreed field order, canonical conditions, duplicate-name orde
   expect(() => normalizeFiles([{ filename: "a\x1fb", bytes: Buffer.from("x") }], (file) => file)).toThrow();
   expect(canonicalJson({ "if-match": `"${"a".repeat(64)}"` })).toBe(`{"if-match":"\\"${"a".repeat(64)}\\""}`);
 });
+
+
+test("round2 query data: real client opens nested files/trees and slash searches without weakening route guards", async () => {
+  const h = await harness();
+  mkdirSync(join(h.root, "folder", "nested"), { recursive: true });
+  writeFileSync(join(h.root, "folder", "nested", "note.txt"), "nested bytes");
+  expect(await (await h.client.getWorkspaceFileBlob("folder/nested/note.txt")).text()).toBe("nested bytes");
+  expect((await h.client.workspaceTree("folder/nested")).items).toContainEqual({ name: "note.txt", path: "folder/nested/note.txt", kind: "file" });
+  const bot = h.store.createBot({ name: "query", duties: "", boundaries: "" });
+  h.store.postMessage(bot.direct_session.id, { body: "folder/nested" });
+  expect(await h.client.search("folder/nested")).toBeArray();
+  await expect(h.client.getWorkspaceFileBlob("../db.sqlite")).rejects.toMatchObject({ status: 422 });
+  const body = { method: "POST", path: "/v1/bots?q=folder%2Fnested", body: {} };
+  expect(requestDigest(body)).not.toBe(requestDigest({ ...body, path: "/v1/bots?q=other%2Fnested" }));
+  expect(() => requestDigest({ ...body, path: "/v1%2Fbots?q=folder%2Fnested" })).toThrow();
+});
+
+for (const mode of ["create", "update"] as const) {
+  for (const finish of ["repair", "cancel"] as const) {
+    test(`round2 takeover chain: ${mode} -> failed repair -> ${finish} retires every terminal client payload`, async () => {
+      let locked = false;
+      const keys = memoryKeyStore();
+      const h = await harness({ get: keys.get, delete: keys.delete, async set(value, name) { if (locked) throw new Error("locked"); await keys.set(value, name); } });
+      const input = { name: "chain", base_url: "https://example.invalid", api_key: "original-secret" };
+      const existing = mode === "update" ? await h.client.createProvider(input) : null;
+      locked = true;
+      const initial = existing ? h.client.patchProvider(existing.id, { api_key: "update-secret" }) : h.client.createProvider(input);
+      await expect(initial).rejects.toMatchObject({ code: "key_write_pending" });
+      const originalId = h.client.pendingRequests()[0]!.id;
+      const op = (await h.client.credentialOperations()).items[0]!;
+      await expect(h.client.resolveCredential(op.id, "repair", "replacement-secret")).rejects.toMatchObject({ code: "key_write_pending" });
+      expect(h.client.pendingRequests()).toHaveLength(1);
+      expect(h.client.pendingRequests()[0]!.id).not.toBe(originalId);
+      expect(h.store.receipts.read({ deviceId: "local", requestId: originalId }).status).toBe(409);
+      locked = false;
+      const replacement = (await h.client.credentialOperations()).items[0]!;
+      await h.client.resolveCredential(replacement.id, finish, finish === "repair" ? "final-secret" : undefined);
+      expect(h.client.pendingRequests()).toHaveLength(0);
+      expect((await h.client.credentialOperations()).items).toHaveLength(0);
+      if (existing) {
+        expect((await h.client.patchProvider(existing.id, { name: "after", api_key: "new-secret" })).name).toBe("after");
+      } else {
+        expect((await h.client.createProvider({ ...input, name: "after" })).name).toBe("after");
+      }
+      expect(h.client.pendingRequests()).toHaveLength(0);
+    });
+  }
+}
+
+for (const kind of ["provider", "mcp"] as const) {
+  test(`round2 deleted ${kind} cannot be repaired into an orphan credential`, async () => {
+    let locked = false;
+    const keys = memoryKeyStore();
+    const h = await harness({ get: keys.get, set: keys.set, async delete(name) { if (locked) throw new Error("delete locked"); await keys.delete(name); } });
+    const entity = kind === "provider"
+      ? await h.client.createProvider({ name: "delete", base_url: "https://example.invalid", api_key: "old-secret" })
+      : await h.client.createMcpServer({ name: "delete", command: "never", enabled: false, auth: "old-secret" });
+    locked = true;
+    await expect(kind === "provider" ? h.client.deleteProvider(entity.id) : h.client.deleteMcpServer(entity.id)).rejects.toMatchObject({ code: "key_write_pending" });
+    const op = (await h.client.credentialOperations()).items[0]!;
+    expect(op.can_repair).toBe(false);
+    locked = false;
+    await expect(h.client.resolveCredential(op.id, "repair", "orphan-secret")).rejects.toMatchObject({ status: 409 });
+    expect(h.store.listCredentialOperations()).toHaveLength(1);
+    expect(await keys.get(`${kind === "provider" ? "endpoint-api-key" : "mcp-auth"}:${entity.id}`)).toBe("old-secret");
+    await h.client.resolveCredential(op.id, "cancel");
+    expect(await keys.get(`${kind === "provider" ? "endpoint-api-key" : "mcp-auth"}:${entity.id}`)).toBeNull();
+    expect(h.store.listCredentialOperations()).toHaveLength(0);
+    expect(h.client.pendingRequests()).toHaveLength(0);
+  });
+}
+
+for (const alias of [false, true]) {
+  test(`round2 no-workspace attachment GET/reopen preserves inbox containment (alias=${alias})`, async () => {
+    const h = await harness(memoryKeyStore(), {}, false);
+    if (alias) { mkdirSync(join(h.root, "uploads")); symlinkSync("uploads", join(h.root, "inbox")); }
+    const bot = h.store.createBot({ name: "upload", duties: "", boundaries: "" });
+    const message = await h.client.postMessage(bot.direct_session.id, "file", { attachments: [new File(["bytes"], "file.txt")] });
+    const attachment = message.attachments[0]!;
+    expect(attachment.workspace_relpath).toBe(`${alias ? "uploads" : "inbox"}/file.txt`);
+    expect(h.store.getAttachment(attachment.id).exists).toBe(true);
+    expect(await (await h.client.getAttachmentBlob(attachment.id)).text()).toBe("bytes");
+    const reopened = new Store({ filename: h.filename, endpointKey: memoryKeyStore() });
+    expect(reopened.getAttachment(attachment.id).exists).toBe(true);
+    expect(readFileSync(reopened.getAttachmentFilePath(attachment), "utf8")).toBe("bytes");
+    const api = createLocalApi({ store: reopened, token: "fixture", schedule: false });
+    const response = await api.dispatchBusiness(new Request(`http://fixture/v1/attachments/${attachment.id}/content`), { deviceId: "local", requestId: ulid() });
+    expect(response.status).toBe(200); expect(await response.text()).toBe("bytes");
+    expect(reopened.resolveAttachmentLocation("db.sqlite")).toBeNull();
+    expect(reopened.resolveAttachmentLocation("../outside.txt")).toBeNull();
+    symlinkSync(join(h.root, "db.sqlite"), join(h.root, "inbox", "leak.sqlite"));
+    expect(reopened.resolveAttachmentLocation("inbox/leak.sqlite")).toBeNull();
+    expect(() => reopened.getAttachmentFilePath({ ...attachment, workspace_relpath: "db.sqlite" })).toThrow();
+    const denied = h.store.insertMessage({ sessionId: bot.direct_session.id, kind: "bot", author: bot.bot.id, body: "denied files", paths: ["db.sqlite", "inbox/leak.sqlite"] });
+    for (const row of denied.attachments) await expect(h.client.getAttachmentBlob(row.id)).rejects.toMatchObject({ status: 404 });
+    await api.engine.close(); reopened.close();
+  });
+}

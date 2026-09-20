@@ -592,11 +592,10 @@ export class MessengerRuntime {
     } catch (error) { this.sheetFailure(error); }
   }
 
-  async resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string, requestId?: string | null): Promise<boolean> {
+  async resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string): Promise<boolean> {
     if (!this.api) return false;
     try {
       await this.api.resolveCredential(id, action, value);
-      if (requestId) this.api.forgetResolvedRequest(requestId);
       this.pendingMutation = null;
       return true;
     } catch (error) { this.sheetFailure(error); return false; }

@@ -265,17 +265,20 @@ export function resolveAttachmentLocation(
       return statOrMissing(classified.abs);
     } catch { return null; }
   }
-  if (!relpath.startsWith("inbox/") && relpath !== "inbox") return null;
-  const classified = classifyPath(ctx.inboxRoot, relpath);
-  return classified.zone === "inside" ? statOrMissing(classified.abs) : null;
+  try {
+    const inbox = classifyPath(ctx.inboxRoot, "inbox");
+    const classified = classifyPath(ctx.inboxRoot, relpath);
+    if (inbox.zone !== "inside" || classified.zone !== "inside") return null;
+    if (inbox.abs === realpathSync(ctx.inboxRoot)) return null;
+    if (classified.abs !== inbox.abs && !classified.abs.startsWith(`${inbox.abs}/`)) return null;
+    return statOrMissing(classified.abs);
+  } catch { return null; }
 }
 
 export function getAttachmentFilePath(ctx: StoreContext, attachment: Attachment): string {
   const located = resolveAttachmentLocation(ctx, attachment.workspace_relpath);
   if (located) return located.abs;
-  const ws = workspacePath(ctx);
-  const root = ws || ctx.inboxRoot;
-  return join(root, attachment.workspace_relpath);
+  throw new HttpError(404, "not_found", "attachment is outside its permitted root");
 }
 
 export function insertPathAttachments(
@@ -339,7 +342,8 @@ export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInp
   if (!attachments.length) return;
   const root = realpathSync(workspacePath(ctx) || ctx.inboxRoot);
   const inboxDir = join(root, "inbox");
-  if (classifyPath(root, "inbox").zone !== "inside") throw new HttpError(422, "invalid_args", "inbox is outside workspace");
+  const inbox = classifyPath(root, "inbox");
+  if (inbox.zone !== "inside" || (!workspacePath(ctx) && inbox.abs === root)) throw new HttpError(422, "invalid_args", "inbox is outside its permitted root");
   if (attachments.length) mkdirSync(inboxDir, { recursive: true });
   try {
     for (const att of attachments) {
@@ -351,7 +355,7 @@ export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInp
       let counter = 1;
       for (;;) {
         const candidate = classifyPath(root, join(inboxDir, name));
-        if (candidate.zone !== "inside") throw new HttpError(422, "invalid_args", "attachment is outside workspace");
+        if (candidate.zone !== "inside" || (!workspacePath(ctx) && !candidate.abs.startsWith(`${inbox.abs}/`))) throw new HttpError(422, "invalid_args", "attachment is outside its permitted root");
         if (!existsSync(candidate.abs) && !ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, candidate.rel, root, candidate.rel)) break;
         name = `${base}-${counter++}${ext}`;
       }

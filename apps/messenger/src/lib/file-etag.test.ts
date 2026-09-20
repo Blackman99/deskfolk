@@ -23,6 +23,33 @@ test("pending mutation payload is immutable in memory and only explicit retries 
   expect(api.pendingRequests()).toHaveLength(0);
 });
 
+test("unknown takeover retains its predecessor until a later committed cancel retires the chain", async () => {
+  let originalId = "";
+  let takeoverId = "";
+  let phase = "original";
+  let sent = 0;
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    const path = new URL(String(input)).pathname;
+    if (init?.method === "GET") return Response.json({ items: [{ id: phase === "lost" ? "second" : "first", kind: "provider", entity_id: "entity", request_id: phase === "lost" ? takeoverId : originalId, can_repair: true }] });
+    sent++;
+    const id = new Headers(init?.headers).get("X-Request-Id")!;
+    if (path === "/v1/providers") {
+      originalId = id;
+      return Response.json({ error: { code: "key_write_pending", message: "locked" } }, { status: 503 });
+    }
+    if (path.includes("first")) { takeoverId = id; phase = "lost"; throw new Error("lost response after takeover"); }
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+  const api = new LocalApi({ origin: "http://fixture", token: "fixture" });
+  await expect(api.createProvider({ name: "test", base_url: "https://example.invalid", api_key: "old" })).rejects.toMatchObject({ code: "key_write_pending" });
+  await expect(api.resolveCredential("first", "repair", "replacement")).rejects.toMatchObject({ code: "request_unknown" });
+  expect(api.pendingRequests().map((row) => row.id).sort()).toEqual([originalId, takeoverId].sort());
+  expect(sent).toBe(2);
+  await api.resolveCredential("second", "cancel");
+  expect(api.pendingRequests()).toHaveLength(0);
+  expect(sent).toBe(3);
+});
+
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 

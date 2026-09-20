@@ -80,11 +80,15 @@
 	});
 
 	async function refreshCredentialOps(): Promise<void> {
-		try { credentialOps = (await runtime.client?.credentialOperations())?.items ?? []; } catch { credentialOps = []; }
+		try {
+			credentialOps = (await runtime.client?.credentialOperations())?.items ?? [];
+			const active = new Set(credentialOps.filter((op) => op.can_repair).map((op) => op.id));
+			repairValues = Object.fromEntries(Object.entries(repairValues).filter(([id]) => active.has(id)));
+		} catch { credentialOps = []; }
 	}
 
 	async function resolveCredential(op: CredentialOperation, action: 'repair' | 'cancel'): Promise<void> {
-		if (await runtime.resolveCredentialOperation(op.id, action, repairValues[op.id], op.request_id)) {
+		if (await runtime.resolveCredentialOperation(op.id, action, repairValues[op.id])) {
 			delete repairValues[op.id];
 			await refreshCredentialOps();
 		}
@@ -331,8 +335,12 @@
 	{#each credentialOps as op (op.id)}
 		<div>
 			<p>{locale === 'en' ? 'Unfinished credential' : '未完成的凭据'} · {op.kind} · {op.entity_id}</p>
-			<input type="password" aria-label={locale === 'en' ? 'Repair credential' : '修复凭据'} bind:value={repairValues[op.id]} autocomplete="off" />
-			<button type="button" disabled={!repairValues[op.id]} onclick={() => void resolveCredential(op, 'repair')}>{locale === 'en' ? 'Save credential only' : '仅保存凭据'}</button>
+			{#if op.can_repair}
+				<input type="password" aria-label={locale === 'en' ? 'Repair credential' : '修复凭据'} bind:value={repairValues[op.id]} autocomplete="off" />
+				<button type="button" disabled={!repairValues[op.id]} onclick={() => void resolveCredential(op, 'repair')}>{locale === 'en' ? 'Save credential only' : '仅保存凭据'}</button>
+			{:else}
+				<p>{locale === 'en' ? 'Deletion is pending. Only clearing the credential is available.' : '凭据待删除，只能完成清除。'}</p>
+			{/if}
 			<button type="button" onclick={() => void resolveCredential(op, 'cancel')}>{locale === 'en' ? 'Cancel and clear credential' : '取消并清除凭据'}</button>
 		</div>
 	{/each}

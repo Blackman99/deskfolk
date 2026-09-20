@@ -1,13 +1,21 @@
 import { HttpError } from "../errors";
 import { planKey, type StoreContext } from "./shared";
+import { sha256 } from "../request-digest";
 
-type PendingKey = { name: string; operation_id: string; device_id: string | null; request_id: string | null };
+type PendingKey = { name: string; operation_id: string; device_id: string | null; request_id: string | null; value_sha256: string };
+
+function canRepair(ctx: StoreContext, row: PendingKey): boolean {
+  const match = /^(endpoint-api-key|mcp-auth):([0-9A-HJKMNP-TV-Z]{26})$/.exec(row.name);
+  if (!match || row.value_sha256 === sha256("")) return false;
+  const table = match[1] === "mcp-auth" ? "mcp_servers" : "providers";
+  return Boolean(ctx.db.query(`SELECT 1 FROM ${table} WHERE id = ?`).get(match[2]!));
+}
 
 export function listCredentialOperations(ctx: StoreContext) {
-  return ctx.db.query<PendingKey, []>("SELECT name, operation_id, device_id, request_id FROM pending_keys").all().map((row) => {
+  return ctx.db.query<PendingKey, []>("SELECT name, operation_id, device_id, request_id, value_sha256 FROM pending_keys").all().map((row) => {
     const match = /^(endpoint-api-key|mcp-auth):(.+)$/.exec(row.name);
     if (!match) throw new Error("unsupported pending credential namespace");
-    return { id: row.operation_id, kind: match[1] === "mcp-auth" ? "mcp" : "provider", entity_id: match[2]!, request_id: row.request_id };
+    return { id: row.operation_id, kind: match[1] === "mcp-auth" ? "mcp" : "provider", entity_id: match[2]!, request_id: row.request_id, can_repair: canRepair(ctx, row) };
   });
 }
 
@@ -19,6 +27,7 @@ export function resolveCredentialOperation(ctx: StoreContext, id: string, input:
   if (!row) throw new HttpError(404, "not_found", "credential operation not found");
   if (!/^(endpoint-api-key|mcp-auth):[0-9A-HJKMNP-TV-Z]{26}$/.test(row.name)) throw new HttpError(422, "invalid_args", "unsupported credential namespace");
   if (ctx.keys.isWriting(row.name)) throw new HttpError(409, "conflict", "credential write is in progress");
+  if (input.action === "repair" && !canRepair(ctx, row)) throw new HttpError(409, "conflict", "credential is pending deletion; finish clearing it");
   if (row.device_id && row.request_id) {
     ctx.db.run(`UPDATE request_receipts SET state = 'complete', status = 409, body = ?, key_ops = NULL
       WHERE device_id = ? AND request_id = ? AND state = 'pending_keys'`, [
