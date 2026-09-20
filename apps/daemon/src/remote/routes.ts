@@ -10,7 +10,7 @@ const nullable = (check: Check): Check => v => v === null || check(v);
 const list = (check: Check): Check => v => Array.isArray(v) && v.length <= 1000 && v.every(check);
 const one = (...values: unknown[]): Check => v => values.includes(v);
 const object = (fields: Fields, required: string[] = []): Check => v => !!v && typeof v === "object" && !Array.isArray(v) &&
-  Object.entries(v).every(([k, value]) => !!fields[k]?.(value)) && required.every(k => Object.hasOwn(v, k));
+  Object.entries(v).every(([k, value]) => Object.hasOwn(fields, k) && fields[k](value)) && required.every(k => Object.hasOwn(v, k));
 const models = list(v => string(v) || object({ name: string, price: nullable(v => typeof v === "number" && Number.isFinite(v)), thinking_levels: list(string), strengths: list(string) }, ["name"])(v));
 const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind", "time"])(v) ||
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
@@ -64,14 +64,18 @@ add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);
 add("PUT", "workspace/file", { path: string, content: string }, ["path", "content"]);
 
-export function businessAllowed(request: RemoteRequest): boolean { return routes.some(r => r.method === request.method && r.path.test(request.path)); }
 export function validateBusiness(request: RemoteRequest): void {
-  const route = routes.find(r => r.method === request.method && r.path.test(request.path));
-  if (!route) throw new HttpError(404, "not_found", "unknown remote route");
-  if (!object(route.body ?? {}, route.required)(request.body ?? {}) || !object(route.query ?? {}, route.queryRequired)(request.query ?? {}) ||
-    (route.patch && !Object.keys(request.body ?? {}).some(k => k !== "if_revision")) ||
-    (request.ifMatch !== undefined && !(request.method === "PUT" && request.path === "/v1/workspace/file"))) {
+  try {
+    const route = routes.find(r => r.method === request.method && r.path.test(request.path));
+    if (!route) throw new HttpError(404, "not_found", "unknown remote route");
+    if (!object(route.body ?? {}, route.required)(request.body ?? {}) || !object(route.query ?? {}, route.queryRequired)(request.query ?? {}) ||
+      (route.patch && !Object.keys(request.body ?? {}).some(k => k !== "if_revision")) ||
+      (request.ifMatch !== undefined && !(request.method === "PUT" && request.path === "/v1/workspace/file"))) {
+      throw new HttpError(422, "invalid_args", "invalid remote properties");
+    }
+    if (/^\/v1\/credential-operations\//.test(request.path) && request.body?.action === "repair" && !request.body.value) throw new HttpError(422, "invalid_args", "credential value required");
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
     throw new HttpError(422, "invalid_args", "invalid remote properties");
   }
-  if (/^\/v1\/credential-operations\//.test(request.path) && request.body?.action === "repair" && !request.body.value) throw new HttpError(422, "invalid_args", "credential value required");
 }

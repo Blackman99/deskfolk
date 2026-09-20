@@ -36,7 +36,7 @@ public struct Action: Codable, Equatable {
     self.display = display
   }
   public func validate() throws {
-    guard ["pair_device", "reset_identity", "change_relay", "change_workspace"].contains(kind),
+    guard ["pair_device", "reset_identity", "change_relay", "change_workspace", "renew_first_uv", "recover_trust"].contains(kind),
       digest.count == 64, digest.allSatisfy({ "0123456789abcdef".contains($0) }),
       !display.isEmpty, display.utf8.count <= 1024,
       !display.unicodeScalars.contains(where: {

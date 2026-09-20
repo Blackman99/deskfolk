@@ -175,6 +175,27 @@ final class RemoteCoreTests {
       service.handle(request("confirm", challenge: challenge), peer: desktop).error, .locked)
   }
 
+  func testActionKindsAcceptRenewalAndRecoveryWithoutReplacingPairing() throws {
+    let (_, keys, auth) = try fixture()
+    let service = HelperService(credentials: keys, auth: auth)
+    try action.validate()
+    for kind in ["renew_first_uv", "recover_trust"] {
+      let next = Action(kind: kind, digest: action.digest, display: action.display)
+      try next.validate()
+      expect(service.handle(request("prepare", action: next), peer: daemon).ok)
+    }
+    expectThrows(
+      try Action(kind: "unknown_kind", digest: action.digest, display: action.display).validate()
+    ) { expectEqual($0 as? RemoteError, .malformed) }
+    expectEqual(
+      service.handle(
+        request(
+          "prepare",
+          action: Action(
+            kind: "unknown_kind", digest: action.digest, display: action.display)), peer: daemon
+      ).error, .malformed)
+  }
+
   func testProtocolLimitsAndRoleSeparation() throws {
     let (_, keys, auth) = try fixture()
     let service = HelperService(credentials: keys, auth: auth)
@@ -347,6 +368,7 @@ struct TestRunner {
     try tests.testFreshActionBoundProofHasOneConsumerAndProcessOwner()
     try tests.testProofExpiresAndCancellationNeverCreatesProof()
     try tests.testConcurrentConfirmationReturnsBusyAndLockedKeychainFailsClosed()
+    try tests.testActionKindsAcceptRenewalAndRecoveryWithoutReplacingPairing()
     try tests.testProtocolLimitsAndRoleSeparation()
     try tests.testSocketFramingWithGeneratedFixtureOnly()
     tests.testUnsignedTestProcessCannotBecomeCredentialPrincipal()
@@ -357,6 +379,6 @@ struct TestRunner {
     try tests.testConfirmationReportsRemainingChallengeAndProofLifetime()
     try tests.testConfirmationRejectsExpiryDuringStoreOrTokenGeneration()
     guard failures == 0 else { exit(1) }
-    print("14 native fixture tests passed; no Keychain or LA calls.")
+    print("15 native fixture tests passed; no Keychain or LA calls.")
   }
 }

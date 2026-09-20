@@ -119,7 +119,7 @@ export class RemoteController {
     const principal = this.principals.get(deviceId), device = this.trust.device(deviceId);
     if (!principal || !device || device.credential_id) deny();
     this.dispatcher.uv.assert(principal);
-    const action: LocalAction = { kind: "pair_device", digest: canonicalHash({ action: "renew_first_uv", host: this.trust.assertHost(),
+    const action: LocalAction = { kind: "renew_first_uv", digest: canonicalHash({ action: "renew_first_uv", host: this.trust.assertHost(),
       pins: this.trust.fingerprint(device), sessionId: principal.sessionId, credentialVersion: device.credential_version }),
       display: `Renew first UV registration: ${device.name} · ${sha256Hex(fromBase64url(device.signing_pk, 32))}` };
     const prepared = await this.native.prepare(action);
@@ -147,7 +147,7 @@ export class RemoteController {
     if (!host) deny();
     const highwater = await this.native.highwater();
     if (highwater < host.generation) deny();
-    const action: LocalAction = { kind: "change_relay", digest: canonicalHash({ action: "recover_remote_trust", host,
+    const action: LocalAction = { kind: "recover_trust", digest: canonicalHash({ action: "recover_remote_trust", host,
       highwater, pins: await this.localActions.pins(), transition: this.options.store.db.query("SELECT * FROM remote_transition").get(),
       devices: this.trust.devices().map(d => this.trust.fingerprint(d)), revokeAll: true }),
       display: "Recover remote trust: revoke every device and require new local pairing" };

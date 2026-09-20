@@ -1,8 +1,9 @@
 import { dirname, join } from "node:path";
 
 export type RemoteMaterial = "host_identity" | "enrollment" | "vapid" | "highwater";
+const actionKinds = ["pair_device", "reset_identity", "change_relay", "change_workspace", "renew_first_uv", "recover_trust"] as const;
 export type LocalAction = {
-  kind: "pair_device" | "reset_identity" | "change_relay" | "change_workspace";
+  kind: (typeof actionKinds)[number];
   /** SHA-256 of the complete canonical action payload, including the device keys / new target. */
   digest: string;
   display: string;
@@ -33,7 +34,7 @@ function epoch(value: number): void {
   if (!Number.isInteger(value) || value < 1 || value > 0xffff_ffff) throw new RemoteNativeError("malformed");
 }
 function action(value: LocalAction): void {
-  if (!["pair_device", "reset_identity", "change_relay", "change_workspace"].includes(value.kind)
+  if (!actionKinds.includes(value.kind)
     || !/^[0-9a-f]{64}$/.test(value.digest) || !value.display
     || Buffer.byteLength(value.display) > 1024 || /[\p{Cc}\p{Cf}]/u.test(value.display)) {
     throw new RemoteNativeError("malformed");

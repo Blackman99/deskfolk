@@ -10,6 +10,7 @@ import { Store } from "../store";
 import { memoryKeyStore } from "../secrets";
 import { createLocalApi } from "../local-api";
 import { ulid } from "../ids";
+import { HttpError } from "../errors";
 import { RemoteNativeClient, type LocalAction } from "../remote-native";
 import { RemoteController } from "./controller";
 import { RemoteTrust } from "./trust";
@@ -238,7 +239,11 @@ test("real relay budget supports 50MiB and concurrent 1MiB GETs, cancellation an
 
 test("recovery at equal epoch advances native highwater and a restored old grant fails", async () => {
   const f = await fixture(), d = await f.pair(), pin = f.controller.trust.device(d.deviceId)!;
+  const kinds: string[] = [];
+  const prepare = f.native.client.prepare.bind(f.native.client);
+  const preparedNative = spyOn(f.native.client, "prepare").mockImplementation(async (action) => { kinds.push(action.kind); return prepare(action); });
   const prepared = await f.controller.prepareRecovery();
+  expect(kinds).toEqual(["recover_trust"]); preparedNative.mockRestore();
   await f.controller.confirmRecovery(f.native.confirm(prepared.challenge));
   expect(f.native.highwater).toBe(2); expect(f.controller.trust.host()!.generation).toBe(2);
   f.store.db.run("UPDATE remote_host SET generation = 1"); f.store.db.run("UPDATE remote_devices SET revoked = 0, generation = 1");
@@ -265,7 +270,11 @@ test("trusted native renewal reopens only the current paired Split session", asy
   const closed = new Promise<void>(resolve => first.socket.addEventListener("close", () => resolve(), { once: true })); first.socket.close(); await closed;
   const second = await f.connect(d);
   expect((await second.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/register-challenge", body: {} })).status).toBe(403);
+  const kinds: string[] = [];
+  const prepare = f.native.client.prepare.bind(f.native.client);
+  const preparedNative = spyOn(f.native.client, "prepare").mockImplementation(async (action) => { kinds.push(action.kind); return prepare(action); });
   const prepared = await f.controller.prepareUvRenewal(d.deviceId);
+  expect(kinds).toEqual(["renew_first_uv"]); preparedNative.mockRestore();
   const proof = f.native.confirm(prepared.challenge);
   await f.controller.confirmUvRenewal(proof);
   const challenge = await second.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/register-challenge", body: {} });
@@ -409,6 +418,43 @@ test("route contracts reject unknown fields and wrong types across every mutatio
   }
   expect(f.store.listBots()).toHaveLength(0);
   expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n).toBe(0);
+});
+
+test("route contracts reject prototype field names on body and query before effects and keep the session", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Proto", duties: "", boundaries: "" });
+  const prototypeKeys = ["constructor", "toString", "valueOf", "toLocaleString", "__proto__", "__defineGetter__"] as const;
+  const withKey = (base: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> =>
+    Object.defineProperty({ ...base }, key, { value, enumerable: true, configurable: true, writable: true });
+  const receipts = () => f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n;
+  const revisions = () => f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM profile_revisions").get()!.n;
+  const beforeReceipts = receipts(), beforeRevisions = revisions(), updated = bot.bot.updated_at;
+  const invalid = (request: RemoteRequest) => {
+    try { validateBusiness(request); throw new Error("expected invalid_args"); }
+    catch (error) { expect(error).toBeInstanceOf(HttpError); expect((error as HttpError).status).toBe(422); expect((error as HttpError).code).toBe("invalid_args"); }
+  };
+  for (const key of prototypeKeys) {
+    const extra = key === "__proto__" ? { x: 1 } : true;
+    expect((await c.rpc({ v: 1, id: ulid(), method: "PATCH", path: `/v1/bots/${bot.bot.id}`,
+      body: withKey({ if_revision: updated }, key, extra) })).status).toBe(422);
+    expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/bots",
+      body: withKey({ name: "n", duties: "", boundaries: "" }, key, extra) })).status).toBe(422);
+    invalid({ v: 1, id: ulid(), method: "GET", path: "/v1/bots", query: withKey({}, key, "1") as Record<string, string> });
+  }
+  expect((await c.rpc({ v: 1, id: ulid(), method: "PATCH", path: `/v1/bots/${bot.bot.id}`,
+    body: withKey({ if_revision: updated }, "constructor", true) })).status).toBe(422);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/bots",
+    body: withKey({ name: "Extra", duties: "", boundaries: "" }, "constructor", true) })).status).toBe(422);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots", query: { constructor: "1" } })).status).toBe(422);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots", query: withKey({}, "__proto__", "1") as Record<string, string> })).status).toBe(422);
+  const poisoned: Record<string, unknown> = { name: "n", duties: "", boundaries: "" };
+  Object.defineProperty(poisoned, "name", { get() { throw new TypeError("illegal getter"); }, enumerable: true });
+  invalid({ v: 1, id: ulid(), method: "POST", path: "/v1/bots", body: poisoned });
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+  expect(f.store.listBots()).toHaveLength(1);
+  expect(f.store.getBot(bot.bot.id).updated_at).toBe(updated);
+  expect(revisions()).toBe(beforeRevisions);
+  expect(receipts()).toBe(beforeReceipts);
 });
 
 test("lifecycle failure and restart never manufacture a success receipt, error codes survive encryption", async () => {

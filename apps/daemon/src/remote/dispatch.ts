@@ -6,7 +6,6 @@ import { RemoteTrust, deny } from "./trust";
 import { RemoteUv, type RemotePrincipal } from "./uv";
 import { validateBusiness } from "./routes";
 import { finishLifecycle } from "./lifecycle";
-export { businessAllowed } from "./routes";
 
 export function assertionFromWire(value: AssertionWire): AssertionResponse {
   if (!value || Object.keys(value).sort().join() !== "authenticatorData,clientDataJSON,credentialId,signature" ||
