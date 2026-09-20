@@ -2,8 +2,7 @@
 	import McpSettings from './McpSettings.svelte';
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
-	import Select from '../Select.svelte';
-	import { JAIL_COPY, thinkingLevelLabel, type Copy } from '../copy.ts';
+	import { JAIL_COPY, type Copy } from '../copy.ts';
 	import {
 		applyProbedModels,
 		draftFromProvider,
@@ -84,9 +83,35 @@
 	let providerProbeTimer: ReturnType<typeof setTimeout> | null = null;
 	/** URL + key the open editor last asked the endpoint about; the same pair is not probed twice. */
 	let providerProbedSignature: string | null = null;
+	let providerSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let providerSaving = $state(false);
+	let providerSavedTick = $state(0);
+	let workspaceSaving = $state(false);
+	let workspaceSavedTick = $state(0);
+	/** Latest editor draft, so a parent that nulls `providerEditor` still has something to flush. */
+	let latestProviderEditor: ProviderEditorState | null = null;
+	let persistQueue: ProviderEditorState[] = [];
+	/** Create once per filled-in add draft; a close flush must not POST a second copy. */
+	let lastCreatedSignature: string | null = null;
 
-	// The flyout outlives no more than this component; a pending probe must not fire after it goes.
-	$effect(() => () => resetProviderProbe());
+	const settingsSaving = $derived(workspaceSaving || (providerSaving && !providerEditor));
+	const settingsSavedTick = $derived(workspaceSavedTick + (providerEditor ? 0 : providerSavedTick));
+
+	// The flyout outlives no more than this component; a pending probe or draft must not fire after it goes.
+	$effect(() => () => {
+		resetProviderProbe();
+		if (latestProviderEditor) flushProviderEditor(latestProviderEditor);
+	});
+
+	// Closing the editor, switching endpoints, or closing settings must send a pending draft first.
+	$effect(() => {
+		const editor = providerEditor;
+		const pending = latestProviderEditor;
+		if (pending && pending.target !== editor?.target) {
+			flushProviderEditor(pending);
+		}
+		latestProviderEditor = editor;
+	});
 
 	/** An endpoint deleted or replaced from elsewhere takes its open editor with it. */
 	$effect(() => {
@@ -129,12 +154,120 @@
 		const synced = withSyncedDefaultModel(draft);
 		providerEditor = { ...editor, draft: synced, errors: {}, failed: false };
 		scheduleProviderProbe(editor.target, synced, editorKeySet(editor.target));
+		scheduleProviderSave();
 	}
 
 	function resetProviderProbe(): void {
 		if (providerProbeTimer) clearTimeout(providerProbeTimer);
 		providerProbeTimer = null;
 		providerProbedSignature = null;
+	}
+
+	function scheduleProviderSave(delay = 600): void {
+		if (providerSaveTimer) clearTimeout(providerSaveTimer);
+		providerSaveTimer = setTimeout(() => {
+			providerSaveTimer = null;
+			if (providerEditor) void persistProviderEditor(providerEditor);
+		}, delay);
+	}
+
+	function flushProviderEditor(editor: ProviderEditorState): void {
+		if (providerSaveTimer) {
+			clearTimeout(providerSaveTimer);
+			providerSaveTimer = null;
+		}
+		void persistProviderEditor(editor);
+	}
+
+	function createSignature(editor: ProviderEditorState): string {
+		const plan = planCreateProvider(editor.draft, true);
+		if (!plan.ok) return '';
+		return JSON.stringify(plan.body);
+	}
+
+	async function persistProviderEditor(editor: ProviderEditorState): Promise<void> {
+		if (providerSaving) {
+			persistQueue = [editor];
+			return;
+		}
+		if (editor.target === 'add') {
+			const signature = createSignature(editor);
+			if (!signature) return;
+			if (signature === lastCreatedSignature) return;
+			providerSaving = true;
+			saveFailed = false;
+			patchProviderEditor('add', { failed: false, errors: {} });
+			const plan = planCreateProvider(editor.draft, true);
+			if (!plan.ok) {
+				providerSaving = false;
+				patchProviderEditor('add', { errors: plan.errors });
+				drainPersistQueue();
+				return;
+			}
+			const before = new Set(snapshot.providers.map((row) => row.id));
+			const error = await runtime.createProvider(plan.body);
+			providerSaving = false;
+			if (error) {
+				const mapped = mapProviderError(error.message);
+				if ('top' in mapped) {
+					if (providerEditor?.target === 'add') patchProviderEditor('add', { failed: true });
+					else saveFailed = true;
+				} else if (providerEditor?.target === 'add') {
+					patchProviderEditor('add', { errors: mapped });
+				}
+				drainPersistQueue();
+				return;
+			}
+			lastCreatedSignature = signature;
+			providerSavedTick += 1;
+			persistQueue = [];
+			const created = snapshot.providers.find((row) => !before.has(row.id));
+			if (created && providerEditor?.target === 'add') {
+				providerEditor = {
+					...providerEditor,
+					target: created.id,
+					draft: { ...providerEditor.draft, apiKey: '' },
+					errors: {},
+					failed: false
+				};
+				void persistProviderEditor(providerEditor);
+				return;
+			}
+			drainPersistQueue();
+			return;
+		}
+		const id = editor.target;
+		const provider = snapshot.providers.find((row) => row.id === id);
+		if (!provider) return;
+		const plan = planPatchProvider(provider, editor.draft);
+		if (!plan.ok) {
+			if (providerEditor?.target === id) patchProviderEditor(id, { errors: plan.errors, failed: false });
+			return;
+		}
+		if (Object.keys(plan.patch).length === 0) return;
+		providerSaving = true;
+		saveFailed = false;
+		if (providerEditor?.target === id) patchProviderEditor(id, { failed: false, errors: {} });
+		const error = await runtime.patchProvider(id, plan.patch);
+		providerSaving = false;
+		if (error) {
+			const mapped = mapProviderError(error.message);
+			if ('top' in mapped) {
+				if (providerEditor?.target === id) patchProviderEditor(id, { failed: true });
+				else saveFailed = true;
+			} else if (providerEditor?.target === id) {
+				patchProviderEditor(id, { errors: mapped });
+			}
+			drainPersistQueue();
+			return;
+		}
+		providerSavedTick += 1;
+		drainPersistQueue();
+	}
+
+	function drainPersistQueue(): void {
+		const next = persistQueue.shift();
+		if (next) void persistProviderEditor(next);
 	}
 
 	/** Asks the endpoint for its models once the URL and key are usable, a moment after typing stops. */
@@ -153,6 +286,12 @@
 
 	function openProviderEditor(target: 'add' | string, draft: ProviderDraft): void {
 		resetProviderProbe();
+		if (providerSaveTimer) {
+			clearTimeout(providerSaveTimer);
+			providerSaveTimer = null;
+		}
+		lastCreatedSignature = null;
+		providerSavedTick = 0;
 		providerEditor = {
 			target,
 			draft,
@@ -218,51 +357,7 @@
 			draft: applyProbedModels(open.draft, res),
 			errors: {}
 		};
-	}
-
-	async function saveProvider(): Promise<void> {
-		const editor = providerEditor;
-		if (!editor || editor.target === 'add') return;
-		const id = editor.target;
-		const provider = snapshot.providers.find((row) => row.id === id);
-		if (!provider) return;
-		patchProviderEditor(id, { failed: false });
-		const plan = planPatchProvider(provider, editor.draft);
-		if (!plan.ok) {
-			patchProviderEditor(id, { errors: plan.errors });
-			return;
-		}
-		if (Object.keys(plan.patch).length === 0) {
-			closeProviderEditor();
-			return;
-		}
-		const error = await runtime.patchProvider(id, plan.patch);
-		if (error) {
-			const mapped = mapProviderError(error.message);
-			if ('top' in mapped) patchProviderEditor(id, { failed: true });
-			else patchProviderEditor(id, { errors: mapped });
-			return;
-		}
-		closeProviderEditor();
-	}
-
-	async function addProvider(): Promise<void> {
-		const editor = providerEditor;
-		if (!editor || editor.target !== 'add') return;
-		patchProviderEditor('add', { failed: false });
-		const plan = planCreateProvider(editor.draft, true);
-		if (!plan.ok) {
-			patchProviderEditor('add', { errors: plan.errors });
-			return;
-		}
-		const error = await runtime.createProvider(plan.body);
-		if (error) {
-			const mapped = mapProviderError(error.message);
-			if ('top' in mapped) patchProviderEditor('add', { failed: true });
-			else patchProviderEditor('add', { errors: mapped });
-			return;
-		}
-		closeProviderEditor();
+		scheduleProviderSave();
 	}
 
 	async function setDefaultProvider(id: string): Promise<void> {
@@ -271,18 +366,21 @@
 		if (error) saveFailed = true;
 	}
 
-	async function saveSettings(): Promise<void> {
+	async function persistWorkspace(path: string): Promise<void> {
 		saveFailed = false;
 		fieldErrors = {};
-		const plan = planWorkspaceSave(runtime.workspacePath);
+		const plan = planWorkspaceSave(path);
 		if (!plan.ok) {
 			fieldErrors = { workspace: plan.error };
 			activeSettingsTab = 'general';
 			return;
 		}
+		if (plan.workspace_path === (snapshot.settings.workspace_path ?? '')) return;
+		workspaceSaving = true;
 		const error = await runtime.patchSettings({ workspace_path: plan.workspace_path });
+		workspaceSaving = false;
 		if (!error) {
-			closeSettings();
+			workspaceSavedTick += 1;
 			return;
 		}
 		const mapped = mapSettingsError(error.message);
@@ -444,6 +542,17 @@
 											? t.settings.tabMcp
 											: t.settings.tabAbout}
 						</h3>
+						<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={saveFailed} aria-live="polite">
+							{#if settingsSaving}
+								{t.sidebar.autoSaving}
+							{:else if saveFailed}
+								{t.settings.saveFailed}
+							{:else if settingsSavedTick > 0}
+								{t.sidebar.autoSaved}
+							{:else}
+								{t.sidebar.autoSaveHint}
+							{/if}
+						</span>
 					</div>
 					<button
 						type="button"
@@ -499,6 +608,7 @@
 									onChange={(next: string) => {
 										runtime.workspacePath = next;
 										clearWorkspaceError();
+										void persistWorkspace(next);
 									}}
 								/>
 
@@ -909,10 +1019,6 @@
 					</div>
 				{/if}
 			</div>
-				<div class="modal-foot actions">
-					<button type="button" onclick={() => void saveSettings()}>{t.settings.save}</button>
-					<button type="button" onclick={closeSettings}>{t.common.close}</button>
-				</div>
 			</section>
 		</div>
 	</div>
@@ -933,6 +1039,17 @@
 				<h2>
 					{providerEditor.target === 'add' ? t.settings.providerAdd : t.settings.providerEdit}
 				</h2>
+				<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={providerEditor.failed} aria-live="polite">
+					{#if providerSaving}
+						{t.sidebar.autoSaving}
+					{:else if providerEditor.failed}
+						{t.settings.saveFailed}
+					{:else if providerSavedTick > 0}
+						{t.sidebar.autoSaved}
+					{:else}
+						{t.sidebar.autoSaveHint}
+					{/if}
+				</span>
 				<button
 					type="button"
 					class="modal-close"
@@ -955,14 +1072,6 @@
 					onchange={setProviderDraft}
 					onfetch={() => void fetchProviderModels()}
 				/>
-			</div>
-			<div class="modal-foot actions">
-				{#if providerEditor.target === 'add'}
-					<button type="button" onclick={() => void addProvider()}>{t.settings.providerAdd}</button>
-				{:else}
-					<button type="button" onclick={() => void saveProvider()}>{t.settings.providerSave}</button>
-				{/if}
-				<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
 			</div>
 		</div>
 	</div>
@@ -1116,11 +1225,36 @@
 		flex-shrink: 0;
 	}
 
+	.settings-main-head-left {
+		flex: 1;
+		min-width: 0;
+		justify-content: space-between;
+	}
+
 	.settings-main-title {
 		margin: 0;
 		font-size: 15.5px;
 		font-weight: 600;
 		color: var(--ink);
+	}
+
+	.settings-save-state {
+		font-weight: 500;
+	}
+
+	.settings-save-state.is-error {
+		color: var(--danger);
+	}
+
+	.provider-editor-modal :global(.modal-head) {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.provider-editor-modal :global(.modal-head h2) {
+		flex: 1;
+		min-width: 0;
 	}
 
 	.settings-main > :global(.modal-body) {
@@ -1136,16 +1270,6 @@
 		padding: 18px 24px;
 	}
 
-	.settings-main > :global(.modal-foot) {
-		flex-shrink: 0;
-		padding: 12px 24px;
-		border-top: 1px solid var(--line);
-		background: var(--pane);
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 10px;
-	}
 
 	/* Settings Category Tabs (Base fallback) */
 	.settings-tabs {
@@ -1887,13 +2011,9 @@
 
 	.settings-main-head,
 
-	.settings-main > :global(.modal-foot),
-
 	/* `.settings-modal > .settings-tabs` was here and never matched: the tabs live inside
 	   `.settings-sidebar`, not directly under the dialog. */
-	.settings-modal > :global(.modal-head),
-
-	.settings-modal > :global(.modal-foot) {
+	.settings-modal > :global(.modal-head) {
 		flex-shrink: 0;
 	}
 
@@ -1956,11 +2076,6 @@
 	}
 	}
 
-	@media (max-width: 720px) {
-	.settings-main > :global(.modal-foot) {
-	padding: 10px 16px;
-	}
-	}
 
 	@media (max-width: 540px) {
 	.settings-tabs {

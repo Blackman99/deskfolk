@@ -6,7 +6,9 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Messenger
+
+- Settings no longer have a Save button. Picking a workspace folder writes immediately; endpoint fields and the model list save as you edit (a pause after typing, a moment after a pick); closing the flyout or settings still sends a pending draft. Adding an MCP server or changing command / args / URL / headers still needs an explicit confirm — there is no Always allow — while the name and usage note save on their own.
 
 ## 0.1.0-rc.3 — 2026-09-20
 

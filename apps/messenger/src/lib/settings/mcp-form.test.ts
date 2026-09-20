@@ -2,8 +2,10 @@ import { expect, test } from "bun:test";
 import {
   formatMcpArgs,
   mapMcpError,
+  mcpConnectionDirty,
   parseMcpArgs,
   planMcpDraft,
+  planMcpSafePatch,
   requestMcpAdd,
   requestMcpSave,
 } from "./mcp-form.ts";
@@ -182,6 +184,26 @@ test("unchanged row submits an empty patch", () => {
       { ...stdioDraft, args: "" },
     ),
   ).toEqual({ ok: true, phase: "submit", patch: {} });
+});
+
+test("a name or usage-note patch never includes connection fields", () => {
+  const current = { name: "probe", usage_note: null };
+  expect(planMcpSafePatch(current, { ...stdioDraft, name: " time ", usageNote: "  Read-only.  " })).toEqual({
+    ok: true,
+    patch: { name: "time", usage_note: "Read-only." },
+  });
+  expect(planMcpSafePatch({ ...current, usage_note: "Read-only." }, { ...stdioDraft, name: "probe", usageNote: "  " })).toEqual({
+    ok: true,
+    patch: { usage_note: null },
+  });
+  expect(planMcpSafePatch(current, { ...stdioDraft, name: "  " })).toEqual({ ok: false, errors: { name: "empty" } });
+});
+
+test("connection dirty ignores name and usage note", () => {
+  const current = { name: "probe", transport: "stdio" as const, command: "bun", args: ["run", "src/mcp-fixture.ts", "--modern-only"], url: null, headers: [] };
+  expect(mcpConnectionDirty(current, { ...stdioDraft, name: "time", usageNote: "x" })).toBe(false);
+  expect(mcpConnectionDirty(current, { ...stdioDraft, command: "npx" })).toBe(true);
+  expect(mcpConnectionDirty(current, { ...stdioDraft, args: "run other.ts" })).toBe(true);
 });
 
 test("maps daemon required-field messages onto the locked kinds", () => {

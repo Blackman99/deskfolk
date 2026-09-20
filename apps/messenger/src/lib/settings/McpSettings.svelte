@@ -7,6 +7,8 @@
 		formatMcpArgs,
 		formatMcpHeaders,
 		mapMcpError,
+		mcpConnectionDirty,
+		planMcpSafePatch,
 		requestMcpAdd,
 		requestMcpSave,
 		type McpDraft,
@@ -26,12 +28,32 @@
 	let failed = $state(false);
 	let listFailed = $state(false);
 	let busy = $state(false);
+	let savingSafe = $state(false);
+	let savedTick = $state(0);
 	let toggling = $state<string[]>([]);
 	let addButton: HTMLButtonElement;
 	let returnFocus: HTMLElement | null = null;
+	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let saveQueued: { id: string; draft: McpDraft } | null = null;
+	let latestEditor: { id: string; draft: McpDraft } | null = null;
+	const connectionDirty = $derived(editing ? mcpConnectionDirty(editing, draft) : false);
+	const showSubmit = $derived(editor === 'add' || connectionDirty || phase === 'confirm');
 
 	$effect(() => {
 		if (editor && editor !== 'add' && !editing && !busy) closeEditor();
+	});
+
+	$effect(() => {
+		if (editor && editor !== 'add') latestEditor = { id: editor, draft };
+		else latestEditor = null;
+	});
+
+	$effect(() => () => {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		if (latestEditor) void persistSafeFields(latestEditor.id, latestEditor.draft);
 	});
 
 	function emptyDraft(): McpDraft {
@@ -56,6 +78,11 @@
 		phase = 'edit';
 		errors = {};
 		failed = false;
+		savedTick = 0;
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
 		editor = server?.id ?? 'add';
 		await tick();
 		document.getElementById('mcp-editor-name')?.focus();
@@ -63,19 +90,79 @@
 
 	function closeEditor(): void {
 		if (busy) return;
+		if (editor && editor !== 'add') flushSafeSave(editor, draft);
 		editor = null;
 		draft = emptyDraft();
 		phase = 'edit';
 		errors = {};
 		failed = false;
+		savedTick = 0;
 		if (returnFocus?.isConnected) returnFocus.focus();
 		else addButton?.focus();
 	}
 
-	function onInput(): void {
+	function onSafeInput(): void {
 		phase = 'edit';
 		errors = {};
 		failed = false;
+		if (editor && editor !== 'add') scheduleSafeSave();
+	}
+
+	function onConnectionInput(): void {
+		phase = 'edit';
+		errors = {};
+		failed = false;
+	}
+
+	function scheduleSafeSave(delay = 600): void {
+		if (saveTimer) clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => {
+			saveTimer = null;
+			if (editor && editor !== 'add') void persistSafeFields(editor, draft);
+		}, delay);
+	}
+
+	function flushSafeSave(id: string, current: McpDraft): void {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		void persistSafeFields(id, current);
+	}
+
+	async function persistSafeFields(id: string, current: McpDraft): Promise<void> {
+		const server = runtime.snapshot.mcpServers.find((row) => row.id === id);
+		if (!server) return;
+		if (savingSafe || busy) {
+			saveQueued = { id, draft: current };
+			return;
+		}
+		const plan = planMcpSafePatch(server, current);
+		if (!plan.ok) {
+			if (editor === id) errors = { ...errors, ...plan.errors };
+			return;
+		}
+		if (Object.keys(plan.patch).length === 0) return;
+		savingSafe = true;
+		failed = false;
+		const error = await runtime.patchMcpServer(id, plan.patch);
+		savingSafe = false;
+		if (error) {
+			const mapped = mapMcpError(error.message);
+			if (editor === id) {
+				if ('top' in mapped) failed = true;
+				else errors = mapped;
+			} else {
+				listFailed = true;
+			}
+		} else if (editor === id) {
+			savedTick += 1;
+		}
+		if (saveQueued) {
+			const queued = saveQueued;
+			saveQueued = null;
+			void persistSafeFields(queued.id, queued.draft);
+		}
 	}
 
 	async function submit(): Promise<void> {
@@ -236,6 +323,19 @@
 		<form class="modal-dialog mcp-editor-modal" onsubmit={(event) => { event.preventDefault(); void submit(); }} aria-busy={busy}>
 			<div class="modal-head">
 				<h2 id="mcp-editor-title">{editor === 'add' ? t.settings.sectionMcpAdd : t.settings.mcpEdit}</h2>
+				{#if editor !== 'add'}
+					<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={failed} aria-live="polite">
+						{#if savingSafe}
+							{t.sidebar.autoSaving}
+						{:else if failed}
+							{t.settings.saveFailed}
+						{:else if savedTick > 0}
+							{t.sidebar.autoSaved}
+						{:else}
+														{t.sidebar.autoSaveHint}
+						{/if}
+					</span>
+				{/if}
 				<button type="button" class="modal-close" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
 			</div>
 			<div class="modal-body">
@@ -246,12 +346,12 @@
 				<fieldset class="mcp-editor-fields" disabled={busy}>
 					<div class="modal-section">
 						<label for="mcp-editor-name">{t.settings.mcpName}</label>
-						<input id="mcp-editor-name" type="text" bind:value={draft.name} oninput={onInput} aria-invalid={!!errors.name} />
+						<input id="mcp-editor-name" type="text" bind:value={draft.name} oninput={onSafeInput} aria-invalid={!!errors.name} />
 						{#if errors.name}<p class="field-error">{t.settings.mcpNameEmpty}</p>{/if}
 					</div>
 					<div class="modal-section">
 						<label for="mcp-editor-transport">{t.settings.mcpTransport}</label>
-						<select id="mcp-editor-transport" bind:value={draft.transport} onchange={onInput}>
+						<select id="mcp-editor-transport" bind:value={draft.transport} onchange={onConnectionInput}>
 							<option value="stdio">{t.settings.mcpTransportStdio}</option>
 							<option value="http">{t.settings.mcpTransportHttp}</option>
 						</select>
@@ -259,27 +359,27 @@
 					{#if draft.transport === 'http'}
 						<div class="modal-section">
 							<label for="mcp-editor-url">{t.settings.mcpUrl}</label>
-							<input id="mcp-editor-url" type="text" class="mono" bind:value={draft.url} oninput={onInput} aria-invalid={!!errors.url} />
+							<input id="mcp-editor-url" type="text" class="mono" bind:value={draft.url} oninput={onConnectionInput} aria-invalid={!!errors.url} />
 							{#if errors.url}<p class="field-error">{errors.url === 'invalid' ? t.settings.mcpUrlInvalid : t.settings.mcpUrlEmpty}</p>{/if}
 						</div>
 						<div class="modal-section">
 							<label for="mcp-editor-headers">{t.settings.mcpHeaders}</label>
-							<textarea id="mcp-editor-headers" class="mono" rows="2" bind:value={draft.headers} oninput={onInput}></textarea>
+							<textarea id="mcp-editor-headers" class="mono" rows="2" bind:value={draft.headers} oninput={onConnectionInput}></textarea>
 						</div>
 						<div class="modal-section">
 							<label for="mcp-editor-auth">{t.settings.mcpAuth}</label>
-							<input id="mcp-editor-auth" type="password" autocomplete="off" bind:value={draft.auth} placeholder={editing?.auth_set ? '••••' : ''} oninput={onInput} />
+							<input id="mcp-editor-auth" type="password" autocomplete="off" bind:value={draft.auth} placeholder={editing?.auth_set ? '••••' : ''} oninput={onConnectionInput} />
 							<p class="hint">{t.settings.mcpAuthHint}</p>
 						</div>
 					{:else}
 						<div class="modal-section">
 							<label for="mcp-editor-command">{t.settings.mcpCommand}</label>
-							<input id="mcp-editor-command" type="text" class="mono" bind:value={draft.command} oninput={onInput} aria-invalid={!!errors.command} />
+							<input id="mcp-editor-command" type="text" class="mono" bind:value={draft.command} oninput={onConnectionInput} aria-invalid={!!errors.command} />
 							{#if errors.command}<p class="field-error">{t.settings.mcpCommandEmpty}</p>{/if}
 						</div>
 						<div class="modal-section">
 							<label for="mcp-editor-args">{t.settings.mcpArgs}</label>
-							<input id="mcp-editor-args" type="text" class="mono" bind:value={draft.args} oninput={onInput} />
+							<input id="mcp-editor-args" type="text" class="mono" bind:value={draft.args} oninput={onConnectionInput} />
 						</div>
 					{/if}
 					<div class="modal-section">
@@ -288,26 +388,28 @@
 							id="mcp-editor-usage-note"
 							rows="3"
 							bind:value={draft.usageNote}
-							oninput={onInput}
+							oninput={onSafeInput}
 							placeholder={t.settings.mcpUsageNotePlaceholder}
 						></textarea>
 						<p class="hint">{t.settings.mcpUsageNoteHint}</p>
 					</div>
 					{#if editor === 'add'}
 						<label class="mcp-enable-label">
-							<input type="checkbox" bind:checked={draft.enabled} onchange={onInput} />
+							<input type="checkbox" bind:checked={draft.enabled} onchange={onConnectionInput} />
 							{t.settings.mcpEnabled}
 						</label>
 					{/if}
 				</fieldset>
 			</div>
 			<div class="modal-foot actions">
-				<button type="submit" disabled={busy}>
-					{phase === 'confirm'
-						? editor === 'add' ? t.settings.mcpConfirmAdd : t.settings.mcpConfirmEdit
-						: editor === 'add' ? t.settings.mcpAdd : t.settings.mcpSave}
-				</button>
-				<button type="button" disabled={busy} onclick={closeEditor}>{t.settings.mcpCancel}</button>
+				{#if showSubmit}
+					<button type="submit" disabled={busy}>
+						{phase === 'confirm'
+							? editor === 'add' ? t.settings.mcpConfirmAdd : t.settings.mcpConfirmEdit
+							: editor === 'add' ? t.settings.mcpAdd : t.settings.mcpConfirmEdit}
+					</button>
+				{/if}
+				<button type="button" class="mcp-cancel" disabled={busy} onclick={closeEditor}>{t.settings.mcpCancel}</button>
 				{#if editing}
 					<button type="button" class="deny" disabled={busy} onclick={() => void removeServer()}>{t.settings.mcpDelete}</button>
 				{/if}
@@ -448,6 +550,40 @@
 
 	.mcp-editor-modal > :global(.modal-foot) {
 		flex-shrink: 0;
+	}
+
+	.mcp-editor-modal :global(.modal-head) {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.mcp-editor-modal :global(.modal-head h2) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	:global(.mcp-editor-modal .modal-foot button.mcp-cancel),
+	:global(.mcp-editor-modal .modal-foot button.mcp-cancel:first-child) {
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
+		border-color: var(--line);
+		box-shadow: var(--shadow-xs);
+	}
+
+	:global(.mcp-editor-modal .modal-foot button.mcp-cancel:hover),
+	:global(.mcp-editor-modal .modal-foot button.mcp-cancel:first-child:hover) {
+		background: var(--line-subtle);
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	.settings-save-state {
+		font-weight: 500;
+	}
+
+	.settings-save-state.is-error {
+		color: var(--danger);
 	}
 
 	.mcp-editor-modal > :global(.modal-body) {
