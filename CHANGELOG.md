@@ -8,6 +8,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Daemon
 
+- `read_file` (and the other workspace tools besides `write_file`) no longer stamp their paths as message attachments. A path the Bot only read is an input; only a write becomes a cited artifact on the message.
 - **Bots now remember across sessions.** A Bot writes down a fact with `remember` and it enters the system block of every later turn, in any session — so a preference you stated in a private chat is still in effect in a group tomorrow. Memories belong to one Bot: another never sees them, deleting the Bot deletes them, archiving keeps them. Re-using a subject replaces that memory rather than adding a second one, which is also how a Bot corrects itself; `forget` drops one that no longer holds. A full Bot (20 memories) is refused and told which entry has gone longest without an update, so it chooses what to drop instead of something disappearing behind your back. There is no retrieval, no background distiller and no extra model call: the whole enabled set is rendered, bounded by a budget derived from the caps.
 - The system prompt no longer tells a Bot there is no memory layer, and now states the separation once: the profile is who you are, a skill is how to do something, a memory is what you learned. A memory is an earlier conclusion, not a source of truth — when it conflicts with this turn's transcript, the transcript wins.
 

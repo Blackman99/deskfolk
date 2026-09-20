@@ -800,8 +800,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     return message;
   }
 
-  function noteWrittenPaths(live: Live, result: ToolResult): void {
+  function noteWrittenPaths(live: Live, toolName: string, result: ToolResult): void {
     if (!result.ok) return;
+    if (isWorkspaceTool(toolName) && toolName !== "write_file") return;
     const root = store.workspacePath();
     if (!root) return;
     for (const raw of writtenPathFromToolData(result.data)) {
@@ -830,7 +831,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       let result = await dispatchTool(turn, live, call.name, args);
       await publishEmitted(result.emitted);
       result = withLatestMcp(call.name, result);
-      noteWrittenPaths(live, result);
+      noteWrittenPaths(live, call.name, result);
       if (result.waitAsk) {
         const ask = store.insertMessage({
           sessionId: turn.session_id,
@@ -885,7 +886,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         if (resolved == null) return "wait";
         await publishEmitted(resolved.emitted);
         resolved = withLatestMcp(call.name, resolved);
-        noteWrittenPaths(live, resolved);
+        noteWrittenPaths(live, call.name, resolved);
         const payload = resolved.ok
           ? { ok: true, data: resolved.data }
           : { ok: false, error: resolved.error };

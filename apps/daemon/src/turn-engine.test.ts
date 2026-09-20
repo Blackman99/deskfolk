@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
@@ -2097,6 +2097,35 @@ describe("file tools and workspace shell on the local API", () => {
     expect(botMsg.body).toContain("wrote it");
     expect(botMsg.body).toContain("[report.md](report.md)");
     expect(readFileSync(join(workspace, "report.md"), "utf8")).toBe("full report");
+    sub.close();
+  });
+
+  test("read_file paths are inputs and do not become message attachments", async () => {
+    let hop = 0;
+    const fixture = await startFixture(({ body }) => {
+      hop += 1;
+      if (hop === 1) {
+        return sse(toolCallChunks("call_r", "read_file", '{"path":"brief.md"}'));
+      }
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      expect(messages.some((m) => m.role === "tool" && String(m.content).includes("brief text"))).toBe(true);
+      return sse(textChunks("I reviewed the brief."));
+    });
+    const h = await startApi();
+    const { botId, sessionId, workspace } = await createWriterIn(h, fixture.origin);
+    writeFileSync(join(workspace, "brief.md"), "brief text");
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "review the brief" }),
+    });
+    const botMsg = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
+    );
+    expect(botMsg.body).toBe("I reviewed the brief.");
+    expect(botMsg.attachments).toEqual([]);
     sub.close();
   });
 
