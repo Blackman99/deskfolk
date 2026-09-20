@@ -27,6 +27,12 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
   expect(COPY.en.chat.replyTo("Writer")).toBe("Replying to Writer");
   expect(COPY.zh.chat.suggestNext).toBe("建议下一步");
   expect(COPY.en.chat.suggestNext).toBe("Suggested next");
+  expect(COPY.zh.chat.openAssociatedFileTree).toBe("打开关联的文件树");
+  expect(COPY.en.chat.openAssociatedFileTree).toBe("Open associated file tree");
+  expect(COPY.zh.chat.copyMessageId).toBe("复制消息 ID");
+  expect(COPY.en.chat.copyMessageId).toBe("Copy message ID");
+  expect(COPY.zh.chat.noAssociatedFiles).toBe("无关联文件");
+  expect(COPY.en.chat.noAssociatedFiles).toBe("No associated files");
 });
 
 test("wizard field errors are the locked 32 sentences", () => {

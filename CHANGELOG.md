@@ -8,6 +8,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Messenger
 
+- Right-clicking any message now selects the message and opens a context menu with actions to Reply (quote-replying into the composer), Copy message content (or selected text), Open associated file tree (revealing cited files or opening the workspace tree), Copy message ID, and toggle quick emoji reactions.
 - The Bot settings drawer now uses category tab navigation (Basics, Skills, Memory, Actions) instead of stacking every card in a single tall column. Tabs display error badges and item counts, switching tabs flushes pending autosaves immediately, and the drawer width expands to 460px for a more spacious layout. The category navigation bar stays permanently pinned to the top, and textarea inputs in the Basics tab have been enlarged for easier reading and editing without frequent scrolling.
 - Settings no longer have a Save button. Picking a workspace folder writes immediately; endpoint fields and the model list save as you edit (a pause after typing, a moment after a pick); closing the flyout or settings still sends a pending draft. Adding an MCP server or changing command / args / URL / headers still needs an explicit confirm — there is no Always allow — while the name and usage note save on their own.
 - Dense Markdown tables in chat no longer collapse short CJK columns into one character per line. Headers stay on one line, long cells wrap at a readable width, and the table scrolls sideways inside the bubble.
