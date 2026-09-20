@@ -353,6 +353,10 @@ export class LocalApi {
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);
   }
 
+  async hostTree(_path = ""): Promise<WorkspaceTreePage & { parent?: string | null }> {
+    throw new ApiError(404, "not_found", "host browse is remote-only");
+  }
+
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }

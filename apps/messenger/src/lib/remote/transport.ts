@@ -1,13 +1,16 @@
 import {
   DeviceSession,
+  MAX_FILE_CHUNK,
   PAIR_MAILBOX_CONTRACT,
   Reassembler,
   base64url,
   canonicalBytes,
   canonicalize,
   decodeFileChunk,
+  encodeFileChunk,
   fromBase64url,
   randomBytes,
+  sha256Hex,
   signEnrollmentProof,
   type EnrollmentChallenge,
   type IdentitySecrets,
@@ -32,6 +35,7 @@ type Waiter = {
   reject: (error: unknown) => void;
   file?: { streamId: number; size: number; chunks: Uint8Array[]; offset: number; headers?: RemoteResponse["headers"] };
   pages?: { transfer: string; count: number; chunks: Uint8Array[] };
+  uploads?: Array<{ streamId: number; filename: string; size: number; sha256: string; bytes: Uint8Array }>;
 };
 
 function httpOrigin(enrollment: StoredEnrollment, hooks: TransportHooks): string {
@@ -155,7 +159,7 @@ export class RemoteTransport {
     return ready;
   }
 
-  rpc(request: RemoteRequest): Promise<RemoteResponse> {
+  rpc(request: RemoteRequest, uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>): Promise<RemoteResponse> {
     return new Promise((resolve, reject) => {
       const run = () => {
         if (this.closed || !this.session || !this.socket) {
@@ -165,6 +169,7 @@ export class RemoteTransport {
         this.waiter = { id: request.id, resolve, reject };
         try {
           this.socket.send(new Uint8Array(this.session.send(1, canonicalBytes(request))));
+          if (uploads?.length) this.waiter.uploads = uploads.map((file) => ({ ...file, streamId: 0 }));
         } catch (error) {
           this.waiter = null;
           reject(error);
@@ -174,6 +179,13 @@ export class RemoteTransport {
       if (this.waiter) this.queue.push(run);
       else run();
     });
+  }
+
+  cancelStream(streamId: number): void {
+    if (this.closed || !this.session || !this.socket) return;
+    const body = new Uint8Array(4);
+    new DataView(body.buffer).setUint32(0, streamId);
+    this.socket.send(new Uint8Array(this.session.send(6, body)));
   }
 
   private finish(response: RemoteResponse): void {
@@ -196,7 +208,17 @@ export class RemoteTransport {
         this.close();
         return;
       }
-      if (frame.type === 6) return;
+      if (frame.type === 6) {
+        const id = new DataView(frame.body.buffer, frame.body.byteOffset, 4).getUint32(0);
+        const waiter = this.waiter;
+        if (waiter?.file?.streamId === id) {
+          waiter.reject(new ApiError(409, "cancelled", "download cancelled", waiter.id));
+          this.waiter = null;
+          const next = this.queue.shift();
+          if (next) next();
+        }
+        return;
+      }
       if (frame.type === 5) {
         this.onFile(decodeFileChunk(frame.body));
         return;
@@ -230,6 +252,14 @@ export class RemoteTransport {
     waiter.file.offset += chunk.chunk.length;
     if (chunk.eof) {
       const bytes = concat(waiter.file.chunks);
+      const etag = waiter.file.headers?.etag?.replaceAll('"', "");
+      if (etag && sha256Hex(bytes) !== etag) {
+        waiter.reject(new ApiError(422, "invalid_args", "file hash mismatch", waiter.id));
+        this.waiter = null;
+        const next = this.queue.shift();
+        if (next) next();
+        return;
+      }
       this.finish({
         v: 1,
         id: waiter.id,
@@ -268,7 +298,36 @@ export class RemoteTransport {
       }
       return;
     }
+    if (response.upload?.files?.length) {
+      const pending = waiter.uploads;
+      if (!pending || pending.length !== response.upload.files.length) {
+        this.close();
+        return;
+      }
+      for (let i = 0; i < pending.length; i++) {
+        const declared = response.upload.files[i]!;
+        const local = pending[i]!;
+        if (local.filename !== declared.filename || local.size !== declared.size || local.sha256 !== declared.sha256) {
+          this.close();
+          return;
+        }
+        local.streamId = declared.streamId;
+        if (local.size > 0) this.sendUpload(local);
+      }
+      return;
+    }
     this.finish(response);
+  }
+
+  private sendUpload(file: { streamId: number; bytes: Uint8Array }): void {
+    if (!this.session || !this.socket || this.closed) return;
+    for (let offset = 0; offset < file.bytes.length || file.bytes.length === 0; offset += MAX_FILE_CHUNK) {
+      const chunk = file.bytes.subarray(offset, offset + MAX_FILE_CHUNK);
+      this.socket.send(new Uint8Array(this.session.send(5, encodeFileChunk({
+        streamId: file.streamId, offset: BigInt(offset), eof: offset + chunk.length === file.bytes.length, chunk,
+      }))));
+      if (!file.bytes.length) break;
+    }
   }
 }
 

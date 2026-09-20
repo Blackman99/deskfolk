@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { pickWorkspaceFolder, workspacePickerAvailable } from './pick-workspace.ts';
+	import { listRemoteHostDir, pickWorkspaceFolder, workspacePickerAvailable, type HostTreePage } from './pick-workspace.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 
 	interface Props {
 		id?: string;
@@ -10,6 +11,15 @@
 		unavailableLabel: string;
 		dialogTitle: string;
 		onChange: (path: string) => void;
+		remote?: boolean;
+		api?: MessengerApi | null;
+		browseHint?: string;
+		permissionHint?: string;
+		truncatedHint?: string;
+		confirmHint?: string;
+		upLabel?: string;
+		useLabel?: string;
+		cancelLabel?: string;
 	}
 
 	let {
@@ -20,17 +30,55 @@
 		emptyLabel,
 		unavailableLabel,
 		dialogTitle,
-		onChange
+		onChange,
+		remote = false,
+		api = null,
+		browseHint = '',
+		permissionHint = '',
+		truncatedHint = '',
+		confirmHint = '',
+		upLabel = 'Up',
+		useLabel = 'Use this folder',
+		cancelLabel = 'Cancel',
 	}: Props = $props();
 
 	let busy = $state(false);
 	let failed = $state(false);
-	const canPick = $derived(workspacePickerAvailable());
+	let permission = $state(false);
+	let browsing = $state(false);
+	let page = $state<HostTreePage | null>(null);
+	let browseError = $state('');
+	const canPick = $derived(workspacePickerAvailable(undefined, remote));
 	const display = $derived(path.trim());
 	const actionLabel = $derived(display ? changeLabel : chooseLabel);
 
+	async function load(dir: string): Promise<void> {
+		if (!api) return;
+		busy = true;
+		browseError = '';
+		permission = false;
+		try {
+			page = await listRemoteHostDir(api, dir);
+			browsing = true;
+		} catch (error) {
+			failed = true;
+			permission = Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'host_permission');
+			browseError = permission ? permissionHint : unavailableLabel;
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function choose(): Promise<void> {
 		if (busy) return;
+		if (remote) {
+			if (!api) {
+				failed = true;
+				return;
+			}
+			await load(path.trim() || '');
+			return;
+		}
 		if (!canPick) {
 			failed = true;
 			return;
@@ -45,6 +93,12 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	function useCurrent(): void {
+		if (!page) return;
+		onChange(page.path);
+		browsing = false;
 	}
 </script>
 
@@ -74,8 +128,32 @@
 		{actionLabel}
 	</button>
 </div>
-{#if !canPick || failed}
-	<p class="muted field-hint">{unavailableLabel}</p>
+{#if permission && permissionHint}
+	<p class="muted field-hint">{permissionHint}</p>
+{:else if !canPick || failed}
+	<p class="muted field-hint">{browseError || unavailableLabel}</p>
+{/if}
+{#if browsing && page}
+	<div class="host-browse" role="dialog" aria-label={dialogTitle}>
+		<p class="mono host-browse-path">{page.path}</p>
+		{#if browseHint}<p class="muted field-hint">{browseHint}</p>{/if}
+		{#if confirmHint}<p class="muted field-hint">{confirmHint}</p>{/if}
+		<div class="host-browse-actions">
+			<button type="button" class="btn-preset-workspace" disabled={!page.parent || busy} onclick={() => void load(page?.parent ?? '')}>{upLabel}</button>
+			<button type="button" class="btn-preset-workspace" onclick={useCurrent}>{useLabel}</button>
+			<button type="button" class="btn-preset-workspace" onclick={() => (browsing = false)}>{cancelLabel}</button>
+		</div>
+		<ul class="host-browse-list">
+			{#each page.items.filter((row) => row.kind === 'dir') as row (row.path)}
+				<li>
+					<button type="button" class="host-browse-item" onclick={() => void load(row.path)}>
+						<span class="mono">{row.name}</span>
+					</button>
+				</li>
+			{/each}
+		</ul>
+		{#if page.truncated}<p class="muted field-hint">{truncatedHint}</p>{/if}
+	</div>
 {/if}
 
 <style>
@@ -131,5 +209,51 @@
 	.workspace-picker .btn-preset-workspace:disabled {
 		opacity: 0.7;
 		cursor: wait;
+	}
+
+	.host-browse {
+		margin-top: 8px;
+		width: 100%;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		padding: 10px 12px;
+		background: var(--input-bg);
+	}
+
+	.host-browse-path {
+		margin: 0 0 6px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.host-browse-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 8px 0;
+	}
+
+	.host-browse-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		max-height: 12rem;
+		overflow: auto;
+	}
+
+	.host-browse-item {
+		width: 100%;
+		text-align: left;
+		padding: 6px 8px;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+		border-radius: var(--radius-sm);
+	}
+
+	.host-browse-item:hover {
+		background: var(--hover);
 	}
 </style>

@@ -35,6 +35,7 @@ get("sessions/:id/(snapshot|judgements|routes|composer-suggestions)");
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200 });
 get("bots/:id/profile-revisions"); get("attachments/:id/content");
 get("workspace/tree", { path: string }); get("workspace/file", { path: string }, ["path"]);
+get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
 get("spend", { session_id: id, bot_id: id, turn_id: id }); get("search", { q: string }, ["q"]);
@@ -47,7 +48,7 @@ add("POST", "routines", { ...routine, bot_id: id }, ["bot_id", "title", "instruc
 add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]);
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
-add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool }, ["body"]);
+add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 50 * 1024 * 1024, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])) }, ["body"]);
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);
 add("POST", "sessions/:id/read", {});
 add("POST", "sessions/:id/(archive|restore|clear)", revision); add("POST", "bots/:id/(archive|restore)", revision);

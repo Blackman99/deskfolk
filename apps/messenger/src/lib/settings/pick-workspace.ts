@@ -1,4 +1,5 @@
 import { isTauri, readTauriInternals, type TauriInternals } from "../tauri.ts";
+import type { MessengerApi } from "../messenger-api.ts";
 
 export function parsePickedWorkspacePath(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -21,6 +22,21 @@ export async function pickWorkspaceFolder(
 
 export function workspacePickerAvailable(
   internals: TauriInternals | undefined = readTauriInternals(),
+  remote = false,
 ): boolean {
-  return isTauri(internals);
+  return remote || isTauri(internals);
+}
+
+export type HostTreePage = {
+  path: string;
+  parent?: string | null;
+  truncated: boolean;
+  items: Array<{ name: string; path: string; kind: "file" | "dir" }>;
+};
+
+export async function listRemoteHostDir(api: MessengerApi, path = ""): Promise<HostTreePage> {
+  if (!("hostTree" in api) || typeof api.hostTree !== "function") {
+    throw new Error("host browse is remote-only");
+  }
+  return api.hostTree(path);
 }

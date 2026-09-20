@@ -1,10 +1,10 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity,
   identityPublic, openPairingGrant, randomBytes, sealPairing, signEnrollmentProof, Reassembler, decodeFileChunk,
-  type EnrollmentChallenge, type RemoteRequest, type UvChallenge } from "@real-bot/remote";
+  encodeFileChunk, sha256Hex, type EnrollmentChallenge, type RemoteRequest, type UvChallenge } from "@real-bot/remote";
 import { startRelay } from "../../../relay/src/server";
 import { Store } from "../store";
 import { memoryKeyStore } from "../secrets";
@@ -191,7 +191,41 @@ async function fixture(completions?: import("../completions").CompletionsClient,
       expect(offset).toBe(meta.file.size);
       return { bytes: offset, hash: hash.digest("hex"), streamId: meta.file.streamId };
     }
-    return { socket, noise, next, rpc, download, events, ready };
+    async function upload(sessionId: string, filename: string, bytes: Uint8Array, opts: { offset?: number; hash?: string; cancel?: boolean } = {}) {
+      const id = ulid();
+      const declared = { filename, size: bytes.length, sha256: opts.hash ?? sha256Hex(bytes) };
+      socket.send(new Uint8Array(noise.send(1, canonicalBytes({
+        v: 1, id, method: "POST", path: `/v1/sessions/${sessionId}/messages`,
+        body: { body: filename, parent_id: null, fork: false, ask_id: null, files: [declared] },
+      }))));
+      let opened: { streamId: number } | undefined;
+      for (;;) {
+        const frame = noise.receive(await next() as Uint8Array);
+        if (frame.type === 3 || frame.type === 4) continue;
+        expect(frame.type).toBe(2);
+        const message = JSON.parse(new TextDecoder().decode(frame.body));
+        if (message.id !== id) continue;
+        opened = message.upload?.files?.[0];
+        expect(message.status).toBe(message.upload ? 202 : message.status);
+        break;
+      }
+      if (opts.cancel && opened) {
+        const cancel = Buffer.alloc(4); cancel.writeUInt32BE(opened.streamId);
+        socket.send(new Uint8Array(noise.send(6, cancel)));
+      } else if (opened && bytes.length) {
+        socket.send(new Uint8Array(noise.send(5, encodeFileChunk({
+          streamId: opened.streamId, offset: BigInt(opts.offset ?? 0), eof: true, chunk: bytes,
+        }))));
+      }
+      for (;;) {
+        const frame = noise.receive(await next() as Uint8Array);
+        if (frame.type === 3 || frame.type === 4 || frame.type === 6) continue;
+        if (frame.type === 5) continue;
+        const message = JSON.parse(new TextDecoder().decode(frame.body));
+        if (message.id === id) return message;
+      }
+    }
+    return { socket, noise, next, rpc, download, upload, events, ready };
   }
   return { root, store, endpointKeys, api, native, controller, relay, pair, connect, post, releasePressure: () => { hold = false; } };
 }
@@ -767,3 +801,65 @@ test("pair native proof is single use and bound to authoritative keys, not brows
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/action", body: { uv: true, credentialId: "claimed" } })).status).toBe(403);
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/challenge", body: { operation: { action: "quiesce.force", targetId: "runtime", requestId: ulid() } } })).status).toBe(403);
 });
+
+test("host browse lists directories, rejects other homes, and returns typed permission errors", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  mkdirSync(join(f.root, "keep"));
+  writeFileSync(join(f.root, "note.md"), "hi");
+  const page = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/host/tree", query: { path: f.root } });
+  expect(page.status).toBe(200);
+  expect(page.body.items.map((row: { name: string }) => row.name)).toContain("keep");
+  expect(page.body.items.map((row: { name: string }) => row.name)).toContain("note.md");
+  const denied = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/host/tree", query: { path: "/Users/not-this-user" } });
+  expect(denied.status).toBe(403);
+  expect(denied.body.error.code).toBe("host_permission");
+});
+
+test("duplex upload commits after EOF hash and rejects bad offset, hash, cap and extra streams", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Files", duties: "", boundaries: "" });
+  const bytes = Buffer.from("hello-remote");
+  const ok = await c.upload(bot.direct_session.id, "ok.txt", bytes);
+  expect(ok.status).toBe(201);
+  expect(existsSync(join(f.root, "inbox", "ok.txt"))).toBe(true);
+  expect(readFileSync(join(f.root, "inbox", "ok.txt")).toString()).toBe("hello-remote");
+  const badHash = await c.upload(bot.direct_session.id, "bad.txt", bytes, { hash: "a".repeat(64) });
+  expect(badHash.status).toBeGreaterThanOrEqual(400);
+  expect(existsSync(join(f.root, "inbox", "bad.txt"))).toBe(false);
+  const badOffset = await c.upload(bot.direct_session.id, "off.txt", bytes, { offset: 3 });
+  expect(badOffset.status).toBeGreaterThanOrEqual(400);
+  const cancelled = await c.upload(bot.direct_session.id, "cancel.txt", bytes, { cancel: true });
+  expect(cancelled.status).toBeGreaterThanOrEqual(400);
+  expect(existsSync(join(f.root, "inbox", "cancel.txt"))).toBe(false);
+  const oversize = await c.rpc({
+    v: 1, id: ulid(), method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`,
+    body: { body: "x", parent_id: null, fork: false, ask_id: null, files: [{ filename: "big.bin", size: 50 * 1024 * 1024 + 1, sha256: "a".repeat(64) }] },
+  });
+  expect(oversize.status).toBe(413);
+});
+
+test("remote workspace PUT requires If-Match and returns 409 after an external rewrite", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  writeFileSync(join(f.root, "note.txt"), "old");
+  const got = await c.download("note.txt");
+  const etag = `"${got.hash}"`;
+  writeFileSync(join(f.root, "note.txt"), "rewritten");
+  const conflict = await c.rpc({ v: 1, id: ulid(), method: "PUT", path: "/v1/workspace/file", body: { path: "note.txt", content: "mine" }, ifMatch: etag });
+  expect(conflict.status).toBe(409);
+  const missing = await c.rpc({ v: 1, id: ulid(), method: "PUT", path: "/v1/workspace/file", body: { path: "note.txt", content: "mine" } });
+  expect(missing.status).toBe(422);
+});
+
+test("two concurrent remote streams stay at the per-device ceiling", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Ceil", duties: "", boundaries: "" });
+  const extra = await c.rpc({
+    v: 1, id: ulid(), method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`,
+    body: { body: "x", parent_id: null, fork: false, ask_id: null, files: [
+      { filename: "a.txt", size: 1, sha256: "a".repeat(64) },
+      { filename: "b.txt", size: 1, sha256: "b".repeat(64) },
+      { filename: "c.txt", size: 1, sha256: "c".repeat(64) },
+    ] },
+  });
+  expect(extra.status).toBe(429);
+}, 15_000);

@@ -37,6 +37,7 @@ import { fileEtag } from "./file-integrity";
 import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
+import { listHostDir } from "./host-paths";
 
 const AUTH_TIMEOUT_MS = 5_000;
 const REACTIONS = new Set<string>(REACTION_EMOJI);
@@ -184,8 +185,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
 
   async function mutate(request: Request, url: URL, scope: RequestScope): Promise<Response> {
     validateRequestPath(url.pathname + url.search);
-    const parsed = await parseMutation(request);
-    const digest = requestDigest({ method: request.method, path: url.pathname + url.search, body: parsed.body,
+    const parsed = await parseMutation(request, (request as Request & { stagedFiles?: AttachmentInput[] }).stagedFiles);
+    const digest = requestDigest({ method: request.method, path: url.pathname + url.search, body: parsed.digestBody ?? parsed.body,
       multipart: parsed.multipart, normalizedFiles: parsed.normalizedFiles,
       ifMatch: request.headers.get("If-Match"),
     }, options.canonicalEncoder);
@@ -200,7 +201,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         await options.store.listMcpServersHydrated();
         scope.guard?.();
         options.store.recoverFiles();
-        options.store.prepareAttachments(parsed.files);
+        if (parsed.files.some((file) => !file.staged)) options.store.prepareAttachments(parsed.files);
         if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
           const root = options.store.workspacePath();
           if (root) {
@@ -468,6 +469,11 @@ function dispatch(
     return jsonResponse(listWorkspaceDir(root, rel), 200, null);
   }
 
+  if (method === "GET" && path === "/v1/host/tree") {
+    if (url.hostname !== "remote.invalid") throw new HttpError(404, "not_found", "host browse is remote-only");
+    return jsonResponse(listHostDir(url.searchParams.get("path") ?? ""), 200, null);
+  }
+
   if (method === "GET" && path === "/v1/workspace/file") {
     const root = store.workspacePath();
     if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
@@ -674,6 +680,9 @@ function dispatch(
     const askId = typeof body.ask_id === "string" ? body.ask_id || null : null;
     const fork = body.fork === undefined ? undefined : body.fork === true || body.fork === "true";
     const fileInputs = input.files;
+    if (Array.isArray(body.files) && body.files.length && !fileInputs.length) {
+      throw new HttpError(422, "invalid_args", "remote file bytes must arrive on type 0x05");
+    }
 
     if (!askId) options.admission?.assertNew();
     const message = store.postMessage(params.id!, {
@@ -1090,15 +1099,33 @@ function publishBotModelChanges(
   }
 }
 
-type ParsedMutation = { body: Record<string, unknown>; files: AttachmentInput[]; multipart: boolean; stagedWrite?: FileCommit; normalizedFiles?: NormalizedFile<AttachmentInput>[] };
+type ParsedMutation = {
+  body: Record<string, unknown>; files: AttachmentInput[]; multipart: boolean; stagedWrite?: FileCommit;
+  normalizedFiles?: NormalizedFile<AttachmentInput>[]; digestBody?: Record<string, unknown>;
+};
 
-async function parseMutation(request: Request): Promise<ParsedMutation> {
+async function parseMutation(request: Request, staged?: AttachmentInput[]): Promise<ParsedMutation> {
   const media = (request.headers.get("content-type") ?? "application/json").split(";")[0]!.trim().toLowerCase();
   if (media !== "application/json" && media !== "multipart/form-data") throw new HttpError(422, "invalid_args", "unsupported mutation media type");
   if (media === "application/json") {
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(422, "invalid_args", "body must be an object");
-    return { body: body as Record<string, unknown>, files: [], multipart: false };
+    const record = body as Record<string, unknown>;
+    if (staged?.length) {
+      const digestBody = { ...record };
+      delete digestBody.files;
+      return {
+        body: digestBody, files: staged, multipart: true, digestBody,
+        normalizedFiles: staged.map((file) => {
+          if (!file.staged?.sha256) throw new HttpError(422, "invalid_args", "file hash mismatch");
+          return { file, filename: file.originalFilename, hash: file.staged.sha256 };
+        }),
+      };
+    }
+    if (Array.isArray(record.files) && record.files.length) {
+      throw new HttpError(422, "invalid_args", "remote file bytes must arrive on type 0x05");
+    }
+    return { body: record, files: [], multipart: false };
   }
   const form = await request.formData();
   const body: Record<string, unknown> = {};

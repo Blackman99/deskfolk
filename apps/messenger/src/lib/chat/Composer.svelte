@@ -263,11 +263,19 @@
 		checkMentionTrigger();
 	}
 
+	const REMOTE_FILE_LIMIT = 50 * 1024 * 1024;
+	let attachLimitHit = $state(false);
+
 	function addFiles(files: FileList | File[]): void {
 		const next: PendingAttachment[] = [];
+		attachLimitHit = false;
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			if (!file) continue;
+			if (runtime.remote && file.size > REMOTE_FILE_LIMIT) {
+				attachLimitHit = true;
+				continue;
+			}
 			const isImage = file.type.startsWith('image/');
 			let previewUrl: string | null = null;
 			if (isImage) {
@@ -591,6 +599,12 @@
 		}
 	}}
 >
+	{#if runtime.remote}
+		<p class="muted composer-limit">{t.composer.attachLimit}</p>
+	{/if}
+	{#if attachLimitHit}
+		<p class="muted composer-limit">{t.settings.fileLimitHit}</p>
+	{/if}
 	{#if quoteTarget}
 		<div class="composer-quote-bar">
 			<div class="composer-quote-meta min-w-0 flex-1 flex flex-col gap-1">
@@ -648,8 +662,8 @@
 		<button
 			type="button"
 			class="attach-btn"
-			title={t.composer.attach}
-			aria-label={t.composer.attach}
+			title={runtime.remote ? `${t.composer.attach} · ${t.composer.attachLimit}` : t.composer.attach}
+			aria-label={runtime.remote ? `${t.composer.attach} · ${t.composer.attachLimit}` : t.composer.attach}
 			disabled={!connected || !selected || lockedComposer || runtime.busy}
 			onclick={openFilePicker}
 		>

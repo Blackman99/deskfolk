@@ -45,10 +45,30 @@ test("unknown remote results look up the same request id instead of minting a ne
   expect(calls.every((row) => row.method !== "POST" || row.id === originalId)).toBe(true);
 });
 
-test("remote attachments are refused rather than inventing a second file machine", async () => {
-  const api = new RemoteApi(enrollment);
-  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "hi", { attachments: [new File(["x"], "a.txt")] }))
-    .rejects.toMatchObject({ code: "not_retryable" });
+test("remote attachments declare hashes instead of inventing a second file machine", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      return { v: 1, id: request.id, status: 201, body: { id: "msg" } };
+    },
+  });
+  const file = new File(["hello"], "a.txt");
+  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "hi", { attachments: [file] }))
+    .resolves.toEqual({ id: "msg" });
+  const posted = calls.find((row) => row.path.endsWith("/messages"));
+  expect(posted?.body?.files).toEqual([
+    expect.objectContaining({ filename: "a.txt", size: 5, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+  ]);
+});
+
+test("remote attachments above 50 MiB are refused before RPC", async () => {
+  const api = new RemoteApi(enrollment, {
+    rpc: async () => { throw new Error("must not send oversize attachments"); },
+  });
+  const huge = new File([new Uint8Array(50 * 1024 * 1024 + 1)], "big.bin");
+  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "hi", { attachments: [huge] }))
+    .rejects.toMatchObject({ code: "file_limit" });
 });
 
 test("forged UV is denied without a click-to-confirm fallback", async () => {

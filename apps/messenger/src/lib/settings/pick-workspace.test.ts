@@ -59,3 +59,7 @@ test("workspacePickerAvailable follows invoke presence", () => {
   expect(workspacePickerAvailable({})).toBe(false);
   expect(workspacePickerAvailable(fakeInternals(async () => null))).toBe(true);
 });
+
+test("remote host browse is available without Tauri", () => {
+  expect(workspacePickerAvailable(undefined, true)).toBe(true);
+});

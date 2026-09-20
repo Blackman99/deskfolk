@@ -43,6 +43,8 @@ import type {
 } from "@real-bot/protocol";
 import {
   fromBase64url,
+  REMOTE_FILE_LIMIT,
+  sha256Hex,
   type IdentitySecrets,
   type RemoteRequest,
   type RemoteResponse,
@@ -107,9 +109,19 @@ function split(path: string): { path: string; query?: Record<string, string> } {
 
 function jsonBody(body: unknown): Record<string, unknown> | undefined {
   if (body === undefined) return undefined;
-  if (body instanceof FormData) throw new ApiError(422, "not_retryable", "remote attachments are not implemented");
+  if (body instanceof FormData) throw new ApiError(422, "not_retryable", "remote attachments use Noise streams");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(422, "invalid_args", "body must be an object");
   return body as Record<string, unknown>;
+}
+
+async function attachmentManifest(files: File[]): Promise<Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>> {
+  const out: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }> = [];
+  for (const file of files) {
+    if (file.size > REMOTE_FILE_LIMIT) throw new ApiError(413, "file_limit", "remote attachments are limited to 50 MiB");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    out.push({ filename: file.name || "attachment", size: bytes.length, sha256: sha256Hex(bytes), bytes });
+  }
+  return out;
 }
 
 export class RemoteApi {
@@ -345,19 +357,22 @@ export class RemoteApi {
   async postMessage(sessionId: string, body: string, opts: {
     fork?: boolean; askId?: string | null; attachments?: File[]; parentId?: string | null;
   } = {}): Promise<Message> {
-    if (opts.attachments && opts.attachments.length > 0) {
-      throw new ApiError(422, "not_retryable", "remote attachments are not implemented");
-    }
-    return this.post<Message>(`/v1/sessions/${sessionId}/messages`, {
+    const files = opts.attachments?.length ? await attachmentManifest(opts.attachments) : [];
+    return this.request<Message>("POST", `/v1/sessions/${sessionId}/messages`, {
       body,
       parent_id: opts.parentId ?? null,
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
-    });
+      ...(files.length ? { files: files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 })) } : {}),
+    }, undefined, {}, false, null, undefined, files);
   }
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {
     const query = path ? `?path=${encodeURIComponent(path)}` : "";
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);
+  }
+  async hostTree(path = ""): Promise<WorkspaceTreePage & { parent?: string | null }> {
+    const query = path ? `?path=${encodeURIComponent(path)}` : "";
+    return this.get(`/v1/host/tree${query}`);
   }
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
@@ -490,6 +505,7 @@ export class RemoteApi {
     returnEtag = false,
     supersedes?: string | null,
     id?: string,
+    uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
   ): Promise<T> {
     void signal;
     const splitPath = split(path);
@@ -511,15 +527,15 @@ export class RemoteApi {
       };
       this.pending.set(slot, row);
     }
-    return this.send(row) as Promise<T>;
+    return this.send(row, uploads) as Promise<T>;
   }
 
-  private async send(row: PendingRemote): Promise<unknown> {
+  private async send(row: PendingRemote, uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>): Promise<unknown> {
     try {
       const response = await this.dispatch({
         v: 1, id: row.id, method: row.method, path: row.path, query: row.query,
         body: row.method === "GET" ? undefined : row.body, ifMatch: row.ifMatch,
-      });
+      }, uploads);
       return this.applyResponse(row, response);
     } catch (error) {
       if (!(error instanceof ApiError) || (error.status === 503 && error.code === "request_unknown")) {
@@ -556,7 +572,10 @@ export class RemoteApi {
     return row.returnEtag ? response.headers?.etag ?? null : (response.status === 204 ? undefined : response.body);
   }
 
-  private async dispatch(request: RemoteRequest): Promise<RemoteResponse> {
+  private async dispatch(
+    request: RemoteRequest,
+    uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
+  ): Promise<RemoteResponse> {
     const full: RemoteRequest = {
       v: 1, id: request.id, method: request.method, path: request.path,
       ...(request.query ? { query: request.query } : {}),
@@ -566,6 +585,6 @@ export class RemoteApi {
     if (this.hooks.rpc) return this.hooks.rpc(full);
     const transport = this.transport;
     if (!transport) throw new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", request.id);
-    return transport.rpc(full);
+    return transport.rpc(full, uploads);
   }
 }

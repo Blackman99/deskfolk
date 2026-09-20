@@ -43,6 +43,7 @@ import * as turns from "./turns";
 export { HttpError } from "../errors";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
+export type { FileCommit, LiveFile } from "./files";
 export type { DecideRouteInput } from "./routing";
 
 type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (...args: A) => R : never;
@@ -91,9 +92,14 @@ export class Store {
   readonly afterCommit = (effect: () => void): void => this.ctx.tx.afterCommit(effect);
   readonly recoverFiles = (): void => files.recoverFiles(this.ctx);
   readonly prepareFile = (...args: Parameters<Bound<typeof files.prepareFile>>) => files.prepareFile(this.ctx, ...args);
+  readonly openLiveFile = (...args: Parameters<Bound<typeof files.openLiveFile>>) => files.openLiveFile(this.ctx, ...args);
+  readonly writeLiveFile = files.writeLiveFile;
+  readonly finishLiveFile = (...args: Parameters<Bound<typeof files.finishLiveFile>>) => files.finishLiveFile(this.ctx, ...args);
+  readonly abortLiveFile = (...args: Parameters<Bound<typeof files.abortLiveFile>>) => files.abortLiveFile(this.ctx, ...args);
   readonly commitPreparedFile = this.bind(files.commitPreparedFile);
   readonly discardFile = this.bind(files.discardFile);
   readonly prepareAttachments = (...args: Parameters<Bound<typeof messages.prepareAttachments>>) => messages.prepareAttachments(this.ctx, ...args);
+  readonly reserveAttachmentName = (...args: Parameters<Bound<typeof messages.reserveAttachmentName>>) => messages.reserveAttachmentName(this.ctx, ...args);
 
   planKeys<T>(plan: Array<{ name: string; value: string }>, work: () => T): T {
     this.ctx.keyPlan = plan;
