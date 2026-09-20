@@ -421,9 +421,18 @@ describe("turn engine on the local API", () => {
     const firstHeld = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    // The turn goes `running` as soon as it is opened, before the stream reaches
+    // this fixture. Posting the follow-up that early aborts the first request
+    // while it is still queued, so the second request becomes n===1 and hangs
+    // here until waitFor times out.
+    let firstEntered = () => {};
+    const firstInFlight = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
     const fixture = await startFixture(async () => {
       n += 1;
       if (n === 1) {
+        firstEntered();
         await firstHeld;
         return sse(textChunks("first"));
       }
@@ -442,6 +451,7 @@ describe("turn engine on the local API", () => {
       sub.events,
       (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === botId,
     );
+    await firstInFlight;
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
       method: "POST",
       headers: auth(h),
