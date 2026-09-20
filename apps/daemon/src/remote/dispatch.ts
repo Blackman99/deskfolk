@@ -6,6 +6,7 @@ import { RemoteTrust, deny } from "./trust";
 import { RemoteUv, type RemotePrincipal } from "./uv";
 import { validateBusiness } from "./routes";
 import { finishLifecycle } from "./lifecycle";
+import type { PushService } from "./push";
 
 export function assertionFromWire(value: AssertionWire): AssertionResponse {
   if (!value || Object.keys(value).sort().join() !== "authenticatorData,clientDataJSON,credentialId,signature" ||
@@ -33,7 +34,7 @@ function operationDigest(op: PrivilegedOperation): string {
 
 export class RemoteDispatcher {
   readonly uv: RemoteUv;
-  constructor(readonly api: LocalApi, readonly trust: RemoteTrust) { this.uv = new RemoteUv(trust); }
+  constructor(readonly api: LocalApi, readonly trust: RemoteTrust, readonly push?: PushService) { this.uv = new RemoteUv(trust); }
   async dispatch(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
     const abort = new AbortController();
     const invalidate = this.trust.onInvalidate(() => abort.abort());
@@ -60,12 +61,36 @@ export class RemoteDispatcher {
   private async control(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
     const body = request.body ?? {};
     const json = (value: unknown) => Response.json(value);
-    if (request.method === "GET" && ["/remote/status", "/remote/devices"].includes(request.path)) {
+    if (request.method === "GET" && ["/remote/status", "/remote/devices", "/remote/push"].includes(request.path)) {
       if (request.query || request.body || request.ifMatch) deny();
+      if (request.path === "/remote/push") {
+        if (!this.push) throw new HttpError(503, "failed", "push unavailable");
+        return json(await this.push.publicState(principal.device.device_id));
+      }
       const devices = this.trust.devices().map(d => ({ id: d.device_id, name: d.name, revoked: !!d.revoked, hasUv: !!d.credential_id }));
       return json(request.path === "/remote/status" ? { drain: this.api.quiesce.state(), devices } : { items: devices });
     }
     if (request.method !== "POST" || request.query || request.ifMatch) deny();
+    if (request.path === "/remote/push/subscribe" || request.path === "/remote/push/unsubscribe") {
+      if (!this.push) throw new HttpError(503, "failed", "push unavailable");
+      if (request.path.endsWith("/unsubscribe") ? Object.keys(body).length : false) deny();
+      const digest = requestDigest({ method: "POST", path: request.path, body, encoding: "json" });
+      const scope = { deviceId: principal.device.device_id, requestId: request.id };
+      const previous = this.trust.store.receipts.lookup(scope);
+      if (previous) {
+        if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "push request changed");
+        const receipt = this.trust.store.receipts.read(scope);
+        return new Response(receipt.body, { status: receipt.status, headers: { "Content-Type": "application/json", ...receipt.headers } });
+      }
+      this.trust.store.transaction(() => {
+        if (request.path.endsWith("/unsubscribe")) this.push!.unsubscribe(scope.deviceId);
+        else this.push!.subscribe(scope.deviceId, body);
+        this.trust.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+          VALUES (?, ?, ?, 'POST', ?, 'complete', 204, NULL, '{}', ?)`,
+        [scope.deviceId, scope.requestId, digest, request.path, Date.now()]);
+      });
+      return new Response(null, { status: 204 });
+    }
     if (request.path === "/remote/uv/register-challenge") {
       if (Object.keys(body).length) deny();
       return json(this.uv.registrationChallenge(principal, request.id));

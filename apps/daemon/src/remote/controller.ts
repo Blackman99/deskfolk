@@ -13,12 +13,13 @@ import { RemoteDispatcher } from "./dispatch";
 import type { RemotePrincipal } from "./uv";
 import { remoteError, responseError } from "./errors";
 import { LocalTrustActions, validateRelay, type TrustChange } from "./local-actions";
+import { PushService, type PushFetch } from "./push";
 
 export type RemoteStatus = { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
 export type RemoteNativeProvider = Pick<RemoteNativeClient, "capability" | "read" | "highwater" | "advanceHighwater" | "prepare" | "consume" | "reset">;
 export type RemoteControllerOptions = {
   store: Store; api: LocalApi; config?: RelayConfig; native?: RemoteNativeProvider;
-  socketFactory?: RelaySocketFactory; fetch?: typeof fetch; now?: () => number;
+  socketFactory?: RelaySocketFactory; fetch?: typeof fetch; pushFetch?: PushFetch; now?: () => number;
 };
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
@@ -27,6 +28,7 @@ export class RemoteController {
   readonly trust: RemoteTrust;
   readonly dispatcher: RemoteDispatcher;
   readonly localActions: LocalTrustActions;
+  readonly push: PushService;
   private readonly principals = new Map<string, RemotePrincipal>();
   private renewal?: { action: LocalAction; challenge: string; deviceId: string; sessionId: string; expires: number };
   private readonly native: RemoteNativeProvider;
@@ -46,8 +48,14 @@ export class RemoteController {
   constructor(private readonly options: RemoteControllerOptions) {
     this.native = options.native ?? remoteNative;
     this.trust = new RemoteTrust(options.store, this.native, options.now);
-    this.dispatcher = new RemoteDispatcher(options.api, this.trust);
+    this.push = new PushService({
+      store: options.store, native: this.native, fetch: options.pushFetch, now: options.now,
+    });
+    this.dispatcher = new RemoteDispatcher(options.api, this.trust, this.push);
     this.localActions = new LocalTrustActions(this.trust, this.native);
+    options.api.subscribeSync((frame) => {
+      if (frame.type === "event") this.push.notify(frame.payload);
+    });
     this.trust.onInvalidate(() => {
       for (const link of [...this.links.values()]) link.close();
       this.links.clear(); this.routes.clear(); this.clearPairs();
@@ -463,5 +471,5 @@ export class RemoteController {
     if (this.keys) for (const value of Object.values(this.keys)) value.fill(0);
     this.keys = undefined;
   }
-  stop(): void { this.stopTransport(); this.setStatus("off"); }
+  stop(): void { this.push.close(); this.stopTransport(); this.setStatus("off"); }
 }

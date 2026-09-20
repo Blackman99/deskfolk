@@ -53,12 +53,21 @@ const cleanup: Array<() => Promise<void> | void> = [];
 afterEach(async () => { while (cleanup.length) await cleanup.pop()!(); });
 function nativeFixture() {
   let keys = generateIdentity(), highwater = 1;
+  const vapid = (() => {
+    for (;;) {
+      const raw = Buffer.from(generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ format: "jwk" }).d!, "base64url");
+      if (raw.length === 32) return raw;
+    }
+  })();
   const pending = new Map<string, { action: LocalAction; proof?: string }>();
   const client = new RemoteNativeClient(async r => {
     let value: string | undefined, expiresIn: number | undefined;
     if (r.op === "read") {
       const epoch = Buffer.alloc(4); epoch.writeUInt32BE(highwater);
-      const bytes = r.material === "host_identity" ? Buffer.concat([keys.dh, keys.signing]) : r.material === "enrollment" ? keys.enrollment : epoch;
+      const bytes = r.material === "host_identity" ? Buffer.concat([keys.dh, keys.signing])
+        : r.material === "enrollment" ? keys.enrollment
+        : r.material === "vapid" ? vapid
+        : epoch;
       value = Buffer.from(bytes).toString("base64");
     } else if (r.op === "advance_highwater") {
       if (r.expected !== highwater || r.next! <= highwater) return { ...r, ok: false, error: "rollback" };
@@ -107,7 +116,9 @@ async function fixture(completions?: import("../completions").CompletionsClient,
       }
       return ws;
     },
-    fetch: ((input: string | URL | Request, init?: RequestInit) => fetch(String(input).replace(ORIGIN, localOrigin), init)) as typeof fetch });
+    fetch: ((input: string | URL | Request, init?: RequestInit) => fetch(String(input).replace(ORIGIN, localOrigin), init)) as typeof fetch,
+    pushFetch: async () => { throw new Error("isolated tests must not send web push"); },
+  });
   cleanup.push(async () => { controller.stop(); api.quiesce.close(); await api.engine.close(); await relay.stop(); store.close(); rmSync(root, { recursive: true, force: true }); });
   await controller.initialize({ origin: ORIGIN, relayId: "fixture", hostId: HOST }, bootstrap);
   expect(controller.status().state).toBe("online");
@@ -758,6 +769,29 @@ test("quiesce keeps existing ask/reply alive, rejects new body and resumes witho
   expect(f.api.quiesce.force().phase).toBe("drained");
   expect(f.store.listBots()).toHaveLength(1);
 }, 10_000);
+
+test("authenticated push subscribe stores the endpoint and revoke deletes it without resolving inbox", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const ecdh = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "jwk" });
+  const p256dh = base64url(Buffer.concat([Buffer.from([4]), Buffer.from(ecdh.x!, "base64url"), Buffer.from(ecdh.y!, "base64url")]));
+  const auth = base64url(randomBytes(16));
+  const endpoint = "https://web.push.apple.com/v1/push/isolated";
+  const sub = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/subscribe",
+    body: { endpoint, p256dh, auth } });
+  expect(sub.status).toBe(204);
+  const row = f.store.db.query<{ endpoint: string }, [string]>("SELECT endpoint FROM remote_push_subs WHERE device_id = ?").get(d.deviceId);
+  expect(row?.endpoint).toBe(endpoint);
+  const denied = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/subscribe",
+    body: { endpoint: "https://evil.example/push", p256dh, auth } });
+  expect(denied.status).toBe(422);
+  const bot = f.store.createBot({ name: "Inbox", duties: "fixture", boundaries: "fixture" });
+  const trigger = f.store.insertMessage({ sessionId: bot.direct_session.id, kind: "user", author: "user", body: "go" });
+  const turn = f.store.createTurn({ sessionId: bot.direct_session.id, botId: bot.bot.id, triggerMessageId: trigger.id });
+  const approval = f.store.insertApproval({ turnId: turn.id, messageId: null, kind_key: "outside-write", summary: "card", target: "/tmp/x" });
+  await f.controller.trust.revoke(d.deviceId, () => f.controller.trust.assertHost());
+  expect(f.store.db.query("SELECT 1 FROM remote_push_subs WHERE device_id = ?").get(d.deviceId)).toBeNull();
+  expect(f.store.getApproval(approval.id).status).toBe("pending");
+});
 
 test("pair native proof is single use and bound to authoritative keys, not browser UV claims", async () => {
   const f = await fixture(), qr = await f.controller.openPair();

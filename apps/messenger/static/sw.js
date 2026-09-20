@@ -32,3 +32,36 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+self.addEventListener("push", (event) => {
+  let pending = false;
+  try {
+    const data = event.data ? event.data.json() : null;
+    pending = !!data && typeof data === "object" && data.t === "pending" && Object.keys(data).join() === "t";
+  } catch {
+    pending = false;
+  }
+  if (!pending) return;
+  event.waitUntil(
+    self.registration.showNotification("Real Bot 有待处理事项", {
+      body: "Real Bot has pending items",
+      tag: "pending",
+      data: { t: "pending" },
+      renotify: true,
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
+      for (const client of clients) {
+        await client.focus();
+        client.postMessage({ type: "inbox" });
+        return;
+      }
+      await self.clients.openWindow("/");
+    }),
+  );
+});

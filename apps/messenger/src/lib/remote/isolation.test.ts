@@ -35,6 +35,14 @@ test("service worker source caches immutable assets only", () => {
   expect(sw).toContain('request.mode === "navigate"');
   expect(sw).toContain("if (request.method !== \"GET\") return");
   expect(sw).toContain("if (request.mode === \"navigate\" || !isImmutable(request.url)) return");
+  expect(sw).toContain('addEventListener("push"');
+  expect(sw).toContain('addEventListener("notificationclick"');
+  expect(sw).toContain('postMessage({ type: "inbox" })');
+  expect(sw).toContain('openWindow("/")');
+  expect(sw).not.toContain("/approvals/");
+  expect(sw).not.toContain("allow_once");
+  expect(sw).not.toContain("resolveApproval");
+  expect(sw).not.toContain("caches.open(\"chat");
 });
 
 test("hosted and remote settings omit workspace_path from PATCH", () => {
@@ -43,6 +51,9 @@ test("hosted and remote settings omit workspace_path from PATCH", () => {
   expect(modal).toContain("if (workspaceReadOnly)");
   expect(modal).toContain("t.settings.workspaceHostOnly");
   expect(modal).toMatch(/patchSettings\(\{\s*workspace_path:/);
+  expect(modal).toContain("remote-push-toggle");
+  expect(modal).toContain("setPushEnabled");
+  expect(modal).not.toContain("restart");
 });
 
 test("hosted and remote onboarding skip the workspace step and omit workspace_path from PATCH", () => {
@@ -52,6 +63,14 @@ test("hosted and remote onboarding skip the workspace step and omit workspace_pa
   expect(onboarding).toMatch(/patchSettings\(\{\s*workspace_path:/);
   expect(onboarding).toContain("t.settings.workspaceHostOnly");
   expect(onboarding).toContain("WorkspacePicker");
+});
+
+test("push opt-in lives on the remote settings card and does not add restart or file-browser UI", () => {
+  const modal = readFileSync(new URL("../settings/SettingsModal.svelte", import.meta.url), "utf8");
+  expect(modal).toContain('id="remote-push-toggle"');
+  expect(modal).toContain("t.remote.pushDenied");
+  expect(modal).not.toContain("file-browser");
+  expect(modal).not.toContain("runtime/restart");
 });
 
 test("hosted layout registers the worker from the compile flag, not import.meta.env", () => {

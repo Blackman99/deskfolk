@@ -441,6 +441,16 @@ export class RemoteApi {
     return this.send(row);
   }
 
+  async pushState(): Promise<{ applicationServerKey: string; subscribed: boolean }> {
+    return this.get("/remote/push");
+  }
+  async subscribePush(body: { endpoint: string; p256dh: string; auth: string; expires_at?: number | null }): Promise<void> {
+    await this.post("/remote/push/subscribe", body);
+  }
+  async unsubscribePush(): Promise<void> {
+    await this.post("/remote/push/unsubscribe", {});
+  }
+
   async registerUv(): Promise<void> {
     const challenge = await this.post<{ challenge: string }>("/remote/uv/register-challenge", {});
     const response = await createRegistration(challenge.challenge, this.enrollment.relayOrigin, {

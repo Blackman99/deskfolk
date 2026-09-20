@@ -66,6 +66,11 @@ const zh = {
     statusMismatch: "远控信任不匹配",
     devices: (n: number) => `已配对设备 ${n}`,
     noOfflineQueue: "没有离线命令队列。结果未知时查询同一请求回执，不换新编号重发。",
+    push: "待办推送",
+    pushDesc: "仅泛化提醒「Real Bot 有待处理事项」。点击打开信使并拉回收件箱，不会批准或执行命令。拒绝或过期不影响待办。iOS 需 16.4+ 主屏幕；真机主屏幕门尚未通过。",
+    pushDenied: "系统已拒绝通知。待办仍在收件箱。",
+    pushUnsupported: "此浏览器不支持 Web Push。",
+    pushFailed: "未能更新推送订阅。",
   },
   sidebar: {
     roster: "名册",
@@ -652,6 +657,11 @@ const en: CopyShape<typeof zh> = {
     statusMismatch: "Remote trust mismatch",
     devices: (n: number) => `${n} paired devices`,
     noOfflineQueue: "There is no offline command queue. Unknown results look up the same request receipt instead of sending a new id.",
+    push: "Pending-item push",
+    pushDesc: "Generic reminders only: “Real Bot has pending items”. A click opens the PWA and pulls the inbox; it never approves or sends commands. Deny or expiry does not drop pending items. iOS needs 16.4+ home screen; the physical G-push gate has not passed.",
+    pushDenied: "Notifications are blocked. Pending items remain in the inbox.",
+    pushUnsupported: "This browser does not support Web Push.",
+    pushFailed: "Could not update the push subscription.",
   },
   sidebar: {
     roster: "Roster",

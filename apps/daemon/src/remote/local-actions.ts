@@ -3,6 +3,7 @@ import { base64url, canonicalHash, canonicalize, identityPublic } from "@real-bo
 import type { LocalAction } from "../remote-native";
 import type { RemoteNativeProvider } from "./controller";
 import { RemoteTrust, deny } from "./trust";
+import { deletePushSubs } from "./push";
 import type { RelayConfig } from "./relay";
 
 export type TrustChange = { kind: "reset_identity" | "change_relay"; config: RelayConfig } |
@@ -103,6 +104,7 @@ export class LocalTrustActions {
       this.trust.store.db.run("UPDATE remote_host SET host_id = ?, relay_origin = ?, relay_id = ?, generation = ? WHERE singleton = 1",
         [payload.config.hostId, payload.config.origin, payload.config.relayId, pending.next]);
       this.trust.store.db.run("UPDATE remote_devices SET revoked = 1, relay_pending = 1, generation = ?, onboarding_until = 0, onboarding_session = NULL", [pending.next]);
+      deletePushSubs(this.trust.store, null);
       this.trust.store.db.run("DELETE FROM remote_challenges");
       this.trust.store.db.run("DELETE FROM remote_revocations");
       this.trust.store.db.run("DELETE FROM remote_transition");

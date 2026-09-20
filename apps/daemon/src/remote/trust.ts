@@ -2,6 +2,7 @@ import { base64url, canonicalHash, fromBase64url, type PairingRequest, type Repl
 import { HttpError } from "../errors";
 import type { Store } from "../store";
 import type { RemoteNativeClient } from "../remote-native";
+import { deletePushSubs } from "./push";
 
 export type RemoteHost = { host_id: string; relay_origin: string; relay_id: string; generation: number };
 export type TrustedDevice = {
@@ -126,6 +127,7 @@ export class RemoteTrust {
         this.store.db.run("UPDATE remote_host SET generation = ? WHERE singleton = 1", [host.generation + 1]);
         this.store.db.run("UPDATE remote_devices SET generation = ?, onboarding_until = 0, onboarding_session = NULL", [host.generation + 1]);
         this.store.db.run("UPDATE remote_devices SET revoked = 1, relay_pending = 1 WHERE (? IS NULL OR device_id = ?)", [deviceId, deviceId]);
+        deletePushSubs(this.store, deviceId);
         this.store.db.run("DELETE FROM remote_challenges");
         this.store.db.run(`UPDATE request_receipts SET status = 204, body = NULL WHERE EXISTS
           (SELECT 1 FROM remote_revocations r WHERE r.request_id = request_receipts.request_id AND r.requester_id = request_receipts.device_id)`);
@@ -149,6 +151,7 @@ export class RemoteTrust {
       if (this.host()?.generation !== host.generation || canonicalHash(this.devices().map(d => this.fingerprint(d))) !== devices) deny();
       this.store.db.run("UPDATE remote_host SET generation = ? WHERE singleton = 1", [highwater]);
       this.store.db.run("UPDATE remote_devices SET revoked = 1, relay_pending = 1, generation = ?, onboarding_until = 0, onboarding_session = NULL", [highwater]);
+      deletePushSubs(this.store, null);
       this.store.db.run("DELETE FROM remote_challenges");
       this.store.db.run("DELETE FROM remote_revocations");
       this.store.db.run("DELETE FROM remote_transition");
