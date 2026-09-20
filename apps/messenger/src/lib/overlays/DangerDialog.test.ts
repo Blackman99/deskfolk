@@ -57,7 +57,21 @@ test("Escape on the backdrop dismisses", () => {
     onConfirm: () => {},
   });
   const backdrop = host.querySelector(".confirm-backdrop") as HTMLElement;
+  expect(document.activeElement).toBe(backdrop);
   backdrop.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  expect(dismissed).toBe(1);
+  close();
+});
+
+test("Escape on the window dismisses even when another surface is focused", () => {
+  let dismissed = 0;
+  const { close } = render(DangerDialog, {
+    copy,
+    t,
+    onDismiss: () => (dismissed += 1),
+    onConfirm: () => {},
+  });
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect(dismissed).toBe(1);
   close();
 });

@@ -93,6 +93,7 @@
 	});
 </script>
 
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	bind:this={menuEl}
 	class="session-context-menu"
@@ -103,6 +104,8 @@
 		e.preventDefault();
 		e.stopPropagation();
 	}}
+	onclick={(e) => e.stopPropagation()}
+	onpointerdown={(e) => e.stopPropagation()}
 >
 	<button
 		type="button"

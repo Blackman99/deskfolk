@@ -9,10 +9,24 @@
 	};
 
 	let { copy, t, onDismiss, onConfirm }: Props = $props();
+	let backdropEl = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		backdropEl?.focus();
+		function onKey(e: KeyboardEvent) {
+			if (e.key !== 'Escape') return;
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			onDismiss();
+		}
+		window.addEventListener('keydown', onKey, true);
+		return () => window.removeEventListener('keydown', onKey, true);
+	});
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
+	bind:this={backdropEl}
 	class="modal-backdrop confirm-backdrop"
 	role="dialog"
 	aria-modal="true"

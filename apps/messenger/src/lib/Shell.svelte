@@ -5,8 +5,16 @@
 		type Bot,
 		type SessionSummary
 	} from '@real-bot/protocol';
+	import { untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
+	import {
+		dangerCopy,
+		shouldDropConfirm,
+		visibleDangerKind,
+		type DangerKind,
+		type DangerSource
+	} from './overlays/danger-confirm.ts';
 	import {
 		modelSelectValue,
 		type ProviderEditorState
@@ -31,6 +39,7 @@
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
+	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
@@ -92,6 +101,7 @@
 		x: number;
 		y: number;
 	} | null>(null);
+	let contextMenuEpoch = 0;
 	let workspacePane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 	let previewWidth = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
@@ -102,6 +112,7 @@
 	function openContextMenu(e: MouseEvent, session: SessionSummary): void {
 		e.preventDefault();
 		e.stopPropagation();
+		contextMenuEpoch += 1;
 		contextMenu = {
 			session,
 			x: e.clientX,
@@ -109,7 +120,19 @@
 		};
 	}
 
+	/**
+	 * Deferred so the click that picked a menu item does not fall through onto the session row
+	 * underneath once the menu unmounts. The epoch ignores a stale close after a new menu opens.
+	 */
 	function closeContextMenu(): void {
+		const epoch = contextMenuEpoch;
+		setTimeout(() => {
+			if (contextMenuEpoch === epoch) contextMenu = null;
+		}, 0);
+	}
+
+	function closeContextMenuNow(): void {
+		contextMenuEpoch += 1;
 		contextMenu = null;
 	}
 
@@ -132,11 +155,9 @@
 		runtime.openSessionSettings();
 	}
 
-	async function handleMenuClearHistory(session: SessionSummary): Promise<void> {
-		if (runtime.selectedId !== session.id) {
-			await runtime.selectSession(session.id);
-		}
-		openClearHistoryConfirm();
+	function handleMenuClearHistory(session: SessionSummary): void {
+		closeContextMenuNow();
+		openClearHistoryConfirm(session.id, 'menu');
 	}
 
 	async function handleMenuToggleArchive(session: SessionSummary): Promise<void> {
@@ -159,23 +180,15 @@
 		}
 	}
 
-	async function handleMenuDelete(session: SessionSummary): Promise<void> {
-		const kind = classifySession(session);
-		if (kind === 'group') {
-			if (runtime.selectedId !== session.id) {
-				await runtime.selectSession(session.id);
-			}
-			openDeleteGroupConfirm();
+	function handleMenuDelete(session: SessionSummary): void {
+		closeContextMenuNow();
+		const data = deriveSessionContextMenu(session, false, botsById);
+		if (data.delete.kind === 'group' && data.delete.targetId) {
+			openDeleteGroupConfirm(data.delete.targetId, 'menu');
 			return;
 		}
-		if (kind === 'you-bot') {
-			const peerId = youBotPeer(session);
-			if (!peerId) return;
-			if (runtime.selectedId !== session.id) {
-				await runtime.selectSession(session.id);
-			}
-			runtime.profileBotId = peerId;
-			openDeleteBotConfirm();
+		if (data.delete.kind === 'bot' && data.delete.targetId) {
+			openDeleteBotConfirm(data.delete.targetId, 'menu');
 		}
 	}
 
@@ -259,83 +272,47 @@
 	 */
 	type DangerConfirm = {
 		/** Picks the copy, and says which close paths drop this confirm. */
-		kind: 'bot' | 'group' | 'history' | 'skill' | 'memory' | 'provider';
+		kind: DangerKind;
 		/** What the confirm button does. Whoever opens the dialog knows; the shell does not. */
 		run: () => Promise<void>;
+		/** The session this group / history confirm acts on. Independent of the open chat. */
+		sessionId?: string;
+		/** The Bot this confirm acts on, so it goes when that Bot leaves the roster. */
+		botId?: string;
 		/** The endpoint this is about, so the confirm goes when someone else deletes it. */
 		providerId?: string;
+		/** Drawer/settings confirms go when that surface closes. A sidebar menu confirm does not. */
+		source?: DangerSource;
 	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
 
 	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
-	function clearDanger(...kinds: DangerConfirm['kind'][]): void {
+	function clearDanger(...kinds: DangerKind[]): void {
 		if (dangerConfirm && kinds.includes(dangerConfirm.kind)) dangerConfirm = null;
 	}
-	/** A group or history confirm stops showing once the session it belonged to is gone. */
+	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
+	const botIdSet = $derived(new Set(snapshot.bots.map((b) => b.id)));
+	const providerIdSet = $derived(new Set(snapshot.providers.map((p) => p.id)));
+	/** A group or history confirm follows the session it named, not whichever chat is open. */
 	const dangerConfirmKind = $derived(
-		dangerConfirm === null
-			? null
-			: dangerConfirm.kind === 'group'
-				? (selected?.kind === 'group' ? 'group' : null)
-				: dangerConfirm.kind === 'history'
-					? (selected ? 'history' : null)
-					: dangerConfirm.kind
+		visibleDangerKind(dangerConfirm, {
+			selectedId: selected?.id ?? null,
+			sessions: sessionsById,
+			botIds: botIdSet,
+			providerIds: providerIdSet
+		})
 	);
 	/** Escape has never dismissed the skill confirm; it closes the drawer behind it instead. */
 	const escapeDismissesDanger = $derived(
-		dangerConfirm !== null && dangerConfirm.kind !== 'skill' && dangerConfirm.kind !== 'memory'
+		dangerConfirmKind !== null && dangerConfirmKind !== 'skill' && dangerConfirmKind !== 'memory'
 	);
 	/** The session drawer's backdrop refuses to close while one of its own confirms is up. */
 	const drawerHasDanger = $derived(
-		dangerConfirm?.kind === 'bot' ||
-			dangerConfirm?.kind === 'group' ||
-			dangerConfirm?.kind === 'history'
+		dangerConfirmKind === 'bot' ||
+			dangerConfirmKind === 'group' ||
+			dangerConfirmKind === 'history'
 	);
-	const dangerConfirmCopy = $derived(
-		dangerConfirmKind === 'bot'
-			? {
-					title: t.sidebar.delete,
-					body: t.sidebar.deleteBody,
-					confirm: t.sidebar.confirmDelete,
-					cancel: t.sidebar.cancel
-				}
-			: dangerConfirmKind === 'group'
-				? {
-						title: t.detail.deleteGroup,
-						body: t.detail.deleteGroupBody,
-						confirm: t.detail.confirmDeleteGroup,
-						cancel: t.detail.cancel
-					}
-				: dangerConfirmKind === 'history'
-					? {
-							title: t.detail.clearHistory,
-							body: t.detail.clearHistoryBody,
-							confirm: t.detail.confirmClearHistory,
-							cancel: t.detail.cancel
-						}
-					: dangerConfirmKind === 'skill'
-						? {
-								title: t.sidebar.skillDelete,
-								body: t.sidebar.skillDeleteBody,
-								confirm: t.sidebar.skillConfirmDelete,
-								cancel: t.sidebar.skillCancel
-							}
-						: dangerConfirmKind === 'memory'
-							? {
-									title: t.sidebar.memoryDelete,
-									body: t.sidebar.memoryDeleteBody,
-									confirm: t.sidebar.memoryConfirmDelete,
-									cancel: t.sidebar.memoryCancel
-								}
-							: dangerConfirmKind === 'provider'
-								? {
-										title: t.settings.providerDelete,
-										body: t.settings.providerDeleteBody,
-										confirm: t.settings.providerConfirmDelete,
-										cancel: t.settings.providerCancel
-									}
-								: null
-	);
+	const dangerConfirmCopy = $derived(dangerConfirmKind ? dangerCopy(dangerConfirmKind, t) : null);
 	/**
 	 * The group pane's draft. It lives here, not in the pane: the reset below runs on every session
 	 * change whether or not the drawer is open, so an unsaved name survives closing and reopening
@@ -370,7 +347,9 @@
 		const session = selected;
 		if (!session) {
 			groupDetail.sessionId = null;
-			clearDanger('group', 'history');
+			untrack(() => {
+				if (shouldDropConfirm('no-session', dangerConfirm)) clearDanger('group', 'history');
+			});
 			return;
 		}
 		if (groupDetail.sessionId === session.id) return;
@@ -381,23 +360,31 @@
 			failed: false,
 			pullPick: ''
 		};
-		clearDanger('group', 'history');
+		untrack(() => {
+			if (shouldDropConfirm('session-changed', dangerConfirm)) clearDanger('group', 'history');
+		});
 	});
 
 	$effect(() => {
 		if (!runtime.sessionSettingsOpen) {
-			clearDanger('bot', 'group', 'history');
+			untrack(() => {
+				if (shouldDropConfirm('session-settings-closed', dangerConfirm)) {
+					clearDanger('bot', 'group', 'history');
+				}
+			});
 		}
 	});
 
 	$effect(() => {
 		if (!runtime.settingsOpen) {
 			providerEditor = null;
-			clearDanger('provider');
+			untrack(() => {
+				if (shouldDropConfirm('settings-closed', dangerConfirm)) clearDanger('provider');
+			});
 			return;
 		}
 		// A Bot or another window can delete the endpoint out from under an open confirm.
-		const pending = dangerConfirm;
+		const pending = untrack(() => dangerConfirm);
 		if (pending?.providerId && !snapshot.providers.some((row) => row.id === pending.providerId)) {
 			dangerConfirm = null;
 		}
@@ -531,7 +518,7 @@
 	}
 
 	function openDeleteProviderConfirm(id: string): void {
-		dangerConfirm = { kind: 'provider', run: () => deleteProvider(id), providerId: id };
+		dangerConfirm = { kind: 'provider', run: () => deleteProvider(id), providerId: id, source: 'settings' };
 	}
 
 	async function deleteProvider(id: string): Promise<void> {
@@ -558,7 +545,7 @@
 
 	function openProfile(botId: string): void {
 		if (!botsById.has(botId)) return;
-		clearDanger('bot');
+		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
 		profileFailed = false;
 		// The pane is keyed on the Bot, so opening or switching remounts it with a fresh draft.
 		runtime.openProfile(botId);
@@ -579,7 +566,7 @@
 	function closeNestedProfile(): void {
 		// Unmounting the pane flushes its pending autosave and drops its drafts.
 		runtime.profileBotId = null;
-		clearDanger('bot');
+		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
 		profileFailed = false;
 	}
 
@@ -594,49 +581,54 @@
 		}, 0);
 	}
 
-	function openDeleteBotConfirm(): void {
-		dangerConfirm = { kind: 'bot', run: deleteProfile };
+	function openDeleteBotConfirm(botId?: string, source: DangerSource = 'drawer'): void {
+		const id = botId ?? runtime.profileBotId ?? selectedPeer ?? null;
+		if (!id) return;
+		dangerConfirm = { kind: 'bot', run: () => deleteProfile(id), botId: id, source };
 	}
 
-	function openDeleteGroupConfirm(): void {
-		dangerConfirm = { kind: 'group', run: deleteGroupSession };
+	function openDeleteGroupConfirm(sessionId?: string, source: DangerSource = 'drawer'): void {
+		const id = sessionId ?? selected?.id ?? null;
+		if (!id) return;
+		dangerConfirm = { kind: 'group', run: () => deleteGroupSession(id), sessionId: id, source };
 	}
 
-	function openClearHistoryConfirm(): void {
-		dangerConfirm = { kind: 'history', run: clearGroupHistory };
+	function openClearHistoryConfirm(sessionId?: string, source: DangerSource = 'drawer'): void {
+		const id = sessionId ?? selected?.id ?? null;
+		if (!id) return;
+		dangerConfirm = { kind: 'history', run: () => clearGroupHistory(id), sessionId: id, source };
 	}
 
-	async function deleteProfile(): Promise<void> {
-		if (!runtime.profileBotId) return;
+	async function deleteProfile(botId: string): Promise<void> {
 		profileFailed = false;
-		const error = await runtime.deleteBot(runtime.profileBotId);
+		const error = await runtime.deleteBot(botId);
 		if (error) {
 			profileFailed = true;
 			return;
 		}
 		dangerConfirm = null;
-		if (selectedKind === 'you-bot') runtime.closeSessionSettings();
-		else closeNestedProfile();
+		if (runtime.profileBotId === botId || selectedPeer === botId) {
+			if (selectedKind === 'you-bot') runtime.closeSessionSettings();
+			else closeNestedProfile();
+		}
 	}
 
-	async function deleteGroupSession(): Promise<void> {
-		if (!selected || selected.kind !== 'group') return;
-		groupDetail.failed = false;
-		const error = await runtime.deleteSession(selected.id);
+	async function deleteGroupSession(sessionId: string): Promise<void> {
+		if (groupDetail.sessionId === sessionId) groupDetail.failed = false;
+		const error = await runtime.deleteSession(sessionId);
 		if (error) {
-			groupDetail.failed = true;
+			if (groupDetail.sessionId === sessionId) groupDetail.failed = true;
 			return;
 		}
 		dangerConfirm = null;
-		runtime.closeSessionSettings();
+		if (runtime.selectedId === sessionId) runtime.closeSessionSettings();
 	}
 
-	async function clearGroupHistory(): Promise<void> {
-		if (!selected) return;
-		groupDetail.failed = false;
-		const error = await runtime.clearSessionHistory(selected.id);
+	async function clearGroupHistory(sessionId: string): Promise<void> {
+		if (groupDetail.sessionId === sessionId) groupDetail.failed = false;
+		const error = await runtime.clearSessionHistory(sessionId);
 		if (error) {
-			groupDetail.failed = true;
+			if (groupDetail.sessionId === sessionId) groupDetail.failed = true;
 			return;
 		}
 		dangerConfirm = null;
@@ -884,10 +876,10 @@
 								modelOptions={availableModelOptions}
 								{selectedKind}
 								bind:profileFailed
-								openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run })}
+								openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
 								{clearDanger}
-								onDeleteBot={openDeleteBotConfirm}
-								onClearHistory={openClearHistoryConfirm}
+								onDeleteBot={() => openDeleteBotConfirm()}
+								onClearHistory={() => openClearHistoryConfirm()}
 							/>
 						{/key}
 					{:else}
@@ -897,8 +889,8 @@
 						{t}
 						bind:detail={groupDetail}
 						onOpenProfile={openProfile}
-						onDeleteGroup={openDeleteGroupConfirm}
-						onClearHistory={openClearHistoryConfirm}
+						onDeleteGroup={() => openDeleteGroupConfirm()}
+						onClearHistory={() => openClearHistoryConfirm()}
 					/>
 					{/if}
 				</div>
@@ -952,9 +944,9 @@
 			onClose={closeContextMenu}
 			onTogglePin={() => handleMenuTogglePin(activeMenu.session.id)}
 			onViewInfo={() => void handleMenuViewInfo(activeMenu.session)}
-			onClearHistory={() => void handleMenuClearHistory(activeMenu.session)}
+			onClearHistory={() => handleMenuClearHistory(activeMenu.session)}
 			onToggleArchive={() => void handleMenuToggleArchive(activeMenu.session)}
-			onDelete={() => void handleMenuDelete(activeMenu.session)}
+			onDelete={() => handleMenuDelete(activeMenu.session)}
 		/>
 	{/if}
 </div>
