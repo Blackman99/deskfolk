@@ -227,6 +227,9 @@ export class MessengerRuntime {
   }
 
   async selectSession(id: string, opts?: { messageId?: string }): Promise<void> {
+    const api = this.api;
+    const sync = this.sync;
+    const selection = ++this.sessionSeq;
     const messageId = opts?.messageId;
     this.setHighlightedMessage(messageId ?? null);
     this.routeLogOpen = false;
@@ -235,7 +238,10 @@ export class MessengerRuntime {
       this.threadOpen = false;
     }
     if (this.selectedId === id && messageId) {
+      const revision = this.historyRevision;
       await this.ensureMessageLoaded(id, messageId);
+      if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
+        this.selectedId !== id || revision !== this.historyRevision) return;
       this.setHighlightedMessage(messageId);
       return;
     }
@@ -253,10 +259,7 @@ export class MessengerRuntime {
         s.id === id ? { ...s, unread_count: 0 } : s,
       ),
     };
-    const api = this.api;
-    const sync = this.sync;
     if (!api || !sync) return;
-    const selection = ++this.sessionSeq;
     this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
       if (selection !== this.sessionSeq || this.api !== api || this.sync !== sync) return;
       sync.pause();
@@ -276,9 +279,13 @@ export class MessengerRuntime {
           if (frame.seq > detail.watermark_seq) this.ingest(frame.payload);
         }
         if (messageId) {
+          const revision = this.historyRevision;
           await this.ensureMessageLoaded(id, messageId);
+          if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
+            this.selectedId !== id || revision !== this.historyRevision) return;
           this.setHighlightedMessage(messageId);
         }
+        if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq || this.selectedId !== id) return;
         await this.markSessionRead(id);
       } catch {
         if (this.api === api) this.markDisconnected();
@@ -853,7 +860,7 @@ export class MessengerRuntime {
   }
 
   private async connect(endpoint: LocalEndpoint): Promise<void> {
-    this.markDisconnected();
+    this.resetConnection();
     const api = new LocalApi(endpoint);
     const sync = new EventSync();
     this.api = api;
@@ -945,6 +952,8 @@ export class MessengerRuntime {
 
   private async ensureMessageLoaded(sessionId: string, messageId: string): Promise<void> {
     const api = this.api;
+    const sync = this.sync;
+    const selection = this.sessionSeq;
     const revision = this.historyRevision;
     if (!api) return;
     const loaded = this.snapshot.messages.filter((m) => m.session_id === sessionId);
@@ -955,7 +964,8 @@ export class MessengerRuntime {
       (cursor) => api.messages(sessionId, { cursor }),
       this.sessionMessageNext,
     );
-    if (this.selectedId !== sessionId || this.api !== api || this.historyRevision !== revision) return;
+    if (this.selectedId !== sessionId || this.api !== api || this.sync !== sync ||
+      this.sessionSeq !== selection || this.historyRevision !== revision) return;
     this.sessionMessageNext = result.next;
     const current = new Map(this.snapshot.messages.map((message) => [message.id, message]));
     for (const message of result.messages) if (!current.has(message.id)) current.set(message.id, message);
@@ -1070,7 +1080,7 @@ export class MessengerRuntime {
     this.pendingFocusTrigger = null;
   }
 
-  private markDisconnected(): void {
+  private resetConnection(): void {
     this.connection = "disconnected";
     this.teardownSocket();
     this.api = null;
@@ -1079,6 +1089,10 @@ export class MessengerRuntime {
     this.sessionLoad = Promise.resolve();
     this.sessionSeq++;
     this.busy = false;
+  }
+
+  private markDisconnected(): void {
+    this.resetConnection();
     this.closeSheets();
     this.searchHits = [];
     this.composerSuggestions = [];

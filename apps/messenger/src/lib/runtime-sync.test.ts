@@ -244,6 +244,85 @@ for (const operation of ["settings", "stop", "continue", "approval", "ask", "sen
   expect(runtime.busy).toBe(true);
 });
 
+for (const sameSession of [false, true]) test(`obsolete pagination cannot highlight or mark read on a replacement connection (${sameSession ? "same-session search" : "normal selection"})`, async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  if (sameSession) {
+    globalThis.fetch = (async () => Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: "older" }, turns: [] }, judgements: [] })) as typeof fetch;
+    await runtime.selectSession("direct-1");
+  }
+  const older = deferred<Response>();
+  const requested = deferred<void>();
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).endsWith("/snapshot")) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: "older" }, turns: [] }, judgements: [] });
+    if (String(url).includes("/messages")) { requested.resolve(); return older.promise; }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const obsolete = runtime.selectSession("direct-1", { messageId: "obsolete-hit" });
+  await requested.promise;
+  const nextSession = aDirect({ id: "direct-2" });
+  await reconnect(runtime, { ...initial, sessions: [...initial.sessions, nextSession] }, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  const reads: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === "POST" && String(url).endsWith("/read")) reads.push(String(url));
+    return Response.json({ ...cursor, session: { ...nextSession, messages: { items: [], next: null }, turns: [] }, judgements: [] });
+  }) as typeof fetch;
+  await runtime.selectSession("direct-2");
+  runtime.setHighlightedMessage("replacement-hit");
+  const readCount = reads.length;
+  expect(reads.some((path) => path.endsWith("/direct-2/read"))).toBe(true);
+  older.resolve(Response.json({ items: [aMessage({ id: "obsolete-hit", session_id: "direct-1" })], next: null }));
+  await obsolete;
+  expect(runtime.selectedId).toBe("direct-2");
+  expect(runtime.highlightedMessageId).toBe("replacement-hit");
+  expect(reads).toHaveLength(readCount);
+  expect(runtime.snapshot.messages.some((message) => message.id === "obsolete-hit")).toBe(false);
+});
+
+for (const sameSession of [false, true]) test(`clear during pagination cancels highlight and read (${sameSession ? "same-session search" : "normal selection"})`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  if (sameSession) {
+    globalThis.fetch = (async () => Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: "older" }, turns: [] }, judgements: [] })) as typeof fetch;
+    await runtime.selectSession("direct-1");
+  }
+  const older = deferred<Response>();
+  const requested = deferred<void>();
+  let reads = 0;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).endsWith("/snapshot")) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: "older" }, turns: [] }, judgements: [] });
+    if (String(url).includes("/messages")) { requested.resolve(); return older.promise; }
+    if (init?.method === "POST" && String(url).endsWith("/read")) reads++;
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const obsolete = runtime.selectSession("direct-1", { messageId: "obsolete-hit" });
+  await requested.promise;
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { event: "session.cleared", id: "direct-1", occurred_at: "now" } });
+  older.resolve(Response.json({ items: [aMessage({ id: "obsolete-hit", session_id: "direct-1" })], next: null }));
+  await obsolete;
+  expect(runtime.highlightedMessageId).toBeNull();
+  expect(runtime.snapshot.messages).toEqual([]);
+  expect(reads).toBe(0);
+});
+
+test("a newer same-session search supersedes an older pending page", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  globalThis.fetch = (async () => Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: "older" }, turns: [] }, judgements: [] })) as typeof fetch;
+  await runtime.selectSession("direct-1");
+  const older = deferred<Response>();
+  const requested = deferred<void>();
+  globalThis.fetch = (async () => { requested.resolve(); return older.promise; }) as typeof fetch;
+  const obsolete = runtime.selectSession("direct-1", { messageId: "obsolete-hit" });
+  await requested.promise;
+  runtime.snapshot.messages = [aMessage({ id: "replacement-hit", session_id: "direct-1" })];
+  await runtime.selectSession("direct-1", { messageId: "replacement-hit" });
+  older.resolve(Response.json({ items: [aMessage({ id: "obsolete-hit", session_id: "direct-1" })], next: null }));
+  await obsolete;
+  expect(runtime.highlightedMessageId).toBe("replacement-hit");
+  expect(runtime.snapshot.messages.map((message) => message.id)).toEqual(["replacement-hit"]);
+});
+
 test("clear history during a paginated search never resurrects deleted messages", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");

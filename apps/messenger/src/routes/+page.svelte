@@ -26,6 +26,7 @@
 	// session drawer / the workspace overlay share `?o=`. `session-url.ts` says why they are
 	// queries and not paths.
 	//
+	// Connection setup must preserve these flags while the first snapshot is pending.
 	// Seeded before connecting. `connect()` already checks a restored id against the sessions it
 	// fetched and drops it if that session is gone, which is what a stale link needs. A preview
 	// path is restored even when the session list has not arrived yet — the pane fetches the file
