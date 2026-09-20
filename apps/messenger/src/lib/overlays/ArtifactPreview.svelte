@@ -48,6 +48,7 @@
 		onSelect: (att: Attachment) => void;
 		mode?: 'cited' | 'workspace';
 		onSelectWorkspacePath?: (path: string) => void;
+		forceTree?: boolean;
 	}
 
 	let {
@@ -61,6 +62,7 @@
 		onSelect,
 		mode = 'cited',
 		onSelectWorkspacePath,
+		forceTree = false,
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
@@ -105,7 +107,10 @@
 	let truncatedHint = $state(false);
 	let tree = $derived(mode === 'workspace' ? workspaceTree : citedTree);
 	let showTree = $derived(
-		mode === 'workspace' || tree.length > 1 || tree.some((node) => node.kind === 'dir')
+		mode === 'workspace' ||
+			(forceTree && tree.length > 0) ||
+			tree.length > 1 ||
+			tree.some((node) => node.kind === 'dir')
 	);
 	let textLang = $derived(highlightLangFromPath(relpath));
 	let icon = $derived(fileIconFor(relpath, { isDir: kind === 'directory' }));

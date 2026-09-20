@@ -11,7 +11,6 @@
 		x,
 		y,
 		t,
-		hasWorkspace = true,
 		lockedComposer = false,
 		selectedText = null,
 		onClose,
@@ -25,7 +24,6 @@
 		x: number;
 		y: number;
 		t: Copy;
-		hasWorkspace?: boolean;
 		lockedComposer?: boolean;
 		selectedText?: string | null;
 		onClose: () => void;
@@ -40,7 +38,7 @@
 	let adjustedPos = $state<{ x: number; y: number } | null>(null);
 	const pos = $derived(adjustedPos ?? { x, y });
 
-	const data = $derived(deriveMessageContextMenu(message, { lockedComposer, hasWorkspace }));
+	const data = $derived(deriveMessageContextMenu(message, { lockedComposer }));
 
 	const QUICK_EMOJIS = ['👍', '❤️', '🎉', '🚀', '👀'];
 
@@ -174,14 +172,14 @@
 		type="button"
 		class="msg-context-menu-item"
 		role="menuitem"
-		disabled={!data.canOpenWorkspace}
+		disabled={!data.canOpenFileTree}
 		onclick={() => {
-			if (data.canOpenWorkspace) {
+			if (data.canOpenFileTree) {
 				onOpenFileTree(data.targetPath);
 				onClose();
 			}
 		}}
-		title={!data.canOpenWorkspace ? t.chat.noAssociatedFiles : (data.targetPath ?? '')}
+		title={!data.canOpenFileTree ? t.chat.noAssociatedFiles : (data.targetPath ?? '')}
 	>
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>

@@ -32,6 +32,7 @@
 	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
+	import { extractAssociatedFiles } from './message-context-menu.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
@@ -44,7 +45,12 @@
 		t: Copy;
 		selected: SessionSummary | null;
 		onOpenProfile: (botId: string) => void;
-		onOpenArtifact: (relpath: string, att?: Attachment) => void;
+		onOpenArtifact: (
+			relpath: string,
+			att?: Attachment,
+			messageId?: string,
+			forceTree?: boolean
+		) => void;
 		onCreateBot: () => void;
 	};
 
@@ -445,8 +451,12 @@
 		messageContextMenu = null;
 	}
 
-	function handleOpenFileTree(targetPath: string | null): void {
-		runtime.openWorkspace(targetPath);
+	function handleOpenFileTree(targetPath: string | null, message: Message): void {
+		const files = extractAssociatedFiles(message);
+		const path = targetPath ?? files[0];
+		if (path) {
+			onOpenArtifact(path, undefined, message.id, true);
+		}
 	}
 
 	function handleCopyMessageId(id: string): void {
@@ -898,7 +908,7 @@
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												inverted
-												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if item.message.attachments && item.message.attachments.length > 0}
@@ -906,7 +916,7 @@
 													attachments={item.message.attachments}
 													api={runtime.client}
 													{t}
-													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att)}
+													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 												/>
 											{/if}
 										</article>
@@ -1179,7 +1189,7 @@
 												options={markdownOpts(item.message)}
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
-												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if item.message.attachments && item.message.attachments.length > 0}
@@ -1187,7 +1197,7 @@
 													attachments={item.message.attachments}
 													api={runtime.client}
 													{t}
-													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att)}
+													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 												/>
 											{/if}
 										</article>
@@ -1280,13 +1290,12 @@
 			x={activeMenu.x}
 			y={activeMenu.y}
 			{t}
-			hasWorkspace={Boolean(snapshot.settings.workspace_path)}
 			{lockedComposer}
 			selectedText={activeMenu.selectedText}
 			onClose={closeMessageContextMenu}
 			onReply={() => startQuoteReply(activeMenu.message)}
 			onCopy={(text) => copyMessageBody(activeMenu.message.id, text)}
-			onOpenFileTree={handleOpenFileTree}
+			onOpenFileTree={(path) => handleOpenFileTree(path, activeMenu.message)}
 			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
 			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
 		/>

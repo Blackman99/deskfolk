@@ -40,6 +40,7 @@
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
+	import { extractAssociatedFiles } from './chat/message-context-menu.ts';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
@@ -415,7 +416,30 @@
 		return null;
 	}
 
-	function siblingsForPath(relpath: string, att?: Attachment | null): Attachment[] {
+	function siblingsForPath(
+		relpath: string,
+		att?: Attachment | null,
+		messageId?: string | null
+	): Attachment[] {
+		if (messageId) {
+			const owner = snapshot.messages.find((message) => message.id === messageId);
+			if (owner) {
+				const associated = extractAssociatedFiles(owner);
+				if (associated.length > 0) {
+					return associated.map((path) => {
+						const existing = owner.attachments.find((a) => a.workspace_relpath === path);
+						if (existing) return existing;
+						return {
+							id: `virtual-${owner.id}-${path}`,
+							message_id: owner.id,
+							workspace_relpath: path,
+							original_filename: path.split('/').pop() ?? path,
+							created_at: owner.created_at
+						};
+					});
+				}
+			}
+		}
 		if (att) {
 			const owner = snapshot.messages.find((message) => message.id === att.message_id);
 			if (owner && owner.attachments.length > 0) return owner.attachments;
@@ -435,12 +459,26 @@
 		return {
 			relpath,
 			attachment,
-			siblings: siblingsForPath(relpath, attachment),
+			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
+			forceTree: runtime.forceArtifactTree
 		};
 	});
 
-	function openArtifactPath(relpath: string, _att?: Attachment): void {
+	function openArtifactPath(
+		relpath: string,
+		_att?: Attachment,
+		messageId?: string | null,
+		forceTree = false
+	): void {
 		runtime.previewRelpath = sanitizePreviewPath(relpath);
+		runtime.previewMessageId = messageId ?? _att?.message_id ?? null;
+		runtime.forceArtifactTree = forceTree;
+	}
+
+	function closeArtifactPreview(): void {
+		runtime.previewRelpath = null;
+		runtime.previewMessageId = null;
+		runtime.forceArtifactTree = false;
 	}
 
 	function toggleWorkspaceExplorer(): void {
@@ -461,10 +499,6 @@
 	}
 
 	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
-
-	function closeArtifactPreview(): void {
-		runtime.previewRelpath = null;
-	}
 
 	function startPreviewResize(ev: PointerEvent): void {
 		if (!artifactPreview) return;
@@ -767,9 +801,23 @@
 			siblings={artifactPreview.siblings}
 			api={runtime.client}
 			workspacePath={snapshot.settings.workspace_path}
+			forceTree={artifactPreview.forceTree}
 			{t}
 			onClose={closeArtifactPreview}
-			onSelect={(att) => openArtifactPath(att.workspace_relpath, att)}
+			onSelect={(att) =>
+				openArtifactPath(
+					att.workspace_relpath,
+					att,
+					runtime.previewMessageId,
+					runtime.forceArtifactTree
+				)}
+			onSelectWorkspacePath={(path) =>
+				openArtifactPath(
+					path,
+					undefined,
+					runtime.previewMessageId,
+					runtime.forceArtifactTree
+				)}
 		/>
 	{/if}
 	{#if runtime.routeLogOpen && selected}

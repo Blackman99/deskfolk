@@ -26,7 +26,6 @@ function createTestMessage(overrides: Partial<Message> = {}): Message {
 function openMessageMenu(
   message: Message,
   opts: {
-    hasWorkspace?: boolean;
     lockedComposer?: boolean;
   } = {},
 ) {
@@ -44,7 +43,6 @@ function openMessageMenu(
     x: 100,
     y: 150,
     t,
-    hasWorkspace: opts.hasWorkspace ?? true,
     lockedComposer: opts.lockedComposer ?? false,
     onClose: () => {
       calls.close += 1;
@@ -117,5 +115,12 @@ test("reply is disabled when composer is locked", () => {
   const { host, close } = openMessageMenu(createTestMessage(), { lockedComposer: true });
   const replyBtn = buttonByText(host, t.chat.replyMessage) as HTMLButtonElement;
   expect(replyBtn.disabled).toBe(true);
+  close();
+});
+
+test("open file tree is disabled when message has no associated files", () => {
+  const { host, close } = openMessageMenu(createTestMessage({ body: "Plain text with no files" }));
+  const fileTreeBtn = buttonByText(host, t.chat.openAssociatedFileTree) as HTMLButtonElement;
+  expect(fileTreeBtn.disabled).toBe(true);
   close();
 });

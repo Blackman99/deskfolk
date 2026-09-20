@@ -98,7 +98,7 @@ export type MessageContextMenuData = {
   canReply: boolean;
   canCopy: boolean;
   associatedFiles: string[];
-  canOpenWorkspace: boolean;
+  canOpenFileTree: boolean;
   targetPath: string | null;
 };
 
@@ -106,13 +106,12 @@ export function deriveMessageContextMenu(
   message: Message,
   opts: {
     lockedComposer?: boolean;
-    hasWorkspace?: boolean;
   } = {},
 ): MessageContextMenuData {
   const associatedFiles = extractAssociatedFiles(message);
   const canReply = canQuoteReply(message) && !opts.lockedComposer;
   const canCopy = Boolean(message.body && message.body.length > 0);
-  const canOpenWorkspace = Boolean(opts.hasWorkspace);
+  const canOpenFileTree = associatedFiles.length > 0;
   const targetPath = associatedFiles[0] ?? null;
 
   return {
@@ -120,7 +119,7 @@ export function deriveMessageContextMenu(
     canReply,
     canCopy,
     associatedFiles,
-    canOpenWorkspace,
+    canOpenFileTree,
     targetPath,
   };
 }

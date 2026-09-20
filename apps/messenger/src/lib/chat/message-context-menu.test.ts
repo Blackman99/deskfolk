@@ -105,12 +105,11 @@ describe("deriveMessageContextMenu", () => {
     });
     const data = deriveMessageContextMenu(msg, {
       lockedComposer: false,
-      hasWorkspace: true,
     });
 
     expect(data.canReply).toBe(true);
     expect(data.canCopy).toBe(true);
-    expect(data.canOpenWorkspace).toBe(true);
+    expect(data.canOpenFileTree).toBe(true);
     expect(data.associatedFiles).toEqual(["out/result.csv"]);
     expect(data.targetPath).toBe("out/result.csv");
   });
@@ -123,10 +122,10 @@ describe("deriveMessageContextMenu", () => {
     expect(deriveMessageContextMenu(replyMsg, { lockedComposer: false }).canReply).toBe(false);
   });
 
-  test("canOpenWorkspace is false when no workspace is configured", () => {
+  test("canOpenFileTree is false when message has no associated files", () => {
     const msg = createMessage({ body: "Plain text" });
-    const data = deriveMessageContextMenu(msg, { hasWorkspace: false });
-    expect(data.canOpenWorkspace).toBe(false);
+    const data = deriveMessageContextMenu(msg);
+    expect(data.canOpenFileTree).toBe(false);
     expect(data.targetPath).toBeNull();
   });
 });
