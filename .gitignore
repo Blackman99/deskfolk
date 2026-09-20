@@ -20,6 +20,7 @@ vite.config.ts.timestamp-*
 .cursor/
 .playwright-mcp/
 .agent-browser/
+.workbuddy/
 coverage/
 playwright-report/
 test-results/
