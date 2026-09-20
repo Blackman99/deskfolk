@@ -102,7 +102,7 @@ function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: st
       if (realpathSync(workspacePath(ctx) || ctx.inboxRoot) !== att.staged.root) throw new HttpError(409, "conflict", "workspace changed during upload");
       commitPreparedFile(ctx, att.staged);
       const targetName = basename(att.staged.final_rel);
-      const workspaceRelpath = `inbox/${targetName}`;
+      const workspaceRelpath = att.staged.final_rel;
       const attId = ulid();
       const attNow = isoNow();
       ctx.db.run(
@@ -259,9 +259,11 @@ export function resolveAttachmentLocation(
 ): { abs: string; isDir: boolean } | null {
   const root = workspacePath(ctx);
   if (root) {
-    const classified = classifyPath(root, relpath);
-    if (classified.zone !== "inside") return null;
-    return statOrMissing(classified.abs);
+    try {
+      const classified = classifyPath(root, relpath);
+      if (classified.zone !== "inside") return null;
+      return statOrMissing(classified.abs);
+    } catch { return null; }
   }
   if (!relpath.startsWith("inbox/") && relpath !== "inbox") return null;
   const classified = classifyPath(ctx.inboxRoot, relpath);
@@ -307,7 +309,8 @@ export function hydrateAttachment(ctx: StoreContext, row: AttachmentRow): Attach
       exists = false;
     }
   }
-  const staged = ctx.db.query<{ temp_rel: string; root: string }, [string]>("SELECT temp_rel, root FROM file_commits WHERE final_rel = ?").get(row.workspace_relpath);
+  const root = workspacePath(ctx) || ctx.inboxRoot;
+  const staged = ctx.db.query<{ temp_rel: string; root: string }, [string, string]>("SELECT temp_rel, root FROM file_commits WHERE root = ? AND final_rel = ?").get(root, row.workspace_relpath);
   if (staged && !exists) {
     size = statSync(join(staged.root, staged.temp_rel)).size;
     exists = true;
@@ -333,7 +336,8 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
 }
 
 export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInput[]): void {
-  const root = workspacePath(ctx) || ctx.inboxRoot;
+  if (!attachments.length) return;
+  const root = realpathSync(workspacePath(ctx) || ctx.inboxRoot);
   const inboxDir = join(root, "inbox");
   if (classifyPath(root, "inbox").zone !== "inside") throw new HttpError(422, "invalid_args", "inbox is outside workspace");
   if (attachments.length) mkdirSync(inboxDir, { recursive: true });
@@ -345,7 +349,12 @@ export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInp
       const base = basename(raw, ext);
       let name = raw;
       let counter = 1;
-      while (existsSync(join(inboxDir, name)) || ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, `inbox/${name}`, root, `inbox/${name}`)) name = `${base}-${counter++}${ext}`;
+      for (;;) {
+        const candidate = classifyPath(root, join(inboxDir, name));
+        if (candidate.zone !== "inside") throw new HttpError(422, "invalid_args", "attachment is outside workspace");
+        if (!existsSync(candidate.abs) && !ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, candidate.rel, root, candidate.rel)) break;
+        name = `${base}-${counter++}${ext}`;
+      }
       att.staged = prepareFile(ctx, root, join(inboxDir, name), att.buffer);
     }
   } catch (error) {

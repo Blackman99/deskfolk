@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { APP_SUPPORT_DIRNAME } from "@real-bot/protocol";
 import { Transactions } from "./transactions";
 import { Receipts } from "./receipts";
+import * as credentials from "./credentials";
 import * as files from "./files";
 import { Database } from "bun:sqlite";
 import { SCHEMA_SQL } from "../schema";
@@ -93,6 +94,10 @@ export class Store {
     try { return work(); } finally { this.ctx.keyPlan = null; }
   }
 
+  readonly listCredentialOperations = this.bind(credentials.listCredentialOperations);
+  readonly resolveCredentialOperation = this.bind(credentials.resolveCredentialOperation);
+  readonly applyMcpInspection = this.bind(mcp.applyMcpInspection);
+
   readonly settingsCached = this.bind(settings.settingsCached);
   readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
   readonly createProviderSync = this.bind(providers.createProviderSync);
@@ -101,7 +106,7 @@ export class Store {
   readonly createMcpServerSync = this.bind(mcp.createMcpServerSync);
   readonly patchMcpServerSync = this.bind(mcp.patchMcpServerSync);
   readonly deleteMcpServerSync = this.bind(mcp.deleteMcpServerSync);
-  readonly providersCached = () => this.ctx.db.query<import("./shared").ProviderRow, []>("SELECT * FROM providers ORDER BY created_at, id").all().map((row) => providers.toProviderCached(this.ctx, row));
+  readonly providersCached = this.bind(providers.providersCached);
 
   close(): void {
     this.db.close();

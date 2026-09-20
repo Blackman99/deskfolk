@@ -5,11 +5,27 @@
  */
 import type { Database } from "bun:sqlite";
 import { sortThinkingLevels, THINKING_LEVELS } from "@real-bot/protocol";
-import { isoNow } from "../ids";
+import { isoNow, ulid } from "../ids";
 import { parseStoredCatalog } from "../models";
 import { pickThinkingLevel } from "../route-decision";
 
 export function migrateSchema(db: Database): void {
+  const keyCols = db.query<{ name: string }, []>("PRAGMA table_info(pending_keys)").all().map((row) => row.name);
+  for (const column of ["operation_id", "device_id", "request_id"]) {
+    if (!keyCols.includes(column)) db.run(`ALTER TABLE pending_keys ADD COLUMN ${column} TEXT`);
+  }
+  for (const row of db.query<{ name: string }, []>("SELECT name FROM pending_keys WHERE operation_id IS NULL").all()) {
+    db.run("UPDATE pending_keys SET operation_id = ? WHERE name = ?", [ulid(), row.name]);
+  }
+  for (const receipt of db.query<{ device_id: string; request_id: string; key_ops: string }, []>("SELECT device_id, request_id, key_ops FROM request_receipts WHERE state = 'pending_keys'").all()) {
+    for (const op of JSON.parse(receipt.key_ops) as Array<{ name: string }>) {
+      db.run("UPDATE pending_keys SET device_id = ?, request_id = ? WHERE name = ? AND device_id IS NULL", [receipt.device_id, receipt.request_id, op.name]);
+    }
+  }
+  for (const event of ["INSERT", "UPDATE", "DELETE"]) {
+    db.run(`CREATE TRIGGER IF NOT EXISTS provider_settings_rev_${event.toLowerCase()} AFTER ${event} ON providers
+      BEGIN UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1; END`);
+  }
   const botCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(bots)`)
     .all()

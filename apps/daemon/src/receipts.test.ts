@@ -38,8 +38,8 @@ test("RFC8785 fixed serialization, UTF-16 order, and invalid I-JSON", () => {
 test("multipart digest is order independent, binds bytes, type, filename, and If-Match", () => {
   const input = { method: "POST", path: "/v1/messages", body: { body: "hello" }, multipart: true, files: [{ filename: "ö", bytes: new Uint8Array([1]) }, { filename: "a", bytes: new Uint8Array([2]) }] };
   expect(requestDigest(input)).toBe(requestDigest({ ...input, files: [...input.files].reverse() }));
-  expect(requestDigest(input)).not.toBe(requestDigest({ ...input, multipart: false }));
-  expect(requestDigest(input)).not.toBe(requestDigest({ ...input, ifMatch: '"old"' }));
+  expect(() => requestDigest({ ...input, multipart: false })).toThrow();
+  expect(requestDigest(input)).not.toBe(requestDigest({ ...input, ifMatch: `"${"a".repeat(64)}"` }));
   expect(requestDigest(input)).not.toBe(requestDigest({ ...input, files: [{ filename: "a", bytes: new Uint8Array([1]) }] }));
 });
 

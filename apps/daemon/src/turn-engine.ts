@@ -631,7 +631,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         if (server.instructions || server.tool_catalog.length > 0) continue;
         try {
           const next = await persistMcpInspect(store, mcp, server);
-          if (next.updated_at !== server.updated_at) {
+          if (next && next.updated_at !== server.updated_at) {
             publish({ event: "mcp.upsert", occurred_at: occurred(), ...next });
           }
         } catch {
@@ -1001,7 +1001,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         let server = item.server;
         if (mcp) {
           try {
-            server = await persistMcpInspect(store, mcp, server);
+            const inspected = await persistMcpInspect(store, mcp, server);
+            const current = inspected ?? store.listMcpServers().find((row) => row.id === server.id);
+            if (!current) continue;
+            server = current;
           } catch {
             // catalog parse is best-effort; the row is already saved
           }

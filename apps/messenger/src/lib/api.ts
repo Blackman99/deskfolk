@@ -40,6 +40,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly requestId?: string,
   ) {
     super(message);
   }
@@ -51,7 +52,40 @@ export function etagForBlob(blob: Blob): string | null {
   return blobEtags.get(blob) ?? null;
 }
 
+type PendingRequest = { id: string; method: string; path: string; payload?: BodyInit; fingerprint: string; pending: boolean; headers?: Record<string, string>; returnEtag?: boolean };
+export type CredentialOperation = { id: string; kind: string; entity_id: string; request_id: string | null };
+
+function requestId(): string {
+  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  let time = BigInt(Date.now());
+  let prefix = "";
+  for (let i = 0; i < 10; i++) { prefix = alphabet[Number(time & 31n)] + prefix; time >>= 5n; }
+  return prefix + Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => alphabet[byte & 31]).join("");
+}
+
 export class LocalApi {
+  private readonly pending = new Map<string, PendingRequest>();
+
+  pendingRequests(): Array<{ id: string; method: string; path: string }> {
+    return [...this.pending.values()].filter((row) => row.pending).map(({ id, method, path }) => ({ id, method, path }));
+  }
+
+  credentialOperations(): Promise<{ items: CredentialOperation[] }> { return this.get("/v1/credential-operations"); }
+
+  resolveCredential(id: string, action: "repair" | "cancel", value?: string): Promise<void> {
+    return this.post(`/v1/credential-operations/${id}/resolve`, { action, ...(action === "repair" ? { value } : {}) });
+  }
+
+  async retryPending(id: string): Promise<unknown> {
+    const row = [...this.pending.values()].find((item) => item.id === id && item.pending);
+    if (!row) throw new ApiError(404, "not_found", "pending request not found");
+    return this.sendRequest(row);
+  }
+
+  forgetResolvedRequest(id: string): void {
+    for (const [key, row] of this.pending) if (row.id === id) this.pending.delete(key);
+  }
+
   constructor(readonly endpoint: LocalEndpoint) {}
 
   headers(): HeadersInit {
@@ -265,16 +299,7 @@ export class LocalApi {
   }
 
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
-    const res = await fetch(`${this.endpoint.origin}/v1/workspace/file`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${this.endpoint.token}`, "Content-Type": "application/json", ...(ifMatch ? { "If-Match": ifMatch } : {}) },
-      body: JSON.stringify({ path, content }),
-    });
-    if (!res.ok) {
-      const body = await res.json() as ErrorBody;
-      throw new ApiError(res.status, body.error?.code ?? "failed", body.error?.message ?? "save failed");
-    }
-    return res.headers.get("ETag");
+    return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
 
   async getWorkspaceFileBlob(path: string): Promise<Blob> {
@@ -432,26 +457,61 @@ export class LocalApi {
     path: string,
     body?: unknown,
     signal?: AbortSignal,
+    conditional: Record<string, string> = {},
+    returnEtag = false,
   ): Promise<T> {
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
-    let payload: BodyInit | undefined;
-    if (body !== undefined && method !== "GET") {
-      if (typeof FormData !== "undefined" && body instanceof FormData) {
-        payload = body;
-      } else {
-        headers["Content-Type"] = "application/json";
-        payload = JSON.stringify(body);
-      }
+    if (method === "GET" || path === "/v1/models/probe") {
+      return this.sendRequest({ id: "", method, path, payload: body === undefined ? undefined : JSON.stringify(body), fingerprint: "", pending: false }, signal) as Promise<T>;
     }
-    const res = await fetch(`${this.endpoint.origin}${path}`, { method, headers, body: payload, signal });
-    if (res.status === 204) return undefined as T;
-    const json = (await res.json()) as T | ErrorBody;
-    if (!res.ok) {
-      const err = json as ErrorBody;
-      throw new ApiError(res.status, err.error?.code ?? "failed", err.error?.message ?? "request failed");
+    const payload = body instanceof FormData ? cloneForm(body) : JSON.stringify(body ?? {});
+    const fingerprint = JSON.stringify([payload instanceof FormData ? await formFingerprint(payload) : payload, conditional]);
+    const slot = `${method} ${path}`;
+    let row = this.pending.get(slot);
+    if (row && row.fingerprint !== fingerprint) throw new ApiError(409, "request_pending", "resolve the pending request before changing its payload", row.id);
+    if (!row) {
+      row = { id: requestId(), method, path, payload, fingerprint, pending: false, headers: conditional, returnEtag };
+      this.pending.set(slot, row);
     }
-    return json as T;
+    return this.sendRequest(row, signal) as Promise<T>;
   }
+
+  private async sendRequest(row: PendingRequest, signal?: AbortSignal): Promise<unknown> {
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}`, ...row.headers };
+    if (row.id) headers["X-Request-Id"] = row.id;
+    if (row.payload !== undefined && !(row.payload instanceof FormData)) headers["Content-Type"] = "application/json";
+    let res: Response;
+    try { res = await fetch(`${this.endpoint.origin}${row.path}`, { method: row.method, headers, body: row.payload, signal }); }
+    catch {
+      row.pending = Boolean(row.id);
+      throw new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", row.id);
+    }
+    let json: ErrorBody | undefined;
+    try { json = res.status === 204 ? undefined : await res.json() as ErrorBody; }
+    catch {
+      row.pending = Boolean(row.id);
+      throw new ApiError(503, "request_unknown", "response incomplete; explicitly retry the original request", row.id);
+    }
+    if (!res.ok) {
+      const error = json as ErrorBody;
+      row.pending = error.error?.code === "key_write_pending";
+      if (!row.pending) this.forgetResolvedRequest(row.id);
+      throw new ApiError(res.status, error.error?.code ?? "failed", error.error?.message ?? "request failed", row.id || res.headers.get("X-Request-Id") || undefined);
+    }
+    this.forgetResolvedRequest(row.id);
+    return row.returnEtag ? res.headers.get("ETag") : json;
+  }
+}
+
+function cloneForm(form: FormData): FormData {
+  const cloned = new FormData();
+  for (const [name, value] of form) cloned.append(name, value);
+  return cloned;
+}
+
+async function formFingerprint(form: FormData): Promise<string> {
+  const fields = [];
+  for (const [name, value] of form) fields.push([name, typeof value === "string" ? value : [value.name, Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await value.arrayBuffer())))]]);
+  return JSON.stringify(fields);
 }
 
 export async function probeHealth(origin: string): Promise<{ status: number | null; body: unknown }> {

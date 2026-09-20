@@ -22,7 +22,7 @@ import {
   serializeCatalog,
   unionProviderModels,
 } from "../models";
-import { createProviderSync, listProviders, patchProviderSync, toProviderCached } from "./providers";
+import { createProviderSync, listProviders, patchProviderSync, providersCached } from "./providers";
 import {
   type ProviderRow,
   type StoreContext,
@@ -47,7 +47,7 @@ export async function settings(ctx: StoreContext): Promise<Settings> {
 export function settingsCached(ctx: StoreContext): Settings {
   const map = settingsMap(ctx);
   const workspace_path = emptyToNull(map.get("workspace_path"));
-  const providers = providerRows(ctx).map((row) => toProviderCached(ctx, row));
+  const providers = providersCached(ctx);
   const defaultProvider = defaultProviderRow(ctx, providers, emptyToNull(map.get("default_provider_id")));
   const endpoint_base_url = defaultProvider?.base_url ?? emptyToNull(map.get("endpoint_base_url"));
   const endpoint_model_catalog = defaultProvider
@@ -148,7 +148,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
     "endpoint_default_model" in patch;
   if (touchesEndpoint) {
     const current = settingsMap(ctx);
-    const providers = providerRows(ctx).map((row) => toProviderCached(ctx, row));
+    const providers = providersCached(ctx);
     const target =
       defaultProviderRow(ctx, providers, emptyToNull(current.get("default_provider_id"))) ??
       providers[0] ??

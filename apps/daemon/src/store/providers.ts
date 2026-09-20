@@ -47,6 +47,10 @@ import {
   planKey,
 } from "./shared";
 
+export function providersCached(ctx: StoreContext): Provider[] {
+  return providerRows(ctx).map((row) => toProviderCached(ctx, row));
+}
+
 export async function listProviders(ctx: StoreContext): Promise<Provider[]> {
   await ensureLegacyProvider(ctx);
   const rows = ctx.db

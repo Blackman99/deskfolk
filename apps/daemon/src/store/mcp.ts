@@ -370,3 +370,12 @@ export async function patchMcpServer(ctx: StoreContext, id: string, patch: Param
 export async function deleteMcpServer(ctx: StoreContext, id: string): Promise<void> {
   await keyMutation(ctx, () => deleteMcpServerSync(ctx, id));
 }
+
+export function applyMcpInspection(ctx: StoreContext, id: string, revision: string, inspected: { instructions: string | null; tools: Array<{ name: string; description: string }> }) {
+  return ctx.tx.run(() => {
+    const row = ctx.db.query<McpRow, [string]>("SELECT * FROM mcp_servers WHERE id = ?").get(id);
+    if (!row || row.updated_at !== revision || ctx.keys.pending(mcpAuthKeychainName(id))) return null;
+    const changed = ctx.db.run("UPDATE mcp_servers SET instructions = ?, tool_catalog = ?, updated_at = ? WHERE id = ? AND updated_at = ?", [inspected.instructions, JSON.stringify(inspected.tools), isoNow(), id, revision]).changes;
+    return changed ? toMcp(ctx, ctx.db.query<McpRow, [string]>("SELECT * FROM mcp_servers WHERE id = ?").get(id)!, true) : null;
+  });
+}

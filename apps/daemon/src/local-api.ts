@@ -28,7 +28,7 @@ import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
 import { ulid } from "./ids";
-import { requestDigest, sha256, type CanonicalEncoder } from "./request-digest";
+import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
@@ -109,6 +109,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
 
   async function dispatchBusiness(request: Request, scope: RequestScope): Promise<Response> {
     const url = new URL(request.url);
+    validateRequestPath(url.pathname + url.search);
     if (!url.pathname.startsWith("/v1/") || url.pathname.startsWith("/v1/runtime")) {
       throw new HttpError(404, "not_found", "not a business endpoint");
     }
@@ -120,9 +121,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   }
 
   async function mutate(request: Request, url: URL, scope: RequestScope): Promise<Response> {
+    validateRequestPath(url.pathname + url.search);
     const parsed = await parseMutation(request);
     const digest = requestDigest({ method: request.method, path: url.pathname + url.search, body: parsed.body,
-      multipart: parsed.multipart, files: parsed.files.map((file) => ({ filename: file.originalFilename, bytes: file.buffer })),
+      multipart: parsed.multipart, normalizedFiles: parsed.normalizedFiles,
       ifMatch: request.headers.get("If-Match"),
     }, options.canonicalEncoder);
     const keyOps: KeyOperation[] = [];
@@ -149,41 +151,43 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
           const plan: Array<{ name: string; value: string }> = [];
           const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed));
           if (result instanceof Promise) throw new HttpError(422, "not_retryable", "this endpoint cannot use request receipts");
-          for (const op of plan) keyOps.push({ ...op, field: op.value === "" ? "" : url.pathname === "/v1/settings" ? "endpoint_api_key" : url.pathname.startsWith("/v1/mcp-servers") ? "auth" : "api_key" });
+          for (const op of plan) keyOps.push({ ...op, field: op.value === "" ? "" : url.pathname.startsWith("/v1/credential-operations/") ? "value" : url.pathname === "/v1/settings" ? "endpoint_api_key" : url.pathname.startsWith("/v1/mcp-servers") ? "auth" : "api_key" });
           options.store.afterCommit(() => {
             committed = true;
-            if (keyOps.length === 0) {
-              for (const event of events) publish(event);
-              events.length = 0;
-            }
+            for (const event of events) publish(keyOps.length ? freshCredentialEvent(event) : event);
+            events.length = 0;
           });
           return responseRecord(result);
         };
       }, keyOps);
-      if (committed || keyOps.length) {
-        if (response.status === 503) {
-          for (const provider of options.store.providersCached()) publish({ event: "provider.upsert", occurred_at: occurred(), ...provider });
-          for (const server of options.store.listMcpServers()) publish({ event: "mcp.upsert", occurred_at: occurred(), ...server });
-          publish({ event: "settings.changed", occurred_at: occurred(), ...options.store.settingsCached() });
-        } else if (response.status < 400) {
-          for (const event of events) publish(event);
-          if (!committed && keyOps.length) {
-            for (const provider of options.store.providersCached()) publish({ event: "provider.upsert", occurred_at: occurred(), ...provider });
-            for (const server of options.store.listMcpServers()) publish({ event: "mcp.upsert", occurred_at: occurred(), ...server });
-            publish({ event: "settings.changed", occurred_at: occurred(), ...options.store.settingsCached() });
-          }
-          if (url.pathname.startsWith("/v1/mcp-servers") && request.method !== "DELETE" && response.body) {
-            const id = (JSON.parse(response.body) as { id: string }).id;
-            const server = options.store.listMcpServers().find((row) => row.id === id);
-            if (server) void persistMcpInspect(options.store, mcp, server).then((next) => publish({ event: "mcp.upsert", occurred_at: occurred(), ...next })).catch(() => undefined);
-          }
-        }
+      if (keyOps.length) publishCredentialState();
+      if ((committed || keyOps.length) && response.status < 400 && url.pathname.startsWith("/v1/mcp-servers") && request.method !== "DELETE" && response.body) {
+        const id = (JSON.parse(response.body) as { id: string }).id;
+        const server = options.store.listMcpServers().find((row) => row.id === id);
+        if (server) void persistMcpInspect(options.store, mcp, server).then((next) => {
+          if (next) publish({ event: "mcp.upsert", occurred_at: occurred(), ...next });
+        }).catch(() => undefined);
       }
       return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json; charset=utf-8", ...response.headers, "X-Request-Id": scope.requestId } });
     } finally {
       if (stagedWrite) options.store.discardFile(stagedWrite);
       for (const file of parsed.files) if (file.staged) options.store.discardFile(file.staged);
     }
+  }
+
+  function freshCredentialEvent(event: ClientEvent): ClientEvent {
+    const store = options.store;
+    if (event.event === "settings.changed") return { ...event, ...store.settingsCached() };
+    if (event.event === "provider.upsert") return { ...event, ...store.providersCached().find((row) => row.id === event.id)! };
+    if (event.event === "mcp.upsert") return { ...event, ...store.listMcpServers().find((row) => row.id === event.id)! };
+    return event;
+  }
+
+  function publishCredentialState(): void {
+    const store = options.store;
+    for (const provider of store.providersCached()) publish({ event: "provider.upsert", occurred_at: occurred(), ...provider });
+    for (const server of store.listMcpServers()) publish({ event: "mcp.upsert", occurred_at: occurred(), ...server });
+    publish({ event: "settings.changed", occurred_at: occurred(), ...store.settingsCached() });
   }
 
   async function handle(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
@@ -242,6 +246,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     }
 
     try {
+      validateRequestPath(path + url.search);
       if (request.method === "POST" && path === "/v1/runtime/quit") {
         scheduler?.stop();
       }
@@ -322,6 +327,15 @@ function dispatch(
   const { store, onQuit } = options;
   const method = request.method;
   const path = url.pathname;
+
+  if (method === "GET" && path === "/v1/credential-operations") {
+    return jsonResponse({ items: store.listCredentialOperations() }, 200, null);
+  }
+  const credential = matchPath(path, "/v1/credential-operations/:id/resolve");
+  if (method === "POST" && credential) {
+    store.resolveCredentialOperation(credential.id!, input.body);
+    return emptyResponse(204, null);
+  }
 
   if (method === "GET" && path === "/v1/runtime") {
     const body: RuntimeResponse = { pid: process.pid, bind: LOCAL_API_BIND };
@@ -1005,10 +1019,12 @@ function publishBotModelChanges(
   }
 }
 
-type ParsedMutation = { body: Record<string, unknown>; files: AttachmentInput[]; multipart: boolean; stagedWrite?: FileCommit };
+type ParsedMutation = { body: Record<string, unknown>; files: AttachmentInput[]; multipart: boolean; stagedWrite?: FileCommit; normalizedFiles?: NormalizedFile<AttachmentInput>[] };
 
 async function parseMutation(request: Request): Promise<ParsedMutation> {
-  if (!(request.headers.get("content-type") ?? "").toLowerCase().includes("multipart/form-data")) {
+  const media = (request.headers.get("content-type") ?? "application/json").split(";")[0]!.trim().toLowerCase();
+  if (media !== "application/json" && media !== "multipart/form-data") throw new HttpError(422, "invalid_args", "unsupported mutation media type");
+  if (media === "application/json") {
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(422, "invalid_args", "body must be an object");
     return { body: body as Record<string, unknown>, files: [], multipart: false };
@@ -1023,8 +1039,8 @@ async function parseMutation(request: Request): Promise<ParsedMutation> {
       Object.defineProperty(body, key, { value, enumerable: true });
     }
   }
-  files.sort((a, b) => Buffer.compare(Buffer.from(a.originalFilename), Buffer.from(b.originalFilename)) || sha256(a.buffer).localeCompare(sha256(b.buffer)));
-  return { body, files, multipart: true };
+  const normalizedFiles = normalizeFiles(files, (file) => ({ filename: file.originalFilename, bytes: file.buffer }));
+  return { body, files: normalizedFiles.map((item) => item.file), normalizedFiles, multipart: true };
 }
 
 function checkRevision(store: Store, request: Request, url: URL, body: Record<string, unknown>, scope: RequestScope): void {

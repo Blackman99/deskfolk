@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS request_meta (
 INSERT OR IGNORE INTO request_meta(singleton) VALUES (1);
 CREATE TABLE IF NOT EXISTS pending_keys (
   name TEXT PRIMARY KEY,
-  value_sha256 TEXT NOT NULL
+  value_sha256 TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  device_id TEXT,
+  request_id TEXT
 );
 CREATE TABLE IF NOT EXISTS file_stages (
   id TEXT PRIMARY KEY,

@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { HttpError } from "./errors";
 import { classifyPath } from "./workspace-paths";
 import { attachmentMime } from "./artifact-mime";
@@ -25,6 +25,7 @@ export type WorkspaceTreePage = {
 
 export function listWorkspaceDir(root: string, relInput: string): WorkspaceTreePage {
   const classified = classifyWorkspaceRel(root, relInput);
+  const logical = posix.normalize(relInput.trim() || ".");
   let st;
   try {
     st = statSync(classified.abs);
@@ -47,7 +48,7 @@ export function listWorkspaceDir(root: string, relInput: string): WorkspaceTreeP
   const items: WorkspaceTreeEntry[] = [];
   for (const name of slice) {
     const childAbs = join(classified.abs, name);
-    const childRel = classified.rel === "." ? name : `${classified.rel}/${name}`;
+    const childRel = logical === "." ? name : `${logical}/${name}`;
     const child = classifyPath(root, childRel);
     if (child.zone !== "inside") continue;
     let kind: "file" | "dir" = "file";
@@ -56,13 +57,13 @@ export function listWorkspaceDir(root: string, relInput: string): WorkspaceTreeP
     } catch {
       kind = "file";
     }
-    items.push({ name, path: child.rel === "." ? name : child.rel, kind });
+    items.push({ name, path: childRel, kind });
   }
   items.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
-  return { path: classified.rel, truncated, items };
+  return { path: logical, truncated, items };
 }
 
 export function locateWorkspaceFile(

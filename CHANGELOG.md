@@ -8,6 +8,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Daemon
 
+- Fixed concurrent attachment collisions through internal inbox symlinks, unhealthy inboxes blocking unrelated actions, alternate route spellings bypassing revisions, and provider edits failing to invalidate projected settings. Credential events now publish committed pending/deleted state immediately and fresh completion state; obsolete MCP inspections cannot overwrite newer configurations. Pending credential operations, including failed approved Bot actions, can be explicitly repaired or cancelled without replaying the tool.
 - Local mutations now support optional `X-Request-Id` ULIDs with transactional response receipts: identical retries replay the first result, changed payloads return 409, and expired bodies leave durable tombstones returning 410. Provider/MCP credentials use resumable pending-key state without storing raw keys in receipts; model probes remain explicitly outside retryable mutations. Approval acceptance no longer waits for the approved external operation, and MCP inspection updates the catalog asynchronously after configuration commits.
 - Attachments and workspace saves use fsynced same-directory staging, SQLite commit records, rename, and startup recovery. File GETs expose SHA-256 ETags; conditional saves reject stale content with 409. Local unconditional saves and the 1 MB text limit remain supported. Settings expose a revision, and injected business requests can require entity/settings revisions without adding remote or runtime HTTP routes.
 - `read_file` (and the other workspace tools besides `write_file`) no longer stamp their paths as message attachments. A path the Bot only read is an input; only a write becomes a cited artifact on the message.
@@ -16,6 +17,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Messenger
 
+- Pending mutations retain their logical request ID and original payload only in memory. Explicit retries do not create duplicate endpoints; settings show manual retry and credential-only repair/cancel controls rather than treating a locked keystore as a disconnected runtime. Closing the page does not queue or replay work.
 - File edits send the ETag of the loaded bytes. If a Bot or another application changed the file, Save preserves your unsaved buffer and explains how to reopen the changed version instead of silently overwriting it.
 - Markdown in the artifact preview shows workspace image and SVG links as thumbnails; a click still opens the preview, and a failed load keeps the original link. Tables in that same renderer fill the pane and wrap long cells instead of overflowing sideways.
 - Right-click Delete or Clear history on a sidebar session now opens the confirm for that row. It used to switch to the conversation first, and the confirm disappeared because the session drawer was not open.

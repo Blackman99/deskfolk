@@ -3,6 +3,7 @@
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
 	import Select from '../Select.svelte';
+	import type { CredentialOperation } from '../api.ts';
 	import { JAIL_COPY, thinkingLevelLabel, type Copy } from '../copy.ts';
 	import {
 		applyProbedModels,
@@ -61,6 +62,33 @@
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
+
+	let credentialOps = $state<CredentialOperation[]>([]);
+	let repairValues = $state<Record<string, string>>({});
+	let hadPending = $state(false);
+	$effect(() => {
+		const open = runtime.settingsOpen;
+		const pending = runtime.pendingMutation;
+		if (pending) hadPending = true;
+		else if (hadPending) {
+			hadPending = false;
+			closeProviderEditor();
+		}
+		void snapshot;
+		if (open) void refreshCredentialOps();
+		else repairValues = {};
+	});
+
+	async function refreshCredentialOps(): Promise<void> {
+		try { credentialOps = (await runtime.client?.credentialOperations())?.items ?? []; } catch { credentialOps = []; }
+	}
+
+	async function resolveCredential(op: CredentialOperation, action: 'repair' | 'cancel'): Promise<void> {
+		if (await runtime.resolveCredentialOperation(op.id, action, repairValues[op.id], op.request_id)) {
+			delete repairValues[op.id];
+			await refreshCredentialOps();
+		}
+	}
 
 	let activeSettingsTab = $state<'general' | 'preferences' | 'models' | 'mcp' | 'about'>('general');
 
@@ -295,6 +323,21 @@
 	}
 </script>
 
+{#snippet pendingCredentials()}
+	{#if runtime.pendingMutation}
+		<p role="status">{locale === 'en' ? 'Credential/request result pending. Retry only when ready; no automatic replay.' : '凭据或请求结果待确认。准备好后手动重试，不会自动重放。'}</p>
+		<button type="button" onclick={() => void runtime.retryPendingMutation()}>{locale === 'en' ? 'Retry original request' : '重试原请求'}</button>
+	{/if}
+	{#each credentialOps as op (op.id)}
+		<div>
+			<p>{locale === 'en' ? 'Unfinished credential' : '未完成的凭据'} · {op.kind} · {op.entity_id}</p>
+			<input type="password" aria-label={locale === 'en' ? 'Repair credential' : '修复凭据'} bind:value={repairValues[op.id]} autocomplete="off" />
+			<button type="button" disabled={!repairValues[op.id]} onclick={() => void resolveCredential(op, 'repair')}>{locale === 'en' ? 'Save credential only' : '仅保存凭据'}</button>
+			<button type="button" onclick={() => void resolveCredential(op, 'cancel')}>{locale === 'en' ? 'Cancel and clear credential' : '取消并清除凭据'}</button>
+		</div>
+	{/each}
+{/snippet}
+
 {#if runtime.settingsOpen}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
@@ -454,6 +497,7 @@
 				</div>
 
 			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'}>
+				{#if !providerEditor && (runtime.pendingMutation || credentialOps.length)}<div role="region" aria-label="Pending credentials">{@render pendingCredentials()}</div>{/if}
 				{#if saveFailed}
 					<p class="field-error">{t.settings.saveFailed}</p>
 				{/if}
@@ -941,6 +985,7 @@
 				>✕</button>
 			</div>
 			<div class="modal-body">
+				{@render pendingCredentials()}
 				<ProviderForm
 					draft={providerEditor.draft}
 					errors={providerEditor.errors}

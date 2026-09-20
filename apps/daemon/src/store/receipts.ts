@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { HttpError } from "../errors";
-import { fromError } from "../http";
+import { fromError, responseRecord } from "../http";
 import type { KeyCache } from "./shared";
 import type { Transactions } from "./transactions";
 
@@ -73,7 +73,7 @@ export class Receipts {
       try {
         work = await prepare();
       } catch (error) {
-        const response = await errorResponse(error);
+        const response = responseRecord(fromError(error, null));
         this.tx.run(() => this.save(scope, digest, method, path, response, []));
         return response;
       }
@@ -81,14 +81,14 @@ export class Receipts {
       try {
         response = this.tx.run(() => {
           const result = work();
-          for (const op of keyOps) this.keys.markPending(op.name, op.value);
+          for (const op of keyOps) this.keys.markPending(op.name, op.value, scope);
           this.save(scope, digest, method, path, result, keyOps);
           return result;
         });
       } catch (error) {
         // A post-commit filesystem failure must retain the committed receipt for recovery.
         if (this.lookup(scope)) throw error;
-        response = await errorResponse(error);
+        response = responseRecord(fromError(error, null));
         this.tx.run(() => this.save(scope, digest, method, path, response, []));
         return response;
       }
@@ -114,6 +114,7 @@ export class Receipts {
     try {
       for (const op of ops) await this.keys.finishPending(op.name, op.value);
     } catch {
+      for (const op of ops) this.keys.releaseWriting(op.name);
       return pendingKeys();
     }
     this.tx.run(() => {
@@ -130,9 +131,4 @@ function pendingKeys(): ReceiptResponse {
 
 function decode(row: ReceiptRow): ReceiptResponse {
   return { status: row.status, body: row.body, headers: JSON.parse(row.headers ?? "{}") };
-}
-
-export async function errorResponse(error: unknown): Promise<ReceiptResponse> {
-  const response = fromError(error, null);
-  return { status: response.status, body: await response.text() };
 }

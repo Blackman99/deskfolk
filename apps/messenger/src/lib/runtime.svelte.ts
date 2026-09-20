@@ -58,6 +58,7 @@ export class MessengerRuntime {
   draft = $state("");
   replyingToId = $state<string | null>(null);
   busy = $state(false);
+  pendingMutation = $state<{ id: string; code: string } | null>(null);
   focusedTurnId = $state<string | null>(null);
   highlightedMessageId = $state<string | null>(null);
   searchHighlightToken = $state(0);
@@ -321,15 +322,14 @@ export class MessengerRuntime {
   async patchSettings(patch: SettingsPatch): Promise<ApiError | null> {
     if (!this.api) return null;
     try {
-      const settings = await this.api.patchSettings(patch);
+      await this.api.patchSettings(patch);
+      const settings = await this.api.settings();
       this.snapshot = { ...this.snapshot, settings };
       this.syncSettingsDraft(settings);
       if (patch.endpoint_api_key !== undefined) this.endpointKey = "";
       return null;
     } catch (error) {
-      if (error instanceof ApiError && error.status === 422) return error;
-      this.markDisconnected();
-      return null;
+      return this.sheetFailure(error);
     }
   }
 
@@ -584,11 +584,30 @@ export class MessengerRuntime {
     }
   }
 
+  async retryPendingMutation(): Promise<void> {
+    if (!this.api || !this.pendingMutation) return;
+    try {
+      await this.api.retryPending(this.pendingMutation.id);
+      this.pendingMutation = null;
+    } catch (error) { this.sheetFailure(error); }
+  }
+
+  async resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string, requestId?: string | null): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.resolveCredential(id, action, value);
+      if (requestId) this.api.forgetResolvedRequest(requestId);
+      this.pendingMutation = null;
+      return true;
+    } catch (error) { this.sheetFailure(error); return false; }
+  }
+
   async createProvider(body: CreateProviderRequest): Promise<ApiError | null> {
     if (!this.api) return null;
     try {
       const provider = await this.api.createProvider(body);
-      this.ingestProvider(provider);
+      this.pendingMutation = null;
+      this.ingestProvider(await this.api.get<Provider>(`/v1/providers/${provider.id}`));
       this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
       this.syncSettingsDraft(this.snapshot.settings);
       return null;
@@ -601,7 +620,8 @@ export class MessengerRuntime {
     if (!this.api) return null;
     try {
       const provider = await this.api.patchProvider(id, body);
-      this.ingestProvider(provider);
+      this.pendingMutation = null;
+      this.ingestProvider(await this.api.get<Provider>(`/v1/providers/${provider.id}`));
       this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
       this.syncSettingsDraft(this.snapshot.settings);
       return null;
@@ -637,7 +657,9 @@ export class MessengerRuntime {
     if (!this.api) return null;
     try {
       const server = await this.api.createMcpServer(body);
-      this.ingestMcp(server);
+      this.pendingMutation = null;
+      const current = (await this.api.mcpServers()).find((row) => row.id === server.id);
+      if (current) this.ingestMcp(current);
       return null;
     } catch (error) {
       return this.mcpFailure(error);
@@ -661,7 +683,9 @@ export class MessengerRuntime {
     if (!this.api) return null;
     try {
       const server = await this.api.patchMcpServer(id, body);
-      this.ingestMcp(server);
+      this.pendingMutation = null;
+      const current = (await this.api.mcpServers()).find((row) => row.id === server.id);
+      if (current) this.ingestMcp(current);
       return null;
     } catch (error) {
       return this.mcpFailure(error);
@@ -865,7 +889,7 @@ export class MessengerRuntime {
   }
 
   private async connect(endpoint: LocalEndpoint): Promise<void> {
-    const api = new LocalApi(endpoint);
+    const api = this.api && sameEndpoint(this.api.endpoint, endpoint) ? this.api : new LocalApi(endpoint);
     const [settings, bots, sessions, spend, approvals, mcpServers, providers, skills, memories] =
       await Promise.all([
       api.settings(),
@@ -987,9 +1011,10 @@ export class MessengerRuntime {
   }
 
   private sheetFailure(error: unknown): ApiError | null {
+    if (error instanceof ApiError && error.requestId && ["key_write_pending", "request_pending", "request_unknown"].includes(error.code)) this.pendingMutation = { id: error.requestId, code: error.code };
     if (
       error instanceof ApiError &&
-      (error.status === 422 || error.status === 404 || error.status === 409)
+      (error.status === 422 || error.status === 404 || error.status === 409 || ["key_write_pending", "request_pending", "request_unknown"].includes(error.code))
     ) {
       return error;
     }
