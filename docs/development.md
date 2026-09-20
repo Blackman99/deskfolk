@@ -24,7 +24,7 @@
 
 根 `pnpm test` / `pnpm typecheck` 包含 `apps/relay`。`pnpm --filter @real-bot/relay build` 打包 Bun 入口；测试随机 loopback 端口、临时 SQLite、生成身份，真实双设备 Noise/WS、一次性 enrollment、吊销、未登记配对邮箱、慢 TCP 读端背压与 canary 日志脱敏，不用17890或个人数据。生产信使 build 后 `pnpm --filter @real-bot/relay smoke:serve` 在 `[::1]:5186` 只服务静态断线壳，**不提供 `__local-api`、Vite 或远控/PWA 功能**。隔离浏览器用 `agent-browser --session rc06`；占用端口直接失败，不停他人服务。
 
-Compose 的 Linux/TLS/磁盘 quota、外部安全复核与真机门需独立验收；没有 Docker daemon 时只能检查 Compose schema、Dockerfile parser 与本机 Caddy 配置，不能宣称容器部署通过。具体环境变量、非 root 构建、离线/恢复语义及 daemon07 消费的 HTTP/WS 契约见[自托管部署](deploy-remote.md)。不改变本机 bearer、loopback/Origin、窗监督或默认远控准入。
+另跑 `CADDY_BIN=/absolute/path/to/caddy pnpm --filter @real-bot/relay test:edge`（Caddy2.10.2、OpenSSL；可用 Go>=1.25 安装钉定版本，CI同样执行）。该套使用一次性 localhost 证书、随机 loopback 端口和真实Caddy→Bun，验证HTTP/HTTPS实际响应头、查询串拒绝、资源缓存/错误、WSS实际Noise往返/吊销；证书仅传给测试客户端，不关闭TLS验证、不改系统信任。浏览器静态fixture复用生产CSP生成器。Compose 的 Linux/公网TLS/磁盘 quota、外部安全复核与真机门需独立验收；没有 Docker daemon 时可检查 Compose schema、Dockerfile parser、本机Caddy配置和localhost TLS，但不能宣称容器部署或公网ACME通过。具体环境变量、非 root 构建、离线/恢复语义及 daemon07 消费的 HTTP/WS 契约见[自托管部署](deploy-remote.md)。不改变本机 bearer、loopback/Origin、窗监督或默认远控准入。
 
 ## 守护进程源码布局
 

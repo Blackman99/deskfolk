@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 import { isIP } from 'node:net';
-import { base64url, canonicalize, fromBase64url, randomBytes, verifyEnrollmentProof } from '@real-bot/remote';
+import { base64url, canonicalize, fromBase64url, PAIR_MAILBOX_CONTRACT, randomBytes, verifyEnrollmentProof } from '@real-bot/remote';
 import type { EnrollmentChallenge } from '@real-bot/remote';
 import { EnrollmentStore } from './store.ts';
 import { Mailboxes } from './mailbox.ts';
@@ -153,6 +153,10 @@ export function startRelay(options: RelayOptions) {
     } else {
       const route = routes.get(data.routeId!);
       requireValue(control && route && !route.host && route.deviceId === data.deviceId && store.lookup('device', route.deviceId));
+      // A fresh host challenge must not extend the waiting device's admission window.
+      if (route.device.data.phase !== 'waiting' || now() >= route.device.data.deadline) {
+        dropRoute(route.id, 1008); throw new Error('invalid');
+      }
       route.host = socket; data.phase = 'data'; route.device.data.phase = 'data';
       if (!send(socket, canonicalize({ type: 'ok', mode: 'link', route_id: route.id, device_id: route.deviceId }))) return;
       send(route.device, canonicalize({ type: 'ok', mode: 'link', route_id: route.id, device_id: route.deviceId }));
@@ -250,7 +254,7 @@ export function startRelay(options: RelayOptions) {
           catch { connections.delete(data); return reject(400); }
           connections.delete(data); return reject(400);
         }
-        if (request.method !== 'POST' || !['/v1/relay/bootstrap', '/v1/pair/mailbox'].includes(url.pathname)) return reject(404);
+        if (request.method !== 'POST' || !['/v1/relay/bootstrap', PAIR_MAILBOX_CONTRACT.path].includes(url.pathname)) return reject(404);
         if (!options.pairingEnabled) return reject(503);
         if (!mailboxLimiter.take(ip, now())) return reject(429);
         if (httpActive >= LIMITS.httpRequests) return reject(503);

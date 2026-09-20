@@ -1,8 +1,8 @@
-import { canonicalize, fromBase64url } from '@real-bot/remote';
+import { canonicalize, fromBase64url, PAIR_MAILBOX_CONTRACT } from '@real-bot/remote';
 
 export const LIMITS = Object.freeze({
-  frame: 65_536, text: 2_048, httpBody: 90_000, mailbox: 65_536,
-  mailboxChunk: 16_384, mailboxes: 4, mailboxTtlMs: 600_000,
+  frame: 65_536, text: 2_048, httpBody: 90_000, mailbox: PAIR_MAILBOX_CONTRACT.maximumEnvelopeBytes,
+  mailboxChunk: 16_384, mailboxes: 4, mailboxTtlMs: PAIR_MAILBOX_CONTRACT.maximumLifetimeSeconds * 1_000,
   devices: 16, slots: 32, sockets: 65, pending: 32, httpRequests: 32,
   challengeMs: 10_000, ipEntries: 1_024, handshakesPerMinute: 10,
   bytesPerSecond: 2_500_000, burstBytes: 262_144, bufferBytes: 65_536,
@@ -11,7 +11,7 @@ export type RecordValue = Record<string, unknown>;
 export function requireValue(value: unknown): asserts value {
   if (!value) throw new Error('invalid');
 }
-export function record(value: unknown): RecordValue {
+function record(value: unknown): RecordValue {
   requireValue(value && typeof value === 'object' && !Array.isArray(value));
   return value as RecordValue;
 }

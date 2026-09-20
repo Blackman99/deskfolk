@@ -1,9 +1,20 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { productionCsp } from '../../../deploy/remote/csp.mjs';
+import { PAIR_MAILBOX_CONTRACT } from '@real-bot/remote';
+import { LIMITS } from '../src/wire.ts';
 
 const root = resolve(import.meta.dir, '../../..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
+
+test('shared CSP fails without entry scripts and mailbox bounds consume the protocol contract', () => {
+  expect(() => productionCsp('<html></html>')).toThrow('missing production entry scripts');
+  expect(() => productionCsp('<script src="/entry.js"></script>')).toThrow('missing production entry scripts');
+  expect(productionCsp('<script>boot()</script>')).toContain("script-src-attr 'none'");
+  expect(LIMITS.mailbox).toBe(PAIR_MAILBOX_CONTRACT.maximumEnvelopeBytes);
+  expect(LIMITS.mailboxTtlMs).toBe(PAIR_MAILBOX_CONTRACT.maximumLifetimeSeconds * 1_000);
+});
 
 test('deployment has two default-off gates, no direct relay port, and private secret file', () => {
   const compose = read('deploy/remote/compose.yaml');

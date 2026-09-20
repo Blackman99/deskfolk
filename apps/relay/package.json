@@ -8,7 +8,8 @@
   "scripts": {
     "start": "bun src/main.ts",
     "build": "bun build --target bun src/main.ts --outdir dist",
-    "test": "bun test test",
+    "test": "bun test ./test",
+    "test:edge": "bun test ./integration",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke:serve": "bun test/browser/serve.ts"
   },

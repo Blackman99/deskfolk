@@ -1,19 +1,17 @@
 import { join, resolve, sep } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { productionCsp } from '../../../../deploy/remote/csp.mjs';
 
 const root = resolve(import.meta.dir, '../../../messenger/build');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
-const hashes = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
-  .filter(match => !/\bsrc\s*=/.test(match[0].split('>')[0]))
-  .map(match => `'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
+const csp = productionCsp(html);
 const server = Bun.serve({
   hostname: '::1', port: 5186,
   async fetch(request) {
     const url = new URL(request.url);
     const headers = {
       'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
-      'content-security-policy': `default-src 'none'; script-src 'self' ${hashes.join(' ')}; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      'content-security-policy': csp,
     };
     if (url.search || url.pathname.startsWith('/__local-api') || url.pathname.startsWith('/v1/') || url.pathname.startsWith('/@vite/') || url.pathname.startsWith('/src/')) return new Response(null, { status: 404, headers });
     const path = resolve(root, `.${decodeURIComponent(url.pathname)}`);

@@ -11,16 +11,18 @@ export const DEVICE = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
 export const DEVICE2 = '01ARZ3NDEKTSV4RRFFQ69G5FAX';
 export const PAIR = '01ARZ3NDEKTSV4RRFFQ69G5FAY';
 export const ORIGIN = 'https://relay.example.test';
-export type Message = string | Uint8Array;
+type Message = string | Uint8Array;
 export type Json = Record<string, any>;
 
-export class Peer {
+// lib.dom's constructor omits Bun's custom-CA and header options.
+const BunWebSocket = WebSocket as unknown as new (url: string, options?: Bun.WebSocketOptions) => WebSocket;
+class Peer {
   socket: WebSocket;
   private queue: Message[] = [];
   private waiting: { resolve: (message: Message) => void; reject: (error: Error) => void }[] = [];
   closed: Promise<void>;
-  constructor(url: string) {
-    this.socket = new WebSocket(url); this.socket.binaryType = 'arraybuffer';
+  constructor(url: string, options?: Bun.WebSocketOptions) {
+    this.socket = new BunWebSocket(url, options); this.socket.binaryType = 'arraybuffer';
     this.closed = new Promise(resolve => this.socket.addEventListener('close', () => {
       for (const waiter of this.waiting.splice(0)) waiter.reject(new Error('closed'));
       resolve();
@@ -48,7 +50,6 @@ export class Peer {
   text(value: Json): void { this.socket.send(canonicalize(value)); }
   binary(value: Json | Uint8Array): void { this.socket.send(value instanceof Uint8Array ? new Uint8Array(value) : new TextEncoder().encode(canonicalize(value))); }
   close(): void { this.socket.close(); }
-  get queued(): number { return this.queue.length; }
 }
 export async function deadline<T>(promise: Promise<T>, ms = 3_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -65,7 +66,7 @@ export async function authenticate(peer: Peer, id: string, identity: IdentitySec
   const issued = await challenge(peer, id, extra);
   peer.text({ type: 'proof', signature: signEnrollmentProof(issued, identity.enrollment) });
 }
-export async function fixture(overrides: Partial<RelayOptions> = {}) {
+export async function fixture(overrides: Partial<RelayOptions> = {}, edge?: { origin: string; ca: string }) {
   const directory = mkdtempSync(join(tmpdir(), 'rb-relay-'));
   const bootstrap = base64url(randomBytes(32));
   const hostKeys = generateIdentity(); const deviceKeys = generateIdentity();
@@ -78,9 +79,14 @@ export async function fixture(overrides: Partial<RelayOptions> = {}) {
   try { relay = startRelay(config); }
   catch (error) { rmSync(directory, { recursive: true, force: true }); throw error; }
   const peers: Peer[] = [];
-  function peer(role: 'host' | 'device') { const p = new Peer(`ws://127.0.0.1:${relay.port}/v1/relay/${role}`); peers.push(p); return p; }
-  const post = (path: string, body: Json) => fetch(`http://127.0.0.1:${relay.port}${path}`, {
+  const origin = () => edge?.origin ?? `http://127.0.0.1:${relay.port}`;
+  function peer(role: 'host' | 'device') {
+    const p = new Peer(`${origin().replace(/^http/, 'ws')}/v1/relay/${role}`, edge ? { tls: { ca: edge.ca, serverName: 'localhost' }, headers: { origin: edge.origin } } : undefined);
+    peers.push(p); return p;
+  }
+  const post = (path: string, body: Json) => fetch(`${origin()}${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: canonicalize(body),
+    ...(edge ? { tls: { ca: edge.ca } } : {}),
   });
   const bootstrapBody = { bootstrap, host_id: HOST, enrollment_pk: base64url(identityPublic(hostKeys).enrollment) };
   async function enroll() { return post('/v1/relay/bootstrap', bootstrapBody); }

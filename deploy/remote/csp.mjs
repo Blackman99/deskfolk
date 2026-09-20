@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 
+/** @param {string} html */
 export function productionCsp(html) {
   const hashes = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
     .filter(match => !/\bsrc\s*=/.test(match[0].split('>')[0]))

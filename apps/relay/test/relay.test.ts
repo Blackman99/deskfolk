@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync, statSync } from 'node:fs';
 import { base64url, canonicalize, DeviceSession, fromBase64url, generateIdentity, HostSession, identityPublic, openPairing, randomBytes, sealPairing, signEnrollmentProof, utf8 } from '@real-bot/remote';
 import { authenticate, challenge, deadline, DEVICE, DEVICE2, fixture, HOST, ORIGIN, PAIR } from './helpers.ts';
@@ -166,6 +166,30 @@ describe('authenticated routes and real Noise', () => {
       expect((await f.post('/v1/pair/mailbox', { op: 'submit', pairing_id: PAIR, ciphertext: base64url(randomBytes(40)) })).status).toBe(503);
       const reconnect = await f.host(); const health = await f.command(reconnect, 'health');
       expect(health.routes).toBe(0); expect(health.mailboxes).toBe(0);
+    } finally { await f.close(); }
+  });
+  for (const age of [9_999, 10_000, 10_100]) test(`host proof at waiting age ${age}ms cannot extend the device deadline`, async () => {
+    const nativeSetInterval = globalThis.setInterval;
+    // Hold only the cleanup timer so the real WS transition, not the sweep, decides expiry.
+    const interval = spyOn(globalThis, 'setInterval').mockImplementation(((handler: () => void) => nativeSetInterval(handler, 60_000)) as typeof setInterval);
+    let f: Awaited<ReturnType<typeof fixture>>;
+    try { f = await fixture(); } finally { interval.mockRestore(); }
+    try {
+      await f.enroll(); const control = await f.host(); await f.register(control);
+      const device = f.peer('device'); await device.open(); await authenticate(device, DEVICE, f.deviceKeys);
+      const pending = await control.json();
+      f.advance(9_900);
+      const link = f.peer('host'); await link.open();
+      const issued = await challenge(link, HOST, { mode: 'link', route_id: pending.route_id, device_id: DEVICE });
+      f.advance(age - 9_900);
+      link.text({ type: 'proof', signature: signEnrollmentProof(issued, f.hostKeys.enrollment) });
+      if (age < 10_000) {
+        expect((await link.json()).type).toBe('ok'); expect((await device.json()).type).toBe('ok');
+      } else {
+        await deadline(Promise.all([link.closed, device.closed]));
+        await expect(link.next()).rejects.toThrow('closed'); await expect(device.next()).rejects.toThrow('closed');
+      }
+      expect((await f.command(control, 'health')).routes).toBe(age < 10_000 ? 1 : 0);
     } finally { await f.close(); }
   });
   test('idle challenge and host-link waiting deadlines remove orphan slots', async () => {

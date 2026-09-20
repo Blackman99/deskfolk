@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "types": ["bun"], "lib": ["ES2022", "DOM"] },
-  "include": ["src", "test"]
+  "compilerOptions": { "types": ["bun"], "lib": ["ES2022", "DOM"], "allowJs": true, "checkJs": true },
+  "include": ["src", "test", "integration"]
 }
