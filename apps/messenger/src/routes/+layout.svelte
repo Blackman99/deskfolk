@@ -2,12 +2,17 @@
 	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { themeManager } from '$lib/theme';
+	import { HOSTED_MESSENGER } from '$lib/remote/mode';
 	import '$lib/styles/index.css';
 
 	let { children } = $props();
 
 	onMount(() => {
-		return themeManager.init();
+		const stop = themeManager.init();
+		if (HOSTED_MESSENGER && 'serviceWorker' in navigator) {
+			void navigator.serviceWorker.register('/sw.js');
+		}
+		return stop;
 	});
 </script>
 

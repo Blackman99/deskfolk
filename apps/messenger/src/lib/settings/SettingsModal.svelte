@@ -523,6 +523,47 @@
 
 				{#if activeSettingsTab === 'general'}
 					<div class="settings-tab-pane">
+						{#if runtime.remote || runtime.remoteStatus}
+							<div class="settings-card settings-card-remote">
+								<div class="settings-card-header">
+									<div class="settings-card-header-main">
+										<div>
+											<h3 class="settings-card-title">{t.settings.remoteSection}</h3>
+											<p class="settings-card-subtitle">{t.settings.remoteSubtitle}</p>
+										</div>
+									</div>
+								</div>
+								<p class="muted">{t.remote.experimental}</p>
+								<p>
+									{runtime.remoteStatus?.state === 'online'
+										? t.remote.statusOnline
+										: runtime.remoteStatus?.state === 'connecting'
+											? t.remote.statusConnecting
+											: runtime.remoteStatus?.state === 'native_unavailable'
+												? t.remote.statusUnavailable
+												: runtime.remoteStatus?.state === 'activation_gated'
+													? t.remote.statusGated
+													: runtime.remoteStatus?.state === 'trust_mismatch'
+														? t.remote.statusMismatch
+														: runtime.remoteStatus?.state === 'disconnected'
+															? t.remote.statusDisconnected
+															: t.remote.statusOff}
+								</p>
+								{#if runtime.remoteStatus}
+									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
+								{/if}
+								<p class="muted">{t.remote.noOfflineQueue}</p>
+								{#if runtime.remote}
+									<p class="muted">{t.remote.uvNeeded}</p>
+									{#if runtime.uvError}
+										<p class="field-error">{t.remote.uvFailed}</p>
+									{/if}
+									{#if !runtime.uvReady}
+										<button type="button" onclick={() => void runtime.registerUv()}>{t.remote.uvRegister}</button>
+									{/if}
+								{/if}
+							</div>
+						{/if}
 						<!-- Workspace Directory Section -->
 						<div class="settings-card settings-card-workspace">
 							<div class="settings-card-header">

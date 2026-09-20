@@ -9,11 +9,14 @@
 		overlayFromFlags,
 		overlayFromUrl,
 		previewFromUrl,
+		attachmentFromUrl,
 		selectionFromUrl,
 		sessionFromUrl,
 		sessionUrl,
 		viewFromUrl
 	} from '$lib/session-url';
+	import { HOSTED_MESSENGER } from '$lib/remote/mode';
+	import PairingScreen from '$lib/remote/PairingScreen.svelte';
 	import { updateChecker } from '$lib/update-checker.svelte';
 	import Shell from '$lib/Shell.svelte';
 
@@ -32,9 +35,10 @@
 	// path is restored even when the session list has not arrived yet — the pane fetches the file
 	// from the workspace, not from the transcript. Settings can open immediately; the drawer and
 	// workspace wait for the snapshot so a missing session or Bot does not flash the wrong pane.
-	const fromUrl = viewFromUrl(page.url);
+	const fromUrl = viewFromUrl(page.url, HOSTED_MESSENGER);
 	if (fromUrl.selectedId) runtime.selectedId = fromUrl.selectedId;
 	if (fromUrl.previewRelpath) runtime.previewRelpath = fromUrl.previewRelpath;
+	if (fromUrl.previewAttachmentId) runtime.previewAttachmentId = fromUrl.previewAttachmentId;
 	if (fromUrl.overlay.kind !== 'none') runtime.applyOverlay(fromUrl.overlay);
 
 	onMount(() => {
@@ -66,6 +70,7 @@
 	});
 
 	$effect(() => {
+		if (HOSTED_MESSENGER) return;
 		const wanted = previewFromUrl(page.url);
 		untrack(() => {
 			if (wanted !== runtime.previewRelpath) runtime.previewRelpath = wanted;
@@ -73,7 +78,15 @@
 	});
 
 	$effect(() => {
-		const wanted = overlayFromUrl(page.url);
+		if (!HOSTED_MESSENGER) return;
+		const wanted = attachmentFromUrl(page.url);
+		untrack(() => {
+			if (wanted !== runtime.previewAttachmentId) runtime.previewAttachmentId = wanted;
+		});
+	});
+
+	$effect(() => {
+		const wanted = overlayFromUrl(page.url, HOSTED_MESSENGER);
 		const urlSession = sessionFromUrl(page.url);
 		const sessions = runtime.snapshot.sessions;
 		const bots = runtime.snapshot.bots;
@@ -111,6 +124,7 @@
 	$effect(() => {
 		const id = runtime.selectedId;
 		const previewRelpath = runtime.previewRelpath;
+		const previewAttachmentId = runtime.previewAttachmentId;
 		const overlay = overlayFromFlags({
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
@@ -119,17 +133,50 @@
 			workspaceSelected: runtime.workspaceSelected
 		});
 		untrack(() => {
-			const target = sessionUrl(page.url, { selectedId: id, previewRelpath, overlay });
+			const target = sessionUrl(
+				page.url,
+				{ selectedId: id, previewRelpath, previewAttachmentId, overlay },
+				HOSTED_MESSENGER
+			);
 			if (target) void goto(target, { noScroll: true, keepFocus: true });
 		});
 	});
 
-	const disconnectedCopy = $derived(copyFor(runtime.snapshot.settings.locale).disconnected.message);
+	const copy = $derived(copyFor(runtime.snapshot.settings.locale));
+	const disconnectedCopy = $derived(
+		runtime.hostUnreachable === 'host' ? copy.disconnected.host : copy.disconnected.message
+	);
+	const showPairing = $derived(HOSTED_MESSENGER && runtime.connection === 'disconnected' && !runtime.enrolled);
 </script>
 
 {#if runtime.connection === 'disconnected'}
-	<main class="disconnected">{disconnectedCopy}</main>
+	{#if showPairing}
+		<PairingScreen {runtime} t={copy} />
+	{:else}
+		<main class="disconnected">
+			<span>{disconnectedCopy}</span>
+			{#if runtime.hostUnreachable === 'host'}
+				<p class="disconnected-hint">{copy.disconnected.hostHint}</p>
+			{/if}
+			{#if runtime.draftReconnect && !runtime.draftReconnect.confirm}
+				<p class="disconnected-hint">{copy.remote.draftConfirm}</p>
+				<div class="disconnected-actions">
+					<button type="button" onclick={() => runtime.confirmDraftReconnect()}>{copy.remote.draftSend}</button>
+					<button type="button" onclick={() => runtime.discardDraftReconnect()}>{copy.remote.draftDiscard}</button>
+				</div>
+			{/if}
+		</main>
+	{/if}
 {:else}
+	{#if runtime.draftReconnect && !runtime.draftReconnect.confirm}
+		<div class="draft-reconnect" role="status">
+			<p>{copy.remote.draftConfirm}</p>
+			<div class="disconnected-actions">
+				<button type="button" onclick={() => runtime.confirmDraftReconnect()}>{copy.remote.draftSend}</button>
+				<button type="button" onclick={() => runtime.discardDraftReconnect()}>{copy.remote.draftDiscard}</button>
+			</div>
+		</div>
+	{/if}
 	<Shell {runtime} />
 {/if}
 
@@ -149,6 +196,38 @@
 		background: var(--bg);
 	}
 
+	.disconnected-hint {
+		max-width: 28rem;
+		text-align: center;
+		font-size: 13px;
+		font-weight: 500;
+		line-height: 1.45;
+	}
+	.disconnected-actions {
+		display: flex;
+		gap: 8px;
+	}
+	.draft-reconnect {
+		position: fixed;
+		top: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 80;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		padding: 12px 16px;
+		box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+		max-width: min(420px, calc(100% - 24px));
+	}
+	.disconnected-actions button {
+		min-height: 44px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--pane);
+		font-weight: 600;
+	}
 	.disconnected::before {
 		content: "";
 		display: block;

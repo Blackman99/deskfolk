@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
-	import type { LocalApi } from '../api.ts';
+	import type { MessengerApi } from '../remote/api.ts';
 	import ArtifactPreview from './ArtifactPreview.svelte';
 
 	interface Props {
-		api: LocalApi | null;
+		api: MessengerApi | null;
 		workspacePath: string | null;
 		selected: string;
 		t: Copy;

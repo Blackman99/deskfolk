@@ -64,7 +64,7 @@ pnpm dev
 
 Alpha，仅 macOS。已接入、正在建设与明确不做：[官网](https://blackman99.github.io/real-bot/zh#boundaries) · [路线图](ROADMAP.md) · [CONTEXT.md](CONTEXT.md)（领域语言）。
 
-共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。新增默认关闭的 Bun 中继与非 root Compose/Caddy 静态部署模板，供隔离集成测试；daemon 适配器和远控/PWA 客户端尚未完成。见[自托管部署、bootstrap 恢复与路由契约](docs/deploy-remote.md)，含独立 `test:edge` 命令验证本机真实 Caddy HTTP/HTTPS/WSS（需要 Caddy 2.10.2 与 OpenSSL）。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）；真机 PWA/WebAuthn 与独立安全审查门仍待验证。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要，本机 daemon 回执现也通过仅含规范编码的 workspace 导出使用它。daemon 仍保留更严格的路由及强 SHA-256 If-Match 校验。
+共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。默认关闭的 Bun 中继、原生门控 daemon 适配器和托管信使 PWA 客户端现可供隔离集成测试。托管生产包不含本机发现与回环 bearer；公网配对仍关闭。这不是可用远控产品：独立安全复核（S-rev）、真机 iOS/Android 主屏幕 WebAuthn（G-uv）与真机 L1 **未通过**。见[自托管部署、bootstrap 恢复与路由契约](docs/deploy-remote.md)，含独立 `test:edge` 命令验证本机真实 Caddy HTTP/HTTPS/WSS（需要 Caddy 2.10.2 与 OpenSSL）。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要，本机 daemon 回执现也通过仅含规范编码的 workspace 导出使用它。daemon 仍保留更严格的路由及强 SHA-256 If-Match 校验。
 
 ## 参与
 

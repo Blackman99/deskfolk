@@ -35,7 +35,7 @@ https://{$RELAY_DOMAIN} {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		Referrer-Policy no-referrer
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self)"
 	}
 	header -Server
 	header ?Cache-Control no-store
@@ -46,8 +46,8 @@ https://{$RELAY_DOMAIN} {
 		respond "" {err.status_code}
 	}
 	route {
-		@query expression `{http.request.uri.query} != ""`
-		respond @query 400
+		@illegal_query expression `{http.request.uri.query} != "" && !({http.request.uri.query} matches '^(?:(?:s|o|b|a)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a)=[0-9A-Za-z._-]+)*$')`
+		respond @illegal_query 400
 		@relay path /v1/relay/host /v1/relay/device /v1/relay/bootstrap /v1/pair/mailbox
 		handle @relay {
 			request_body {

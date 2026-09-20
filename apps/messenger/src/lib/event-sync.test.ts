@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SequencedEvent } from "@real-bot/protocol";
 import { EventSync } from "./event-sync.ts";
-import { LocalApi } from "./api.ts";
+import { LocalApi } from "./local-api.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot } from "./snapshot.ts";
 
 const instance = "a".repeat(32);

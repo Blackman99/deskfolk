@@ -10,6 +10,7 @@ export const PREVIEW_PARAM = "p";
 export const OVERLAY_PARAM = "o";
 export const OVERLAY_BOT_PARAM = "b";
 export const WORKSPACE_FILE_PARAM = "w";
+export const ATTACHMENT_PARAM = "a";
 
 export const OVERLAY_SETTINGS = "settings";
 export const OVERLAY_SESSION = "session";
@@ -26,6 +27,7 @@ export type UrlOverlay =
 export type UrlView = {
   selectedId: string | null;
   previewRelpath: string | null;
+  previewAttachmentId: string | null;
   overlay: UrlOverlay;
 };
 
@@ -37,7 +39,11 @@ export function previewFromUrl(url: URL): string | null {
   return sanitizePreviewPath(url.searchParams.get(PREVIEW_PARAM));
 }
 
-export function overlayFromUrl(url: URL): UrlOverlay {
+export function attachmentFromUrl(url: URL): string | null {
+  return sanitizeBotId(url.searchParams.get(ATTACHMENT_PARAM));
+}
+
+export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   const raw = url.searchParams.get(OVERLAY_PARAM);
   if (raw === OVERLAY_SETTINGS) return { kind: "settings" };
   if (raw === OVERLAY_SESSION) return { kind: "session" };
@@ -46,16 +52,17 @@ export function overlayFromUrl(url: URL): UrlOverlay {
     return botId ? { kind: "bot", botId } : { kind: "none" };
   }
   if (raw === OVERLAY_WORKSPACE) {
-    return { kind: "workspace", selected: sanitizePreviewPath(url.searchParams.get(WORKSPACE_FILE_PARAM)) };
+    return { kind: "workspace", selected: remote ? null : sanitizePreviewPath(url.searchParams.get(WORKSPACE_FILE_PARAM)) };
   }
   return { kind: "none" };
 }
 
-export function viewFromUrl(url: URL): UrlView {
+export function viewFromUrl(url: URL, remote = false): UrlView {
   return {
     selectedId: sessionFromUrl(url),
-    previewRelpath: previewFromUrl(url),
-    overlay: overlayFromUrl(url),
+    previewRelpath: remote ? null : previewFromUrl(url),
+    previewAttachmentId: remote ? sanitizeBotId(url.searchParams.get(ATTACHMENT_PARAM)) : null,
+    overlay: overlayFromUrl(url, remote),
   };
 }
 
@@ -116,22 +123,38 @@ export function sanitizeBotId(raw: string | null | undefined): string | null {
  * Where the URL should go for this view, or `null` when it is already right. Returning null
  * is what keeps the mirrored effects from navigating each other in circles.
  */
-export function sessionUrl(current: URL, view: UrlView): string | null {
+export function sessionUrl(current: URL, view: UrlView, remote = false): string | null {
   const next = new URL(current);
   if (view.selectedId) next.searchParams.set(SESSION_PARAM, view.selectedId);
   else next.searchParams.delete(SESSION_PARAM);
 
-  const preview = sanitizePreviewPath(view.previewRelpath);
-  if (preview) next.searchParams.set(PREVIEW_PARAM, preview);
-  else next.searchParams.delete(PREVIEW_PARAM);
+  if (remote) {
+    next.searchParams.delete(PREVIEW_PARAM);
+    next.searchParams.delete(WORKSPACE_FILE_PARAM);
+    next.searchParams.delete(ATTACHMENT_PARAM);
+  } else {
+    next.searchParams.delete(ATTACHMENT_PARAM);
+    const preview = sanitizePreviewPath(view.previewRelpath);
+    if (preview) next.searchParams.set(PREVIEW_PARAM, preview);
+    else next.searchParams.delete(PREVIEW_PARAM);
+  }
 
-  writeOverlay(next, view.overlay);
+  writeOverlay(next, remote ? stripRemoteOverlay(view.overlay) : view.overlay);
+  if (remote) {
+    const attachment = sanitizeBotId(view.previewAttachmentId);
+    if (attachment) next.searchParams.set(ATTACHMENT_PARAM, attachment);
+  }
 
   // Compare decoded params, not `search` strings: `/` in a preview path is legal unencoded in
   // the href, but `URLSearchParams` always writes it as `%2F`. String equality would bounce
   // forever between the two spellings.
   if (sameSearch(current, next)) return null;
   return `${next.pathname}${next.search}`;
+}
+
+function stripRemoteOverlay(overlay: UrlOverlay): UrlOverlay {
+  if (overlay.kind === "workspace") return { kind: "workspace", selected: null };
+  return overlay;
 }
 
 function writeOverlay(url: URL, overlay: UrlOverlay): void {

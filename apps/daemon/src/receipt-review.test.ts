@@ -7,8 +7,8 @@ import { Store, type EndpointKeyStore } from "./store";
 import { memoryKeyStore } from "./secrets";
 import { ulid } from "./ids";
 // The real browser client is loaded at runtime across the packages' different TS library targets.
-const clientModule = new URL("../../messenger/src/lib/api.ts", import.meta.url).href;
-const { LocalApi: Client, ApiError } = await import(clientModule);
+const { ApiError } = await import(new URL("../../messenger/src/lib/api.ts", import.meta.url).href);
+const { LocalApi: Client } = await import(new URL("../../messenger/src/lib/local-api.ts", import.meta.url).href);
 import type { ClientEvent } from "@real-bot/protocol";
 import { listWorkspaceDir } from "./workspace-browse";
 import { canonicalJson, requestDigest, requestPreimage, normalizeFiles, sha256, type CanonicalEncoder, type DigestFile, type NormalizedFile } from "./request-digest";

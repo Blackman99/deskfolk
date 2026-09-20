@@ -185,6 +185,9 @@ importers:
       '@real-bot/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@real-bot/remote':
+        specifier: workspace:*
+        version: link:../../packages/remote
       '@shikijs/monaco':
         specifier: ^4.4.3
         version: 4.4.3

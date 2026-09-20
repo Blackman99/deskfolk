@@ -38,6 +38,8 @@
 
 ### 实验性远控协议
 
+- 新增托管信使远控客户端：与 LocalApi 方法面一致的 Noise RPC、钉住主机 DH/签名公钥与中继 origin 的扫码配对、仅 IndexedDB 存设备身份，以及 standalone PWA 壳。托管生产包（`REAL_BOT_HOSTED=1` / `pnpm --filter @real-bot/messenger build:hosted`）不含 `__local-api` 与本机 bearer。远程 URL 只允许会话/浮层/附件 id（`?s` `?o` `?b` `?a`），禁止 `?p=` / `?w=` 文件路径。Service worker 只缓存带哈希的 immutable 资源，导航 index 仍 no-store。断线显示执行主机不可达，不排队命令；未发送内存草稿重连需确认，未知结果查同一 `request_id` 回执。WebAuthn `create`/`get` 使用有效域名 `rpId` 且要求 UV，仅在 Split 后登记；失败仍可普通聊天，无点击确认 fallback。公网配对仍默认关闭。S-rev、G-uv 与真机 L1 **未通过**。
+
 - 远控加密 RPC 在副作用与回执前拒绝 `constructor` / `__proto__` 等原型字段名，并把 schema 失败映射为 422，不再因此关闭 Noise 会话。本机确认使用独立的 `renew_first_uv` / `recover_trust` 种类，不再复用配对或更换中继。
 
 - 修复 daemon 复核问题：等 epoch 恢复同样提升防回滚高水位；原生确认的身份重置、中继/工作区切换、首次 UV 续期绑定当前公钥与耐久转换状态。读取类模型请求在凭据等待后重检取消，已接受轮次仍独立运行。主机级限速与吊销确认进度避免超出中继 burst，文件取消跟踪实际 EOF；远控属性、Stop 幂等和稳定错误码严格验证而不改变本机兼容性。生命周期回执在副作用成功前保持 pending，强制排空计入未结束工作并阻止后续工具。生产/原生/审计门仍关闭。

@@ -4,10 +4,12 @@ import {
   overlayFromFlags,
   overlayFromUrl,
   previewFromUrl,
+  attachmentFromUrl,
   sanitizePreviewPath,
   selectionFromUrl,
   sessionFromUrl,
   sessionUrl,
+  viewFromUrl,
   type UrlOverlay,
   type UrlView,
 } from "./session-url.ts";
@@ -18,6 +20,7 @@ function view(over: Partial<UrlView> = {}): UrlView {
   return {
     selectedId: null,
     previewRelpath: null,
+    previewAttachmentId: null,
     overlay: { kind: "none" },
     ...over,
   };
@@ -252,4 +255,26 @@ test("a known session is selected", () => {
 
 test("an id the snapshot has never seen waits rather than fetching", () => {
   expect(selectionFromUrl("zzz", null, ["abc"])).toEqual({ action: "wait", id: "zzz" });
+});
+
+test("remote URLs keep session and overlay ids and drop file paths", () => {
+  expect(
+    sessionUrl(
+      at("?s=abc&p=out/a.html&o=workspace&w=inbox/a.md"),
+      view({ selectedId: "abc", previewAttachmentId: "att-1", overlay: { kind: "workspace", selected: "inbox/a.md" } }),
+      true,
+    ),
+  ).toBe("/?s=abc&o=workspace&a=att-1");
+  expect(viewFromUrl(at("?s=abc&p=secret.txt&w=inbox/a.md&a=att-1"), true)).toEqual({
+    selectedId: "abc",
+    previewRelpath: null,
+    previewAttachmentId: "att-1",
+    overlay: { kind: "none" },
+  });
+  expect(overlayFromUrl(at("?o=workspace&w=inbox/a.md"), true)).toEqual({
+    kind: "workspace",
+    selected: null,
+  });
+  expect(attachmentFromUrl(at("?s=abc&a=att-1"))).toBe("att-1");
+  expect(attachmentFromUrl(at("?s=abc&p=secret.txt"))).toBeNull();
 });

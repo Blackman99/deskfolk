@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { ApiError, etagForBlob, LocalApi } from "./api";
+import { ApiError, etagForBlob } from "./api";
+import { LocalApi } from "./local-api.ts";
 
 test("pending mutation payload is immutable in memory and only explicit retries send it", async () => {
   const sent: Array<{ id: string | null; body: unknown }> = [];

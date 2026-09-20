@@ -1,14 +1,14 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { LocalApi } from '../api.ts';
+	import type { MessengerApi } from '../remote/api.ts';
 	import { artifactKind } from '../overlays/artifacts.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from '../overlays/artifact-tree.ts';
 	import { onDestroy, onMount } from 'svelte';
 
 	interface Props {
 		attachments: Attachment[];
-		api: LocalApi | null;
+		api: MessengerApi | null;
 		t: Copy;
 		onPreview: (att: Attachment) => void;
 	}

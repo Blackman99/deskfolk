@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { ApiError, etagForBlob, type LocalApi } from '../api.ts';
+	import { ApiError, etagForBlob } from '../api.ts';
+	import type { MessengerApi } from '../remote/api.ts';
 	import {
 		absWorkspacePath,
 		artifactByteSource,
@@ -41,7 +42,7 @@
 		attachment: Attachment | null;
 		relpath: string;
 		siblings: Attachment[];
-		api: LocalApi | null;
+		api: MessengerApi | null;
 		workspacePath: string | null;
 		t: Copy;
 		onClose: () => void;
