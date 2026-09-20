@@ -449,6 +449,7 @@
 
 	function closeMessageContextMenu(): void {
 		messageContextMenu = null;
+		selectedMessageId = null;
 	}
 
 	function handleOpenFileTree(targetPath: string | null, message: Message): void {
@@ -589,7 +590,6 @@
 						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
 						class:is-selected={selectedMessageId === singleMsg.message.id}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
-						onclick={() => (selectedMessageId = singleMsg.message.id)}
 					>
 						<div class="avatar-col">
 							{#if askBot}
@@ -751,7 +751,6 @@
 						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
 						class:is-selected={selectedMessageId === singleMsg.message.id}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
-						onclick={() => (selectedMessageId = singleMsg.message.id)}
 					>
 						<div class="avatar-col">
 							{#if sysBot}
@@ -855,7 +854,6 @@
 										class:is-search-hit={runtime.highlightedMessageId === item.message.id}
 										class:is-selected={selectedMessageId === item.message.id}
 										oncontextmenu={(e) => handleMessageContextMenu(e, item.message)}
-										onclick={() => (selectedMessageId = item.message.id)}
 									>
 										{#if isMulti}
 											<div class="segment-meta is-right flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
@@ -1086,9 +1084,6 @@
 									class:is-selected={item.type === 'message' && selectedMessageId === item.message.id}
 									oncontextmenu={(e) => {
 										if (item.type === 'message') handleMessageContextMenu(e, item.message);
-									}}
-									onclick={() => {
-										if (item.type === 'message') selectedMessageId = item.message.id;
 									}}
 								>
 									{#if isMulti}
