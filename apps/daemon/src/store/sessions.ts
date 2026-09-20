@@ -208,6 +208,8 @@ export function deleteSession(ctx: StoreContext, id: string): void {
       `DELETE FROM route_feedback WHERE turn_id IN (SELECT id FROM turns WHERE session_id = ?)`,
       [id],
     );
+    // Reviews FK the turn and session; leaving them rolls the whole delete back.
+    ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
@@ -251,6 +253,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
       `DELETE FROM route_feedback WHERE turn_id IN (SELECT id FROM turns WHERE session_id = ?)`,
       [id],
     );
+    // Reviews FK the turn and session; leaving them rolls the whole clear back.
+    ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);

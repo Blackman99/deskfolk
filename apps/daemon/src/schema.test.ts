@@ -199,6 +199,61 @@ describe("schema", () => {
     store.close();
   });
 
+  test("clearSessionMessages and deleteSession succeed when the session has a route review", () => {
+    const store = new Store();
+    const b1 = store.createBot({ name: "BotOne", duties: "one", boundaries: "none" });
+    const b2 = store.createBot({ name: "BotTwo", duties: "two", boundaries: "none" });
+    const group = store.createGroup({ name: "WorkGroup", members: [b1.bot.id, b2.bot.id] });
+    const msg = store.postMessage(group.id, { body: "Hello group" });
+    const turn = store.createTurn({
+      sessionId: group.id,
+      botId: b1.bot.id,
+      triggerMessageId: msg.id,
+    });
+    store.recordRouteReview({
+      botId: b1.bot.id,
+      chainId: turn.id,
+      turnId: turn.id,
+      sessionId: group.id,
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "model", direction: "stronger", rounds: 1, confidence: 0.9, reason: "r" },
+    });
+    expect(store.listSessionReviews(group.id)).toHaveLength(1);
+
+    store.clearSessionMessages(group.id);
+
+    expect(store.listMessages(group.id).items).toHaveLength(0);
+    expect(store.listSessionReviews(group.id)).toHaveLength(0);
+    expect(store.getSession(group.id).id).toBe(group.id);
+
+    const again = store.postMessage(group.id, { body: "after clear" });
+    const nextTurn = store.createTurn({
+      sessionId: group.id,
+      botId: b1.bot.id,
+      triggerMessageId: again.id,
+    });
+    store.recordRouteReview({
+      botId: b1.bot.id,
+      chainId: nextTurn.id,
+      turnId: nextTurn.id,
+      sessionId: group.id,
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "none", direction: "stronger", rounds: 0, confidence: 0.1, reason: "" },
+    });
+
+    store.deleteSession(group.id);
+
+    expect(() => store.getSession(group.id)).toThrow();
+    expect(store.listSessions().some((s) => s.id === group.id)).toBe(false);
+    expect(store.listSessionReviews(group.id)).toHaveLength(0);
+
+    store.close();
+  });
+
   test("leftover profile_change rows stay out of listings, last_message, unread, and search", () => {
     const store = new Store();
     const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
