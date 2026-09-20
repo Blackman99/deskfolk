@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 实验性远控协议
+
+- 新增浏览器/Bun 共用的远控密码原型：钉扎身份与签名 Hello 的 Noise IK、有界加密帧、配对授权、中继挑战证明、规范回执摘要，以及绑定完整操作、一次性 challenge 的真实 COSE/WebAuthn 验证。通过官方协议向量及独立 Rust snow 对端检验。远控运输与公网配对仍是提案、默认关闭：真机 PWA/WebAuthn 与独立安全复核尚未通过。接口见[协议契约](docs/remote-protocol.md)。
+
 ### Daemon
 
 - `read_file`（以及除 `write_file` 以外的其他工作区工具）不再把路径记成消息附件。Bot 只读过的路径是输入；只有写出来的才成为这条消息上的产物。

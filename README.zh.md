@@ -56,6 +56,8 @@ pnpm dev
 
 Alpha，仅 macOS。已接入、正在建设与明确不做：[官网](https://blackman99.github.io/real-bot/zh#boundaries) · [路线图](ROADMAP.md) · [CONTEXT.md](CONTEXT.md)（领域语言）。
 
+共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）；真机 PWA/WebAuthn 与独立安全审查门仍待验证。见[协议/API 契约](docs/remote-protocol.md)。
+
 ## 参与
 
 [开发说明](docs/development.md) · [参与贡献](CONTRIBUTING.md) · [安全说明](SECURITY.md)。MIT 协议开源，与 xAI / Grok 无官方附属关系。

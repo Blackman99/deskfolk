@@ -6,6 +6,10 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Experimental remote protocol
+
+- Added the browser/Bun shared remote-crypto prototype: pinned Noise IK identities and signed Hello, bounded encrypted frames, pairing grants, enrollment proofs, canonical receipt hashes, and real COSE/WebAuthn verification with operation-bound one-use challenges. Official protocol vectors and an independent Rust snow peer exercise the implementation. Remote transport and public pairing remain proposed/default-off: real-device PWA/WebAuthn validation and independent security review have not passed. See [the protocol contract](docs/remote-protocol.md).
+
 ### Daemon
 
 - `read_file` (and the other workspace tools besides `write_file`) no longer stamp their paths as message attachments. A path the Bot only read is an input; only a write becomes a cited artifact on the message.

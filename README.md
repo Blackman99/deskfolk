@@ -57,6 +57,8 @@ First run: pick a workspace folder (missing folders are created), add an OpenAI-
 
 Alpha, macOS only. What is live, in progress and out of scope: [website](https://blackman99.github.io/real-bot/en#boundaries) · [Roadmap](ROADMAP.md) · [CONTEXT.md](CONTEXT.md) (domain language).
 
+The shared remote-crypto package is an **experimental, default-off prototype**, not available remote access. Its tests include official Noise vectors and an independent Rust snow peer (`pnpm test` requires Cargo); physical PWA/WebAuthn and independent security-review gates remain open. See the [protocol/API contract](docs/remote-protocol.md).
+
 ## Contributing
 
 [Development guide](docs/development.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md). MIT licensed. Not affiliated with xAI / Grok.

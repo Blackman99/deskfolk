@@ -1,0 +1,16 @@
+[package]
+name = "real-bot-noise-interop"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[dependencies]
+snow = "=0.10.0"
+serde_json = "1.0"
+hex = "0.4"
+ed25519-dalek = "2.2"
+
+[[bin]]
+name = "snow-peer"
+path = "src/main.rs"

@@ -1,0 +1,28 @@
+{
+  "name": "@real-bot/remote",
+  "license": "MIT",
+  "private": true,
+  "version": "0.1.0-rc.2",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./canonical": "./src/canonical.ts"
+  },
+  "scripts": {
+    "test": "cargo build --locked --manifest-path test/snow/Cargo.toml && bun test test && cargo test --locked --manifest-path test/snow/Cargo.toml",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "build:browser": "bun build src/index.ts test/browser/main.ts --target browser --minify --outdir dist/browser --entry-naming '[name].[ext]'",
+    "smoke:serve": "bun test/browser/serve.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.11",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "cborg": "4.3.2"
+  }
+}

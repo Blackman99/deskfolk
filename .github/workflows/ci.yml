@@ -32,6 +32,12 @@ jobs:
         with:
           bun-version: 1.4.2
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: packages/remote/test/snow -> target
+
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
@@ -40,6 +46,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Build shared remote package and browser fixture
+        run: pnpm --filter @real-bot/remote build && pnpm --filter @real-bot/remote build:browser
 
       - name: Build messenger
         run: pnpm --filter @real-bot/messenger build
