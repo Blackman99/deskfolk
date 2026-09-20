@@ -21,6 +21,12 @@ for (const [name, size] of Object.entries(STORY_SIZES)) {
 			await page.goto(`index.html?story=${name}&theme=${theme}`);
 			await page.waitForSelector('html[data-ready="yes"]');
 			await page.evaluate(() => document.fonts.ready);
+			if (name.startsWith('routine-')) {
+				await expect(page.getByRole('region', { name: '日程' })).toBeVisible();
+				await expect(page.getByRole('button', { name: '新建日程', exact: true })).toBeVisible();
+				if (name === 'routine-editor-narrow') await expect(page.locator('#routine-title')).toHaveValue('Morning brief');
+				await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+			}
 			await expect(page).toHaveScreenshot(`${name}-${theme}.png`);
 			expect(errors).toEqual([]);
 		});

@@ -53,6 +53,12 @@ pnpm dev
 
 First run: pick a workspace folder (missing folders are created), add an OpenAI-compatible endpoint and key in Settings, create the first bot from the sidebar, then let it hire the rest.
 
+## Daily and weekly routines
+
+Open a Bot’s profile (the Bot avatar/name → profile), then **Routines → Add routine**. The owner is that Bot. Enter a title and task instruction, choose **Daily** or **Weekly** with one or more weekdays, and enter a 24-hour `HH:MM` time. Save, edit, pause/resume, or delete with confirmation in the same card. Sidebar search opens the matching routine’s Bot profile and highlights its editor.
+
+Times are civil times in the **execution Mac’s local time zone**, not the browser’s zone; there is no per-routine timezone or cron expression. The Mac must be awake and its runtime available. Recovery catches up only the latest missed occurrence, never every missed run; archived Bots do not run routines. Deleting or pausing a routine does not stop already-started work. Lists update live across clients and refresh after reconnecting. If another client edits a draft’s routine, load the latest version before saving; stale saves and deletes are rejected rather than overwriting it. Connection loss does not automatically retry a write—check the list after reconnecting.
+
 ## Status
 
 Alpha, macOS only. What is live, in progress and out of scope: [website](https://blackman99.github.io/real-bot/en#boundaries) · [Roadmap](ROADMAP.md) · [CONTEXT.md](CONTEXT.md) (domain language).

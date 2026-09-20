@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { emptySnapshot } from "./snapshot.ts";
-import { aBot, aDirect, aMessage, aTurn } from "./test-fixtures.ts";
+import { aBot, aDirect, aMessage, aRoutine, aTurn } from "./test-fixtures.ts";
 
 const instance = "a".repeat(32);
 const cursor = { event_instance_id: instance, watermark_seq: 0 };
@@ -79,6 +79,49 @@ afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.destroy();
   globalThis.fetch = originalFetch;
   globalThis.WebSocket = OriginalSocket;
+});
+
+test("routine writes use revision bodies and only events or reconnect snapshots change state", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === 'connected');
+  const row = aRoutine();
+  const requests: { method: string; body: unknown }[] = [];
+  globalThis.fetch = (async (_url, init) => {
+    requests.push({ method: init!.method!, body: JSON.parse(init!.body as string) });
+    return init!.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(row);
+  }) as typeof fetch;
+  await runtime.createRoutine({ bot_id: row.bot_id, title: row.title, instruction: row.instruction, schedule: row.schedule });
+  expect(runtime.snapshot.routines).toHaveLength(0);
+  Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { ...row, event: 'routine.upsert', occurred_at: 'now' } });
+  await runtime.patchRoutine(row.id, { enabled: false, if_revision: row.updated_at });
+  expect(runtime.snapshot.routines[0]!.enabled).toBe(true);
+  await runtime.deleteRoutine(row.id, row.updated_at);
+  expect(runtime.snapshot.routines).toHaveLength(1);
+  expect(requests.map((r) => r.method)).toEqual(['POST', 'PATCH', 'DELETE']);
+  expect(requests[1]!.body).toEqual({ enabled: false, if_revision: row.updated_at });
+  expect(requests[2]!.body).toEqual({ if_revision: row.updated_at });
+  await reconnect(runtime, { ...initial, routines: [aRoutine({ title: 'Reconnect', enabled: false })] });
+  expect(runtime.snapshot.routines[0]!.title).toBe('Reconnect');
+  Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { event: 'routine.removed', id: row.id, occurred_at: 'now' } });
+  expect(runtime.snapshot.routines).toHaveLength(0);
+});
+
+for (const operation of ['create', 'patch', 'delete'] as const) for (const reject of [false, true]) test(`obsolete routine ${operation} ${reject ? 'failure' : 'success'} cannot affect replacement connection`, async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === 'connected');
+  const pending = deferred<Response>();
+  globalThis.fetch = (() => pending.promise) as typeof fetch;
+  const row = aRoutine();
+  const write = operation === 'create' ? runtime.createRoutine({ bot_id: row.bot_id, title: row.title, instruction: '', schedule: row.schedule }) : operation === 'patch' ? runtime.patchRoutine(row.id, { title: 'old', if_revision: row.updated_at }) : runtime.deleteRoutine(row.id, row.updated_at);
+  await reconnect(runtime, { ...initial, routines: [aRoutine({ title: 'Current' })] });
+  runtime.selectedId = 'direct-1';
+  await runtime.openRoutine('bot-1', row.id);
+  if (reject) pending.reject(new Error('old connection'));
+  else pending.resolve(operation === 'delete' ? new Response(null, { status: 204 }) : Response.json(row));
+  expect((await write)?.code).toBe('disconnected');
+  expect(runtime.connection).toBe('connected');
+  expect(runtime.profileRoutineId).toBe(row.id);
+  expect(runtime.snapshot.routines[0]!.title).toBe('Current');
 });
 
 test("runtime subscribes before reading snapshot and preserves events arriving during HTTP", async () => {

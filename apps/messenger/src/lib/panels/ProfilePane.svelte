@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MemoryCard from './MemoryCard.svelte';
+	import RoutineCard from './RoutineCard.svelte';
 	import { untrack } from 'svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
@@ -547,6 +548,8 @@
 		{/each}
 	</div>
 </div>
+
+<RoutineCard {runtime} {bot} {t} />
 
 <MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
 

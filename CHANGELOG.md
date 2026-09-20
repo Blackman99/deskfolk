@@ -6,6 +6,10 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Routines
+
+- Bot profiles now include routine CRUD: daily/weekday schedules, Mac-local time guidance, pause/resume, confirmed deletion, validation, and in-flight/error states. Search opens the owning Bot and routine editor; event/snapshot updates keep multiple clients and reconnects current. Dirty drafts retain their revision and require an explicit reload after a concurrent edit; routine PATCH/DELETE accept optional `if_revision` (`updated_at`) and reject stale writes with 409.
+
 ### Local synchronization
 
 - Searching within a session while its initial history is still loading now starts a replacement detail load before pagination. Rapidly superseding searches retain the latest requested message instead of cancelling the only history load.

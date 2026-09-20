@@ -957,6 +957,7 @@ async function dispatch(
       instruction?: string;
       schedule?: Routine["schedule"];
       enabled?: boolean;
+      if_revision?: string;
     };
     const routine = store.patchRoutine(params.id!, body);
     publish({ event: "routine.upsert", occurred_at: occurred(), ...routine });
@@ -964,7 +965,11 @@ async function dispatch(
     return jsonResponse(store.getRoutine(routine.id), 200, null);
   }
   if (params && method === "DELETE") {
-    store.deleteRoutine(params.id!);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new HttpError(422, "invalid_args", "routine must be an object");
+    }
+    store.deleteRoutine(params.id!, (body as { if_revision?: string }).if_revision);
     publish({ event: "routine.removed", occurred_at: occurred(), id: params.id! });
     return emptyResponse(204, null);
   }

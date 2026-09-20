@@ -52,6 +52,29 @@ afterEach(() => {
   navigations.length = 0;
 });
 
+test('routine search from the empty stage selects its Bot conversation before opening the profile URL', async () => {
+  page.url = new URL('http://localhost/');
+  const initial = emptySnapshot();
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] });
+    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  close = render(Page, {}).close;
+  const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+  await until(() => runtime.connection === 'connected');
+  runtime.openRoutine('bot-1', 'routine-1');
+  await until(() => page.url.searchParams.get('b') === 'bot-1');
+  expect(runtime.selectedId).toBe('direct-1');
+  expect(runtime.profileBotId).toBe('bot-1');
+  expect(runtime.profileRoutineId).toBe('routine-1');
+  expect(runtime.sessionSettingsOpen).toBe(true);
+});
+
 for (const query of [
   "?o=settings",
   "?s=direct-1&o=session",

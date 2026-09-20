@@ -517,6 +517,19 @@ export type Routine = {
   updated_at: string;
 };
 
+export type CreateRoutineRequest = {
+  bot_id: string;
+  title: string;
+  instruction: string;
+  schedule: RoutineSchedule;
+  enabled?: boolean;
+};
+
+export type PatchRoutineRequest = Partial<Omit<CreateRoutineRequest, "bot_id">> & {
+  /** The routine's updated_at from the snapshot being edited. Optional for legacy local clients. */
+  if_revision?: string;
+};
+
 export type Skill = {
   id: string;
   bot_id: string;

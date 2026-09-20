@@ -2,6 +2,8 @@ import type {
   Approval,
   AllowRule,
   Routine,
+  CreateRoutineRequest,
+  PatchRoutineRequest,
   RuntimeSnapshot,
   SessionSnapshot,
   SyncFrame,
@@ -78,6 +80,18 @@ export class LocalApi {
 
   async routines(): Promise<Routine[]> {
     return (await this.get<ListPage<Routine>>("/v1/routines")).items;
+  }
+
+  async createRoutine(body: CreateRoutineRequest): Promise<Routine> {
+    return this.post<Routine>("/v1/routines", body);
+  }
+
+  async patchRoutine(id: string, body: PatchRoutineRequest): Promise<Routine> {
+    return this.patch<Routine>(`/v1/routines/${encodeURIComponent(id)}`, body);
+  }
+
+  async deleteRoutine(id: string, ifRevision: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/routines/${encodeURIComponent(id)}`, { if_revision: ifRevision });
   }
 
   async allowRules(): Promise<AllowRule[]> {

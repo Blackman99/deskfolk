@@ -46,6 +46,14 @@
 
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 新建群 → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
+## 日程编辑与版本
+
+Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现有每天/每周与 `HH:MM` 字段，归属固定为当前 Bot。时间按执行 Mac 的本地日历解释，不提供浏览器时区转换或新 cron 语法；使用步骤见 [README](../README.zh.md#每日与每周日程)。
+
+`LocalApi.createRoutine` / `patchRoutine` / `deleteRoutine` 经 runtime 捕获当前 API 实例调用；HTTP 返回行不写入快照，只有 `routine.upsert` / `routine.removed` 和重连快照更新列表。编辑草稿或删除确认保留当时的 `updated_at`；PATCH 和 DELETE JSON 体传 `if_revision`，不匹配返回 `409 revision_conflict`，格式错误返回 422，已删除返回 404。旧本机调用可省略该字段。Store 在现有同步提交边界内检查，并使日程 `updated_at` 至少递增一毫秒（含 scheduler claim）；不另包一套 Store 事务。未修改的表单跟随实时更新，有修改的表单保留草稿并要求显式载入最新版，连接变化不会自动重试写入。
+
+隔离 UI fixture 除 `schedule: false` 停定时 ticker 外，还须禁用注入 engine 的 `fireRoutine`：创建/修改 HTTP 路由会立即询问日程是否到期。fake keystore、fake completions 与独立端口/数据目录仍全部必需。
+
 ## 信使样式分层
 
 新写或改一条样式，按这个顺序挑落点，挑不到再往下走：

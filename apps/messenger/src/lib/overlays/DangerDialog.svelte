@@ -6,9 +6,11 @@
 		t: Copy;
 		onDismiss: () => void;
 		onConfirm: () => void;
+		busy?: boolean;
 	};
 
-	let { copy, t, onDismiss, onConfirm }: Props = $props();
+	let { copy, t, onDismiss, onConfirm, busy = false }: Props = $props();
+	const dismiss = () => { if (!busy) onDismiss(); };
 	let backdropEl = $state<HTMLElement | null>(null);
 
 	$effect(() => {
@@ -17,7 +19,7 @@
 			if (e.key !== 'Escape') return;
 			e.preventDefault();
 			e.stopImmediatePropagation();
-			onDismiss();
+			dismiss();
 		}
 		window.addEventListener('keydown', onKey, true);
 		return () => window.removeEventListener('keydown', onKey, true);
@@ -35,13 +37,13 @@
 	tabindex="-1"
 	onclick={(e) => {
 		e.stopPropagation();
-		if (e.target === e.currentTarget) onDismiss();
+		if (e.target === e.currentTarget) dismiss();
 	}}
 	onpointerdown={(e) => e.stopPropagation()}
 	onkeydown={(e) => {
 		if (e.key === 'Escape') {
 			e.stopPropagation();
-			onDismiss();
+			dismiss();
 		}
 	}}
 >
@@ -53,14 +55,14 @@
 	>
 		<div class="modal-head">
 			<h2 id="danger-confirm-title">{copy.title}</h2>
-			<button type="button" class="modal-close" title={t.common.close} onclick={onDismiss}>✕</button>
+			<button type="button" class="modal-close" title={t.common.close} disabled={busy} onclick={dismiss}>✕</button>
 		</div>
 		<div class="modal-body">
 			<p id="danger-confirm-body" class="confirm-copy">{copy.body}</p>
 		</div>
 		<div class="modal-foot actions">
-			<button type="button" onclick={onDismiss}>{copy.cancel}</button>
-			<button type="button" class="deny" onclick={onConfirm}>{copy.confirm}</button>
+			<button type="button" disabled={busy} onclick={dismiss}>{copy.cancel}</button>
+			<button type="button" class="deny" disabled={busy} onclick={() => { if (!busy) onConfirm(); }}>{copy.confirm}</button>
 		</div>
 	</div>
 </div>

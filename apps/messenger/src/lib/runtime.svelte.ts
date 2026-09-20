@@ -15,12 +15,14 @@ import {
   type ThinkingLevel,
   type CreateSkillRequest,
   type PatchSkillRequest,
+  type CreateRoutineRequest,
+  type PatchRoutineRequest,
 } from "@real-bot/protocol";
 import { ApiError, LocalApi, probeHealth } from "./api.ts";
 import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
-import { classifySession } from "./sidebar/session-groups.ts";
+import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
 import { EventSync } from "./event-sync.ts";
 import { stopTarget } from "./chat/transcript.ts";
@@ -43,6 +45,7 @@ export class MessengerRuntime {
   routeLogOpen = $state(false);
   routesLoading = $state(false);
   profileBotId = $state<string | null>(null);
+  profileRoutineId = $state<string | null>(null);
   workspaceOpen = $state(false);
   workspaceSelected = $state("");
   threadOpen = $state(false);
@@ -140,7 +143,23 @@ export class MessengerRuntime {
     this.routeLogOpen = false;
   }
 
+  async openRoutine(botId: string, routineId: string): Promise<void> {
+    // The profile URL needs the selected conversation's navigation to settle first.
+    if (!this.selectedId) {
+      const session = youBotSession(this.snapshot.sessions, botId);
+      if (!session) return;
+      const api = this.api;
+      const loading = this.selectSession(session.id);
+      const selection = this.sessionSeq;
+      await loading;
+      if (this.api !== api || this.selectedId !== session.id || this.sessionSeq !== selection) return;
+    }
+    this.openProfile(botId);
+    this.profileRoutineId = routineId;
+  }
+
   openProfile(botId: string): void {
+    this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
@@ -151,6 +170,7 @@ export class MessengerRuntime {
   }
 
   closeSessionSettings(): void {
+    this.profileRoutineId = null;
     this.sessionSettingsOpen = false;
     this.profileBotId = null;
   }
@@ -428,6 +448,46 @@ export class MessengerRuntime {
     } catch (error) {
       return this.sheetFailure(error, api);
     }
+  }
+
+  async createRoutine(body: CreateRoutineRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return new ApiError(0, "disconnected", "Not connected");
+    try {
+      await api.createRoutine(body);
+      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
+    } catch (error) {
+      return this.routineFailure(error, api);
+    }
+  }
+
+  async patchRoutine(id: string, body: PatchRoutineRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return new ApiError(0, "disconnected", "Not connected");
+    try {
+      await api.patchRoutine(id, body);
+      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
+    } catch (error) {
+      return this.routineFailure(error, api);
+    }
+  }
+
+  async deleteRoutine(id: string, ifRevision: string): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return new ApiError(0, "disconnected", "Not connected");
+    try {
+      await api.deleteRoutine(id, ifRevision);
+      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
+    } catch (error) {
+      return this.routineFailure(error, api);
+    }
+  }
+
+  private routineFailure(error: unknown, api: LocalApi): ApiError {
+    if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500) return error;
+    this.markDisconnected();
+    return new ApiError(0, "disconnected", "Save result unknown");
   }
 
   /** Correcting a memory, not creating one — the Bot is the only writer. */

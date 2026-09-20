@@ -1,4 +1,4 @@
-import { type Routine } from "@real-bot/protocol";
+import { type Routine, type PatchRoutineRequest } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { dueIso, isWeekday, latestDueAt, parseClockTime } from "../schedule";
@@ -33,7 +33,7 @@ export function parseSchedule(schedule: Routine["schedule"] | undefined): Routin
   if (!schedule || (schedule.kind !== "daily" && schedule.kind !== "weekly")) {
     throw new HttpError(422, "invalid_args", "schedule.kind must be daily or weekly");
   }
-  if (!parseClockTime(schedule.time)) {
+  if (typeof schedule.time !== "string" || !parseClockTime(schedule.time)) {
     throw new HttpError(422, "invalid_args", "schedule.time must be HH:MM");
   }
   if (schedule.kind === "weekly") {
@@ -66,7 +66,9 @@ export function createRoutine(
     enabled?: boolean;
   },
 ): Routine {
-  aliveBot(ctx, input.bot_id);
+  requireObject(input);
+  aliveBot(ctx, requireNonEmpty("bot_id", input.bot_id));
+  requireEnabled(input.enabled);
   const title = requireNonEmpty("title", input.title);
   const instruction = requireString("instruction", input.instruction);
   const schedule = parseSchedule(input.schedule);
@@ -95,16 +97,19 @@ export function createRoutine(
 export function patchRoutine(
   ctx: StoreContext,
   id: string,
-  patch: Partial<{ title: string; instruction: string; schedule: Routine["schedule"]; enabled: boolean }>,
+  patch: PatchRoutineRequest,
 ): Routine {
+  requireObject(patch);
+  requireEnabled(patch.enabled);
   const current = ctx.db.query<RoutineRow, [string]>(`SELECT * FROM routines WHERE id = ?`).get(id);
   if (!current) throw new HttpError(404, "not_found", "routine not found");
+  checkRevision(current.updated_at, patch.if_revision);
   const title = patch.title !== undefined ? requireNonEmpty("title", patch.title) : current.title;
   const instruction =
     patch.instruction !== undefined ? requireString("instruction", patch.instruction) : current.instruction;
-  const schedule = patch.schedule ? parseSchedule(patch.schedule) : toRoutine(current).schedule;
+  const schedule = patch.schedule !== undefined ? parseSchedule(patch.schedule) : toRoutine(current).schedule;
   const enabled = patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : current.enabled;
-  const now = isoNow();
+  const now = nextRevision(current.updated_at);
   ctx.db.run(
     `UPDATE routines SET title = ?, instruction = ?, schedule_kind = ?, schedule_time = ?, weekdays = ?, enabled = ?, updated_at = ?
      WHERE id = ?`,
@@ -122,9 +127,34 @@ export function patchRoutine(
   return listRoutines(ctx).find((r) => r.id === id)!;
 }
 
-export function deleteRoutine(ctx: StoreContext, id: string): void {
-  const changes = ctx.db.run(`DELETE FROM routines WHERE id = ?`, [id]).changes;
-  if (changes === 0) throw new HttpError(404, "not_found", "routine not found");
+export function deleteRoutine(ctx: StoreContext, id: string, ifRevision?: string): void {
+  checkRevision(getRoutine(ctx, id).updated_at, ifRevision);
+  ctx.db.run(`DELETE FROM routines WHERE id = ?`, [id]);
+}
+
+function requireObject(value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new HttpError(422, "invalid_args", "routine must be an object");
+  }
+}
+
+function requireEnabled(value: unknown): void {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new HttpError(422, "invalid_args", "enabled must be boolean");
+  }
+}
+
+function checkRevision(current: string, expected: unknown): void {
+  if (expected === undefined) return;
+  if (typeof expected !== "string" || !expected) {
+    throw new HttpError(422, "invalid_args", "if_revision must be a nonempty string");
+  }
+  if (expected !== current) throw new HttpError(409, "revision_conflict", "routine changed; reload before saving");
+}
+
+// Millisecond clock collisions must not let two writes accept the same revision.
+function nextRevision(previous: string): string {
+  return new Date(Math.max(Date.now(), Date.parse(previous) + 1)).toISOString();
 }
 
 export function getRoutine(ctx: StoreContext, id: string): Routine {
@@ -150,7 +180,7 @@ export function claimRoutineDue(ctx: StoreContext, id: string, now: Date = new D
   if (!due) return null;
   const dueAt = dueIso(due);
   if (row.last_fired_for_due_at && row.last_fired_for_due_at >= dueAt) return null;
-  const stamped = isoNow();
+  const stamped = nextRevision(row.updated_at);
   const changes = ctx.db.run(
     `UPDATE routines SET last_fired_for_due_at = ?, updated_at = ?
      WHERE id = ? AND enabled = 1

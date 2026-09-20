@@ -12,6 +12,23 @@ function backdate(store: Store, id: string, createdAt: Date): void {
   ]);
 }
 
+describe("routine revisions", () => {
+  test("rapid writes advance revisions; stale patches and deletes do not mutate or publish", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const { bot } = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+      const row = store.createRoutine({ bot_id: bot.id, title: "First", instruction: "", schedule: { kind: "daily", time: "00:00" }, enabled: false });
+      const next = store.patchRoutine(row.id, { title: "Second", if_revision: row.updated_at });
+      expect(next.updated_at > row.updated_at).toBe(true);
+      expect(() => store.patchRoutine(row.id, { title: "stale", if_revision: row.updated_at })).toThrow("routine changed");
+      expect(() => store.deleteRoutine(row.id, row.updated_at)).toThrow("routine changed");
+      expect(store.getRoutine(row.id)).toEqual(next);
+      store.deleteRoutine(row.id, next.updated_at);
+      expect(store.listRoutines()).toHaveLength(0);
+    } finally { store.close(); }
+  });
+});
+
 describe("routine claim and catch-up", () => {
   test("claim stamps the latest civil due and a second claim at the same now is a no-op", () => {
     const store = new Store({ endpointKey: memoryKeyStore() });

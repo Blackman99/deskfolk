@@ -273,10 +273,11 @@
 			onOpenArtifact(hit.path);
 			return;
 		}
-		const jump = searchJump(hit, snapshot.sessions);
+		const jump = searchJump(hit, snapshot.sessions, snapshot.routines);
 		if (!jump) return;
 		runtime.closeSearch();
-		void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
+		if ('routineId' in jump) runtime.openRoutine(jump.botId, jump.routineId);
+		else void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
 	}
 </script>
 

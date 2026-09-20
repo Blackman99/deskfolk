@@ -1,10 +1,10 @@
-import type { Message, SearchHit, SearchKind, SessionSummary } from "@real-bot/protocol";
+import type { Message, Routine, SearchHit, SearchKind, SessionSummary } from "@real-bot/protocol";
 import { youBotSession } from "./session-groups.ts";
 
 export type SearchJump = {
   sessionId: string;
   messageId?: string;
-};
+} | { botId: string; routineId: string };
 
 export type SearchKindLabels = Record<SearchKind, string>;
 
@@ -15,7 +15,11 @@ export type SearchHitView = {
 };
 
 /** Map a search hit to a session the messenger can open, and the message to land on. */
-export function searchJump(hit: SearchHit, sessions: readonly SessionSummary[]): SearchJump | null {
+export function searchJump(hit: SearchHit, sessions: readonly SessionSummary[], routines: readonly Routine[] = []): SearchJump | null {
+  if (hit.kind === "routine") {
+    const routine = routines.find((row) => row.id === hit.id);
+    return routine ? { botId: routine.bot_id, routineId: routine.id } : null;
+  }
   if (hit.kind === "session" && hit.id) return { sessionId: hit.id };
   if (hit.kind === "bot") {
     const sessionId =
