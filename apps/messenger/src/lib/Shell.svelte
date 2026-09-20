@@ -866,34 +866,34 @@
 					</button>
 				</div>
 
-				<div class="panel-scroll-content flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
-					{#if profileBot}
-						{#key profileBot.id}
-							<ProfilePane
-								{runtime}
-								bot={profileBot}
-								{t}
-								modelOptions={availableModelOptions}
-								{selectedKind}
-								bind:profileFailed
-								openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
-								{clearDanger}
-								onDeleteBot={() => openDeleteBotConfirm()}
-								onClearHistory={() => openClearHistoryConfirm()}
-							/>
-						{/key}
-					{:else}
-					<GroupPane
-						{runtime}
-						{selected}
-						{t}
-						bind:detail={groupDetail}
-						onOpenProfile={openProfile}
-						onDeleteGroup={() => openDeleteGroupConfirm()}
-						onClearHistory={() => openClearHistoryConfirm()}
-					/>
-					{/if}
-				</div>
+				{#if profileBot}
+					{#key profileBot.id}
+						<ProfilePane
+							{runtime}
+							bot={profileBot}
+							{t}
+							modelOptions={availableModelOptions}
+							{selectedKind}
+							bind:profileFailed
+							openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
+							{clearDanger}
+							onDeleteBot={() => openDeleteBotConfirm()}
+							onClearHistory={() => openClearHistoryConfirm()}
+						/>
+					{/key}
+				{:else}
+					<div class="panel-scroll-content flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
+						<GroupPane
+							{runtime}
+							{selected}
+							{t}
+							bind:detail={groupDetail}
+							onOpenProfile={openProfile}
+							onDeleteGroup={() => openDeleteGroupConfirm()}
+							onClearHistory={() => openClearHistoryConfirm()}
+						/>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -1202,6 +1202,14 @@
 
 	.panel-scroll-content > :global(*) {
 		flex-shrink: 0;
+	}
+
+	.sheet.session-settings :global(.profile-pane) {
+		flex: 1 1 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 
 	@media (max-width: 680px) {

@@ -354,8 +354,9 @@
 	}}
 />
 
-<div class="bot-nav-sticky">
-	<div class="bot-tabs" role="tablist" aria-label={t.detail.titleBot}>
+<div class="profile-pane">
+	<div class="bot-nav-sticky">
+		<div class="bot-tabs" role="tablist" aria-label={t.detail.titleBot}>
 		<button
 			type="button"
 			role="tab"
@@ -423,6 +424,7 @@
 	</div>
 </div>
 
+<div class="panel-scroll-content profile-pane-scroll flex-1 overflow-y-auto pt-8 px-9 pb-12 flex flex-col gap-8">
 {#if profileFailed}
 	<div class="panel-alert is-error">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -468,9 +470,10 @@
 			<label for="profile-duties">{t.sidebar.botDuties}</label>
 			<textarea
 				id="profile-duties"
+				class="profile-textarea profile-textarea-duties"
 				bind:value={profileDraft.duties}
 				oninput={onProfileInput}
-				rows="3"
+				rows="6"
 				placeholder={t.sidebar.botDuties}
 			></textarea>
 			{#if profileErrors.duties}
@@ -482,9 +485,10 @@
 			<label for="profile-boundaries">{t.sidebar.botBoundaries}</label>
 			<textarea
 				id="profile-boundaries"
+				class="profile-textarea profile-textarea-boundaries"
 				bind:value={profileDraft.boundaries}
 				oninput={onProfileInput}
-				rows="3"
+				rows="4"
 				placeholder={t.sidebar.botBoundaries}
 			></textarea>
 			{#if profileErrors.boundaries}
@@ -703,6 +707,8 @@
 	</div>
 </div>
 {/if}
+</div>
+</div>
 
 {#if skillEditor}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -848,14 +854,38 @@
 {/if}
 
 <style>
+	.profile-pane {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 0;
+		min-height: 0;
+		height: 100%;
+		overflow: hidden;
+	}
+
 	.bot-nav-sticky {
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		margin-top: -20px;
-		padding-top: 8px;
-		padding-bottom: 8px;
+		flex-shrink: 0;
+		padding: 12px 18px 10px;
 		background: var(--bg);
+		border-bottom: 1px solid var(--line);
+		box-sizing: border-box;
+	}
+
+	.profile-pane-scroll {
+		min-height: 0;
+		box-sizing: border-box;
+	}
+
+	.profile-textarea {
+		line-height: 1.5;
+	}
+
+	.profile-textarea-duties {
+		min-height: 140px;
+	}
+
+	.profile-textarea-boundaries {
+		min-height: 100px;
 	}
 
 	.bot-tabs {
