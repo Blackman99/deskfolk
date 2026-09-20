@@ -3,7 +3,7 @@ import { base64url, canonicalHash, canonicalize, createUvChallenge, fromBase64ur
   type StoredCredential, type UvChallenge, type VerifiedUv } from "@real-bot/remote";
 import { RemoteTrust, deny, type TrustedDevice } from "./trust";
 
-export type RemotePrincipal = { device: TrustedDevice; sessionId: string; active: () => boolean };
+export type RemotePrincipal = { device: TrustedDevice; sessionId: string; signal?: AbortSignal; active: () => boolean };
 export class RemoteUv {
   constructor(private readonly trust: RemoteTrust) {}
   assert(principal: RemotePrincipal): void { if (!principal.active()) deny(); this.trust.assert(principal.device); }

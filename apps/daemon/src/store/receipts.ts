@@ -40,8 +40,8 @@ export class Receipts {
   /** Bodies are bounded; key tombstones are retained until the device identity is retired. */
   prune(now = Date.now(), maxBodies = 20_000): void {
     this.db.run(`UPDATE request_receipts SET state = 'expired', body = NULL, headers = NULL, key_ops = NULL
-      WHERE state = 'complete' AND (created_at < ? OR rowid IN (
-        SELECT rowid FROM request_receipts WHERE state = 'complete' ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?
+      WHERE state = 'complete' AND status != 202 AND (created_at < ? OR rowid IN (
+        SELECT rowid FROM request_receipts WHERE state = 'complete' AND status != 202 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?
       ))`, [now - 7 * 86_400_000, maxBodies]);
   }
 

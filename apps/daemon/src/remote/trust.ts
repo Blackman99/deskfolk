@@ -27,7 +27,7 @@ export class RemoteTrust {
   async reconcile(): Promise<void> {
     this.close();
     const highwater = await this.native.highwater();
-    if (this.host()?.generation !== highwater) deny();
+    if (this.host()?.generation !== highwater || this.store.db.query("SELECT 1 FROM remote_transition").get()) deny();
     const pending = this.store.db.query<{ request_id: string; target_id: string; generation: number }, []>("SELECT * FROM remote_revocations").all();
     if (pending.length) {
       if (pending.length !== 1 || pending[0]!.generation !== highwater || highwater === 0xffff_ffff) deny();
@@ -76,6 +76,14 @@ export class RemoteTrust {
   }
   markRegistered(pin: TrustedDevice): void {
     this.store.transaction(() => { this.assert(pin); this.store.db.run("UPDATE remote_devices SET relay_pending = 0 WHERE device_id = ?", [pin.device_id]); });
+  }
+  markRevokedSynced(pin: TrustedDevice): void {
+    this.store.transaction(() => {
+      this.assertHost();
+      const current = this.device(pin.device_id);
+      if (!current?.revoked || this.fingerprint(current) !== this.fingerprint(pin)) deny();
+      this.store.db.run("UPDATE remote_devices SET relay_pending = 0 WHERE device_id = ?", [pin.device_id]);
+    });
   }
   bindOnboarding(pin: TrustedDevice, sessionId: string): void {
     this.store.transaction(() => {
@@ -128,15 +136,22 @@ export class RemoteTrust {
   }
   async recover(authorizedHighwater: number): Promise<void> {
     this.close();
-    const highwater = await this.native.highwater();
+    let highwater = await this.native.highwater();
     const host = this.host();
+    const devices = canonicalHash(this.devices().map(d => this.fingerprint(d)));
     if (!host || highwater !== authorizedHighwater || highwater < host.generation) deny();
+    if (highwater === host.generation) {
+      if (highwater === 0xffff_ffff) deny();
+      await this.native.advanceHighwater(highwater, highwater + 1);
+      highwater++;
+    }
     this.store.transaction(() => {
-      if (this.host()?.generation !== host.generation) deny();
+      if (this.host()?.generation !== host.generation || canonicalHash(this.devices().map(d => this.fingerprint(d))) !== devices) deny();
       this.store.db.run("UPDATE remote_host SET generation = ? WHERE singleton = 1", [highwater]);
       this.store.db.run("UPDATE remote_devices SET revoked = 1, relay_pending = 1, generation = ?, onboarding_until = 0, onboarding_session = NULL", [highwater]);
       this.store.db.run("DELETE FROM remote_challenges");
       this.store.db.run("DELETE FROM remote_revocations");
+      this.store.db.run("DELETE FROM remote_transition");
     });
     await this.reconcile();
   }

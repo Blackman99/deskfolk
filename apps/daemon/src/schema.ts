@@ -15,6 +15,14 @@ CREATE TABLE IF NOT EXISTS remote_devices (
   onboarding_session TEXT, credential_id TEXT, cose_key TEXT, sign_count INTEGER NOT NULL DEFAULT 0,
   credential_version INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS remote_lifecycle (
+  device_id TEXT NOT NULL, request_id TEXT NOT NULL, action TEXT NOT NULL,
+  PRIMARY KEY (device_id, request_id)
+);
+CREATE TABLE IF NOT EXISTS remote_transition (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1), kind TEXT NOT NULL,
+  expected INTEGER NOT NULL, next INTEGER NOT NULL, payload TEXT NOT NULL, phase TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS remote_revocations (
   request_id TEXT PRIMARY KEY, requester_id TEXT NOT NULL, target_id TEXT NOT NULL,
   generation INTEGER NOT NULL

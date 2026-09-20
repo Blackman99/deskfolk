@@ -11,9 +11,10 @@ import { createLocalApi } from "./local-api";
 import { bunKeyStore } from "./secrets";
 import { Store, type EndpointKeyStore } from "./store";
 import type { CompletionsClient } from "./completions";
-import { RemoteController, type RemoteControllerOptions } from "./remote/controller";
+import { RemoteController } from "./remote/controller";
 import { inheritedLocalSetup } from "./remote/local-setup";
 import { RuntimeLifecycle } from "./lifecycle";
+import { recoverLifecycle } from "./remote/lifecycle";
 
 type SocketData = { authed: boolean };
 
@@ -26,7 +27,6 @@ export type RuntimeOptions = {
   schedule?: boolean;
   onQuit?: () => void;
   exitProcess?: boolean;
-  remote?: Omit<RemoteControllerOptions, "store" | "api">;
   desktopRemoteChannel?: boolean;
   supervisor?: import("./quiesce").SupervisorControl["kind"];
 };
@@ -184,6 +184,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       endpointKey: options.endpointKey ?? bunKeyStore,
     });
     store.recoverInterruptedTurns();
+    recoverLifecycle(store);
     api = createLocalApi({
       store,
       token,
@@ -199,8 +200,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       },
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
-    remote = new RemoteController({ store, api, ...options.remote,
-      config: options.remote?.config ?? (metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined) });
+    remote = new RemoteController({ store, api,
+      config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
     if (options.desktopRemoteChannel) closeSetup = await inheritedLocalSetup(remote);
     await remote.start();
     // Chains the previous run left open go through review now; their timers died with it.

@@ -31,7 +31,10 @@ export class Quiesce {
     readonly admission: TurnAdmission, private readonly scheduler: Scheduler | null) {}
 
   state(): DrainState {
-    const live = new Set(this.store.listLiveTurns().map(t => t.id));
+    const live = new Set([
+      ...this.store.listLiveTurns().map(t => t.id),
+      ...this.engine.unsettledTurnIds(),
+    ]);
     return { phase: this.phase, remaining: [...this.turns].filter(id => live.has(id)), forced: this.forced };
   }
   begin(): DrainState {
@@ -39,7 +42,10 @@ export class Quiesce {
     this.admission.pause();
     try {
       this.scheduler?.pause();
-      this.turns = new Set(this.store.listLiveTurns().map(t => t.id));
+      this.turns = new Set([
+        ...this.store.listLiveTurns().map(t => t.id),
+        ...this.engine.unsettledTurnIds(),
+      ]);
       this.forced = false;
       this.phase = "draining";
       this.timer = setInterval(() => this.check(), 25);
@@ -74,6 +80,7 @@ export class Quiesce {
     this.notify();
     return this.state();
   }
+  /** Fences dispatch synchronously; already-started work remains visible until it settles. */
   force(): DrainState {
     this.begin();
     this.engine.abortAll();

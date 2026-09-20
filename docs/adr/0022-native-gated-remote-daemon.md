@@ -16,6 +16,14 @@ Fresh UV uses the shared WebAuthn verifier. Registration persists COSE/version/c
 
 Shared quiesce pauses new user turns, routines, membership/delegation and child admission while existing turns may receive approvals/answers. The live set is captured at entry; no timeout or disconnect escalates to force. Explicit force aborts and records interruptions, never exits. The caller owns supervision and stop-latch writes; no launchd job is introduced here.
 
+## Review corrections
+
+Recovery at an equal native/DB generation also advances native high-water before revoking. Native-confirmed reset and relay migration now have durable native-uncertain/native-done intents; only matching native-done pins/epoch reconcile, while unknown native outcomes require fresh local recovery. Workspace changes bind canonical directory identity and settings revision. First UV renewal requires new Mac proof bound to the current live Split session and credential absence.
+
+The outbound sender shares a paced host budget across data and control, and acknowledged revocation tombstones are not replayed on every reconnect. File stream lifetime ends at sent EOF/cancellation, not enqueue. Remote route body/query schemas reject unknown fields before effects, retain stable redacted error codes and explicitly classify model probing as non-replayed with cancellation after credential waits.
+
+Quiesce captures both DB-live and engine-unsettled work. Force fences later batch tools and post-await effects but cannot claim started work has settled. Routine configuration can finish during drain without firing. Lifecycle authorization persists pending intents first; success is finalized after effects, and restart records unknown rather than replaying tools or claiming volatile state survived.
+
 ## Consequences and remaining gates
 
 The shared grant reply codec has direction-specific AEAD associated data and verifies QR-pinned signatures and every expected field. RPC and file data stay bounded; no arbitrary HTTP proxy or plaintext application control is introduced. The public client must subscribe before snapshot, respect sequence watermarks, explicitly query unknown receipts and never auto-replay commands.

@@ -45,7 +45,11 @@ fn validate(input: &Value) -> Result<(), String> {
     let object = input.as_object().ok_or("malformed")?;
     let allowed: &[&str] = match object.get("operation").and_then(Value::as_str) {
         Some("status" | "open_pair" | "prepare_recovery") => &["operation"],
-        Some("confirm_recovery") => &["operation", "proof"],
+        Some("confirm_recovery" | "confirm_change" | "confirm_uv_renewal") => {
+            &["operation", "proof"]
+        }
+        Some("prepare_change") => &["operation", "change"],
+        Some("prepare_uv_renewal") => &["operation", "deviceId"],
         Some("initialize") => &["operation", "config", "bootstrap"],
         Some("prepare_pair") => &["operation", "pairingId"],
         Some("confirm_pair") => &["operation", "pairingId", "proof"],

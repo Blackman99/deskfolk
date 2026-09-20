@@ -33,7 +33,7 @@
 
 Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled main，前者走 daemon 继承 FD3，native 在读取前验证桌面 audit-token/签名；不是 bearer HTTP。先 `ready`，再 open/read/prepare pair、Tauri confirm、daemon consume。接口/QR/RPC/水印、首次 UV/替换、吊销 generation 修订、文件基础能力和08/09限制见 [remote protocol](remote-protocol.md#daemon-adapter-and-downstream-client-contract-ticket-07) 与 [ADR0022](adr/0022-native-gated-remote-daemon.md)。当前不声明完整 PWA/远控产品就绪。
 
-新增集成测试 `bun test apps/daemon/src/remote/remote.test.ts` 启实际 relay、真实 Noise、临时 Store 与构造注入 native fixture；生成 WebAuthn Ed25519 密钥实签，测试回执/文件、吊销重连/备份拒绝、CAS与旧凭据、排空中回答与新消息不落库。根 `pnpm test`/`pnpm typecheck` 包含这些；完整验证再跑 messenger/relay/remote build、daemon compile、Cargo 与 Swift fixture。不得启动实际 native app/helper 或读个人 Keychain 来验证本票。浏览器仅用隔离 agent-browser rc07 与独占17907/5197 fixture，假模型、scheduler off；先查端口占用，结束只停自己的服务。
+复核新增 `remote/routes.ts` 精确属性合同、host-wide paced relay budget、durable native transition/lifecycle intents与firstUV renewal；engine/quiesce补已开始工作跟踪、强制后工具围栏与routine配置排空。`quiesce-engine.test.ts` 使用实际engine测15项确定性回归；远控套件实际传50MiB与并行1MiB、>1MiB快照、>70条历史吊销，运行约一分钟。新增集成测试 `bun test apps/daemon/src/remote/remote.test.ts` 启实际 relay、真实 Noise、临时 Store 与构造注入 native fixture；生成 WebAuthn Ed25519 密钥实签，测试回执/文件、吊销重连/备份拒绝、CAS与旧凭据、排空中回答与新消息不落库。根 `pnpm test`/`pnpm typecheck` 包含这些；完整验证再跑 messenger/relay/remote build、daemon compile、Cargo 与 Swift fixture。不得启动实际 native app/helper 或读个人 Keychain 来验证本票。浏览器仅用隔离 agent-browser rc07 与独占17907/5197 fixture，假模型、scheduler off；先查端口占用，结束只停自己的服务。
 
 ## 守护进程源码布局
 

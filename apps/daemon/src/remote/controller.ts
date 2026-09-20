@@ -1,19 +1,21 @@
 import { base64url, canonicalBytes, canonicalHash, fromBase64url, fragmentMessage, HostSession, identityPublic,
   openPairing, parseRemoteRequest, randomBytes, Reassembler, sealPairingGrant, sha256Hex, signGrant, text,
-  encodeFileChunk, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, type IdentitySecrets, type LogicalType,
+  encodeFileChunk, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
   type PairingContext, type PairingQr, type PairingRequest, type RemoteResponse } from "@real-bot/remote";
 import type { LocalApi } from "../local-api";
 import type { Store } from "../store";
 import { ulid } from "../ids";
 import { HttpError } from "../errors";
 import { remoteNative, type LocalAction, type RemoteNativeClient } from "../remote-native";
-import { RelayConnection, RelayControl, type RelayConfig, type RelaySocketFactory } from "./relay";
+import { RelayBudget, RelayConnection, RelayControl, type RelayConfig, type RelaySocketFactory } from "./relay";
 import { RemoteTrust, deny } from "./trust";
 import { RemoteDispatcher } from "./dispatch";
 import type { RemotePrincipal } from "./uv";
+import { remoteError, responseError } from "./errors";
+import { LocalTrustActions, validateRelay, type TrustChange } from "./local-actions";
 
 export type RemoteStatus = { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
-export type RemoteNativeProvider = Pick<RemoteNativeClient, "capability" | "read" | "highwater" | "advanceHighwater" | "prepare" | "consume">;
+export type RemoteNativeProvider = Pick<RemoteNativeClient, "capability" | "read" | "highwater" | "advanceHighwater" | "prepare" | "consume" | "reset">;
 export type RemoteControllerOptions = {
   store: Store; api: LocalApi; config?: RelayConfig; native?: RemoteNativeProvider;
   socketFactory?: RelaySocketFactory; fetch?: typeof fetch; now?: () => number;
@@ -24,16 +26,20 @@ type Link = { close(): void };
 export class RemoteController {
   readonly trust: RemoteTrust;
   readonly dispatcher: RemoteDispatcher;
+  readonly localActions: LocalTrustActions;
+  private readonly principals = new Map<string, RemotePrincipal>();
+  private renewal?: { action: LocalAction; challenge: string; deviceId: string; sessionId: string; expires: number };
   private readonly native: RemoteNativeProvider;
   private keys?: IdentitySecrets;
   private control?: RelayControl;
+  private readonly budget = new RelayBudget();
   private stopped = true;
   private reconnect?: ReturnType<typeof setTimeout>;
   private backoff = 500;
   private statusValue: RemoteStatus = { state: "off", diagnostic: null, devices: 0 };
   private pairs = new Map<string, PendingPair>();
   private preparing = new Set<string>();
-  private recovery?: { action: LocalAction; challenge: string; highwater: number; generation: number };
+  private recovery?: { action: LocalAction; challenge: string; highwater: number; generation: number; expires: number };
   private pairTimer?: ReturnType<typeof setInterval>;
   private links = new Map<string, Link>();
   private routes = new Set<string>();
@@ -41,6 +47,7 @@ export class RemoteController {
     this.native = options.native ?? remoteNative;
     this.trust = new RemoteTrust(options.store, this.native, options.now);
     this.dispatcher = new RemoteDispatcher(options.api, this.trust);
+    this.localActions = new LocalTrustActions(this.trust, this.native);
     this.trust.onInvalidate(() => {
       for (const link of [...this.links.values()]) link.close();
       this.links.clear(); this.routes.clear(); this.clearPairs();
@@ -64,8 +71,10 @@ export class RemoteController {
         this.keys = { dh: new Uint8Array(host.subarray(0, 32)), signing: new Uint8Array(host.subarray(32)), enrollment: new Uint8Array(enrollment) };
         identityPublic(this.keys);
       } finally { host.fill(0); enrollment.fill(0); }
-      const config = this.options.config, stored = this.trust.host();
-      if (!stored || stored.host_id !== config.hostId || stored.relay_origin !== config.origin || stored.relay_id !== config.relayId) deny();
+      await this.localActions.reconcile();
+      const stored = this.trust.host();
+      if (!stored) deny();
+      this.options.config = { hostId: stored.host_id, origin: stored.relay_origin, relayId: stored.relay_id };
       await this.trust.reconcile();
       this.pairTimer = setInterval(() => this.expirePairs(), 1000);
       await this.connect();
@@ -77,8 +86,7 @@ export class RemoteController {
     if (!capability.nativeAvailable) { this.setStatus("native_unavailable", capability.diagnostic); deny(); }
     if (this.native === remoteNative && !capability.enabled) { this.setStatus("activation_gated", capability.diagnostic); deny(); }
     if (this.options.config && canonicalHash(this.options.config) !== canonicalHash(config)) deny();
-    const origin = new URL(config.origin);
-    if (origin.protocol !== "https:" || origin.origin !== config.origin || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(config.hostId) || !/^[A-Za-z0-9_-]{1,64}$/.test(config.relayId)) deny();
+    validateRelay(config);
     if (!this.trust.host()) await this.trust.initialize({ host_id: config.hostId, relay_origin: config.origin, relay_id: config.relayId });
     const stored = this.trust.host();
     if (!stored || stored.host_id !== config.hostId || stored.relay_origin !== config.origin || stored.relay_id !== config.relayId) deny();
@@ -96,25 +104,64 @@ export class RemoteController {
     }
     await this.start();
   }
+  async prepareChange(change: TrustChange): Promise<{ challenge: string; expiresIn: 120 }> {
+    return this.localActions.prepare(change);
+  }
+  async confirmChange(proof: string): Promise<RemoteStatus> {
+    try { await this.localActions.confirm(proof, () => this.stopTransport()); }
+    catch (error) { if (this.stopped) this.setStatus("trust_mismatch", "remote_transition_pending"); throw error; }
+    const host = this.trust.host()!;
+    this.options.config = { hostId: host.host_id, origin: host.relay_origin, relayId: host.relay_id };
+    if (this.stopped) await this.start();
+    return this.status();
+  }
+  async prepareUvRenewal(deviceId: string): Promise<{ challenge: string; expiresIn: 120 }> {
+    const principal = this.principals.get(deviceId), device = this.trust.device(deviceId);
+    if (!principal || !device || device.credential_id) deny();
+    this.dispatcher.uv.assert(principal);
+    const action: LocalAction = { kind: "pair_device", digest: canonicalHash({ action: "renew_first_uv", host: this.trust.assertHost(),
+      pins: this.trust.fingerprint(device), sessionId: principal.sessionId, credentialVersion: device.credential_version }),
+      display: `Renew first UV registration: ${device.name} · ${sha256Hex(fromBase64url(device.signing_pk, 32))}` };
+    const prepared = await this.native.prepare(action);
+    this.dispatcher.uv.assert(principal);
+    this.renewal = { action, challenge: prepared.challenge, deviceId, sessionId: principal.sessionId, expires: this.trust.now() + 120_000 };
+    return prepared;
+  }
+  async confirmUvRenewal(proof: string): Promise<void> {
+    const renewal = this.renewal; this.renewal = undefined;
+    if (!renewal || this.trust.now() >= renewal.expires) deny();
+    await this.native.consume(renewal.action, renewal.challenge, proof);
+    this.options.store.transaction(() => {
+      const principal = this.principals.get(renewal.deviceId), device = this.trust.device(renewal.deviceId);
+      if (!principal || !device || device.credential_id || principal.sessionId !== renewal.sessionId || this.trust.now() >= renewal.expires) deny();
+      this.dispatcher.uv.assert(principal);
+      if (canonicalHash({ action: "renew_first_uv", host: this.trust.assertHost(), pins: this.trust.fingerprint(device),
+        sessionId: principal.sessionId, credentialVersion: device.credential_version }) !== renewal.action.digest) deny();
+      this.options.store.db.run("DELETE FROM remote_challenges WHERE device_id = ?", [device.device_id]);
+      this.options.store.db.run("UPDATE remote_devices SET onboarding_session = ?, onboarding_until = ? WHERE device_id = ?",
+        [principal.sessionId, Math.floor(this.trust.now() / 1000) + 120, device.device_id]);
+    });
+  }
   async prepareRecovery(): Promise<{ challenge: string; expiresIn: 120 }> {
     const host = this.trust.host();
     if (!host) deny();
     const highwater = await this.native.highwater();
     if (highwater < host.generation) deny();
     const action: LocalAction = { kind: "change_relay", digest: canonicalHash({ action: "recover_remote_trust", host,
-      highwater, devices: this.trust.devices().map(d => this.trust.fingerprint(d)), revokeAll: true }),
+      highwater, pins: await this.localActions.pins(), transition: this.options.store.db.query("SELECT * FROM remote_transition").get(),
+      devices: this.trust.devices().map(d => this.trust.fingerprint(d)), revokeAll: true }),
       display: "Recover remote trust: revoke every device and require new local pairing" };
     const prepared = await this.native.prepare(action);
-    this.recovery = { action, challenge: prepared.challenge, highwater, generation: host.generation };
+    this.recovery = { action, challenge: prepared.challenge, highwater, generation: host.generation, expires: this.trust.now() + 120_000 };
     return prepared;
   }
   async confirmRecovery(proof: string): Promise<void> {
     const recovery = this.recovery; this.recovery = undefined;
-    if (!recovery || this.trust.host()?.generation !== recovery.generation) deny();
+    if (!recovery || this.trust.host()?.generation !== recovery.generation || this.trust.now() >= recovery.expires) deny();
     await this.native.consume(recovery.action, recovery.challenge, proof);
     const host = this.trust.host();
-    if (!host || canonicalHash({ action: "recover_remote_trust", host, highwater: recovery.highwater,
-      devices: this.trust.devices().map(d => this.trust.fingerprint(d)), revokeAll: true }) !== recovery.action.digest) deny();
+    if (!host || this.trust.now() >= recovery.expires || canonicalHash({ action: "recover_remote_trust", host, highwater: recovery.highwater,
+      pins: await this.localActions.pins(), transition: this.options.store.db.query("SELECT * FROM remote_transition").get(), devices: this.trust.devices().map(d => this.trust.fingerprint(d)), revokeAll: true }) !== recovery.action.digest) deny();
     this.stopTransport();
     await this.trust.recover(recovery.highwater);
     await this.start();
@@ -135,14 +182,16 @@ export class RemoteController {
         this.reconnect = setTimeout(() => { void this.connect().catch(() => undefined); }, this.backoff);
         this.backoff = Math.min(30_000, this.backoff * 2);
       }
-    }, this.options.socketFactory);
+    }, this.options.socketFactory, this.budget);
     this.control = control;
     try {
       await control.connection.ready;
       this.trust.assertHost();
       for (const device of this.trust.devices()) {
-        if (device.revoked) await control.command("revoke_device", { device_id: device.device_id });
-        else if (device.relay_pending) {
+        if (device.revoked && device.relay_pending) {
+          await control.command("revoke_device", { device_id: device.device_id });
+          this.trust.markRevokedSynced(device);
+        } else if (!device.revoked && device.relay_pending) {
           await control.command("register_device", { device_id: device.device_id, enrollment_pk: device.enrollment_pk });
           this.trust.markRegistered(device);
         }
@@ -256,14 +305,19 @@ export class RemoteController {
     const assembler = new Reassembler();
     let alive = true, busy = false, assembling = false, assemblyStarted = 0, principal: RemotePrincipal | undefined, unsubscribe: (() => void) | undefined;
     let queuedBytes = 0, sending = false;
-    const outgoing: Array<{ type: number; body: Uint8Array }> = [];
+    const abort = new AbortController();
+    const outgoing: Array<{ type: number; body: Uint8Array; stream?: number; done?: () => void }> = [];
     let streamId = 0;
     const fileStreams = new Map<number, { cancelled: boolean }>();
+    const retiredStreams = new Set<number>();
     const close = () => {
-      if (!alive) return; alive = false;
+      if (!alive) return; alive = false; abort.abort();
       clearInterval(timer); clearTimeout(handshakeTimer); session.close(); assembler.clear(); unsubscribe?.();
-      if (principal) this.dispatcher.uv.clearSession(principal.sessionId);
-      for (const message of outgoing) message.body.fill(0);
+      if (principal) {
+        this.dispatcher.uv.clearSession(principal.sessionId);
+        if (this.principals.get(deviceId) === principal) this.principals.delete(deviceId);
+      }
+      for (const message of outgoing) { message.body.fill(0); message.done?.(); }
       outgoing.length = 0; queuedBytes = 0;
       for (const stream of fileStreams.values()) stream.cancelled = true;
       fileStreams.clear();
@@ -278,15 +332,19 @@ export class RemoteController {
             const deadline = Date.now() + 5000;
             while (alive && connection.socket.bufferedAmount > 0 && Date.now() < deadline) await Bun.sleep(2);
             if (!alive || connection.socket.bufferedAmount > 0) throw new Error("backpressure");
+            await this.budget.take(next.body.length + 41, abort.signal);
+            if (!alive) throw new Error("closed");
+            if (next.stream !== undefined && fileStreams.get(next.stream)?.cancelled) continue;
             connection.send(session.send(next.type as 1, next.body));
-          } finally { next.body.fill(0); }
+          } finally { next.body.fill(0); next.done?.(); }
         }
       } catch { close(); } finally { sending = false; }
     };
-    const enqueue = (type: number, body: Uint8Array) => {
-      if (!alive || queuedBytes + body.length > 1024 * 1024 + 65536) { close(); return; }
-      queuedBytes += body.length; outgoing.push({ type, body: new Uint8Array(body) }); void pump();
+    const enqueue = (type: number, body: Uint8Array, stream?: number, done?: () => void) => {
+      if (!alive || queuedBytes + body.length > 1024 * 1024 + 65536) { done?.(); close(); return; }
+      queuedBytes += body.length; outgoing.push({ type, body: new Uint8Array(body), stream, done }); void pump();
     };
+    const sendFile = (body: Uint8Array, stream: number) => new Promise<void>(resolve => enqueue(5, body, stream, resolve));
     const sendJson = (type: LogicalType, value: unknown) => { for (const frame of fragmentMessage(type, canonicalBytes(value))) enqueue(frame.type, frame.body); };
     const respond = async (bytes: Uint8Array) => {
       let id: string | undefined;
@@ -297,13 +355,13 @@ export class RemoteController {
         const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
         const result: RemoteResponse = { v: 1, id, status: response.status, body: null,
           headers: { contentType, ...(response.headers.has("ETag") ? { etag: response.headers.get("ETag")! } : {}) } };
-        if (response.status >= 400) result.body = { error: { code: response.status === 409 ? "conflict" : response.status === 503 ? "key_write_pending" : "rejected", message: "remote request rejected" } };
+        if (response.status >= 400) result.body = await responseError(response);
         else if (response.body && contentType.includes("application/json") && request.path !== "/v1/workspace/file" && !/^\/v1\/attachments\/[^/]+\/content$/.test(request.path)) result.body = await response.json();
         else if (response.body) {
           const data = new Uint8Array(await response.arrayBuffer());
           try {
             if (data.length > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "file too large");
-            if (fileStreams.size >= 2 || streamId === 0xffff_ffff) throw new HttpError(429, "stream_limit", "file stream limit");
+            if (fileStreams.size >= REMOTE_FILE_STREAMS || streamId === 0xffff_ffff) throw new HttpError(429, "stream_limit", "file stream limit");
             const currentStream = ++streamId, stream = { cancelled: false };
             fileStreams.set(currentStream, stream);
             result.file = { streamId: currentStream, size: data.length };
@@ -314,10 +372,16 @@ export class RemoteController {
               while (alive && !stream.cancelled && queuedBytes > 65536) await Bun.sleep(2);
               if (!alive || stream.cancelled) break;
               const chunk = data.subarray(offset, offset + MAX_FILE_CHUNK);
-              enqueue(5, encodeFileChunk({ streamId: currentStream, offset: BigInt(offset), eof: offset + chunk.length === data.length, chunk }));
+              await sendFile(encodeFileChunk({ streamId: currentStream, offset: BigInt(offset), eof: offset + chunk.length === data.length, chunk }), currentStream);
               if (!data.length) break;
             }
+            if (alive && stream.cancelled) {
+              const cancelled = new Uint8Array(4); new DataView(cancelled.buffer).setUint32(0, currentStream);
+              await new Promise<void>(resolve => enqueue(6, cancelled, undefined, resolve));
+            }
             fileStreams.delete(currentStream);
+            retiredStreams.add(currentStream);
+            if (retiredStreams.size > 32) retiredStreams.delete(retiredStreams.values().next().value!);
             return;
           } finally { data.fill(0); }
         }
@@ -342,7 +406,7 @@ export class RemoteController {
         for (const stream of fileStreams.values()) stream.cancelled = true;
         fileStreams.clear();
         if (id && alive && principal && this.trust.trusted(device)) sendJson(2, { v: 1, id, status: error instanceof HttpError ? error.status : 400,
-          body: { error: { code: error instanceof HttpError ? error.code : "rejected", message: "remote request rejected" } } });
+          body: remoteError(error instanceof HttpError ? error.code : "rejected") });
         else close();
       } finally { bytes.fill(0); busy = false; }
     };
@@ -351,7 +415,8 @@ export class RemoteController {
         if (!alive) return;
         if (!session.ready) {
           connection.send(session.accept(data)); clearTimeout(handshakeTimer);
-          principal = { device, sessionId: base64url(session.authenticatedSessionId), active: () => alive && session.ready };
+          principal = { device, sessionId: base64url(session.authenticatedSessionId), signal: abort.signal, active: () => alive && session.ready };
+          this.principals.set(deviceId, principal);
           this.trust.bindOnboarding(device, principal.sessionId);
           sendJson(3, { type: "ready", protocol: "remote-v1", ...this.options.api.syncCursor(), deviceId, trustEpoch: device.grant_epoch });
           unsubscribe = this.options.api.subscribeSync(frame => { try { sendJson(3, frame); } catch { close(); } });
@@ -363,11 +428,14 @@ export class RemoteController {
           if (frame.body.length !== 4) throw new Error("stream_cancel");
           const id = new DataView(frame.body.buffer, frame.body.byteOffset, 4).getUint32(0);
           const stream = fileStreams.get(id);
-          if (!stream) throw new Error("stream_cancel");
+          if (!stream) {
+            if (retiredStreams.has(id)) { enqueue(6, frame.body); return; }
+            throw new Error("stream_cancel");
+          }
           stream.cancelled = true;
           for (let i = outgoing.length - 1; i >= 0; i--) if (outgoing[i]!.type === 5 &&
             new DataView(outgoing[i]!.body.buffer, outgoing[i]!.body.byteOffset, 4).getUint32(0) === id) {
-            const [removed] = outgoing.splice(i, 1); queuedBytes -= removed!.body.length; removed!.body.fill(0);
+            const [removed] = outgoing.splice(i, 1); queuedBytes -= removed!.body.length; removed!.body.fill(0); removed!.done?.();
           }
           return;
         }
@@ -382,7 +450,7 @@ export class RemoteController {
       } catch { close(); }
     }, close, { route_id: routeId, device_id: deviceId }, this.options.socketFactory);
     const timer = setInterval(() => {
-      try { assembler.expire(performance.now()); if (assembling && performance.now() - assemblyStarted >= 30_000) close(); }
+      try { assembler.expire(performance.now()); if (assembling && performance.now() - assemblyStarted >= REASSEMBLY_TTL_MS) close(); }
       catch { close(); }
     }, 1000);
     const handshakeTimer = setTimeout(close, 10_000);

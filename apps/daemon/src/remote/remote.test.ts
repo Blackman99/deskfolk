@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity,
@@ -15,6 +15,8 @@ import { RemoteController } from "./controller";
 import { RemoteTrust } from "./trust";
 import { RemoteUv } from "./uv";
 import { dispatchLocalSetup } from "./local-setup";
+import { finishLifecycle, recoverLifecycle } from "./lifecycle";
+import { validateBusiness } from "./routes";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 
 function cbor(value: unknown): Buffer {
@@ -49,7 +51,7 @@ const ORIGIN = "https://relay.example.test", HOST = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 const cleanup: Array<() => Promise<void> | void> = [];
 afterEach(async () => { while (cleanup.length) await cleanup.pop()!(); });
 function nativeFixture() {
-  const keys = generateIdentity(); let highwater = 1;
+  let keys = generateIdentity(), highwater = 1;
   const pending = new Map<string, { action: LocalAction; proof?: string }>();
   const client = new RemoteNativeClient(async r => {
     let value: string | undefined, expiresIn: number | undefined;
@@ -63,20 +65,25 @@ function nativeFixture() {
     } else if (r.op === "prepare") {
       value = Buffer.from(randomBytes(32)).toString("base64"); expiresIn = 120;
       pending.set(value, { action: r.action! });
-    } else if (r.op === "consume") {
+    } else if (r.op === "consume" || r.op === "reset") {
       const entry = pending.get(r.challenge!); pending.delete(r.challenge!);
       if (!entry || entry.proof !== r.proof || canonicalHash(entry.action) !== canonicalHash(r.action)) return { ...r, ok: false, error: "proof" };
+      if (r.op === "reset") {
+        if (r.action?.kind !== "reset_identity" || r.expected !== highwater) return { ...r, ok: false, error: "rollback" };
+        keys = generateIdentity(); highwater++;
+      }
     } else if (r.op !== "capability") return { ...r, ok: false, error: "malformed" };
     return { v: 1, id: r.id, ok: true, ...(value ? { value } : {}), ...(expiresIn ? { expiresIn } : {}) };
   });
-  return { client, keys, get highwater() { return highwater; }, confirm(challenge: string) {
+  return { client, get keys() { return keys; }, get highwater() { return highwater; }, confirm(challenge: string) {
     const row = pending.get(challenge); if (!row) throw new Error("fixture confirmation absent");
     row.proof = Buffer.from(randomBytes(32)).toString("base64"); return row.proof;
   } };
 }
-async function fixture(completions?: import("../completions").CompletionsClient) {
+async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false) {
   const root = mkdtempSync(join(tmpdir(), "rb-rc07-"));
-  const store = new Store({ filename: join(root, "host.sqlite"), endpointKey: memoryKeyStore() });
+  const endpointKeys = memoryKeyStore();
+  const store = new Store({ filename: join(root, "host.sqlite"), endpointKey: endpointKeys });
   await store.patchSettings({ workspace_path: root });
   const api = createLocalApi({ store, token: "fixture", schedule: false, completions });
   const native = nativeFixture();
@@ -84,8 +91,21 @@ async function fixture(completions?: import("../completions").CompletionsClient)
   const relay = startRelay({ hostname: "127.0.0.1", port: 0, database: join(root, "relay.sqlite"), bootstrap,
     origin: ORIGIN, relayId: "fixture", enabled: true, pairingEnabled: true });
   const localOrigin = `http://127.0.0.1:${relay.port}`;
+  let hold = false;
   const controller = new RemoteController({ store, api, native: native.client,
-    socketFactory: url => new WebSocket(url.replace("wss://relay.example.test", localOrigin.replace("http:", "ws:"))),
+    socketFactory: url => {
+      const ws = new WebSocket(`${localOrigin.replace("http:", "ws:")}${new URL(url).pathname}`);
+      if (holdAfterMetadata) {
+        let sent = 0, link = false;
+        const send = ws.send.bind(ws);
+        ws.send = (bytes) => {
+          if (typeof bytes === "string" && JSON.parse(bytes).mode === "link") link = true;
+          send(bytes); if (link && typeof bytes !== "string" && ++sent === 3) hold = true;
+        };
+        Object.defineProperty(ws, "bufferedAmount", { get: () => link && hold ? 1 : 0 });
+      }
+      return ws;
+    },
     fetch: ((input: string | URL | Request, init?: RequestInit) => fetch(String(input).replace(ORIGIN, localOrigin), init)) as typeof fetch });
   cleanup.push(async () => { controller.stop(); api.quiesce.close(); await api.engine.close(); await relay.stop(); store.close(); rmSync(root, { recursive: true, force: true }); });
   await controller.initialize({ origin: ORIGIN, relayId: "fixture", hostId: HOST }, bootstrap);
@@ -130,22 +150,323 @@ async function fixture(completions?: import("../completions").CompletionsClient)
     expect(ready.type).toBe("ready");
     const assembler = new Reassembler();
     const events: unknown[] = [];
+    const snapshotPages = new Map<string, { transfer: string; count: number; chunks: Uint8Array[] }>();
     async function rpc(request: RemoteRequest) {
       socket.send(new Uint8Array(noise.send(1, canonicalBytes(request))));
       for (;;) {
         const frame = noise.receive(await next() as Uint8Array);
-        if (frame.type === 5) throw new Error("unexpected file");
+        if (frame.type === 5) { decodeFileChunk(frame.body); continue; }
+        if (frame.type === 6) continue;
         const logical = frame.type === 4 ? assembler.accept(frame.body, performance.now()) : frame;
         if (!logical) continue;
         const message = JSON.parse(new TextDecoder().decode(logical.body));
-        if (message.id === request.id) return message;
+        if (message.id === request.id) {
+          if (message.snapshotPage) {
+            const page = message.snapshotPage;
+            const state = snapshotPages.get(request.id) ?? { transfer: page.transferId, count: page.count, chunks: [] as Uint8Array[] };
+            expect(page.transferId).toBe(state.transfer); expect(page.count).toBe(state.count); expect(page.index).toBe(state.chunks.length);
+            state.chunks.push(fromBase64url(page.bytes)); snapshotPages.set(request.id, state);
+            if (state.chunks.length < state.count) continue;
+            snapshotPages.delete(request.id);
+            return { ...message, body: JSON.parse(Buffer.concat(state.chunks).toString("utf8")) };
+          }
+          return message;
+        }
         events.push(message);
       }
     }
-    return { socket, noise, next, rpc, events, ready };
+    async function download(path: string): Promise<{ bytes: number; hash: string; streamId: number }> {
+      const meta = await rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path } });
+      expect(meta.status).toBe(200);
+      const hash = createHash("sha256"); let offset = 0;
+      for (;;) {
+        const frame = noise.receive(await next() as Uint8Array);
+        if (frame.type === 3 || frame.type === 4 || frame.type === 6) continue;
+        expect(frame.type).toBe(5); const chunk = decodeFileChunk(frame.body);
+        expect(chunk.streamId).toBe(meta.file.streamId); expect(chunk.offset).toBe(BigInt(offset));
+        hash.update(chunk.chunk); offset += chunk.chunk.length;
+        if (chunk.eof) break;
+      }
+      expect(offset).toBe(meta.file.size);
+      return { bytes: offset, hash: hash.digest("hex"), streamId: meta.file.streamId };
+    }
+    return { socket, noise, next, rpc, download, events, ready };
   }
-  return { root, store, api, native, controller, relay, pair, connect, post };
+  return { root, store, endpointKeys, api, native, controller, relay, pair, connect, post, releasePressure: () => { hold = false; } };
 }
+
+test("cancel fences the pump's current unsent frame under held socket pressure", async () => {
+  const f = await fixture(undefined, true), d = await f.pair(), c = await f.connect(d);
+  writeFileSync(join(f.root, "cancel.bin"), Buffer.alloc(100_000));
+  const metadata = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "cancel.bin" } });
+  const cancel = Buffer.alloc(4); cancel.writeUInt32BE(metadata.file.streamId);
+  c.socket.send(new Uint8Array(c.noise.send(6, cancel)));
+  await Bun.sleep(10); f.releasePressure();
+  const frame = c.noise.receive(await c.next() as Uint8Array); expect(frame.type).toBe(6);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+});
+
+test("real relay budget supports 50MiB and concurrent 1MiB GETs, cancellation and paged snapshot", async () => {
+  const f = await fixture(), a = await f.pair(), b = await f.pair();
+  const bot = f.store.createBot({ name: "Large snapshot", duties: "", boundaries: "" });
+  for (let n = 0; n < 32; n++) f.store.createSkill({ bot_id: bot.bot.id, name: `large-${n}`, description: "fixture", body: "x".repeat(32000) });
+  const extra = f.store.createBot({ name: "Extra snapshot", duties: "", boundaries: "" });
+  f.store.createSkill({ bot_id: extra.bot.id, name: "extra", description: "fixture", body: "x".repeat(32000) });
+  const ca = await f.connect(a), cb = await f.connect(b);
+  const large = Buffer.alloc(50 * 1024 * 1024, 0x6a), small = Buffer.alloc(1024 * 1024, 0x37);
+  writeFileSync(join(f.root, "large.bin"), large); writeFileSync(join(f.root, "small.bin"), small);
+  const started = Date.now();
+  const [big, little] = await Promise.all([ca.download("large.bin"), cb.download("small.bin")]);
+  expect(big.hash).toBe(createHash("sha256").update(large).digest("hex"));
+  expect(little.hash).toBe(createHash("sha256").update(small).digest("hex"));
+  expect(Date.now() - started).toBeGreaterThan(20_000);
+  const state = await ca.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/snapshot" });
+  expect(state.body.skills).toHaveLength(33); expect(state.snapshotPage.count).toBeGreaterThan(1);
+  const late = Buffer.alloc(4); late.writeUInt32BE(big.streamId);
+  ca.socket.send(new Uint8Array(ca.noise.send(6, late)));
+  expect((await ca.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+  const meta = await cb.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "large.bin" } });
+  const cancel = Buffer.alloc(4); cancel.writeUInt32BE(meta.file.streamId);
+  cb.socket.send(new Uint8Array(cb.noise.send(6, cancel)));
+  for (;;) {
+    const frame = cb.noise.receive(await cb.next() as Uint8Array);
+    if (frame.type === 6) { expect(new DataView(frame.body.buffer, frame.body.byteOffset, 4).getUint32(0)).toBe(meta.file.streamId); break; }
+    expect(frame.type).toBe(5);
+  }
+  expect((await cb.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+}, 90_000);
+
+test("recovery at equal epoch advances native highwater and a restored old grant fails", async () => {
+  const f = await fixture(), d = await f.pair(), pin = f.controller.trust.device(d.deviceId)!;
+  const prepared = await f.controller.prepareRecovery();
+  await f.controller.confirmRecovery(f.native.confirm(prepared.challenge));
+  expect(f.native.highwater).toBe(2); expect(f.controller.trust.host()!.generation).toBe(2);
+  f.store.db.run("UPDATE remote_host SET generation = 1"); f.store.db.run("UPDATE remote_devices SET revoked = 0, generation = 1");
+  await expect(f.controller.trust.reconcile()).rejects.toThrow(); expect(f.controller.trust.trusted(pin)).toBe(false);
+});
+
+test("more than one relay control burst of revoked history reconciles once and survives reconnect", async () => {
+  const f = await fixture(), d = await f.pair();
+  f.controller.stop();
+  f.store.db.run("UPDATE remote_devices SET revoked = 1, relay_pending = 1");
+  for (let n = 0; n < 72; n++) {
+    const keys = identityPublic(generateIdentity());
+    f.store.db.run(`INSERT INTO remote_devices(device_id,name,ua_hint,dh_pk,signing_pk,enrollment_pk,grant_epoch,generation,revoked,pairing_id,onboarding_until)
+      VALUES (?, 'old', '', ?, ?, ?, 1, 1, 1, ?, 0)`, [ulid(), base64url(keys.dh), base64url(keys.signing), base64url(keys.enrollment), ulid()]);
+  }
+  await f.controller.start(); expect(f.controller.status().state).toBe("online");
+  expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM remote_devices WHERE relay_pending = 1").get()!.n).toBe(0);
+  f.controller.stop(); await f.controller.start(); expect(f.controller.status().state).toBe("online");
+  expect(f.controller.trust.device(d.deviceId)!.revoked).toBe(1);
+}, 15_000);
+
+test("trusted native renewal reopens only the current paired Split session", async () => {
+  const f = await fixture(), d = await f.pair(), first = await f.connect(d);
+  const closed = new Promise<void>(resolve => first.socket.addEventListener("close", () => resolve(), { once: true })); first.socket.close(); await closed;
+  const second = await f.connect(d);
+  expect((await second.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/register-challenge", body: {} })).status).toBe(403);
+  const prepared = await f.controller.prepareUvRenewal(d.deviceId);
+  const proof = f.native.confirm(prepared.challenge);
+  await f.controller.confirmUvRenewal(proof);
+  const challenge = await second.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/register-challenge", body: {} });
+  expect(challenge.status).toBe(200);
+  expect(challenge.body.binding.sessionId).toBe(base64url(second.noise.authenticatedSessionId));
+  await expect(f.controller.confirmUvRenewal(proof)).rejects.toThrow();
+});
+
+test("native-confirmed relay, identity and workspace changes persist exact targets", async () => {
+  const f = await fixture(), d = await f.pair(), oldKeys = base64url(identityPublic(f.native.keys).signing);
+  const next = { hostId: ulid(), origin: "https://next.example.test", relayId: "next" };
+  const relay = await f.controller.prepareChange({ kind: "change_relay", config: next });
+  await f.controller.confirmChange(f.native.confirm(relay.challenge));
+  expect(f.controller.trust.host()).toMatchObject({ relay_origin: next.origin, generation: 2 });
+  expect(f.controller.trust.device(d.deviceId)!.revoked).toBe(1);
+  f.controller.stop(); await f.controller.trust.reconcile();
+  const reset = await f.controller.prepareChange({ kind: "reset_identity", config: { ...next, hostId: ulid() } });
+  await f.controller.confirmChange(f.native.confirm(reset.challenge));
+  expect(f.native.highwater).toBe(3); expect(base64url(identityPublic(f.native.keys).signing)).not.toBe(oldKeys);
+  f.controller.stop(); await f.controller.trust.reconcile();
+  const root = join(f.root, "new-workspace"); mkdirSync(root);
+  const workspace = await f.controller.prepareChange({ kind: "change_workspace", path: root });
+  await f.controller.confirmChange(f.native.confirm(workspace.challenge));
+  expect(f.store.workspacePath()).toBe(root.replace(/^\/var\//, "/private/var/"));
+}, 30_000);
+
+test("native reset crash intent fails closed, native-done relay transition reconciles, target tampering denies", async () => {
+  const f = await fixture(), d = await f.pair();
+  const change = { kind: "change_relay" as const, config: { origin: ORIGIN, relayId: "fixture", hostId: ulid() } };
+  const staged = await f.controller.prepareChange(change);
+  f.store.db.run("UPDATE remote_devices SET signing_pk = ? WHERE device_id = ?", [base64url(identityPublic(generateIdentity()).signing), d.deviceId]);
+  await expect(f.controller.confirmChange(f.native.confirm(staged.challenge))).rejects.toThrow();
+  expect(f.native.highwater).toBe(1);
+  const prepared = await f.controller.prepareChange(change);
+  f.store.db.run("CREATE TRIGGER fail_transition BEFORE UPDATE ON remote_host BEGIN SELECT RAISE(ABORT, 'fixture'); END");
+  await expect(f.controller.confirmChange(f.native.confirm(prepared.challenge))).rejects.toThrow();
+  expect(f.native.highwater).toBe(2);
+  expect(f.store.db.query<{ phase: string }, []>("SELECT phase FROM remote_transition").get()!.phase).toBe("native_done");
+  await expect(f.controller.trust.reconcile()).rejects.toThrow();
+  f.store.db.run("DROP TRIGGER fail_transition");
+  await f.controller.start(); expect(f.controller.trust.host()!.generation).toBe(2);
+  expect(f.store.db.query("SELECT * FROM remote_transition").get()).toBeNull();
+  const reset = await f.controller.prepareChange({ kind: "reset_identity", config: { ...change.config, hostId: ulid() } });
+  const original = f.native.client.reset.bind(f.native.client);
+  const lost = spyOn(f.native.client, "reset").mockImplementation(async (...args) => { await original(...args); throw new Error("response lost"); });
+  await expect(f.controller.confirmChange(f.native.confirm(reset.challenge))).rejects.toThrow(); lost.mockRestore();
+  expect(f.native.highwater).toBe(3);
+  expect(f.store.db.query<{ phase: string }, []>("SELECT phase FROM remote_transition").get()!.phase).toBe("native_uncertain");
+  await f.controller.start(); expect(f.controller.status().state).toBe("trust_mismatch");
+  const recovery = await f.controller.prepareRecovery();
+  await f.controller.confirmRecovery(f.native.confirm(recovery.challenge));
+  expect(f.controller.trust.host()!.generation).toBe(3); expect(f.controller.trust.device(d.deviceId)!.revoked).toBe(1);
+});
+
+test("model probe cancellation after stored credential hydration never starts an outbound call", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  let calls = 0;
+  const endpoint = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => { calls++; return Response.json({ data: [{ id: "fixture" }] }); } });
+  cleanup.push(() => endpoint.stop(true));
+  await f.store.patchSettings({ endpoint_base_url: `http://127.0.0.1:${endpoint.port}`, endpoint_api_key: "fixture-only" });
+  let release!: () => void;
+  const original = f.store.endpointKey.bind(f.store);
+  const held = spyOn(f.store, "endpointKey").mockImplementation(async (...args) => { await new Promise<void>(resolve => { release = resolve; }); return original(...args); });
+  const pin = f.controller.trust.device(d.deviceId)!;
+  const pending = f.controller.dispatcher.dispatch({ v: 1, id: ulid(), method: "POST", path: "/v1/models/probe", body: {} },
+    { device: pin, sessionId: base64url(c.noise.authenticatedSessionId), active: () => true });
+  while (!release) await Bun.sleep(1);
+  await f.controller.trust.revoke(d.deviceId, () => f.controller.trust.assert(pin)); release();
+  await expect(pending).rejects.toThrow(); held.mockRestore(); expect(calls).toBe(0);
+});
+
+test("composer and model probe recheck revocation after credential waits; probes never replay", async () => {
+  let calls = 0;
+  const f = await fixture({ judge: async () => { calls++; return { content: "{}", hadToolCalls: false, usage: null, failKind: null }; },
+    complete: async () => { throw new Error("unused"); } });
+  const endpoint = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => { calls++; return Response.json({ data: [{ id: "fixture-model" }] }); } });
+  cleanup.push(() => endpoint.stop(true));
+  await f.store.patchSettings({ endpoint_base_url: `http://127.0.0.1:${endpoint.port}`, endpoint_api_key: "fixture-only", endpoint_models: ["fixture-model"], endpoint_default_model: "fixture-model" });
+  const d = await f.pair(), c = await f.connect(d), bot = f.store.createBot({ name: "Suggestions", duties: "", boundaries: "" });
+  const probe: RemoteRequest = { v: 1, id: ulid(), method: "POST", path: "/v1/models/probe", body: {} };
+  expect((await c.rpc(probe)).body.models).toEqual(["fixture-model"]);
+  expect((await c.rpc(probe)).status).toBe(200); expect(calls).toBe(2);
+  expect(f.store.receipts.lookup({ deviceId: d.deviceId, requestId: probe.id })).toBeNull();
+  let release!: () => void;
+  const original = f.store.settings.bind(f.store);
+  const held = spyOn(f.store, "settings").mockImplementation(async () => { await new Promise<void>(resolve => { release = resolve; }); return original(); });
+  const pin = f.controller.trust.device(d.deviceId)!;
+  const pending = f.controller.dispatcher.dispatch({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${bot.direct_session.id}/composer-suggestions` },
+    { device: pin, sessionId: base64url(c.noise.authenticatedSessionId), active: () => true });
+  while (!release) await Bun.sleep(1);
+  await f.controller.trust.revoke(d.deviceId, () => f.controller.trust.assert(pin)); release();
+  await expect(pending).rejects.toThrow(); expect(calls).toBe(2); held.mockRestore();
+});
+
+test("strict remote history accepts the shared timestamp-plus-ID pagination cursor", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d), bot = f.store.createBot({ name: "History", duties: "", boundaries: "" });
+  for (let n = 0; n < 3; n++) f.store.postMessage(bot.direct_session.id, { body: `message${n}` });
+  const first = await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${bot.direct_session.id}/messages`, query: { limit: "1" } });
+  expect(first.body.next).toContain("|");
+  const second = await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${bot.direct_session.id}/messages`, query: { limit: "1", cursor: first.body.next } });
+  expect(second.status).toBe(200); expect(second.body.items[0].id).not.toBe(first.body.items[0].id);
+});
+
+test("remote Stop is 204 for missing and terminal direct turns, group rejection and receipts remain", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d), bot = f.store.createBot({ name: "Stop", duties: "", boundaries: "" });
+  for (const status of ["running", "stopped", "completed", "interrupted"] as const) {
+    const message = f.store.postMessage(bot.direct_session.id, { body: "fixture" });
+    const turn = f.store.createTurn({ sessionId: message.session_id, botId: bot.bot.id, triggerMessageId: message.id });
+    f.store.setTurnStatus(turn.id, status);
+    const request: RemoteRequest = { v: 1, id: ulid(), method: "POST", path: "/v1/turns/stop", body: { turn_id: turn.id } };
+    expect((await c.rpc(request)).status).toBe(204); expect((await c.rpc(request)).status).toBe(204);
+    expect((await c.rpc({ ...request, id: ulid() })).status).toBe(204);
+  }
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/turns/stop", body: { turn_id: ulid() } })).status).toBe(204);
+});
+
+test("route contracts reject unknown fields and wrong types across every mutation family before effects", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d), id = ulid();
+  const cases: Array<[RemoteRequest["method"], string, Record<string, unknown>]> = [
+    ["POST", "/v1/bots", { name: "n", duties: "", boundaries: "" }], ["PATCH", `/v1/bots/${id}`, { name: "n", if_revision: "r" }],
+    ["POST", "/v1/providers", { name: "n", base_url: "https://fixture.invalid" }], ["PATCH", `/v1/providers/${id}`, { name: "n", if_revision: "r" }],
+    ["POST", "/v1/mcp-servers", { name: "n" }], ["PATCH", `/v1/mcp-servers/${id}`, { enabled: true, if_revision: "r" }],
+    ["POST", "/v1/skills", { bot_id: id, name: "n", description: "d", body: "b" }], ["PATCH", `/v1/skills/${id}`, { body: "b", if_revision: "r" }],
+    ["POST", "/v1/routines", { bot_id: id, title: "t", instruction: "i", schedule: { kind: "daily", time: "12:00" } }],
+    ["PATCH", `/v1/routines/${id}`, { enabled: false, if_revision: "r" }], ["PATCH", `/v1/memories/${id}`, { body: "b", if_revision: "r" }],
+    ["POST", "/v1/sessions", { name: "n", members: [id] }], ["POST", `/v1/sessions/${id}/messages`, { body: "b" }],
+    ["POST", `/v1/sessions/${id}/members`, { bot_id: id }], ["POST", `/v1/sessions/${id}/read`, {}],
+    ["POST", `/v1/approvals/${id}/resolve`, { action: "deny" }], ["POST", `/v1/credential-operations/${id}/resolve`, { action: "cancel" }],
+    ["POST", "/v1/allow-rules", { kind_key: "k", scope: "s" }], ["POST", "/v1/models/probe", {}],
+    ["PUT", "/v1/workspace/file", { path: "x", content: "y" }], ["PUT", `/v1/messages/${id}/reactions`, { emoji: "x" }],
+    ["DELETE", `/v1/bots/${id}`, { if_revision: "r" }], ["PATCH", "/v1/settings", { theme: "dark", if_revision: 1 }],
+  ];
+  for (const [method, path, body] of cases) {
+    expect((await c.rpc({ v: 1, id: ulid(), method, path, body: { ...body, unknown_property: true } })).status).toBe(422);
+    for (const key of Object.keys(body)) {
+      expect(() => validateBusiness({ v: 1, id: ulid(), method, path, body: { ...body, [key]: { wrong: true } } })).toThrow();
+    }
+  }
+  for (const path of ["/v1/bots", "/v1/search", "/v1/workspace/file", `/v1/sessions/${id}/messages`]) {
+    expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path, query: { unknown: "true" } })).status).toBe(422);
+  }
+  expect(f.store.listBots()).toHaveLength(0);
+  expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n).toBe(0);
+});
+
+test("lifecycle failure and restart never manufacture a success receipt, error codes survive encryption", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d), auth = authenticator();
+  const principal = { device: f.controller.trust.device(d.deviceId)!, sessionId: base64url(c.noise.authenticatedSessionId), active: () => true };
+  const reg = f.controller.dispatcher.uv.registrationChallenge(principal, ulid());
+  await f.controller.dispatcher.uv.register(principal, reg.challenge, auth.registration(reg));
+  const operation = { action: "quiesce.begin", targetId: "runtime", requestId: ulid() };
+  const challenge = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/challenge", body: { operation } });
+  const assertion = auth.assertion(challenge.body);
+  const request: RemoteRequest = { v: 1, id: operation.requestId, method: "POST", path: "/remote/action", body: { operation, challenge: challenge.body.challenge,
+    assertion: { credentialId: assertion.credentialId, clientDataJSON: base64url(assertion.clientDataJSON), authenticatorData: base64url(assertion.authenticatorData), signature: base64url(assertion.signature) } } };
+  const effect = spyOn(f.api.quiesce, "begin").mockImplementation(() => { throw new Error("fixture-secret-path"); });
+  const failed = await c.rpc(request); expect(failed.status).toBe(503); expect(failed.body.error.code).toBe("lifecycle_failed");
+  expect(JSON.stringify(failed)).not.toContain("fixture-secret-path"); expect((await c.rpc(request)).status).toBe(503); expect(effect).toHaveBeenCalledTimes(1); effect.mockRestore();
+  f.store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, 'quiesce.begin')", [d.deviceId, request.id]);
+  f.store.db.run("UPDATE request_receipts SET status = 202 WHERE device_id = ? AND request_id = ?", [d.deviceId, request.id]);
+  recoverLifecycle(f.store);
+  const unknown = await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${request.id}` });
+  expect(unknown.body.error.code).toBe("lifecycle_unknown"); expect(f.api.quiesce.state().phase).toBe("running");
+  const bot = f.store.createBot({ name: "Codes", duties: "", boundaries: "" }); f.api.quiesce.begin();
+  const rejected: RemoteRequest = { v: 1, id: ulid(), method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`, body: { body: "not persisted" } };
+  expect((await c.rpc(rejected)).body.error.code).toBe("draining");
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${rejected.id}` })).body.error.code).toBe("draining");
+  f.store.receipts.prune(Date.now(), 0);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${rejected.id}` })).body.error.code).toBe("receipt_expired");
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${ulid()}` })).body.error.code).toBe("not_found");
+});
+
+test("force lifecycle receipt remains pending until started work settles and never replays on retry", async () => {
+  const f = await fixture(), scope = { deviceId: "fixture", requestId: ulid() };
+  f.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+    VALUES (?, ?, ?, 'POST', '/remote/action', 'complete', 202, '{"state":"lifecycle_pending"}', '{}', ?)`,
+    [scope.deviceId, scope.requestId, "a".repeat(64), Date.now()]);
+  f.store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, 'quiesce.force')", [scope.deviceId, scope.requestId]);
+  let release!: () => void;
+  const waiting = spyOn(f.api.quiesce, "wait").mockImplementation(() => new Promise(resolve => { release = () => resolve({ phase: "drained", remaining: [], forced: true }); }));
+  const pending = finishLifecycle(f.store, f.api, scope, "quiesce.force");
+  expect(f.store.receipts.read(scope).status).toBe(202);
+  f.store.receipts.prune(Date.now() + 10 * 86400_000, 0);
+  expect(f.store.receipts.read(scope).status).toBe(202);
+  release(); expect((await pending).status).toBe(204); waiting.mockRestore();
+  expect(f.store.receipts.read(scope).status).toBe(204);
+});
+
+test("wire errors preserve pending credentials, superseded receipt, revision conflict and bounded categories", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const held = spyOn(f.endpointKeys, "set").mockRejectedValue(new Error("fixture locked"));
+  const id = ulid();
+  const request: RemoteRequest = { v: 1, id, method: "POST", path: "/v1/providers", body: { name: "Pending", base_url: "https://fixture.invalid", api_key: "secret" } };
+  const pending = await c.rpc(request); expect(pending.status).toBe(503); expect(pending.body.error.code).toBe("key_write_pending"); held.mockRestore();
+  const operations = f.store.listCredentialOperations(); expect(operations).toHaveLength(1);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/credential-operations/${operations[0]!.id}/resolve`, body: { action: "cancel" } })).status).toBe(204);
+  expect((await c.rpc(request)).body.error.code).toBe("credential_superseded");
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${id}` })).body.error.code).toBe("credential_superseded");
+  const bot = f.store.createBot({ name: "Revision", duties: "", boundaries: "" });
+  expect((await c.rpc({ v: 1, id: ulid(), method: "PATCH", path: `/v1/bots/${bot.bot.id}`, body: { name: "Changed", if_revision: "stale" } })).body.error.code).toBe("conflict");
+});
 
 test("remote chat uses the actual engine and event stream, not a parallel business implementation", async () => {
   const f = await fixture({ judge: async () => ({ content: "{}", hadToolCalls: false, usage: null, failKind: null }),

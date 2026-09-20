@@ -16,6 +16,30 @@ function exact(value: RecordValue, keys: string[]): void {
 export type RelaySocketFactory = (url: string) => WebSocket;
 const nativeSocket: RelaySocketFactory = url => new WebSocket(url);
 
+/** One host-wide FIFO reserves headroom for device traffic and relay control replies. */
+export class RelayBudget {
+  private next = 0;
+  private pending = 0;
+  async take(bytes: number, signal?: AbortSignal): Promise<void> {
+    if (!Number.isInteger(bytes) || bytes < 0 || bytes > 65536 || this.pending >= 64) throw new Error("relay_budget");
+    signal?.throwIfAborted();
+    const now = performance.now(), start = Math.max(now, this.next);
+    this.next = start + (bytes + 64) / 1500;
+    this.pending++;
+    try { await delay(Math.ceil(start - now), signal); signal?.throwIfAborted(); }
+    finally { this.pending--; }
+  }
+}
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) { signal?.throwIfAborted(); return Promise.resolve(); }
+  return new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(new Error("relay_cancelled")); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", abort); resolve(); }, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
 /** One ordered enrollment, then binary-only control or opaque data on each socket. */
 export class RelayConnection {
   readonly socket: WebSocket;
@@ -87,8 +111,11 @@ export class RelayConnection {
 
 export class RelayControl {
   readonly connection: RelayConnection;
+  private nextCommand = 0;
+  private readonly abort = new AbortController();
+  private admissions = 0;
   private pending = new Map<string, { op: string; resolve: (value: RecordValue) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
-  constructor(config: RelayConfig, secret: Uint8Array, notification: (value: RecordValue) => void, disconnected: () => void, factory?: RelaySocketFactory) {
+  constructor(config: RelayConfig, secret: Uint8Array, notification: (value: RecordValue) => void, disconnected: () => void, factory?: RelaySocketFactory, private readonly budget = new RelayBudget()) {
     this.connection = new RelayConnection(config, secret, "control", data => {
       try {
         const value = object(data);
@@ -110,17 +137,25 @@ export class RelayControl {
       } catch { this.connection.close(); }
     }, () => {
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error("relay_disconnected")); }
-      this.pending.clear(); disconnected();
+      this.pending.clear(); this.abort.abort(); disconnected();
     }, undefined, factory);
   }
   async command(op: string, fields: RecordValue = {}): Promise<RecordValue> {
-    await this.connection.ready;
-    if (this.pending.size >= 16) throw new Error("relay_busy");
+    if (this.admissions >= 16) throw new Error("relay_busy");
+    this.admissions++;
     const id = base64url(randomBytes(16));
+    const bytes = canonicalBytes({ ...fields, op, request_id: id });
+    try {
+      await this.connection.ready;
+      const now = performance.now(), at = Math.max(now, this.nextCommand);
+      this.nextCommand = at + 75;
+      await delay(Math.ceil(at - now), this.abort.signal);
+      await this.budget.take(bytes.length, this.abort.signal);
+    } finally { this.admissions--; }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.connection.close(), 10_000);
       this.pending.set(id, { op, resolve, reject, timer });
-      try { this.connection.send(canonicalBytes({ ...fields, op, request_id: id })); }
+      try { this.connection.send(bytes); }
       catch {
         this.pending.delete(id); clearTimeout(timer); reject(new Error("relay_disconnected")); this.connection.close();
       }
