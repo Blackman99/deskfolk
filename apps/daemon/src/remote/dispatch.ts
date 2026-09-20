@@ -1,0 +1,137 @@
+import { canonicalHash, fromBase64url, requestDigest, type RemoteRequest, type AssertionWire, type RegistrationWire,
+  type AssertionResponse, type RegistrationResponse } from "@real-bot/remote";
+import type { LocalApi } from "../local-api";
+import { HttpError } from "../errors";
+import { RemoteTrust, deny } from "./trust";
+import { RemoteUv, type RemotePrincipal } from "./uv";
+import { validateBusiness } from "./routes";
+import { finishLifecycle } from "./lifecycle";
+
+export function assertionFromWire(value: AssertionWire): AssertionResponse {
+  if (!value || Object.keys(value).sort().join() !== "authenticatorData,clientDataJSON,credentialId,signature" ||
+    !Object.values(value).every(v => typeof v === "string" && v.length <= 24_000)) deny();
+  return { credentialId: value.credentialId, clientDataJSON: fromBase64url(value.clientDataJSON),
+    authenticatorData: fromBase64url(value.authenticatorData), signature: fromBase64url(value.signature) };
+}
+export function registrationFromWire(value: RegistrationWire): RegistrationResponse {
+  if (!value || Object.keys(value).sort().join() !== "attestationObject,clientDataJSON,credentialId" ||
+    !Object.values(value).every(v => typeof v === "string" && v.length <= 24_000)) deny();
+  return { credentialId: value.credentialId, clientDataJSON: fromBase64url(value.clientDataJSON), attestationObject: fromBase64url(value.attestationObject) };
+}
+export type PrivilegedOperation = { action: "device.revoke" | "quiesce.begin" | "quiesce.cancel" | "quiesce.force"; targetId: string; requestId: string };
+function operation(value: unknown): PrivilegedOperation {
+  if (!value || typeof value !== "object" || Object.keys(value).sort().join() !== "action,requestId,targetId") deny();
+  const op = value as PrivilegedOperation;
+  if (!["device.revoke", "quiesce.begin", "quiesce.cancel", "quiesce.force"].includes(op.action) ||
+    !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(op.requestId) || typeof op.targetId !== "string") deny();
+  if (op.action === "device.revoke" ? !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(op.targetId) : op.targetId !== "runtime") deny();
+  return op;
+}
+function operationDigest(op: PrivilegedOperation): string {
+  return requestDigest({ method: "POST", path: "/remote/action", body: op, encoding: "json" });
+}
+
+export class RemoteDispatcher {
+  readonly uv: RemoteUv;
+  constructor(readonly api: LocalApi, readonly trust: RemoteTrust) { this.uv = new RemoteUv(trust); }
+  async dispatch(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
+    const abort = new AbortController();
+    const invalidate = this.trust.onInvalidate(() => abort.abort());
+    const signal = principal.signal ? AbortSignal.any([principal.signal, abort.signal]) : abort.signal;
+    const bound = { ...principal, signal, active: () => !signal.aborted && principal.active() };
+    try { return await this.dispatchCurrent(request, bound); }
+    finally { invalidate(); }
+  }
+  private async dispatchCurrent(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
+    this.uv.assert(principal);
+    if (request.path.startsWith("/remote/")) return this.control(request, principal);
+    if (request.path === "/v1/settings" && request.method !== "GET" && Object.hasOwn(request.body ?? {}, "workspace_path")) deny();
+    validateBusiness(request);
+    const url = new URL(request.path, "http://remote.invalid");
+    for (const [key, value] of Object.entries(request.query ?? {}).sort(([a], [b]) => a.localeCompare(b))) url.searchParams.set(key, value);
+    const response = await this.api.dispatchBusiness(new Request(url.toString(), { method: request.method,
+      signal: principal.signal,
+      headers: { "Content-Type": "application/json", "X-Request-Id": request.id, ...(request.ifMatch ? { "If-Match": request.ifMatch } : {}) },
+      body: request.method === "GET" ? undefined : JSON.stringify(request.body ?? {}),
+    }), { deviceId: principal.device.device_id, requestId: request.id, requireRevision: true, guard: () => this.uv.assert(principal) });
+    this.uv.assert(principal);
+    return response;
+  }
+  private async control(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
+    const body = request.body ?? {};
+    const json = (value: unknown) => Response.json(value);
+    if (request.method === "GET" && ["/remote/status", "/remote/devices"].includes(request.path)) {
+      if (request.query || request.body || request.ifMatch) deny();
+      const devices = this.trust.devices().map(d => ({ id: d.device_id, name: d.name, revoked: !!d.revoked, hasUv: !!d.credential_id }));
+      return json(request.path === "/remote/status" ? { drain: this.api.quiesce.state(), devices } : { items: devices });
+    }
+    if (request.method !== "POST" || request.query || request.ifMatch) deny();
+    if (request.path === "/remote/uv/register-challenge") {
+      if (Object.keys(body).length) deny();
+      return json(this.uv.registrationChallenge(principal, request.id));
+    }
+    if (request.path === "/remote/uv/replacement-challenge") {
+      if (Object.keys(body).sort().join() !== "challenge,response" || typeof body.challenge !== "string") deny();
+      return json(this.uv.replacementChallenge(principal, String(body.challenge), registrationFromWire(body.response as RegistrationWire)));
+    }
+    if (request.path === "/remote/uv/register") {
+      if (typeof body.challenge !== "string" || !body.response || !Object.keys(body).every(k => ["challenge", "response", "replacement"].includes(k))) deny();
+      if (body.replacement && (typeof body.replacement !== "object" || Object.keys(body.replacement).sort().join() !== "assertion,challenge" ||
+        typeof (body.replacement as { challenge?: unknown }).challenge !== "string")) deny();
+      const digest = requestDigest({ method: "POST", path: request.path, body, encoding: "json" });
+      const scope = { deviceId: principal.device.device_id, requestId: request.id };
+      const previous = this.trust.store.receipts.lookup(scope);
+      if (previous) {
+        if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "registration request changed");
+        const receipt = this.trust.store.receipts.read(scope);
+        return new Response(receipt.body, { status: receipt.status, headers: { "Content-Type": "application/json", ...receipt.headers } });
+      }
+      const replacement = body.replacement as { challenge: string; assertion: AssertionWire } | undefined;
+      await this.uv.register(principal, String(body.challenge), registrationFromWire(body.response as RegistrationWire), replacement
+        ? { challenge: replacement.challenge, assertion: assertionFromWire(replacement.assertion) } : undefined, () => {
+          this.trust.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+            VALUES (?, ?, ?, 'POST', '/remote/uv/register', 'complete', 204, NULL, '{}', ?)`,
+          [scope.deviceId, scope.requestId, digest, Date.now()]);
+        });
+      return new Response(null, { status: 204 });
+    }
+    if (request.path === "/remote/uv/challenge") {
+      if (Object.keys(body).join() !== "operation") deny();
+      const op = operation(body.operation);
+      return json(this.uv.issue(principal, op.requestId, op.action, op.targetId, operationDigest(op)));
+    }
+    if (request.path === "/remote/action") {
+      if (Object.keys(body).sort().join() !== "assertion,challenge,operation" || typeof body.challenge !== "string") deny();
+      const op = operation(body.operation);
+      if (op.requestId !== request.id) deny();
+      const scope = { deviceId: principal.device.device_id, requestId: op.requestId }, digest = operationDigest(op);
+      const previous = this.trust.store.receipts.lookup(scope);
+      if (previous) {
+        if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "request id has a different action");
+        const saved = this.trust.store.receipts.read(scope);
+        return new Response(saved.body, { status: saved.status, headers: { "Content-Type": "application/json", ...saved.headers } });
+      }
+      await this.uv.assertion(principal, String(body.challenge), { deviceId: principal.device.device_id, sessionId: principal.sessionId,
+        trustEpoch: principal.device.grant_epoch, requestId: request.id, action: op.action, targetId: op.targetId, operationDigest: digest },
+      assertionFromWire(body.assertion as AssertionWire), () => {
+        if (op.action !== "device.revoke") this.trust.store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, ?)",
+          [scope.deviceId, scope.requestId, op.action]);
+        if (op.action === "device.revoke") {
+          if (!this.trust.device(op.targetId)) deny();
+          this.trust.store.db.run("INSERT INTO remote_revocations VALUES (?, ?, ?, ?)",
+            [request.id, principal.device.device_id, op.targetId, this.trust.assertHost().generation]);
+        }
+        this.trust.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+          VALUES (?, ?, ?, 'POST', '/remote/action', 'complete', ?, ?, '{}', ?)`,
+        [scope.deviceId, scope.requestId, digest, 202,
+          JSON.stringify({ state: op.action === "device.revoke" ? "revocation_pending" : "lifecycle_pending" }), Date.now()]);
+      });
+      if (op.action === "device.revoke") {
+        await this.trust.revoke(op.targetId, () => this.uv.assert(principal));
+        return new Response(null, { status: 204 });
+      }
+      return finishLifecycle(this.trust.store, this.api, scope, op.action);
+    }
+    throw new HttpError(404, "not_found", "unknown remote route");
+  }
+}

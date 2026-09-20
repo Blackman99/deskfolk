@@ -53,6 +53,40 @@ export function openPairing(envelope: Uint8Array, secret: Uint8Array, context: P
     return request;
   } finally { key.fill(0); }
 }
+export interface SignedDeviceGrant { grant: DeviceGrant; signature: Uint8Array }
+
+function grantAssociatedData(context: PairingContext): Uint8Array {
+  return concat(pairingAssociatedData(context), field('RB-PAIR-GRANT-v1'));
+}
+
+export function sealPairingGrant(reply: SignedDeviceGrant, secret: Uint8Array, context: PairingContext, nowUnix: number): Uint8Array {
+  fresh(context, nowUnix);
+  check(reply.grant.hostId === context.hostId, 'grant host mismatch');
+  const payload = concat(encodeGrant(reply.grant), bytes(reply.signature, 64));
+  check(payload.length + 40 <= MAX_PAIRING_ENVELOPE, 'grant envelope limit');
+  const key = pairingKey(secret), nonce = randomBytes(24);
+  try { return concat(nonce, xchacha20poly1305(key, nonce, grantAssociatedData(context)).encrypt(payload)); }
+  finally { key.fill(0); payload.fill(0); }
+}
+
+/** Opening the envelope also verifies every grant field against the QR-pinned host. */
+export function openPairingGrant(envelope: Uint8Array, secret: Uint8Array, context: PairingContext, nowUnix: number,
+  hostSigningPublic: Uint8Array, expected: DeviceGrant): SignedDeviceGrant {
+  fresh(context, nowUnix);
+  check(envelope.length >= 104 && envelope.length <= MAX_PAIRING_ENVELOPE, 'invalid grant envelope');
+  const key = pairingKey(secret);
+  try {
+    const plain = xchacha20poly1305(key, envelope.subarray(0, 24), grantAssociatedData(context)).decrypt(envelope.subarray(24));
+    try {
+      const grant = decodeGrant(plain.subarray(0, plain.length - 64));
+      const signature = new Uint8Array(plain.subarray(plain.length - 64));
+      check(grant.hostId === context.hostId, 'grant host mismatch');
+      verifyGrant(grant, signature, hostSigningPublic, expected);
+      return { grant, signature };
+    } finally { plain.fill(0); }
+  } finally { key.fill(0); }
+}
+
 export interface DeviceGrant {
   hostId: string;
   deviceId: string;

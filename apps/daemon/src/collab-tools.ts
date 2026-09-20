@@ -21,6 +21,10 @@ import { avatarMimeFromPath, rasterFileToAvatarDataUri } from "./avatar-image";
 import { parseMentions } from "./mentions";
 import { isNoWorkCloser } from "./no-work";
 import { HttpError } from "./errors";
+import { ulid } from "./ids";
+import { requestDigest } from "./request-digest";
+import type { KeyOperation } from "./store/receipts";
+import type { TurnAdmission } from "./quiesce";
 import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
 import { extractWorkspacePathsFromBody, linkifyWorkspacePaths, mergeCitedPaths } from "./artifact-paths";
@@ -73,6 +77,8 @@ export type ToolCtx = {
   mentionWarned?: Set<string>;
   /** Names in this hop's tools array (built-in + `mcp_…`). Absent = skip the stale-name check in read_skill. */
   availableToolNames?: ReadonlySet<string>;
+  admission?: TurnAdmission;
+  signal?: AbortSignal;
 };
 
 export async function runCollabTool(
@@ -81,6 +87,8 @@ export async function runCollabTool(
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
   try {
+    assertActive(ctx);
+    if (["create_group", "create_direct", "add_member"].includes(name)) ctx.admission?.assertNew();
     switch (name) {
       case "send_message":
         return sendMessage(ctx, args);
@@ -149,6 +157,40 @@ export async function runCollabTool(
   }
 }
 
+function assertActive(ctx: ToolCtx): void {
+  if (ctx.signal?.aborted) throw new HttpError(409, "interrupted", "turn was interrupted");
+}
+
+/** Hydration precedes the guarded transaction; started key writes retain their durable repair record. */
+async function mutateConfiguration<T>(ctx: ToolCtx, work: () => T): Promise<T> {
+  const requestId = ulid();
+  const path = `/turn-tools/${ctx.turnId}`;
+  const keyOps: KeyOperation[] = [];
+  const response = await ctx.store.receipts.execute(
+    { deviceId: "turn-tools", requestId, guard: () => assertActive(ctx) },
+    requestDigest({ method: "POST", path, body: { request_id: requestId } }),
+    "POST", path, {}, async () => {
+      await ctx.store.listProviders();
+      assertActive(ctx);
+      await ctx.store.listMcpServersHydrated();
+      assertActive(ctx);
+      return () => {
+        assertActive(ctx);
+        const plan: Array<{ name: string; value: string }> = [];
+        const result = ctx.store.planKeys(plan, work);
+        for (const op of plan) keyOps.push({ ...op, field: op.value ? "value" : "" });
+        return { status: 200, body: JSON.stringify(result ?? null) };
+      };
+    }, keyOps,
+  );
+  assertActive(ctx);
+  if (response.status >= 400) {
+    const body = JSON.parse(response.body ?? "{}");
+    throw new HttpError(response.status, body.error?.code ?? "failed", body.error?.message ?? "configuration failed");
+  }
+  return JSON.parse(response.body ?? "null") as T;
+}
+
 function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const body = requireString(args.body, "body");
   if (isNoWorkCloser(body)) {
@@ -165,6 +207,9 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const presentNames = presentMemberNames(ctx.store, sessionId, roster);
   const parsed = parseMentions(body, roster.map((b) => b.name), { lenient: presentNames });
   const emitted: ToolResult["emitted"] = [];
+  if (ctx.admission?.draining && (sessionId !== ctx.sessionId || parsed.everyone || parsed.mentions.some(name => name !== selfName))) {
+    return fail("draining", "new handoffs and child turns are paused; finish this turn without delegation");
+  }
   if (session.kind === "group") {
     for (const name of parsed.mentions) {
       const bot = ctx.store.findBotByName(name);
@@ -220,6 +265,7 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
 
 async function createBot(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const pin = await pinFromArgs(ctx, args, { currentModel: null, currentProviderId: null }, true);
+  assertActive(ctx);
   const created = ctx.store.createBot(
     {
       name: requireString(args.name, "name"),
@@ -326,6 +372,7 @@ async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>): Promi
       { currentModel: current.model, currentProviderId: current.provider_id },
       false,
     );
+    assertActive(ctx);
     patch.model = pin.model;
     patch.provider_id = pin.providerId;
   }
@@ -347,6 +394,7 @@ async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>): Promi
   } else if (avatarPath !== undefined) {
     if (avatarPath.trim().length === 0) return fail("invalid_args", "avatar_path is required");
     const resolved = await resolveAvatarPath(ctx, avatarPath.trim(), args);
+    assertActive(ctx);
     if (!resolved.ok) return resolved.result;
     patch.avatar = resolved.dataUri;
   }
@@ -802,13 +850,13 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
     throw new HttpError(422, "invalid_args", "api_key is required");
   }
   const previousBots = snapshotBotPins(ctx.store);
-  const provider = await ctx.store.createProvider({
+  const provider = await mutateConfiguration(ctx, () => ctx.store.createProviderSync({
     name,
     base_url: baseUrl,
     api_key: apiKey,
     models: models === undefined ? undefined : (models as Provider["model_catalog"]),
     default_model: defaultModel,
-  });
+  }));
   return {
     ok: true,
     data: serializeEndpoint(provider, ctx.store.defaultProviderId()),
@@ -819,6 +867,7 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
 async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const id = requireString(args.id, "id");
   const current = await ctx.store.getProvider(id);
+  assertActive(ctx);
   const defaultId = ctx.store.defaultProviderId();
   const isDefault = defaultId === id;
   const nextName = args.name !== undefined ? requireString(args.name, "name") : undefined;
@@ -866,7 +915,7 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
     patch.api_key = ctx.approvalApiKey.trim();
   }
   const previousBots = snapshotBotPins(ctx.store);
-  const provider = await ctx.store.patchProvider(id, patch);
+  const provider = await mutateConfiguration(ctx, () => ctx.store.patchProviderSync(id, patch));
   return {
     ok: true,
     data: serializeEndpoint(provider, ctx.store.defaultProviderId()),
@@ -877,11 +926,12 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
 async function deleteEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const id = requireString(args.id, "id");
   await ctx.store.getProvider(id);
+  assertActive(ctx);
   if (ctx.store.defaultProviderId() === id) {
     return fail("failed", DEFAULT_ENDPOINT_GUARD);
   }
   const previousBots = snapshotBotPins(ctx.store);
-  await ctx.store.deleteProvider(id);
+  await mutateConfiguration(ctx, () => ctx.store.deleteProviderSync(id));
   return {
     ok: true,
     data: { id },
@@ -927,7 +977,7 @@ async function addMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Promis
   if (parsed.spec.transport === "http" && !auth) {
     throw new HttpError(422, "invalid_args", "api_key is required");
   }
-  const server = await ctx.store.createMcpServer({
+  const server = await mutateConfiguration(ctx, () => ctx.store.createMcpServerSync({
     name,
     transport: parsed.spec.transport,
     command: parsed.spec.command,
@@ -937,7 +987,7 @@ async function addMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Promis
     auth,
     enabled,
     usage_note: parseUsageNoteArg(args.usage_note),
-  });
+  }));
   return { ok: true, data: serializeMcp(server), emitted: [{ kind: "mcp", server }] };
 }
 
@@ -1009,7 +1059,7 @@ async function updateMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Pro
   ) {
     throw new HttpError(422, "invalid_args", "api_key is required");
   }
-  const server = await ctx.store.patchMcpServer(id, {
+  const server = await mutateConfiguration(ctx, () => ctx.store.patchMcpServerSync(id, {
     name: nextName,
     transport: nextTransport,
     command: nextCommand,
@@ -1019,13 +1069,13 @@ async function updateMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Pro
     auth,
     enabled: args.enabled === undefined ? undefined : Boolean(args.enabled),
     usage_note: parseUsageNoteArg(args.usage_note),
-  });
+  }));
   return { ok: true, data: serializeMcp(server), emitted: [{ kind: "mcp", server }] };
 }
 
 async function deleteMcpServer(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const id = requireString(args.id, "id");
-  await ctx.store.deleteMcpServer(id);
+  await mutateConfiguration(ctx, () => ctx.store.deleteMcpServerSync(id));
   return { ok: true, data: { id }, emitted: [{ kind: "mcp_removed", id }] };
 }
 
@@ -1099,6 +1149,7 @@ async function pinFromArgs(
   }
   if (providerId) {
     const provider = await ctx.store.getProvider(providerId);
+    assertActive(ctx);
     if (model && !provider.models.includes(model)) {
       if (hasModel) {
         throw new HttpError(422, "invalid_args", "model must be one of the provider models");

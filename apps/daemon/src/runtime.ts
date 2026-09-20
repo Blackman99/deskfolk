@@ -11,6 +11,10 @@ import { createLocalApi } from "./local-api";
 import { bunKeyStore } from "./secrets";
 import { Store, type EndpointKeyStore } from "./store";
 import type { CompletionsClient } from "./completions";
+import { RemoteController } from "./remote/controller";
+import { inheritedLocalSetup } from "./remote/local-setup";
+import { RuntimeLifecycle } from "./lifecycle";
+import { recoverLifecycle } from "./remote/lifecycle";
 
 type SocketData = { authed: boolean };
 
@@ -23,6 +27,8 @@ export type RuntimeOptions = {
   schedule?: boolean;
   onQuit?: () => void;
   exitProcess?: boolean;
+  desktopRemoteChannel?: boolean;
+  supervisor?: import("./quiesce").SupervisorControl["kind"];
 };
 
 export type RuntimeHandle = {
@@ -32,6 +38,9 @@ export type RuntimeHandle = {
   dataDir: string;
   discoveryPath: string;
   store: Store;
+  remote: RemoteController;
+  lifecycle: RuntimeLifecycle;
+  quiesce: import("./quiesce").Quiesce;
   stop: () => Promise<void>;
 };
 
@@ -77,11 +86,16 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
   let stopping: Promise<void> | null = null;
   let api: ReturnType<typeof createLocalApi> | undefined;
   let store: Store | undefined;
+  let remote: RemoteController | undefined;
+  let closeSetup: (() => void) | undefined;
 
   const stop = (): Promise<void> => {
     if (stopping) return stopping;
     stopping = (async () => {
       try {
+        closeSetup?.();
+        remote?.stop();
+        api?.quiesce.close();
         api?.scheduler?.stop();
         await api?.engine.close();
         store?.interruptRunningTurns();
@@ -170,11 +184,13 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       endpointKey: options.endpointKey ?? bunKeyStore,
     });
     store.recoverInterruptedTurns();
+    recoverLifecycle(store);
     api = createLocalApi({
       store,
       token,
       completions: options.completions,
       schedule: options.schedule,
+      remoteStatus: () => remote?.status() ?? { state: "off", diagnostic: null, devices: 0 },
       onQuit: () => {
         options.onQuit?.();
         removeDescriptor(options.dataDir);
@@ -183,6 +199,11 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         }, 0);
       },
     });
+    const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
+    remote = new RemoteController({ store, api,
+      config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
+    if (options.desktopRemoteChannel) closeSetup = await inheritedLocalSetup(remote);
+    await remote.start();
     // Chains the previous run left open go through review now; their timers died with it.
     api.engine.sweepStaleChains();
     writeDescriptor(options.dataDir, {
@@ -213,6 +234,9 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     dataDir: options.dataDir,
     discoveryPath: descriptorPath(options.dataDir),
     store,
+    remote: remote!,
+    lifecycle: new RuntimeLifecycle(options.dataDir, options.supervisor ?? "none"),
+    quiesce: api!.quiesce,
     stop,
   };
 }

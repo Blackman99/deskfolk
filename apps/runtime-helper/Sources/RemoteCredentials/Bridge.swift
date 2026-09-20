@@ -28,6 +28,10 @@ public func remoteCall(
     switch request.op {
     case "capability":
       response = Response(id: id, value: "signed_native_available_g_pack_not_verified")
+    case "desktop_channel":
+      guard role == .daemon else { throw RemoteError.wrongIdentity }
+      _ = try policy.peer(3, roles: [.desktop])
+      response = Response(id: id)
     case "read":
       guard role == .daemon, let material = request.material else {
         throw RemoteError.wrongIdentity

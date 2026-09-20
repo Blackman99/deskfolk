@@ -16,7 +16,7 @@ import {
   type RuntimeSnapshot,
   type SessionSnapshot,
 } from "@real-bot/protocol";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { corsHeaders, originDecision } from "./origin";
@@ -34,6 +34,8 @@ import { ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
+import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
+import { Quiesce, TurnAdmission } from "./quiesce";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
 
 const AUTH_TIMEOUT_MS = 5_000;
@@ -56,6 +58,8 @@ export type LocalApiOptions = {
   schedule?: boolean;
   now?: () => Date;
   canonicalEncoder?: CanonicalEncoder;
+  admission?: TurnAdmission;
+  remoteStatus?: () => NonNullable<RuntimeSnapshot["remoteStatus"]>;
 };
 
 export type LocalApi = {
@@ -70,9 +74,13 @@ export type LocalApi = {
   publish: (event: ClientEvent) => void;
   engine: TurnEngine;
   scheduler: Scheduler | null;
+  quiesce: Quiesce;
+  subscribeSync: EventStream["subscribe"];
+  syncCursor: EventStream["cursor"];
 };
 
 export function createLocalApi(options: LocalApiOptions): LocalApi {
+  options = { ...options, admission: options.admission ?? new TurnAdmission() };
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
 
@@ -126,6 +134,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       completions: options.completions,
       sleep: options.sleep,
       mcp,
+      admission: options.admission,
     });
 
   const scheduler =
@@ -151,15 +160,25 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   }
 
   async function dispatchBusiness(request: Request, scope: RequestScope): Promise<Response> {
+    scope.guard?.();
     const url = new URL(request.url);
     validateRequestPath(url.pathname + url.search);
     if (!url.pathname.startsWith("/v1/") || url.pathname.startsWith("/v1/runtime")) {
       throw new HttpError(404, "not_found", "not a business endpoint");
     }
     if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) {
-      return readBusiness(request, url);
+      const receipt = matchPath(url.pathname, "/v1/requests/:id");
+      const response = receipt && request.method === "GET"
+        ? (() => { const r = options.store.receipts.read({ ...scope, requestId: receipt.id! }); return new Response(r.body, { status: r.status, headers: { "Content-Type": "application/json", ...r.headers } }); })()
+        : await readBusiness(request, url, scope);
+      scope.guard?.();
+      return response;
     }
-    if (url.pathname === "/v1/models/probe") throw new HttpError(422, "not_retryable", "model probes are not retryable mutations");
+    if (url.pathname === "/v1/models/probe") {
+      const response = await readBusiness(request, url, scope);
+      scope.guard?.();
+      return response;
+    }
     return mutate(request, url, scope);
   }
 
@@ -179,6 +198,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       const response = await options.store.receipts.execute(scope, digest, request.method, url.pathname, parsed.body, async () => {
         await options.store.settings();
         await options.store.listMcpServersHydrated();
+        scope.guard?.();
         options.store.recoverFiles();
         options.store.prepareAttachments(parsed.files);
         if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
@@ -192,7 +212,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         return () => {
           checkRevision(options.store, request, url, parsed.body, scope);
           const plan: Array<{ name: string; value: string }> = [];
-          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed));
+          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed, scope));
           if (result instanceof Promise) throw new HttpError(422, "not_retryable", "this endpoint cannot use request receipts");
           for (const op of plan) keyOps.push({ ...op, field: op.value === "" ? "" : url.pathname.startsWith("/v1/credential-operations/") ? "value" : url.pathname === "/v1/settings" ? "endpoint_api_key" : url.pathname.startsWith("/v1/mcp-servers") ? "auth" : "api_key" });
           options.store.afterCommit(() => {
@@ -200,7 +220,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
             for (const event of events) publish(event);
             events.length = 0;
           });
-          return responseRecord(result);
+          return responseRecord(scope.requireRevision && url.pathname === "/v1/turns/stop" && result.status < 300
+            ? emptyResponse(204, null) : result);
         };
       }, keyOps);
       if ((committed || keyOps.length) && response.status < 400 && url.pathname.startsWith("/v1/mcp-servers") && request.method !== "DELETE" && response.body) {
@@ -215,13 +236,14 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     }
   }
 
-  async function readBusiness(request: Request, url: URL): Promise<Response> {
+  async function readBusiness(request: Request, url: URL, scope?: RequestScope): Promise<Response> {
     const path = url.pathname;
     if (request.method === "GET" && path === "/v1/snapshot") {
       await options.store.hydrateSnapshot();
       const snapshot = options.store.db.transaction((): RuntimeSnapshot => {
         const state = options.store.readSnapshot();
-        return { ...state, sessions: snapshotSessions(state.sessions), ...events.cursor() };
+        return { ...state, sessions: snapshotSessions(state.sessions), ...events.cursor(),
+          ...(options.remoteStatus ? { remoteStatus: options.remoteStatus() } : {}) };
       })();
       return jsonResponse(snapshot, 200, null);
     }
@@ -245,7 +267,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       }
       return jsonResponse(events.catchup({ event_instance_id: instance, watermark_seq: Number(rawSeq) }), 200, null);
     }
-    return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false });
+    return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope);
   }
 
   async function handle(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
@@ -326,6 +348,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   return {
     fetch: handle,
     dispatchBusiness,
+    subscribeSync: (listener) => events.subscribe(listener),
+    syncCursor: () => events.cursor(),
+    quiesce: new Quiesce(options.store, engine, options.admission!, scheduler),
     publish,
     engine,
     websocket: {
@@ -384,6 +409,7 @@ function dispatch(
   engine: TurnEngine,
   mcp: McpHost,
   input: ParsedMutation,
+  scope?: RequestScope,
 ): Response | Promise<Response> {
   const { store, onQuit } = options;
   const method = request.method;
@@ -412,6 +438,11 @@ function dispatch(
 
   if (method === "POST" && path === "/v1/turns/stop") {
     const body = (input.body) as { turn_id?: string };
+    if (scope?.requireRevision && body.turn_id) {
+      const current = store.db.query<{ status: string; kind: string }, [string]>(
+        "SELECT t.status, s.kind FROM turns t JOIN sessions s ON s.id = t.session_id WHERE t.id = ?").get(body.turn_id);
+      if (!current || (current.kind === "direct" && !["running", "waiting_approval", "waiting_ask"].includes(current.status))) return emptyResponse(204, null);
+    }
     const turn = engine.stop(body.turn_id);
     if (!turn) return emptyResponse(204, null);
     return jsonResponse(turn, 200, null);
@@ -445,6 +476,7 @@ function dispatch(
     if (!existsSync(located.abs)) {
       throw new HttpError(404, "not_found", "path not found");
     }
+    if (url.hostname === "remote.invalid" && statSync(located.abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
     const file = readFileSync(located.abs);
     return new Response(file, {
       status: 200,
@@ -500,7 +532,10 @@ function dispatch(
       if (!baseUrl) {
         throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
       }
-      const probed = await probeEndpointModels(baseUrl, apiKey);
+      scope?.guard?.();
+      request.signal.throwIfAborted();
+      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal);
+      scope?.guard?.();
       return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
     })();
   }
@@ -614,6 +649,7 @@ function dispatch(
     return jsonResponse({ items }, 200, null);
   }
   if (method === "POST" && path === "/v1/sessions") {
+    options.admission?.assertNew();
     const body = (input.body) as { name: string; members: string[] };
     const session = store.createGroup(body);
     publish({
@@ -639,6 +675,7 @@ function dispatch(
     const fork = body.fork === undefined ? undefined : body.fork === true || body.fork === "true";
     const fileInputs = input.files;
 
+    if (!askId) options.admission?.assertNew();
     const message = store.postMessage(params.id!, {
       body: bodyText,
       parent_id: parentId,
@@ -677,6 +714,7 @@ function dispatch(
 
   params = matchPath(path, "/v1/sessions/:id/members");
   if (params && method === "POST") {
+    options.admission?.assertNew();
     const body = (input.body) as { bot_id: string };
     const session = store.addMember(params.id!, body.bot_id);
     publish({
@@ -731,7 +769,7 @@ function dispatch(
   params = matchPath(path, "/v1/sessions/:id/composer-suggestions");
   if (params && method === "GET") {
     store.getSession(params.id!);
-    return engine.suggestComposer(params.id!, request.signal).then((items) => jsonResponse({ items }, 200, null), () => jsonResponse({ items: [] }, 200, null));
+    return engine.suggestComposer(params.id!, request.signal, scope?.guard).then((items) => jsonResponse({ items }, 200, null), () => jsonResponse({ items: [] }, 200, null));
   }
 
   params = matchPath(path, "/v1/sessions/:id/read");
@@ -841,6 +879,7 @@ function dispatch(
     if (located.isDir) {
       throw new HttpError(422, "invalid_args", "attachment is a directory");
     }
+    if (url.hostname === "remote.invalid" && statSync(located.abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
     const file = readFileSync(located.abs);
     const mime = attachmentMime(att.original_filename, att.workspace_relpath);
     return new Response(file, {
@@ -1084,7 +1123,8 @@ function checkRevision(store: Store, request: Request, url: URL, body: Record<st
     // The routine Store method compares once inside this receipt transaction.
     return;
   }
-  if (request.method !== "PATCH") return;
+  const destructive = scope.requireRevision && (request.method === "DELETE" || /\/(archive|restore|clear)$/.test(url.pathname));
+  if (request.method !== "PATCH" && !destructive) return;
   const revision = body.if_revision;
   if (revision === undefined && !scope.requireRevision) return;
   if (url.pathname === "/v1/settings") {
@@ -1092,9 +1132,10 @@ function checkRevision(store: Store, request: Request, url: URL, body: Record<st
   } else {
     const parts = url.pathname.split("/");
     const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions" };
-    const table = tables[parts[2] ?? ""];
+    const table = parts[2] === "allow-rules" && destructive ? "allow_rules" : tables[parts[2] ?? ""];
     if (!table || !parts[3]) return;
-    const row = store.db.query<{ updated_at: string }, [string]>(`SELECT updated_at FROM ${table} WHERE id = ?`).get(decodeURIComponent(parts[3]));
+    const revisionColumn = table === "allow_rules" ? "created_at" : "updated_at";
+    const row = store.db.query<{ updated_at: string }, [string]>(`SELECT ${revisionColumn} AS updated_at FROM ${table} WHERE id = ?`).get(decodeURIComponent(parts[3]));
     if (!row) throw new HttpError(404, "not_found", "entity not found");
     if (typeof revision !== "string" || revision !== row.updated_at) throw new HttpError(409, "conflict", "entity revision changed");
   }

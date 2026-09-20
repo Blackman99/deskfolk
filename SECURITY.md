@@ -14,6 +14,14 @@ The shared remote cryptography is a **default-off security prototype**, not a re
 
 Retained authentication buffers are independently copied even for Buffer views; session cleanup must not erase caller-owned identities. WebAuthn requires strict JSON grammar and duplicate-member rejection while verifying the original bytes. Receipt and UV operation digests must include the actual conditional headers/preconditions, not only the action/target. These fixes do not constitute an external audit or physical-device approval.
 
+### Daemon integration boundary / 守护进程接线边界
+
+The daemon adapter reuses the existing Store/engine and internal `dispatchBusiness`; that method is not an authenticator. Only current, pinned, authenticated Noise principals reach its remote allowlist. Local bearer/Origin rules are unchanged and `/remote/*` is never exposed through local HTTP or Bot tools. The separate setup channel is an inherited socketpair: native `desktop_channel` verifies its peer audit token and signed desktop identity before parsing; the Tauri command independently requires the bundled main frame. It returns public host pins/ephemeral QR material, never long-term secrets. Stock Bun/source builds cannot pass this gate.
+
+SQLite stores public trust, replay reservations, COSE keys/counters and challenges, not remote private keys. Every removal, including one device, first advances native high-water, then commits a new database generation. All channels close; survivors retain their signed grant epoch but receive the new database generation. A restored revoked row at the old generation is rejected. Keychain-ahead/unknown failures remain closed and require explicit recovery; no file-key cache or native/UV environment bypass exists. Equal-generation recovery also advances high-water; otherwise recovery itself would reintroduce backup resurrection. Native-confirmed reset/relay migration use explicit uncertain/done durable intents and require fresh recovery on unknown native outcome; first-UV renewal requires fresh Mac proof bound to the existing device's current Split session. Fresh assertions are checked by the shared verifier and consumed with current session/trust/credential/counter/time CAS. Revocation intent/receipts are durable; external credential/tool effects already accepted cannot be recalled.
+
+接线测试使用真实本机中继、Noise、SQLite 与生成签名，native 材料只允许构造注入的测试替身。测试不是签名封闭运行时、真 Keychain/LA、iOS/Android 或独立安全审计验收。共享排空不拥有退出/登录任务；明确强制只中断，不因超时或断线升级。文件基础读取有 50 MiB 上限，完整上传/双向流与客户端实现仍由下游负责；这些限制与未完成项见协议文档。
+
 ## 私密报告漏洞
 
 仓库托管在 GitHub 且启用私密漏洞报告后，请从 **Security → Report a vulnerability** 提交。维护者应在首次公开前启用该功能；文档本身不会开启 GitHub 设置。

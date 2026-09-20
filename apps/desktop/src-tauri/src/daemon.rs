@@ -28,13 +28,18 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
             .env_remove("NODE_OPTIONS");
         cmd
     };
+    #[cfg(unix)]
+    let channel = super::remote_setup::prepare_channel(&mut cmd)?;
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit());
     if let Ok(dir) = std::env::var("REAL_BOT_DATA_DIR") {
         cmd.env("REAL_BOT_DATA_DIR", dir);
     }
-    cmd.spawn().ok()
+    let child = cmd.spawn().ok()?;
+    #[cfg(unix)]
+    super::remote_setup::adopt_channel(channel);
+    Some(child)
 }
 
 pub fn child_alive(child: &mut Child) -> bool {

@@ -32,6 +32,8 @@ const runtime = await startRuntime({
   bind: LOCAL_API_BIND,
   endpointKey: bunKeyStore,
   exitProcess: true,
+  desktopRemoteChannel: true,
+  supervisor: process.argv.includes("--desktop-remote-channel") ? "window" : "none",
 });
 
 console.log(`${LOCAL_API_NAME} daemon listening on ${runtime.origin}`);

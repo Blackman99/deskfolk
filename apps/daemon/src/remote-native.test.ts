@@ -12,6 +12,7 @@ describe("remote native boundary", () => {
   test("source Bun is disabled and never invokes Keychain or local authentication", async () => {
     expect(await remoteNative.capability()).toEqual({ enabled: false, nativeAvailable: false, diagnostic: "disabled" });
     await expect(remoteNative.read("host_identity")).rejects.toMatchObject({ code: "disabled" });
+    await expect(remoteNative.authorizeDesktopChannel()).rejects.toMatchObject({ code: "disabled" });
   });
 
   test("fixture service exports raw identity keys and durable highwater without helper", async () => {
@@ -79,9 +80,27 @@ describe("remote native boundary", () => {
     await expect(client.advanceHighwater(1, 2 ** 32)).rejects.toMatchObject({ code: "malformed" });
     await expect(client.prepare({ ...action, display: "\u202efake" })).rejects.toMatchObject({ code: "malformed" });
     await expect(client.prepare({ ...action, digest: "123" })).rejects.toMatchObject({ code: "malformed" });
+    await expect(client.prepare({ ...action, kind: "unknown" as never })).rejects.toMatchObject({ code: "malformed" });
     await expect(client.consume(action, "fake", proof)).rejects.toMatchObject({ code: "malformed" });
     await expect(client.reset(action, challenge, proof, 1)).rejects.toMatchObject({ code: "malformed" });
     expect(calls).toBe(0);
+  });
+
+  test("prepare and consume accept renew_first_uv and recover_trust and reject unknown kinds", async () => {
+    const seen: NativeRequest[] = [];
+    const client = new RemoteNativeClient(async (request) => {
+      seen.push(request);
+      return ok(request, request.op === "prepare" ? { value: challenge, expiresIn: 120 } : {});
+    });
+    for (const kind of ["renew_first_uv", "recover_trust"] as const) {
+      const next: LocalAction = { ...action, kind };
+      expect(await client.prepare(next)).toEqual({ challenge, expiresIn: 120 });
+      await client.consume(next, challenge, proof);
+      expect(seen.at(-1)).toMatchObject({ op: "consume", action: next });
+    }
+    await expect(client.prepare({ ...action, kind: "pair_again" as never })).rejects.toMatchObject({ code: "malformed" });
+    await expect(client.consume({ ...action, kind: "unknown" as never }, challenge, proof)).rejects.toMatchObject({ code: "malformed" });
+    expect(seen).toHaveLength(4);
   });
 
   test("native availability does not enable remote or claim G-pack", async () => {

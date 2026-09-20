@@ -1,9 +1,11 @@
 import {
   USER_MEMBER,
+  INTERRUPT_NOTE_BODY,
   type ClientEvent,
   type ComposerSuggestion,
   type Locale,
   type Message,
+  type McpServer,
   type PendingJudgement,
   type Spend,
   type ThinkingLevel,
@@ -28,7 +30,7 @@ import {
   routeReviewPayload,
 } from "./prompts/routing";
 import { serializeToolResult } from "./tool-results";
-import { persistMcpInspect, type McpHost } from "./mcp-host";
+import type { McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
 import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
@@ -42,6 +44,7 @@ import {
   type FailKind,
 } from "./prompts";
 import { HttpError } from "./errors";
+import type { TurnAdmission } from "./quiesce";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
 import { type Store } from "./store";
@@ -65,11 +68,13 @@ export type TurnEngine = {
   stop: (turnId?: string, opts?: { allowGroup?: boolean }) => Turn | null;
   continueFromInterrupt: (messageId: string) => Turn;
   abortAll: () => void;
+  /** Includes interrupted runners and approved effects that have not settled yet. */
+  unsettledTurnIds: () => string[];
   partialText: (turnId: string) => string | null;
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
   /** Reviews chains the last run left open; called once after boot. */
   sweepStaleChains: () => void;
-  suggestComposer: (sessionId: string, signal?: AbortSignal) => Promise<ComposerSuggestion[]>;
+  suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
 };
@@ -80,6 +85,7 @@ export type TurnEngineOptions = {
   completions?: CompletionsClient;
   sleep?: (ms: number) => Promise<void>;
   mcp?: McpHost;
+  admission?: TurnAdmission;
 };
 
 type Live = {
@@ -95,7 +101,7 @@ type Live = {
   /** Tool names in the current hop's tools array; read_skill flags `mcp_` names a body cites that are missing. */
   toolNames: Set<string>;
   spoke: boolean;
-  running: Promise<void>;
+  drainRejection: boolean;
   ask?: {
     id: string;
     toolCallId: string;
@@ -119,12 +125,30 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const mcp = options.mcp;
   const lives = new Map<string, Live>();
   const tasks = new Set<Promise<unknown>>();
+  const turnTasks = new Map<string, Set<Promise<unknown>>>();
   const pendingJudges = new Map<string, PendingJudgement>();
 
   function track<T>(promise: Promise<T>): Promise<T> {
     tasks.add(promise);
-    void promise.finally(() => tasks.delete(promise));
+    void promise.then(() => tasks.delete(promise), () => tasks.delete(promise));
     return promise;
+  }
+
+  function trackTurn<T>(turnId: string, promise: Promise<T>): Promise<T> {
+    const pending = turnTasks.get(turnId) ?? new Set<Promise<unknown>>();
+    turnTasks.set(turnId, pending);
+    pending.add(promise);
+    const done = () => {
+      pending.delete(promise);
+      if (pending.size === 0) turnTasks.delete(turnId);
+    };
+    void promise.then(done, done);
+    return track(promise);
+  }
+
+  function active(turnId: string, live: Live): boolean {
+    if (live.abort.signal.aborted || lives.get(turnId) !== live) return false;
+    return store.getTurn(turnId).status === "running";
   }
 
   function occurred(): string {
@@ -196,6 +220,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    * only a confident `model` verdict is read back when picking later.
    */
   async function reviewChain(chainId: string): Promise<void> {
+    if (options.admission?.draining) return;
     let chain;
     try {
       chain = store.chainForReview(chainId);
@@ -223,7 +248,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
     const creds = await credentials().catch(() => null);
     const routing = creds ? routingTarget(creds) : null;
-    if (!creds || !routing) return;
+    if (!creds || !routing || options.admission?.draining) return;
     let bot;
     try {
       bot = store.getBot(chain.botId);
@@ -254,7 +279,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return;
     }
-    if (result.failKind && result.failKind !== "incomplete") return;
+    if (options.admission?.draining || (result.failKind && result.failKind !== "incomplete")) return;
     const verdict = parseRouteReview(result.content ?? "");
     // An unreadable verdict leaves the chain open: better a late review than a wrong conclusion.
     if (!verdict) return;
@@ -320,6 +345,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   /** Restarts the quiet clock: every new word about the same thing pushes the review back. */
   function touchChain(sessionId: string, botId: string): void {
     clearChainTimer(sessionId, botId);
+    if (options.admission?.draining) return;
     const key = chainKey(sessionId, botId);
     const timer = setTimeout(() => {
       chainTimers.delete(key);
@@ -362,6 +388,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     botId: string,
     creds: Creds,
     text: string,
+    signal: AbortSignal,
   ): Promise<{ routed: Routed; pick: RoutePick } | null> {
     if (!text.trim()) return null;
     const routing = routingTarget(creds);
@@ -413,7 +440,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           { role: "system", content: ROUTE_PICK_SYSTEM },
           { role: "user", content: JSON.stringify(payload) },
         ],
-        signal: new AbortController().signal,
+        signal,
       });
     } catch {
       return null;
@@ -513,6 +540,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function startTurn(sessionId: string, botId: string, trigger: Message, mode: "redirect" | "fork"): Turn {
+    options.admission?.assertNew();
     if (mode === "redirect") {
       const livesForBot = store.listLiveTurns({ sessionId, botId });
       let sessionKind: string | null = null;
@@ -545,16 +573,37 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       mentionWarned: new Set(),
       toolNames: new Set(),
       spoke: false,
-      running: Promise.resolve(),
+      drainRejection: false,
     };
     store.afterCommit(() => {
       lives.set(turn.id, live);
-      publishTurn(turn);
-      live.running = track(runTurn(turn.id).catch(() => undefined));
+      const run = async (): Promise<void> => {
+        try {
+          publishTurn(turn);
+          await runTurn(turn.id);
+        } catch {
+          if (!live.abort.signal.aborted) failTurn(turn.id, "endpoint_error");
+        } finally {
+          try {
+            const current = store.getTurn(turn.id);
+            if (["running", "waiting_ask", "waiting_approval"].includes(current.status)) {
+              if (live.abort.signal.aborted) {
+                interruptTurn(current);
+              } else {
+                failTurn(turn.id, "endpoint_error");
+              }
+            }
+          } finally {
+            lives.delete(turn.id);
+          }
+        }
+      };
+      void trackTurn(turn.id, run()).catch((error) => console.error("turn cleanup failed", error));
     });
   }
 
   function continueFromInterrupt(messageId: string): Turn {
+    options.admission?.assertNew();
     const turn = store.claimInterruptContinue(messageId);
     attachLive(turn);
     return turn;
@@ -566,12 +615,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   async function drainLives(): Promise<void> {
-    while (tasks.size > 0 || lives.size > 0) {
+    for (const timer of chainTimers.values()) clearTimeout(timer);
+    chainTimers.clear();
+    while (tasks.size > 0) {
       for (const id of [...lives.keys()]) abortLive(id);
-      await Promise.allSettled([
-        ...tasks,
-        ...[...lives.values()].map((live) => live.running),
-      ]);
+      await Promise.allSettled([...tasks]);
     }
   }
 
@@ -579,8 +627,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const live = lives.get(turnId);
     if (!live) return;
     const creds = await credentials();
+    if (!active(turnId, live)) return;
     if (!creds) {
-      await failTurn(turnId, "unreachable");
+      failTurn(turnId, "unreachable");
       return;
     }
     let botId: string;
@@ -597,10 +646,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       triggerBody = "";
     }
-    const agent = await agentRoute(botId, creds, triggerBody);
+    const agent = await agentRoute(botId, creds, triggerBody, live.abort.signal);
+    if (!active(turnId, live)) return;
     const routed = agent?.routed ?? targetFor(botId, creds, triggerBody);
     if (!routed) {
-      await failTurn(turnId, "no_model");
+      failTurn(turnId, "no_model");
       return;
     }
     const target = routed.target;
@@ -631,7 +681,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         if (!server.enabled) continue;
         if (server.instructions || server.tool_catalog.length > 0) continue;
         try {
-          const next = await persistMcpInspect(store, mcp, server);
+          if (!active(turnId, live)) return;
+          const next = await inspectForTurn(turnId, live, server);
+          if (!active(turnId, live)) return;
           if (next && next.updated_at !== server.updated_at) {
             publish({ event: "mcp.upsert", occurred_at: occurred(), ...next });
           }
@@ -658,6 +710,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       store.touchTurn(turnId);
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
+      if (!active(turnId, live)) return;
       const messages = assembleTurnMessages(store, {
         sessionId: current.session_id,
         botId: current.bot_id,
@@ -683,6 +736,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           tools,
           signal: live.abort.signal,
           onEvent(chunk) {
+            if (!active(turnId, live)) return;
             const choices = chunk.choices;
             if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") return;
             const delta = ((choices[0] as { delta?: { tool_calls?: unknown } }).delta ?? {}) as {
@@ -702,8 +756,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             }
           },
         });
-      } catch {
-        drop();
+      } catch (error) {
+        if (!live.abort.signal.aborted) throw error;
         return;
       }
       if (live.abort.signal.aborted) {
@@ -727,7 +781,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       recordSpend(current, result.usage, result.missingReason, null);
 
       if (!result.ok) {
-        await failTurn(turnId, result.failKind);
+        failTurn(turnId, result.failKind);
         return;
       }
 
@@ -738,6 +792,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           tool_calls: result.toolCalls,
         });
         const outcome = await executeTools(turnId, result.toolCalls);
+        if (!active(turnId, live)) return;
         if (outcome === "wait") {
           if (live.abort.signal.aborted) drop();
           return;
@@ -822,6 +877,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     let posted = false;
     let spoke = false;
     for (const call of calls) {
+      if (!active(turnId, live)) return "wait";
       let args: Record<string, unknown> = {};
       try {
         const parsed = JSON.parse(call.arguments) as unknown;
@@ -832,7 +888,18 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         args = {};
       }
       let result = await dispatchTool(turn, live, call.name, args);
-      await publishEmitted(result.emitted);
+      if (!active(turnId, live)) return "wait";
+      if (result.error?.code === "draining") {
+        if (live.drainRejection) {
+          const note = store.insertMessage({ sessionId: turn.session_id, turnId, kind: "system", author: turn.bot_id,
+            body: "draining: repeated child or handoff admission refused" });
+          publishMessage(note);
+          return "noop";
+        }
+        live.drainRejection = true;
+      }
+      await publishEmitted(turnId, live, result.emitted);
+      if (!active(turnId, live)) return "wait";
       result = withLatestMcp(call.name, result);
       noteWrittenPaths(live, call.name, result);
       if (result.waitAsk) {
@@ -848,7 +915,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         const waiting = store.setTurnStatus(turnId, "waiting_ask");
         publishTurn(waiting, null);
         const answer = await waitForAsk(turnId, ask.id, call.id);
-        if (answer == null) return "wait";
+        if (answer == null || !active(turnId, live)) return "wait";
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
@@ -886,8 +953,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         const waiting = store.setTurnStatus(turnId, "waiting_approval");
         publishTurn(waiting, null);
         let resolved = await pending;
-        if (resolved == null) return "wait";
-        await publishEmitted(resolved.emitted);
+        if (resolved == null || !active(turnId, live)) return "wait";
+        await publishEmitted(turnId, live, resolved.emitted);
+        if (!active(turnId, live)) return "wait";
         resolved = withLatestMcp(call.name, resolved);
         noteWrittenPaths(live, call.name, resolved);
         const payload = resolved.ok
@@ -953,6 +1021,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               writtenPaths: live.writtenPaths,
               mentionWarned: live.mentionWarned,
               availableToolNames: live.toolNames,
+              admission: options.admission,
+              signal: live.abort.signal,
             },
             name,
             args,
@@ -966,8 +1036,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     return { ok: false, error: called.error, emitted: [] };
   }
 
-  async function publishEmitted(emitted: ToolResult["emitted"]): Promise<void> {
+  async function inspectForTurn(turnId: string, live: Live, server: McpServer) {
+    if (!mcp || !server.enabled || !active(turnId, live)) return null;
+    const inspected = await mcp.inspect(server);
+    if (!active(turnId, live)) return null;
+    return store.applyMcpInspection(server.id, server.updated_at, inspected);
+  }
+
+  async function publishEmitted(turnId: string, live: Live, emitted: ToolResult["emitted"]): Promise<void> {
     for (const item of emitted) {
+      if (!active(turnId, live)) return;
       if (item.kind === "bot") {
         publish({ event: "bot.upsert", occurred_at: occurred(), ...item.bot, deleted_at: item.deleted_at });
       } else if (item.kind === "session") {
@@ -983,7 +1061,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         void track(handleParticipation(item.message, { fromUser: false }));
       } else if (item.kind === "routine") {
         publish({ event: "routine.upsert", occurred_at: occurred(), ...item.routine });
-        fireRoutine(item.routine.id);
+        if (!options.admission?.draining) fireRoutine(item.routine.id);
       } else if (item.kind === "routine_removed") {
         publish({ event: "routine.removed", occurred_at: occurred(), id: item.id });
       } else if (item.kind === "skill") {
@@ -1002,7 +1080,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         let server = item.server;
         if (mcp) {
           try {
-            const inspected = await persistMcpInspect(store, mcp, server);
+            const inspected = await inspectForTurn(turnId, live, server);
+            if (!active(turnId, live)) return;
             const current = inspected ?? store.listMcpServers().find((row) => row.id === server.id);
             if (!current) continue;
             server = current;
@@ -1014,7 +1093,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } else if (item.kind === "mcp_removed") {
         publish({ event: "mcp.removed", occurred_at: occurred(), id: item.id });
       } else if (item.kind === "settings") {
-        publish({ event: "settings.changed", occurred_at: occurred(), ...(await store.settings()) });
+        const settings = await store.settings();
+        if (!active(turnId, live)) return;
+        publish({ event: "settings.changed", occurred_at: occurred(), ...settings });
       }
     }
   }
@@ -1060,6 +1141,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   /** A Bot's `@token` matched nobody present: say so in the transcript so the miss is visible. */
   async function noteUnknownMentions(message: Message, tokens: string[], members: string[]): Promise<void> {
     const locale = (await store.settings()).locale;
+    if (options.admission?.draining) return;
     const note = store.insertMessage({
       sessionId: message.session_id,
       turnId: message.turn_id,
@@ -1071,26 +1153,38 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     publishMessage(note);
   }
 
-  async function failTurn(turnId: string, kind: FailKind): Promise<void> {
+  function interruptTurn(current: Turn): void {
+    const { note, interrupted } = store.transaction(() => {
+      store.db.run("UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'", [isoNow(), current.id]);
+      store.markInterruptPending(current.bot_id);
+      const interrupted = store.setTurnStatus(current.id, "interrupted");
+      const note = store.insertMessage({ sessionId: current.session_id, turnId: current.id,
+        kind: "system", author: current.bot_id, body: INTERRUPT_NOTE_BODY });
+      return { note, interrupted };
+    });
+    publishMessage(note);
+    publishTurn(interrupted);
+  }
+
+  function failTurn(turnId: string, kind: FailKind): void {
     const live = lives.get(turnId);
     const current = store.getTurn(turnId);
-    if (current.status !== "running") {
-      lives.delete(turnId);
-      return;
-    }
-    const locale = (await store.settings()).locale;
-    const message = store.insertMessage({
-      sessionId: current.session_id,
-      turnId,
-      parentId: live?.parentId ?? null,
-      kind: "system",
-      author: current.bot_id,
-      body: completionFailBody(locale, kind),
+    if (live?.abort.signal.aborted || !["running", "waiting_ask", "waiting_approval"].includes(current.status)) return;
+    const locale = store.settingsCached().locale;
+    const { message, completed } = store.transaction(() => {
+      const message = store.insertMessage({
+        sessionId: current.session_id,
+        turnId,
+        parentId: live?.parentId ?? null,
+        kind: "system",
+        author: current.bot_id,
+        body: completionFailBody(locale, kind),
+      });
+      store.db.run("UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'", [isoNow(), turnId]);
+      store.finishTurnRoute(turnId, "failed", kind);
+      return { message, completed: store.setTurnStatus(turnId, "completed") };
     });
     publishMessage(message);
-    store.finishTurnRoute(turnId, "failed", kind);
-    const completed = store.setTurnStatus(turnId, "completed");
-    lives.delete(turnId);
     publishTurn(completed, null);
   }
 
@@ -1127,6 +1221,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   async function handleParticipation(message: Message, opts: { fromUser: boolean; fork?: boolean }): Promise<void> {
+    if (options.admission?.draining) return;
     const session = store.getSession(message.session_id);
     if (message.kind !== "user" && message.kind !== "bot") return;
 
@@ -1152,6 +1247,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const authorName = nameById.get(message.author);
       await noteUnknownMentions(message, parsed.unresolved, presentNames.filter((name) => name !== authorName));
     }
+    if (options.admission?.draining) return;
     if (session.kind === "group") {
       for (const name of parsed.mentions) {
         const bot = store.findBotByName(name);
@@ -1246,6 +1342,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   async function suggestComposer(
     sessionId: string,
     signal: AbortSignal = new AbortController().signal,
+    guard?: () => void,
   ): Promise<ComposerSuggestion[]> {
     store.getSession(sessionId);
     // These draft what the user would send; in a Bot↔Bot direct they have nothing to draft.
@@ -1257,7 +1354,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return [];
     }
-    if (!creds) return [];
+    if (!creds || signal.aborted) return [];
+    guard?.();
     const resolved = resolveCompletionTarget(creds.providers, {
       botModel: null,
       botProviderId: null,
@@ -1324,6 +1422,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } catch {
         return;
       }
+      if (options.admission?.draining) return;
       const turnStub: Turn = {
         id: "",
         session_id: message.session_id,
@@ -1373,6 +1472,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         ],
         signal: new AbortController().signal,
       });
+      if (options.admission?.draining) return;
       let decision: "join" | "pass" = "pass";
       let reason: string | null = null;
       let error: "timeout" | "invalid_output" | "endpoint_error" | null = null;
@@ -1416,6 +1516,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function fireRoutine(routineId: string, now: Date = new Date()): Turn | null {
+    options.admission?.assertNew();
     const claimed = store.claimRoutineDue(routineId, now);
     if (!claimed) return null;
     const existing = store.findDirectSession(USER_MEMBER, claimed.bot_id);
@@ -1481,7 +1582,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       store.afterCommit(() => {
         const live = lives.get(row.turn_id);
-        if (!live?.approval || live.approval.id !== id) return;
+        if (!live?.approval || live.approval.id !== id || live.abort.signal.aborted || store.getTurn(row.turn_id).status !== "waiting_approval") return;
         const pending = live.approval;
         live.approval = undefined;
         const running = store.setTurnStatus(row.turn_id, "running");
@@ -1494,10 +1595,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           });
           return;
         }
-        void (async () => {
+        void trackTurn(row.turn_id, (async () => {
           try {
+            if (!active(row.turn_id, live)) return;
             const result = await pending.run({ api_key: apiKey });
-            pending.waiter(result);
+            if (active(row.turn_id, live)) pending.waiter(result);
           } catch (error) {
             pending.waiter(
               error instanceof HttpError
@@ -1505,7 +1607,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
                 : { ok: false, error: { code: "failed", message: "tool failed" }, emitted: [] },
             );
           }
-        })();
+        })());
       });
       return row;
     },
@@ -1541,8 +1643,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     continueFromInterrupt,
     abortAll() {
+      for (const timer of chainTimers.values()) clearTimeout(timer);
+      chainTimers.clear();
       for (const id of [...lives.keys()]) abortLive(id);
     },
+    unsettledTurnIds() { return [...turnTasks.keys()]; },
     async drain() {
       await drainLives();
     },

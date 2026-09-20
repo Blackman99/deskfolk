@@ -32,6 +32,7 @@ export async function probeEndpointModels(
   baseUrl: string,
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<ProbeResult> {
   const cleanBase = baseUrl.replace(/\/+$/, "");
   const url = `${cleanBase}/models`;
@@ -47,7 +48,8 @@ export async function probeEndpointModels(
     res = await fetchImpl(url, {
       method: "GET",
       headers,
-      signal: AbortSignal.timeout(12000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
+      redirect: "error",
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

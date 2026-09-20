@@ -4,7 +4,11 @@ import { fromError, responseRecord } from "../http";
 import type { KeyCache } from "./shared";
 import type { Transactions } from "./transactions";
 
-export type RequestScope = { deviceId: string; requestId: string; requireRevision?: boolean };
+export type RequestScope = {
+  deviceId: string; requestId: string; requireRevision?: boolean;
+  /** Transport-owned current-principal check, never derived from request JSON. */
+  guard?: () => void;
+};
 export type ReceiptResponse = { status: number; body: string | null; headers?: Record<string, string> };
 export type KeyOperation = { name: string; field: string; value: string };
 type ReceiptRow = {
@@ -36,8 +40,8 @@ export class Receipts {
   /** Bodies are bounded; key tombstones are retained until the device identity is retired. */
   prune(now = Date.now(), maxBodies = 20_000): void {
     this.db.run(`UPDATE request_receipts SET state = 'expired', body = NULL, headers = NULL, key_ops = NULL
-      WHERE state = 'complete' AND (created_at < ? OR rowid IN (
-        SELECT rowid FROM request_receipts WHERE state = 'complete' ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?
+      WHERE state = 'complete' AND status != 202 AND (created_at < ? OR rowid IN (
+        SELECT rowid FROM request_receipts WHERE state = 'complete' AND status != 202 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?
       ))`, [now - 7 * 86_400_000, maxBodies]);
   }
 
@@ -55,6 +59,7 @@ export class Receipts {
       return this.execute(scope, digest, method, path, secrets, prepare, keyOps);
     }
     const run = async (): Promise<ReceiptResponse> => {
+      scope.guard?.();
       this.prune();
       const previous = this.lookup(scope);
       if (previous?.state === "expired") throw new HttpError(410, "receipt_expired", "confirm the action and use a new request id");
@@ -80,6 +85,7 @@ export class Receipts {
       let response: ReceiptResponse;
       try {
         response = this.tx.run(() => {
+          scope.guard?.();
           const result = work();
           for (const op of keyOps) this.keys.markPending(op.name, op.value, scope);
           this.save(scope, digest, method, path, result, keyOps);
@@ -112,12 +118,14 @@ export class Receipts {
 
   private async finishKeys(scope: RequestScope, ops: KeyOperation[], response: ReceiptResponse): Promise<ReceiptResponse> {
     try {
-      for (const op of ops) await this.keys.finishPending(op.name, op.value);
+      for (const op of ops) { scope.guard?.(); await this.keys.finishPending(op.name, op.value); }
+      scope.guard?.();
     } catch {
       for (const op of ops) this.keys.releaseWriting(op.name);
       return pendingKeys();
     }
     this.tx.run(() => {
+      scope.guard?.();
       for (const op of ops) this.keys.clearPending(op.name);
       this.db.run("UPDATE request_receipts SET state = 'complete', key_ops = NULL WHERE device_id = ? AND request_id = ?", [scope.deviceId, scope.requestId]);
     });

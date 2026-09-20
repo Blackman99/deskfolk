@@ -83,15 +83,19 @@ export class Reassembler {
       check(p.key === key && p.type === f.originalType && p.count === f.count && p.next === f.index, 'fragment mismatch');
       p.chunks.push(f.chunk); p.next++;
       if (p.next !== p.count) return;
-      this.#pending = undefined;
-      return { type: p.type, body: concat(...p.chunks) };
+      const complete = concat(...p.chunks);
+      this.clear();
+      return { type: p.type, body: complete };
     } catch (error) { this.clear(); throw error; }
   }
   expire(nowMs: number): void {
     check(Number.isFinite(nowMs) && nowMs >= 0, 'invalid clock');
     if (this.#pending && (nowMs < this.#pending.started || nowMs - this.#pending.started >= REASSEMBLY_TTL_MS)) this.clear();
   }
-  clear(): void { this.#pending = undefined; }
+  clear(): void {
+    for (const chunk of this.#pending?.chunks ?? []) chunk.fill(0);
+    this.#pending = undefined;
+  }
 }
 export interface FileChunk { streamId: number; offset: bigint; eof: boolean; chunk: Uint8Array }
 export function encodeFileChunk(f: FileChunk): Uint8Array {
