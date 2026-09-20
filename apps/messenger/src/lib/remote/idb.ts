@@ -24,7 +24,6 @@ export type StoredEnrollment = {
 export type EnrollmentDriver = {
   get(): Promise<unknown>;
   set(value: StoredEnrollment): Promise<void>;
-  clear(): Promise<void>;
 };
 
 const ENROLLMENT_KEYS = [
@@ -86,9 +85,6 @@ export function memoryEnrollment(): EnrollmentDriver {
     async set(value) {
       current = assertEnrollment(value);
     },
-    async clear() {
-      current = null;
-    },
   };
 }
 
@@ -119,18 +115,6 @@ function idbDriver(): EnrollmentDriver {
       try {
         await new Promise<void>((resolve, reject) => {
           const req = db.transaction(REMOTE_STORE, "readwrite").objectStore(REMOTE_STORE).put(enrollment, ENROLLMENT_KEY);
-          req.onsuccess = () => resolve();
-          req.onerror = () => reject(req.error);
-        });
-      } finally {
-        db.close();
-      }
-    },
-    async clear() {
-      const db = await open();
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const req = db.transaction(REMOTE_STORE, "readwrite").objectStore(REMOTE_STORE).delete(ENROLLMENT_KEY);
           req.onsuccess = () => resolve();
           req.onerror = () => reject(req.error);
         });

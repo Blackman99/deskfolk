@@ -331,7 +331,7 @@ function linkifyOutsideFences(text: string, known: string[]): string {
 }
 
 const SVG_EVENT_ATTR = /(?:[\s/])on[a-z][a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>/]*)/gi;
-const SVG_UNSAFE_URL = /(?:xlink:href|href|src)\s*=\s*(?:"\s*(?:javascript|data|vbscript):[^"]*"|'\s*(?:javascript|data|vbscript):[^']*'|(?:javascript|data|vbscript):[^\s>]+)/gi;
+const SVG_UNSAFE_URL = /(?:xlink:href|href|src|values|to|from)\s*=\s*(?:"\s*(?:javascript|data|vbscript):[^"]*"|'\s*(?:javascript|data|vbscript):[^']*'|(?:javascript|data|vbscript):[^\s>]+)/gi;
 
 export function stripSvgActiveContent(svg: string): string {
   let previous = "";

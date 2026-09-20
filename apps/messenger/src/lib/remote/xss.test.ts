@@ -31,6 +31,11 @@ test("SVG sanitizer fails closed on bypass forms", () => {
     `<svg><a href=data:text/html,alert(1)>x</a></svg>`,
     `<svg><foreignObject><iframe src="javascript:alert(1)"></iframe></foreignObject></svg>`,
     `<svg><g onload=alert(1) onclick='alert(1)'></g></svg>`,
+    `<svg><animate attributeName="href" values="javascript:alert(1)" /></svg>`,
+    `<svg><set attributeName="href" to="javascript:alert(1)" /></svg>`,
+    `<svg><animate attributeName="href" from="javascript:alert(1)" to="https://example.test" /></svg>`,
+    `<svg><animate attributeName="href" values="data:text/html,alert(1)" /></svg>`,
+    `<svg><set attributeName="href" to="vbscript:alert(1)" /></svg>`,
   ];
   for (const input of cases) {
     const cleaned = stripSvgActiveContent(input).toLowerCase();
@@ -39,6 +44,8 @@ test("SVG sanitizer fails closed on bypass forms", () => {
     expect(cleaned).not.toContain("<script");
     expect(cleaned).not.toContain("foreignobject");
     expect(cleaned).not.toContain("javascript:");
+    expect(cleaned).not.toContain("data:");
+    expect(cleaned).not.toContain("vbscript:");
   }
 });
 

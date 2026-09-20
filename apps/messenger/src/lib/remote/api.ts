@@ -522,8 +522,10 @@ export class RemoteApi {
       });
       return this.applyResponse(row, response);
     } catch (error) {
+      if (!(error instanceof ApiError) || (error.status === 503 && error.code === "request_unknown")) {
+        row.pending = Boolean(row.id) && !row.terminal;
+      }
       if (error instanceof ApiError) throw error;
-      row.pending = Boolean(row.id) && !row.terminal;
       throw new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", row.id);
     }
   }

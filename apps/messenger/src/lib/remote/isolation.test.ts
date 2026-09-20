@@ -45,6 +45,15 @@ test("hosted and remote settings omit workspace_path from PATCH", () => {
   expect(modal).toMatch(/patchSettings\(\{\s*workspace_path:/);
 });
 
+test("hosted and remote onboarding skip the workspace step and omit workspace_path from PATCH", () => {
+  const onboarding = readFileSync(new URL("../Onboarding.svelte", import.meta.url), "utf8");
+  expect(onboarding).toContain("workspaceReadOnly = $derived(runtime.hosted || runtime.remote)");
+  expect(onboarding).toContain("if (!workspaceReadOnly)");
+  expect(onboarding).toMatch(/patchSettings\(\{\s*workspace_path:/);
+  expect(onboarding).toContain("t.settings.workspaceHostOnly");
+  expect(onboarding).toContain("WorkspacePicker");
+});
+
 test("hosted layout registers the worker from the compile flag, not import.meta.env", () => {
   const layout = readFileSync(new URL("../../routes/+layout.svelte", import.meta.url), "utf8");
   expect(layout).toContain("HOSTED_MESSENGER");

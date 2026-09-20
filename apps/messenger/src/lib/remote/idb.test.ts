@@ -58,9 +58,6 @@ test("enrollment put stores the allowlisted identity literal, not caller extras"
     async set(value) {
       stored.push(value);
     },
-    async clear() {
-      stored.length = 0;
-    },
   });
   await expect(saveEnrollment({ ...enrollment, drafts: "queued" } as never)).rejects.toThrow();
   await expect(saveEnrollment({ ...enrollment, snapshotHtml: "<p>" } as never)).rejects.toThrow();
