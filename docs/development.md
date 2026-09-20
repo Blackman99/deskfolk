@@ -13,8 +13,9 @@
 | `@real-bot/desktop` | `apps/desktop` | Tauri 2 壳 |
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
 | `@real-bot/protocol` | `packages/protocol` | 本机接口类型，加上点名解析和工作区路径判定（无 I/O） |
+| `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+，原生远控凭据/认证（默认禁用） |
 
-守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，会用本机 `bun` 拉起 `apps/daemon/src/main.ts`；已有我们则连，不新开第二个。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，开发态用本机 `bun` 拉起 `apps/daemon/src/main.ts`，发布态用应用资源中的 `native/real-bot-daemon`；已有我们则连，不新开第二个。发布态只有显式 `REAL_BOT_SOURCE_DAEMON=1` 才走源码 Bun（并允许 `REAL_BOT_BUN` / `REAL_BOT_DAEMON_MAIN`）；默认不依赖 PATH Bun。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
 
 ## 守护进程源码布局
 
@@ -134,6 +135,12 @@ DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 假数据要对得上协议类型，否则拍的是另一个渲染分支：`test-fixtures.ts` 一度把用户写成 `"you"`，而 `USER_MEMBER` 是 `"user"`，于是每个面都把用户画成「已删除」的 Bot，基线把这个错误一起存了下来。story 的 props 是 `as never` 进去的，TypeScript 不替你挡这一层。
 
 不接 CI：这是系统字体的渲染，Linux runner 会对每一张都有异议。和 CONTRIBUTING 里「本机 UI 验证不能由 CI 代替」是同一条理由。
+
+## 原生远控凭据接口（默认禁用）
+
+`apps/runtime-helper` 是 Swift 6/macOS 13+ helper 与 `libRemoteCredentials.dylib`。`pnpm --filter @real-bot/desktop build:native` 编译并打包 helper、库、独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
+
+Swift 验证用 `swift build --package-path apps/runtime-helper` 与 `swift run --package-path apps/runtime-helper RemoteCoreTests`。后者是兼容仅安装 Command Line Tools（没有 XCTest）的原生 fixture 测试，不调用个人钥匙串或 LA，也不启动登录任务。格式检查用 `xcrun swift-format lint --strict --recursive apps/runtime-helper/Sources apps/runtime-helper/Tests`。真实签名/共享 entitlement/退出窗后无提示自读属于尚未运行的 G-pack；stock Bun 的 `BUN_BE_BUN` 解释器入口是授予凭据前必须解决的真实阻塞，不能加 entitlement 冒充解决。
 
 ## 本机工具链
 

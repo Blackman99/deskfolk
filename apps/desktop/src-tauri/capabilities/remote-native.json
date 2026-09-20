@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-native",
+  "description": "Native local confirmation is not granted to development or remote URLs.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-remote-native-confirmation"]
+}

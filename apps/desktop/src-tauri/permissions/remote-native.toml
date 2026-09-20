@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-remote-native-confirmation"
+description = "Lets only the bundled main window request native capability, helper readiness, first identity creation, or confirm a daemon challenge."
+commands.allow = ["remote_native_confirmation"]

@@ -37,6 +37,14 @@ Ship macOS `.dmg` builds signed with **Developer ID Application** and **notarize
 - Claiming notarization before the staple step succeeds.
 - Disabling Gatekeeper guidance while builds remain unsigned.
 
+## Native remote-credential signing gate
+
+The [native credential interface](native-credentials.md) uses macOS data-protection Keychain sharing, not a legacy ACL. Helper `com.real-bot.runtime-helper` and a **qualified sealed** daemon `com.real-bot.daemon` need the authorized `TEAMID.com.real-bot.remote` Keychain access group and appropriate application identifiers/provisioning. Desktop `com.real-bot.desktop` must **not** receive the group. All three require the same Apple-anchored stable Team ID, hardened runtime and library validation. Sign `libRemoteCredentials.dylib` with the same identity before signing the outer app. Do not grant debugging, DYLD environment or disabled-library-validation entitlements.
+
+The build hook currently signs nested binaries with `APPLE_SIGNING_IDENTITY` or ad-hoc `-`, and gives the daemon only JIT/executable-memory entitlements. It deliberately does not grant remote Keychain access. **Stock Bun's `BUN_BE_BUN=1` interpreter escape makes it unsafe as an entitled principal.** `com.real-bot.remote.sealed-runtime-v1` is a signed release qualification assertion checked by native code; it is not a protection provided by macOS and must never be added to stock Bun. A reviewed runtime without alternate arbitrary-code/preload/inspect entrypoints and negative tests is required before signing that assertion. Copying Bun's example entitlements that disable library validation is also incompatible with this boundary.
+
+G-pack is **not run**, not passed: stable credentials/provisioning, sealed runtime and clean isolated Mac are unavailable. Before enabling remote/standalone, test genuine local authentication and Keychain sharing, same-UID malicious peers, locked/no-Aqua denial, helper/desktop termination followed by prompt-free daemon reads and durable revoke high-water updates, and a real handshake on a Mac with no installed Bun. Browser/unit tests cannot establish this gate. Only an isolated macOS account/namespace may create test credentials; a separate data directory alone is insufficient. Native failures remain explicit and disabled rather than invoking a development bypass.
+
 ## Status
 
 **Unsigned alpha** is what GitHub Releases ship today (`v0.1.0-rc.1` and later until this checklist completes).

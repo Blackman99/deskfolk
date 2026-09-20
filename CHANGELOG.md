@@ -6,6 +6,11 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Native remote-control groundwork
+
+- Add a Swift Security/LocalAuthentication helper, authenticated versioned local socket, action-bound one-use Mac confirmation, and a narrow native daemon credential/high-water interface. Remote credentials use a non-synchronizing, device-only data-protection Keychain access group instead of incompatible legacy ACL attributes.
+- Package the helper, native library and compiled daemon; release launch no longer needs PATH Bun unless explicitly opting into source mode. Remote/standalone capabilities remain disabled: stable signing, a sealed runtime (stock Bun's interpreter escape is rejected), provisioned sharing and clean-Mac G-pack acceptance are still required. Source development has no automatic authentication fallback.
+
 ### Daemon
 
 - `read_file` (and the other workspace tools besides `write_file`) no longer stamp their paths as message attachments. A path the Bot only read is an input; only a write becomes a cited artifact on the message.

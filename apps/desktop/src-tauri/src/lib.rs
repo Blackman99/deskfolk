@@ -1,5 +1,6 @@
 mod daemon;
 mod local_api;
+mod remote_native;
 mod supervisor;
 mod updates;
 
@@ -143,7 +144,9 @@ fn app_version(app: AppHandle) -> String {
 async fn check_for_update(app: AppHandle, force: bool) -> Result<UpdateCheck, String> {
     let fresh = {
         let state = app.state::<Mutex<updates::UpdateCache>>();
-        let cache = state.lock().map_err(|_| "update cache poisoned".to_string())?;
+        let cache = state
+            .lock()
+            .map_err(|_| "update cache poisoned".to_string())?;
         cache.fresh(Instant::now(), updates::CACHE_TTL)
     };
     if !force {
@@ -166,7 +169,9 @@ async fn check_for_update(app: AppHandle, force: bool) -> Result<UpdateCheck, St
 
     {
         let state = app.state::<Mutex<updates::UpdateCache>>();
-        let mut cache = state.lock().map_err(|_| "update cache poisoned".to_string())?;
+        let mut cache = state
+            .lock()
+            .map_err(|_| "update cache poisoned".to_string())?;
         cache.store(Instant::now(), result.clone());
     }
 
@@ -226,13 +231,15 @@ pub fn run() {
             quitting: false,
         }))
         .manage(Mutex::new(updates::UpdateCache::default()))
+        .manage(remote_native::HelperState::default())
         .invoke_handler(tauri::generate_handler![
             local_api_endpoint,
             pick_workspace_folder,
             open_workspace_path,
             app_version,
             check_for_update,
-            open_external_url
+            open_external_url,
+            remote_native::remote_native_confirmation
         ])
         .setup(|app| {
             install_menus(app.handle())?;
@@ -273,7 +280,10 @@ pub fn run() {
                 begin_quit(app);
             }
         }
-        RunEvent::Exit => last_chance_quit(app),
+        RunEvent::Exit => {
+            app.state::<remote_native::HelperState>().stop();
+            last_chance_quit(app);
+        }
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}
@@ -393,7 +403,11 @@ fn tick(app: &AppHandle) {
         }
     });
     if should_spawn && probe_bind(BIND_PORT) == Probe::Down {
-        let child = daemon::spawn();
+        let child = app
+            .path()
+            .resource_dir()
+            .ok()
+            .and_then(|dir| daemon::spawn(&dir));
         adopt_spawned_daemon(app, child);
     }
 }
@@ -561,13 +575,22 @@ mod tests {
     #[test]
     fn starting_directory_prefers_an_existing_folder() {
         let dir = std::env::temp_dir();
-        assert_eq!(starting_directory(Some(dir.to_str().unwrap())), Some(dir.clone()));
+        assert_eq!(
+            starting_directory(Some(dir.to_str().unwrap())),
+            Some(dir.clone())
+        );
         assert_eq!(starting_directory(Some("")), None);
         assert_eq!(starting_directory(None), None);
         let nested = dir.join("real-bot-missing-workspace-picker");
-        assert_eq!(starting_directory(Some(nested.to_str().unwrap())), Some(dir));
+        assert_eq!(
+            starting_directory(Some(nested.to_str().unwrap())),
+            Some(dir)
+        );
         if let Some(home) = std::env::var_os("HOME") {
-            assert_eq!(starting_directory(Some("~")), Some(std::path::PathBuf::from(home)));
+            assert_eq!(
+                starting_directory(Some("~")),
+                Some(std::path::PathBuf::from(home))
+            );
         }
     }
 
