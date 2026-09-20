@@ -1,6 +1,6 @@
 # Native remote credentials (security prototype)
 
-Remote control and standalone runtime remain **disabled**. This is the native interface for downstream pairing/runtime integration, not a passed release gate. G-pack is **not run / blocked**: this repository does not yet build a qualified sealed daemon. That is an implementation prerequisite, not merely missing stable signing/provisioning credentials or a clean isolated Mac. No production Keychain item, personal database or login job is used by automated tests.
+Remote control and standalone runtime remain **disabled**. This is the native interface for downstream pairing/runtime integration, not a passed release gate. G-pack is **not run / blocked**: this repository does not yet build a qualified sealed daemon. That is an implementation prerequisite, not merely missing stable signing/provisioning credentials or a clean isolated Mac. The independent-runtime settings switch is present and fail-closed (`g_pack_not_verified` / `dev_does_not_install_agent`); tests use a fake `launchctl` and never bootstrap the user's Aqua domain. No production Keychain item, personal database or login job is used by automated tests.
 
 ## Supported macOS architecture
 

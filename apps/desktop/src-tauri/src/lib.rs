@@ -1,4 +1,6 @@
 mod daemon;
+mod handoff;
+mod launchd;
 mod local_api;
 mod remote_native;
 mod remote_setup;
@@ -244,6 +246,8 @@ pub fn run() {
             app_version,
             check_for_update,
             open_external_url,
+            set_launch_at_login,
+            independent_runtime,
             remote_native::remote_native_confirmation,
             remote_setup::remote_local_setup
         ])
@@ -251,6 +255,7 @@ pub fn run() {
             install_menus(app.handle())?;
             install_tray(app.handle())?;
             register_login_item(app.handle());
+            restore_independent_mode(app.handle(), &local_api::data_dir());
             if !launched_hidden(&std::env::args().collect::<Vec<_>>()) {
                 show_main(app.handle());
             }
@@ -382,6 +387,148 @@ fn register_login_item(app: &AppHandle) {
     }
 }
 
+#[tauri::command]
+fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    if tauri::is_dev() {
+        return Ok(false);
+    }
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        if enabled {
+            app.autolaunch().enable().map_err(|err| err.to_string())?;
+        } else {
+            app.autolaunch().disable().map_err(|err| err.to_string())?;
+        }
+        return Ok(app.autolaunch().is_enabled().unwrap_or(enabled));
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Ok(enabled)
+    }
+}
+
+fn independent_policy() -> launchd::IndependentPolicy {
+    launchd::IndependentPolicy::production(cfg!(debug_assertions) || tauri::is_dev())
+}
+
+#[derive(serde::Deserialize)]
+struct IndependentRequest {
+    operation: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct IndependentStatusDto {
+    enabled: bool,
+    available: bool,
+    diagnostic: String,
+    supervising: bool,
+    writer: String,
+    drain: DrainDto,
+    error: Option<String>,
+    warning: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DrainDto {
+    phase: String,
+    remaining: Vec<String>,
+    forced: bool,
+}
+
+fn writer_label(writer: handoff::Writer) -> String {
+    match writer {
+        handoff::Writer::Window => "window".into(),
+        handoff::Writer::Agent => "agent".into(),
+        handoff::Writer::Down => "down".into(),
+    }
+}
+
+fn snapshot_independent_status(app: &AppHandle, error: Option<String>, warning: Option<String>) -> IndependentStatusDto {
+    let policy = independent_policy();
+    let probe = probe_bind(BIND_PORT);
+    let marker = local_api::data_dir().join(launchd::MARKER_NAME);
+    let supervising = is_supervising(app);
+    let state = app.state::<Mutex<AppState>>();
+    let snapshot = {
+        let locked = state.lock();
+        match locked {
+            Ok(guard) => handoff::status(
+                &guard.supervisor,
+                handoff::DrainState {
+                    phase: handoff::DrainPhase::Running,
+                    remaining: Vec::new(),
+                    forced: false,
+                },
+                &policy,
+                probe,
+                marker,
+                error.clone(),
+            ),
+            Err(_) => handoff::HandoffStatus {
+                enabled: false,
+                available: policy.available,
+                diagnostic: policy.diagnostic.clone(),
+                supervising,
+                drain: handoff::DrainState {
+                    phase: handoff::DrainPhase::Running,
+                    remaining: Vec::new(),
+                    forced: false,
+                },
+                writer: handoff::Writer::Down,
+                error: error.clone(),
+            },
+        }
+    };
+    IndependentStatusDto {
+        enabled: snapshot.enabled,
+        available: snapshot.available,
+        diagnostic: snapshot.diagnostic,
+        supervising: snapshot.supervising,
+        writer: writer_label(snapshot.writer),
+        drain: DrainDto {
+            phase: match snapshot.drain.phase {
+                handoff::DrainPhase::Running => "running".into(),
+                handoff::DrainPhase::Draining => "draining".into(),
+                handoff::DrainPhase::Drained => "drained".into(),
+            },
+            remaining: snapshot.drain.remaining,
+            forced: snapshot.drain.forced,
+        },
+        error: snapshot.error.or(error),
+        warning,
+    }
+}
+
+#[tauri::command]
+fn independent_runtime(app: AppHandle, request: IndependentRequest) -> Result<IndependentStatusDto, String> {
+    let policy = independent_policy();
+    match request.operation.as_str() {
+        "status" => Ok(snapshot_independent_status(&app, None, None)),
+        "enable" | "wait" | "force" | "disable" => {
+            let reason = handoff::refuse_unqualified_enable(&policy)
+                .err()
+                .unwrap_or_else(|| "g_pack_not_verified".into());
+            Ok(snapshot_independent_status(&app, Some(reason), None))
+        }
+        "cancel" => {
+            let state = app.state::<Mutex<AppState>>();
+            if let Ok(mut guard) = state.lock() {
+                if !launchd::independent_marker_present(
+                    &local_api::data_dir().join(launchd::MARKER_NAME),
+                ) {
+                    guard.supervisor.set_supervising(true);
+                }
+            };
+            Ok(snapshot_independent_status(&app, None, None))
+        }
+        _ => Err("malformed".into()),
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -391,7 +538,14 @@ fn show_main(app: &AppHandle) {
 }
 
 fn tick(app: &AppHandle) {
-    let desc = local_api::read_descriptor(&local_api::data_dir());
+    let data_dir = local_api::data_dir();
+    restore_independent_mode(app, &data_dir);
+    if is_supervising(app)
+        && !launchd::independent_marker_present(&data_dir.join(launchd::MARKER_NAME))
+    {
+        let _ = local_api::clear_stop_latch(&data_dir);
+    }
+    let desc = local_api::read_descriptor(&data_dir);
     let holder_alive = desc
         .as_ref()
         .map(|d| local_api::pid_alive(d.pid))
@@ -408,13 +562,28 @@ fn tick(app: &AppHandle) {
             let _ = item.set_enabled(connected);
         }
     });
-    if should_spawn && probe_bind(BIND_PORT) == Probe::Down {
+    let latched = local_api::stop_latch_present(&data_dir);
+    if should_spawn && !latched && probe_bind(BIND_PORT) == Probe::Down {
         let child = app
             .path()
             .resource_dir()
             .ok()
             .and_then(|dir| daemon::spawn(&dir));
         adopt_spawned_daemon(app, child);
+    }
+}
+
+fn restore_independent_mode(app: &AppHandle, data_dir: &std::path::Path) {
+    if !launchd::independent_marker_present(&data_dir.join(launchd::MARKER_NAME)) {
+        return;
+    }
+    let state = app.state::<Mutex<AppState>>();
+    let mut guard = match state.lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    if guard.supervisor.is_supervising() {
+        guard.supervisor.set_supervising(false);
     }
 }
 
@@ -433,16 +602,17 @@ fn apply_probe(
             Ok(guard) => guard,
             Err(_) => return false,
         };
-        if !state.supervisor.is_supervising() {
+        if state.quitting {
             return false;
         }
+        let supervising = state.supervisor.is_supervising();
         let action = state.supervisor.on_probe(probe, holder_alive);
         if probe == Probe::Ours {
             if let Some(endpoint) = endpoint {
                 state.supervisor.remember(endpoint);
             }
         }
-        if action == Action::Spawn {
+        if supervising && action == Action::Spawn {
             let alive = state
                 .daemon
                 .as_mut()
@@ -507,7 +677,7 @@ fn request_stop(app: &AppHandle) {
 
 fn begin_quit(app: &AppHandle) {
     let state = app.state::<Mutex<AppState>>();
-    let (plan, child) = {
+    let (plan, child, was_supervising) = {
         let mut state = match state.lock() {
             Ok(guard) => guard,
             Err(_) => return,
@@ -516,10 +686,11 @@ fn begin_quit(app: &AppHandle) {
             return;
         }
         state.quitting = true;
-        (state.supervisor.quit(), state.daemon.take())
+        let was_supervising = state.supervisor.is_supervising();
+        (state.supervisor.quit(), state.daemon.take(), was_supervising)
     };
     let plan = match plan {
-        QuitPlan::JustExit => descriptor_quit_fallback(),
+        QuitPlan::JustExit if was_supervising => descriptor_quit_fallback(),
         other => other,
     };
     let app = app.clone();
@@ -713,6 +884,7 @@ mod tests {
             .supervisor
             .remember(Endpoint::new(17890, "tok"));
         let plan = state.lock().unwrap().supervisor.quit();
+        state.lock().unwrap().quitting = true;
         assert!(matches!(plan, QuitPlan::PostThenExit { .. }));
         let mut menu_called = false;
         let should_spawn = apply_probe(&state, Probe::Down, None, false, |_, _| {
@@ -723,5 +895,27 @@ mod tests {
         let guard = state.lock().unwrap();
         assert!(!guard.supervisor.is_supervising());
         assert!(!guard.supervisor.is_connected());
+    }
+
+    #[test]
+    fn apply_probe_while_independent_tracks_the_agent_without_spawning() {
+        let state = test_state();
+        state.lock().unwrap().supervisor.set_supervising(false);
+        let should_spawn = apply_probe(
+            &state,
+            Probe::Ours,
+            Some(Endpoint::new(17890, "agent")),
+            true,
+            |_, connected| {
+                assert!(connected);
+                assert_main_thread_can_read(&state, true);
+            },
+        );
+        assert!(!should_spawn);
+        assert!(state.lock().unwrap().supervisor.is_connected());
+        let down = apply_probe(&state, Probe::Down, None, false, |_, connected| {
+            assert!(!connected);
+        });
+        assert!(!down);
     }
 }

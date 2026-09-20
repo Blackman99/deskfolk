@@ -6,6 +6,10 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Desktop
+
+- Settings can opt into an independent LaunchAgent runtime, still **off by default**. Production stays gated (`g_pack_not_verified`); development never installs the agent. Enablement is quiesce → stop window Spawn → no-latch exit → bootstrap a new child; failure stays Down. Quitting the window while independent would leave the agent running; explicit stop writes `runtime.stop` so PathState does not relaunch. `launch_at_login` remains window autolaunch and is independent of the runtime job. G-pack / G-launchd are not passed.
+
 ### Local synchronization
 
 - Credential retries now track their own operation and ordered event sequence. Older empty operation lists cannot discard a newer pending create, delayed failures cannot restore a completed request, and edited-payload warnings preserve confirmation until repair/cancel or a terminal receipt clears the payload and banner.

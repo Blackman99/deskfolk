@@ -11,6 +11,7 @@ const DEFAULT_DIRNAME: &str = "real-bot";
 const DESCRIPTOR_NAME: &str = "local-api.json";
 const HEALTH_NAME: &str = "real-bot";
 pub const BIND_PORT: u16 = 17890;
+pub const STOP_LATCH_NAME: &str = "runtime.stop";
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Descriptor {
@@ -114,6 +115,96 @@ pub fn post_quit(endpoint: &Endpoint) -> bool {
     }
 }
 
+pub fn latch_path(dir: &Path) -> PathBuf {
+    dir.join(STOP_LATCH_NAME)
+}
+
+pub fn stop_latch_present(dir: &Path) -> bool {
+    latch_path(dir).is_file()
+}
+
+pub fn clear_stop_latch(dir: &Path) -> bool {
+    match fs::remove_file(latch_path(dir)) {
+        Ok(()) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => true,
+        Err(_) => false,
+    }
+}
+
+pub fn write_stop_latch(dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|err| err.to_string())?;
+    fs::write(latch_path(dir), b"stopped\n").map_err(|err| err.to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrainStatus {
+    pub phase: String,
+    pub remaining: Vec<String>,
+    pub forced: bool,
+}
+
+#[allow(dead_code)]
+pub fn get_drain(endpoint: &Endpoint) -> Option<DrainStatus> {
+    let url = format!("{}/v1/runtime/drain", endpoint.origin);
+    let resp = agent()
+        .get(&url)
+        .set("Authorization", &format!("Bearer {}", endpoint.token))
+        .call()
+        .ok()?;
+    parse_drain(resp.into_json().ok()?)
+}
+
+#[allow(dead_code)]
+pub fn post_quiesce(endpoint: &Endpoint, action: &str) -> Option<DrainStatus> {
+    let url = format!("{}/v1/runtime/quiesce", endpoint.origin);
+    let resp = agent()
+        .post(&url)
+        .set("Authorization", &format!("Bearer {}", endpoint.token))
+        .set("Content-Type", "application/json")
+        .send_string(&format!(r#"{{"action":"{action}"}}"#))
+        .ok()?;
+    parse_drain(resp.into_json().ok()?)
+}
+
+#[allow(dead_code)]
+pub fn post_handoff_exit(endpoint: &Endpoint) -> bool {
+    post_runtime(endpoint, "/v1/runtime/handoff")
+}
+
+#[allow(dead_code)]
+pub fn post_runtime_stop(endpoint: &Endpoint) -> bool {
+    post_runtime(endpoint, "/v1/runtime/stop")
+}
+
+#[allow(dead_code)]
+fn post_runtime(endpoint: &Endpoint, path: &str) -> bool {
+    let url = format!("{}{path}", endpoint.origin);
+    match agent()
+        .post(&url)
+        .set("Authorization", &format!("Bearer {}", endpoint.token))
+        .call()
+    {
+        Ok(resp) => resp.status() == 204 || resp.status() == 200,
+        Err(_) => matches!(probe_health(&endpoint.origin), Probe::Down),
+    }
+}
+
+pub(crate) fn parse_drain(value: serde_json::Value) -> Option<DrainStatus> {
+    let phase = value.get("phase")?.as_str()?.to_string();
+    let forced = value.get("forced")?.as_bool()?;
+    let remaining = value
+        .get("remaining")?
+        .as_array()?
+        .iter()
+        .map(|id| id.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()?;
+    Some(DrainStatus {
+        phase,
+        remaining,
+        forced,
+    })
+}
+
 pub fn post_stop(endpoint: &Endpoint) -> bool {
     let url = format!("{}/v1/turns/stop", endpoint.origin);
     match agent()
@@ -184,5 +275,34 @@ mod tests {
         assert!(pid_alive(std::process::id() as i32));
         assert!(!pid_alive(0));
         assert!(!pid_alive(-1));
+    }
+
+    #[test]
+    fn drain_payload_is_phase_remaining_forced() {
+        let value = serde_json::json!({
+            "phase": "draining",
+            "remaining": ["turn-1"],
+            "forced": false
+        });
+        assert_eq!(
+            parse_drain(value),
+            Some(DrainStatus {
+                phase: "draining".into(),
+                remaining: vec!["turn-1".into()],
+                forced: false,
+            })
+        );
+        assert!(parse_drain(serde_json::json!({ "phase": "running" })).is_none());
+    }
+
+    #[test]
+    fn stop_latch_helpers_do_not_touch_launchd() {
+        let dir = temp_dir();
+        assert!(!stop_latch_present(&dir));
+        write_stop_latch(&dir).unwrap();
+        assert!(stop_latch_present(&dir));
+        assert!(clear_stop_latch(&dir));
+        assert!(!stop_latch_present(&dir));
+        fs::remove_dir_all(&dir).ok();
     }
 }

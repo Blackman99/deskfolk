@@ -19,7 +19,7 @@
 
 根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
 
-守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，开发态用本机 `bun` 拉起 `apps/daemon/src/main.ts`，发布态用应用资源中的 `native/real-bot-daemon`；已有我们则连，不新开第二个。发布态只有显式 `REAL_BOT_SOURCE_DAEMON=1` 才走源码 Bun（并允许 `REAL_BOT_BUN` / `REAL_BOT_DAEMON_MAIN`）；默认不依赖 PATH Bun。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，开发态用本机 `bun` 拉起 `apps/daemon/src/main.ts`，发布态用应用资源中的 `native/real-bot-daemon`；已有我们则连，不新开第二个。发布态只有显式 `REAL_BOT_SOURCE_DAEMON=1` 才走源码 Bun（并允许 `REAL_BOT_BUN` / `REAL_BOT_DAEMON_MAIN`）；默认不依赖 PATH Bun。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项，也不安装独立运行时 agent。退出（Cmd+Q / 托盘退出）在窗口监督时先停监督再 `POST /v1/runtime/quit`；独立模式（默认关、生产 gated）只退 UI。独立运行时交接见 [ADR 0023](adr/0023-independent-runtime.md)；G-pack / G-launchd 未通过。
 
 ## 实验性中继
 
@@ -29,11 +29,11 @@
 
 ## 原生门控 daemon 远控接线
 
-`apps/daemon/src/remote/` 复用已有 Store/LocalApi/engine：controller 出站控制/每设备 Noise，trust 使用同一 SQLite 做设备/重放/高水位，uv 使用共享真实 WebAuthn verifier，dispatch 是白名单而不是 HTTP 代理。`quiesce.ts` 由本机和维护调用方共享，不退出、不装 launchd。无 metadata 时不读 native credentials；配置后原生失败只报告 `native_unavailable`，本机照常启动。stock Bun 未有可构建 sealed runtime，**生产仍 gated**，没有 env fake/keyfile/假 UV 回退。
+`apps/daemon/src/remote/` 复用已有 Store/LocalApi/engine：controller 出站控制/每设备 Noise，trust 使用同一 SQLite 做设备/重放/高水位，uv 使用共享真实 WebAuthn verifier，dispatch 是白名单而不是 HTTP 代理。`quiesce.ts` 由本机和维护调用方共享，不退出、不装 launchd。无 metadata 时不读 native credentials；配置后原生失败只报告 `native_unavailable`，本机照常启动。stock Bun 未有可构建 sealed runtime，**生产仍 gated**，没有 env fake/keyfile/假 UV 回退。独立运行时交接（ticket 10）消费该排空与 latch，生产仍 fail-closed。
 
 Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled main，前者走 daemon 继承 FD3，native 在读取前验证桌面 audit-token/签名；不是 bearer HTTP。先 `ready`，再 open/read/prepare pair、Tauri confirm、daemon consume。接口/QR/RPC/水印、首次 UV/替换、吊销 generation 修订、文件基础能力和08/09限制见 [remote protocol](remote-protocol.md#daemon-adapter-and-downstream-client-contract-ticket-07) 与 [ADR0022](adr/0022-native-gated-remote-daemon.md)。当前不声明完整 PWA/远控产品就绪。
 
-复核新增 `remote/routes.ts` 精确属性合同、host-wide paced relay budget、durable native transition/lifecycle intents与firstUV renewal；engine/quiesce补已开始工作跟踪、强制后工具围栏与routine配置排空。`quiesce-engine.test.ts` 使用实际engine测15项确定性回归；远控套件实际传50MiB与并行1MiB、>1MiB快照、>70条历史吊销，运行约一分钟。新增集成测试 `bun test apps/daemon/src/remote/remote.test.ts` 启实际 relay、真实 Noise、临时 Store 与构造注入 native fixture；生成 WebAuthn Ed25519 密钥实签，测试回执/文件、吊销重连/备份拒绝、CAS与旧凭据、排空中回答与新消息不落库。根 `pnpm test`/`pnpm typecheck` 包含这些；完整验证再跑 messenger/relay/remote build、daemon compile、Cargo 与 Swift fixture。不得启动实际 native app/helper 或读个人 Keychain 来验证本票。浏览器仅用隔离 agent-browser rc07 与独占17907/5197 fixture，假模型、scheduler off；先查端口占用，结束只停自己的服务。
+复核新增 `remote/routes.ts` 精确属性合同、host-wide paced relay budget、durable native transition/lifecycle intents与firstUV renewal；engine/quiesce补已开始工作跟踪、强制后工具围栏与routine配置排空。`quiesce-engine.test.ts` 使用实际engine测15项确定性回归；远控套件实际传50MiB与并行1MiB、>1MiB快照、>70条历史吊销，运行约一分钟。新增集成测试 `bun test apps/daemon/src/remote/remote.test.ts` 启实际 relay、真实 Noise、临时 Store 与构造注入 native fixture；生成 WebAuthn Ed25519 密钥实签，测试回执/文件、吊销重连/备份拒绝、CAS与旧凭据、排空中回答与新消息不落库。根 `pnpm test`/`pnpm typecheck` 包含这些；完整验证再跑 messenger/relay/remote build、daemon compile、Cargo 与 Swift fixture。不得启动实际 native app/helper 或读个人 Keychain 来验证本票。浏览器仅用隔离 agent-browser rc07 与独占17907/5197 fixture，假模型、scheduler off；先查端口占用，结束只停自己的服务。独立运行时 UI 用隔离 session `rc10` 与独占随机端口，同样不装真实 LaunchAgent。
 
 ## 守护进程源码布局
 

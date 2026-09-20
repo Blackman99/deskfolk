@@ -35,6 +35,7 @@ import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
 import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { Quiesce, TurnAdmission } from "./quiesce";
+import type { RuntimeLifecycle } from "./lifecycle";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
 
 const AUTH_TIMEOUT_MS = 5_000;
@@ -59,6 +60,9 @@ export type LocalApiOptions = {
   canonicalEncoder?: CanonicalEncoder;
   admission?: TurnAdmission;
   remoteStatus?: () => NonNullable<RuntimeSnapshot["remoteStatus"]>;
+  lifecycle?: RuntimeLifecycle;
+  onHandoff?: () => void;
+  onRuntimeStop?: () => void;
 };
 
 export type LocalApi = {
@@ -144,6 +148,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
           engine,
           now: options.now,
         });
+  const quiesce = new Quiesce(options.store, engine, options.admission!, scheduler);
 
   function withPartial(turn: import("@real-bot/protocol").Turn) {
     return { ...turn, partial_text: turn.partial_text ?? engine.partialText(turn.id) };
@@ -329,6 +334,27 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       if (request.method === "POST" && path === "/v1/runtime/quit") {
         scheduler?.stop();
       }
+      if (request.method === "GET" && path === "/v1/runtime/drain") {
+        return jsonResponse(quiesce.state(), 200, origin);
+      }
+      if (request.method === "POST" && path === "/v1/runtime/quiesce") {
+        const body = (await readJson(request)) as Record<string, unknown>;
+        const action = typeof body.action === "string" ? body.action : "";
+        if (action === "begin") return jsonResponse(quiesce.begin(), 200, origin);
+        if (action === "wait") return jsonResponse(await quiesce.wait(), 200, origin);
+        if (action === "cancel") return jsonResponse(quiesce.cancel(), 200, origin);
+        if (action === "force") return jsonResponse(quiesce.force(), 200, origin);
+        throw new HttpError(422, "invalid_args", "action must be begin, wait, cancel, or force");
+      }
+      if (request.method === "POST" && path === "/v1/runtime/handoff") {
+        options.onHandoff?.();
+        return emptyResponse(204, origin);
+      }
+      if (request.method === "POST" && path === "/v1/runtime/stop") {
+        await options.lifecycle?.writeStopLatch();
+        options.onRuntimeStop?.();
+        return emptyResponse(204, origin);
+      }
       const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && path !== "/v1/models/probe";
       const response = isMutation
         ? await mutate(request, url, { deviceId: "local", requestId: request.headers.get("X-Request-Id") ?? ulid() })
@@ -349,7 +375,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     dispatchBusiness,
     subscribeSync: (listener) => events.subscribe(listener),
     syncCursor: () => events.cursor(),
-    quiesce: new Quiesce(options.store, engine, options.admission!, scheduler),
+    quiesce,
     publish,
     engine,
     websocket: {

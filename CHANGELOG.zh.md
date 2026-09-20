@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 桌面
+
+- 设置可选择独立 LaunchAgent 运行时，**默认关**。生产仍 gated（`g_pack_not_verified`）；开发态不安装作业。开启顺序为排空 → 停窗口 Spawn → 无闩退出 → bootstrap 新子进程；失败保持 Down。独立模式下退出窗口不会停 agent；显式 stop 写 `runtime.stop`，PathState 不再拉起。`launch_at_login` 仍是窗口登录项，与运行时作业独立。G-pack / G-launchd 未通过。
+
 ### 本机同步
 
 - 凭据重试按各自操作与事件顺序跟踪：较旧的空待办列表不能丢弃较新的待写新建请求，迟到失败不能复活已完成请求；修改载荷的提示不抹掉已确认状态，修复/取消或终态回执同步清理载荷与横幅。

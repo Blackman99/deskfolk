@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -127,6 +127,76 @@ describe("local API runtime", () => {
     const res = await fetch(`http://[::1]:${rt.port}/v1/health`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, name: LOCAL_API_NAME });
+  });
+
+  test("standalone start refuses a stop latch and never serves", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "real-bot-stopped-"));
+    dirs.push(dataDir);
+    chmodSync(dataDir, 0o700);
+    writeFileSync(join(dataDir, "runtime.stop"), "stopped\n", { mode: 0o600 });
+    await expect(
+      startRuntime({
+        dataDir,
+        bind: "127.0.0.1:0",
+        endpointKey: memoryKeyStore(),
+        supervisor: "standalone",
+      }),
+    ).rejects.toThrow("runtime is stopped");
+  });
+
+  test("window start still serves when a leftover latch exists", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "real-bot-window-latch-"));
+    dirs.push(dataDir);
+    chmodSync(dataDir, 0o700);
+    writeFileSync(join(dataDir, "runtime.stop"), "stopped\n", { mode: 0o600 });
+    const rt = await startRuntime({
+      dataDir,
+      bind: "127.0.0.1:0",
+      endpointKey: memoryKeyStore(),
+      supervisor: "window",
+    });
+    handles.push(rt);
+    const res = await fetch(`${rt.origin}/v1/health`);
+    expect(res.status).toBe(200);
+    expect(rt.lifecycle.isStopped()).toBe(true);
+  });
+
+  test("handoff exit does not write the latch", async () => {
+    let handoffs = 0;
+    const rt = await start({
+      supervisor: "standalone",
+      onHandoff: () => {
+        handoffs += 1;
+      },
+    });
+    const denied = await fetch(`${rt.origin}/v1/runtime/handoff`, { method: "POST" });
+    expect(denied.status).toBe(401);
+    const handoff = await fetch(`${rt.origin}/v1/runtime/handoff`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${rt.token}` },
+    });
+    expect(handoff.status).toBe(204);
+    expect(handoffs).toBe(1);
+    expect(rt.lifecycle.isStopped()).toBe(false);
+  });
+
+  test("runtime stop writes the latch then exits", async () => {
+    let stops = 0;
+    const rt = await start({
+      supervisor: "standalone",
+      onRuntimeStop: () => {
+        stops += 1;
+      },
+    });
+    const denied = await fetch(`${rt.origin}/v1/runtime/stop`, { method: "POST" });
+    expect(denied.status).toBe(401);
+    const stop = await fetch(`${rt.origin}/v1/runtime/stop`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${rt.token}` },
+    });
+    expect(stop.status).toBe(204);
+    expect(stops).toBe(1);
+    expect(rt.lifecycle.isStopped()).toBe(true);
   });
 
   test("POST /v1/runtime/quit needs a token, deletes discovery, and stops", async () => {

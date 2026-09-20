@@ -245,6 +245,7 @@ const settingsProps = (over: Record<string, unknown> = {}) => ({
 	saveFailed: false,
 	providerEditor: null,
 	confirmingProvider: false,
+	confirmingIndependent: false,
 	patchImmediate: async () => true,
 	openDeleteProviderConfirm: () => {},
 	closeSettings: () => {},

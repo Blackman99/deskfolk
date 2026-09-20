@@ -27,23 +27,36 @@ if (holder && holder.pid !== process.pid && pidAlive(holder.pid)) {
   process.exit(0);
 }
 
-const runtime = await startRuntime({
-  dataDir,
-  bind: LOCAL_API_BIND,
-  endpointKey: bunKeyStore,
-  exitProcess: true,
-  desktopRemoteChannel: true,
-  supervisor: process.argv.includes("--desktop-remote-channel") ? "window" : "none",
-});
+const standalone = process.argv.includes("--standalone");
+if (standalone && process.argv.includes("--desktop-remote-channel")) {
+  console.error(`${LOCAL_API_NAME} refused mixed window and standalone supervision`);
+  process.exit(1);
+}
 
-console.log(`${LOCAL_API_NAME} daemon listening on ${runtime.origin}`);
+try {
+  const runtime = await startRuntime({
+    dataDir,
+    bind: LOCAL_API_BIND,
+    endpointKey: bunKeyStore,
+    exitProcess: true,
+    desktopRemoteChannel: process.argv.includes("--desktop-remote-channel"),
+    supervisor: standalone ? "standalone" : process.argv.includes("--desktop-remote-channel") ? "window" : "none",
+  });
 
-process.on("SIGINT", () => {
-  void runtime.stop();
-});
-process.on("SIGTERM", () => {
-  void runtime.stop();
-});
+  console.log(`${LOCAL_API_NAME} daemon listening on ${runtime.origin}`);
+
+  process.on("SIGINT", () => {
+    void runtime.stop();
+  });
+  process.on("SIGTERM", () => {
+    void runtime.stop();
+  });
+} catch (error) {
+  if (standalone && error instanceof Error && error.message === "runtime is stopped") {
+    process.exit(0);
+  }
+  throw error;
+}
 
 async function probeHealth(): Promise<"ours" | "other" | "free"> {
   try {
