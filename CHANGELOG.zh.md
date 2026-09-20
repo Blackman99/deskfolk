@@ -72,7 +72,7 @@
 
 ### Messenger
 
-- 远控未知结果会在断线后仍保留 `{id, method, path, fingerprint}`，包括运输层直接抛出 `ApiError(503, request_unknown)` 的情况。重连把同一条内存回执装回新的 RemoteApi，先查 `/v1/requests/:id`；聊天发送也不丢这个 id。聊天和 Markdown 的 SVG 缩略图与产物预览共用同一套清理（含 `<svg/onload>`、未闭合 `<script>`、无引号 `javascript:`，以及 SMIL `values` / `to` / `from` 里的 `javascript:` / `data:` / `vbscript:`）。托管/远控设置与向导里工作区路径只读、跳过选目录步骤，PATCH 不再带 `workspace_path`；本机窗口仍用系统文件夹选择器。
+- 远控未知结果会在断线后仍保留 `{id, method, path, fingerprint}`，包括运输层直接抛出 `ApiError(503, request_unknown)` 的情况。重连把同一条内存回执装回新的 RemoteApi，先查 `/v1/requests/:id`；聊天发送也不丢这个 id。聊天和 Markdown 的 SVG 缩略图与产物预览共用同一套清理（含 `<svg/onload>`、未闭合 `<script>`、无引号 `javascript:`，以及 SMIL `values` / `to` / `from` / `begin` / `end` 里的 `javascript:` / `data:` / `vbscript:`）。托管/远控设置与向导里工作区路径只读、跳过选目录步骤，PATCH 不再带 `workspace_path`；本机窗口仍用系统文件夹选择器。
 - 凭据修复失败后再取消，会释放整条已被替代的内存请求链，不再让含旧密钥的过期载荷阻塞下一次新建/编辑。结果未知时保留待确认状态，直到显式恢复得到确认；不会自动重放副作用。
 - 待确认变更只在内存保留逻辑请求 ID 和原始载荷，手动重试不再重复创建端点。设置提供手动重试、仅修复凭据、取消清除控件，不再把钥匙串失败当作运行时断连；关页不会排队或自动重放。
 - 文件保存携带读取时的 ETag。Bot 或其它程序改过文件时，不再静默覆盖：保留尚未保存的编辑，并提示先复制编辑再重新打开文件。

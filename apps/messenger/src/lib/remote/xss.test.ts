@@ -36,6 +36,11 @@ test("SVG sanitizer fails closed on bypass forms", () => {
     `<svg><animate attributeName="href" from="javascript:alert(1)" to="https://example.test" /></svg>`,
     `<svg><animate attributeName="href" values="data:text/html,alert(1)" /></svg>`,
     `<svg><set attributeName="href" to="vbscript:alert(1)" /></svg>`,
+    `<svg><animate begin="javascript:alert(1)" /></svg>`,
+    `<svg><animate end="javascript:alert(1)" /></svg>`,
+    `<svg><set begin=javascript:alert(1) /></svg>`,
+    `<svg><animate end="data:text/html,alert(1)" /></svg>`,
+    `<svg><set begin="vbscript:alert(1)" /></svg>`,
   ];
   for (const input of cases) {
     const cleaned = stripSvgActiveContent(input).toLowerCase();

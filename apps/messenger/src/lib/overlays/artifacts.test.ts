@@ -144,6 +144,11 @@ test("stripSvgActiveContent fails closed on unquoted and unclosed active content
   expect(stripSvgActiveContent(`<svg><animate from="javascript:alert(1)" to="https://example.test" /></svg>`)).not.toContain("javascript:");
   expect(stripSvgActiveContent(`<svg><animate values="data:text/html,alert(1)" /></svg>`)).not.toContain("data:");
   expect(stripSvgActiveContent(`<svg><set to="vbscript:alert(1)" /></svg>`)).not.toContain("vbscript:");
+  expect(stripSvgActiveContent(`<svg><animate begin="javascript:alert(1)" /></svg>`)).not.toContain("javascript:");
+  expect(stripSvgActiveContent(`<svg><animate end="javascript:alert(1)" /></svg>`)).not.toContain("javascript:");
+  expect(stripSvgActiveContent(`<svg><set begin=javascript:alert(1) /></svg>`)).not.toContain("javascript:");
+  expect(stripSvgActiveContent(`<svg><animate end="data:text/html,alert(1)" /></svg>`)).not.toContain("data:");
+  expect(stripSvgActiveContent(`<svg><set begin="vbscript:alert(1)" /></svg>`)).not.toContain("vbscript:");
 });
 
 test("html preview sandbox runs scripts in an opaque origin", () => {
