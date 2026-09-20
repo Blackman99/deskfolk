@@ -42,6 +42,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # `externalBin` is checked when the crate compiles, so the daemon binary has to exist first.
+      - name: Build daemon sidecar
+        run: pnpm --filter @real-bot/daemon build:sidecar
+
       - name: Cargo test
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
@@ -57,8 +61,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - args: --target aarch64-apple-darwin
-          - args: --target x86_64-apple-darwin
+          - triple: aarch64-apple-darwin
+          - triple: x86_64-apple-darwin
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -86,6 +90,12 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
+      # The app carries its own runtime: this is the daemon compiled for the target being packaged,
+      # bundled as `externalBin`. Passed explicitly rather than left to the build hook, so the
+      # cross-built job cannot quietly package the runner's own architecture.
+      - name: Build daemon sidecar
+        run: pnpm --filter @real-bot/daemon build:sidecar ${{ matrix.triple }}
+
       # The body is this version's CHANGELOG section: the app renders it in the About card when it
       # finds an update, so it has to say what changed rather than point at the file.
       - name: Release notes from CHANGELOG
@@ -111,4 +121,4 @@ jobs:
           prerelease: true
           generateReleaseNotes: false
           uploadUpdaterJson: false
-          args: ${{ matrix.args }}
+          args: --target ${{ matrix.triple }}

@@ -6,6 +6,10 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Desktop
+
+- **An installed build can start its runtime.** The app never shipped the daemon: it looked for `apps/daemon/src/main.ts` at a path baked in at compile time, which on a release build is the CI runner's home directory, and then for a `bun` the machine was not required to have. Neither exists on the machine that downloaded the `.dmg`, so the window sat at "Can't reach the runtime" for good, for every user, with nothing said about why. The daemon is now compiled with `bun build --compile` and bundled as `externalBin` next to the window binary, so an installed app needs no Bun, no Node and no checkout. Running from source is unchanged — a debug build still prefers the checkout and its `--watch` — and `REAL_BOT_DAEMON_MAIN` / `REAL_BOT_DAEMON_BIN` override either shape. The bundled runtime costs about 60MB per architecture.
+
 ### Daemon
 
 - A wedged turn no longer sits at Thinking for good — the shape you saw most often in a Bot↔Bot private chat, where nobody is watching for a reply that never comes. The hop loop runs detached, so an exception inside it vanished into a swallowed rejection and left the turn `running` until the next restart. A turn that throws now closes with a "This turn did not finish: the runtime errored" line, and a watchdog on the scheduler's tick closes any turn that has made no progress for 20 minutes with "It stopped making progress". A turn waiting on your approval or your answer is never swept, and a long shell or MCP call marks both of its ends, so real work is not cut off.

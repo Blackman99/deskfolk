@@ -32,9 +32,12 @@ pnpm dev
 ```bash
 pnpm test
 pnpm typecheck
+pnpm --filter @real-bot/daemon build:sidecar
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 pnpm --filter @real-bot/messenger build
 ```
+
+桌面壳把守护进程当 sidecar 打包（`externalBin`），Tauri 在 crate 编译期就校验该文件存在，所以单独跑 `cargo test` 前先编一次 sidecar（`pnpm dev` 和 `pnpm tauri build` 的钩子已经代劳）。
 
 改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build 与 macOS `cargo test`），不能代替本机 UI 或原生桌面验证。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 

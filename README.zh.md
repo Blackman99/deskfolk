@@ -33,7 +33,7 @@
 
 ## 获取
 
-**下载**最新 Alpha：[GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest) 提供 Apple 芯片与 Intel 两种未签名 `.dmg`。首次打开若被 Gatekeeper 拦截，右键选「打开」，或执行：
+**下载**最新 Alpha：[GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest) 提供 Apple 芯片与 Intel 两种未签名 `.dmg`。应用自带运行时，不需要另外装 Bun、Node 或源码。首次打开若被 Gatekeeper 拦截，右键选「打开」，或执行：
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Real Bot.app"

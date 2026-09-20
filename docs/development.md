@@ -14,7 +14,7 @@
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
 | `@real-bot/protocol` | `packages/protocol` | 本机接口类型，加上点名解析和工作区路径判定（无 I/O） |
 
-守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，会用本机 `bun` 拉起 `apps/daemon/src/main.ts`；已有我们则连，不新开第二个。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+守护进程有两种起法，窗在监督时若本机接口不是我们才起；已有我们则连，不新开第二个。**打包态**用随包发的 sidecar：`apps/daemon` 用 `bun build --compile` 编成独立可执行文件（`pnpm --filter @real-bot/daemon build:sidecar [triple]`，写到 `apps/desktop/src-tauri/binaries/real-bot-daemon-<target-triple>`，约 60MB／架构，内含 Bun 运行时），`tauri.conf.json` 的 `externalBin` 把它放到窗口二进制旁边，装完即用，用户机器上不需要 Bun 也不需要源码。**源码态**用本机 `bun` 跑 `apps/daemon/src/main.ts`，debug 构建带 `--watch`；debug 下优先走源码，免得旁边那份编译产物顶掉热更新。解析顺序见 `src-tauri/src/daemon.rs`：`REAL_BOT_DAEMON_MAIN`（源码入口）→ `REAL_BOT_DAEMON_BIN`（可执行文件）→ debug 源码 → sidecar → 源码。源码路径是编译期烘进去的绝对路径，**只在编译那台机器上成立**——rc.3 的发布包烘的是 CI runner 的路径，装到别人机器上永远起不来运行时。`externalBin` 在 crate 编译期就会校验文件存在，所以 `cargo test` / `tauri dev` / `tauri build` 之前都得先编一次 sidecar；两个构建钩子已经代劳，单独跑 cargo 时自己跑一次。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
 
 ## 守护进程源码布局
 

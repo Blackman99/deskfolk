@@ -33,7 +33,7 @@
 
 ## Get it
 
-**Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. If Gatekeeper blocks the first launch, right-click → Open, or run:
+**Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. The app carries its own runtime, so there is nothing else to install — no Bun, no Node, no checkout. If Gatekeeper blocks the first launch, right-click → Open, or run:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
