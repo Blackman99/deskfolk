@@ -9,6 +9,7 @@
 | 包 | 路径 | 运行时 |
 |---|---|---|
 | `@real-bot/daemon` | `apps/daemon` | Bun `>=1.2` |
+| `@real-bot/relay` | `apps/relay` | Bun 1.4.2（部署钉定）；默认关闭的自托管密文中继 |
 | `@real-bot/messenger` | `apps/messenger` | Node `>=22` · SvelteKit SPA |
 | `@real-bot/desktop` | `apps/desktop` | Tauri 2 壳 |
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
@@ -18,6 +19,12 @@
 根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
 
 守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，会用本机 `bun` 拉起 `apps/daemon/src/main.ts`；已有我们则连，不新开第二个。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项。退出（Cmd+Q / 托盘退出）先停监督再 `POST /v1/runtime/quit`。
+
+## 实验性中继
+
+根 `pnpm test` / `pnpm typecheck` 包含 `apps/relay`。`pnpm --filter @real-bot/relay build` 打包 Bun 入口；测试随机 loopback 端口、临时 SQLite、生成身份，真实双设备 Noise/WS、一次性 enrollment、吊销、未登记配对邮箱、慢 TCP 读端背压与 canary 日志脱敏，不用17890或个人数据。生产信使 build 后 `pnpm --filter @real-bot/relay smoke:serve` 在 `[::1]:5186` 只服务静态断线壳，**不提供 `__local-api`、Vite 或远控/PWA 功能**。隔离浏览器用 `agent-browser --session rc06`；占用端口直接失败，不停他人服务。
+
+Compose 的 Linux/TLS/磁盘 quota、外部安全复核与真机门需独立验收；没有 Docker daemon 时只能检查 Compose schema、Dockerfile parser 与本机 Caddy 配置，不能宣称容器部署通过。具体环境变量、非 root 构建、离线/恢复语义及 daemon07 消费的 HTTP/WS 契约见[自托管部署](deploy-remote.md)。不改变本机 bearer、loopback/Origin、窗监督或默认远控准入。
 
 ## 守护进程源码布局
 

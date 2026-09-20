@@ -57,7 +57,7 @@ First run: pick a workspace folder (missing folders are created), add an OpenAI-
 
 Alpha, macOS only. What is live, in progress and out of scope: [website](https://blackman99.github.io/real-bot/en#boundaries) · [Roadmap](ROADMAP.md) · [CONTEXT.md](CONTEXT.md) (domain language).
 
-The shared remote-crypto package is an **experimental, default-off prototype**, not available remote access. Its tests include official Noise vectors and an independent Rust snow peer (`pnpm test` requires Cargo); physical PWA/WebAuthn and independent security-review gates remain open. See the [protocol/API contract](docs/remote-protocol.md), including the single shared receipt digest with conditional headers and duplicate-filename ordering.
+The shared remote-crypto package is an **experimental, default-off prototype**, not available remote access. A default-off Bun relay and non-root Compose/Caddy static deployment template are now available for isolated integration testing; the daemon adapter and remote/PWA client are not complete. See [self-hosted deployment, bootstrap recovery and routing contracts](docs/deploy-remote.md). Its tests include official Noise vectors and an independent Rust snow peer (`pnpm test` requires Cargo); physical PWA/WebAuthn and independent security-review gates remain open. See the [protocol/API contract](docs/remote-protocol.md), including the single shared receipt digest with conditional headers and duplicate-filename ordering.
 
 ## Contributing
 

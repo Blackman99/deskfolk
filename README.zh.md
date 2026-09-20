@@ -56,7 +56,7 @@ pnpm dev
 
 Alpha，仅 macOS。已接入、正在建设与明确不做：[官网](https://blackman99.github.io/real-bot/zh#boundaries) · [路线图](ROADMAP.md) · [CONTEXT.md](CONTEXT.md)（领域语言）。
 
-共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）；真机 PWA/WebAuthn 与独立安全审查门仍待验证。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要。
+共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。新增默认关闭的 Bun 中继与非 root Compose/Caddy 静态部署模板，供隔离集成测试；daemon 适配器和远控/PWA 客户端尚未完成。见[自托管部署、bootstrap 恢复与路由契约](docs/deploy-remote.md)。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）；真机 PWA/WebAuthn 与独立安全审查门仍待验证。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要。
 
 ## 参与
 

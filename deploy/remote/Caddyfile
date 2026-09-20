@@ -1,0 +1,57 @@
+{
+	admin off
+	http_port 8080
+	https_port 8443
+	email {$ACME_EMAIL}
+	servers {
+		max_header_size 16KB
+		timeouts {
+			read_header 10s
+			read_body 15s
+			idle 60s
+		}
+	}
+	log default {
+		output discard
+	}
+}
+
+{$RELAY_DOMAIN} {
+	tls {
+		protocols tls1.2 tls1.3
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Cache-Control no-store
+		-Server
+	}
+	import /etc/caddy/csp.caddy
+	route {
+		@query expression `{http.request.uri.query} != ""`
+		respond @query 400
+		@relay path /v1/relay/host /v1/relay/device /v1/relay/bootstrap /v1/pair/mailbox
+		handle @relay {
+			request_body {
+				max_size 90000
+			}
+			reverse_proxy relay:8080 {
+				header_up X-Real-IP {remote_host}
+				header_up -X-Forwarded-For
+			}
+		}
+		@private path /v1/* /__local-api /__local-api/* /@vite/* /src/* /healthz
+		handle @private {
+			respond 404
+		}
+		handle {
+			root * /srv
+			@immutable path /_app/immutable/*
+			header @immutable Cache-Control "public, max-age=31536000, immutable"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}

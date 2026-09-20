@@ -1,0 +1,17 @@
+{
+  "name": "@real-bot/relay",
+  "license": "MIT",
+  "private": true,
+  "version": "0.1.0-rc.2",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "start": "bun src/main.ts",
+    "build": "bun build --target bun src/main.ts --outdir dist",
+    "test": "bun test test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke:serve": "bun test/browser/serve.ts"
+  },
+  "dependencies": { "@real-bot/remote": "workspace:*" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^6.0.3" }
+}
