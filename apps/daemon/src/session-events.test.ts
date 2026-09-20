@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { RuntimeSnapshot, SequencedEvent, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
 import { createLocalApi } from "./local-api";
 import { EVENT_RING_BYTES, EVENT_RING_COUNT, EventStream } from "./session-events";
@@ -41,6 +44,23 @@ async function harness(endpointKey?: EndpointKeyStore) {
 }
 
 const removed = (id: string) => ({ event: "routine.removed" as const, occurred_at: "now", id });
+
+function replayProviderSettings(before: RuntimeSnapshot, events: SequencedEvent[]) {
+  let settings = before.settings;
+  const providers = new Map(before.providers.map((provider) => [provider.id, provider]));
+  for (const { payload } of events) {
+    if (payload.event === "settings.changed") {
+      const { event: _event, occurred_at: _at, ...row } = payload;
+      settings = row;
+    } else if (payload.event === "provider.upsert") {
+      const { event: _event, occurred_at: _at, ...row } = payload;
+      providers.set(row.id, row);
+    } else if (payload.event === "provider.removed") {
+      providers.delete(payload.id);
+    }
+  }
+  return { settings, providers: [...providers.values()] };
+}
 
 describe("event ring", () => {
   test("new instances use independent 16-byte random cursors; duplicates replay with the same seq", () => {
@@ -202,6 +222,55 @@ describe("commit / subscribe / snapshot barrier", () => {
     expect(after.providers[0]!.name).toBe("committed");
     expect(after.providers[0]!.key_set).toBe(false);
     expect(after.watermark_seq).toBeGreaterThan(before.watermark_seq);
+  });
+
+  test("provider-only HTTP commits publish derived settings equal to a fresh snapshot", async () => {
+    const keys = new Map<string | undefined, string>();
+    const h = await harness({
+      async get(name) { return keys.get(name) ?? null; },
+      async set(value, name) { keys.set(name, value); },
+      async delete(name) { keys.delete(name); },
+    });
+    const workspace = mkdtempSync(join(tmpdir(), "rc01-derived-"));
+    closes.push(async () => rmSync(workspace, { recursive: true, force: true }));
+    await h.store.patchSettings({ workspace_path: workspace });
+    await h.store.createProvider({ name: "default", base_url: "" });
+    const secondary = await h.store.createProvider({ name: "secondary", base_url: "", api_key: "fixture" });
+    const before = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(before.settings.wizard_complete).toBe(false);
+    const response = await fetch(`${h.origin}/v1/providers/${secondary.id}`, {
+      method: "PATCH", headers: { Authorization: "Bearer fixture", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://fixture.invalid" }),
+    });
+    expect(response.status).toBe(200);
+    const catchup = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${before.event_instance_id}&after_seq=${before.watermark_seq}`);
+    const replica = replayProviderSettings(before, catchup.events);
+    const after = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(replica.settings).toEqual(after.settings);
+    expect(replica.settings.wizard_complete).toBe(true);
+    expect(replica.providers).toEqual(after.providers);
+  });
+
+  test("provider commit before keychain failure still converges derived default settings", async () => {
+    const h = await harness({ async get() { return null; }, async set() { throw new Error("locked"); }, async delete() {} });
+    const before = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    await expect(h.store.createProvider({ name: "committed", base_url: "https://fixture.invalid", api_key: "fixture", models: ["model-a"] })).rejects.toThrow("locked");
+    const catchup = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${before.event_instance_id}&after_seq=${before.watermark_seq}`);
+    const replica = replayProviderSettings(before, catchup.events);
+    const after = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(replica.settings).toEqual(after.settings);
+    expect(replica.settings.endpoint_models).toEqual(["model-a"]);
+    expect(replica.providers).toEqual(after.providers);
+  });
+
+  test("runtime snapshot hydrates session rows only once inside the barrier", async () => {
+    const h = await harness();
+    h.store.createBot({ name: "fixture", duties: "fixture", boundaries: "fixture" });
+    const read = spyOn(h.store, "listSessions");
+    try {
+      expect((await h.get<RuntimeSnapshot>("/v1/snapshot")).sessions).toHaveLength(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    } finally { read.mockRestore(); }
   });
 
   test("auth fails closed, legacy frames remain raw, and two sync clients receive identical events", async () => {

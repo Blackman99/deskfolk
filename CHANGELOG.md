@@ -8,6 +8,9 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Local synchronization
 
+- Session details now wait for their event-stream watermark even when HTTP wins the delivery race. Reconnecting no longer waits for obsolete session requests, and late mutation results or failures cannot revert state or disconnect the replacement connection.
+- Provider-only commits also publish derived settings, keeping setup completion and default-model fields current across clients, including when a later credential operation fails.
+
 - Messenger subscribes before installing a single watermarked snapshot, including memories, routines and Always allow rules. Session switches use the same barrier, preventing updates from disappearing behind a late HTTP response.
 - A per-process random event cursor and a bounded 2,000-event / 16 MiB replay ring detect gaps, overflow and daemon restarts and trigger a fresh snapshot. Durable events now follow SQLite commits, including Bot tools and writes that await Keychain; partial turn text is reconstructed from absolute turn updates rather than replayed tokens.
 - Existing local WebSocket clients keep their original raw frames; the new messenger explicitly negotiates `sync-v1`. This is local synchronization groundwork, not an enabled remote-control transport.

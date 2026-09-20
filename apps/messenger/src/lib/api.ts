@@ -6,7 +6,6 @@ import type {
   SessionSnapshot,
   SyncFrame,
   Bot,
-  ClientEvent,
   CreateBotRequest,
   CreateBotResponse,
   CreateGroupRequest,
@@ -428,16 +427,6 @@ export class LocalApi {
       }
       if ((frame.type === "ready" || frame.type === "resnapshot") && Number.isSafeInteger(frame.watermark_seq) && frame.watermark_seq >= 0) return frame;
       return null;
-    } catch {
-      return null;
-    }
-  }
-
-  parseEvent(raw: string): ClientEvent | null {
-    try {
-      const parsed = JSON.parse(raw) as ClientEvent;
-      if (!parsed || typeof parsed !== "object" || typeof parsed.event !== "string") return null;
-      return parsed;
     } catch {
       return null;
     }

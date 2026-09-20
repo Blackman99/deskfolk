@@ -1,27 +1,20 @@
 import {
   USER_MEMBER,
-  type Bot,
   type ClientEvent,
   type CreateBotRequest,
   type CreateGroupRequest,
-  type McpServer,
-  type Memory,
-  type Message,
   type PatchMemoryRequest,
   type CreateProviderRequest,
   type PatchProviderRequest,
   type ProbeModelsResponse,
-  type Provider,
   type ResolveApprovalRequest,
   type ComposerSuggestion,
   type SearchHit,
   type SessionDetail,
   type SettingsPatch,
-  type Skill,
   type ThinkingLevel,
   type CreateSkillRequest,
   type PatchSkillRequest,
-  type Turn,
 } from "@real-bot/protocol";
 import { ApiError, LocalApi, probeHealth } from "./api.ts";
 import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
@@ -86,13 +79,14 @@ export class MessengerRuntime {
   private historyRevision = 0;
 
   start(): void {
+    if (this.timer) clearTimeout(this.timer);
     this.stopped = false;
     void this.tick();
   }
 
   destroy(): void {
     this.stopped = true;
-    this.teardownSocket();
+    this.markDisconnected();
     if (this.timer) clearTimeout(this.timer);
     this.clearHighlightTimer();
     this.cancelComposerSuggestions();
@@ -269,14 +263,17 @@ export class MessengerRuntime {
       try {
         const detail = await api.sessionSnapshot(id);
         if (this.api !== api || this.sync !== sync) return;
+        const ready = await sync.waitThrough(detail);
+        if (this.api !== api || this.sync !== sync) return;
+        if (!ready) throw new Error("event instance changed");
         const frames = sync.install();
-        if (!frames || !sync.matches(detail)) throw new Error("event gap");
-        for (const frame of frames) this.ingest(frame.payload, true);
+        if (!frames) throw new Error("event gap");
+        for (const frame of frames) this.ingest(frame.payload);
         if (selection !== this.sessionSeq) return;
         this.applySessionDetail(id, { ...detail.session, unread_count: 0 }, detail.judgements);
         for (const frame of frames) {
           if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
-          if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, true);
+          if (frame.seq > detail.watermark_seq) this.ingest(frame.payload);
         }
         if (messageId) {
           await this.ensureMessageLoaded(id, messageId);
@@ -291,29 +288,12 @@ export class MessengerRuntime {
   }
 
   async markSessionRead(id: string): Promise<void> {
-    if (!this.api) return;
+    const api = this.api;
+    if (!api) return;
     try {
-      const detail = await this.api.markSessionRead(id);
-      if (this.sync) return;
-      this.snapshot = {
-        ...this.snapshot,
-        sessions: this.snapshot.sessions.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                last_read_at: detail.last_read_at ?? s.last_read_at ?? null,
-                unread_count: 0,
-              }
-            : s,
-        ),
-      };
+      await api.markSessionRead(id);
     } catch {
-      this.snapshot = {
-        ...this.snapshot,
-        sessions: this.snapshot.sessions.map((s) =>
-          s.id === id ? { ...s, unread_count: 0 } : s,
-        ),
-      };
+      // The selected session is already shown as read; socket failure owns reconnection.
     }
   }
 
@@ -341,16 +321,15 @@ export class MessengerRuntime {
   }
 
   async patchSettings(patch: SettingsPatch): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const settings = await this.api.patchSettings(patch);
-      if (!this.sync) {
-        this.snapshot = { ...this.snapshot, settings };
-        this.syncSettingsDraft(settings);
-      }
+      await api.patchSettings(patch);
+      if (this.api !== api) return null;
       if (patch.endpoint_api_key !== undefined) this.endpointKey = "";
       return null;
     } catch (error) {
+      if (this.api !== api) return null;
       if (error instanceof ApiError && error.status === 422) return error;
       this.markDisconnected();
       return null;
@@ -362,105 +341,104 @@ export class MessengerRuntime {
     apiKey?: string,
     providerId?: string,
   ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> {
-    if (!this.api) return { ok: false, error: "Not connected" };
+    const api = this.api;
+    if (!api) return { ok: false, error: "Not connected" };
     try {
-      const res = await this.api.probeModels({
+      const res = await api.probeModels({
         endpoint_base_url: baseUrl,
         endpoint_api_key: apiKey,
         provider_id: providerId,
       });
+      if (this.api !== api) return { ok: false, error: "Connection changed" };
       return { ok: true, models: res.models, catalog: res.catalog ?? [] };
     } catch (error) {
+      if (this.api !== api) return { ok: false, error: "Connection changed" };
       const msg = error instanceof Error ? error.message : String(error);
       return { ok: false, error: msg };
     }
   }
 
   async createBot(body: CreateBotRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const created = await this.api.createBot(body);
-      this.ingest({
-        event: "bot.upsert",
-        occurred_at: created.bot.updated_at,
-        ...created.bot,
-        deleted_at: null,
-      });
-      this.ingestSession(created.direct_session);
+      const created = await api.createBot(body);
+      if (this.api !== api) return null;
       this.closeSheets();
       await this.selectSession(created.direct_session.id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async createGroup(body: CreateGroupRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const session = await this.api.createGroup(body);
-      this.ingestSession(session);
+      const session = await api.createGroup(body);
+      if (this.api !== api) return null;
       this.closeSheets();
       await this.selectSession(session.id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async createSkill(body: CreateSkillRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const skill = await this.api.createSkill(body);
-      this.ingestSkill(skill);
+      await api.createSkill(body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async patchSkill(id: string, body: PatchSkillRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const skill = await this.api.patchSkill(id, body);
-      this.ingestSkill(skill);
+      await api.patchSkill(id, body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async deleteSkill(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.deleteSkill(id);
-      this.ingest({ event: "skill.removed", occurred_at: new Date().toISOString(), id });
+      await api.deleteSkill(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   /** Correcting a memory, not creating one — the Bot is the only writer. */
   async patchMemory(id: string, body: PatchMemoryRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const memory = await this.api.patchMemory(id, body);
-      this.ingestMemory(memory);
+      await api.patchMemory(id, body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async deleteMemory(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.deleteMemory(id);
-      this.ingest({ event: "memory.removed", occurred_at: new Date().toISOString(), id });
+      await api.deleteMemory(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
@@ -476,111 +454,112 @@ export class MessengerRuntime {
       thinking_level?: ThinkingLevel | null;
     },
   ): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const bot = await this.api.patchBot(id, body);
-      this.ingestBot(bot, null);
+      await api.patchBot(id, body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async archiveBot(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const bot = await this.api.archiveBot(id);
-      this.ingestBot(bot, null);
+      await api.archiveBot(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async restoreBot(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const bot = await this.api.restoreBot(id);
-      this.ingestBot(bot, null);
+      await api.restoreBot(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async deleteBot(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
-    const existing = this.snapshot.bots.find((bot) => bot.id === id);
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.deleteBot(id);
-      if (existing) this.ingestBot(existing, new Date().toISOString());
+      await api.deleteBot(id);
+      if (this.api !== api) return null;
       if (this.profileBotId === id) this.profileBotId = null;
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async patchSession(id: string, body: { name: string }): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const session = await this.api.patchSession(id, body);
-      this.ingestSession(session);
+      await api.patchSession(id, body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async addMember(sessionId: string, botId: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const session = await this.api.addMember(sessionId, botId);
-      this.ingestSession(session);
+      await api.addMember(sessionId, botId);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async removeMember(sessionId: string, botId: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const session = await this.api.removeMember(sessionId, botId);
-      this.ingestSession(session);
+      await api.removeMember(sessionId, botId);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async archiveSession(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const session = await this.api.archiveSession(id);
-      this.ingestSession(session);
+      await api.archiveSession(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async restoreSession(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const session = await this.api.restoreSession(id);
-      this.ingestSession(session);
+      await api.restoreSession(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async deleteSession(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.deleteSession(id);
-      this.ingest({ event: "session.removed", occurred_at: new Date().toISOString(), id });
+      await api.deleteSession(id);
+      if (this.api !== api) return null;
       if (this.selectedId === id) {
         this.selectedId = null;
         this.closeSessionSettings();
@@ -588,15 +567,16 @@ export class MessengerRuntime {
       }
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async clearSessionHistory(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.clearSessionHistory(id);
-      this.ingest({ event: "session.cleared", occurred_at: new Date().toISOString(), id });
+      await api.clearSessionHistory(id);
+      if (this.api !== api) return null;
       if (this.selectedId === id) {
         this.focusedTurnId = null;
         this.setHighlightedMessage(null);
@@ -604,52 +584,40 @@ export class MessengerRuntime {
       }
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async createProvider(body: CreateProviderRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const provider = await this.api.createProvider(body);
-      this.ingestProvider(provider);
-      if (!this.sync) {
-        this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
-        this.syncSettingsDraft(this.snapshot.settings);
-      }
+      await api.createProvider(body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async patchProvider(id: string, body: PatchProviderRequest): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const provider = await this.api.patchProvider(id, body);
-      this.ingestProvider(provider);
-      if (!this.sync) {
-        this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
-        this.syncSettingsDraft(this.snapshot.settings);
-      }
+      await api.patchProvider(id, body);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async deleteProvider(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.deleteProvider(id);
-      this.ingest({ event: "provider.removed", occurred_at: new Date().toISOString(), id });
-      if (!this.sync) {
-        this.snapshot = { ...this.snapshot, settings: await this.api.settings() };
-        this.syncSettingsDraft(this.snapshot.settings);
-      }
+      await api.deleteProvider(id);
       return null;
     } catch (error) {
-      return this.sheetFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
@@ -664,13 +632,13 @@ export class MessengerRuntime {
     enabled: boolean;
     usage_note?: string;
   }): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const server = await this.api.createMcpServer(body);
-      this.ingestMcp(server);
+      await api.createMcpServer(body);
       return null;
     } catch (error) {
-      return this.mcpFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
@@ -688,24 +656,24 @@ export class MessengerRuntime {
       usage_note?: string | null;
     },
   ): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      const server = await this.api.patchMcpServer(id, body);
-      this.ingestMcp(server);
+      await api.patchMcpServer(id, body);
       return null;
     } catch (error) {
-      return this.mcpFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
   async deleteMcpServer(id: string): Promise<ApiError | null> {
-    if (!this.api) return null;
+    const api = this.api;
+    if (!api) return null;
     try {
-      await this.api.deleteMcpServer(id);
-      this.ingest({ event: "mcp.removed", occurred_at: new Date().toISOString(), id });
+      await api.deleteMcpServer(id);
       return null;
     } catch (error) {
-      return this.mcpFailure(error);
+      return this.sheetFailure(error, api);
     }
   }
 
@@ -722,20 +690,17 @@ export class MessengerRuntime {
         attachments: opts?.attachments,
         parentId,
       });
+      if (this.api !== api) return;
       this.draft = "";
       this.replyingToId = null;
       this.pendingFocusTrigger = message.id;
-      this.ingest({
-        event: "message.created",
-        occurred_at: message.created_at,
-        ...message,
-      });
       this.claimFocus(message.id);
     } catch (error) {
+      if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
       this.markDisconnected();
     } finally {
-      this.busy = false;
+      if (this.api === api) this.busy = false;
     }
   }
 
@@ -746,17 +711,13 @@ export class MessengerRuntime {
     if (!api || !id || !text || this.busy) return;
     this.busy = true;
     try {
-      const message = await api.postMessage(id, text, { askId });
-      this.ingest({
-        event: "message.created",
-        occurred_at: message.created_at,
-        ...message,
-      });
+      await api.postMessage(id, text, { askId });
     } catch (error) {
+      if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
       this.markDisconnected();
     } finally {
-      this.busy = false;
+      if (this.api === api) this.busy = false;
     }
   }
 
@@ -777,7 +738,8 @@ export class MessengerRuntime {
   }
 
   async stopTurn(): Promise<void> {
-    if (!this.api || this.connection !== "connected") return;
+    const api = this.api;
+    if (!api || this.connection !== "connected") return;
     const selected = this.snapshot.sessions.find((session) => session.id === this.selectedId);
     const turnId = stopTarget(
       this.snapshot.turns,
@@ -787,28 +749,25 @@ export class MessengerRuntime {
     );
     if (!turnId) return;
     try {
-      await this.api.stop(turnId);
+      await api.stop(turnId);
     } catch {
-      this.markDisconnected();
+      if (this.api === api) this.markDisconnected();
     }
   }
 
   async continueInterrupt(messageId: string): Promise<void> {
-    if (!this.api || this.connection !== "connected" || this.busy) return;
+    const api = this.api;
+    if (!api || this.connection !== "connected" || this.busy) return;
     this.busy = true;
     try {
-      const turn = await this.api.continueInterrupt(messageId);
-      this.ingest({
-        event: "turn.upsert",
-        occurred_at: turn.created_at,
-        ...turn,
-      });
-      this.focusedTurnId = turn.id;
+      const turn = await api.continueInterrupt(messageId);
+      if (this.api === api) this.focusedTurnId = turn.id;
     } catch (error) {
+      if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
       this.markDisconnected();
     } finally {
-      this.busy = false;
+      if (this.api === api) this.busy = false;
     }
   }
 
@@ -817,24 +776,21 @@ export class MessengerRuntime {
     action: ResolveApprovalRequest["action"],
     apiKey?: string,
   ): Promise<ApiError | null> {
-    if (!this.api || this.busy) return null;
+    const api = this.api;
+    if (!api || this.busy) return null;
     this.busy = true;
     try {
       const body: ResolveApprovalRequest = { action };
       if (typeof apiKey === "string" && apiKey.length > 0) body.api_key = apiKey;
-      const row = await this.api.resolveApproval(id, body);
-      this.ingest({
-        event: "approval.upsert",
-        occurred_at: row.resolved_at ?? row.created_at,
-        ...row,
-      });
+      await api.resolveApproval(id, body);
       return null;
     } catch (error) {
+      if (this.api !== api) return null;
       if (error instanceof ApiError && (error.status === 422 || error.status === 409)) return error;
       this.markDisconnected();
       return null;
     } finally {
-      this.busy = false;
+      if (this.api === api) this.busy = false;
     }
   }
 
@@ -897,7 +853,7 @@ export class MessengerRuntime {
   }
 
   private async connect(endpoint: LocalEndpoint): Promise<void> {
-    this.teardownSocket();
+    this.markDisconnected();
     const api = new LocalApi(endpoint);
     const sync = new EventSync();
     this.api = api;
@@ -909,14 +865,14 @@ export class MessengerRuntime {
     if (!frames) throw new Error("event gap during snapshot");
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.syncSettingsDraft(snapshot.settings);
-    for (const frame of frames) this.ingest(frame.payload, true);
+    for (const frame of frames) this.ingest(frame.payload);
     this.endpointKey = "";
     this.connection = "connected";
     this.focusedTurnId = null;
     this.pendingFocusTrigger = null;
     const selected = this.selectedId;
     if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
-      await this.selectSession(selected);
+      void this.selectSession(selected);
     } else if (selected) {
       this.selectedId = null;
     }
@@ -952,7 +908,7 @@ export class MessengerRuntime {
           this.markDisconnected();
           return;
         }
-        for (const event of frames) this.ingest(event.payload, true);
+        for (const event of frames) this.ingest(event.payload);
       });
       ws.addEventListener("close", () => {
         clearTimeout(timeout);
@@ -960,35 +916,6 @@ export class MessengerRuntime {
         if (this.ws === ws) this.markDisconnected();
       });
       ws.addEventListener("error", () => ws.close());
-    });
-  }
-
-  private ingestBot(bot: Bot, deletedAt: string | null): void {
-    this.ingest({
-      event: "bot.upsert",
-      occurred_at: bot.updated_at,
-      ...bot,
-      deleted_at: deletedAt,
-    });
-  }
-
-  private ingestSkill(skill: Skill): void {
-    this.ingest({
-      event: "skill.upsert",
-      occurred_at: skill.updated_at,
-      ...skill,
-    });
-  }
-
-  private ingestMemory(memory: Memory): void {
-    this.ingest({ event: "memory.upsert", occurred_at: memory.updated_at, ...memory });
-  }
-
-  private ingestProvider(provider: Provider): void {
-    this.ingest({
-      event: "provider.upsert",
-      occurred_at: provider.updated_at,
-      ...provider,
     });
   }
 
@@ -1004,19 +931,8 @@ export class MessengerRuntime {
     this.endpointDefaultModel = settings.endpoint_default_model ?? "";
   }
 
-  private ingestMcp(server: McpServer): void {
-    this.ingest({
-      event: "mcp.upsert",
-      occurred_at: server.updated_at,
-      ...server,
-    });
-  }
-
-  private mcpFailure(error: unknown): ApiError | null {
-    return this.sheetFailure(error);
-  }
-
-  private sheetFailure(error: unknown): ApiError | null {
+  private sheetFailure(error: unknown, api: LocalApi): ApiError | null {
+    if (this.api !== api) return null;
     if (
       error instanceof ApiError &&
       (error.status === 422 || error.status === 404 || error.status === 409)
@@ -1092,26 +1008,7 @@ export class MessengerRuntime {
     };
   }
 
-  private ingestSession(session: SessionDetail): void {
-    this.ingest({
-      event: "session.upsert",
-      occurred_at: session.updated_at,
-      id: session.id,
-      kind: session.kind,
-      name: session.name,
-      last_read_at: session.last_read_at ?? null,
-      archived_at: session.archived_at ?? null,
-      origin_session_id: session.origin_session_id ?? null,
-      origin_message_id: session.origin_message_id ?? null,
-      created_at: session.created_at,
-      updated_at: session.updated_at,
-      participants: session.participants,
-      unread_count: session.unread_count ?? 0,
-    });
-  }
-
-  private ingest(event: ClientEvent, fromStream = false): void {
-    if (this.sync && !fromStream) return;
+  private ingest(event: ClientEvent): void {
     if (event.event === "session.cleared" || event.event === "session.removed") this.historyRevision++;
     if (event.event === "session.removed") {
       if (this.selectedId === event.id) {
@@ -1177,8 +1074,11 @@ export class MessengerRuntime {
     this.connection = "disconnected";
     this.teardownSocket();
     this.api = null;
+    this.sync?.close();
     this.sync = null;
+    this.sessionLoad = Promise.resolve();
     this.sessionSeq++;
+    this.busy = false;
     this.closeSheets();
     this.searchHits = [];
     this.composerSuggestions = [];

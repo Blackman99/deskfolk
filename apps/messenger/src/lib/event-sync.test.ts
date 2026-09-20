@@ -41,6 +41,19 @@ describe("snapshot event barrier", () => {
     expect(sync.install()).toEqual([event(5), event(6)]);
     expect(sync.receive(event(7))).toEqual([event(7)]);
   });
+  test("detail watermark waits are cancelled on close and never skip global gaps", async () => {
+    const sync = new EventSync();
+    sync.install(cursor()); sync.pause();
+    const ready = sync.waitThrough(cursor(2));
+    sync.receive(event(2));
+    expect(await ready).toBe(true);
+    expect(sync.install()).toBeNull();
+    const closed = new EventSync();
+    closed.install(cursor()); closed.pause();
+    const cancelled = closed.waitThrough(cursor(4));
+    closed.close();
+    expect(await cancelled).toBe(false);
+  });
   test("negotiates sync-v1 and rejects unsafe cursors, raw or ephemeral frames", () => {
     const api = new LocalApi({ origin: "http://127.0.0.1:17891", token: "fixture" });
     expect(JSON.parse(api.authFrame()).protocol).toBe("sync-v1");

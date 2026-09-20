@@ -50,7 +50,7 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   const sessions = listSessions(ctx);
   for (const { entity, id } of unique.values()) {
     switch (entity) {
-      case "settings": out.push({ event: "settings.changed", occurred_at, ...settingsCached(ctx) }); break;
+      case "settings": break;
       case "bots": {
         const row = ctx.db.query<BotRow, [string]>("SELECT * FROM bots WHERE id = ?").get(id);
         if (row) out.push({ event: "bot.upsert", occurred_at, ...toBot(row), deleted_at: row.deleted_at });
@@ -115,6 +115,10 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         break;
       }
     }
+  }
+  // Provider rows also determine default-model fields and wizard completion.
+  if (changes.some((change) => change.entity === "settings" || change.entity === "providers")) {
+    out.push({ event: "settings.changed", occurred_at, ...settingsCached(ctx) });
   }
   // Deleting a Bot hides its directs even though the session rows remain.
   if (changes.some((c) => c.entity === "bots")) {

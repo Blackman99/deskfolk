@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { emptySnapshot } from "./snapshot.ts";
-import { aBot, aDirect, aMessage } from "./test-fixtures.ts";
+import { aBot, aDirect, aMessage, aTurn } from "./test-fixtures.ts";
 
 const instance = "a".repeat(32);
 const cursor = { event_instance_id: instance, watermark_seq: 0 };
@@ -27,8 +27,25 @@ class Socket extends EventTarget {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+async function reconnect(runtime: MessengerRuntime, initial: RuntimeSnapshot, detailRead?: () => Promise<SessionSnapshot>) {
+  const old = runtime.client;
+  Socket.current.close();
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === "/__local-api") return Response.json({ port: 17891, token: "fixture" });
+    if (path.endsWith("/v1/health")) return Response.json({ ok: true, name: "real-bot" });
+    if (path.endsWith("/v1/snapshot")) return Response.json(initial);
+    if (path.endsWith("/snapshot") && detailRead) return Response.json(await detailRead());
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  // Drive the actual discovery/connect path without waiting for the retry timer.
+  runtime.start();
+  await until(() => runtime.connection === "connected" && runtime.client !== old);
 }
 
 async function connected(snapshotRead?: () => Promise<RuntimeSnapshot>) {
@@ -96,6 +113,135 @@ test("late session detail cannot erase events or changes in other sessions", asy
   expect(runtime.snapshot.messages.map((m) => m.body)).toEqual([message.body]);
   expect(runtime.snapshot.bots[0]!.name).toBe("changed elsewhere");
   expect(runtime.connection).toBe("connected");
+});
+
+for (const lateClear of [false, true]) test(`HTTP detail ahead of WebSocket waits through its watermark (${lateClear ? "clear" : "reaction"})`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const message = aMessage({ session_id: "direct-1", id: lateClear ? "post-clear" : "msg-1", reactions: [{ message_id: "msg-1", actor: "user", emoji: "👍", created_at: "now" }] });
+  const response = deferred<void>();
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).endsWith("/snapshot")) {
+      response.resolve();
+      return Response.json({ ...cursor, watermark_seq: 2, session: { ...aDirect(), messages: { items: [message], next: null }, turns: [] }, judgements: [] });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const selected = runtime.selectSession("direct-1");
+  await response.promise;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: lateClear
+    ? { event: "session.cleared", id: "direct-1", occurred_at: "now" }
+    : { ...message, reactions: [], event: "message.upsert", occurred_at: "now" } });
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 2, payload: { ...aBot({ name: "unrelated update" }), event: "bot.upsert", deleted_at: null, occurred_at: "now" } });
+  await selected;
+  expect(runtime.snapshot.messages.map((m) => m.id)).toEqual([message.id]);
+  expect(runtime.snapshot.messages[0]!.reactions).toHaveLength(1);
+  expect(runtime.snapshot.bots[0]!.name).toBe("unrelated update");
+  expect(runtime.connection).toBe("connected");
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 3, payload: { ...message, body: "after watermark", event: "message.upsert", occurred_at: "now" } });
+  expect(runtime.snapshot.messages[0]!.body).toBe("after watermark");
+});
+
+test("reconnect loads detail before an obsolete request finishes", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  const old = deferred<SessionSnapshot>();
+  const requested = deferred<void>();
+  globalThis.fetch = (async () => { requested.resolve(); return Response.json(await old.promise); }) as typeof fetch;
+  const selection = runtime.selectSession("direct-1");
+  await requested.promise;
+  const replacement = aMessage({ id: "replacement", session_id: "direct-1" });
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [replacement], next: null }, turns: [] }, judgements: [] }));
+  await until(() => runtime.snapshot.messages.some((m) => m.id === replacement.id));
+  old.resolve({ ...cursor, session: { ...aDirect(), messages: { items: [aMessage()], next: null }, turns: [] }, judgements: [] });
+  await selection;
+  expect(runtime.snapshot.messages.map((m) => m.id)).toEqual([replacement.id]);
+});
+
+test("old mutation success after disconnect cannot revert stream state", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const pending = deferred<Response>();
+  globalThis.fetch = (() => pending.promise) as typeof fetch;
+  const mutation = runtime.patchBot("bot-1", { name: "old" });
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aBot({ name: "newest" }), event: "bot.upsert", deleted_at: null, occurred_at: "now" } });
+  Socket.current.close();
+  pending.resolve(Response.json(aBot({ name: "old" })));
+  await mutation;
+  expect(runtime.snapshot.bots[0]!.name).toBe("newest");
+});
+
+test("old mutation failure after reconnect cannot disconnect the replacement", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  const pending = deferred<Response>();
+  globalThis.fetch = (() => pending.promise) as typeof fetch;
+  const mutation = runtime.patchBot("bot-1", { name: "old" });
+  await reconnect(runtime, initial);
+  const replacement = runtime.client;
+  pending.reject(new Error("old transport failed"));
+  await mutation;
+  expect(runtime.connection).toBe("connected");
+  expect(runtime.client).toBe(replacement);
+});
+
+for (const operation of ["create", "settings", "clear", "continue", "send"] as const) test(`obsolete ${operation} success leaves replacement UI state untouched`, async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "direct-1";
+  runtime.draft = "original draft";
+  const pending = deferred<Response>();
+  globalThis.fetch = (() => pending.promise) as typeof fetch;
+  const mutation = operation === "create" ? runtime.createBot({ name: "old", duties: "fixture", boundaries: "fixture" })
+    : operation === "settings" ? runtime.patchSettings({ endpoint_api_key: "old" })
+    : operation === "clear" ? runtime.clearSessionHistory("direct-1")
+    : operation === "continue" ? runtime.continueInterrupt("message-1") : runtime.send();
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  runtime.draft = "replacement draft";
+  runtime.endpointKey = "replacement key";
+  runtime.focusedTurnId = "replacement turn";
+  runtime.highlightedMessageId = "replacement highlight";
+  runtime.settingsOpen = true;
+  runtime.busy = true;
+  const replacement = runtime.client;
+  const body = operation === "create" ? { bot: aBot(), direct_session: { ...aDirect(), id: "old-created" } }
+    : operation === "continue" ? aTurn({ id: "old-turn" })
+    : operation === "send" ? aMessage() : initial.settings;
+  pending.resolve(Response.json(body));
+  await mutation;
+  expect(runtime.client).toBe(replacement);
+  expect(runtime.connection).toBe("connected");
+  expect(runtime.selectedId).toBe("direct-1");
+  expect(runtime.draft).toBe("replacement draft");
+  expect(runtime.endpointKey).toBe("replacement key");
+  expect(runtime.focusedTurnId).toBe("replacement turn");
+  expect(runtime.highlightedMessageId).toBe("replacement highlight");
+  expect(runtime.settingsOpen).toBe(true);
+  expect(runtime.busy).toBe(true);
+});
+
+for (const operation of ["settings", "stop", "continue", "approval", "ask", "send"] as const) test(`obsolete ${operation} failure does not disconnect or unlock replacement work`, async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "direct-1";
+  runtime.draft = "original draft";
+  runtime.snapshot.turns = [aTurn({ session_id: "direct-1", status: "running" })];
+  const pending = deferred<Response>();
+  globalThis.fetch = (() => pending.promise) as typeof fetch;
+  const mutation = operation === "settings" ? runtime.patchSettings({ theme: "dark" })
+    : operation === "stop" ? runtime.stopTurn()
+    : operation === "continue" ? runtime.continueInterrupt("message-1")
+    : operation === "approval" ? runtime.resolveApproval("approval-1", "allow_once")
+    : operation === "ask" ? runtime.sendAsk("ask-1", "answer") : runtime.send();
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  const replacement = runtime.client;
+  runtime.busy = true;
+  pending.reject(new Error("obsolete transport"));
+  await mutation;
+  expect(runtime.connection).toBe("connected");
+  expect(runtime.client).toBe(replacement);
+  expect(runtime.busy).toBe(true);
 });
 
 test("clear history during a paginated search never resurrects deleted messages", async () => {

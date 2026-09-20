@@ -126,9 +126,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     return { ...turn, partial_text: turn.partial_text ?? engine.partialText(turn.id) };
   }
 
-  function snapshotSessions() {
+  function snapshotSessions(sessions: RuntimeSnapshot["sessions"]) {
     const pending = engine.pendingJudgements();
-    return options.store.listSessions().map((session) => ({
+    return sessions.map((session) => ({
       ...session,
       live_turns: session.live_turns?.map(withPartial),
       pending_judgements: pending.filter((row) => row.session_id === session.id),
@@ -197,11 +197,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       let response: Response;
       if (request.method === "GET" && path === "/v1/snapshot") {
         await options.store.hydrateSnapshot();
-        const snapshot = options.store.db.transaction((): RuntimeSnapshot => ({
-          ...options.store.readSnapshot(),
-          sessions: snapshotSessions(),
-          ...events.cursor(),
-        }))();
+        const snapshot = options.store.db.transaction((): RuntimeSnapshot => {
+          const state = options.store.readSnapshot();
+          return { ...state, sessions: snapshotSessions(state.sessions), ...events.cursor() };
+        })();
         response = jsonResponse(snapshot, 200, null);
       } else if (request.method === "GET" && matchPath(path, "/v1/sessions/:id/snapshot")) {
         const id = matchPath(path, "/v1/sessions/:id/snapshot")!.id!;

@@ -10,9 +10,31 @@ export class EventSync {
   private bytes = 0;
   private buffering = true;
   private invalid = false;
+  private waiter: { cursor: EventCursor; resolve: (ready: boolean) => void } | null = null;
 
-  matches(cursor: EventCursor): boolean {
-    return this.cursor?.event_instance_id === cursor.event_instance_id;
+  /** HTTP can overtake WebSocket; install detail only after its global prefix has arrived. */
+  waitThrough(cursor: EventCursor): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.waiter = { cursor, resolve };
+      this.wake();
+    });
+  }
+
+  close(): void {
+    this.invalid = true;
+    this.buffer = [];
+    this.wake();
+  }
+
+  private wake(): void {
+    const waiting = this.waiter;
+    if (!waiting) return;
+    const valid = !this.invalid && this.cursor?.event_instance_id === waiting.cursor.event_instance_id;
+    const received = Math.max(this.cursor?.watermark_seq ?? 0, this.buffer.at(-1)?.seq ?? 0);
+    if (!valid || received >= waiting.cursor.watermark_seq) {
+      this.waiter = null;
+      waiting.resolve(valid);
+    }
   }
 
   pause(): void {
@@ -21,19 +43,23 @@ export class EventSync {
 
   receive(frame: SyncFrame): SequencedEvent[] | null {
     if (frame.type === "resnapshot") {
-      this.invalid = true;
+      this.close();
       return null;
     }
     if (frame.type === "ready") return [];
     if (this.invalid) return null;
+    if (this.cursor && frame.event_instance_id !== this.cursor.event_instance_id) {
+      this.close();
+      return null;
+    }
     if (this.buffering) {
       this.bytes += new TextEncoder().encode(JSON.stringify(frame)).length;
       if (this.buffer.length >= MAX_BUFFER_COUNT || this.bytes > MAX_BUFFER_BYTES) {
-        this.invalid = true;
-        this.buffer = [];
+        this.close();
         return null;
       }
       this.buffer.push(frame);
+      this.wake();
       return [];
     }
     return this.advance(frame);
