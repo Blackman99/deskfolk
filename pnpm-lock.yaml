@@ -127,6 +127,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.11.4
+      '@types/bun':
+        specifier: 1.4.2
+        version: 1.4.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

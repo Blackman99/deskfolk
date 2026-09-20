@@ -33,6 +33,8 @@
 
 ## Get it
 
+**System requirement: macOS 13.0 (Ventura) or later**, on Apple silicon or Intel. Current builds bundle the daemon and native helper; published bundles do not require an installed Bun runtime.
+
 **Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. If Gatekeeper blocks the first launch, right-click → Open, or run:
 
 ```bash
@@ -43,7 +45,7 @@ More detail: [Gatekeeper FAQ](docs/gatekeeper.md) · notarization path: [docs/no
 
 **Updates:** the app checks GitHub Releases in the background and shows a dot on the settings gear when a newer build exists. Settings → General → About lists the current version and opens the matching `.dmg` in your browser; while builds are unsigned there is no in-app installer.
 
-**Run from source** (macOS, Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
+**Run from source** (macOS 13.0+, Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
 
 ```bash
 cd real-bot

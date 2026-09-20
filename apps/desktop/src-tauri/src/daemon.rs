@@ -1,21 +1,34 @@
-//! Spawn the TypeScript daemon as a sibling process (not a sidecar).
-//! `externalBin` stays empty. The window only starts a daemon when it is
-//! supervising and `GET /v1/health` is not already us.
+//! Spawn the bundled daemon in releases, or source Bun in explicit development.
+//! The window starts it only while supervising and no runtime is listening.
 
 #[cfg(test)]
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
-pub fn spawn() -> Option<Child> {
-    let (bun, main_ts, cwd) = launch_spec()?;
-    let mut cmd = Command::new(bun);
-    if watch_daemon() {
-        cmd.arg("--watch");
-    }
-    cmd.arg(&main_ts)
-        .current_dir(cwd)
-        .stdin(Stdio::null())
+pub fn spawn(resources: &std::path::Path) -> Option<Child> {
+    let mut cmd = if cfg!(debug_assertions)
+        || std::env::var("REAL_BOT_SOURCE_DAEMON").as_deref() == Ok("1")
+    {
+        let (bun, main_ts, cwd) = launch_spec()?;
+        let mut cmd = Command::new(bun);
+        if watch_daemon() {
+            cmd.arg("--watch");
+        }
+        cmd.arg(&main_ts).current_dir(cwd);
+        cmd
+    } else {
+        let path = super::remote_native::native_dir(resources).join("real-bot-daemon");
+        if !path.is_file() {
+            return None;
+        }
+        let mut cmd = Command::new(path);
+        cmd.env_remove("BUN_BE_BUN")
+            .env_remove("BUN_OPTIONS")
+            .env_remove("NODE_OPTIONS");
+        cmd
+    };
+    cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit());
     if let Ok(dir) = std::env::var("REAL_BOT_DATA_DIR") {

@@ -14,6 +14,13 @@
 - 修复 Buffer 密钥别名：握手失败、Split 和关闭不再擦除调用方身份或破坏并发会话；二进制解码正确处理 Buffer 视图偏移。WebAuthn 同时拒绝非法 JSON 语法及重复字段。共享回执摘要加入规范条件头（含 If-Match），允许同名附件并按文件名字节、内容摘要排序；此前未发布摘要不兼容。内部辅助函数不再公开，HKDF/字节编码复用已钉定 Noble。远控、真机与审计门不变，仍默认关闭。
 - 新增浏览器/Bun 共用的远控密码原型：钉扎身份与签名 Hello 的 Noise IK、有界加密帧、配对授权、中继挑战证明、规范回执摘要，以及绑定完整操作、一次性 challenge 的真实 COSE/WebAuthn 验证。通过官方协议向量及独立 Rust snow 对端检验。远控运输与公网配对仍是提案、默认关闭：真机 PWA/WebAuthn 与独立安全复核尚未通过。接口见[协议契约](docs/remote-protocol.md)。
 
+### 原生远控基础
+
+- 桌面及根类型检查覆盖原生打包脚本，PR CI 的 macOS 任务运行 stock runtime 不合格回归；不启用远控凭据。
+- 应用包元数据要求 macOS 13.0+，打包时检查必需原生产物的最低系统版本。本机确认 IPC 拒绝开发页、远程页和产物文档；认证和存储后只报告证明剩余有效期。macOS CI 与发布验证增加无凭据 Swift fixture；stock Bun 仍未合格，远控能力保持禁用。
+- 新增 Swift Security/LocalAuthentication helper、双向鉴权的版本化本机 socket、绑定动作的一次性 Mac 确认，以及 daemon 的窄原生凭据读取/高水位更新接口。远控凭据使用不同步、仅本设备的数据保护钥匙串共享组，不混用不兼容的旧式 ACL 属性。
+- 打包 helper、原生库与编译 daemon；发布版不再依赖 PATH Bun，除非显式选择源码模式。远控/独立模式仍禁用：稳定签名、封闭运行时（拒绝 stock Bun 的解释器逃逸）、合法共享 entitlement 与干净 Mac 的 G-pack 验收仍未完成。源码开发没有自动通过的认证回退。
+
 ### Daemon
 
 - `read_file`（以及除 `write_file` 以外的其他工作区工具）不再把路径记成消息附件。Bot 只读过的路径是输入；只有写出来的才成为这条消息上的产物。

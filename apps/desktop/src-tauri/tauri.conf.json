@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm --filter @real-bot/messenger dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm --filter @real-bot/messenger build",
+    "beforeBuildCommand": "pnpm --filter @real-bot/messenger build && pnpm --filter @real-bot/desktop build:native",
     "frontendDist": "../../messenger/build"
   },
   "app": {
@@ -27,7 +27,9 @@
     "active": true,
     "targets": "all",
     "externalBin": [],
+    "resources": { "native/": "native/" },
     "macOS": {
+      "minimumSystemVersion": "13.0",
       "signingIdentity": "-"
     },
     "icon": [
