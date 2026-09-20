@@ -32,7 +32,10 @@ export type RouteLogRow = {
   triggerMessageId: string;
   model: string;
   providerName: string | null;
+  thinkingLevel: string;
   thinkingLabel: string;
+  /** Message kind the choice was made for (`coding` / `writing` / …). */
+  signature: string;
   signatureLabel: string;
   outcome: RouteOutcomeKind;
   outcomeLabel: string;
@@ -83,7 +86,9 @@ export function routeLogRows(
       triggerMessageId: record.trigger_message_id,
       model: record.model,
       providerName: record.provider_id ? (providerNames.get(record.provider_id) ?? null) : null,
+      thinkingLevel: record.thinking_level,
       thinkingLabel: labels.thinking[record.thinking_level] ?? record.thinking_level,
+      signature: record.signature,
       signatureLabel: labels.signature[record.signature] ?? record.signature,
       outcome,
       outcomeLabel: labels.outcome[outcome],

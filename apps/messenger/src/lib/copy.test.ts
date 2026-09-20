@@ -426,6 +426,11 @@ test("the model choice log names the log, the outcomes and the message kinds in 
   expect(COPY.zh.routes.subtitle("视频组", 383)).toBe("视频组 · 383 轮");
   expect(COPY.en.routes.subtitle("Writer", 1)).toBe("Writer · 1 turn");
   expect(COPY.en.routes.subtitle("Writer", 2)).toBe("Writer · 2 turns");
+  expect(COPY.zh.routes.subtitleFiltered("视频组", 4, 383)).toBe("视频组 · 4 / 383 轮");
+  expect(COPY.en.routes.subtitleFiltered("Writer", 1, 2)).toBe("Writer · 1 of 2 turns");
+  expect(COPY.zh.routes.filterFeedback).toBe("有反馈");
+  expect(COPY.en.routes.filterBlamed).toBe("Model blamed");
+  expect(COPY.zh.routes.filterNoMatch).toBe("没有匹配的记录");
   expect(COPY.en.routes.title).toBe("Model choice log");
   expect(COPY.zh.routes.none).toBe("还没有模型选择记录。");
   expect(COPY.en.routes.none).toBe("No model choices yet.");

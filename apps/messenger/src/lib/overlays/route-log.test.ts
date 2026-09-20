@@ -73,7 +73,9 @@ test("a finished choice reads as bot, model, thinking level, kind and how it end
   expect(row.botName).toBe("Writer");
   expect(row.botKnown).toBe(true);
   expect(row.model).toBe("gpt-5");
+  expect(row.thinkingLevel).toBe("medium");
   expect(row.thinkingLabel).toBe("中");
+  expect(row.signature).toBe("coding");
   expect(row.signatureLabel).toBe("写代码");
   expect(row.outcome).toBe("completed");
   expect(row.outcomeLabel).toBe("干净完成");
