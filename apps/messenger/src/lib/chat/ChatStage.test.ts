@@ -61,14 +61,28 @@ test("left clicking a message does not add is-selected class, right clicking sel
   flushSync();
   expect(botSegment.classList.contains("is-selected")).toBe(false);
 
+  // Check dimensions before selection
+  const beforePadding = window.getComputedStyle(botSegment).padding;
+  const beforeMargin = window.getComputedStyle(botSegment).margin;
+
   // Right click on bot message should select it and open context menu
   botSegment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
   flushSync();
   expect(botSegment.classList.contains("is-selected")).toBe(true);
   expect(host.querySelector(".msg-context-menu")).not.toBeNull();
 
+  // Padding and margin must not change when selected (no shaking / layout shift)
+  const afterPadding = window.getComputedStyle(botSegment).padding;
+  const afterMargin = window.getComputedStyle(botSegment).margin;
+  expect(afterPadding).toBe(beforePadding);
+  expect(afterMargin).toBe(beforeMargin);
+
   // Wait for context menu event listeners to attach
   await new Promise((resolve) => setTimeout(resolve, 20));
+
+  // Context menu must remain open after attaching listeners (no flickering/auto-dismiss)
+  expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+  expect(botSegment.classList.contains("is-selected")).toBe(true);
 
   // Press Escape to close context menu and deselect
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

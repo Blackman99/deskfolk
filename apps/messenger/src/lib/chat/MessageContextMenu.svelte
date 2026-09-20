@@ -75,9 +75,53 @@
 				}
 			}
 
+			const recordedScroll = new Map<EventTarget, { top: number; left: number }>();
+			function getScroll(target: EventTarget) {
+				if (target instanceof Element) {
+					return { top: target.scrollTop, left: target.scrollLeft };
+				}
+				if (target instanceof Document || target === window) {
+					return { top: window.scrollY, left: window.scrollX };
+				}
+				return null;
+			}
+			function recordTarget(target: EventTarget | null) {
+				if (!target) return;
+				const pos = getScroll(target);
+				if (pos) recordedScroll.set(target, pos);
+			}
+
+			recordTarget(window);
+			recordTarget(document);
+			if (typeof document !== 'undefined' && document.scrollingElement) {
+				recordTarget(document.scrollingElement);
+			}
+			if (typeof document !== 'undefined') {
+				document.querySelectorAll('.stream').forEach((el) => recordTarget(el));
+			}
+
 			function onScroll(e: Event) {
 				if (menuEl && menuEl.contains(e.target as Node)) return;
-				onClose();
+				const target = e.target;
+				if (!target) {
+					onClose();
+					return;
+				}
+				const current = getScroll(target);
+				if (!current) {
+					onClose();
+					return;
+				}
+				const initial = recordedScroll.get(target);
+				if (!initial) {
+					recordedScroll.set(target, current);
+					return;
+				}
+				const deltaY = Math.abs(current.top - initial.top);
+				const deltaX = Math.abs(current.left - initial.left);
+				if (deltaY > 6 || deltaX > 6) {
+					onClose();
+				}
 			}
 
 			window.addEventListener('pointerdown', onPointerDown);
