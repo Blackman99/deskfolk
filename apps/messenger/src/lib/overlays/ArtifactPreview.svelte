@@ -568,6 +568,10 @@
 					copyLabel={t.chat.copyCode}
 					copiedLabel={t.chat.copied}
 					onOpenArtifact={openMarkdownPath}
+					loadArtifactImage={(path) => {
+						if (!api) return Promise.reject(new Error('API unavailable'));
+						return api.getWorkspaceFileBlob(path);
+					}}
 				/>
 			{:else}
 				<p class="muted">{attachment?.original_filename ?? relpath}</p>

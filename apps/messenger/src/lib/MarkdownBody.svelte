@@ -3,7 +3,7 @@
 	import { markdownCode } from './chat/code-blocks.ts';
 	import { parseMentionHref } from './chat/mention-chips.ts';
 	import { renderMarkdown, type RenderMarkdownOptions } from './markdown.ts';
-	import { parseArtifactHref } from './overlays/artifacts.ts';
+	import { artifactKind, parseArtifactHref } from './overlays/artifacts.ts';
 
 	interface Props {
 		source: string;
@@ -14,6 +14,8 @@
 		inverted?: boolean;
 		class?: string;
 		onOpenArtifact?: (relpath: string) => void;
+		loadArtifactImage?: (relpath: string) => Promise<Blob>;
+		hideStandaloneArtifactLinks?: string[];
 		onOpenProfile?: (botId: string) => void;
 		children?: Snippet;
 	}
@@ -26,6 +28,8 @@
 		inverted = false,
 		class: className = '',
 		onOpenArtifact,
+		loadArtifactImage,
+		hideStandaloneArtifactLinks = [],
 		onOpenProfile,
 		children
 	}: Props = $props();
@@ -67,18 +71,77 @@
 		}
 	}
 
+	function hideDuplicateArtifactLinks(node: HTMLElement): void {
+		if (hideStandaloneArtifactLinks.length === 0) return;
+		const hidden = new Set(hideStandaloneArtifactLinks);
+		for (const anchor of node.querySelectorAll('a')) {
+			if (!(anchor instanceof HTMLAnchorElement)) continue;
+			const path = parseArtifactHref(anchor.getAttribute('href') ?? '');
+			if (!path || !hidden.has(path) || anchor.textContent?.trim() !== path) continue;
+			const parent = anchor.parentElement;
+			const adjacentBreak =
+				anchor.nextSibling instanceof HTMLBRElement
+					? anchor.nextSibling
+					: anchor.previousSibling instanceof HTMLBRElement
+						? anchor.previousSibling
+						: null;
+			adjacentBreak?.remove();
+			anchor.remove();
+			if (parent instanceof HTMLParagraphElement && !parent.textContent?.trim()) parent.remove();
+		}
+	}
+
+	function enhanceArtifactImages(node: HTMLElement, urls: Map<HTMLAnchorElement, string>): void {
+		for (const [anchor, url] of urls) {
+			if (anchor.isConnected && node.contains(anchor)) continue;
+			URL.revokeObjectURL(url);
+			urls.delete(anchor);
+		}
+		if (!loadArtifactImage) return;
+		for (const anchor of node.querySelectorAll('a')) {
+			if (!(anchor instanceof HTMLAnchorElement) || anchor.dataset.artifactImage) continue;
+			const path = parseArtifactHref(anchor.getAttribute('href') ?? '');
+			if (!path || !['image', 'svg'].includes(artifactKind(path))) continue;
+			anchor.dataset.artifactImage = 'loading';
+			anchor.classList.add('md-artifact-image');
+			void loadArtifactImage(path)
+				.then((blob) => {
+					if (!anchor.isConnected || !node.contains(anchor)) return;
+					const url = URL.createObjectURL(blob);
+					urls.set(anchor, url);
+					const image = document.createElement('img');
+					image.src = url;
+					image.alt = anchor.textContent?.trim() || path.split('/').pop() || path;
+					image.className = 'md-artifact-thumb';
+					anchor.prepend(image);
+					anchor.dataset.artifactImage = 'ready';
+				})
+				.catch(() => {
+					anchor.dataset.artifactImage = 'failed';
+					anchor.classList.remove('md-artifact-image');
+				});
+		}
+	}
+
 	function enhance(node: HTMLElement, labels: { copy: string; copied: string }) {
 		const code = markdownCode(node, labels);
-		wrapTables(node);
-		const tables = new MutationObserver(() => wrapTables(node));
-		tables.observe(node, { childList: true, subtree: true });
+		const imageUrls = new Map<HTMLAnchorElement, string>();
+		const enhanceContent = () => {
+			hideDuplicateArtifactLinks(node);
+			wrapTables(node);
+			enhanceArtifactImages(node, imageUrls);
+		};
+		enhanceContent();
+		const content = new MutationObserver(enhanceContent);
+		content.observe(node, { childList: true, subtree: true });
 		node.addEventListener('click', onClick);
 		return {
 			update(next: { copy: string; copied: string }) {
 				code.update(next);
 			},
 			destroy() {
-				tables.disconnect();
+				content.disconnect();
+				for (const url of imageUrls.values()) URL.revokeObjectURL(url);
 				node.removeEventListener('click', onClick);
 				code.destroy();
 			}
@@ -171,6 +234,46 @@
 		text-underline-offset: 2px;
 	}
 
+	.md-body :global(a.md-artifact-image) {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		max-width: min(100%, 240px);
+		padding: 5px;
+		margin: 2px 0;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		color: var(--ink-secondary);
+		text-decoration: none;
+		vertical-align: middle;
+		cursor: zoom-in;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.md-body :global(a.md-artifact-image:hover),
+	.md-body :global(a.md-artifact-image:focus-visible) {
+		border-color: var(--accent);
+		box-shadow: var(--shadow-xs);
+		outline: none;
+	}
+
+	.md-body :global(.md-artifact-thumb) {
+		display: block;
+		width: 72px;
+		height: 54px;
+		object-fit: cover;
+		border-radius: calc(var(--radius-md) - 3px);
+		background: var(--line-subtle);
+		flex: 0 0 auto;
+	}
+
+	.md-body :global(a.md-artifact-image[data-artifact-image='ready']) {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.md-body :global(code) {
 		font-family: var(--mono);
 		font-size: 12px;
@@ -214,8 +317,7 @@
 	.md-body :global(table) {
 		border-collapse: collapse;
 		font-size: 12.5px;
-		width: max-content;
-		min-width: 100%;
+		width: 100%;
 	}
 
 	.md-body :global(th),
@@ -223,6 +325,8 @@
 		border: 1px solid var(--line);
 		padding: 4px 8px;
 		vertical-align: top;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 
 	.md-body :global(th) {
@@ -342,6 +446,17 @@
 
 	.md-body.is-inverted :global(a) {
 		color: #ffffff;
+	}
+
+	.md-body.is-inverted :global(a.md-artifact-image) {
+		background: rgba(255, 255, 255, 0.14);
+		border-color: rgba(255, 255, 255, 0.3);
+		color: #ffffff;
+	}
+
+	.md-body.is-inverted :global(a.md-artifact-image:hover),
+	.md-body.is-inverted :global(a.md-artifact-image:focus-visible) {
+		border-color: rgba(255, 255, 255, 0.7);
 	}
 
 	.md-body.is-inverted :global(.md-mention-chip),

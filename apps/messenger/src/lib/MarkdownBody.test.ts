@@ -60,6 +60,80 @@ test("an artifact link calls onOpenArtifact and does not leave the page", () => 
   close();
 });
 
+test("standalone attachment links are hidden when a bundle entry is shown", () => {
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: [
+      "正文里的 [核边数据](inbox/核边数据.txt) 要保留。",
+      "",
+      "[inbox/核边数据.txt](inbox/核边数据.txt)  ",
+      "[inbox/sources](inbox/sources)",
+    ].join("\n"),
+    hideStandaloneArtifactLinks: ["inbox/核边数据.txt", "inbox/sources"],
+  });
+  const links = [...host.querySelectorAll("a")].map((anchor) => anchor.textContent);
+  expect(links).toEqual(["核边数据"]);
+  expect(host.textContent).not.toContain("inbox/sources");
+  expect(host.querySelectorAll("br")).toHaveLength(0);
+  close();
+});
+
+test("attachment links remain visible without a bundle entry", () => {
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: "[inbox/核边数据.txt](inbox/核边数据.txt)",
+  });
+  expect(host.querySelector("a")?.textContent).toBe("inbox/核边数据.txt");
+  close();
+});
+
+test("an artifact image link becomes a thumbnail and opens the preview", async () => {
+  const opened: string[] = [];
+  const created: string[] = [];
+  const revoked: string[] = [];
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = ((blob: Blob) => {
+    created.push(blob.type);
+    return "blob:inline-thumb";
+  }) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = ((url: string) => revoked.push(url)) as typeof URL.revokeObjectURL;
+  try {
+    const { host, close } = render(MarkdownBody, {
+      ...labels,
+      source: "本地图片：[avatar_artist_bot.jpg](avatar_artist_bot.jpg)",
+      onOpenArtifact: (path: string) => opened.push(path),
+      loadArtifactImage: async () => new Blob(["image"], { type: "image/jpeg" }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const anchor = host.querySelector("a.md-artifact-image");
+    const image = anchor?.querySelector("img.md-artifact-thumb") as HTMLImageElement | null;
+    expect(anchor?.getAttribute("data-artifact-image")).toBe("ready");
+    expect(image?.src).toBe("blob:inline-thumb");
+    expect(created).toEqual(["image/jpeg"]);
+    click(anchor);
+    expect(opened).toEqual(["avatar_artist_bot.jpg"]);
+    close();
+    expect(revoked).toEqual(["blob:inline-thumb"]);
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+  }
+});
+
+test("a failed artifact thumbnail keeps the original link", async () => {
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: "[missing.png](missing.png)",
+    loadArtifactImage: async () => Promise.reject(new Error("missing")),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const anchor = host.querySelector("a");
+  expect(anchor?.classList.contains("md-artifact-image")).toBe(false);
+  expect(anchor?.textContent).toBe("missing.png");
+  close();
+});
+
 test("a bot mention chip calls onOpenProfile", () => {
   const opened: string[] = [];
   const { host, close } = render(MarkdownBody, {

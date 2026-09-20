@@ -14,6 +14,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Messenger
 
+- Markdown in the artifact preview shows workspace image and SVG links as thumbnails; a click still opens the preview, and a failed load keeps the original link. Tables in that same renderer fill the pane and wrap long cells instead of overflowing sideways.
 - Right-click Delete or Clear history on a sidebar session now opens the confirm for that row. It used to switch to the conversation first, and the confirm disappeared because the session drawer was not open.
 - The model choice log can be filtered: search across bot, model, reason, review and notes; multi-select outcome, Bot, model and message kind; and two toggles for turns with model feedback or a review that blamed the model. The subtitle becomes `shown / total` while a filter is on; clearing it restores the full list. Filter state is local to the open overlay.
 - The Bot settings drawer has a Memory card under Skills: what the Bot remembers, when it was formed, and which session it came from — a Bot↔Bot direct is labelled as one, since you were not in that conversation. Click the source to jump to the message that triggered it. You can correct, disable or delete a memory; you cannot add one, because the Bot is the writer. Disabling drops it from the prompt while keeping the record of what the Bot had concluded.
