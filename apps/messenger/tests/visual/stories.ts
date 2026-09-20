@@ -385,6 +385,13 @@ const defs: Record<StoryName, Story> = {
 			onDelete: () => {}
 		}
 	},
+	'danger-dialog-narrow': {
+		component: DangerDialog as never,
+		props: {
+			copy: { title: 'Delete routine', body: 'Deleting this routine does not stop work already started.', confirm: 'Confirm delete', cancel: 'Cancel' },
+			t: copyFor('en'), onDismiss: () => {}, onConfirm: () => {}
+		}
+	},
 	'danger-dialog': {
 		component: DangerDialog as never,
 		props: {

@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aGroup, aMessage, fakeRuntime } from "../test-fixtures.ts";
-import { click, render } from "../test-render.ts";
+import { aBot, aBotDirect, aGroup, aMessage, aRoutine, fakeRuntime } from "../test-fixtures.ts";
+import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
 import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
+
+import { flushSync } from 'svelte';
+import { reactive } from '../test-reactive.svelte.ts';
 
 const t = copyFor("zh");
 
@@ -17,11 +20,12 @@ function botDms(count: number) {
   });
 }
 
-function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null) {
-  const runtime = fakeRuntime({
+function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false) {
+  const stub = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions],
   });
+  const runtime = live ? reactive(stub) : stub;
   runtime.selectedId = selectedId;
   const view = render(Sidebar, {
     runtime,
@@ -41,6 +45,27 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
   });
   return { ...view, runtime };
 }
+
+for (const selected of [null, 'sess-1']) for (const deletedAfterResult of [false, true]) test(`retained routine with unavailable owner is explained and inert (${selected}, ${deletedAfterResult})`, () => {
+  const { host, runtime, close } = open([], selected, true);
+  flushSync(() => {
+    runtime.snapshot.routines = [aRoutine()];
+    runtime.searchQuery = 'Morning';
+    runtime.searchHits = [{ kind: 'routine', id: 'routine-1', snippet: 'Morning brief' }];
+    if (!deletedAfterResult) runtime.snapshot.bots = [];
+  });
+  const input = host.querySelector('input.search') as HTMLInputElement;
+  input.focus(); flushSync();
+  if (deletedAfterResult) flushSync(() => { runtime.snapshot.bots = []; });
+  const result = host.querySelector('[role=option]')!;
+  expect(result.getAttribute('aria-disabled')).toBe('true');
+  expect(result.textContent).toContain(t.sidebar.routineUnavailable);
+  click(result); press(input, 'Enter');
+  expect(runtime.calls.some((call) => ['openRoutine', 'closeSearch'].includes(call.name))).toBe(false);
+  expect(runtime.snapshot.routines).toHaveLength(1);
+  expect(host.querySelector('[role=listbox]')).not.toBeNull();
+  close();
+});
 
 test("only the most recent directs are listed, with the rest behind a toggle", () => {
   const { host, close } = open(botDms(7));

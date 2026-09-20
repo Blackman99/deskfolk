@@ -113,7 +113,7 @@
 	$effect(() => {
 		const live = snapshot.bots.find((row) => row.id === bot.id);
 		if (!live) {
-			runtime.profileBotId = null;
+			runtime.closeProfile();
 			return;
 		}
 		const incoming = {

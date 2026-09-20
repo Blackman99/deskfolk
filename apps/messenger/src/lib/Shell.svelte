@@ -285,6 +285,18 @@
 		source?: DangerSource;
 	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
+	let dangerRunning = $state<DangerConfirm | null>(null);
+
+	async function confirmDanger(): Promise<void> {
+		const pending = dangerConfirm;
+		if (!pending || dangerRunning) return;
+		dangerRunning = pending;
+		try {
+			await pending.run();
+		} finally {
+			if (dangerRunning === pending) dangerRunning = null;
+		}
+	}
 
 	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
 	function clearDanger(...kinds: DangerKind[]): void {
@@ -302,7 +314,7 @@
 			providerIds: providerIdSet
 		})
 	);
-	/** Escape has never dismissed the skill confirm; it closes the drawer behind it instead. */
+	/** The native confirmation consumes its own keyboard events before this fallback. */
 	const escapeDismissesDanger = $derived(
 		dangerConfirmKind !== null && dangerConfirmKind !== 'skill' && dangerConfirmKind !== 'memory'
 	);
@@ -565,7 +577,7 @@
 
 	function closeNestedProfile(): void {
 		// Unmounting the pane flushes its pending autosave and drops its drafts.
-		runtime.profileBotId = null;
+		runtime.closeProfile();
 		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
 		profileFailed = false;
 	}
@@ -576,8 +588,10 @@
 	 * wait for the window to come back.
 	 */
 	function dismissDangerConfirm(): void {
+		const pending = dangerConfirm;
+		if (dangerRunning === pending) return;
 		setTimeout(() => {
-			dangerConfirm = null;
+			if (dangerConfirm === pending) dangerConfirm = null;
 		}, 0);
 	}
 
@@ -902,7 +916,8 @@
 			copy={dangerConfirmCopy}
 			{t}
 			onDismiss={dismissDangerConfirm}
-			onConfirm={() => void dangerConfirm?.run()}
+			busy={dangerRunning === dangerConfirm}
+			onConfirm={() => void confirmDanger()}
 		/>
 	{/if}
 	<SettingsModal

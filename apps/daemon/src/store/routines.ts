@@ -1,4 +1,4 @@
-import { type Routine, type PatchRoutineRequest } from "@real-bot/protocol";
+import { type Routine, type CreateRoutineRequest, type PatchRoutineRequest } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { dueIso, isWeekday, latestDueAt, parseClockTime } from "../schedule";
@@ -58,13 +58,7 @@ export function listRoutines(ctx: StoreContext): Routine[] {
 
 export function createRoutine(
   ctx: StoreContext,
-  input: {
-    bot_id: string;
-    title: string;
-    instruction: string;
-    schedule: Routine["schedule"];
-    enabled?: boolean;
-  },
+  input: CreateRoutineRequest,
 ): Routine {
   requireObject(input);
   aliveBot(ctx, requireNonEmpty("bot_id", input.bot_id));

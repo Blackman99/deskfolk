@@ -12,6 +12,18 @@ function backdate(store: Store, id: string, createdAt: Date): void {
   ]);
 }
 
+test('deleting a Bot retains its historical routine and search hit', () => {
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  try {
+    const { bot } = store.createBot({ name: 'Disposable', duties: 'fixture', boundaries: 'fixture' });
+    const row = store.createRoutine({ bot_id: bot.id, title: 'Retained history', instruction: '', schedule: { kind: 'daily', time: '09:00' } });
+    store.deleteBot(bot.id);
+    expect(store.listBots().some((bot) => bot.id === row.bot_id)).toBe(false);
+    expect(store.getRoutine(row.id)).toEqual(row);
+    expect(store.search('Retained history').some((hit) => hit.kind === 'routine' && hit.id === row.id)).toBe(true);
+  } finally { store.close(); }
+});
+
 describe("routine revisions", () => {
   test("rapid writes advance revisions; stale patches and deletes do not mutate or publish", () => {
     const store = new Store({ endpointKey: memoryKeyStore() });

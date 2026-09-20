@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import type { Message, SessionSummary } from "@real-bot/protocol";
 import { collectUntilMessage, searchHitView, searchJump } from "./search-jump.ts";
 
-import { aRoutine } from '../test-fixtures.ts';
+import { aBot, aRoutine } from '../test-fixtures.ts';
 
 test('routine search resolves the owning Bot from the current snapshot, not the selected session', () => {
-  expect(searchJump({ kind: 'routine', id: 'routine-1' }, [], [aRoutine({ bot_id: 'other-bot' })])).toEqual({ botId: 'other-bot', routineId: 'routine-1' });
+  expect(searchJump({ kind: 'routine', id: 'routine-1' }, [], [aRoutine({ bot_id: 'other-bot' })], [aBot({ id: 'other-bot' })])).toEqual({ botId: 'other-bot', routineId: 'routine-1' });
   expect(searchJump({ kind: 'routine', id: 'removed' }, [], [aRoutine()])).toBeNull();
 });
 

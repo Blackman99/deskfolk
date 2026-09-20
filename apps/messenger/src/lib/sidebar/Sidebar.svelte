@@ -265,6 +265,11 @@
 	}
 
 	function onHit(hit: (typeof runtime.searchHits)[number]): void {
+		if (hit.kind === 'routine' && !searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots)) {
+			searchFocused = true;
+			searchInputEl?.focus();
+			return;
+		}
 		searchFocused = false;
 		searchHighlightIndex = -1;
 		searchInputEl?.blur();
@@ -273,7 +278,7 @@
 			onOpenArtifact(hit.path);
 			return;
 		}
-		const jump = searchJump(hit, snapshot.sessions, snapshot.routines);
+		const jump = searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots);
 		if (!jump) return;
 		runtime.closeSearch();
 		if ('routineId' in jump) runtime.openRoutine(jump.botId, jump.routineId);
@@ -400,6 +405,7 @@
 				{:else}
 					{#each runtime.searchHits as hit, i (hit.id ?? hit.path ?? i)}
 						{@const view = searchHitView(hit, searchKindLabels)}
+						{@const unavailable = hit.kind === 'routine' && !searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots)}
 						<button
 							type="button"
 							id={`search-hit-${i}`}
@@ -408,6 +414,7 @@
 							class:is-selected={searchHighlightIndex === i}
 							role="option"
 							aria-selected={searchHighlightIndex === i}
+							aria-disabled={unavailable}
 							title={view.sessionTitle ? `${view.kindLabel} · ${view.sessionTitle}` : view.kindLabel}
 							onmouseenter={() => {
 								searchHighlightIndex = i;
@@ -455,6 +462,7 @@
 										<span class="search-hit-session">{view.sessionTitle}</span>
 									{/if}
 								</span>
+								{#if unavailable}<span class="search-unavailable">{t.sidebar.routineUnavailable}</span>{/if}
 								{#if view.snippet && view.snippet !== view.sessionTitle}
 									<span class="search-hit-snippet">{view.snippet}</span>
 								{/if}
@@ -1106,6 +1114,9 @@
 		font-weight: 650;
 		color: var(--accent);
 	}
+
+	.search-unavailable { color: var(--muted); font-size: 11px; white-space: normal; }
+	.search-hit[aria-disabled='true'] { cursor: default; }
 
 	.search-hit-snippet {
 		display: -webkit-box;

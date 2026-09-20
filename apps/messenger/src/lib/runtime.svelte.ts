@@ -81,6 +81,7 @@ export class MessengerRuntime {
   private sessionLoad = Promise.resolve();
   private sessionSeq = 0;
   private historyRevision = 0;
+  private profileNavigation = 0;
 
   start(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -117,6 +118,8 @@ export class MessengerRuntime {
   }
 
   openSessionSettings(): void {
+    this.profileNavigation++;
+    this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
@@ -144,21 +147,27 @@ export class MessengerRuntime {
   }
 
   async openRoutine(botId: string, routineId: string): Promise<void> {
+    let navigation = ++this.profileNavigation;
+    if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
     // The profile URL needs the selected conversation's navigation to settle first.
     if (!this.selectedId) {
       const session = youBotSession(this.snapshot.sessions, botId);
       if (!session) return;
       const api = this.api;
       const loading = this.selectSession(session.id);
+      navigation = this.profileNavigation;
       const selection = this.sessionSeq;
       await loading;
-      if (this.api !== api || this.selectedId !== session.id || this.sessionSeq !== selection) return;
+      if (this.api !== api || this.selectedId !== session.id || this.sessionSeq !== selection ||
+        this.profileNavigation !== navigation) return;
     }
+    if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
     this.openProfile(botId);
     this.profileRoutineId = routineId;
   }
 
   openProfile(botId: string): void {
+    this.profileNavigation++;
     this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
@@ -169,7 +178,14 @@ export class MessengerRuntime {
     this.sessionSettingsOpen = true;
   }
 
+  closeProfile(): void {
+    this.profileNavigation++;
+    this.profileRoutineId = null;
+    this.profileBotId = null;
+  }
+
   closeSessionSettings(): void {
+    this.profileNavigation++;
     this.profileRoutineId = null;
     this.sessionSettingsOpen = false;
     this.profileBotId = null;
@@ -197,6 +213,7 @@ export class MessengerRuntime {
 
   /** Restore settings, the session drawer, or the workspace overlay from the URL. */
   applyOverlay(overlay: UrlOverlay): void {
+    this.profileNavigation++;
     if (overlay.kind === "settings") {
       this.createBotOpen = false;
       this.createGroupOpen = false;
@@ -563,7 +580,7 @@ export class MessengerRuntime {
     try {
       await api.deleteBot(id);
       if (this.api !== api) return null;
-      if (this.profileBotId === id) this.profileBotId = null;
+      if (this.profileBotId === id) this.closeProfile();
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);

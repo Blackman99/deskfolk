@@ -5,6 +5,7 @@ export const STORY_SIZES = {
 	// whole `responsive.css` file is untested.
 	'shell-narrow': { width: 600, height: 820 },
 	'danger-dialog': { width: 900, height: 520 },
+	'danger-dialog-narrow': { width: 390, height: 844 },
 	'route-log': { width: 900, height: 720 },
 	// A modal, not a flyout any more: shot at a window it fits in, with room under the field for
 	// the member list to open into.

@@ -190,7 +190,7 @@
 	.routine-editor h3 { margin: 0; font-size: 14px; }
 	fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 	legend { font-size: 12px; color: var(--ink-secondary); margin-bottom: 4px; }
-	.routine-days label, .routine-actions label, .routine-enabled { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; }
+	.routine-days label, .routine-actions label, .routine-enabled { display: flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; font-size: 13px; }
 	.routine-card button { min-height: 44px; }
 	.routine-card .btn-secondary, .routine-card .btn-primary { padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--btn-secondary-bg); font-size: 12px; font-weight: 600; }
 	.routine-card .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }

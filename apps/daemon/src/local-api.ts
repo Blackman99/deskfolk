@@ -7,7 +7,8 @@ import {
   type CreateProviderRequest,
   type HealthResponse,
   type PatchProviderRequest,
-  type Routine,
+  type CreateRoutineRequest,
+  type PatchRoutineRequest,
   type CreateBotRequest,
   type PatchBotRequest,
   type RuntimeResponse,
@@ -938,13 +939,7 @@ async function dispatch(
     return jsonResponse({ items: store.listRoutines() }, 200, null);
   }
   if (method === "POST" && path === "/v1/routines") {
-    const body = (await readJson(request)) as {
-      bot_id: string;
-      title: string;
-      instruction: string;
-      schedule: Routine["schedule"];
-      enabled?: boolean;
-    };
+    const body = (await readJson(request)) as CreateRoutineRequest;
     const routine = store.createRoutine(body);
     publish({ event: "routine.upsert", occurred_at: occurred(), ...routine });
     engine.fireRoutine(routine.id);
@@ -952,13 +947,7 @@ async function dispatch(
   }
   params = matchPath(path, "/v1/routines/:id");
   if (params && method === "PATCH") {
-    const body = (await readJson(request)) as {
-      title?: string;
-      instruction?: string;
-      schedule?: Routine["schedule"];
-      enabled?: boolean;
-      if_revision?: string;
-    };
+    const body = (await readJson(request)) as PatchRoutineRequest;
     const routine = store.patchRoutine(params.id!, body);
     publish({ event: "routine.upsert", occurred_at: occurred(), ...routine });
     engine.fireRoutine(routine.id);
