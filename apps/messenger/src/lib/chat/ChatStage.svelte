@@ -421,18 +421,17 @@
 		return t.stream.approval;
 	}
 
-	let selectedMessageId = $state<string | null>(null);
 	let messageContextMenu = $state<{
 		message: Message;
 		x: number;
 		y: number;
 		selectedText: string | null;
 	} | null>(null);
+	const selectedMessageId = $derived(messageContextMenu?.message.id ?? null);
 
 	function handleMessageContextMenu(e: MouseEvent, message: Message): void {
 		e.preventDefault();
 		e.stopPropagation();
-		selectedMessageId = message.id;
 		const selection = window.getSelection()?.toString().trim();
 		const currentEl = e.currentTarget as HTMLElement | null;
 		const anchorNode = window.getSelection()?.anchorNode;
@@ -449,7 +448,6 @@
 
 	function closeMessageContextMenu(): void {
 		messageContextMenu = null;
-		selectedMessageId = null;
 	}
 
 	function handleOpenFileTree(targetPath: string | null, message: Message): void {
@@ -478,7 +476,6 @@
 		onscrollend={onStreamScrollEnd}
 		onclick={(e) => {
 			if (e.target === streamContainer || e.target === streamInner) {
-				selectedMessageId = null;
 				messageContextMenu = null;
 			}
 		}}
