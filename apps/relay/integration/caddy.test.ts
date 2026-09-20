@@ -79,7 +79,7 @@ afterAll(async () => {
 test('HTTP rejects query canaries before a query-free HTTPS redirect; HTTPS also refuses queries', async () => {
   const canary = 'review-canary-private-material';
   for (const secure of [false, true]) {
-    for (const path of ['/', '/v1/relay/bootstrap', '/__local-api', '/.well-known/acme-challenge/fixture']) {
+    for (const path of ['/', '/v1/relay/bootstrap', '/__local-api', '/.well-known/acme-challenge/fixture', '/onboarding%3Flabel=encoded', '/onboarding%23section', '/onboarding%252Fchild']) {
       const response = await request(`${path}?secret=${canary}`, secure);
       expect(response.status).toBe(400);
       expect(response.headers.get('location')).toBeNull();
@@ -92,6 +92,23 @@ test('HTTP rejects query canaries before a query-free HTTPS redirect; HTTPS also
     const response = await request(path, false);
     expect(response.status).toBe(308); expect(response.headers.get('location')).toBe(`https://localhost${path}`);
     expect(response.headers.get('cache-control')).toBe('no-store');
+  }
+});
+
+test('HTTP redirects preserve escaped path delimiters without changing host or HTTPS navigation', async () => {
+  for (const path of ['/onboarding%3Flabel=review-canary', '/onboarding%23section', '/onboarding%252Fchild', '/%2Fother.invalid/onboarding%3Flabel=fixture']) {
+    const redirect = await request(path, false);
+    expect(redirect.status).toBe(308);
+    expect(redirect.headers.get('location')).toBe(`https://localhost${path}`);
+    const destination = new URL(redirect.headers.get('location')!);
+    expect(destination.origin).toBe('https://localhost');
+    expect(destination.pathname).toBe(path);
+    expect(destination.search).toBe(''); expect(destination.hash).toBe('');
+    const direct = await request(path);
+    // Only map the production HTTPS port to the owned fixture listener.
+    const followed = await request(destination.pathname + destination.search);
+    expect(direct.status).toBe(200); expect(followed.status).toBe(direct.status);
+    expect(await direct.text()).toBe(html); expect(await followed.text()).toBe(html);
   }
 });
 

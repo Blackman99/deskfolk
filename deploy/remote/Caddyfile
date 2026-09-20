@@ -23,7 +23,7 @@ http://{$RELAY_DOMAIN} {
 	route {
 		@query expression `{http.request.uri.query} != ""`
 		respond @query 400
-		redir https://{$RELAY_DOMAIN}{http.request.uri.path} 308
+		redir https://{$RELAY_DOMAIN}{http.request.orig_uri} 308
 	}
 }
 
