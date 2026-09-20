@@ -1,4 +1,4 @@
-import { isTauri, readTauriInternals, type TauriInternals } from "../tauri.ts";
+import { readTauriInternals, type TauriInternals } from "../tauri.ts";
 
 export type IndependentWriter = "window" | "agent" | "down";
 
@@ -82,8 +82,15 @@ export async function invokeIndependentRuntime(
   internals: TauriInternals | undefined = readTauriInternals(),
 ): Promise<IndependentStatus> {
   if (!internals?.invoke) return gatedIndependentStatus("browser_cannot_install_agent");
-  const body = await internals.invoke("independent_runtime", { request: { operation } });
-  return parseIndependentStatus(body) ?? gatedIndependentStatus("malformed");
+  try {
+    const body =
+      operation === "status"
+        ? await internals.invoke("independent_runtime_status")
+        : await internals.invoke("independent_runtime", { request: { operation } });
+    return parseIndependentStatus(body) ?? gatedIndependentStatus("malformed");
+  } catch {
+    return gatedIndependentStatus("disabled");
+  }
 }
 
 export async function setLaunchAtLogin(
@@ -97,10 +104,4 @@ export async function setLaunchAtLogin(
   } catch {
     return false;
   }
-}
-
-export function independentRuntimeAvailable(
-  internals: TauriInternals | undefined = readTauriInternals(),
-): boolean {
-  return isTauri(internals);
 }

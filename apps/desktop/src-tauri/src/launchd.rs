@@ -13,9 +13,6 @@ pub const LATCH_NAME: &str = "runtime.stop";
 pub const MARKER_NAME: &str = "runtime.independent";
 pub const PLIST_NAME: &str = "com.real-bot.runtime.plist";
 
-/// Compile-time production switch. G-pack is not passed; keep this false.
-pub const PRODUCTION_INDEPENDENT_RUNTIME: bool = false;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentPaths {
     pub program: PathBuf,
@@ -44,6 +41,7 @@ pub struct IndependentPolicy {
 }
 
 impl IndependentPolicy {
+    /// Fail-closed until a sealed runtime (G-pack) exists. Dev never installs.
     pub fn production(dev: bool) -> Self {
         if dev {
             return Self {
@@ -51,7 +49,6 @@ impl IndependentPolicy {
                 diagnostic: "dev_does_not_install_agent".into(),
             };
         }
-        let _ = PRODUCTION_INDEPENDENT_RUNTIME;
         Self {
             available: false,
             diagnostic: "g_pack_not_verified".into(),
@@ -135,16 +132,32 @@ pub fn path_string(path: &Path) -> Result<String, String> {
         .ok_or_else(|| "path must be utf-8".into())
 }
 
-/// User-owned, not group/world writable. Relative paths never qualify.
-pub fn assert_user_owned_not_group_world_writable(path: &Path) -> Result<(), String> {
-    require_absolute(path, "path")?;
-    let meta = fs::metadata(path).map_err(|_| format!("{} is not readable", path.display()))?;
+fn lstat(path: &Path) -> Result<fs::Metadata, String> {
+    fs::symlink_metadata(path).map_err(|_| format!("{} is not readable", path.display()))
+}
+
+fn reject_symlink(path: &Path, meta: &fs::Metadata) -> Result<(), String> {
+    if meta.file_type().is_symlink() {
+        Err(format!("{} must not be a symlink", path.display()))
+    } else {
+        Ok(())
+    }
+}
+
+fn assert_owner_not_group_world_writable(path: &Path, meta: &fs::Metadata, user_owned: bool) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         let uid = unsafe { libc::getuid() };
-        if meta.uid() != uid {
-            return Err(format!("{} is not owned by the current user", path.display()));
+        if user_owned {
+            if meta.uid() != uid {
+                return Err(format!("{} is not owned by the current user", path.display()));
+            }
+        } else if meta.uid() != uid && meta.uid() != 0 {
+            return Err(format!(
+                "{} must be owned by the current user or root",
+                path.display()
+            ));
         }
         if meta.mode() & 0o022 != 0 {
             return Err(format!(
@@ -153,28 +166,115 @@ pub fn assert_user_owned_not_group_world_writable(path: &Path) -> Result<(), Str
             ));
         }
     }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, meta, user_owned);
+    }
     Ok(())
 }
 
-pub fn write_agent_plist(paths: &AgentPaths) -> Result<String, String> {
-    assert_user_owned_not_group_world_writable(&paths.program)?;
-    if !paths.program.is_file() {
-        return Err("program must be a user-owned file".into());
-    }
-    require_absolute(&paths.plist, "plist")?;
-    if let Some(parent) = paths.plist.parent() {
-        if parent.exists() {
-            assert_user_owned_not_group_world_writable(parent)?;
-        } else {
-            fs::create_dir_all(parent).map_err(|err| err.to_string())?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
-                    .map_err(|err| err.to_string())?;
-            }
-            assert_user_owned_not_group_world_writable(parent)?;
+/// User-owned, not a symlink, not group/world writable. Relative paths never qualify.
+pub fn assert_user_owned_not_group_world_writable(path: &Path) -> Result<(), String> {
+    require_absolute(path, "path")?;
+    let meta = lstat(path)?;
+    reject_symlink(path, &meta)?;
+    assert_owner_not_group_world_writable(path, &meta, true)
+}
+
+/// Ancestors must not be symlinks or group/world writable (root-owned 755 is allowed).
+pub fn assert_ancestors_not_group_world_writable(path: &Path) -> Result<(), String> {
+    require_absolute(path, "path")?;
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir.as_os_str().is_empty() {
+            break;
         }
+        let meta = lstat(dir)?;
+        reject_symlink(dir, &meta)?;
+        if !meta.is_dir() {
+            return Err(format!("{} must be a directory", dir.display()));
+        }
+        assert_owner_not_group_world_writable(dir, &meta, false)?;
+        if dir == Path::new("/") {
+            break;
+        }
+        current = dir.parent();
+    }
+    Ok(())
+}
+
+fn assert_regular_file_user_private(path: &Path) -> Result<(), String> {
+    assert_user_owned_not_group_world_writable(path)?;
+    let meta = lstat(path)?;
+    if !meta.is_file() {
+        return Err(format!("{} must be a user-owned file", path.display()));
+    }
+    Ok(())
+}
+
+fn assert_directory_user_private(path: &Path) -> Result<(), String> {
+    assert_user_owned_not_group_world_writable(path)?;
+    let meta = lstat(path)?;
+    if !meta.is_dir() {
+        return Err(format!("{} must be a directory", path.display()));
+    }
+    Ok(())
+}
+
+fn chmod_private(path: &Path, mode: u32) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|err| err.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mode);
+        Ok(())
+    }
+}
+
+fn ensure_user_private_parent(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .ok_or_else(|| "path must have a parent".to_string())?;
+    require_absolute(parent, "parent")?;
+    if parent.exists() {
+        let meta = lstat(parent)?;
+        reject_symlink(parent, &meta)?;
+        if !meta.is_dir() {
+            return Err(format!("{} must be a directory", parent.display()));
+        }
+        assert_owner_not_group_world_writable(parent, &meta, true)?;
+    } else {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        chmod_private(parent, 0o700)?;
+        assert_directory_user_private(parent)?;
+    }
+    assert_ancestors_not_group_world_writable(parent)
+}
+
+pub fn write_agent_plist(paths: &AgentPaths) -> Result<String, String> {
+    assert_regular_file_user_private(&paths.program)?;
+    assert_ancestors_not_group_world_writable(&paths.program)?;
+    require_absolute(&paths.plist, "plist")?;
+    ensure_user_private_parent(&paths.plist)?;
+    if paths.plist.exists() {
+        assert_regular_file_user_private(&paths.plist)?;
+    }
+    if paths.latch.exists() {
+        assert_regular_file_user_private(&paths.latch)?;
+        assert_ancestors_not_group_world_writable(&paths.latch)?;
+    } else if let Some(parent) = paths.latch.parent() {
+        if parent.exists() {
+            assert_directory_user_private(parent)?;
+            assert_ancestors_not_group_world_writable(parent)?;
+        }
+    }
+    if paths.marker.exists() {
+        assert_regular_file_user_private(&paths.marker)?;
+        assert_ancestors_not_group_world_writable(&paths.marker)?;
     }
     let body = render_plist(&paths.program, &paths.latch, &paths.data_dir)?;
     if body.contains("PathExists") {
@@ -192,34 +292,36 @@ pub fn write_agent_plist(paths: &AgentPaths) -> Result<String, String> {
             .map_err(|err| err.to_string())?;
         file.sync_all().map_err(|err| err.to_string())?;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600)).map_err(|err| err.to_string())?;
-    }
+    chmod_private(&tmp, 0o600)?;
     fs::rename(&tmp, &paths.plist).map_err(|err| err.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&paths.plist, fs::Permissions::from_mode(0o600))
-            .map_err(|err| err.to_string())?;
-    }
+    chmod_private(&paths.plist, 0o600)?;
     if let Ok(dir) = File::open(paths.plist.parent().unwrap_or_else(|| Path::new("/"))) {
         let _ = dir.sync_all();
     }
-    assert_user_owned_not_group_world_writable(&paths.plist)?;
+    assert_regular_file_user_private(&paths.plist)?;
     Ok(body)
 }
 
 pub fn write_marker(path: &Path) -> Result<(), String> {
     require_absolute(path, "marker")?;
-    fs::write(path, b"1\n").map_err(|err| err.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|err| err.to_string())?;
+    ensure_user_private_parent(path)?;
+    if path.exists() {
+        assert_regular_file_user_private(path)?;
     }
-    Ok(())
+    fs::write(path, b"1\n").map_err(|err| err.to_string())?;
+    chmod_private(path, 0o600)?;
+    assert_regular_file_user_private(path)
+}
+
+pub fn write_stop_latch(path: &Path) -> Result<(), String> {
+    require_absolute(path, "latch")?;
+    ensure_user_private_parent(path)?;
+    if path.exists() {
+        assert_regular_file_user_private(path)?;
+    }
+    fs::write(path, b"stopped\n").map_err(|err| err.to_string())?;
+    chmod_private(path, 0o600)?;
+    assert_regular_file_user_private(path)
 }
 
 pub fn remove_file_if_exists(path: &Path) -> Result<(), String> {
@@ -231,7 +333,52 @@ pub fn remove_file_if_exists(path: &Path) -> Result<(), String> {
 }
 
 pub fn independent_marker_present(path: &Path) -> bool {
-    path.is_file()
+    lstat(path).ok().is_some_and(|meta| meta.is_file())
+}
+
+/// Honor `runtime.independent` only when policy is available and this window
+/// bootstrapped or launchctl shows `com.real-bot.runtime` loaded. Never adopt a PID.
+pub fn adopt_independent_marker(
+    policy: &IndependentPolicy,
+    marker: &Path,
+    this_window_bootstrapped: bool,
+    agent_loaded: bool,
+) -> bool {
+    policy.available
+        && independent_marker_present(marker)
+        && (this_window_bootstrapped || agent_loaded)
+}
+
+/// Read-only `launchctl print`. Tests inject a fake; production never bootstraps from this.
+pub fn parse_launchctl_print_loaded(stdout: &str, label: &str) -> bool {
+    let needle = format!("\"{label}\"");
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("not exist") || trimmed.contains("Could not find") {
+            return false;
+        }
+        if trimmed.contains(&needle) || trimmed.contains(label) {
+            if trimmed.contains("state = not running") {
+                continue;
+            }
+            return true;
+        }
+    }
+    false
+}
+
+pub fn agent_loaded_in_gui_domain() -> bool {
+    let domain = gui_domain();
+    let output = std::process::Command::new("launchctl")
+        .args(["print", &format!("{domain}/{LABEL}")])
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            parse_launchctl_print_loaded(&String::from_utf8_lossy(&output.stdout), LABEL)
+                || parse_launchctl_print_loaded(&String::from_utf8_lossy(&output.stderr), LABEL)
+        }
+        _ => false,
+    }
 }
 
 pub fn gui_domain() -> String {
@@ -308,10 +455,10 @@ mod tests {
 
     fn temp_dir() -> PathBuf {
         let n = UNIQUE.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "real-bot-launchd-{}-{n}",
-            std::process::id()
-        ));
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("independent-runtime-tests")
+            .join(format!("launchd-{}-{n}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         #[cfg(unix)]
         {
@@ -337,7 +484,6 @@ mod tests {
         let prod = IndependentPolicy::production(false);
         assert!(!prod.available);
         assert_eq!(prod.diagnostic, "g_pack_not_verified");
-        assert!(!PRODUCTION_INDEPENDENT_RUNTIME);
         let dev = IndependentPolicy::production(true);
         assert!(!dev.available);
         assert_eq!(dev.diagnostic, "dev_does_not_install_agent");
@@ -396,6 +542,86 @@ mod tests {
             assert_eq!(mode, 0o600);
         }
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn group_writable_latch_is_rejected() {
+        let dir = temp_dir();
+        let latch = dir.join(LATCH_NAME);
+        fs::write(&latch, b"stopped\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&latch, fs::Permissions::from_mode(0o660)).unwrap();
+            assert!(assert_user_owned_not_group_world_writable(&latch).is_err());
+            let paths = AgentPaths::for_data_dir(program_in(&dir), dir.clone(), dir.join(PLIST_NAME));
+            assert!(write_agent_plist(&paths).is_err());
+            fs::set_permissions(&latch, fs::Permissions::from_mode(0o600)).unwrap();
+            assert!(write_stop_latch(&latch).is_ok());
+            let mode = fs::metadata(&latch).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn symlink_plist_is_rejected() {
+        let dir = temp_dir();
+        let real = dir.join("real.plist");
+        fs::write(&real, b"not-a-job").unwrap();
+        let link = dir.join(PLIST_NAME);
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            let paths = AgentPaths::for_data_dir(program_in(&dir), dir.clone(), link);
+            assert!(write_agent_plist(&paths).is_err());
+        }
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn symlink_program_is_rejected() {
+        let dir = temp_dir();
+        let real = program_in(&dir);
+        let link = dir.join("linked-daemon");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            assert!(assert_user_owned_not_group_world_writable(&link).is_err());
+            let paths = AgentPaths::for_data_dir(link, dir.clone(), dir.join(PLIST_NAME));
+            assert!(write_agent_plist(&paths).is_err());
+        }
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn planted_marker_is_ignored_without_policy_or_loaded_job() {
+        let dir = temp_dir();
+        let marker = dir.join(MARKER_NAME);
+        write_marker(&marker).unwrap();
+        let gated = IndependentPolicy::production(false);
+        assert!(!adopt_independent_marker(&gated, &marker, false, false));
+        assert!(!adopt_independent_marker(&gated, &marker, true, true));
+        let open = IndependentPolicy {
+            available: true,
+            diagnostic: "test_seam".into(),
+        };
+        assert!(!adopt_independent_marker(&open, &marker, false, false));
+        assert!(adopt_independent_marker(&open, &marker, true, false));
+        assert!(adopt_independent_marker(&open, &marker, false, true));
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn launchctl_print_parser_does_not_treat_missing_job_as_loaded() {
+        assert!(!parse_launchctl_print_loaded(
+            "Could not find service \"com.real-bot.runtime\" in domain",
+            LABEL
+        ));
+        assert!(parse_launchctl_print_loaded(
+            "gui/501/com.real-bot.runtime = {\n\tstate = running\n}",
+            LABEL
+        ));
     }
 
     #[test]

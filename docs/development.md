@@ -19,7 +19,7 @@
 
 根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
 
-守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，开发态用本机 `bun` 拉起 `apps/daemon/src/main.ts`，发布态用应用资源中的 `native/real-bot-daemon`；已有我们则连，不新开第二个。发布态只有显式 `REAL_BOT_SOURCE_DAEMON=1` 才走源码 Bun（并允许 `REAL_BOT_BUN` / `REAL_BOT_DAEMON_MAIN`）；默认不依赖 PATH Bun。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项，也不安装独立运行时 agent。退出（Cmd+Q / 托盘退出）在窗口监督时先停监督再 `POST /v1/runtime/quit`；独立模式（默认关、生产 gated）只退 UI。独立运行时交接见 [ADR 0023](adr/0023-independent-runtime.md)；G-pack / G-launchd 未通过。
+守护进程不是 sidecar（`externalBin` 为空）。窗在监督时若本机接口不是我们，开发态用本机 `bun` 拉起 `apps/daemon/src/main.ts`，发布态用应用资源中的 `native/real-bot-daemon`；已有我们则连，不新开第二个。发布态只有显式 `REAL_BOT_SOURCE_DAEMON=1` 才走源码 Bun（并允许 `REAL_BOT_BUN` / `REAL_BOT_DAEMON_MAIN`）；默认不依赖 PATH Bun。登录项只登记窗口进程（参数 `--hidden`，登录不弹窗）。`pnpm dev` 不写登录项，也不安装独立运行时 agent。退出（Cmd+Q / 托盘退出）在窗口监督时先停监督再 `POST /v1/runtime/quit`；独立模式仅在已开启时只退 UI（生产仍 gated，默认窗口监督）；显式 stop 写 `runtime.stop`。独立运行时交接见 [ADR 0023](adr/0023-independent-runtime.md)；G-pack / G-launchd 未通过。
 
 ## 实验性中继
 

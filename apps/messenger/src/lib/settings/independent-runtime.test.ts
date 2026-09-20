@@ -50,6 +50,15 @@ test("invokeIndependentRuntime never claims production is available without Taur
   );
 });
 
+test("invokeIndependentRuntime maps a refused bundled-frame invoke to gated status", async () => {
+  const internals = fakeInternals(async () => {
+    throw new Error("disabled");
+  });
+  await expect(invokeIndependentRuntime("enable", internals)).resolves.toEqual(
+    gatedIndependentStatus("disabled"),
+  );
+});
+
 test("invokeIndependentRuntime forwards status and enable through the desktop command", async () => {
   const internals = fakeInternals(async () => gated);
   await expect(invokeIndependentRuntime("status", internals)).resolves.toMatchObject({
@@ -61,7 +70,7 @@ test("invokeIndependentRuntime forwards status and enable through the desktop co
     available: false,
   });
   expect(internals.calls).toEqual([
-    { cmd: "independent_runtime", args: { request: { operation: "status" } } },
+    { cmd: "independent_runtime_status", args: undefined },
     { cmd: "independent_runtime", args: { request: { operation: "enable" } } },
   ]);
 });

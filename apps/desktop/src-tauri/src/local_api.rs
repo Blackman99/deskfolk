@@ -132,8 +132,7 @@ pub fn clear_stop_latch(dir: &Path) -> bool {
 }
 
 pub fn write_stop_latch(dir: &Path) -> Result<(), String> {
-    fs::create_dir_all(dir).map_err(|err| err.to_string())?;
-    fs::write(latch_path(dir), b"stopped\n").map_err(|err| err.to_string())
+    crate::launchd::write_stop_latch(&latch_path(dir))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,8 +233,16 @@ mod tests {
 
     fn temp_dir() -> PathBuf {
         let n = UNIQUE.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("real-bot-desktop-{}-{n}", std::process::id()));
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("independent-runtime-tests")
+            .join(format!("local-api-{}-{n}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        }
         dir
     }
 
@@ -301,6 +308,12 @@ mod tests {
         assert!(!stop_latch_present(&dir));
         write_stop_latch(&dir).unwrap();
         assert!(stop_latch_present(&dir));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(latch_path(&dir)).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
         assert!(clear_stop_latch(&dir));
         assert!(!stop_latch_present(&dir));
         fs::remove_dir_all(&dir).ok();
