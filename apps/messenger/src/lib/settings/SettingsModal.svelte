@@ -140,7 +140,6 @@
 		try {
 			independent = await invokeIndependentRuntime(action);
 			if (independent.drain.phase === 'draining') return;
-			if (!independent.available || independent.error) return;
 			independentConfirm = null;
 		} finally {
 			independentBusy = false;

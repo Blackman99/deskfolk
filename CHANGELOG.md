@@ -8,7 +8,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Desktop
 
-- Settings can opt into an independent LaunchAgent runtime, still **off by default**. Production stays gated (`g_pack_not_verified`); development never installs the agent. Enablement is quiesce → stop window Spawn → no-latch exit → wait for an empty port → bootstrap a new child; failure stays Down. A leftover `runtime.independent` does not drop window supervision unless the policy is available and the agent is loaded. Quitting the window while independent would leave the agent running; explicit stop writes `runtime.stop` so PathState does not relaunch. Mutating handoff IPC is bundled-frame only. `launch_at_login` remains window autolaunch and is independent of the runtime job. G-pack / G-launchd are not passed.
+- Settings can opt into an independent LaunchAgent runtime, still **off by default**. Production stays gated (`g_pack_not_verified`); development never installs the agent. Enablement is quiesce → stop window Spawn → no-latch exit → wait for an empty port → bootstrap a new child; failure stays Down. Confirming enable when the browser or native gate refuses now closes the dialog and leaves the switch off instead of keeping an empty confirm. A leftover `runtime.independent` does not drop window supervision unless the policy is available and the agent is loaded. Quitting the window while independent would leave the agent running; explicit stop writes `runtime.stop` so PathState does not relaunch. Mutating handoff IPC is bundled-frame only. `launch_at_login` remains window autolaunch and is independent of the runtime job. G-pack / G-launchd are not passed.
 
 ### Routines
 
