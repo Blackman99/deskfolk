@@ -125,7 +125,7 @@ export class MessengerRuntime {
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", this.onPushMessage);
     }
-    void this.tick();
+    this.pump();
   }
 
   destroy(): void {
@@ -1138,7 +1138,7 @@ export class MessengerRuntime {
     if (!isInboxMessage(event.data)) return;
     this.hostUnreachable = "host";
     this.markDisconnected();
-    void this.tick();
+    this.pump();
   };
 
   async setPushEnabled(enabled: boolean): Promise<boolean> {
@@ -1202,7 +1202,15 @@ export class MessengerRuntime {
   }
 
   private async tickRemote(): Promise<void> {
-    const enrollment = await loadEnrollment();
+    // Clearing site data under a live page force-closes the IndexedDB connection, so the next
+    // read throws. That is the state right after someone wipes a dead enrollment by hand: treat
+    // it as not enrolled and let the pairing screen come back.
+    let enrollment: StoredEnrollment | null = null;
+    try {
+      enrollment = await loadEnrollment();
+    } catch {
+      enrollment = null;
+    }
     this.enrolled = Boolean(enrollment);
     if (!enrollment) {
       this.hostUnreachable = "host";
@@ -1637,8 +1645,16 @@ export class MessengerRuntime {
   private schedule(): void {
     if (this.stopped) return;
     this.timer = setTimeout(() => {
-      void this.tick();
+      this.pump();
     }, RETRY_MS);
+  }
+
+  /** A tick that throws must still leave a timer behind, or the page never reconnects. */
+  private pump(): void {
+    void this.tick().catch(() => {
+      this.markDisconnected();
+      this.schedule();
+    });
   }
 }
 

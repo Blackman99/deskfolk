@@ -3,7 +3,7 @@ import { base64url, generateIdentity, identityPublic, type RemoteRequest, type R
 import { ApiError } from "../api.ts";
 import { MessengerRuntime } from "../runtime.svelte.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
-import type { StoredEnrollment } from "./idb.ts";
+import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
 
 const keys = generateIdentity();
 const pub = identityPublic(keys);
@@ -25,6 +25,41 @@ const enrollment: StoredEnrollment = {
 const runtimes: MessengerRuntime[] = [];
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.destroy();
+  useEnrollmentDriver(null);
+});
+
+/**
+ * Clearing site data under a live page force-closes the IndexedDB connection, and every read
+ * after that throws. The tick used to die on it: no enrollment left, no pairing screen either,
+ * just "host unreachable" until the app was killed and reopened by hand.
+ */
+test("an enrollment read that throws leaves the page not enrolled and keeps the loop alive", async () => {
+  useEnrollmentDriver({
+    get: () => Promise.reject(new Error("InvalidStateError")),
+    set: () => Promise.resolve(),
+  });
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  await (runtime as unknown as { tickRemote(): Promise<void> }).tickRemote();
+  expect(runtime.enrolled).toBe(false);
+  expect(runtime.hostUnreachable).toBe("host");
+});
+
+test("a tick that throws still leaves a timer behind", async () => {
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as {
+    tick(): Promise<void>;
+    pump(): void;
+    stopped: boolean;
+    timer?: ReturnType<typeof setTimeout>;
+  };
+  internals.stopped = false;
+  internals.tick = () => Promise.reject(new Error("boom"));
+  internals.pump();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(internals.timer).toBeDefined();
 });
 
 test("chat send 503 request_unknown keeps the id across resetConnection/connectRemote", async () => {
