@@ -1834,6 +1834,10 @@ describe("turn engine on the local API", () => {
     const firstHeld = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    let firstEntered = () => {};
+    const firstInFlight = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
     let releaseRoutine = () => {};
     const routineHeld = new Promise<void>((resolve) => {
       releaseRoutine = resolve;
@@ -1845,6 +1849,7 @@ describe("turn engine on the local API", () => {
         await routineHeld;
         return sse(textChunks("routine reply"));
       }
+      firstEntered();
       await firstHeld;
       return sse(textChunks("still going"));
     });
@@ -1861,6 +1866,7 @@ describe("turn engine on the local API", () => {
       sub.events,
       (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === botId,
     );
+    await firstInFlight;
 
     const created = await fetch(`${h.origin}/v1/routines`, {
       method: "POST",
