@@ -39,6 +39,7 @@ describe("schema", () => {
       "remote_devices",
       "remote_host",
       "remote_lifecycle",
+      "remote_push_subs",
       "remote_replays",
       "remote_revocations",
       "remote_transition",

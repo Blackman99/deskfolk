@@ -71,6 +71,20 @@ test("remote attachments above 50 MiB are refused before RPC", async () => {
     .rejects.toMatchObject({ code: "file_limit" });
 });
 
+test("push subscribe never posts an approval resolve", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      return { v: 1, id: request.id, status: 204, body: null } satisfies RemoteResponse;
+    },
+  });
+  await api.subscribePush({ endpoint: "https://web.push.apple.com/v1/push/isolated", p256dh: "B".repeat(87), auth: "C".repeat(22) });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.path).toBe("/remote/push/subscribe");
+  expect(JSON.stringify(calls[0]!.body)).not.toContain("allow_once");
+});
+
 test("forged UV is denied without a click-to-confirm fallback", async () => {
   const api = new RemoteApi(enrollment, {
     rpc: async (request) => {

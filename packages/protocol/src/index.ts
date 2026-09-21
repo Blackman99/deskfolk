@@ -47,6 +47,13 @@ export function isHiddenTranscriptKind(kind: string): boolean {
 /** Transcript body when a live turn is marked interrupted. Chinese in every locale. */
 export const INTERRUPT_NOTE_BODY = "中断" as const;
 
+/** Encrypted Web Push body. Visible copy is fixed; never titles, filenames or Bot names. */
+export const WEB_PUSH_PAYLOAD = { t: "pending" } as const;
+export const WEB_PUSH_COPY = {
+  zh: "Real Bot 有待处理事项",
+  en: "Real Bot has pending items",
+} as const;
+
 export const REACTION_EMOJI = ["👍", "👀", "❤️", "❗"] as const;
 export type ReactionEmoji = (typeof REACTION_EMOJI)[number];
 

@@ -96,6 +96,11 @@ const zh = {
     errorCancelled: "排空等待已取消。没有自动强制。",
     errorUv: "需要新鲜的 WebAuthn 用户验证。",
     errorUnknown: "结果未知。请查询同一回执，不要换新编号。",
+    push: "待办推送",
+    pushDesc: "仅泛化提醒「Real Bot 有待处理事项」。点击打开信使并拉回收件箱，不会批准或执行命令。拒绝或过期不影响待办。iOS 需 16.4+ 主屏幕；真机主屏幕门尚未通过。",
+    pushDenied: "系统已拒绝通知。待办仍在收件箱。",
+    pushUnsupported: "此浏览器不支持 Web Push。",
+    pushFailed: "未能更新推送订阅。",
   },
   sidebar: {
     roster: "名册",
@@ -722,6 +727,11 @@ const en: CopyShape<typeof zh> = {
     errorCancelled: "The drain wait was cancelled. Nothing was auto-forced.",
     errorUv: "Fresh WebAuthn user verification is required.",
     errorUnknown: "The result is unknown. Look up the same receipt instead of minting a new id.",
+    push: "Pending-item push",
+    pushDesc: "Generic reminders only: “Real Bot has pending items”. A click opens the PWA and pulls the inbox; it never approves or sends commands. Deny or expiry does not drop pending items. iOS needs 16.4+ home screen; the physical G-push gate has not passed.",
+    pushDenied: "Notifications are blocked. Pending items remain in the inbox.",
+    pushUnsupported: "This browser does not support Web Push.",
+    pushFailed: "Could not update the push subscription.",
   },
   sidebar: {
     roster: "Roster",

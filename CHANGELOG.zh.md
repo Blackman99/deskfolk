@@ -38,6 +38,7 @@
 
 ### 实验性远控协议
 
+- 可选 Web Push 仅由 Mac 发送泛化待办提醒（载荷 `{t:"pending"}`，固定文案「Real Bot 有待处理事项」）。订阅按设备保存 HTTPS endpoint URL，不能只存哈希。出站仅允许 `*.push.apple.com`、`fcm.googleapis.com`、`updates.push.services.mozilla.com`，`redirect: error`；中继不代发。点击只打开 PWA 并拉收件箱，绝不批准。拒绝、过期或吊销不丢待办。之后在已有 bot / ask / approval 行上点反应不会再发一条推送。iOS 16.4+ 主屏幕 standalone 才是 G-push，**尚未通过**；普通浏览器冒烟不算该门。
 - 远程维护仅走端到端加密：状态（版本/模式/可达性）、脱敏诊断（只有计数与错误码，不含 Bot 名、正文、路径或密钥）、排空后重启、强制重启、停止与吊销其它设备。重启等捕获的活轮集合结束后由本调用方留回执并无闩 exit 0，由当时窗监督者拉起。强制需要新鲜 WebAuthn UV，超时或掉线绝不自动升级。停止先写闩再退出且保持停止。窗不在且未独立时重启不可用，不安装后台任务。窗监督重启仅在本机继承的桌面通道真正挂上后才可用。UV 已提交后输掉 busy 的重启/停止会把该请求回执落成 409 并删掉生命周期行，不再留下 202 pending。本机回环仍无维护写路由。G-uv / 真机门**未通过**。
 - 已提交的远程附件 POST 用同一 `request_id` 重放时返回首次 201，不再把无暂存文件的 JSON 重试当成不同载荷。超限文本 PUT 在 Noise 上保持 `too_large`。真实 TCC 与手机下载未通过。
 - 远程目录浏览与限流文件双工：`list_host_dir` 复用 `classifyPath`/realpath，拒绝其它用户 home，TCC 拒绝返回类型化「在 Mac 上授权一次」错误。改工作区根仍须一类本机确认；逐级浏览不需要。上传/GET 走 type 0x05/0x06、50 MiB、单设备并发 2、tmp+fsync/TX/rename，ETag 为明文 SHA-256 且 PUT 必带 If-Match。远程 Finder 改为下载/复制相对路径。真实 TCC 与手机下载未通过。

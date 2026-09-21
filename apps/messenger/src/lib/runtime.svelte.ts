@@ -35,6 +35,7 @@ import type { MessengerApi } from "./messenger-api.ts";
 import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
 import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
+import { disablePush, enablePush, isInboxMessage, pushPermission, type PushPermission } from "./remote/push.ts";
 
 export type Connection = "disconnected" | "connected";
 export type HostUnreachable = "runtime" | "host";
@@ -90,6 +91,10 @@ export class MessengerRuntime {
   maintenanceForceConfirm = $state(false);
   maintenanceStopConfirm = $state(false);
   maintenanceRevokeId = $state<string | null>(null);
+  pushEnabled = $state(false);
+  pushBusy = $state(false);
+  pushError = $state<string | null>(null);
+  pushPermission = $state<PushPermission>("unsupported");
 
   private api: MessengerApi | null = null;
   private ws: WebSocket | null = null;
@@ -114,11 +119,18 @@ export class MessengerRuntime {
   start(): void {
     if (this.timer) clearTimeout(this.timer);
     this.stopped = false;
+    this.pushPermission = pushPermission();
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", this.onPushMessage);
+    }
     void this.tick();
   }
 
   destroy(): void {
     this.stopped = true;
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.removeEventListener("message", this.onPushMessage);
+    }
     this.markDisconnected();
     if (this.timer) clearTimeout(this.timer);
     this.clearHighlightTimer();
@@ -1120,6 +1132,37 @@ export class MessengerRuntime {
     return this.maintenance.devices.filter((row) => row.id !== api.enrollment.deviceId && !row.revoked);
   }
 
+  private readonly onPushMessage = (event: MessageEvent): void => {
+    if (!isInboxMessage(event.data)) return;
+    this.hostUnreachable = "host";
+    this.markDisconnected();
+    void this.tick();
+  };
+
+  async setPushEnabled(enabled: boolean): Promise<boolean> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi) || this.pushBusy) return false;
+    this.pushBusy = true;
+    this.pushError = null;
+    this.pushPermission = pushPermission();
+    try {
+      if (enabled) await enablePush(api);
+      else await disablePush(api);
+      if (this.api !== api) return false;
+      this.pushEnabled = enabled;
+      this.pushPermission = pushPermission();
+      return true;
+    } catch (error) {
+      this.pushPermission = pushPermission();
+      this.pushError = error instanceof Error && error.message === "denied" ? "denied"
+        : error instanceof Error && error.message === "unsupported" ? "unsupported"
+        : "failed";
+      return false;
+    } finally {
+      this.pushBusy = false;
+    }
+  }
+
   private async tick(): Promise<void> {
     if (this.stopped) return;
     if (HOSTED_MESSENGER) {
@@ -1241,6 +1284,11 @@ export class MessengerRuntime {
     const snapshot = await api.snapshot();
     await this.installSnapshot(api, sync, snapshot);
     this.uvReady = api.uvReady;
+    try {
+      this.pushEnabled = (await api.pushState()).subscribed;
+    } catch {
+      this.pushEnabled = false;
+    }
   }
 
   private openSocket(api: LocalApi, sync: EventSync): Promise<void> {

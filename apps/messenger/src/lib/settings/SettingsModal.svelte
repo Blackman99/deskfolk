@@ -641,6 +641,36 @@
 											</ul>
 										{/if}
 									</div>
+									<div class="settings-row">
+										<div class="settings-row-info">
+											<span class="settings-row-title" id="push-setting-label">{t.remote.push}</span>
+											<span class="settings-row-desc">{t.remote.pushDesc}</span>
+										</div>
+										<div class="settings-row-action">
+											<label class="switch-toggle relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" aria-labelledby="push-setting-label">
+												<input
+													id="remote-push-toggle"
+													type="checkbox"
+													checked={runtime.pushEnabled}
+													disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
+													onchange={(ev) =>
+														void runtime.setPushEnabled((ev.currentTarget as HTMLInputElement).checked)}
+												/>
+												<span class="switch-track" aria-hidden="true">
+													<span class="switch-thumb"></span>
+												</span>
+											</label>
+										</div>
+									</div>
+									{#if runtime.pushPermission === 'denied'}
+										<p class="muted">{t.remote.pushDenied}</p>
+									{/if}
+									{#if runtime.pushPermission === 'unsupported'}
+										<p class="muted">{t.remote.pushUnsupported}</p>
+									{/if}
+									{#if runtime.pushError === 'failed'}
+										<p class="field-error">{t.remote.pushFailed}</p>
+									{/if}
 								{/if}
 							</div>
 						{/if}

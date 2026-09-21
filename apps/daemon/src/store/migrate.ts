@@ -197,6 +197,20 @@ export function migrateSchema(db: Database): void {
   }
   migrateRouteTables(db, tables);
   migrateBotThinkingPins(db);
+  if (!tables.includes("remote_push_subs")) {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS remote_push_subs (
+        device_id TEXT PRIMARY KEY,
+        endpoint TEXT NOT NULL,
+        endpoint_hash TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        expires_at INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    db.run(`CREATE INDEX IF NOT EXISTS remote_push_subs_hash ON remote_push_subs(endpoint_hash)`);
+  }
 }
 
 /**

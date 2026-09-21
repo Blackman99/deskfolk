@@ -38,7 +38,7 @@ Request: `{v:1,id:<UUID>,op,...}`. Response: `{v:1,id,ok:true,value?,expiresIn?}
 |---|---|---|
 | `capability` | daemon/desktop, local dylib | Signature availability only; never enables remote or attests G-pack. Does not access Keychain. |
 | `desktop_channel` | daemon, local dylib | Verify inherited FD 3 with the existing same-user audit-token/code-signature policy; require the desktop role. No credential read and no caller-selected FD. |
-| `read` | daemon, local dylib | `material`: `host_identity` (64 bytes, DH then signing), `enrollment` (32), `vapid` (32), `highwater` (4-byte big-endian). |
+| `read` | daemon, local dylib | `material`: `host_identity` (64 bytes, DH then signing), `enrollment` (32), `vapid` (32-byte P-256 scalar for Web Push VAPID), `highwater` (4-byte big-endian). Tests inject fixtures and never read the personal Keychain. |
 | `advance_highwater` | daemon, local dylib | `expected`, `next` uint32; compare current and require `next > expected`. No GUI/helper dependency. |
 | `create` | desktop → helper | Fresh LA, add the initial bundle at epoch 1. Existing/locked/corrupt items are never overwritten. |
 | `prepare` | daemon → helper | `action:{kind,digest,display}` → random 32-byte `challenge`, 120-second deadline; maximum 16 pending. |

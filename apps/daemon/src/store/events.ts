@@ -85,7 +85,10 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         break;
       }
       case "messages": {
-        if (ctx.db.query("SELECT id FROM messages WHERE id = ?").get(id)) out.push({ event: "message.upsert", occurred_at, ...getMessage(ctx, id) });
+        if (ctx.db.query("SELECT id FROM messages WHERE id = ?").get(id)) {
+          const inserted = changes.some((change) => change.entity === "messages" && change.id === id && change.op === "INSERT");
+          out.push({ event: inserted ? "message.created" : "message.upsert", occurred_at, ...getMessage(ctx, id) });
+        }
         break;
       }
       case "turns": {

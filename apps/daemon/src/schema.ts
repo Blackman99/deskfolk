@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS remote_challenges (
   challenge TEXT PRIMARY KEY, device_id TEXT NOT NULL, session_id TEXT NOT NULL,
   record TEXT NOT NULL, expires_unix INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS remote_push_subs (
+  device_id TEXT PRIMARY KEY,
+  endpoint TEXT NOT NULL,
+  endpoint_hash TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  expires_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS remote_push_subs_hash ON remote_push_subs(endpoint_hash);
 
 CREATE TABLE IF NOT EXISTS request_receipts (
   device_id TEXT NOT NULL,
