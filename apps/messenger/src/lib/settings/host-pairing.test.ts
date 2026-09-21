@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
@@ -51,6 +52,18 @@ test("connected devices show recent activity and require confirmation before rem
   expect(host.querySelector("[data-testid=host-remove-confirm-01ARZ3NDEKTSV4RRFFQ69G5FAW]")?.textContent).toContain("Pixel");
   click(host.querySelector("[data-testid=host-remove-confirm-01ARZ3NDEKTSV4RRFFQ69G5FAW]"));
   expect(runtime.calls.some((c) => c.name === "removeHostDevice" && c.args[0] === "01ARZ3NDEKTSV4RRFFQ69G5FAW")).toBe(true);
+  close();
+});
+
+// A reload with `?o=settings` restores the panel open, so nothing calls `openSettings()`, and at
+// that moment the runtime has not connected yet. The card has to ask for the list itself.
+test("a panel restored open loads the device list once the host comes online", () => {
+  const { runtime, close } = open(null, { remoteStatus: null });
+  // Reading `calls` before the flip would freeze the array the fixture pushes to, so the count
+  // after it is the whole story: nothing while the host was still connecting, one list once on.
+  runtime.remoteStatus = { state: "online", diagnostic: null, devices: 1 };
+  flushSync();
+  expect(runtime.calls.filter((c) => c.name === "refreshHostDevices")).toHaveLength(1);
   close();
 });
 

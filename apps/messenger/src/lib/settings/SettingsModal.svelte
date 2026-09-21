@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import McpSettings from './McpSettings.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
@@ -89,6 +90,20 @@
 			year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
 		}).format(new Date(value * 1000));
 	}
+
+	/**
+	 * The device list is fetched, not part of the snapshot, so something has to ask for it. The
+	 * card asks itself rather than leaning on the button that opened the panel: a reload with
+	 * `?o=settings` restores the panel already open, before the runtime has an API to ask, and
+	 * never goes through `openSettings()`. Without this the card sits on "no connected devices"
+	 * until the panel is closed and reopened. `untrack` keeps the call's own busy flag out of the
+	 * dependencies, so finishing a fetch does not start the next one.
+	 */
+	$effect(() => {
+		const listable = runtime.settingsOpen && !runtime.remote && runtime.remoteStatus?.state === 'online';
+		if (!listable) return;
+		untrack(() => void runtime.refreshHostDevices());
+	});
 
 	const credentialOps = $derived(snapshot.credentialOperations);
 	let repairValues = $state<Record<string, string>>({});

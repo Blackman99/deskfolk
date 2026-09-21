@@ -289,13 +289,13 @@ export class MessengerRuntime {
     this.profileBotId = null;
   }
 
+  /** The settings panel loads its own device list, from wherever it was opened; see the card. */
   openSettings(): void {
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.settingsOpen = !this.settingsOpen;
-    if (this.settingsOpen && !this.remote) void this.refreshHostDevices();
   }
 
   openWorkspace(selected?: string | null): void {
