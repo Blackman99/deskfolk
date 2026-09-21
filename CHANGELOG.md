@@ -6,6 +6,12 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.5 — 2026-09-21
+
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
+
 ### Desktop
 
 - **An update now downloads and installs itself.** Finding a new version used to hand the `.dmg` to your browser and leave the rest to you: open it, drag it over the old copy, clear Gatekeeper. The About card now downloads it in the app with a progress bar, checks that the build inside the image really is this app and exactly the version it offered, replaces the installed copy and reopens it. A failed download or a build that doesn't check out leaves the installed copy untouched, and the browser download is still there — it is what you get when the app can't replace itself at all (a copy someone else installed, or one running from source), with a sentence saying which. The download can be cancelled while it runs.
