@@ -158,7 +158,6 @@
 		<PairingScreen {runtime} t={copy} />
 	{:else if runtime.connection === 'connecting'}
 		<main class="disconnected" data-testid="connecting">
-			<span class="connecting-dots" aria-hidden="true"><i></i><i></i><i></i></span>
 			<span>{connectingCopy}</span>
 		</main>
 	{:else}
@@ -210,48 +209,6 @@
 		background: var(--bg);
 	}
 
-	/* The app's "in progress" is bouncing dots; a connection attempt is the same idea. */
-	.connecting-dots {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-	}
-
-	.connecting-dots i {
-		width: 7px;
-		height: 7px;
-		border-radius: 9999px;
-		background: var(--muted);
-		animation: connecting-bounce 1.2s ease-in-out infinite;
-	}
-
-	.connecting-dots i:nth-child(2) {
-		animation-delay: 0.15s;
-	}
-
-	.connecting-dots i:nth-child(3) {
-		animation-delay: 0.3s;
-	}
-
-	@keyframes connecting-bounce {
-		0%,
-		70%,
-		100% {
-			transform: translateY(0);
-			opacity: 0.45;
-		}
-		35% {
-			transform: translateY(-4px);
-			opacity: 1;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.connecting-dots i {
-			animation: none;
-		}
-	}
-
 	.disconnected-hint {
 		max-width: 28rem;
 		text-align: center;
@@ -293,5 +250,19 @@
 		border: 3px solid var(--line);
 		border-top-color: var(--accent);
 		animation: spin 1s linear infinite;
+	}
+
+	/* Svelte scopes keyframes to the component; this one was left behind in the move to
+	   component styles, so the ring has been sitting still ever since. */
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.disconnected::before {
+			animation: none;
+		}
 	}
 </style>

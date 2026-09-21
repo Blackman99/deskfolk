@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS remote_devices (
   grant_epoch INTEGER NOT NULL, generation INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 1,
   revoked INTEGER NOT NULL DEFAULT 0, relay_pending INTEGER NOT NULL DEFAULT 1,
   pairing_id TEXT NOT NULL UNIQUE, onboarding_until INTEGER NOT NULL,
+  last_active_at INTEGER NOT NULL DEFAULT 0,
   onboarding_session TEXT, credential_id TEXT, cose_key TEXT, sign_count INTEGER NOT NULL DEFAULT 0,
   credential_version INTEGER NOT NULL DEFAULT 0
 );
