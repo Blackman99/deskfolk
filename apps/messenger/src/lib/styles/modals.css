@@ -111,6 +111,34 @@
   line-height: 1.25;
 }
 
+.settings-maintenance {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-maintenance-actions,
+.settings-device-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-device-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex-direction: column;
+}
+
+.settings-device-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 
 .field-head-row {
   display: flex;

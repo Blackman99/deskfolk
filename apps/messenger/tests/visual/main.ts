@@ -1,7 +1,7 @@
 import { flushSync, mount } from 'svelte';
 import 'virtual:uno.css';
 import '../../src/lib/styles/index.css';
-import { stories } from './stories.ts';
+import { rc11Stories, stories } from './stories.ts';
 import type { StoryName } from './story-list.ts';
 
 const params = new URLSearchParams(location.search);
@@ -9,7 +9,10 @@ const name = params.get('story') ?? '';
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 document.documentElement.dataset.theme = theme;
 
-const story = stories[name as StoryName] as (typeof stories)[StoryName] | undefined;
+const story = (stories[name as StoryName] ?? rc11Stories[name as keyof typeof rc11Stories]) as
+	| (typeof stories)[StoryName]
+	| (typeof rc11Stories)[keyof typeof rc11Stories]
+	| undefined;
 const host = document.getElementById('story')!;
 if (!story) {
 	host.textContent = `unknown story: ${name}. known: ${Object.keys(stories).join(', ')}`;

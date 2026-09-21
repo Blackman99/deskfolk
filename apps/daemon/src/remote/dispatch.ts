@@ -1,4 +1,4 @@
-import { canonicalHash, fromBase64url, requestDigest, type RemoteRequest, type AssertionWire, type RegistrationWire,
+import { fromBase64url, requestDigest, type RemoteRequest, type AssertionWire, type RegistrationWire,
   type AssertionResponse, type RegistrationResponse } from "@real-bot/remote";
 import type { LocalApi } from "../local-api";
 import { HttpError } from "../errors";
@@ -6,6 +6,7 @@ import { RemoteTrust, deny } from "./trust";
 import { RemoteUv, type RemotePrincipal } from "./uv";
 import { validateBusiness } from "./routes";
 import { finishLifecycle } from "./lifecycle";
+import { finishRestart, finishStop, maintenanceDiagnostics, maintenanceStatus, type MaintenanceControl, type RemoteReachability } from "./maint";
 
 export function assertionFromWire(value: AssertionWire): AssertionResponse {
   if (!value || Object.keys(value).sort().join() !== "authenticatorData,clientDataJSON,credentialId,signature" ||
@@ -18,22 +19,39 @@ export function registrationFromWire(value: RegistrationWire): RegistrationRespo
     !Object.values(value).every(v => typeof v === "string" && v.length <= 24_000)) deny();
   return { credentialId: value.credentialId, clientDataJSON: fromBase64url(value.clientDataJSON), attestationObject: fromBase64url(value.attestationObject) };
 }
-export type PrivilegedOperation = { action: "device.revoke" | "quiesce.begin" | "quiesce.cancel" | "quiesce.force"; targetId: string; requestId: string };
+export type PrivilegedOperation = {
+  action: "device.revoke" | "quiesce.begin" | "quiesce.cancel" | "quiesce.force" | "runtime.restart" | "runtime.stop" | "diagnostics.download";
+  targetId: string; requestId: string;
+};
 function operation(value: unknown): PrivilegedOperation {
   if (!value || typeof value !== "object" || Object.keys(value).sort().join() !== "action,requestId,targetId") deny();
   const op = value as PrivilegedOperation;
-  if (!["device.revoke", "quiesce.begin", "quiesce.cancel", "quiesce.force"].includes(op.action) ||
+  if (!["device.revoke", "quiesce.begin", "quiesce.cancel", "quiesce.force", "runtime.restart", "runtime.stop", "diagnostics.download"].includes(op.action) ||
     !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(op.requestId) || typeof op.targetId !== "string") deny();
   if (op.action === "device.revoke" ? !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(op.targetId) : op.targetId !== "runtime") deny();
   return op;
 }
-function operationDigest(op: PrivilegedOperation): string {
-  return requestDigest({ method: "POST", path: "/remote/action", body: op, encoding: "json" });
+function actionPath(action: PrivilegedOperation["action"]): string {
+  if (action === "runtime.restart") return "/remote/runtime/restart";
+  if (action === "runtime.stop") return "/remote/runtime/stop";
+  return "/remote/action";
+}
+function operationDigest(op: PrivilegedOperation, extra?: Record<string, unknown>): string {
+  return requestDigest({ method: "POST", path: actionPath(op.action), body: extra ? { ...op, ...extra } : op, encoding: "json" });
+}
+function restartBody(value: unknown): { force: boolean } {
+  const body = (value ?? {}) as Record<string, unknown>;
+  if (Object.keys(body).some(k => k !== "force") || (body.force !== undefined && typeof body.force !== "boolean")) deny();
+  return { force: body.force === true };
 }
 
 export class RemoteDispatcher {
   readonly uv: RemoteUv;
-  constructor(readonly api: LocalApi, readonly trust: RemoteTrust) { this.uv = new RemoteUv(trust); }
+  constructor(readonly api: LocalApi, readonly trust: RemoteTrust,
+    readonly maint: MaintenanceControl | null = null,
+    private readonly remoteStatus: () => RemoteReachability = () => ({ state: "off", diagnostic: null, devices: 0 })) {
+    this.uv = new RemoteUv(trust);
+  }
   async dispatch(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
     const abort = new AbortController();
     const invalidate = this.trust.onInvalidate(() => abort.abort());
@@ -60,10 +78,16 @@ export class RemoteDispatcher {
   private async control(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
     const body = request.body ?? {};
     const json = (value: unknown) => Response.json(value);
-    if (request.method === "GET" && ["/remote/status", "/remote/devices"].includes(request.path)) {
+    if (request.method === "GET" && ["/remote/status", "/remote/devices", "/remote/diagnostics"].includes(request.path)) {
       if (request.query || request.body || request.ifMatch) deny();
       const devices = this.trust.devices().map(d => ({ id: d.device_id, name: d.name, revoked: !!d.revoked, hasUv: !!d.credential_id }));
-      return json(request.path === "/remote/status" ? { drain: this.api.quiesce.state(), devices } : { items: devices });
+      if (request.path === "/remote/devices") return json({ items: devices });
+      if (!this.maint) {
+        if (request.path === "/remote/diagnostics") throw new HttpError(409, "restart_unavailable", "maintenance is unavailable");
+        return json({ drain: this.api.quiesce.state(), devices });
+      }
+      if (request.path === "/remote/diagnostics") return json(maintenanceDiagnostics(this.trust.store, this.api, this.maint));
+      return json(maintenanceStatus(this.api, devices, this.remoteStatus(), this.maint));
     }
     if (request.method !== "POST" || request.query || request.ifMatch) deny();
     if (request.path === "/remote/uv/register-challenge") {
@@ -96,14 +120,20 @@ export class RemoteDispatcher {
       return new Response(null, { status: 204 });
     }
     if (request.path === "/remote/uv/challenge") {
-      if (Object.keys(body).join() !== "operation") deny();
+      if (Object.keys(body).join() !== "operation" && Object.keys(body).sort().join() !== "force,operation") deny();
       const op = operation(body.operation);
-      return json(this.uv.issue(principal, op.requestId, op.action, op.targetId, operationDigest(op)));
+      const extra = op.action === "runtime.restart" ? restartBody({ force: body.force }) : undefined;
+      if (extra === undefined && body.force !== undefined) deny();
+      return json(this.uv.issue(principal, op.requestId, op.action, op.targetId, operationDigest(op, extra)));
+    }
+    if (request.path === "/remote/runtime/restart" || request.path === "/remote/runtime/stop") {
+      return this.runtimeAction(request, principal, request.path === "/remote/runtime/stop" ? "runtime.stop" : "runtime.restart");
     }
     if (request.path === "/remote/action") {
       if (Object.keys(body).sort().join() !== "assertion,challenge,operation" || typeof body.challenge !== "string") deny();
       const op = operation(body.operation);
-      if (op.requestId !== request.id) deny();
+      if (op.requestId !== request.id || op.action === "runtime.restart" || op.action === "runtime.stop") deny();
+      if (op.action === "diagnostics.download" && !this.maint) throw new HttpError(409, "restart_unavailable", "maintenance is unavailable");
       const scope = { deviceId: principal.device.device_id, requestId: op.requestId }, digest = operationDigest(op);
       const previous = this.trust.store.receipts.lookup(scope);
       if (previous) {
@@ -111,10 +141,11 @@ export class RemoteDispatcher {
         const saved = this.trust.store.receipts.read(scope);
         return new Response(saved.body, { status: saved.status, headers: { "Content-Type": "application/json", ...saved.headers } });
       }
+      const report = op.action === "diagnostics.download" ? JSON.stringify(maintenanceDiagnostics(this.trust.store, this.api, this.maint!)) : null;
       await this.uv.assertion(principal, String(body.challenge), { deviceId: principal.device.device_id, sessionId: principal.sessionId,
         trustEpoch: principal.device.grant_epoch, requestId: request.id, action: op.action, targetId: op.targetId, operationDigest: digest },
       assertionFromWire(body.assertion as AssertionWire), () => {
-        if (op.action !== "device.revoke") this.trust.store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, ?)",
+        if (op.action !== "device.revoke" && op.action !== "diagnostics.download") this.trust.store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, ?)",
           [scope.deviceId, scope.requestId, op.action]);
         if (op.action === "device.revoke") {
           if (!this.trust.device(op.targetId)) deny();
@@ -123,15 +154,49 @@ export class RemoteDispatcher {
         }
         this.trust.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
           VALUES (?, ?, ?, 'POST', '/remote/action', 'complete', ?, ?, '{}', ?)`,
-        [scope.deviceId, scope.requestId, digest, 202,
-          JSON.stringify({ state: op.action === "device.revoke" ? "revocation_pending" : "lifecycle_pending" }), Date.now()]);
+        [scope.deviceId, scope.requestId, digest, op.action === "diagnostics.download" ? 200 : 202,
+          op.action === "diagnostics.download" ? report : JSON.stringify({ state: op.action === "device.revoke" ? "revocation_pending" : "lifecycle_pending" }), Date.now()]);
       });
       if (op.action === "device.revoke") {
         await this.trust.revoke(op.targetId, () => this.uv.assert(principal));
         return new Response(null, { status: 204 });
       }
+      if (op.action === "diagnostics.download") {
+        return new Response(report, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       return finishLifecycle(this.trust.store, this.api, scope, op.action);
     }
     throw new HttpError(404, "not_found", "unknown remote route");
+  }
+  private async runtimeAction(request: RemoteRequest, principal: RemotePrincipal, action: "runtime.restart" | "runtime.stop"): Promise<Response> {
+    const body = request.body ?? {};
+    if (Object.keys(body).sort().join() !== "assertion,challenge,operation" &&
+      Object.keys(body).sort().join() !== "assertion,challenge,force,operation") deny();
+    const op = operation(body.operation);
+    if (op.action !== action || op.requestId !== request.id || typeof body.challenge !== "string") deny();
+    const extra = action === "runtime.restart" ? restartBody({ force: body.force }) : undefined;
+    if (action === "runtime.stop" && body.force !== undefined) deny();
+    if (!this.maint) throw new HttpError(409, "restart_unavailable", "maintenance is unavailable");
+    const force = extra?.force === true;
+    const scope = { deviceId: principal.device.device_id, requestId: op.requestId };
+    const digest = operationDigest(op, extra);
+    const previous = this.trust.store.receipts.lookup(scope);
+    if (previous) {
+      if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "request id has a different action");
+      const saved = this.trust.store.receipts.read(scope);
+      return new Response(saved.body, { status: saved.status, headers: { "Content-Type": "application/json", ...saved.headers } });
+    }
+    if (this.maint.busy) throw new HttpError(409, "draining", "runtime is draining; new turns are paused");
+    await this.uv.assertion(principal, String(body.challenge), { deviceId: principal.device.device_id, sessionId: principal.sessionId,
+      trustEpoch: principal.device.grant_epoch, requestId: request.id, action: op.action, targetId: op.targetId, operationDigest: digest },
+    assertionFromWire(body.assertion as AssertionWire), () => {
+      this.maint!.busy = action === "runtime.stop" ? "stop" : "restart";
+      this.trust.store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, ?)", [scope.deviceId, scope.requestId, op.action]);
+      this.trust.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+        VALUES (?, ?, ?, 'POST', ?, 'complete', 202, ?, '{}', ?)`,
+      [scope.deviceId, scope.requestId, digest, request.path, JSON.stringify({ state: "lifecycle_pending" }), Date.now()]);
+    });
+    if (action === "runtime.stop") return finishStop(this.trust.store, this.maint, scope);
+    return finishRestart(this.trust.store, this.api, this.maint, scope, force, principal.signal);
   }
 }

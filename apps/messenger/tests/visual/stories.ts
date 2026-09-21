@@ -567,6 +567,70 @@ const defs: Record<StoryName, Story> = {
 	}
 };
 
+const maintenanceRuntime = (over: Record<string, unknown> = {}) =>
+	fakeRuntime(world, {
+		settingsOpen: true,
+		remote: true,
+		uvReady: true,
+		maintenance: {
+			version: '0.1.0-rc.2',
+			mode: 'window',
+			reachability: 'online',
+			restart: 'available',
+			stopped: false,
+			drain: { phase: 'draining', remaining: 2, forced: false },
+			devices: [
+				{ id: '01ARZ3NDEKTSV4RRFFQ69G5FAV', name: 'This Mac', revoked: false, hasUv: true },
+				{ id: '01ARZ3NDEKTSV4RRFFQ69G5FAW', name: 'Travel phone', revoked: false, hasUv: true }
+			]
+		},
+		otherRemoteDevices: () => [
+			{ id: '01ARZ3NDEKTSV4RRFFQ69G5FAW', name: 'Travel phone', revoked: false, hasUv: true }
+		],
+		...over
+	});
+
+export const rc11Stories = {
+	'settings-maintenance': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: maintenanceRuntime() }),
+		afterMount: settingsTab(0),
+		width: 1440,
+		height: 1000
+	},
+	'settings-maintenance-force': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: maintenanceRuntime({ maintenanceForceConfirm: true, maintenanceStopConfirm: true, maintenanceRevokeId: '01ARZ3NDEKTSV4RRFFQ69G5FAW' }) }),
+		afterMount: settingsTab(0),
+		width: 1440,
+		height: 1000
+	},
+	'settings-maintenance-error': {
+		component: SettingsModal as never,
+		props: settingsProps({
+			runtime: fakeRuntime(world, {
+				settingsOpen: true,
+				remote: true,
+				uvReady: true,
+				maintenanceError: 'request_unknown',
+				maintenance: {
+					version: '0.1.0-rc.2',
+					mode: 'none',
+					reachability: 'disconnected',
+					restart: 'unavailable',
+					stopped: false,
+					drain: { phase: 'running', remaining: 0, forced: false },
+					devices: []
+				},
+				otherRemoteDevices: () => []
+			})
+		}),
+		afterMount: settingsTab(0),
+		width: 430,
+		height: 932
+	}
+};
+
 export const stories = Object.fromEntries(
 	Object.entries(defs).map(([name, def]) => [
 		name,

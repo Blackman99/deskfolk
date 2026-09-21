@@ -60,6 +60,7 @@ export type LocalApiOptions = {
   canonicalEncoder?: CanonicalEncoder;
   admission?: TurnAdmission;
   remoteStatus?: () => NonNullable<RuntimeSnapshot["remoteStatus"]>;
+  runtimeInfo?: () => RuntimeResponse;
 };
 
 export type LocalApi = {
@@ -425,7 +426,7 @@ function dispatch(
   }
 
   if (method === "GET" && path === "/v1/runtime") {
-    const body: RuntimeResponse = { pid: process.pid, bind: LOCAL_API_BIND };
+    const body: RuntimeResponse = options.runtimeInfo?.() ?? { pid: process.pid, bind: LOCAL_API_BIND };
     return jsonResponse(body, 200, null);
   }
 

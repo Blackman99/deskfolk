@@ -47,10 +47,14 @@ export async function dispatchLocalSetup(controller: RemoteController, input: un
   }
 }
 
-export function attachLocalSetup(stream: Duplex, controller: RemoteController): () => void {
+export function attachLocalSetup(stream: Duplex, controller: RemoteController, onGone?: () => void): () => void {
   let buffer = Buffer.alloc(0), busy = false, stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const close = () => { stopped = true; clearTimeout(timer); buffer.fill(0); buffer = Buffer.alloc(0); stream.destroy(); };
+  const close = () => {
+    if (stopped) return;
+    stopped = true; clearTimeout(timer); buffer.fill(0); buffer = Buffer.alloc(0); stream.destroy();
+    onGone?.();
+  };
   stream.on("error", close);
   stream.on("close", close);
   stream.on("data", (bytes: Buffer) => {
@@ -78,10 +82,10 @@ export function attachLocalSetup(stream: Duplex, controller: RemoteController): 
   return close;
 }
 
-export async function inheritedLocalSetup(controller: RemoteController): Promise<(() => void) | undefined> {
+export async function inheritedLocalSetup(controller: RemoteController, onGone?: () => void): Promise<(() => void) | undefined> {
   if (!process.argv.includes("--desktop-remote-channel")) return;
   try {
     await remoteNative.authorizeDesktopChannel();
-    return attachLocalSetup(new Socket({ fd: 3, readable: true, writable: true }), controller);
+    return attachLocalSetup(new Socket({ fd: 3, readable: true, writable: true }), controller, onGone);
   } catch { return; }
 }

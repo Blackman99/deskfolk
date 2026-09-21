@@ -29,7 +29,7 @@
 
 ## 原生门控 daemon 远控接线
 
-`apps/daemon/src/remote/` 复用已有 Store/LocalApi/engine：controller 出站控制/每设备 Noise，trust 使用同一 SQLite 做设备/重放/高水位，uv 使用共享真实 WebAuthn verifier，dispatch 是白名单而不是 HTTP 代理。`quiesce.ts` 由本机和维护调用方共享，不退出、不装 launchd。无 metadata 时不读 native credentials；配置后原生失败只报告 `native_unavailable`，本机照常启动。stock Bun 未有可构建 sealed runtime，**生产仍 gated**，没有 env fake/keyfile/假 UV 回退。
+`apps/daemon/src/remote/` 复用已有 Store/LocalApi/engine：controller 出站控制/每设备 Noise，trust 使用同一 SQLite 做设备/重放/高水位，uv 使用共享真实 WebAuthn verifier，dispatch 是白名单而不是 HTTP 代理。`quiesce.ts` 由本机和维护调用方共享，不退出、不装 launchd。维护票 `remote/maint.ts` 在排空返回后才无闩/写闩退出；`GET /remote/status`、`GET /remote/diagnostics`、UV 诊断下载与 `POST /remote/runtime/{restart,stop}` 仅 E2EE。本机回环仍无维护写路由。无 metadata 时不读 native credentials；配置后原生失败只报告 `native_unavailable`，本机照常启动。stock Bun 未有可构建 sealed runtime，**生产仍 gated**，没有 env fake/keyfile/假 UV 回退。
 
 Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled main，前者走 daemon 继承 FD3，native 在读取前验证桌面 audit-token/签名；不是 bearer HTTP。先 `ready`，再 open/read/prepare pair、Tauri confirm、daemon consume。接口/QR/RPC/水印、首次 UV/替换、吊销 generation 修订、文件基础能力和08/09限制见 [remote protocol](remote-protocol.md#daemon-adapter-and-downstream-client-contract-ticket-07) 与 [ADR0022](adr/0022-native-gated-remote-daemon.md)。票 08 已落托管 PWA 配对客户端；公网配对仍默认关闭，不宣称 S-rev / G-uv / 真机 L1 已过。
 

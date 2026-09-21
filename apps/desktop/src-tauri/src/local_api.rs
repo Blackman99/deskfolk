@@ -31,6 +31,10 @@ pub fn data_dir() -> PathBuf {
         .join(DEFAULT_DIRNAME)
 }
 
+pub fn stop_latch_present(dir: &Path) -> bool {
+    dir.join("runtime.stop").is_file()
+}
+
 pub fn descriptor_path(dir: &Path) -> PathBuf {
     dir.join(DESCRIPTOR_NAME)
 }
@@ -184,5 +188,14 @@ mod tests {
         assert!(pid_alive(std::process::id() as i32));
         assert!(!pid_alive(0));
         assert!(!pid_alive(-1));
+    }
+
+    #[test]
+    fn stop_latch_is_a_private_file_and_blocks_window_respawn() {
+        let dir = temp_dir();
+        assert!(!stop_latch_present(&dir));
+        fs::write(dir.join("runtime.stop"), "stopped\n").unwrap();
+        assert!(stop_latch_present(&dir));
+        fs::remove_dir_all(&dir).ok();
     }
 }

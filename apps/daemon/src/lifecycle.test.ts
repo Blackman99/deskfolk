@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { RuntimeLifecycle } from "./lifecycle";
+import { restartAvailable } from "./remote/maint";
 
 test("stop latch is durable, private and never installs or exits a supervisor", async () => {
   const dir = mkdtempSync(join(tmpdir(), "rc07-latch-"));
@@ -15,5 +16,8 @@ test("stop latch is durable, private and never installs or exits a supervisor", 
     expect(restarted.isStopped()).toBe(true);
     await restarted.clearStopLatch(); await restarted.clearStopLatch();
     expect(lifecycle.isStopped()).toBe(false);
+    expect(restartAvailable(new RuntimeLifecycle(dir, "none"), () => true)).toBe(false);
+    expect(restartAvailable(new RuntimeLifecycle(dir, "window"), () => false)).toBe(false);
+    expect(restartAvailable(new RuntimeLifecycle(dir, "window"), () => true)).toBe(true);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

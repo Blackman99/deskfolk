@@ -55,6 +55,26 @@ import type { StoredEnrollment } from "./idb.ts";
 import { RemoteTransport, type TransportHooks } from "./transport.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
 
+export type RemoteDeviceRow = { id: string; name: string; revoked: boolean; hasUv: boolean };
+export type RemoteMaintenanceStatus = {
+  version: string;
+  mode: "window" | "standalone" | "none";
+  reachability: string;
+  restart: "available" | "unavailable";
+  stopped: boolean;
+  drain: { phase: "running" | "draining" | "drained"; remaining: number; forced: boolean };
+  devices: RemoteDeviceRow[];
+};
+export type RemoteDiagnostics = {
+  version: string;
+  mode: "window" | "standalone" | "none";
+  drain: RemoteMaintenanceStatus["drain"];
+  counts: Record<string, number>;
+  turns: Record<string, number>;
+  approvals: Record<string, number>;
+  errors: Record<string, number>;
+};
+
 export type DurablePendingRequest = {
   id: string;
   method: RemoteRequest["method"];
@@ -450,12 +470,27 @@ export class RemoteApi {
     await this.post("/remote/uv/register", { challenge: challenge.challenge, response });
     this.uvReady = true;
   }
-  async privilegedAction(operation: { action: "device.revoke" | "quiesce.begin" | "quiesce.cancel" | "quiesce.force"; targetId: string; requestId?: string }): Promise<void> {
+  async remoteStatus(): Promise<RemoteMaintenanceStatus> {
+    return this.get("/remote/status");
+  }
+  async remoteDevices(): Promise<{ items: RemoteDeviceRow[] }> {
+    return this.get("/remote/devices");
+  }
+  async remoteDiagnostics(): Promise<RemoteDiagnostics> {
+    return this.get("/remote/diagnostics");
+  }
+  async privilegedAction(operation: {
+    action: "device.revoke" | "quiesce.begin" | "quiesce.cancel" | "quiesce.force" | "runtime.restart" | "runtime.stop" | "diagnostics.download";
+    targetId: string; requestId?: string; force?: boolean;
+  }): Promise<unknown> {
     const requestId = operation.requestId ?? ulid();
     const body = { action: operation.action, targetId: operation.targetId, requestId };
-    const challenge = await this.post<{ challenge: string }>("/remote/uv/challenge", { operation: body });
+    const force = operation.action === "runtime.restart" ? { force: operation.force === true } : {};
+    const challenge = await this.post<{ challenge: string }>("/remote/uv/challenge", { operation: body, ...force });
     const assertion = await createAssertion(challenge.challenge, this.enrollment.relayOrigin, this.hooks.webauthn);
-    await this.request("POST", "/remote/action", { operation: body, challenge: challenge.challenge, assertion }, undefined, {}, false, null, requestId);
+    const path = operation.action === "runtime.restart" ? "/remote/runtime/restart"
+      : operation.action === "runtime.stop" ? "/remote/runtime/stop" : "/remote/action";
+    return this.request("POST", path, { operation: body, challenge: challenge.challenge, assertion, ...force }, undefined, {}, false, null, requestId);
   }
 
   private withRevision(kind: string, id: string, body: object): object {

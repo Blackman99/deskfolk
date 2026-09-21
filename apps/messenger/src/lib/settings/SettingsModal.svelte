@@ -567,6 +567,79 @@
 									{#if !runtime.uvReady}
 										<button type="button" onclick={() => void runtime.registerUv()}>{t.remote.uvRegister}</button>
 									{/if}
+									<div class="settings-maintenance" data-testid="remote-maintenance">
+										<h4 class="settings-card-title">{t.remote.maintenance}</h4>
+										<p class="muted">{t.remote.maintenanceLead}</p>
+										{#if runtime.maintenance}
+											<p data-testid="remote-version">{t.remote.version(runtime.maintenance.version)}</p>
+											<p data-testid="remote-mode">
+												{runtime.maintenance.mode === 'window'
+													? t.remote.modeWindow
+													: runtime.maintenance.mode === 'standalone'
+														? t.remote.modeStandalone
+														: t.remote.modeNone}
+											</p>
+											<p data-testid="remote-restart">
+												{runtime.maintenance.restart === 'available'
+													? t.remote.restartAvailable
+													: t.remote.restartUnavailable}
+											</p>
+											<p data-testid="remote-drain">
+												{runtime.maintenance.drain.phase === 'draining'
+													? t.remote.drainWaiting(runtime.maintenance.drain.remaining)
+													: runtime.maintenance.drain.phase === 'drained'
+														? (runtime.maintenance.drain.forced ? t.remote.drainForced : t.remote.drainDrained)
+														: t.remote.drainRunning}
+											</p>
+										{/if}
+										<p class="muted">{t.remote.reconnectHint}</p>
+										{#if runtime.maintenanceError}
+											<p class="field-error" data-testid="remote-maintenance-error">
+												{runtime.maintenanceError === 'draining'
+													? t.remote.errorDraining
+													: runtime.maintenanceError === 'restart_unavailable'
+														? t.remote.errorUnavailable
+														: runtime.maintenanceError === 'cancelled'
+															? t.remote.errorCancelled
+															: runtime.maintenanceError === 'request_unknown'
+																? t.remote.errorUnknown
+																: t.remote.errorUv}
+											</p>
+										{/if}
+										<div class="settings-maintenance-actions">
+											<button type="button" data-testid="remote-refresh" onclick={() => void runtime.refreshMaintenance()}>{t.remote.refreshStatus}</button>
+											<button type="button" data-testid="remote-diagnostics" disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => void runtime.downloadDiagnostics()}>{t.remote.downloadDiagnostics}</button>
+											<button type="button" data-testid="remote-drain-restart" disabled={runtime.maintenanceBusy || !runtime.uvReady || runtime.maintenance?.restart !== 'available'} onclick={() => void runtime.restartRuntime(false)}>{t.remote.drainRestart}</button>
+											<button type="button" data-testid="remote-force-restart" disabled={runtime.maintenanceBusy || !runtime.uvReady || runtime.maintenance?.restart !== 'available'} onclick={() => { runtime.maintenanceForceConfirm = true; }}>{t.remote.forceRestart}</button>
+											<button type="button" data-testid="remote-stop" disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => { runtime.maintenanceStopConfirm = true; }}>{t.remote.stopRuntime}</button>
+										</div>
+										{#if runtime.maintenanceForceConfirm}
+											<p class="field-error">{t.remote.forceWarn}</p>
+											<button type="button" data-testid="remote-force-confirm" onclick={() => void runtime.restartRuntime(true)}>{t.remote.forceConfirm}</button>
+											<button type="button" onclick={() => { runtime.maintenanceForceConfirm = false; }}>{t.common.close}</button>
+										{/if}
+										{#if runtime.maintenanceStopConfirm}
+											<p class="field-error">{t.remote.stopWarn}</p>
+											<button type="button" data-testid="remote-stop-confirm" onclick={() => void runtime.stopRuntime()}>{t.remote.stopConfirm}</button>
+											<button type="button" onclick={() => { runtime.maintenanceStopConfirm = false; }}>{t.common.close}</button>
+										{/if}
+										<p class="muted">{t.remote.revokeOther}</p>
+										{#if runtime.otherRemoteDevices().length === 0}
+											<p class="muted">{t.remote.noOtherDevices}</p>
+										{:else}
+											<ul class="settings-device-list">
+												{#each runtime.otherRemoteDevices() as device (device.id)}
+													<li>
+														<span>{device.name}</span>
+														<button type="button" data-testid={`remote-revoke-${device.id}`} disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => { runtime.maintenanceRevokeId = device.id; }}>{t.remote.revokeOther}</button>
+														{#if runtime.maintenanceRevokeId === device.id}
+															<button type="button" data-testid={`remote-revoke-confirm-${device.id}`} onclick={() => void runtime.revokeRemoteDevice(device.id)}>{t.remote.revokeConfirm(device.name)}</button>
+														{/if}
+													</li>
+												{/each}
+											</ul>
+										{/if}
+									</div>
 								{/if}
 							</div>
 						{/if}

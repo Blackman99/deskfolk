@@ -64,6 +64,10 @@ export type HealthResponse = {
 export type RuntimeResponse = {
   pid: number;
   bind: typeof LOCAL_API_BIND;
+  version?: string;
+  mode?: "window" | "standalone" | "none";
+  stopped?: boolean;
+  restart?: "available" | "unavailable";
 };
 
 export type LocalApiDescriptor = {

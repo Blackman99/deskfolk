@@ -8,7 +8,7 @@ mod updates;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use local_api::{endpoint_from_descriptor, probe_bind, BIND_PORT};
+use local_api::{endpoint_from_descriptor, probe_bind, stop_latch_present, BIND_PORT};
 use supervisor::{launched_hidden, Action, Endpoint, Probe, QuitPlan, Supervisor};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -408,7 +408,7 @@ fn tick(app: &AppHandle) {
             let _ = item.set_enabled(connected);
         }
     });
-    if should_spawn && probe_bind(BIND_PORT) == Probe::Down {
+    if should_spawn && probe_bind(BIND_PORT) == Probe::Down && !stop_latch_present(&local_api::data_dir()) {
         let child = app
             .path()
             .resource_dir()

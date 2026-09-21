@@ -77,7 +77,7 @@ describe("local API runtime", () => {
       headers: { Authorization: `Bearer ${rt.token}` },
     });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ pid: process.pid, bind: LOCAL_API_BIND });
+    expect(await ok.json()).toMatchObject({ pid: process.pid, bind: LOCAL_API_BIND, mode: "none", restart: "unavailable" });
   });
 
   test("rejects a disallowed Origin and allows tauri and localhost", async () => {

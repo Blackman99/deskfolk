@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity,
+import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity, requestDigest,
   identityPublic, openPairingGrant, randomBytes, sealPairing, signEnrollmentProof, Reassembler, decodeFileChunk,
   type EnrollmentChallenge, type RemoteRequest, type UvChallenge } from "@real-bot/remote";
 import { startRelay } from "../../../relay/src/server";
@@ -18,6 +18,8 @@ import { RemoteUv } from "./uv";
 import { dispatchLocalSetup } from "./local-setup";
 import { finishLifecycle, recoverLifecycle } from "./lifecycle";
 import { validateBusiness } from "./routes";
+import { finishRestart, finishStop, maintenanceDiagnostics, restartAvailable, type MaintenanceControl } from "./maint";
+import { RuntimeLifecycle } from "../lifecycle";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 
 function cbor(value: unknown): Buffer {
@@ -81,7 +83,18 @@ function nativeFixture() {
     row.proof = Buffer.from(randomBytes(32)).toString("base64"); return row.proof;
   } };
 }
-async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false) {
+function maintControl(dir: string, kind: RuntimeLifecycle["kind"] = "window", alive = true): { maint: MaintenanceControl; exits: string[]; setAlive: (value: boolean) => void } {
+  const lifecycle = new RuntimeLifecycle(dir, kind);
+  const exits: string[] = [];
+  let windowAlive = alive;
+  const maint: MaintenanceControl = {
+    version: "0.1.0-rc.2", lifecycle, windowAlive: () => windowAlive,
+    requestExit: (reason) => { exits.push(reason); },
+  };
+  return { maint, exits, setAlive: (value) => { windowAlive = value; } };
+}
+
+async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false, withMaint = false) {
   const root = mkdtempSync(join(tmpdir(), "rb-rc07-"));
   const endpointKeys = memoryKeyStore();
   const store = new Store({ filename: join(root, "host.sqlite"), endpointKey: endpointKeys });
@@ -93,7 +106,8 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     origin: ORIGIN, relayId: "fixture", enabled: true, pairingEnabled: true });
   const localOrigin = `http://127.0.0.1:${relay.port}`;
   let hold = false;
-  const controller = new RemoteController({ store, api, native: native.client,
+  const control = withMaint ? maintControl(root) : null;
+  const controller = new RemoteController({ store, api, native: native.client, maint: control?.maint,
     socketFactory: url => {
       const ws = new WebSocket(`${localOrigin.replace("http:", "ws:")}${new URL(url).pathname}`);
       if (holdAfterMetadata) {
@@ -193,7 +207,7 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     }
     return { socket, noise, next, rpc, download, events, ready };
   }
-  return { root, store, endpointKeys, api, native, controller, relay, pair, connect, post, releasePressure: () => { hold = false; } };
+  return { root, store, endpointKeys, api, native, controller, relay, pair, connect, post, maint: control, releasePressure: () => { hold = false; } };
 }
 
 test("cancel fences the pump's current unsent frame under held socket pressure", async () => {
@@ -766,4 +780,209 @@ test("pair native proof is single use and bound to authoritative keys, not brows
   const d = await f.pair(), c = await f.connect(d);
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/action", body: { uv: true, credentialId: "claimed" } })).status).toBe(403);
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/challenge", body: { operation: { action: "quiesce.force", targetId: "runtime", requestId: ulid() } } })).status).toBe(403);
+});
+
+async function signedUv(f: Awaited<ReturnType<typeof fixture>>, d: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>["pair"]>>, c: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>["connect"]>>) {
+  const auth = authenticator();
+  const principal = { device: f.controller.trust.device(d.deviceId)!, sessionId: base64url(c.noise.authenticatedSessionId), active: () => true };
+  const reg = f.controller.dispatcher.uv.registrationChallenge(principal, ulid());
+  await f.controller.dispatcher.uv.register(principal, reg.challenge, auth.registration(reg));
+  let count = 1;
+  function nextAssertion(record: Parameters<typeof auth.assertion>[0]) {
+    return auth.assertion(record, count++);
+  }
+  async function act(action: string, path: string, extra: Record<string, unknown> = {}, rpc = c.rpc) {
+    const operation = { action, targetId: "runtime", requestId: ulid() };
+    const challenge = await rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/challenge", body: { operation, ...extra } });
+    const assertion = nextAssertion(challenge.body);
+    return rpc({ v: 1, id: operation.requestId, method: "POST", path, body: { operation, challenge: challenge.body.challenge, assertion: {
+      credentialId: assertion.credentialId, clientDataJSON: base64url(assertion.clientDataJSON),
+      authenticatorData: base64url(assertion.authenticatorData), signature: base64url(assertion.signature),
+    }, ...extra } });
+  }
+  return { auth, principal, act, nextAssertion };
+}
+
+test("maintenance status is redacted and diagnostics omit names bodies paths and secrets", async () => {
+  const f = await fixture(undefined, false, true), d = await f.pair(), c = await f.connect(d);
+  f.store.createBot({ name: "SecretBot", duties: "/Users/secret/path", boundaries: "api-key-CANARY" });
+  const status = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/remote/status" });
+  expect(status.status).toBe(200);
+  expect(status.body.version).toBe("0.1.0-rc.2");
+  expect(status.body.mode).toBe("window");
+  expect(status.body.restart).toBe("available");
+  expect(status.body.reachability).toBe("online");
+  const dump = JSON.stringify(status);
+  expect(dump).not.toContain("SecretBot");
+  expect(dump).not.toContain("/Users/secret");
+  expect(dump).not.toContain("api-key-CANARY");
+  const peek = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/remote/diagnostics" });
+  expect(peek.status).toBe(200);
+  expect(JSON.stringify(peek)).not.toContain("SecretBot");
+  const { act } = await signedUv(f, d, c);
+  const report = await act("diagnostics.download", "/remote/action");
+  expect(report.status).toBe(200);
+  expect(report.body.counts.bots).toBe(1);
+  expect(JSON.stringify(report)).not.toContain("SecretBot");
+  expect(JSON.stringify(report)).not.toContain("/Users/secret");
+  expect(JSON.stringify(report)).not.toContain("api-key-CANARY");
+});
+
+test("empty live-set drain restart records receipt, exits without latch, and reconnect does not restart again", async () => {
+  const f = await fixture(undefined, false, true), d = await f.pair(), c = await f.connect(d), { principal, nextAssertion } = await signedUv(f, d, c);
+  const operation = { action: "runtime.restart", targetId: "runtime", requestId: ulid() };
+  const issued = f.controller.dispatcher.uv.issue(principal, operation.requestId, operation.action, "runtime",
+    requestDigest({ method: "POST", path: "/remote/runtime/restart", body: { ...operation, force: false }, encoding: "json" }));
+  const assertion = nextAssertion(issued);
+  const request = { v: 1 as const, id: operation.requestId, method: "POST" as const, path: "/remote/runtime/restart", body: {
+    operation, force: false, challenge: issued.challenge, assertion: {
+      credentialId: assertion.credentialId, clientDataJSON: base64url(assertion.clientDataJSON),
+      authenticatorData: base64url(assertion.authenticatorData), signature: base64url(assertion.signature),
+    } } };
+  const first = await c.rpc(request);
+  expect(first.status).toBe(200);
+  expect(first.body.latch).toBe(false);
+  expect(f.maint!.exits).toEqual(["restart"]);
+  expect(f.maint!.maint.lifecycle.isStopped()).toBe(false);
+  expect(await c.rpc(request)).toEqual(first);
+  const lookup = await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${operation.requestId}` });
+  expect(lookup.status).toBe(200);
+  expect(f.maint!.exits).toEqual(["restart"]);
+});
+
+test("force restart requires a new UV bound to force true and never auto-forces on wait cancel", async () => {
+  const f = await fixture(undefined, false, true), d = await f.pair(), c = await f.connect(d), { act, principal, nextAssertion } = await signedUv(f, d, c);
+  const bot = f.store.createBot({ name: "Live", duties: "", boundaries: "" });
+  const message = f.store.postMessage(bot.direct_session.id, { body: "hold" });
+  f.store.createTurn({ sessionId: bot.direct_session.id, botId: bot.bot.id, triggerMessageId: message.id });
+  const abort = new AbortController();
+  const drained = spyOn(f.api.quiesce, "wait").mockImplementation((signal?: AbortSignal) => new Promise((_, reject) => {
+    const fail = () => reject(new HttpError(409, "cancelled", "drain wait cancelled"));
+    if (signal?.aborted) fail();
+    signal?.addEventListener("abort", fail, { once: true });
+  }));
+  const operation = { action: "runtime.restart", targetId: "runtime", requestId: ulid() };
+  const issued = f.controller.dispatcher.uv.issue(principal, operation.requestId, operation.action, "runtime",
+    requestDigest({ method: "POST", path: "/remote/runtime/restart", body: { ...operation, force: false }, encoding: "json" }));
+  const assertion = nextAssertion(issued);
+  const pending = f.controller.dispatcher.dispatch({
+    v: 1, id: operation.requestId, method: "POST", path: "/remote/runtime/restart",
+    body: { operation, force: false, challenge: issued.challenge, assertion: {
+      credentialId: assertion.credentialId, clientDataJSON: base64url(assertion.clientDataJSON),
+      authenticatorData: base64url(assertion.authenticatorData), signature: base64url(assertion.signature),
+    } },
+  }, { ...principal, signal: abort.signal });
+  await Bun.sleep(10);
+  abort.abort();
+  const cancelled = await pending;
+  expect(cancelled.status).toBe(409);
+  expect(JSON.parse(await cancelled.text()).error.code).toBe("cancelled");
+  expect(f.api.quiesce.state().forced).toBe(false);
+  expect(f.maint!.exits).toEqual([]);
+  drained.mockRestore();
+  f.api.quiesce.cancel();
+  const reused = f.controller.dispatcher.uv.issue(principal, ulid(), "runtime.restart", "runtime",
+    requestDigest({ method: "POST", path: "/remote/runtime/restart", body: { action: "runtime.restart", targetId: "runtime", requestId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", force: true }, encoding: "json" }));
+  await expect(f.controller.dispatcher.uv.assertion(principal, reused.challenge, reused.binding, assertion)).rejects.toThrow();
+  const forced = await act("runtime.restart", "/remote/runtime/restart", { force: true });
+  expect(forced.status).toBe(200);
+  expect(forced.body.forced).toBe(true);
+  expect(f.maint!.exits).toEqual(["restart"]);
+});
+
+test("stop writes the latch then exits and is not mixed with restart", async () => {
+  const f = await fixture(undefined, false, true), d = await f.pair(), c = await f.connect(d), { act } = await signedUv(f, d, c);
+  const stopped = await act("runtime.stop", "/remote/runtime/stop");
+  expect(stopped.status).toBe(200);
+  expect(stopped.body.latch).toBe(true);
+  expect(f.maint!.maint.lifecycle.isStopped()).toBe(true);
+  expect(f.maint!.exits).toEqual(["stop"]);
+  expect(restartAvailable(f.maint!.maint.lifecycle, () => true)).toBe(false);
+  const mixed = await act("runtime.restart", "/remote/runtime/stop");
+  expect(mixed.status).toBe(403);
+});
+
+test("no supervisor marks restart unavailable and loopback still rejects maintenance writes", async () => {
+  const none = maintControl(mkdtempSync(join(tmpdir(), "rb-rc11-none-")), "none", false);
+  expect(restartAvailable(none.maint.lifecycle, () => false)).toBe(false);
+  const gone = maintControl(mkdtempSync(join(tmpdir(), "rb-rc11-gone-")), "window", false);
+  expect(restartAvailable(gone.maint.lifecycle, () => false)).toBe(false);
+  const f = await fixture(undefined, false, true), d = await f.pair(), c = await f.connect(d);
+  f.maint!.setAlive(false);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/remote/status" })).body.restart).toBe("unavailable");
+  const local = createLocalApi({ store: f.store, token: "local", schedule: false });
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: local.fetch, websocket: local.websocket });
+  cleanup.push(async () => { local.quiesce.close(); await local.engine.close(); await server.stop(true); });
+  for (const path of ["/remote/runtime/restart", "/remote/runtime/stop", "/remote/diagnostics"]) {
+    expect((await fetch(`http://127.0.0.1:${server.port}${path}`, { method: "POST", headers: { Authorization: "Bearer local" }, body: "{}" })).status).toBe(404);
+  }
+  expect((await fetch(`http://127.0.0.1:${server.port}/remote/diagnostics`, { headers: { Authorization: "Bearer local" } })).status).toBe(404);
+});
+
+test("long drain wait never auto-forces and a second restart is 409 while draining", async () => {
+  const f = await fixture(undefined, false, true), d = await f.pair(), c = await f.connect(d), { principal, nextAssertion } = await signedUv(f, d, c);
+  const bot = f.store.createBot({ name: "Hold", duties: "", boundaries: "" });
+  const message = f.store.postMessage(bot.direct_session.id, { body: "hold" });
+  f.store.createTurn({ sessionId: bot.direct_session.id, botId: bot.bot.id, triggerMessageId: message.id });
+  let release!: (state: { phase: "drained"; remaining: string[]; forced: boolean }) => void;
+  const waiting = spyOn(f.api.quiesce, "wait").mockImplementation(() => new Promise(resolve => { release = resolve; }));
+  const firstOp = { action: "runtime.restart", targetId: "runtime", requestId: ulid() };
+  const issued = f.controller.dispatcher.uv.issue(principal, firstOp.requestId, firstOp.action, "runtime",
+    requestDigest({ method: "POST", path: "/remote/runtime/restart", body: { ...firstOp, force: false }, encoding: "json" }));
+  const assertion = nextAssertion(issued);
+  const pending = f.controller.dispatcher.dispatch({
+    v: 1, id: firstOp.requestId, method: "POST", path: "/remote/runtime/restart",
+    body: { operation: firstOp, force: false, challenge: issued.challenge, assertion: {
+      credentialId: assertion.credentialId, clientDataJSON: base64url(assertion.clientDataJSON),
+      authenticatorData: base64url(assertion.authenticatorData), signature: base64url(assertion.signature),
+    } },
+  }, principal);
+  while (!f.maint!.maint.busy) await Bun.sleep(2);
+  expect(f.api.quiesce.state().forced).toBe(false);
+  const secondOp = { action: "runtime.restart", targetId: "runtime", requestId: ulid() };
+  const secondIssued = f.controller.dispatcher.uv.issue(principal, secondOp.requestId, secondOp.action, "runtime",
+    requestDigest({ method: "POST", path: "/remote/runtime/restart", body: { ...secondOp, force: false }, encoding: "json" }));
+  const secondAssertion = nextAssertion(secondIssued);
+  await expect(f.controller.dispatcher.dispatch({
+    v: 1, id: secondOp.requestId, method: "POST", path: "/remote/runtime/restart",
+    body: { operation: secondOp, force: false, challenge: secondIssued.challenge, assertion: {
+      credentialId: secondAssertion.credentialId, clientDataJSON: base64url(secondAssertion.clientDataJSON),
+      authenticatorData: base64url(secondAssertion.authenticatorData), signature: base64url(secondAssertion.signature),
+    } },
+  }, principal)).rejects.toMatchObject({ status: 409, code: "draining" });
+  release({ phase: "drained", remaining: [], forced: false });
+  const done = await pending;
+  expect(done.status).toBe(200);
+  waiting.mockRestore();
+});
+
+test("caller finishRestart/stop never write a latch on restart and stop stays stopped", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rb-rc11-finish-"));
+  const store = new Store({ filename: join(dir, "host.sqlite"), endpointKey: memoryKeyStore() });
+  const api = createLocalApi({ store, token: "fixture", schedule: false });
+  const { maint, exits } = maintControl(dir, "window", true);
+  cleanup.push(async () => { api.quiesce.close(); await api.engine.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
+  const restartScope = { deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", requestId: ulid() };
+  store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+    VALUES (?, ?, ?, 'POST', '/remote/runtime/restart', 'complete', 202, '{"state":"lifecycle_pending"}', '{}', ?)`,
+    [restartScope.deviceId, restartScope.requestId, "a".repeat(64), Date.now()]);
+  store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, 'runtime.restart')", [restartScope.deviceId, restartScope.requestId]);
+  const restarted = await finishRestart(store, api, maint, restartScope, false);
+  expect(restarted.status).toBe(200);
+  await Bun.sleep(5);
+  expect(exits).toEqual(["restart"]);
+  expect(maint.lifecycle.isStopped()).toBe(false);
+  maint.busy = null;
+  const stopScope = { deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", requestId: ulid() };
+  store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+    VALUES (?, ?, ?, 'POST', '/remote/runtime/stop', 'complete', 202, '{"state":"lifecycle_pending"}', '{}', ?)`,
+    [stopScope.deviceId, stopScope.requestId, "b".repeat(64), Date.now()]);
+  store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, 'runtime.stop')", [stopScope.deviceId, stopScope.requestId]);
+  expect((await finishStop(store, maint, stopScope)).status).toBe(200);
+  await Bun.sleep(5);
+  expect(exits).toEqual(["restart", "stop"]);
+  expect(maint.lifecycle.isStopped()).toBe(true);
+  const report = maintenanceDiagnostics(store, api, maint);
+  expect(Object.values(report.counts).every(n => typeof n === "number")).toBe(true);
+  expect(JSON.stringify(report)).not.toMatch(/\/Users\//);
 });
