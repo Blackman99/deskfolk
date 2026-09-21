@@ -2,6 +2,9 @@
 //!
 //! Production stays fail-closed: this module never talks to the user's launchd
 //! unless a test injects a fake controller. Plist rendering is PathState-only.
+//! The mutating surface is unit-tested; the live window refuses enablement
+//! until G-pack / G-launchd pass, so rustc reports it unused in `pnpm dev`.
+#![cfg_attr(not(test), allow(dead_code))]
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -393,10 +396,8 @@ pub fn gui_domain() -> String {
 }
 
 /// Real launchctl. Production stays fail-closed and must not construct this while G-pack is closed.
-#[allow(dead_code)]
 pub struct ProcessLaunchctl;
 
-#[allow(dead_code)]
 impl Launchctl for ProcessLaunchctl {
     fn bootstrap(&mut self, domain: &str, plist: &Path) -> Result<(), String> {
         run_launchctl(&["bootstrap", domain, &path_string(plist)?])
@@ -406,7 +407,6 @@ impl Launchctl for ProcessLaunchctl {
     }
 }
 
-#[allow(dead_code)]
 fn run_launchctl(args: &[&str]) -> Result<(), String> {
     let status = std::process::Command::new("launchctl")
         .args(args)

@@ -3,6 +3,9 @@
 //! Enable: drain → supervising=false → no-latch exit → port empty → bootstrap.
 //! Disable with a window: supervising=true → bootout (no latch) → window Spawn.
 //! Disable without a window: warn, latch+stop+bootout. Bootstrap failure stays Down.
+//! Live IPC refuses enablement before constructing launchctl; this mutating
+//! surface is unused outside tests until G-pack / G-launchd pass.
+#![cfg_attr(not(test), allow(dead_code))]
 
 use std::path::PathBuf;
 use std::time::Duration;

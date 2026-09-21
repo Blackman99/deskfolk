@@ -131,6 +131,7 @@ pub fn clear_stop_latch(dir: &Path) -> bool {
     }
 }
 
+#[allow(dead_code)]
 pub fn write_stop_latch(dir: &Path) -> Result<(), String> {
     crate::launchd::write_stop_latch(&latch_path(dir))
 }

@@ -8,6 +8,8 @@
 
 ### 桌面
 
+- 开发态桌面编译不再对 gated 的独立运行时 launchd 辅助函数报 unused。生产仍 fail-closed；开发态仍不安装作业。
+
 - 设置可选择独立 LaunchAgent 运行时，**默认关**。生产仍 gated（`g_pack_not_verified`）；开发态不安装作业。开启顺序为排空 → 停窗口 Spawn → 无闩退出 → 等待端口空 → bootstrap 新子进程；失败保持 Down。浏览器或原生门拒绝开启时，确认后关闭对话框并保持开关关闭，不再留下空确认框。残留 `runtime.independent` 不会在策略不可用或作业未加载时关掉窗口监督。独立模式已开启时退出窗口不会停 agent；显式 stop 写 `runtime.stop`，PathState 不再拉起。交接类 IPC 仅 bundled 主文档可调。`launch_at_login` 仍是窗口登录项，与运行时作业独立。G-pack / G-launchd 未通过。
 
 ### 日程
