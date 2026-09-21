@@ -85,6 +85,11 @@ describe("schema", () => {
     expect(created.bot.thinking_level).toBeNull();
     expect(created.bot.avatar).toBeString();
     expect(created.bot.avatar?.startsWith("<svg")).toBe(true);
+    const remoteDeviceCols = store.db
+      .query<{ name: string }, []>(`PRAGMA table_info(remote_devices)`)
+      .all()
+      .map((row) => row.name);
+    expect(remoteDeviceCols).toContain("last_active_at");
     expect(created.bot.id).toHaveLength(26);
     expect(created.direct_session.id).toHaveLength(26);
     expect(created.direct_session.kind).toBe("direct");

@@ -39,6 +39,21 @@ test("an online host offers to pair a device", () => {
   close();
 });
 
+test("connected devices show recent activity and require confirmation before removal", () => {
+  const { host, runtime, close } = open(null, {
+    hostDevices: [{ id: "01ARZ3NDEKTSV4RRFFQ69G5FAW", name: "Pixel", lastActiveAt: 1_700_000_000 }],
+  });
+  const list = host.querySelector("[data-testid=host-devices]");
+  expect(list?.textContent).toContain("Connected devices");
+  expect(list?.textContent).toContain("Pixel");
+  expect(list?.textContent).toContain("Last active");
+  click(host.querySelector("[data-testid=host-remove-01ARZ3NDEKTSV4RRFFQ69G5FAW]"));
+  expect(host.querySelector("[data-testid=host-remove-confirm-01ARZ3NDEKTSV4RRFFQ69G5FAW]")?.textContent).toContain("Pixel");
+  click(host.querySelector("[data-testid=host-remove-confirm-01ARZ3NDEKTSV4RRFFQ69G5FAW]"));
+  expect(runtime.calls.some((c) => c.name === "removeHostDevice" && c.args[0] === "01ARZ3NDEKTSV4RRFFQ69G5FAW")).toBe(true);
+  close();
+});
+
 test("the code is on screen with a copy button, next to the fingerprint the device must show", () => {
   const { host, close } = open({ phase: "offer", pairingId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", code, expiresUnix: 2_000_000_000, fingerprint: hostFingerprint });
   expect(host.querySelector("[data-testid=pairing-code]")?.textContent).toBe(code);

@@ -31,7 +31,7 @@ import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
-import { confirmPairing, openPairing, readPairing } from "./remote/pairing-host.ts";
+import { confirmPairing, listHostDevices, openPairing, readPairing, removeHostDevice, type HostDevice } from "./remote/pairing-host.ts";
 import type { MessengerApi } from "./messenger-api.ts";
 import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
@@ -127,6 +127,10 @@ export class MessengerRuntime {
   /** Host side of pairing: what the settings panel shows while a device is being enrolled. */
   hostPairing = $state<HostPairing>(null);
   hostPairingBusy = $state(false);
+  hostDevices = $state<HostDevice[]>([]);
+  hostDevicesBusy = $state(false);
+  hostDevicesError = $state<string | null>(null);
+  hostRemoveDeviceId = $state<string | null>(null);
   /** How long to wait before the next relay handshake; grows while the Mac is unreachable. */
   private remoteRetryMs = REMOTE_RETRY_MIN_MS;
   enrolled = $state(false);
@@ -291,6 +295,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.settingsOpen = !this.settingsOpen;
+    if (this.settingsOpen && !this.remote) void this.refreshHostDevices();
   }
 
   openWorkspace(selected?: string | null): void {
@@ -1081,6 +1086,38 @@ export class MessengerRuntime {
     }
   }
 
+  async refreshHostDevices(): Promise<void> {
+    const api = this.api;
+    if (this.remote || !api || api instanceof RemoteApi || this.hostDevicesBusy) return;
+    this.hostDevicesBusy = true;
+    this.hostDevicesError = null;
+    try {
+      this.hostDevices = await listHostDevices(api);
+    } catch (error) {
+      this.hostDevicesError = error instanceof ApiError ? error.code : "request_unknown";
+    } finally {
+      this.hostDevicesBusy = false;
+    }
+  }
+
+  async removeHostDevice(id: string): Promise<boolean> {
+    const api = this.api;
+    if (this.remote || !api || api instanceof RemoteApi || this.hostDevicesBusy) return false;
+    this.hostDevicesBusy = true;
+    this.hostDevicesError = null;
+    try {
+      await removeHostDevice(api, id);
+      this.hostRemoveDeviceId = null;
+      this.hostDevices = await listHostDevices(api);
+      return true;
+    } catch (error) {
+      this.hostDevicesError = error instanceof ApiError ? error.code : "request_unknown";
+      return false;
+    } finally {
+      this.hostDevicesBusy = false;
+    }
+  }
+
   /**
    * Opens a pairing window on this Mac and keeps checking it. The window lasts ten minutes; the
    * card shows the code for that long, then says so rather than leaving a dead code on screen.
@@ -1132,6 +1169,7 @@ export class MessengerRuntime {
     try {
       const deviceId = await confirmPairing(api, current.pairingId, current.challenge);
       if (this.hostPairing === current) this.hostPairing = { phase: "paired", deviceId };
+      await this.refreshHostDevices();
     } catch (error) {
       if (this.hostPairing === current) {
         this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };

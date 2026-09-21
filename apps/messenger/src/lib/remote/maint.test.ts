@@ -117,11 +117,11 @@ test("maintenance settings show status, diagnostics, drain, force confirm, revok
       stopped: false,
       drain: { phase: "draining", remaining: 2, forced: false },
       devices: [
-        { id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", name: "This", revoked: false, hasUv: true },
-        { id: "01ARZ3NDEKTSV4RRFFQ69G5FAW", name: "Travel phone", revoked: false, hasUv: true },
+        { id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", name: "This", revoked: false, hasUv: true, lastActiveAt: 1_700_000_000 },
+        { id: "01ARZ3NDEKTSV4RRFFQ69G5FAW", name: "Travel phone", revoked: false, hasUv: true, lastActiveAt: 1_700_000_000 },
       ],
     },
-    otherRemoteDevices: () => [{ id: "01ARZ3NDEKTSV4RRFFQ69G5FAW", name: "Travel phone", revoked: false, hasUv: true }],
+    otherRemoteDevices: () => [{ id: "01ARZ3NDEKTSV4RRFFQ69G5FAW", name: "Travel phone", revoked: false, hasUv: true, lastActiveAt: 1_700_000_000 }],
   }));
   const { host, close } = render(SettingsModal, {
     runtime,

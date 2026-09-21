@@ -58,7 +58,7 @@ import type { StoredEnrollment } from "./idb.ts";
 import { RemoteTransport, type TransportHooks } from "./transport.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
 
-export type RemoteDeviceRow = { id: string; name: string; revoked: boolean; hasUv: boolean };
+export type RemoteDeviceRow = { id: string; name: string; revoked: boolean; hasUv: boolean; lastActiveAt: number | null };
 export type RemoteMaintenanceStatus = {
   version: string;
   mode: "window" | "standalone" | "none";

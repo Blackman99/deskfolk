@@ -66,7 +66,7 @@ export function devDispatch(native: DevRemoteNative): (controller: RemoteControl
  * either way; changing the relay or resetting the identity stays on the unix socket, where it
  * takes the CLI and the prompt that goes with it.
  */
-const PAIRING_OPS = new Set(["status", "open_pair", "prepare_pair", "confirm_pair", "dev_describe", "dev_authenticate"]);
+const PAIRING_OPS = new Set(["status", "open_pair", "prepare_pair", "confirm_pair", "list_devices", "prepare_remove_device", "confirm_remove_device", "dev_describe", "dev_authenticate"]);
 
 export function devPairingDispatch(native: DevRemoteNative): (controller: RemoteController, input: unknown) => Promise<unknown> {
   const full = devDispatch(native);

@@ -630,11 +630,8 @@
 		}
 	}}
 >
-	{#if runtime.remote}
-		<p class="muted composer-limit">{t.composer.attachLimit}</p>
-	{/if}
 	{#if attachLimitHit}
-		<p class="muted composer-limit">{t.settings.fileLimitHit}</p>
+		<p class="composer-limit-error">{t.settings.fileLimitHit}</p>
 	{/if}
 	{#if quoteTarget}
 		<div class="composer-quote-bar">
@@ -709,6 +706,7 @@
 			onchange={onFileInputChange}
 			style="display: none;"
 		/>
+		<div class="composer-editor-wrap">
 		<div
 			bind:this={editorEl}
 			class="composer-input"
@@ -729,6 +727,10 @@
 			onclick={onEditorClick}
 			onpaste={onComposerPaste}
 		></div>
+		{#if runtime.remote && !runtime.draft}
+			<span class="composer-inline-limit">{t.composer.attachLimit}</span>
+		{/if}
+		</div>
 		<button
 			type="button"
 			class="composer-action"
@@ -910,6 +912,12 @@
 		display: none;
 	}
 
+	.composer-editor-wrap {
+		position: relative;
+		flex: 1;
+		min-width: 0;
+	}
+
 	.composer .composer-input {
 		position: relative;
 		flex: 1;
@@ -951,6 +959,22 @@
 	.composer .composer-input[contenteditable="false"] {
 		opacity: 0.45;
 		cursor: not-allowed;
+	}
+
+	.composer-inline-limit {
+		display: block;
+		margin: -3px 4px 4px;
+		font-size: 10.5px;
+		line-height: 1.25;
+		color: var(--muted);
+		pointer-events: none;
+	}
+
+	.composer-limit-error {
+		margin: 2px 8px 0;
+		font-size: 11px;
+		line-height: 1.3;
+		color: var(--danger);
 	}
 
 	.attach-btn {
@@ -1365,16 +1389,23 @@
 		}
 
 		.composer-suggest-bar {
-			padding: 2px 4px 8px 2px;
+			align-self: stretch;
+			width: 100%;
+			padding: 2px 2px 8px;
 			margin: 0 0 -6px;
-			/* The row scrolls; without this the last chip just looks cut in half. */
-			mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-			-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-			scroll-padding-inline-end: 24px;
+			flex-wrap: wrap;
+			overflow: visible;
+		}
+
+		.composer-suggest-bar::before {
+			inset: -6px -6px 2px;
 		}
 
 		.suggest-chip {
-			min-height: 34px;
+			min-height: 30px;
+			max-width: 100%;
+			padding: 4px 9px;
+			font-size: 11.5px;
 		}
 
 		.composer-card-shell::before {
@@ -1392,15 +1423,22 @@
 	@media (max-width: 680px) {
 	.composer .composer-input {
 	font-size: 15px;
-	line-height: 22px;
-	min-height: 34px;
-	padding: 6px 4px;
+	line-height: 21px;
+	min-height: 29px;
+	padding: 4px;
+	}
+
+	.composer-inline-limit {
+		margin: -2px 4px 3px;
+		font-size: 10px;
 	}
 	}
 	@media (max-width: 680px) {
 	.composer .composer-input.is-empty::before {
 	left: 4px;
 	right: 4px;
+	top: 4px;
+	line-height: 21px;
 	}
 	}
 	@media (max-width: 680px) {

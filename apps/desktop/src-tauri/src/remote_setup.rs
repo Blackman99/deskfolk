@@ -44,12 +44,12 @@ pub fn adopt_channel(channel: UnixStream) {
 fn validate(input: &Value) -> Result<(), String> {
     let object = input.as_object().ok_or("malformed")?;
     let allowed: &[&str] = match object.get("operation").and_then(Value::as_str) {
-        Some("status" | "open_pair" | "prepare_recovery") => &["operation"],
-        Some("confirm_recovery" | "confirm_change" | "confirm_uv_renewal") => {
+        Some("status" | "open_pair" | "list_devices" | "prepare_recovery") => &["operation"],
+        Some("confirm_recovery" | "confirm_change" | "confirm_uv_renewal" | "confirm_remove_device") => {
             &["operation", "proof"]
         }
         Some("prepare_change") => &["operation", "change"],
-        Some("prepare_uv_renewal") => &["operation", "deviceId"],
+        Some("prepare_uv_renewal" | "prepare_remove_device") => &["operation", "deviceId"],
         Some("initialize") => &["operation", "config", "bootstrap"],
         Some("prepare_pair") => &["operation", "pairingId"],
         Some("confirm_pair") => &["operation", "pairingId", "proof"],
@@ -109,6 +109,8 @@ mod tests {
     #[test]
     fn setup_is_not_a_generic_native_or_http_proxy() {
         assert!(validate(&json!({"operation":"open_pair"})).is_ok());
+        assert!(validate(&json!({"operation":"list_devices"})).is_ok());
+        assert!(validate(&json!({"operation":"prepare_remove_device", "deviceId":"01ARZ3NDEKTSV4RRFFQ69G5FAV"})).is_ok());
         assert!(validate(&json!({"operation":"read", "material":"host_identity"})).is_err());
         assert!(validate(&json!({"operation":"status", "url":"http://localhost"})).is_err());
     }

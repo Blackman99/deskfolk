@@ -82,6 +82,11 @@
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
+	function deviceLastActive(value: number): string {
+		return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
+			year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+		}).format(new Date(value * 1000));
+	}
 
 	const credentialOps = $derived(snapshot.credentialOperations);
 	let repairValues = $state<Record<string, string>>({});
@@ -864,6 +869,35 @@
 													<button type="button" class="btn-xs" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
 												</div>
 											</div>
+										{/if}
+									</div>
+									<div class="connected-devices" data-testid="host-devices">
+										<div class="connected-devices-head">
+											<h4 class="settings-card-title">{t.remote.connectedDevices}</h4>
+											<button type="button" class="btn-xs" disabled={runtime.hostDevicesBusy} onclick={() => void runtime.refreshHostDevices()}>{t.remote.refreshStatus}</button>
+										</div>
+										{#if runtime.hostDevicesError}
+											<p class="field-error">{t.remote.deviceActionFailed}</p>
+										{/if}
+										{#if runtime.hostDevices.length === 0}
+											<p class="muted">{t.remote.connectedDevicesEmpty}</p>
+										{:else}
+											<ul class="settings-device-list">
+												{#each runtime.hostDevices as device (device.id)}
+													<li>
+														<div class="device-copy">
+															<strong>{device.name}</strong>
+															<span>{device.lastActiveAt ? t.remote.lastActive(deviceLastActive(device.lastActiveAt)) : t.remote.lastActiveUnknown}</span>
+														</div>
+														<div class="device-actions">
+															<button type="button" class="btn-xs" data-testid={`host-remove-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => { runtime.hostRemoveDeviceId = device.id; }}>{t.remote.removeDevice}</button>
+															{#if runtime.hostRemoveDeviceId === device.id}
+																<button type="button" class="btn-danger-xs" data-testid={`host-remove-confirm-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => void runtime.removeHostDevice(device.id)}>{t.remote.removeDeviceConfirm(device.name)}</button>
+															{/if}
+														</div>
+													</li>
+												{/each}
+											</ul>
 										{/if}
 									</div>
 								{:else if runtime.remoteStatus && !runtime.remote}
@@ -2274,6 +2308,66 @@
 		color: var(--ink-secondary);
 	}
 
+	.connected-devices {
+		display: flex;
+		flex-direction: column;
+		gap: 9px;
+	}
+
+	.connected-devices-head,
+	.settings-device-list li,
+	.device-actions {
+		display: flex;
+		align-items: center;
+	}
+
+	.connected-devices-head,
+	.settings-device-list li {
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.settings-device-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.settings-device-list li {
+		padding: 11px 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--sidebar-bg);
+	}
+
+	.device-copy {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		font-size: 12.5px;
+	}
+
+	.device-copy span {
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+
+	.device-actions {
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.btn-danger-xs {
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+		background: color-mix(in srgb, var(--danger) 8%, transparent);
+	}
+
 	/* Pairing is a short sequence with one action at its end, so it reads as steps rather than
 	   as another stack of paragraphs inside the card. */
 	.pairing {
@@ -2948,6 +3042,20 @@
 	}
 	}
 
+
+	@media (max-width: 540px) {
+	.settings-device-list li {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+	.device-actions {
+		width: 100%;
+		justify-content: flex-start;
+	}
+	.settings-device-list button {
+		min-height: 44px;
+	}
+	}
 
 	@media (max-width: 540px) {
 	.settings-tabs {

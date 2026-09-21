@@ -175,11 +175,11 @@ final class RemoteCoreTests {
       service.handle(request("confirm", challenge: challenge), peer: desktop).error, .locked)
   }
 
-  func testActionKindsAcceptRenewalAndRecoveryWithoutReplacingPairing() throws {
+  func testActionKindsAcceptRemovalRenewalAndRecoveryWithoutReplacingPairing() throws {
     let (_, keys, auth) = try fixture()
     let service = HelperService(credentials: keys, auth: auth)
     try action.validate()
-    for kind in ["renew_first_uv", "recover_trust"] {
+    for kind in ["remove_device", "renew_first_uv", "recover_trust"] {
       let next = Action(kind: kind, digest: action.digest, display: action.display)
       try next.validate()
       expect(service.handle(request("prepare", action: next), peer: daemon).ok)
@@ -368,7 +368,7 @@ struct TestRunner {
     try tests.testFreshActionBoundProofHasOneConsumerAndProcessOwner()
     try tests.testProofExpiresAndCancellationNeverCreatesProof()
     try tests.testConcurrentConfirmationReturnsBusyAndLockedKeychainFailsClosed()
-    try tests.testActionKindsAcceptRenewalAndRecoveryWithoutReplacingPairing()
+    try tests.testActionKindsAcceptRemovalRenewalAndRecoveryWithoutReplacingPairing()
     try tests.testProtocolLimitsAndRoleSeparation()
     try tests.testSocketFramingWithGeneratedFixtureOnly()
     tests.testUnsignedTestProcessCannotBecomeCredentialPrincipal()

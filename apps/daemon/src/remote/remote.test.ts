@@ -690,6 +690,23 @@ test("default native provider never reads credentials and local bearer has no se
   await expect(dispatchLocalSetup(remote, { operation: "read", material: "host_identity" })).rejects.toThrow();
 });
 
+test("connected device activity is recorded and local removal revokes the selected device", async () => {
+  const f = await fixture(), d = await f.pair();
+  expect(f.controller.trust.device(d.deviceId)!.last_active_at).toBeGreaterThan(0);
+  f.store.db.run("UPDATE remote_devices SET last_active_at = 1 WHERE device_id = ?", [d.deviceId]);
+  const c = await f.connect(d);
+  const activeAt = f.controller.trust.device(d.deviceId)!.last_active_at;
+  expect(activeAt).toBeGreaterThan(1);
+  const listed = await dispatchLocalSetup(f.controller, { operation: "list_devices" }) as { items: Array<{ id: string; name: string; lastActiveAt: number }> };
+  expect(listed.items).toEqual([{ id: d.deviceId, name: "Fixture device", lastActiveAt: activeAt }]);
+  const prepared = await dispatchLocalSetup(f.controller, { operation: "prepare_remove_device", deviceId: d.deviceId }) as { challenge: string };
+  const closed = new Promise<void>(resolve => c.socket.addEventListener("close", () => resolve(), { once: true }));
+  await dispatchLocalSetup(f.controller, { operation: "confirm_remove_device", proof: f.native.confirm(prepared.challenge) });
+  await closed;
+  expect(f.controller.trust.device(d.deviceId)!.revoked).toBe(1);
+  expect((await f.controller.listDevices())).toEqual([]);
+});
+
 test("single-device revoke keeps survivor grant valid after generation bump and fresh reconnect", async () => {
   const f = await fixture(), a = await f.pair(), b = await f.pair();
   const ca = await f.connect(a), cb = await f.connect(b);

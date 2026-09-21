@@ -9,6 +9,9 @@ export type LocalSetupRequest =
   | { operation: "status" }
   | { operation: "initialize"; config: RelayConfig; bootstrap?: string }
   | { operation: "open_pair" }
+  | { operation: "list_devices" }
+  | { operation: "prepare_remove_device"; deviceId: string }
+  | { operation: "confirm_remove_device"; proof: string }
   | { operation: "prepare_change"; change: import("./local-actions").TrustChange }
   | { operation: "confirm_change"; proof: string }
   | { operation: "prepare_uv_renewal"; deviceId: string }
@@ -30,6 +33,9 @@ export async function dispatchLocalSetup(controller: RemoteController, input: un
       if (!value.config || Object.keys(value.config).sort().join() !== "hostId,origin,relayId") deny();
       await controller.initialize(value.config, value.bootstrap); return controller.status();
     case "open_pair": if (fields !== "operation") deny(); return controller.openPair();
+    case "list_devices": if (fields !== "operation") deny(); return { items: await controller.listDevices() };
+    case "prepare_remove_device": if (fields !== "deviceId,operation") deny(); return controller.prepareRemoveDevice(value.deviceId);
+    case "confirm_remove_device": if (fields !== "operation,proof") deny(); await controller.confirmRemoveDevice(value.proof); return { removed: true };
     case "prepare_change":
       if (fields !== "change,operation" || !value.change || typeof value.change !== "object") deny();
       if (value.change.kind === "change_workspace") {

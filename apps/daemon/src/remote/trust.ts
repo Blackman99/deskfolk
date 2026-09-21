@@ -8,7 +8,7 @@ export type RemoteHost = { host_id: string; relay_origin: string; relay_id: stri
 export type TrustedDevice = {
   device_id: string; name: string; ua_hint: string; dh_pk: string; signing_pk: string; enrollment_pk: string;
   grant_epoch: number; generation: number; version: number; revoked: number; relay_pending: number;
-  pairing_id: string; onboarding_until: number; onboarding_session: string | null;
+  pairing_id: string; onboarding_until: number; last_active_at: number; onboarding_session: string | null;
   credential_id: string | null; cose_key: string | null; sign_count: number; credential_version: number;
 };
 export function deny(): never { throw new HttpError(403, "remote_denied", "remote authorization is no longer valid"); }
@@ -69,9 +69,10 @@ export class RemoteTrust {
       const keys = [request.device_e_pk, request.device_s_pk, request.enrollment_pk];
       for (const value of keys) fromBase64url(value, 32);
       if (new Set(keys).size !== 3 || this.devices().some(d => [d.dh_pk, d.signing_pk, d.enrollment_pk].some(key => keys.includes(key)))) deny();
-      this.store.db.run(`INSERT INTO remote_devices (device_id,name,ua_hint,dh_pk,signing_pk,enrollment_pk,grant_epoch,generation,pairing_id,onboarding_until)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [request.device_id, request.name, request.ua_hint, request.device_e_pk,
-        request.device_s_pk, request.enrollment_pk, host.generation, host.generation, pairingId, Math.floor(this.now() / 1000) + 120]);
+      this.store.db.run(`INSERT INTO remote_devices (device_id,name,ua_hint,dh_pk,signing_pk,enrollment_pk,grant_epoch,generation,pairing_id,onboarding_until,last_active_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [request.device_id, request.name, request.ua_hint, request.device_e_pk,
+        request.device_s_pk, request.enrollment_pk, host.generation, host.generation, pairingId, Math.floor(this.now() / 1000) + 120,
+        Math.floor(this.now() / 1000)]);
       return this.device(request.device_id)!;
     });
   }
@@ -89,8 +90,16 @@ export class RemoteTrust {
   bindOnboarding(pin: TrustedDevice, sessionId: string): void {
     this.store.transaction(() => {
       this.assert(pin);
-      this.store.db.run(`UPDATE remote_devices SET onboarding_session = ? WHERE device_id = ? AND onboarding_session IS NULL
-        AND credential_id IS NULL AND onboarding_until > ?`, [sessionId, pin.device_id, Math.floor(this.now() / 1000)]);
+      const now = Math.floor(this.now() / 1000);
+      this.store.db.run(`UPDATE remote_devices SET last_active_at = ?, onboarding_session = CASE
+        WHEN onboarding_session IS NULL AND credential_id IS NULL AND onboarding_until > ? THEN ? ELSE onboarding_session END
+        WHERE device_id = ?`, [now, now, sessionId, pin.device_id]);
+    });
+  }
+  touchActive(pin: TrustedDevice): void {
+    this.store.transaction(() => {
+      this.assert(pin);
+      this.store.db.run("UPDATE remote_devices SET last_active_at = ? WHERE device_id = ?", [Math.floor(this.now() / 1000), pin.device_id]);
     });
   }
   claimReplay(pin: TrustedDevice, claim: ReplayClaim): boolean {

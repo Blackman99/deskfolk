@@ -61,6 +61,21 @@
 			: null
 	);
 	const thinkingHere = $derived(Boolean(selectedWork?.isBusy));
+	let mobileActionsOpen = $state(false);
+
+	function closeMobileActions(): void {
+		mobileActionsOpen = false;
+	}
+
+	function handleWindowClick(event: MouseEvent): void {
+		if (event.target instanceof Element && event.target.closest('.mobile-actions')) return;
+		closeMobileActions();
+	}
+
+	function runMobileAction(action: () => void): void {
+		closeMobileActions();
+		action();
+	}
 
 	function titleOf(session: SessionSummary): string {
 		return sessionTitle(session, botsById, rosterLabels);
@@ -83,6 +98,8 @@
 		return botsById.get(peer)?.archived_at ? ` · ${t.top.archived}` : '';
 	}
 </script>
+
+<svelte:window onclick={handleWindowClick} />
 
 <header class="top">
 	{#if selected}
@@ -194,6 +211,7 @@
 				type="button"
 				class="btn-top-action"
 				class:is-active={runtime.sessionSettingsOpen}
+				title={sessionSettingsLabel}
 				onclick={onToggleSessionSettings}
 			>
 				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -202,6 +220,57 @@
 				</svg>
 				<span>{sessionSettingsLabel}</span>
 			</button>
+		</div>
+
+		<div class="mobile-actions">
+			<button
+				type="button"
+				class="btn-mobile-actions"
+				class:is-active={mobileActionsOpen || runtime.routeLogOpen || runtime.sessionSettingsOpen || isSessionPinned(pinnedSessionIds, selected.id)}
+				title={t.top.moreActions}
+				aria-label={t.top.moreActions}
+				aria-expanded={mobileActionsOpen}
+				onclick={() => (mobileActionsOpen = !mobileActionsOpen)}
+			>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+					<circle cx="5" cy="12" r="1.8"></circle>
+					<circle cx="12" cy="12" r="1.8"></circle>
+					<circle cx="19" cy="12" r="1.8"></circle>
+				</svg>
+			</button>
+			{#if mobileActionsOpen}
+				<div class="mobile-actions-menu">
+					<button
+						type="button"
+						class:is-active={isSessionPinned(pinnedSessionIds, selected.id)}
+						onclick={() => runMobileAction(() => onTogglePin(selected.id))}
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill={isSessionPinned(pinnedSessionIds, selected.id) ? "currentColor" : "none"} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="12" y1="17" x2="12" y2="22"></line>
+							<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
+						</svg>
+						<span>{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.unpin : t.top.pin}</span>
+					</button>
+					<button type="button" class:is-active={runtime.routeLogOpen} onclick={() => runMobileAction(() => runtime.toggleRouteLog())}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="8" y1="6" x2="21" y2="6"></line>
+							<line x1="8" y1="12" x2="21" y2="12"></line>
+							<line x1="8" y1="18" x2="21" y2="18"></line>
+							<line x1="3" y1="6" x2="3.01" y2="6"></line>
+							<line x1="3" y1="12" x2="3.01" y2="12"></line>
+							<line x1="3" y1="18" x2="3.01" y2="18"></line>
+						</svg>
+						<span>{t.routes.topAction}</span>
+					</button>
+					<button type="button" class:is-active={runtime.sessionSettingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="3"></circle>
+							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09A1.65 1.65 0 0 0 19.4 15z"></path>
+						</svg>
+						<span>{sessionSettingsLabel}</span>
+					</button>
+				</div>
+			{/if}
 		</div>
 	{:else}
 		<h1>{t.top.pickSession}</h1>
@@ -389,6 +458,70 @@
 		border-color: var(--line-hover);
 	}
 
+	.mobile-actions {
+		display: none;
+		position: relative;
+		flex: 0 0 auto;
+	}
+
+	.btn-mobile-actions {
+		width: 40px;
+		height: 40px;
+		padding: 0;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--btn-secondary-bg);
+		color: var(--ink-secondary);
+		box-shadow: var(--shadow-xs);
+	}
+
+	.btn-mobile-actions:hover,
+	.btn-mobile-actions.is-active {
+		background: var(--accent-tint);
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.mobile-actions-menu {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		width: max-content;
+		min-width: 180px;
+		padding: 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-lg);
+		z-index: 20;
+	}
+
+	.mobile-actions-menu button {
+		min-height: 40px;
+		padding: 0 10px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink-secondary);
+		font-size: 13px;
+		font-weight: 600;
+		text-align: left;
+	}
+
+	.mobile-actions-menu button:hover,
+	.mobile-actions-menu button.is-active {
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
 	@media (max-width: 680px) {
 	.btn-mobile-back {
 	display: inline-flex;
@@ -453,34 +586,38 @@
 			gap: 8px;
 		}
 
-		/*
-		 * Three labelled buttons left the name as "通.." with an ellipsis. The labels go; the
-		 * icons stay, at a size a thumb can actually hit, and the name gets the rest.
-		 */
-		.btn-top-action span {
-			display: none;
+		.top-session-identity {
+			gap: 8px;
 		}
 
-		.btn-top-action {
-			width: 40px;
-			height: 40px;
-			padding: 0;
-			justify-content: center;
-			flex-shrink: 0;
-		}
-
-		.btn-top-action :global(svg) {
-			width: 17px;
-			height: 17px;
+		.top-identity-btn {
+			gap: 8px;
+			padding-inline: 4px;
+			margin-inline: -4px;
 		}
 
 		.top-actions {
-			gap: 6px;
+			display: none;
+		}
+
+		.mobile-actions {
+			display: block;
 		}
 
 		.btn-mobile-back {
 			width: 40px;
 			height: 40px;
+			flex: 0 0 40px;
+		}
+
+		.top-avatar,
+		.top-avatar :global(.row-avatar) {
+			width: 32px;
+			height: 32px;
+		}
+
+		.top-subline {
+			font-size: 11px;
 		}
 	}
 

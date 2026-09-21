@@ -92,7 +92,13 @@ export class RemoteDispatcher {
         if (!this.push) throw new HttpError(503, "failed", "push unavailable");
         return json(await this.push.publicState(principal.device.device_id));
       }
-      const devices = this.trust.devices().map(d => ({ id: d.device_id, name: d.name, revoked: !!d.revoked, hasUv: !!d.credential_id }));
+      const devices = this.trust.devices().map(d => ({
+        id: d.device_id,
+        name: d.name,
+        revoked: !!d.revoked,
+        hasUv: !!d.credential_id,
+        lastActiveAt: d.last_active_at || null,
+      }));
       if (request.path === "/remote/devices") return json({ items: devices });
       if (!this.maint) {
         if (request.path === "/remote/diagnostics") throw new HttpError(409, "restart_unavailable", "maintenance is unavailable");

@@ -8,11 +8,12 @@ import Composer from "./Composer.svelte";
 
 const t = copyFor("zh");
 
-function open(draft = "写点什么") {
+function open(draft = "写点什么", remote = false) {
   const selected = aDirect();
   const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
   runtime.selectedId = selected.id;
   runtime.draft = draft;
+  runtime.remote = remote;
   const sent: File[][] = [];
   const view = render(Composer, {
     runtime,
@@ -80,6 +81,15 @@ test("an empty draft cannot be sent", () => {
   editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   flushSync();
   expect(sent).toHaveLength(0);
+  close();
+});
+
+test("the remote attachment limit sits inside an empty composer", () => {
+  const { host, runtime, close } = open("", true);
+  expect(host.querySelector(".composer-inline-limit")?.textContent).toContain(t.composer.attachLimit);
+  runtime.draft = "已经开始输入";
+  flushSync();
+  expect(host.querySelector(".composer-inline-limit")).toBeNull();
   close();
 });
 

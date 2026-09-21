@@ -34,6 +34,7 @@ export class RemoteController {
   readonly push: PushService;
   private readonly principals = new Map<string, RemotePrincipal>();
   private renewal?: { action: LocalAction; challenge: string; deviceId: string; sessionId: string; expires: number };
+  private removal?: { action: LocalAction; challenge: string; deviceId: string; generation: number; expires: number };
   private readonly native: RemoteNativeProvider;
   private keys?: IdentitySecrets;
   private control?: RelayControl;
@@ -152,6 +153,33 @@ export class RemoteController {
       this.options.store.db.run("UPDATE remote_devices SET onboarding_session = ?, onboarding_until = ? WHERE device_id = ?",
         [principal.sessionId, Math.floor(this.trust.now() / 1000) + 120, device.device_id]);
     });
+  }
+  async listDevices(): Promise<Array<{ id: string; name: string; lastActiveAt: number | null }>> {
+    this.trust.assertHost();
+    return this.trust.devices().filter(device => !device.revoked).map(device => ({
+      id: device.device_id,
+      name: device.name,
+      lastActiveAt: device.last_active_at || null,
+    }));
+  }
+  async prepareRemoveDevice(deviceId: string): Promise<{ challenge: string; expiresIn: 120 }> {
+    const host = this.trust.assertHost(), device = this.trust.device(deviceId);
+    if (!device || device.revoked) deny();
+    const action: LocalAction = { kind: "remove_device", digest: canonicalHash({
+      action: "remove_remote_device", host, device: this.trust.fingerprint(device),
+    }), display: `Remove connected device: ${device.name} · ${sha256Hex(fromBase64url(device.signing_pk, 32))}` };
+    const prepared = await this.native.prepare(action);
+    this.removal = { action, challenge: prepared.challenge, deviceId, generation: host.generation, expires: this.trust.now() + 120_000 };
+    return prepared;
+  }
+  async confirmRemoveDevice(proof: string): Promise<void> {
+    const removal = this.removal; this.removal = undefined;
+    if (!removal || this.trust.now() >= removal.expires || this.trust.host()?.generation !== removal.generation) deny();
+    await this.native.consume(removal.action, removal.challenge, proof);
+    const host = this.trust.assertHost(), device = this.trust.device(removal.deviceId);
+    if (!device || device.revoked || this.trust.now() >= removal.expires || host.generation !== removal.generation ||
+      canonicalHash({ action: "remove_remote_device", host, device: this.trust.fingerprint(device) }) !== removal.action.digest) deny();
+    await this.trust.revoke(removal.deviceId, () => this.trust.assertHost());
   }
   async prepareRecovery(): Promise<{ challenge: string; expiresIn: 120 }> {
     const host = this.trust.host();
@@ -444,6 +472,7 @@ export class RemoteController {
       let id: string | undefined;
       try {
         const request = parseRemoteRequest(bytes); id = request.id;
+        this.trust.touchActive(device);
         const files = claimedFiles(request);
         const waited = files.length ? await waitForUploads(request, files) : { staged: [] };
         const staged = "staged" in waited ? waited.staged : [];

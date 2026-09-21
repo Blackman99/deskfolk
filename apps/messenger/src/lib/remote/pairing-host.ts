@@ -17,6 +17,7 @@ export type PairingOffer = { pairingId: string; code: string; expiresUnix: numbe
 export type PairingWait =
   | { phase: "pending" }
   | { phase: "confirm"; name: string; fingerprint: string; challenge: string };
+export type HostDevice = { id: string; name: string; lastActiveAt: number | null };
 
 /**
  * A development window is still a Tauri window, and `remote_local_setup` refuses one: the command
@@ -39,6 +40,11 @@ async function setup(api: LocalApi, request: Record<string, unknown>): Promise<u
     }
   }
   return api.remoteSetup(request);
+}
+
+export async function listHostDevices(api: LocalApi): Promise<HostDevice[]> {
+  const reply = (await setup(api, { operation: "list_devices" })) as { items?: HostDevice[] };
+  return Array.isArray(reply.items) ? reply.items : [];
 }
 
 /** Opens a ten-minute window and returns what the person carries to the device. */
@@ -75,6 +81,13 @@ async function nativeProof(challenge: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function removeHostDevice(api: LocalApi, deviceId: string): Promise<void> {
+  const prepared = (await setup(api, { operation: "prepare_remove_device", deviceId })) as { challenge: string };
+  const proof = (await nativeProof(prepared.challenge)) ??
+    ((await setup(api, { operation: "dev_authenticate", challenge: prepared.challenge })) as { proof: string }).proof;
+  await setup(api, { operation: "confirm_remove_device", proof });
 }
 
 /** The proof comes from Touch ID in a packaged app and from the development stand-in otherwise. */

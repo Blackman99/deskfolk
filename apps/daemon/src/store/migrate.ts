@@ -12,6 +12,10 @@ import { pickThinkingLevel } from "../route-decision";
 export function migrateSchema(db: Database): void {
   const turnCols = db.query<{ name: string }, []>("PRAGMA table_info(turns)").all();
   if (!turnCols.some((column) => column.name === "partial_text")) db.run("ALTER TABLE turns ADD COLUMN partial_text TEXT");
+  const remoteDeviceCols = db.query<{ name: string }, []>("PRAGMA table_info(remote_devices)").all();
+  if (!remoteDeviceCols.some((column) => column.name === "last_active_at")) {
+    db.run("ALTER TABLE remote_devices ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0");
+  }
   const keyCols = db.query<{ name: string }, []>("PRAGMA table_info(pending_keys)").all().map((row) => row.name);
   for (const column of ["operation_id", "device_id", "request_id"]) {
     if (!keyCols.includes(column)) db.run(`ALTER TABLE pending_keys ADD COLUMN ${column} TEXT`);

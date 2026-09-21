@@ -86,13 +86,13 @@ describe("remote native boundary", () => {
     expect(calls).toBe(0);
   });
 
-  test("prepare and consume accept renew_first_uv and recover_trust and reject unknown kinds", async () => {
+  test("prepare and consume accept removal, renewal and recovery actions and reject unknown kinds", async () => {
     const seen: NativeRequest[] = [];
     const client = new RemoteNativeClient(async (request) => {
       seen.push(request);
       return ok(request, request.op === "prepare" ? { value: challenge, expiresIn: 120 } : {});
     });
-    for (const kind of ["renew_first_uv", "recover_trust"] as const) {
+    for (const kind of ["remove_device", "renew_first_uv", "recover_trust"] as const) {
       const next: LocalAction = { ...action, kind };
       expect(await client.prepare(next)).toEqual({ challenge, expiresIn: 120 });
       await client.consume(next, challenge, proof);
@@ -100,7 +100,7 @@ describe("remote native boundary", () => {
     }
     await expect(client.prepare({ ...action, kind: "pair_again" as never })).rejects.toMatchObject({ code: "malformed" });
     await expect(client.consume({ ...action, kind: "unknown" as never }, challenge, proof)).rejects.toMatchObject({ code: "malformed" });
-    expect(seen).toHaveLength(4);
+    expect(seen).toHaveLength(6);
   });
 
   test("native availability does not enable remote or claim G-pack", async () => {

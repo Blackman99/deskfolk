@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 
 export type RemoteMaterial = "host_identity" | "enrollment" | "vapid" | "highwater";
-const actionKinds = ["pair_device", "reset_identity", "change_relay", "change_workspace", "renew_first_uv", "recover_trust"] as const;
+const actionKinds = ["pair_device", "remove_device", "reset_identity", "change_relay", "change_workspace", "renew_first_uv", "recover_trust"] as const;
 export type LocalAction = {
   kind: (typeof actionKinds)[number];
   /** SHA-256 of the complete canonical action payload, including the device keys / new target. */
