@@ -111,7 +111,7 @@ export function writeWorkspaceFile(root: string, relInput: string, content: stri
   return { rel: located.rel };
 }
 
-function skipName(name: string): boolean {
+export function skipName(name: string): boolean {
   if (name === "." || name === "..") return true;
   if (name.startsWith(".")) return true;
   return SKIP_NAMES.has(name);

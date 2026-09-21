@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { generateBoringAvatar } from "@real-bot/protocol";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +42,7 @@ describe("schema", () => {
       "settings",
       "skills",
       "spend",
+      "tasks",
       "turn_route_decisions",
       "turns",
     ]);
@@ -154,6 +156,10 @@ describe("schema", () => {
     const botDefault = store.createBot({ name: "DefaultAvatarBot", duties: "test", boundaries: "test" });
     expect(botDefault.bot.avatar).toBeString();
     expect(botDefault.bot.avatar).toContain("<svg");
+    expect(botDefault.bot.avatar).toBe(generateBoringAvatar({ name: "DefaultAvatarBot" }));
+    const other = store.createBot({ name: "OtherAvatarBot", duties: "test", boundaries: "test" });
+    expect(other.bot.avatar).toBe(generateBoringAvatar({ name: "OtherAvatarBot" }));
+    expect(other.bot.avatar).not.toBe(botDefault.bot.avatar);
 
     const custom = "data:image/jpeg;base64,/9j/4AAQ";
     const botCustom = store.createBot({
@@ -173,6 +179,7 @@ describe("schema", () => {
     // Patch with empty/null resets/regenerates default boring avatar
     const regenerated = store.patchBot(botCustom.bot.id, { avatar: "" });
     expect(regenerated.avatar).toContain("<svg");
+    expect(regenerated.avatar).toBe(generateBoringAvatar({ name: "CustomAvatarBot" }));
 
     store.close();
   });

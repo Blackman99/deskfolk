@@ -1,9 +1,12 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { ulid } from "./ids";
 import { takeCodePoints } from "./text";
 import { classifyPath } from "./workspace-paths";
 
 const LIMIT = 8000;
+
+/** Reserved inside a work dir: the daemon's own spill, never cited as an artifact. */
+export const TOOL_RESULTS_DIRNAME = "tool-results";
 
 type Recovery = {
   full_result_saved: boolean;
@@ -12,22 +15,32 @@ type Recovery = {
   recovery_hint: string;
 };
 
-export function serializeToolResult(payload: unknown, workspace: string | null): string {
+/**
+ * `workDir` puts the spill inside the job it belongs to, which is what makes it collectable: a
+ * work dir whose task closed days ago can have its `tool-results/` swept without reasoning about
+ * which ULIDs belong to which dead turn. Turns from before work dirs still spill at the root.
+ */
+export function serializeToolResult(
+  payload: unknown,
+  workspace: string | null,
+  workDir?: string | null,
+): string {
   const raw = JSON.stringify(payload);
   if (codePoints(raw) <= LIMIT) return raw;
   let recovery: Recovery;
   try {
     if (!workspace) throw new Error("workspace is not set");
-    const directory = classifyPath(workspace, "tool-results");
+    const base = workDir ? `${workDir}/${TOOL_RESULTS_DIRNAME}` : TOOL_RESULTS_DIRNAME;
+    const directory = classifyPath(workspace, base);
     if (directory.zone !== "inside") throw new Error("result directory is outside the workspace");
     mkdirSync(directory.abs, { recursive: true, mode: 0o700 });
-    const file = classifyPath(workspace, `tool-results/${ulid()}.json`);
+    const file = classifyPath(workspace, `${base}/${ulid()}.json`);
     if (file.zone !== "inside") throw new Error("result path is outside the workspace");
     writeFileSync(file.abs, raw, { encoding: "utf8", flag: "wx", mode: 0o600 });
     recovery = {
       full_result_saved: true,
       full_result_path: file.rel,
-      recovery_hint: "Full tool-result JSON is saved in the workspace. Use shell to parse full_result_path, extract only needed fields or URLs, or decode base64 to a file. Do not print the whole payload or repeat the original action just because this preview is truncated.",
+      recovery_hint: "Full tool-result JSON is saved in the workspace. Use shell to parse full_result_path, extract only needed fields or URLs, or decode base64 to a file. full_result_path is relative to the workspace root, while a shell without cwd runs in this turn's work dir: pass cwd \".\" when a command or script resolves that path. Do not print the whole payload or repeat the original action just because this preview is truncated.",
     };
   } catch (error) {
     recovery = {
@@ -37,6 +50,26 @@ export function serializeToolResult(payload: unknown, workspace: string | null):
     };
   }
   return boundedResult(raw, payload, recovery);
+}
+
+/**
+ * Drops `tool-results/` from the given work dirs. Nothing else in a work dir is touched — the rest
+ * is the user's, including the folder itself. Returns how many it removed.
+ */
+export function dropToolResults(workspace: string, dirs: readonly string[]): number {
+  let dropped = 0;
+  for (const dir of dirs) {
+    const spill = classifyPath(workspace, `${dir}/${TOOL_RESULTS_DIRNAME}`);
+    if (spill.zone !== "inside") continue;
+    try {
+      if (!existsSync(spill.abs)) continue;
+      rmSync(spill.abs, { recursive: true, force: true });
+      dropped++;
+    } catch {
+      // a file the user locked or already removed is not worth failing a boot over
+    }
+  }
+  return dropped;
 }
 
 export function trimToolContent(raw: string): string {

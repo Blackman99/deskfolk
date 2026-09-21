@@ -96,6 +96,7 @@ export function assembleTurnMessages(
     input.triggerMessageId,
     input.locale,
     input.botId,
+    store.turnWorkDir(input.turnId),
   );
   return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
 }
@@ -130,12 +131,19 @@ export function situationFacts(
   return { seats, waker, latest_user };
 }
 
+/**
+ * The facts this turn opens on. Groups get who is here, who has a live turn and who woke this one;
+ * every turn, group or direct, gets its work dir — that path is the whole point of the shell's
+ * default cwd, and a Bot that cannot see it cannot write anywhere on purpose. A direct with no
+ * work dir (a turn from before work dirs) still gets no situation block at all.
+ */
 function situationUserMessage(
   store: Store,
   sessionId: string,
   triggerMessageId: string,
   locale: Locale,
   selfBotId: string,
+  workDir: string | null,
 ): ChatMessage | null {
   let sessionKind: string;
   try {
@@ -143,7 +151,16 @@ function situationUserMessage(
   } catch {
     return null;
   }
-  if (sessionKind !== "group") return null;
+  const workDirLine = workDir
+    ? locale === "en"
+      ? `This turn's work dir: ${workDir}/`
+      : `本轮工作目录：${workDir}/`
+    : null;
+  if (sessionKind !== "group") {
+    return workDirLine
+      ? { role: "user", content: `${SITUATION_HEADING}\n\n${workDirLine}` }
+      : null;
+  }
   let trigger: Message;
   try {
     trigger = store.getMessage(triggerMessageId);
@@ -184,10 +201,9 @@ function situationUserMessage(
       : facts.latest_user
         ? `用户最近一条：${facts.latest_user}`
         : "用户最近一条：（无）";
-  return {
-    role: "user",
-    content: `${SITUATION_HEADING}\n\n${membersLine}\n${seatLine}\n${wakerLine}\n${latestLine}`,
-  };
+  const lines = [membersLine, seatLine, wakerLine, latestLine];
+  if (workDirLine) lines.push(workDirLine);
+  return { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` };
 }
 
 /**

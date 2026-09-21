@@ -6,8 +6,23 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+### Desktop
+
+- The window comes back at the size it was when you quit. Dragging the frame, zooming to fill the screen, hiding to the tray, or quitting writes `window-size.json` next to the window process's app data; the next launch restores that width and height (and zoomed-to-fill). The position is not stored, so a display change cannot park the window off-screen.
+
+### Daemon
+
+- **A turn's intermediate files now land in one folder instead of the workspace root.** A `shell` without `cwd` runs in that turn's work dir (`work/<date>-<slug>-<id>`), which is where downloads, conversions and script output go without the Bot having to cooperate; the folder is created the first time it is actually used, so a turn that only talks leaves nothing behind. One job keeps one folder across a handoff, a mention, a judgement that joined, a Bot↔Bot direct and a continued interrupt; a routine opens a new one each fire, and so does the next turn after six quiet hours. File tool paths are unchanged — `read_file` / `write_file` / `delete_file` / `list_dir` stay relative to the workspace root — so the shell and the file tools have different bases on purpose, and every turn's situation block names the work dir.
+- **A command's output is finally listed.** `shell` now walks its work dir before and after each call and reports what it created or rewrote, so downloads, conversions and renders end up on the message like a `write_file` always did. A command that leaves more than 200 entries reports none of them and says so instead — `npm install` is not a list of artifacts.
+- **The artifact entry opens the whole job, not one message.** Its tree lists every path this job's messages cited, anchored at the work dir, with anything cited outside it laid flat beside it and this message's own files marked. A file an earlier Bot produced before the handoff is now one click away instead of a scroll back through the transcript.
+- Oversized tool results now spill inside the turn's work dir (`work/<…>/tool-results/`) instead of a flat folder at the workspace root, and the daemon drops that spill on boot for work dirs whose job closed more than a week ago. Nothing else in a work dir is ever collected. `full_result_path` stays relative to the workspace root, so a shell reading it needs `cwd: "."` — the recovery hint and the turn instructions both say so.
+- Files a Bot writes into a work dir's `tool-results/` or `scratch/` are no longer attached to its message as artifacts. The turn instructions point Bots at `scratch/` for throwaway files, and that promise is now enforced rather than implied.
+- The daemon writes starts, refusals and fatal errors to `daemon.log` next to its database. A runtime that dies before it listens — a database it cannot open, a port it cannot take — used to leave nothing behind but the window saying it could not reach the runtime.
+
 ### Messenger
 
+- Creating a Bot draws its generated avatar from the name you type. The create sheet used to freeze on the empty-name drawing, so every new Bot looked the same until you hit Randomize. Typing a name now redraws it; an uploaded picture still stays put.
+- Dragging the session list, the artifact preview split, or the preview file tree now survives quit and reopen. Those widths were already written to `localStorage`, but loading clamped them against a smaller default shell, so a wide list or tree came back narrow. The saved width is restored as-is; a narrower window only shrinks it for the moment, and widening the window brings the remembered width back.
 - Video and audio in the preview pane no longer restart when the message that cited the file leaves the loaded transcript — switching chats, or continuing an interrupted turn. The pane chose its byte source from whether that attachment was still loaded (`attachment` when it was, `workspace` once it was not), and the flip re-fetched the file and swapped the object URL under a playing element. Each file now loads once, keyed by its path; opening a different file still reloads.
 
 ## 0.1.0-rc.4 — 2026-09-21

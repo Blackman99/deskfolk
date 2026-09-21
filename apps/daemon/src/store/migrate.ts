@@ -224,6 +224,25 @@ type LegacyPenalty = { signature: string; model: string; thinkingLevel: string; 
  * the day of the upgrade; from then on only its own turns move its rows.
  */
 function migrateRouteTables(db: Database, tables: string[]): void {
+  // Work dirs: every turn and every message it produced belong to one job's folder. Old rows have
+  // none, so their artifacts stay where they were written and nothing is moved under `work/`.
+  const turnCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(turns)`)
+    .all()
+    .map((row) => row.name);
+  if (!turnCols.includes("task_id")) {
+    db.run(`ALTER TABLE turns ADD COLUMN task_id TEXT`);
+  }
+  const messageTaskCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(messages)`)
+    .all()
+    .map((row) => row.name);
+  if (!messageTaskCols.includes("task_id")) {
+    db.run(`ALTER TABLE messages ADD COLUMN task_id TEXT`);
+  }
+  db.run(`CREATE INDEX IF NOT EXISTS messages_task ON messages (task_id, created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS turns_task ON turns (task_id, last_activity_at)`);
+
   const decisionCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(turn_route_decisions)`)
     .all()

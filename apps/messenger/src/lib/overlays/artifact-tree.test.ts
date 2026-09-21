@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   buildCitedPathTree,
+  buildTaskArtifactTree,
   citedBundleRoot,
   collectTreePaths,
   countCitedFiles,
@@ -85,4 +86,38 @@ test("mergeWorkspaceChildren fills a directory without rewriting siblings", () =
   );
   expect(next[0]?.children?.map((row) => row.path)).toEqual(["src/app.ts"]);
   expect(next[1]?.path).toBe("brief.md");
+});
+
+const DIR = "work/2026-09-21-导出季度报表-7f3k";
+
+test("buildTaskArtifactTree anchors the work dir and keeps full paths on its children", () => {
+  const nodes = buildTaskArtifactTree(DIR, [`${DIR}/data.csv`, `${DIR}/charts/q3.png`]);
+  expect(nodes).toHaveLength(1);
+  expect(nodes[0]!.path).toBe(DIR);
+  expect(nodes[0]!.name).toBe("2026-09-21-导出季度报表-7f3k");
+  const charts = nodes[0]!.children!.find((n) => n.kind === "dir")!;
+  expect(charts.path).toBe(`${DIR}/charts`);
+  expect(charts.children![0]!.path).toBe(`${DIR}/charts/q3.png`);
+});
+
+test("buildTaskArtifactTree lays outside paths flat beside the work dir, never under work/", () => {
+  const nodes = buildTaskArtifactTree(DIR, [`${DIR}/data.csv`, "report.md", "inbox/raw.xlsx"]);
+  expect(nodes.map((n) => n.path)).toEqual([DIR, "inbox", "report.md"]);
+  expect(nodes.some((n) => n.path === "work")).toBe(false);
+});
+
+test("buildTaskArtifactTree marks only what this message cited", () => {
+  const nodes = buildTaskArtifactTree(
+    DIR,
+    [`${DIR}/data.csv`, `${DIR}/charts/q3.png`, "report.md"],
+    [`${DIR}/charts/q3.png`, "report.md"],
+  );
+  const inside = nodes[0]!.children!;
+  expect(inside.find((n) => n.name === "data.csv")!.fresh).toBeUndefined();
+  expect(inside.find((n) => n.kind === "dir")!.children![0]!.fresh).toBe(true);
+  expect(nodes.find((n) => n.path === "report.md")!.fresh).toBe(true);
+});
+
+test("buildTaskArtifactTree is just the outside paths when the work dir holds nothing cited", () => {
+  expect(buildTaskArtifactTree(DIR, ["report.md"]).map((n) => n.path)).toEqual(["report.md"]);
 });

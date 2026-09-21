@@ -105,11 +105,26 @@
 	} | null>(null);
 	let contextMenuEpoch = 0;
 	let workspacePane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
-	let previewWidth = $state(loadPreviewWidth());
+	let previewPreferred = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
-	let sidebarWidth = $state(loadSidebarWidth());
+	let sidebarPreferred = $state(loadSidebarWidth());
 	let sidebarDragging = $state(false);
 	let shellEl = $state<HTMLElement | null>(null);
+	let shellWidth = $state(Number.POSITIVE_INFINITY);
+	const previewWidth = $derived(clampPreviewWidth(previewPreferred, shellWidth));
+	const sidebarWidth = $derived(clampSidebarWidth(sidebarPreferred, shellWidth));
+
+	$effect(() => {
+		const el = shellEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const apply = () => {
+			shellWidth = el.clientWidth || Number.POSITIVE_INFINITY;
+		};
+		apply();
+		const observer = new ResizeObserver(apply);
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
 
 	function openContextMenu(e: MouseEvent, session: SessionSummary): void {
 		e.preventDefault();
@@ -459,11 +474,16 @@
 		const relpath = runtime.previewRelpath;
 		if (!relpath) return null;
 		const attachment = findAttachmentByPath(relpath);
+		const owner = runtime.previewMessageId
+			? snapshot.messages.find((message) => message.id === runtime.previewMessageId)
+			: undefined;
 		return {
 			relpath,
 			attachment,
 			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
-			forceTree: runtime.forceArtifactTree
+			forceTree: runtime.forceArtifactTree,
+			// The entry opens the job's tree, not just this message's; older messages have none.
+			taskId: owner?.task_id ?? null
 		};
 	});
 
@@ -491,6 +511,24 @@
 			return;
 		}
 		runtime.openWorkspace(artifactPreview?.relpath ?? runtime.workspaceSelected);
+		if (!artifactPreview?.relpath) void selectCurrentWorkDir();
+	}
+
+	/**
+	 * Opening the explorer cold lands on this session's current work dir rather than wherever it
+	 * was left days ago. Only the dir is known server-side, so it is a pull; a failure just leaves
+	 * the previous selection, which is what the explorer did before.
+	 */
+	async function selectCurrentWorkDir(): Promise<void> {
+		const client = runtime.client;
+		const taskId = [...snapshot.messages].reverse().find((message) => message.task_id)?.task_id;
+		if (!client || !taskId) return;
+		try {
+			const task = await client.taskArtifacts(taskId);
+			if (runtime.workspaceOpen) runtime.workspaceSelected = task.dir;
+		} catch {
+			// the explorer keeps whatever it had
+		}
 	}
 
 	function closeWorkspaceExplorer(): void {
@@ -511,11 +549,11 @@
 		const originW = previewWidth;
 		const onMove = (move: PointerEvent) => {
 			const shellW = shellEl?.clientWidth ?? 1200;
-			previewWidth = clampPreviewWidth(originW - (move.clientX - originX), shellW);
+			previewPreferred = clampPreviewWidth(originW - (move.clientX - originX), shellW);
 		};
 		const onUp = () => {
 			previewDragging = false;
-			savePreviewWidth(previewWidth);
+			savePreviewWidth(previewPreferred);
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);
 		};
@@ -533,11 +571,11 @@
 		const originW = sidebarWidth;
 		const onMove = (move: PointerEvent) => {
 			const shellW = shellEl?.clientWidth ?? 1200;
-			sidebarWidth = clampSidebarWidth(originW + (move.clientX - originX), shellW);
+			sidebarPreferred = clampSidebarWidth(originW + (move.clientX - originX), shellW);
 		};
 		const onUp = () => {
 			sidebarDragging = false;
-			saveSidebarWidth(sidebarWidth);
+			saveSidebarWidth(sidebarPreferred);
 			handle.removeEventListener('pointermove', onMove);
 			handle.removeEventListener('pointerup', onUp);
 			handle.removeEventListener('pointercancel', onUp);
@@ -805,6 +843,7 @@
 			api={runtime.client}
 			workspacePath={snapshot.settings.workspace_path}
 			forceTree={artifactPreview.forceTree}
+			taskId={artifactPreview.taskId}
 			{t}
 			onClose={closeArtifactPreview}
 			onSelect={(att) =>

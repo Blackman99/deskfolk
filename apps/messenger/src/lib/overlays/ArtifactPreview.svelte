@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Attachment } from '@real-bot/protocol';
+	import type { Attachment, TaskArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { LocalApi } from '../api.ts';
 	import {
@@ -18,6 +18,7 @@
 	} from './artifacts.ts';
 	import {
 		buildCitedPathTree,
+		buildTaskArtifactTree,
 		mergeWorkspaceChildren,
 		workspaceEntriesToNodes,
 		type ArtifactTreeNode,
@@ -50,6 +51,8 @@
 		mode?: 'cited' | 'workspace';
 		onSelectWorkspacePath?: (path: string) => void;
 		forceTree?: boolean;
+		/** The work dir this message belongs to; its whole job is listed, not just this message. */
+		taskId?: string | null;
 	}
 
 	let {
@@ -64,6 +67,7 @@
 		mode = 'cited',
 		onSelectWorkspacePath,
 		forceTree = false,
+		taskId = null,
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
@@ -97,14 +101,64 @@
 	let saving = $state(false);
 	let saveError = $state(false);
 	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
-	let treeWidth = $state(loadArtifactTreeWidth());
+	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
 	let paneEl = $state<HTMLElement | null>(null);
+	let paneWidth = $state(Number.POSITIVE_INFINITY);
+	const treeWidth = $derived(clampArtifactTreeWidth(treePreferred, paneWidth));
+
+	$effect(() => {
+		const el = paneEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const apply = () => {
+			paneWidth = el.clientWidth || Number.POSITIVE_INFINITY;
+		};
+		apply();
+		const observer = new ResizeObserver(apply);
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
 	let resolvedTheme = $state(themeManager.resolved);
 	let kind = $derived(
 		artifactKind(attachment?.original_filename ?? relpath, { isDir: attachment?.is_dir === true })
 	);
-	let citedTree = $derived(buildCitedPathTree(siblings.map((row) => row.workspace_relpath)));
+	// Pulled once when the entry opens; there is no push event for it, the same as the route log.
+	let taskArtifacts = $state<TaskArtifacts | null>(null);
+	$effect(() => {
+		const id = taskId;
+		const client = api;
+		if (!id || !client || mode === 'workspace') {
+			taskArtifacts = null;
+			return;
+		}
+		const controller = new AbortController();
+		client
+			.taskArtifacts(id, controller.signal)
+			.then((rows) => {
+				taskArtifacts = rows;
+			})
+			.catch(() => {
+				// An entry that lists only this message is still a working entry.
+				taskArtifacts = null;
+			});
+		return () => controller.abort();
+	});
+
+	let ownPaths = $derived(siblings.map((row) => row.workspace_relpath));
+	/**
+	 * The job's files, anchored at its work dir, with this message's own marked — relevance is
+	 * "somebody cited it", so a file an earlier turn produced is still one click away. Falls back
+	 * to this message alone when the job is unknown or the pull failed.
+	 */
+	let citedTree = $derived(
+		taskArtifacts
+			? buildTaskArtifactTree(
+					taskArtifacts.dir,
+					taskArtifacts.items.map((row) => row.path),
+					ownPaths
+				)
+			: buildCitedPathTree(ownPaths)
+	);
 	let workspaceTree = $state<ArtifactTreeNode[]>([]);
 	let loadedDirs = $state(new Set<string>());
 	let truncatedHint = $state(false);
@@ -393,11 +447,11 @@
 		const originW = treeWidth;
 		const onMove = (move: PointerEvent) => {
 			const paneW = paneEl?.clientWidth ?? 480;
-			treeWidth = clampArtifactTreeWidth(originW + (move.clientX - originX), paneW);
+			treePreferred = clampArtifactTreeWidth(originW + (move.clientX - originX), paneW);
 		};
 		const onUp = () => {
 			treeDragging = false;
-			saveArtifactTreeWidth(treeWidth);
+			saveArtifactTreeWidth(treePreferred);
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);
 		};

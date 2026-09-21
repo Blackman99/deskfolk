@@ -30,9 +30,11 @@ import {
 } from "./shared";
 import * as skills from "./skills";
 import * as spend from "./spend";
+import * as tasks from "./tasks";
 import * as turns from "./turns";
 
 export { HttpError } from "../errors";
+export { isReservedTaskPath, RESERVED_SUBDIRS, TASK_QUIET_MS, WORK_ROOT } from "./tasks";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
 export type { DecideRouteInput } from "./routing";
@@ -121,6 +123,17 @@ export class Store {
   readonly deleteRoutine = this.bind(routines.deleteRoutine);
   readonly getRoutine = this.bind(routines.getRoutine);
   readonly claimRoutineDue = this.bind(routines.claimRoutineDue);
+
+  // Work dirs ------------------------------------------------------------------------------
+  readonly getTask = this.bind(tasks.getTask);
+  readonly openTask = this.bind(tasks.openTask);
+  readonly closeTask = this.bind(tasks.closeTask);
+  readonly taskOfTurn = this.bind(tasks.taskOfTurn);
+  readonly turnWorkDir = this.bind(tasks.turnWorkDir);
+  readonly tasksClosedBefore = this.bind(tasks.tasksClosedBefore);
+  readonly taskArtifacts = this.bind(tasks.taskArtifacts);
+  readonly joinableTask = this.bind(tasks.joinableTask);
+  readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
 
   // Sessions -------------------------------------------------------------------------------
   readonly listSessions = this.bind(sessions.listSessions);

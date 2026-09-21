@@ -10,7 +10,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "eval:tool-selection": "bun scripts/tool-selection-eval.ts",
-    "build:sidecar": "bun scripts/build-sidecar.ts"
+    "build:sidecar": "bun scripts/build-sidecar.ts",
+    "check:db": "bun scripts/check-db.ts"
   },
   "dependencies": {
     "@real-bot/protocol": "workspace:*"

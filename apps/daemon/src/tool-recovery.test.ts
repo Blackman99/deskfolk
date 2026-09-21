@@ -43,7 +43,8 @@ test("a turn recovers a large MCP image through the saved JSON without asking th
         const script = `const fs=require('fs'); const r=JSON.parse(fs.readFileSync(${JSON.stringify(latest.full_result_path)},'utf8')); fs.writeFileSync('recovered.png',Buffer.from(r.data.content[0].data,'base64')); console.log(fs.statSync('recovered.png').size);`;
         return call("write_file", { path: "recover.js", content: script });
       }
-      if (results.length === 2) return call("shell", { command: "bun recover.js" });
+      // `full_result_path` and write_file are both workspace-root relative; the shell is not.
+      if (results.length === 2) return call("shell", { command: "bun recover.js", cwd: "." });
       expect(latest.ok).toBe(true);
       expect(latest.data.exit_code).toBe(0);
       expect(latest.data.stdout.trim()).toBe("900000");

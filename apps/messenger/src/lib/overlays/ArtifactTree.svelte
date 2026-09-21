@@ -77,6 +77,9 @@
 				<FileIcon icon={fileIconFor(node.path, { isDir: node.kind === 'dir' })} size={12} />
 			</span>
 			<span class="artifact-tree-name overflow-hidden text-ellipsis whitespace-nowrap">{node.name}</span>
+			{#if node.fresh}
+				<span class="artifact-tree-fresh" aria-hidden="true"></span>
+			{/if}
 		</button>
 		{#if node.kind === 'dir' && isOpen(node.path)}
 			<ul class="artifact-tree-list list-none m-0 p-0">
@@ -92,6 +95,16 @@
 {/snippet}
 
 <style>
+	/* Cited by the message this entry was opened from; the rest of the tree is the job's history. */
+	.artifact-tree-fresh {
+		width: 6px;
+		height: 6px;
+		margin-left: auto;
+		flex-shrink: 0;
+		border-radius: 50%;
+		background: var(--accent);
+	}
+
 	.artifact-tree {
 		min-width: 0;
 		overflow: auto;

@@ -168,7 +168,7 @@ describe("assembleTurnMessages", () => {
       interrupt: false,
       loop: [],
     });
-    const user = messages.find((m) => m.role === "user");
+    const user = messages.filter((m) => m.role === "user").at(-1);
     expect(Array.isArray(user?.content)).toBe(true);
     const parts = user?.content as Array<Record<string, unknown>>;
     expect(parts[0]).toEqual({
@@ -206,7 +206,7 @@ describe("assembleTurnMessages", () => {
       interrupt: false,
       loop: [],
     });
-    const user = messages.find((m) => m.role === "user");
+    const user = messages.filter((m) => m.role === "user").at(-1);
     expect(user?.content).toBe(
       `【user】\n${TRIGGER_FLAG}\n看这份\n附件：${trigger.attachments[0]!.workspace_relpath}`,
     );
@@ -238,7 +238,7 @@ describe("assembleTurnMessages", () => {
       interrupt: false,
       loop: [],
     });
-    const user = messages.find((m) => m.role === "user");
+    const user = messages.filter((m) => m.role === "user").at(-1);
     expect(user?.content).toBe(
       `【user】\n${TRIGGER_FLAG}\n图呢\n附件：${trigger.attachments[0]!.workspace_relpath}`,
     );
@@ -293,7 +293,42 @@ describe("assembleTurnMessages", () => {
     store.close();
   });
 
-  test("a direct session does not insert a situation block", () => {
+  test("a group's situation block keeps its facts and adds the work dir", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const group = store.createGroup({ name: "Brief", members: [writer.bot.id, reviewer.bot.id] });
+    const trigger = store.insertMessage({
+      sessionId: group.id,
+      kind: "user",
+      author: USER_MEMBER,
+      body: "导出季度报表",
+    });
+    const turn = store.createTurn({
+      sessionId: group.id,
+      botId: writer.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    const messages = assembleTurnMessages(store, {
+      sessionId: group.id,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale: "zh",
+      interrupt: false,
+      loop: [],
+    });
+    const situation = String(
+      messages.find((m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING))
+        ?.content,
+    );
+    expect(situation).toContain("在场成员");
+    expect(situation).toContain("本轮由");
+    expect(situation.trimEnd().endsWith(`本轮工作目录：${store.getTask(turn.task_id!).dir}/`)).toBe(true);
+    store.close();
+  });
+
+  test("a direct session's situation block is the work dir and nothing else", () => {
     const store = new Store();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const trigger = store.insertMessage({
@@ -316,7 +351,13 @@ describe("assembleTurnMessages", () => {
       interrupt: false,
       loop: [],
     });
-    expect(messages.some((m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING))).toBe(false);
+    // Members, live turns and the waker are group facts; a direct has none of them. The work dir
+    // is every turn's, because it is where a shell without cwd runs.
+    const situation = messages.find(
+      (m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING),
+    );
+    const body = String(situation?.content).slice(SITUATION_HEADING.length).trim();
+    expect(body).toBe(`本轮工作目录：${store.getTask(turn.task_id!).dir}/`);
     store.close();
   });
 });
