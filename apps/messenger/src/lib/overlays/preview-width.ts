@@ -8,7 +8,7 @@ export function loadPreviewWidth(): number {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const n = raw ? Number(raw) : NaN;
     if (!Number.isFinite(n)) return PREVIEW_DEFAULT;
-    return clampPreviewWidth(n, 1600);
+    return clampPreviewWidth(n);
   } catch {
     return PREVIEW_DEFAULT;
   }
@@ -23,7 +23,10 @@ export function savePreviewWidth(width: number): void {
   }
 }
 
-export function clampPreviewWidth(width: number, shellWidth: number): number {
+export function clampPreviewWidth(
+  width: number,
+  shellWidth: number = Number.POSITIVE_INFINITY,
+): number {
   const max = Math.max(PREVIEW_MIN, Math.floor(shellWidth * 0.62));
   return Math.min(max, Math.max(PREVIEW_MIN, Math.round(width)));
 }

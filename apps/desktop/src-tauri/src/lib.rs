@@ -2,6 +2,7 @@ mod daemon;
 mod local_api;
 mod supervisor;
 mod updates;
+mod window_state;
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -10,7 +11,7 @@ use local_api::{endpoint_from_descriptor, probe_bind, BIND_PORT};
 use supervisor::{launched_hidden, Action, Endpoint, Probe, QuitPlan, Supervisor};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalSize, RunEvent, Window, WindowEvent};
 use updates::UpdateCheck;
 
 struct AppState {
@@ -238,6 +239,7 @@ pub fn run() {
             install_menus(app.handle())?;
             install_tray(app.handle())?;
             register_login_item(app.handle());
+            restore_window_size(app.handle());
             if !launched_hidden(&std::env::args().collect::<Vec<_>>()) {
                 show_main(app.handle());
             }
@@ -248,11 +250,16 @@ pub fn run() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                persist_current_window(window);
                 let _ = window.hide();
                 api.prevent_close();
             }
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                persist_current_window(window);
+            }
+            _ => {}
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => begin_quit(app),
@@ -273,7 +280,10 @@ pub fn run() {
                 begin_quit(app);
             }
         }
-        RunEvent::Exit => last_chance_quit(app),
+        RunEvent::Exit => {
+            persist_main_window(app);
+            last_chance_quit(app)
+        }
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}
@@ -372,6 +382,73 @@ fn show_main(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+fn window_state_dir(app: &AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from(".").join("real-bot-window"))
+}
+
+fn restore_window_size(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let size = window_state::load(&window_state_dir(app));
+    let _ = window.set_min_size(Some(LogicalSize::new(
+        window_state::MIN_WIDTH,
+        window_state::MIN_HEIGHT,
+    )));
+    let _ = window.set_size(LogicalSize::new(size.width, size.height));
+    if size.maximized {
+        let _ = window.maximize();
+    }
+    window_state::mark_ready();
+}
+
+fn persist_current_window(window: &Window) {
+    let Ok(physical) = window.inner_size() else {
+        return;
+    };
+    persist_window_size(
+        window.app_handle(),
+        physical,
+        window.scale_factor().unwrap_or(1.0),
+        window.is_minimized().unwrap_or(false),
+        window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false),
+    );
+}
+
+fn persist_main_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(physical) = window.inner_size() else {
+        return;
+    };
+    persist_window_size(
+        app,
+        physical,
+        window.scale_factor().unwrap_or(1.0),
+        window.is_minimized().unwrap_or(false),
+        window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false),
+    );
+}
+
+fn persist_window_size(
+    app: &AppHandle,
+    physical: PhysicalSize<u32>,
+    scale: f64,
+    minimized: bool,
+    zoomed: bool,
+) {
+    if !window_state::is_ready() || minimized {
+        return;
+    }
+    let dir = window_state_dir(app);
+    let previous = window_state::load(&dir);
+    let size = window_state::snapshot(physical.width, physical.height, scale, zoomed, &previous);
+    let _ = window_state::save(&dir, &size);
 }
 
 fn tick(app: &AppHandle) {
@@ -486,6 +563,7 @@ fn request_stop(app: &AppHandle) {
 }
 
 fn begin_quit(app: &AppHandle) {
+    persist_main_window(app);
     let state = app.state::<Mutex<AppState>>();
     let (plan, child) = {
         let mut state = match state.lock() {
