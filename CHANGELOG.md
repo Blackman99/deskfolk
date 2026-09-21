@@ -6,6 +6,12 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.4 — 2026-09-21
+
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
+
 ### Desktop
 
 - **An installed build can start its runtime.** The app never shipped the daemon: it looked for `apps/daemon/src/main.ts` at a path baked in at compile time, which on a release build is the CI runner's home directory, and then for a `bun` the machine was not required to have. Neither exists on the machine that downloaded the `.dmg`, so the window sat at "Can't reach the runtime" for good, for every user, with nothing said about why. The daemon is now compiled with `bun build --compile` and bundled as `externalBin` next to the window binary, so an installed app needs no Bun, no Node and no checkout. Running from source is unchanged — a debug build still prefers the checkout and its `--watch` — and `REAL_BOT_DAEMON_MAIN` / `REAL_BOT_DAEMON_BIN` override either shape. The bundled runtime costs about 60MB per architecture.

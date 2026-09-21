@@ -6,6 +6,12 @@
 
 ## Unreleased
 
+（无）
+
+## 0.1.0-rc.4 — 2026-09-21
+
+未签名的 macOS rc。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。
+
 ### Desktop
 
 - **装出来的应用现在能起运行时了。**以前发布包根本没带守护进程：它按编译期烘进二进制的绝对路径去找 `apps/daemon/src/main.ts`（发布构建里烘的是 CI runner 的家目录），再去找一个用户根本没被要求安装的 `bun`。下载 `.dmg` 的机器上两样都不存在，于是窗口永远停在「连不上运行时」，对每个用户都必然复现，而且一句原因都不给。现在守护进程用 `bun build --compile` 编成独立可执行文件，作为 `externalBin` 随包放在窗口二进制旁边，装完即用，不需要 Bun、不需要 Node、不需要源码。源码运行方式不变（debug 构建仍优先走源码和 `--watch`），`REAL_BOT_DAEMON_MAIN` / `REAL_BOT_DAEMON_BIN` 可分别覆盖两种形态。自带运行时的代价是每个架构约 60MB。
