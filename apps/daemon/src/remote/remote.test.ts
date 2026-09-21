@@ -18,6 +18,7 @@ import { RemoteUv } from "./uv";
 import { dispatchLocalSetup } from "./local-setup";
 import { finishLifecycle, recoverLifecycle } from "./lifecycle";
 import { validateBusiness } from "./routes";
+import { remoteError } from "./errors";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 
 function cbor(value: unknown): Buffer {
@@ -802,6 +803,10 @@ test("pair native proof is single use and bound to authoritative keys, not brows
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/uv/challenge", body: { operation: { action: "quiesce.force", targetId: "runtime", requestId: ulid() } } })).status).toBe(403);
 });
 
+test("remote oversize text PUT keeps too_large on the Noise body", () => {
+  expect(remoteError("too_large").error.code).toBe("too_large");
+});
+
 test("host browse lists directories, rejects other homes, and returns typed permission errors", async () => {
   const f = await fixture(), d = await f.pair(), c = await f.connect(d);
   mkdirSync(join(f.root, "keep"));
@@ -836,6 +841,25 @@ test("duplex upload commits after EOF hash and rejects bad offset, hash, cap and
     body: { body: "x", parent_id: null, fork: false, ask_id: null, files: [{ filename: "big.bin", size: 50 * 1024 * 1024 + 1, sha256: "a".repeat(64) }] },
   });
   expect(oversize.status).toBe(413);
+});
+
+test("same request id replays a committed attachment POST without staged files", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Replay", duties: "", boundaries: "" });
+  const bytes = Buffer.from("hello-remote");
+  const first = await c.upload(bot.direct_session.id, "ok.txt", bytes);
+  expect(first.status).toBe(201);
+  const id = first.id as string;
+  expect(/^[0-9A-HJKMNP-TV-Z]{26}$/.test(id)).toBe(true);
+  const replay = await c.rpc({
+    v: 1, id, method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`,
+    body: { body: "ok.txt", parent_id: null, fork: false, ask_id: null,
+      files: [{ filename: "ok.txt", size: bytes.length, sha256: sha256Hex(bytes) }] },
+  });
+  expect(replay.status).toBe(201);
+  expect(replay.body).toEqual(first.body);
+  expect(f.store.listMessages(bot.direct_session.id).items.filter((row) => row.kind === "user")).toHaveLength(1);
+  expect(existsSync(join(f.root, "inbox", "ok2.txt"))).toBe(false);
 });
 
 test("remote workspace PUT requires If-Match and returns 409 after an external rewrite", async () => {

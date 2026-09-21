@@ -310,7 +310,7 @@ export class RemoteController {
     const outgoing: Array<{ type: number; body: Uint8Array; stream?: number; done?: () => void }> = [];
     let streamId = 0;
     type FileStream = {
-      cancelled: boolean; direction: "down" | "up"; live?: LiveFile; requestId?: string; filename?: string; size?: number; sha256?: string;
+      cancelled: boolean; direction: "down" | "up"; live?: LiveFile;
       done?: (error?: HttpError, commit?: import("../store").FileCommit) => void;
     };
     const fileStreams = new Map<number, FileStream>();
@@ -379,8 +379,20 @@ export class RemoteController {
         return { filename: file.filename, size: file.size, sha256: file.sha256 };
       });
     };
-    const waitForUploads = async (request: RemoteRequest, files: Array<{ filename: string; size: number; sha256: string }>): Promise<Array<{ originalFilename: string; buffer: Uint8Array; staged: import("../store").FileCommit }>> => {
-      if (this.options.store.receipts.lookup({ deviceId, requestId: request.id })) return [];
+    const waitForUploads = async (request: RemoteRequest, files: Array<{ filename: string; size: number; sha256: string }>): Promise<
+      { staged: Array<{ originalFilename: string; buffer: Uint8Array; staged: import("../store").FileCommit }> } | { receipt: { status: number; body: string | null; headers?: Record<string, string> } }
+    > => {
+      const scope = { deviceId, requestId: request.id };
+      const digest = requestDigest({
+        method: request.method, path: request.path,
+        body: Object.fromEntries(Object.entries(request.body ?? {}).filter(([key]) => key !== "files")),
+        multipart: true, normalizedFiles: files.map((file) => ({ file, filename: file.filename, hash: file.sha256 })),
+      });
+      const previous = this.options.store.receipts.lookup(scope);
+      if (previous) {
+        if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "request id has a different payload");
+        return { receipt: this.options.store.receipts.read(scope) };
+      }
       if (fileStreams.size + files.length > REMOTE_FILE_STREAMS) throw new HttpError(429, "stream_limit", "file stream limit");
       const opened: Array<{ streamId: number; filename: string; size: number; sha256: string }> = [];
       const waiters: Array<Promise<import("../store").FileCommit>> = [];
@@ -395,7 +407,7 @@ export class RemoteController {
         }
         waiters.push(new Promise((resolve, reject) => {
           fileStreams.set(currentStream, {
-            cancelled: false, direction: "up", live, requestId: request.id, filename: file.filename, size: file.size, sha256: file.sha256,
+            cancelled: false, direction: "up", live,
             done: (error, commit) => { if (error || !commit) reject(error ?? new HttpError(422, "failed", "upload failed")); else resolve(commit); },
           });
         }));
@@ -403,7 +415,7 @@ export class RemoteController {
       sendJson(2, { v: 1, id: request.id, status: 202, body: { state: "upload_open" }, upload: { files: opened } });
       try {
         const staged = await Promise.all(waiters);
-        return staged.map((row, index) => ({ originalFilename: files[index]!.filename, buffer: new Uint8Array(), staged: row }));
+        return { staged: staged.map((row, index) => ({ originalFilename: files[index]!.filename, buffer: new Uint8Array(), staged: row })) };
       } catch (error) {
         for (const row of opened) {
           const stream = fileStreams.get(row.streamId);
@@ -411,13 +423,8 @@ export class RemoteController {
           retire(row.streamId);
         }
         const err = error instanceof HttpError ? error : new HttpError(422, "failed", "upload failed");
-        const digest = requestDigest({
-          method: request.method, path: request.path,
-          body: Object.fromEntries(Object.entries(request.body ?? {}).filter(([key]) => key !== "files")),
-          multipart: true, normalizedFiles: files.map((file) => ({ file, filename: file.filename, hash: file.sha256 })),
-        });
         await this.options.store.receipts.execute(
-          { deviceId, requestId: request.id }, digest, request.method, request.path, request.body ?? {},
+          scope, digest, request.method, request.path, request.body ?? {},
           async () => { throw err; }, [],
         );
         throw err;
@@ -428,13 +435,14 @@ export class RemoteController {
       try {
         const request = parseRemoteRequest(bytes); id = request.id;
         const files = claimedFiles(request);
-        const staged = files.length ? await waitForUploads(request, files) : [];
+        const waited = files.length ? await waitForUploads(request, files) : { staged: [] };
+        const staged = "staged" in waited ? waited.staged : [];
         const dispatchRequest = files.length
           ? { ...request, body: Object.fromEntries(Object.entries(request.body ?? {}).filter(([key]) => key !== "files")) }
           : request;
-        const response = staged.length
-          ? await this.dispatcher.dispatchUpload(dispatchRequest, principal!, staged)
-          : await this.dispatcher.dispatch(dispatchRequest, principal!);
+        const response = "receipt" in waited
+          ? new Response(waited.receipt.body, { status: waited.receipt.status, headers: { "Content-Type": "application/json", ...waited.receipt.headers } })
+          : await this.dispatcher.dispatch(dispatchRequest, principal!, staged.length ? staged : undefined);
         this.dispatcher.uv.assert(principal!);
         const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
         const result: RemoteResponse = { v: 1, id, status: response.status, body: null,

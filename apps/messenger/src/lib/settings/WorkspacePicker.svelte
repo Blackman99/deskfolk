@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { listRemoteHostDir, pickWorkspaceFolder, workspacePickerAvailable, type HostTreePage } from './pick-workspace.ts';
+	import { pickWorkspaceFolder, workspacePickerAvailable, type HostTreePage } from './pick-workspace.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 
 	interface Props {
@@ -48,7 +48,7 @@
 	let browsing = $state(false);
 	let page = $state<HostTreePage | null>(null);
 	let browseError = $state('');
-	const canPick = $derived(workspacePickerAvailable(undefined, remote));
+	const canPick = $derived(remote || workspacePickerAvailable());
 	const display = $derived(path.trim());
 	const actionLabel = $derived(display ? changeLabel : chooseLabel);
 
@@ -58,7 +58,7 @@
 		browseError = '';
 		permission = false;
 		try {
-			page = await listRemoteHostDir(api, dir);
+			page = await api.hostTree(dir);
 			browsing = true;
 		} catch (error) {
 			failed = true;

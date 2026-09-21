@@ -181,13 +181,6 @@ export class RemoteTransport {
     });
   }
 
-  cancelStream(streamId: number): void {
-    if (this.closed || !this.session || !this.socket) return;
-    const body = new Uint8Array(4);
-    new DataView(body.buffer).setUint32(0, streamId);
-    this.socket.send(new Uint8Array(this.session.send(6, body)));
-  }
-
   private finish(response: RemoteResponse): void {
     const waiter = this.waiter;
     this.waiter = null;

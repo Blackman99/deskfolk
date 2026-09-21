@@ -16,7 +16,7 @@ export type HostFs = {
   stat?: typeof statSync;
 };
 
-export function currentHome(fs: HostFs = {}): string {
+function currentHome(fs: HostFs = {}): string {
   return posixAbs(fs.home ?? homedir());
 }
 
@@ -33,7 +33,7 @@ export function resolveHostPath(input: string, fs: HostFs = {}): string {
   }
 }
 
-export function assertHostReadable(abs: string, fs: HostFs = {}): string {
+function assertHostReadable(abs: string, fs: HostFs = {}): string {
   const resolved = posixAbs(abs);
   if (isForeignHome(resolved, currentHome(fs))) {
     throw new HttpError(403, "host_permission", "authorize once on the Mac");

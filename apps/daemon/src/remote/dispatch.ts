@@ -35,15 +35,7 @@ function operationDigest(op: PrivilegedOperation): string {
 export class RemoteDispatcher {
   readonly uv: RemoteUv;
   constructor(readonly api: LocalApi, readonly trust: RemoteTrust) { this.uv = new RemoteUv(trust); }
-  async dispatch(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
-    const abort = new AbortController();
-    const invalidate = this.trust.onInvalidate(() => abort.abort());
-    const signal = principal.signal ? AbortSignal.any([principal.signal, abort.signal]) : abort.signal;
-    const bound = { ...principal, signal, active: () => !signal.aborted && principal.active() };
-    try { return await this.dispatchCurrent(request, bound); }
-    finally { invalidate(); }
-  }
-  async dispatchUpload(request: RemoteRequest, principal: RemotePrincipal, files: AttachmentInput[]): Promise<Response> {
+  async dispatch(request: RemoteRequest, principal: RemotePrincipal, files?: AttachmentInput[]): Promise<Response> {
     const abort = new AbortController();
     const invalidate = this.trust.onInvalidate(() => abort.abort());
     const signal = principal.signal ? AbortSignal.any([principal.signal, abort.signal]) : abort.signal;

@@ -1,4 +1,4 @@
-import type { RemoteRequest } from "@real-bot/remote";
+import { REMOTE_FILE_LIMIT, type RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 
 type Check = (value: unknown) => boolean;
@@ -48,7 +48,7 @@ add("POST", "routines", { ...routine, bot_id: id }, ["bot_id", "title", "instruc
 add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]);
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
-add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 50 * 1024 * 1024, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])) }, ["body"]);
+add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= REMOTE_FILE_LIMIT, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])) }, ["body"]);
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);
 add("POST", "sessions/:id/read", {});
 add("POST", "sessions/:id/(archive|restore|clear)", revision); add("POST", "bots/:id/(archive|restore)", revision);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { USER_MEMBER, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { REMOTE_FILE_LIMIT } from '@real-bot/remote';
 	import { formatFileSize } from './attachments.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
@@ -263,7 +264,6 @@
 		checkMentionTrigger();
 	}
 
-	const REMOTE_FILE_LIMIT = 50 * 1024 * 1024;
 	let attachLimitHit = $state(false);
 
 	function addFiles(files: FileList | File[]): void {
