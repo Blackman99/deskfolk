@@ -2,7 +2,9 @@
 	import {
 		avatarEditorPrimaryActions,
 		avatarSrc,
+		boringAvatarName,
 		fileToAvatarDataUri,
+		followGeneratedAvatar,
 		generateBoringAvatar,
 		isCustomAvatar,
 		BORING_AVATAR_VARIANTS,
@@ -22,6 +24,7 @@
 
 	let variant = $state<BoringAvatarVariant>('beam');
 	let seed = $state(0);
+	let lastGenerated = $state('');
 	let uploadError = $state<AvatarImageError | null>(null);
 	let uploading = $state(false);
 	let fileInput: HTMLInputElement | undefined;
@@ -37,23 +40,28 @@
 	};
 
 	$effect(() => {
-		if (!customMode && (!avatar || avatar.trim().length === 0)) {
-			const effectiveName = (name || '').trim() || 'bot';
-			avatar = generateBoringAvatar({
-				name: seed > 0 ? `${effectiveName}_${seed}` : effectiveName,
-				variant,
-			});
+		if (customMode) return;
+		const planned = followGeneratedAvatar({
+			name,
+			variant,
+			salt: seed,
+			current: avatar,
+			lastGenerated,
+		});
+		lastGenerated = planned.lastGenerated;
+		if (planned.changed) {
+			avatar = planned.avatar;
 			onchange?.();
 		}
 	});
 
 	function applyGenerated(nextVariant: BoringAvatarVariant = variant, nextSeed = seed): void {
 		uploadError = null;
-		const effectiveName = (name || '').trim() || 'bot';
 		avatar = generateBoringAvatar({
-			name: nextSeed > 0 ? `${effectiveName}_${nextSeed}` : effectiveName,
+			name: boringAvatarName(name, nextSeed),
 			variant: nextVariant,
 		});
+		lastGenerated = avatar;
 		onchange?.();
 	}
 
@@ -95,7 +103,10 @@
 		return t.sidebar.botAvatarDecodeFailed;
 	}
 
-	let currentSrc = $derived(avatarSrc(avatar) || avatarSrc(generateBoringAvatar({ name: (name || '').trim() || 'bot', variant })));
+	let currentSrc = $derived(
+		avatarSrc(avatar) ||
+			avatarSrc(generateBoringAvatar({ name: boringAvatarName(name), variant }))
+	);
 	let primaryActions = $derived(avatarEditorPrimaryActions(customMode ? 'custom' : 'generated'));
 </script>
 
