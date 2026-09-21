@@ -1343,7 +1343,8 @@
 		width: 100%;
 		max-width: calc(var(--chat-max-width) + 48px);
 		margin-inline: auto;
-		padding: 20px 24px 140px;
+		/* Room for the composer floating over this list, as tall as it actually is. */
+		padding: 20px 24px calc(var(--composer-height, 140px) + var(--keyboard-inset, 0px) + 16px);
 		box-sizing: border-box;
 	}
 

@@ -449,7 +449,38 @@
 
 	@media (max-width: 680px) {
 		.top {
-			padding: 8px 12px;
+			padding: 8px 10px;
+			gap: 8px;
+		}
+
+		/*
+		 * Three labelled buttons left the name as "通.." with an ellipsis. The labels go; the
+		 * icons stay, at a size a thumb can actually hit, and the name gets the rest.
+		 */
+		.btn-top-action span {
+			display: none;
+		}
+
+		.btn-top-action {
+			width: 40px;
+			height: 40px;
+			padding: 0;
+			justify-content: center;
+			flex-shrink: 0;
+		}
+
+		.btn-top-action :global(svg) {
+			width: 17px;
+			height: 17px;
+		}
+
+		.top-actions {
+			gap: 6px;
+		}
+
+		.btn-mobile-back {
+			width: 40px;
+			height: 40px;
 		}
 	}
 

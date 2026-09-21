@@ -6,6 +6,7 @@
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
 	import { insertComposerNewline } from './composer-editor.ts';
+	import { keyboardInset } from './composer-inset.ts';
 	import {
 		COMPOSER_IME_IDLE,
 		composerImeKeyAction,
@@ -526,11 +527,41 @@
 		await onSend(files);
 		if (editorEl) editorEl.innerHTML = '';
 	}
+	let composerEl = $state<HTMLElement | null>(null);
+
+	/**
+	 * The stream reserves room for this bar, so it has to know how tall it actually is: chips, a
+	 * suggestion row, a wrapped placeholder and the home-indicator inset all change that, and a
+	 * constant guess hid the last messages behind it. The keyboard inset rides along because on
+	 * iOS the layout viewport does not shrink when the keyboard opens.
+	 */
+	$effect(() => {
+		const el = composerEl;
+		const stage = el?.parentElement;
+		if (!el || !stage || typeof ResizeObserver === 'undefined') return;
+		const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+		const apply = () => {
+			stage.style.setProperty('--composer-height', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+			stage.style.setProperty('--keyboard-inset', `${keyboardInset(window.innerHeight, viewport)}px`);
+		};
+		apply();
+		const observer = new ResizeObserver(apply);
+		observer.observe(el);
+		viewport?.addEventListener('resize', apply);
+		viewport?.addEventListener('scroll', apply);
+		return () => {
+			observer.disconnect();
+			viewport?.removeEventListener('resize', apply);
+			viewport?.removeEventListener('scroll', apply);
+			stage.style.removeProperty('--composer-height');
+			stage.style.removeProperty('--keyboard-inset');
+		};
+	});
 </script>
 
 <svelte:window onclick={onWindowClick} />
 
-		<footer class="composer">
+		<footer class="composer" bind:this={composerEl}>
 {#if showMentionPopup && mentionCandidates.length > 0}
 	<div
 		bind:this={mentionPopupEl}
@@ -734,7 +765,7 @@
 		position: absolute;
 		left: 0;
 		right: 0;
-		bottom: 0;
+		bottom: var(--keyboard-inset, 0px);
 		background: transparent;
 		padding: 10px 24px 12px;
 		display: flex;
@@ -1328,14 +1359,22 @@
 
 	@media (max-width: 680px) {
 		.composer {
-			bottom: 0;
-			padding: 8px 10px 12px;
+			bottom: var(--keyboard-inset, 0px);
+			padding: 8px 10px max(12px, env(safe-area-inset-bottom));
 			gap: 4px;
 		}
 
 		.composer-suggest-bar {
 			padding: 2px 4px 8px 2px;
 			margin: 0 0 -6px;
+			/* The row scrolls; without this the last chip just looks cut in half. */
+			mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+			-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+			scroll-padding-inline-end: 24px;
+		}
+
+		.suggest-chip {
+			min-height: 34px;
 		}
 
 		.composer-card-shell::before {

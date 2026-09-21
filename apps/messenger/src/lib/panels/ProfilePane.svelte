@@ -1330,4 +1330,11 @@
 	.profile-avatar-block :global(.avatar-editor) {
 		margin-bottom: 0;
 	}
+	@media (max-width: 680px) {
+		/* 26px tall tabs are a mouse target, not a thumb one. */
+		.bot-tab-btn {
+			min-height: 40px;
+			padding-block: 8px;
+		}
+	}
 </style>

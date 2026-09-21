@@ -1731,4 +1731,28 @@
 	display: none;
 	}
 	}
+
+	@media (max-width: 680px) {
+		/* 30px icons in the corners are neither hittable nor reachable one-handed. */
+		.foot {
+			padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+		}
+
+		.foot-left,
+		.foot-right {
+			flex: 1;
+			justify-content: space-evenly;
+			gap: 0;
+		}
+
+		.foot-icon-btn {
+			width: 44px;
+			height: 44px;
+		}
+
+		.foot-icon-btn :global(svg) {
+			width: 20px;
+			height: 20px;
+		}
+	}
 </style>
