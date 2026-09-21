@@ -107,6 +107,8 @@
 	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
+	/** Phone only: the pane is a sheet, so the file and the list of files take turns. */
+	let mobileTab = $state<'file' | 'tree'>('file');
 	let paneEl = $state<HTMLElement | null>(null);
 	let paneWidth = $state(Number.POSITIVE_INFINITY);
 	const treeWidth = $derived(clampArtifactTreeWidth(treePreferred, paneWidth));
@@ -368,6 +370,8 @@
 
 	function selectNode(node: ArtifactTreeNode): void {
 		if (mode === 'workspace' && node.kind === 'dir') return;
+		// Picking a file is a request to look at it, not to stay in the list.
+		if (node.kind !== 'dir') mobileTab = 'file';
 		if (dirty) {
 			pendingNav = { kind: 'node', node };
 			return;
@@ -533,6 +537,25 @@
 			</div>
 			<p class="mono">{relpath || (workspacePath ?? '')}</p>
 		</div>
+		{#if showTree}
+			<button
+				type="button"
+				class="artifact-tree-toggle"
+				aria-pressed={mobileTab === 'tree'}
+				title={t.stream.artifactTree}
+				aria-label={t.stream.artifactTree}
+				onclick={() => (mobileTab = mobileTab === 'tree' ? 'file' : 'tree')}
+			>
+				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<line x1="8" y1="6" x2="21" y2="6"></line>
+					<line x1="8" y1="12" x2="21" y2="12"></line>
+					<line x1="8" y1="18" x2="21" y2="18"></line>
+					<line x1="3" y1="6" x2="3.01" y2="6"></line>
+					<line x1="3" y1="12" x2="3.01" y2="12"></line>
+					<line x1="3" y1="18" x2="3.01" y2="18"></line>
+				</svg>
+			</button>
+		{/if}
 		<button type="button" class="modal-close" title={t.common.close} onclick={requestClose}>✕</button>
 	</header>
 	{#if canShowSource || canOpenOnDisk || canRemoteFile}
@@ -597,7 +620,11 @@
 	{#if remoteClient}
 		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.settings.fileLimitRemote}</p>
 	{/if}
-	<div class="artifact-pane-main flex-1 min-h-0 min-w-0 flex" class:has-tree={showTree}>
+	<div
+		class="artifact-pane-main flex-1 min-h-0 min-w-0 flex"
+		class:has-tree={showTree}
+		data-mobile-tab={mobileTab}
+	>
 		{#if showTree}
 			<ArtifactTree
 				nodes={tree}
@@ -700,6 +727,11 @@
 		display: flex;
 		flex-direction: column;
 		border-left: 0;
+	}
+
+	/* Desktop shows the tree beside the file, so the phone's toggle stays hidden. */
+	.artifact-tree-toggle {
+		display: none;
 	}
 
 	.artifact-pane-head {
@@ -842,5 +874,77 @@
 	.artifact-pane-body video {
 		width: 100%;
 		max-height: 100%;
+	}
+
+@media (max-width: 680px) {
+		/*
+		 * On a phone this pane used to be dealt a second grid row under the composer, and then
+		 * split its 390px between a tree and the file. It is a sheet now: it covers the
+		 * conversation, and the file and the list of files take turns.
+		 */
+		.artifact-pane {
+			position: fixed;
+			inset: 0;
+			z-index: 60;
+			padding-bottom: env(safe-area-inset-bottom);
+			box-shadow: none;
+		}
+
+		.artifact-pane-head {
+			padding: 12px 12px 10px;
+		}
+
+		.artifact-pane-head :global(.modal-close) {
+			width: 40px;
+			height: 40px;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.artifact-tree-toggle {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 40px;
+			height: 40px;
+			flex-shrink: 0;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-md);
+			background: var(--btn-secondary-bg);
+			color: var(--ink-secondary);
+		}
+
+		.artifact-tree-toggle[aria-pressed='true'] {
+			background: var(--chip);
+			border-color: var(--line-hover);
+			color: var(--ink);
+		}
+
+		.artifact-pane-main[data-mobile-tab='file'] :global(.artifact-tree) {
+			display: none;
+		}
+
+		.artifact-pane-main[data-mobile-tab='tree'] .artifact-pane-body {
+			display: none;
+		}
+
+		/* One column either way: the grid that splits tree from file is a desktop shape. */
+		.artifact-pane-main.has-tree {
+			display: flex;
+			grid-template-columns: none;
+		}
+
+		.artifact-pane-main[data-mobile-tab='tree'] :global(.artifact-tree) {
+			flex: 1;
+			width: auto;
+			max-width: none;
+			border-right: 0;
+		}
+
+		/* Dragging a divider is a mouse idea. */
+		.artifact-tree-split {
+			display: none;
+		}
 	}
 </style>
