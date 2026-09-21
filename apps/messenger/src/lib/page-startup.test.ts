@@ -155,7 +155,8 @@ for (const query of [
   close = view.close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => snapshotRequested);
-  expect(runtime.connection).toBe("disconnected");
+  // The snapshot is in flight, so the page is connecting rather than declaring the host gone.
+  expect(runtime.connection).toBe("connecting");
   expect(overlayFromUrl(page.url)).toEqual(wanted);
   expect(overlayFromFlags(runtime)).toEqual(wanted);
   expect(navigations).toEqual([]);

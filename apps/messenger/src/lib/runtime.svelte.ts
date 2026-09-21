@@ -38,7 +38,12 @@ import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
 import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
 import { disablePush, enablePush, isInboxMessage, pushPermission, type PushPermission } from "./remote/push.ts";
 
-export type Connection = "disconnected" | "connected";
+/**
+ * `connecting` is a real state, not a flavour of `disconnected`: a page that is still trying
+ * should not accuse the Mac of being unreachable, and one that has been trying for a while
+ * should not pretend it is still about to work.
+ */
+export type Connection = "connecting" | "connected" | "disconnected";
 export type HostUnreachable = "runtime" | "host";
 export type DraftReconnect = { draft: string; confirm: boolean } | null;
 
@@ -60,6 +65,8 @@ export function nextRemoteRetry(previous: number, random = Math.random): number 
 }
 /** A pairing window lasts ten minutes; checking it every three seconds is not a busy loop. */
 const HOST_PAIRING_POLL_MS = 3000;
+/** Attempts that still read as "connecting" before the page says the host cannot be reached. */
+const CONNECTING_ATTEMPTS = 3;
 
 export type HostPairing =
   | null
@@ -78,7 +85,9 @@ export type HostPairing =
   | { phase: "failed"; error: string };
 
 export class MessengerRuntime {
-  connection = $state<Connection>("disconnected");
+  connection = $state<Connection>("connecting");
+  /** Consecutive failed attempts since the last connection; the first few are still "connecting". */
+  private connectFailures = 0;
   snapshot = $state<Snapshot>(emptySnapshot());
   selectedId = $state<string | null>(null);
   /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
@@ -1132,6 +1141,16 @@ export class MessengerRuntime {
     }
   }
 
+  /** The button on the unreachable screen: try now, and look like it. */
+  retryConnection(): void {
+    if (this.stopped || this.connection === "connected") return;
+    this.connectFailures = 0;
+    this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
+    this.connection = "connecting";
+    if (this.timer) clearTimeout(this.timer);
+    this.pump();
+  }
+
   /** Closing the card abandons the window; it still expires on the host by itself. */
   closeHostPairing(): void {
     if (this.hostPairingBusy) return;
@@ -1272,6 +1291,9 @@ export class MessengerRuntime {
 
   private async tick(): Promise<void> {
     if (this.stopped) return;
+    if (this.connection !== "connected") {
+      this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
+    }
     if (HOSTED_MESSENGER) {
       await this.tickRemote();
       return;
@@ -1362,6 +1384,7 @@ export class MessengerRuntime {
     for (const frame of frames) this.ingest(frame.payload, frame);
     this.endpointKey = "";
     this.connection = "connected";
+    this.connectFailures = 0;
     this.focusedTurnId = null;
     this.pendingFocusTrigger = null;
     if (this.draftReconnect && !this.draftReconnect.confirm) this.draft = this.draftReconnect.draft;
@@ -1641,7 +1664,8 @@ export class MessengerRuntime {
 
   private resetConnection(): void {
     this.rememberDraftOnDisconnect();
-    this.connection = "disconnected";
+    this.connectFailures += 1;
+    this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
     this.teardownSocket();
     if (this.api instanceof RemoteApi) {
       this.durablePending = this.api.durablePending();

@@ -475,7 +475,8 @@ test("unsent in-memory drafts require confirm after reconnect and are not sent a
   await until(() => runtime.connection === "connected");
   runtime.draft = "keep this";
   Socket.current.close();
-  await until(() => runtime.connection === "disconnected");
+  // A dropped socket is not yet "unreachable": the page says it is reconnecting.
+  await until(() => runtime.connection !== "connected");
   expect(runtime.draftReconnect).toEqual({ draft: "keep this", confirm: false });
   runtime.confirmDraftReconnect();
   expect(runtime.draftReconnect?.confirm).toBe(true);
@@ -489,12 +490,13 @@ test("runtime subscribes before reading snapshot and preserves events arriving d
   const { runtime, initial } = await connected(() => pending.promise);
   const message = aMessage({ session_id: "direct-1" });
   Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...message, event: "message.upsert", occurred_at: "now" } });
-  expect(runtime.connection).toBe("disconnected");
+  // Still mid-connect: the snapshot has not landed, so this is "connecting", not unreachable.
+  expect(runtime.connection).toBe("connecting");
   pending.resolve(initial);
   await until(() => runtime.connection === "connected");
   expect(runtime.snapshot.messages.map((m) => m.id)).toEqual([message.id]);
   Socket.current.frame({ type: "event", event_instance_id: instance, seq: 3, payload: { event: "routine.removed", id: "r", occurred_at: "now" } });
-  expect(runtime.connection).toBe("disconnected");
+  expect(runtime.connection).not.toBe("connected");
 });
 
 test("late session detail cannot erase events or changes in other sessions", async () => {

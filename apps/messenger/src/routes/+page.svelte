@@ -146,18 +146,32 @@
 	const disconnectedCopy = $derived(
 		runtime.hostUnreachable === 'host' ? copy.disconnected.host : copy.disconnected.message
 	);
-	const showPairing = $derived(HOSTED_MESSENGER && runtime.connection === 'disconnected' && !runtime.enrolled);
+	// Not enrolled is not a connection problem: this device has nothing to connect with yet.
+	const showPairing = $derived(HOSTED_MESSENGER && runtime.connection !== 'connected' && !runtime.enrolled);
+	const connectingCopy = $derived(
+		runtime.hostUnreachable === 'host' ? copy.disconnected.connectingHost : copy.disconnected.connecting
+	);
 </script>
 
-{#if runtime.connection === 'disconnected'}
+{#if runtime.connection !== 'connected'}
 	{#if showPairing}
 		<PairingScreen {runtime} t={copy} />
+	{:else if runtime.connection === 'connecting'}
+		<main class="disconnected" data-testid="connecting">
+			<span class="connecting-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+			<span>{connectingCopy}</span>
+		</main>
 	{:else}
-		<main class="disconnected">
+		<main class="disconnected" data-testid="unreachable">
 			<span>{disconnectedCopy}</span>
 			{#if runtime.hostUnreachable === 'host'}
 				<p class="disconnected-hint">{copy.disconnected.hostHint}</p>
 			{/if}
+			<div class="disconnected-actions">
+				<button type="button" data-testid="retry-connection" onclick={() => runtime.retryConnection()}>
+					{copy.disconnected.retry}
+				</button>
+			</div>
 			{#if runtime.draftReconnect && !runtime.draftReconnect.confirm}
 				<p class="disconnected-hint">{copy.remote.draftConfirm}</p>
 				<div class="disconnected-actions">
@@ -194,6 +208,48 @@
 		color: var(--muted);
 		gap: 12px;
 		background: var(--bg);
+	}
+
+	/* The app's "in progress" is bouncing dots; a connection attempt is the same idea. */
+	.connecting-dots {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.connecting-dots i {
+		width: 7px;
+		height: 7px;
+		border-radius: 9999px;
+		background: var(--muted);
+		animation: connecting-bounce 1.2s ease-in-out infinite;
+	}
+
+	.connecting-dots i:nth-child(2) {
+		animation-delay: 0.15s;
+	}
+
+	.connecting-dots i:nth-child(3) {
+		animation-delay: 0.3s;
+	}
+
+	@keyframes connecting-bounce {
+		0%,
+		70%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.45;
+		}
+		35% {
+			transform: translateY(-4px);
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.connecting-dots i {
+			animation: none;
+		}
 	}
 
 	.disconnected-hint {
