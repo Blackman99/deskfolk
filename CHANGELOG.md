@@ -6,7 +6,9 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Messenger
+
+- Video and audio in the preview pane no longer restart when the message that cited the file leaves the loaded transcript — switching chats, or continuing an interrupted turn. The pane chose its byte source from whether that attachment was still loaded (`attachment` when it was, `workspace` once it was not), and the flip re-fetched the file and swapped the object URL under a playing element. Each file now loads once, keyed by its path; opening a different file still reloads.
 
 ## 0.1.0-rc.4 — 2026-09-21
 

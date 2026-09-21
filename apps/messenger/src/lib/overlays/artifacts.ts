@@ -191,6 +191,27 @@ export function isInAppPreviewKind(kind: ArtifactKind): boolean {
 
 export type ArtifactByteSource = "attachment" | "workspace";
 
+/**
+ * What the pane currently holds, so the same file is fetched once.
+ *
+ * The bytes behind a path do not change because the message that cited them left the loaded
+ * transcript — but the byte source does: `attachment` while the owner is loaded, `workspace` once
+ * it is not. Switching sessions or continuing an interrupted turn flips it, and reloading swaps the
+ * object URL, which restarts a playing video. The path is what identifies the bytes; an attachment
+ * only ever serves its own `workspace_relpath`.
+ */
+export function previewLoadKey(opts: {
+  path: string;
+  kind: ArtifactKind;
+  source: ArtifactByteSource | null;
+  attachmentId?: string | null;
+}): string | null {
+  if (!opts.source) return null;
+  const path = opts.path.trim();
+  if (path) return `${opts.kind}|path:${path}`;
+  return opts.attachmentId ? `${opts.kind}|att:${opts.attachmentId}` : null;
+}
+
 /** Where the preview pane should fetch bytes. Chat links that never became attachments still live in the workspace. */
 export function artifactByteSource(opts: {
   mode: "cited" | "workspace";

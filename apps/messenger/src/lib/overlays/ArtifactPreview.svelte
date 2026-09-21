@@ -12,6 +12,7 @@
 		injectHtmlPreviewNonce,
 		isInAppPreviewKind,
 		pageCspNonce,
+		previewLoadKey,
 		stripSvgActiveContent,
 		type ArtifactKind,
 	} from './artifacts.ts';
@@ -77,6 +78,8 @@
 	let liveBlob: string | null = null;
 	let liveHtml: string | null = null;
 	let loadGen = 0;
+	/** The key of the bytes on screen; a repeat of it must not swap the object URL. */
+	let loadedKey: string | null = null;
 	let lastSourcePath = $state('');
 	let editor = $state<{
 		getValue: () => string;
@@ -130,7 +133,11 @@
 		const path = relpath;
 		const previewKind = kind;
 		const source = byteSource;
-		void attachment?.id;
+		const key = previewLoadKey({ path, kind: previewKind, source, attachmentId: attachment?.id });
+		// Losing the citing message flips the source, not the file: reloading here would restart a
+		// playing video every time you switch sessions or continue an interrupted turn.
+		if (key !== null && key === loadedKey) return;
+		loadedKey = key;
 		const att = untrack(() => attachment);
 		void loadPreview(path, previewKind, source, att);
 	});
@@ -260,6 +267,7 @@
 			text = null;
 		} catch {
 			if (gen !== loadGen) return;
+			loadedKey = null;
 			missing = true;
 		}
 	}
