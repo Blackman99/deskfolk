@@ -38,10 +38,4 @@ export const STORY_SIZES = {
 	'settings-about': { width: 1000, height: 720 }
 } as const;
 
-/** Ticket 11 browser evidence only; not in Playwright STORY_SIZES. */
-export const RC11_STORY_SIZES = {
-	'settings-maintenance': { width: 1440, height: 1000 },
-	'settings-maintenance-error': { width: 430, height: 932 }
-} as const;
-
 export type StoryName = keyof typeof STORY_SIZES;

@@ -78,7 +78,6 @@ const zh = {
     drainWaiting: (n: number) => `正在排空，剩余 ${n} 个活轮`,
     drainDrained: "已排空",
     drainForced: "已强制中断",
-    liveTurns: (n: number) => `活轮 ${n}`,
     refreshStatus: "刷新状态",
     downloadDiagnostics: "下载脱敏诊断",
     drainRestart: "排空后重启",
@@ -97,7 +96,6 @@ const zh = {
     errorCancelled: "排空等待已取消。没有自动强制。",
     errorUv: "需要新鲜的 WebAuthn 用户验证。",
     errorUnknown: "结果未知。请查询同一回执，不要换新编号。",
-    thisDevice: "本设备",
   },
   sidebar: {
     roster: "名册",
@@ -696,7 +694,6 @@ const en: CopyShape<typeof zh> = {
     drainWaiting: (n: number) => `Draining; ${n} live turns remaining`,
     drainDrained: "Drained",
     drainForced: "Force-interrupted",
-    liveTurns: (n: number) => `${n} live turns`,
     refreshStatus: "Refresh status",
     downloadDiagnostics: "Download redacted diagnostics",
     drainRestart: "Drain then restart",
@@ -715,7 +712,6 @@ const en: CopyShape<typeof zh> = {
     errorCancelled: "The drain wait was cancelled. Nothing was auto-forced.",
     errorUv: "Fresh WebAuthn user verification is required.",
     errorUnknown: "The result is unknown. Look up the same receipt instead of minting a new id.",
-    thisDevice: "This device",
   },
   sidebar: {
     roster: "Roster",

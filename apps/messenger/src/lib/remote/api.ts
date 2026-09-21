@@ -473,12 +473,6 @@ export class RemoteApi {
   async remoteStatus(): Promise<RemoteMaintenanceStatus> {
     return this.get("/remote/status");
   }
-  async remoteDevices(): Promise<{ items: RemoteDeviceRow[] }> {
-    return this.get("/remote/devices");
-  }
-  async remoteDiagnostics(): Promise<RemoteDiagnostics> {
-    return this.get("/remote/diagnostics");
-  }
   async privilegedAction(operation: {
     action: "device.revoke" | "quiesce.begin" | "quiesce.cancel" | "quiesce.force" | "runtime.restart" | "runtime.stop" | "diagnostics.download";
     targetId: string; requestId?: string; force?: boolean;

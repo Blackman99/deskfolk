@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity, requestDigest,
@@ -985,4 +985,86 @@ test("caller finishRestart/stop never write a latch on restart and stop stays st
   const report = maintenanceDiagnostics(store, api, maint);
   expect(Object.values(report.counts).every(n => typeof n === "number")).toBe(true);
   expect(JSON.stringify(report)).not.toMatch(/\/Users\//);
+});
+
+test("post-UV busy conflict finalizes the loser's receipt to 409 and drops its lifecycle row", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rb-rc11-busy-"));
+  const store = new Store({ filename: join(dir, "host.sqlite"), endpointKey: memoryKeyStore() });
+  const api = createLocalApi({ store, token: "fixture", schedule: false });
+  const { maint, exits } = maintControl(dir, "window", true);
+  cleanup.push(async () => { api.quiesce.close(); await api.engine.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
+  const pending = (scope: { deviceId: string; requestId: string }, path: string, action: string, digest: string) => {
+    store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+      VALUES (?, ?, ?, 'POST', ?, 'complete', 202, '{"state":"lifecycle_pending"}', '{}', ?)`,
+      [scope.deviceId, scope.requestId, digest, path, Date.now()]);
+    store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, ?)", [scope.deviceId, scope.requestId, action]);
+  };
+  const leftover = (scope: { deviceId: string; requestId: string }) =>
+    store.db.query<{ n: number }, [string, string]>("SELECT COUNT(*) n FROM remote_lifecycle WHERE device_id = ? AND request_id = ?")
+      .get(scope.deviceId, scope.requestId)?.n ?? 0;
+
+  maint.busy = "restart";
+  const stopScope = { deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", requestId: ulid() };
+  pending(stopScope, "/remote/runtime/stop", "runtime.stop", "c".repeat(64));
+  const stopped = await finishStop(store, maint, stopScope);
+  expect(stopped.status).toBe(409);
+  expect(JSON.parse(await stopped.text()).error.code).toBe("draining");
+  const stopReceipt = store.receipts.read(stopScope);
+  expect(stopReceipt.status).toBe(409);
+  expect(JSON.parse(stopReceipt.body!).error.code).toBe("draining");
+  expect(leftover(stopScope)).toBe(0);
+  expect(exits).toEqual([]);
+  expect(maint.busy).toBe("restart");
+  expect(maint.lifecycle.isStopped()).toBe(false);
+
+  maint.busy = "stop";
+  const restartScope = { deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", requestId: ulid() };
+  pending(restartScope, "/remote/runtime/restart", "runtime.restart", "d".repeat(64));
+  const restarted = await finishRestart(store, api, maint, restartScope, false);
+  expect(restarted.status).toBe(409);
+  expect(JSON.parse(await restarted.text()).error.code).toBe("draining");
+  const restartReceipt = store.receipts.read(restartScope);
+  expect(restartReceipt.status).toBe(409);
+  expect(JSON.parse(restartReceipt.body!).error.code).toBe("draining");
+  expect(leftover(restartScope)).toBe(0);
+  expect(exits).toEqual([]);
+  expect(maint.busy).toBe("stop");
+});
+
+test("concurrent finishRestart and finishStop do not mix latch and restart", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rb-rc11-mix-"));
+  const store = new Store({ filename: join(dir, "host.sqlite"), endpointKey: memoryKeyStore() });
+  const api = createLocalApi({ store, token: "fixture", schedule: false });
+  const { maint, exits } = maintControl(dir, "window", true);
+  cleanup.push(async () => { api.quiesce.close(); await api.engine.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
+  const restartScope = { deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", requestId: ulid() };
+  const stopScope = { deviceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", requestId: ulid() };
+  store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+    VALUES (?, ?, ?, 'POST', '/remote/runtime/restart', 'complete', 202, '{"state":"lifecycle_pending"}', '{}', ?)`,
+    [restartScope.deviceId, restartScope.requestId, "e".repeat(64), Date.now()]);
+  store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, 'runtime.restart')", [restartScope.deviceId, restartScope.requestId]);
+  store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
+    VALUES (?, ?, ?, 'POST', '/remote/runtime/stop', 'complete', 202, '{"state":"lifecycle_pending"}', '{}', ?)`,
+    [stopScope.deviceId, stopScope.requestId, "f".repeat(64), Date.now()]);
+  store.db.run("INSERT INTO remote_lifecycle VALUES (?, ?, 'runtime.stop')", [stopScope.deviceId, stopScope.requestId]);
+  const [restarted, stopped] = await Promise.all([finishRestart(store, api, maint, restartScope, false), finishStop(store, maint, stopScope)]);
+  expect([restarted.status, stopped.status].sort()).toEqual([200, 409]);
+  await Bun.sleep(5);
+  const restartReceipt = store.receipts.read(restartScope);
+  const stopReceipt = store.receipts.read(stopScope);
+  expect(store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM remote_lifecycle").get()?.n).toBe(0);
+  if (restarted.status === 200) {
+    expect(JSON.parse(await restarted.text()).latch).toBe(false);
+    expect(stopReceipt.status).toBe(409);
+    expect(JSON.parse(stopReceipt.body!).error.code).toBe("draining");
+    expect(existsSync(maint.lifecycle.latchPath)).toBe(false);
+    expect(exits).toEqual(["restart"]);
+    expect(maint.lifecycle.isStopped()).toBe(false);
+  } else {
+    expect(JSON.parse(await stopped.text()).latch).toBe(true);
+    expect(restartReceipt.status).toBe(409);
+    expect(JSON.parse(restartReceipt.body!).error.code).toBe("draining");
+    expect(existsSync(maint.lifecycle.latchPath)).toBe(true);
+    expect(exits).toEqual(["stop"]);
+  }
 });

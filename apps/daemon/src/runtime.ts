@@ -15,7 +15,7 @@ import { RemoteController } from "./remote/controller";
 import { inheritedLocalSetup } from "./remote/local-setup";
 import { RuntimeLifecycle } from "./lifecycle";
 import { recoverLifecycle } from "./remote/lifecycle";
-import { runtimeVersion, type MaintenanceControl } from "./remote/maint";
+import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
 
 type SocketData = { authed: boolean };
 
@@ -90,7 +90,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
   let store: Store | undefined;
   let remote: RemoteController | undefined;
   let closeSetup: (() => void) | undefined;
-  let windowAlive = Boolean(options.desktopRemoteChannel);
+  let windowAlive = false;
   let busy: MaintenanceControl["busy"] = null;
   const maint: MaintenanceControl = {
     version: runtimeVersion(),
@@ -221,13 +221,16 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         version: maint.version,
         mode: lifecycle.kind,
         stopped: lifecycle.isStopped(),
-        restart: lifecycle.kind === "window" ? (windowAlive ? "available" : "unavailable") : lifecycle.kind === "standalone" && !lifecycle.isStopped() ? "available" : "unavailable",
+        restart: restartAvailable(lifecycle, () => windowAlive) ? "available" : "unavailable",
       }),
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
     remote = new RemoteController({ store, api, maint,
       config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
-    if (options.desktopRemoteChannel) closeSetup = await inheritedLocalSetup(remote, () => { windowAlive = false; });
+    if (options.desktopRemoteChannel) {
+      closeSetup = await inheritedLocalSetup(remote, () => { windowAlive = false; });
+      windowAlive = Boolean(closeSetup);
+    }
     await remote.start();
     // Chains the previous run left open go through review now; their timers died with it.
     api.engine.sweepStaleChains();

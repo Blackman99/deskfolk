@@ -11,7 +11,6 @@ export type RemoteReachability = {
   devices: number;
 };
 
-export type RuntimeMode = RuntimeLifecycle["kind"];
 export type RestartAvailability = "available" | "unavailable";
 export type MaintenanceControl = {
   version: string;
@@ -118,9 +117,9 @@ export async function finishRestart(store: Store, api: LocalApi, maint: Maintena
   scope: { deviceId: string; requestId: string }, force: boolean, signal?: AbortSignal): Promise<Response> {
   let status = 200;
   let body: string | null = JSON.stringify({ ok: true, action: "runtime.restart", forced: force, latch: false });
-  if (maint.busy && maint.busy !== "restart") throw new HttpError(409, "draining", "runtime is draining; new turns are paused");
-  maint.busy = "restart";
   try {
+    if (maint.busy && maint.busy !== "restart") throw new HttpError(409, "draining", "runtime is draining; new turns are paused");
+    maint.busy = "restart";
     if (!restartAvailable(maint.lifecycle, maint.windowAlive)) {
       throw new HttpError(409, "restart_unavailable", "restart needs a live window supervisor");
     }
@@ -129,15 +128,17 @@ export async function finishRestart(store: Store, api: LocalApi, maint: Maintena
     if (state.phase !== "drained") throw new HttpError(409, "cancelled", "drain wait cancelled");
     if (force && !state.forced) throw new HttpError(409, "cancelled", "force cancelled");
   } catch (error) {
-    maint.busy = null;
-    if (error instanceof HttpError && error.code === "cancelled") {
-      status = 409; body = failedBody("cancelled", "drain wait cancelled");
-    } else if (error instanceof HttpError && error.code === "restart_unavailable") {
-      status = 409; body = failedBody("restart_unavailable", error.message);
-    } else if (error instanceof HttpError && error.code === "draining") {
+    if (error instanceof HttpError && error.code === "draining") {
       status = 409; body = failedBody("draining", error.message);
     } else {
-      status = 503; body = failedBody("lifecycle_failed", "lifecycle effect failed");
+      maint.busy = null;
+      if (error instanceof HttpError && error.code === "cancelled") {
+        status = 409; body = failedBody("cancelled", "drain wait cancelled");
+      } else if (error instanceof HttpError && error.code === "restart_unavailable") {
+        status = 409; body = failedBody("restart_unavailable", error.message);
+      } else {
+        status = 503; body = failedBody("lifecycle_failed", "lifecycle effect failed");
+      }
     }
   }
   const response = finalize(store, scope, status, body);
@@ -149,13 +150,17 @@ export async function finishStop(store: Store, maint: MaintenanceControl,
   scope: { deviceId: string; requestId: string }): Promise<Response> {
   let status = 200;
   let body: string | null = JSON.stringify({ ok: true, action: "runtime.stop", latch: true });
-  if (maint.busy && maint.busy !== "stop") throw new HttpError(409, "draining", "runtime is draining; new turns are paused");
-  maint.busy = "stop";
   try {
+    if (maint.busy && maint.busy !== "stop") throw new HttpError(409, "draining", "runtime is draining; new turns are paused");
+    maint.busy = "stop";
     await maint.lifecycle.writeStopLatch();
-  } catch {
-    maint.busy = null;
-    status = 503; body = failedBody("lifecycle_failed", "lifecycle effect failed");
+  } catch (error) {
+    if (error instanceof HttpError && error.code === "draining") {
+      status = 409; body = failedBody("draining", error.message);
+    } else {
+      maint.busy = null;
+      status = 503; body = failedBody("lifecycle_failed", "lifecycle effect failed");
+    }
   }
   const response = finalize(store, scope, status, body);
   if (status === 200) queueMicrotask(() => maint.requestExit("stop"));
