@@ -18,14 +18,25 @@ export type PairingWait =
   | { phase: "pending" }
   | { phase: "confirm"; name: string; fingerprint: string; challenge: string };
 
+/**
+ * A development window is still a Tauri window, and `remote_local_setup` refuses one: the command
+ * only answers the packaged, signed main document. So the window channel is attempted and its
+ * refusal falls through to the development route rather than surfacing as "pairing is broken".
+ */
 async function setup(api: LocalApi, request: Record<string, unknown>): Promise<unknown> {
   const internals = readTauriInternals();
   if (internals?.invoke) {
-    const reply = (await internals.invoke("remote_local_setup", { request })) as
-      | { ok?: boolean; value?: unknown; error?: string }
-      | undefined;
-    if (!reply?.ok) throw new Error(String(reply?.error ?? "remote_setup_denied"));
-    return reply.value;
+    try {
+      const reply = (await internals.invoke("remote_local_setup", { request })) as
+        | { ok?: boolean; value?: unknown; error?: string }
+        | undefined;
+      if (reply?.ok) return reply.value;
+      // A dispatcher that answered and said no is an answer; do not retry it elsewhere.
+      if (reply && "ok" in reply) throw new Error(String(reply.error ?? "remote_setup_denied"));
+    } catch (error) {
+      if (error instanceof Error && error.message === "remote_setup_denied") throw error;
+      // The command itself is unavailable here (unsigned dev window): fall through.
+    }
   }
   return api.remoteSetup(request);
 }
@@ -51,21 +62,25 @@ export async function readPairing(api: LocalApi, pairingId: string): Promise<Pai
   return { phase: "confirm", name: ready.name, fingerprint: ready.fingerprint, challenge: ready.challenge };
 }
 
-/** The proof comes from Touch ID in a packaged app and from the development stand-in otherwise. */
-export async function confirmPairing(api: LocalApi, pairingId: string, challenge: string): Promise<string> {
+/** Touch ID, when this is the packaged app it belongs to; null means ask the stand-in instead. */
+async function nativeProof(challenge: string): Promise<string | null> {
   const internals = readTauriInternals();
-  let proof: string;
-  if (internals?.invoke) {
+  if (!internals?.invoke) return null;
+  try {
     const confirmation = (await internals.invoke("remote_native_confirmation", {
       operation: "confirm",
       challenge,
     })) as { ok?: boolean; proof?: string; diagnostic?: string };
-    if (!confirmation?.ok || !confirmation.proof) throw new Error(String(confirmation?.diagnostic ?? "unavailable"));
-    proof = confirmation.proof;
-  } else {
-    const answered = (await setup(api, { operation: "dev_authenticate", challenge })) as { proof: string };
-    proof = answered.proof;
+    return confirmation?.ok && confirmation.proof ? confirmation.proof : null;
+  } catch {
+    return null;
   }
+}
+
+/** The proof comes from Touch ID in a packaged app and from the development stand-in otherwise. */
+export async function confirmPairing(api: LocalApi, pairingId: string, challenge: string): Promise<string> {
+  const proof = (await nativeProof(challenge)) ??
+    ((await setup(api, { operation: "dev_authenticate", challenge })) as { proof: string }).proof;
   const paired = (await setup(api, { operation: "confirm_pair", pairingId, proof })) as { deviceId: string };
   return paired.deviceId;
 }

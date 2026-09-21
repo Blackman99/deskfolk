@@ -218,6 +218,31 @@
 	let providerSavedTick = $state(0);
 	let workspaceSaving = $state(false);
 	let pairingCopied = $state(false);
+
+	/**
+	 * The badge carries the state; the sentence under it only appears when the state needs
+	 * explaining, so "online" does not spend a paragraph saying nothing.
+	 */
+	const remoteState = $derived(runtime.remoteStatus?.state ?? 'off');
+	const remoteLabel = $derived(
+		remoteState === 'online'
+			? t.remote.statusOnline
+			: remoteState === 'connecting'
+				? t.remote.statusConnecting
+				: remoteState === 'native_unavailable'
+					? t.remote.statusUnavailable
+					: remoteState === 'activation_gated'
+						? t.remote.statusGated
+						: remoteState === 'trust_mismatch'
+							? t.remote.statusMismatch
+							: remoteState === 'disconnected'
+								? t.remote.statusDisconnected
+								: t.remote.statusOff
+	);
+	const remoteTone = $derived(
+		remoteState === 'online' ? 'ok' : remoteState === 'connecting' ? 'neutral' : remoteState === 'off' ? 'neutral' : 'warn'
+	);
+	const remoteExplains = $derived(remoteState === 'online' || remoteState === 'off' ? '' : t.remote.experimental);
 	let workspaceSavedTick = $state(0);
 	/** Latest editor draft, so a parent that nulls `providerEditor` still has something to flush. */
 	let latestProviderEditor: ProviderEditorState | null = null;
@@ -746,70 +771,106 @@
 											<h3 class="settings-card-title">{t.settings.remoteSection}</h3>
 											<p class="settings-card-subtitle">{t.settings.remoteSubtitle}</p>
 										</div>
+										<span class="settings-badge-{remoteTone}" data-testid="remote-state">{remoteLabel}</span>
 									</div>
 								</div>
-								<p class="muted">{t.remote.experimental}</p>
-								<p>
-									{runtime.remoteStatus?.state === 'online'
-										? t.remote.statusOnline
-										: runtime.remoteStatus?.state === 'connecting'
-											? t.remote.statusConnecting
-											: runtime.remoteStatus?.state === 'native_unavailable'
-												? t.remote.statusUnavailable
-												: runtime.remoteStatus?.state === 'activation_gated'
-													? t.remote.statusGated
-													: runtime.remoteStatus?.state === 'trust_mismatch'
-														? t.remote.statusMismatch
-														: runtime.remoteStatus?.state === 'disconnected'
-															? t.remote.statusDisconnected
-															: t.remote.statusOff}
-								</p>
-								{#if runtime.remoteStatus}
-									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
+								{#if remoteExplains}
+									<p class="muted">{remoteLabel === t.remote.statusGated ? t.remote.experimental : remoteExplains}</p>
 								{/if}
-								<p class="muted">{t.remote.noOfflineQueue}</p>
+
 								{#if !runtime.remote && runtime.remoteStatus?.state === 'online'}
-									<div class="settings-pairing" data-testid="remote-pairing">
+									<div class="pairing" data-testid="remote-pairing">
 										{#if !runtime.hostPairing}
-											<button type="button" onclick={() => void runtime.startHostPairing()} disabled={runtime.hostPairingBusy}>
-												{t.remote.hostPair}
-											</button>
-										{:else if runtime.hostPairing.phase === 'offer' || runtime.hostPairing.phase === 'confirm'}
-											<p class="muted">{t.remote.hostPairPaste}</p>
-											<div class="pairing-code-row">
-												<code class="pairing-code mono" data-testid="pairing-code">{runtime.hostPairing.code}</code>
+											<div class="pairing-invite">
+												<p class="pairing-invite-text">
+													{runtime.remoteStatus.devices === 0
+														? t.remote.hostPairEmpty
+														: t.remote.devices(runtime.remoteStatus.devices)}
+												</p>
 												<button
 													type="button"
-													data-testid="pairing-copy"
-													onclick={() => {
-														copyText(runtime.hostPairing && 'code' in runtime.hostPairing ? runtime.hostPairing.code : '');
-														pairingCopied = true;
-													}}
+													class="btn-pair"
+													class:is-quiet={runtime.remoteStatus.devices > 0}
+													disabled={runtime.hostPairingBusy}
+													onclick={() => void runtime.startHostPairing()}
 												>
-													{pairingCopied ? t.chat.copied : t.chat.copyMessage}
+													{t.remote.hostPair}
 												</button>
 											</div>
-											<p class="muted">{t.remote.hostPairFingerprint(formatFingerprint(runtime.hostPairing.fingerprint))}</p>
+										{:else if runtime.hostPairing.phase === 'offer' || runtime.hostPairing.phase === 'confirm'}
+											<ol class="pairing-steps">
+												<li>
+													<p class="pairing-step-text">{t.remote.hostPairPaste}</p>
+													<div class="pairing-code-row">
+														<code class="pairing-code mono" data-testid="pairing-code">{runtime.hostPairing.code}</code>
+														<button
+															type="button"
+															class="btn-xs pairing-copy"
+															data-testid="pairing-copy"
+															onclick={() => {
+																copyText(runtime.hostPairing && 'code' in runtime.hostPairing ? runtime.hostPairing.code : '');
+																pairingCopied = true;
+															}}
+														>
+															{pairingCopied ? t.chat.copied : t.chat.copyMessage}
+														</button>
+													</div>
+												</li>
+												<li>
+													<p class="pairing-step-text">{t.remote.hostPairFingerprint}</p>
+													<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.fingerprint)}</p>
+												</li>
+												<li>
+													{#if runtime.hostPairing.phase === 'offer'}
+														<p class="pairing-step-text pairing-waiting">{t.remote.hostPairWaiting}</p>
+													{:else}
+														<p class="pairing-step-text">{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
+														<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
+														<p class="pairing-step-note">{t.remote.hostPairCompare}</p>
+														<div class="pairing-decide">
+															<button
+																type="button"
+																class="btn-pair"
+																data-testid="pairing-confirm"
+																disabled={runtime.hostPairingBusy}
+																onclick={() => void runtime.confirmHostPairing()}
+															>
+																{t.remote.hostPairApprove}
+															</button>
+															<button type="button" class="btn-xs" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>
+																{t.sidebar.cancel}
+															</button>
+														</div>
+													{/if}
+												</li>
+											</ol>
 											{#if runtime.hostPairing.phase === 'offer'}
-												<p class="muted">{t.remote.hostPairWaiting}</p>
-											{:else}
-												<p>{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
-												<p class="muted mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
-												<p class="muted">{t.remote.hostPairCompare}</p>
-												<button type="button" data-testid="pairing-confirm" disabled={runtime.hostPairingBusy} onclick={() => void runtime.confirmHostPairing()}>
-													{t.remote.hostPairApprove}
+												<button type="button" class="btn-xs pairing-dismiss" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>
+													{t.sidebar.cancel}
 												</button>
 											{/if}
-											<button type="button" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>{t.sidebar.cancel}</button>
 										{:else if runtime.hostPairing.phase === 'paired'}
-											<p>{t.remote.hostPairDone}</p>
-											<button type="button" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+											<p class="pairing-done" data-testid="pairing-done">{t.remote.hostPairDone}</p>
+											<button type="button" class="btn-xs pairing-dismiss" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
 										{:else}
-											<p class="field-error">{runtime.hostPairing.error === 'expired' ? t.remote.hostPairExpired : t.remote.hostPairFailed}</p>
-											<button type="button" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+											<div class="pairing-failed" role="alert">
+												<p class="pairing-failed-text">
+													{runtime.hostPairing.error === 'expired' ? t.remote.hostPairExpired : t.remote.hostPairFailed}
+												</p>
+												<div class="pairing-failed-actions">
+													<button type="button" class="btn-pair" disabled={runtime.hostPairingBusy} onclick={() => void runtime.startHostPairing()}>
+														{t.remote.hostPairRetry}
+													</button>
+													<button type="button" class="btn-xs" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+												</div>
+											</div>
 										{/if}
 									</div>
+								{:else if runtime.remoteStatus && !runtime.remote}
+									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
 								{/if}
+
+								<p class="pairing-footnote">{t.remote.noOfflineQueue}</p>
 								{#if runtime.remote}
 									<p class="muted">{t.remote.uvNeeded}</p>
 									{#if runtime.uvError}
@@ -2182,6 +2243,7 @@
 	}
 
 	.settings-badge-ok,
+	.settings-badge-neutral,
 	.settings-badge-warn {
 		display: inline-flex;
 		align-items: center;
@@ -2204,6 +2266,206 @@
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
 		color: var(--warn);
+	}
+
+	.settings-badge-neutral {
+		background: var(--chip);
+		border: 1px solid var(--line);
+		color: var(--ink-secondary);
+	}
+
+	/* Pairing is a short sequence with one action at its end, so it reads as steps rather than
+	   as another stack of paragraphs inside the card. */
+	.pairing {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.pairing-invite {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 12px 14px;
+		border: 1px dashed var(--line);
+		border-radius: var(--radius-md);
+		background: var(--sidebar-bg);
+	}
+
+	.pairing-invite-text {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--ink-secondary);
+	}
+
+	.btn-pair {
+		align-self: flex-start;
+		padding: 7px 14px;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--accent);
+		background: var(--accent);
+		color: #fff;
+		font-size: 12.5px;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.btn-pair:hover:not(:disabled) {
+		filter: brightness(1.08);
+	}
+
+	.btn-pair:disabled {
+		opacity: 0.55;
+		cursor: default;
+	}
+
+	/* A second device is routine, so the button steps back to match the rest of the card. */
+	.btn-pair.is-quiet {
+		background: var(--btn-secondary-bg);
+		border-color: var(--line);
+		color: var(--accent);
+	}
+
+	.pairing-steps {
+		counter-reset: pairing-step;
+		list-style: none;
+		margin: 0;
+		padding: 14px 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--sidebar-bg);
+	}
+
+	.pairing-steps li {
+		counter-increment: pairing-step;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding-left: 26px;
+		position: relative;
+	}
+
+	.pairing-steps li::before {
+		content: counter(pairing-step);
+		position: absolute;
+		left: 0;
+		top: 1px;
+		width: 18px;
+		height: 18px;
+		border-radius: 9999px;
+		border: 1px solid var(--line);
+		background: var(--pane);
+		color: var(--ink-secondary);
+		font-size: 10.5px;
+		font-weight: 600;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.pairing-step-text {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--ink);
+		line-height: 1.5;
+	}
+
+	.pairing-step-note {
+		margin: 0;
+		font-size: 11.5px;
+		color: var(--ink-secondary);
+	}
+
+	.pairing-waiting {
+		color: var(--ink-secondary);
+	}
+
+	/* Wrapping follows the card, not the viewport: this panel also renders inside a narrow pane. */
+	.pairing-code-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: stretch;
+		gap: 8px;
+	}
+
+	.pairing-code {
+		flex: 1 1 200px;
+		min-width: 0;
+		padding: 8px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--input-bg);
+		color: var(--ink-secondary);
+		font-size: 11px;
+		line-height: 1.5;
+		/* The whole code matters, so it wraps instead of hiding its tail behind an ellipsis. */
+		overflow-wrap: anywhere;
+		max-height: 72px;
+		overflow-y: auto;
+	}
+
+	.pairing-copy {
+		align-self: flex-start;
+	}
+
+	.pairing-decide {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+		margin-top: 2px;
+	}
+
+	.pairing-fingerprint {
+		margin: 0;
+		font-size: 11.5px;
+		line-height: 1.6;
+		color: var(--ink);
+		overflow-wrap: anywhere;
+	}
+
+	.pairing-dismiss {
+		align-self: flex-start;
+	}
+
+	.pairing-done {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--ok);
+	}
+
+	.pairing-failed {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 12px 14px;
+		border: 1px solid var(--warn-line);
+		border-radius: var(--radius-md);
+		background: var(--warn-bg);
+	}
+
+	.pairing-failed-text {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--warn-text);
+	}
+
+	.pairing-failed-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.pairing-footnote {
+		margin: 0;
+		font-size: 11.5px;
+		color: var(--ink-tertiary, var(--ink-secondary));
+		opacity: 0.85;
 	}
 
 	.field-error-alert {
