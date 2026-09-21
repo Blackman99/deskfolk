@@ -8,12 +8,13 @@ import {
   writeDescriptor,
 } from "./descriptor";
 import { createLocalApi } from "./local-api";
+import { HttpError } from "./errors";
 import { bunKeyStore } from "./secrets";
 import { Store, type EndpointKeyStore } from "./store";
 import type { CompletionsClient } from "./completions";
 import { RemoteController } from "./remote/controller";
 import { inheritedLocalSetup } from "./remote/local-setup";
-import { createDevRemote } from "./remote/dev-setup";
+import { createDevRemote, devPairingDispatch } from "./remote/dev-setup";
 import { RuntimeLifecycle } from "./lifecycle";
 import { recoverLifecycle } from "./remote/lifecycle";
 import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
@@ -210,9 +211,17 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     });
     store.recoverInterruptedTurns();
     recoverLifecycle(store);
+    // Source runs with REAL_BOT_DEV_REMOTE=1 swap in file-backed credentials so the protocol can
+    // be exercised before G-pack; a compiled daemon never gets one.
+    const dev = createDevRemote(options.dataDir);
+    const devPairing = dev ? devPairingDispatch(dev.native) : undefined;
     api = createLocalApi({
       store,
       token,
+      devSetup: devPairing && (async (request) => {
+        if (!remote) throw new HttpError(503, "unavailable", "runtime is still starting");
+        return devPairing(remote, request);
+      }),
       completions: options.completions,
       schedule: options.schedule,
       remoteStatus: () => remote?.status() ?? { state: "off", diagnostic: null, devices: 0 },
@@ -248,9 +257,6 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       },
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
-    // Source runs with REAL_BOT_DEV_REMOTE=1 swap in file-backed credentials so the
-    // protocol can be exercised before G-pack; a compiled daemon never gets one.
-    const dev = createDevRemote(options.dataDir);
     remote = new RemoteController({ store, api, maint, native: dev?.native,
       config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
     if (options.desktopRemoteChannel) {

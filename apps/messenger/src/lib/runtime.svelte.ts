@@ -31,6 +31,7 @@ import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
+import { confirmPairing, openPairing, readPairing } from "./remote/pairing-host.ts";
 import type { MessengerApi } from "./messenger-api.ts";
 import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
@@ -42,6 +43,24 @@ export type HostUnreachable = "runtime" | "host";
 export type DraftReconnect = { draft: string; confirm: boolean } | null;
 
 const RETRY_MS = 1000;
+/** A pairing window lasts ten minutes; checking it every three seconds is not a busy loop. */
+const HOST_PAIRING_POLL_MS = 3000;
+
+export type HostPairing =
+  | null
+  | { phase: "offer"; pairingId: string; code: string; expiresUnix: number; fingerprint: string }
+  | {
+      phase: "confirm";
+      pairingId: string;
+      code: string;
+      expiresUnix: number;
+      fingerprint: string;
+      name: string;
+      deviceFingerprint: string;
+      challenge: string;
+    }
+  | { phase: "paired"; deviceId: string }
+  | { phase: "failed"; error: string };
 
 export class MessengerRuntime {
   connection = $state<Connection>("disconnected");
@@ -81,6 +100,9 @@ export class MessengerRuntime {
   hosted = HOSTED_MESSENGER;
   pairing = $state<PairingProgress>({ phase: "scan" });
   pairingBusy = $state(false);
+  /** Host side of pairing: what the settings panel shows while a device is being enrolled. */
+  hostPairing = $state<HostPairing>(null);
+  hostPairingBusy = $state(false);
   enrolled = $state(false);
   hostUnreachable = $state<HostUnreachable>("runtime");
   draftReconnect = $state<DraftReconnect>(null);
@@ -1031,6 +1053,72 @@ export class MessengerRuntime {
       this.uvError = "uv_failed";
       return false;
     }
+  }
+
+  /**
+   * Opens a pairing window on this Mac and keeps checking it. The window lasts ten minutes; the
+   * card shows the code for that long, then says so rather than leaving a dead code on screen.
+   */
+  async startHostPairing(): Promise<void> {
+    const api = this.api;
+    if (this.hostPairingBusy || !api || api instanceof RemoteApi) return;
+    this.hostPairingBusy = true;
+    try {
+      const offer = await openPairing(api);
+      this.hostPairing = { phase: "offer", ...offer };
+      void this.watchHostPairing(api, offer.pairingId);
+    } catch (error) {
+      this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
+    } finally {
+      this.hostPairingBusy = false;
+    }
+  }
+
+  private async watchHostPairing(api: LocalApi, pairingId: string): Promise<void> {
+    while (!this.stopped) {
+      const current = this.hostPairing;
+      if (this.api !== api || current?.phase !== "offer" || current.pairingId !== pairingId) return;
+      if (Math.floor(Date.now() / 1000) >= current.expiresUnix) {
+        this.hostPairing = { phase: "failed", error: "expired" };
+        return;
+      }
+      try {
+        const waited = await readPairing(api, pairingId);
+        const live = this.hostPairing;
+        if (this.api !== api || live?.phase !== "offer" || live.pairingId !== pairingId) return;
+        if (waited.phase === "confirm") {
+          this.hostPairing = { ...live, phase: "confirm", name: waited.name, deviceFingerprint: waited.fingerprint, challenge: waited.challenge };
+          return;
+        }
+      } catch (error) {
+        this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, HOST_PAIRING_POLL_MS));
+    }
+  }
+
+  /** The person compared the fingerprint on the device; this is the local confirmation. */
+  async confirmHostPairing(): Promise<void> {
+    const api = this.api, current = this.hostPairing;
+    if (this.hostPairingBusy || !api || api instanceof RemoteApi || current?.phase !== "confirm") return;
+    this.hostPairingBusy = true;
+    try {
+      const deviceId = await confirmPairing(api, current.pairingId, current.challenge);
+      if (this.hostPairing === current) this.hostPairing = { phase: "paired", deviceId };
+    } catch (error) {
+      if (this.hostPairing === current) {
+        this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
+      }
+    } finally {
+      this.hostPairingBusy = false;
+    }
+  }
+
+  /** Closing the card abandons the window; it still expires on the host by itself. */
+  closeHostPairing(): void {
+    if (this.hostPairingBusy) return;
+    this.hostPairing = null;
   }
 
   async refreshMaintenance(): Promise<void> {

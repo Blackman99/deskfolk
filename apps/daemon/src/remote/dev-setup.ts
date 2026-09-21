@@ -61,6 +61,23 @@ export function devDispatch(native: DevRemoteNative): (controller: RemoteControl
   };
 }
 
+/**
+ * What the settings panel is allowed to drive in development. Pairing needs a person at the Mac
+ * either way; changing the relay or resetting the identity stays on the unix socket, where it
+ * takes the CLI and the prompt that goes with it.
+ */
+const PAIRING_OPS = new Set(["status", "open_pair", "prepare_pair", "confirm_pair", "dev_describe", "dev_authenticate"]);
+
+export function devPairingDispatch(native: DevRemoteNative): (controller: RemoteController, input: unknown) => Promise<unknown> {
+  const full = devDispatch(native);
+  return async (controller, input) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) deny();
+    const operation = (input as { operation?: unknown }).operation;
+    if (typeof operation !== "string" || !PAIRING_OPS.has(operation)) deny();
+    return full(controller, input);
+  };
+}
+
 export type DevRemote = { native: DevRemoteNative; path: string; listen(controller: RemoteController): () => void };
 
 /** Returns undefined unless this is a source-run daemon with the dev switch on. */

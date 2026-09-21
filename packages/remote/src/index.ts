@@ -14,6 +14,7 @@ export type { FrameType, LogicalType, SessionBinding, TransportFrame, Fragment, 
 export { encodeEnrollmentProof, signEnrollmentProof, verifyEnrollmentProof, PAIR_MAILBOX_CONTRACT } from './enrollment.ts';
 export type { EnrollmentChallenge, EnrollmentVerification } from './enrollment.ts';
 export { MAX_PAIRING_ENVELOPE, sealPairing, openPairing, sealPairingGrant, openPairingGrant, encodeGrant, decodeGrant, signGrant, verifyGrant } from './pairing.ts';
+export { PAIRING_CODE_PREFIX, encodePairingCode, decodePairingCode, ulidToBytes, ulidFromBytes } from './pairing-code.ts';
 export type { PairingContext, PairingRequest, DeviceGrant, SignedDeviceGrant } from './pairing.ts';
 export { REMOTE_DEFAULT_ENABLED, generateIdentity, identityPublic, DeviceSession, HostSession } from './session.ts';
 export type { IdentitySecrets, IdentityPublic, ReplayClaim, SessionOptions, HostSessionOptions } from './session.ts';

@@ -1,10 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import {
   base64url,
+  encodePairingCode,
   fromBase64url,
   generateIdentity,
   identityPublic,
   openPairing,
+  randomBytes,
   sealPairingGrant,
   signGrant,
   type PairingQr,
@@ -156,4 +158,32 @@ test("enrollment driver rejects transcript-like records", () => {
     dh: base64url(hostPub.dh), signing: base64url(hostPub.signing), enrollment: base64url(hostPub.enrollment),
     name: "ok", drafts: "queued", snapshotHtml: "<p>",
   } as never)).toThrow();
+});
+
+test("the compact code pairs the same as the JSON, with the relay taken from this origin", () => {
+  const qr = {
+    v: 1 as const,
+    pairingId: "01M31H1EA5SRS9KZ3ACSW65W28",
+    hostId: "01M31F94895RD4N9WWKZDHM7Y2",
+    issuedAt: 1_700_000_000,
+    expiresUnix: 1_700_000_600,
+    trustEpoch: 1,
+    relayOrigin: "https://relay.example.test",
+    relayId: "fixture",
+    secret: base64url(randomBytes(32)),
+    hostDhPublic: base64url(randomBytes(32)),
+    hostSigningPublic: base64url(randomBytes(32)),
+  };
+  const code = encodePairingCode(qr);
+  const parsed = parsePairingQr(code, 1_700_000_100, "https://relay.example.test");
+  expect(parsed.ok).toBe(true);
+  expect(parsed.ok && parsed.qr).toEqual(qr);
+
+  // The window rule is the same one the JSON shape gets.
+  expect(parsePairingQr(code, 1_700_000_700, "https://relay.example.test")).toEqual({ ok: false, reason: "expired" });
+  // A code is not a URL, and a URL is still refused outright.
+  expect(parsePairingQr(`https://relay.example.test/#${code}`, 1_700_000_100, "https://relay.example.test"))
+    .toEqual({ ok: false, reason: "url" });
+  // Garbage after the prefix does not become a half-parsed offer.
+  expect(parsePairingQr("rb1zzzz", 1_700_000_100, "https://relay.example.test")).toEqual({ ok: false, reason: "invalid" });
 });

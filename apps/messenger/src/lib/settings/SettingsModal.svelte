@@ -6,6 +6,8 @@
 	import Select from '../Select.svelte';
 	import type { CredentialOperation } from '../api.ts';
 	import { JAIL_COPY, thinkingLevelLabel, type Copy } from '../copy.ts';
+	import { copyText } from '../clipboard.ts';
+	import { formatFingerprint } from '../remote/fingerprint.ts';
 	import {
 		applyProbedModels,
 		draftFromProvider,
@@ -215,6 +217,7 @@
 	let providerSaving = $state(false);
 	let providerSavedTick = $state(0);
 	let workspaceSaving = $state(false);
+	let pairingCopied = $state(false);
 	let workspaceSavedTick = $state(0);
 	/** Latest editor draft, so a parent that nulls `providerEditor` still has something to flush. */
 	let latestProviderEditor: ProviderEditorState | null = null;
@@ -765,6 +768,48 @@
 									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
 								{/if}
 								<p class="muted">{t.remote.noOfflineQueue}</p>
+								{#if !runtime.remote && runtime.remoteStatus?.state === 'online'}
+									<div class="settings-pairing" data-testid="remote-pairing">
+										{#if !runtime.hostPairing}
+											<button type="button" onclick={() => void runtime.startHostPairing()} disabled={runtime.hostPairingBusy}>
+												{t.remote.hostPair}
+											</button>
+										{:else if runtime.hostPairing.phase === 'offer' || runtime.hostPairing.phase === 'confirm'}
+											<p class="muted">{t.remote.hostPairPaste}</p>
+											<div class="pairing-code-row">
+												<code class="pairing-code mono" data-testid="pairing-code">{runtime.hostPairing.code}</code>
+												<button
+													type="button"
+													data-testid="pairing-copy"
+													onclick={() => {
+														copyText(runtime.hostPairing && 'code' in runtime.hostPairing ? runtime.hostPairing.code : '');
+														pairingCopied = true;
+													}}
+												>
+													{pairingCopied ? t.chat.copied : t.chat.copyMessage}
+												</button>
+											</div>
+											<p class="muted">{t.remote.hostPairFingerprint(formatFingerprint(runtime.hostPairing.fingerprint))}</p>
+											{#if runtime.hostPairing.phase === 'offer'}
+												<p class="muted">{t.remote.hostPairWaiting}</p>
+											{:else}
+												<p>{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
+												<p class="muted mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
+												<p class="muted">{t.remote.hostPairCompare}</p>
+												<button type="button" data-testid="pairing-confirm" disabled={runtime.hostPairingBusy} onclick={() => void runtime.confirmHostPairing()}>
+													{t.remote.hostPairApprove}
+												</button>
+											{/if}
+											<button type="button" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>{t.sidebar.cancel}</button>
+										{:else if runtime.hostPairing.phase === 'paired'}
+											<p>{t.remote.hostPairDone}</p>
+											<button type="button" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+										{:else}
+											<p class="field-error">{runtime.hostPairing.error === 'expired' ? t.remote.hostPairExpired : t.remote.hostPairFailed}</p>
+											<button type="button" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+										{/if}
+									</div>
+								{/if}
 								{#if runtime.remote}
 									<p class="muted">{t.remote.uvNeeded}</p>
 									{#if runtime.uvError}
@@ -1681,6 +1726,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 12px;
 		background: var(--pane);
 		box-sizing: border-box;
 		flex-shrink: 0;

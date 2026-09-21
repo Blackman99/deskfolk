@@ -62,6 +62,12 @@ export type LocalApiOptions = {
   canonicalEncoder?: CanonicalEncoder;
   admission?: TurnAdmission;
   remoteStatus?: () => NonNullable<RuntimeSnapshot["remoteStatus"]>;
+  /**
+   * Dev-only bridge to the pairing side of the setup channel. The packaged window reaches it over
+   * its inherited socketpair, which a source build has no way to obtain; absent in production, and
+   * the route 404s without it.
+   */
+  devSetup?: (request: unknown) => Promise<unknown>;
   runtimeInfo?: () => RuntimeResponse;
   lifecycle?: RuntimeLifecycle;
   onHandoff?: () => void;
@@ -348,6 +354,11 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         if (action === "cancel") return jsonResponse(quiesce.cancel(), 200, origin);
         if (action === "force") return jsonResponse(quiesce.force(), 200, origin);
         throw new HttpError(422, "invalid_args", "action must be begin, wait, cancel, or force");
+      }
+      if (request.method === "POST" && path === "/v1/remote/setup") {
+        if (!options.devSetup) throw new HttpError(404, "not_found", "unknown route");
+        const body = (await readJson(request)) as Record<string, unknown>;
+        return jsonResponse(await options.devSetup(body) as Record<string, unknown>, 200, origin);
       }
       if (request.method === "POST" && path === "/v1/runtime/handoff") {
         options.onHandoff?.();

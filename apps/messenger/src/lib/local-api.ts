@@ -354,6 +354,15 @@ export class LocalApi {
     return this.get<TaskArtifacts>(`/v1/tasks/${encodeURIComponent(taskId)}/artifacts`, signal);
   }
 
+  /**
+   * Dev-only bridge to the pairing side of the host's setup channel. A packaged window reaches it
+   * over the inherited socketpair instead; this route 404s unless the daemon was started with the
+   * development switch.
+   */
+  async remoteSetup(request: Record<string, unknown>): Promise<unknown> {
+    return this.request<unknown>("POST", "/v1/remote/setup", request);
+  }
+
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {
     const query = path ? `?path=${encodeURIComponent(path)}` : "";
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);

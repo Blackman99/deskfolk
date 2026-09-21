@@ -12,6 +12,8 @@
  *   bun scripts/dev-remote.ts pair
  */
 import { createConnection, type Socket } from "node:net";
+import { spawnSync } from "node:child_process";
+import { encodePairingCode, type PairingQr } from "@real-bot/remote";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { defaultDataDir } from "../src/descriptor";
@@ -88,10 +90,18 @@ async function init(channel: Channel): Promise<void> {
   console.log(JSON.stringify(await channel.send(request), null, 2));
 }
 
+/** Saves the person selecting 200 characters out of a terminal by hand. */
+function copyToClipboard(value: string): boolean {
+  if (process.platform !== "darwin") return false;
+  return spawnSync("pbcopy", { input: value }).status === 0;
+}
+
 async function pair(channel: Channel): Promise<void> {
-  const qr = await channel.send({ operation: "open_pair" }) as { pairingId: string; expiresUnix: number };
+  const qr = await channel.send({ operation: "open_pair" }) as PairingQr;
+  const code = encodePairingCode(qr);
   console.log("\nPaste this into the device's pairing screen (one-time secret, expires in 10 minutes):\n");
-  console.log(JSON.stringify(qr));
+  console.log(code);
+  if (copyToClipboard(code)) console.log("\n(copied to the clipboard)");
   console.log("\nWaiting for the device to submit…");
   let prepared: { challenge: string; name: string; fingerprint: string } | undefined;
   while (!prepared) {

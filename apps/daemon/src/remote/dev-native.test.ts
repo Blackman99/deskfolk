@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DevRemoteNative } from "./dev-native";
-import { createDevRemote, devDispatch, devRemoteAllowed, devSocketPath } from "./dev-setup";
+import { createDevRemote, devDispatch, devPairingDispatch, devRemoteAllowed, devSocketPath } from "./dev-setup";
 import type { RemoteController } from "./controller";
 
 const roots: string[] = [];
@@ -134,4 +134,22 @@ test("the dev channel answers setup and confirmation operations over its socket"
   }
   expect(() => statSync(devSocketPath(dir))).toThrow();
   expect(JSON.parse(readFileSync(join(dir, "dev-remote", "credentials.json"), "utf8")).v).toBe(1);
+});
+
+test("the pairing dispatch used by the settings panel refuses trust changes", async () => {
+  const dir = root();
+  const native = new DevRemoteNative(dir);
+  const dispatch = devPairingDispatch(native);
+  const controller = { status: () => ({ state: "off", diagnostic: null, devices: 0 }) } as unknown as RemoteController;
+
+  expect(await dispatch(controller, { operation: "status" })).toEqual({ state: "off", diagnostic: null, devices: 0 });
+  const { challenge } = await native.prepare(action("iPhone (iOS) · feed"));
+  expect(await dispatch(controller, { operation: "dev_describe", challenge })).toEqual({ display: "iPhone (iOS) · feed" });
+
+  // Changing the relay or resetting the identity stays on the unix socket.
+  for (const operation of ["initialize", "prepare_change", "confirm_change", "prepare_recovery", "confirm_recovery"]) {
+    expect(dispatch(controller, { operation })).rejects.toThrow();
+  }
+  expect(dispatch(controller, { operation: 7 })).rejects.toThrow();
+  expect(dispatch(controller, "status" as unknown as object)).rejects.toThrow();
 });

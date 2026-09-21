@@ -41,6 +41,10 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 源码态 daemon 带 `REAL_BOT_DEV_REMOTE=1` 启动时，`remote/dev-setup.ts` 交出 `remote/dev-native.ts`：身份、enrollment、VAPID 与高水位存在数据目录 `dev-remote/credentials.json`（0600，原子写），`prepare`/`consume` 保持同样的一次性挑战、120 秒窗口与动作摘要比对，`describe`/`authenticate` 顶替 Touch ID 弹窗。同一开关把窗口那条 setup dispatcher 开在 `dev-remote/setup.sock`（0600；数据目录过长时退回 `$TMPDIR/real-bot-dev-remote-<hash>.sock`），协议帧与继承 FD3 完全一致，只多两个 `dev_describe` / `dev_authenticate` 操作。
 
+设置面板里那张配对卡也走这条开关：源码态时 daemon 在 `POST /v1/remote/setup` 上只开放配对相关的操作（`status` / `open_pair` / `prepare_pair` / `confirm_pair` 与两个确认替身），改中继、重置身份仍然只在 unix socket 上；打包态同一张卡改走窗口的 `remote_local_setup` 与 Touch ID 确认，信使侧由 `remote/pairing-host.ts` 分流，卡片本身不关心是哪条。
+
+配对内容用紧凑编码：`rb1` + base64url 打包的版本、两个 ULID、三个时间戳字段、配对密钥与两把主机公钥、中继 id，约 205 字符，原来那份 JSON 是 399 字节。中继地址不进编码——读它的设备本来就由那个 origin 提供服务，于是粘贴来的内容没法把设备指向别的中继。`parsePairingQr` 两种都收，早先复制走的 JSON 仍然能配上。
+
 `bun apps/daemon/scripts/dev-remote.ts status | init | pair` 是它的驱动：`init --origin https://… --relay-id … --bootstrap-file <路径>`（bootstrap 只从文件读，不进 argv），`pair` 打印配对 JSON、轮询设备提交、显示设备名与完整指纹、按 y 才取 proof 并确认。
 
 编译后的 daemon 拿不到这条路径（`devRemoteAllowed` 见到 `/$bunfs/` 直接 false），生产激活门与 Rust 侧一行未改。凭据在磁盘不在钥匙串、终端确认不是用户在场，所以 G-pack、L1、G-uv、G-push、S-rev 都不因为这条闭环而通过；它只用来在真机门之前把传输、配对、事件与文件路径跑通。
