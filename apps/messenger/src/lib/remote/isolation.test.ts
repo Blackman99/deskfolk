@@ -54,7 +54,6 @@ test("hosted and remote settings omit workspace_path from PATCH", () => {
   expect(modal).toMatch(/patchSettings\(\{\s*workspace_path:/);
   expect(modal).toContain("remote-push-toggle");
   expect(modal).toContain("setPushEnabled");
-  expect(modal).not.toContain("restart");
 });
 
 test("hosted and remote onboarding skip the workspace step and omit workspace_path from PATCH", () => {

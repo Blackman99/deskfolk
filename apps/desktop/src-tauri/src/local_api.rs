@@ -32,10 +32,6 @@ pub fn data_dir() -> PathBuf {
         .join(DEFAULT_DIRNAME)
 }
 
-pub fn stop_latch_present(dir: &Path) -> bool {
-    dir.join("runtime.stop").is_file()
-}
-
 pub fn descriptor_path(dir: &Path) -> PathBuf {
     dir.join(DESCRIPTOR_NAME)
 }
