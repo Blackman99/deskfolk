@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "bun scripts/dev.ts",
     "build": "vite build",
+    "build:hosted": "REAL_BOT_HOSTED=1 vite build",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
     "test": "bun test --conditions browser src/lib tests/uno-utilities.test.ts",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@real-bot/protocol": "workspace:*",
+    "@real-bot/remote": "workspace:*",
     "@shikijs/monaco": "^4.4.3",
     "marked": "^18.0.13",
     "monaco-editor": "^0.56.0",

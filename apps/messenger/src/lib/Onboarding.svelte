@@ -28,8 +28,12 @@
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const t = $derived(COPY[locale]);
+	const workspaceReadOnly = $derived(runtime.hosted || runtime.remote);
 
 	let currentStep = $state<1 | 2 | 3>(1);
+	$effect.pre(() => {
+		if (workspaceReadOnly && currentStep === 1) currentStep = 2;
+	});
 	let fieldErrors = $state<SettingsFieldErrors & ProviderFieldErrors>({});
 	let saveFailed = $state(false);
 	let providerName = $state('Default');
@@ -226,15 +230,19 @@
 	}
 
 	function goToStep(step: 1 | 2 | 3): void {
+		if (workspaceReadOnly && step === 1) {
+			currentStep = 2;
+			return;
+		}
 		if (step === 1) {
 			currentStep = 1;
 		} else if (step === 2) {
-			if (runtime.workspacePath.trim()) currentStep = 2;
+			if (workspaceReadOnly || runtime.workspacePath.trim()) currentStep = 2;
 			else advanceFromStep1();
 		} else if (step === 3) {
-			if (runtime.workspacePath.trim() && runtime.endpointUrl.trim() && runtime.endpointKey.trim()) {
+			if ((workspaceReadOnly || runtime.workspacePath.trim()) && runtime.endpointUrl.trim() && runtime.endpointKey.trim()) {
 				currentStep = 3;
-			} else if (!runtime.workspacePath.trim()) {
+			} else if (!workspaceReadOnly && !runtime.workspacePath.trim()) {
 				currentStep = 1;
 				advanceFromStep1();
 			} else {
@@ -300,15 +308,17 @@
 		saveFailed = false;
 		fieldErrors = {};
 		const workspace = runtime.workspacePath.trim();
-		if (!workspace) {
-			fieldErrors = { workspace: 'empty' };
-			currentStep = 1;
-			return;
-		}
-		if (!workspace.startsWith('/') && workspace !== '~' && !workspace.startsWith('~/')) {
-			fieldErrors = { workspace: 'invalid' };
-			currentStep = 1;
-			return;
+		if (!workspaceReadOnly) {
+			if (!workspace) {
+				fieldErrors = { workspace: 'empty' };
+				currentStep = 1;
+				return;
+			}
+			if (!workspace.startsWith('/') && workspace !== '~' && !workspace.startsWith('~/')) {
+				fieldErrors = { workspace: 'invalid' };
+				currentStep = 1;
+				return;
+			}
 		}
 		const providerPlan = planCreateProvider(
 			applyProbedModels(
@@ -331,16 +341,18 @@
 			else if (fieldErrors.models || fieldErrors.defaultModel) currentStep = 3;
 			return;
 		}
-		const workspaceError = await runtime.patchSettings({ workspace_path: workspace });
-		if (workspaceError) {
-			const mapped = mapSettingsError(workspaceError.message);
-			if ('workspace' in mapped) {
-				fieldErrors = { workspace: mapped.workspace };
-				currentStep = 1;
+		if (!workspaceReadOnly) {
+			const workspaceError = await runtime.patchSettings({ workspace_path: workspace });
+			if (workspaceError) {
+				const mapped = mapSettingsError(workspaceError.message);
+				if ('workspace' in mapped) {
+					fieldErrors = { workspace: mapped.workspace };
+					currentStep = 1;
+					return;
+				}
+				saveFailed = true;
 				return;
 			}
-			saveFailed = true;
-			return;
 		}
 		const existing = snapshot.providers[0];
 		const providerError = existing
@@ -382,18 +394,20 @@
 
 		<!-- Step Bar -->
 		<div class="onboarding-step-bar" role="tablist" aria-label="Setup steps">
-			<button
-				type="button"
-				class="step-bar-item"
-				class:is-active={currentStep === 1}
-				class:is-complete={currentStep > 1}
-				onclick={() => goToStep(1)}
-			>
-				<div class="step-bar-circle">{currentStep > 1 ? '✓' : '1'}</div>
-				<span class="step-bar-label">{t.onboarding.step1Title}</span>
-			</button>
+			{#if !workspaceReadOnly}
+				<button
+					type="button"
+					class="step-bar-item"
+					class:is-active={currentStep === 1}
+					class:is-complete={currentStep > 1}
+					onclick={() => goToStep(1)}
+				>
+					<div class="step-bar-circle">{currentStep > 1 ? '✓' : '1'}</div>
+					<span class="step-bar-label">{t.onboarding.step1Title}</span>
+				</button>
 
-			<div class="step-bar-line" class:is-complete={currentStep > 1}></div>
+				<div class="step-bar-line" class:is-complete={currentStep > 1}></div>
+			{/if}
 
 			<button
 				type="button"
@@ -495,6 +509,10 @@
 						<p class="step-pane-desc">{t.onboarding.providerDesc}</p>
 					</div>
 
+					{#if workspaceReadOnly}
+						<p class="muted field-hint">{t.settings.workspaceHostOnly}</p>
+					{/if}
+
 					<div class="provider-presets-row flex flex-wrap gap-3">
 						{#each PRESETS as preset}
 							<button
@@ -572,9 +590,13 @@
 					{/if}
 
 					<div class="step-nav-footer">
-						<button type="button" class="btn-step-secondary" onclick={() => (currentStep = 1)}>
-							← {t.onboarding.prevStep}
-						</button>
+						{#if workspaceReadOnly}
+							<div></div>
+						{:else}
+							<button type="button" class="btn-step-secondary" onclick={() => (currentStep = 1)}>
+								← {t.onboarding.prevStep}
+							</button>
+						{/if}
 						<button type="button" class="btn-step-primary" onclick={advanceFromStep2}>
 							{t.onboarding.step2Next} →
 						</button>

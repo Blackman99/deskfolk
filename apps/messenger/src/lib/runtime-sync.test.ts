@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
-import { LocalApi } from "./api.ts";
+import { LocalApi } from "./local-api.ts";
 import { emptySnapshot } from "./snapshot.ts";
 import { aBot, aDirect, aMessage, aRoutine, aTurn } from "./test-fixtures.ts";
 import { flushSync } from "svelte";
@@ -468,6 +468,20 @@ for (const operation of ['create', 'patch', 'delete'] as const) for (const rejec
   expect(runtime.connection).toBe('connected');
   expect(runtime.profileRoutineId).toBe(row.id);
   expect(runtime.snapshot.routines[0]!.title).toBe('Current');
+});
+
+test("unsent in-memory drafts require confirm after reconnect and are not sent automatically", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.draft = "keep this";
+  Socket.current.close();
+  await until(() => runtime.connection === "disconnected");
+  expect(runtime.draftReconnect).toEqual({ draft: "keep this", confirm: false });
+  runtime.confirmDraftReconnect();
+  expect(runtime.draftReconnect?.confirm).toBe(true);
+  runtime.discardDraftReconnect();
+  expect(runtime.draft).toBe("");
+  expect(runtime.draftReconnect).toBeNull();
 });
 
 test("runtime subscribes before reading snapshot and preserves events arriving during HTTP", async () => {

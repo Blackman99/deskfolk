@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { ApiError, etagForBlob, type LocalApi } from '../api.ts';
+	import { ApiError, etagForBlob } from '../api.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import {
 		absWorkspacePath,
 		artifactByteSource,
@@ -12,7 +13,7 @@
 		injectHtmlPreviewNonce,
 		isInAppPreviewKind,
 		pageCspNonce,
-		stripSvgActiveContent,
+		svgDisplayBlob,
 		type ArtifactKind,
 	} from './artifacts.ts';
 	import {
@@ -41,7 +42,7 @@
 		attachment: Attachment | null;
 		relpath: string;
 		siblings: Attachment[];
-		api: LocalApi | null;
+		api: MessengerApi | null;
 		workspacePath: string | null;
 		t: Copy;
 		onClose: () => void;
@@ -233,8 +234,8 @@
 				const raw = await blob.text();
 				if (gen !== loadGen) return;
 				if (previewKind === 'svg') {
-					const cleaned = stripSvgActiveContent(raw);
-					const next = URL.createObjectURL(new Blob([cleaned], { type: 'image/svg+xml' }));
+					const next = URL.createObjectURL(await svgDisplayBlob(raw));
+					if (gen !== loadGen) return;
 					if (liveBlob) URL.revokeObjectURL(liveBlob);
 					liveBlob = next;
 					blobUrl = next;

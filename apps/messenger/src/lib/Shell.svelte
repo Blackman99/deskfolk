@@ -428,6 +428,14 @@
 		return null;
 	}
 
+	function findAttachmentById(id: string): Attachment | null {
+		for (const message of snapshot.messages) {
+			const att = message.attachments.find((row) => row.id === id);
+			if (att) return att;
+		}
+		return null;
+	}
+
 	function siblingsForPath(relpath: string, att?: Attachment | null): Attachment[] {
 		if (att) {
 			const owner = snapshot.messages.find((message) => message.id === att.message_id);
@@ -442,6 +450,17 @@
 	}
 
 	const artifactPreview = $derived.by(() => {
+		if (runtime.hosted) {
+			const id = runtime.previewAttachmentId;
+			if (!id) return null;
+			const attachment = findAttachmentById(id);
+			if (!attachment) return null;
+			return {
+				relpath: attachment.workspace_relpath,
+				attachment,
+				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
+			};
+		}
 		const relpath = runtime.previewRelpath;
 		if (!relpath) return null;
 		const attachment = findAttachmentByPath(relpath);
@@ -452,7 +471,13 @@
 		};
 	});
 
-	function openArtifactPath(relpath: string, _att?: Attachment): void {
+	function openArtifactPath(relpath: string, att?: Attachment): void {
+		if (runtime.hosted) {
+			runtime.previewRelpath = null;
+			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(relpath)?.id ?? null;
+			return;
+		}
+		runtime.previewAttachmentId = null;
 		runtime.previewRelpath = sanitizePreviewPath(relpath);
 	}
 
@@ -477,6 +502,7 @@
 
 	function closeArtifactPreview(): void {
 		runtime.previewRelpath = null;
+		runtime.previewAttachmentId = null;
 	}
 
 	function startPreviewResize(ev: PointerEvent): void {

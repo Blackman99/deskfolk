@@ -36,7 +36,7 @@ test("Tauri command returns origin plus token", () => {
 });
 
 test("browser discovery uses the Vite path, not Application Support", async () => {
-  const { discoverEndpoint } = await import("./discovery.ts");
+  const { discoverEndpoint } = await import("./local-discovery.ts");
   const fetchFn = (async (input: RequestInfo | URL) => {
     expect(String(input)).toBe("/__local-api");
     return new Response(JSON.stringify({ port: 17890, token: "from-vite" }), {
@@ -54,7 +54,7 @@ test("browser discovery uses the Vite path, not Application Support", async () =
 });
 
 test("Tauri discovery does not fall through to Vite", async () => {
-  const { discoverEndpoint } = await import("./discovery.ts");
+  const { discoverEndpoint } = await import("./local-discovery.ts");
   const fetchFn = (async () => {
     throw new Error("browser discovery must not run in Tauri");
   }) as typeof fetch;

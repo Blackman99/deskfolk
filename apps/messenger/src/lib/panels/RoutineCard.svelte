@@ -2,7 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import type { Bot, Routine } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { LocalApi } from '../api.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineScheduleLabel } from './routine-form.ts';
@@ -16,7 +16,7 @@
 	let failure = $state('');
 	let busy = $state(false);
 	let deleting = $state<Routine | null>(null);
-	let pending = $state<{ id: string; api: LocalApi } | null>(null);
+	let pending = $state<{ id: string; api: MessengerApi } | null>(null);
 	let notice = $state('');
 	let retiredDraft = $state(false);
 	const retryable = $derived(pending && pending.api === runtime.client && runtime.pendingMutation?.id === pending.id);

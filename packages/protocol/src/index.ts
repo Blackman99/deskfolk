@@ -35,8 +35,7 @@ export const APP_SUPPORT_DIRNAME = "real-bot" as const;
 export const LOCAL_API_DESCRIPTOR_NAME = "local-api.json" as const;
 export const STATE_DB_NAME = "state.sqlite" as const;
 
-/** Dev-only path on the messenger Vite origin. Returns `{ port, token }`. */
-export const LOCAL_API_DISCOVERY_PATH = "/__local-api" as const;
+
 
 export const USER_MEMBER = "user" as const;
 

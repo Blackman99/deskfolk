@@ -1,4 +1,4 @@
-import { LOCAL_API_DISCOVERY_PATH } from "@real-bot/protocol";
+import { LOCAL_API_DISCOVERY_PATH } from "@real-bot/protocol/local-discovery";
 import { join } from "node:path";
 import { classifyMessengerDev, decideMessengerDev } from "../src/lib/dev-probe.ts";
 

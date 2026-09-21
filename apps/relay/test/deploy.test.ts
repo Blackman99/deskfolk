@@ -10,8 +10,9 @@ const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
 test('shared CSP fails without entry scripts and mailbox bounds consume the protocol contract', () => {
   expect(() => productionCsp('<html></html>')).toThrow('missing production entry scripts');
-  expect(() => productionCsp('<script src="/entry.js"></script>')).toThrow('missing production entry scripts');
+  expect(productionCsp('<script src="/entry.js"></script>')).toContain("script-src 'self'");
   expect(productionCsp('<script>boot()</script>')).toContain("script-src-attr 'none'");
+  expect(productionCsp('<script src="/_app/immutable/entry.js"></script>')).not.toContain('sha256-');
   expect(LIMITS.mailbox).toBe(PAIR_MAILBOX_CONTRACT.maximumEnvelopeBytes);
   expect(LIMITS.mailboxTtlMs).toBe(PAIR_MAILBOX_CONTRACT.maximumLifetimeSeconds * 1_000);
 });
@@ -33,6 +34,7 @@ test('deployment has two default-off gates, no direct relay port, and private se
 test('Caddy forwards exact relay routes, hides discovery/dev/API and uses hash-only script CSP', () => {
   const config = read('deploy/remote/Caddyfile');
   expect(config).toContain('@relay path /v1/relay/host /v1/relay/device /v1/relay/bootstrap /v1/pair/mailbox');
+  expect(config).toContain("@illegal_query expression `{http.request.uri.query} != \"\" && !({http.request.uri.query} matches '^(?:(?:s|o|b|a)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a)=[0-9A-Za-z._-]+)*$')`");
   expect(config).toContain('@private path /v1/* /__local-api /__local-api/* /@vite/* /src/* /healthz');
   expect(config).toContain('header_up X-Real-IP {remote_host}');
   expect(config).toContain('output discard');
@@ -41,7 +43,8 @@ test('Caddy forwards exact relay routes, hides discovery/dev/API and uses hash-o
   expect(csp).toContain("script-src-attr 'none'");
   expect(csp).not.toContain("script-src 'unsafe-inline'");
   expect(csp).not.toContain('unsafe-eval');
-  expect(csp).toContain("connect-src 'self'");
-  expect(read('deploy/remote/Dockerfile')).toContain('pnpm --filter @real-bot/messenger build');
+  expect(csp).toContain("connect-src 'self' wss: https:");
+  expect(csp).toContain("manifest-src 'self'");
+  expect(read('deploy/remote/Dockerfile')).toContain('pnpm --filter @real-bot/messenger build:hosted');
   expect(read('deploy/remote/Dockerfile')).not.toContain('vite preview');
 });

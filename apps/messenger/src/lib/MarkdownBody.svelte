@@ -3,7 +3,7 @@
 	import { markdownCode } from './chat/code-blocks.ts';
 	import { parseMentionHref } from './chat/mention-chips.ts';
 	import { renderMarkdown, type RenderMarkdownOptions } from './markdown.ts';
-	import { artifactKind, parseArtifactHref } from './overlays/artifacts.ts';
+	import { artifactKind, parseArtifactHref, svgDisplayBlob } from './overlays/artifacts.ts';
 
 	interface Props {
 		source: string;
@@ -105,9 +105,11 @@
 			anchor.dataset.artifactImage = 'loading';
 			anchor.classList.add('md-artifact-image');
 			void loadArtifactImage(path)
-				.then((blob) => {
+				.then(async (blob) => {
 					if (!anchor.isConnected || !node.contains(anchor)) return;
-					const url = URL.createObjectURL(blob);
+					const display = artifactKind(path) === 'svg' ? await svgDisplayBlob(blob) : blob;
+					if (!anchor.isConnected || !node.contains(anchor)) return;
+					const url = URL.createObjectURL(display);
 					urls.set(anchor, url);
 					const image = document.createElement('img');
 					image.src = url;

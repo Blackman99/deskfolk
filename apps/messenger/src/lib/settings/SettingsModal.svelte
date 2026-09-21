@@ -306,9 +306,15 @@
 		if (runtime.client === api && runtime.settingsOpen && error) saveFailed = true;
 	}
 
+	const workspaceReadOnly = $derived(runtime.hosted || runtime.remote);
+
 	async function saveSettings(): Promise<void> {
 		saveFailed = false;
 		fieldErrors = {};
+		if (workspaceReadOnly) {
+			closeSettings();
+			return;
+		}
 		const plan = planWorkspaceSave(runtime.workspacePath);
 		if (!plan.ok) {
 			fieldErrors = { workspace: plan.error };
@@ -523,6 +529,47 @@
 
 				{#if activeSettingsTab === 'general'}
 					<div class="settings-tab-pane">
+						{#if runtime.remote || runtime.remoteStatus}
+							<div class="settings-card settings-card-remote">
+								<div class="settings-card-header">
+									<div class="settings-card-header-main">
+										<div>
+											<h3 class="settings-card-title">{t.settings.remoteSection}</h3>
+											<p class="settings-card-subtitle">{t.settings.remoteSubtitle}</p>
+										</div>
+									</div>
+								</div>
+								<p class="muted">{t.remote.experimental}</p>
+								<p>
+									{runtime.remoteStatus?.state === 'online'
+										? t.remote.statusOnline
+										: runtime.remoteStatus?.state === 'connecting'
+											? t.remote.statusConnecting
+											: runtime.remoteStatus?.state === 'native_unavailable'
+												? t.remote.statusUnavailable
+												: runtime.remoteStatus?.state === 'activation_gated'
+													? t.remote.statusGated
+													: runtime.remoteStatus?.state === 'trust_mismatch'
+														? t.remote.statusMismatch
+														: runtime.remoteStatus?.state === 'disconnected'
+															? t.remote.statusDisconnected
+															: t.remote.statusOff}
+								</p>
+								{#if runtime.remoteStatus}
+									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
+								{/if}
+								<p class="muted">{t.remote.noOfflineQueue}</p>
+								{#if runtime.remote}
+									<p class="muted">{t.remote.uvNeeded}</p>
+									{#if runtime.uvError}
+										<p class="field-error">{t.remote.uvFailed}</p>
+									{/if}
+									{#if !runtime.uvReady}
+										<button type="button" onclick={() => void runtime.registerUv()}>{t.remote.uvRegister}</button>
+									{/if}
+								{/if}
+							</div>
+						{/if}
 						<!-- Workspace Directory Section -->
 						<div class="settings-card settings-card-workspace">
 							<div class="settings-card-header">
@@ -545,19 +592,26 @@
 							</div>
 
 							<div class="settings-workspace-box flex flex-col gap-5 mt-2">
-								<WorkspacePicker
-									id="workspace"
-									path={runtime.workspacePath}
-									chooseLabel={t.settings.workspaceChoose}
-									changeLabel={t.settings.workspaceChange}
-									emptyLabel={t.settings.workspaceUnsetValue}
-									unavailableLabel={t.settings.workspacePickerUnavailable}
-									dialogTitle={t.settings.workspaceChoose}
-									onChange={(next: string) => {
-										runtime.workspacePath = next;
-										clearWorkspaceError();
-									}}
-								/>
+								{#if workspaceReadOnly}
+									<div class="workspace-readonly">
+										<p class="workspace-readonly-path mono">{runtime.workspacePath.trim() || t.settings.workspaceUnsetValue}</p>
+										<p class="muted field-hint">{t.settings.workspaceHostOnly}</p>
+									</div>
+								{:else}
+									<WorkspacePicker
+										id="workspace"
+										path={runtime.workspacePath}
+										chooseLabel={t.settings.workspaceChoose}
+										changeLabel={t.settings.workspaceChange}
+										emptyLabel={t.settings.workspaceUnsetValue}
+										unavailableLabel={t.settings.workspacePickerUnavailable}
+										dialogTitle={t.settings.workspaceChoose}
+										onChange={(next: string) => {
+											runtime.workspacePath = next;
+											clearWorkspaceError();
+										}}
+									/>
+								{/if}
 
 								{#if fieldErrors.workspace}
 									<div class="field-error-alert" role="alert">
@@ -967,7 +1021,9 @@
 				{/if}
 			</div>
 				<div class="modal-foot actions">
-					<button type="button" onclick={() => void saveSettings()}>{t.settings.save}</button>
+					{#if !workspaceReadOnly}
+						<button type="button" onclick={() => void saveSettings()}>{t.settings.save}</button>
+					{/if}
 					<button type="button" onclick={closeSettings}>{t.common.close}</button>
 				</div>
 			</section>
@@ -1649,6 +1705,21 @@
 	.field-error-alert :global(svg) {
 		flex-shrink: 0;
 		color: var(--warn);
+	}
+
+	.workspace-readonly {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.workspace-readonly-path {
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		padding: 8px 12px;
+		background: var(--input-bg);
+		color: var(--ink);
+		word-break: break-all;
 	}
 
 	.workspace-jail-callout {

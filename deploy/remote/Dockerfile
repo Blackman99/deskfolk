@@ -4,11 +4,13 @@ RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/messenger/package.json apps/messenger/package.json
 COPY packages/protocol/package.json packages/protocol/package.json
+COPY packages/remote/package.json packages/remote/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY tsconfig.base.json ./
 COPY packages/protocol packages/protocol
+COPY packages/remote packages/remote
 COPY apps/messenger apps/messenger
-RUN pnpm --filter @real-bot/messenger build
+RUN pnpm --filter @real-bot/messenger build:hosted
 COPY deploy/remote/csp.mjs deploy/remote/csp.mjs
 RUN node deploy/remote/csp.mjs apps/messenger/build/index.html /app/csp.caddy
 

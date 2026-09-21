@@ -38,6 +38,8 @@
 
 ### 实验性远控协议
 
+- 新增托管信使远控客户端：与 LocalApi 方法面一致的 Noise RPC、钉住主机 DH/签名公钥与中继 origin 的扫码配对、仅 IndexedDB 存设备身份，以及 standalone PWA 壳。托管生产包（`REAL_BOT_HOSTED=1` / `pnpm --filter @real-bot/messenger build:hosted`）不含 `__local-api` 与本机 bearer。远程 URL 只允许会话/浮层/附件 id（`?s` `?o` `?b` `?a`），禁止 `?p=` / `?w=` 文件路径。Service worker 只缓存带哈希的 immutable 资源，导航 index 仍 no-store。断线显示执行主机不可达，不排队命令；未发送内存草稿重连需确认，未知结果查同一 `request_id` 回执。WebAuthn `create`/`get` 使用有效域名 `rpId` 且要求 UV，仅在 Split 后登记；失败仍可普通聊天，无点击确认 fallback。公网配对仍默认关闭。S-rev、G-uv 与真机 L1 **未通过**。
+
 - 远控加密 RPC 在副作用与回执前拒绝 `constructor` / `__proto__` 等原型字段名，并把 schema 失败映射为 422，不再因此关闭 Noise 会话。本机确认使用独立的 `renew_first_uv` / `recover_trust` 种类，不再复用配对或更换中继。
 
 - 修复 daemon 复核问题：等 epoch 恢复同样提升防回滚高水位；原生确认的身份重置、中继/工作区切换、首次 UV 续期绑定当前公钥与耐久转换状态。读取类模型请求在凭据等待后重检取消，已接受轮次仍独立运行。主机级限速与吊销确认进度避免超出中继 burst，文件取消跟踪实际 EOF；远控属性、Stop 幂等和稳定错误码严格验证而不改变本机兼容性。生命周期回执在副作用成功前保持 pending，强制排空计入未结束工作并阻止后续工具。生产/原生/审计门仍关闭。
@@ -70,6 +72,7 @@
 
 ### Messenger
 
+- 远控未知结果会在断线后仍保留 `{id, method, path, fingerprint}`，包括运输层直接抛出 `ApiError(503, request_unknown)` 的情况。重连把同一条内存回执装回新的 RemoteApi，先查 `/v1/requests/:id`；聊天发送也不丢这个 id。聊天和 Markdown 的 SVG 缩略图与产物预览共用同一套清理（含 `<svg/onload>`、未闭合 `<script>`、无引号 `javascript:`，以及 SMIL `values` / `to` / `from` / `begin` / `end` 里的 `javascript:` / `data:` / `vbscript:`）。托管/远控设置与向导里工作区路径只读、跳过选目录步骤，PATCH 不再带 `workspace_path`；本机窗口仍用系统文件夹选择器。
 - 凭据修复失败后再取消，会释放整条已被替代的内存请求链，不再让含旧密钥的过期载荷阻塞下一次新建/编辑。结果未知时保留待确认状态，直到显式恢复得到确认；不会自动重放副作用。
 - 待确认变更只在内存保留逻辑请求 ID 和原始载荷，手动重试不再重复创建端点。设置提供手动重试、仅修复凭据、取消清除控件，不再把钥匙串失败当作运行时断连；关页不会排队或自动重放。
 - 文件保存携带读取时的 ETag。Bot 或其它程序改过文件时，不再静默覆盖：保留尚未保存的编辑，并提示先复制编辑再重新打开文件。

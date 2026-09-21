@@ -121,6 +121,30 @@ test("an artifact image link becomes a thumbnail and opens the preview", async (
   }
 });
 
+test("markdown SVG thumbs strip active content before the blob URL", async () => {
+  const texts: string[] = [];
+  const originalCreate = URL.createObjectURL;
+  URL.createObjectURL = ((blob: Blob) => {
+    void blob.text().then((text) => texts.push(text));
+    return "blob:svg-thumb";
+  }) as typeof URL.createObjectURL;
+  try {
+    const { host, close } = render(MarkdownBody, {
+      ...labels,
+      source: "[icon.svg](icon.svg)",
+      loadArtifactImage: async () => new Blob(["<svg/onload=alert(1)><script src=x>"], { type: "image/svg+xml" }),
+    });
+    for (let i = 0; i < 20 && texts.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(host.querySelector("a.md-artifact-image")?.getAttribute("data-artifact-image")).toBe("ready");
+    expect(texts).toHaveLength(1);
+    expect(texts[0]!.toLowerCase()).not.toContain("onload");
+    expect(texts[0]!.toLowerCase()).not.toContain("<script");
+    close();
+  } finally {
+    URL.createObjectURL = originalCreate;
+  }
+});
+
 test("a failed artifact thumbnail keeps the original link", async () => {
   const { host, close } = render(MarkdownBody, {
     ...labels,

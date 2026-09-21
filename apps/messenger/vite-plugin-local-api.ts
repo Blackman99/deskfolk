@@ -4,9 +4,9 @@ import { join } from "node:path";
 import {
   APP_SUPPORT_DIRNAME,
   LOCAL_API_DESCRIPTOR_NAME,
-  LOCAL_API_DISCOVERY_PATH,
   LOCAL_API_NAME,
 } from "@real-bot/protocol";
+import { LOCAL_API_DISCOVERY_PATH } from "@real-bot/protocol/local-discovery";
 import type { Plugin } from "vite";
 
 /** Dev-only: read the daemon's local-api.json and return `{ name, port, token }`. Not bundled. */

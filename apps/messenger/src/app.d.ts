@@ -10,4 +10,6 @@ declare global {
 	}
 }
 
+declare const __REAL_BOT_HOSTED__: boolean | undefined;
+
 export {};

@@ -18,9 +18,10 @@ import {
   type PatchSkillRequest,
   type CreateRoutineRequest,
   type PatchRoutineRequest,
+  type RuntimeSnapshot,
 } from "@real-bot/protocol";
-import { ApiError, LocalApi, probeHealth } from "./api.ts";
-import { discoverEndpoint, type LocalEndpoint } from "./discovery.ts";
+import { ApiError, probeHealth } from "./api.ts";
+import type { LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
 import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
@@ -28,8 +29,16 @@ import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from ".
 import { EventSync } from "./event-sync.ts";
 import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
+import { HOSTED_MESSENGER } from "./remote/mode.ts";
+import type { LocalApi } from "./local-api.ts";
+import type { MessengerApi } from "./messenger-api.ts";
+import { RemoteApi, type DurablePendingRequest } from "./remote/api.ts";
+import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
+import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
 
 export type Connection = "disconnected" | "connected";
+export type HostUnreachable = "runtime" | "host";
+export type DraftReconnect = { draft: string; confirm: boolean } | null;
 
 const RETRY_MS = 1000;
 
@@ -65,8 +74,18 @@ export class MessengerRuntime {
   endpointKey = $state("");
   endpointModelsText = $state("");
   endpointDefaultModel = $state("");
+  previewAttachmentId = $state<string | null>(null);
+  hosted = HOSTED_MESSENGER;
+  pairing = $state<PairingProgress>({ phase: "scan" });
+  pairingBusy = $state(false);
+  enrolled = $state(false);
+  hostUnreachable = $state<HostUnreachable>("runtime");
+  draftReconnect = $state<DraftReconnect>(null);
+  remoteStatus = $state<RuntimeSnapshot["remoteStatus"] | null>(null);
+  uvReady = $state(false);
+  uvError = $state<string | null>(null);
 
-  private api: LocalApi | null = null;
+  private api: MessengerApi | null = null;
   private ws: WebSocket | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
@@ -84,6 +103,7 @@ export class MessengerRuntime {
   private sessionSeq = 0;
   private historyRevision = 0;
   private profileNavigation = 0;
+  private durablePending: DurablePendingRequest[] = [];
 
   start(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -99,8 +119,12 @@ export class MessengerRuntime {
     this.cancelComposerSuggestions();
   }
 
-  get client(): LocalApi | null {
+  get client(): MessengerApi | null {
     return this.api;
+  }
+
+  get remote(): boolean {
+    return this.api?.kind === "remote" || (HOSTED_MESSENGER && this.connection !== "connected");
   }
 
   openCreateBot(): void {
@@ -503,7 +527,7 @@ export class MessengerRuntime {
     }
   }
 
-  private routineFailure(error: unknown, api: LocalApi): ApiError {
+  private routineFailure(error: unknown, api: MessengerApi): ApiError {
     if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
     if (error instanceof ApiError && error.status >= 400 && error.status < 500 && !error.requestId) return error;
     return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Save result unknown");
@@ -686,6 +710,7 @@ export class MessengerRuntime {
       await api.retryPending(pending.id);
       if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
       if (this.pendingMutation?.id === pending.id) this.pendingMutation = null;
+      this.rememberDurablePending(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Retry result unconfirmed");
@@ -802,6 +827,7 @@ export class MessengerRuntime {
     const body = this.draft.trim();
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
     if (!api || !id || (!body && !hasAttachments) || this.busy) return;
+    if (this.draftReconnect && !this.draftReconnect.confirm) return;
     const parentId = this.replyingToId;
     this.busy = true;
     try {
@@ -809,6 +835,7 @@ export class MessengerRuntime {
         attachments: opts?.attachments,
         parentId,
       });
+      if (this.draftReconnect?.confirm) this.draftReconnect = null;
       if (this.api !== api) return;
       this.draft = "";
       this.replyingToId = null;
@@ -817,6 +844,7 @@ export class MessengerRuntime {
     } catch (error) {
       if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
+      this.keepUnknownRequest(error, api);
       this.markDisconnected();
     } finally {
       if (this.api === api) this.busy = false;
@@ -834,6 +862,7 @@ export class MessengerRuntime {
     } catch (error) {
       if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
+      this.keepUnknownRequest(error, api);
       this.markDisconnected();
     } finally {
       if (this.api === api) this.busy = false;
@@ -943,10 +972,57 @@ export class MessengerRuntime {
     }
   }
 
+  async submitPairing(raw: string): Promise<PairingProgress> {
+    if (this.pairingBusy) return this.pairing;
+    this.pairingBusy = true;
+    this.pairing = { phase: "waiting" };
+    try {
+      const result = await pairFromQr(raw, { onWaiting: () => { this.pairing = { phase: "waiting" }; } });
+      this.pairing = result;
+      if (result.phase === "enrolled") {
+        this.enrolled = true;
+        this.start();
+      }
+      return result;
+    } finally {
+      this.pairingBusy = false;
+    }
+  }
+
+  confirmDraftReconnect(): void {
+    this.draftReconnect = this.draftReconnect ? { ...this.draftReconnect, confirm: true } : null;
+  }
+
+  discardDraftReconnect(): void {
+    this.draft = "";
+    this.draftReconnect = null;
+  }
+
+  async registerUv(): Promise<boolean> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi)) return false;
+    this.uvError = null;
+    try {
+      await api.registerUv();
+      this.uvReady = true;
+      return true;
+    } catch {
+      this.uvReady = false;
+      this.uvError = "uv_failed";
+      return false;
+    }
+  }
+
   private async tick(): Promise<void> {
     if (this.stopped) return;
+    if (HOSTED_MESSENGER) {
+      await this.tickRemote();
+      return;
+    }
+    const { discoverEndpoint } = await import("./local-discovery.ts");
     const endpoint = await discoverEndpoint();
     if (!endpoint) {
+      this.hostUnreachable = "runtime";
       this.markDisconnected();
       this.schedule();
       return;
@@ -955,46 +1031,108 @@ export class MessengerRuntime {
     const health = await probeHealth(endpoint.origin);
     if (this.stopped) return;
     if (classifyHealth(health.status, health.body) !== "ours") {
+      this.hostUnreachable = "runtime";
       this.markDisconnected();
       this.schedule();
       return;
     }
-    if (this.connection === "connected" && this.api && sameEndpoint(this.api.endpoint, endpoint)) {
+    if (this.connection === "connected" && this.api && this.api.kind === "local" && sameEndpoint(this.api.endpoint, endpoint)) {
       this.schedule();
       return;
     }
     try {
-      await this.connect(endpoint);
+      await this.connectLocal(endpoint);
     } catch {
+      this.hostUnreachable = "runtime";
       this.markDisconnected();
     }
     this.schedule();
   }
 
-  private async connect(endpoint: LocalEndpoint): Promise<void> {
-    this.resetConnection();
-    const api = new LocalApi(endpoint);
-    const sync = new EventSync();
-    this.api = api;
-    this.sync = sync;
-    await this.openSocket(api, sync);
-    const snapshot = await api.snapshot();
+  private async tickRemote(): Promise<void> {
+    const enrollment = await loadEnrollment();
+    this.enrolled = Boolean(enrollment);
+    if (!enrollment) {
+      this.hostUnreachable = "host";
+      this.markDisconnected();
+      this.schedule();
+      return;
+    }
+    if (this.connection === "connected" && this.api instanceof RemoteApi && this.api.enrollment.deviceId === enrollment.deviceId) {
+      this.schedule();
+      return;
+    }
+    try {
+      await this.connectRemote(enrollment);
+    } catch {
+      this.hostUnreachable = "host";
+      this.markDisconnected();
+    }
+    this.schedule();
+  }
+
+  private rememberDraftOnDisconnect(): void {
+    const draft = this.draft.trim();
+    if (draft && !this.draftReconnect) this.draftReconnect = { draft, confirm: false };
+  }
+
+  private async installSnapshot(api: MessengerApi, sync: EventSync, snapshot: RuntimeSnapshot): Promise<void> {
     if (this.stopped || this.api !== api || this.sync !== sync) return;
+    if (api instanceof RemoteApi) api.observeSnapshot(snapshot);
     const frames = sync.install(snapshot);
     if (!frames) throw new Error("event gap during snapshot");
     this.snapshot = fromRuntimeSnapshot(snapshot);
+    this.remoteStatus = snapshot.remoteStatus ?? null;
+    this.reconcilePendingMutation(api);
     this.syncSettingsDraft(snapshot.settings);
     for (const frame of frames) this.ingest(frame.payload, frame);
     this.endpointKey = "";
     this.connection = "connected";
     this.focusedTurnId = null;
     this.pendingFocusTrigger = null;
+    if (this.draftReconnect && !this.draftReconnect.confirm) this.draft = this.draftReconnect.draft;
     const selected = this.selectedId;
     if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
       void this.selectSession(selected);
     } else if (selected) {
       this.selectedId = null;
     }
+  }
+
+  private async connectLocal(endpoint: LocalEndpoint): Promise<void> {
+    const { LocalApi } = await import("./local-api.ts");
+    this.resetConnection();
+    const api = new LocalApi(endpoint);
+    const sync = new EventSync();
+    this.api = api;
+    this.sync = sync;
+    this.hostUnreachable = "runtime";
+    await this.openSocket(api, sync);
+    const snapshot = await api.snapshot();
+    await this.installSnapshot(api, sync, snapshot);
+  }
+
+  private async connectRemote(enrollment: StoredEnrollment): Promise<void> {
+    this.resetConnection();
+    const api = new RemoteApi(enrollment, {}, this.durablePending);
+    const sync = new EventSync();
+    this.api = api;
+    this.sync = sync;
+    this.hostUnreachable = "host";
+    const ready = await api.connect((frame) => {
+      if (this.api !== api || this.sync !== sync) return;
+      const frames = sync.receive(frame);
+      if (!frames) {
+        this.markDisconnected();
+        return;
+      }
+      for (const event of frames) this.ingest(event.payload, event);
+    });
+    const frames = sync.receive(ready);
+    if (!frames) throw new Error("invalid remote ready");
+    const snapshot = await api.snapshot();
+    await this.installSnapshot(api, sync, snapshot);
+    this.uvReady = api.uvReady;
   }
 
   private openSocket(api: LocalApi, sync: EventSync): Promise<void> {
@@ -1050,18 +1188,31 @@ export class MessengerRuntime {
     this.endpointDefaultModel = settings.endpoint_default_model ?? "";
   }
 
-  private reconcilePendingMutation(api: LocalApi): void {
-    if (this.api === api && this.pendingMutation && !api.hasPendingRequest(this.pendingMutation.id)) this.pendingMutation = null;
+  private rememberDurablePending(api: MessengerApi): void {
+    if (api instanceof RemoteApi) this.durablePending = api.durablePending();
   }
 
-  private sheetFailure(error: unknown, api: LocalApi): ApiError | null {
+  private reconcilePendingMutation(api: MessengerApi): void {
+    if (this.api !== api) return;
+    if (this.pendingMutation && !api.hasPendingRequest(this.pendingMutation.id)) this.pendingMutation = null;
+    this.rememberDurablePending(api);
+  }
+
+  private keepUnknownRequest(error: unknown, api: MessengerApi): boolean {
+    if (!(error instanceof ApiError) || !error.requestId) return false;
+    const pending = api.hasPendingRequest(error.requestId);
+    const resumable = ["key_write_pending", "request_pending", "request_unknown"].includes(error.code);
+    if (pending && resumable) this.pendingMutation = { id: error.requestId, code: error.code };
+    else if (this.pendingMutation?.id === error.requestId) this.pendingMutation = null;
+    this.rememberDurablePending(api);
+    return pending && resumable;
+  }
+
+  private sheetFailure(error: unknown, api: MessengerApi): ApiError | null {
     if (this.api !== api) return null;
     if (error instanceof ApiError && error.requestId) {
-      const pending = api.hasPendingRequest(error.requestId);
-      const resumable = ["key_write_pending", "request_pending", "request_unknown"].includes(error.code);
-      if (pending && resumable) this.pendingMutation = { id: error.requestId, code: error.code };
-      else if (this.pendingMutation?.id === error.requestId) this.pendingMutation = null;
-      if (!pending && resumable) return null;
+      const pending = this.keepUnknownRequest(error, api);
+      if (!pending && ["key_write_pending", "request_pending", "request_unknown"].includes(error.code)) return null;
     }
     if (
       error instanceof ApiError &&
@@ -1180,6 +1331,7 @@ export class MessengerRuntime {
       void this.markSessionRead(event.session_id);
     }
     this.snapshot = next;
+    if (this.api instanceof RemoteApi) this.api.observeSnapshot(this.snapshot);
     if (event.event === "settings.changed") {
       this.syncSettingsDraft(event);
     }
@@ -1209,10 +1361,17 @@ export class MessengerRuntime {
   }
 
   private resetConnection(): void {
+    this.rememberDraftOnDisconnect();
     this.connection = "disconnected";
     this.teardownSocket();
+    if (this.api instanceof RemoteApi) {
+      this.durablePending = this.api.durablePending();
+      this.api.close();
+    } else if (this.api) {
+      this.pendingMutation = null;
+      this.durablePending = [];
+    }
     this.api = null;
-    this.pendingMutation = null;
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();
