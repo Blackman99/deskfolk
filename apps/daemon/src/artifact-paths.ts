@@ -25,6 +25,33 @@ export function extractWorkspacePathsFromBody(body: string): string[] {
   return found;
 }
 
+/**
+ * Rewrites paths a Bot wrote in its message body that only make sense from its shell's cwd.
+ *
+ * The shell runs in the work dir, so a Bot that just produced a file there naturally calls it
+ * `sales.csv` — but a cited path is workspace-root relative, so that cites a file at the root
+ * that does not exist, and the link in the transcript is dead. When the root path is missing and
+ * the work dir has that exact file, the body is corrected to the path that resolves. Nothing else
+ * is touched: a path that exists at the root stays as written, and so does one that exists in
+ * neither place, which is the Bot talking about a file it has not made yet.
+ */
+export function resolveBodyPathsToWorkDir(
+  body: string,
+  workDir: string | null | undefined,
+  exists: (relpath: string) => boolean,
+): string {
+  if (!workDir) return body;
+  let out = body;
+  for (const cited of extractWorkspacePathsFromBody(body)) {
+    if (cited.startsWith(`${workDir}/`) || exists(cited)) continue;
+    const inWorkDir = `${workDir}/${cited}`;
+    if (!exists(inWorkDir)) continue;
+    const escaped = cited.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(?<![\\w./-])${escaped}(?![\\w./-])`, "g"), inWorkDir);
+  }
+  return out;
+}
+
 export function mergeCitedPaths(explicit: string[], fromBody: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();

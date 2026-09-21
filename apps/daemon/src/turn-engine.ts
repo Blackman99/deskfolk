@@ -1105,6 +1105,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               turnId: turn.id,
               parentId: live.parentId,
               writtenPaths: live.writtenPaths,
+              workDir: live.workDir,
               mentionWarned: live.mentionWarned,
               availableToolNames: live.toolNames,
               admission: options.admission,

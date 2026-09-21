@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   BORING_AVATAR_VARIANTS,
   USER_MEMBER,
@@ -27,7 +28,12 @@ import type { KeyOperation } from "./store/receipts";
 import type { TurnAdmission } from "./quiesce";
 import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
-import { extractWorkspacePathsFromBody, linkifyWorkspacePaths, mergeCitedPaths } from "./artifact-paths";
+import {
+  extractWorkspacePathsFromBody,
+  linkifyWorkspacePaths,
+  mergeCitedPaths,
+  resolveBodyPathsToWorkDir,
+} from "./artifact-paths";
 import { classifyPath } from "./workspace-paths";
 
 const DEFAULT_ENDPOINT_GUARD =
@@ -73,6 +79,8 @@ export type ToolCtx = {
   approved?: boolean;
   approvalApiKey?: string;
   writtenPaths?: string[];
+  /** This turn's work dir, so a path the Bot wrote from its shell's point of view still resolves. */
+  workDir?: string | null;
   /** Unknown `@token`s already rejected once this turn; a resend with them goes through. Absent = always reject. */
   mentionWarned?: Set<string>;
   /** Names in this hop's tools array (built-in + `mcp_…`). Absent = skip the stale-name check in read_skill. */
@@ -229,12 +237,15 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
       return fail("unknown_mention", unknownMentionError(fresh, members));
     }
   }
+  const corrected = resolveBodyPathsToWorkDir(body, ctx.workDir, (relpath) =>
+    pathExists(ctx.store, relpath),
+  );
   const cited = mergeCitedPaths(
     [...(ctx.writtenPaths ?? []), ...(optionalStringArray(args.paths, "paths") ?? [])],
-    extractWorkspacePathsFromBody(body),
+    extractWorkspacePathsFromBody(corrected),
   );
   const resolved = resolveCitedPaths(ctx.store, cited);
-  const linked = linkifyWorkspacePaths(body, resolved.paths);
+  const linked = linkifyWorkspacePaths(corrected, resolved.paths);
   const message = ctx.store.insertMessage({
     sessionId,
     turnId: ctx.turnId,
@@ -1380,6 +1391,18 @@ function botPinEmits(
     out.push({ kind: "bot", bot, deleted_at: null });
   }
   return out;
+}
+
+function pathExists(store: Store, relpath: string): boolean {
+  const root = store.workspacePath();
+  if (!root) return false;
+  const classified = classifyPath(root, relpath);
+  if (classified.zone !== "inside") return false;
+  try {
+    return existsSync(classified.abs);
+  } catch {
+    return false;
+  }
 }
 
 function resolveCitedPaths(store: Store, inputs: string[]): { paths: string[]; unresolved: string[] } {
