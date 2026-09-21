@@ -1028,77 +1028,13 @@
 		opacity: 0.92;
 	}
 
-	@media (max-width: 680px) {
-		.composer {
-			bottom: 0;
-			padding: 8px 10px 12px;
-			gap: 4px;
-		}
 
-		.composer-suggest-bar {
-			padding: 2px 4px 8px 2px;
-			margin: 0 0 -6px;
-		}
 
-		.composer-card-shell::before {
-			inset: -6px;
-			border-radius: 28px;
-		}
-	}
 
-	@media (max-width: 680px) {
-	.composer-card {
-	padding: 4px 5px 4px 6px;
-	border-radius: 22px;
-	max-width: 100%;
-	}
-	}
 
-	@media (max-width: 680px) {
-	.composer .composer-input {
-	font-size: 15px;
-	line-height: 22px;
-	min-height: 34px;
-	padding: 6px 4px;
-	}
-	}
 
-	@media (max-width: 680px) {
-	.composer .composer-input.is-empty::before {
-	left: 4px;
-	right: 4px;
-	}
-	}
 
-	@media (max-width: 680px) {
-	.composer .composer-action,
-	.composer .attach-btn {
-	width: 34px;
-	height: 34px;
-	flex-basis: 34px;
-	}
-	}
 
-	@media (max-width: 680px) {
-	.composer-hint {
-	display: none;
-	}
-	}
-
-	@media (max-width: 680px) {
-	.mention-autocomplete-popup {
-	left: 10px;
-	width: calc(100% - 20px);
-	}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-	.composer-card,
-	.composer-action,
-	.composer .attach-btn {
-	transition: none;
-	}
-	}
 
 	/* Mention Autocomplete Popup */
 	.mention-autocomplete-popup {
@@ -1388,5 +1324,70 @@
 	.composer-quote-cancel:hover {
 		background: var(--line-subtle);
 		color: var(--text);
+	}
+
+	@media (max-width: 680px) {
+		.composer {
+			bottom: 0;
+			padding: 8px 10px 12px;
+			gap: 4px;
+		}
+
+		.composer-suggest-bar {
+			padding: 2px 4px 8px 2px;
+			margin: 0 0 -6px;
+		}
+
+		.composer-card-shell::before {
+			inset: -6px;
+			border-radius: 28px;
+		}
+	}
+	@media (max-width: 680px) {
+	.composer-card {
+	padding: 4px 5px 4px 6px;
+	border-radius: 22px;
+	max-width: 100%;
+	}
+	}
+	@media (max-width: 680px) {
+	.composer .composer-input {
+	font-size: 15px;
+	line-height: 22px;
+	min-height: 34px;
+	padding: 6px 4px;
+	}
+	}
+	@media (max-width: 680px) {
+	.composer .composer-input.is-empty::before {
+	left: 4px;
+	right: 4px;
+	}
+	}
+	@media (max-width: 680px) {
+	.composer .composer-action,
+	.composer .attach-btn {
+	width: 34px;
+	height: 34px;
+	flex-basis: 34px;
+	}
+	}
+	@media (max-width: 680px) {
+	.composer-hint {
+	display: none;
+	}
+	}
+	@media (max-width: 680px) {
+	.mention-autocomplete-popup {
+	left: 10px;
+	width: calc(100% - 20px);
+	}
+	}
+	@media (prefers-reduced-motion: reduce) {
+	.composer-card,
+	.composer-action,
+	.composer .attach-btn {
+	transition: none;
+	}
 	}
 </style>

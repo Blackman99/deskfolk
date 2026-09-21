@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { base64url, generateIdentity, identityPublic, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import { ApiError } from "../api.ts";
-import { MessengerRuntime } from "../runtime.svelte.ts";
+import { MessengerRuntime, nextRemoteRetry } from "../runtime.svelte.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
 import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
 
@@ -133,4 +133,39 @@ test("chat send production ApiError 503 keeps the id across resetConnection/conn
   expect(calls.filter((row) => row.method === "POST" && row.path.endsWith("/messages"))).toHaveLength(1);
   expect(calls.filter((row) => row.path === `/v1/requests/${originalId}`)).toHaveLength(1);
   expect(calls.some((row) => row.method === "POST" && row.id !== originalId)).toBe(false);
+});
+
+test("reconnect attempts stay inside the relay's ten handshakes a minute", () => {
+  // Worst case for the budget: every attempt fails, so the delay only grows.
+  let delay = 1000;
+  let elapsed = 0;
+  let attempts = 0;
+  while (elapsed < 60_000) {
+    attempts += 1;
+    elapsed += delay;
+    delay = nextRemoteRetry(delay, () => 0); // shortest jitter: the most attempts possible
+  }
+  expect(attempts).toBeLessThanOrEqual(10);
+});
+
+test("the delay grows to a cap and jitter keeps devices from lining up", () => {
+  expect(nextRemoteRetry(1000, () => 0.5)).toBe(2000);
+  expect(nextRemoteRetry(16_000, () => 0.5)).toBe(20_000);
+  expect(nextRemoteRetry(20_000, () => 0.5)).toBe(20_000);
+  // Never over the cap, never a hot loop under it.
+  for (const r of [0, 0.25, 0.5, 0.75, 0.999]) {
+    const value = nextRemoteRetry(8000, () => r);
+    expect(value).toBeGreaterThanOrEqual(8000 * 1.6);
+    expect(value).toBeLessThanOrEqual(20_000);
+  }
+});
+
+test("a connection that comes back resets the delay", async () => {
+  useEnrollmentDriver({ get: () => Promise.resolve(null), set: () => Promise.resolve() });
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as { remoteRetryMs: number; tickRemote(): Promise<void> };
+  internals.remoteRetryMs = 16_000;
+  await internals.tickRemote();
+  expect(internals.remoteRetryMs).toBe(1000);
 });

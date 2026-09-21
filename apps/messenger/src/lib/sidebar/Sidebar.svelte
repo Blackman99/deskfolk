@@ -840,18 +840,7 @@
 		background: var(--line-subtle);
 	}
 
-	@media (max-width: 680px) {
-	.side {
-	display: flex;
-	width: 100%;
-	}
-	}
 
-	@media (max-width: 680px) {
-	:global(.shell.has-session) .side {
-	display: none;
-	}
-	}
 
 	.pinned-session-btn :global(img) {
 		width: 100%;
@@ -1729,5 +1718,17 @@
 		opacity: 1;
 		transform: scale(1) translateY(0);
 		}
+	}
+
+	@media (max-width: 680px) {
+	.side {
+	display: flex;
+	width: 100%;
+	}
+	}
+	@media (max-width: 680px) {
+	:global(.shell.has-session) .side {
+	display: none;
+	}
 	}
 </style>

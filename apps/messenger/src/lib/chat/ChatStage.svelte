@@ -1322,17 +1322,7 @@
 		margin: 0 0 6px;
 	}
 
-	@media (max-width: 680px) {
-	.msg-wrap.is-bot {
-	max-width: 95%;
-	}
-	}
 
-	@media (max-width: 680px) {
-	.msg-wrap.is-user {
-	max-width: 92%;
-	}
-	}
 
 	.stream {
 		flex: 1;
@@ -1357,11 +1347,6 @@
 		box-sizing: border-box;
 	}
 
-	@media (max-width: 680px) {
-		.stream-inner {
-			padding: 14px 12px 120px;
-		}
-	}
 
 	.date-divider::before {
 		content: "";
@@ -1883,11 +1868,6 @@
 		animation: pulse 1.2s ease-in-out infinite;
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-	.pulse {
-	animation: none;
-	}
-	}
 
 	/* Attached replying / thinking indicator under trigger message */
 	.msg-attached-botdm {
@@ -1951,12 +1931,6 @@
 		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
 	}
 
-	@media (max-width: 680px) {
-		.scroll-bottom-btn {
-			bottom: 120px;
-			right: 16px;
-		}
-	}
 
 	.welcome-identity-btn {
 		background: transparent;
@@ -2254,6 +2228,33 @@
 		}
 		100% {
 		box-shadow: 0 0 0 2px var(--accent-border);
+		}
+	}
+
+	@media (max-width: 680px) {
+	.msg-wrap.is-bot {
+	max-width: 95%;
+	}
+	}
+	@media (max-width: 680px) {
+	.msg-wrap.is-user {
+	max-width: 92%;
+	}
+	}
+	@media (max-width: 680px) {
+		.stream-inner {
+			padding: 14px 12px 120px;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+	.pulse {
+	animation: none;
+	}
+	}
+	@media (max-width: 680px) {
+		.scroll-bottom-btn {
+			bottom: 120px;
+			right: 16px;
 		}
 	}
 </style>

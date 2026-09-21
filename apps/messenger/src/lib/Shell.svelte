@@ -1358,27 +1358,6 @@
 		overflow: hidden;
 	}
 
-	@media (max-width: 680px) {
-	.shell,
-	.shell.is-thread,
-	.shell.is-preview,
-	.shell.is-preview.is-thread {
-	grid-template-columns: 1fr;
-	}
-	}
-
-	@media (max-width: 680px) {
-	.main {
-	display: none;
-	}
-	}
-
-	@media (max-width: 680px) {
-	.shell.has-session .main {
-	display: flex;
-	}
-	}
-
 	/* Shell Layout */
 	.shell {
 		height: 100%;
@@ -1411,5 +1390,37 @@
 
 	.shell.is-preview .thread {
 		grid-column: 6;
+	}
+
+	/*
+	 * Narrow: one column, and one thing in it. These override the grid above, so they have to come
+	 * after it — a media query adds no specificity, and the desktop grid used to win at phone
+	 * width, leaving a 200px list beside a dead strip.
+	 */
+	@media (max-width: 680px) {
+		.shell,
+		.shell.is-thread,
+		.shell.is-preview,
+		.shell.is-preview.is-thread {
+			grid-template-columns: 1fr;
+		}
+
+		/* The roster is the whole screen until a conversation is picked. */
+		.main {
+			display: none;
+		}
+
+		.shell.has-session .main {
+			display: flex;
+			min-width: 0;
+		}
+
+		/* The thread drawer would otherwise stack under the conversation as a second row. */
+		.shell.is-thread .thread {
+			position: fixed;
+			inset: 0;
+			width: 100%;
+			z-index: 40;
+		}
 	}
 </style>

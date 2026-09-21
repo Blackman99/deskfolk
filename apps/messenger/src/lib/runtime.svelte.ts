@@ -43,6 +43,21 @@ export type HostUnreachable = "runtime" | "host";
 export type DraftReconnect = { draft: string; confirm: boolean } | null;
 
 const RETRY_MS = 1000;
+/**
+ * A remote retry is a WebSocket handshake at the relay, and the relay allows ten per minute from
+ * one address. Retrying every second during a host outage spends that budget in ten seconds and
+ * then gets refused for the rest of the minute — the harder the device tries, the longer it takes
+ * to come back once the Mac is up. So remote attempts back off, with jitter so several devices on
+ * one address do not line up, and reset the moment a connection succeeds.
+ */
+const REMOTE_RETRY_MIN_MS = 1000;
+const REMOTE_RETRY_MAX_MS = 20_000;
+
+export function nextRemoteRetry(previous: number, random = Math.random): number {
+  const grown = Math.min(previous * 2, REMOTE_RETRY_MAX_MS);
+  const jitter = 0.8 + random() * 0.4;
+  return Math.round(Math.min(grown * jitter, REMOTE_RETRY_MAX_MS));
+}
 /** A pairing window lasts ten minutes; checking it every three seconds is not a busy loop. */
 const HOST_PAIRING_POLL_MS = 3000;
 
@@ -103,6 +118,8 @@ export class MessengerRuntime {
   /** Host side of pairing: what the settings panel shows while a device is being enrolled. */
   hostPairing = $state<HostPairing>(null);
   hostPairingBusy = $state(false);
+  /** How long to wait before the next relay handshake; grows while the Mac is unreachable. */
+  private remoteRetryMs = REMOTE_RETRY_MIN_MS;
   enrolled = $state(false);
   hostUnreachable = $state<HostUnreachable>("runtime");
   draftReconnect = $state<DraftReconnect>(null);
@@ -1303,20 +1320,28 @@ export class MessengerRuntime {
     if (!enrollment) {
       this.hostUnreachable = "host";
       this.markDisconnected();
+      // Nothing to reconnect to, so this is a cheap local poll, not a relay handshake.
+      this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
       this.schedule();
       return;
     }
     if (this.connection === "connected" && this.api instanceof RemoteApi && this.api.enrollment.deviceId === enrollment.deviceId) {
+      this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
       this.schedule();
       return;
     }
     try {
       await this.connectRemote(enrollment);
+      // The Mac is back: the next drop starts from the short delay again.
+      this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
+      this.schedule();
+      return;
     } catch {
       this.hostUnreachable = "host";
       this.markDisconnected();
     }
-    this.schedule();
+    this.schedule(this.remoteRetryMs);
+    this.remoteRetryMs = nextRemoteRetry(this.remoteRetryMs);
   }
 
   private rememberDraftOnDisconnect(): void {
@@ -1730,11 +1755,11 @@ export class MessengerRuntime {
     }
   }
 
-  private schedule(): void {
+  private schedule(delay = RETRY_MS): void {
     if (this.stopped) return;
     this.timer = setTimeout(() => {
       this.pump();
-    }, RETRY_MS);
+    }, delay);
   }
 
   /** A tick that throws must still leave a timer behind, or the page never reconnects. */
