@@ -38,7 +38,7 @@
 
 ### 实验性远控协议
 
-- 可选 Web Push 仅由 Mac 发送泛化待办提醒（载荷 `{t:"pending"}`，固定文案「Real Bot 有待处理事项」）。订阅按设备保存 HTTPS endpoint URL，不能只存哈希。出站仅允许 `*.push.apple.com`、`fcm.googleapis.com`、`updates.push.services.mozilla.com`，`redirect: error`；中继不代发。点击只打开 PWA 并拉收件箱，绝不批准。拒绝、过期或吊销不丢待办。iOS 16.4+ 主屏幕 standalone 才是 G-push，**尚未通过**；普通浏览器冒烟不算该门。
+- 可选 Web Push 仅由 Mac 发送泛化待办提醒（载荷 `{t:"pending"}`，固定文案「Real Bot 有待处理事项」）。订阅按设备保存 HTTPS endpoint URL，不能只存哈希。出站仅允许 `*.push.apple.com`、`fcm.googleapis.com`、`updates.push.services.mozilla.com`，`redirect: error`；中继不代发。点击只打开 PWA 并拉收件箱，绝不批准。拒绝、过期或吊销不丢待办。之后在已有 bot / ask / approval 行上点反应不会再发一条推送。iOS 16.4+ 主屏幕 standalone 才是 G-push，**尚未通过**；普通浏览器冒烟不算该门。
 - 新增托管信使远控客户端：与 LocalApi 方法面一致的 Noise RPC、钉住主机 DH/签名公钥与中继 origin 的扫码配对、仅 IndexedDB 存设备身份，以及 standalone PWA 壳。托管生产包（`REAL_BOT_HOSTED=1` / `pnpm --filter @real-bot/messenger build:hosted`）不含 `__local-api` 与本机 bearer。远程 URL 只允许会话/浮层/附件 id（`?s` `?o` `?b` `?a`），禁止 `?p=` / `?w=` 文件路径。Service worker 只缓存带哈希的 immutable 资源，导航 index 仍 no-store。断线显示执行主机不可达，不排队命令；未发送内存草稿重连需确认，未知结果查同一 `request_id` 回执。WebAuthn `create`/`get` 使用有效域名 `rpId` 且要求 UV，仅在 Split 后登记；失败仍可普通聊天，无点击确认 fallback。公网配对仍默认关闭。S-rev、G-uv 与真机 L1 **未通过**。
 
 - 远控加密 RPC 在副作用与回执前拒绝 `constructor` / `__proto__` 等原型字段名，并把 schema 失败映射为 422，不再因此关闭 Noise 会话。本机确认使用独立的 `renew_first_uv` / `recover_trust` 种类，不再复用配对或更换中继。

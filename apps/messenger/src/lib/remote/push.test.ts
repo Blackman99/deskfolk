@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { WEB_PUSH_COPY, WEB_PUSH_PAYLOAD } from "@real-bot/protocol";
 import { RemoteApi } from "./api.ts";
-import { disablePush, enablePush, isInboxMessage, notificationMustNotAct, PUSH_PAYLOAD, PUSH_VISIBLE_COPY } from "./push.ts";
+import { disablePush, enablePush, isInboxMessage } from "./push.ts";
 import type { StoredEnrollment } from "./idb.ts";
 import { base64url, generateIdentity, identityPublic, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 
@@ -23,13 +23,10 @@ const enrollment: StoredEnrollment = {
 };
 
 test("notification payload is only pending and click never carries an approval", () => {
-  expect(PUSH_PAYLOAD).toEqual({ t: "pending" });
-  expect(PUSH_PAYLOAD).toEqual(WEB_PUSH_PAYLOAD);
-  expect(PUSH_VISIBLE_COPY.zh).toBe("Real Bot 有待处理事项");
-  expect(PUSH_VISIBLE_COPY.en).toBe("Real Bot has pending items");
-  expect(notificationMustNotAct({ t: "pending" })).toBe(true);
-  expect(notificationMustNotAct({ t: "pending", action: "allow_once" })).toBe(false);
-  expect(notificationMustNotAct({ approvalId: "01ARZ3NDEKTSV4RRFFQ69G5FAX" })).toBe(false);
+  expect(WEB_PUSH_PAYLOAD).toEqual({ t: "pending" });
+  expect(Object.keys(WEB_PUSH_PAYLOAD)).toEqual(["t"]);
+  expect(WEB_PUSH_COPY.zh).toBe("Real Bot 有待处理事项");
+  expect(WEB_PUSH_COPY.en).toBe("Real Bot has pending items");
   expect(isInboxMessage({ type: "inbox" })).toBe(true);
   expect(isInboxMessage({ type: "inbox", resolve: "allow_once" })).toBe(false);
 });

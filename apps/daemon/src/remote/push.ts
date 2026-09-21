@@ -1,5 +1,5 @@
 import { createCipheriv, createECDH, createPrivateKey, hkdfSync, sign as nodeSign } from "node:crypto";
-import { USER_MEMBER, WEB_PUSH_COPY, WEB_PUSH_PAYLOAD, type ClientEvent } from "@real-bot/protocol";
+import { USER_MEMBER, WEB_PUSH_PAYLOAD, type ClientEvent } from "@real-bot/protocol";
 import { base64url, fromBase64url } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { sha256 } from "../request-digest";
@@ -9,7 +9,6 @@ import type { RemoteNativeClient } from "../remote-native";
 /** Adding a domain requires code and docs review. The relay never sends. */
 export const PUSH_ALLOWED_HOSTS = ["*.push.apple.com", "fcm.googleapis.com", "updates.push.services.mozilla.com"] as const;
 export const PUSH_PLAINTEXT = JSON.stringify(WEB_PUSH_PAYLOAD);
-export const PUSH_VISIBLE_COPY = WEB_PUSH_COPY;
 
 const ENDPOINT_MAX = 2048;
 const KEY_INFO = Buffer.concat([Buffer.from("WebPush: info"), Buffer.from([0])]);
@@ -149,7 +148,7 @@ export function shouldNotify(store: Store, event: ClientEvent): boolean {
   if (event.event === "turn.upsert") {
     return event.status === "interrupted" && !sessionIsBotBot(store, event.session_id);
   }
-  if (event.event !== "message.created" && event.event !== "message.upsert") return false;
+  if (event.event !== "message.created") return false;
   if (sessionIsBotBot(store, event.session_id)) return false;
   if (event.kind === "ask" || event.kind === "approval" || event.kind === "bot") return true;
   return event.kind === "system" && (event.body.startsWith("这一轮没写完：") || event.body.startsWith("This turn did not finish:"));
@@ -230,13 +229,6 @@ export function pushHeaders(endpoint: URL, vapidPrivate: Uint8Array, now: number
   };
 }
 
-export function assertNoContentLeak(value: string, forbidden: string[]): void {
-  const lower = value.toLowerCase();
-  for (const item of forbidden) {
-    if (item && lower.includes(item.toLowerCase())) throw new Error("push payload leak");
-  }
-}
-
 export type PushFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export class PushService {
@@ -299,8 +291,6 @@ export class PushService {
     const auth = keyBytes(sub.auth, 16);
     const body = encryptPush(Buffer.from(PUSH_PLAINTEXT), p256dh, auth);
     const headers = pushHeaders(url, vapid, this.now());
-    const wire = Buffer.from(body).toString("latin1");
-    assertNoContentLeak(`${url.href}\n${JSON.stringify(headers)}\n${wire}\n${PUSH_PLAINTEXT}`, []);
     const fetchFn = this.options.fetch ?? fetch;
     const response = await fetchFn(url, { method: "POST", redirect: "error", headers, body: Buffer.from(body) });
     if (response.status === 404 || response.status === 410) deletePushSubs(this.options.store, sub.device_id);

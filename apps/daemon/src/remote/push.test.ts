@@ -6,7 +6,7 @@ import { Store } from "../store";
 import { memoryKeyStore } from "../secrets";
 import { ulid } from "../ids";
 import {
-  PUSH_ALLOWED_HOSTS, PUSH_PLAINTEXT, PUSH_VISIBLE_COPY, PushService, assertNoContentLeak,
+  PUSH_ALLOWED_HOSTS, PUSH_PLAINTEXT, PushService,
   deletePushSubs, encryptPush, isAllowedPushHost, livePushSubs, parsePushEndpoint, parseSubscribe,
   pushSub, shouldNotify, upsertPushSub, vapidPublic,
 } from "./push";
@@ -36,6 +36,26 @@ function store() {
 function youBot(s: Store) {
   const bot = s.createBot({ name: "Writer", duties: "write", boundaries: "none" });
   return { bot: bot.bot, session: bot.direct_session };
+}
+
+function committed(s: Store, work: () => void): ClientEvent[] {
+  const events: ClientEvent[] = [];
+  const off = s.onCommit((event) => { events.push(event); });
+  try { work(); return events; }
+  finally { off(); }
+}
+
+function assertNoContentLeak(value: string, forbidden: string[]): void {
+  const lower = value.toLowerCase();
+  for (const item of forbidden) {
+    if (item && lower.includes(item.toLowerCase())) throw new Error("push payload leak");
+  }
+}
+
+function messageEvent(events: ClientEvent[], name: "message.created" | "message.upsert"): ClientEvent {
+  const event = events.find((row) => row.event === name);
+  if (!event) throw new Error(`missing ${name}`);
+  return event;
 }
 
 function botBot(s: Store) {
@@ -106,12 +126,43 @@ describe("push event filter", () => {
     expect(shouldNotify(s, { event: "turn.upsert", occurred_at: "now", ...turn, status: "completed" })).toBe(false);
     const user = s.insertMessage({ sessionId: you.session.id, kind: "user", author: USER_MEMBER, body: "hi" });
     expect(shouldNotify(s, { event: "message.created", occurred_at: "now", ...user })).toBe(false);
+    expect(shouldNotify(s, { event: "message.upsert", occurred_at: "now", ...reply })).toBe(false);
+    expect(shouldNotify(s, { event: "message.upsert", occurred_at: "now", ...ask })).toBe(false);
 
     const chatter = s.insertMessage({ sessionId: them.session.id, kind: "bot", author: them.a.id, body: "Bot chatter secret-file.txt" });
     expect(shouldNotify(s, { event: "message.created", occurred_at: "now", ...chatter })).toBe(false);
     const themTurn = s.createTurn({ sessionId: them.session.id, botId: them.a.id, triggerMessageId: chatter.id });
     const themApproval = s.insertApproval({ turnId: themTurn.id, messageId: null, kind_key: "outside-write", summary: "secret", target: "/tmp/x" });
     expect(shouldNotify(s, { event: "approval.upsert", occurred_at: "now", ...themApproval })).toBe(false);
+  });
+
+  test("journal INSERT notifies once; a later reaction upsert does not", () => {
+    const s = store();
+    const you = youBot(s);
+    const them = botBot(s);
+    let reply!: ReturnType<Store["insertMessage"]>;
+    const inserted = committed(s, () => {
+      reply = s.insertMessage({ sessionId: you.session.id, kind: "bot", author: you.bot.id, body: "Done with secret-file.txt" });
+    });
+    expect(shouldNotify(s, messageEvent(inserted, "message.created"))).toBe(true);
+    const reacted = committed(s, () => { s.putReaction(reply.id, "👍"); });
+    expect(shouldNotify(s, messageEvent(reacted, "message.upsert"))).toBe(false);
+
+    let ask!: ReturnType<Store["insertMessage"]>;
+    const asked = committed(s, () => {
+      ask = s.insertMessage({ sessionId: you.session.id, kind: "ask", author: you.bot.id, body: "Need secret-file.txt?" });
+    });
+    expect(shouldNotify(s, messageEvent(asked, "message.created"))).toBe(true);
+    const watched = committed(s, () => { s.putReaction(ask.id, "👀"); });
+    expect(shouldNotify(s, messageEvent(watched, "message.upsert"))).toBe(false);
+
+    let chatter!: ReturnType<Store["insertMessage"]>;
+    const chatterEvents = committed(s, () => {
+      chatter = s.insertMessage({ sessionId: them.session.id, kind: "bot", author: them.a.id, body: "Bot chatter" });
+    });
+    expect(shouldNotify(s, messageEvent(chatterEvents, "message.created"))).toBe(false);
+    const themReacted = committed(s, () => { s.putReaction(chatter.id, "👍"); });
+    expect(shouldNotify(s, messageEvent(themReacted, "message.upsert"))).toBe(false);
   });
 });
 
@@ -173,8 +224,8 @@ describe("isolated fake push service", () => {
     assertNoContentLeak(haystack, ["secret-file.txt", "Writer", you.bot.name, "Wrote"]);
     expect(PUSH_PLAINTEXT).toBe(JSON.stringify({ t: "pending" }));
     expect(PUSH_PLAINTEXT).toBe(JSON.stringify(WEB_PUSH_PAYLOAD));
-    expect(PUSH_VISIBLE_COPY.zh).toBe("Real Bot 有待处理事项");
-    expect(PUSH_VISIBLE_COPY.en).toBe("Real Bot has pending items");
+    expect(WEB_PUSH_COPY.zh).toBe("Real Bot 有待处理事项");
+    expect(WEB_PUSH_COPY.en).toBe("Real Bot has pending items");
     expect(JSON.parse(PUSH_PLAINTEXT)).toEqual({ t: "pending" });
     expect(Object.keys(JSON.parse(PUSH_PLAINTEXT))).toEqual(["t"]);
 
@@ -185,6 +236,35 @@ describe("isolated fake push service", () => {
     });
     await redirected.flush();
     expect(pushSub(s, device)).not.toBeNull();
+  });
+
+  test("inserting a bot message may flush once; putReaction does not flush again", async () => {
+    const s = store();
+    const you = youBot(s);
+    const keys = uaKeys();
+    const vapid = vapidBytes();
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      fetch: async (input, init) => {
+        calls.push({ url: String(input), init: init ?? {} });
+        return new Response(null, { status: 201 });
+      },
+    });
+    upsertPushSub(s, ulid(), { endpoint: apple, ...keys }, 1);
+    let reply!: ReturnType<Store["insertMessage"]>;
+    const inserted = committed(s, () => {
+      reply = s.insertMessage({ sessionId: you.session.id, kind: "bot", author: you.bot.id, body: "Wrote secret-file.txt" });
+    });
+    service.notify(messageEvent(inserted, "message.created"));
+    await service.flush();
+    expect(calls).toHaveLength(1);
+    const reacted = committed(s, () => { s.putReaction(reply.id, "👍"); });
+    service.notify(messageEvent(reacted, "message.upsert"));
+    await Bun.sleep(300);
+    service.close();
+    expect(calls).toHaveLength(1);
   });
 
   test("gone endpoints delete the subscription; inbox rows remain", async () => {

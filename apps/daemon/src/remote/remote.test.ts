@@ -537,7 +537,7 @@ test("remote chat uses the actual engine and event stream, not a parallel busine
   const history = await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${bot.direct_session.id}/snapshot` });
   expect(history.status).toBe(200);
   expect(f.store.listMessages(bot.direct_session.id).items.some(m => m.body === "remote fixture")).toBe(true);
-  expect(JSON.stringify(c.events)).toContain("message.upsert");
+  expect(JSON.stringify(c.events)).toContain("message.created");
   expect(JSON.stringify(c.events)).not.toContain('"turn.token"');
 });
 

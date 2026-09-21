@@ -1,10 +1,7 @@
 import { fromBase64url } from "@real-bot/remote";
-import { WEB_PUSH_COPY, WEB_PUSH_PAYLOAD } from "@real-bot/protocol";
 import type { RemoteApi } from "./api.ts";
 
 export const PUSH_INBOX_MESSAGE = { type: "inbox" } as const;
-export const PUSH_VISIBLE_COPY = WEB_PUSH_COPY;
-export const PUSH_PAYLOAD = WEB_PUSH_PAYLOAD;
 
 export type PushPermission = "default" | "granted" | "denied" | "unsupported";
 
@@ -60,10 +57,4 @@ export async function disablePush(api: RemoteApi): Promise<void> {
 export function isInboxMessage(data: unknown): boolean {
   return !!data && typeof data === "object" && (data as { type?: unknown }).type === PUSH_INBOX_MESSAGE.type
     && Object.keys(data as object).join() === "type";
-}
-
-export function notificationMustNotAct(data: unknown): boolean {
-  if (!data || typeof data !== "object") return true;
-  const keys = Object.keys(data as object);
-  return keys.length === 1 && keys[0] === "t" && (data as { t?: unknown }).t === "pending";
 }

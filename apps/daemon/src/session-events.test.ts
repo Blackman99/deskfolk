@@ -203,7 +203,7 @@ describe("commit / subscribe / snapshot barrier", () => {
     const attachments = [{ originalFilename: "one.txt", buffer: Buffer.from("fixture bytes") }];
     const order: string[] = [];
     h.store.onCommit((event) => {
-      if (event.event !== "message.upsert") return;
+      if (event.event !== "message.created") return;
       expect(h.store.receipts.lookup(scope)?.state).toBe("complete");
       expect(event.attachments[0]!.exists).toBe(true);
       expect(existsSync(join(root, event.attachments[0]!.workspace_relpath))).toBe(false);
