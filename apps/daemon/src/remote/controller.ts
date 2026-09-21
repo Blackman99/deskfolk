@@ -1,11 +1,12 @@
-import { base64url, canonicalBytes, canonicalHash, fromBase64url, fragmentMessage, HostSession, identityPublic,
+import { base64url, canonicalBytes, canonicalHash, decodeFileChunk, fromBase64url, fragmentMessage, HostSession, identityPublic,
   openPairing, parseRemoteRequest, randomBytes, Reassembler, sealPairingGrant, sha256Hex, signGrant, text,
   encodeFileChunk, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
-  type PairingContext, type PairingQr, type PairingRequest, type RemoteResponse } from "@real-bot/remote";
+  type PairingContext, type PairingQr, type PairingRequest, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import type { LocalApi } from "../local-api";
-import type { Store } from "../store";
+import type { LiveFile, Store } from "../store";
 import { ulid } from "../ids";
 import { HttpError } from "../errors";
+import { requestDigest } from "../request-digest";
 import { remoteNative, type LocalAction, type RemoteNativeClient } from "../remote-native";
 import { RelayBudget, RelayConnection, RelayControl, type RelayConfig, type RelaySocketFactory } from "./relay";
 import { RemoteTrust, deny } from "./trust";
@@ -308,8 +309,28 @@ export class RemoteController {
     const abort = new AbortController();
     const outgoing: Array<{ type: number; body: Uint8Array; stream?: number; done?: () => void }> = [];
     let streamId = 0;
-    const fileStreams = new Map<number, { cancelled: boolean }>();
+    type FileStream = {
+      cancelled: boolean; direction: "down" | "up"; live?: LiveFile;
+      done?: (error?: HttpError, commit?: import("../store").FileCommit) => void;
+    };
+    const fileStreams = new Map<number, FileStream>();
     const retiredStreams = new Set<number>();
+    const retire = (id: number) => {
+      fileStreams.delete(id);
+      retiredStreams.add(id);
+      if (retiredStreams.size > 32) retiredStreams.delete(retiredStreams.values().next().value!);
+    };
+    const abortUploads = (code: "cancelled" | "failed" = "cancelled") => {
+      for (const [id, stream] of [...fileStreams]) {
+        stream.cancelled = true;
+        if (stream.direction === "up" && stream.live) {
+          this.options.store.abortLiveFile(stream.live);
+          stream.live = undefined;
+          stream.done?.(new HttpError(code === "cancelled" ? 409 : 422, code, code === "cancelled" ? "upload cancelled" : "upload failed"));
+        }
+        retire(id);
+      }
+    };
     const close = () => {
       if (!alive) return; alive = false; abort.abort();
       clearInterval(timer); clearTimeout(handshakeTimer); session.close(); assembler.clear(); unsubscribe?.();
@@ -319,8 +340,7 @@ export class RemoteController {
       }
       for (const message of outgoing) { message.body.fill(0); message.done?.(); }
       outgoing.length = 0; queuedBytes = 0;
-      for (const stream of fileStreams.values()) stream.cancelled = true;
-      fileStreams.clear();
+      abortUploads("cancelled");
       this.links.delete(routeId); this.routes.delete(routeId); connection.close();
     };
     const pump = async () => {
@@ -346,11 +366,83 @@ export class RemoteController {
     };
     const sendFile = (body: Uint8Array, stream: number) => new Promise<void>(resolve => enqueue(5, body, stream, resolve));
     const sendJson = (type: LogicalType, value: unknown) => { for (const frame of fragmentMessage(type, canonicalBytes(value))) enqueue(frame.type, frame.body); };
+    const claimedFiles = (request: RemoteRequest): Array<{ filename: string; size: number; sha256: string }> => {
+      if (request.method !== "POST" || !/^\/v1\/sessions\/[0-9A-HJKMNP-TV-Z]{26}\/messages$/.test(request.path)) return [];
+      const files = request.body?.files;
+      if (!Array.isArray(files) || !files.length) return [];
+      return files.map((row) => {
+        if (!row || typeof row !== "object") throw new HttpError(422, "invalid_args", "invalid remote properties");
+        const file = row as { filename?: unknown; size?: unknown; sha256?: unknown };
+        if (typeof file.filename !== "string" || typeof file.size !== "number" || typeof file.sha256 !== "string") throw new HttpError(422, "invalid_args", "invalid remote properties");
+        if (!Number.isInteger(file.size) || file.size < 0 || file.size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "file too large");
+        if (!/^[0-9a-f]{64}$/.test(file.sha256)) throw new HttpError(422, "invalid_args", "invalid remote properties");
+        return { filename: file.filename, size: file.size, sha256: file.sha256 };
+      });
+    };
+    const waitForUploads = async (request: RemoteRequest, files: Array<{ filename: string; size: number; sha256: string }>): Promise<
+      { staged: Array<{ originalFilename: string; buffer: Uint8Array; staged: import("../store").FileCommit }> } | { receipt: { status: number; body: string | null; headers?: Record<string, string> } }
+    > => {
+      const scope = { deviceId, requestId: request.id };
+      const digest = requestDigest({
+        method: request.method, path: request.path,
+        body: Object.fromEntries(Object.entries(request.body ?? {}).filter(([key]) => key !== "files")),
+        multipart: true, normalizedFiles: files.map((file) => ({ file, filename: file.filename, hash: file.sha256 })),
+      });
+      const previous = this.options.store.receipts.lookup(scope);
+      if (previous) {
+        if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "request id has a different payload");
+        return { receipt: this.options.store.receipts.read(scope) };
+      }
+      if (fileStreams.size + files.length > REMOTE_FILE_STREAMS) throw new HttpError(429, "stream_limit", "file stream limit");
+      const opened: Array<{ streamId: number; filename: string; size: number; sha256: string }> = [];
+      const waiters: Array<Promise<import("../store").FileCommit>> = [];
+      for (const file of files) {
+        const reserved = this.options.store.reserveAttachmentName(file.filename);
+        const live = this.options.store.openLiveFile(reserved.root, reserved.abs, file.sha256, file.size);
+        const currentStream = ++streamId;
+        opened.push({ streamId: currentStream, filename: file.filename, size: file.size, sha256: file.sha256 });
+        if (file.size === 0) {
+          waiters.push(Promise.resolve(this.options.store.finishLiveFile(live)));
+          continue;
+        }
+        waiters.push(new Promise((resolve, reject) => {
+          fileStreams.set(currentStream, {
+            cancelled: false, direction: "up", live,
+            done: (error, commit) => { if (error || !commit) reject(error ?? new HttpError(422, "failed", "upload failed")); else resolve(commit); },
+          });
+        }));
+      }
+      sendJson(2, { v: 1, id: request.id, status: 202, body: { state: "upload_open" }, upload: { files: opened } });
+      try {
+        const staged = await Promise.all(waiters);
+        return { staged: staged.map((row, index) => ({ originalFilename: files[index]!.filename, buffer: new Uint8Array(), staged: row })) };
+      } catch (error) {
+        for (const row of opened) {
+          const stream = fileStreams.get(row.streamId);
+          if (stream?.live) this.options.store.abortLiveFile(stream.live);
+          retire(row.streamId);
+        }
+        const err = error instanceof HttpError ? error : new HttpError(422, "failed", "upload failed");
+        await this.options.store.receipts.execute(
+          scope, digest, request.method, request.path, request.body ?? {},
+          async () => { throw err; }, [],
+        );
+        throw err;
+      }
+    };
     const respond = async (bytes: Uint8Array) => {
       let id: string | undefined;
       try {
         const request = parseRemoteRequest(bytes); id = request.id;
-        const response = await this.dispatcher.dispatch(request, principal!);
+        const files = claimedFiles(request);
+        const waited = files.length ? await waitForUploads(request, files) : { staged: [] };
+        const staged = "staged" in waited ? waited.staged : [];
+        const dispatchRequest = files.length
+          ? { ...request, body: Object.fromEntries(Object.entries(request.body ?? {}).filter(([key]) => key !== "files")) }
+          : request;
+        const response = "receipt" in waited
+          ? new Response(waited.receipt.body, { status: waited.receipt.status, headers: { "Content-Type": "application/json", ...waited.receipt.headers } })
+          : await this.dispatcher.dispatch(dispatchRequest, principal!, staged.length ? staged : undefined);
         this.dispatcher.uv.assert(principal!);
         const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
         const result: RemoteResponse = { v: 1, id, status: response.status, body: null,
@@ -362,7 +454,7 @@ export class RemoteController {
           try {
             if (data.length > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "file too large");
             if (fileStreams.size >= REMOTE_FILE_STREAMS || streamId === 0xffff_ffff) throw new HttpError(429, "stream_limit", "file stream limit");
-            const currentStream = ++streamId, stream = { cancelled: false };
+            const currentStream = ++streamId, stream: FileStream = { cancelled: false, direction: "down" };
             fileStreams.set(currentStream, stream);
             result.file = { streamId: currentStream, size: data.length };
             sendJson(2, result);
@@ -379,13 +471,15 @@ export class RemoteController {
               const cancelled = new Uint8Array(4); new DataView(cancelled.buffer).setUint32(0, currentStream);
               await new Promise<void>(resolve => enqueue(6, cancelled, undefined, resolve));
             }
-            fileStreams.delete(currentStream);
-            retiredStreams.add(currentStream);
-            if (retiredStreams.size > 32) retiredStreams.delete(retiredStreams.values().next().value!);
+            retire(currentStream);
             return;
           } finally { data.fill(0); }
         }
         this.dispatcher.uv.assert(principal!);
+        if (staged.length && response.status < 400) {
+          sendJson(2, result);
+          return;
+        }
         if (request.path.endsWith("/snapshot") && response.status === 200) {
           const encoded = canonicalBytes(result.body), pageBytes = 512 * 1024;
           try {
@@ -403,8 +497,7 @@ export class RemoteController {
           } finally { encoded.fill(0); }
         } else sendJson(2, result);
       } catch (error) {
-        for (const stream of fileStreams.values()) stream.cancelled = true;
-        fileStreams.clear();
+        abortUploads("failed");
         if (id && alive && principal && this.trust.trusted(device)) sendJson(2, { v: 1, id, status: error instanceof HttpError ? error.status : 400,
           body: remoteError(error instanceof HttpError ? error.code : "rejected") });
         else close();
@@ -433,9 +526,37 @@ export class RemoteController {
             throw new Error("stream_cancel");
           }
           stream.cancelled = true;
+          if (stream.direction === "up") {
+            if (stream.live) this.options.store.abortLiveFile(stream.live);
+            stream.live = undefined;
+            stream.done?.(new HttpError(409, "cancelled", "upload cancelled"));
+            retire(id);
+            enqueue(6, frame.body);
+            return;
+          }
           for (let i = outgoing.length - 1; i >= 0; i--) if (outgoing[i]!.type === 5 &&
             new DataView(outgoing[i]!.body.buffer, outgoing[i]!.body.byteOffset, 4).getUint32(0) === id) {
             const [removed] = outgoing.splice(i, 1); queuedBytes -= removed!.body.length; removed!.body.fill(0); removed!.done?.();
+          }
+          return;
+        }
+        if (frame.type === 5) {
+          const chunk = decodeFileChunk(frame.body);
+          const stream = fileStreams.get(chunk.streamId);
+          if (!stream || stream.direction !== "up" || !stream.live) throw new Error("stream_chunk");
+          try {
+            this.options.store.writeLiveFile(stream.live, Number(chunk.offset), chunk.chunk);
+            if (chunk.eof) {
+              const commit = this.options.store.finishLiveFile(stream.live);
+              stream.live = undefined;
+              stream.done?.(undefined, commit);
+              retire(chunk.streamId);
+            }
+          } catch (error) {
+            if (stream.live) this.options.store.abortLiveFile(stream.live);
+            stream.live = undefined;
+            stream.done?.(error instanceof HttpError ? error : new HttpError(422, "failed", "upload failed"));
+            retire(chunk.streamId);
           }
           return;
         }

@@ -338,28 +338,34 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   return { ...row, attachments, reactions };
 }
 
-export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInput[]): void {
-  if (!attachments.length) return;
+export function reserveAttachmentName(ctx: StoreContext, originalFilename: string): { root: string; abs: string; rel: string } {
   const root = realpathSync(workspacePath(ctx) || ctx.inboxRoot);
   const inboxDir = join(root, "inbox");
   const inbox = classifyPath(root, "inbox");
   if (inbox.zone !== "inside" || (!workspacePath(ctx) && inbox.abs === root)) throw new HttpError(422, "invalid_args", "inbox is outside its permitted root");
-  if (attachments.length) mkdirSync(inboxDir, { recursive: true });
+  mkdirSync(inboxDir, { recursive: true });
+  const raw = basename(originalFilename).replace(/[^\w.\- 一-龥]/g, "_").trim() || "attachment";
+  const ext = extname(raw);
+  const base = basename(raw, ext);
+  let name = raw;
+  let counter = 1;
+  for (;;) {
+    const candidate = classifyPath(root, join(inboxDir, name));
+    if (candidate.zone !== "inside" || (!workspacePath(ctx) && !candidate.abs.startsWith(`${inbox.abs}/`))) throw new HttpError(422, "invalid_args", "attachment is outside its permitted root");
+    if (!existsSync(candidate.abs) && !ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, candidate.rel, root, candidate.rel)) {
+      return { root, abs: candidate.abs, rel: candidate.rel };
+    }
+    name = `${base}-${counter++}${ext}`;
+  }
+}
+
+export function prepareAttachments(ctx: StoreContext, attachments: AttachmentInput[]): void {
+  if (!attachments.length) return;
   try {
     for (const att of attachments) {
       if (att.staged) continue;
-      const raw = basename(att.originalFilename).replace(/[^\w.\- 一-龥]/g, "_").trim() || "attachment";
-      const ext = extname(raw);
-      const base = basename(raw, ext);
-      let name = raw;
-      let counter = 1;
-      for (;;) {
-        const candidate = classifyPath(root, join(inboxDir, name));
-        if (candidate.zone !== "inside" || (!workspacePath(ctx) && !candidate.abs.startsWith(`${inbox.abs}/`))) throw new HttpError(422, "invalid_args", "attachment is outside its permitted root");
-        if (!existsSync(candidate.abs) && !ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, candidate.rel, root, candidate.rel)) break;
-        name = `${base}-${counter++}${ext}`;
-      }
-      att.staged = prepareFile(ctx, root, join(inboxDir, name), att.buffer);
+      const reserved = reserveAttachmentName(ctx, att.originalFilename);
+      att.staged = prepareFile(ctx, reserved.root, reserved.abs, att.buffer);
     }
   } catch (error) {
     for (const att of attachments) if (att.staged) discardFile(ctx, att.staged);

@@ -24,3 +24,10 @@ export function workspacePickerAvailable(
 ): boolean {
   return isTauri(internals);
 }
+
+export type HostTreePage = {
+  path: string;
+  parent?: string | null;
+  truncated: boolean;
+  items: Array<{ name: string; path: string; kind: "file" | "dir" }>;
+};

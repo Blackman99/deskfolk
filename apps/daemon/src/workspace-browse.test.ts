@@ -100,4 +100,10 @@ test("locateWorkspaceFile serves files larger than the UTF-8 write cap", () => {
   expect(located.rel).toBe("clip.mp4");
   expect(located.mime).toBe("video/mp4");
   expect(() => writeWorkspaceFile(root, "clip.mp4", "x".repeat(1_000_001))).toThrow(HttpError);
+  try {
+    writeWorkspaceFile(root, "clip.mp4", "x".repeat(1_000_001));
+  } catch (error) {
+    expect((error as HttpError).code).toBe("too_large");
+    expect((error as HttpError).status).toBe(422);
+  }
 });

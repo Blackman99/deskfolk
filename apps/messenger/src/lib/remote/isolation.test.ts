@@ -39,9 +39,10 @@ test("service worker source caches immutable assets only", () => {
 
 test("hosted and remote settings omit workspace_path from PATCH", () => {
   const modal = readFileSync(new URL("../settings/SettingsModal.svelte", import.meta.url), "utf8");
-  expect(modal).toContain("workspaceReadOnly = $derived(runtime.hosted || runtime.remote)");
-  expect(modal).toContain("if (workspaceReadOnly)");
+  expect(modal).toContain("workspaceReadOnly = $derived(runtime.hosted && !runtime.remote)");
+  expect(modal).toContain("if (workspaceReadOnly || runtime.remote)");
   expect(modal).toContain("t.settings.workspaceHostOnly");
+  expect(modal).toContain("workspaceRemoteBrowse");
   expect(modal).toMatch(/patchSettings\(\{\s*workspace_path:/);
 });
 

@@ -12,6 +12,7 @@ export interface RemoteResponse {
   v: 1; id: string; status: number; body: unknown;
   headers?: { etag?: string; contentType?: string };
   file?: { streamId: number; size: number };
+  upload?: { files: Array<{ streamId: number; filename: string; size: number; sha256: string }> };
   snapshotPage?: { transferId: string; index: number; count: number; bytes: string };
 }
 export interface RemoteReady {

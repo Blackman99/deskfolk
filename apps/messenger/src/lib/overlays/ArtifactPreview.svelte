@@ -119,9 +119,11 @@
 	let canShowSource = $derived(kind === 'text' || kind === 'markdown' || kind === 'html');
 	let sourceMode = $derived(kind === 'text' || (canShowSource && showSource));
 	let byteSource = $derived(artifactByteSource({ mode, relpath, attachment }));
+	let remoteClient = $derived(api?.kind === 'remote');
 	let canOpenOnDisk = $derived(
-		Boolean(workspacePath) && Boolean(relpath) && kind !== 'directory' && !missing
+		!remoteClient && Boolean(workspacePath) && Boolean(relpath) && kind !== 'directory' && !missing
 	);
+	let canRemoteFile = $derived(remoteClient && Boolean(relpath) && kind !== 'directory' && !missing);
 	let canSave = $derived(Boolean(api && relpath && canShowSource && sourceMode && text !== null));
 
 	$effect(() => {
@@ -346,6 +348,7 @@
 		} catch (error) {
 			saveConflict = error instanceof ApiError && error.status === 409;
 			saveError = true;
+			if (error instanceof ApiError && error.code === 'file_limit') missing = true;
 			return false;
 		} finally {
 			saving = false;
@@ -433,6 +436,16 @@
 		}, 1800);
 	}
 
+	function copyRelpath(): void {
+		if (!relpath) return;
+		copyText(relpath);
+		copied = true;
+		if (copiedTimer) clearTimeout(copiedTimer);
+		copiedTimer = setTimeout(() => {
+			copied = false;
+		}, 1800);
+	}
+
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -454,7 +467,7 @@
 		</div>
 		<button type="button" class="modal-close" title={t.common.close} onclick={requestClose}>✕</button>
 	</header>
-	{#if canShowSource || canOpenOnDisk}
+	{#if canShowSource || canOpenOnDisk || canRemoteFile}
 		<div class="artifact-toolbar">
 			{#if canShowSource}
 				<span class="artifact-code-meta mono text-10 tracking-[0.04em] text-muted">{highlightLangLabel(textLang)}</span>
@@ -504,10 +517,17 @@
 				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(false)}>{t.stream.artifactOpenSystem}</button>
 				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(true)}>{t.stream.artifactReveal}</button>
 			{/if}
+			{#if canRemoteFile}
+				<button type="button" class="artifact-tool-btn" onclick={() => void download()}>{t.settings.downloadFile}</button>
+				<button type="button" class="artifact-tool-btn" onclick={copyRelpath}>{t.settings.copyRelpath}</button>
+			{/if}
 		</div>
 	{/if}
 	{#if saveError}
 		<p class="muted artifact-save-error pt-0 px-8 pb-3">{saveConflict ? t.stream.artifactSaveConflict : t.stream.artifactSaveFailed}</p>
+	{/if}
+	{#if remoteClient}
+		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.settings.fileLimitRemote}</p>
 	{/if}
 	<div class="artifact-pane-main flex-1 min-h-0 min-w-0 flex" class:has-tree={showTree}>
 		{#if showTree}

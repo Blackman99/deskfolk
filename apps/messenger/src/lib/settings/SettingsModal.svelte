@@ -306,12 +306,13 @@
 		if (runtime.client === api && runtime.settingsOpen && error) saveFailed = true;
 	}
 
-	const workspaceReadOnly = $derived(runtime.hosted || runtime.remote);
+	const workspaceReadOnly = $derived(runtime.hosted && !runtime.remote);
+	const workspaceRemoteBrowse = $derived(Boolean(runtime.remote));
 
 	async function saveSettings(): Promise<void> {
 		saveFailed = false;
 		fieldErrors = {};
-		if (workspaceReadOnly) {
+		if (workspaceReadOnly || runtime.remote) {
 			closeSettings();
 			return;
 		}
@@ -606,6 +607,15 @@
 										emptyLabel={t.settings.workspaceUnsetValue}
 										unavailableLabel={t.settings.workspacePickerUnavailable}
 										dialogTitle={t.settings.workspaceChoose}
+										remote={workspaceRemoteBrowse}
+										api={runtime.client}
+										browseHint={t.settings.workspaceBrowseRemote}
+										permissionHint={t.settings.workspaceAuthorizeMac}
+										truncatedHint={t.stream.workspaceTruncated}
+										confirmHint={t.settings.workspaceConfirmRoot}
+										upLabel={t.settings.workspaceUp}
+										useLabel={t.settings.workspaceUseFolder}
+										cancelLabel={t.sidebar.cancel}
 										onChange={(next: string) => {
 											runtime.workspacePath = next;
 											clearWorkspaceError();
@@ -1021,7 +1031,7 @@
 				{/if}
 			</div>
 				<div class="modal-foot actions">
-					{#if !workspaceReadOnly}
+					{#if !workspaceReadOnly && !runtime.remote}
 						<button type="button" onclick={() => void saveSettings()}>{t.settings.save}</button>
 					{/if}
 					<button type="button" onclick={closeSettings}>{t.common.close}</button>

@@ -1,6 +1,7 @@
 import { canonicalHash, fromBase64url, requestDigest, type RemoteRequest, type AssertionWire, type RegistrationWire,
   type AssertionResponse, type RegistrationResponse } from "@real-bot/remote";
 import type { LocalApi } from "../local-api";
+import type { AttachmentInput } from "../store";
 import { HttpError } from "../errors";
 import { RemoteTrust, deny } from "./trust";
 import { RemoteUv, type RemotePrincipal } from "./uv";
@@ -34,26 +35,31 @@ function operationDigest(op: PrivilegedOperation): string {
 export class RemoteDispatcher {
   readonly uv: RemoteUv;
   constructor(readonly api: LocalApi, readonly trust: RemoteTrust) { this.uv = new RemoteUv(trust); }
-  async dispatch(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
+  async dispatch(request: RemoteRequest, principal: RemotePrincipal, files?: AttachmentInput[]): Promise<Response> {
     const abort = new AbortController();
     const invalidate = this.trust.onInvalidate(() => abort.abort());
     const signal = principal.signal ? AbortSignal.any([principal.signal, abort.signal]) : abort.signal;
     const bound = { ...principal, signal, active: () => !signal.aborted && principal.active() };
-    try { return await this.dispatchCurrent(request, bound); }
+    try { return await this.dispatchCurrent(request, bound, files); }
     finally { invalidate(); }
   }
-  private async dispatchCurrent(request: RemoteRequest, principal: RemotePrincipal): Promise<Response> {
+  private async dispatchCurrent(request: RemoteRequest, principal: RemotePrincipal, files?: AttachmentInput[]): Promise<Response> {
     this.uv.assert(principal);
     if (request.path.startsWith("/remote/")) return this.control(request, principal);
     if (request.path === "/v1/settings" && request.method !== "GET" && Object.hasOwn(request.body ?? {}, "workspace_path")) deny();
+    if (files?.length) {
+      if (request.method !== "POST" || !/^\/v1\/sessions\/[0-9A-HJKMNP-TV-Z]{26}\/messages$/.test(request.path)) deny();
+    }
     validateBusiness(request);
     const url = new URL(request.path, "http://remote.invalid");
     for (const [key, value] of Object.entries(request.query ?? {}).sort(([a], [b]) => a.localeCompare(b))) url.searchParams.set(key, value);
-    const response = await this.api.dispatchBusiness(new Request(url.toString(), { method: request.method,
-      signal: principal.signal,
-      headers: { "Content-Type": "application/json", "X-Request-Id": request.id, ...(request.ifMatch ? { "If-Match": request.ifMatch } : {}) },
+    const headers: Record<string, string> = { "Content-Type": "application/json", "X-Request-Id": request.id, ...(request.ifMatch ? { "If-Match": request.ifMatch } : {}) };
+    const http = new Request(url.toString(), {
+      method: request.method, signal: principal.signal, headers,
       body: request.method === "GET" ? undefined : JSON.stringify(request.body ?? {}),
-    }), { deviceId: principal.device.device_id, requestId: request.id, requireRevision: true, guard: () => this.uv.assert(principal) });
+    });
+    if (files?.length) Object.defineProperty(http, "stagedFiles", { value: files, enumerable: false });
+    const response = await this.api.dispatchBusiness(http, { deviceId: principal.device.device_id, requestId: request.id, requireRevision: true, guard: () => this.uv.assert(principal) });
     this.uv.assert(principal);
     return response;
   }
