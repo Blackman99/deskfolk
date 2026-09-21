@@ -30,6 +30,8 @@ export type RuntimeOptions = {
   exitProcess?: boolean;
   desktopRemoteChannel?: boolean;
   supervisor?: import("./quiesce").SupervisorControl["kind"];
+  onHandoff?: () => void;
+  onRuntimeStop?: () => void;
 };
 
 export type RuntimeHandle = {
@@ -81,6 +83,9 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
 
   ensureDataDir(options.dataDir);
   const lifecycle = new RuntimeLifecycle(options.dataDir, options.supervisor ?? "none");
+  if (lifecycle.kind === "standalone" && lifecycle.isStopped()) {
+    throw new Error("runtime is stopped");
+  }
   const token = options.token ?? mintLocalToken();
 
   let server: Bun.Server<SocketData>;
@@ -223,6 +228,21 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         stopped: lifecycle.isStopped(),
         restart: restartAvailable(lifecycle, () => windowAlive) ? "available" : "unavailable",
       }),
+      lifecycle,
+      onHandoff: () => {
+        options.onHandoff?.();
+        removeDescriptor(options.dataDir);
+        setTimeout(() => {
+          void stop();
+        }, 0);
+      },
+      onRuntimeStop: () => {
+        options.onRuntimeStop?.();
+        removeDescriptor(options.dataDir);
+        setTimeout(() => {
+          void stop();
+        }, 0);
+      },
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
     remote = new RemoteController({ store, api, maint,

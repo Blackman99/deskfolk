@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "independent-runtime",
+  "description": "Frame-local ACL for mutating independent-runtime ops; the command also rejects development and non-bundled main documents. Status stays on the default capability.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-independent-runtime"]
+}

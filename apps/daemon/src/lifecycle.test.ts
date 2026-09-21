@@ -5,6 +5,17 @@ import { tmpdir } from "node:os";
 import { RuntimeLifecycle } from "./lifecycle";
 import { restartAvailable } from "./remote/maint";
 
+test("standalone kind still never installs a job; latch remains a file only", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rc10-latch-kind-"));
+  try {
+    const lifecycle = new RuntimeLifecycle(dir, "standalone");
+    expect(lifecycle.kind).toBe("standalone");
+    expect(lifecycle.isStopped()).toBe(false);
+    await lifecycle.writeStopLatch();
+    expect(lifecycle.isStopped()).toBe(true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("stop latch is durable, private and never installs or exits a supervisor", async () => {
   const dir = mkdtempSync(join(tmpdir(), "rc07-latch-"));
   try {

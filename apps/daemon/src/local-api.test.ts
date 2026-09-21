@@ -970,6 +970,59 @@ describe("empty roster and settings", () => {
     }
   });
 
+  test("runtime drain and quiesce never exit", async () => {
+    let quit = 0;
+    const h = await start({ onQuit: () => quit++ });
+    const denied = await fetch(`${h.origin}/v1/runtime/drain`);
+    expect(denied.status).toBe(401);
+    const drain = await fetch(`${h.origin}/v1/runtime/drain`, { headers: auth(h) });
+    expect(drain.status).toBe(200);
+    expect(await drain.json()).toEqual({ phase: "running", remaining: [], forced: false });
+    const begin = await fetch(`${h.origin}/v1/runtime/quiesce`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ action: "begin" }),
+    });
+    expect(begin.status).toBe(200);
+    expect(await begin.json()).toEqual({ phase: "drained", remaining: [], forced: false });
+    const cancel = await fetch(`${h.origin}/v1/runtime/quiesce`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ action: "cancel" }),
+    });
+    expect(cancel.status).toBe(200);
+    expect(await cancel.json()).toEqual({ phase: "running", remaining: [], forced: false });
+    expect(quit).toBe(0);
+  });
+
+  test("quiesce begin waits on a live turn and force does not exit", async () => {
+    let quit = 0;
+    const h = await start({ onQuit: () => quit++ });
+    const bot = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const trigger = h.store.postMessage(bot.direct_session.id, { body: "go" });
+    const turn = h.store.createTurn({
+      sessionId: bot.direct_session.id,
+      botId: bot.bot.id,
+      triggerMessageId: trigger.id,
+    });
+    const begin = await fetch(`${h.origin}/v1/runtime/quiesce`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ action: "begin" }),
+    });
+    expect(begin.status).toBe(200);
+    expect(await begin.json()).toEqual({ phase: "draining", remaining: [turn.id], forced: false });
+    const force = await fetch(`${h.origin}/v1/runtime/quiesce`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ action: "force" }),
+    });
+    const body = (await force.json()) as { phase: string; remaining: string[]; forced: boolean };
+    expect(force.status).toBe(200);
+    expect(body.forced).toBe(true);
+    expect(quit).toBe(0);
+  });
+
   test("POST /v1/runtime/quit is authenticated and invokes onQuit", async () => {
     let quit = 0;
     const h = await start({ onQuit: () => quit++ });

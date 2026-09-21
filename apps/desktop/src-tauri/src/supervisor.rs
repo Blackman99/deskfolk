@@ -69,6 +69,10 @@ impl Supervisor {
         self.endpoint = Some(endpoint);
     }
 
+    pub fn set_supervising(&mut self, supervising: bool) {
+        self.supervising = supervising;
+    }
+
     #[cfg(test)]
     pub fn forget(&mut self) {
         self.endpoint = None;
@@ -76,7 +80,7 @@ impl Supervisor {
 
     #[cfg(test)]
     pub fn stop_supervising(&mut self) {
-        self.supervising = false;
+        self.set_supervising(false);
     }
 
     /// Window is alive (including hidden to tray) → spawn a dead daemon.
@@ -102,8 +106,13 @@ impl Supervisor {
     }
 
     /// Stop supervising first so a respawn cannot race the quit POST.
+    /// Already-independent windows only close the UI.
     pub fn quit(&mut self) -> QuitPlan {
+        let was_supervising = self.supervising;
         self.supervising = false;
+        if !was_supervising {
+            return QuitPlan::JustExit;
+        }
         match self.endpoint.take() {
             Some(Endpoint { origin, token }) => QuitPlan::PostThenExit { origin, token },
             None => QuitPlan::JustExit,
@@ -183,6 +192,14 @@ mod tests {
     }
 
     #[test]
+    fn quit_while_independent_does_not_post() {
+        let mut s = Supervisor::new();
+        s.remember(Endpoint::new(17890, "tok"));
+        s.set_supervising(false);
+        assert_eq!(s.quit(), QuitPlan::JustExit);
+    }
+
+    #[test]
     fn login_hidden_flag() {
         assert!(launched_hidden(&["real-bot-desktop", "--hidden"]));
         assert!(!launched_hidden(&["real-bot-desktop"]));
@@ -197,5 +214,26 @@ mod tests {
         assert!(s.is_connected());
         s.forget();
         assert!(!s.is_connected());
+    }
+
+    #[test]
+    fn independent_mode_stops_spawn_without_adopting_the_old_pid() {
+        let mut s = Supervisor::new();
+        s.remember(Endpoint::new(17890, "tok"));
+        s.set_supervising(false);
+        assert!(!s.is_supervising());
+        assert!(s.is_connected());
+        assert_eq!(s.on_probe(Probe::Down, false), Action::Idle);
+        assert_eq!(s.on_probe(Probe::Down, true), Action::Idle);
+        assert!(!s.is_connected());
+    }
+
+    #[test]
+    fn restoring_window_supervision_spawns_after_bootout_down() {
+        let mut s = Supervisor::new();
+        s.set_supervising(false);
+        s.set_supervising(true);
+        assert_eq!(s.on_probe(Probe::Ours, true), Action::Idle);
+        assert_eq!(s.on_probe(Probe::Down, false), Action::Spawn);
     }
 }

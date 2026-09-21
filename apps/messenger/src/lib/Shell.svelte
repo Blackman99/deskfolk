@@ -287,6 +287,7 @@
 		source?: DangerSource;
 	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
+	let confirmingIndependent = $state(false);
 
 	async function confirmDanger(): Promise<void> {
 		const pending = dangerConfirm;
@@ -706,6 +707,8 @@
 			} else if (providerEditor) {
 				e.stopPropagation();
 				providerEditor = null;
+			} else if (confirmingIndependent) {
+				e.stopPropagation();
 			} else if (runtime.settingsOpen) {
 				closeSettings();
 			} else if (runtime.sessionSettingsOpen && nestedProfile) {
@@ -961,6 +964,7 @@
 		bind:saveFailed
 		bind:providerEditor
 		confirmingProvider={dangerConfirm?.kind === 'provider'}
+		bind:confirmingIndependent
 		{patchImmediate}
 		{openDeleteProviderConfirm}
 		{closeSettings}

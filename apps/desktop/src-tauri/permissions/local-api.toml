@@ -12,3 +12,18 @@ commands.allow = ["open_workspace_path"]
 identifier = "allow-pick-workspace-folder"
 description = "Lets the messenger open a native folder picker for the workspace path."
 commands.allow = ["pick_workspace_folder"]
+
+[[permission]]
+identifier = "allow-set-launch-at-login"
+description = "Lets the messenger enable or disable window autolaunch, independent of the runtime agent."
+commands.allow = ["set_launch_at_login"]
+
+[[permission]]
+identifier = "allow-independent-runtime-status"
+description = "Lets the messenger read independent-runtime status. Status-only; mutating ops use the local independent-runtime capability."
+commands.allow = ["independent_runtime_status"]
+
+[[permission]]
+identifier = "allow-independent-runtime"
+description = "Lets only the bundled main window enable, wait, force, disable, or cancel independent-runtime handoff. No renderer-supplied program, plist, or data-dir paths."
+commands.allow = ["independent_runtime"]

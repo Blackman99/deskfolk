@@ -11,6 +11,8 @@
     "allow-local-api-endpoint",
     "allow-open-workspace-path",
     "allow-pick-workspace-folder",
+    "allow-set-launch-at-login",
+    "allow-independent-runtime-status",
     "allow-app-version",
     "allow-check-for-update",
     "allow-open-external-url",

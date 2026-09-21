@@ -81,6 +81,15 @@ test("provider settings chrome lives on settings.*", () => {
   expect(COPY.en.settings.providerModelCount(1)).toBe("1 model");
 });
 
+test("independent runtime copy stays gated and bilingual", () => {
+  expect(COPY.zh.settings.independentRuntime).toBe("独立运行时");
+  expect(COPY.en.settings.independentRuntime).toBe("Independent runtime");
+  expect(COPY.zh.settings.independentRuntimeGated).toContain("G-pack");
+  expect(COPY.en.settings.independentRuntimeGated).toContain("G-pack");
+  expect(COPY.zh.settings.independentRuntimeConfirmEnable).toBe("确认开启独立运行时");
+  expect(COPY.en.settings.independentRuntimeConfirmDisable).toBe("Disable independent runtime");
+});
+
 test("theme settings chrome lives on settings.*", () => {
   expect(COPY.zh.settings.tabPreferences).toBe("基础偏好");
   expect(COPY.en.settings.tabPreferences).toBe("Preferences");

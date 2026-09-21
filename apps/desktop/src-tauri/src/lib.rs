@@ -1,4 +1,6 @@
 mod daemon;
+mod handoff;
+mod launchd;
 mod local_api;
 mod remote_native;
 mod remote_setup;
@@ -20,6 +22,7 @@ struct AppState {
     daemon: Option<std::process::Child>,
     stop_item: Option<MenuItem<tauri::Wry>>,
     quitting: bool,
+    independent_bootstrapped: bool,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -234,6 +237,7 @@ pub fn run() {
             daemon: None,
             stop_item: None,
             quitting: false,
+            independent_bootstrapped: false,
         }))
         .manage(Mutex::new(updates::UpdateCache::default()))
         .manage(remote_native::HelperState::default())
@@ -244,6 +248,9 @@ pub fn run() {
             app_version,
             check_for_update,
             open_external_url,
+            set_launch_at_login,
+            independent_runtime_status,
+            independent_runtime,
             remote_native::remote_native_confirmation,
             remote_setup::remote_local_setup
         ])
@@ -251,6 +258,7 @@ pub fn run() {
             install_menus(app.handle())?;
             install_tray(app.handle())?;
             register_login_item(app.handle());
+            restore_independent_mode(app.handle(), &local_api::data_dir());
             if !launched_hidden(&std::env::args().collect::<Vec<_>>()) {
                 show_main(app.handle());
             }
@@ -382,6 +390,169 @@ fn register_login_item(app: &AppHandle) {
     }
 }
 
+#[tauri::command]
+fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    if tauri::is_dev() {
+        return Ok(false);
+    }
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        if enabled {
+            app.autolaunch().enable().map_err(|err| err.to_string())?;
+        } else {
+            app.autolaunch().disable().map_err(|err| err.to_string())?;
+        }
+        return Ok(app.autolaunch().is_enabled().unwrap_or(enabled));
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Ok(enabled)
+    }
+}
+
+fn independent_policy() -> launchd::IndependentPolicy {
+    launchd::IndependentPolicy::production(cfg!(debug_assertions) || tauri::is_dev())
+}
+
+#[derive(serde::Deserialize)]
+struct IndependentRequest {
+    operation: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct IndependentStatusDto {
+    enabled: bool,
+    available: bool,
+    diagnostic: String,
+    supervising: bool,
+    writer: String,
+    drain: DrainDto,
+    error: Option<String>,
+    warning: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DrainDto {
+    phase: String,
+    remaining: Vec<String>,
+    forced: bool,
+}
+
+fn writer_label(writer: handoff::Writer) -> String {
+    match writer {
+        handoff::Writer::Window => "window".into(),
+        handoff::Writer::Agent => "agent".into(),
+        handoff::Writer::Down => "down".into(),
+    }
+}
+
+fn snapshot_independent_status<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    error: Option<String>,
+    warning: Option<String>,
+) -> IndependentStatusDto {
+    let policy = independent_policy();
+    let probe = probe_bind(BIND_PORT);
+    let marker = local_api::data_dir().join(launchd::MARKER_NAME);
+    let supervising = is_supervising(app);
+    let state = app.state::<Mutex<AppState>>();
+    let snapshot = {
+        let locked = state.lock();
+        match locked {
+            Ok(guard) => handoff::status(
+                &guard.supervisor,
+                handoff::DrainState {
+                    phase: handoff::DrainPhase::Running,
+                    remaining: Vec::new(),
+                    forced: false,
+                },
+                &policy,
+                probe,
+                marker,
+                error.clone(),
+            ),
+            Err(_) => handoff::HandoffStatus {
+                enabled: false,
+                available: policy.available,
+                diagnostic: policy.diagnostic.clone(),
+                supervising,
+                drain: handoff::DrainState {
+                    phase: handoff::DrainPhase::Running,
+                    remaining: Vec::new(),
+                    forced: false,
+                },
+                writer: handoff::Writer::Down,
+                error: error.clone(),
+            },
+        }
+    };
+    IndependentStatusDto {
+        enabled: snapshot.enabled,
+        available: snapshot.available,
+        diagnostic: snapshot.diagnostic,
+        supervising: snapshot.supervising,
+        writer: writer_label(snapshot.writer),
+        drain: DrainDto {
+            phase: match snapshot.drain.phase {
+                handoff::DrainPhase::Running => "running".into(),
+                handoff::DrainPhase::Draining => "draining".into(),
+                handoff::DrainPhase::Drained => "drained".into(),
+            },
+            remaining: snapshot.drain.remaining,
+            forced: snapshot.drain.forced,
+        },
+        error: snapshot.error.or(error),
+        warning,
+    }
+}
+
+#[tauri::command]
+fn independent_runtime_status<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<IndependentStatusDto, String> {
+    Ok(snapshot_independent_status(&app, None, None))
+}
+
+fn independent_runtime_op<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request: IndependentRequest,
+) -> Result<IndependentStatusDto, String> {
+    let policy = independent_policy();
+    match request.operation.as_str() {
+        "enable" | "wait" | "force" => {
+            let reason = handoff::refuse_unqualified_enable(&policy)
+                .err()
+                .unwrap_or_else(|| "g_pack_not_verified".into());
+            Ok(snapshot_independent_status(&app, Some(reason), None))
+        }
+        "disable" => {
+            recover_stale_independent_marker(&app);
+            let reason = handoff::refuse_unqualified_enable(&policy)
+                .err()
+                .unwrap_or_else(|| "g_pack_not_verified".into());
+            Ok(snapshot_independent_status(&app, Some(reason), None))
+        }
+        "cancel" => {
+            restore_window_supervision_unless_adopted(&app);
+            Ok(snapshot_independent_status(&app, None, None))
+        }
+        _ => Err("malformed".into()),
+    }
+}
+
+#[tauri::command]
+fn independent_runtime<R: tauri::Runtime>(
+    _caller: remote_native::BundledNativeCaller,
+    app: tauri::AppHandle<R>,
+    request: IndependentRequest,
+) -> Result<IndependentStatusDto, String> {
+    independent_runtime_op(app, request)
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -391,7 +562,12 @@ fn show_main(app: &AppHandle) {
 }
 
 fn tick(app: &AppHandle) {
-    let desc = local_api::read_descriptor(&local_api::data_dir());
+    let data_dir = local_api::data_dir();
+    restore_independent_mode(app, &data_dir);
+    if is_supervising(app) && !independent_mode_adopted(app, &data_dir) {
+        let _ = local_api::clear_stop_latch(&data_dir);
+    }
+    let desc = local_api::read_descriptor(&data_dir);
     let holder_alive = desc
         .as_ref()
         .map(|d| local_api::pid_alive(d.pid))
@@ -408,7 +584,8 @@ fn tick(app: &AppHandle) {
             let _ = item.set_enabled(connected);
         }
     });
-    if should_spawn && probe_bind(BIND_PORT) == Probe::Down && !stop_latch_present(&local_api::data_dir()) {
+    let latched = stop_latch_present(&data_dir);
+    if should_spawn && !latched && probe_bind(BIND_PORT) == Probe::Down {
         let child = app
             .path()
             .resource_dir()
@@ -416,6 +593,75 @@ fn tick(app: &AppHandle) {
             .and_then(|dir| daemon::spawn(&dir));
         adopt_spawned_daemon(app, child);
     }
+}
+
+fn independent_adoption<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> (launchd::IndependentPolicy, bool, bool) {
+    let policy = independent_policy();
+    let bootstrapped = is_independent_bootstrapped(app);
+    let agent_loaded = policy.available && launchd::agent_loaded_in_gui_domain();
+    (policy, bootstrapped, agent_loaded)
+}
+
+fn independent_mode_adopted<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    data_dir: &std::path::Path,
+) -> bool {
+    let marker = data_dir.join(launchd::MARKER_NAME);
+    let (policy, bootstrapped, agent_loaded) = independent_adoption(app);
+    launchd::adopt_independent_marker(&policy, &marker, bootstrapped, agent_loaded)
+}
+
+fn restore_independent_mode<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_dir: &std::path::Path) {
+    let marker = data_dir.join(launchd::MARKER_NAME);
+    let (policy, bootstrapped, agent_loaded) = independent_adoption(app);
+    let state = app.state::<Mutex<AppState>>();
+    let mut guard = match state.lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    let _ = handoff::restore_independent_mode(
+        &mut guard.supervisor,
+        &policy,
+        &marker,
+        bootstrapped,
+        agent_loaded,
+    );
+}
+
+fn recover_stale_independent_marker<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let data_dir = local_api::data_dir();
+    let marker = data_dir.join(launchd::MARKER_NAME);
+    if independent_mode_adopted(app, &data_dir) {
+        return;
+    }
+    let state = app.state::<Mutex<AppState>>();
+    if let Ok(mut guard) = state.lock() {
+        guard.supervisor.set_supervising(true);
+        guard.independent_bootstrapped = false;
+    };
+    let _ = launchd::remove_file_if_exists(&marker);
+    let _ = launchd::remove_file_if_exists(&data_dir.join(launchd::PLIST_NAME));
+}
+
+fn restore_window_supervision_unless_adopted<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let data_dir = local_api::data_dir();
+    if independent_mode_adopted(app, &data_dir) {
+        return;
+    }
+    let state = app.state::<Mutex<AppState>>();
+    if let Ok(mut guard) = state.lock() {
+        guard.supervisor.set_supervising(true);
+    };
+}
+
+fn is_independent_bootstrapped<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    let state = app.state::<Mutex<AppState>>();
+    state
+        .lock()
+        .map(|s| s.independent_bootstrapped)
+        .unwrap_or(false)
 }
 
 /// Update supervisor under the lock, then call `set_menu` after release.
@@ -433,16 +679,17 @@ fn apply_probe(
             Ok(guard) => guard,
             Err(_) => return false,
         };
-        if !state.supervisor.is_supervising() {
+        if state.quitting {
             return false;
         }
+        let supervising = state.supervisor.is_supervising();
         let action = state.supervisor.on_probe(probe, holder_alive);
         if probe == Probe::Ours {
             if let Some(endpoint) = endpoint {
                 state.supervisor.remember(endpoint);
             }
         }
-        if action == Action::Spawn {
+        if supervising && action == Action::Spawn {
             let alive = state
                 .daemon
                 .as_mut()
@@ -457,7 +704,7 @@ fn apply_probe(
     should_spawn
 }
 
-fn is_supervising(app: &AppHandle) -> bool {
+fn is_supervising<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     let state = app.state::<Mutex<AppState>>();
     state
         .lock()
@@ -507,7 +754,7 @@ fn request_stop(app: &AppHandle) {
 
 fn begin_quit(app: &AppHandle) {
     let state = app.state::<Mutex<AppState>>();
-    let (plan, child) = {
+    let (plan, child, was_supervising) = {
         let mut state = match state.lock() {
             Ok(guard) => guard,
             Err(_) => return,
@@ -516,10 +763,11 @@ fn begin_quit(app: &AppHandle) {
             return;
         }
         state.quitting = true;
-        (state.supervisor.quit(), state.daemon.take())
+        let was_supervising = state.supervisor.is_supervising();
+        (state.supervisor.quit(), state.daemon.take(), was_supervising)
     };
     let plan = match plan {
-        QuitPlan::JustExit => descriptor_quit_fallback(),
+        QuitPlan::JustExit if was_supervising => descriptor_quit_fallback(),
         other => other,
     };
     let app = app.clone();
@@ -563,6 +811,7 @@ mod tests {
             daemon: None,
             stop_item: None,
             quitting: false,
+            independent_bootstrapped: false,
         })
     }
 
@@ -713,6 +962,7 @@ mod tests {
             .supervisor
             .remember(Endpoint::new(17890, "tok"));
         let plan = state.lock().unwrap().supervisor.quit();
+        state.lock().unwrap().quitting = true;
         assert!(matches!(plan, QuitPlan::PostThenExit { .. }));
         let mut menu_called = false;
         let should_spawn = apply_probe(&state, Probe::Down, None, false, |_, _| {
@@ -723,5 +973,146 @@ mod tests {
         let guard = state.lock().unwrap();
         assert!(!guard.supervisor.is_supervising());
         assert!(!guard.supervisor.is_connected());
+    }
+
+    #[test]
+    fn apply_probe_while_independent_tracks_the_agent_without_spawning() {
+        let state = test_state();
+        state.lock().unwrap().supervisor.set_supervising(false);
+        let should_spawn = apply_probe(
+            &state,
+            Probe::Ours,
+            Some(Endpoint::new(17890, "agent")),
+            true,
+            |_, connected| {
+                assert!(connected);
+                assert_main_thread_can_read(&state, true);
+            },
+        );
+        assert!(!should_spawn);
+        assert!(state.lock().unwrap().supervisor.is_connected());
+        let down = apply_probe(&state, Probe::Down, None, false, |_, connected| {
+            assert!(!connected);
+        });
+        assert!(!down);
+    }
+
+    struct IndependentRuntimeCaller;
+    impl<'a, R: tauri::Runtime> tauri::ipc::CommandArg<'a, R> for IndependentRuntimeCaller {
+        fn from_command(
+            command: tauri::ipc::CommandItem<'a, R>,
+        ) -> Result<Self, tauri::ipc::InvokeError> {
+            remote_native::BundledNativeCaller::from_item(command, false).map(|_| Self)
+        }
+    }
+
+    #[tauri::command]
+    fn independent_runtime_release_fixture<R: tauri::Runtime>(
+        _caller: IndependentRuntimeCaller,
+        app: tauri::AppHandle<R>,
+        request: IndependentRequest,
+    ) -> Result<IndependentStatusDto, String> {
+        independent_runtime_op(app, request)
+    }
+
+    #[test]
+    fn independent_runtime_mutators_use_bundled_frame_acl() {
+        use serde_json::json;
+        use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
+        let mut context = crate::app_context();
+        context.config_mut().app.windows.clear();
+        for command in [
+            "independent_runtime_status",
+            "independent_runtime_release_fixture",
+            "independent_runtime",
+        ] {
+            context
+                .runtime_authority_mut()
+                .__allow_command(command.into(), tauri::utils::acl::ExecutionContext::Local);
+        }
+        let app = mock_builder()
+            .manage(test_state())
+            .invoke_handler(tauri::generate_handler![
+                independent_runtime_status,
+                independent_runtime_release_fixture,
+                independent_runtime
+            ])
+            .build(context)
+            .unwrap();
+        let bundled = tauri::WebviewWindowBuilder::new(
+            &app,
+            "main",
+            tauri::WebviewUrl::External("tauri://localhost/index.html".parse().unwrap()),
+        )
+        .build()
+        .unwrap();
+        let invoke = |command: &str, frame: &str, operation: Option<&str>| {
+            let body = match operation {
+                Some(operation) => json!({ "request": { "operation": operation } }),
+                None => json!({}),
+            };
+            get_ipc_response(
+                &bundled,
+                tauri::webview::InvokeRequest {
+                    cmd: command.into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: frame.parse().unwrap(),
+                    body: tauri::ipc::InvokeBody::Json(body),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.into(),
+                },
+            )
+        };
+        let status = invoke("independent_runtime_status", "tauri://localhost/index.html", None)
+            .expect("status from bundled main");
+        let status: serde_json::Value = match status {
+            tauri::ipc::InvokeResponseBody::Json(body) => serde_json::from_str(&body).unwrap(),
+            other => panic!("expected json status, got {other:?}"),
+        };
+        assert_eq!(status["available"], json!(false));
+        assert_eq!(status["supervising"], json!(true));
+        assert!(invoke(
+            "independent_runtime",
+            "tauri://localhost/index.html",
+            Some("enable")
+        )
+        .is_err());
+        for operation in ["enable", "wait", "force", "disable", "cancel"] {
+            let ok = invoke(
+                "independent_runtime_release_fixture",
+                "tauri://localhost/index.html",
+                Some(operation),
+            );
+            assert!(ok.is_ok(), "{operation}: {ok:?}");
+        }
+        for frame in [
+            "blob:tauri://localhost/fixture",
+            "about:srcdoc",
+            "https://evil.example/",
+        ] {
+            assert!(
+                invoke("independent_runtime_release_fixture", frame, Some("enable")).is_err(),
+                "{frame}"
+            );
+        }
+        bundled
+            .navigate("http://localhost:5173/".parse().unwrap())
+            .unwrap();
+        for operation in ["enable", "wait", "force", "disable", "cancel"] {
+            assert!(
+                invoke(
+                    "independent_runtime_release_fixture",
+                    "http://localhost:5173/",
+                    Some(operation)
+                )
+                .is_err(),
+                "{operation}"
+            );
+            assert!(
+                invoke("independent_runtime", "http://localhost:5173/", Some(operation)).is_err(),
+                "{operation}"
+            );
+        }
     }
 }

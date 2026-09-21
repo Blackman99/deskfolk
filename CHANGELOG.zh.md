@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 桌面
+
+- 设置可选择独立 LaunchAgent 运行时，**默认关**。生产仍 gated（`g_pack_not_verified`）；开发态不安装作业。开启顺序为排空 → 停窗口 Spawn → 无闩退出 → 等待端口空 → bootstrap 新子进程；失败保持 Down。残留 `runtime.independent` 不会在策略不可用或作业未加载时关掉窗口监督。独立模式已开启时退出窗口不会停 agent；显式 stop 写 `runtime.stop`，PathState 不再拉起。交接类 IPC 仅 bundled 主文档可调。`launch_at_login` 仍是窗口登录项，与运行时作业独立。G-pack / G-launchd 未通过。
+
 ### 日程
 
 - 日程卡片区分未知/待确认请求与版本冲突，提供复用原内容和编号的“重试原请求”。重试后保留未发送的修改草稿，核对列表并重新打开后再保存。

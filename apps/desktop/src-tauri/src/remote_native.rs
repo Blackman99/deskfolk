@@ -70,7 +70,7 @@ fn authorize_document(
 }
 
 impl BundledNativeCaller {
-    fn from_item<R: tauri::Runtime>(
+    pub(crate) fn from_item<R: tauri::Runtime>(
         command: tauri::ipc::CommandItem<'_, R>,
         development: bool,
     ) -> Result<Self, tauri::ipc::InvokeError> {

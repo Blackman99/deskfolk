@@ -30,6 +30,12 @@
 		type FieldErrorKind,
 		type SettingsFieldErrors
 	} from './wizard-save.ts';
+	import {
+		gatedIndependentStatus,
+		invokeIndependentRuntime,
+		setLaunchAtLogin,
+		type IndependentStatus
+	} from './independent-runtime.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -40,6 +46,7 @@
 		providerEditor: ProviderEditorState | null;
 		/** The danger dialog is up for an endpoint, so neither backdrop should close. */
 		confirmingProvider: boolean;
+		confirmingIndependent: boolean;
 		patchImmediate: (patch: {
 			locale?: 'zh' | 'en';
 			theme?: 'system' | 'light' | 'dark';
@@ -55,6 +62,7 @@
 		saveFailed = $bindable(false),
 		providerEditor = $bindable(null),
 		confirmingProvider,
+		confirmingIndependent = $bindable(false),
 		patchImmediate,
 		openDeleteProviderConfirm,
 		closeSettings
@@ -90,6 +98,84 @@
 	}
 
 	let activeSettingsTab = $state<'general' | 'preferences' | 'models' | 'mcp' | 'about'>('general');
+	let independent = $state<IndependentStatus>(gatedIndependentStatus('g_pack_not_verified'));
+	let independentBusy = $state(false);
+	let independentConfirm = $state<'enable' | 'disable' | null>(null);
+	$effect(() => {
+		confirmingIndependent = independentConfirm !== null;
+	});
+	$effect(() => {
+		if (!runtime.settingsOpen) {
+			independentConfirm = null;
+			return;
+		}
+		void refreshIndependent();
+	});
+
+	async function refreshIndependent(): Promise<void> {
+		independent = await invokeIndependentRuntime('status');
+	}
+
+	function independentReason(status: IndependentStatus): string {
+		if (status.diagnostic === 'dev_does_not_install_agent') return t.settings.independentRuntimeDev;
+		if (status.diagnostic === 'browser_cannot_install_agent') return t.settings.independentRuntimeBrowser;
+		if (status.error === 'bootstrap failed' || status.error === 'port_not_empty') return t.settings.independentRuntimeFailed;
+		return t.settings.independentRuntimeGated;
+	}
+
+	async function onLaunchAtLogin(checked: boolean): Promise<void> {
+		if (!(await patchImmediate({ launch_at_login: checked }))) return;
+		await setLaunchAtLogin(checked);
+	}
+
+	function requestIndependent(next: boolean): void {
+		if (independentBusy) return;
+		independentConfirm = next ? 'enable' : 'disable';
+	}
+
+	async function confirmIndependent(): Promise<void> {
+		const action = independentConfirm;
+		if (!action) return;
+		independentBusy = true;
+		try {
+			independent = await invokeIndependentRuntime(action);
+			if (independent.drain.phase === 'draining') return;
+			if (!independent.available || independent.error) return;
+			independentConfirm = null;
+		} finally {
+			independentBusy = false;
+		}
+	}
+
+	async function waitIndependent(): Promise<void> {
+		independentBusy = true;
+		try {
+			independent = await invokeIndependentRuntime('wait');
+			if (independent.drain.phase !== 'draining') independentConfirm = null;
+		} finally {
+			independentBusy = false;
+		}
+	}
+
+	async function forceIndependent(): Promise<void> {
+		independentBusy = true;
+		try {
+			independent = await invokeIndependentRuntime('force');
+			if (independent.drain.phase !== 'draining') independentConfirm = null;
+		} finally {
+			independentBusy = false;
+		}
+	}
+
+	async function cancelIndependent(): Promise<void> {
+		independentBusy = true;
+		try {
+			independent = await invokeIndependentRuntime('cancel');
+			independentConfirm = null;
+		} finally {
+			independentBusy = false;
+		}
+	}
 
 	/** What the release body says changed, drawn in the About card instead of only linked to. */
 	const updateChanges = $derived(
@@ -366,11 +452,11 @@
 		aria-modal="true"
 		tabindex="-1"
 		onclick={(e) => {
-			if (e.target === e.currentTarget && !providerEditor && !confirmingProvider)
+			if (e.target === e.currentTarget && !providerEditor && !confirmingProvider && !confirmingIndependent)
 				closeSettings();
 		}}
 		onkeydown={(e) => {
-			if (e.key === 'Escape' && !providerEditor && !confirmingProvider)
+			if (e.key === 'Escape' && !providerEditor && !confirmingProvider && !confirmingIndependent)
 				closeSettings();
 		}}
 	>
@@ -887,9 +973,40 @@
 												type="checkbox"
 												checked={snapshot.settings.launch_at_login}
 												onchange={(ev) =>
-													void patchImmediate({
-														launch_at_login: (ev.currentTarget as HTMLInputElement).checked
-													})}
+													void onLaunchAtLogin((ev.currentTarget as HTMLInputElement).checked)}
+											/>
+											<span class="switch-track" aria-hidden="true">
+												<span class="switch-thumb"></span>
+											</span>
+										</label>
+									</div>
+								</div>
+
+								<div class="settings-row">
+									<div class="settings-row-info">
+										<span class="settings-row-title" id="independent-runtime-label">{t.settings.independentRuntime}</span>
+										<span class="settings-row-desc">{t.settings.independentRuntimeDesc}</span>
+										{#if !independent.available || independent.error}
+											<span class="settings-row-desc" data-independent-reason>{independentReason(independent)}</span>
+										{/if}
+									</div>
+									<div class="settings-row-action">
+										<label
+											class="switch-toggle relative inline-flex items-center select-none"
+											class:is-disabled={!independent.available}
+											for="independent-runtime-toggle"
+											aria-labelledby="independent-runtime-label"
+										>
+											<input
+												id="independent-runtime-toggle"
+												type="checkbox"
+												checked={independent.enabled}
+												disabled={independentBusy}
+												onchange={(ev) => {
+													const next = (ev.currentTarget as HTMLInputElement).checked;
+													ev.currentTarget.checked = independent.enabled;
+													requestIndependent(next);
+												}}
 											/>
 											<span class="switch-track" aria-hidden="true">
 												<span class="switch-thumb"></span>
@@ -1190,6 +1307,53 @@
 					<button type="button" onclick={() => void saveProvider()}>{t.settings.providerSave}</button>
 				{/if}
 				<button type="button" onclick={closeProviderEditor}>{t.common.close}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+{#if runtime.settingsOpen && independentConfirm}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="modal-backdrop confirm-backdrop z-[120]"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="independent-runtime-confirm-title"
+		tabindex="-1"
+		onclick={(e) => {
+			if (e.target === e.currentTarget && independent.drain.phase !== 'draining') void cancelIndependent();
+		}}
+	>
+		<div class="modal-dialog confirm-dialog">
+			<div class="modal-head">
+				<h2 id="independent-runtime-confirm-title">
+					{independentConfirm === 'enable'
+						? t.settings.independentRuntimeConfirmEnable
+						: t.settings.independentRuntimeConfirmDisable}
+				</h2>
+				<button type="button" class="modal-close" title={t.common.close} onclick={() => void cancelIndependent()}>✕</button>
+			</div>
+			<div class="modal-body">
+				<p class="confirm-copy">
+					{independentConfirm === 'enable'
+						? t.settings.independentRuntimeConfirmEnableBody
+						: t.settings.independentRuntimeConfirmDisableBody}
+				</p>
+				{#if independent.drain.phase === 'draining'}
+					<p class="confirm-copy" data-independent-waiting>{t.settings.independentRuntimeWaiting}</p>
+				{/if}
+				{#if independent.error}
+					<p class="confirm-copy" data-independent-error>{independentReason(independent)}</p>
+				{/if}
+			</div>
+			<div class="modal-foot actions">
+				{#if independent.drain.phase === 'draining'}
+					<button type="button" onclick={() => void waitIndependent()}>{t.settings.independentRuntimeWaiting}</button>
+					<button type="button" class="deny" onclick={() => void forceIndependent()}>{t.settings.independentRuntimeForce}</button>
+					<button type="button" onclick={() => void cancelIndependent()}>{t.settings.independentRuntimeCancel}</button>
+				{:else}
+					<button type="button" onclick={() => void cancelIndependent()}>{t.settings.independentRuntimeCancel}</button>
+					<button type="button" class="deny" onclick={() => void confirmIndependent()}>{t.settings.independentRuntimeConfirm}</button>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -1976,6 +2140,9 @@
 	}.switch-toggle input:focus-visible + .switch-track{
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
+	}
+	.switch-toggle.is-disabled {
+		opacity: 0.55;
 	}
 
 	.btn-check-update {
