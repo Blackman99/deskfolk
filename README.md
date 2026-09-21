@@ -33,9 +33,9 @@
 
 ## Get it
 
-**System requirement: macOS 13.0 (Ventura) or later**, on Apple silicon or Intel. Current builds bundle the daemon and native helper; published bundles do not require an installed Bun runtime.
+**System requirement: macOS 13.0 (Ventura) or later**, on Apple silicon or Intel.
 
-**Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. If Gatekeeper blocks the first launch, right-click → Open, or run:
+**Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. The app carries its own runtime and native helper, so there is nothing else to install — no Bun, no Node, no checkout. If Gatekeeper blocks the first launch, right-click → Open, or run:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Real Bot.app"

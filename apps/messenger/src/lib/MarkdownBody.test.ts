@@ -25,6 +25,29 @@ test("a GFM table keeps table markup with a header row and cells", () => {
   close();
 });
 
+/** wrap-anywhere + width:100% in a fit-content bubble turns short CJK headers into a column of one character. */
+test("a dense table keeps short headers on one line and scrolls instead of wrapping every character", () => {
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: [
+      "| 序号 | 题材类型 | 片名暂定 | 核心戏剧高概念 |",
+      "| --- | --- | --- | --- |",
+      "| 方案 A | 科幻悬疑 | 《第七次唤醒》 | 一名孤身驻守在深空观测站的女工程师 |",
+    ].join("\n"),
+  });
+  const wrap = host.querySelector(".md-table-wrap") as HTMLElement;
+  const table = host.querySelector("table") as HTMLTableElement;
+  const header = host.querySelector("th") as HTMLElement;
+  const cell = host.querySelector("td") as HTMLElement;
+  expect(getComputedStyle(wrap).overflowX).toBe("auto");
+  expect(getComputedStyle(table).width).toBe("max-content");
+  expect(getComputedStyle(table).minWidth).toBe("100%");
+  expect(getComputedStyle(header).whiteSpace).toBe("nowrap");
+  expect(getComputedStyle(cell).overflowWrap).toBe("break-word");
+  expect(getComputedStyle(cell).wordBreak).toBe("normal");
+  close();
+});
+
 test("headings lists and inline code match the shared renderer", () => {
   const { host, close } = render(MarkdownBody, {
     ...labels,

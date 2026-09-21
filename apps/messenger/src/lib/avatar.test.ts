@@ -4,11 +4,13 @@ import {
   avatarEditorMode,
   avatarEditorPrimaryActions,
   avatarSrc,
+  boringAvatarName,
   botAvatarColor,
   classifyAvatarFile,
   compositeAvatarLayout,
   coverDrawParams,
   fileToAvatarDataUri,
+  followGeneratedAvatar,
   isCustomAvatar,
   mimeFromAvatarFile,
   sessionAvatars,
@@ -68,6 +70,68 @@ describe("isCustomAvatar", () => {
     expect(isCustomAvatar("data:image/svg+xml;utf8,%3Csvg")).toBe(false);
     expect(isCustomAvatar("")).toBe(false);
     expect(isCustomAvatar(null)).toBe(false);
+  });
+});
+
+describe("generated avatar from the Bot name", () => {
+  test("uses the trimmed name, and a salt only after Randomize", () => {
+    expect(boringAvatarName("")).toBe("bot");
+    expect(boringAvatarName("  Writer  ")).toBe("Writer");
+    expect(boringAvatarName("Writer", 0)).toBe("Writer");
+    expect(boringAvatarName("Writer", 3)).toBe("Writer_3");
+  });
+
+  test("an empty create draft follows the name as it is typed", () => {
+    const empty = generateBoringAvatar({ name: "bot" });
+    const writer = generateBoringAvatar({ name: "Writer" });
+    const first = followGeneratedAvatar({
+      name: "",
+      current: "",
+      lastGenerated: "",
+    });
+    expect(first.avatar).toBe(empty);
+    expect(first.changed).toBe(true);
+    const renamed = followGeneratedAvatar({
+      name: "Writer",
+      current: first.avatar,
+      lastGenerated: first.lastGenerated,
+    });
+    expect(renamed.avatar).toBe(writer);
+    expect(renamed.changed).toBe(true);
+  });
+
+  test("an uploaded image stays put when the name changes", () => {
+    const upload = "data:image/jpeg;base64,abc";
+    const held = followGeneratedAvatar({
+      name: "Writer",
+      current: upload,
+      lastGenerated: generateBoringAvatar({ name: "bot" }),
+    });
+    expect(held.avatar).toBe(upload);
+    expect(held.changed).toBe(false);
+  });
+
+  test("a stored generated drawing is left alone until Randomize or Style", () => {
+    const stored = generateBoringAvatar({ name: "Writer", variant: "pixel" });
+    const held = followGeneratedAvatar({
+      name: "Scribe",
+      current: stored,
+      lastGenerated: "",
+    });
+    expect(held.avatar).toBe(stored);
+    expect(held.changed).toBe(false);
+  });
+
+  test("Randomize keeps following the name with the same salt", () => {
+    const fromEmpty = generateBoringAvatar({ name: "bot_2" });
+    const next = followGeneratedAvatar({
+      name: "Writer",
+      salt: 2,
+      current: fromEmpty,
+      lastGenerated: fromEmpty,
+    });
+    expect(next.avatar).toBe(generateBoringAvatar({ name: "Writer_2" }));
+    expect(next.changed).toBe(true);
   });
 });
 

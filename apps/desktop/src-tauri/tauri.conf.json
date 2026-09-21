@@ -1,10 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Real Bot",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.5",
   "identifier": "com.real-bot.desktop",
   "build": {
-    "beforeDevCommand": "pnpm --filter @real-bot/messenger dev",
+    "beforeDevCommand": "pnpm --filter @real-bot/daemon build:sidecar && pnpm --filter @real-bot/messenger dev",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "pnpm --filter @real-bot/messenger build && pnpm --filter @real-bot/desktop build:native",
     "frontendDist": "../../messenger/build"
@@ -16,6 +16,8 @@
         "title": "Real Bot",
         "width": 1100,
         "height": 760,
+        "minWidth": 640,
+        "minHeight": 480,
         "visible": false
       }
     ],

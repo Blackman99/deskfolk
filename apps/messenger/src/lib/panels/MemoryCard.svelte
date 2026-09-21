@@ -97,6 +97,16 @@
 	}
 </script>
 
+<svelte:window
+	onkeydowncapture={(e) => {
+		if (editing && e.key === 'Escape' && !busy) {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			closeEdit();
+		}
+	}}
+/>
+
 <div class="panel-card">
 	<div class="panel-card-head">
 		<div class="flex items-center gap-2">
@@ -128,7 +138,10 @@
 							<button
 								type="button"
 								class="memory-icon-btn"
-								onclick={() => openEdit(memory)}
+								onclick={(e) => {
+									e.stopPropagation();
+									openEdit(memory);
+								}}
 								title={t.sidebar.memoryEdit}
 								aria-label={t.sidebar.memoryEdit}
 							>
@@ -175,33 +188,63 @@
 </div>
 
 {#if editing}
-	<div class="modal-backdrop" role="presentation" onclick={closeEdit}></div>
-	<div class="modal-dialog memory-modal" role="dialog" aria-modal="true">
-		<div class="modal-head">
-			<span class="modal-title">{t.sidebar.memoryEdit}</span>
-		</div>
-		<div class="modal-body flex flex-col gap-3">
-			<label class="field">
-				<span class="field-label">{t.sidebar.memorySubject}</span>
-				<input id="memory-subject" type="text" bind:value={draft.subject} />
-				{#if errors.subject}<span class="field-error" role="alert">{errors.subject}</span>{/if}
-			</label>
-			<label class="field">
-				<span class="field-label">{t.sidebar.memoryBody}</span>
-				<textarea id="memory-body" rows="4" bind:value={draft.body}></textarea>
-				{#if errors.body}<span class="field-error" role="alert">{errors.body}</span>{/if}
-			</label>
-		</div>
-		<div class="modal-foot flex items-center justify-end gap-3">
-			<button type="button" class="btn-xs" onclick={closeEdit}>{t.sidebar.memoryCancel}</button>
-			<button
-				type="button"
-				class="btn-xs btn-primary"
-				disabled={busy || !memoryDraftDirty(draft, baseline)}
-				onclick={() => void save()}
-			>
-				{t.sidebar.memorySave}
-			</button>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="modal-backdrop memory-modal-backdrop"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="memory-modal-title"
+		tabindex="-1"
+		onclick={(e) => {
+			e.stopPropagation();
+			if (e.target === e.currentTarget && !busy) closeEdit();
+		}}
+		onpointerdown={(e) => e.stopPropagation()}
+		onkeydown={(e) => {
+			if (e.key === 'Escape' && !busy) {
+				e.stopImmediatePropagation();
+				closeEdit();
+			}
+		}}
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="modal-dialog memory-modal"
+			onclick={(e) => e.stopPropagation()}
+			onpointerdown={(e) => e.stopPropagation()}
+		>
+			<div class="modal-head">
+				<h2 id="memory-modal-title">{t.sidebar.memoryEdit}</h2>
+				<button
+					type="button"
+					class="modal-close"
+					title={t.common.close}
+					disabled={busy}
+					onclick={closeEdit}
+				>✕</button>
+			</div>
+			<div class="modal-body">
+				<div class="modal-section">
+					<label for="memory-subject">{t.sidebar.memorySubject}</label>
+					<input id="memory-subject" type="text" bind:value={draft.subject} disabled={busy} />
+					{#if errors.subject}<p class="field-error" role="alert">{errors.subject}</p>{/if}
+				</div>
+				<div class="modal-section">
+					<label for="memory-body">{t.sidebar.memoryBody}</label>
+					<textarea id="memory-body" rows="4" bind:value={draft.body} disabled={busy}></textarea>
+					{#if errors.body}<p class="field-error" role="alert">{errors.body}</p>{/if}
+				</div>
+			</div>
+			<div class="modal-foot">
+				<button
+					type="button"
+					disabled={busy || !memoryDraftDirty(draft, baseline)}
+					onclick={() => void save()}
+				>
+					{t.sidebar.memorySave}
+				</button>
+				<button type="button" disabled={busy} onclick={closeEdit}>{t.sidebar.memoryCancel}</button>
+			</div>
 		</div>
 	</div>
 {/if}
@@ -324,5 +367,15 @@
 
 	.memory-more:hover {
 		color: var(--accent);
+	}
+
+	.memory-modal-backdrop {
+		z-index: 105;
+	}
+
+	.modal-dialog.memory-modal {
+		width: 440px;
+		max-width: 94vw;
+		max-height: 88vh;
 	}
 </style>

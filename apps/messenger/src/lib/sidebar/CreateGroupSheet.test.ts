@@ -137,3 +137,43 @@ test("close asks the shell to close it", () => {
   expect(closed).toBe(1);
   close();
 });
+
+test("a click outside the sheet closes it", () => {
+  const runtime = fakeRuntime();
+  let closed = 0;
+  const { host, close } = render(CreateGroupSheet, { runtime, bots, t, onClose: () => (closed += 1) });
+  const backdrop = host.querySelector(".modal-backdrop") as HTMLElement;
+  mouseDown(backdrop);
+  click(backdrop);
+  expect(closed).toBe(1);
+  close();
+});
+
+test("a drag that starts inside the sheet and releases on the backdrop does not close it", () => {
+  const runtime = fakeRuntime();
+  let closed = 0;
+  const { host, close } = render(CreateGroupSheet, { runtime, bots, t, onClose: () => (closed += 1) });
+  const backdrop = host.querySelector(".modal-backdrop") as HTMLElement;
+  const sheet = host.querySelector(".modal-dialog") as HTMLElement;
+  // The press lands inside the sheet, the release on the backdrop. The browser reports the click
+  // on their common ancestor, the backdrop, which used to read as an outside click.
+  mouseDown(sheet);
+  click(backdrop);
+  expect(closed).toBe(0);
+  close();
+});
+
+test("a sheet that swallows the press still keeps a drag-out from closing it", () => {
+  const runtime = fakeRuntime();
+  let closed = 0;
+  const { host, close } = render(CreateGroupSheet, { runtime, bots, t, onClose: () => (closed += 1) });
+  const backdrop = host.querySelector(".modal-backdrop") as HTMLElement;
+  const sheet = host.querySelector(".modal-dialog") as HTMLElement;
+  // A custom field inside a sheet may stop `mousedown` from bubbling. The backdrop records the
+  // press on the way down, so a drag that began inside still cannot read as an outside click.
+  sheet.addEventListener("mousedown", (event) => event.stopPropagation());
+  mouseDown(sheet);
+  click(backdrop);
+  expect(closed).toBe(0);
+  close();
+});

@@ -39,6 +39,7 @@ import type {
   SyncFrame,
   ThinkingLevel,
   Turn,
+  TaskArtifacts,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import {
@@ -385,6 +386,10 @@ export class RemoteApi {
       ask_id: opts.askId ?? null,
       ...(files.length ? { files: files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 })) } : {}),
     }, undefined, {}, false, null, undefined, files);
+  }
+  /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
+  async taskArtifacts(taskId: string): Promise<TaskArtifacts> {
+    return this.get<TaskArtifacts>(`/v1/tasks/${encodeURIComponent(taskId)}/artifacts`);
   }
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {
     const query = path ? `?path=${encodeURIComponent(path)}` : "";

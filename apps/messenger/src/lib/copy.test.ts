@@ -27,6 +27,12 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
   expect(COPY.en.chat.replyTo("Writer")).toBe("Replying to Writer");
   expect(COPY.zh.chat.suggestNext).toBe("建议下一步");
   expect(COPY.en.chat.suggestNext).toBe("Suggested next");
+  expect(COPY.zh.chat.openAssociatedFileTree).toBe("打开关联的文件树");
+  expect(COPY.en.chat.openAssociatedFileTree).toBe("Open associated file tree");
+  expect(COPY.zh.chat.copyMessageId).toBe("复制消息 ID");
+  expect(COPY.en.chat.copyMessageId).toBe("Copy message ID");
+  expect(COPY.zh.chat.noAssociatedFiles).toBe("无关联文件");
+  expect(COPY.en.chat.noAssociatedFiles).toBe("No associated files");
 });
 
 test("wizard field errors are the locked 32 sentences", () => {
@@ -199,6 +205,14 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.detail.titleGroup).toBe("Group settings");
   expect(COPY.zh.detail.titleBot).toBe("Bot 设置");
   expect(COPY.en.detail.titleBot).toBe("Bot settings");
+  expect(COPY.zh.detail.botTabBasics).toBe("基础信息");
+  expect(COPY.en.detail.botTabBasics).toBe("Basics");
+  expect(COPY.zh.detail.botTabSkills).toBe("技能");
+  expect(COPY.en.detail.botTabSkills).toBe("Skills");
+  expect(COPY.zh.detail.botTabMemory).toBe("记忆");
+  expect(COPY.en.detail.botTabMemory).toBe("Memory");
+  expect(COPY.zh.detail.botTabActions).toBe("操作");
+  expect(COPY.en.detail.botTabActions).toBe("Actions");
   expect(COPY.zh.detail.botBasics).toBe("Bot 基础信息");
   expect(COPY.en.detail.botBasics).toBe("Bot basics");
   expect(COPY.zh.detail.sessionActions).toBe("会话操作");
@@ -482,18 +496,22 @@ test("the model choice log covers every fail kind the daemon can record", () => 
   // Mirrors FAIL_REASON in apps/daemon/src/prompts/transcript-copy.ts.
   expect(Object.keys(COPY.zh.routes.failReason).sort()).toEqual([
     "busy",
+    "crashed",
     "endpoint_error",
     "first_byte",
     "incomplete",
     "no_model",
     "refused",
     "stalled",
+    "stuck",
     "unreachable",
   ]);
   expect(COPY.zh.routes.failReason.refused).toBe("端点拒绝了这次补全");
   expect(COPY.en.routes.failReason.refused).toBe("Endpoint refused this completion");
   expect(COPY.zh.routes.failReason.incomplete).toBe("回复不完整");
   expect(COPY.en.routes.failReason.incomplete).toBe("Incomplete reply");
+  expect(COPY.zh.routes.failReason.stuck).toBe("卡住了，很久没有任何进展");
+  expect(COPY.en.routes.failReason.crashed).toBe("The runtime errored");
 });
 
 function assertSameShape(a: unknown, b: unknown, path: string): void {

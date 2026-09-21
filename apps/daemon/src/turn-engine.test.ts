@@ -421,9 +421,18 @@ describe("turn engine on the local API", () => {
     const firstHeld = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    // The turn goes `running` as soon as it is opened, before the stream reaches
+    // this fixture. Posting the follow-up that early aborts the first request
+    // while it is still queued, so the second request becomes n===1 and hangs
+    // here until waitFor times out.
+    let firstEntered = () => {};
+    const firstInFlight = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
     const fixture = await startFixture(async () => {
       n += 1;
       if (n === 1) {
+        firstEntered();
         await firstHeld;
         return sse(textChunks("first"));
       }
@@ -442,6 +451,7 @@ describe("turn engine on the local API", () => {
       sub.events,
       (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === botId,
     );
+    await firstInFlight;
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
       method: "POST",
       headers: auth(h),
@@ -1598,6 +1608,69 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  /**
+   * The hop loop runs detached. A throw inside it used to vanish into a swallowed rejection and
+   * leave the row at `running`: Thinking in the sidebar until the next boot, and nothing said.
+   */
+  test("a hop that throws closes the turn instead of leaving it running", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi(undefined, {
+      completions: {
+        complete: () => Promise.reject(new Error("boom")),
+        judge: () => Promise.reject(new Error("boom")),
+      },
+    });
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "go" }),
+    });
+    const sys = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === botId,
+    );
+    expect(sys.body).toBe("这一轮没写完：运行时出错");
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    expect(h.store.listLiveTurns({ sessionId })).toEqual([]);
+    sub.close();
+  });
+
+  test("the stale sweep closes a turn that stopped making progress", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const trigger = h.store.postMessage(sessionId, { body: "go" });
+    // Straight to the store: a wedged turn is exactly one with a row and no loop behind it.
+    const wedged = h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    const sub = await subscribe(h);
+
+    h.engine.sweepStalledTurns(new Date(Date.now() + 60_000));
+    expect(h.store.getTurn(wedged.id).status).toBe("running");
+
+    h.engine.sweepStalledTurns(new Date(Date.now() + 21 * 60_000));
+    const sys = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === botId,
+    );
+    expect(sys.body).toBe("这一轮没写完：卡住了，很久没有任何进展");
+    expect(h.store.getTurn(wedged.id).status).toBe("completed");
+    sub.close();
+  });
+
+  test("the stale sweep leaves a turn that is waiting on you alone", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const trigger = h.store.postMessage(sessionId, { body: "go" });
+    const waiting = h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    h.store.setTurnStatus(waiting.id, "waiting_approval");
+
+    h.engine.sweepStalledTurns(new Date(Date.now() + 24 * 60 * 60_000));
+    expect(h.store.getTurn(waiting.id).status).toBe("waiting_approval");
+  });
+
   test("GET composer-suggestions returns drafts from the default endpoint", async () => {
     const fixture = await startFixture(({ body }) => {
       if (isComposerSuggestRequest(body)) {
@@ -1761,12 +1834,14 @@ describe("turn engine on the local API", () => {
     const firstHeld = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    let firstEntered = () => {};
+    const firstInFlight = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
     let releaseRoutine = () => {};
     const routineHeld = new Promise<void>((resolve) => {
       releaseRoutine = resolve;
     });
-    let firstStarted = () => {};
-    const firstRequest = new Promise<void>((resolve) => { firstStarted = resolve; });
     const fixture = await startFixture(async ({ body }) => {
       const messages = body.messages as Array<{ role: string; content?: string }>;
       const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -1774,7 +1849,7 @@ describe("turn engine on the local API", () => {
         await routineHeld;
         return sse(textChunks("routine reply"));
       }
-      firstStarted();
+      firstEntered();
       await firstHeld;
       return sse(textChunks("still going"));
     });
@@ -1791,6 +1866,7 @@ describe("turn engine on the local API", () => {
       sub.events,
       (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === botId,
     );
+    await firstInFlight;
 
     const created = await fetch(`${h.origin}/v1/routines`, {
       method: "POST",
@@ -1810,7 +1886,6 @@ describe("turn engine on the local API", () => {
       [new Date(2026, 8, 10, 8, 0, 0).toISOString(), routine.id],
     );
 
-    await firstRequest;
     const dueNow = new Date(2026, 8, 14, 9, 0, 0);
     const opened = h.engine.fireRoutine(routine.id, dueNow);
     expect(opened).not.toBeNull();

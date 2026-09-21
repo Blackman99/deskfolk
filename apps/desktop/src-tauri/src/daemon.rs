@@ -18,10 +18,7 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
         cmd.arg(&main_ts).current_dir(cwd);
         cmd
     } else {
-        let path = super::remote_native::native_dir(resources).join("real-bot-daemon");
-        if !path.is_file() {
-            return None;
-        }
+        let path = bundled_daemon(resources)?;
         let mut cmd = Command::new(path);
         cmd.env_remove("BUN_BE_BUN")
             .env_remove("BUN_OPTIONS")
@@ -41,6 +38,21 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
     super::remote_setup::adopt_channel(channel);
     Some(child)
 }
+
+/// The signed daemon ships in the native resource directory, where `build:native` also gives it
+/// the entitlements the credential runtime needs. A build that only produced the plain compiled
+/// daemon leaves it next to the window binary instead, and starting a runtime still beats none.
+fn bundled_daemon(resources: &std::path::Path) -> Option<PathBuf> {
+    let native = super::remote_native::native_dir(resources).join(SIDECAR_NAME);
+    if native.is_file() {
+        return Some(native);
+    }
+    let beside = std::env::current_exe().ok()?.parent()?.join(SIDECAR_NAME);
+    beside.is_file().then_some(beside)
+}
+
+/// Base name of the compiled daemon, in the resource directory or beside the window binary.
+const SIDECAR_NAME: &str = "real-bot-daemon";
 
 pub fn child_alive(child: &mut Child) -> bool {
     child.try_wait().ok().flatten().is_none()

@@ -4,6 +4,7 @@ import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
 import { finishTurnRoute } from "./routing";
 import { isPresent } from "./sessions";
+import { resolveTurnTask, taskOfTurn } from "./tasks";
 import {
   aliveBot,
   isLive,
@@ -19,19 +20,37 @@ import {
 
 export function createTurn(
   ctx: StoreContext,
-  input: { sessionId: string; botId: string; triggerMessageId: string },
+  input: {
+    sessionId: string;
+    botId: string;
+    triggerMessageId: string;
+    /** A routine fires as a user message, so only the caller can say this is a fresh job. */
+    newTask?: boolean;
+  },
 ): Turn {
   sessionRow(ctx, input.sessionId);
   aliveBot(ctx, input.botId);
-  messageRow(ctx, input.triggerMessageId);
+  const trigger = messageRow(ctx, input.triggerMessageId);
   const now = isoNow();
   const id = ulid();
-  ctx.db.run(
-    `INSERT INTO turns
-      (id, session_id, bot_id, status, trigger_message_id, last_activity_at, created_at, updated_at)
-     VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
-    [id, input.sessionId, input.botId, input.triggerMessageId, now, now, now],
-  );
+  const taskId = resolveTurnTask(ctx, {
+    sessionId: input.sessionId,
+    trigger,
+    newTask: input.newTask,
+  });
+  ctx.db.transaction(() => {
+    ctx.db.run(
+      `INSERT INTO turns
+        (id, session_id, bot_id, status, trigger_message_id, task_id, last_activity_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
+      [id, input.sessionId, input.botId, input.triggerMessageId, taskId, now, now, now],
+    );
+    // The trigger belongs to the job it opened, so the user's own message carries the anchor too.
+    ctx.db.run(`UPDATE messages SET task_id = ? WHERE id = ? AND task_id IS NULL`, [
+      taskId,
+      trigger.id,
+    ]);
+  })();
   return getTurn(ctx, id);
 }
 
@@ -199,9 +218,9 @@ export function interruptRunningTurns(ctx: StoreContext): void {
         [now, turn.id],
       );
       ctx.db.run(
-        `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, created_at)
-         VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?)`,
-        [ulid(), turn.session_id, turn.id, turn.bot_id, INTERRUPT_NOTE_BODY, now],
+        `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, created_at)
+         VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?, ?)`,
+        [ulid(), turn.session_id, turn.id, turn.bot_id, INTERRUPT_NOTE_BODY, turn.task_id, now],
       );
       markInterruptPending(ctx, turn.bot_id);
       finishTurnRoute(ctx, turn.id, "interrupted");
@@ -240,9 +259,9 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
   ctx.db.transaction(() => {
     ctx.db.run(
       `INSERT INTO turns
-        (id, session_id, bot_id, status, trigger_message_id, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
-      [id, note.session_id, cut.bot_id, note.id, now, now, now],
+        (id, session_id, bot_id, status, trigger_message_id, task_id, last_activity_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
+      [id, note.session_id, cut.bot_id, note.id, taskOfTurn(ctx, cut.id), now, now, now],
     );
     const updated = ctx.db.query<{ id: string }, [string, string]>(
       `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL RETURNING id`,

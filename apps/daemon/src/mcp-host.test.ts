@@ -469,4 +469,76 @@ describe("MCP HTTP host", () => {
       http.close();
     }
   });
+
+  /**
+   * The request timer only covers the response headers. A stream that opens and then says nothing
+   * used to hold the call — and the whole turn behind it — open for good.
+   */
+  test("HTTP call gives up on a stream that goes quiet instead of hanging", async () => {
+    const http = await startHttp(undefined, "--http-quiet-sse");
+    try {
+      const host = createMcpHost({
+        listServers: () => [
+          {
+            id: "remote",
+            name: "remote",
+            transport: "http",
+            command: "",
+            args: [],
+            url: http.url,
+            headers: [],
+            enabled: true,
+            instructions: null,
+          },
+        ],
+        probeTimeoutMs: 400,
+        requestTimeoutMs: 2000,
+        streamIdleMs: 300,
+        shutdownWaitMs: 200,
+      });
+      hosts.push(host);
+      const started = Date.now();
+      const result = await host.call("mcp_remote_echo", { text: "hi" });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain("quiet");
+      expect(Date.now() - started).toBeLessThan(3000);
+    } finally {
+      http.close();
+    }
+  });
+
+  test("an aborted HTTP call stops reading the stream", async () => {
+    const http = await startHttp(undefined, "--http-quiet-sse");
+    try {
+      const host = createMcpHost({
+        listServers: () => [
+          {
+            id: "remote",
+            name: "remote",
+            transport: "http",
+            command: "",
+            args: [],
+            url: http.url,
+            headers: [],
+            enabled: true,
+            instructions: null,
+          },
+        ],
+        probeTimeoutMs: 400,
+        requestTimeoutMs: 2000,
+        streamIdleMs: 30_000,
+        shutdownWaitMs: 200,
+      });
+      hosts.push(host);
+      const abort = new AbortController();
+      setTimeout(() => abort.abort(), 200);
+      const result = await host.call("mcp_remote_echo", { text: "hi" }, abort.signal);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain("aborted");
+    } finally {
+      http.close();
+    }
+  });
 });

@@ -37,10 +37,12 @@
 	} from './sidebar/session-groups.ts';
 	import { sessionTitle } from './sidebar/session-title.ts';
 	import { sanitizePreviewPath } from './session-url.ts';
+	import { backdropClick } from './click-outside.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
+	import { extractAssociatedFiles } from './chat/message-context-menu.ts';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
@@ -104,11 +106,26 @@
 	} | null>(null);
 	let contextMenuEpoch = 0;
 	let workspacePane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
-	let previewWidth = $state(loadPreviewWidth());
+	let previewPreferred = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
-	let sidebarWidth = $state(loadSidebarWidth());
+	let sidebarPreferred = $state(loadSidebarWidth());
 	let sidebarDragging = $state(false);
 	let shellEl = $state<HTMLElement | null>(null);
+	let shellWidth = $state(Number.POSITIVE_INFINITY);
+	const previewWidth = $derived(clampPreviewWidth(previewPreferred, shellWidth));
+	const sidebarWidth = $derived(clampSidebarWidth(sidebarPreferred, shellWidth));
+
+	$effect(() => {
+		const el = shellEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const apply = () => {
+			shellWidth = el.clientWidth || Number.POSITIVE_INFINITY;
+		};
+		apply();
+		const observer = new ResizeObserver(apply);
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
 
 	function openContextMenu(e: MouseEvent, session: SessionSummary): void {
 		e.preventDefault();
@@ -288,6 +305,8 @@
 	};
 	let dangerConfirm = $state<DangerConfirm | null>(null);
 	let confirmingIndependent = $state(false);
+	/** The profile drawer closes on a click outside it, not on the tail of a text-selection drag. */
+	const profileBackdrop = backdropClick();
 
 	async function confirmDanger(): Promise<void> {
 		const pending = dangerConfirm;
@@ -437,7 +456,30 @@
 		return null;
 	}
 
-	function siblingsForPath(relpath: string, att?: Attachment | null): Attachment[] {
+	function siblingsForPath(
+		relpath: string,
+		att?: Attachment | null,
+		messageId?: string | null
+	): Attachment[] {
+		if (messageId) {
+			const owner = snapshot.messages.find((message) => message.id === messageId);
+			if (owner) {
+				const associated = extractAssociatedFiles(owner);
+				if (associated.length > 0) {
+					return associated.map((path) => {
+						const existing = owner.attachments.find((a) => a.workspace_relpath === path);
+						if (existing) return existing;
+						return {
+							id: `virtual-${owner.id}-${path}`,
+							message_id: owner.id,
+							workspace_relpath: path,
+							original_filename: path.split('/').pop() ?? path,
+							created_at: owner.created_at
+						};
+					});
+				}
+			}
+		}
 		if (att) {
 			const owner = snapshot.messages.find((message) => message.id === att.message_id);
 			if (owner && owner.attachments.length > 0) return owner.attachments;
@@ -465,21 +507,42 @@
 		const relpath = runtime.previewRelpath;
 		if (!relpath) return null;
 		const attachment = findAttachmentByPath(relpath);
+		const owner = runtime.previewMessageId
+			? snapshot.messages.find((message) => message.id === runtime.previewMessageId)
+			: undefined;
 		return {
 			relpath,
 			attachment,
-			siblings: siblingsForPath(relpath, attachment),
+			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
+			forceTree: runtime.forceArtifactTree,
+			// The entry opens the job's tree, not just this message's; older messages have none.
+			taskId: owner?.task_id ?? null
 		};
 	});
 
-	function openArtifactPath(relpath: string, att?: Attachment): void {
+	function openArtifactPath(
+		relpath: string,
+		att?: Attachment,
+		messageId?: string | null,
+		forceTree = false
+	): void {
 		if (runtime.hosted) {
+			// A remote URL never carries a file path, so the preview goes by attachment id.
 			runtime.previewRelpath = null;
 			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(relpath)?.id ?? null;
 			return;
 		}
 		runtime.previewAttachmentId = null;
 		runtime.previewRelpath = sanitizePreviewPath(relpath);
+		runtime.previewMessageId = messageId ?? att?.message_id ?? null;
+		runtime.forceArtifactTree = forceTree;
+	}
+
+	function closeArtifactPreview(): void {
+		runtime.previewRelpath = null;
+		runtime.previewAttachmentId = null;
+		runtime.previewMessageId = null;
+		runtime.forceArtifactTree = false;
 	}
 
 	function toggleWorkspaceExplorer(): void {
@@ -489,6 +552,24 @@
 			return;
 		}
 		runtime.openWorkspace(artifactPreview?.relpath ?? runtime.workspaceSelected);
+		if (!artifactPreview?.relpath) void selectCurrentWorkDir();
+	}
+
+	/**
+	 * Opening the explorer cold lands on this session's current work dir rather than wherever it
+	 * was left days ago. Only the dir is known server-side, so it is a pull; a failure just leaves
+	 * the previous selection, which is what the explorer did before.
+	 */
+	async function selectCurrentWorkDir(): Promise<void> {
+		const client = runtime.client;
+		const taskId = [...snapshot.messages].reverse().find((message) => message.task_id)?.task_id;
+		if (!client || !taskId) return;
+		try {
+			const task = await client.taskArtifacts(taskId);
+			if (runtime.workspaceOpen) runtime.workspaceSelected = task.dir;
+		} catch {
+			// the explorer keeps whatever it had
+		}
 	}
 
 	function closeWorkspaceExplorer(): void {
@@ -501,11 +582,6 @@
 
 	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
 
-	function closeArtifactPreview(): void {
-		runtime.previewRelpath = null;
-		runtime.previewAttachmentId = null;
-	}
-
 	function startPreviewResize(ev: PointerEvent): void {
 		if (!artifactPreview) return;
 		ev.preventDefault();
@@ -514,11 +590,11 @@
 		const originW = previewWidth;
 		const onMove = (move: PointerEvent) => {
 			const shellW = shellEl?.clientWidth ?? 1200;
-			previewWidth = clampPreviewWidth(originW - (move.clientX - originX), shellW);
+			previewPreferred = clampPreviewWidth(originW - (move.clientX - originX), shellW);
 		};
 		const onUp = () => {
 			previewDragging = false;
-			savePreviewWidth(previewWidth);
+			savePreviewWidth(previewPreferred);
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);
 		};
@@ -536,11 +612,11 @@
 		const originW = sidebarWidth;
 		const onMove = (move: PointerEvent) => {
 			const shellW = shellEl?.clientWidth ?? 1200;
-			sidebarWidth = clampSidebarWidth(originW + (move.clientX - originX), shellW);
+			sidebarPreferred = clampSidebarWidth(originW + (move.clientX - originX), shellW);
 		};
 		const onUp = () => {
 			sidebarDragging = false;
-			saveSidebarWidth(sidebarWidth);
+			saveSidebarWidth(sidebarPreferred);
 			handle.removeEventListener('pointermove', onMove);
 			handle.removeEventListener('pointerup', onUp);
 			handle.removeEventListener('pointercancel', onUp);
@@ -819,9 +895,24 @@
 			siblings={artifactPreview.siblings}
 			api={runtime.client}
 			workspacePath={snapshot.settings.workspace_path}
+			forceTree={artifactPreview.forceTree}
+			taskId={artifactPreview.taskId}
 			{t}
 			onClose={closeArtifactPreview}
-			onSelect={(att) => openArtifactPath(att.workspace_relpath, att)}
+			onSelect={(att) =>
+				openArtifactPath(
+					att.workspace_relpath,
+					att,
+					runtime.previewMessageId,
+					runtime.forceArtifactTree
+				)}
+			onSelectWorkspacePath={(path) =>
+				openArtifactPath(
+					path,
+					undefined,
+					runtime.previewMessageId,
+					runtime.forceArtifactTree
+				)}
 		/>
 	{/if}
 	{#if runtime.routeLogOpen && selected}
@@ -862,9 +953,10 @@
 			role="dialog"
 			aria-modal="true"
 			tabindex="-1"
+			onmousedowncapture={profileBackdrop.press}
 			onclick={(e) => {
 				if (drawerHasDanger) return;
-				if (e.target === e.currentTarget) runtime.closeSessionSettings();
+				if (profileBackdrop.isOutside(e)) runtime.closeSessionSettings();
 			}}
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
@@ -918,34 +1010,34 @@
 					</button>
 				</div>
 
-				<div class="panel-scroll-content flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
-					{#if profileBot}
-						{#key profileBot.id}
-							<ProfilePane
-								{runtime}
-								bot={profileBot}
-								{t}
-								modelOptions={availableModelOptions}
-								{selectedKind}
-								bind:profileFailed
-								openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
-								{clearDanger}
-								onDeleteBot={() => openDeleteBotConfirm()}
-								onClearHistory={() => openClearHistoryConfirm()}
-							/>
-						{/key}
-					{:else}
-					<GroupPane
-						{runtime}
-						{selected}
-						{t}
-						bind:detail={groupDetail}
-						onOpenProfile={openProfile}
-						onDeleteGroup={() => openDeleteGroupConfirm()}
-						onClearHistory={() => openClearHistoryConfirm()}
-					/>
-					{/if}
-				</div>
+				{#if profileBot}
+					{#key profileBot.id}
+						<ProfilePane
+							{runtime}
+							bot={profileBot}
+							{t}
+							modelOptions={availableModelOptions}
+							{selectedKind}
+							bind:profileFailed
+							openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
+							{clearDanger}
+							onDeleteBot={() => openDeleteBotConfirm()}
+							onClearHistory={() => openClearHistoryConfirm()}
+						/>
+					{/key}
+				{:else}
+					<div class="panel-scroll-content flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
+						<GroupPane
+							{runtime}
+							{selected}
+							{t}
+							bind:detail={groupDetail}
+							onOpenProfile={openProfile}
+							onDeleteGroup={() => openDeleteGroupConfirm()}
+							onClearHistory={() => openClearHistoryConfirm()}
+						/>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -1213,7 +1305,7 @@
 	}
 
 	.sheet.is-right.session-settings {
-		width: 420px;
+		width: 460px;
 		max-width: 94vw;
 		height: 100%;
 		max-height: 100vh;
@@ -1256,6 +1348,14 @@
 
 	.panel-scroll-content > :global(*) {
 		flex-shrink: 0;
+	}
+
+	.sheet.session-settings :global(.profile-pane) {
+		flex: 1 1 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 
 	@media (max-width: 680px) {

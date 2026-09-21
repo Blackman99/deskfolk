@@ -78,16 +78,16 @@ export const LIST_DIR: ToolDef = {
 export const SHELL: ToolDef = {
   name: "shell",
   description: {
-    zh: "在工作区执行一条命令。cwd 在区内且命令里看得见的路径不越界则直接执行；否则停下来等用户批准。拒绝后工具结果是 denied。不能传「无约束」开关。",
-    en: "Run a command in the workspace. Runs immediately when cwd is inside and no visible path in the command crosses out; otherwise it pauses for the user's approval. A denial comes back as denied. There is no unconstrained flag you can pass.",
+    zh: "在工作区执行一条命令，默认在本轮工作目录里。cwd 在区内且命令里看得见的路径不越界则直接执行；否则停下来等用户批准。拒绝后工具结果是 denied。不能传「无约束」开关。",
+    en: "Run a command in the workspace, by default in this turn's work dir. Runs immediately when cwd is inside and no visible path in the command crosses out; otherwise it pauses for the user's approval. A denial comes back as denied. There is no unconstrained flag you can pass.",
   },
   properties: {
     command: { type: "string", description: { zh: "要执行的命令字符串。", en: "The command string to run." } },
     cwd: {
       type: "string",
       description: {
-        zh: "工作区相对的当前目录。省略则为 `.`。`.` 是工作区根。开头的 `/` 不是工作区根。",
-        en: "Workspace-relative working directory. Omit for `.`. `.` is the workspace root. A leading `/` is not the workspace root.",
+        zh: "工作区相对的当前目录。省略则为本轮工作目录（局面块里那一行）。`.` 是工作区根。开头的 `/` 不是工作区根。",
+        en: "Workspace-relative working directory. Omit for this turn's work dir (the line in the situation block). `.` is the workspace root. A leading `/` is not the workspace root.",
       },
     },
   },

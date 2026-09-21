@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
+	import { backdropClick } from '../click-outside.ts';
 
 	type Props = {
 		copy: { title: string; body: string; confirm: string; cancel: string };
@@ -12,6 +13,8 @@
 
 	let { copy, t, onDismiss, onConfirm, busy = false }: Props = $props();
 	let dialogEl = $state<HTMLDialogElement>();
+	/** A click outside dismisses the confirm; a text-selection drag that starts inside never does. */
+	const confirmBackdrop = backdropClick();
 	const dismiss = () => { if (!busy) onDismiss(); };
 
 	$effect(() => {
@@ -55,9 +58,10 @@
 	aria-busy={busy}
 	tabindex="-1"
 	oncancel={(event) => { event.preventDefault(); event.stopPropagation(); dismiss(); }}
+	onmousedowncapture={confirmBackdrop.press}
 	onclick={(event) => {
 		event.stopPropagation();
-		if (event.target === event.currentTarget) dismiss();
+		if (confirmBackdrop.isOutside(event)) dismiss();
 	}}
 	onpointerdown={(event) => event.stopPropagation()}
 	onkeydown={onKey}

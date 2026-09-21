@@ -18,6 +18,37 @@ export {
   type BoringAvatarVariant,
 };
 
+/** Name string fed to the SVG generator. A salt > 0 is the editor's "randomize" suffix. */
+export function boringAvatarName(name: string, salt = 0): string {
+  const base = name.trim() || "bot";
+  return salt > 0 ? `${base}_${salt}` : base;
+}
+
+/**
+ * Keep a generated preview tied to the Bot's name until the user has a custom
+ * upload or a drawing that no longer matches the last generated SVG.
+ */
+export function followGeneratedAvatar(input: {
+  name: string;
+  variant?: BoringAvatarVariant;
+  salt?: number;
+  current: string | null | undefined;
+  lastGenerated: string;
+}): { avatar: string; lastGenerated: string; changed: boolean } {
+  const next = generateBoringAvatar({
+    name: boringAvatarName(input.name, input.salt ?? 0),
+    variant: input.variant,
+  });
+  const current = input.current?.trim() ?? "";
+  if (current === next) {
+    return { avatar: next, lastGenerated: next, changed: false };
+  }
+  if (current.length === 0 || current === input.lastGenerated) {
+    return { avatar: next, lastGenerated: next, changed: true };
+  }
+  return { avatar: current, lastGenerated: input.lastGenerated, changed: false };
+}
+
 export type AvatarPalette = {
   bg: string;
   text: string;

@@ -10,6 +10,7 @@ import {
   injectHtmlPreviewColorScheme,
   injectHtmlPreviewNonce,
   isInAppPreviewKind,
+  previewLoadKey,
   pageCspNonce,
   linkifyWorkspacePaths,
   looksLikeWorkspaceHref,
@@ -190,4 +191,43 @@ test("pageCspNonce reads the IDL nonce", () => {
   } as unknown as Document;
   expect(pageCspNonce(doc)).toBe("from-idl");
   expect(pageCspNonce(null)).toBeNull();
+});
+
+/**
+ * The bug: a playing video restarted whenever the citing message left the loaded transcript —
+ * switching sessions, or continuing an interrupted turn. The file never changed; only the endpoint
+ * that would serve it did.
+ */
+test("the preview load key ignores whether the citing message is still loaded", () => {
+  const whileCited = previewLoadKey({
+    path: "runs/clip.mp4",
+    kind: "video",
+    source: "attachment",
+    attachmentId: "att-1",
+  });
+  const onceOrphaned = previewLoadKey({
+    path: "runs/clip.mp4",
+    kind: "video",
+    source: "workspace",
+    attachmentId: null,
+  });
+  expect(whileCited).toBe(onceOrphaned as string);
+  // A second attachment citing the same file is still the same bytes.
+  expect(
+    previewLoadKey({ path: "runs/clip.mp4", kind: "video", source: "attachment", attachmentId: "att-2" }),
+  ).toBe(whileCited as string);
+});
+
+test("another file, or another way of rendering it, is another load", () => {
+  const clip = previewLoadKey({ path: "runs/clip.mp4", kind: "video", source: "workspace" });
+  expect(previewLoadKey({ path: "runs/other.mp4", kind: "video", source: "workspace" })).not.toBe(clip);
+  expect(previewLoadKey({ path: "runs/clip.mp4", kind: "text", source: "workspace" })).not.toBe(clip);
+});
+
+test("nothing to fetch has no key, and a pathless attachment keys on its id", () => {
+  expect(previewLoadKey({ path: "runs/clip.mp4", kind: "video", source: null })).toBeNull();
+  expect(previewLoadKey({ path: "  ", kind: "video", source: "attachment", attachmentId: null })).toBeNull();
+  expect(previewLoadKey({ path: "", kind: "video", source: "attachment", attachmentId: "att-9" })).toBe(
+    "video|att:att-9",
+  );
 });

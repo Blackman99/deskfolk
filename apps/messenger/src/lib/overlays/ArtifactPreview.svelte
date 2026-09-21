@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Attachment } from '@real-bot/protocol';
+	import type { Attachment, TaskArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { ApiError, etagForBlob } from '../api.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -13,11 +13,14 @@
 		injectHtmlPreviewNonce,
 		isInAppPreviewKind,
 		pageCspNonce,
+		previewLoadKey,
+		stripSvgActiveContent,
 		svgDisplayBlob,
 		type ArtifactKind,
 	} from './artifacts.ts';
 	import {
 		buildCitedPathTree,
+		buildTaskArtifactTree,
 		mergeWorkspaceChildren,
 		workspaceEntriesToNodes,
 		type ArtifactTreeNode,
@@ -49,6 +52,9 @@
 		onSelect: (att: Attachment) => void;
 		mode?: 'cited' | 'workspace';
 		onSelectWorkspacePath?: (path: string) => void;
+		forceTree?: boolean;
+		/** The work dir this message belongs to; its whole job is listed, not just this message. */
+		taskId?: string | null;
 	}
 
 	let {
@@ -62,6 +68,8 @@
 		onSelect,
 		mode = 'cited',
 		onSelectWorkspacePath,
+		forceTree = false,
+		taskId = null,
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
@@ -76,6 +84,8 @@
 	let liveBlob: string | null = null;
 	let liveHtml: string | null = null;
 	let loadGen = 0;
+	/** The key of the bytes on screen; a repeat of it must not swap the object URL. */
+	let loadedKey: string | null = null;
 	let lastSourcePath = $state('');
 	let editor = $state<{
 		getValue: () => string;
@@ -95,20 +105,73 @@
 	let saveConflict = $state(false);
 	let loadedEtag = $state<string | null>(null);
 	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
-	let treeWidth = $state(loadArtifactTreeWidth());
+	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
 	let paneEl = $state<HTMLElement | null>(null);
+	let paneWidth = $state(Number.POSITIVE_INFINITY);
+	const treeWidth = $derived(clampArtifactTreeWidth(treePreferred, paneWidth));
+
+	$effect(() => {
+		const el = paneEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const apply = () => {
+			paneWidth = el.clientWidth || Number.POSITIVE_INFINITY;
+		};
+		apply();
+		const observer = new ResizeObserver(apply);
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
 	let resolvedTheme = $state(themeManager.resolved);
 	let kind = $derived(
 		artifactKind(attachment?.original_filename ?? relpath, { isDir: attachment?.is_dir === true })
 	);
-	let citedTree = $derived(buildCitedPathTree(siblings.map((row) => row.workspace_relpath)));
+	// Pulled once when the entry opens; there is no push event for it, the same as the route log.
+	let taskArtifacts = $state<TaskArtifacts | null>(null);
+	$effect(() => {
+		const id = taskId;
+		const client = api;
+		if (!id || !client || mode === 'workspace') {
+			taskArtifacts = null;
+			return;
+		}
+		const controller = new AbortController();
+		client
+			.taskArtifacts(id, controller.signal)
+			.then((rows) => {
+				taskArtifacts = rows;
+			})
+			.catch(() => {
+				// An entry that lists only this message is still a working entry.
+				taskArtifacts = null;
+			});
+		return () => controller.abort();
+	});
+
+	let ownPaths = $derived(siblings.map((row) => row.workspace_relpath));
+	/**
+	 * The job's files, anchored at its work dir, with this message's own marked — relevance is
+	 * "somebody cited it", so a file an earlier turn produced is still one click away. Falls back
+	 * to this message alone when the job is unknown or the pull failed.
+	 */
+	let citedTree = $derived(
+		taskArtifacts
+			? buildTaskArtifactTree(
+					taskArtifacts.dir,
+					taskArtifacts.items.map((row) => row.path),
+					ownPaths
+				)
+			: buildCitedPathTree(ownPaths)
+	);
 	let workspaceTree = $state<ArtifactTreeNode[]>([]);
 	let loadedDirs = $state(new Set<string>());
 	let truncatedHint = $state(false);
 	let tree = $derived(mode === 'workspace' ? workspaceTree : citedTree);
 	let showTree = $derived(
-		mode === 'workspace' || tree.length > 1 || tree.some((node) => node.kind === 'dir')
+		mode === 'workspace' ||
+			(forceTree && tree.length > 0) ||
+			tree.length > 1 ||
+			tree.some((node) => node.kind === 'dir')
 	);
 	let textLang = $derived(highlightLangFromPath(relpath));
 	let icon = $derived(fileIconFor(relpath, { isDir: kind === 'directory' }));
@@ -130,7 +193,11 @@
 		const path = relpath;
 		const previewKind = kind;
 		const source = byteSource;
-		void attachment?.id;
+		const key = previewLoadKey({ path, kind: previewKind, source, attachmentId: attachment?.id });
+		// Losing the citing message flips the source, not the file: reloading here would restart a
+		// playing video every time you switch sessions or continue an interrupted turn.
+		if (key !== null && key === loadedKey) return;
+		loadedKey = key;
 		const att = untrack(() => attachment);
 		void loadPreview(path, previewKind, source, att);
 	});
@@ -261,6 +328,7 @@
 			text = null;
 		} catch {
 			if (gen !== loadGen) return;
+			loadedKey = null;
 			missing = true;
 		}
 	}
@@ -389,11 +457,11 @@
 		const originW = treeWidth;
 		const onMove = (move: PointerEvent) => {
 			const paneW = paneEl?.clientWidth ?? 480;
-			treeWidth = clampArtifactTreeWidth(originW + (move.clientX - originX), paneW);
+			treePreferred = clampArtifactTreeWidth(originW + (move.clientX - originX), paneW);
 		};
 		const onUp = () => {
 			treeDragging = false;
-			saveArtifactTreeWidth(treeWidth);
+			saveArtifactTreeWidth(treePreferred);
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);
 		};

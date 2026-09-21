@@ -63,6 +63,11 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
     const { host, close } = render(Shell, { runtime }); cleanups.push(close);
     if (kind === 'provider') click(buttonByText(host, 'Models 2'));
     function open(id: string) {
+      // A Bot's danger zone lives behind the profile's actions tab.
+      if (kind === 'bot') {
+        const tabs = [...host.querySelectorAll<HTMLButtonElement>('.bot-tab-btn')];
+        if (tabs.length) click(tabs[tabs.length - 1]);
+      }
       click(kind === 'provider'
         ? host.querySelector(`[aria-label="Delete: ${id === 'a' ? 'Alpha' : 'Beta'}"]`)
         : host.querySelector('.danger-zone-card button.deny'));

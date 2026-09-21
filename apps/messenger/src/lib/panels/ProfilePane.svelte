@@ -1,6 +1,7 @@
 <script lang="ts">
 	import MemoryCard from './MemoryCard.svelte';
 	import RoutineCard from './RoutineCard.svelte';
+	import { backdropClick } from '../click-outside.ts';
 	import { untrack } from 'svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
@@ -42,6 +43,7 @@
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
+		initialTab?: 'basics' | 'skills' | 'routines' | 'memory' | 'actions';
 		openDangerConfirm: (kind: 'skill' | 'memory', run: DangerAction) => void;
 		clearDanger: (kind: 'skill' | 'memory') => void;
 		onDeleteBot: () => void;
@@ -55,11 +57,14 @@
 		modelOptions,
 		selectedKind,
 		profileFailed = $bindable(false),
+		initialTab = 'basics',
 		openDangerConfirm,
 		clearDanger,
 		onDeleteBot,
 		onClearHistory
 	}: Props = $props();
+	/** A click outside closes the skill editor; a text-selection drag that starts inside never does. */
+	const skillBackdrop = backdropClick();
 
 	const snapshot = $derived(runtime.snapshot);
 	const modelValues = $derived(modelOptions.map((option) => option.value));
@@ -325,6 +330,31 @@
 		const error = await runtime.restoreBot(runtime.profileBotId);
 		if (error) profileFailed = true;
 	}
+
+	export type BotTab = 'basics' | 'skills' | 'routines' | 'memory' | 'actions';
+	let activeTab = $state<BotTab>(untrack(() => initialTab));
+
+	// A routine opened from search carries its own tab; the card only reads the
+	// pending id once it is mounted.
+	$effect(() => {
+		if (runtime.profileRoutineId) untrack(() => { activeTab = 'routines'; });
+	});
+
+	const basicsHasError = $derived(
+		Boolean(
+			profileErrors.name ||
+			profileErrors.duties ||
+			profileErrors.boundaries ||
+			profileErrors.model ||
+			profileErrors.thinkingLevel
+		)
+	);
+
+	function switchTab(tab: BotTab): void {
+		if (activeTab === tab) return;
+		flushProfileSave();
+		activeTab = tab;
+	}
 </script>
 
 <svelte:window
@@ -336,6 +366,94 @@
 	}}
 />
 
+<div class="profile-pane">
+	<div class="bot-nav-sticky">
+		<div class="bot-tabs" role="tablist" aria-label={t.detail.titleBot}>
+		<button
+			type="button"
+			role="tab"
+			aria-selected={activeTab === 'basics'}
+			class="bot-tab-btn"
+			class:is-active={activeTab === 'basics'}
+			onclick={() => switchTab('basics')}
+		>
+			<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+				<circle cx="12" cy="7" r="4"></circle>
+			</svg>
+			<span class="tab-name">{t.detail.botTabBasics}</span>
+			{#if basicsHasError}
+				<span class="tab-badge-error" aria-label="error">!</span>
+			{/if}
+		</button>
+
+		<button
+			type="button"
+			role="tab"
+			aria-selected={activeTab === 'skills'}
+			class="bot-tab-btn"
+			class:is-active={activeTab === 'skills'}
+			onclick={() => switchTab('skills')}
+		>
+			<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+			</svg>
+			<span class="tab-name">{t.detail.botTabSkills}</span>
+			{#if profileSkills.length > 0}
+				<span class="tab-count">{profileSkills.length}</span>
+			{/if}
+		</button>
+
+		<button
+			type="button"
+			role="tab"
+			aria-selected={activeTab === 'routines'}
+			class="bot-tab-btn"
+			class:is-active={activeTab === 'routines'}
+			onclick={() => switchTab('routines')}
+		>
+			<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<rect x="3" y="4" width="18" height="18" rx="2"></rect>
+				<line x1="16" y1="2" x2="16" y2="6"></line>
+				<line x1="8" y1="2" x2="8" y2="6"></line>
+				<line x1="3" y1="10" x2="21" y2="10"></line>
+			</svg>
+			<span class="tab-name">{t.detail.botTabRoutines}</span>
+		</button>
+
+		<button
+			type="button"
+			role="tab"
+			aria-selected={activeTab === 'memory'}
+			class="bot-tab-btn"
+			class:is-active={activeTab === 'memory'}
+			onclick={() => switchTab('memory')}
+		>
+			<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+				<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+			</svg>
+			<span class="tab-name">{t.detail.botTabMemory}</span>
+		</button>
+
+		<button
+			type="button"
+			role="tab"
+			aria-selected={activeTab === 'actions'}
+			class="bot-tab-btn"
+			class:is-active={activeTab === 'actions'}
+			onclick={() => switchTab('actions')}
+		>
+			<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<circle cx="12" cy="12" r="3"></circle>
+				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+			</svg>
+			<span class="tab-name">{t.detail.botTabActions}</span>
+		</button>
+	</div>
+</div>
+
+<div class="panel-scroll-content profile-pane-scroll flex-1 overflow-y-auto pt-8 px-9 pb-12 flex flex-col gap-8">
 {#if profileFailed}
 	<div class="panel-alert is-error">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -343,6 +461,7 @@
 	</div>
 {/if}
 
+{#if activeTab === 'basics'}
 <div class="panel-card">
 	<div class="panel-card-head">
 		<span class="panel-card-title">{t.detail.botBasics}</span>
@@ -380,9 +499,10 @@
 			<label for="profile-duties">{t.sidebar.botDuties}</label>
 			<textarea
 				id="profile-duties"
+				class="profile-textarea profile-textarea-duties"
 				bind:value={profileDraft.duties}
 				oninput={onProfileInput}
-				rows="3"
+				rows="6"
 				placeholder={t.sidebar.botDuties}
 			></textarea>
 			{#if profileErrors.duties}
@@ -394,9 +514,10 @@
 			<label for="profile-boundaries">{t.sidebar.botBoundaries}</label>
 			<textarea
 				id="profile-boundaries"
+				class="profile-textarea profile-textarea-boundaries"
 				bind:value={profileDraft.boundaries}
 				oninput={onProfileInput}
-				rows="3"
+				rows="4"
 				placeholder={t.sidebar.botBoundaries}
 			></textarea>
 			{#if profileErrors.boundaries}
@@ -444,7 +565,7 @@
 		{/if}
 	</div>
 </div>
-
+{:else if activeTab === 'skills'}
 <div class="panel-card">
 	<div class="panel-card-head">
 		<div class="flex items-center gap-2">
@@ -550,11 +671,11 @@
 		{/each}
 	</div>
 </div>
-
+{:else if activeTab === 'routines'}
 <RoutineCard {runtime} {bot} {t} />
-
+{:else if activeTab === 'memory'}
 <MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
-
+{:else if activeTab === 'actions'}
 <div class="panel-card">
 	<div class="panel-card-head">
 		<span class="panel-card-title">{t.detail.sessionActions}</span>
@@ -616,6 +737,9 @@
 		</div>
 	</div>
 </div>
+{/if}
+</div>
+</div>
 
 {#if skillEditor}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -625,9 +749,10 @@
 		aria-modal="true"
 		aria-labelledby="skill-modal-title"
 		tabindex="-1"
+		onmousedowncapture={skillBackdrop.press}
 		onclick={(e) => {
 			e.stopPropagation();
-			if (e.target === e.currentTarget && !skillBusy) closeSkillEditor();
+			if (skillBackdrop.isOutside(e) && !skillBusy) closeSkillEditor();
 		}}
 		onpointerdown={(e) => e.stopPropagation()}
 	>
@@ -761,6 +886,125 @@
 {/if}
 
 <style>
+	.profile-pane {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 0;
+		min-height: 0;
+		height: 100%;
+		overflow: hidden;
+	}
+
+	.bot-nav-sticky {
+		flex-shrink: 0;
+		padding: 12px 18px 10px;
+		background: var(--bg);
+		border-bottom: 1px solid var(--line);
+		box-sizing: border-box;
+	}
+
+	.profile-pane-scroll {
+		min-height: 0;
+		box-sizing: border-box;
+	}
+
+	.profile-textarea {
+		line-height: 1.5;
+	}
+
+	.profile-textarea-duties {
+		min-height: 140px;
+	}
+
+	.profile-textarea-boundaries {
+		min-height: 100px;
+	}
+
+	.bot-tabs {
+		display: flex;
+		align-items: center;
+		width: 100%;
+		gap: 3px;
+		padding: 3px;
+		background: var(--sidebar-bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		box-sizing: border-box;
+	}
+
+	.bot-tab-btn {
+		flex: 1 1 0;
+		min-width: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		padding: 6px 4px;
+		border-radius: var(--radius-sm);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-secondary);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.15s ease;
+		line-height: 1.2;
+		box-sizing: border-box;
+	}
+
+	.bot-tab-btn:hover {
+		color: var(--ink);
+		background: var(--chip);
+	}
+
+	.bot-tab-btn.is-active {
+		color: var(--ink);
+		font-weight: 600;
+		background: var(--pane);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.bot-tab-btn .tab-icon {
+		color: var(--muted);
+		flex-shrink: 0;
+		transition: color 0.15s ease;
+	}
+
+	.bot-tab-btn.is-active .tab-icon {
+		color: var(--accent);
+	}
+
+	.bot-tab-btn .tab-badge-error {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 9999px;
+		background: var(--danger);
+		color: #ffffff;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1;
+		margin-left: 2px;
+	}
+
+	.bot-tab-btn .tab-count {
+		font-size: 10.5px;
+		font-weight: 600;
+		padding: 0 5px;
+		border-radius: 9999px;
+		background: var(--chip);
+		color: var(--ink-secondary);
+		line-height: 15px;
+	}
+
+	.bot-tab-btn.is-active .tab-count {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
 	.skill-head-add-btn {
 		display: inline-flex;
 		align-items: center;

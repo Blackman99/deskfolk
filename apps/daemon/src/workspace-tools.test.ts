@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -117,6 +118,157 @@ describe("workspace tools", () => {
     const paths = (got.data?.entries as Array<{ path: string }>).map((e) => e.path);
     expect(paths).toContain("out");
     expect(paths.some((p) => p.includes("secret.md"))).toBe(false);
+    close();
+  });
+
+  test("shell returns the command's output", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const got = await runWorkspaceTool(
+      { store, signal: new AbortController().signal },
+      "shell",
+      { command: "echo hi" },
+    );
+    expect(got.ok).toBe(true);
+    expect(got.data?.exit_code).toBe(0);
+    expect(String(got.data?.stdout).trim()).toBe("hi");
+    close();
+  });
+
+  /**
+   * A command that never returns used to hold the turn open for good — and so did one that exits
+   * while a backgrounded grandchild keeps its stdout pipe open.
+   */
+  test("shell with no cwd runs in the work dir, creating it on first use", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-导出季度报表-7f3k";
+    expect(existsSync(join(root, workDir))).toBe(false);
+
+    const ran = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+      command: "pwd > here.txt && echo done",
+    });
+    expect(ran.ok).toBe(true);
+    // This is the whole point: a command that writes where it stands does not litter the root.
+    expect(existsSync(join(root, "here.txt"))).toBe(false);
+    expect(readFileSync(join(root, workDir, "here.txt"), "utf8").trim()).toBe(join(root, workDir));
+    close();
+  });
+
+  test("an explicit cwd still wins, and `.` is still the workspace root", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-x-7f3k";
+    const ran = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+      command: "pwd > here.txt",
+      cwd: ".",
+    });
+    expect(ran.ok).toBe(true);
+    expect(readFileSync(join(root, "here.txt"), "utf8").trim()).toBe(root);
+    // Nothing was created for a work dir the command never used.
+    expect(existsSync(join(root, workDir))).toBe(false);
+    close();
+  });
+
+  test("file tool paths stay relative to the workspace root, work dir or not", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-x-7f3k";
+    const written = await runWorkspaceTool({ store, signal, workDir }, "write_file", {
+      path: "report.md",
+      content: "done",
+    });
+    expect(written.ok).toBe(true);
+    expect(readFileSync(join(root, "report.md"), "utf8")).toBe("done");
+    expect(existsSync(join(root, workDir, "report.md"))).toBe(false);
+    close();
+  });
+
+  test("shell reports the files it left in the work dir", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-x-7f3k";
+    const ran = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+      command: "mkdir -p charts && echo png > charts/q3.png && echo csv > data.csv",
+    });
+    expect(ran.ok).toBe(true);
+    // This is the hole being closed: `write_file` announces its path, a command never did.
+    expect(ran.data?.paths).toEqual([`${workDir}/charts/q3.png`, `${workDir}/data.csv`]);
+    close();
+  });
+
+  test("shell reports nothing when it changed nothing", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-x-7f3k";
+    mkdirSync(join(root, workDir), { recursive: true });
+    writeFileSync(join(root, workDir, "data.csv"), "old");
+    const ran = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+      command: "cat data.csv",
+    });
+    expect(ran.ok).toBe(true);
+    expect(ran.data?.paths).toBeUndefined();
+    close();
+  });
+
+  test("the reserved subdirs are never reported as produced", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-x-7f3k";
+    const ran = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+      command: "mkdir -p scratch tool-results && echo x > scratch/probe.py && echo y > tool-results/a.json && echo z > kept.txt",
+    });
+    expect(ran.ok).toBe(true);
+    expect(ran.data?.paths).toEqual([`${workDir}/kept.txt`]);
+    close();
+  });
+
+  test("a command that makes hundreds of files reports none of them, flagged", async () => {
+    const { store, root, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const workDir = "work/2026-09-21-x-7f3k";
+    const ran = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+      command: "for i in $(seq 1 300); do echo $i > f$i.txt; done",
+    });
+    expect(ran.ok).toBe(true);
+    // `npm install` is not a list of artifacts; the turn says so rather than dumping it.
+    expect(ran.data?.paths).toBeUndefined();
+    expect(ran.data?.paths_truncated).toBe(true);
+    close();
+  });
+
+  test("a turn with no work dir reports nothing, as before", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const signal = new AbortController().signal;
+    const ran = await runWorkspaceTool({ store, signal }, "shell", { command: "echo hi > loose.txt" });
+    expect(ran.ok).toBe(true);
+    expect(ran.data?.paths).toBeUndefined();
+    expect(ran.data?.paths_truncated).toBeUndefined();
+    close();
+  });
+
+  test("shell gives up on a command that outlives its timeout", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const started = Date.now();
+    const got = await runWorkspaceTool(
+      { store, signal: new AbortController().signal, shellTimeoutMs: 150 },
+      "shell",
+      { command: "sleep 30" },
+    );
+    expect(got.ok).toBe(false);
+    expect(got.error?.message).toContain("timed out");
+    expect(Date.now() - started).toBeLessThan(5000);
+    close();
+  });
+
+  test("shell comes back when a grandchild holds the output pipe open", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const got = await runWorkspaceTool(
+      { store, signal: new AbortController().signal, shellTimeoutMs: 150 },
+      "shell",
+      { command: "sleep 30 & echo started" },
+    );
+    expect(got.ok).toBe(false);
+    expect(got.error?.message).toContain("timed out");
     close();
   });
 

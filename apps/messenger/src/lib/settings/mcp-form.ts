@@ -183,6 +183,41 @@ export function requestMcpSave(
   return { ok: true, phase: "submit", patch };
 }
 
+/** Name and usage note never need the connection confirm; empty name is a field error, not a skip. */
+export function planMcpSafePatch(
+  current: { name: string; usage_note?: string | null },
+  draft: McpDraft,
+): { ok: true; patch: Pick<McpPatchBody, "name" | "usage_note"> } | { ok: false; errors: McpFieldErrors } {
+  const name = draft.name.trim();
+  if (name.length === 0) return { ok: false, errors: { name: "empty" } };
+  const patch: Pick<McpPatchBody, "name" | "usage_note"> = {};
+  if (name !== current.name) patch.name = name;
+  const nextNote = (draft.usageNote ?? "").trim() || null;
+  if (nextNote !== (current.usage_note ?? null)) patch.usage_note = nextNote;
+  return { ok: true, patch };
+}
+
+/** True when command / args / URL / headers / auth / transport differ from the saved row. */
+export function mcpConnectionDirty(
+  current: {
+    transport?: McpTransportKind;
+    command: string;
+    args: readonly string[];
+    url?: string | null;
+    headers?: readonly { name: string; value: string }[];
+  },
+  draft: McpDraft,
+): boolean {
+  const transport = draft.transport === "http" ? "http" : "stdio";
+  if (transport !== (current.transport ?? "stdio")) return true;
+  if (transport === "stdio") {
+    return draft.command.trim() !== current.command || !sameArgs(parseMcpArgs(draft.args), current.args);
+  }
+  if ((draft.url ?? "").trim() !== (current.url ?? "")) return true;
+  if (!sameHeaders(parseMcpHeaders(draft.headers ?? ""), current.headers ?? [])) return true;
+  return (draft.auth ?? "").trim().length > 0;
+}
+
 export function mapMcpError(message: string): McpFieldErrors | { top: true } {
   if (message === "name is required") return { name: "empty" };
   if (message === "command is required") return { command: "empty" };

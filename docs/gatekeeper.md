@@ -25,6 +25,10 @@ xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
 
 Then open the app again. This only removes the download quarantine attribute; it does **not** disable Gatekeeper system-wide.
 
+## In-app updates are not stopped again
+
+After the first open, "Download and install" in the About card has the app download and replace itself: the bytes never go through a browser, so they are never marked with the download quarantine attribute and there is no second right-click → Open. That also means this path's trust rests entirely on where it downloads from — it is limited to `.dmg` assets of this repository's releases, and the app inside the image is checked for this app's identifier and the exact version offered before anything is replaced. When the app cannot replace itself (a copy someone else installed, one running from source), it offers the browser download instead, and that download opens the usual two-step way above.
+
 ## After first open: expensive actions still ask
 
 Opening the app past Gatekeeper is not a blank check. Inside Real Bot:

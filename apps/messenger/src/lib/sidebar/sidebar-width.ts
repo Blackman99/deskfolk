@@ -9,7 +9,7 @@ export function loadSidebarWidth(): number {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const n = raw ? Number(raw) : NaN;
     if (!Number.isFinite(n)) return SIDEBAR_DEFAULT;
-    return clampSidebarWidth(n, 1600);
+    return clampSidebarWidth(n);
   } catch {
     return SIDEBAR_DEFAULT;
   }
@@ -24,7 +24,10 @@ export function saveSidebarWidth(width: number): void {
   }
 }
 
-export function clampSidebarWidth(width: number, shellWidth: number): number {
+export function clampSidebarWidth(
+  width: number,
+  shellWidth: number = Number.POSITIVE_INFINITY,
+): number {
   const max = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.floor(shellWidth * 0.42)));
   return Math.min(max, Math.max(SIDEBAR_MIN, Math.round(width)));
 }

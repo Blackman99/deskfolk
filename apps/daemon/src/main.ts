@@ -3,6 +3,7 @@ import { defaultDataDir, pidAlive, readDescriptor } from "./descriptor";
 import { startRuntime } from "./runtime";
 import { bunKeyStore } from "./secrets";
 import { remoteNative } from "./remote-native";
+import { describeError, logStartup, startupLogPath } from "./startup-log";
 
 if (process.argv.includes("--remote-native-capability")) {
   console.log(JSON.stringify(await remoteNative.capability()));
@@ -17,13 +18,13 @@ if (already === "ours") {
   process.exit(0);
 }
 if (already === "other") {
-  console.error(`${LOCAL_API_NAME} refused ${LOCAL_API_BIND}: port is taken`);
-  process.exit(1);
+  fatal(`refused ${LOCAL_API_BIND}: port is taken`);
 }
 
 const holder = readDescriptor(dataDir);
 if (holder && holder.pid !== process.pid && pidAlive(holder.pid)) {
   console.log(`${LOCAL_API_NAME} holder pid ${holder.pid} is still alive; not starting a second runtime`);
+  logStartup(dataDir, `holder pid ${holder.pid} is still alive; not starting a second runtime`);
   process.exit(0);
 }
 
@@ -33,8 +34,11 @@ if (standalone && process.argv.includes("--desktop-remote-channel")) {
   process.exit(1);
 }
 
+// Everything that can stop the daemon before it listens ends up here. Without this the window's
+// "can't reach the runtime" is the only trace left of, say, a database the schema cannot open.
+let runtime;
 try {
-  const runtime = await startRuntime({
+  runtime = await startRuntime({
     dataDir,
     bind: LOCAL_API_BIND,
     endpointKey: bunKeyStore,
@@ -42,20 +46,27 @@ try {
     desktopRemoteChannel: process.argv.includes("--desktop-remote-channel"),
     supervisor: standalone ? "standalone" : process.argv.includes("--desktop-remote-channel") ? "window" : "none",
   });
-
-  console.log(`${LOCAL_API_NAME} daemon listening on ${runtime.origin}`);
-
-  process.on("SIGINT", () => {
-    void runtime.stop();
-  });
-  process.on("SIGTERM", () => {
-    void runtime.stop();
-  });
 } catch (error) {
-  if (standalone && error instanceof Error && error.message === "runtime is stopped") {
-    process.exit(0);
-  }
-  throw error;
+  // An explicitly stopped standalone runtime is not a startup failure; it stays stopped.
+  if (standalone && error instanceof Error && error.message === "runtime is stopped") process.exit(0);
+  fatal(`failed to start: ${describeError(error)}`);
+}
+
+console.log(`${LOCAL_API_NAME} daemon listening on ${runtime.origin}`);
+logStartup(dataDir, `listening on ${runtime.origin}`);
+
+process.on("SIGINT", () => {
+  void runtime.stop();
+});
+process.on("SIGTERM", () => {
+  void runtime.stop();
+});
+
+function fatal(line: string): never {
+  console.error(`${LOCAL_API_NAME} ${line}`);
+  logStartup(dataDir, line);
+  console.error(`${LOCAL_API_NAME} see ${startupLogPath(dataDir)}`);
+  process.exit(1);
 }
 
 async function probeHealth(): Promise<"ours" | "other" | "free"> {

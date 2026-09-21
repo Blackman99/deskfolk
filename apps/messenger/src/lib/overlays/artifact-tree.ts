@@ -4,6 +4,8 @@ export type ArtifactTreeNode = {
   kind: "file" | "dir";
   children?: ArtifactTreeNode[];
   truncated?: boolean;
+  /** Cited by the message this entry was opened from, as opposed to earlier in the same job. */
+  fresh?: boolean;
 };
 
 export function workspaceEntriesToNodes(
@@ -168,4 +170,56 @@ export function citedBundleRoot(nodes: readonly ArtifactTreeNode[]): string | nu
   }
   if (best && bestCount >= Math.ceil(total / 2)) return best.path;
   return null;
+}
+
+/**
+ * The tree a work dir's entry opens: that folder is the single expanded root, and anything the job
+ * cited outside it sits flat beside it.
+ *
+ * Not the deepest common ancestor — one `report.md` at the workspace root drags that all the way up
+ * and the reader is back to expanding `work / <dated folder> /` before seeing a file. The work dir
+ * is known, so it is used.
+ */
+export function buildTaskArtifactTree(
+  dir: string,
+  paths: readonly string[],
+  fresh: readonly string[] = [],
+): ArtifactTreeNode[] {
+  const isFresh = new Set(fresh);
+  const prefix = `${dir}/`;
+  const inside = paths.filter((path) => path.startsWith(prefix));
+  const outside = paths.filter((path) => !path.startsWith(prefix));
+
+  const roots: ArtifactTreeNode[] = [];
+  if (inside.length > 0) {
+    const nested = buildCitedPathTree(inside.map((path) => path.slice(prefix.length)));
+    roots.push({
+      name: dir.split("/").pop() ?? dir,
+      path: dir,
+      kind: "dir",
+      children: reroot(nested, prefix, isFresh),
+    });
+  }
+  for (const node of buildCitedPathTree(outside)) roots.push(markFresh(node, isFresh));
+  return roots;
+}
+
+/** Paths inside the work dir were nested without their prefix; put it back so clicks still resolve. */
+function reroot(
+  nodes: readonly ArtifactTreeNode[],
+  prefix: string,
+  isFresh: ReadonlySet<string>,
+): ArtifactTreeNode[] {
+  return nodes.map((node) => {
+    const path = `${prefix}${node.path}`;
+    return node.kind === "dir"
+      ? { ...node, path, children: reroot(node.children ?? [], prefix, isFresh) }
+      : { ...node, path, ...(isFresh.has(path) ? { fresh: true } : {}) };
+  });
+}
+
+function markFresh(node: ArtifactTreeNode, isFresh: ReadonlySet<string>): ArtifactTreeNode {
+  return node.kind === "dir"
+    ? { ...node, children: (node.children ?? []).map((child) => markFresh(child, isFresh)) }
+    : { ...node, ...(isFresh.has(node.path) ? { fresh: true } : {}) };
 }

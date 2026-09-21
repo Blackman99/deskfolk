@@ -39,6 +39,7 @@ import type {
   Spend,
   ThinkingLevel,
   Turn,
+  TaskArtifacts,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import type { LocalEndpoint } from "./discovery.ts";
@@ -346,6 +347,11 @@ export class LocalApi {
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
     });
+  }
+
+  /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
+  async taskArtifacts(taskId: string, signal?: AbortSignal): Promise<TaskArtifacts> {
+    return this.get<TaskArtifacts>(`/v1/tasks/${encodeURIComponent(taskId)}/artifacts`, signal);
   }
 
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {

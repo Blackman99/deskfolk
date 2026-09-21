@@ -220,6 +220,15 @@ export type WorkspaceTreeEntry = {
   kind: "file" | "dir";
 };
 
+/** What a work dir's entry lists: every path this job's messages cited, newest citation first. */
+export type TaskArtifacts = {
+  id: string;
+  dir: string;
+  title: string;
+  closed_at: string | null;
+  items: Array<{ path: string; last_cited_at: string; turn_id: string | null }>;
+};
+
 export type WorkspaceTreePage = {
   path: string;
   truncated: boolean;
@@ -379,6 +388,8 @@ export type Turn = {
   bot_id: string;
   status: TurnStatus;
   trigger_message_id: string;
+  /** The work dir this turn's intermediate files belong to. Null on turns from before work dirs. */
+  task_id?: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;
@@ -415,6 +426,8 @@ export type Message = {
   author: typeof USER_MEMBER | string;
   body: string;
   source_turn_id: string | null;
+  /** The work dir this message belongs to; the anchor its artifact entry opens. */
+  task_id?: string | null;
   created_at: string;
   attachments: Attachment[];
   reactions: Reaction[];

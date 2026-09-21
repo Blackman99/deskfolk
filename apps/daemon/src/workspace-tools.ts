@@ -11,10 +11,21 @@ import { dirname, join } from "node:path";
 import type { ToolResult } from "./collab-tools";
 import { atomicWrite, withFileLock } from "./file-integrity";
 import { HttpError } from "./errors";
-import { type Store } from "./store";
+import { isReservedTaskPath, type Store } from "./store";
+import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
 
 const READ_BYTES_MAX = 1_000_000;
+
+/**
+ * What a `shell` produced. `write_file` announces its own path; a command does not, so the files
+ * downloads, renders and conversions leave behind used to be invisible to the message that should
+ * have cited them. The work dir makes looking affordable: one bounded walk of one folder, rather
+ * than of the whole workspace.
+ */
+const WORK_SCAN_DEPTH = 2;
+/** Past this the walk is not worth reporting: `npm install` is not a list of artifacts. */
+const WORK_SCAN_MAX = 200;
 
 export const WORKSPACE_TOOL_NAMES = [
   "read_file",
@@ -33,7 +44,23 @@ export function isWorkspaceTool(name: string): name is WorkspaceToolName {
 export type WorkspaceToolCtx = {
   store: Store;
   signal: AbortSignal;
+  /**
+   * This turn's work dir, workspace-relative. It is where a `shell` with no `cwd` runs, which is
+   * what keeps downloads, renders and script output out of the workspace root without the model
+   * having to cooperate. File tool paths are unaffected: they stay relative to the workspace root,
+   * so `read_file("x")` and `write_file("x")` never point at two different places.
+   */
+  workDir?: string | null;
+  /** Overrides {@link SHELL_TIMEOUT_MS}; tests use a short one. */
+  shellTimeoutMs?: number;
 };
+
+/**
+ * A shell that never returns used to wedge the whole turn: `proc.exited` and the output pipes are
+ * awaited, and a backgrounded grandchild keeps those pipes open even after the shell itself exits.
+ * Long enough for a render, short enough that the turn comes back.
+ */
+export const SHELL_TIMEOUT_MS = 10 * 60_000;
 
 export async function runWorkspaceTool(
   ctx: WorkspaceToolCtx,
@@ -207,8 +234,18 @@ async function runShell(
   ctx: WorkspaceToolCtx,
 ): Promise<ToolResult> {
   const command = requireString(args.command, "command");
-  const cwd = optionalString(args.cwd) ?? ".";
+  const explicitCwd = optionalString(args.cwd);
+  const cwd = explicitCwd ?? ctx.workDir ?? ".";
   const classified = classifyShell(root, command, cwd);
+  // The work dir is created here rather than up front: a turn that only talks should not leave an
+  // empty folder behind, but a cwd that does not exist fails the spawn.
+  if (!explicitCwd && ctx.workDir && classified.kind === "jailed") {
+    try {
+      mkdirSync(classified.cwdAbs, { recursive: true });
+    } catch {
+      return fail("failed", "could not create the work dir");
+    }
+  }
   if (classified.kind === "unconstrained") {
     const pending = needsApproval(
       opts,
@@ -222,6 +259,7 @@ async function runShell(
     if (pending) return pending;
   }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
+  const before = snapshotWorkDir(root, ctx.workDir);
   try {
     const proc = Bun.spawn(["/bin/sh", "-c", command], {
       cwd: classified.cwdAbs,
@@ -241,17 +279,97 @@ async function runShell(
       return fail("failed", "interrupted");
     }
     ctx.signal.addEventListener("abort", abort, { once: true });
-    const [stdout, stderr, exit] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
+    const timeoutMs = ctx.shellTimeoutMs ?? SHELL_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Raced rather than awaited after the kill: a grandchild that inherited stdout keeps the pipes
+    // open for as long as it lives, so reading them to the end is not something to wait on.
+    const expired = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // already exited
+        }
+        resolve("timeout");
+      }, timeoutMs);
+    });
+    const settled = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      expired,
     ]);
+    clearTimeout(timer);
     ctx.signal.removeEventListener("abort", abort);
     if (ctx.signal.aborted) return fail("failed", "interrupted");
-    return ok({ exit_code: exit, stdout, stderr });
+    if (settled === "timeout") {
+      return fail("failed", `command timed out after ${Math.round(timeoutMs / 1000)}s and was killed`);
+    }
+    const [stdout, stderr, exit] = settled;
+    const produced = producedPaths(root, ctx.workDir, before);
+    return ok({ exit_code: exit, stdout, stderr, ...produced });
   } catch {
     return fail("failed", "shell failed");
   }
+}
+
+/**
+ * Every file in the work dir, two levels deep, with what its mtime was. Reserved subdirs and the
+ * usual noise are skipped, and a folder with more than {@link WORK_SCAN_MAX} entries reports
+ * nothing at all rather than a list nobody wants.
+ */
+function snapshotWorkDir(root: string, workDir: string | null | undefined): Map<string, number> | null {
+  if (!workDir) return null;
+  const base = classifyPath(root, workDir);
+  if (base.zone !== "inside") return null;
+  const seen = new Map<string, number>();
+  const walk = (absDir: string, rel: string, depth: number): boolean => {
+    let names: string[];
+    try {
+      names = readdirSync(absDir);
+    } catch {
+      return true;
+    }
+    for (const name of names) {
+      if (skipName(name)) continue;
+      const childRel = `${rel}/${name}`;
+      if (isReservedTaskPath(workDir, `${childRel}/`)) continue;
+      let stat;
+      try {
+        stat = statSync(join(absDir, name));
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        if (depth >= WORK_SCAN_DEPTH) continue;
+        if (!walk(join(absDir, name), childRel, depth + 1)) return false;
+        continue;
+      }
+      if (seen.size >= WORK_SCAN_MAX) return false;
+      seen.set(childRel, stat.mtimeMs);
+    }
+    return true;
+  };
+  return walk(base.abs, workDir, 1) ? seen : null;
+}
+
+/** New or rewritten since the snapshot. A null snapshot means the walk was not worth reporting. */
+function producedPaths(
+  root: string,
+  workDir: string | null | undefined,
+  before: Map<string, number> | null,
+): { paths?: string[]; paths_truncated?: true } {
+  if (!workDir) return {};
+  const after = snapshotWorkDir(root, workDir);
+  if (!after || !before) return { paths_truncated: true };
+  const paths: string[] = [];
+  for (const [path, mtime] of after) {
+    if (before.get(path) === mtime) continue;
+    paths.push(path);
+  }
+  return paths.length > 0 ? { paths: paths.sort() } : {};
 }
 
 function collectEntries(

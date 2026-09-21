@@ -771,6 +771,22 @@ function dispatch(
     return jsonResponse(session, 200, null);
   }
 
+  params = matchPath(path, "/v1/tasks/:id/artifacts");
+  if (params && method === "GET") {
+    const task = store.getTask(params.id!);
+    return jsonResponse(
+      {
+        id: task.id,
+        dir: task.dir,
+        title: task.title,
+        closed_at: task.closed_at,
+        items: store.taskArtifacts(task.id),
+      },
+      200,
+      null,
+    );
+  }
+
   params = matchPath(path, "/v1/sessions/:id/judgements");
   if (params && method === "GET") {
     return jsonResponse({ items: store.listJudgements(params.id!) }, 200, null);

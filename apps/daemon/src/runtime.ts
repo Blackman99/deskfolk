@@ -261,6 +261,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     await remote.start();
     // Chains the previous run left open go through review now; their timers died with it.
     api.engine.sweepStaleChains();
+    // The spill of jobs that ended a week ago is dead weight; a boot is the natural time to drop it.
+    api.engine.sweepToolResults();
     writeDescriptor(options.dataDir, {
       pid: process.pid,
       port,

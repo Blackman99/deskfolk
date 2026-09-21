@@ -9,6 +9,7 @@
  *   --github            GitHub-shaped tools and instructions
  *   --media             Image and video tools with English descriptions
  *   --http              Streamable HTTP fixture; prints { port } then serves JSON-RPC
+ *   --http-quiet-sse    Answer tools/call with an SSE stream that never sends a result
  */
 
 const flags = new Set(process.argv.slice(2));
@@ -279,6 +280,18 @@ if (flags.has("--http")) {
           { jsonrpc: "2.0", id: "server-error", error: { code: -32600, message: "Bad Request: Missing session ID" } },
           { status: 400, headers: { "MCP-Session-Id": "bad-session" } },
         );
+      }
+      if (flags.has("--http-quiet-sse") && msg.method === "tools/call") {
+        // Headers, one comment, then silence forever: the shape a host has to give up on itself.
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(": waiting\n\n"));
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream", "MCP-Session-Id": "fixture-session" },
+        });
       }
       const replies: unknown[] = [];
       const previous = emit;

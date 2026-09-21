@@ -9,7 +9,7 @@ export function loadArtifactTreeWidth(): number {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const n = raw ? Number(raw) : NaN;
     if (!Number.isFinite(n)) return ARTIFACT_TREE_DEFAULT;
-    return clampArtifactTreeWidth(n, 800);
+    return clampArtifactTreeWidth(n);
   } catch {
     return ARTIFACT_TREE_DEFAULT;
   }
@@ -24,7 +24,10 @@ export function saveArtifactTreeWidth(width: number): void {
   }
 }
 
-export function clampArtifactTreeWidth(width: number, paneWidth: number): number {
+export function clampArtifactTreeWidth(
+  width: number,
+  paneWidth: number = Number.POSITIVE_INFINITY,
+): number {
   const max = Math.min(ARTIFACT_TREE_MAX, Math.max(ARTIFACT_TREE_MIN, Math.floor(paneWidth * 0.42)));
   return Math.min(max, Math.max(ARTIFACT_TREE_MIN, Math.round(width)));
 }

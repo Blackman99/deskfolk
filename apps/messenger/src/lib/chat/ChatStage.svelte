@@ -31,6 +31,8 @@
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
+	import MessageContextMenu from './MessageContextMenu.svelte';
+	import { extractAssociatedFiles } from './message-context-menu.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
@@ -43,7 +45,12 @@
 		t: Copy;
 		selected: SessionSummary | null;
 		onOpenProfile: (botId: string) => void;
-		onOpenArtifact: (relpath: string, att?: Attachment) => void;
+		onOpenArtifact: (
+			relpath: string,
+			att?: Attachment,
+			messageId?: string,
+			forceTree?: boolean
+		) => void;
 		onCreateBot: () => void;
 	};
 
@@ -413,10 +420,66 @@
 		if (status === 'voided') return t.stream.voided;
 		return t.stream.approval;
 	}
+
+	let messageContextMenu = $state<{
+		message: Message;
+		x: number;
+		y: number;
+		selectedText: string | null;
+	} | null>(null);
+	const selectedMessageId = $derived(messageContextMenu?.message.id ?? null);
+
+	function handleMessageContextMenu(e: MouseEvent, message: Message): void {
+		e.preventDefault();
+		e.stopPropagation();
+		const selection = window.getSelection()?.toString().trim();
+		const currentEl = e.currentTarget as HTMLElement | null;
+		const anchorNode = window.getSelection()?.anchorNode;
+		const isSelectionInside = Boolean(
+			selection && currentEl && anchorNode && currentEl.contains(anchorNode)
+		);
+		messageContextMenu = {
+			message,
+			x: e.clientX,
+			y: e.clientY,
+			selectedText: isSelectionInside ? (selection ?? null) : null
+		};
+	}
+
+	function closeMessageContextMenu(): void {
+		messageContextMenu = null;
+	}
+
+	function handleOpenFileTree(targetPath: string | null, message: Message): void {
+		const files = extractAssociatedFiles(message);
+		const path = targetPath ?? files[0];
+		if (path) {
+			onOpenArtifact(path, undefined, message.id, true);
+		}
+	}
+
+	function handleCopyMessageId(id: string): void {
+		fallbackCopyText(id);
+		if (navigator.clipboard?.writeText) {
+			void navigator.clipboard.writeText(id).catch(() => {});
+		}
+	}
 </script>
 
 <div class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
-	<div class="stream" bind:this={streamContainer} onscroll={onStreamScroll} onscrollend={onStreamScrollEnd}>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="stream"
+		bind:this={streamContainer}
+		onscroll={onStreamScroll}
+		onscrollend={onStreamScrollEnd}
+		onclick={(e) => {
+			if (e.target === streamContainer || e.target === streamInner) {
+				messageContextMenu = null;
+			}
+		}}
+	>
 		<div class="stream-inner" bind:this={streamInner}>
 	{#if !selected}
 		<div class="empty-state m-auto flex flex-col items-center justify-center text-center py-20 px-10 max-w-[360px]">
@@ -516,10 +579,14 @@
 				{#if singleMsg.type === 'message'}
 					{@const askBot = botsById.get(singleMsg.message.author)}
 					{@const pal = botAvatarColor(singleMsg.message.author)}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="msg-wrap is-bot"
 						data-message-id={singleMsg.message.id}
 						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
+						class:is-selected={selectedMessageId === singleMsg.message.id}
+						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
 						<div class="avatar-col">
 							{#if askBot}
@@ -673,10 +740,14 @@
 						locked: lockedComposer,
 						hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author)
 					})}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="msg-wrap is-bot is-system-row"
 						data-message-id={singleMsg.message.id}
 						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
+						class:is-selected={selectedMessageId === singleMsg.message.id}
+						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
 						<div class="avatar-col">
 							{#if sysBot}
@@ -772,10 +843,14 @@
 							{#each group.items as item (transcriptItemKey(item))}
 								{#if item.type === 'message'}
 									{@const rxGroups = groupReactions(item.message.reactions, USER_MEMBER)}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 									<div
 										class="msg-segment is-user-segment flex flex-col relative w-fit max-w-full"
 										data-message-id={item.message.id}
 										class:is-search-hit={runtime.highlightedMessageId === item.message.id}
+										class:is-selected={selectedMessageId === item.message.id}
+										oncontextmenu={(e) => handleMessageContextMenu(e, item.message)}
 									>
 										{#if isMulti}
 											<div class="segment-meta is-right flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
@@ -828,7 +903,7 @@
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												inverted
-												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if item.message.attachments && item.message.attachments.length > 0}
@@ -836,7 +911,7 @@
 													attachments={item.message.attachments}
 													api={runtime.client}
 													{t}
-													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att)}
+													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 												/>
 											{/if}
 										</article>
@@ -995,12 +1070,18 @@
 
 						<div class="msg-segments flex flex-col gap-4 w-full">
 							{#each group.items as item, sIdx (transcriptItemKey(item))}
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									class="msg-segment flex flex-col relative w-fit max-w-full"
 									class:is-streaming={item.type === 'streaming'}
 									data-message-id={item.type === 'message' ? item.message.id : undefined}
 									class:is-search-hit={item.type === 'message' &&
 										runtime.highlightedMessageId === item.message.id}
+									class:is-selected={item.type === 'message' && selectedMessageId === item.message.id}
+									oncontextmenu={(e) => {
+										if (item.type === 'message') handleMessageContextMenu(e, item.message);
+									}}
 								>
 									{#if isMulti}
 										<div class="segment-meta flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
@@ -1100,7 +1181,7 @@
 												options={markdownOpts(item.message)}
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
-												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if item.message.attachments && item.message.attachments.length > 0}
@@ -1108,7 +1189,7 @@
 													attachments={item.message.attachments}
 													api={runtime.client}
 													{t}
-													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att)}
+													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 												/>
 											{/if}
 										</article>
@@ -1193,6 +1274,24 @@
 		onSend={sendFromComposer}
 		onPickPrompt={pickStarterPrompt}
 	/>
+
+	{#if messageContextMenu}
+		{@const activeMenu = messageContextMenu}
+		<MessageContextMenu
+			message={activeMenu.message}
+			x={activeMenu.x}
+			y={activeMenu.y}
+			{t}
+			{lockedComposer}
+			selectedText={activeMenu.selectedText}
+			onClose={closeMessageContextMenu}
+			onReply={() => startQuoteReply(activeMenu.message)}
+			onCopy={(text) => copyMessageBody(activeMenu.message.id, text)}
+			onOpenFileTree={(path) => handleOpenFileTree(path, activeMenu.message)}
+			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
+			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
+		/>
+	{/if}
 </div>
 
 <style>
@@ -1605,6 +1704,11 @@
 		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
 		transition: box-shadow 0.15s ease;
 		word-break: break-word;
+	}
+
+	/* A definite width so the table wrap can scroll instead of shrinking columns. */
+	.msg:has(:global(.md-table-wrap)) {
+		width: 100%;
 	}
 
 	.msg.is-you {
@@ -2100,8 +2204,7 @@
 		display: none;
 	}
 
-	.msg-wrap.is-search-hit,
-	.msg-segment.is-search-hit {
+	.msg-wrap.is-search-hit {
 		scroll-margin-top: 28px;
 		scroll-margin-bottom: 28px;
 		border-radius: var(--radius-md);
@@ -2111,8 +2214,26 @@
 	}
 
 	.msg-segment.is-search-hit {
-		padding: 6px 8px;
-		margin-inline: -8px;
+		scroll-margin-top: 28px;
+		scroll-margin-bottom: 28px;
+		border-radius: 16px;
+		background: var(--accent-tint);
+		box-shadow: 0 0 0 2px var(--accent-border);
+		animation: search-hit-pulse 1.1s ease-out;
+	}
+
+	.msg-wrap.is-selected {
+		border-radius: var(--radius-md);
+		background: var(--accent-tint);
+		box-shadow: 0 0 0 2px var(--accent-border);
+		transition: background 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.msg-segment.is-selected {
+		border-radius: 16px;
+		background: var(--accent-tint);
+		box-shadow: 0 0 0 2px var(--accent-border);
+		transition: background 0.15s ease, box-shadow 0.15s ease;
 	}
 
 	.is-streaming-avatar {

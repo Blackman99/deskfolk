@@ -176,6 +176,7 @@ export type MessageRow = {
   author: string;
   body: string;
   source_turn_id: string | null;
+  task_id: string | null;
   created_at: string;
 };
 
@@ -186,6 +187,7 @@ export type TurnRow = {
   status: Turn["status"];
   trigger_message_id: string;
   partial_text?: string | null;
+  task_id: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;

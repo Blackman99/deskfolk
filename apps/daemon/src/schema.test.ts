@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { generateBoringAvatar } from "@real-bot/protocol";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,6 +55,7 @@ describe("schema", () => {
       "settings",
       "skills",
       "spend",
+      "tasks",
       "turn_route_decisions",
       "turns",
     ]);
@@ -167,6 +169,10 @@ describe("schema", () => {
     const botDefault = store.createBot({ name: "DefaultAvatarBot", duties: "test", boundaries: "test" });
     expect(botDefault.bot.avatar).toBeString();
     expect(botDefault.bot.avatar).toContain("<svg");
+    expect(botDefault.bot.avatar).toBe(generateBoringAvatar({ name: "DefaultAvatarBot" }));
+    const other = store.createBot({ name: "OtherAvatarBot", duties: "test", boundaries: "test" });
+    expect(other.bot.avatar).toBe(generateBoringAvatar({ name: "OtherAvatarBot" }));
+    expect(other.bot.avatar).not.toBe(botDefault.bot.avatar);
 
     const custom = "data:image/jpeg;base64,/9j/4AAQ";
     const botCustom = store.createBot({
@@ -186,6 +192,7 @@ describe("schema", () => {
     // Patch with empty/null resets/regenerates default boring avatar
     const regenerated = store.patchBot(botCustom.bot.id, { avatar: "" });
     expect(regenerated.avatar).toContain("<svg");
+    expect(regenerated.avatar).toBe(generateBoringAvatar({ name: "CustomAvatarBot" }));
 
     store.close();
   });
@@ -208,6 +215,61 @@ describe("schema", () => {
     expect(store.listLiveTurns({ sessionId: group.id })).toHaveLength(0);
     // Session still exists
     expect(store.getSession(group.id).id).toBe(group.id);
+
+    store.close();
+  });
+
+  test("clearSessionMessages and deleteSession succeed when the session has a route review", () => {
+    const store = new Store();
+    const b1 = store.createBot({ name: "BotOne", duties: "one", boundaries: "none" });
+    const b2 = store.createBot({ name: "BotTwo", duties: "two", boundaries: "none" });
+    const group = store.createGroup({ name: "WorkGroup", members: [b1.bot.id, b2.bot.id] });
+    const msg = store.postMessage(group.id, { body: "Hello group" });
+    const turn = store.createTurn({
+      sessionId: group.id,
+      botId: b1.bot.id,
+      triggerMessageId: msg.id,
+    });
+    store.recordRouteReview({
+      botId: b1.bot.id,
+      chainId: turn.id,
+      turnId: turn.id,
+      sessionId: group.id,
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "model", direction: "stronger", rounds: 1, confidence: 0.9, reason: "r" },
+    });
+    expect(store.listSessionReviews(group.id)).toHaveLength(1);
+
+    store.clearSessionMessages(group.id);
+
+    expect(store.listMessages(group.id).items).toHaveLength(0);
+    expect(store.listSessionReviews(group.id)).toHaveLength(0);
+    expect(store.getSession(group.id).id).toBe(group.id);
+
+    const again = store.postMessage(group.id, { body: "after clear" });
+    const nextTurn = store.createTurn({
+      sessionId: group.id,
+      botId: b1.bot.id,
+      triggerMessageId: again.id,
+    });
+    store.recordRouteReview({
+      botId: b1.bot.id,
+      chainId: nextTurn.id,
+      turnId: nextTurn.id,
+      sessionId: group.id,
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "none", direction: "stronger", rounds: 0, confidence: 0.1, reason: "" },
+    });
+
+    store.deleteSession(group.id);
+
+    expect(() => store.getSession(group.id)).toThrow();
+    expect(store.listSessions().some((s) => s.id === group.id)).toBe(false);
+    expect(store.listSessionReviews(group.id)).toHaveLength(0);
 
     store.close();
   });

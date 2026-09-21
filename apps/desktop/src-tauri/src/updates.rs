@@ -152,8 +152,65 @@ pub fn is_allowed_release_url(url: &str) -> bool {
     url.starts_with(RELEASE_URL_PREFIX) && !url.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
+/// The proxy to use for `host`, from the conventional environment variables.
+/// `HTTPS_PROXY` wins over `ALL_PROXY`, and `NO_PROXY` takes the host out.
+///
+/// GitHub is reachable only through a proxy on plenty of machines, and neither
+/// the check nor the download can ask the user for one — but the shell that
+/// launched the app usually already has these set.
+pub fn proxy_from_env(host: &str, read: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let value = |name: &str| {
+        read(name)
+            .or_else(|| read(&name.to_lowercase()))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    };
+    if bypasses_proxy(host, value("NO_PROXY").as_deref()) {
+        return None;
+    }
+    value("HTTPS_PROXY").or_else(|| value("ALL_PROXY"))
+}
+
+/// Does `NO_PROXY` cover this host? `*` covers everything, and an entry
+/// matches a host that is it or ends in `.` plus it.
+pub fn bypasses_proxy(host: &str, no_proxy: Option<&str>) -> bool {
+    let Some(no_proxy) = no_proxy else {
+        return false;
+    };
+    let host = host.trim().trim_end_matches('.').to_lowercase();
+    no_proxy.split(',').any(|entry| {
+        let raw = entry.trim();
+        if raw == "*" {
+            return true;
+        }
+        let entry = raw.trim_start_matches('*').trim_start_matches('.').to_lowercase();
+        !entry.is_empty() && (host == entry || host.ends_with(&format!(".{entry}")))
+    })
+}
+
+/// The host part of an `https://host/…` URL, for the `NO_PROXY` check.
+pub fn url_host(url: &str) -> &str {
+    let rest = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    host.split(':').next().unwrap_or(host)
+}
+
+/// Point the agent at the environment's proxy when there is one for this URL.
+/// An unusable proxy value (a SOCKS URL, say — this build has no SOCKS) is
+/// dropped rather than failing the request before it is tried.
+pub fn with_env_proxy(builder: ureq::AgentBuilder, url: &str) -> ureq::AgentBuilder {
+    let Some(proxy) = proxy_from_env(url_host(url), |name| std::env::var(name).ok()) else {
+        return builder;
+    };
+    match ureq::Proxy::new(&proxy) {
+        Ok(proxy) => builder.proxy(proxy),
+        Err(_) => builder,
+    }
+}
+
 pub fn fetch_releases(url: &str, user_agent: &str) -> Result<Vec<Release>, String> {
-    let agent = ureq::AgentBuilder::new()
+    let agent = with_env_proxy(ureq::AgentBuilder::new(), url)
         .timeout(Duration::from_secs(10))
         .user_agent(user_agent)
         .build();
@@ -391,6 +448,67 @@ mod tests {
         );
 
         assert_eq!(pick_update(&version("0.1.0"), &[], Some("aarch64")).notes, None);
+    }
+
+    #[test]
+    fn proxy_comes_from_the_environment_unless_no_proxy_covers_the_host() {
+        let env = |pairs: Vec<(&'static str, &'static str)>| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| (*value).to_string())
+            }
+        };
+        assert_eq!(
+            proxy_from_env("github.com", env(vec![("HTTPS_PROXY", "http://127.0.0.1:12334")])),
+            Some("http://127.0.0.1:12334".to_string())
+        );
+        // Lowercase spellings are just as conventional.
+        assert_eq!(
+            proxy_from_env("github.com", env(vec![("https_proxy", "http://127.0.0.1:1")])),
+            Some("http://127.0.0.1:1".to_string())
+        );
+        // HTTPS_PROXY wins over ALL_PROXY; an empty value is no value.
+        assert_eq!(
+            proxy_from_env(
+                "github.com",
+                env(vec![("HTTPS_PROXY", "http://a:1"), ("ALL_PROXY", "http://b:2")])
+            ),
+            Some("http://a:1".to_string())
+        );
+        assert_eq!(
+            proxy_from_env("github.com", env(vec![("HTTPS_PROXY", "  "), ("ALL_PROXY", "http://b:2")])),
+            Some("http://b:2".to_string())
+        );
+        assert_eq!(proxy_from_env("github.com", env(vec![])), None);
+        assert_eq!(
+            proxy_from_env(
+                "github.com",
+                env(vec![("HTTPS_PROXY", "http://a:1"), ("NO_PROXY", "localhost,github.com")])
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn no_proxy_matches_a_host_or_its_domain() {
+        assert!(bypasses_proxy("github.com", Some("localhost,github.com")));
+        assert!(bypasses_proxy("api.github.com", Some("*.github.com")));
+        assert!(bypasses_proxy("api.github.com", Some(".github.com")));
+        assert!(bypasses_proxy("anything", Some("*")));
+        assert!(!bypasses_proxy("github.com", Some("localhost,127.0.0.1")));
+        assert!(!bypasses_proxy("notgithub.com", Some("github.com")));
+        assert!(!bypasses_proxy("github.com", Some("")));
+        assert!(!bypasses_proxy("github.com", None));
+    }
+
+    #[test]
+    fn url_host_is_what_no_proxy_is_matched_against() {
+        assert_eq!(url_host("https://api.github.com/repos/x/y/releases?per_page=10"), "api.github.com");
+        assert_eq!(url_host("https://github.com:443/x"), "github.com");
+        assert_eq!(url_host("http://user:pass@127.0.0.1:8080/feed.json"), "127.0.0.1");
+        assert_eq!(url_host("https://github.com"), "github.com");
     }
 
     #[test]

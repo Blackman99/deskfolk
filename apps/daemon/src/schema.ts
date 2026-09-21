@@ -171,6 +171,18 @@ CREATE TABLE IF NOT EXISTS session_participants (
   PRIMARY KEY (session_id, member)
 );
 
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions (id),
+  title TEXT NOT NULL,
+  dir TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  closed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS tasks_session_open
+  ON tasks (session_id, closed_at, created_at);
+
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions (id),
@@ -180,6 +192,7 @@ CREATE TABLE IF NOT EXISTS messages (
   author TEXT NOT NULL,
   body TEXT NOT NULL,
   source_turn_id TEXT,
+  task_id TEXT REFERENCES tasks (id),
   created_at TEXT NOT NULL
 );
 
@@ -209,6 +222,7 @@ CREATE TABLE IF NOT EXISTS turns (
   )),
   trigger_message_id TEXT NOT NULL REFERENCES messages (id),
   partial_text TEXT,
+  task_id TEXT REFERENCES tasks (id),
   last_activity_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

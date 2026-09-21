@@ -29,8 +29,8 @@ import {
   routePickPayload,
   routeReviewPayload,
 } from "./prompts/routing";
-import { serializeToolResult } from "./tool-results";
-import type { McpHost } from "./mcp-host";
+import { dropToolResults, serializeToolResult } from "./tool-results";
+import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
 import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
@@ -47,7 +47,7 @@ import { HttpError } from "./errors";
 import type { TurnAdmission } from "./quiesce";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
-import { type Store } from "./store";
+import { isReservedTaskPath, type Store } from "./store";
 import { linkifyWorkspacePaths, mergeCitedPaths, writtenPathFromToolData } from "./artifact-paths";
 import { classifyPath } from "./workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool } from "./workspace-tools";
@@ -74,6 +74,9 @@ export type TurnEngine = {
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
   /** Reviews chains the last run left open; called once after boot. */
   sweepStaleChains: () => void;
+  sweepToolResults: (now?: Date) => void;
+  /** Closes turns that stopped making progress; called on every scheduler tick. */
+  sweepStalledTurns: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
@@ -96,6 +99,8 @@ type Live = {
   partial: string;
   parentId: string | null;
   writtenPaths: string[];
+  /** This turn's work dir, looked up once: the task cannot change under a live turn. */
+  workDir: string | null;
   /** Unknown `@token`s send_message already rejected once this turn. */
   mentionWarned: Set<string>;
   /** Tool names in the current hop's tools array; read_skill flags `mcp_` names a body cites that are missing. */
@@ -312,6 +317,26 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   /**
+   * Drops the daemon's own spill from work dirs whose job ended a week ago. Only `tool-results/`
+   * goes: it is ours, it is large, and after the turn nothing reads it. Everything else in a work
+   * dir is the user's, including the folder itself — a workspace is a computer, not a cache.
+   */
+  function sweepToolResults(now: Date = new Date()): void {
+    const root = store.workspacePath();
+    if (!root) return;
+    let stale;
+    try {
+      stale = store.tasksClosedBefore(
+        new Date(now.getTime() - TOOL_RESULTS_KEEP_MS).toISOString(),
+        TOOL_RESULTS_SWEEP_LIMIT,
+      );
+    } catch {
+      return;
+    }
+    dropToolResults(root, stale.map((task) => task.dir));
+  }
+
+  /**
    * The quiet timers live in this process, so a daemon that stopped mid-chain would leave the
    * review undone until the user happened to change the subject. On start, chains that went quiet
    * while nobody was running are reviewed — recent ones only, and a bounded number of them.
@@ -356,6 +381,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   /** A chain closes when the user goes quiet, even if they never say so. */
+  /** Long enough to still be debugging last week's turn, short enough not to hoard. */
+  const TOOL_RESULTS_KEEP_MS = 7 * 24 * 60 * 60_000;
+  const TOOL_RESULTS_SWEEP_LIMIT = 200;
+
   const CHAIN_QUIET_MS = 3 * 60_000;
   /** Past this, a chain is cold: not joined by a new turn, and not worth a review call. */
   const CHAIN_MAX_AGE_MS = 24 * 60 * 60_000;
@@ -539,7 +568,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     };
   }
 
-  function startTurn(sessionId: string, botId: string, trigger: Message, mode: "redirect" | "fork"): Turn {
+  function startTurn(
+    sessionId: string,
+    botId: string,
+    trigger: Message,
+    mode: "redirect" | "fork",
+    opts: { newTask?: boolean } = {},
+  ): Turn {
     options.admission?.assertNew();
     if (mode === "redirect") {
       const livesForBot = store.listLiveTurns({ sessionId, botId });
@@ -556,7 +591,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         publishTurn(redirected);
       }
     }
-    const turn = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    const turn = store.createTurn({
+      sessionId,
+      botId,
+      triggerMessageId: trigger.id,
+      newTask: opts.newTask,
+    });
     attachLive(turn);
     return turn;
   }
@@ -570,6 +610,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       partial: "",
       parentId: null,
       writtenPaths: [],
+      workDir: store.turnWorkDir(turn.id),
       mentionWarned: new Set(),
       toolNames: new Set(),
       spoke: false,
@@ -581,8 +622,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         try {
           publishTurn(turn);
           await runTurn(turn.id);
-        } catch {
-          if (!live.abort.signal.aborted) failTurn(turn.id, "endpoint_error");
+        } catch (error) {
+          if (!live.abort.signal.aborted) await crashTurn(turn.id, error);
         } finally {
           try {
             const current = store.getTurn(turn.id);
@@ -600,6 +641,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       };
       void trackTurn(turn.id, run()).catch((error) => console.error("turn cleanup failed", error));
     });
+  }
+
+  /**
+   * The hop loop runs detached, so a throw used to vanish and leave the row `running` for good:
+   * the sidebar said Thinking until the next boot and the Bot waiting on the other side of a
+   * handoff never heard back. Close the turn instead, and say so in the transcript.
+   */
+  async function crashTurn(turnId: string, error: unknown): Promise<void> {
+    console.error(`[turn ${turnId}] crashed`, error);
+    try {
+      failTurn(turnId, "crashed");
+    } catch {
+      // the turn or the store is already gone; the sweep and the next boot still catch the row
+    }
   }
 
   function continueFromInterrupt(messageId: string): Turn {
@@ -726,6 +781,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       live.partial = "";
       publishTurn(current, "");
       let result;
+      // A reply long enough to outlast the stale sweep is still a reply, so tokens count as
+      // progress too — cheaply, since this runs per chunk.
+      let touchedAt = Date.now();
       try {
         result = await completions.complete({
           baseUrl: target.baseUrl,
@@ -735,6 +793,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           messages,
           tools,
           signal: live.abort.signal,
+          onToken() {
+            const at = Date.now();
+            if (at - touchedAt < TOUCH_EVERY_MS) return;
+            touchedAt = at;
+            store.touchTurn(turnId);
+          },
           onEvent(chunk) {
             if (!active(turnId, live)) return;
             const choices = chunk.choices;
@@ -757,8 +821,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           },
         });
       } catch (error) {
-        if (!live.abort.signal.aborted) throw error;
-        return;
+        // Stop and redirect already wrote the turn's end state; anything else is a crash.
+        if (live.abort.signal.aborted) {
+          drop();
+          return;
+        }
+        throw error;
       }
       if (live.abort.signal.aborted) {
         drop();
@@ -860,12 +928,17 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   function noteWrittenPaths(live: Live, toolName: string, result: ToolResult): void {
     if (!result.ok) return;
-    if (isWorkspaceTool(toolName) && toolName !== "write_file") return;
+    // `shell` now reports the files it left in the work dir; everything else among the workspace
+    // tools only reads, and read paths are not artifacts.
+    if (isWorkspaceTool(toolName) && toolName !== "write_file" && toolName !== "shell") return;
     const root = store.workspacePath();
     if (!root) return;
     for (const raw of writtenPathFromToolData(result.data)) {
       const classified = classifyPath(root, raw);
       if (classified.zone !== "inside") continue;
+      // The reserved subdirs are where the daemon spills and where the turn instructions tell the
+      // Bot to put throwaway files. Neither is something to hand the user as an artifact.
+      if (live.workDir && isReservedTaskPath(live.workDir, classified.rel)) continue;
       live.writtenPaths = mergeCitedPaths(live.writtenPaths, [classified.rel]);
     }
   }
@@ -874,6 +947,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const live = lives.get(turnId);
     if (!live) return "wait";
     const turn = store.getTurn(turnId);
+    const workDir = live.workDir;
     let posted = false;
     let spoke = false;
     for (const call of calls) {
@@ -887,8 +961,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } catch {
         args = {};
       }
+      // A tool is the one place a hop can legitimately sit still for minutes, so mark both ends of
+      // it: the stale sweep reads `last_activity_at` and must not cut a long shell or MCP call off.
+      store.touchTurn(turnId);
       let result = await dispatchTool(turn, live, call.name, args);
       if (!active(turnId, live)) return "wait";
+      store.touchTurn(turnId);
       if (result.error?.code === "draining") {
         if (live.drainRejection) {
           const note = store.insertMessage({ sessionId: turn.session_id, turnId, kind: "system", author: turn.bot_id,
@@ -919,7 +997,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
-          content: serializeToolResult({ ok: true, data: { ask_id: ask.id, message_id: ask.id, answer } }, store.workspacePath()),
+          content: serializeToolResult(
+            { ok: true, data: { ask_id: ask.id, message_id: ask.id, answer } },
+            store.workspacePath(),
+            workDir,
+          ),
         });
         posted = true;
         continue;
@@ -964,7 +1046,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
-          content: serializeToolResult(payload, store.workspacePath()),
+          content: serializeToolResult(payload, store.workspacePath(), workDir),
         });
         posted = true;
         continue;
@@ -982,7 +1064,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       live.loop.push({
         role: "tool",
         tool_call_id: call.id,
-        content: serializeToolResult(payload, store.workspacePath()),
+        content: serializeToolResult(payload, store.workspacePath(), workDir),
       });
     }
     if (spoke) return "spoke";
@@ -1010,7 +1092,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   ): Promise<ToolResult> {
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {
       return isWorkspaceTool(name)
-        ? await runWorkspaceTool({ store, signal: live.abort.signal }, name, args)
+        ? await runWorkspaceTool(
+            { store, signal: live.abort.signal, workDir: live.workDir },
+            name,
+            args,
+          )
         : await runCollabTool(
             {
               store,
@@ -1186,6 +1272,34 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     });
     publishMessage(message);
     publishTurn(completed, null);
+  }
+
+  /**
+   * Nothing in a hop may legitimately go this long without touching the turn: a completion is
+   * bounded by the client's first-byte and idle timers, a shell by its own timeout, an MCP call by
+   * its idle cap, and both ends of every tool call touch the row. Past this the turn is wedged.
+   */
+  const STALE_TURN_MS = 20 * 60_000;
+  /** How often a still-streaming hop bothers the row; small next to {@link STALE_TURN_MS}. */
+  const TOUCH_EVERY_MS = 30_000;
+
+  /**
+   * Closes turns that stopped making progress. Without it a wedged turn sat at `running` until the
+   * next boot: Thinking forever in the sidebar, and silence for whoever was waiting on the handoff.
+   */
+  function sweepStalledTurns(at: Date = new Date()): void {
+    const floor = new Date(at.getTime() - STALE_TURN_MS).toISOString();
+    for (const turn of store.listLiveTurns()) {
+      // waiting_approval and waiting_ask are waiting on you, so they never go stale.
+      if (turn.status !== "running") continue;
+      if (turn.last_activity_at > floor) continue;
+      abortLive(turn.id);
+      try {
+        failTurn(turn.id, "stuck");
+      } catch {
+        // the turn or the store is already gone; the next boot still closes the row
+      }
+    }
   }
 
   function recordSpend(
@@ -1540,7 +1654,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       occurred_at: occurred(),
       ...claimed,
     });
-    return startTurn(session.id, claimed.bot_id, trigger, "fork");
+    // Each fire is its own job: the instruction repeats, the work does not continue the last one.
+    return startTurn(session.id, claimed.bot_id, trigger, "fork", { newTask: true });
   }
 
   return {
@@ -1559,6 +1674,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       );
     },
     sweepStaleChains,
+    sweepToolResults,
+    sweepStalledTurns,
     fireRoutine,
     resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);

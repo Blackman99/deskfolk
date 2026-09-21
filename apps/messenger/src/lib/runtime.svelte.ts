@@ -49,6 +49,8 @@ export class MessengerRuntime {
   selectedId = $state<string | null>(null);
   /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
   previewRelpath = $state<string | null>(null);
+  previewMessageId = $state<string | null>(null);
+  forceArtifactTree = $state(false);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
   createGroupOpen = $state(false);

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serializeToolResult, trimToolContent } from "./tool-results";
+import { existsSync, mkdirSync } from "node:fs";
+import { writtenPathFromToolData } from "./artifact-paths";
+import { dropToolResults, serializeToolResult, trimToolContent } from "./tool-results";
 
 const roots: string[] = [];
 function workspace() { const root = mkdtempSync(join(tmpdir(), "bot-tool-result-")); roots.push(root); return root; }
@@ -88,5 +90,60 @@ describe("tool result recovery", () => {
     const raw = serializeToolResult(payload, workspace());
     expect([...raw].length).toBeLessThanOrEqual(8000);
     expect(JSON.parse(raw).full_result_path).toBeTruthy();
+  });
+});
+
+describe("the spill lives in the work dir", () => {
+  const big = { ok: true, data: { content: "x".repeat(20_000) } };
+
+  test("a turn with a work dir spills inside it", () => {
+    const root = workspace();
+    const workDir = "work/2026-09-21-导出季度报表-7f3k";
+    const result = JSON.parse(serializeToolResult(big, root, workDir));
+    expect(result.full_result_path).toStartWith(`${workDir}/tool-results/`);
+    expect(existsSync(join(root, result.full_result_path))).toBe(true);
+  });
+
+  test("a turn from before work dirs still spills at the root", () => {
+    const root = workspace();
+    const result = JSON.parse(serializeToolResult(big, root, null));
+    expect(result.full_result_path).toStartWith("tool-results/");
+  });
+
+  /**
+   * The recovery metadata sits beside `data`, not inside it, which is why the artifact entry has
+   * never listed a ULID JSON. That was luck rather than design until this test.
+   */
+  test("full_result_path is never something the message cites", () => {
+    const root = workspace();
+    const result = JSON.parse(serializeToolResult(big, root, "work/2026-09-21-x-7f3k"));
+    expect(result.full_result_path).toBeString();
+    expect(writtenPathFromToolData(result.data)).toEqual([]);
+    expect(writtenPathFromToolData(result)).toEqual([]);
+  });
+
+  test("the sweep drops tool-results and leaves the rest of the work dir alone", () => {
+    const root = workspace();
+    const dir = "work/2026-09-21-x-7f3k";
+    mkdirSync(join(root, dir, "tool-results"), { recursive: true });
+    writeFileSync(join(root, dir, "tool-results", "01J.json"), "{}");
+    writeFileSync(join(root, dir, "report.md"), "keep me");
+    mkdirSync(join(root, dir, "charts"), { recursive: true });
+    writeFileSync(join(root, dir, "charts", "q3.png"), "keep me too");
+
+    expect(dropToolResults(root, [dir])).toBe(1);
+    expect(existsSync(join(root, dir, "tool-results"))).toBe(false);
+    expect(readFileSync(join(root, dir, "report.md"), "utf8")).toBe("keep me");
+    expect(existsSync(join(root, dir, "charts", "q3.png"))).toBe(true);
+    // Idempotent: a second boot sweeps the same rows and finds nothing to do.
+    expect(dropToolResults(root, [dir])).toBe(0);
+  });
+
+  test("the sweep never reaches outside the workspace", () => {
+    const root = workspace();
+    const outside = workspace();
+    mkdirSync(join(outside, "tool-results"), { recursive: true });
+    expect(dropToolResults(root, ["../../etc", outside])).toBe(0);
+    expect(existsSync(join(outside, "tool-results"))).toBe(true);
   });
 });
