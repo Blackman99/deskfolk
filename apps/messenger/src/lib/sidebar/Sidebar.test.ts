@@ -142,3 +142,14 @@ test("Bot to Bot rows carry no unread badge", () => {
   expect(host.querySelector(".row-stack .unread-dot")).toBeNull();
   close();
 });
+
+test('mobile archive entry opens an empty archive and returns to active sessions', () => {
+  const { host, close } = open([]);
+  click(host.querySelector('.mobile-session-tools button'));
+  expect(host.querySelector('.archived-empty-hint')?.textContent).toContain(t.sidebar.archivedEmpty);
+  expect(host.querySelector('.mobile-session-tools button')?.textContent).toContain(t.sidebar.backToSessions);
+  click(host.querySelector('.mobile-session-tools button'));
+  expect(host.querySelector('.archived-empty-hint')).toBeNull();
+  expect(host.querySelector('.groups')?.textContent).toContain('视频组');
+  close();
+});

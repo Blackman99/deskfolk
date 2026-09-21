@@ -104,7 +104,7 @@
 	let saveError = $state(false);
 	let saveConflict = $state(false);
 	let loadedEtag = $state<string | null>(null);
-	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
+	let pendingNav = $state<null | { kind: 'close'; afterClose?: () => void } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
 	/** Phone only: the list drops down over the top of the preview, which stays put. */
@@ -398,12 +398,14 @@
 		});
 	}
 
-	function requestClose(): void {
+	function requestClose(afterClose?: () => void): void {
+		if (saving) return;
 		if (dirty) {
-			pendingNav = { kind: 'close' };
+			pendingNav = { kind: 'close', afterClose };
 			return;
 		}
 		onClose();
+		afterClose?.();
 	}
 
 	async function save(): Promise<boolean> {
@@ -429,11 +431,15 @@
 	}
 
 	async function confirmSave(): Promise<void> {
+		if (saving) return;
 		const nav = pendingNav;
 		const ok = await save();
 		if (!ok) return;
 		pendingNav = null;
-		if (nav?.kind === 'close') onClose();
+		if (nav?.kind === 'close') {
+			onClose();
+			nav.afterClose?.();
+		}
 		else if (nav?.kind === 'node') commitSelect(nav.node);
 	}
 
@@ -442,7 +448,10 @@
 		pendingNav = null;
 		editor?.revert(text ?? '');
 		dirty = false;
-		if (nav?.kind === 'close') onClose();
+		if (nav?.kind === 'close') {
+			onClose();
+			nav.afterClose?.();
+		}
 		else if (nav?.kind === 'node') commitSelect(nav.node);
 	}
 
@@ -450,8 +459,8 @@
 		return editor?.closeFind() ?? false;
 	}
 
-	export function requestCloseFromParent(): void {
-		requestClose();
+	export function requestCloseFromParent(afterClose?: () => void): void {
+		requestClose(afterClose);
 	}
 
 	function startTreeResize(ev: PointerEvent): void {
@@ -545,7 +554,7 @@
 			</div>
 			<p class="mono">{relpath || (workspacePath ?? '')}</p>
 		</div>
-		<button type="button" class="modal-close" title={t.common.close} onclick={requestClose}>✕</button>
+		<button type="button" class="modal-close" title={t.common.close} onclick={() => requestClose()}>✕</button>
 	</header>
 	{#if canShowSource || canOpenOnDisk || canRemoteFile}
 		<div class="artifact-toolbar">
@@ -723,9 +732,9 @@
 				<p class="confirm-copy">{t.stream.artifactDirtyBody}</p>
 			</div>
 			<div class="modal-foot artifact-dirty-foot">
-				<button type="button" onclick={() => (pendingNav = null)}>{t.sidebar.cancel}</button>
-				<button type="button" onclick={confirmDiscard}>{t.stream.artifactDiscard}</button>
-				<button type="button" class="artifact-dirty-save" onclick={() => void confirmSave()}>{t.stream.artifactSave}</button>
+				<button type="button" disabled={saving} onclick={() => (pendingNav = null)}>{t.sidebar.cancel}</button>
+				<button type="button" disabled={saving} onclick={confirmDiscard}>{t.stream.artifactDiscard}</button>
+				<button type="button" class="artifact-dirty-save" disabled={saving} onclick={() => void confirmSave()}>{t.stream.artifactSave}</button>
 			</div>
 		</div>
 	</div>

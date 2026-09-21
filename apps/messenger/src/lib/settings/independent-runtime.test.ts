@@ -94,7 +94,7 @@ test("confirming a gated independent-runtime enable closes the dialog and leaves
     openDeleteProviderConfirm: () => {},
     closeSettings: () => {},
   });
-  const prefs = [...host.querySelectorAll('[role="tab"]')].find((el) => el.textContent?.includes("Preferences"));
+  const prefs = [...host.querySelectorAll(".settings-tab-btn")].find((el) => el.textContent?.includes("Preferences"));
   click(prefs);
   const toggle = host.querySelector("#independent-runtime-toggle") as HTMLInputElement;
   expect(toggle.checked).toBe(false);

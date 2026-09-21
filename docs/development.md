@@ -56,6 +56,10 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 - `prompts/`：`system.ts`（轮次 system 中英两套与人设 / 技能 / MCP 段拼装）、`judgement.ts`（判断 system）、`transcript-copy.ts`（补全失败与点名失败的转录文案）、`tool-schema.ts`（工具定义类型与中英本地化）、`tools/*.ts`（内置工具按文件、协作、人设与技能、日程、端点与 MCP 分组）、`builtin-tools.ts`（按模型可见顺序拼成 `TOOLS`；顺序由 `prompts-order.test.ts` 钉死）。`index.ts` 只做再导出，导入路径仍是 `./prompts`。
 - 纯函数模块留在顶层：`route-decision.ts`（候选、评分、经验的正负与封顶）、`models.ts`、`mentions.ts`（引用回复补 `@`；解析本身在 `@real-bot/protocol`）、`context.ts`、`schedule.ts` 等；`turn-engine.ts` 是轮次回路，`local-api.ts` 是本机接口。`artifact-paths.ts` 做正文 linkify，路径像不像工作区文件由协议包判定。
 
+## 手机宽度导航
+
+680px 及以下由 `Shell.svelte` 组合 `MobileNavigation.svelte`，共享会话、工作区和设置三个主入口。设置根页显示底栏，分类详情和编辑页隐藏底栏；会话详情沿用顶部返回。`Sidebar.svelte` 的归档入口在搜索下方，宽屏保留原工具栏。工作区通过 `requestCloseFromParent(afterClose)` 完成未保存确认后执行导航，取消时释放目标回调并保留草稿。配置仍使用已有设置和工作区 URL 状态。
+
 ## 信使源码布局
 
 `apps/messenger/src/lib` 按界面上的「面」分目录，每个目录放那一面的组件和只有它用的纯函数模块（测试与被测模块同目录）：

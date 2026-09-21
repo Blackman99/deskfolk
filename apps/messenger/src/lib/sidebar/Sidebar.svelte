@@ -473,6 +473,14 @@
 			</div>
 		{/if}
 	</div>
+	<div class="mobile-session-tools">
+		<span>{viewingArchived ? t.sidebar.archivedSessions : t.sidebar.sessions}</span>
+		<button type="button" aria-pressed={viewingArchived} onclick={() => (viewingArchived = !viewingArchived)}>
+			{viewingArchived ? t.sidebar.backToSessions : t.sidebar.archivedSessions}
+			{#if !viewingArchived && archivedSessions.length > 0}<span class="archive-count">{archivedSessions.length}</span>{/if}
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+		</button>
+	</div>
 	<div class="groups">
 		{#if viewingArchived}
 			<div class="ghead archived-ghead flex items-center justify-between">
@@ -810,6 +818,16 @@
 </aside>
 
 <style>
+	.mobile-session-tools { display: none; }
+	@media (max-width: 680px) {
+		.side > .foot { display: none; }
+		.mobile-session-tools { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0; min-height: 44px; font-size: 13px; color: var(--muted); }
+		.mobile-session-tools button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px; border: 0; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
+		.mobile-session-tools button:focus-visible { outline: 2px solid var(--accent); border-radius: var(--radius-sm); }
+		.archive-count { font-variant-numeric: tabular-nums; color: var(--muted); }
+		.groups .archived-ghead { display: none; }
+	}
+
 	.pinned-session-btn.is-context-open {
 		border-color: var(--accent-border);
 		background: var(--accent-tint);

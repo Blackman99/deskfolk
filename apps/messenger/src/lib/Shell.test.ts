@@ -104,3 +104,28 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
     }
   });
 }
+
+test('mobile destinations preserve selection state, repeat safely and expose unconfigured workspace recovery', async () => {
+  const runtime = reactive(fakeRuntime({
+    settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: null },
+  }));
+  runtime.openSettings = () => { runtime.workspaceOpen = false; runtime.settingsOpen = !runtime.settingsOpen; };
+  runtime.openWorkspace = () => { runtime.settingsOpen = false; runtime.workspaceOpen = true; };
+  runtime.closeWorkspace = () => { runtime.workspaceOpen = false; };
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  const nav = (index: number) => host.querySelectorAll('.mobile-navigation button')[index];
+  click(nav(2));
+  expect(runtime.settingsOpen).toBe(true);
+  click(nav(2));
+  expect(runtime.settingsOpen).toBe(true);
+  click(nav(1));
+  expect(runtime.workspaceOpen).toBe(true);
+  expect(runtime.settingsOpen).toBe(false);
+  expect(host.querySelector('.workspace-unset')).not.toBeNull();
+  click(host.querySelector('.workspace-unset button'));
+  expect(runtime.settingsOpen).toBe(true);
+  expect(runtime.workspaceOpen).toBe(false);
+  click(nav(0));
+  expect(runtime.settingsOpen).toBe(false);
+  expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('会话');
+});

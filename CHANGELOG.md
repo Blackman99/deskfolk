@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Phone navigation now groups Chats, Workspace and Settings into three labeled destinations with an active state and safe-area spacing. Archived sessions move below chat search, and appearance is available in Preferences. Detail screens hide the bar; switching away from edited files preserves the save/discard/cancel flow.
+
 ### Desktop
 
 - Debug desktop builds no longer warn that the gated independent-runtime launchd helpers are unused. Production stays fail-closed; development still does not install the agent.

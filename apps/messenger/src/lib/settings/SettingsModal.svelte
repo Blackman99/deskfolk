@@ -50,6 +50,7 @@
 	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'about';
 
 	type Props = {
+		mobileSettingsDetail?: boolean;
 		runtime: MessengerRuntime;
 		t: Copy;
 		/** The shell owns this: the sidebar's theme menu writes it through the same patch helper. */
@@ -71,6 +72,7 @@
 	let {
 		runtime,
 		t,
+		mobileSettingsDetail = $bindable(false),
 		saveFailed = $bindable(false),
 		providerEditor = $bindable(null),
 		confirmingProvider,
@@ -132,7 +134,6 @@
 	}
 
 	let activeSettingsTab = $state<SettingsTab>('general');
-	let mobileSettingsDetail = $state(false);
 	$effect(() => {
 		if (!runtime.settingsOpen) mobileSettingsDetail = false;
 	});
@@ -1727,6 +1728,10 @@
 {/if}
 
 <style>
+	@media (max-width: 680px) {
+		.settings-backdrop:has(.settings-modal:not(.is-mobile-detail)) { bottom: calc(60px + env(safe-area-inset-bottom)); }
+	}
+
 	.modal-dialog.settings-modal {
 		width: 880px;
 		max-width: 94vw;

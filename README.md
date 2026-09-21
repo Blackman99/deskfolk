@@ -55,6 +55,8 @@ pnpm dev
 
 First run: pick a workspace folder (missing folders are created), add an OpenAI-compatible endpoint and key in Settings, create the first bot from the sidebar, then let it hire the rest.
 
+On phone-width screens, the messenger has **Chats / Workspace / Settings** navigation. Archived sessions are below the chat search field; appearance is in **Settings → Preferences**. Opening a conversation or a settings detail hides the bottom navigation. Switching away from an edited workspace file asks you to save or discard changes.
+
 ## Daily and weekly routines
 
 Open a Bot’s profile (the Bot avatar/name → profile), then **Routines → Add routine**. The owner is that Bot. Enter a title and task instruction, choose **Daily** or **Weekly** with one or more weekdays, and enter a 24-hour `HH:MM` time. Save, edit, pause/resume, or delete with confirmation in the same card. Sidebar search opens the matching routine’s Bot profile and highlights its editor. A later search or dismissal cancels earlier pending navigation. Historical routines belonging to a deleted Bot remain retained but are marked unavailable in search. Confirmation dialogs keep keyboard focus inside, restore the invoking control on cancellation, and block dismissal while saving.

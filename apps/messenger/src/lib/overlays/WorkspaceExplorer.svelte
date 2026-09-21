@@ -11,18 +11,19 @@
 		t: Copy;
 		onClose: () => void;
 		onSelect: (path: string) => void;
+		onOpenSettings?: () => void;
 	}
 
-	let { api, workspacePath, selected, t, onClose, onSelect }: Props = $props();
+	let { api, workspacePath, selected, t, onClose, onSelect, onOpenSettings }: Props = $props();
 	/** A click outside closes the explorer; a text-selection drag that starts inside never does. */
 	const workspaceBackdrop = backdropClick();
 
-	let pane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
+	let pane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean } | null>(null);
 
-	export function requestCloseFromParent(): void {
-		if (pane?.closeFind()) return;
-		if (pane) pane.requestCloseFromParent();
-		else onClose();
+	export function requestCloseFromParent(afterClose?: () => void): void {
+		if (!afterClose && pane?.closeFind()) return;
+		if (pane) pane.requestCloseFromParent(afterClose);
+		else { onClose(); afterClose?.(); }
 	}
 
 	export function closeFind(): boolean {
@@ -43,6 +44,14 @@
 	}}
 >
 	<div class="workspace-overlay-pane">
+		{#if !workspacePath}
+			<section class="workspace-unset">
+				<h2>{t.sidebar.workspace}</h2>
+				<p>{t.sidebar.workspaceUnset}</p>
+				<button type="button" onclick={onOpenSettings}>{t.settings.title}</button>
+				<button type="button" onclick={onClose}>{t.common.close}</button>
+			</section>
+		{:else}
 		<ArtifactPreview
 			bind:this={pane}
 			attachment={null}
@@ -56,10 +65,16 @@
 			onSelect={() => {}}
 			onSelectWorkspacePath={onSelect}
 		/>
+		{/if}
 	</div>
 </div>
 
 <style>
+	.workspace-unset { margin: auto; padding: 24px; text-align: center; }
+	.workspace-unset h2 { font-size: 18px; }
+	.workspace-unset p { color: var(--muted); }
+	.workspace-unset button { min-height: 44px; margin: 8px; padding: 8px 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--pane); color: var(--accent); cursor: pointer; }
+
 	.workspace-overlay {
 		position: fixed;
 		inset: 0;
@@ -107,5 +122,8 @@
 	.workspace-overlay :global(.artifact-pane) {
 	display: flex;
 	}
+	}
+	@media (max-width: 680px) {
+		.workspace-overlay { bottom: calc(60px + env(safe-area-inset-bottom)); }
 	}
 </style>

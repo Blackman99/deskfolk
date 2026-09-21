@@ -61,6 +61,8 @@
 	import GroupPane, { type GroupDetailDraft } from './panels/GroupPane.svelte';
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
+	import MobileNavigation from './MobileNavigation.svelte';
+	import { updateChecker } from './update-checker.svelte.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	import SettingsModal from './settings/SettingsModal.svelte';
@@ -92,6 +94,24 @@
 
 	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
 	let themeMenuOpen = $state(false);
+	let mobileSettingsDetail = $state(false);
+	const mobileDestination = $derived(runtime.settingsOpen ? 'settings' : runtime.workspaceOpen ? 'workspace' : 'sessions');
+
+	function navigateMobile(destination: 'sessions' | 'workspace' | 'settings'): void {
+		if (destination === mobileDestination) return;
+		const navigate = () => {
+			themeMenuOpen = false;
+			if (destination === 'settings') runtime.openSettings();
+			else if (destination === 'workspace') runtime.openWorkspace();
+			else {
+				closeSettings();
+				runtime.closeWorkspace();
+				runtime.selectedId = null;
+			}
+		};
+		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(navigate);
+		else navigate();
+	}
 
 	function togglePin(sessionId: string): void {
 		const next = togglePinnedId(pinnedSessionIds, sessionId);
@@ -105,7 +125,7 @@
 		y: number;
 	} | null>(null);
 	let contextMenuEpoch = 0;
-	let workspacePane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
+	let workspacePane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean } | null>(null);
 	let previewPreferred = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
 	let sidebarPreferred = $state(loadSidebarWidth());
@@ -767,6 +787,11 @@
 	function openCreateGroup(): void {
 		runtime.openCreateGroup();
 	}
+	const mobileNavigationVisible = $derived(
+		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
+		!runtime.profileBotId && !dangerConfirm &&
+		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
+	);
 </script>
 
 <svelte:window
@@ -830,6 +855,7 @@
 {:else}
 <div
 	class="shell"
+	class:has-mobile-navigation={mobileNavigationVisible}
 	class:is-thread={runtime.threadOpen}
 	class:has-session={Boolean(selected)}
 	class:is-preview={Boolean(artifactPreview)}
@@ -934,6 +960,7 @@
 			selected={runtime.workspaceSelected}
 			{t}
 			onClose={closeWorkspaceExplorer}
+			onOpenSettings={() => navigateMobile('settings')}
 			onSelect={openWorkspaceFile}
 		/>
 	{/if}
@@ -1050,7 +1077,11 @@
 			onConfirm={() => void confirmDanger()}
 		/>
 	{/if}
+	{#if mobileNavigationVisible}
+		<MobileNavigation active={mobileDestination} {t} updateAvailable={updateChecker.updateVisible} onNavigate={navigateMobile} />
+	{/if}
 	<SettingsModal
+		bind:mobileSettingsDetail
 		{runtime}
 		{t}
 		bind:saveFailed
@@ -1099,6 +1130,10 @@
 {/if}
 
 <style>
+	@media (max-width: 680px) {
+		.shell.has-mobile-navigation > :global(.side) { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+	}
+
 	.preview-split {
 		width: 8px;
 		padding: 0;
