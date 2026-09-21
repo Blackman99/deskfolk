@@ -345,6 +345,15 @@ test("copyFor takes the whole en tree or otherwise zh", () => {
   expect(copyFor("zh").settings.save).toBe("保存");
 });
 
+test("remote maintenance copy stays bilingual and refuses click-to-confirm fallback", () => {
+  expect(COPY.zh.remote.forceWarn).toContain("用户验证");
+  expect(COPY.en.remote.forceWarn).toContain("user verification");
+  expect(COPY.zh.remote.restartUnavailable).toContain("不会安装");
+  expect(COPY.en.remote.restartUnavailable).toContain("No background job");
+  expect(COPY.zh.remote.reconnectHint).toContain("不会再触发重启");
+  expect(COPY.en.remote.reconnectHint).toContain("does not start another restart");
+});
+
 test("live-turn chrome lives on stream and composer, with interpolating redirect copy", () => {
   expect(COPY.zh.stream.mentionUnresolved).toBe("这个 @ 没有匹配到群成员");
   expect(COPY.en.stream.mentionUnresolved).toBe("This @ matches no member here");

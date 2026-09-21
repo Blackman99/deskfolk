@@ -38,6 +38,7 @@
 
 ### 实验性远控协议
 
+- 远程维护仅走端到端加密：状态（版本/模式/可达性）、脱敏诊断（只有计数与错误码，不含 Bot 名、正文、路径或密钥）、排空后重启、强制重启、停止与吊销其它设备。重启等捕获的活轮集合结束后由本调用方留回执并无闩 exit 0，由当时窗监督者拉起。强制需要新鲜 WebAuthn UV，超时或掉线绝不自动升级。停止先写闩再退出且保持停止。窗不在且未独立时重启不可用，不安装后台任务。窗监督重启仅在本机继承的桌面通道真正挂上后才可用。UV 已提交后输掉 busy 的重启/停止会把该请求回执落成 409 并删掉生命周期行，不再留下 202 pending。本机回环仍无维护写路由。G-uv / 真机门**未通过**。
 - 已提交的远程附件 POST 用同一 `request_id` 重放时返回首次 201，不再把无暂存文件的 JSON 重试当成不同载荷。超限文本 PUT 在 Noise 上保持 `too_large`。真实 TCC 与手机下载未通过。
 - 远程目录浏览与限流文件双工：`list_host_dir` 复用 `classifyPath`/realpath，拒绝其它用户 home，TCC 拒绝返回类型化「在 Mac 上授权一次」错误。改工作区根仍须一类本机确认；逐级浏览不需要。上传/GET 走 type 0x05/0x06、50 MiB、单设备并发 2、tmp+fsync/TX/rename，ETag 为明文 SHA-256 且 PUT 必带 If-Match。远程 Finder 改为下载/复制相对路径。真实 TCC 与手机下载未通过。
 - 新增托管信使远控客户端：与 LocalApi 方法面一致的 Noise RPC、钉住主机 DH/签名公钥与中继 origin 的扫码配对、仅 IndexedDB 存设备身份，以及 standalone PWA 壳。托管生产包（`REAL_BOT_HOSTED=1` / `pnpm --filter @real-bot/messenger build:hosted`）不含 `__local-api` 与本机 bearer。远程 URL 只允许会话/浮层/附件 id（`?s` `?o` `?b` `?a`），禁止 `?p=` / `?w=` 文件路径。Service worker 只缓存带哈希的 immutable 资源，导航 index 仍 no-store。断线显示执行主机不可达，不排队命令；未发送内存草稿重连需确认，未知结果查同一 `request_id` 回执。WebAuthn `create`/`get` 使用有效域名 `rpId` 且要求 UV，仅在 Split 后登记；失败仍可普通聊天，无点击确认 fallback。公网配对仍默认关闭。S-rev、G-uv 与真机 L1 **未通过**。

@@ -249,11 +249,12 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     (name: string, result: unknown = null) =>
     (...args: unknown[]) => {
       calls.push({ name, args });
-      return stubs[name] !== undefined
-        ? (stubs[name] as (...a: unknown[]) => unknown)(...args)
+      const override = stubs[name];
+      return typeof override === "function"
+        ? (override as (...a: unknown[]) => unknown)(...args)
         : Promise.resolve(result);
     };
-  return {
+  const base = {
     calls,
     snapshot: { ...emptySnapshot(), ...over },
     connection: "connected",
@@ -273,6 +274,18 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     registerUv: record("registerUv"),
     confirmDraftReconnect: record("confirmDraftReconnect"),
     discardDraftReconnect: record("discardDraftReconnect"),
+    maintenance: null,
+    maintenanceBusy: false,
+    maintenanceError: null,
+    maintenanceForceConfirm: false,
+    maintenanceStopConfirm: false,
+    maintenanceRevokeId: null,
+    refreshMaintenance: record("refreshMaintenance"),
+    downloadDiagnostics: record("downloadDiagnostics"),
+    restartRuntime: record("restartRuntime"),
+    stopRuntime: record("stopRuntime"),
+    revokeRemoteDevice: record("revokeRemoteDevice"),
+    otherRemoteDevices: () => [],
     profileBotId: null,
     draft: "",
     busy: false,
@@ -348,6 +361,6 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     endpointModelsText: "",
     endpointDefaultModel: "",
     client: null,
-    ...stubs,
-  } as unknown as FakeRuntime;
+  };
+  return Object.assign(base, stubs, { calls }) as unknown as FakeRuntime;
 }

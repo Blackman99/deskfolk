@@ -20,7 +20,7 @@ The daemon adapter reuses the existing Store/engine and internal `dispatchBusine
 
 SQLite stores public trust, replay reservations, COSE keys/counters and challenges, not remote private keys. Every removal, including one device, first advances native high-water, then commits a new database generation. All channels close; survivors retain their signed grant epoch but receive the new database generation. A restored revoked row at the old generation is rejected. Keychain-ahead/unknown failures remain closed and require explicit recovery; no file-key cache or native/UV environment bypass exists. Equal-generation recovery also advances high-water; otherwise recovery itself would reintroduce backup resurrection. Native-confirmed reset/relay migration use explicit uncertain/done durable intents and require fresh recovery on unknown native outcome; first-UV renewal requires fresh Mac proof bound to the existing device's current Split session. Fresh assertions are checked by the shared verifier and consumed with current session/trust/credential/counter/time CAS. Revocation intent/receipts are durable; external credential/tool effects already accepted cannot be recalled.
 
-接线测试使用真实本机中继、Noise、SQLite 与生成签名，native 材料只允许构造注入的测试替身。测试不是签名封闭运行时、真 Keychain/LA、iOS/Android 或独立安全审计验收。共享排空不拥有退出/登录任务；明确强制只中断，不因超时或断线升级。远程附件/GET 50 MiB、文本 PUT 1 MB、单设备并发 2；主机目录浏览复用 realpath/symlink walk，TCC 拒绝返回类型化授权错误。真实 TCC 与手机下载未通过；见协议文档。
+接线测试使用真实本机中继、Noise、SQLite 与生成签名，native 材料只允许构造注入的测试替身。测试不是签名封闭运行时、真 Keychain/LA、iOS/Android 或独立安全审计验收。共享排空不拥有退出/登录任务；明确强制只中断，不因超时或断线升级。远程附件/GET 50 MiB、文本 PUT 1 MB、单设备并发 2；主机目录浏览复用 realpath/symlink walk，TCC 拒绝返回类型化授权错误。远程诊断只含计数与错误码，不含 Bot 名、正文、路径、密钥或原始日志。维护写路由不出现在 `:17890`。真实 TCC 与手机下载未通过；见协议文档。
 
 ## 私密报告漏洞
 

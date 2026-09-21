@@ -15,6 +15,7 @@ import { RemoteController } from "./remote/controller";
 import { inheritedLocalSetup } from "./remote/local-setup";
 import { RuntimeLifecycle } from "./lifecycle";
 import { recoverLifecycle } from "./remote/lifecycle";
+import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
 
 type SocketData = { authed: boolean };
 
@@ -79,6 +80,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
   const { host, port: requestedPort } = parseBind(bind);
 
   ensureDataDir(options.dataDir);
+  const lifecycle = new RuntimeLifecycle(options.dataDir, options.supervisor ?? "none");
   const token = options.token ?? mintLocalToken();
 
   let server: Bun.Server<SocketData>;
@@ -88,6 +90,21 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
   let store: Store | undefined;
   let remote: RemoteController | undefined;
   let closeSetup: (() => void) | undefined;
+  let windowAlive = false;
+  let busy: MaintenanceControl["busy"] = null;
+  const maint: MaintenanceControl = {
+    version: runtimeVersion(),
+    lifecycle,
+    windowAlive: () => windowAlive,
+    busy: null,
+    requestExit: (reason) => {
+      if (busy) return;
+      busy = reason;
+      maint.busy = reason;
+      removeDescriptor(options.dataDir);
+      setTimeout(() => { void stop(); }, 0);
+    },
+  };
 
   const stop = (): Promise<void> => {
     if (stopping) return stopping;
@@ -198,11 +215,22 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
           void stop();
         }, 0);
       },
+      runtimeInfo: () => ({
+        pid: process.pid,
+        bind: LOCAL_API_BIND,
+        version: maint.version,
+        mode: lifecycle.kind,
+        stopped: lifecycle.isStopped(),
+        restart: restartAvailable(lifecycle, () => windowAlive) ? "available" : "unavailable",
+      }),
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
-    remote = new RemoteController({ store, api,
+    remote = new RemoteController({ store, api, maint,
       config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
-    if (options.desktopRemoteChannel) closeSetup = await inheritedLocalSetup(remote);
+    if (options.desktopRemoteChannel) {
+      closeSetup = await inheritedLocalSetup(remote, () => { windowAlive = false; });
+      windowAlive = Boolean(closeSetup);
+    }
     await remote.start();
     // Chains the previous run left open go through review now; their timers died with it.
     api.engine.sweepStaleChains();
@@ -235,7 +263,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     discoveryPath: descriptorPath(options.dataDir),
     store,
     remote: remote!,
-    lifecycle: new RuntimeLifecycle(options.dataDir, options.supervisor ?? "none"),
+    lifecycle,
     quiesce: api!.quiesce,
     stop,
   };

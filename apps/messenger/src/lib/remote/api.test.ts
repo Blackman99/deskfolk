@@ -87,6 +87,7 @@ test("forged UV is denied without a click-to-confirm fallback", async () => {
   await expect(api.registerUv()).rejects.toThrow();
   expect(api.uvReady).toBe(false);
   await expect(api.privilegedAction({ action: "quiesce.force", targetId: "runtime" })).rejects.toThrow();
+  await expect(api.privilegedAction({ action: "runtime.restart", targetId: "runtime", force: true })).rejects.toThrow();
 });
 
 test("reconnect looks up the same request id and never mints a second mutation", async () => {

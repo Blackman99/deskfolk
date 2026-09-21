@@ -32,7 +32,7 @@ import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
 import type { MessengerApi } from "./messenger-api.ts";
-import { RemoteApi, type DurablePendingRequest } from "./remote/api.ts";
+import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
 import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
 
@@ -84,6 +84,12 @@ export class MessengerRuntime {
   remoteStatus = $state<RuntimeSnapshot["remoteStatus"] | null>(null);
   uvReady = $state(false);
   uvError = $state<string | null>(null);
+  maintenance = $state<RemoteMaintenanceStatus | null>(null);
+  maintenanceBusy = $state(false);
+  maintenanceError = $state<string | null>(null);
+  maintenanceForceConfirm = $state(false);
+  maintenanceStopConfirm = $state(false);
+  maintenanceRevokeId = $state<string | null>(null);
 
   private api: MessengerApi | null = null;
   private ws: WebSocket | null = null;
@@ -1013,6 +1019,107 @@ export class MessengerRuntime {
     }
   }
 
+  async refreshMaintenance(): Promise<void> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi)) return;
+    try {
+      this.maintenance = await api.remoteStatus();
+      this.uvReady = api.uvReady || this.maintenance.devices.some((row) => row.id === api.enrollment.deviceId && row.hasUv);
+      this.maintenanceError = null;
+    } catch (error) {
+      this.maintenanceError = error instanceof ApiError ? error.code : "request_unknown";
+    }
+  }
+
+  async downloadDiagnostics(): Promise<boolean> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
+    this.maintenanceBusy = true;
+    this.maintenanceError = null;
+    try {
+      const report = await api.privilegedAction({ action: "diagnostics.download", targetId: "runtime" }) as RemoteDiagnostics;
+      const blob = new Blob([JSON.stringify(report)], { type: "application/json" });
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = "real-bot-diagnostics.json";
+      link.rel = "noopener";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      return true;
+    } catch (error) {
+      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
+      return false;
+    } finally {
+      this.maintenanceBusy = false;
+    }
+  }
+
+  async restartRuntime(force = false): Promise<boolean> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
+    this.maintenanceBusy = true;
+    this.maintenanceError = null;
+    try {
+      await api.privilegedAction({ action: "runtime.restart", targetId: "runtime", force });
+      this.maintenanceForceConfirm = false;
+      await this.refreshMaintenance();
+      return true;
+    } catch (error) {
+      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
+      await this.refreshMaintenance();
+      return false;
+    } finally {
+      this.maintenanceBusy = false;
+    }
+  }
+
+  async stopRuntime(): Promise<boolean> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
+    this.maintenanceBusy = true;
+    this.maintenanceError = null;
+    try {
+      await api.privilegedAction({ action: "runtime.stop", targetId: "runtime" });
+      this.maintenanceStopConfirm = false;
+      await this.refreshMaintenance();
+      return true;
+    } catch (error) {
+      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
+      await this.refreshMaintenance();
+      return false;
+    } finally {
+      this.maintenanceBusy = false;
+    }
+  }
+
+  async revokeRemoteDevice(id: string): Promise<boolean> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
+    this.maintenanceBusy = true;
+    this.maintenanceError = null;
+    try {
+      await api.privilegedAction({ action: "device.revoke", targetId: id });
+      this.maintenanceRevokeId = null;
+      await this.refreshMaintenance();
+      return true;
+    } catch (error) {
+      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
+      await this.refreshMaintenance();
+      return false;
+    } finally {
+      this.maintenanceBusy = false;
+    }
+  }
+
+  otherRemoteDevices(): RemoteDeviceRow[] {
+    const api = this.api;
+    if (!(api instanceof RemoteApi) || !this.maintenance) return [];
+    return this.maintenance.devices.filter((row) => row.id !== api.enrollment.deviceId && !row.revoked);
+  }
+
   private async tick(): Promise<void> {
     if (this.stopped) return;
     if (HOSTED_MESSENGER) {
@@ -1083,6 +1190,7 @@ export class MessengerRuntime {
     if (!frames) throw new Error("event gap during snapshot");
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.remoteStatus = snapshot.remoteStatus ?? null;
+    if (api instanceof RemoteApi) void this.refreshMaintenance();
     this.reconcilePendingMutation(api);
     this.syncSettingsDraft(snapshot.settings);
     for (const frame of frames) this.ingest(frame.payload, frame);

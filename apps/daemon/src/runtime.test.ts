@@ -77,7 +77,23 @@ describe("local API runtime", () => {
       headers: { Authorization: `Bearer ${rt.token}` },
     });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ pid: process.pid, bind: LOCAL_API_BIND });
+    expect(await ok.json()).toMatchObject({ pid: process.pid, bind: LOCAL_API_BIND, mode: "none", restart: "unavailable" });
+  });
+
+  test("window restart is unavailable when the setup channel never attaches", async () => {
+    const rt = await start({ supervisor: "window", desktopRemoteChannel: true });
+    const res = await fetch(`${rt.origin}/v1/runtime`, {
+      headers: { Authorization: `Bearer ${rt.token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ mode: "window", restart: "unavailable" });
+
+    const standalone = await start({ supervisor: "standalone", desktopRemoteChannel: true });
+    const stand = await fetch(`${standalone.origin}/v1/runtime`, {
+      headers: { Authorization: `Bearer ${standalone.token}` },
+    });
+    expect(stand.status).toBe(200);
+    expect(await stand.json()).toMatchObject({ mode: "standalone", restart: "available" });
   });
 
   test("rejects a disallowed Origin and allows tauri and localhost", async () => {

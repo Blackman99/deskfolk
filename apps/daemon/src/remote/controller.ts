@@ -14,12 +14,14 @@ import { RemoteDispatcher } from "./dispatch";
 import type { RemotePrincipal } from "./uv";
 import { remoteError, responseError } from "./errors";
 import { LocalTrustActions, validateRelay, type TrustChange } from "./local-actions";
+import type { MaintenanceControl } from "./maint";
 
 export type RemoteStatus = { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
 export type RemoteNativeProvider = Pick<RemoteNativeClient, "capability" | "read" | "highwater" | "advanceHighwater" | "prepare" | "consume" | "reset">;
 export type RemoteControllerOptions = {
   store: Store; api: LocalApi; config?: RelayConfig; native?: RemoteNativeProvider;
   socketFactory?: RelaySocketFactory; fetch?: typeof fetch; now?: () => number;
+  maint?: MaintenanceControl | null;
 };
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
@@ -47,7 +49,7 @@ export class RemoteController {
   constructor(private readonly options: RemoteControllerOptions) {
     this.native = options.native ?? remoteNative;
     this.trust = new RemoteTrust(options.store, this.native, options.now);
-    this.dispatcher = new RemoteDispatcher(options.api, this.trust);
+    this.dispatcher = new RemoteDispatcher(options.api, this.trust, options.maint ?? null, () => this.status());
     this.localActions = new LocalTrustActions(this.trust, this.native);
     this.trust.onInvalidate(() => {
       for (const link of [...this.links.values()]) link.close();
