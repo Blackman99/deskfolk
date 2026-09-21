@@ -107,8 +107,8 @@
 	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
-	/** Phone only: the list of files is one screen and the file itself is the next. */
-	let mobileTab = $state<'file' | 'tree'>('file');
+	/** Phone only: the list drops down over the top of the preview, which stays put. */
+	let treeOpen = $state(false);
 	const treeLabel = $derived(mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree);
 	let paneEl = $state<HTMLElement | null>(null);
 	let paneWidth = $state(Number.POSITIVE_INFINITY);
@@ -371,8 +371,8 @@
 
 	function selectNode(node: ArtifactTreeNode): void {
 		if (mode === 'workspace' && node.kind === 'dir') return;
-		// Picking a file is a request to look at it, not to stay in the list.
-		if (node.kind !== 'dir') mobileTab = 'file';
+		// Picking a file is a request to look at it, so the list gets out of the way.
+		if (node.kind !== 'dir') treeOpen = false;
 		if (dirty) {
 			pendingNav = { kind: 'node', node };
 			return;
@@ -475,6 +475,13 @@
 	}
 
 	function onPaneKey(ev: KeyboardEvent): void {
+		// An open list is the innermost thing Escape can close.
+		if (ev.key === 'Escape' && treeOpen) {
+			treeOpen = false;
+			ev.preventDefault();
+			ev.stopPropagation();
+			return;
+		}
 		if (ev.key === 'Escape' && closeFind()) {
 			ev.preventDefault();
 			ev.stopPropagation();
@@ -524,7 +531,6 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside
 	class="artifact-pane"
-	data-mobile-tab={mobileTab}
 	class:is-tree-dragging={treeDragging}
 	aria-label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactPreview}
 	bind:this={paneEl}
@@ -532,26 +538,12 @@
 	onkeydown={onPaneKey}
 >
 	<header class="artifact-pane-head">
-		{#if showTree}
-			<button
-				type="button"
-				class="artifact-back"
-				title={treeLabel}
-				aria-label={treeLabel}
-				onclick={() => (mobileTab = 'tree')}
-			>
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="15 18 9 12 15 6"></polyline>
-				</svg>
-			</button>
-		{/if}
 		<div class="artifact-pane-titles min-w-0">
 			<div class="artifact-pane-title-row flex items-center gap-4 min-w-0">
 				<FileIcon {icon} size={16} />
 				<h2 class:is-dirty={dirty}>{titleName}</h2>
 			</div>
 			<p class="mono">{relpath || (workspacePath ?? '')}</p>
-			<p class="artifact-list-title">{treeLabel}</p>
 		</div>
 		<button type="button" class="modal-close" title={t.common.close} onclick={requestClose}>✕</button>
 	</header>
@@ -617,10 +609,25 @@
 	{#if remoteClient}
 		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.settings.fileLimitRemote}</p>
 	{/if}
+	{#if showTree}
+		<div class="artifact-picker">
+			<button
+				type="button"
+				class="artifact-picker-btn"
+				aria-expanded={treeOpen}
+				onclick={() => (treeOpen = !treeOpen)}
+			>
+				<span class="truncate">{treeLabel}</span>
+				<svg class="artifact-picker-chevron" class:is-open={treeOpen} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polyline points="6 9 12 15 18 9"></polyline>
+				</svg>
+			</button>
+		</div>
+	{/if}
 	<div
 		class="artifact-pane-main flex-1 min-h-0 min-w-0 flex"
 		class:has-tree={showTree}
-		data-mobile-tab={mobileTab}
+		data-tree-open={treeOpen}
 	>
 		{#if showTree}
 			<ArtifactTree
@@ -638,6 +645,14 @@
 				class="artifact-tree-split"
 				aria-label={t.stream.artifactTreeResize}
 				onpointerdown={startTreeResize}
+			></button>
+		{/if}
+		{#if treeOpen}
+			<button
+				type="button"
+				class="artifact-picker-scrim"
+				aria-label={t.common.close}
+				onclick={() => (treeOpen = false)}
 			></button>
 		{/if}
 		<div class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8" class:is-editor={sourceMode && text !== null}>
@@ -726,9 +741,9 @@
 		border-left: 0;
 	}
 
-	/* Desktop shows the tree beside the file: no stepping back and forth. */
-	.artifact-back,
-	.artifact-list-title {
+	/* Desktop shows the tree beside the file, so it needs no picker above it. */
+	.artifact-picker,
+	.artifact-picker-scrim {
 		display: none;
 	}
 
@@ -897,53 +912,79 @@
 			justify-content: center;
 		}
 
-		/* Looking at a file is one step in from the list, and steps back the same way. */
-		.artifact-back {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			width: 40px;
-			height: 40px;
-			margin-left: -6px;
-			flex-shrink: 0;
-			border-radius: var(--radius-md);
-			color: var(--ink-secondary);
-		}
-
-		.artifact-pane[data-mobile-tab='tree'] .artifact-back,
-		.artifact-pane[data-mobile-tab='tree'] .artifact-pane-title-row,
-		.artifact-pane[data-mobile-tab='tree'] .artifact-pane-titles .mono,
-		.artifact-pane[data-mobile-tab='tree'] .artifact-toolbar {
-			display: none;
-		}
-
-		.artifact-pane[data-mobile-tab='tree'] .artifact-list-title {
+		/* The list drops over the top of the file instead of replacing the screen it is on. */
+		.artifact-picker {
 			display: block;
-			margin: 0;
-			font-size: 14px;
-			font-weight: 600;
-			color: var(--ink);
+			padding: 8px 12px;
+			border-bottom: 1px solid var(--line);
 		}
 
-		.artifact-pane-main[data-mobile-tab='file'] :global(.artifact-tree) {
-			display: none;
-		}
-
-		.artifact-pane-main[data-mobile-tab='tree'] .artifact-pane-body {
-			display: none;
-		}
-
-		/* One column either way: the grid that splits tree from file is a desktop shape. */
-		.artifact-pane-main.has-tree {
+		.artifact-picker-btn {
 			display: flex;
-			grid-template-columns: none;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+			width: 100%;
+			min-height: 40px;
+			padding: 0 12px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-md);
+			background: var(--btn-secondary-bg);
+			color: var(--ink);
+			font-size: 12.5px;
+			font-weight: 600;
 		}
 
-		.artifact-pane-main[data-mobile-tab='tree'] :global(.artifact-tree) {
-			flex: 1;
+		.artifact-picker-btn[aria-expanded='true'] {
+			border-color: var(--line-hover);
+			background: var(--chip);
+		}
+
+		.artifact-picker-chevron {
+			flex-shrink: 0;
+			color: var(--ink-secondary);
+			transition: transform 0.15s ease;
+		}
+
+		.artifact-picker-chevron.is-open {
+			transform: rotate(180deg);
+		}
+
+		.artifact-pane-main.has-tree {
+			position: relative;
+			display: block;
+		}
+
+		.artifact-pane-main :global(.artifact-tree) {
+			position: absolute;
+			inset-inline: 0;
+			top: 0;
+			z-index: 5;
+			display: none;
+			max-height: min(52%, 320px);
 			width: auto;
 			max-width: none;
 			border-right: 0;
+			border-bottom: 1px solid var(--line);
+			background: var(--pane);
+			box-shadow: 0 18px 28px -18px rgba(2, 6, 23, 0.65);
+		}
+
+		.artifact-pane-main[data-tree-open='true'] :global(.artifact-tree) {
+			display: block;
+		}
+
+		.artifact-pane-body {
+			height: 100%;
+		}
+
+		.artifact-picker-scrim {
+			display: block;
+			position: absolute;
+			inset: 0;
+			z-index: 4;
+			background: transparent;
+			border: 0;
 		}
 
 		/* Dragging a divider is a mouse idea. */
