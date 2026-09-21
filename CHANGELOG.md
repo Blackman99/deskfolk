@@ -8,6 +8,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Desktop
 
+- **An update now downloads and installs itself.** Finding a new version used to hand the `.dmg` to your browser and leave the rest to you: open it, drag it over the old copy, clear Gatekeeper. The About card now downloads it in the app with a progress bar, checks that the build inside the image really is this app and exactly the version it offered, replaces the installed copy and reopens it. A failed download or a build that doesn't check out leaves the installed copy untouched, and the browser download is still there — it is what you get when the app can't replace itself at all (a copy someone else installed, or one running from source), with a sentence saying which. The download can be cancelled while it runs.
+- The update check and the download go through `HTTPS_PROXY` / `ALL_PROXY` when the environment sets one (and skip it for hosts in `NO_PROXY`). On a machine where GitHub is only reachable through a proxy, checking used to fail with "Couldn't check for updates" and no way to say what was wrong.
 - The window comes back at the size it was when you quit. Dragging the frame, zooming to fill the screen, hiding to the tray, or quitting writes `window-size.json` next to the window process's app data; the next launch restores that width and height (and zoomed-to-fill). The position is not stored, so a display change cannot park the window off-screen.
 
 ### Daemon

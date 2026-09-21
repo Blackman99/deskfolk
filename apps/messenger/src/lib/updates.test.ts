@@ -1,14 +1,27 @@
 import { expect, test } from "bun:test";
 import type { TauriInternals } from "./tauri.ts";
 import {
+  IDLE_INSTALL,
+  cancelUpdateInstall,
+  canInstallUpdate,
   checkForUpdate,
   fetchAppVersion,
+  formatBytes,
+  installErrorCode,
+  installErrorCopyKey,
+  installPercent,
+  installPhaseCopyKey,
+  isInstallActive,
   loadIgnoredVersion,
   openExternalUrl,
   parseUpdateCheck,
+  parseUpdateInstallState,
+  readUpdateInstall,
   saveIgnoredVersion,
   shouldShowUpdate,
+  startUpdateInstall,
   type UpdateCheck,
+  type UpdateInstallState,
   type UpdateStorage,
 } from "./updates.ts";
 
@@ -187,4 +200,142 @@ test("shouldShowUpdate is true when available and unignored", () => {
 
 test("shouldShowUpdate is true when the ignored version is older than the new latest", () => {
   expect(shouldShowUpdate(FULL_PAYLOAD, "0.1.0-alpha.2")).toBe(true);
+});
+
+const DOWNLOADING = {
+  phase: "downloading",
+  downloaded: 4_194_304,
+  total: 90_177_536,
+  version: "0.1.0-alpha.4",
+  error: null,
+  detail: null,
+} satisfies UpdateInstallState;
+
+test("parseUpdateInstallState round-trips a running job", () => {
+  expect(parseUpdateInstallState(DOWNLOADING)).toEqual(DOWNLOADING);
+});
+
+test("parseUpdateInstallState rejects a body without a known phase", () => {
+  expect(parseUpdateInstallState(null)).toBeNull();
+  expect(parseUpdateInstallState({ ...DOWNLOADING, phase: "uploading" })).toBeNull();
+  expect(parseUpdateInstallState({ ...DOWNLOADING, phase: undefined })).toBeNull();
+});
+
+test("parseUpdateInstallState defaults a missing count and nulls junk fields", () => {
+  expect(parseUpdateInstallState({ phase: "idle", downloaded: "lots", total: {} })).toEqual(
+    IDLE_INSTALL,
+  );
+});
+
+test("isInstallActive covers every running phase and neither resting one", () => {
+  for (const phase of ["downloading", "verifying", "installing", "restarting"] as const) {
+    expect(isInstallActive({ ...DOWNLOADING, phase })).toBe(true);
+  }
+  expect(isInstallActive(IDLE_INSTALL)).toBe(false);
+  expect(isInstallActive({ ...DOWNLOADING, phase: "failed" })).toBe(false);
+});
+
+test("installPercent divides the download and fills the bar once the swap starts", () => {
+  expect(installPercent({ ...DOWNLOADING, downloaded: 45_088_768 })).toBe(50);
+  expect(installPercent({ ...DOWNLOADING, downloaded: 0 })).toBe(0);
+  // A server that undersold the length cannot push the bar past full.
+  expect(installPercent({ ...DOWNLOADING, downloaded: 999, total: 500 })).toBe(100);
+  expect(installPercent({ ...DOWNLOADING, phase: "verifying", total: null })).toBe(100);
+  expect(installPercent({ ...DOWNLOADING, phase: "installing", total: null })).toBe(100);
+  expect(installPercent({ ...DOWNLOADING, phase: "restarting", total: null })).toBe(100);
+});
+
+test("installPercent is null without a content length, so the bar runs indeterminate", () => {
+  expect(installPercent({ ...DOWNLOADING, total: null })).toBeNull();
+  expect(installPercent({ ...DOWNLOADING, total: 0 })).toBeNull();
+});
+
+test("formatBytes reads as a download size", () => {
+  expect(formatBytes(90_177_536)).toBe("86.0 MB");
+  expect(formatBytes(1_572_864)).toBe("1.5 MB");
+  expect(formatBytes(51_200)).toBe("50 KB");
+  expect(formatBytes(0)).toBe("0 KB");
+  expect(formatBytes(-1)).toBe("0 KB");
+  expect(formatBytes(Number.NaN)).toBe("0 KB");
+});
+
+test("installErrorCode reads the code out of whatever invoke rejected with", () => {
+  expect(installErrorCode("read-only")).toBe("read-only");
+  expect(installErrorCode(new Error("busy"))).toBe("busy");
+  expect(installErrorCode(undefined)).toBe("install-failed");
+  expect(installErrorCode("")).toBe("install-failed");
+  expect(installErrorCode({})).toBe("install-failed");
+});
+
+test("every phase and failure code maps to a sentence", () => {
+  expect(installPhaseCopyKey("downloading")).toBe("updateDownloading");
+  expect(installPhaseCopyKey("verifying")).toBe("updateVerifying");
+  expect(installPhaseCopyKey("installing")).toBe("updateInstalling");
+  expect(installPhaseCopyKey("restarting")).toBe("updateRestarting");
+  expect(installPhaseCopyKey("idle")).toBeNull();
+  expect(installPhaseCopyKey("failed")).toBeNull();
+
+  expect(installErrorCopyKey("download-failed")).toBe("updateInstallFailedDownload");
+  expect(installErrorCopyKey("verify-failed")).toBe("updateInstallFailedVerify");
+  expect(installErrorCopyKey("install-failed")).toBe("updateInstallFailedInstall");
+  expect(installErrorCopyKey("read-only")).toBe("updateInstallFailedReadOnly");
+  expect(installErrorCopyKey("not-installed")).toBe("updateInstallFailedNotInstalled");
+  // `bad-url`, `busy` and anything new get the neutral sentence.
+  expect(installErrorCopyKey("bad-url")).toBe("updateInstallFailedOther");
+  expect(installErrorCopyKey(null)).toBe("updateInstallFailedOther");
+});
+
+test("startUpdateInstall hands the window process the asset URL and the version", async () => {
+  const internals = fakeInternals(async () => DOWNLOADING);
+  await expect(
+    startUpdateInstall(FULL_PAYLOAD.downloadUrl!, FULL_PAYLOAD.latest!, internals),
+  ).resolves.toEqual(DOWNLOADING);
+  expect(internals.calls).toEqual([
+    {
+      cmd: "start_update_install",
+      args: { url: FULL_PAYLOAD.downloadUrl, version: FULL_PAYLOAD.latest },
+    },
+  ]);
+});
+
+test("startUpdateInstall rejects with the refusal code so the card can say why", async () => {
+  const internals = fakeInternals(async () => {
+    throw "read-only";
+  });
+  await expect(
+    startUpdateInstall(FULL_PAYLOAD.downloadUrl!, FULL_PAYLOAD.latest!, internals),
+  ).rejects.toBe("read-only");
+});
+
+test("startUpdateInstall assumes a started download when the reply is unreadable", async () => {
+  const internals = fakeInternals(async () => "started");
+  await expect(startUpdateInstall("url", "0.2.0", internals)).resolves.toEqual({
+    ...IDLE_INSTALL,
+    phase: "downloading",
+    version: "0.2.0",
+  });
+});
+
+test("polling and cancelling survive a window process that is not there", async () => {
+  await expect(readUpdateInstall(undefined)).resolves.toBeNull();
+  await expect(cancelUpdateInstall(undefined)).resolves.toEqual(IDLE_INSTALL);
+  await expect(canInstallUpdate(undefined)).resolves.toBe(false);
+
+  const throwing = fakeInternals(async () => {
+    throw new Error("gone");
+  });
+  await expect(readUpdateInstall(throwing)).resolves.toBeNull();
+  await expect(cancelUpdateInstall(throwing)).resolves.toEqual(IDLE_INSTALL);
+  await expect(canInstallUpdate(throwing)).resolves.toBe(false);
+});
+
+test("canInstallUpdate only believes a literal true", async () => {
+  await expect(canInstallUpdate(fakeInternals(async () => true))).resolves.toBe(true);
+  await expect(canInstallUpdate(fakeInternals(async () => "yes"))).resolves.toBe(false);
+});
+
+test("cancelUpdateInstall reports the state the window process went back to", async () => {
+  const internals = fakeInternals(async () => IDLE_INSTALL);
+  await expect(cancelUpdateInstall(internals)).resolves.toEqual(IDLE_INSTALL);
+  expect(internals.calls).toEqual([{ cmd: "cancel_update_install", args: undefined }]);
 });

@@ -1,12 +1,16 @@
 mod daemon;
+mod installer;
 mod local_api;
 mod supervisor;
 mod updates;
 mod window_state;
 
-use std::sync::Mutex;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use installer::{InstallState, Installer, Phase};
 use local_api::{endpoint_from_descriptor, probe_bind, BIND_PORT};
 use supervisor::{launched_hidden, Action, Endpoint, Probe, QuitPlan, Supervisor};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -199,6 +203,201 @@ fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+/// Where a downloaded build would be installed: the `.app` this process is
+/// running out of. `not-installed` for a dev build or a bare binary — the
+/// About card then falls back to the browser download.
+fn installable_bundle() -> Result<PathBuf, String> {
+    if tauri::is_dev() {
+        return Err("not-installed".into());
+    }
+    let exe = std::env::current_exe().map_err(|_| "not-installed".to_string())?;
+    installer::bundle_root(&exe).ok_or_else(|| "not-installed".to_string())
+}
+
+/// Is an in-app install possible at all on this copy? The About card asks
+/// before it offers the button, so an unwritable or un-bundled install offers
+/// the browser download instead of a button that always fails.
+#[tauri::command]
+fn can_install_update() -> bool {
+    installable_bundle()
+        .map(|bundle| installer::can_replace_bundle(&bundle))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn update_install_state(app: AppHandle) -> InstallState {
+    app.state::<Installer>().snapshot()
+}
+
+/// Cancel a running download, or clear a failed one. The partial `.dmg` is
+/// dropped by the download loop when it sees the flag.
+#[tauri::command]
+fn cancel_update_install(app: AppHandle) -> InstallState {
+    let installer = app.state::<Installer>();
+    installer.reset();
+    installer.snapshot()
+}
+
+/// Download `url` and, once it verifies, replace this bundle with what is
+/// inside and relaunch. The preflight runs here so a refusal reaches the
+/// button press rather than the progress bar.
+#[tauri::command]
+fn start_update_install(app: AppHandle, url: String, version: String) -> Result<InstallState, String> {
+    let target = installable_bundle()?;
+    if !installer::is_installable_asset_url(&url) {
+        return Err("bad-url".into());
+    }
+    if !installer::can_replace_bundle(&target) {
+        return Err("read-only".into());
+    }
+    let cancel = app.state::<Installer>().begin(&version)?;
+    let worker = app.clone();
+    std::thread::spawn(move || install_update(worker, url, version, target, cancel));
+    Ok(app.state::<Installer>().snapshot())
+}
+
+fn update_staging_dir(app: &AppHandle) -> PathBuf {
+    app.path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("com.real-bot.desktop"))
+}
+
+/// Download, mount, verify, stage, swap. Each step reports its phase to the
+/// About card and stops on the cancel flag; anything that fails leaves the
+/// installed app untouched.
+fn install_update(
+    app: AppHandle,
+    url: String,
+    version: String,
+    target: PathBuf,
+    cancel: Arc<AtomicBool>,
+) {
+    let state = app.state::<Installer>();
+    let paths = installer::staging_paths(&update_staging_dir(&app), &url);
+    let _ = std::fs::remove_dir_all(&paths.root);
+    if let Err(err) = std::fs::create_dir_all(&paths.root) {
+        state.fail("install-failed", err.to_string());
+        return;
+    }
+
+    let user_agent = format!("real-bot-desktop/{}", app.package_info().version);
+    let (body, total) = match installer::open_asset(&url, &user_agent) {
+        Ok(opened) => opened,
+        Err(err) => return state.fail("download-failed", err),
+    };
+    state.update(|snapshot| snapshot.total = total);
+
+    let mut last_tick = Instant::now();
+    let downloaded = installer::stream_to_file(
+        body,
+        total,
+        &paths.dmg,
+        installer::MAX_DOWNLOAD_BYTES,
+        |downloaded, total| {
+            if cancel.load(Ordering::SeqCst) {
+                return false;
+            }
+            // The bar moves ten times a second at most; the rest of the chunks
+            // would only be lock traffic behind a poll that reads far slower.
+            if last_tick.elapsed() >= Duration::from_millis(100) || Some(downloaded) == total {
+                last_tick = Instant::now();
+                state.update(|snapshot| {
+                    snapshot.downloaded = downloaded;
+                    snapshot.total = total;
+                });
+            }
+            true
+        },
+    );
+    if let Err(err) = downloaded {
+        let _ = std::fs::remove_dir_all(&paths.root);
+        if cancel.load(Ordering::SeqCst) {
+            return;
+        }
+        return state.fail("download-failed", err);
+    }
+
+    state.advance(Phase::Verifying);
+    let mount = match installer::attach_dmg(&paths.dmg, &paths.mount) {
+        Ok(mount) => PathBuf::from(mount),
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&paths.root);
+            return state.fail("verify-failed", err);
+        }
+    };
+    let staged = match stage_from_mount(&app, &state, &version, &mount, &paths, &cancel) {
+        Some(staged) => staged,
+        None => {
+            installer::detach_dmg(&mount);
+            let _ = std::fs::remove_dir_all(&paths.root);
+            return;
+        }
+    };
+    installer::detach_dmg(&mount);
+
+    state.advance(Phase::Restarting);
+    let script = match installer::write_swap_script(&std::env::temp_dir()) {
+        Ok(script) => script,
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&paths.root);
+            return state.fail("install-failed", err);
+        }
+    };
+    if let Err(err) = installer::spawn_swap(&script, &target, &staged, &paths.root) {
+        let _ = std::fs::remove_file(&script);
+        let _ = std::fs::remove_dir_all(&paths.root);
+        return state.fail("install-failed", err);
+    }
+    // The swap waits for this pid, so the app has to go down the ordinary way:
+    // the daemon is told to quit and the window persists its size first.
+    begin_quit(&app);
+}
+
+/// Check the mounted image and copy the app out of it. `None` means the job
+/// stopped — the state carries why, unless the user cancelled.
+fn stage_from_mount(
+    app: &AppHandle,
+    state: &tauri::State<'_, Installer>,
+    version: &str,
+    mount: &PathBuf,
+    paths: &installer::StagingPaths,
+    cancel: &Arc<AtomicBool>,
+) -> Option<PathBuf> {
+    let bundle = match installer::find_app_bundle(mount) {
+        Some(bundle) => bundle,
+        None => {
+            state.fail("verify-failed", "the image holds no .app");
+            return None;
+        }
+    };
+    let plist = match installer::read_bundle_plist(&bundle) {
+        Ok(plist) => plist,
+        Err(err) => {
+            state.fail("verify-failed", err);
+            return None;
+        }
+    };
+    if let Err(err) = installer::verify_bundle(&plist, &app.config().identifier, version) {
+        state.fail("verify-failed", err);
+        return None;
+    }
+    if cancel.load(Ordering::SeqCst) {
+        return None;
+    }
+
+    state.advance(Phase::Installing);
+    let name = bundle.file_name()?;
+    let staged = paths.root.join(name);
+    if let Err(err) = installer::copy_bundle(&bundle, &staged) {
+        state.fail("install-failed", err);
+        return None;
+    }
+    if cancel.load(Ordering::SeqCst) {
+        return None;
+    }
+    Some(staged)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -227,13 +426,18 @@ pub fn run() {
             quitting: false,
         }))
         .manage(Mutex::new(updates::UpdateCache::default()))
+        .manage(Installer::default())
         .invoke_handler(tauri::generate_handler![
             local_api_endpoint,
             pick_workspace_folder,
             open_workspace_path,
             app_version,
             check_for_update,
-            open_external_url
+            open_external_url,
+            can_install_update,
+            start_update_install,
+            update_install_state,
+            cancel_update_install
         ])
         .setup(|app| {
             install_menus(app.handle())?;

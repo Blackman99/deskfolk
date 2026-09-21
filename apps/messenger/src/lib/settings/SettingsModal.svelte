@@ -22,6 +22,12 @@
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
+	import {
+		formatBytes,
+		installErrorCopyKey,
+		installPercent,
+		installPhaseCopyKey
+	} from '../updates.ts';
 	import { localeSection, releaseNoteGroups } from './release-notes.ts';
 	import {
 		mapSettingsError,
@@ -71,6 +77,11 @@
 	const updateChanges = $derived(
 		releaseNoteGroups(localeSection(updateChecker.result?.notes, locale))
 	);
+	/** The in-app download and swap, as the card draws it: phase, bar, failure. */
+	const installPhaseKey = $derived(installPhaseCopyKey(updateChecker.install.phase));
+	const installLabel = $derived(installPhaseKey ? t.settings[installPhaseKey] : '');
+	const installPercentValue = $derived(installPercent(updateChecker.install));
+	const installErrorLabel = $derived(t.settings[installErrorCopyKey(updateChecker.install.error)]);
 	let fieldErrors = $state<SettingsFieldErrors>({});
 	const generalHasError = $derived(Boolean(fieldErrors.workspace));
 	const modelsHasError = $derived(
@@ -996,23 +1007,84 @@
 												{/each}
 											</div>
 										{/if}
-										<div class="about-actions flex items-center flex-wrap gap-4">
-											{#if updateChecker.result.downloadUrl}
-												<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.download()}>
-													{t.settings.updateDownload}
-												</button>
+										{#if updateChecker.installing}
+											<div class="about-install">
+												<div class="about-install-head">
+													<span class="about-install-phase">{installLabel}</span>
+													{#if updateChecker.install.total}
+														<span class="about-install-bytes">
+															{formatBytes(updateChecker.install.downloaded)} / {formatBytes(updateChecker.install.total)}
+														</span>
+													{/if}
+												</div>
+												<div
+													class="about-progress"
+													role="progressbar"
+													aria-label={installLabel}
+													aria-valuemin={0}
+													aria-valuemax={100}
+													aria-valuenow={installPercentValue ?? undefined}
+												>
+													<div
+														class="about-progress-fill"
+														class:is-indeterminate={installPercentValue === null}
+														style={installPercentValue === null
+															? undefined
+															: `width: ${installPercentValue}%`}
+													></div>
+												</div>
+												{#if updateChecker.install.phase === 'downloading'}
+													<button
+														type="button"
+														class="btn-text-action self-start"
+														onclick={() => void updateChecker.cancelInstall()}
+													>
+														{t.settings.updateInstallCancel}
+													</button>
+												{/if}
+											</div>
+										{:else}
+											{#if updateChecker.install.phase === 'failed'}
+												<div class="about-install-failed">
+													<p class="m-0 text-12 leading-[1.4]">{installErrorLabel}</p>
+													{#if updateChecker.install.detail}
+														<p class="about-install-detail">{updateChecker.install.detail}</p>
+													{/if}
+												</div>
 											{/if}
-											{#if updateChecker.result.releaseUrl}
-												<button type="button" class="btn-xs" onclick={() => void updateChecker.openNotes()}>
-													{t.settings.updateNotes}
-												</button>
+											<div class="about-actions flex items-center flex-wrap gap-4">
+												{#if updateChecker.installable}
+													<button type="button" class="btn-xs btn-primary" onclick={() => void updateChecker.startInstall()}>
+														{updateChecker.install.phase === 'failed'
+															? t.settings.updateInstallRetry
+															: t.settings.updateInstall}
+													</button>
+												{/if}
+												{#if updateChecker.result.downloadUrl}
+													<button
+														type="button"
+														class="btn-xs"
+														class:btn-primary={!updateChecker.installable}
+														onclick={() => void updateChecker.download()}
+													>
+														{t.settings.updateDownload}
+													</button>
+												{/if}
+												{#if updateChecker.result.releaseUrl}
+													<button type="button" class="btn-xs" onclick={() => void updateChecker.openNotes()}>
+														{t.settings.updateNotes}
+													</button>
+												{/if}
+												{#if updateChecker.ignoredVersion !== updateChecker.result.latest}
+													<button type="button" class="btn-text-action" onclick={() => updateChecker.ignoreLatest()}>
+														{t.settings.updateIgnore}
+													</button>
+												{/if}
+											</div>
+											{#if updateChecker.installable && updateChecker.install.phase !== 'failed'}
+												<p class="about-install-hint">{t.settings.updateInstallHint}</p>
 											{/if}
-											{#if updateChecker.ignoredVersion !== updateChecker.result.latest}
-												<button type="button" class="btn-text-action" onclick={() => updateChecker.ignoreLatest()}>
-													{t.settings.updateIgnore}
-												</button>
-											{/if}
-										</div>
+										{/if}
 									</div>
 								{:else if updateChecker.status === 'ok'}
 									<div class="about-status-banner is-ok mt-5 py-4 px-6 rounded-md text-12">
@@ -1918,6 +1990,91 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+
+	/* The in-app download: the phase on the left, how far along on the right, one bar under both. */
+	.about-install {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.about-install-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.about-install-phase {
+		font-size: 12px;
+		color: var(--ink-secondary);
+	}
+
+	.about-install-bytes {
+		font-family: var(--mono);
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+
+	.about-progress {
+		height: 5px;
+		border-radius: 999px;
+		background: var(--line-subtle);
+		overflow: hidden;
+	}
+
+	.about-progress-fill {
+		height: 100%;
+		width: 0;
+		border-radius: 999px;
+		background: var(--accent);
+		transition: width 0.2s ease;
+	}
+
+	/* No Content-Length to divide by: the bar sweeps instead of claiming a number. */
+	.about-progress-fill.is-indeterminate {
+		width: 40%;
+		animation: about-progress-sweep 1.2s ease-in-out infinite;
+	}
+
+	@keyframes about-progress-sweep {
+		0% {
+			transform: translateX(-110%);
+		}
+		100% {
+			transform: translateX(260%);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.about-progress-fill.is-indeterminate {
+			width: 100%;
+			animation: none;
+		}
+	}
+
+	.about-install-failed {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		color: var(--warn-text);
+	}
+
+	.about-install-detail {
+		margin: 0;
+		font-family: var(--mono);
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--muted);
+		overflow-wrap: anywhere;
+	}
+
+	.about-install-hint {
+		margin: 2px 0 0;
+		font-size: 11.5px;
+		line-height: 1.4;
+		color: var(--muted);
 	}
 
 	/*
