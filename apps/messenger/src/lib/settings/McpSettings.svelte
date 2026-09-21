@@ -3,6 +3,7 @@
 	import type { McpServer } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { backdropClick } from '../click-outside.ts';
 	import {
 		formatMcpArgs,
 		formatMcpHeaders,
@@ -17,6 +18,8 @@
 	import { filterMcpServers, mcpConnectionSummary } from './mcp-list.ts';
 
 	let { runtime, t }: { runtime: MessengerRuntime; t: Copy } = $props();
+	/** A click outside closes the editor; a text-selection drag that starts inside never does. */
+	const editorBackdrop = backdropClick();
 	const servers = $derived(runtime.snapshot.mcpServers);
 	let query = $state('');
 	const filteredServers = $derived(filterMcpServers(servers, query));
@@ -315,8 +318,9 @@
 		aria-modal="true"
 		aria-labelledby="mcp-editor-title"
 		tabindex="-1"
+		onmousedowncapture={editorBackdrop.press}
 		onclick={(event) => {
-			if (event.target === event.currentTarget) closeEditor();
+			if (editorBackdrop.isOutside(event)) closeEditor();
 		}}
 		onkeydown={onEditorKeydown}
 	>

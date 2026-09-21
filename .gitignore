@@ -23,6 +23,7 @@ apps/desktop/src-tauri/binaries/
 .cursor/
 .playwright-mcp/
 .agent-browser/
+.workbuddy/
 coverage/
 playwright-report/
 test-results/

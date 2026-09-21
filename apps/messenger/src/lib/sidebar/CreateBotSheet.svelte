@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AvatarEditor from '../AvatarEditor.svelte';
+	import { backdropClick } from '../click-outside.ts';
 	import Select from '../Select.svelte';
 	import { thinkingLevelLabel, type Copy } from '../copy.ts';
 	import {
@@ -22,6 +23,8 @@
 	};
 
 	let { runtime, modelOptions, t, onClose }: Props = $props();
+	/** A click outside closes the sheet; a text-selection drag that starts inside never does. */
+	const backdrop = backdropClick();
 
 	// The sheet is mounted only while it is open, so a fresh mount is the reset.
 	let draft = $state<CreateBotDraft>({
@@ -78,8 +81,9 @@
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
+	onmousedowncapture={backdrop.press}
 	onclick={(e) => {
-		if (e.target === e.currentTarget) onClose();
+		if (backdrop.isOutside(e)) onClose();
 	}}
 	onkeydown={(e) => {
 		if (e.key === 'Escape') onClose();
