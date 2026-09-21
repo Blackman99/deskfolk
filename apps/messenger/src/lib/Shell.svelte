@@ -1422,5 +1422,12 @@
 			width: 100%;
 			z-index: 40;
 		}
+
+		/* Same for the artifact preview: it is a layer over the conversation, not a row of it. */
+		.shell.is-preview :global(.artifact-pane) {
+			position: fixed;
+			inset: 0;
+			z-index: 60;
+		}
 	}
 </style>

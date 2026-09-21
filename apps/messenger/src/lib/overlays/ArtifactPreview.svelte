@@ -107,8 +107,9 @@
 	let pendingNav = $state<null | { kind: 'close' } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
-	/** Phone only: the pane is a sheet, so the file and the list of files take turns. */
+	/** Phone only: the list of files is one screen and the file itself is the next. */
 	let mobileTab = $state<'file' | 'tree'>('file');
+	const treeLabel = $derived(mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree);
 	let paneEl = $state<HTMLElement | null>(null);
 	let paneWidth = $state(Number.POSITIVE_INFINITY);
 	const treeWidth = $derived(clampArtifactTreeWidth(treePreferred, paneWidth));
@@ -523,6 +524,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside
 	class="artifact-pane"
+	data-mobile-tab={mobileTab}
 	class:is-tree-dragging={treeDragging}
 	aria-label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactPreview}
 	bind:this={paneEl}
@@ -530,32 +532,27 @@
 	onkeydown={onPaneKey}
 >
 	<header class="artifact-pane-head">
+		{#if showTree}
+			<button
+				type="button"
+				class="artifact-back"
+				title={treeLabel}
+				aria-label={treeLabel}
+				onclick={() => (mobileTab = 'tree')}
+			>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polyline points="15 18 9 12 15 6"></polyline>
+				</svg>
+			</button>
+		{/if}
 		<div class="artifact-pane-titles min-w-0">
 			<div class="artifact-pane-title-row flex items-center gap-4 min-w-0">
 				<FileIcon {icon} size={16} />
 				<h2 class:is-dirty={dirty}>{titleName}</h2>
 			</div>
 			<p class="mono">{relpath || (workspacePath ?? '')}</p>
+			<p class="artifact-list-title">{treeLabel}</p>
 		</div>
-		{#if showTree}
-			<button
-				type="button"
-				class="artifact-tree-toggle"
-				aria-pressed={mobileTab === 'tree'}
-				title={t.stream.artifactTree}
-				aria-label={t.stream.artifactTree}
-				onclick={() => (mobileTab = mobileTab === 'tree' ? 'file' : 'tree')}
-			>
-				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<line x1="8" y1="6" x2="21" y2="6"></line>
-					<line x1="8" y1="12" x2="21" y2="12"></line>
-					<line x1="8" y1="18" x2="21" y2="18"></line>
-					<line x1="3" y1="6" x2="3.01" y2="6"></line>
-					<line x1="3" y1="12" x2="3.01" y2="12"></line>
-					<line x1="3" y1="18" x2="3.01" y2="18"></line>
-				</svg>
-			</button>
-		{/if}
 		<button type="button" class="modal-close" title={t.common.close} onclick={requestClose}>✕</button>
 	</header>
 	{#if canShowSource || canOpenOnDisk || canRemoteFile}
@@ -729,8 +726,9 @@
 		border-left: 0;
 	}
 
-	/* Desktop shows the tree beside the file, so the phone's toggle stays hidden. */
-	.artifact-tree-toggle {
+	/* Desktop shows the tree beside the file: no stepping back and forth. */
+	.artifact-back,
+	.artifact-list-title {
 		display: none;
 	}
 
@@ -883,9 +881,6 @@
 		 * conversation, and the file and the list of files take turns.
 		 */
 		.artifact-pane {
-			position: fixed;
-			inset: 0;
-			z-index: 60;
 			padding-bottom: env(safe-area-inset-bottom);
 			box-shadow: none;
 		}
@@ -902,22 +897,31 @@
 			justify-content: center;
 		}
 
-		.artifact-tree-toggle {
+		/* Looking at a file is one step in from the list, and steps back the same way. */
+		.artifact-back {
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
 			width: 40px;
 			height: 40px;
+			margin-left: -6px;
 			flex-shrink: 0;
-			border: 1px solid var(--line);
 			border-radius: var(--radius-md);
-			background: var(--btn-secondary-bg);
 			color: var(--ink-secondary);
 		}
 
-		.artifact-tree-toggle[aria-pressed='true'] {
-			background: var(--chip);
-			border-color: var(--line-hover);
+		.artifact-pane[data-mobile-tab='tree'] .artifact-back,
+		.artifact-pane[data-mobile-tab='tree'] .artifact-pane-title-row,
+		.artifact-pane[data-mobile-tab='tree'] .artifact-pane-titles .mono,
+		.artifact-pane[data-mobile-tab='tree'] .artifact-toolbar {
+			display: none;
+		}
+
+		.artifact-pane[data-mobile-tab='tree'] .artifact-list-title {
+			display: block;
+			margin: 0;
+			font-size: 14px;
+			font-weight: 600;
 			color: var(--ink);
 		}
 

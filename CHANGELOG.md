@@ -44,6 +44,7 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ### Experimental remote protocol
 
+- On a phone the preview opens as a layer over the conversation, and its file list is a screen of its own rather than a column beside the file. Which layer it is belongs to the frame now, so the workspace overlay — already full screen — no longer nests a second one inside itself. With a list to come back to, the file gets a back arrow in its header, the same gesture as leaving a conversation; picking a file in the list goes straight to it.
 - Mac Settings now lists connected devices with the time of their latest encrypted connection or request. A locally confirmed Remove action advances the trust generation, closes that device's sessions, and revokes its future access.
 - The artifact preview is a sheet on a phone instead of a second row under the composer. It used to be dealt its own grid column, which at phone width became a strip below the conversation that then split 390px between a file tree and the file itself — the thing you opened ended up in a column narrower than its own name. It now covers the screen, with the path under the title, a list button in its header that swaps between the file and the files it came with, and no drag handles. Picking a file in the list goes straight back to it.
 - Phone conversations now keep the title readable with a single header actions menu, wrap next-step suggestions above the composer, start with a shorter empty composer, and show the 50 MiB remote attachment note inside that field.
