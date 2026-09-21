@@ -48,6 +48,7 @@ test("connected devices show recent activity and require confirmation before rem
   expect(list?.textContent).toContain("Connected devices");
   expect(list?.textContent).toContain("Pixel");
   expect(list?.textContent).toContain("Last active");
+  expect(list?.textContent).toMatch(/ago|年前/);
   click(host.querySelector("[data-testid=host-remove-01ARZ3NDEKTSV4RRFFQ69G5FAW]"));
   expect(host.querySelector("[data-testid=host-remove-confirm-01ARZ3NDEKTSV4RRFFQ69G5FAW]")?.textContent).toContain("Pixel");
   click(host.querySelector("[data-testid=host-remove-confirm-01ARZ3NDEKTSV4RRFFQ69G5FAW]"));

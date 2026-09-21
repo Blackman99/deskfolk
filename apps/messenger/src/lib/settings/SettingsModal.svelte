@@ -40,6 +40,7 @@
 		type FieldErrorKind,
 		type SettingsFieldErrors
 	} from './wizard-save.ts';
+	import { formatDeviceLastActive } from './device-last-active.ts';
 	import {
 		gatedIndependentStatus,
 		invokeIndependentRuntime,
@@ -87,11 +88,13 @@
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
-	function deviceLastActive(value: number): string {
-		return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
-			year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-		}).format(new Date(value * 1000));
-	}
+	let relativeTimeNow = $state(Date.now());
+	$effect(() => {
+		if (!runtime.settingsOpen) return;
+		relativeTimeNow = Date.now();
+		const timer = setInterval(() => (relativeTimeNow = Date.now()), 30_000);
+		return () => clearInterval(timer);
+	});
 
 	/**
 	 * The device list is fetched, not part of the snapshot, so something has to ask for it. The
@@ -922,7 +925,7 @@
 													<li>
 														<div class="device-copy">
 															<strong>{device.name}</strong>
-															<span>{device.lastActiveAt ? t.remote.lastActive(deviceLastActive(device.lastActiveAt)) : t.remote.lastActiveUnknown}</span>
+															<span lang={locale === 'zh' ? 'zh-CN' : 'en'}>{device.lastActiveAt ? t.remote.lastActive(formatDeviceLastActive(device.lastActiveAt, relativeTimeNow, locale)) : t.remote.lastActiveUnknown}</span>
 														</div>
 														<div class="device-actions">
 															<button type="button" class="btn-xs" data-testid={`host-remove-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => { runtime.hostRemoveDeviceId = device.id; }}>{t.remote.removeDevice}</button>
