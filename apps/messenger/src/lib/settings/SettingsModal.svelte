@@ -46,6 +46,8 @@
 		type IndependentStatus
 	} from './independent-runtime.ts';
 
+	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'about';
+
 	type Props = {
 		runtime: MessengerRuntime;
 		t: Copy;
@@ -114,7 +116,28 @@
 		}
 	}
 
-	let activeSettingsTab = $state<'general' | 'preferences' | 'models' | 'mcp' | 'about'>('general');
+	let activeSettingsTab = $state<SettingsTab>('general');
+	let mobileSettingsDetail = $state(false);
+	$effect(() => {
+		if (!runtime.settingsOpen) mobileSettingsDetail = false;
+	});
+
+	function openSettingsTab(tab: SettingsTab): void {
+		activeSettingsTab = tab;
+		mobileSettingsDetail = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
+	}
+
+	function settingsTabLabel(tab: SettingsTab): string {
+		return tab === 'general'
+			? t.settings.tabGeneral
+			: tab === 'preferences'
+				? t.settings.tabPreferences
+				: tab === 'models'
+					? t.settings.tabModels
+					: tab === 'mcp'
+						? t.settings.tabMcp
+						: t.settings.tabAbout;
+	}
 	let independent = $state<IndependentStatus>(gatedIndependentStatus('g_pack_not_verified'));
 	let independentBusy = $state(false);
 	let independentConfirm = $state<'enable' | 'disable' | null>(null);
@@ -587,7 +610,7 @@
 {#if runtime.settingsOpen}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
-		class="modal-backdrop"
+		class="modal-backdrop settings-backdrop"
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -601,7 +624,7 @@
 				closeSettings();
 		}}
 	>
-		<div class="modal-dialog settings-modal">
+		<div class="modal-dialog settings-modal" class:is-mobile-detail={mobileSettingsDetail}>
 			<aside class="settings-sidebar">
 				<div class="settings-sidebar-head">
 					<div class="settings-head-left flex items-center gap-5">
@@ -611,19 +634,25 @@
 						</svg>
 						<h2>{t.settings.title}</h2>
 					</div>
-					{#if !snapshot.settings.wizard_complete}
-						<span class="settings-wizard-badge">{t.settings.wizardIncomplete}</span>
-					{/if}
+					<div class="settings-sidebar-actions">
+						{#if !snapshot.settings.wizard_complete}
+							<span class="settings-wizard-badge">{t.settings.wizardIncomplete}</span>
+						{/if}
+						<button
+							type="button"
+							class="modal-close settings-root-close"
+							title={t.common.close}
+							onclick={closeSettings}
+						>✕</button>
+					</div>
 				</div>
 
-				<div class="settings-tabs" role="tablist" aria-label={t.settings.title}>
+						<nav class="settings-tabs" aria-label={t.settings.title}>
 					<button
 						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'general'}
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'general'}
-						onclick={() => (activeSettingsTab = 'general')}
+						onclick={() => openSettingsTab('general')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="12" cy="12" r="3"></circle>
@@ -637,11 +666,9 @@
 
 					<button
 						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'preferences'}
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'preferences'}
-						onclick={() => (activeSettingsTab = 'preferences')}
+						onclick={() => openSettingsTab('preferences')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<line x1="4" y1="21" x2="4" y2="14"></line>
@@ -659,11 +686,9 @@
 
 					<button
 						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'models'}
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'models'}
-						onclick={() => (activeSettingsTab = 'models')}
+						onclick={() => openSettingsTab('models')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
@@ -680,11 +705,9 @@
 
 					<button
 						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'mcp'}
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'mcp'}
-						onclick={() => (activeSettingsTab = 'mcp')}
+						onclick={() => openSettingsTab('mcp')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
@@ -700,11 +723,9 @@
 
 					<button
 						type="button"
-						role="tab"
-						aria-selected={activeSettingsTab === 'about'}
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'about'}
-						onclick={() => (activeSettingsTab = 'about')}
+						onclick={() => openSettingsTab('about')}
 						title={updateChecker.updateVisible ? `${t.settings.tabAbout} · ${t.sidebar.updateAvailable}` : t.settings.tabAbout}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -717,23 +738,21 @@
 							<span class="tab-badge-dot" aria-label={t.sidebar.updateAvailable}></span>
 						{/if}
 					</button>
-				</div>
+				</nav>
 			</aside>
 
 			<section class="settings-main">
 				<div class="settings-main-head">
+					<button
+						type="button"
+						class="settings-mobile-back"
+						aria-label={locale === 'en' ? 'Back to settings' : '返回设置'}
+						onclick={() => (mobileSettingsDetail = false)}
+					>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					</button>
 					<div class="settings-main-head-left flex items-center gap-5">
-						<h3 class="settings-main-title">
-							{activeSettingsTab === 'general'
-								? t.settings.tabGeneral
-								: activeSettingsTab === 'preferences'
-									? t.settings.tabPreferences
-									: activeSettingsTab === 'models'
-										? t.settings.tabModels
-										: activeSettingsTab === 'mcp'
-											? t.settings.tabMcp
-											: t.settings.tabAbout}
-						</h3>
+						<h3 class="settings-main-title">{settingsTabLabel(activeSettingsTab)}</h3>
 						<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={saveFailed} aria-live="polite">
 							{#if settingsSaving}
 								{t.sidebar.autoSaving}
@@ -1410,7 +1429,7 @@
 						</div>
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
-					<McpSettings {runtime} {t} />
+					<McpSettings {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'about'}
 					<div class="settings-tab-pane">
 						<div class="settings-card settings-card-about">
@@ -1587,8 +1606,16 @@
 			if (providerBackdrop.isOutside(e)) closeProviderEditor();
 		}}
 	>
-		<div class="modal-dialog provider-editor-modal">
-			<div class="modal-head">
+		<div class="modal-dialog provider-editor-modal settings-subpage">
+			<div class="modal-head settings-subpage-head">
+				<button
+					type="button"
+					class="settings-subpage-back"
+					aria-label={locale === 'en' ? 'Back to model providers' : '返回模型服务'}
+					onclick={closeProviderEditor}
+				>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				</button>
 				<h2>
 					{providerEditor.target === 'add' ? t.settings.providerAdd : t.settings.providerEdit}
 				</h2>
@@ -1605,9 +1632,15 @@
 				</span>
 				<button
 					type="button"
-					class="modal-close"
+					class="modal-close provider-editor-dismiss"
 					title={t.common.close}
 					onclick={closeProviderEditor}
+				>✕</button>
+				<button
+					type="button"
+					class="modal-close settings-subpage-close"
+					title={t.common.close}
+					onclick={closeSettings}
 				>✕</button>
 			</div>
 			<div class="modal-body">
@@ -1735,9 +1768,22 @@
 		white-space: nowrap;
 	}
 
+	.settings-sidebar-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
 	.settings-sidebar-head .settings-wizard-badge {
 		font-size: 11px;
 		flex-shrink: 0;
+	}
+
+	.settings-root-close,
+	.settings-mobile-back,
+	.settings-subpage-back,
+	.settings-subpage-close {
+		display: none;
 	}
 
 	.settings-sidebar .settings-tabs {
@@ -1857,6 +1903,13 @@
 	.provider-editor-modal :global(.modal-head h2) {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.settings-subpage-back,
+	.settings-subpage-close {
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
 	}
 
 	.settings-main > :global(.modal-body) {
@@ -2984,62 +3037,316 @@
 	}
 
 	@media (max-width: 720px) {
-	.modal-dialog.settings-modal {
-	flex-direction: column;
-	width: 95vw;
-	height: 90vh;
-	}
+		.settings-backdrop {
+			padding: 0;
+			align-items: stretch;
+			background: var(--pane);
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+
+		.modal-dialog.settings-modal {
+			width: 100%;
+			max-width: none;
+			height: 100%;
+			max-height: none;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+			animation: none;
+			background: var(--sidebar-bg);
+			position: relative;
+			overflow: hidden;
+		}
+
+		.settings-sidebar {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			border: 0;
+			background: var(--sidebar-bg);
+			padding-bottom: env(safe-area-inset-bottom);
+			transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+		}
+
+		.settings-sidebar-head {
+			height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 12px 0 18px;
+			background: var(--pane);
+		}
+
+		.settings-sidebar-head :global(h2) {
+			font-size: 17px;
+		}
+
+		.settings-head-icon {
+			display: none;
+		}
+
+		.settings-root-close {
+			display: inline-flex;
+			width: 36px;
+			height: 36px;
+			font-size: 16px;
+		}
+
+		.settings-sidebar .settings-tabs {
+			display: flex;
+			flex-direction: column;
+			overflow-y: auto;
+			padding: 20px 12px 32px;
+			gap: 0;
+			background: var(--sidebar-bg);
+		}
+
+		.settings-sidebar .settings-tab-btn {
+			width: 100%;
+			min-height: 54px;
+			padding: 0 14px;
+			border: 0;
+			border-radius: 0;
+			background: var(--pane);
+			font-size: 15px;
+			color: var(--ink);
+			box-shadow: none;
+		}
+
+		.settings-sidebar .settings-tab-btn:first-child {
+			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+		}
+
+		.settings-sidebar .settings-tab-btn:last-child {
+			border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+		}
+
+		.settings-sidebar .settings-tab-btn + .settings-tab-btn::before {
+			content: '';
+			position: absolute;
+			left: 44px;
+			right: 0;
+			top: 0;
+			height: 1px;
+			background: var(--line);
+		}
+
+		.settings-sidebar .settings-tab-btn {
+			position: relative;
+		}
+
+		.settings-sidebar .settings-tab-btn:hover,
+		.settings-sidebar .settings-tab-btn.is-active {
+			color: var(--ink);
+			background: var(--pane);
+			border-color: transparent;
+			box-shadow: none;
+			font-weight: 500;
+		}
+
+		.settings-sidebar .settings-tab-btn:active {
+			background: var(--row-hover);
+		}
+
+		.settings-sidebar .settings-tab-btn .tab-icon,
+		.settings-sidebar .settings-tab-btn.is-active .tab-icon {
+			display: block;
+			width: 19px;
+			height: 19px;
+			opacity: 0.78;
+			stroke: currentColor;
+		}
+
+		.settings-sidebar .settings-tab-btn::after {
+			content: '';
+			width: 8px;
+			height: 8px;
+			border-top: 1.8px solid var(--muted);
+			border-right: 1.8px solid var(--muted);
+			transform: rotate(45deg);
+			margin: 0 3px 0 5px;
+			flex-shrink: 0;
+		}
+
+		.settings-sidebar .settings-tab-btn .tab-badge-dot {
+			margin-left: auto;
+		}
+
+		.settings-main {
+			position: absolute;
+			inset: 0;
+			z-index: 2;
+			background: var(--sidebar-bg);
+			transform: translateX(100%);
+			visibility: hidden;
+			transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.22s;
+		}
+
+		.settings-modal.is-mobile-detail .settings-sidebar {
+			transform: translateX(-28%);
+		}
+
+		.settings-modal.is-mobile-detail .settings-main {
+			transform: translateX(0);
+			visibility: visible;
+			transition-delay: 0s;
+		}
+
+		.settings-main-head {
+			height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 12px 0 8px;
+			background: var(--pane);
+			gap: 4px;
+		}
+
+		.settings-mobile-back {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 40px;
+			height: 44px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.settings-mobile-back:active {
+			background: var(--row-hover);
+		}
+
+		.settings-main-head-left {
+			justify-content: center;
+			gap: 0;
+		}
+
+		.settings-main-title {
+			font-size: 16px;
+			font-weight: 650;
+		}
+
+		.settings-main-head .settings-save-state {
+			display: none;
+		}
+
+		.settings-main-head > .modal-close {
+			width: 40px;
+			height: 44px;
+			font-size: 16px;
+		}
+
+		.settings-main > :global(.modal-body) {
+			padding: 16px 12px max(28px, env(safe-area-inset-bottom));
+			overscroll-behavior: contain;
+		}
+
+		.settings-main > .modal-body.is-mcp {
+			padding: 14px 12px max(20px, env(safe-area-inset-bottom));
+		}
+
+		.settings-tab-pane {
+			gap: 12px;
+		}
+
+		.settings-card {
+			border-radius: var(--radius-lg);
+			padding: 15px;
+			box-shadow: none;
+		}
+
+		.provider-editor-backdrop {
+			padding: 0;
+			align-items: stretch;
+			background: var(--sidebar-bg);
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+
+		.modal-dialog.provider-editor-modal {
+			width: 100%;
+			max-width: none;
+			height: 100%;
+			max-height: none;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+			animation: settings-subpage-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+			background: var(--sidebar-bg);
+		}
+
+		.provider-editor-modal > .settings-subpage-head {
+			height: calc(56px + env(safe-area-inset-top));
+			min-height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 8px 0;
+			gap: 4px;
+			background: var(--pane);
+			border-bottom: 1px solid var(--line);
+		}
+
+		.provider-editor-modal > .settings-subpage-head h2 {
+			text-align: center;
+			font-size: 16px;
+			font-weight: 650;
+		}
+
+		.provider-editor-modal > .settings-subpage-head .settings-save-state,
+		.provider-editor-dismiss {
+			display: none;
+		}
+
+		.settings-subpage-back,
+		.settings-subpage-close {
+			display: inline-flex;
+			width: 40px;
+			height: 44px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			cursor: pointer;
+		}
+
+		.settings-subpage-close {
+			font-size: 16px;
+			color: var(--muted);
+		}
+
+		.settings-subpage-back:active,
+		.settings-subpage-close:active {
+			background: var(--row-hover);
+		}
+
+		.provider-editor-modal > :global(.modal-body) {
+			padding: 18px 14px max(32px, env(safe-area-inset-bottom));
+			overscroll-behavior: contain;
+		}
+
+		.provider-card {
+			padding: 13px;
+			box-shadow: none;
+		}
+
+		.provider-card-head {
+			align-items: flex-start;
+		}
+
+		.provider-card-acts {
+			gap: 6px;
+		}
+
+		.btn-provider-action {
+			min-height: 40px;
+		}
+
+		.btn-provider-setdefault span,
+		.btn-provider-edit span {
+			display: none;
+		}
 	}
 
-	@media (max-width: 720px) {
-	.settings-sidebar {
-	width: 100%;
-	border-right: none;
-	border-bottom: 1px solid var(--line);
-	}
-	}
-
-	@media (max-width: 720px) {
-	.settings-sidebar-head {
-	padding: 12px 16px 8px;
-	min-height: auto;
-	}
-	}
-
-	@media (max-width: 720px) {
-	.settings-sidebar .settings-tabs {
-	flex-direction: row;
-	overflow-x: auto;
-	padding: 6px 12px 10px;
-	gap: 6px;
-	}
-	}
-
-	@media (max-width: 720px) {
-	.settings-sidebar .settings-tab-btn {
-	width: auto;
-	padding: 6px 12px;
-	white-space: nowrap;
-	}
-	}
-
-	@media (max-width: 720px) {
-	.settings-sidebar .settings-tab-btn .tab-badge-dot {
-	margin-left: 6px;
-	}
-	}
-
-	@media (max-width: 720px) {
-	.settings-main-head {
-	min-height: auto;
-	padding: 10px 16px;
-	}
-	}
-
-	@media (max-width: 720px) {
-	.settings-main > :global(.modal-body) {
-	padding: 16px;
-	}
+	@keyframes settings-subpage-in {
+		from { transform: translateX(20%); opacity: 0.72; }
+		to { transform: translateX(0); opacity: 1; }
 	}
 
 

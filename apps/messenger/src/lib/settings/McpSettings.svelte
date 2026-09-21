@@ -17,7 +17,8 @@
 	} from './mcp-form.ts';
 	import { filterMcpServers, mcpConnectionSummary } from './mcp-list.ts';
 
-	let { runtime, t }: { runtime: MessengerRuntime; t: Copy } = $props();
+	let { runtime, t, closeSettings }: { runtime: MessengerRuntime; t: Copy; closeSettings?: () => void } = $props();
+	const locale = $derived(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	/** A click outside closes the editor; a text-selection drag that starts inside never does. */
 	const editorBackdrop = backdropClick();
 	const servers = $derived(runtime.snapshot.mcpServers);
@@ -324,8 +325,17 @@
 		}}
 		onkeydown={onEditorKeydown}
 	>
-		<form class="modal-dialog mcp-editor-modal" onsubmit={(event) => { event.preventDefault(); void submit(); }} aria-busy={busy}>
-			<div class="modal-head">
+		<form class="modal-dialog mcp-editor-modal settings-subpage" onsubmit={(event) => { event.preventDefault(); void submit(); }} aria-busy={busy}>
+			<div class="modal-head settings-subpage-head">
+				<button
+					type="button"
+					class="settings-subpage-back"
+					aria-label={locale === 'en' ? 'Back to MCP servers' : '返回 MCP 扩展'}
+					disabled={busy}
+					onclick={closeEditor}
+				>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				</button>
 				<h2 id="mcp-editor-title">{editor === 'add' ? t.settings.sectionMcpAdd : t.settings.mcpEdit}</h2>
 				{#if editor !== 'add'}
 					<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={failed} aria-live="polite">
@@ -336,11 +346,12 @@
 						{:else if savedTick > 0}
 							{t.sidebar.autoSaved}
 						{:else}
-														{t.sidebar.autoSaveHint}
+							{t.sidebar.autoSaveHint}
 						{/if}
 					</span>
 				{/if}
-				<button type="button" class="modal-close" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
+				<button type="button" class="modal-close mcp-editor-dismiss" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
+				<button type="button" class="modal-close settings-subpage-close" aria-label={t.common.close} disabled={busy} onclick={() => closeSettings?.()}>✕</button>
 			</div>
 			<div class="modal-body">
 				<p class="muted mcp-confirm-hint m-0 text-12">{t.settings.mcpMustConfirm}</p>
@@ -590,6 +601,14 @@
 		color: var(--danger);
 	}
 
+	.settings-subpage-back,
+	.settings-subpage-close {
+		display: none;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
 	.mcp-editor-modal > :global(.modal-body) {
 		min-height: 0;
 	}
@@ -606,6 +625,100 @@
 
 	.mcp-editor-modal :global(.modal-foot) {
 		flex-wrap: wrap;
+	}
+
+	@media (max-width: 720px) {
+		.mcp-editor-backdrop {
+			padding: 0;
+			align-items: stretch;
+			background: var(--sidebar-bg);
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+
+		.modal-dialog.mcp-editor-modal {
+			width: 100%;
+			max-width: none;
+			height: 100%;
+			max-height: none;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+			animation: mcp-subpage-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+			background: var(--sidebar-bg);
+		}
+
+		.mcp-editor-modal > :global(.settings-subpage-head) {
+			height: calc(56px + env(safe-area-inset-top));
+			min-height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 8px 0;
+			gap: 4px;
+			background: var(--pane);
+			border-bottom: 1px solid var(--line);
+		}
+
+		.mcp-editor-modal :global(.settings-subpage-head h2) {
+			text-align: center;
+			font-size: 16px;
+			font-weight: 650;
+		}
+
+		.mcp-editor-modal :global(.settings-subpage-head .settings-save-state),
+		.mcp-editor-dismiss {
+			display: none;
+		}
+
+		.settings-subpage-back,
+		.settings-subpage-close {
+			display: inline-flex;
+			width: 40px;
+			height: 44px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			cursor: pointer;
+		}
+
+		.settings-subpage-close {
+			font-size: 16px;
+			color: var(--muted);
+		}
+
+		.settings-subpage-back:active,
+		.settings-subpage-close:active {
+			background: var(--row-hover);
+		}
+
+		.mcp-editor-modal > :global(.modal-body) {
+			padding: 18px 14px 120px;
+			overscroll-behavior: contain;
+		}
+
+		.mcp-editor-modal > :global(.modal-foot) {
+			position: absolute;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			padding: 10px 14px max(10px, env(safe-area-inset-bottom));
+			background: color-mix(in srgb, var(--pane) 94%, transparent);
+			border-top: 1px solid var(--line);
+			backdrop-filter: blur(14px);
+			-webkit-backdrop-filter: blur(14px);
+		}
+
+		.mcp-editor-modal :global(.modal-foot button) {
+			min-height: 44px;
+		}
+
+		.mcp-editor-modal :global(.modal-foot button.deny) {
+			margin-left: auto;
+		}
+	}
+
+	@keyframes mcp-subpage-in {
+		from { transform: translateX(20%); opacity: 0.72; }
+		to { transform: translateX(0); opacity: 1; }
 	}
 
 	@media (max-width: 540px) {

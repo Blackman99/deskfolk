@@ -10,7 +10,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function open() {
   const server = anMcpServer();
   const runtime = fakeRuntime({ mcpServers: [server] });
-  const view = render(McpSettings, { runtime, t });
+  const view = render(McpSettings, { runtime, t, closeSettings: () => {} });
   return { ...view, runtime, server };
 }
 
@@ -44,10 +44,22 @@ test("closing the editor before the debounce still sends the name", async () => 
   const { host, runtime, close } = open();
   click(host.querySelector(".mcp-server-open"));
   fill(host.querySelector("#mcp-editor-name"), "只打了一半");
-  click(host.querySelector(".mcp-editor-modal .modal-close"));
+  click(host.querySelector(".mcp-editor-modal .mcp-editor-dismiss"));
   await sleep(50);
   const saves = runtime.calls.filter((c) => c.name === "patchMcpServer");
   expect(saves).toHaveLength(1);
   expect((saves[0]!.args[1] as { name: string }).name).toBe("只打了一半");
+  close();
+});
+
+test("the MCP editor exposes mobile subpage navigation", () => {
+  const { host, close } = open();
+  click(host.querySelector(".mcp-server-open"));
+  const editor = host.querySelector(".mcp-editor-modal");
+  expect(editor?.classList.contains("settings-subpage")).toBe(true);
+  expect(editor?.querySelector(".settings-subpage-back")).toBeTruthy();
+  expect(editor?.querySelector(".settings-subpage-close")).toBeTruthy();
+  click(editor?.querySelector(".settings-subpage-back"));
+  expect(host.querySelector(".mcp-editor-modal")).toBeNull();
   close();
 });

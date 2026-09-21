@@ -93,6 +93,55 @@ function openAbout(host: HTMLElement): void {
   click(host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")[4]);
 }
 
+function withMobileViewport(run: () => void): void {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(max-width: 720px)",
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    run();
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+}
+
+test("mobile settings use a root list and drill into a detail screen", () => {
+  withMobileViewport(() => {
+    const { host, close } = open();
+    const modal = host.querySelector(".settings-modal");
+    expect(modal?.classList.contains("is-mobile-detail")).toBe(false);
+    openModels(host);
+    expect(modal?.classList.contains("is-mobile-detail")).toBe(true);
+    expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabModels);
+    click(host.querySelector(".settings-mobile-back"));
+    expect(modal?.classList.contains("is-mobile-detail")).toBe(false);
+    close();
+  });
+});
+
+test("mobile provider editing opens a full settings subpage with list and settings exits", () => {
+  withMobileViewport(() => {
+    const { host, close } = open();
+    openModels(host);
+    click(host.querySelector(".btn-provider-edit"));
+    const editor = host.querySelector(".provider-editor-modal");
+    expect(editor?.classList.contains("settings-subpage")).toBe(true);
+    expect(editor?.querySelector(".settings-subpage-back")).toBeTruthy();
+    expect(editor?.querySelector(".settings-subpage-close")).toBeTruthy();
+    click(editor?.querySelector(".settings-subpage-back"));
+    expect(host.querySelector(".provider-editor-modal")).toBeNull();
+    expect(host.querySelector(".settings-modal")?.classList.contains("is-mobile-detail")).toBe(true);
+    close();
+  });
+});
+
 type Invoked = { cmd: string; args?: Record<string, unknown> };
 
 /** The About card only appears inside the window, so the test has to be one. */
