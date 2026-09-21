@@ -32,6 +32,8 @@ const zh = {
   common: {
     you: "你",
     close: "关闭",
+    updateReady: "有新版本",
+    updateReload: "刷新",
   },
   disconnected: {
     message: "连不上运行时",
@@ -724,6 +726,8 @@ const en: CopyShape<typeof zh> = {
   common: {
     you: "You",
     close: "Close",
+    updateReady: "A new version is ready",
+    updateReload: "Reload",
   },
   disconnected: {
     message: "Can't reach the runtime",

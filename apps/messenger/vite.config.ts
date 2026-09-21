@@ -59,6 +59,9 @@ export default defineConfig({
       adapter: adapter({
         fallback: "index.html",
       }),
+      // A phone keeps one page open for days, so the hosted app checks whether the Mac has
+      // published a newer build. The window is updated by the app installer instead.
+      ...(hosted ? { version: { pollInterval: 30_000 } } : {}),
     }),
   ],
   server: {
