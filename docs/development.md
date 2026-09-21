@@ -35,6 +35,16 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 复核新增 `remote/routes.ts` 精确属性合同、host-wide paced relay budget、durable native transition/lifecycle intents与firstUV renewal；engine/quiesce补已开始工作跟踪、强制后工具围栏与routine配置排空。`quiesce-engine.test.ts` 使用实际engine测15项确定性回归；远控套件实际传50MiB与并行1MiB、>1MiB快照、>70条历史吊销，运行约一分钟。新增集成测试 `bun test apps/daemon/src/remote/remote.test.ts` 启实际 relay、真实 Noise、临时 Store 与构造注入 native fixture；生成 WebAuthn Ed25519 密钥实签，测试回执/文件、吊销重连/备份拒绝、CAS与旧凭据、排空中回答与新消息不落库。根 `pnpm test`/`pnpm typecheck` 包含这些；完整验证再跑 messenger/relay/remote build、daemon compile、Cargo 与 Swift fixture。不得启动实际 native app/helper 或读个人 Keychain 来验证本票。浏览器仅用隔离 agent-browser rc07 与独占17907/5197 fixture，假模型、scheduler off；先查端口占用，结束只停自己的服务。独立运行时 UI 用隔离 session `rc10` 与独占随机端口，同样不装真实 LaunchAgent。
 
+## 开发态远控闭环（仅源码态）
+
+生产那条路径永远打不开：`remote-native.ts` 只在编译后的 `/$bunfs/` 里加载 dylib，且 `capability()` 固定答 `g_pack_not_verified`，controller 见到真 native 未启用就落 `activation_gated`；Tauri 的 `remote_local_setup` / `remote_native_confirmation` 只认 bundled main，dev 源也被拒。因此开发期要真跑协议，只能走这条显式开关的替身通道。
+
+源码态 daemon 带 `REAL_BOT_DEV_REMOTE=1` 启动时，`remote/dev-setup.ts` 交出 `remote/dev-native.ts`：身份、enrollment、VAPID 与高水位存在数据目录 `dev-remote/credentials.json`（0600，原子写），`prepare`/`consume` 保持同样的一次性挑战、120 秒窗口与动作摘要比对，`describe`/`authenticate` 顶替 Touch ID 弹窗。同一开关把窗口那条 setup dispatcher 开在 `dev-remote/setup.sock`（0600；数据目录过长时退回 `$TMPDIR/real-bot-dev-remote-<hash>.sock`），协议帧与继承 FD3 完全一致，只多两个 `dev_describe` / `dev_authenticate` 操作。
+
+`bun apps/daemon/scripts/dev-remote.ts status | init | pair` 是它的驱动：`init --origin https://… --relay-id … --bootstrap-file <路径>`（bootstrap 只从文件读，不进 argv），`pair` 打印配对 JSON、轮询设备提交、显示设备名与完整指纹、按 y 才取 proof 并确认。
+
+编译后的 daemon 拿不到这条路径（`devRemoteAllowed` 见到 `/$bunfs/` 直接 false），生产激活门与 Rust 侧一行未改。凭据在磁盘不在钥匙串、终端确认不是用户在场，所以 G-pack、L1、G-uv、G-push、S-rev 都不因为这条闭环而通过；它只用来在真机门之前把传输、配对、事件与文件路径跑通。
+
 ## 守护进程源码布局
 
 `apps/daemon/src` 按职责分文件，两处按目录组织：

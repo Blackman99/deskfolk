@@ -34,6 +34,21 @@ CADDY_BIN="$(go env GOPATH)/bin/caddy" pnpm --filter @real-bot/relay test:edge
 
 `@real-bot/relay` exports `startRelay(RelayOptions)`, `RelayOptions`, `RelayLog`, `LIMITS`. `startRelay` returns `{port, stop(): Promise<void>}`; tests can inject a clock, never an authentication verifier. No public production option bypasses the stored-key proof. `pnpm --filter @real-bot/relay start` runs `src/main.ts`; `build` emits runnable `dist/main.js` for Bun.
 
+## Development pairing loop (dev only)
+
+Nothing in a production build can pair: the sealed provider only loads inside a compiled daemon and answers `g_pack_not_verified`, and the Tauri setup/confirmation commands refuse a development origin. To exercise the protocol against a real relay before those gates pass, start a source-run daemon with `REAL_BOT_DEV_REMOTE=1`. It substitutes a file-backed credential provider (`dev-remote/credentials.json`, 0600, atomically rewritten) and opens the window's setup dispatcher on `dev-remote/setup.sock` (0600; a long data directory falls back to `$TMPDIR/real-bot-dev-remote-<hash>.sock`). Framing, operations and the 120-second one-shot challenge window are the production ones; two extra operations stand in for the Touch ID sheet.
+
+```sh
+REAL_BOT_DEV_REMOTE=1 bun apps/daemon/src/main.ts
+bun apps/daemon/scripts/dev-remote.ts status
+bun apps/daemon/scripts/dev-remote.ts init --origin https://relay.example.com --relay-id <id> --bootstrap-file <path>
+bun apps/daemon/scripts/dev-remote.ts pair
+```
+
+`init` submits the bootstrap token read from a file — never argv — and prints the generated host ULID. `pair` prints the one-time pairing JSON for the device, waits for the mailbox submission, shows the device name, the full host-side fingerprint and the text the Touch ID sheet would have displayed, and only then asks for approval. Compare that fingerprint against the device before answering.
+
+A compiled daemon never reaches this path and the production activation gate is untouched. Keys live on disk rather than in the Keychain and a terminal prompt is not user presence, so G-pack, L1, G-uv, G-push and S-rev remain unpassed; this loop only proves transport, pairing, events and files work before the physical gates are run.
+
 ## HTTP/WS contract for host and client adapters
 
 All JSON is UTF-8 **RFC8785 canonical JSON**, generated with `canonicalize` from `@real-bot/remote`. Reordered/pretty/duplicate-key JSON, unknown fields, invalid UTF-8, padded base64url and wrong methods/opcodes fail closed. IDs are canonical ULIDs; route/request nonces are unpadded base64url of 16 random bytes; public keys are 32 bytes. No credentials, pairing IDs or file paths go in URL/query. Query strings, Authorization headers, and foreign Origins are rejected. Browser Origin must equal `RELAY_ORIGIN`; native outgoing host connections may omit Origin. TLS/WSS is mandatory outside isolated loopback fixtures.

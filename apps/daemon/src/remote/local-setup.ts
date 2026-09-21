@@ -47,7 +47,9 @@ export async function dispatchLocalSetup(controller: RemoteController, input: un
   }
 }
 
-export function attachLocalSetup(stream: Duplex, controller: RemoteController, onGone?: () => void): () => void {
+/** `dispatch` is only overridden by the dev-only channel; the inherited socketpair always uses the production dispatcher. */
+export function attachLocalSetup(stream: Duplex, controller: RemoteController, onGone?: () => void,
+  dispatch: (controller: RemoteController, input: unknown) => Promise<unknown> = dispatchLocalSetup): () => void {
   let buffer = Buffer.alloc(0), busy = false, stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const close = () => {
@@ -70,7 +72,7 @@ export function attachLocalSetup(stream: Duplex, controller: RemoteController, o
     let request: unknown;
     try { request = JSON.parse(buffer.subarray(4).toString("utf8")); } catch { close(); return; }
     buffer.fill(0); buffer = Buffer.alloc(0);
-    void dispatchLocalSetup(controller, request).then(value => ({ ok: true, value }), () => ({ ok: false, error: "remote_setup_denied" })).then(response => {
+    void dispatch(controller, request).then(value => ({ ok: true, value }), () => ({ ok: false, error: "remote_setup_denied" })).then(response => {
       if (stopped) return;
       const payload = Buffer.from(JSON.stringify(response));
       if (payload.length > 8192) { close(); return; }
