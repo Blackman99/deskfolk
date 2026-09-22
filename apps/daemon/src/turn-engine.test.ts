@@ -2173,8 +2173,8 @@ describe("file tools and workspace shell on the local API", () => {
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
     );
-    expect(botMsg.body).toContain("wrote it");
-    expect(botMsg.body).toContain("[report.md](report.md)");
+    expect(botMsg.body).toBe("wrote it");
+    expect(botMsg.attachments).toEqual([expect.objectContaining({ workspace_relpath: "report.md" })]);
     expect(readFileSync(join(workspace, "report.md"), "utf8")).toBe("full report");
     const route = h.store.getTurnRoute(String(botMsg.turn_id));
     expect(route).toMatchObject({
@@ -2217,7 +2217,7 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
-  test("a silent write still posts a clickable path when the turn has no closer", async () => {
+  test("a silent write still posts attachments when the turn has no closer", async () => {
     let hop = 0;
     const fixture = await startFixture(() => {
       hop += 1;
@@ -2238,7 +2238,8 @@ describe("file tools and workspace shell on the local API", () => {
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
     );
-    expect(botMsg.body).toBe("[notes/a.md](notes/a.md)");
+    expect(botMsg.body).toBe("");
+    expect(botMsg.attachments).toEqual([expect.objectContaining({ workspace_relpath: "notes/a.md" })]);
     expect(readFileSync(join(workspace, "notes/a.md"), "utf8")).toBe("hi");
     sub.close();
   });

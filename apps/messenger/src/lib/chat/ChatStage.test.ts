@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aDirect, aGroup, aMessage, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAttachment, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
@@ -306,3 +306,30 @@ test("left clicking a message does not add is-selected class, right clicking sel
 
   close();
 });
+
+for (const session of [aDirect(), aGroup(), aBotDirect()]) {
+  test(`${session.kind} keeps a complete attachment entry without repeating its inventory`, () => {
+    const paths = ["work/check/a.txt", "work/check/b.txt"];
+    const body = "检查继续。查看 [重点](work/check/a.txt)。\n\n" + paths.map(path => `[${path}](${path})`).join("\n");
+    const message = aMessage({ id: "inventory", session_id: session.id, kind: "bot", author: "bot-1", body,
+      attachments: paths.map((path, index) => anAttachment({ id: `att-${index}`, message_id: "inventory", workspace_relpath: path, original_filename: path.split("/").pop()! })),
+    });
+    const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [session], messages: [message], turns: [] }, { selectedId: session.id }));
+    let opened = "";
+    const { host, close } = render(ChatStage, { runtime, t, selected: session,
+      onOpenProfile: () => {}, onCreateBot: () => {},
+      onOpenArtifact: (path: string) => { opened = path; },
+    });
+    try {
+      const segment = host.querySelector('[data-message-id="inventory"]')!;
+      expect(segment.querySelectorAll(".md-artifact-link").length).toBe(1);
+      expect(segment.textContent).toContain("检查继续");
+      const bundle = segment.querySelector<HTMLButtonElement>(".attachment-bundle-btn")!;
+      expect(bundle.textContent).toContain("2 个文件");
+      expect(bundle.title.split("\n")).toEqual(paths);
+      bundle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(opened).toBe(paths[0]!);
+      expect(message.body).toBe(body);
+    } finally { close(); }
+  });
+}

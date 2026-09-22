@@ -54,9 +54,9 @@ describe("linkifyWorkspacePaths", () => {
     expect(linkifyWorkspacePaths("写了 report.md", ["report.md"])).toBe("写了 [report.md](report.md)");
   });
 
-  test("appends written paths that the body never mentioned", () => {
+  test("leaves unmentioned written paths to attachment entries", () => {
     expect(linkifyWorkspacePaths("写好了", ["report.md", "out/mock.png"])).toBe(
-      "写好了\n\n[report.md](report.md)\n[out/mock.png](out/mock.png)",
+      "写好了",
     );
   });
 
@@ -65,8 +65,8 @@ describe("linkifyWorkspacePaths", () => {
     expect(linkifyWorkspacePaths(body, ["out/a.png"])).toBe(body);
   });
 
-  test("empty body becomes just the written paths", () => {
-    expect(linkifyWorkspacePaths("", ["notes/a.md"])).toBe("[notes/a.md](notes/a.md)");
+  test("an attachment-only body stays empty", () => {
+    expect(linkifyWorkspacePaths("", ["notes/a.md"])).toBe("");
   });
 });
 

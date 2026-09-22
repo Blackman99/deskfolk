@@ -64,7 +64,7 @@ export function mergeCitedPaths(explicit: string[], fromBody: string[]): string[
   return out;
 }
 
-/** Wrap known workspace paths in the body as Markdown links; append any that never appear. */
+/** Wrap known workspace paths in the body as Markdown links. */
 export function linkifyWorkspacePaths(body: string, extraPaths: string[] = []): string {
   const extras = mergeCitedPaths(extraPaths, []);
   const known = [...extras].sort((a, b) => b.length - a.length);
@@ -72,11 +72,7 @@ export function linkifyWorkspacePaths(body: string, extraPaths: string[] = []): 
   const linked = parts
     .map((part) => (part.fence ? part.text : linkifyOutsideFences(part.text, known)))
     .join("");
-  const missing = extras.filter((path) => !bodyMentionsPath(linked, path));
-  if (missing.length === 0) return linked;
-  const block = missing.map((path) => `[${path}](${path})`).join("\n");
-  if (!linked.trim()) return block;
-  return `${linked.replace(/\s+$/, "")}\n\n${block}`;
+  return linked;
 }
 
 export function bodyMentionsPath(body: string, path: string): boolean {

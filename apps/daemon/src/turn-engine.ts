@@ -1119,7 +1119,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   function publishCitedBotMessage(turn: Turn, live: Live, turnId: string, body: string): Message | null {
     const linked = linkifyWorkspacePaths(body, live.writtenPaths);
-    if (!linked.trim()) return null;
+    if (!linked.trim() && live.writtenPaths.length === 0) return null;
     const message = store.insertMessage({
       sessionId: turn.session_id,
       turnId,

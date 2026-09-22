@@ -36,7 +36,8 @@
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
-	import { handedOverPaths, withoutAttachmentDeclarations } from '../overlays/artifacts.ts';
+	import { handedOverPaths } from '../overlays/artifacts.ts';
+	import { messageDisplayBody } from './message-body.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
@@ -493,7 +494,7 @@
 	}
 
 	function messageBody(message: Message): string {
-		return messageShowsAttachments(message) ? withoutAttachmentDeclarations(message.body) : message.body;
+		return messageDisplayBody(message.body, message.attachments.map((att) => att.workspace_relpath));
 	}
 
 	function markdownOpts(message?: Message, extra?: { streaming?: boolean }): RenderMarkdownOptions {
