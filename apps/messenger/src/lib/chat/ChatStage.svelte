@@ -142,6 +142,20 @@
 			: []
 	);
 
+	/**
+	 * The newest message, by id alone. Reading the whole transcript to decide what has been read
+	 * re-armed the read on every new snapshot object, and a read publishes `session.upsert`, which
+	 * is a new snapshot — so the read repeated once a second for as long as the window stayed on
+	 * the latest message, rebuilding every pane that hangs off the snapshot with it.
+	 */
+	const lastMessageId = $derived.by(() => {
+		for (let i = stream.length - 1; i >= 0; i--) {
+			const item = stream[i];
+			if (item.type === 'message') return item.message.id;
+		}
+		return null;
+	});
+
 	/** Quote targets and "what came before" for the rows on screen, indexed once per message list. */
 	const messageLookup = $derived(buildMessageLookup(snapshot.messages));
 
@@ -265,10 +279,10 @@
 
 	$effect(() => {
 		const sId = runtime.selectedId;
-		const msgs = stream;
+		const lastMsgId = lastMessageId;
 		void windowFocused;
 		void windowVisible;
-		if (!sId || msgs.length === 0) return;
+		if (!sId || !lastMsgId) return;
 		const facts = {
 			visibility: document.visibilityState,
 			hasFocus: document.hasFocus(),
@@ -286,15 +300,6 @@
 			}
 			return;
 		}
-		let lastMsgId: string | null = null;
-		for (let i = msgs.length - 1; i >= 0; i--) {
-			const itm = msgs[i];
-			if (itm.type === 'message') {
-				lastMsgId = itm.message.id;
-				break;
-			}
-		}
-		if (!lastMsgId) return;
 		if (readTimer) clearTimeout(readTimer);
 		readTimer = setTimeout(() => {
 			if (typeof document !== 'undefined') {

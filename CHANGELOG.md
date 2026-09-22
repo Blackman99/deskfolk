@@ -12,6 +12,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 - Fixed the file list beside a conversation, and the workspace explorer, letting go of what they listed on every change to the conversation. Both take their props off one object the shell derives from the snapshot, so any snapshot at all re-ran their effects, and each cleared its listing to pull the same one back — a tree that blinks. A listing is now dropped only for a different job, a different workspace, or a reconnect.
 
+- Fixed reading a conversation repeating once a second. The Mac answers a read with `session.upsert`, a snapshot that says nothing new, and the transcript re-armed its read on any new snapshot, so the read looped for as long as the conversation stayed on screen — and every pane that hangs off the snapshot was rebuilt on every pass. A read is now sent once per message.
+
 - Fixed a plain fenced code block repainting a dozen times a second wherever markdown is shown — a message, the file preview. It painted to itself, the check for "already painted" looked for a token span that plain text never has, and the rewrite woke the observer that asked for the next paint.
 
 - A file a Bot hands over as its own line, `附件：<workspace path>`, becomes an attachment card under the bubble and opens in the preview. Messages already stored the same way get the card too, and that line no longer repeats in the body.

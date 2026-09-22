@@ -253,6 +253,8 @@ export class MessengerRuntime {
   private presenceTimer: ReturnType<typeof setInterval> | null = null;
 
   private api: MessengerApi | null = null;
+  /** The read this conversation has already put on record: `<session>:<message>`. */
+  private boundedReadSent: string | null = null;
   private ws: WebSocket | null = null;
   /** One sink per live stream id: a terminal session, or a Bot's running command. */
   private readonly streamSinks = new Map<string, (frame: StreamFrame) => void>();
@@ -1839,12 +1841,31 @@ export class MessengerRuntime {
     }
   }
 
+  /**
+   * The Mac answers a read with `session.upsert`, so a read that is already on record still comes
+   * back as a new snapshot. Sending it again on the strength of that snapshot is a loop: the same
+   * message was read once a second for as long as the conversation stayed on screen, and every
+   * pane that reads the snapshot — the file tree beside the chat, the workspace — was rebuilt each
+   * time. A read is sent once per message, and again only if it failed.
+   */
   async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
     const api = this.api;
     if (!api || this.connection !== "connected" || this.selectedId !== sessionId) return;
+    const key = `${sessionId}:${messageId}`;
+    if (this.boundedReadSent === key) return;
+    this.boundedReadSent = key;
     try {
       const detail = await api.markSessionReadThrough(sessionId, messageId);
       if (this.api !== api) return;
+      const current = this.snapshot.sessions.find((s) => s.id === sessionId);
+      // Writing the row back unchanged is a new snapshot object for nothing.
+      if (
+        current &&
+        current.unread_count === detail.unread_count &&
+        current.last_read_at === detail.last_read_at
+      ) {
+        return;
+      }
       this.snapshot = {
         ...this.snapshot,
         sessions: this.snapshot.sessions.map((s) =>
@@ -1852,7 +1873,8 @@ export class MessengerRuntime {
         ),
       };
     } catch {
-      // Bounded read failure is non-fatal
+      // Bounded read failure is non-fatal, but the next attempt must be allowed through.
+      if (this.boundedReadSent === key) this.boundedReadSent = null;
     }
   }
 
@@ -2798,6 +2820,7 @@ export class MessengerRuntime {
 
   private resetConnection(): void {
     this.rememberDraftOnDisconnect();
+    this.boundedReadSent = null;
     this.connectFailures += 1;
     this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
     this.teardownSocket();
