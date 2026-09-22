@@ -187,14 +187,26 @@ async fn check_for_update(app: AppHandle, force: bool) -> Result<UpdateCheck, St
     Ok(result)
 }
 
+fn is_allowed_external_url(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed != url || url.is_empty() {
+        return false;
+    }
+    if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:")
+}
+
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
-    if !updates::is_allowed_release_url(&url) {
+    if !is_allowed_external_url(&url) && !updates::is_allowed_release_url(&url) {
         return Err("url not allowed".into());
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
+            .arg("-u")
             .arg(&url)
             .status()
             .map_err(|err| err.to_string())
@@ -1126,6 +1138,21 @@ mod tests {
                 Some(std::path::PathBuf::from(home))
             );
         }
+    }
+
+    #[test]
+    fn is_allowed_external_url_validates_scheme_and_rejects_unsafe() {
+        assert!(is_allowed_external_url("https://example.com"));
+        assert!(is_allowed_external_url("http://example.com/path?q=1#frag"));
+        assert!(is_allowed_external_url("mailto:dev@real-bot.local"));
+        assert!(!is_allowed_external_url("file:///etc/passwd"));
+        assert!(!is_allowed_external_url("javascript:alert(1)"));
+        assert!(!is_allowed_external_url("data:text/html,x"));
+        assert!(!is_allowed_external_url(""));
+        assert!(!is_allowed_external_url("   https://example.com"));
+        assert!(!is_allowed_external_url("https://example.com   "));
+        assert!(!is_allowed_external_url("https://example.com\nevil"));
+        assert!(!is_allowed_external_url("https://example.com evil"));
     }
 
     #[test]

@@ -8,6 +8,159 @@ import ChatStage from "./ChatStage.svelte";
 
 const t = copyFor("zh");
 
+for (const kind of ["user", "bot", "ask", "system"] as const) {
+  test(`${kind} message prevents secondary-click selection and preserves manual selection`, () => {
+    const session = aGroup({ id: "sess-1" });
+    const message = aMessage({
+      id: "selection-message", session_id: session.id, kind,
+      author: kind === "user" ? "user" : "bot-1", body: "Hello selected text",
+    });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: "bot-1" })], sessions: [session], messages: [message], turns: [],
+    }, { selectedId: session.id }));
+    const { host, close } = render(ChatStage, {
+      runtime, t, selected: session,
+      onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+    });
+    try {
+      const segment = host.querySelector('[data-message-id="selection-message"]')!;
+      const body = segment.querySelector(".body, .md-body")!;
+      const range = document.createRange();
+      range.selectNodeContents(body);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const selectedText = selection.toString();
+      expect(selectedText).toContain(message.body);
+      for (const init of [{ button: 2 }, { button: 0, ctrlKey: true }]) {
+        const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, ...init });
+        body.dispatchEvent(down);
+        expect(down.defaultPrevented).toBe(true);
+        expect(selection.toString()).toBe(selectedText);
+      }
+      for (const init of [{ button: 0 }, { button: 0, shiftKey: true }, { button: 1 }]) {
+        const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, ...init });
+        body.dispatchEvent(down);
+        expect(down.defaultPrevented).toBe(false);
+      }
+      body.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      flushSync();
+      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+      expect(selection.toString()).toBe(selectedText);
+    } finally {
+      window.getSelection()?.removeAllRanges();
+      close();
+    }
+  });
+
+  test(`${kind} message does not select text on mobile long press and clears any accidental selection`, () => {
+    const session = aGroup({ id: "sess-1" });
+    const message = aMessage({
+      id: `mobile-selection-${kind}`, session_id: session.id, kind,
+      author: kind === "user" ? "user" : "bot-1", body: "Hello mobile long press message",
+    });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: "bot-1" })], sessions: [session], messages: [message], turns: [],
+    }, { selectedId: session.id }));
+    const { host, close } = render(ChatStage, {
+      runtime, t, selected: session,
+      onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+    });
+    let written = "";
+    const origClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          written = text;
+        },
+      },
+    });
+
+    try {
+      const segment = host.querySelector(`[data-message-id="mobile-selection-${kind}"]`)!;
+      const body = segment.querySelector(".body, .md-body")!;
+      const range = document.createRange();
+      range.selectNodeContents(body);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      expect(selection.toString()).toContain(message.body);
+
+      // Simulate mobile touchstart before contextmenu (long press)
+      segment.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+      segment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      flushSync();
+
+      expect(selection.toString()).toBe("");
+      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+
+      // Find the copy button in the context menu
+      const copyBtn = Array.from(host.querySelectorAll<HTMLButtonElement>(".msg-context-menu-item"))
+        .find((btn) => btn.textContent?.includes(t.chat.copyMessage));
+      expect(copyBtn).toBeDefined();
+      copyBtn?.click();
+      flushSync();
+
+      // Should copy the full message body, not the accidental selection
+      expect(written).toBe(message.body);
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: origClipboard });
+      window.getSelection()?.removeAllRanges();
+      close();
+    }
+  });
+
+  test(`${kind} message does not select text on mobile viewport (max-width: 680px) and coarse pointer`, () => {
+    const origMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(max-width: 680px)" || query === "(pointer: coarse)",
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+    })) as typeof window.matchMedia;
+
+    const session = aGroup({ id: "sess-2" });
+    const message = aMessage({
+      id: `mobile-media-${kind}`, session_id: session.id, kind,
+      author: kind === "user" ? "user" : "bot-1", body: "Hello mobile media query message",
+    });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: "bot-1" })], sessions: [session], messages: [message], turns: [],
+    }, { selectedId: session.id }));
+    const { host, close } = render(ChatStage, {
+      runtime, t, selected: session,
+      onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+    });
+
+    try {
+      const segment = host.querySelector(`[data-message-id="mobile-media-${kind}"]`)!;
+      const body = segment.querySelector(".body, .md-body")!;
+      const range = document.createRange();
+      range.selectNodeContents(body);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      expect(selection.toString()).toContain(message.body);
+
+      // Contextmenu on mobile screen
+      segment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      flushSync();
+
+      expect(selection.toString()).toBe("");
+      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+    } finally {
+      window.matchMedia = origMatchMedia;
+      window.getSelection()?.removeAllRanges();
+      close();
+    }
+  });
+}
+
 test("left clicking a message does not add is-selected class, right clicking selects it", async () => {
   const bot = aBot({ id: "bot-1", name: "Alpha" });
   const session = aGroup({ id: "sess-1" });

@@ -30,7 +30,19 @@ if (!story) {
 			await new Promise((r) => setTimeout(r, 150));
 			document.documentElement.dataset.ready = 'yes';
 		})();
+	} else if (host.querySelector('.artifact-pane')) {
+		void (async () => {
+			for (let i = 0; i < 8 && !host.querySelector('.artifact-loading') && !host.querySelector('.artifact-img'); i += 1) {
+				await new Promise((r) => setTimeout(r, 25));
+			}
+			for (let i = 0; i < 80 && host.querySelector('.artifact-loading'); i += 1) {
+				await new Promise((r) => setTimeout(r, 25));
+			}
+			document.documentElement.dataset.ready = 'yes';
+		})();
 	}
 	flushSync();
-	if (!host.querySelector('.artifact-cm')) document.documentElement.dataset.ready = 'yes';
+	if (!host.querySelector('.artifact-cm') && !host.querySelector('.artifact-pane')) {
+		document.documentElement.dataset.ready = 'yes';
+	}
 }

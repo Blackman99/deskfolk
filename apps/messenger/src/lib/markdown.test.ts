@@ -139,3 +139,22 @@ test("the same text under a different roster is rendered again, not served from 
   });
   expect(renamed).not.toBe(mentioned);
 });
+
+test("external links render with external link marker and class, distinguishing internal file links", () => {
+  const html = renderMarkdown("查看 [官网](https://example.com/docs) 和代码 [entry](src/index.ts)");
+  expect(html).toContain('class="md-external-link"');
+  expect(html).toContain('href="https://example.com/docs"');
+  expect(html).toContain('class="md-external-icon"');
+  expect(html).toContain("<svg");
+
+  expect(html).toContain('class="md-artifact-link"');
+  expect(html).toContain('href="artifact:src%2Findex.ts"');
+  expect(html).not.toContain('class="md-artifact-link"><span class="md-external-icon"');
+});
+
+test("autolinked plain URLs also gain the external link class and marker", () => {
+  const html = renderMarkdown("访问 https://x.com/realbot 获取更多信息");
+  expect(html).toContain('class="md-external-link"');
+  expect(html).toContain('href="https://x.com/realbot"');
+  expect(html).toContain('class="md-external-icon"');
+});

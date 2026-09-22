@@ -51,6 +51,7 @@ import {
   type RemoteResponse,
 } from "@real-bot/remote";
 import { ApiError, rememberBlobEtag } from "../api.ts";
+import type { FileProgressHandler } from "../file-progress.ts";
 import type { LocalEndpoint } from "../discovery.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { ulid } from "./ids.ts";
@@ -407,11 +408,11 @@ export class RemoteApi {
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
-  async getWorkspaceFileBlob(path: string): Promise<Blob> {
-    return this.fileBlob("/v1/workspace/file", { path });
+  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler): Promise<Blob> {
+    return this.fileBlob("/v1/workspace/file", { path }, onProgress);
   }
-  async getAttachmentBlob(id: string): Promise<Blob> {
-    return this.fileBlob(`/v1/attachments/${id}/content`);
+  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler): Promise<Blob> {
+    return this.fileBlob(`/v1/attachments/${id}/content`, undefined, onProgress);
   }
   async stop(turnId?: string): Promise<void> {
     await this.post("/v1/turns/stop", turnId ? { turn_id: turnId } : {});
@@ -532,16 +533,22 @@ export class RemoteApi {
     return revision ? { if_revision: revision } : {};
   }
 
-  private async fileBlob(path: string, query?: Record<string, string>): Promise<Blob> {
+  private async fileBlob(
+    path: string,
+    query?: Record<string, string>,
+    onProgress?: FileProgressHandler,
+  ): Promise<Blob> {
+    onProgress?.({ loaded: 0, total: null });
     const response = await this.dispatch({
       v: 1, id: ulid(), method: "GET", path, query, body: undefined,
-    });
+    }, undefined, onProgress);
     if (response.status >= 400) {
       const error = response.body as ErrorBody;
       throw new ApiError(response.status, error?.error?.code ?? "failed", error?.error?.message ?? "failed to fetch file");
     }
     const blob = response.body instanceof Blob ? response.body : new Blob([new Uint8Array()]);
     rememberBlobEtag(blob, response.headers?.etag);
+    if (onProgress) onProgress({ loaded: blob.size, total: blob.size });
     return blob;
   }
 
@@ -677,6 +684,7 @@ export class RemoteApi {
   private async dispatch(
     request: RemoteRequest,
     uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
+    onProgress?: FileProgressHandler,
   ): Promise<RemoteResponse> {
     const full: RemoteRequest = {
       v: 1, id: request.id, method: request.method, path: request.path,
@@ -687,6 +695,6 @@ export class RemoteApi {
     if (this.hooks.rpc) return this.hooks.rpc(full);
     const transport = this.transport;
     if (!transport) throw new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", request.id);
-    return transport.rpc(full, uploads);
+    return transport.rpc(full, uploads, onProgress);
   }
 }

@@ -33,6 +33,8 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
   expect(COPY.en.chat.copyMessageId).toBe("Copy message ID");
   expect(COPY.zh.chat.noAssociatedFiles).toBe("无关联文件");
   expect(COPY.en.chat.noAssociatedFiles).toBe("No associated files");
+  expect(COPY.zh.stream.artifactLoading).toBe("正在打开文件…");
+  expect(COPY.en.stream.artifactLoading).toBe("Opening file…");
 });
 
 test("wizard field errors are the locked 32 sentences", () => {

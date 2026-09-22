@@ -54,6 +54,28 @@ test("unknown takeover retains its predecessor until a later committed cancel re
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
+test("workspace file GET reports each chunk against Content-Length", async () => {
+  const seen: Array<{ loaded: number; total: number | null }> = [];
+  globalThis.fetch = (async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+        controller.enqueue(new Uint8Array([4, 5]));
+        controller.close();
+      },
+    });
+    return new Response(body, { headers: { "Content-Length": "5", ETag: '"abc"' } });
+  }) as typeof fetch;
+  const api = new LocalApi({ origin: "http://fixture", token: "fixture" });
+  const blob = await api.getWorkspaceFileBlob("note.txt", (progress) => seen.push({ ...progress }));
+  expect(seen).toEqual([
+    { loaded: 0, total: 5 },
+    { loaded: 3, total: 5 },
+    { loaded: 5, total: 5 },
+  ]);
+  expect(etagForBlob(blob)).toBe('"abc"');
+});
+
 test("file ETag belongs to the loaded blob, not a later fetch of the same path", async () => {
   let tag = '"first"';
   let matched: string | null = null;

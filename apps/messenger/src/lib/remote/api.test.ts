@@ -62,6 +62,18 @@ test("remote attachments declare hashes instead of inventing a second file machi
   ]);
 });
 
+test("remote file GET reports start then the completed blob size", async () => {
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => ({ v: 1, id: request.id, status: 200, body: new Blob(["hello"]) }),
+  });
+  const seen: Array<{ loaded: number; total: number | null }> = [];
+  expect(await (await api.getWorkspaceFileBlob("a.txt", (progress) => seen.push({ ...progress }))).text()).toBe("hello");
+  expect(seen).toEqual([
+    { loaded: 0, total: null },
+    { loaded: 5, total: 5 },
+  ]);
+});
+
 test("remote attachments above 50 MiB are refused before RPC", async () => {
   const api = new RemoteApi(enrollment, {
     rpc: async () => { throw new Error("must not send oversize attachments"); },

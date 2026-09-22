@@ -29,7 +29,13 @@
 	import ArtifactCodeEditor from './ArtifactCodeEditor.svelte';
 	import FileIcon from './FileIcon.svelte';
 	import { fileIconFor } from './file-icon.ts';
+	import { formatFileSize } from '../chat/attachments.ts';
 	import { copyText } from '../clipboard.ts';
+	import {
+		fileProgressPercent,
+		formatFileProgress,
+		type FileProgress,
+	} from '../file-progress.ts';
 	import { highlightLangFromPath, highlightLangLabel } from '../highlight-lang.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import { openWorkspacePath } from './open-workspace.ts';
@@ -76,6 +82,10 @@
 	let text = $state<string | null>(null);
 	let htmlSrc = $state<string | null>(null);
 	let missing = $state(false);
+	let loading = $state(false);
+	let progress = $state<FileProgress | null>(null);
+	let loadPercent = $derived(progress ? fileProgressPercent(progress) : null);
+	let loadBytes = $derived(progress ? formatFileProgress(progress, formatFileSize) : null);
 	let openHint = $state(false);
 	let wrap = $state(true);
 	let showSource = $state(false);
@@ -129,24 +139,29 @@
 	let kind = $derived(
 		artifactKind(attachment?.original_filename ?? relpath, { isDir: attachment?.is_dir === true })
 	);
-	// Pulled once when the entry opens; there is no push event for it, the same as the route log.
 	let taskArtifacts = $state<TaskArtifacts | null>(null);
+	let taskTreeLoading = $state(false);
+	let taskTreeFailed = $state(false);
+	let taskTreeRetry = $state(0);
 	$effect(() => {
 		const id = taskId;
 		const client = api;
-		if (!id || !client || mode === 'workspace') {
-			taskArtifacts = null;
-			return;
-		}
+		taskTreeRetry;
+		taskArtifacts = null;
+		taskTreeFailed = false;
+		taskTreeLoading = false;
+		if (!id || !client || mode === 'workspace') return;
 		const controller = new AbortController();
-		client
-			.taskArtifacts(id, controller.signal)
+		taskTreeLoading = true;
+		client.taskArtifacts(id, controller.signal)
 			.then((rows) => {
-				taskArtifacts = rows;
+				if (!controller.signal.aborted) taskArtifacts = rows;
 			})
 			.catch(() => {
-				// An entry that lists only this message is still a working entry.
-				taskArtifacts = null;
+				if (!controller.signal.aborted) taskTreeFailed = true;
+			})
+			.finally(() => {
+				if (!controller.signal.aborted) taskTreeLoading = false;
 			});
 		return () => controller.abort();
 	});
@@ -168,11 +183,14 @@
 	);
 	let workspaceTree = $state<ArtifactTreeNode[]>([]);
 	let loadedDirs = $state(new Set<string>());
+	let loadingDirs = $state(new Set<string>());
+	let failedDirs = $state(new Set<string>());
+	let treeGeneration = $state(0);
 	let truncatedHint = $state(false);
 	let tree = $derived(mode === 'workspace' ? workspaceTree : citedTree);
 	let showTree = $derived(
 		mode === 'workspace' ||
-			(forceTree && tree.length > 0) ||
+			forceTree || Boolean(taskId) ||
 			tree.length > 1 ||
 			tree.some((node) => node.kind === 'dir')
 	);
@@ -219,14 +237,19 @@
 	});
 
 	$effect(() => {
-		if (mode !== 'workspace' || !api) {
+		const client = api;
+		const workspaceMode = mode === 'workspace';
+		workspacePath;
+		untrack(() => {
+			treeGeneration += 1;
 			workspaceTree = [];
 			loadedDirs = new Set();
+			loadingDirs = new Set();
+			failedDirs = new Set();
 			truncatedHint = false;
-			return;
-		}
-		if (loadedDirs.has('.')) return;
-		void loadWorkspaceDir('.');
+			if (workspaceMode && client) void loadWorkspaceDir('.');
+		});
+		return () => { treeGeneration += 1; };
 	});
 
 	onDestroy(() => {
@@ -262,23 +285,29 @@
 	}
 
 	async function loadWorkspaceDir(dirPath: string): Promise<void> {
-		if (!api) return;
+		const client = api;
+		const path = dirPath || '.';
+		if (!client || loadingDirs.has(path) || loadedDirs.has(path)) return;
+		const generation = treeGeneration;
+		loadingDirs = new Set(loadingDirs).add(path);
+		failedDirs = new Set([...failedDirs].filter((dir) => dir !== path));
 		try {
-			const page = await api.workspaceTree(dirPath === '.' ? '' : dirPath);
+			const page = await client.workspaceTree(path === '.' ? '' : path);
+			if (generation !== treeGeneration) return;
 			const children = workspaceEntriesToNodes(page.items);
-			if (dirPath === '.' || dirPath === '') {
-				workspaceTree = children;
-			} else {
-				workspaceTree = mergeWorkspaceChildren(workspaceTree, dirPath, children, page.truncated);
-			}
-			const next = new Set(loadedDirs);
-			next.add(dirPath === '' ? '.' : dirPath);
-			loadedDirs = next;
+			if (path === '.') workspaceTree = children;
+			else workspaceTree = mergeWorkspaceChildren(workspaceTree, path, children, page.truncated);
+			loadedDirs = new Set(loadedDirs).add(path);
 			if (page.truncated) truncatedHint = true;
 		} catch {
-			truncatedHint = false;
+			if (generation === treeGeneration) failedDirs = new Set(failedDirs).add(path);
+		} finally {
+			if (generation === treeGeneration) {
+				loadingDirs = new Set([...loadingDirs].filter((dir) => dir !== path));
+			}
 		}
 	}
+
 
 	async function loadPreview(
 		path: string,
@@ -289,17 +318,31 @@
 		const gen = ++loadGen;
 		missing = false;
 		openHint = false;
+		progress = null;
 		if (!source || !api || previewKind === 'directory' || !isInAppPreviewKind(previewKind)) {
 			if (gen !== loadGen) return;
+			loading = false;
 			revoke();
 			text = null;
 			return;
 		}
+		loading = true;
+		progress = {
+			loaded: 0,
+			total: typeof att?.size === "number" && att.size > 0 ? att.size : null,
+		};
 		try {
+			const onProgress = (next: FileProgress) => {
+				if (gen !== loadGen) return;
+				progress = {
+					loaded: next.loaded,
+					total: next.total ?? progress?.total ?? null,
+				};
+			};
 			const blob =
 				source === 'attachment' && att
-					? await api.getAttachmentBlob(att.id)
-					: await api.getWorkspaceFileBlob(path);
+					? await api.getAttachmentBlob(att.id, onProgress)
+					: await api.getWorkspaceFileBlob(path, onProgress);
 			if (gen !== loadGen) return;
 			loadedEtag = etagForBlob(blob);
 			if (previewKind === 'text' || previewKind === 'markdown' || previewKind === 'svg') {
@@ -333,6 +376,8 @@
 			if (gen !== loadGen) return;
 			loadedKey = null;
 			missing = true;
+		} finally {
+			if (gen === loadGen) loading = false;
 		}
 	}
 
@@ -644,6 +689,7 @@
 		data-tree-open={treeOpen}
 	>
 		{#if showTree}
+			{#key treeGeneration}
 			<ArtifactTree
 				nodes={tree}
 				selected={relpath}
@@ -653,7 +699,17 @@
 				{loadedDirs}
 				onExpandDir={(path) => void loadWorkspaceDir(path)}
 				truncatedLabel={t.stream.workspaceTruncated}
+				{loadingDirs}
+				{failedDirs}
+				loading={mode === 'workspace' ? loadingDirs.has('.') : taskTreeLoading}
+				failed={mode === 'workspace' ? failedDirs.has('.') : taskTreeFailed}
+				loadingLabel={t.stream.artifactTreeLoading}
+				failedLabel={t.stream.artifactTreeFailed}
+				emptyLabel={mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactTreeEmpty}
+				retryLabel={t.disconnected.retry}
+				onRetry={() => { if (mode === 'workspace') void loadWorkspaceDir('.'); else taskTreeRetry += 1; }}
 			/>
+			{/key}
 			<button
 				type="button"
 				class="artifact-tree-split"
@@ -669,7 +725,33 @@
 				onclick={() => (treeOpen = false)}
 			></button>
 		{/if}
-		<div class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8" class:is-editor={sourceMode && text !== null}>
+		<div
+			class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8"
+			class:is-editor={sourceMode && text !== null}
+		>
+			{#if loading}
+				<div class="artifact-loading" role="status" aria-live="polite" aria-busy="true">
+					<span class="artifact-loading-ring" aria-hidden="true"></span>
+					<p class="artifact-loading-copy">{t.stream.artifactLoading}</p>
+					{#if loadBytes}
+						<p class="artifact-loading-bytes">{loadBytes}</p>
+					{/if}
+					<div
+						class="artifact-loading-bar"
+						role="progressbar"
+						aria-label={t.stream.artifactLoading}
+						aria-valuemin={0}
+						aria-valuemax={100}
+						aria-valuenow={loadPercent ?? undefined}
+					>
+						<div
+							class="artifact-loading-fill"
+							class:is-indeterminate={loadPercent === null}
+							style={loadPercent === null ? undefined : `width: ${loadPercent}%`}
+						></div>
+					</div>
+				</div>
+			{/if}
 			{#if truncatedHint && mode === 'workspace'}
 				<p class="muted">{t.stream.workspaceTruncated}</p>
 			{/if}
@@ -809,12 +891,98 @@
 		cursor: default;
 	}
 
+	.artifact-pane-body {
+		position: relative;
+	}
+
 	.artifact-pane-body.is-editor {
 		padding: 0;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+	}
+
+	.artifact-loading {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding: 24px;
+		background: color-mix(in srgb, var(--pane) 88%, transparent);
+	}
+
+	.artifact-loading-ring {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		border: 3px solid var(--line);
+		border-top-color: var(--accent);
+		animation: artifact-spin 0.9s linear infinite;
+	}
+
+	.artifact-loading-copy {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	.artifact-loading-bytes {
+		margin: 0;
+		font-family: var(--mono);
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+
+	.artifact-loading-bar {
+		width: min(220px, 70%);
+		height: 5px;
+		border-radius: 999px;
+		background: var(--line-subtle);
+		overflow: hidden;
+	}
+
+	.artifact-loading-fill {
+		height: 100%;
+		width: 0;
+		border-radius: 999px;
+		background: var(--accent);
+		transition: width 0.2s ease;
+	}
+
+	.artifact-loading-fill.is-indeterminate {
+		width: 40%;
+		animation: artifact-progress-sweep 1.2s ease-in-out infinite;
+	}
+
+	@keyframes artifact-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@keyframes artifact-progress-sweep {
+		0% {
+			transform: translateX(-110%);
+		}
+		100% {
+			transform: translateX(260%);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.artifact-loading-ring {
+			animation: none;
+		}
+		.artifact-loading-fill.is-indeterminate {
+			width: 100%;
+			animation: none;
+		}
 	}
 
 	.artifact-pane-titles h2 {

@@ -509,10 +509,37 @@
 	} | null>(null);
 	const selectedMessageId = $derived(messageContextMenu?.message.id ?? null);
 
+	let lastTouchTimestamp = 0;
+
+	function handleMessageMouseDown(e: MouseEvent): void {
+		// WebKit selects the word on secondary mousedown, before contextmenu fires.
+		if (e.button === 2 || (e.button === 0 && e.ctrlKey)) e.preventDefault();
+	}
+
+	function handleMessageTouchStart(): void {
+		lastTouchTimestamp = Date.now();
+	}
+
+	function isMobileOrTouchContext(e: MouseEvent): boolean {
+		if ('pointerType' in e && (e as PointerEvent).pointerType === 'touch') return true;
+		if (Date.now() - lastTouchTimestamp < 1500) return true;
+		if (typeof window !== 'undefined') {
+			if (window.matchMedia?.('(max-width: 680px)').matches) return true;
+			if (window.matchMedia?.('(pointer: coarse)').matches) return true;
+		}
+		return false;
+	}
+
 	function handleMessageContextMenu(e: MouseEvent, message: Message): void {
 		e.preventDefault();
 		e.stopPropagation();
-		const selection = window.getSelection()?.toString().trim();
+
+		const isMobile = isMobileOrTouchContext(e);
+		if (isMobile) {
+			window.getSelection()?.removeAllRanges();
+		}
+
+		const selection = isMobile ? null : window.getSelection()?.toString().trim();
 		const currentEl = e.currentTarget as HTMLElement | null;
 		const anchorNode = window.getSelection()?.anchorNode;
 		const isSelectionInside = Boolean(
@@ -682,6 +709,8 @@
 						data-message-id={singleMsg.message.id}
 						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
 						class:is-selected={selectedMessageId === singleMsg.message.id}
+						onmousedown={handleMessageMouseDown}
+						ontouchstart={handleMessageTouchStart}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
 						<div class="avatar-col">
@@ -843,6 +872,8 @@
 						data-message-id={singleMsg.message.id}
 						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
 						class:is-selected={selectedMessageId === singleMsg.message.id}
+						onmousedown={handleMessageMouseDown}
+						ontouchstart={handleMessageTouchStart}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
 						<div class="avatar-col">
@@ -946,6 +977,8 @@
 										data-message-id={item.message.id}
 										class:is-search-hit={runtime.highlightedMessageId === item.message.id}
 										class:is-selected={selectedMessageId === item.message.id}
+										onmousedown={handleMessageMouseDown}
+										ontouchstart={handleMessageTouchStart}
 										oncontextmenu={(e) => handleMessageContextMenu(e, item.message)}
 									>
 										{#if isMulti}
@@ -1175,6 +1208,12 @@
 									class:is-search-hit={item.type === 'message' &&
 										runtime.highlightedMessageId === item.message.id}
 									class:is-selected={item.type === 'message' && selectedMessageId === item.message.id}
+									onmousedown={(e) => {
+										if (item.type === 'message') handleMessageMouseDown(e);
+									}}
+									ontouchstart={() => {
+										if (item.type === 'message') handleMessageTouchStart();
+									}}
 									oncontextmenu={(e) => {
 										if (item.type === 'message') handleMessageContextMenu(e, item.message);
 									}}
@@ -2325,6 +2364,17 @@
 		}
 		100% {
 		box-shadow: 0 0 0 2px var(--accent-border);
+		}
+	}
+
+	@media (max-width: 680px), (pointer: coarse) {
+		.msg-wrap,
+		.msg-segment,
+		.msg,
+		.msg :global(*) {
+			-webkit-touch-callout: none;
+			-webkit-user-select: none;
+			user-select: none;
 		}
 	}
 

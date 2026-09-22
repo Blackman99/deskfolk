@@ -44,6 +44,7 @@ import type {
 } from "@real-bot/protocol";
 import type { LocalEndpoint } from "./discovery.ts";
 import { ApiError, rememberBlobEtag } from "./api.ts";
+import { readResponseBlob, type FileProgressHandler } from "./file-progress.ts";
 
 type PendingRequest = {
   id: string; method: string; path: string; payload?: BodyInit; fingerprint: string; pending: boolean;
@@ -376,7 +377,7 @@ export class LocalApi {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
 
-  async getWorkspaceFileBlob(path: string): Promise<Blob> {
+  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler): Promise<Blob> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
     const res = await fetch(
       `${this.endpoint.origin}/v1/workspace/file?path=${encodeURIComponent(path)}`,
@@ -390,13 +391,13 @@ export class LocalApi {
         json?.error?.message ?? "failed to fetch workspace file",
       );
     }
-    const blob = await res.blob();
+    const blob = await readResponseBlob(res, onProgress);
     const etag = res.headers.get("ETag");
     rememberBlobEtag(blob, etag);
     return blob;
   }
 
-  async getAttachmentBlob(id: string): Promise<Blob> {
+  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler): Promise<Blob> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
     const res = await fetch(`${this.endpoint.origin}/v1/attachments/${id}/content`, {
       method: "GET",
@@ -405,7 +406,7 @@ export class LocalApi {
     if (!res.ok) {
       throw new ApiError(res.status, "not_found", "failed to fetch attachment");
     }
-    const blob = await res.blob();
+    const blob = await readResponseBlob(res, onProgress);
     const etag = res.headers.get("ETag");
     rememberBlobEtag(blob, etag);
     return blob;

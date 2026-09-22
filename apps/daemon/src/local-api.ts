@@ -527,6 +527,7 @@ function dispatch(
       headers: {
         "ETag": fileEtag(file),
         "Content-Type": located.mime,
+        "Content-Length": String(file.byteLength),
         "Content-Disposition": `inline; filename="${encodeURIComponent(located.rel.split("/").pop() ?? located.rel)}"`,
       },
     });
@@ -950,6 +951,7 @@ function dispatch(
       headers: {
         "ETag": fileEtag(file),
         "Content-Type": mime,
+        "Content-Length": String(file.byteLength),
         "Content-Disposition": `inline; filename="${encodeURIComponent(att.original_filename)}"`,
       },
     });

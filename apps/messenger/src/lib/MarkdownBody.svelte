@@ -3,6 +3,7 @@
 	import { markdownCode } from './chat/code-blocks.ts';
 	import { parseMentionHref } from './chat/mention-chips.ts';
 	import { renderMarkdown, type RenderMarkdownOptions } from './markdown.ts';
+	import { openExternalLink } from './open-link.ts';
 	import { artifactKind, parseArtifactHref, svgDisplayBlob } from './overlays/artifacts.ts';
 
 	interface Props {
@@ -54,9 +55,9 @@
 			onOpenArtifact?.(artifact);
 			return;
 		}
-		const href = a.href;
+		const href = a.getAttribute('href') || a.href;
 		if (href.startsWith('https:') || href.startsWith('http:') || href.startsWith('mailto:')) {
-			window.open(href, '_blank', 'noopener,noreferrer');
+			void openExternalLink(href);
 		}
 	}
 
@@ -234,6 +235,67 @@
 		color: var(--accent);
 		text-decoration: underline;
 		text-underline-offset: 2px;
+	}
+
+	.md-body :global(a.md-external-link) {
+		color: var(--accent);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		word-break: break-word;
+	}
+
+	.md-body :global(a.md-external-link:hover) {
+		color: var(--accent-hover);
+	}
+
+	.md-body :global(.md-external-icon) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		vertical-align: -1px;
+		margin-left: 2.5px;
+		opacity: 0.75;
+		user-select: none;
+		flex-shrink: 0;
+		transition: opacity 0.15s ease;
+	}
+
+	.md-body :global(a.md-external-link:hover .md-external-icon) {
+		opacity: 1;
+	}
+
+	.md-body :global(a.md-artifact-link) {
+		color: var(--accent);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+		word-break: break-word;
+	}
+
+	.md-body :global(a.md-artifact-link:hover) {
+		color: var(--accent-hover);
+	}
+
+	.md-body :global(a.md-artifact-link:not(.md-artifact-image))::before {
+		content: '';
+		display: inline-block;
+		width: 11px;
+		height: 11px;
+		margin-right: 3px;
+		vertical-align: -1px;
+		background-color: currentColor;
+		-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
+		mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
+		-webkit-mask-repeat: no-repeat;
+		mask-repeat: no-repeat;
+		-webkit-mask-size: contain;
+		mask-size: contain;
+		opacity: 0.75;
+		transition: opacity 0.15s ease;
+	}
+
+	.md-body :global(a.md-artifact-link:not(.md-artifact-image):hover)::before {
+		opacity: 1;
 	}
 
 	.md-body :global(a.md-artifact-image) {
@@ -459,7 +521,9 @@
 		color: var(--ink);
 	}
 
-	.md-body.is-inverted :global(a) {
+	.md-body.is-inverted :global(a),
+	.md-body.is-inverted :global(a.md-external-link),
+	.md-body.is-inverted :global(a.md-artifact-link) {
 		color: #ffffff;
 	}
 
@@ -512,6 +576,7 @@
 	.md-body.is-inverted :global(th) {
 		background: rgba(255, 255, 255, 0.12);
 	}
+
 	@media (max-width: 680px) {
 		/* Markers sit closer to the text, so a wrapped line does not read as a new bullet. */
 		.md-body :global(ul),

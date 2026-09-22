@@ -12,9 +12,22 @@
 		loadedDirs?: ReadonlySet<string>;
 		onExpandDir?: (path: string) => void;
 		truncatedLabel?: string;
+		loadingDirs?: ReadonlySet<string>;
+		failedDirs?: ReadonlySet<string>;
+		loading?: boolean;
+		failed?: boolean;
+		loadingLabel: string;
+		failedLabel: string;
+		emptyLabel: string;
+		retryLabel: string;
+		onRetry?: () => void;
 	}
 
-	let { nodes, selected, label, onSelect, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel }: Props = $props();
+	let {
+		nodes, selected, label, onSelect, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
+		loadingDirs, failedDirs, loading = false, failed = false,
+		loadingLabel, failedLabel, emptyLabel, retryLabel, onRetry,
+	}: Props = $props();
 	let collapsed = $state(new Set<string>());
 	let expandedLazy = $state(new Set<string>());
 
@@ -53,6 +66,9 @@
 
 <nav class="artifact-tree" aria-label={label}>
 	<ul class="artifact-tree-list list-none m-0 p-0">
+		{#if loading || failed || nodes.length === 0}
+			<li>{@render state(loading, failed, 0, onRetry)}</li>
+		{/if}
 		{#each nodes as node (node.path)}
 			{@render row(node, 0)}
 		{/each}
@@ -68,6 +84,7 @@
 			class:is-dir={node.kind === 'dir'}
 			style:padding-left="{8 + depth * 12}px"
 			title={node.path}
+			aria-expanded={node.kind === 'dir' ? isOpen(node.path) : undefined}
 			onclick={() => onNode(node)}
 		>
 			{#if node.kind === 'dir'}
@@ -83,6 +100,9 @@
 		</button>
 		{#if node.kind === 'dir' && isOpen(node.path)}
 			<ul class="artifact-tree-list list-none m-0 p-0">
+				{#if lazyDirs && (loadingDirs?.has(node.path) || failedDirs?.has(node.path) || (loadedDirs?.has(node.path) && !node.children?.length && !node.truncated))}
+					<li>{@render state(loadingDirs?.has(node.path) ?? false, failedDirs?.has(node.path) ?? false, depth + 1, () => onExpandDir?.(node.path))}</li>
+				{/if}
 				{#if node.truncated && truncatedLabel}
 					<li class="artifact-tree-note pt-2 pr-5 pb-2 pl-12 text-11 text-muted">{truncatedLabel}</li>
 				{/if}
@@ -94,7 +114,58 @@
 	</li>
 {/snippet}
 
+{#snippet state(busy: boolean, error: boolean, depth: number, retry?: () => void)}
+	<div class="artifact-tree-state" style:padding-left="{12 + depth * 12}px">
+		{#if busy}
+			<div class="artifact-tree-status" role="status" aria-live="polite" aria-busy="true">
+				<span class="artifact-tree-spinner" aria-hidden="true"></span>
+				<span>{loadingLabel}</span>
+			</div>
+		{:else if error}
+			<p role="alert">{failedLabel}</p>
+			<button type="button" class="artifact-tree-retry" onclick={retry}>{retryLabel}</button>
+		{:else}
+			<p role="status">{emptyLabel}</p>
+		{/if}
+	</div>
+{/snippet}
+
 <style>
+	.artifact-tree-state {
+		padding: 10px 12px;
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.5;
+		overflow-wrap: anywhere;
+	}
+	.artifact-tree-state p { margin: 0; }
+	.artifact-tree-status { display: flex; align-items: center; gap: 8px; }
+	.artifact-tree-spinner {
+		width: 12px;
+		height: 12px;
+		flex-shrink: 0;
+		border: 2px solid var(--line);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: tree-spin 0.8s linear infinite;
+	}
+	.artifact-tree-retry {
+		margin-top: 6px;
+		min-height: 32px;
+		padding: 4px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--pane);
+		color: var(--accent);
+		font: inherit;
+		cursor: pointer;
+	}
+	.artifact-tree-retry:hover { background: var(--row-hover); }
+	.artifact-tree-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	@keyframes tree-spin { to { transform: rotate(360deg); } }
+	@media (prefers-reduced-motion: reduce) { .artifact-tree-spinner { animation: none; } }
+	@media (max-width: 680px) { .artifact-tree-retry { min-height: 44px; min-width: 44px; } }
+
 	/* Cited by the message this entry was opened from; the rest of the tree is the job's history. */
 	.artifact-tree-fresh {
 		width: 6px;

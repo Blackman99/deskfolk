@@ -207,8 +207,68 @@ test("http links open in a new browsing context", () => {
       ...labels,
       source: "[spec](https://example.com/spec)",
     });
-    click(host.querySelector("a"));
+    const anchor = host.querySelector("a.md-external-link");
+    expect(anchor).toBeTruthy();
+    expect(anchor?.querySelector(".md-external-icon")).toBeTruthy();
+    click(anchor);
     expect(opened).toEqual(["https://example.com/spec"]);
+    close();
+  } finally {
+    window.open = original;
+  }
+});
+
+test("external links in Tauri invoke open_external_url", async () => {
+  const invoked: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+  const win = window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } };
+  const prevInternals = win.__TAURI_INTERNALS__;
+  win.__TAURI_INTERNALS__ = {
+    invoke: async (cmd, args) => {
+      invoked.push({ cmd, args });
+      return null;
+    },
+  };
+
+  try {
+    const { host, close } = render(MarkdownBody, {
+      ...labels,
+      source: "参考 [文档](https://real-bot.local/docs)",
+    });
+    const anchor = host.querySelector("a.md-external-link");
+    expect(anchor).toBeTruthy();
+    click(anchor);
+    expect(invoked).toEqual([
+      { cmd: "open_external_url", args: { url: "https://real-bot.local/docs" } },
+    ]);
+    close();
+  } finally {
+    win.__TAURI_INTERNALS__ = prevInternals;
+  }
+});
+
+test("internal artifact links render with md-artifact-link and trigger onOpenArtifact without external opening", () => {
+  const openedArtifacts: string[] = [];
+  const openedWindows: string[] = [];
+  const original = window.open;
+  window.open = ((url?: string | URL) => {
+    openedWindows.push(String(url));
+    return null;
+  }) as typeof window.open;
+
+  try {
+    const { host, close } = render(MarkdownBody, {
+      ...labels,
+      source: "查看代码 `src/app.ts` 和 [spec](docs/spec.md)",
+      onOpenArtifact: (path) => openedArtifacts.push(path),
+    });
+    const links = host.querySelectorAll("a.md-artifact-link");
+    expect(links.length).toBe(2);
+    expect(host.querySelector("a.md-artifact-link .md-external-icon")).toBeNull();
+
+    click(links[0]);
+    click(links[1]);
+    expect(openedArtifacts).toEqual(["src/app.ts", "docs/spec.md"]);
+    expect(openedWindows).toEqual([]);
     close();
   } finally {
     window.open = original;

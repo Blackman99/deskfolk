@@ -311,6 +311,7 @@ describe("empty roster and settings", () => {
       headers: auth(h),
     });
     expect(fileRes.status).toBe(200);
+    expect(fileRes.headers.get("Content-Length")).toBe(String(Buffer.byteLength("# brief\n")));
     expect(await fileRes.text()).toBe("# brief\n");
 
     writeFileSync(join(ws, "clip.mp4"), Buffer.alloc(1_000_001, 7));

@@ -1,7 +1,13 @@
 import { Marked } from "marked";
 import remend, { isWithinCodeBlock } from "remend";
 import sanitizeHtml from "sanitize-html";
-import { artifactHref, linkifyWorkspacePaths, looksLikeWorkspaceHref } from "./overlays/artifacts.ts";
+import {
+  ARTIFACT_HREF_SCHEME,
+  artifactHref,
+  linkifyWorkspacePaths,
+  looksLikeWorkspaceHref,
+  parseArtifactHref,
+} from "./overlays/artifacts.ts";
 import {
   BOT_HREF_SCHEME,
   decorateMentionChips,
@@ -68,12 +74,24 @@ const SANITIZE: sanitizeHtml.IOptions = {
           },
         };
       }
+      if (href.startsWith(ARTIFACT_HREF_SCHEME)) {
+        return {
+          tagName: "a",
+          attribs: {
+            href,
+            class: "md-artifact-link",
+            title: attribs.title ?? "",
+          },
+        };
+      }
       return {
         tagName: "a",
         attribs: {
           href,
+          class: "md-external-link",
           target: "_blank",
           rel: "noopener noreferrer",
+          title: attribs.title ?? href,
         },
       };
     },
@@ -142,6 +160,19 @@ export function renderMarkdown(source: string, options: RenderMarkdownOptions = 
   return html;
 }
 
+export const EXTERNAL_LINK_ICON_SVG = `<span class="md-external-icon" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span>`;
+
+export function decorateExternalLinks(html: string): string {
+  if (!html.includes("md-external-link")) return html;
+  return html.replace(
+    /(<a\b[^>]*class="[^"]*\bmd-external-link\b[^"]*"[^>]*>)([\s\S]*?)(<\/a>)/gi,
+    (full, openTag, inner, closeTag) => {
+      if (inner.includes("md-external-icon")) return full;
+      return `${openTag}${inner}${EXTERNAL_LINK_ICON_SVG}${closeTag}`;
+    },
+  );
+}
+
 function renderUncached(source: string, options: RenderMarkdownOptions): string {
   const linked = linkifyWorkspacePaths(source, options.extraPaths ?? []);
   const prepared = options.streaming ? healStreaming(linked) : linked;
@@ -149,9 +180,11 @@ function renderUncached(source: string, options: RenderMarkdownOptions): string 
     members: options.mentionMembers,
   });
   const html = marked.parse(mentioned, { async: false });
-  return decorateMentionChips(sanitizeHtml(html, SANITIZE), options.mentionBots ?? [], {
+  const sanitized = sanitizeHtml(html, SANITIZE);
+  const withMentions = decorateMentionChips(sanitized, options.mentionBots ?? [], {
     unresolvedTitle: options.unresolvedMentionTitle,
   });
+  return decorateExternalLinks(withMentions);
 }
 
 function healStreaming(source: string): string {
@@ -167,6 +200,10 @@ function healStreaming(source: string): string {
 function safeHref(href: string | undefined): string | null {
   if (!href) return null;
   const trimmed = href.trim();
+  if (trimmed.startsWith(ARTIFACT_HREF_SCHEME)) {
+    const rel = parseArtifactHref(trimmed);
+    return rel ? artifactHref(rel) : null;
+  }
   if (looksLikeWorkspaceHref(trimmed)) return artifactHref(trimmed);
   const botId = parseMentionHref(trimmed);
   if (botId) return mentionHref(botId);

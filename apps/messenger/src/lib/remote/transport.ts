@@ -20,6 +20,7 @@ import {
 } from "@real-bot/remote";
 import type { SyncFrame as ProtocolSyncFrame } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
+import type { FileProgressHandler } from "../file-progress.ts";
 import type { StoredEnrollment } from "./idb.ts";
 
 export type TransportHooks = {
@@ -33,6 +34,7 @@ type Waiter = {
   id: string;
   resolve: (value: RemoteResponse) => void;
   reject: (error: unknown) => void;
+  onProgress?: FileProgressHandler;
   file?: { streamId: number; size: number; chunks: Uint8Array[]; offset: number; headers?: RemoteResponse["headers"] };
   pages?: { transfer: string; count: number; chunks: Uint8Array[] };
   uploads?: Array<{ streamId: number; filename: string; size: number; sha256: string; bytes: Uint8Array }>;
@@ -159,14 +161,18 @@ export class RemoteTransport {
     return ready;
   }
 
-  rpc(request: RemoteRequest, uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>): Promise<RemoteResponse> {
+  rpc(
+    request: RemoteRequest,
+    uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
+    onProgress?: FileProgressHandler,
+  ): Promise<RemoteResponse> {
     return new Promise((resolve, reject) => {
       const run = () => {
         if (this.closed || !this.session || !this.socket) {
           reject(new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", request.id));
           return;
         }
-        this.waiter = { id: request.id, resolve, reject };
+        this.waiter = { id: request.id, resolve, reject, onProgress };
         try {
           this.socket.send(new Uint8Array(this.session.send(1, canonicalBytes(request))));
           if (uploads?.length) this.waiter.uploads = uploads.map((file) => ({ ...file, streamId: 0 }));
@@ -243,6 +249,10 @@ export class RemoteTransport {
     }
     waiter.file.chunks.push(new Uint8Array(chunk.chunk));
     waiter.file.offset += chunk.chunk.length;
+    waiter.onProgress?.({
+      loaded: waiter.file.offset,
+      total: waiter.file.size > 0 ? waiter.file.size : null,
+    });
     if (chunk.eof) {
       const bytes = concat(waiter.file.chunks);
       const etag = waiter.file.headers?.etag?.replaceAll('"', "");
@@ -286,6 +296,10 @@ export class RemoteTransport {
     }
     if (response.file) {
       waiter.file = { streamId: response.file.streamId, size: response.file.size, chunks: [], offset: 0, headers: response.headers };
+      waiter.onProgress?.({
+        loaded: 0,
+        total: response.file.size > 0 ? response.file.size : null,
+      });
       if (response.file.size === 0) {
         this.finish({ ...response, body: new Blob([]) });
       }
