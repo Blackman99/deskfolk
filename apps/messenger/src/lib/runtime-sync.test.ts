@@ -480,6 +480,8 @@ for (const operation of ['create', 'patch', 'delete'] as const) for (const rejec
 test("unsent in-memory drafts require confirm after reconnect and are not sent automatically", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");
+  // A draft belongs to a conversation, so there has to be one open to have typed into.
+  runtime.selectedId = "direct-1";
   runtime.draft = "keep this";
   Socket.current.close();
   // A dropped socket is not yet "unreachable": the page says it is reconnecting.
@@ -1036,4 +1038,37 @@ test("two readers of one stream both get the bytes", async () => {
   dropSecond();
   send("Z29uZQ==", 7);
   expect(second).toHaveLength(2);
+});
+
+test("each conversation keeps its own draft and reply target", async () => {
+  // Draft, reply-to and the rest used to be one slot on the runtime, which is what made a second
+  // open conversation impossible. They live on the conversation now; the old names still work.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  runtime.selectedId = "sess-a";
+  runtime.draft = "for A";
+  runtime.replyingToId = "m-a";
+
+  runtime.selectedId = "sess-b";
+  expect(runtime.draft).toBe("");
+  expect(runtime.replyingToId).toBeNull();
+  runtime.draft = "for B";
+
+  runtime.selectedId = "sess-a";
+  expect(runtime.draft).toBe("for A");
+  expect(runtime.replyingToId).toBe("m-a");
+
+  runtime.selectedId = "sess-b";
+  expect(runtime.draft).toBe("for B");
+
+  // And the view is reachable directly, which is how a pane will read it.
+  expect(runtime.sessionView("sess-a").draft).toBe("for A");
+  expect(runtime.sessionView("sess-b").draft).toBe("for B");
+
+  // Nothing is selected: a write has nowhere to land rather than landing somewhere arbitrary.
+  runtime.selectedId = null;
+  expect(runtime.draft).toBe("");
+  runtime.draft = "nowhere";
+  expect(runtime.sessionView("sess-a").draft).toBe("for A");
 });

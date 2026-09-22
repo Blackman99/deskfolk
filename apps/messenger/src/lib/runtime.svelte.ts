@@ -33,6 +33,8 @@ import { collectUntilMessage } from "./sidebar/search-jump.ts";
 import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
 import { EventSync } from "./event-sync.ts";
+import { SessionView } from "./session-view.svelte.ts";
+import { SvelteMap } from "svelte/reactivity";
 import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
@@ -156,7 +158,80 @@ export class MessengerRuntime {
   /** Consecutive failed attempts since the last connection; the first few are still "connecting". */
   private connectFailures = 0;
   snapshot = $state<Snapshot>(emptySnapshot());
-  selectedId = $state<string | null>(null);
+  private selectedIdValue = $state<string | null>(null);
+  /**
+   * The conversation the app is pointed at. Setting it makes its view first: everything below
+   * reads through `activeView`, so a view that arrived late would leave the first read of a draft
+   * or a loading flag looking at the empty defaults.
+   */
+  get selectedId(): string | null { return this.selectedIdValue; }
+  set selectedId(value: string | null) {
+    if (value) this.sessionView(value);
+    this.selectedIdValue = value;
+  }
+  /**
+   * Every conversation that is open, by id. Today exactly one is, because only the selected
+   * session gets a view; panes will keep several. Reactive because the accessors below read
+   * through it, and a view created after an effect first ran must wake that effect.
+   */
+  private readonly views = new SvelteMap<string, SessionView>();
+
+  /** The view for a session, made on first use. */
+  sessionView(id: string): SessionView {
+    let view = this.views.get(id);
+    if (!view) {
+      view = new SessionView(id);
+      this.views.set(id, view);
+    }
+    return view;
+  }
+
+  /** The conversation the app is pointed at, or null when none is. */
+  get activeView(): SessionView | null {
+    return this.selectedId ? (this.views.get(this.selectedId) ?? null) : null;
+  }
+
+  /**
+   * The fields below used to be plain state on this class, one slot each, which is what made a
+   * second open conversation impossible. They now live on the view and are forwarded here under
+   * their old names so that every caller — the composer, the stage, the sidebar, the URL effects —
+   * kept working untouched when they moved.
+   */
+  get draft(): string { return this.activeView?.draft ?? ""; }
+  set draft(value: string) { const view = this.activeView; if (view) view.draft = value; }
+
+  get replyingToId(): string | null { return this.activeView?.replyingToId ?? null; }
+  set replyingToId(value: string | null) { const view = this.activeView; if (view) view.replyingToId = value; }
+
+  get focusedTurnId(): string | null { return this.activeView?.focusedTurnId ?? null; }
+  set focusedTurnId(value: string | null) { const view = this.activeView; if (view) view.focusedTurnId = value; }
+
+  get highlightedMessageId(): string | null { return this.activeView?.highlightedMessageId ?? null; }
+  set highlightedMessageId(value: string | null) { const view = this.activeView; if (view) view.highlightedMessageId = value; }
+
+  get searchHighlightToken(): number { return this.activeView?.searchHighlightToken ?? 0; }
+  set searchHighlightToken(value: number) { const view = this.activeView; if (view) view.searchHighlightToken = value; }
+
+  get composerSuggestions(): ComposerSuggestion[] { return this.activeView?.composerSuggestions ?? []; }
+  set composerSuggestions(value: ComposerSuggestion[]) { const view = this.activeView; if (view) view.composerSuggestions = value; }
+
+  get historyLoading(): boolean { return this.activeView?.historyLoading ?? false; }
+  set historyLoading(value: boolean) { const view = this.activeView; if (view) view.historyLoading = value; }
+
+  get olderLoading(): boolean { return this.activeView?.olderLoading ?? false; }
+  set olderLoading(value: boolean) { const view = this.activeView; if (view) view.olderLoading = value; }
+
+  private get sessionMessageNext(): string | null { return this.activeView?.messageNext ?? null; }
+  private set sessionMessageNext(value: string | null) { const view = this.activeView; if (view) view.messageNext = value; }
+
+  private get sessionDetailId(): string | null {
+    const view = this.activeView;
+    return view?.detailLoaded ? view.sessionId : null;
+  }
+  private set sessionDetailId(value: string | null) {
+    const view = this.activeView;
+    if (view) view.detailLoaded = value === view.sessionId;
+  }
   /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
   previewRelpath = $state<string | null>(null);
   previewMessageId = $state<string | null>(null);
@@ -182,14 +257,8 @@ export class MessengerRuntime {
   threadOpen = $state(false);
   searchQuery = $state("");
   searchHits = $state<SearchHit[]>([]);
-  composerSuggestions = $state<ComposerSuggestion[]>([]);
-  draft = $state("");
-  replyingToId = $state<string | null>(null);
   busy = $state(false);
   pendingMutation = $state<{ id: string; code: string } | null>(null);
-  focusedTurnId = $state<string | null>(null);
-  highlightedMessageId = $state<string | null>(null);
-  searchHighlightToken = $state(0);
   workspacePath = $state("");
   endpointUrl = $state("");
   endpointKey = $state("");
@@ -279,12 +348,6 @@ export class MessengerRuntime {
   private stopped = false;
   private searchSeq = 0;
   private pendingFocusTrigger: string | null = null;
-  /** The first page of a selected session is in flight: the stage waits rather than looks empty. */
-  historyLoading = $state(false);
-  /** A page further back is in flight, asked for by scrolling to the top of what is loaded. */
-  olderLoading = $state(false);
-  private sessionMessageNext = $state<string | null>(null);
-  private sessionDetailId: string | null = null;
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
   private routesInFlight: string | null = null;
   private suggestAbort: AbortController | null = null;
