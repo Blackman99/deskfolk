@@ -764,8 +764,16 @@ export class MessengerRuntime {
       this.snapshot = {
         ...this.snapshot,
         routes: [...this.snapshot.routes.filter((r) => r.session_id !== sessionId), ...items],
-        routeReviews: reviews,
-        routeLearnings: learnings,
+        // All three are spliced by session: a second pane holding another session must keep its
+        // rows when this one reloads. Replacing wholesale wiped them.
+        routeReviews: [
+          ...this.snapshot.routeReviews.filter((r) => r.session_id !== sessionId),
+          ...reviews,
+        ],
+        routeLearnings: [
+          ...this.snapshot.routeLearnings.filter((r) => r.session_id !== sessionId),
+          ...learnings,
+        ],
       };
     } catch {
       // Keep the rows already on screen; a real drop shows up as the socket closing.

@@ -42,11 +42,11 @@ export type Snapshot = {
   turns: Turn[];
   judgements: Judgement[];
   pendingJudgements: PendingJudgement[];
-  /** Per-turn model choices for the open session; fetched, not pushed. */
+  /** Per-turn model choices, for every session currently open; fetched, not pushed. */
   routes: RouteRecord[];
   /** What the review made of each closed correction chain here. */
   routeReviews: RouteReview[];
-  /** What a learning hop wrote for a chain in the open session. */
+  /** What a learning hop wrote for a chain, for every session currently open. */
   routeLearnings: RouteLearning[];
   approvals: Approval[];
   searchHits: SearchHit[];

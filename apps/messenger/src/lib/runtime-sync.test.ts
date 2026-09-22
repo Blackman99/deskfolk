@@ -1,5 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
+import type {
+  RouteLearning,
+  RouteRecord,
+  RouteReview,
+  RuntimeSnapshot,
+  SessionSnapshot,
+  SyncFrame,
+} from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { LocalApi } from "./local-api.ts";
 import { emptySnapshot } from "./snapshot.ts";
@@ -918,4 +925,51 @@ test("terminal bytes on the event socket do not drop the connection", async () =
   expect(runtime.connection).toBe("connected");
   // And they landed where they belong rather than being thrown away.
   expect(runtime.activity.forTurn("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toHaveLength(1);
+});
+
+test("loading one session's model choices keeps another session's reviews", async () => {
+  // Two panes will each hold a session. `routes` was already spliced by session, but the reviews
+  // and learnings beside it were replaced wholesale, so opening the log for B erased A's.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const aRoute = (sessionId: string, turnId: string): RouteRecord => ({
+    turn_id: turnId, session_id: sessionId, bot_id: "bot-1", trigger_message_id: "m-1",
+    provider_id: null, model: "gpt-x", thinking_level: null, signature: "general",
+    outcome: null, fail_kind: null, reason: null, chain_id: null,
+    created_at: "2026-01-01T00:00:00Z", finished_at: null, hops: null, tool_calls: null,
+    tool_errors: null, repeated_failures: null, files_written: null, feedback: [],
+  });
+  const aReview = (sessionId: string, chainId: string): RouteReview => ({
+    chain_id: chainId, turn_id: `turn-${chainId}`, session_id: sessionId, bot_id: "bot-1",
+    signature: "general", model: "gpt-x", thinking_level: null, fault: "model",
+    direction: "stronger", rounds: 2, confidence: 0.9, reason: "why",
+    created_at: "2026-01-01T00:00:00Z", outcome: null,
+  });
+  const aLearning = (sessionId: string, chainId: string): RouteLearning => ({
+    chain_id: chainId, bot_id: "bot-1", session_id: sessionId, kind: "memory",
+    label: "a lesson", created_at: "2026-01-01T00:00:00Z", outcome: null,
+  });
+
+  const bySession: Record<string, unknown> = {
+    "sess-a": { items: [aRoute("sess-a", "turn-a")], next: null, reviews: [aReview("sess-a", "chain-a")], learnings: [aLearning("sess-a", "chain-a")] },
+    "sess-b": { items: [aRoute("sess-b", "turn-b")], next: null, reviews: [aReview("sess-b", "chain-b")], learnings: [aLearning("sess-b", "chain-b")] },
+  };
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    const hit = Object.keys(bySession).find((id) => path.includes(`/v1/sessions/${id}/routes`));
+    if (hit) return Response.json(bySession[hit]);
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+
+  await runtime.refreshRoutes("sess-a");
+  await runtime.refreshRoutes("sess-b");
+
+  expect(runtime.snapshot.routes.map((r) => r.turn_id).sort()).toEqual(["turn-a", "turn-b"]);
+  expect(runtime.snapshot.routeReviews.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
+  expect(runtime.snapshot.routeLearnings.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
+
+  // Reloading one session replaces only its own rows rather than appending duplicates.
+  await runtime.refreshRoutes("sess-a");
+  expect(runtime.snapshot.routeReviews.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
 });
