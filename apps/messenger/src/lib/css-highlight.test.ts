@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   escapeHtml,
+  mountCssHighlight,
   themeColorsFromHtmlStyle,
   tokensToHighlightedHtml,
 } from "./css-highlight.ts";
@@ -77,4 +78,54 @@ test("tokensToHighlightedHtml wraps JSON keys and strings in dual-theme spans", 
   expect(html).toContain("--shiki-dark:");
   expect(html).toContain("currency");
   expect(html).not.toContain("<script>");
+});
+
+/**
+ * A plain fenced block paints to itself. Rewriting it anyway woke the mutation observer that asks
+ * for the next paint, so the block — and the markdown around it — flickered a dozen times a second.
+ */
+test("a repainted plain block leaves the DOM untouched", async () => {
+  const highlighter = await getShikiHighlighter();
+  const el = document.createElement("code");
+  el.textContent = "情绪强度\n  ▲\n100│  a < b & c\n";
+  document.body.appendChild(el);
+  try {
+    const handle = mountCssHighlight(el, highlighter, { lang: "plaintext" });
+    const first = el.firstChild;
+    expect(el.textContent).toBe("情绪强度\n  ▲\n100│  a < b & c\n");
+    handle.update();
+    handle.update();
+    expect(el.firstChild).toBe(first);
+    expect(el.textContent).toBe("情绪强度\n  ▲\n100│  a < b & c\n");
+
+    // New text still repaints, which is how a streaming block keeps up.
+    el.textContent = "情绪强度\n  ▲\n100│  a < b & c\nmore";
+    handle.update();
+    expect(el.textContent).toBe("情绪强度\n  ▲\n100│  a < b & c\nmore");
+    const second = el.firstChild;
+    handle.update();
+    expect(el.firstChild).toBe(second);
+    handle.dispose();
+  } finally {
+    el.remove();
+  }
+});
+
+test("a highlighted block is repainted when something else clears its spans", async () => {
+  await ensureHighlightLang("json");
+  const highlighter = await getShikiHighlighter();
+  const el = document.createElement("code");
+  el.textContent = `{"currency":"CNY"}`;
+  document.body.appendChild(el);
+  try {
+    const handle = mountCssHighlight(el, highlighter, { lang: "json" });
+    expect(el.querySelector(".tok")).not.toBeNull();
+    // What a re-render of the block looks like from here: same text, tokens gone.
+    el.textContent = `{"currency":"CNY"}`;
+    handle.update();
+    expect(el.querySelector(".tok")).not.toBeNull();
+    handle.dispose();
+  } finally {
+    el.remove();
+  }
 });

@@ -124,13 +124,21 @@ export function mountCssHighlight(
   const delay = options.delay ?? 33;
   let disposed = false;
   let last = "";
+  /** What this handle left in the element, so someone else's rewrite is still noticed. */
+  let painted: ChildNode | null = null;
 
   const paintNow = (): void => {
     if (disposed) return;
     const source = el.textContent ?? "";
-    if (source === last && el.querySelector(".tok")) return;
+    // Looking for a token span instead missed plain text, which paints to itself and has no span
+    // to find: every pass rewrote the block, and the rewrite woke the observer that asks for the
+    // next pass — a plain fenced block flickered a dozen times a second for as long as it was on
+    // screen, and took the markdown around it with it.
+    if (source === last && el.firstChild === painted) return;
+    const html = tokensToHighlightedHtml(source, highlighter, lang);
     last = source;
-    el.innerHTML = tokensToHighlightedHtml(source, highlighter, lang);
+    if (html !== el.innerHTML) el.innerHTML = html;
+    painted = el.firstChild;
   };
 
   const update = watch ? throttle(paintNow, delay) : paintNow;
