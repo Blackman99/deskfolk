@@ -62,6 +62,13 @@ describe("extractAssociatedFiles", () => {
     expect(files).toEqual(["src/app.svelte", "package.json"]);
   });
 
+  test("extracts a bare 附件： line", () => {
+    const body = "成果已归档。\n附件：BEACON_ZERO/assets/storyboards/EP01/C01_START.png";
+    expect(extractAssociatedFiles({ body })).toEqual([
+      "BEACON_ZERO/assets/storyboards/EP01/C01_START.png",
+    ]);
+  });
+
   test("extracts bare path tokens that look like workspace paths", () => {
     const body = "Created file at docs/readme.md successfully.";
     const files = extractAssociatedFiles({ body });

@@ -203,6 +203,28 @@ describe("send_message artifacts", () => {
     store.close();
   });
 
+  test("a bare 附件： line attaches the file it names", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-art-line-")));
+    dirs.push(root);
+    mkdirSync(join(root, "BEACON_ZERO", "assets", "storyboards", "EP01"), { recursive: true });
+    const rel = "BEACON_ZERO/assets/storyboards/EP01/C01_START.png";
+    writeFileSync(join(root, rel), PNG_1X1);
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    await store.patchSettings({ workspace_path: root });
+    const designer = store.createBot({ name: "设计师", duties: "design", boundaries: "stay" });
+    const result = await runCollabTool(
+      ctxFor(store, designer.bot.id, designer.direct_session.id),
+      "send_message",
+      { body: `成果已归档。\n附件：${rel}` },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data?.paths).toEqual([rel]);
+    const message = store.getMessage(String(result.data?.message_id));
+    expect(message.attachments.map((a) => a.workspace_relpath)).toEqual([rel]);
+    expect(message.body).toContain(`[${rel}](${rel})`);
+    store.close();
+  });
+
   test("outside paths are unresolved and not attached", async () => {
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-art-ws-")));
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-art-out-")));

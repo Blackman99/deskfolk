@@ -36,6 +36,7 @@
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
+	import { handedOverPaths, withoutAttachmentDeclarations } from '../overlays/artifacts.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
@@ -350,6 +351,14 @@
 	);
 	let markdownOptsCache = new WeakMap<Message, RenderMarkdownOptions>();
 	let markdownOptsSignature = '';
+
+	function messageShowsAttachments(message: Message): boolean {
+		return handedOverPaths(message.body, message.attachments.map((att) => att.workspace_relpath)).length > 0;
+	}
+
+	function messageBody(message: Message): string {
+		return messageShowsAttachments(message) ? withoutAttachmentDeclarations(message.body) : message.body;
+	}
 
 	function markdownOpts(message?: Message, extra?: { streaming?: boolean }): RenderMarkdownOptions {
 		if (markdownOptsSignature !== markdownSignature) {
@@ -1033,7 +1042,7 @@
 												</button>
 											{/if}
 											<MarkdownBody
-												source={item.message.body}
+												source={messageBody(item.message)}
 												options={markdownOpts(item.message)}
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
@@ -1041,9 +1050,10 @@
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenProfile={onOpenProfile}
 											/>
-											{#if item.message.attachments && item.message.attachments.length > 0}
+											{#if messageShowsAttachments(item.message)}
 												<MessageAttachments
 													attachments={item.message.attachments}
+													body={item.message.body}
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
@@ -1333,16 +1343,17 @@
 												</button>
 											{/if}
 											<MarkdownBody
-												source={item.message.body}
+												source={messageBody(item.message)}
 												options={markdownOpts(item.message)}
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenProfile={onOpenProfile}
 											/>
-											{#if item.message.attachments && item.message.attachments.length > 0}
+											{#if messageShowsAttachments(item.message)}
 												<MessageAttachments
 													attachments={item.message.attachments}
+													body={item.message.body}
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}

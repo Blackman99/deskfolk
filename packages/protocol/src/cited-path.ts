@@ -165,3 +165,34 @@ export function looksLikeWorkspacePath(raw: string): boolean {
   const ext = extensionOf(path);
   return path.includes("/") || (Boolean(ext) && KNOWN_EXT.has(ext));
 }
+
+/**
+ * The transcript line the runtime itself writes for a file it handed over:
+ * `附件：inbox/notes.pdf`. A Bot that copies that shape back is handing files over the same way.
+ * A line already turned into a markdown link (`附件：[path](path)`) is not this shape.
+ */
+const ATTACHMENT_LINE = /(?:^|\n)[ \t]*(?:[-*][ \t]+)?附件[：:][ \t]*(`[^`\n]+`|[^\s[\]]+)/g;
+
+/** A display line that is only an attachment handoff, raw or already linkified. */
+const ATTACHMENT_DECLARATION = /^[ \t]*(?:[-*][ \t]+)?附件[：:][ \t]*(?:`[^`\n]+`|[^\s[\]]+|\[(?:[^\]]*)\]\([^)\s]+\))[ \t]*$/;
+
+/** Paths named on their own line as `附件：<path>`, the shape transcript serialization uses. */
+export function attachmentLinePaths(body: string): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const match of body.matchAll(ATTACHMENT_LINE)) {
+    let token = (match[1] ?? "").trim();
+    if (token.startsWith("`") && token.endsWith("`") && token.length >= 2) token = token.slice(1, -1);
+    const path = normalizeCitedPath(token);
+    if (!path || !looksLikeWorkspacePath(path) || seen.has(path)) continue;
+    seen.add(path);
+    found.push(path);
+  }
+  return found;
+}
+
+/** Drop lines whose only content is an attachment handoff, so the chip can stand in for them. */
+export function withoutAttachmentDeclarations(body: string): string {
+  const kept = body.split("\n").filter((line) => !ATTACHMENT_DECLARATION.test(line));
+  return kept.join("\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+}

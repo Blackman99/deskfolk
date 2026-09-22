@@ -1,4 +1,9 @@
-import { extensionOf, looksLikeWorkspacePath } from "@real-bot/protocol";
+import {
+  attachmentLinePaths,
+  extensionOf,
+  looksLikeWorkspacePath,
+  withoutAttachmentDeclarations,
+} from "@real-bot/protocol";
 
 export { extensionOf };
 
@@ -303,6 +308,24 @@ export function linkifyWorkspacePaths(body: string, extraPaths: string[] = []): 
   if (!linked.trim()) return block;
   return `${linked.replace(/\s+$/, "")}\n\n${block}`;
 }
+
+/**
+ * The paths a message hands over with `附件：<path>` on its own line, plus the rows already stored.
+ * Old messages kept those lines as prose because nothing attached them; the chip covers them.
+ */
+export function handedOverPaths(body: string, attached: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...attachmentLinePaths(body), ...attached]) {
+    const path = raw.trim();
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
+}
+
+export { withoutAttachmentDeclarations };
 
 function uniquePaths(paths: string[]): string[] {
   const out: string[] = [];

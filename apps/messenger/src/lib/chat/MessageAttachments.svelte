@@ -2,39 +2,70 @@
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import { artifactKind, svgDisplayBlob } from '../overlays/artifacts.ts';
+	import { artifactKind, handedOverPaths, svgDisplayBlob } from '../overlays/artifacts.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from '../overlays/artifact-tree.ts';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy } from 'svelte';
 
 	interface Props {
 		attachments: Attachment[];
+		/** Message body, so a bare `附件：<path>` line still becomes a chip on messages stored earlier. */
+		body?: string | null;
 		api: MessengerApi | null;
 		t: Copy;
 		onPreview: (att: Attachment) => void;
 	}
 
-	let { attachments, api, t, onPreview }: Props = $props();
+	let { attachments, body = null, api, t, onPreview }: Props = $props();
 
 	let thumbs = $state<Record<string, string>>({});
-	const tree = $derived(buildCitedPathTree(attachments.map((row) => row.workspace_relpath)));
+	let missing = $state<Record<string, true>>({});
+	const rows = $derived(withHandoffRows(attachments, body));
+	const tree = $derived(buildCitedPathTree(rows.map((row) => row.workspace_relpath)));
 	const fileCount = $derived(countCitedFiles(tree));
 	const bundle = $derived(citedBundleRoot(tree));
-	const collapse = $derived(attachments.length > 1);
-	const previewTarget = $derived(attachments.length > 0 ? firstPreviewable(attachments) : null);
+	const collapse = $derived(rows.length > 1);
+	const previewTarget = $derived(rows.length > 0 ? firstPreviewable(rows) : null);
 
-	onMount(async () => {
-		if (!api) return;
-		for (const att of attachments) {
-			const kind = artifactKind(att.original_filename, { isDir: att.is_dir });
-			if ((kind === "image" || kind === "svg") && att.exists !== false && !att.is_dir) {
-				try {
-					const blob = await api.getAttachmentBlob(att.id);
-					const thumb = kind === "svg" ? await svgDisplayBlob(blob) : blob;
-					thumbs = { ...thumbs, [att.id]: URL.createObjectURL(thumb) };
-				} catch {
-					// file card without thumb
-				}
-			}
+	function withHandoffRows(stored: Attachment[], source: string | null): Attachment[] {
+		const paths = handedOverPaths(source ?? "", stored.map((row) => row.workspace_relpath));
+		return paths.map((path) => {
+			const existing = stored.find((row) => row.workspace_relpath === path);
+			if (existing) return existing;
+			const owner = stored[0];
+			return {
+				id: `handoff:${path}`,
+				message_id: owner?.message_id ?? "",
+				workspace_relpath: path,
+				original_filename: path.split("/").pop() || path,
+				created_at: owner?.created_at ?? "",
+				exists: missing[path] ? false : undefined,
+			};
+		});
+	}
+
+	let loading = new Set<string>();
+
+	async function loadThumb(att: Attachment): Promise<void> {
+		if (!api || loading.has(att.id)) return;
+		const kind = artifactKind(att.original_filename, { isDir: att.is_dir });
+		if ((kind !== "image" && kind !== "svg") || att.exists === false || att.is_dir) return;
+		loading.add(att.id);
+		try {
+			const blob = att.id.startsWith("handoff:")
+				? await api.getWorkspaceFileBlob(att.workspace_relpath)
+				: await api.getAttachmentBlob(att.id);
+			const thumb = kind === "svg" ? await svgDisplayBlob(blob) : blob;
+			thumbs = { ...thumbs, [att.id]: URL.createObjectURL(thumb) };
+		} catch {
+			if (att.id.startsWith("handoff:")) missing = { ...missing, [att.workspace_relpath]: true };
+		} finally {
+			loading.delete(att.id);
+		}
+	}
+
+	$effect(() => {
+		for (const att of rows) {
+			if (!thumbs[att.id]) void loadThumb(att);
 		}
 	});
 
@@ -55,13 +86,13 @@
 	}
 </script>
 
-{#if attachments && attachments.length > 0}
+{#if rows.length > 0}
 	{#if collapse}
 		<button
 			type="button"
 			class="attachment-bundle-btn mt-4 max-w-[280px]"
 			onclick={openBundle}
-			title={attachments.map((row) => row.workspace_relpath).join("\n")}
+			title={rows.map((row) => row.workspace_relpath).join("\n")}
 		>
 			<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
 				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
@@ -73,7 +104,7 @@
 		</button>
 	{:else}
 		<div class="msg-attachments-grid flex flex-wrap gap-4 mt-4">
-			{#each attachments as att (att.id)}
+			{#each rows as att (att.id)}
 				{@const thumb = thumbs[att.id]}
 				<button
 					type="button"

@@ -12,6 +12,7 @@ import {
   isInAppPreviewKind,
   previewLoadKey,
   pageCspNonce,
+  handedOverPaths,
   linkifyWorkspacePaths,
   looksLikeWorkspaceHref,
   parseArtifactHref,
@@ -121,11 +122,19 @@ test("absWorkspacePath joins inside the root and rejects escapes", () => {
   expect(absWorkspacePath("/Users/me/ws", "/etc/passwd")).toBeNull();
 });
 
+test("handedOverPaths keeps a bare 附件： line and the stored rows", () => {
+  const path = "BEACON_ZERO/assets/storyboards/EP01/C01_START.png";
+  expect(handedOverPaths(`成果已归档。\n附件：${path}`, ["out/mock.png"])).toEqual([path, "out/mock.png"]);
+  expect(handedOverPaths(`附件：${path}`, [path])).toEqual([path]);
+});
+
 test("linkifyWorkspacePaths and bodyMentionsPath", () => {
   expect(linkifyWorkspacePaths("写了 report.md", ["report.md"])).toBe("写了 [report.md](report.md)");
   expect(bodyMentionsPath("写了 [report.md](report.md)", "report.md")).toBe(true);
   expect(bodyMentionsPath("hello", "report.md")).toBe(false);
 });
+
+
 
 test("stripSvgActiveContent removes scripts and handlers", () => {
   const svg = `<svg><script>alert(1)</script><g onclick="alert(1)"><text>ok</text></g></svg>`;

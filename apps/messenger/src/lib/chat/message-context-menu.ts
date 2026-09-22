@@ -1,4 +1,5 @@
 import {
+  attachmentLinePaths,
   extensionOf,
   looksLikeWorkspacePath,
   normalizeCitedPath,
@@ -40,6 +41,7 @@ export function extractAssociatedFiles(message: {
     if (!raw) return;
     let path = raw.trim();
     if (path.startsWith("artifact:")) path = path.slice("artifact:".length).trim();
+    path = path.replace(/^(?:附件[：:])+/, "");
     path = path.replace(/^[*_`'"()（）:：<>[\]]+|[*_`'"()（）:：<>[\]]+$/g, "").trim();
     const normalized = normalizeCitedPath(path);
     if (!normalized || normalized === "." || seen.has(normalized)) return;
@@ -73,7 +75,10 @@ export function extractAssociatedFiles(message: {
     add(match[1]);
   }
 
-  // 4. Backticked tokens: `path/to/file`
+  // 4. A line that hands a file over: `附件：<path>`
+  for (const path of attachmentLinePaths(body)) add(path);
+
+  // 5. Backticked tokens: `path/to/file`
   const backtickRegex = /`([^`\n]+)`/g;
   for (const match of body.matchAll(backtickRegex)) {
     const candidate = match[1]?.trim();
@@ -82,7 +87,7 @@ export function extractAssociatedFiles(message: {
     }
   }
 
-  // 5. Bare path tokens in text
+  // 6. Bare path tokens in text
   const tokens = body.split(/[\s,;()[\]{}'"`]+/);
   for (const token of tokens) {
     if (looksLikeWorkspacePath(token)) {

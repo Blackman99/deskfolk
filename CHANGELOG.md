@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- A file a Bot hands over as its own line, `附件：<workspace path>`, becomes an attachment card under the bubble and opens in the preview. Messages already stored the same way get the card too, and that line no longer repeats in the body.
+
 - Restore the desktop conversation's height-constrained layout so the input stays visible and long chat histories scroll within the main area.
 
 - Mobile chat suggestions stay in a single horizontally scrollable row, with long labels truncated and the full prompt preserved when selected. The suggestion background stays within the input area, and long drafts scroll inside a viewport-aware height limit.

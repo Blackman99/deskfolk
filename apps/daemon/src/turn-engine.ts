@@ -1,5 +1,6 @@
 import {
   USER_MEMBER,
+  attachmentLinePaths,
   INTERRUPT_NOTE_BODY,
   type ClientEvent,
   type ComposerSuggestion,
@@ -1123,7 +1124,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       kind: "bot",
       author: turn.bot_id,
       body: linked,
-      paths: live.writtenPaths,
+      paths: mergeCitedPaths(live.writtenPaths, attachmentLinePaths(body)),
     });
     publishMessage(message);
     live.spoke = true;

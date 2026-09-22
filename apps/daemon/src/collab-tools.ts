@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import {
   BORING_AVATAR_VARIANTS,
   USER_MEMBER,
+  attachmentLinePaths,
   generateBoringAvatar,
   isThinkingLevel,
   type BoringAvatarVariant,
@@ -247,7 +248,7 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   );
   const cited = mergeCitedPaths(
     [...(ctx.writtenPaths ?? []), ...(optionalStringArray(args.paths, "paths") ?? [])],
-    extractWorkspacePathsFromBody(corrected),
+    [...extractWorkspacePathsFromBody(corrected), ...attachmentLinePaths(corrected)],
   );
   const resolved = resolveCitedPaths(ctx.store, cited);
   const linked = linkifyWorkspacePaths(corrected, resolved.paths);
