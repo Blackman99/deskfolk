@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { pageSlide } from '../mobile-page-slide.ts';
 	import McpSettings from './McpSettings.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
@@ -134,6 +135,31 @@
 			if (runtime.client !== api || !runtime.settingsOpen) return;
 			delete repairValues[op.id];
 		}
+	}
+
+	let mcpSettings = $state<McpSettings>();
+
+	/**
+	 * What ✕ closes: the screen it sits on, not everything under it. Deep in a section or an
+	 * editor it steps out one level, exactly as Back does; on the root list — and on a window
+	 * wide enough to have no inner pages — there is nothing above settings, so it closes them.
+	 */
+	function closeCurrentPage(): void {
+		if (backWithinSettings()) return;
+		closeSettings();
+	}
+
+	export function backWithinSettings(): boolean {
+		if (!runtime.settingsOpen || !window.matchMedia('(max-width: 720px)').matches) return false;
+		if (confirmingProvider || confirmingIndependent) return true;
+		if (providerEditor) {
+			closeProviderEditor();
+			return true;
+		}
+		if (mcpSettings?.backFromEditor()) return true;
+		if (!mobileSettingsDetail) return false;
+		mobileSettingsDetail = false;
+		return true;
 	}
 
 	let activeSettingsTab = $state<SettingsTab>('general');
@@ -633,6 +659,7 @@
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
+		transition:pageSlide
 		onmousedowncapture={settingsBackdrop.press}
 		onclick={(e) => {
 			if (settingsBackdrop.isOutside(e) && !providerEditor && !confirmingProvider && !confirmingIndependent)
@@ -788,7 +815,7 @@
 						type="button"
 						class="modal-close"
 						title={t.common.close}
-						onclick={closeSettings}
+						onclick={closeCurrentPage}
 					>✕</button>
 				</div>
 
@@ -1448,7 +1475,7 @@
 						</div>
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
-					<McpSettings {runtime} {t} {closeSettings} />
+					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'about'}
 					<div class="settings-tab-pane">
 						<div class="settings-card settings-card-about">
@@ -1655,11 +1682,12 @@
 					title={t.common.close}
 					onclick={closeProviderEditor}
 				>✕</button>
+				<!-- ✕ closes this editor; the list and settings behind it stay where they were. -->
 				<button
 					type="button"
 					class="modal-close settings-subpage-close"
 					title={t.common.close}
-					onclick={closeSettings}
+					onclick={closeProviderEditor}
 				>✕</button>
 			</div>
 			<div class="modal-body">

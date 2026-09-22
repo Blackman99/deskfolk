@@ -43,6 +43,8 @@
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
+		/** Phone only: a section is open on top of the list. The shell owns it so Back can unwind it. */
+		mobileDetail?: boolean;
 		initialTab?: 'basics' | 'skills' | 'routines' | 'memory' | 'actions';
 		openDangerConfirm: (kind: 'skill' | 'memory', run: DangerAction) => void;
 		clearDanger: (kind: 'skill' | 'memory') => void;
@@ -57,6 +59,7 @@
 		modelOptions,
 		selectedKind,
 		profileFailed = $bindable(false),
+		mobileDetail = $bindable(false),
 		initialTab = 'basics',
 		openDangerConfirm,
 		clearDanger,
@@ -334,10 +337,23 @@
 	export type BotTab = 'basics' | 'skills' | 'routines' | 'memory' | 'actions';
 	let activeTab = $state<BotTab>(untrack(() => initialTab));
 
+	/**
+	 * On a phone this pane is two screens: the list of sections, and the section itself. Which one
+	 * is showing is the shell's business too — its Back has to unwind the section before it closes
+	 * the drawer — so the flag is bound, and the width test matches the stylesheet's breakpoint.
+	 */
+	const PHONE_QUERY = '(max-width: 680px)';
+	function onPhone(): boolean {
+		return typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches;
+	}
+
 	// A routine opened from search carries its own tab; the card only reads the
 	// pending id once it is mounted.
 	$effect(() => {
-		if (runtime.profileRoutineId) untrack(() => { activeTab = 'routines'; });
+		if (runtime.profileRoutineId) untrack(() => {
+			activeTab = 'routines';
+			if (onPhone()) mobileDetail = true;
+		});
 	});
 
 	const basicsHasError = $derived(
@@ -351,9 +367,38 @@
 	);
 
 	function switchTab(tab: BotTab): void {
+		// On a phone the row is how you enter the section, so tapping the current one still opens it.
+		if (onPhone()) mobileDetail = true;
 		if (activeTab === tab) return;
 		flushProfileSave();
 		activeTab = tab;
+	}
+
+	/** The skill sheet is a modal over this pane, so Back closes it before the section. */
+	export function backFromEditor(): boolean {
+		if (!skillEditor || skillBusy) return Boolean(skillEditor);
+		closeSkillEditor();
+		return true;
+	}
+
+	/** The shell's Back button and the browser's both come through here first. */
+	export function backFromDetail(): boolean {
+		if (!mobileDetail) return false;
+		flushProfileSave();
+		mobileDetail = false;
+		return true;
+	}
+
+	function tabLabel(tab: BotTab): string {
+		return tab === 'basics'
+			? t.detail.botTabBasics
+			: tab === 'skills'
+				? t.detail.botTabSkills
+				: tab === 'routines'
+					? t.detail.botTabRoutines
+					: tab === 'memory'
+						? t.detail.botTabMemory
+						: t.detail.botTabActions;
 	}
 </script>
 
@@ -366,7 +411,7 @@
 	}}
 />
 
-<div class="profile-pane">
+<div class="profile-pane" class:is-mobile-detail={mobileDetail}>
 	<div class="bot-nav-sticky">
 		<div class="bot-tabs" role="tablist" aria-label={t.detail.titleBot}>
 		<button
@@ -452,6 +497,20 @@
 		</button>
 	</div>
 </div>
+
+<div class="bot-detail">
+	<!-- Phone only: the section's own header. Wider windows keep the tab strip and this is hidden. -->
+	<div class="bot-detail-head">
+		<button
+			type="button"
+			class="bot-detail-back"
+			aria-label={t.detail.backToSections}
+			onclick={() => backFromDetail()}
+		>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+		</button>
+		<h3 class="bot-detail-title">{tabLabel(activeTab)}</h3>
+	</div>
 
 <div class="panel-scroll-content profile-pane-scroll flex-1 overflow-y-auto pt-8 px-9 pb-12 flex flex-col gap-8">
 {#if profileFailed}
@@ -740,6 +799,7 @@
 {/if}
 </div>
 </div>
+</div>
 
 {#if skillEditor}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -893,6 +953,18 @@
 		min-height: 0;
 		height: 100%;
 		overflow: hidden;
+	}
+
+	/* The section body. On a phone it becomes the second screen; wider, it is just the pane. */
+	.bot-detail {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 0;
+		min-height: 0;
+	}
+
+	.bot-detail-head {
+		display: none;
 	}
 
 	.bot-nav-sticky {
@@ -1331,10 +1403,168 @@
 		margin-bottom: 0;
 	}
 	@media (max-width: 680px) {
-		/* 26px tall tabs are a mouse target, not a thumb one. */
+		/*
+		 * Two screens, the way the settings page does it: the sections as a grouped list, and the
+		 * section itself sliding in over it. The pane keeps one scroll area per screen, so a long
+		 * section never drags the list along with it.
+		 */
+		.profile-pane {
+			position: relative;
+		}
+
+		.bot-nav-sticky {
+			position: absolute;
+			inset: 0;
+			overflow-y: auto;
+			padding: 14px 12px calc(24px + env(safe-area-inset-bottom));
+			background: var(--sidebar-bg);
+			border-bottom: 0;
+			transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+		}
+
+		.profile-pane.is-mobile-detail .bot-nav-sticky {
+			transform: translateX(-28%);
+		}
+
+		.bot-tabs {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0;
+			padding: 0;
+			background: transparent;
+			border: 0;
+			border-radius: var(--radius-lg);
+			overflow: hidden;
+		}
+
 		.bot-tab-btn {
-			min-height: 40px;
-			padding-block: 8px;
+			position: relative;
+			flex: none;
+			justify-content: flex-start;
+			gap: 10px;
+			min-height: 54px;
+			padding: 0 14px;
+			border-radius: 0;
+			background: var(--pane);
+			font-size: 15px;
+			font-weight: 500;
+			color: var(--ink);
+		}
+
+		.bot-tab-btn + .bot-tab-btn::before {
+			content: '';
+			position: absolute;
+			left: 44px;
+			right: 0;
+			top: 0;
+			height: 1px;
+			background: var(--line);
+		}
+
+		/* The chevron says the row opens a screen; the active tint belongs to the wider layout. */
+		.bot-tab-btn::after {
+			content: '';
+			width: 8px;
+			height: 8px;
+			border-top: 1.8px solid var(--muted);
+			border-right: 1.8px solid var(--muted);
+			transform: rotate(45deg);
+			margin-left: auto;
+			flex-shrink: 0;
+		}
+
+		.bot-tab-btn.is-active,
+		.bot-tab-btn:hover {
+			background: var(--pane);
+			box-shadow: none;
+			font-weight: 500;
+			color: var(--ink);
+		}
+
+		.bot-tab-btn:active {
+			background: var(--row-hover);
+		}
+
+		.bot-tab-btn .tab-icon,
+		.bot-tab-btn.is-active .tab-icon {
+			width: 19px;
+			height: 19px;
+			color: var(--muted);
+		}
+
+		.bot-tab-btn .tab-count,
+		.bot-tab-btn .tab-badge-error {
+			margin-left: auto;
+		}
+
+		/* A count sits next to the chevron rather than pushing it off the row. */
+		.bot-tab-btn .tab-count + :global(*),
+		.bot-tab-btn .tab-badge-error + :global(*) {
+			margin-left: 8px;
+		}
+
+		.bot-detail {
+			position: absolute;
+			inset: 0;
+			z-index: 2;
+			background: var(--bg);
+			transform: translateX(100%);
+			visibility: hidden;
+			transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.22s;
+		}
+
+		.profile-pane.is-mobile-detail .bot-detail {
+			transform: translateX(0);
+			visibility: visible;
+			transition-delay: 0s;
+		}
+
+		.bot-detail-head {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			flex-shrink: 0;
+			min-height: 56px;
+			padding: 0 12px 0 4px;
+			background: var(--pane);
+			border-bottom: 1px solid var(--line);
+		}
+
+		.bot-detail-back {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 44px;
+			height: 44px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.bot-detail-back:active {
+			background: var(--row-hover);
+		}
+
+		.bot-detail-title {
+			margin: 0;
+			font-size: 16px;
+			font-weight: 650;
+			color: var(--ink);
+		}
+
+		.profile-pane-scroll {
+			padding: 16px 12px calc(28px + env(safe-area-inset-bottom));
+			overscroll-behavior: contain;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.bot-nav-sticky,
+			.bot-detail {
+				transition: none;
+			}
 		}
 	}
 </style>

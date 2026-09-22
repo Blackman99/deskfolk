@@ -659,6 +659,8 @@ const zh = {
   detail: {
     titleGroup: "群组设置",
     titleBot: "Bot 设置",
+    backToSections: "返回",
+    groupProfile: "群资料",
     botTabBasics: "基础信息",
     botTabSkills: "技能",
     botTabRoutines: "日程",
@@ -1361,6 +1363,8 @@ const en: CopyShape<typeof zh> = {
   detail: {
     titleGroup: "Group settings",
     titleBot: "Bot settings",
+    backToSections: "Back",
+    groupProfile: "Group profile",
     botTabBasics: "Basics",
     botTabSkills: "Skills",
     botTabRoutines: "Routines",

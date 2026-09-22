@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { flushSync, mount, unmount } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aProvider, fakeRuntime } from "../test-fixtures.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
@@ -139,6 +140,56 @@ test("mobile provider editing opens a full settings subpage with list and settin
     expect(host.querySelector(".provider-editor-modal")).toBeNull();
     expect(host.querySelector(".settings-modal")?.classList.contains("is-mobile-detail")).toBe(true);
     close();
+  });
+});
+
+test("mobile history back unwinds editors and categories before leaving settings", () => {
+  withMobileViewport(() => {
+    const runtime = fakeRuntime({ providers: [aProvider()] });
+    runtime.settingsOpen = true;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let closed = 0;
+    const app = mount(SettingsModal, { target: host, props: {
+      runtime, t, saveFailed: false, providerEditor: null,
+      confirmingProvider: false, confirmingIndependent: false,
+      patchImmediate: async () => true, openDeleteProviderConfirm: () => {},
+      closeSettings: () => { closed++; },
+    } });
+    flushSync();
+    try {
+      const back = () => {
+        const handled = app.backWithinSettings();
+        flushSync();
+        return handled;
+      };
+      expect(back()).toBe(false);
+      for (const tab of host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")) {
+        click(tab);
+        expect(back()).toBe(true);
+        expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
+      }
+      openModels(host);
+      click(host.querySelector(".btn-provider-edit"));
+      expect(back()).toBe(true);
+      expect(host.querySelector(".provider-editor-modal")).toBeNull();
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
+      click(host.querySelector(".btn-provider-add"));
+      expect(back()).toBe(true);
+      expect(back()).toBe(true);
+      click(host.querySelectorAll(".settings-tab-btn")[3]);
+      click(host.querySelector(".btn-mcp-add"));
+      expect(back()).toBe(true);
+      expect(host.querySelector(".mcp-editor-modal")).toBeNull();
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
+      expect(back()).toBe(true);
+      expect(back()).toBe(false);
+      expect(closed).toBe(0);
+    } finally {
+      void unmount(app);
+      flushSync();
+      host.remove();
+    }
   });
 });
 
@@ -284,4 +335,22 @@ test("a copy that cannot replace itself only offers the browser download", () =>
   close();
   forgetUpdate();
   tauri.restore();
+});
+
+test("✕ closes the page it sits on, not the settings behind it", () => {
+  withMobileViewport(() => {
+    const { host, close } = open();
+    openModels(host);
+    const modal = host.querySelector(".settings-modal");
+    // Inside the endpoint editor: ✕ leaves the editor, the section list stays.
+    click(host.querySelector(".btn-provider-edit"));
+    click(host.querySelector(".settings-subpage-close"));
+    expect(host.querySelector(".provider-editor-modal")).toBeNull();
+    expect(modal?.classList.contains("is-mobile-detail")).toBe(true);
+    // In a section: ✕ goes back to the list of sections.
+    click(host.querySelector(".settings-main-head > .modal-close"));
+    expect(modal?.classList.contains("is-mobile-detail")).toBe(false);
+    expect(host.querySelector(".settings-modal")).not.toBeNull();
+    close();
+  });
 });

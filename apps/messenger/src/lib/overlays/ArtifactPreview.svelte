@@ -463,6 +463,11 @@
 		requestClose(afterClose);
 	}
 
+	/** True when closing would have to ask — an unsaved edit, or a save in flight. */
+	export function blocksClose(): boolean {
+		return saving || dirty;
+	}
+
 	function startTreeResize(ev: PointerEvent): void {
 		if (!showTree) return;
 		ev.preventDefault();

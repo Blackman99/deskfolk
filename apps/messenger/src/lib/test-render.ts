@@ -7,13 +7,15 @@ import { flushSync, mount, unmount, type Component } from "svelte";
 export function render<P extends Record<string, unknown>>(
   component: Component<P, Record<string, never>, string>,
   props: P,
-): { host: HTMLElement; close: () => void } {
+): { host: HTMLElement; app: Record<string, never>; close: () => void } {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const app = mount(component as never, { target: host, props: props as never });
   flushSync();
   return {
     host,
+    // What the component exports, for the handful of panes the shell drives by method.
+    app: app as Record<string, never>,
     close: () => {
       void unmount(app);
       flushSync();

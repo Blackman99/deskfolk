@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { copyFor } from '$lib/copy';
 	import { MessengerRuntime } from '$lib/runtime.svelte';
@@ -15,12 +15,40 @@
 		sessionUrl,
 		viewFromUrl
 	} from '$lib/session-url';
+	import { planUrlNavigation, routeStep, stackAfter } from '$lib/mobile-route';
 	import { HOSTED_MESSENGER } from '$lib/remote/mode';
 	import PairingScreen from '$lib/remote/PairingScreen.svelte';
 	import { updateChecker } from '$lib/update-checker.svelte';
 	import Shell from '$lib/Shell.svelte';
 
-	const runtime = new MessengerRuntime();
+	let shell = $state<Shell>();
+beforeNavigate((navigation) => {
+	// Back walks the app's own stack of screens before it walks history; see mobile-route.ts.
+	if (navigation.type !== 'popstate') {
+		cancelledBack = false;
+		return;
+	}
+	// A step this page asked for is not the person pressing Back, so the chain stays out of it.
+	if (selfBack) {
+		selfBack = false;
+		cancelledBack = false;
+		return;
+	}
+	if ((navigation.delta ?? 0) < 0) {
+		if (shell?.backMobileLayer()) {
+			// The pointer stays where it was, so whatever closes next is written over this entry
+			// rather than walked back to — walking would fight the restore this cancel triggers.
+			// A pane that has to ask first answers later, so the flag waits for it.
+			cancelledBack = true;
+			navigation.cancel();
+			return;
+		}
+		cancelledBack = false;
+	}
+	// A forward step is the restore that cancel just asked for; it is not an answer to anything.
+});
+
+const runtime = new MessengerRuntime();
 	if (typeof window !== 'undefined') {
 		(window as unknown as { __runtime?: MessengerRuntime }).__runtime = runtime;
 	}
@@ -120,6 +148,27 @@
 		});
 	});
 
+	/**
+	 * History is a stack of screens, so opening one pushes and closing one walks back — see
+	 * mobile-route.ts. `routeStack` is what this page put there; it is the only way to know
+	 * whether the entry underneath is the one a close should return to, or whether the URL was
+	 * someone else's deep link with nothing of ours behind it.
+	 */
+	let routeStack: string[] = [page.url.search];
+	let replacing: string | null = null;
+	/** A `history.back()` this page issued, so the layer chain does not treat it as a Back press. */
+	let selfBack = false;
+	/** A Back the chain answered: the entry is still ours to rewrite, not one to walk off. */
+	let cancelledBack = false;
+
+	$effect(() => {
+		const search = page.url.search;
+		untrack(() => {
+			routeStack = stackAfter(routeStack, search, replacing === search);
+			replacing = null;
+		});
+	});
+
 	/** The selection moved — a sidebar row, a search hit, a new Bot, a deleted session, a preview. */
 	$effect(() => {
 		const id = runtime.selectedId;
@@ -133,12 +182,20 @@
 			workspaceSelected: runtime.workspaceSelected
 		});
 		untrack(() => {
-			const target = sessionUrl(
-				page.url,
-				{ selectedId: id, previewRelpath, previewAttachmentId, overlay },
-				HOSTED_MESSENGER
-			);
-			if (target) void goto(target, { noScroll: true, keepFocus: true });
+			const wanted = { selectedId: id, previewRelpath, previewAttachmentId, overlay };
+			const target = sessionUrl(page.url, wanted, HOSTED_MESSENGER);
+			if (!target) return;
+			const step = routeStep(viewFromUrl(page.url, HOSTED_MESSENGER), wanted);
+			const planned = planUrlNavigation({ target: new URL(target, page.url).search, stack: routeStack, step });
+			const plan = planned === 'back' && cancelledBack ? 'replace' : planned;
+			cancelledBack = false;
+			if (plan === 'back') {
+				selfBack = true;
+				history.back();
+				return;
+			}
+			if (plan === 'replace') replacing = new URL(target, page.url).search;
+			void goto(target, { noScroll: true, keepFocus: true, replaceState: plan === 'replace' });
 		});
 	});
 
@@ -190,7 +247,7 @@
 			</div>
 		</div>
 	{/if}
-	<Shell {runtime} />
+	<Shell bind:this={shell} {runtime} />
 {/if}
 
 <style>

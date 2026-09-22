@@ -129,3 +129,109 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
   expect(runtime.settingsOpen).toBe(false);
   expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('会话');
 });
+
+test('mounted Shell: a phone opens Bot settings as a page, and Back leaves the section first', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+    const session = aDirect({ id: 'bot-1', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+    ] });
+    const runtime = reactive(fakeRuntime({
+      bots: [bot], sessions: [session],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }, { selectedId: 'bot-1', sessionSettingsOpen: true, profileBotId: 'bot-1' }));
+    const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+    const sheet = host.querySelector('.sheet.session-settings');
+    expect(sheet).not.toBeNull();
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(false);
+    click(host.querySelectorAll('.bot-tab-btn')[3]);
+    // The drawer's own header steps aside for the section's, which carries the way back.
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(true);
+    click(host.querySelector('.bot-detail-back'));
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(false);
+    expect(runtime.sessionSettingsOpen).toBe(true);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});
+
+test('mounted Shell: Back unwinds what is not in the URL, then leaves the rest to history', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+    const session = aDirect({ id: 'bot-1', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+    ] });
+    const runtime = reactive(fakeRuntime({
+      bots: [bot], sessions: [session],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }, { selectedId: 'bot-1', sessionSettingsOpen: true, profileBotId: 'bot-1', threadOpen: false }));
+    const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+    const back = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
+
+    // A section of the Bot drawer is this page's business…
+    click(host.querySelectorAll('.bot-tab-btn')[1]);
+    expect(back()).toBe(true);
+    // …the drawer itself is an entry in history, so Back is allowed to navigate.
+    expect(back()).toBe(false);
+    expect(runtime.sessionSettingsOpen).toBe(true);
+
+    // A sheet with no URL of its own is closed here rather than navigated away from.
+    runtime.createBotOpen = true;
+    flushSync();
+    expect(back()).toBe(true);
+    expect(runtime.createBotOpen).toBe(false);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});
+
+test('mounted Shell: the drawer ✕ closes the open section before the drawer itself', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+    const session = aDirect({ id: 'bot-1', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+    ] });
+    const runtime = reactive(fakeRuntime({
+      bots: [bot], sessions: [session],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }, { selectedId: 'bot-1', sessionSettingsOpen: true, profileBotId: 'bot-1' }));
+    const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+    click(host.querySelectorAll('.bot-tab-btn')[1]);
+    const sheet = host.querySelector('.sheet.session-settings');
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(true);
+    // The drawer's own header is hidden while a section is up, so drive its ✕ directly.
+    (host.querySelector('.sheet-close') as HTMLButtonElement).click();
+    flushSync();
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(false);
+    expect(runtime.sessionSettingsOpen).toBe(true);
+    (host.querySelector('.sheet-close') as HTMLButtonElement).click();
+    flushSync();
+    expect(runtime.calls.some((c) => c.name === 'closeSessionSettings')).toBe(true);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});

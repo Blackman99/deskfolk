@@ -470,6 +470,25 @@ const defs: Record<StoryName, Story> = {
 			onClearHistory: () => {}
 		}
 	},
+	'group-pane-section': {
+		component: GroupPane as never,
+		props: {
+			runtime: fakeRuntime({ bots, sessions: [aGroup()] }),
+			selected: aGroup(),
+			t,
+			mobileDetail: true,
+			detail: reactive({
+				sessionId: 'sess-1',
+				name: '视频全流程制作组',
+				nameError: undefined,
+				failed: false,
+				pullPick: ''
+			}),
+			onOpenProfile: () => {},
+			onDeleteGroup: () => {},
+			onClearHistory: () => {}
+		}
+	},
 	'routine-card': {
 		component: RoutineCard as never,
 		props: { runtime: fakeRuntime({ routines: [aRoutine(), aRoutine({ id: 'weekly', title: 'Weekly review', enabled: false, schedule: { kind: 'weekly', time: '17:30', weekdays: ['mon', 'fri'] } })] }), bot: bots[0], t }
@@ -496,6 +515,26 @@ const defs: Record<StoryName, Story> = {
 			modelOptions: [],
 			selectedKind: 'you-bot',
 			profileFailed: false,
+			openDangerConfirm: () => {},
+			clearDanger: () => {},
+			onDeleteBot: () => {},
+			onClearHistory: () => {}
+		}
+	},
+	'profile-pane-section': {
+		component: ProfilePane as never,
+		props: {
+			runtime: (() => {
+				const rt = fakeRuntime({ bots, skills: [aSkill()], sessions: [aDirect()] });
+				rt.profileBotId = 'bot-1';
+				return rt;
+			})(),
+			bot: bots[0]!,
+			t,
+			modelOptions: [],
+			selectedKind: 'you-bot',
+			profileFailed: false,
+			mobileDetail: true,
 			openDangerConfirm: () => {},
 			clearDanger: () => {},
 			onDeleteBot: () => {},

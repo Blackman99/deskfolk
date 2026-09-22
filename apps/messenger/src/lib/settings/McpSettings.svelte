@@ -92,6 +92,12 @@
 		document.getElementById('mcp-editor-name')?.focus();
 	}
 
+	export function backFromEditor(): boolean {
+		if (!editor) return false;
+		closeEditor();
+		return true;
+	}
+
 	function closeEditor(): void {
 		if (busy) return;
 		if (editor && editor !== 'add') flushSafeSave(editor, draft);
@@ -351,7 +357,8 @@
 					</span>
 				{/if}
 				<button type="button" class="modal-close mcp-editor-dismiss" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
-				<button type="button" class="modal-close settings-subpage-close" aria-label={t.common.close} disabled={busy} onclick={() => closeSettings?.()}>✕</button>
+				<!-- ✕ closes this editor; what is under it stays where it was. -->
+				<button type="button" class="modal-close settings-subpage-close" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
 			</div>
 			<div class="modal-body">
 				<p class="muted mcp-confirm-hint m-0 text-12">{t.settings.mcpMustConfirm}</p>

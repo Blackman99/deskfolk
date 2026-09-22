@@ -12,15 +12,27 @@ import { overlayFromFlags, overlayFromUrl } from "./session-url.ts";
 
 const page = reactive({ url: new URL("http://localhost/") });
 const navigations: string[] = [];
+/** How each navigation was made, and the history entries they left behind. */
+const navigationModes: Array<"push" | "replace"> = [];
+const entries: string[] = ["/"];
+let beforeNavigation: (navigation: { type: string; delta?: number; cancel: () => void }) => void;
+let settingsBackHandled = false;
+let settingsBackCalls = 0;
 mock.module("$app/state", () => ({ page }));
 mock.module("$app/navigation", () => ({
-  async goto(target: string) {
+  beforeNavigate(callback: typeof beforeNavigation) { beforeNavigation = callback; },
+  async goto(target: string, opts?: { replaceState?: boolean }) {
     navigations.push(target);
+    navigationModes.push(opts?.replaceState ? "replace" : "push");
+    if (opts?.replaceState) entries[entries.length - 1] = target;
+    else entries.push(target);
     page.url = new URL(target, page.url);
   },
 }));
 // Keep the actual page effects and runtime; the Shell's own effects are outside this startup test.
-mock.module("$lib/Shell.svelte", () => ({ default: () => {} }));
+mock.module("$lib/Shell.svelte", () => ({ default: () => ({
+  backMobileLayer() { settingsBackCalls++; return settingsBackHandled; },
+}) }));
 const { default: Page } = await import("../routes/+page.svelte");
 
 const originalFetch = globalThis.fetch;
@@ -52,6 +64,40 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   globalThis.WebSocket = OriginalSocket;
   navigations.length = 0;
+  navigationModes.length = 0;
+  entries.length = 0;
+  entries.push("/");
+  settingsBackHandled = false;
+  settingsBackCalls = 0;
+});
+
+test('page cancels browser Back only when a layer above the URL consumes the step', async () => {
+  page.url = new URL('http://localhost/?o=settings');
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  close = render(Page, {}).close;
+  const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+  await until(() => runtime.connection === 'connected');
+  settingsBackHandled = true;
+  let cancelled = 0;
+  const cancel = () => { cancelled++; };
+  beforeNavigation({ type: 'popstate', delta: -1, cancel });
+  expect(cancelled).toBe(1);
+  expect(settingsBackCalls).toBe(1);
+  expect(runtime.settingsOpen).toBe(true);
+  beforeNavigation({ type: 'popstate', delta: 1, cancel });
+  beforeNavigation({ type: 'goto', cancel });
+  expect(settingsBackCalls).toBe(1);
+  settingsBackHandled = false;
+  beforeNavigation({ type: 'popstate', delta: -1, cancel });
+  expect(settingsBackCalls).toBe(2);
+  expect(cancelled).toBe(1);
 });
 
 test('routine search from the empty stage selects its Bot conversation before opening the profile URL', async () => {
@@ -168,4 +214,108 @@ for (const query of [
   expect(overlayFromUrl(page.url)).toEqual(wanted);
   expect(overlayFromFlags(runtime)).toEqual(wanted);
   expect(navigations).toEqual([]);
+});
+
+test('opening a screen pushes, closing it walks back, and a deep link rewrites its own entry', async () => {
+  page.url = new URL('http://localhost/');
+  const initial = emptySnapshot();
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] });
+    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const previousBack = window.history.back;
+  // The real Back lands on the entry underneath, which is what the page's plan counts on.
+  window.history.back = () => {
+    entries.pop();
+    page.url = new URL(entries[entries.length - 1]!, page.url);
+    flushSync();
+  };
+  try {
+    close = render(Page, {}).close;
+    const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+    await until(() => runtime.connection === 'connected');
+
+    await runtime.selectSession('direct-1');
+    await until(() => page.url.searchParams.get('s') === 'direct-1');
+    runtime.openSessionSettings();
+    await until(() => page.url.searchParams.get('o') === 'session');
+    expect(navigationModes).toEqual(['push', 'push']);
+    expect(entries).toEqual(['/', '/?s=direct-1', '/?s=direct-1&o=session']);
+
+    // Closing the drawer must not leave another entry in front of the one that opened it.
+    runtime.closeSessionSettings();
+    await until(() => page.url.searchParams.get('o') === null);
+    expect(navigationModes).toEqual(['push', 'push']);
+    expect(entries).toEqual(['/', '/?s=direct-1']);
+    expect(runtime.sessionSettingsOpen).toBe(false);
+
+    // And once more, back to the roster.
+    runtime.selectedId = null;
+    await until(() => page.url.search === '');
+    expect(entries).toEqual(['/']);
+
+    // A screen opened with nothing of ours underneath rewrites its entry instead.
+    entries.length = 0;
+    entries.push('/?s=direct-1&o=session');
+    page.url = new URL('http://localhost/?s=direct-1&o=session');
+    flushSync();
+    navigationModes.length = 0;
+    await until(() => runtime.sessionSettingsOpen);
+    runtime.closeSessionSettings();
+    await until(() => page.url.searchParams.get('o') === null);
+    expect(navigationModes).toEqual(['replace']);
+    expect(entries).toEqual(['/?s=direct-1']);
+  } finally {
+    window.history.back = previousBack;
+  }
+});
+
+test('a back step this page asked for is not mistaken for a Back press', async () => {
+  page.url = new URL('http://localhost/');
+  const initial = emptySnapshot();
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] });
+    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const previousBack = window.history.back;
+  window.history.back = () => {
+    entries.pop();
+    page.url = new URL(entries[entries.length - 1]!, page.url);
+    flushSync();
+  };
+  try {
+    close = render(Page, {}).close;
+    const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+    await until(() => runtime.connection === 'connected');
+    await runtime.selectSession('direct-1');
+    await until(() => page.url.searchParams.get('s') === 'direct-1');
+    runtime.openSessionSettings();
+    await until(() => page.url.searchParams.get('o') === 'session');
+
+    // The Shell would happily close another layer; closing the drawer here is not its business.
+    settingsBackHandled = true;
+    settingsBackCalls = 0;
+    let cancelled = 0;
+    runtime.closeSessionSettings();
+    await until(() => page.url.searchParams.get('o') === null);
+    beforeNavigation({ type: 'popstate', delta: -1, cancel: () => { cancelled++; } });
+    expect(cancelled).toBe(0);
+    expect(settingsBackCalls).toBe(0);
+    // The next real Back is the person's again.
+    beforeNavigation({ type: 'popstate', delta: -1, cancel: () => { cancelled++; } });
+    expect(settingsBackCalls).toBe(1);
+    expect(cancelled).toBe(1);
+  } finally {
+    window.history.back = previousBack;
+  }
 });

@@ -62,6 +62,7 @@
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import MobileNavigation from './MobileNavigation.svelte';
+	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
@@ -95,9 +96,125 @@
 	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
 	let themeMenuOpen = $state(false);
 	let mobileSettingsDetail = $state(false);
-	const mobileDestination = $derived(runtime.settingsOpen ? 'settings' : runtime.workspaceOpen ? 'workspace' : 'sessions');
+	let settingsModal = $state<SettingsModal>();
+	/**
+	 * The Bot and group drawers are two screens on a phone, the same way settings is: the list of
+	 * sections, then one section. The shell holds which one is showing because the drawer's own
+	 * chrome changes with it, and because Back has to unwind the section before it closes.
+	 */
+	let paneMobileDetail = $state(false);
+	let profilePane = $state<{ backFromEditor: () => boolean } | undefined>();
 
-	function navigateMobile(destination: 'sessions' | 'workspace' | 'settings'): void {
+	/**
+	 * One step out of whatever is on top. The phone's Back calls this first and only navigates
+	 * when it says no; the order is `topLayer` in mobile-route.ts, which is also the order the
+	 * Escape chain below walks.
+	 *
+	 * True means "handled here": either a layer closed, or it refused to (a confirmation that is
+	 * already running owns the keyboard until it finishes). Screens the URL carries answer false
+	 * — for those Back is a real navigation, except where closing has to go through a pane that
+	 * may still have unsaved work.
+	 */
+	/**
+	 * What ✕ closes in the Bot and group drawers: the screen it sits on. A section or a Bot's
+	 * profile opened inside the drawer steps out one level; on the drawer's own screen there is
+	 * nothing above it, so it closes.
+	 */
+	function closeCurrentDrawerScreen(): void {
+		if (paneMobileDetail) {
+			paneMobileDetail = false;
+			return;
+		}
+		if (nestedProfile) {
+			closeNestedProfile();
+			return;
+		}
+		runtime.closeSessionSettings();
+	}
+
+	export function backMobileLayer(): boolean {
+		switch (topLayer({
+			themeMenuOpen,
+			dangerConfirm: dangerConfirm !== null,
+			createBotOpen: runtime.createBotOpen,
+			createGroupOpen: runtime.createGroupOpen,
+			providerEditor: providerEditor !== null,
+			confirmingIndependent,
+			settingsOpen: runtime.settingsOpen,
+			sessionSettingsOpen: runtime.sessionSettingsOpen,
+			routeLogOpen: runtime.routeLogOpen,
+			threadOpen: runtime.threadOpen,
+			workspaceOpen: runtime.workspaceOpen,
+			artifactPreview: artifactPreview !== null
+		})) {
+			case 'theme-menu':
+				themeMenuOpen = false;
+				return true;
+			case 'danger':
+				// A running action is not dismissible; swallowing Back is the point.
+				if (escapeDismissesDanger) dismissDangerConfirm();
+				return true;
+			case 'create-bot':
+				runtime.createBotOpen = false;
+				return true;
+			case 'create-group':
+				runtime.createGroupOpen = false;
+				return true;
+			case 'provider-editor':
+				providerEditor = null;
+				return true;
+			case 'independent-confirm':
+				return true;
+			case 'settings':
+				// Only its inner pages are ours to unwind; settings itself is an entry in history.
+				return settingsModal?.backWithinSettings() ?? false;
+			case 'session-settings':
+				// Same split: the skill sheet and the section list are not in the URL, the drawer
+				// and a Bot's profile inside it are.
+				if (profilePane?.backFromEditor()) return true;
+				if (paneMobileDetail) {
+					paneMobileDetail = false;
+					return true;
+				}
+				return false;
+			case 'route-log':
+				runtime.closeRouteLog();
+				return true;
+			case 'thread':
+				runtime.threadOpen = false;
+				return true;
+			case 'workspace':
+				// The find bar is ours. The screen itself is history's, unless an unsaved file has
+				// to be asked about first — then the pane takes over and answers later.
+				if (workspacePane?.closeFind()) return true;
+				if (workspacePane?.blocksClose()) {
+					workspacePane.requestCloseFromParent();
+					return true;
+				}
+				return false;
+			case 'preview':
+				if (previewPane?.closeFind()) return true;
+				if (previewPane?.blocksClose()) {
+					previewPane.requestCloseFromParent();
+					return true;
+				}
+				return false;
+			default:
+				return false;
+		}
+	}
+	$effect(() => {
+		// A different Bot or session, or a closed drawer: start again at the list of sections.
+		void runtime.profileBotId;
+		void runtime.selectedId;
+		void runtime.sessionSettingsOpen;
+		untrack(() => { paneMobileDetail = false; });
+	});
+
+	const mobileDestination = $derived<MobileDestination>(
+		runtime.settingsOpen ? 'settings' : runtime.workspaceOpen ? 'workspace' : 'sessions'
+	);
+	function navigateMobile(destination: MobileDestination): void {
 		if (destination === mobileDestination) return;
 		const navigate = () => {
 			themeMenuOpen = false;
@@ -125,7 +242,7 @@
 		y: number;
 	} | null>(null);
 	let contextMenuEpoch = 0;
-	let workspacePane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean } | null>(null);
+	let workspacePane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
 	let previewPreferred = $state(loadPreviewWidth());
 	let previewDragging = $state(false);
 	let sidebarPreferred = $state(loadSidebarWidth());
@@ -600,7 +717,7 @@
 		runtime.workspaceSelected = sanitizePreviewPath(path) ?? '';
 	}
 
-	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean } | null>(null);
+	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
 
 	function startPreviewResize(ev: PointerEvent): void {
 		if (!artifactPreview) return;
@@ -993,7 +1110,7 @@
 				}
 			}}
 		>
-			<div class="sheet is-right session-settings">
+			<div class="sheet is-right session-settings" class:is-mobile-detail={paneMobileDetail}>
 				<div class="sheet-head">
 					{#if nestedProfile}
 						<button
@@ -1028,7 +1145,7 @@
 						type="button"
 						class="sheet-close"
 						title={t.common.close}
-						onclick={() => runtime.closeSessionSettings()}
+						onclick={closeCurrentDrawerScreen}
 					>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
 							<line x1="18" y1="6" x2="6" y2="18"></line>
@@ -1040,12 +1157,14 @@
 				{#if profileBot}
 					{#key profileBot.id}
 						<ProfilePane
+							bind:this={profilePane}
 							{runtime}
 							bot={profileBot}
 							{t}
 							modelOptions={availableModelOptions}
 							{selectedKind}
 							bind:profileFailed
+							bind:mobileDetail={paneMobileDetail}
 							openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
 							{clearDanger}
 							onDeleteBot={() => openDeleteBotConfirm()}
@@ -1053,17 +1172,16 @@
 						/>
 					{/key}
 				{:else}
-					<div class="panel-scroll-content flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
-						<GroupPane
-							{runtime}
-							{selected}
-							{t}
-							bind:detail={groupDetail}
-							onOpenProfile={openProfile}
-							onDeleteGroup={() => openDeleteGroupConfirm()}
-							onClearHistory={() => openClearHistoryConfirm()}
-						/>
-					</div>
+					<GroupPane
+						{runtime}
+						{selected}
+						{t}
+						bind:detail={groupDetail}
+						bind:mobileDetail={paneMobileDetail}
+						onOpenProfile={openProfile}
+						onDeleteGroup={() => openDeleteGroupConfirm()}
+						onClearHistory={() => openClearHistoryConfirm()}
+					/>
 				{/if}
 			</div>
 		</div>
@@ -1081,6 +1199,7 @@
 		<MobileNavigation active={mobileDestination} {t} updateAvailable={updateChecker.updateVisible} onNavigate={navigateMobile} />
 	{/if}
 	<SettingsModal
+		bind:this={settingsModal}
 		bind:mobileSettingsDetail
 		{runtime}
 		{t}
@@ -1132,6 +1251,7 @@
 <style>
 	@media (max-width: 680px) {
 		.shell.has-mobile-navigation > :global(.side) { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+
 	}
 
 	.preview-split {
@@ -1381,10 +1501,6 @@
 		margin: 0;
 	}
 
-	.panel-scroll-content > :global(*) {
-		flex-shrink: 0;
-	}
-
 	.sheet.session-settings :global(.profile-pane) {
 		flex: 1 1 0;
 		min-height: 0;
@@ -1433,6 +1549,31 @@
 	 * width, leaving a 200px list beside a dead strip.
 	 */
 	@media (max-width: 680px) {
+		/* Bot and group settings are a page here, not a drawer peeking past a backdrop. */
+		.profile-backdrop {
+			background: var(--bg);
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+
+		.sheet.is-right.session-settings {
+			width: 100%;
+			max-width: 100%;
+			border-left: 0;
+			box-shadow: none;
+			animation: none;
+		}
+
+		.sheet.session-settings :global(.sheet-head) {
+			min-height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 12px 0 16px;
+		}
+
+		/* One header per screen: the section brings its own, with the way back in it. */
+		.sheet.session-settings.is-mobile-detail :global(.sheet-head) {
+			display: none;
+		}
+
 		.shell,
 		.shell.is-thread,
 		.shell.is-preview,

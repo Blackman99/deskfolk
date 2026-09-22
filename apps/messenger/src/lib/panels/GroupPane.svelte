@@ -25,6 +25,8 @@
 		selected: SessionSummary;
 		t: Copy;
 		detail: GroupDetailDraft;
+		/** Phone only: a section is open on top of the list. The shell owns it so Back can unwind it. */
+		mobileDetail?: boolean;
 		onOpenProfile: (botId: string) => void;
 		onDeleteGroup: () => void;
 		onClearHistory: () => void;
@@ -35,10 +37,50 @@
 		selected,
 		t,
 		detail = $bindable(),
+		mobileDetail = $bindable(false),
 		onOpenProfile,
 		onDeleteGroup,
 		onClearHistory
 	}: Props = $props();
+
+	/**
+	 * On a phone this pane is two screens, like the settings page: the sections as a list, and one
+	 * section at a time on top of it. Only the open section is rendered there, so the screen holds
+	 * what it says it holds; wider windows keep the single scrolling column of cards.
+	 */
+	type GroupSection = 'profile' | 'members' | 'actions' | 'danger';
+	let phone = $state(false);
+	$effect(() => {
+		const query = window.matchMedia('(max-width: 680px)');
+		const apply = () => { phone = query.matches; };
+		apply();
+		query.addEventListener('change', apply);
+		return () => query.removeEventListener('change', apply);
+	});
+	let activeSection = $state<GroupSection>('profile');
+	const shows = (section: GroupSection): boolean => !phone || (mobileDetail && activeSection === section);
+
+	function openSection(section: GroupSection): void {
+		activeSection = section;
+		mobileDetail = true;
+	}
+
+	/** The shell's Back button and the browser's both come through here first. */
+	export function backFromDetail(): boolean {
+		if (!mobileDetail) return false;
+		mobileDetail = false;
+		return true;
+	}
+
+	function sectionLabel(section: GroupSection): string {
+		return section === 'profile'
+			? t.detail.groupProfile
+			: section === 'members'
+				? t.detail.members
+				: section === 'actions'
+					? t.detail.sessionActions
+					: t.detail.dangerZone;
+	}
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
@@ -118,14 +160,55 @@
 	}
 </script>
 
-{#if selected.kind === 'group'}
-	{#if detail.failed}
-		<div class="panel-alert is-error">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-			<span>{t.detail.saveFailed}</span>
-		</div>
-	{/if}
+<div class="group-pane" class:is-mobile-detail={mobileDetail}>
+	<!-- Phone only: the sections as a list. Wider windows show them all at once, as before. -->
+	<nav class="group-sections" aria-label={selected.kind === 'group' ? t.detail.titleGroup : t.detail.titleBot}>
+		{#if selected.kind === 'group'}
+			<button type="button" class="group-section-btn" onclick={() => openSection('profile')}>
+				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+				<span class="section-name">{t.detail.groupProfile}</span>
+			</button>
+		{/if}
+		<button type="button" class="group-section-btn" onclick={() => openSection('members')}>
+			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+			<span class="section-name">{t.detail.members}</span>
+			<span class="section-count">{selected.kind === 'group' ? groupPresent.length + 1 : groupPresent.length}</span>
+		</button>
+		{#if selected.kind === 'group'}
+			<button type="button" class="group-section-btn" onclick={() => openSection('actions')}>
+				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+				<span class="section-name">{t.detail.sessionActions}</span>
+			</button>
+		{/if}
+		<button type="button" class="group-section-btn is-danger" onclick={() => openSection('danger')}>
+			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+			<span class="section-name">{t.detail.dangerZone}</span>
+		</button>
+	</nav>
 
+	<div class="group-detail">
+		<div class="group-detail-head">
+			<button
+				type="button"
+				class="group-detail-back"
+				aria-label={t.detail.backToSections}
+				onclick={() => backFromDetail()}
+			>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			</button>
+			<h3 class="group-detail-title">{sectionLabel(activeSection)}</h3>
+		</div>
+
+		<div class="panel-scroll-content group-pane-scroll flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
+
+{#if selected.kind === 'group' && detail.failed}
+	<div class="panel-alert is-error">
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+		<span>{t.detail.saveFailed}</span>
+	</div>
+{/if}
+
+{#if selected.kind === 'group' && shows('profile')}
 	<!-- Group Profile Section -->
 	<div class="panel-card group-hero-card p-8">
 		<div class="group-hero-header">
@@ -173,7 +256,9 @@
 			{/if}
 		</div>
 	</div>
+{/if}
 
+{#if selected.kind === 'group' && shows('members')}
 	<!-- Group Members Section -->
 	<div class="panel-card group-members-card">
 		<div class="panel-card-head">
@@ -278,7 +363,7 @@
 			{/if}
 		</div>
 	</div>
-{:else if selectedKind === 'bot-bot'}
+{:else if selectedKind === 'bot-bot' && shows('members')}
 	<div class="panel-card group-members-card">
 		<div class="panel-card-head">
 			<span class="panel-card-title">{t.detail.members}</span>
@@ -335,7 +420,7 @@
 {/if}
 
 <!-- Session Actions (Archive / Restore) -->
-{#if selected.kind === 'group'}
+{#if selected.kind === 'group' && shows('actions')}
 	<div class="panel-card">
 		<div class="panel-card-head">
 			<span class="panel-card-title">{t.detail.sessionActions}</span>
@@ -363,6 +448,7 @@
 {/if}
 
 <!-- Danger Zone (Clear History / Delete Group) -->
+{#if shows('danger')}
 <div class="panel-card danger-zone-card">
 	<div class="panel-card-head">
 		<span class="panel-card-title">{t.detail.dangerZone}</span>
@@ -399,8 +485,49 @@
 		</div>
 	</div>
 </div>
+{/if}
+
+		</div>
+	</div>
+</div>
 
 <style>
+	/*
+	 * Wider windows: one scrolling column of cards, as before — the section list and the
+	 * section header have no box here. The phone block at the end turns the same markup into
+	 * the two screens the settings page uses.
+	 */
+	.group-pane {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 0;
+		min-height: 0;
+		height: 100%;
+		overflow: hidden;
+	}
+
+	.group-sections,
+	.group-detail-head {
+		display: none;
+	}
+
+	.group-detail {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 0;
+		min-height: 0;
+	}
+
+	.group-pane-scroll {
+		min-height: 0;
+		box-sizing: border-box;
+	}
+
+	/* Cards keep their height in the scrolling column rather than squeezing to fit. */
+	.group-pane-scroll > :global(*) {
+		flex-shrink: 0;
+	}
+
 	.badge-archived {
 		align-self: flex-start;
 		font-size: 11px;
@@ -663,5 +790,155 @@
 
 	.group-hero-avatar :global(.row-avatar) {
 		--avatar-ring: var(--pane);
+	}
+
+	@media (max-width: 680px) {
+		.group-pane {
+			position: relative;
+		}
+
+		.group-sections {
+			position: absolute;
+			inset: 0;
+			display: flex;
+			flex-direction: column;
+			overflow-y: auto;
+			padding: 14px 12px calc(24px + env(safe-area-inset-bottom));
+			background: var(--sidebar-bg);
+			transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+		}
+
+		.group-pane.is-mobile-detail .group-sections {
+			transform: translateX(-28%);
+		}
+
+		.group-section-btn {
+			position: relative;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			width: 100%;
+			min-height: 54px;
+			padding: 0 14px;
+			border: 0;
+			background: var(--pane);
+			color: var(--ink);
+			font: 500 15px/1.2 var(--font);
+			text-align: left;
+			cursor: pointer;
+		}
+
+		.group-section-btn:first-child {
+			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+		}
+
+		.group-section-btn:last-child {
+			border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+		}
+
+		.group-section-btn + .group-section-btn::before {
+			content: '';
+			position: absolute;
+			left: 44px;
+			right: 0;
+			top: 0;
+			height: 1px;
+			background: var(--line);
+		}
+
+		.group-section-btn::after {
+			content: '';
+			width: 8px;
+			height: 8px;
+			border-top: 1.8px solid var(--muted);
+			border-right: 1.8px solid var(--muted);
+			transform: rotate(45deg);
+			margin-left: auto;
+			flex-shrink: 0;
+		}
+
+		.group-section-btn:active {
+			background: var(--row-hover);
+		}
+
+		.group-section-btn .section-icon {
+			color: var(--muted);
+			flex-shrink: 0;
+		}
+
+		.group-section-btn.is-danger .section-icon {
+			color: var(--danger);
+		}
+
+		.group-section-btn .section-count {
+			margin-left: auto;
+			margin-right: 8px;
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		.group-detail {
+			position: absolute;
+			inset: 0;
+			z-index: 2;
+			background: var(--bg);
+			transform: translateX(100%);
+			visibility: hidden;
+			transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.22s;
+		}
+
+		.group-pane.is-mobile-detail .group-detail {
+			transform: translateX(0);
+			visibility: visible;
+			transition-delay: 0s;
+		}
+
+		.group-detail-head {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			flex-shrink: 0;
+			min-height: 56px;
+			padding: 0 12px 0 4px;
+			background: var(--pane);
+			border-bottom: 1px solid var(--line);
+		}
+
+		.group-detail-back {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 44px;
+			height: 44px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.group-detail-back:active {
+			background: var(--row-hover);
+		}
+
+		.group-detail-title {
+			margin: 0;
+			font-size: 16px;
+			font-weight: 650;
+			color: var(--ink);
+		}
+
+		.group-pane-scroll {
+			padding: 16px 12px calc(28px + env(safe-area-inset-bottom));
+			overscroll-behavior: contain;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.group-sections,
+			.group-detail {
+				transition: none;
+			}
+		}
 	}
 </style>

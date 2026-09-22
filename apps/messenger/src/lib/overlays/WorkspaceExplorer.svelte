@@ -3,6 +3,7 @@
 	import { backdropClick } from '../click-outside.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import ArtifactPreview from './ArtifactPreview.svelte';
+	import { pageSlide } from '../mobile-page-slide.ts';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -18,7 +19,7 @@
 	/** A click outside closes the explorer; a text-selection drag that starts inside never does. */
 	const workspaceBackdrop = backdropClick();
 
-	let pane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean } | null>(null);
+	let pane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
 
 	export function requestCloseFromParent(afterClose?: () => void): void {
 		if (!afterClose && pane?.closeFind()) return;
@@ -28,6 +29,10 @@
 
 	export function closeFind(): boolean {
 		return pane?.closeFind() ?? false;
+	}
+
+	export function blocksClose(): boolean {
+		return pane?.blocksClose() ?? false;
 	}
 </script>
 
@@ -43,7 +48,7 @@
 		if (workspaceBackdrop.isOutside(e)) requestCloseFromParent();
 	}}
 >
-	<div class="workspace-overlay-pane">
+	<div class="workspace-overlay-pane" transition:pageSlide>
 		{#if !workspacePath}
 			<section class="workspace-unset">
 				<h2>{t.sidebar.workspace}</h2>
@@ -109,12 +114,22 @@
 	@media (max-width: 680px) {
 	.workspace-overlay {
 	display: flex;
+	/* The page itself covers the screen here, so nothing dims behind it — and while it slides,
+	   what shows beside it is the page it is sliding over, not a backdrop. */
+	background: transparent;
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	animation: none;
 	}
 	}
 
 	@media (max-width: 680px) {
 	.workspace-overlay-pane {
 	width: 100%;
+	/* The page transition moves it now, in whichever direction the tab bar went. */
+	animation: none;
+	border-left: 0;
+	box-shadow: none;
 	}
 	}
 
