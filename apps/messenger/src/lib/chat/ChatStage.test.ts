@@ -1,12 +1,73 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aGroup, aMessage, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
 
 const t = copyFor("zh");
+
+for (const [label, session, showAvatars] of [
+  ["user-Bot direct", aDirect(), false],
+  ["group", aGroup(), true],
+  ["Bot-Bot direct", aBotDirect(), true],
+] as const) {
+  test(`${label} uses the correct avatars for messages and streaming replies`, () => {
+    const messages = (["user", "bot", "ask", "system"] as const).map((kind, index) => aMessage({
+      id: `avatar-${kind}`, session_id: session.id, kind,
+      author: kind === "user" ? "user" : "bot-1",
+      body: kind === "system" ? "中断" : `${kind} message`,
+      created_at: `2026-09-19T02:00:0${index}.000Z`,
+    }));
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot()], sessions: [session], messages,
+      turns: [aTurn({ session_id: session.id, partial_text: "Streaming reply", created_at: "2026-09-19T02:00:05.000Z" })],
+    }, { selectedId: session.id }));
+    let openedProfile = "";
+    const { host, close } = render(ChatStage, {
+      runtime, t, selected: session,
+      onOpenProfile: (id: string) => { openedProfile = id; },
+      onOpenArtifact: () => {}, onCreateBot: () => {},
+    });
+    try {
+      for (const message of messages) {
+        const row = host.querySelector(`[data-message-id="${message.id}"]`)?.closest(".msg-wrap");
+        expect(row).not.toBeNull();
+        expect(Boolean(row?.querySelector(".avatar-col"))).toBe(showAvatars);
+        expect(row?.textContent).toContain(message.body);
+      }
+      const streamingRow = host.querySelector(".is-streaming-wrap");
+      expect(streamingRow).not.toBeNull();
+      expect(Boolean(streamingRow?.querySelector(".avatar-col"))).toBe(showAvatars);
+      expect(streamingRow?.textContent).toContain("Streaming reply");
+      host.querySelector<HTMLButtonElement>(".is-bot .sender-name")?.click();
+      expect(openedProfile).toBe("bot-1");
+    } finally {
+      close();
+    }
+  });
+}
+
+test("empty direct chat keeps its welcome avatar and profile entry", () => {
+  const session = aDirect();
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [], turns: [],
+  }, { selectedId: session.id }));
+  let openedProfile = "";
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: (id: string) => { openedProfile = id; },
+    onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    expect(host.querySelector(".welcome-avatar")).not.toBeNull();
+    host.querySelector<HTMLButtonElement>(".welcome-identity-btn")?.click();
+    expect(openedProfile).toBe("bot-1");
+  } finally {
+    close();
+  }
+});
 
 for (const kind of ["user", "bot", "ask", "system"] as const) {
   test(`${kind} message prevents secondary-click selection and preserves manual selection`, () => {

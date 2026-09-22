@@ -1091,4 +1091,23 @@
 		border-color: var(--accent);
 		color: var(--accent);
 	}
+	/*
+	 * The wizard is a page on a phone too: a 620px card inside 40px of padding left 246px of
+	 * usable width, and every field in it is full width.
+	 */
+	@media (max-width: 680px) {
+		.onboarding-screen {
+			padding: 0;
+			align-items: stretch;
+		}
+
+		.onboarding-card {
+			width: 100%;
+			min-height: 100%;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+			padding: calc(20px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+		}
+	}
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { backdropClick } from '../click-outside.ts';
+	import { pageSlide } from '../mobile-page-slide.ts';
 	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import type { Copy } from '../copy.ts';
 	import type { RouteLogRow } from './route-log.ts';
@@ -151,6 +152,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="route-log-overlay"
+	transition:pageSlide
 	role="dialog"
 	aria-modal="true"
 	aria-label={t.routes.title}
@@ -1143,5 +1145,34 @@
 	  line-height: 1.45;
 	  color: var(--ink-secondary);
 	  overflow-wrap: anywhere;
+	}
+	/*
+	 * On a phone this is a page, not a sheet with a strip of dimmed conversation beside it: the
+	 * strip was 72px of something you could not read and could not touch, and the page it covers
+	 * is the one Back returns to anyway. The slide comes from `pageSlide` here, so the sheet's own
+	 * animation and the backdrop behind it both go.
+	 */
+	@media (max-width: 680px) {
+	  .route-log-overlay {
+	    background: transparent;
+	    backdrop-filter: none;
+	    -webkit-backdrop-filter: none;
+	    animation: none;
+	  }
+
+	  .route-log-pane {
+	    width: 100%;
+	    border-left: 0;
+	    box-shadow: none;
+	    animation: none;
+	  }
+
+	  .route-log-header {
+	    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+	  }
+
+	  .route-log-body {
+	    padding: 12px 12px calc(20px + env(safe-area-inset-bottom));
+	  }
 	}
 </style>

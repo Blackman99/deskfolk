@@ -3,6 +3,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
+	import { pageSlide } from '../mobile-page-slide.ts';
 	import {
 		draftFromMemory,
 		mapMemoryError,
@@ -190,7 +191,8 @@
 {#if editing}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
-		class="modal-backdrop memory-modal-backdrop"
+		class="modal-backdrop memory-modal-backdrop page-on-phone"
+		transition:pageSlide
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="memory-modal-title"
@@ -214,6 +216,15 @@
 			onpointerdown={(e) => e.stopPropagation()}
 		>
 			<div class="modal-head">
+				<button
+					type="button"
+					class="modal-back"
+					aria-label={t.common.back}
+					disabled={busy}
+					onclick={closeEdit}
+				>
+					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				</button>
 				<h2 id="memory-modal-title">{t.sidebar.memoryEdit}</h2>
 				<button
 					type="button"

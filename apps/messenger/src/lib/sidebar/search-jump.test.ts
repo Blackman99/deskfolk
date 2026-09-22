@@ -152,3 +152,20 @@ test("collectUntilMessage walks older pages until the hit appears", async () => 
   expect(result.messages.map((row) => row.id)).toEqual(["m1", "m2", "m-hit"]);
   expect(result.next).toBe("c3");
 });
+
+test("a hit reads as prose: the markdown around it comes off, the path of a file does not", () => {
+  const hit = searchHitView(
+    {
+      kind: "message",
+      id: "m1",
+      session_id: "d-writer",
+      session_title: "Writer",
+      snippet: "### 群组\n已切到 `deepseek` 端点，**当前模型** 是 [v4](https://x/y)",
+    },
+    kindLabels,
+  );
+  expect(hit.snippet).toBe("群组 已切到 deepseek 端点，当前模型 是 v4");
+  // A path is plain already, and `_` and `*` in one are characters, not emphasis.
+  expect(searchHitView({ kind: "file", path: "docs/a_b*c.md", snippet: "docs/a_b*c.md" }, kindLabels).snippet)
+    .toBe("docs/a_b*c.md");
+});

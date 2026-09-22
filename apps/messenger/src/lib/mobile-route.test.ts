@@ -64,11 +64,13 @@ test("the stack follows the URL: back pops, a replacement rewrites the top, anyt
 function layers(over: Partial<LayerState> = {}): LayerState {
   return {
     themeMenuOpen: false,
+    createMenuOpen: false,
     dangerConfirm: false,
     createBotOpen: false,
     createGroupOpen: false,
     providerEditor: false,
     confirmingIndependent: false,
+    searchPageOpen: false,
     settingsOpen: false,
     sessionSettingsOpen: false,
     routeLogOpen: false,
@@ -88,4 +90,11 @@ test("Back closes the innermost thing on top", () => {
   expect(topLayer(layers({ sessionSettingsOpen: true, artifactPreview: true }))).toBe("session-settings");
   expect(topLayer(layers({ workspaceOpen: true, artifactPreview: true }))).toBe("workspace");
   expect(topLayer(layers({ threadOpen: true, artifactPreview: true }))).toBe("thread");
+  // The phone's search page is a screen over the chat list: Back leaves search before it leaves
+  // the list. Switching destination closes it, so it never has settings or the workspace on top
+  // of it; a menu can still open over anything.
+  expect(topLayer(layers({ searchPageOpen: true }))).toBe("search-page");
+  expect(topLayer(layers({ searchPageOpen: true, threadOpen: true }))).toBe("search-page");
+  expect(topLayer(layers({ searchPageOpen: true, themeMenuOpen: true }))).toBe("theme-menu");
+  expect(topLayer(layers({ createMenuOpen: true, settingsOpen: true }))).toBe("create-menu");
 });

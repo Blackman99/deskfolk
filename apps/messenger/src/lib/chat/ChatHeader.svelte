@@ -101,13 +101,14 @@
 
 <svelte:window onclick={handleWindowClick} />
 
-<header class="top">
+<header class="top" class:has-session={selected !== null}>
 	{#if selected}
 		<div class="top-session-identity flex items-center gap-6 min-w-0 flex-1">
 			<button
 				type="button"
 				class="btn-mobile-back"
-				title={t.common.close}
+				title={t.sidebar.backToSessions}
+				aria-label={t.sidebar.backToSessions}
 				onclick={() => (runtime.selectedId = null)}
 			>
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -155,10 +156,10 @@
 								{selectedWork && selectedWork.kind !== 'idle' ? selectedWork.label : t.chat.online}
 							</span>
 							{#if selectedPeerBot.model}
-								<span class="top-model-pill mono">{selectedPeerBot.model}</span>
+								<span class="top-model-pill mono" title={selectedPeerBot.model}>{selectedPeerBot.model}</span>
 							{/if}
 						{/if}
-						<span class="meta"
+						<span class="meta" class:is-direct-presence={selectedKind === 'you-bot'}
 							>{sessionPresence(
 								selected,
 								botsById,
@@ -581,19 +582,36 @@
 	}
 
 	@media (max-width: 680px) {
-		.top {
-			padding: 8px 10px;
-			gap: 8px;
+		.top.has-session {
+			padding: 0;
+			gap: 0;
+			min-height: 64px;
+			align-items: stretch;
+			box-shadow: none;
 		}
 
 		.top-session-identity {
-			gap: 8px;
+			gap: 0;
+			align-items: stretch;
 		}
 
 		.top-identity-btn {
-			gap: 8px;
-			padding-inline: 4px;
-			margin-inline: -4px;
+			flex: 1;
+			gap: 10px;
+			padding: 8px 6px;
+			margin: 0;
+			border-radius: 0;
+		}
+
+		.top-titles {
+			flex: 1;
+			gap: 3px;
+		}
+
+		.top-title-text {
+			font-size: 16px;
+			line-height: 21px;
+			font-weight: 600;
 		}
 
 		.top-actions {
@@ -601,23 +619,89 @@
 		}
 
 		.mobile-actions {
-			display: block;
+			display: flex;
 		}
 
-		.btn-mobile-back {
-			width: 40px;
-			height: 40px;
-			flex: 0 0 40px;
+		.btn-mobile-back,
+		.btn-mobile-actions {
+			width: 48px;
+			min-height: 64px;
+			height: 100%;
+			flex: 0 0 48px;
+			padding: 0;
+			border: 0;
+			border-radius: 0;
+			background: transparent;
+			box-shadow: none;
+			color: var(--ink-secondary);
+		}
+
+		.btn-mobile-back svg,
+		.btn-mobile-actions svg {
+			width: 22px;
+			height: 22px;
+		}
+
+		.btn-mobile-back:hover,
+		.btn-mobile-back:active,
+		.btn-mobile-actions:hover,
+		.btn-mobile-actions.is-active {
+			background: var(--line-subtle);
+			color: var(--accent);
+		}
+
+		.btn-mobile-back:focus-visible,
+		.btn-mobile-actions:focus-visible,
+		.top-identity-btn:focus-visible {
+			outline: 2px solid var(--accent);
+			outline-offset: -3px;
+		}
+
+		.mobile-actions-menu {
+			top: 100%;
+			right: 8px;
 		}
 
 		.top-avatar,
 		.top-avatar :global(.row-avatar) {
-			width: 32px;
-			height: 32px;
+			width: 36px;
+			height: 36px;
 		}
 
 		.top-subline {
-			font-size: 11px;
+			gap: 8px;
+			font-size: 12px;
+			line-height: 17px;
+		}
+
+		.status-indicator {
+			flex-shrink: 0;
+			font-weight: 400;
+		}
+
+		.status-indicator .status-dot,
+		.meta.is-direct-presence {
+			display: none;
+		}
+
+		.top .top-model-pill {
+			min-width: 0;
+			padding: 0;
+			border: 0;
+			border-radius: 0;
+			background: transparent;
+			font-family: var(--font);
+			font-size: 12px;
+			font-weight: 400;
+			color: var(--muted);
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.top .meta {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			font-size: 12px;
 		}
 	}
 

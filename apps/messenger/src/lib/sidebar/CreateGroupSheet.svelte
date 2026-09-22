@@ -11,6 +11,7 @@
 	} from '../panels/create-form.ts';
 	import { rosterLetter } from './roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { NormalizedSelectOption, SelectOption } from '../select-options.ts';
 
 	type Props = {
@@ -84,7 +85,8 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
-	class="modal-backdrop"
+	class="modal-backdrop page-on-phone"
+	transition:pageSlide
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
@@ -98,6 +100,14 @@
 >
 	<div class="modal-dialog create-group-modal">
 		<div class="modal-head">
+			<button
+				type="button"
+				class="modal-back"
+				aria-label={t.common.back}
+				onclick={onClose}
+			>
+				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			</button>
 			<h2>{t.sidebar.addGroup}</h2>
 			<button type="button" class="modal-close" title={t.common.close} onclick={onClose}>✕</button>
 		</div>
@@ -163,6 +173,18 @@
 
 	.create-group-modal :global(.modal-foot) {
 		border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+	}
+
+	/* As a page there are no corners to round; the frame in modals.css squares the rest. */
+	@media (max-width: 680px) {
+		.create-group-modal :global(.modal-head),
+		.create-group-modal :global(.modal-foot) {
+			border-radius: 0;
+		}
+
+		.create-group-modal :global(.modal-body) {
+			padding: 18px 16px;
+		}
 	}
 
 	.member-avatar {

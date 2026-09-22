@@ -158,26 +158,31 @@ export function isPendingAsk(message: Message, turns: readonly Turn[]): boolean 
   return turns.some((turn) => turn.id === message.turn_id && turn.status === "waiting_ask");
 }
 
+/**
+ * The line a list row shows. `limit` is generous by default and larger still for a caller that
+ * strips markdown afterwards — cutting first would leave half a link or an unclosed `**`.
+ */
 export function latestPreview(
   messages: readonly Message[],
   sessionId: string,
   session?: SessionSummary | null,
   liveTurns?: readonly Turn[],
+  limit = 80,
 ): string {
   const runningTurn = liveTurns?.find(
     (turn) => turn.session_id === sessionId && turn.status === "running",
   );
   if (runningTurn?.partial_text) {
-    return runningTurn.partial_text.slice(-80);
+    return runningTurn.partial_text.slice(-limit);
   }
   const last = messages
     .filter((m) => m.session_id === sessionId && !isHiddenTranscriptKind(m.kind))
     .slice()
     .sort(byTime)
     .at(-1);
-  if (last) return last.body.slice(0, 80);
+  if (last) return last.body.slice(0, limit);
   if (session?.last_message && !isHiddenTranscriptKind(session.last_message.kind)) {
-    return session.last_message.body.slice(0, 80);
+    return session.last_message.body.slice(0, limit);
   }
   return "";
 }

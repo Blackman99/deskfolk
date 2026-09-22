@@ -1,4 +1,5 @@
 import type { Bot, Message, Routine, SearchHit, SearchKind, SessionSummary } from "@real-bot/protocol";
+import { plainPreview } from "./preview-text.ts";
 import { youBotSession } from "./session-groups.ts";
 
 export type SearchJump = {
@@ -37,10 +38,20 @@ export function searchJump(hit: SearchHit, sessions: readonly SessionSummary[], 
   return null;
 }
 
+/** How much of a snippet two clamped lines can hold; the rest is for the row below it. */
+const SNIPPET_LIMIT = 200;
+
 /** Sidebar row for a hit: kind, owning session when there is one, and the snippet. */
 export function searchHitView(hit: SearchHit, kindLabels: SearchKindLabels): SearchHitView {
-  const snippet = (hit.snippet ?? hit.path ?? hit.kind).trim();
-  if (hit.kind === "file" || hit.kind === "routine") {
+  const raw = (hit.snippet ?? hit.path ?? hit.kind).trim();
+  if (hit.kind === "file") {
+    // A path is already plain, and the characters markdown claims are ordinary ones here.
+    return { kindLabel: kindLabels[hit.kind], sessionTitle: null, snippet: raw };
+  }
+  // What was said, not how it was written: a hit is a line of prose, so the markdown comes off
+  // the same way it does in the list of chats.
+  const snippet = plainPreview(raw, SNIPPET_LIMIT);
+  if (hit.kind === "routine") {
     return { kindLabel: kindLabels[hit.kind], sessionTitle: null, snippet };
   }
   const sessionTitle = hit.session_title?.trim() || null;

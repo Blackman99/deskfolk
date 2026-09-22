@@ -65,6 +65,7 @@
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	const connected = $derived(runtime.connection === 'connected');
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
+	const showMessageAvatars = $derived(selectedKind !== 'you-bot');
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
 	const sessionSettingsLabel = $derived(
@@ -713,7 +714,8 @@
 						ontouchstart={handleMessageTouchStart}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
-						<div class="avatar-col">
+						{#if showMessageAvatars}
+					<div class="avatar-col">
 							{#if askBot}
 								<button
 									type="button"
@@ -734,6 +736,7 @@
 								</div>
 							{/if}
 						</div>
+						{/if}
 						<div class="msg-content">
 							<div class="msg-header">
 								{#if askBot}
@@ -876,7 +879,8 @@
 						ontouchstart={handleMessageTouchStart}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
-						<div class="avatar-col">
+						{#if showMessageAvatars}
+					<div class="avatar-col">
 							{#if sysBot}
 								<button
 									type="button"
@@ -897,6 +901,7 @@
 								</div>
 							{/if}
 						</div>
+						{/if}
 						<div class="msg-content">
 							<div class="msg-header">
 								{#if sysBot}
@@ -1099,11 +1104,13 @@
 							{/each}
 						</div>
 					</div>
+					{#if showMessageAvatars}
 					<div class="avatar-col">
 						<div class="user-avatar" title={t.common.you}>
 							{rosterLetter(t.common.you)}
 						</div>
 					</div>
+					{/if}
 				</div>
 			{:else}
 				{@const botAuthor = botsById.get(group.author)}
@@ -1115,6 +1122,7 @@
 					class:is-group={isMulti}
 					class:is-streaming-wrap={hasStreaming}
 				>
+					{#if showMessageAvatars}
 					<div class="avatar-col">
 						{#if botAuthor}
 							<button
@@ -1142,6 +1150,7 @@
 							</div>
 						{/if}
 					</div>
+					{/if}
 					<div class="msg-content">
 						<div class="msg-header">
 							{#if botAuthor}

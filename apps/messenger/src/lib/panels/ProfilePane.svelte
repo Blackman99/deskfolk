@@ -3,6 +3,7 @@
 	import RoutineCard from './RoutineCard.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import { untrack } from 'svelte';
+	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { Bot } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import Select from '../Select.svelte';
@@ -430,6 +431,7 @@
 			{#if basicsHasError}
 				<span class="tab-badge-error" aria-label="error">!</span>
 			{/if}
+			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 
 		<button
@@ -447,6 +449,7 @@
 			{#if profileSkills.length > 0}
 				<span class="tab-count">{profileSkills.length}</span>
 			{/if}
+			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 
 		<button
@@ -464,6 +467,7 @@
 				<line x1="3" y1="10" x2="21" y2="10"></line>
 			</svg>
 			<span class="tab-name">{t.detail.botTabRoutines}</span>
+			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 
 		<button
@@ -479,6 +483,7 @@
 				<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
 			</svg>
 			<span class="tab-name">{t.detail.botTabMemory}</span>
+			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 
 		<button
@@ -494,6 +499,7 @@
 				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 			</svg>
 			<span class="tab-name">{t.detail.botTabActions}</span>
+			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 	</div>
 </div>
@@ -804,7 +810,8 @@
 {#if skillEditor}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
-		class="modal-backdrop skill-modal-backdrop"
+		class="modal-backdrop skill-modal-backdrop page-on-phone"
+		transition:pageSlide
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="skill-modal-title"
@@ -823,6 +830,15 @@
 			onpointerdown={(e) => e.stopPropagation()}
 		>
 			<div class="modal-head">
+				<button
+					type="button"
+					class="modal-back"
+					aria-label={t.common.back}
+					disabled={skillBusy}
+					onclick={closeSkillEditor}
+				>
+					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				</button>
 				<h2 id="skill-modal-title">
 					{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
 				</h2>
@@ -1060,6 +1076,11 @@
 		font-weight: 700;
 		line-height: 1;
 		margin-left: 2px;
+	}
+
+	/* Phone rows draw this; the wider tab strip does not. */
+	.tab-chevron {
+		display: none;
 	}
 
 	.bot-tab-btn .tab-count {
@@ -1307,6 +1328,31 @@
 		flex-direction: column;
 	}
 
+	/*
+	 * As a page, with a foot the shared frame does not touch: delete on one side, cancel and save
+	 * on the other, all three thumb-sized and wrapping if the labels are long.
+	 */
+	@media (max-width: 680px) {
+		.skill-modal-foot {
+			padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.skill-modal-foot button {
+			min-height: 44px;
+		}
+
+		.skill-modal-foot-right {
+			flex: 1;
+			justify-content: flex-end;
+		}
+
+		.skill-modal-body {
+			padding: 16px 14px;
+		}
+	}
+
 	.skill-modal-body {
 		padding: 18px 22px;
 		display: flex;
@@ -1462,14 +1508,14 @@
 		}
 
 		/* The chevron says the row opens a screen; the active tint belongs to the wider layout. */
-		.bot-tab-btn::after {
-			content: '';
+		.bot-tab-btn .tab-chevron {
+			display: block;
 			width: 8px;
 			height: 8px;
 			border-top: 1.8px solid var(--muted);
 			border-right: 1.8px solid var(--muted);
 			transform: rotate(45deg);
-			margin-left: auto;
+			margin-left: 8px;
 			flex-shrink: 0;
 		}
 
@@ -1492,15 +1538,21 @@
 			color: var(--muted);
 		}
 
-		.bot-tab-btn .tab-count,
-		.bot-tab-btn .tab-badge-error {
-			margin-left: auto;
+		/*
+		 * The name takes the leftover room, so a count or an error mark lands against the chevron.
+		 * Two auto margins (the badge and a ::after chevron) used to split that room and park the
+		 * number in the middle of the row.
+		 */
+		.bot-tab-btn .tab-name {
+			flex: 1;
+			min-width: 0;
+			text-align: left;
 		}
 
-		/* A count sits next to the chevron rather than pushing it off the row. */
-		.bot-tab-btn .tab-count + :global(*),
-		.bot-tab-btn .tab-badge-error + :global(*) {
+		.bot-tab-btn .tab-count,
+		.bot-tab-btn .tab-badge-error {
 			margin-left: 8px;
+			flex-shrink: 0;
 		}
 
 		.bot-detail {

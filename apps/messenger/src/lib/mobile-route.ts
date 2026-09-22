@@ -93,11 +93,13 @@ export function stackAfter(stack: readonly string[], search: string, replaced: b
  */
 export type BackLayer =
   | "theme-menu"
+  | "create-menu"
   | "danger"
   | "create-bot"
   | "create-group"
   | "provider-editor"
   | "independent-confirm"
+  | "search-page"
   | "settings"
   | "session-settings"
   | "route-log"
@@ -107,11 +109,13 @@ export type BackLayer =
 
 export type LayerState = {
   themeMenuOpen: boolean;
+  createMenuOpen: boolean;
   dangerConfirm: boolean;
   createBotOpen: boolean;
   createGroupOpen: boolean;
   providerEditor: boolean;
   confirmingIndependent: boolean;
+  searchPageOpen: boolean;
   settingsOpen: boolean;
   sessionSettingsOpen: boolean;
   routeLogOpen: boolean;
@@ -122,11 +126,16 @@ export type LayerState = {
 
 const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["theme-menu", "themeMenuOpen"],
+  // The phone's + menu, like any other menu: over everything, gone at the first Back.
+  ["create-menu", "createMenuOpen"],
   ["danger", "dangerConfirm"],
   ["create-bot", "createBotOpen"],
   ["create-group", "createGroupOpen"],
   ["provider-editor", "providerEditor"],
   ["independent-confirm", "confirmingIndependent"],
+  // The phone's search page is the sidebar's, not the URL's — it comes before the destinations
+  // for the same reason the create sheets do: the app closes it itself, Back never navigates.
+  ["search-page", "searchPageOpen"],
   ["settings", "settingsOpen"],
   ["session-settings", "sessionSettingsOpen"],
   ["route-log", "routeLogOpen"],

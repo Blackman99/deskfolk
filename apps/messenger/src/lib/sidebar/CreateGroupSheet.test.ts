@@ -177,3 +177,15 @@ test("a sheet that swallows the press still keeps a drag-out from closing it", (
   expect(closed).toBe(0);
   close();
 });
+
+/** Same frame as the new-Bot form: `page-on-phone` plus the way back. See modals.css. */
+test("the new-group form is a page on a phone, with a way back", () => {
+  const closed: true[] = [];
+  const runtime = fakeRuntime();
+  const { host, close } = render(CreateGroupSheet, { runtime, bots, t, onClose: () => closed.push(true) });
+  expect(host.querySelector('.modal-backdrop')?.classList.contains('page-on-phone')).toBe(true);
+  expect(host.querySelector('.modal-head .modal-close')).not.toBeNull();
+  click(host.querySelector('.modal-head .modal-back'));
+  expect(closed).toHaveLength(1);
+  close();
+});

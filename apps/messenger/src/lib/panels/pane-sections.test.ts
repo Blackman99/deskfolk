@@ -62,6 +62,32 @@ function openGroup(session = aGroup({ id: "sess-1" })) {
   return { ...rendered, runtime };
 }
 
+test("a phone row's count sits against the chevron, not in the middle of the row", () => {
+  withPhone(() => {
+    const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+      (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+    );
+    setViewport({ width: 390, height: 844 });
+    try {
+      const { host, close } = openProfile();
+      const skills = host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")[1]!;
+      const name = getComputedStyle(skills.querySelector(".tab-name")!);
+      const count = getComputedStyle(skills.querySelector(".tab-count")!);
+      const chevron = getComputedStyle(skills.querySelector(".tab-chevron")!);
+      // The name grows into the free space. A count with its own auto margin used to split that
+      // space with the chevron and park the number in the middle of the row.
+      expect(name.flexGrow).toBe("1");
+      expect(name.textAlign).toBe("left");
+      expect(count.marginLeft).toBe("8px");
+      expect(chevron.display).toBe("block");
+      expect(chevron.marginLeft).toBe("8px");
+      close();
+    } finally {
+      setViewport({ width: 1024, height: 768 });
+    }
+  });
+});
+
 test("a Bot's sections are a list on a phone, and a row opens that section", () => {
   withPhone(() => {
     const { host, close } = openProfile();

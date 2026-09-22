@@ -15,7 +15,10 @@
 	import { sessionTitle } from './session-title.ts';
 	import { themeManager } from '../theme.ts';
 	import { latestPreview } from '../chat/transcript.ts';
+	import { pageSlide } from '../mobile-page-slide.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
+	import { formatListTime, listTimeSource } from './list-time.ts';
+	import { plainPreview } from './preview-text.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 
 	type Props = {
@@ -25,6 +28,10 @@
 		pinnedSessionIds: string[];
 		/** The shell's Escape cascade closes this before anything else. */
 		themeMenuOpen: boolean;
+		/** Searching on a phone is a screen of its own; the shell's Back has to close it. */
+		searchPageOpen?: boolean;
+		/** What the phone's + button opens. A menu, so Back and Escape close it first. */
+		createMenuOpen?: boolean;
 		workspaceOpen: boolean;
 		/** Marks the row the context menu belongs to. */
 		contextMenuSessionId: string | null;
@@ -43,6 +50,8 @@
 		selected,
 		pinnedSessionIds,
 		themeMenuOpen = $bindable(false),
+		searchPageOpen = $bindable(false),
+		createMenuOpen = $bindable(false),
 		workspaceOpen,
 		contextMenuSessionId,
 		onOpenContextMenu,
@@ -99,6 +108,37 @@
 	let searchWrapEl = $state<HTMLElement | null>(null);
 	let searchInputEl = $state<HTMLInputElement | null>(null);
 	let searchDropEl = $state<HTMLElement | null>(null);
+	let searchPageInputEl = $state<HTMLInputElement | null>(null);
+
+	/**
+	 * A phone searches on a page of its own. A dropdown hanging under a field this narrow is a
+	 * desktop idea: the keyboard covers the hits, two lines of snippet do not fit, and the list
+	 * underneath stays half visible as if it were still the thing you were looking at. The width
+	 * test matches the stylesheet's breakpoint.
+	 */
+	let phone = $state(false);
+	$effect(() => {
+		if (typeof window.matchMedia !== 'function') return;
+		const query = window.matchMedia('(max-width: 680px)');
+		const apply = () => {
+			phone = query.matches;
+			// A window that grew back has the dropdown again, so the page has nothing left to be.
+			if (!query.matches) searchPageOpen = false;
+		};
+		apply();
+		query.addEventListener('change', apply);
+		return () => query.removeEventListener('change', apply);
+	});
+
+	/** Both ways of searching drive the same hits, so they share the keyboard handling. */
+	const searchActive = $derived(searchFocused || searchPageOpen);
+
+	$effect(() => {
+		// The page exists to be typed into, so it opens with the caret already in the field.
+		if (searchPageOpen && searchPageInputEl) searchPageInputEl.focus();
+	});
+
+	let fabEl = $state<HTMLElement | null>(null);
 
 	let themeMenuEl = $state<HTMLElement | null>(null);
 	let themeToggleBtnEl = $state<HTMLButtonElement | null>(null);
@@ -129,6 +169,9 @@
 		}
 		if (searchFocused && isOutside(target, searchWrapEl)) {
 			searchFocused = false;
+		}
+		if (createMenuOpen && isOutside(target, fabEl)) {
+			createMenuOpen = false;
 		}
 	}
 
@@ -192,12 +235,26 @@
 		);
 	}
 
+	/**
+	 * The time beside each name, the way a messenger shows it. It only has to be right to the
+	 * minute, so it is recomputed on a slow tick rather than on every snapshot.
+	 */
+	let listNow = $state(Date.now());
+	$effect(() => {
+		const timer = setInterval(() => (listNow = Date.now()), 60_000);
+		return () => clearInterval(timer);
+	});
+
+	function timeOf(session: SessionSummary): string {
+		return formatListTime(listTimeSource(session), listNow, snapshot.settings.locale === 'en' ? 'en' : 'zh');
+	}
+
 	function unreadOf(session: SessionSummary): number {
 		return sessionUnreadCount(session, runtime.selectedId);
 	}
 
 	function previewOf(session: SessionSummary): string {
-		return latestPreview(snapshot.messages, session.id, session, snapshot.turns);
+		return plainPreview(latestPreview(snapshot.messages, session.id, session, snapshot.turns, 400));
 	}
 
 	function archivedSuffix(session: SessionSummary): string {
@@ -205,6 +262,26 @@
 		const peer = youBotPeer(session);
 		if (!peer) return '';
 		return botsById.get(peer)?.archived_at ? ` · ${t.top.archived}` : '';
+	}
+
+	function openSearchPage(): void {
+		searchHighlightIndex = -1;
+		searchPageOpen = true;
+	}
+
+	/**
+	 * Leaving the page clears the field. A page is somewhere you go and come back from, and a
+	 * search you have walked out of is over — keeping the words would mean the next tap on the
+	 * field reopens someone else's question. Answers whether there was a page to leave, so the
+	 * shell's Back knows it was handled here.
+	 */
+	export function closeSearchPage(): boolean {
+		if (!searchPageOpen) return false;
+		searchPageOpen = false;
+		searchFocused = false;
+		searchHighlightIndex = -1;
+		runtime.closeSearch();
+		return true;
 	}
 
 	function onSearchInput(ev: Event): void {
@@ -231,12 +308,13 @@
 	function onSearchKeyDown(e: KeyboardEvent): void {
 		if (e.isComposing) return;
 		if (e.key === 'Escape') {
+			if (closeSearchPage()) return;
 			searchFocused = false;
 			searchHighlightIndex = -1;
 			searchInputEl?.blur();
 			return;
 		}
-		if (!searchFocused || !runtime.searchQuery.trim() || runtime.searchHits.length === 0) {
+		if (!searchActive || !runtime.searchQuery.trim() || runtime.searchHits.length === 0) {
 			return;
 		}
 		if (e.key === 'ArrowDown') {
@@ -265,7 +343,11 @@
 	}
 
 	function onHit(hit: (typeof runtime.searchHits)[number]): void {
-		if (hit.kind === 'routine' && !searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots)) {
+		// Where this hit leads is read before anything is cleared: closing the search empties the
+		// list, and the row this came from is gone with it.
+		const jump = searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots);
+		const filePath = hit.kind === 'file' ? hit.path : null;
+		if (hit.kind === 'routine' && !jump) {
 			searchFocused = true;
 			searchInputEl?.focus();
 			return;
@@ -273,12 +355,13 @@
 		searchFocused = false;
 		searchHighlightIndex = -1;
 		searchInputEl?.blur();
-		if (hit.kind === 'file' && hit.path) {
+		// A hit ends the search whichever way it was made: the page goes with it.
+		closeSearchPage();
+		if (filePath) {
 			runtime.closeSearch();
-			onOpenArtifact(hit.path);
+			onOpenArtifact(filePath);
 			return;
 		}
-		const jump = searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots);
 		if (!jump) return;
 		runtime.closeSearch();
 		if ('routineId' in jump) runtime.openRoutine(jump.botId, jump.routineId);
@@ -287,6 +370,88 @@
 </script>
 
 <svelte:window onclick={onWindowClick} />
+
+{#snippet searchGlyph()}
+	<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="11" cy="11" r="8"></circle>
+			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+		</svg>
+	</span>
+{/snippet}
+
+{#snippet hitList()}
+		{#if runtime.searchHits.length === 0}
+			<p class="muted">{t.sidebar.emptySearch}</p>
+		{:else}
+			{#each runtime.searchHits as hit, i (hit.id ?? hit.path ?? i)}
+				{@const view = searchHitView(hit, searchKindLabels)}
+				{@const unavailable = hit.kind === 'routine' && !searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots)}
+				<button
+					type="button"
+					id={`search-hit-${i}`}
+					class="search-hit"
+					class:is-highlighted={searchHighlightIndex === i}
+					class:is-selected={searchHighlightIndex === i}
+					role="option"
+					aria-selected={searchHighlightIndex === i}
+					aria-disabled={unavailable}
+					title={view.sessionTitle ? `${view.kindLabel} · ${view.sessionTitle}` : view.kindLabel}
+					onmouseenter={() => {
+						searchHighlightIndex = i;
+					}}
+					onclick={() => onHit(hit)}
+				>
+					{#if hit.kind === 'bot'}
+						{@const bot = hit.id ? botsById.get(hit.id) : null}
+						{@const botName = bot?.name ?? hit.snippet ?? ''}
+						{@const pal = botAvatarColor(hit.id ?? botName)}
+						{@const src = avatarSrc(bot?.avatar ?? hit.avatar)}
+						<span class="row-avatar size-sm search-hit-avatar" aria-hidden="true">
+							<span
+								class="row-avatar-bot"
+								style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+								title={botName}
+							>
+								{#if src}
+									<img src={src} alt={botName} class="avatar-img" />
+								{:else}
+									{botName ? rosterLetter(botName) : '?'}
+								{/if}
+							</span>
+						</span>
+					{:else if hit.kind === 'session'}
+						{@const session = hit.id ? sessionsById.get(hit.id) : null}
+						{#if session}
+							<SessionAvatar {session} bots={botsById} size="sm" class="search-hit-avatar" />
+						{:else}
+							<span class="row-avatar size-sm is-group layout-empty search-hit-avatar" aria-hidden="true">
+								<span class="row-avatar-bot is-empty">
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+										<circle cx="9" cy="7" r="4" />
+										<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+									</svg>
+								</span>
+							</span>
+						{/if}
+					{/if}
+					<span class="search-hit-body flex flex-col items-stretch gap-[3px] min-w-0 flex-1">
+						<span class="search-hit-meta flex items-center gap-3 min-w-0">
+							<span class="search-hit-kind shrink-0 text-10 font-bold tracking-[0.04em] text-muted">{view.kindLabel}</span>
+							{#if view.sessionTitle}
+								<span class="search-hit-session">{view.sessionTitle}</span>
+							{/if}
+						</span>
+						{#if unavailable}<span class="search-unavailable">{t.sidebar.routineUnavailable}</span>{/if}
+						{#if view.snippet && view.snippet !== view.sessionTitle}
+							<span class="search-hit-snippet">{view.snippet}</span>
+						{/if}
+					</span>
+				</button>
+			{/each}
+		{/if}
+{/snippet}
 
 <aside class="side">
 	<div class="roster-panel">
@@ -346,134 +511,68 @@
 	</div>
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
 	<div class="search-wrap relative mt-5 mx-6 mb-3" bind:this={searchWrapEl}>
-		<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-				<circle cx="11" cy="11" r="8"></circle>
-				<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-			</svg>
-		</span>
-		<input
-			bind:this={searchInputEl}
-			class="search"
-			placeholder={t.sidebar.search}
-			value={runtime.searchQuery}
-			role="combobox"
-			aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
-			aria-controls="search-dropdown-list"
-			aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
-			oninput={onSearchInput}
-			onfocus={() => {
-				searchFocused = true;
-			}}
-			onblur={(e) => {
-				const next = e.relatedTarget as Node | null;
-				if (searchWrapEl && next && searchWrapEl.contains(next)) {
-					return;
-				}
-				searchFocused = false;
-				searchHighlightIndex = -1;
-			}}
-			onkeydown={onSearchKeyDown}
-		/>
-		{#if runtime.searchQuery.trim()}
-			<button
-				type="button"
-				class="search-clear"
-				title="清除"
-				onmousedown={(e) => e.preventDefault()}
-				onclick={() => {
-					void runtime.runSearch('');
+		{@render searchGlyph()}
+		{#if phone}
+			<!-- Looks like the field it replaces, so the list still reads as having a search box. -->
+			<button type="button" class="search search-trigger" onclick={openSearchPage}>
+				{t.sidebar.searchShort}
+			</button>
+		{:else}
+			<input
+				bind:this={searchInputEl}
+				class="search"
+				placeholder={t.sidebar.search}
+				value={runtime.searchQuery}
+				role="combobox"
+				aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
+				aria-controls="search-dropdown-list"
+				aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
+				oninput={onSearchInput}
+				onfocus={() => {
 					searchFocused = true;
+				}}
+				onblur={(e) => {
+					const next = e.relatedTarget as Node | null;
+					if (searchWrapEl && next && searchWrapEl.contains(next)) {
+						return;
+					}
+					searchFocused = false;
 					searchHighlightIndex = -1;
-					searchInputEl?.focus();
 				}}
-			>✕</button>
-		{/if}
-		{#if searchFocused && runtime.searchQuery.trim()}
-			<div
-				bind:this={searchDropEl}
-				id="search-dropdown-list"
-				class="search-drop"
-				role="listbox"
-				tabindex="-1"
-				onmousedown={(e) => {
-					e.preventDefault();
-				}}
-			>
-				{#if runtime.searchHits.length === 0}
-					<p class="muted">{t.sidebar.emptySearch}</p>
-				{:else}
-					{#each runtime.searchHits as hit, i (hit.id ?? hit.path ?? i)}
-						{@const view = searchHitView(hit, searchKindLabels)}
-						{@const unavailable = hit.kind === 'routine' && !searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots)}
-						<button
-							type="button"
-							id={`search-hit-${i}`}
-							class="search-hit"
-							class:is-highlighted={searchHighlightIndex === i}
-							class:is-selected={searchHighlightIndex === i}
-							role="option"
-							aria-selected={searchHighlightIndex === i}
-							aria-disabled={unavailable}
-							title={view.sessionTitle ? `${view.kindLabel} · ${view.sessionTitle}` : view.kindLabel}
-							onmouseenter={() => {
-								searchHighlightIndex = i;
-							}}
-							onclick={() => onHit(hit)}
-						>
-							{#if hit.kind === 'bot'}
-								{@const bot = hit.id ? botsById.get(hit.id) : null}
-								{@const botName = bot?.name ?? hit.snippet ?? ''}
-								{@const pal = botAvatarColor(hit.id ?? botName)}
-								{@const src = avatarSrc(bot?.avatar ?? hit.avatar)}
-								<span class="row-avatar size-sm search-hit-avatar" aria-hidden="true">
-									<span
-										class="row-avatar-bot"
-										style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-										title={botName}
-									>
-										{#if src}
-											<img src={src} alt={botName} class="avatar-img" />
-										{:else}
-											{botName ? rosterLetter(botName) : '?'}
-										{/if}
-									</span>
-								</span>
-							{:else if hit.kind === 'session'}
-								{@const session = hit.id ? sessionsById.get(hit.id) : null}
-								{#if session}
-									<SessionAvatar {session} bots={botsById} size="sm" class="search-hit-avatar" />
-								{:else}
-									<span class="row-avatar size-sm is-group layout-empty search-hit-avatar" aria-hidden="true">
-										<span class="row-avatar-bot is-empty">
-											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-												<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-												<circle cx="9" cy="7" r="4" />
-												<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-											</svg>
-										</span>
-									</span>
-								{/if}
-							{/if}
-							<span class="search-hit-body flex flex-col items-stretch gap-[3px] min-w-0 flex-1">
-								<span class="search-hit-meta flex items-center gap-3 min-w-0">
-									<span class="search-hit-kind shrink-0 text-10 font-bold tracking-[0.04em] text-muted">{view.kindLabel}</span>
-									{#if view.sessionTitle}
-										<span class="search-hit-session">{view.sessionTitle}</span>
-									{/if}
-								</span>
-								{#if unavailable}<span class="search-unavailable">{t.sidebar.routineUnavailable}</span>{/if}
-								{#if view.snippet && view.snippet !== view.sessionTitle}
-									<span class="search-hit-snippet">{view.snippet}</span>
-								{/if}
-							</span>
-						</button>
-					{/each}
-				{/if}
-			</div>
+				onkeydown={onSearchKeyDown}
+			/>
+			{#if runtime.searchQuery.trim()}
+				<button
+					type="button"
+					class="search-clear"
+					title={t.sidebar.searchClear}
+					aria-label={t.sidebar.searchClear}
+					onmousedown={(e) => e.preventDefault()}
+					onclick={() => {
+						void runtime.runSearch('');
+						searchFocused = true;
+						searchHighlightIndex = -1;
+						searchInputEl?.focus();
+					}}
+				>✕</button>
+			{/if}
+			{#if searchFocused && runtime.searchQuery.trim()}
+				<div
+					bind:this={searchDropEl}
+					id="search-dropdown-list"
+					class="search-drop"
+					role="listbox"
+					tabindex="-1"
+					onmousedown={(e) => {
+						e.preventDefault();
+					}}
+				>
+					{@render hitList()}
+				</div>
+			{/if}
 		{/if}
 	</div>
-	<div class="mobile-session-tools">
+	<div class="mobile-session-tools" class:is-archived={viewingArchived}>
 		<span>{viewingArchived ? t.sidebar.archivedSessions : t.sidebar.sessions}</span>
 		<button type="button" aria-pressed={viewingArchived} onclick={() => (viewingArchived = !viewingArchived)}>
 			{viewingArchived ? t.sidebar.backToSessions : t.sidebar.archivedSessions}
@@ -506,6 +605,7 @@
 					>
 						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
 						<span class="t">{titleOf(session)}{archivedSuffix(session)}</span>
+						<span class="row-time">{timeOf(session)}</span>
 						<span class="row-status is-{status.kind}">
 							<span class="row-status-dot" class:is-busy={status.isBusy}></span>
 							<span class="row-status-text">{status.label}</span>
@@ -541,6 +641,7 @@
 				>
 					<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
 					<span class="t">{titleOf(session)}</span>
+					<span class="row-time">{timeOf(session)}</span>
 					<span class="row-status is-{status.kind}">
 						<span class="row-status-dot" class:is-busy={status.isBusy}></span>
 						<span class="row-status-text">{status.label}</span>
@@ -572,6 +673,7 @@
 				>
 					<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
 					<span class="t">{titleOf(session)}{archivedSuffix(session)}</span>
+					<span class="row-time">{timeOf(session)}</span>
 					<span class="row-status is-{status.kind}">
 						<span class="row-status-dot" class:is-busy={status.isBusy}></span>
 						<span class="row-status-text">{status.label}</span>
@@ -613,6 +715,7 @@
 					>
 						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
 						<span class="t">{titleOf(session)}</span>
+						<span class="row-time">{timeOf(session)}</span>
 						<span class="row-status is-{status.kind}">
 							<span class="row-status-dot" class:is-busy={status.isBusy}></span>
 							<span class="row-status-text">{status.label}</span>
@@ -817,6 +920,125 @@
 	</div>
 </aside>
 
+<!--
+	Creating on a phone: one button that floats over the list rather than a + in each group header.
+	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
+	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
+-->
+{#if phone && !selected && !searchPageOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen}
+	<div class="fab-wrap" bind:this={fabEl}>
+		{#if createMenuOpen}
+			<div class="fab-menu" role="menu">
+				<button
+					type="button"
+					class="fab-menu-item"
+					role="menuitem"
+					onclick={() => {
+						createMenuOpen = false;
+						onCreateBot();
+					}}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<rect x="4" y="8" width="16" height="12" rx="3"></rect>
+						<path d="M12 8V4"></path>
+						<circle cx="9" cy="14" r="1"></circle>
+						<circle cx="15" cy="14" r="1"></circle>
+					</svg>
+					<span>{t.sidebar.addBot}</span>
+				</button>
+				<button
+					type="button"
+					class="fab-menu-item"
+					role="menuitem"
+					onclick={() => {
+						createMenuOpen = false;
+						onCreateGroup();
+					}}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+						<circle cx="9" cy="7" r="4"></circle>
+						<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+					</svg>
+					<span>{t.sidebar.addGroup}</span>
+				</button>
+			</div>
+		{/if}
+		<button
+			type="button"
+			class="fab"
+			class:is-open={createMenuOpen}
+			aria-haspopup="menu"
+			aria-expanded={createMenuOpen}
+			aria-label={t.sidebar.createMenu}
+			onclick={() => (createMenuOpen = !createMenuOpen)}
+		>
+			<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+				<path d="M12 5v14M5 12h14"></path>
+			</svg>
+		</button>
+	</div>
+{/if}
+
+<!--
+	Search as a screen: the field in the header, the hits filling the rest, and the way back where
+	every other phone page keeps it. It arrives and leaves by the same slide as the other pages.
+-->
+{#if searchPageOpen}
+	<div class="search-page" transition:pageSlide>
+		<div class="search-page-head">
+			<button
+				type="button"
+				class="search-page-back"
+				aria-label={t.sidebar.backToSessions}
+				onclick={() => closeSearchPage()}
+			>
+				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			</button>
+			<div class="search-page-field">
+				{@render searchGlyph()}
+				<input
+					bind:this={searchPageInputEl}
+					class="search"
+					placeholder={t.sidebar.search}
+					aria-label={t.sidebar.searchShort}
+					value={runtime.searchQuery}
+					enterkeyhint="search"
+					autocapitalize="off"
+					autocomplete="off"
+					spellcheck="false"
+					oninput={onSearchInput}
+					onkeydown={onSearchKeyDown}
+				/>
+				{#if runtime.searchQuery.trim()}
+					<button
+						type="button"
+						class="search-clear"
+						title={t.sidebar.searchClear}
+						aria-label={t.sidebar.searchClear}
+						onclick={() => {
+							void runtime.runSearch('');
+							searchHighlightIndex = -1;
+							searchPageInputEl?.focus();
+						}}
+					>✕</button>
+				{/if}
+			</div>
+		</div>
+		{#if runtime.searchQuery.trim()}
+			<div
+				bind:this={searchDropEl}
+				class="search-drop is-page"
+				role="listbox"
+				aria-label={t.sidebar.searchShort}
+				tabindex="-1"
+			>
+				{@render hitList()}
+			</div>
+		{/if}
+	</div>
+{/if}
+
 <style>
 	.mobile-session-tools { display: none; }
 	@media (max-width: 680px) {
@@ -856,6 +1078,193 @@
 	.search-clear:hover {
 		color: var(--ink);
 		background: var(--line-subtle);
+	}
+
+	/* Not a field, but it has to look like one — it stands where the field stands. */
+	.search-trigger {
+		text-align: left;
+		color: var(--muted-light);
+		cursor: pointer;
+	}
+
+	/*
+	 * The phone's search screen. Fixed over everything, including the bar at the bottom: while
+	 * you are searching, the destinations are not where you are going, and the keyboard needs
+	 * the room. The shell drops the bar for the same reason.
+	 */
+	.search-page {
+		position: fixed;
+		inset: 0;
+		z-index: 120;
+		display: flex;
+		flex-direction: column;
+		background: var(--pane);
+		padding-top: env(safe-area-inset-top);
+	}
+
+	.search-page-head {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding: 8px 12px 8px 4px;
+		border-bottom: 1px solid var(--line-subtle);
+		background: var(--sidebar-bg);
+	}
+
+	.search-page-back {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		flex-shrink: 0;
+		border: 0;
+		border-radius: var(--radius-md);
+		background: transparent;
+		color: var(--ink-secondary);
+		cursor: pointer;
+	}
+
+	.search-page-back:active {
+		background: var(--line-subtle);
+	}
+
+	.search-page-field {
+		position: relative;
+		display: flex;
+		align-items: center;
+		flex: 1;
+		min-width: 0;
+	}
+
+	/* Thumb-sized, and big enough that iOS does not zoom the page when the caret lands. */
+	.search-page-field .search {
+		padding: 9px 30px 9px 30px;
+		font-size: 16px;
+	}
+
+	/* The same hits, filling a page instead of hanging under a field. */
+	.search-drop.is-page {
+		position: static;
+		flex: 1;
+		min-height: 0;
+		max-height: none;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+		background: transparent;
+		padding: 4px 6px calc(12px + env(safe-area-inset-bottom));
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.search-drop.is-page button.search-hit {
+		gap: 11px;
+		padding: 11px 10px;
+		font-size: 13.5px;
+	}
+
+	.search-drop.is-page :global(p) {
+		padding: 20px 12px;
+		text-align: center;
+	}
+
+	/*
+	 * Above the list, under everything that covers the list: a drawer, a sheet or the settings
+	 * page all sit higher, so the button cannot poke through them.
+	 */
+	.fab-wrap {
+		position: fixed;
+		right: 16px;
+		bottom: calc(60px + env(safe-area-inset-bottom) + 16px);
+		z-index: 12;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 10px;
+	}
+
+	.fab {
+		width: 52px;
+		height: 52px;
+		border: 0;
+		border-radius: 50%;
+		background: var(--accent);
+		color: var(--accent-ink, #fff);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: var(--shadow-lg);
+		cursor: pointer;
+		transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	/* The + turns into the × that closes what it opened. */
+	.fab.is-open {
+		transform: rotate(45deg);
+	}
+
+	.fab:active {
+		transform: scale(0.94);
+		background: var(--accent-hover);
+	}
+
+	.fab.is-open:active {
+		transform: rotate(45deg) scale(0.94);
+		background: var(--accent-hover);
+	}
+
+	/* The focus ring is the app's, and on a circle it has to follow the circle. */
+	.fab:focus-visible {
+		box-shadow: var(--shadow-lg), 0 0 0 3px var(--accent-glow);
+	}
+
+	.fab-menu {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 4px;
+		min-width: 152px;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-lg);
+		animation: themeMenuIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+		transform-origin: bottom right;
+	}
+
+	.fab-menu-item {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		min-height: 42px;
+		padding: 0 12px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink);
+		font-size: 14px;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.fab-menu-item:active {
+		background: var(--line-subtle);
+		color: var(--accent);
+	}
+
+	.fab-menu-item svg {
+		flex-shrink: 0;
+		color: var(--muted);
+	}
+
+	/* A page has the room to say which conversation a hit came from properly. */
+	.search-drop.is-page .search-hit-kind {
+		font-size: 11px;
+	}
+
+	.search-drop.is-page .search-hit-session {
+		font-size: 12.5px;
 	}
 
 
@@ -1366,6 +1775,11 @@
 		min-height: 1.4em;
 	}
 
+	/* Placed by the phone block below; a wide row shows the status chip in that corner instead. */
+	.row-time {
+		display: none;
+	}
+
 	.row-status {
 		display: inline-flex;
 		align-items: center;
@@ -1771,6 +2185,206 @@
 		.foot-icon-btn :global(svg) {
 			width: 20px;
 			height: 20px;
+		}
+	}
+
+	@media (max-width: 680px) {
+		/*
+		 * The roster reads like a messenger here: portrait, then the name with the time of the
+		 * last thing said, then that message with the unread count beside it. No card behind the
+		 * row — a hairline that starts where the text starts, so the eye follows one column.
+		 */
+		.row {
+			grid-template-columns: 48px minmax(0, 1fr) auto;
+			gap: 3px 12px;
+			align-items: center;
+			padding: 10px 14px;
+			margin: 0;
+			border: 0;
+			border-radius: 0;
+			position: relative;
+		}
+
+		.row + .row::before {
+			content: '';
+			position: absolute;
+			left: 74px;
+			right: 0;
+			top: 0;
+			height: 1px;
+			background: var(--line-subtle);
+		}
+
+		.row :global(.row-avatar) {
+			--avatar-size: 48px;
+			grid-row: 1 / 3;
+			align-self: center;
+		}
+
+		.row .t {
+			font-size: 15.5px;
+			font-weight: 600;
+			grid-column: 2;
+			grid-row: 1;
+		}
+
+		.row-time {
+			display: block;
+			grid-column: 3;
+			grid-row: 1;
+			justify-self: end;
+			font-size: 11.5px;
+			line-height: 1.3;
+			color: var(--muted-light);
+			white-space: nowrap;
+		}
+
+		.row.is-unread .row-time {
+			color: var(--accent);
+		}
+
+		.row :global(.s) {
+			grid-column: 2;
+			grid-row: 2;
+			font-size: 13px;
+			line-height: 1.35;
+		}
+
+		/*
+		 * Idle is the normal state and the portrait already carries a dot for it, so the label
+		 * only appears when the Bot is actually doing something — and then it speaks in place of
+		 * the last message, the way a messenger shows "typing…".
+		 */
+		.row-status.is-idle {
+			display: none;
+		}
+
+		.row-status:not(.is-idle) {
+			grid-column: 2;
+			grid-row: 2;
+			font-size: 12.5px;
+		}
+
+		.row:has(.row-status:not(.is-idle)) :global(.s) {
+			display: none;
+		}
+
+		.unread-dot {
+			grid-column: 3;
+			grid-row: 2;
+			justify-self: end;
+			align-self: center;
+			min-width: 18px;
+			height: 18px;
+			padding: 0 5px;
+			font-size: 10.5px;
+		}
+
+		/* Tapping a row leaves the list, so the selected one only needs a tint, not a frame. */
+		.row.is-on {
+			background: var(--accent-tint);
+			border-color: transparent;
+			box-shadow: none;
+		}
+
+		.ghead {
+			padding: 12px 14px 4px;
+			font-size: 10.5px;
+		}
+
+		/* Creating is the floating + now, so the headers are labels. */
+		.ghead :global(.add) {
+			display: none;
+		}
+
+		/* The source line belongs under the title, and the phone's avatar column is wider. */
+		.row-source {
+			margin: 0 14px 2px 74px;
+		}
+
+		/*
+		 * A phone has no room for a scrollbar to push the list 15px off the edge the search field
+		 * and the group headers keep; touch scrolling shows its own indicator anyway.
+		 */
+		.groups {
+			scrollbar-width: none;
+		}
+
+		.groups::-webkit-scrollbar {
+			width: 0;
+			height: 0;
+		}
+
+		/* Nothing pinned is not news worth a row at the top of a phone screen. */
+		.roster-empty-hint {
+			display: none;
+		}
+
+		/* …and with the hint gone the rail was holding 88px of blank band, so it goes too. */
+		.roster-panel:has(.roster-empty-hint) {
+			display: none;
+		}
+
+		/*
+		 * Search and the archived entry share one 40px line. The label beside it said 会话, which
+		 * is what the bar at the bottom of the screen already says, so it goes. Between this and
+		 * the collapsed pinned rail the list starts about 140px higher — two more chats.
+		 */
+		.side-body {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-rows: auto minmax(0, 1fr);
+		}
+
+		/*
+		 * One left edge for the whole screen. The list's own content starts at 22px (8px of
+		 * `.groups` padding plus 14px of row padding), so the field and the group headers start
+		 * there too instead of 10px further out.
+		 */
+		.search-wrap {
+			grid-column: 1;
+			grid-row: 1;
+			margin: 6px 4px 6px 22px;
+		}
+
+		.search {
+			padding: 7px 10px 7px 30px;
+			font-size: 14px;
+		}
+
+		/* 18px + the button's own 4px puts the chevron on the same edge as the row times. */
+		.mobile-session-tools {
+			grid-column: 2;
+			grid-row: 1;
+			min-height: 40px;
+			padding: 0 18px 0 0;
+		}
+
+		/* The label said 会话, which the bar at the bottom already says — but the archived view has
+		   no other title, so it keeps its own. */
+		.mobile-session-tools:not(.is-archived) > span {
+			display: none;
+		}
+
+		.mobile-session-tools.is-archived {
+			grid-column: 1 / -1;
+			grid-row: 2;
+			padding: 0 14px;
+			border-bottom: 1px solid var(--line-subtle);
+		}
+
+		.mobile-session-tools.is-archived + .groups,
+		.side-body:has(.mobile-session-tools.is-archived) .groups {
+			grid-row: 3;
+		}
+
+		.side-body:has(.mobile-session-tools.is-archived) {
+			grid-template-rows: auto auto minmax(0, 1fr);
+		}
+
+		.groups {
+			grid-column: 1 / -1;
+			grid-row: 2;
 		}
 	}
 </style>

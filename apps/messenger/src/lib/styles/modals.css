@@ -18,6 +18,82 @@
   animation: backdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/*
+ * A dialog that is really a form — new Bot, new group, editing a memory — has no business being
+ * a floating card on a phone: the card ends up inset a few pixels from every edge, the keyboard
+ * takes half of what is left, and the frame is decoration around a screen you cannot see past.
+ * Adding `page-on-phone` to the backdrop turns that dialog into a page below 680px: edge to edge,
+ * its ✕ swapped for the way back every other phone screen carries, and one full-width action at
+ * the bottom instead of a right-aligned pair. A confirmation stays a dialog — a question you
+ * answer without leaving what you were doing is exactly what a phone alert is.
+ */
+@media (max-width: 680px) {
+  .modal-backdrop.page-on-phone {
+    padding: 0;
+    align-items: stretch;
+    background: var(--pane);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+  }
+
+  /*
+   * The doubled class is deliberate: every dialog sets its own width and max-height in its own
+   * component, and Svelte adds a scope class to those rules — so a single class here loses to
+   * them. This is the one rule that has to outrank what it replaces.
+   */
+  .modal-backdrop.page-on-phone > .modal-dialog.modal-dialog {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+
+  .page-on-phone .modal-head {
+    height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0 4px;
+    justify-content: flex-start;
+    gap: 2px;
+    border-radius: 0;
+  }
+
+  .page-on-phone .modal-head h2 {
+    font-size: 16px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .page-on-phone .modal-back {
+    display: inline-flex;
+  }
+
+  .page-on-phone .modal-close {
+    display: none;
+  }
+
+  .page-on-phone .modal-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+
+  /* The action a thumb reaches for, full width; the way out is the chevron in the header. */
+  .page-on-phone .modal-foot button:first-child {
+    flex: 1;
+    min-height: 46px;
+    font-size: 14.5px;
+  }
+
+  .page-on-phone .modal-foot button:not(:first-child) {
+    display: none;
+  }
+}
+
 @keyframes backdropFadeIn {
   from {
     opacity: 0;
@@ -46,6 +122,32 @@
   font-size: 13.5px;
   line-height: 1.55;
   color: var(--ink-secondary);
+}
+
+/*
+ * A confirmation stays a dialog on a phone — answering a question should not take you off the
+ * page you asked it from — but it answers with two thumb-sized buttons across the width, not a
+ * right-aligned pair sized for a pointer.
+ */
+@media (max-width: 680px) {
+  .modal-dialog.confirm-dialog {
+    width: 100%;
+    max-width: none;
+  }
+
+  .confirm-dialog .modal-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .confirm-dialog .modal-foot button {
+    flex: 1;
+    min-height: 46px;
+  }
+
+  .confirm-dialog .modal-close {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 .confirm-dialog .modal-foot button:first-child {

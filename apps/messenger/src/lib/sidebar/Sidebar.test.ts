@@ -20,7 +20,7 @@ function botDms(count: number) {
   });
 }
 
-function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false) {
+function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = []) {
   const stub = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions],
@@ -38,12 +38,12 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     onOpenContextMenu: () => {},
     onToggleWorkspace: () => {},
     onOpenSettings: () => {},
-    onCreateBot: () => {},
-    onCreateGroup: () => {},
+    onCreateBot: () => created.push("bot"),
+    onCreateGroup: () => created.push("group"),
     onOpenArtifact: () => {},
     onPatchTheme: async () => true,
   });
-  return { ...view, runtime };
+  return { ...view, runtime, created };
 }
 
 for (const selected of [null, 'sess-1']) for (const deletedAfterResult of [false, true]) test(`retained routine with unavailable owner is explained and inert (${selected}, ${deletedAfterResult})`, () => {
@@ -151,5 +151,175 @@ test('mobile archive entry opens an empty archive and returns to active sessions
   click(host.querySelector('.mobile-session-tools button'));
   expect(host.querySelector('.archived-empty-hint')).toBeNull();
   expect(host.querySelector('.groups')?.textContent).toContain('视频组');
+  close();
+});
+
+/**
+ * Phone width, with the media listener kept so a window that grows back can be tested too. The
+ * 680px query is the one the stylesheet uses; reduced motion keeps the page slide out of the way,
+ * since a running animation has nothing to say about what the screen holds.
+ */
+function withPhone(run: (grow: () => void) => void): void {
+  const previous = window.matchMedia;
+  const listeners = new Set<(ev: MediaQueryListEvent) => void>();
+  let narrow = true;
+  window.matchMedia = ((query: string) => ({
+    get matches() {
+      if (query === "(prefers-reduced-motion: reduce)") return true;
+      return query === "(max-width: 680px)" ? narrow : false;
+    },
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: (_: string, fn: (ev: MediaQueryListEvent) => void) => void listeners.add(fn),
+    removeEventListener: (_: string, fn: (ev: MediaQueryListEvent) => void) => void listeners.delete(fn),
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    run(() => {
+      narrow = false;
+      for (const fn of listeners) fn({} as MediaQueryListEvent);
+      flushSync();
+    });
+  } finally {
+    window.matchMedia = previous;
+  }
+}
+
+function hits(runtime: ReturnType<typeof open>["runtime"], query = '视频') {
+  flushSync(() => {
+    runtime.searchQuery = query;
+    runtime.searchHits = [{ kind: 'session', id: 'sess-1', snippet: '视频组' }];
+  });
+}
+
+test("on a phone the search field is a way in, not a place to type", () => {
+  withPhone(() => {
+    const { host, app, close } = open([], null, true);
+    // Nothing to type into on the list: a dropdown under a field this narrow is a desktop idea.
+    expect(host.querySelector('input.search')).toBeNull();
+    const trigger = host.querySelector('.search-trigger');
+    expect(trigger?.textContent?.trim()).toBe(t.sidebar.searchShort);
+    expect(host.querySelector('.search-page')).toBeNull();
+
+    click(trigger);
+    const field = host.querySelector<HTMLInputElement>('.search-page input.search');
+    expect(field).not.toBeNull();
+    // The page exists to be typed into, so the caret is already there.
+    expect(document.activeElement).toBe(field);
+    expect(field?.placeholder).toBe(t.sidebar.search);
+    // Nothing typed yet, so no list of hits and no empty-search verdict.
+    expect(host.querySelector('.search-drop.is-page')).toBeNull();
+    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(true);
+    close();
+  });
+});
+
+test("the hits fill the page, and picking one ends the search", () => {
+  withPhone(() => {
+    const { host, runtime, app, close } = open([], null, true);
+    click(host.querySelector('.search-trigger'));
+    hits(runtime);
+    const hit = host.querySelector('.search-drop.is-page [role=option]');
+    expect(hit?.textContent).toContain('视频组');
+    click(hit);
+    expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(true);
+    // The field is cleared and the page is gone: there is nothing left to come back from.
+    expect(runtime.calls.some((call) => call.name === 'closeSearch')).toBe(true);
+    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(false);
+    close();
+  });
+});
+
+test("Enter on the page opens the first hit, the way it does in the dropdown", () => {
+  withPhone(() => {
+    const { host, runtime, close } = open([], null, true);
+    click(host.querySelector('.search-trigger'));
+    hits(runtime);
+    press(host.querySelector('.search-page input.search'), 'Enter');
+    expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(true);
+    close();
+  });
+});
+
+test("leaving the page clears what was typed, and Escape leaves it too", () => {
+  withPhone(() => {
+    const { host, runtime, app, close } = open([], null, true);
+    const page = app as { closeSearchPage(): boolean };
+    click(host.querySelector('.search-trigger'));
+    hits(runtime);
+    click(host.querySelector('.search-page-back'));
+    expect(runtime.calls.some((call) => call.name === 'closeSearch')).toBe(true);
+    expect(page.closeSearchPage()).toBe(false);
+
+    click(host.querySelector('.search-trigger'));
+    press(host.querySelector('.search-page input.search'), 'Escape');
+    expect(page.closeSearchPage()).toBe(false);
+    close();
+  });
+});
+
+test("a window that grew back has the dropdown again, so the page goes", () => {
+  withPhone((grow) => {
+    const { host, app, close } = open([], null, true);
+    click(host.querySelector('.search-trigger'));
+    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(true);
+    click(host.querySelector('.search-trigger'));
+    grow();
+    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(false);
+    expect(host.querySelector('input.search')).not.toBeNull();
+    close();
+  });
+});
+
+test("creating on a phone is one floating button, asking which once", () => {
+  withPhone(() => {
+    const created: string[] = [];
+    const { host, close } = open([], null, true, created);
+    // The 22px + in each group header is a poor target at the top of a phone screen, and there
+    // were two of them; neither is on the phone's list any more.
+    const fab = host.querySelector('.fab');
+    expect(fab).not.toBeNull();
+    expect(host.querySelector('.fab-menu')).toBeNull();
+
+    click(fab);
+    const items = [...host.querySelectorAll('.fab-menu-item')].map((b) => b.textContent?.trim());
+    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup]);
+    expect(fab?.getAttribute('aria-expanded')).toBe('true');
+
+    click(host.querySelectorAll('.fab-menu-item')[1]);
+    expect(created).toEqual(['group']);
+    expect(host.querySelector('.fab-menu')).toBeNull();
+
+    click(host.querySelector('.fab'));
+    click(host.querySelectorAll('.fab-menu-item')[0]);
+    expect(created).toEqual(['group', 'bot']);
+    close();
+  });
+});
+
+test("the button belongs to the list of chats: not the archive, not the search page", () => {
+  withPhone(() => {
+    const { host, close } = open([], null, true);
+    click(host.querySelector('.mobile-session-tools button'));
+    expect(host.querySelector('.fab')).toBeNull();
+    click(host.querySelector('.mobile-session-tools button'));
+    expect(host.querySelector('.fab')).not.toBeNull();
+    click(host.querySelector('.search-trigger'));
+    expect(host.querySelector('.fab')).toBeNull();
+    close();
+  });
+});
+
+/** Wider windows keep the + in each group header, where the pointer can reach it. */
+test("the group headers keep their own + on a wider window, and there is no floating one", () => {
+  const { host, created, close } = open([], null, true, []);
+  expect(host.querySelector('.fab')).toBeNull();
+  const adds = [...host.querySelectorAll<HTMLButtonElement>('.ghead .add')];
+  expect(adds.map((b) => b.title)).toEqual([t.sidebar.addGroup, t.sidebar.addBot]);
+  click(adds[0]);
+  click(adds[1]);
+  expect(created).toEqual(['group', 'bot']);
   close();
 });

@@ -167,22 +167,26 @@
 			<button type="button" class="group-section-btn" onclick={() => openSection('profile')}>
 				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
 				<span class="section-name">{t.detail.groupProfile}</span>
+				<span class="section-chevron" aria-hidden="true"></span>
 			</button>
 		{/if}
 		<button type="button" class="group-section-btn" onclick={() => openSection('members')}>
 			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 			<span class="section-name">{t.detail.members}</span>
 			<span class="section-count">{selected.kind === 'group' ? groupPresent.length + 1 : groupPresent.length}</span>
+			<span class="section-chevron" aria-hidden="true"></span>
 		</button>
 		{#if selected.kind === 'group'}
 			<button type="button" class="group-section-btn" onclick={() => openSection('actions')}>
 				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
 				<span class="section-name">{t.detail.sessionActions}</span>
+				<span class="section-chevron" aria-hidden="true"></span>
 			</button>
 		{/if}
 		<button type="button" class="group-section-btn is-danger" onclick={() => openSection('danger')}>
 			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
 			<span class="section-name">{t.detail.dangerZone}</span>
+			<span class="section-chevron" aria-hidden="true"></span>
 		</button>
 	</nav>
 
@@ -507,7 +511,8 @@
 	}
 
 	.group-sections,
-	.group-detail-head {
+	.group-detail-head,
+	.section-chevron {
 		display: none;
 	}
 
@@ -846,14 +851,14 @@
 			background: var(--line);
 		}
 
-		.group-section-btn::after {
-			content: '';
+		.group-section-btn .section-chevron {
+			display: block;
 			width: 8px;
 			height: 8px;
 			border-top: 1.8px solid var(--muted);
 			border-right: 1.8px solid var(--muted);
 			transform: rotate(45deg);
-			margin-left: auto;
+			margin-left: 8px;
 			flex-shrink: 0;
 		}
 
@@ -870,11 +875,18 @@
 			color: var(--danger);
 		}
 
+		/* The name grows, so the member count sits against the chevron instead of mid-row. */
+		.group-section-btn .section-name {
+			flex: 1;
+			min-width: 0;
+			text-align: left;
+		}
+
 		.group-section-btn .section-count {
-			margin-left: auto;
-			margin-right: 8px;
+			margin-left: 8px;
 			font-size: 13px;
 			color: var(--muted);
+			flex-shrink: 0;
 		}
 
 		.group-detail {

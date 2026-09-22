@@ -67,6 +67,31 @@
 		padding: 24px;
 		background: var(--bg);
 	}
+
+	/* On a phone the card is the screen: 24px of background on every side buys nothing. */
+	@media (max-width: 680px) {
+		.pairing-screen {
+			align-items: stretch;
+			padding: 0;
+		}
+
+		.pairing-card {
+			width: 100%;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+			min-height: 100%;
+		}
+
+		.pairing-card :global(.modal-head) {
+			height: calc(52px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 16px 0;
+		}
+
+		.pairing-card :global(.modal-body) {
+			padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+		}
+	}
 	.pairing-card {
 		width: min(520px, 100%);
 	}

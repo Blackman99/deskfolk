@@ -34,6 +34,21 @@ button {
   transition: all 0.15s ease;
 }
 
+/*
+ * A tap on a phone drew the platform's grey rectangle over whatever was pressed — a square behind
+ * a round button, a block across a list row — on top of the pressed states the app already has.
+ * Every control here says it is pressed in its own way, so the native flash goes.
+ */
+button,
+a,
+[role="button"],
+[role="option"],
+[role="menuitem"],
+label,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,

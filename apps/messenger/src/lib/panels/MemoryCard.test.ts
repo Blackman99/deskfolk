@@ -168,3 +168,13 @@ test("an empty card explains who writes these", () => {
   expect(host.querySelector(".memory-empty")?.textContent).toBe(t.sidebar.memoriesEmpty);
   close();
 });
+
+/** The memory editor is a page on a phone too, by the same frame in modals.css. */
+test("the memory editor carries the phone page frame and its way back", () => {
+  const { host, close } = open([aMemory()]);
+  click(host.querySelector(".memory-icon-btn"));
+  expect(host.querySelector(".memory-modal-backdrop")?.classList.contains("page-on-phone")).toBe(true);
+  click(host.querySelector(".memory-modal .modal-back"));
+  expect(host.querySelector(".memory-modal")).toBeNull();
+  close();
+});

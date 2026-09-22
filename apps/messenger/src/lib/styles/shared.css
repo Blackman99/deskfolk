@@ -67,6 +67,28 @@
   background: var(--pane);
 }
 
+/*
+ * The way back on a phone, where a dialog is a page: hidden until a `.page-on-phone` backdrop
+ * turns it on (see modals.css), so wider windows keep the ✕ they have always had.
+ */
+.modal-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-secondary);
+  cursor: pointer;
+}
+
+.modal-back:active {
+  background: var(--line-subtle);
+}
+
 .modal-close {
   background: transparent;
   border: 1px solid transparent;

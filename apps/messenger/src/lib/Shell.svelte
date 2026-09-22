@@ -95,6 +95,15 @@
 
 	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
 	let themeMenuOpen = $state(false);
+	/**
+	 * Searching on a phone is a screen, not a dropdown. The sidebar renders it; the flag lives
+	 * here because Back and Escape have to close it, and because the bar at the bottom steps out
+	 * of the way while it is up.
+	 */
+	let searchPageOpen = $state(false);
+	/** The phone's floating + menu, held here for the same reasons. */
+	let createMenuOpen = $state(false);
+	let sidebar = $state<Sidebar>();
 	let mobileSettingsDetail = $state(false);
 	let settingsModal = $state<SettingsModal>();
 	/**
@@ -135,11 +144,13 @@
 	export function backMobileLayer(): boolean {
 		switch (topLayer({
 			themeMenuOpen,
+			createMenuOpen,
 			dangerConfirm: dangerConfirm !== null,
 			createBotOpen: runtime.createBotOpen,
 			createGroupOpen: runtime.createGroupOpen,
 			providerEditor: providerEditor !== null,
 			confirmingIndependent,
+			searchPageOpen,
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			routeLogOpen: runtime.routeLogOpen,
@@ -149,6 +160,9 @@
 		})) {
 			case 'theme-menu':
 				themeMenuOpen = false;
+				return true;
+			case 'create-menu':
+				createMenuOpen = false;
 				return true;
 			case 'danger':
 				// A running action is not dismissible; swallowing Back is the point.
@@ -165,6 +179,8 @@
 				return true;
 			case 'independent-confirm':
 				return true;
+			case 'search-page':
+				return sidebar?.closeSearchPage() ?? false;
 			case 'settings':
 				// Only its inner pages are ours to unwind; settings itself is an entry in history.
 				return settingsModal?.backWithinSettings() ?? false;
@@ -218,6 +234,8 @@
 		if (destination === mobileDestination) return;
 		const navigate = () => {
 			themeMenuOpen = false;
+			createMenuOpen = false;
+			sidebar?.closeSearchPage();
 			if (destination === 'settings') runtime.openSettings();
 			else if (destination === 'workspace') runtime.openWorkspace();
 			else {
@@ -905,6 +923,7 @@
 		runtime.openCreateGroup();
 	}
 	const mobileNavigationVisible = $derived(
+		!searchPageOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !dangerConfirm &&
 		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
@@ -916,6 +935,8 @@
 		if (e.key === 'Escape') {
 			if (themeMenuOpen) {
 				themeMenuOpen = false;
+			} else if (createMenuOpen) {
+				createMenuOpen = false;
 			} else if (escapeDismissesDanger) {
 				dismissDangerConfirm();
 			} else if (runtime.createBotOpen) {
@@ -927,6 +948,8 @@
 				providerEditor = null;
 			} else if (confirmingIndependent) {
 				e.stopPropagation();
+			} else if (searchPageOpen) {
+				sidebar?.closeSearchPage();
 			} else if (runtime.settingsOpen) {
 				closeSettings();
 			} else if (runtime.sessionSettingsOpen && nestedProfile) {
@@ -983,11 +1006,14 @@
 	style:--sidebar-width="{sidebarWidth}px"
 >
 	<Sidebar
+		bind:this={sidebar}
 		{runtime}
 		{t}
 		{selected}
 		{pinnedSessionIds}
 		bind:themeMenuOpen
+		bind:searchPageOpen
+		bind:createMenuOpen
 		workspaceOpen={runtime.workspaceOpen}
 		contextMenuSessionId={contextMenu?.session.id ?? null}
 		onOpenContextMenu={openContextMenu}

@@ -133,7 +133,9 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
 test('mounted Shell: a phone opens Bot settings as a page, and Back leaves the section first', () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({
-    matches: query === '(max-width: 680px)',
+    // Reduced motion as well: a page slide still running when the test unmounts is aborted
+    // mid-flight, and the animation has nothing to do with what these tests assert.
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
     media: query, onchange: null,
     addListener: () => {}, removeListener: () => {},
     addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
@@ -166,7 +168,9 @@ test('mounted Shell: a phone opens Bot settings as a page, and Back leaves the s
 test('mounted Shell: Back unwinds what is not in the URL, then leaves the rest to history', () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({
-    matches: query === '(max-width: 680px)',
+    // Reduced motion as well: a page slide still running when the test unmounts is aborted
+    // mid-flight, and the animation has nothing to do with what these tests assert.
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
     media: query, onchange: null,
     addListener: () => {}, removeListener: () => {},
     addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
@@ -204,7 +208,9 @@ test('mounted Shell: Back unwinds what is not in the URL, then leaves the rest t
 test('mounted Shell: the drawer ✕ closes the open section before the drawer itself', () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({
-    matches: query === '(max-width: 680px)',
+    // Reduced motion as well: a page slide still running when the test unmounts is aborted
+    // mid-flight, and the animation has nothing to do with what these tests assert.
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
     media: query, onchange: null,
     addListener: () => {}, removeListener: () => {},
     addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
@@ -231,6 +237,89 @@ test('mounted Shell: the drawer ✕ closes the open section before the drawer it
     (host.querySelector('.sheet-close') as HTMLButtonElement).click();
     flushSync();
     expect(runtime.calls.some((c) => c.name === 'closeSessionSettings')).toBe(true);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});
+
+test('mounted Shell: searching is a screen, and Back leaves it before it leaves the list', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    // Reduced motion keeps the page slide out of the way: what the screen holds is the point.
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: 'bot-1', name: 'Alpha' })],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }));
+    const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+    const back = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
+    expect(host.querySelector('.mobile-navigation')).not.toBeNull();
+
+    // The + menu is a menu: the first Back takes it, and nothing has navigated yet.
+    click(host.querySelector('.fab'));
+    expect(host.querySelector('.fab-menu')).not.toBeNull();
+    expect(back()).toBe(true);
+    flushSync();
+    expect(host.querySelector('.fab-menu')).toBeNull();
+
+    click(host.querySelector('.search-trigger'));
+    expect(host.querySelector('.search-page input.search')).not.toBeNull();
+    // Nowhere to go while you are searching, and the keyboard wants the room.
+    expect(host.querySelector('.mobile-navigation')).toBeNull();
+
+    expect(back()).toBe(true);
+    flushSync();
+    expect(runtime.calls.some((c) => c.name === 'closeSearch')).toBe(true);
+    expect(host.querySelector('.mobile-navigation')).not.toBeNull();
+    // Nothing of ours left on top, so Back is history's again.
+    expect(back()).toBe(false);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});
+
+test('mounted Shell: the floating + is on the list of chats and nowhere else', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+    const session = aDirect({ id: 'bot-1', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+    ] });
+    const runtime = reactive(fakeRuntime({
+      bots: [bot], sessions: [session],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }));
+    const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+    expect(host.querySelector('.fab')).not.toBeNull();
+
+    // A conversation is a page of its own: the list is not behind it, so neither is its button.
+    runtime.selectedId = 'bot-1';
+    flushSync();
+    expect(host.querySelector('.fab')).toBeNull();
+
+    runtime.selectedId = null;
+    flushSync();
+    expect(host.querySelector('.fab')).not.toBeNull();
+    // Settings and the workspace are pages too.
+    runtime.settingsOpen = true;
+    flushSync();
+    expect(host.querySelector('.fab')).toBeNull();
+    runtime.settingsOpen = false;
+    runtime.workspaceOpen = true;
+    flushSync();
+    expect(host.querySelector('.fab')).toBeNull();
   } finally {
     window.matchMedia = previousMatchMedia;
   }
