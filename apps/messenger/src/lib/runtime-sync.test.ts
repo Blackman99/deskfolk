@@ -1072,3 +1072,39 @@ test("each conversation keeps its own draft and reply target", async () => {
   runtime.draft = "nowhere";
   expect(runtime.sessionView("sess-a").draft).toBe("for A");
 });
+
+test("clearing one conversation's history does not invalidate another's read", async () => {
+  // The revision counter was global: any session.cleared threw away a page that was in flight for
+  // a different conversation. Per conversation now, so two panes cannot spoil each other's reads.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const a = runtime.sessionView("sess-a");
+  const b = runtime.sessionView("sess-b");
+  const before = b.revision;
+
+  Socket.current.frame({
+    type: "event", event_instance_id: instance, seq: 1,
+    payload: { event: "session.cleared", id: "sess-a", occurred_at: "now" },
+  });
+  await until(() => a.revision > 0);
+
+  expect(a.revision).toBe(1);
+  expect(b.revision).toBe(before);
+});
+
+test("a dead socket invalidates every conversation's read at once", async () => {
+  // What the one global counter used to do for connection loss is now its own counter, so it
+  // still cancels everything in flight without also cancelling unrelated conversations.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "sess-a";
+  const a = runtime.sessionView("sess-a");
+  const seqBefore = a.loadSeq;
+
+  Socket.current.close();
+  await until(() => runtime.connection !== "connected");
+
+  // The conversation's own counter is untouched; the connection's moved.
+  expect(a.loadSeq).toBe(seqBefore);
+});

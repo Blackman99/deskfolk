@@ -37,6 +37,18 @@ export class SessionView {
   /** Whether the full history has been read, as opposed to the summary row the roster carries. */
   detailLoaded = $state(false);
 
+  /**
+   * The newest read for this conversation. An older page landing after a newer one started must
+   * not win. Per conversation rather than one global counter, so loading a second conversation
+   * no longer cancels the first one's read.
+   */
+  loadSeq = 0;
+  /**
+   * Bumped when the daemon says this conversation's history was cleared or the conversation went
+   * away. A page fetched before that must not be written back on top of the emptied rows.
+   */
+  revision = 0;
+
   constructor(sessionId: string) {
     this.sessionId = sessionId;
   }

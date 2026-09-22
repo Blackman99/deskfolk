@@ -355,8 +355,12 @@ export class MessengerRuntime {
   private suggestSeq = 0;
   private sync: EventSync | null = null;
   private sessionLoad = Promise.resolve();
-  private sessionSeq = 0;
-  private historyRevision = 0;
+  /**
+   * Bumped when the connection is replaced. The per-conversation counters say "a newer read of
+   * this conversation started"; this one says "every read in flight belongs to a dead socket".
+   * They were one counter, which is why loading a second conversation cancelled the first.
+   */
+  private connectionSeq = 0;
   private profileNavigation = 0;
   private durablePending: DurablePendingRequest[] = [];
   private notificationIntentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
@@ -520,9 +524,10 @@ export class MessengerRuntime {
       const api = this.api;
       const loading = this.selectSession(session.id);
       navigation = this.profileNavigation;
-      const selection = this.sessionSeq;
+      const view = this.sessionView(session.id);
+      const selection = view.loadSeq;
       await loading;
-      if (this.api !== api || this.selectedId !== session.id || this.sessionSeq !== selection ||
+      if (this.api !== api || this.selectedId !== session.id || view.loadSeq !== selection ||
         this.profileNavigation !== navigation) return;
     }
     if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
@@ -697,7 +702,9 @@ export class MessengerRuntime {
     if (!opts?.preservePage) this.closeRoutines();
     const api = this.api;
     const sync = this.sync;
-    const selection = ++this.sessionSeq;
+    const view = this.sessionView(id);
+    const connection = this.connectionSeq;
+    const selection = ++view.loadSeq;
     const messageId = opts?.messageId;
     this.setHighlightedMessage(messageId ?? null);
     this.routeLogOpen = false;
@@ -709,10 +716,10 @@ export class MessengerRuntime {
     }
     // A selected row may still have only summary data, not its history cursor.
     if (this.selectedId === id && this.sessionDetailId === id && messageId) {
-      const revision = this.historyRevision;
+      const revision = view.revision;
       await this.ensureMessageLoaded(id, messageId);
-      if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
-        this.selectedId !== id || revision !== this.historyRevision) return;
+      if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
+        selection !== view.loadSeq || this.selectedId !== id || revision !== view.revision) return;
       this.setHighlightedMessage(messageId);
       return;
     }
@@ -737,7 +744,8 @@ export class MessengerRuntime {
     if (!api || !sync) return;
     this.historyLoading = true;
     this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
-      if (selection !== this.sessionSeq || this.api !== api || this.sync !== sync) return;
+      if (selection !== view.loadSeq || this.connectionSeq !== connection ||
+        this.api !== api || this.sync !== sync) return;
       sync.pause();
       try {
         const detail = await api.sessionSnapshot(id);
@@ -748,7 +756,7 @@ export class MessengerRuntime {
         const frames = sync.install();
         if (!frames) throw new Error("event gap");
         for (const frame of frames) this.ingest(frame.payload, frame);
-        if (selection !== this.sessionSeq) return;
+        if (selection !== view.loadSeq || this.connectionSeq !== connection) return;
         const unread = this.notificationCapabilities.bounded_read_v1 ? detail.session.unread_count : 0;
         this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements);
         for (const frame of frames) {
@@ -756,21 +764,22 @@ export class MessengerRuntime {
           if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, frame);
         }
         if (messageId) {
-          const revision = this.historyRevision;
+          const revision = view.revision;
           await this.ensureMessageLoaded(id, messageId);
-          if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
-            this.selectedId !== id || revision !== this.historyRevision) return;
+          if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
+            selection !== view.loadSeq || this.selectedId !== id || revision !== view.revision) return;
           this.setHighlightedMessage(messageId);
         }
-        if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq || this.selectedId !== id) return;
+        if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
+          selection !== view.loadSeq || this.selectedId !== id) return;
         if (!this.notificationCapabilities.bounded_read_v1) {
           await this.markSessionRead(id);
         }
       } catch {
         if (this.api === api) this.markDisconnected();
       } finally {
-        // Only the newest selection owns the flag; an older one finishing must not clear it.
-        if (selection === this.sessionSeq) this.historyLoading = false;
+        // Only the newest read of this conversation owns its flag; an older one must not clear it.
+        if (selection === view.loadSeq && this.connectionSeq === connection) view.historyLoading = false;
       }
     });
     await this.sessionLoad;
@@ -792,13 +801,15 @@ export class MessengerRuntime {
     const id = this.selectedId;
     const cursor = this.sessionMessageNext;
     if (!api || !id || !cursor || this.olderLoading) return;
-    const selection = this.sessionSeq;
-    const revision = this.historyRevision;
+    const view = this.sessionView(id);
+    const connection = this.connectionSeq;
+    const selection = view.loadSeq;
+    const revision = view.revision;
     this.olderLoading = true;
     try {
       const page = await api.messages(id, { cursor });
       if (this.api !== api || this.sync !== sync || this.selectedId !== id ||
-        this.sessionSeq !== selection || this.historyRevision !== revision) return;
+        this.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
       this.sessionMessageNext = page.next ?? null;
       const known = new Set(this.snapshot.messages.map((message) => message.id));
       const added = page.items.filter((message) => !known.has(message.id));
@@ -2763,8 +2774,10 @@ export class MessengerRuntime {
   private async ensureMessageLoaded(sessionId: string, messageId: string): Promise<void> {
     const api = this.api;
     const sync = this.sync;
-    const selection = this.sessionSeq;
-    const revision = this.historyRevision;
+    const view = this.sessionView(sessionId);
+    const connection = this.connectionSeq;
+    const selection = view.loadSeq;
+    const revision = view.revision;
     if (!api) return;
     const loaded = this.snapshot.messages.filter((m) => m.session_id === sessionId);
     if (loaded.some((m) => m.id === messageId)) return;
@@ -2775,7 +2788,7 @@ export class MessengerRuntime {
       this.sessionMessageNext,
     );
     if (this.selectedId !== sessionId || this.api !== api || this.sync !== sync ||
-      this.sessionSeq !== selection || this.historyRevision !== revision) return;
+      this.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
     this.sessionMessageNext = result.next;
     const current = new Map(this.snapshot.messages.map((message) => [message.id, message]));
     for (const message of result.messages) if (!current.has(message.id)) current.set(message.id, message);
@@ -2841,7 +2854,14 @@ export class MessengerRuntime {
       this.terminals = this.terminals.filter((existing) => existing.id !== event.id);
     }
     if (this.api) this.reconcilePendingMutation(this.api);
-    if (event.event === "session.cleared" || event.event === "session.removed") this.historyRevision++;
+    if (event.event === "session.cleared" || event.event === "session.removed") {
+      // Only that conversation's reads are invalidated; another pane's are none of its business.
+      const gone = this.views.get(event.id);
+      if (gone) {
+        gone.revision++;
+        gone.resetHistory();
+      }
+    }
     if (event.event === "session.removed") {
       if (this.selectedId === event.id) {
         this.selectedId = null;
@@ -2936,7 +2956,7 @@ export class MessengerRuntime {
     this.sessionLoad = Promise.resolve();
     this.sessionDetailId = null;
     this.sessionMessageNext = null;
-    this.sessionSeq++;
+    this.connectionSeq++;
     this.busy = false;
   }
 
