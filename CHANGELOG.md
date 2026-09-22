@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- The "scroll to bottom" button floats above the input's top-right corner. Leaving the bottom slides it up out of the input; coming back slides it down into the input.
+
 - Fixed a phone staying disconnected once the remote link ended. Whether the relay closed it, the Mac went away or the phone changed network, the browser tells the page — and the page was not listening: it went on showing the conversation as if nothing had happened, until a tap or a message failed and only then started reconnecting. Reconnecting was something you triggered. The page now knows the link is gone by itself and reconnects on the delay it already had. The link a phone is left holding after a change of network — open as far as the browser knows, carrying nothing — is read as gone too, when an answer is outstanding, the send buffer has stopped moving and not one frame has arrived for half a minute; an idle link and one still uploading are neither. Coming back from a locked screen, a tunnel or the background (the page visible, the window focused, the network back, a push arriving) brings the next attempt forward to the moment it was owed, and never past it: the relay allows ten handshakes a minute and refuses the rest, so trying harder only comes back slower.
 
 - Fixed a handshake that never finished keeping the device's only route at the relay. The relay gives a device one route and one is all it gives, so a page that died halfway through a handshake and held its socket was kept out by the link it had already abandoned, on every retry after it.

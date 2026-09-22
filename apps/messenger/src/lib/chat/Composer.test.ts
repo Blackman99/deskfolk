@@ -153,6 +153,48 @@ test("an empty draft cannot be sent", () => {
   close();
 });
 
+test("the jump-to-bottom control hides inside the input and floats clear of it when shown", () => {
+  const { host, close } = open("");
+  const slot = host.querySelector(".scroll-bottom-slot") as HTMLElement;
+  const button = slot.querySelector(".scroll-bottom-btn") as HTMLButtonElement;
+  const hidden = getComputedStyle(button);
+  const slotStyle = getComputedStyle(slot);
+  expect(slot.classList.contains("is-shown")).toBe(false);
+  expect(hidden.transform).toContain("translateY(76px)");
+  expect(hidden.borderRadius).toBe("50%");
+  expect(hidden.pointerEvents).toBe("none");
+  expect(button.tabIndex).toBe(-1);
+  expect(slotStyle.overflow).toBe("hidden");
+  expect(slotStyle.top).toBe("-44px");
+  close();
+});
+
+test("showing the jump-to-bottom control slides it out of the card and keeps it clickable", () => {
+  const selected = aDirect();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  let jumps = 0;
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    showScrollBottom: true,
+    onScrollToBottom: () => { jumps += 1; },
+    onSend: async () => {},
+    onPickPrompt: () => {},
+  });
+  const slot = view.host.querySelector(".scroll-bottom-slot") as HTMLElement;
+  const button = slot.querySelector(".scroll-bottom-btn") as HTMLButtonElement;
+  expect(slot.classList.contains("is-shown")).toBe(true);
+  expect(getComputedStyle(button).transform).toContain("translateY(0)");
+  expect(getComputedStyle(button).pointerEvents).toBe("auto");
+  expect(button.tabIndex).toBe(0);
+  expect(button.getAttribute("aria-label")).toBe(t.chat.scrollToBottom);
+  button.click();
+  expect(jumps).toBe(1);
+  view.close();
+});
+
 test("the remote attachment limit sits inside an empty composer", () => {
   const { host, runtime, close } = open("", true);
   expect(host.querySelector(".composer-inline-limit")?.textContent).toContain(t.composer.attachLimit);

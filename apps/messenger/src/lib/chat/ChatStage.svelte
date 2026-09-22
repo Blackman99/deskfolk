@@ -1555,23 +1555,13 @@
 		</div>
 	</div>
 
-	{#if showScrollBottom}
-		<button
-			type="button"
-			class="scroll-bottom-btn"
-			title={t.chat.scrollToBottom}
-			aria-label={t.chat.scrollToBottom}
-			onclick={() => scrollToBottom(true)}
-		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-		</button>
-	{/if}
-
 	<Composer
 		bind:this={composer}
 		{runtime}
 		{t}
 		{selected}
+		{showScrollBottom}
+		onScrollToBottom={() => scrollToBottom(true)}
 		onSend={sendFromComposer}
 		onPickPrompt={pickStarterPrompt}
 	/>
@@ -2208,35 +2198,6 @@
 		animation: cursorBlink 0.8s infinite;
 	}
 
-	/* Scroll to Bottom Floating Button */
-	.scroll-bottom-btn {
-		position: absolute;
-		bottom: 140px;
-		right: 24px;
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		background: var(--input-bg);
-		border: 1px solid var(--line);
-		box-shadow: var(--shadow-md);
-		color: var(--muted);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		pointer-events: auto;
-		transition: all 0.18s ease;
-		z-index: 10;
-	}
-
-	.scroll-bottom-btn:hover {
-		color: var(--accent);
-		background: var(--line-subtle);
-		transform: translateY(-2px);
-		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
-	}
-
-
 	.welcome-identity-btn {
 		background: transparent;
 		border: none;
@@ -2567,13 +2528,6 @@
 	animation: none;
 	}
 	}
-	@media (max-width: 680px) {
-		.scroll-bottom-btn {
-			bottom: 120px;
-			right: 16px;
-		}
-	}
-
 	@media (max-width: 680px) {
 		/*
 		 * A phone leaves a bubble about 340px wide, so the line above each message has to earn

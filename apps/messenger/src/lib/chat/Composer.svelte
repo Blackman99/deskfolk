@@ -48,9 +48,20 @@
 		onSend: (files: File[]) => Promise<void>;
 		/** A starter chip or a suggestion fills the draft; the mirror effect puts it in the editor. */
 		onPickPrompt: (prompt: string) => void;
+		/** The stage owns stick-to-bottom; this only draws the jump control on the card. */
+		showScrollBottom?: boolean;
+		onScrollToBottom?: () => void;
 	};
 
-	let { runtime, t, selected, onSend, onPickPrompt }: Props = $props();
+	let {
+		runtime,
+		t,
+		selected,
+		onSend,
+		onPickPrompt,
+		showScrollBottom = false,
+		onScrollToBottom
+	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
@@ -618,6 +629,7 @@
 	</div>
 {/if}
 
+<div class="composer-card-wrap">
 <div class="composer-frost-shell composer-card-shell">
 <div
 	class="composer-card"
@@ -750,6 +762,19 @@
 	</div>
 </div>
 </div>
+<div class="scroll-bottom-slot" class:is-shown={showScrollBottom} aria-hidden={showScrollBottom ? undefined : true}>
+	<button
+		type="button"
+		class="scroll-bottom-btn"
+		tabindex={showScrollBottom ? 0 : -1}
+		title={t.chat.scrollToBottom}
+		aria-label={t.chat.scrollToBottom}
+		onclick={() => onScrollToBottom?.()}
+	>
+		<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+	</button>
+</div>
+</div>
 {#if !lockedComposer}
 	<div class="composer-hint" id="composer-hint">
 		<span class="composer-frost-shell composer-hint-shell">
@@ -832,6 +857,11 @@
 		display: none;
 	}
 
+	/* The floating jump control sits over the card's right shoulder. */
+	.composer-dock:has(.scroll-bottom-slot.is-shown) .composer-suggest-bar {
+		padding-right: 52px;
+	}
+
 	.composer-suggest-bar::before {
 		inset: -8px -8px 4px -8px;
 		border-radius: 22px 22px 8px 8px;
@@ -865,7 +895,63 @@
 		color: var(--accent);
 	}
 
+	/* The jump control floats above the card's top-right and grows out of the card. */
+	.composer-card-wrap {
+		position: relative;
+		width: 100%;
+	}
+
+	.scroll-bottom-slot {
+		position: absolute;
+		z-index: 4;
+		/* 32px circle, 12px of air, then 32px buried in the card so the slide has somewhere to hide. */
+		top: -44px;
+		right: 8px;
+		width: 32px;
+		height: 76px;
+		overflow: hidden;
+		pointer-events: none;
+	}
+
+	.scroll-bottom-btn {
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		background: var(--input-bg);
+		box-shadow: var(--shadow-md);
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		pointer-events: none;
+		transform: translateY(76px);
+		transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease, background-color 0.15s ease;
+	}
+
+	.scroll-bottom-slot.is-shown {
+		pointer-events: auto;
+	}
+
+	.scroll-bottom-slot.is-shown .scroll-bottom-btn {
+		transform: translateY(0);
+		pointer-events: auto;
+	}
+
+	.scroll-bottom-btn:hover {
+		color: var(--accent);
+		background: var(--line-subtle);
+	}
+
+	.scroll-bottom-btn:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
 	.composer-card-shell {
+		position: relative;
 		width: 100%;
 		border-radius: 24px;
 		z-index: 1;
@@ -1462,7 +1548,8 @@
 	@media (prefers-reduced-motion: reduce) {
 	.composer-card,
 	.composer-action,
-	.composer .attach-btn {
+	.composer .attach-btn,
+	.scroll-bottom-btn {
 	transition: none;
 	}
 	}
