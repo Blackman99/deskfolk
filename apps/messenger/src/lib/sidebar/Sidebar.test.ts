@@ -157,7 +157,7 @@ test("Bot to Bot rows carry no unread badge", () => {
  * 680px query is the one the stylesheet uses; reduced motion keeps the page slide out of the way,
  * since a running animation has nothing to say about what the screen holds.
  */
-function withPhone(run: (grow: () => void) => void): void {
+async function withPhone(run: (grow: () => void) => void | Promise<void>): Promise<void> {
   const previous = window.matchMedia;
   const listeners = new Set<(ev: MediaQueryListEvent) => void>();
   let narrow = true;
@@ -175,7 +175,7 @@ function withPhone(run: (grow: () => void) => void): void {
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;
   try {
-    run(() => {
+    return await run(() => {
       narrow = false;
       for (const fn of listeners) fn({} as MediaQueryListEvent);
       flushSync();
@@ -228,8 +228,8 @@ test("on a phone the search field is a way in, not a place to type", () => {
   });
 });
 
-test("the hits fill the page, and picking one ends the search", () => {
-  withPhone(() => {
+test("the hits fill the page, and picking one ends the search", async () => {
+  await withPhone(async () => {
     const { host, runtime, app, close } = open([], null, true);
     click(host.querySelector('.search-trigger'));
     hits(runtime);
@@ -237,8 +237,10 @@ test("the hits fill the page, and picking one ends the search", () => {
     expect(hit?.textContent).toContain('视频组');
     click(hit);
     expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(true);
-    // The field is cleared and the page is gone: there is nothing left to come back from.
+    // The field is cleared straight away. The page stays until the conversation it opened is
+    // the one covering the list, which the stub's resolved selectSession has already done.
     expect(runtime.calls.some((call) => call.name === 'closeSearch')).toBe(true);
+    await Promise.resolve();
     expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(false);
     close();
   });

@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- On a phone, opening a conversation slides it in from the right over the chat list, and Back slides it back out to the right. The list underneath stays where it is. Wider windows keep the list and the conversation side by side.
+
 - The terminal pane keeps a gap under the last line, so the prompt no longer sits on the window edge.
 
 - Fixed a plain fenced code block repainting a dozen times a second wherever markdown is shown — a message, the file preview. It painted to itself, the check for "already painted" looked for a token span that plain text never has, and the rewrite woke the observer that asked for the next paint.

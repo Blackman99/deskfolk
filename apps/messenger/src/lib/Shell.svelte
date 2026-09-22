@@ -65,6 +65,7 @@
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
+	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
 	import RoutineCalendar from './calendar/RoutineCalendar.svelte';
 	import ChatHeader from './chat/ChatHeader.svelte';
@@ -296,6 +297,7 @@
 	let shellWidth = $state(Number.POSITIVE_INFINITY);
 	const previewWidth = $derived(clampPreviewWidth(previewPreferred, shellWidth));
 	const sidebarWidth = $derived(clampSidebarWidth(sidebarPreferred, shellWidth));
+	const isMobile = $derived(shellWidth <= 680);
 
 	$effect(() => {
 		const el = shellEl;
@@ -1086,6 +1088,32 @@
 	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
 		{#if runtime.routinesOpen}
 			<RoutineCalendar {runtime} {t} />
+		{:else if selected}
+		<!--
+			On a phone this is a page over the roster: it arrives from the right and Back walks
+			it back out the same way. Wider windows keep both columns, and a zero-length slide
+			there leaves the split exactly as the grid laid it out.
+		-->
+		<div class="conversation" transition:pageSlide>
+		<ChatHeader
+			{runtime}
+			{t}
+			{selected}
+			{pinnedSessionIds}
+			onTogglePin={togglePin}
+			onToggleSessionSettings={toggleSessionSettings}
+			onCreateBot={openCreateBot}
+			onShowOnboarding={() => (dismissedOnboarding = false)}
+		/>
+		<ChatStage
+			{runtime}
+			{t}
+			{selected}
+			onOpenProfile={openProfile}
+			onOpenArtifact={openArtifactPath}
+			onCreateBot={openCreateBot}
+		/>
+		</div>
 		{:else}
 		<ChatHeader
 			{runtime}
@@ -1696,15 +1724,42 @@
 			grid-template-columns: 1fr;
 		}
 
-		/* The roster is the whole screen until a conversation is picked. */
+		/*
+		 * The roster stays put. A conversation is a page laid over it, so Back has something to
+		 * uncover while that page walks back out to the right. Until one is open the column is
+		 * only there to receive that page, and it must not cover the list.
+		 */
 		.main {
 			display: none;
 		}
 
-		.shell.has-session .main,
+		/*
+		 * `:has(.conversation)` rather than `.has-session`, because the two part ways for the
+		 * 220ms the page spends walking back out: the session is already gone, and hiding the
+		 * column then would cancel that walk before it painted.
+		 */
+		.shell:has(.conversation) .main,
 		.shell.has-routines .main {
+			position: fixed;
+			inset: 0;
+			z-index: 30;
 			display: flex;
 			min-width: 0;
+		}
+
+		.conversation {
+			position: absolute;
+			inset: 0;
+			z-index: 1;
+			display: flex;
+			flex-direction: column;
+			min-width: 0;
+			min-height: 0;
+			background: var(--pane);
+		}
+
+		.shell.has-routines .main {
+			background: var(--pane);
 		}
 
 		/* The thread drawer would otherwise stack under the conversation as a second row. */

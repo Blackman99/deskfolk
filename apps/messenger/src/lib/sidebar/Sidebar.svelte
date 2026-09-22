@@ -393,17 +393,30 @@
 		searchFocused = false;
 		searchHighlightIndex = -1;
 		searchInputEl?.blur();
-		// A hit ends the search whichever way it was made: the page goes with it.
-		closeSearchPage();
 		if (filePath) {
+			// A hit ends the search whichever way it was made: the page goes with it.
+			closeSearchPage();
 			runtime.closeSearch();
 			onOpenArtifact(filePath);
 			return;
 		}
-		if (!jump) return;
+		if (!jump) {
+			searchFocused = true;
+			searchInputEl?.focus();
+			return;
+		}
 		runtime.closeSearch();
-		if ('routineId' in jump) runtime.openRoutine(jump.botId, jump.routineId);
-		else void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
+		if ('routineId' in jump) {
+			closeSearchPage();
+			runtime.openRoutine(jump.botId, jump.routineId);
+			return;
+		}
+		// A conversation opened from here covers the roster, and the search page is what sits on
+		// top of that roster. Take the page away once the conversation is the one covering it, or
+		// the search walks out to the right and the list flashes through underneath.
+		void runtime.selectSession(jump.sessionId, { messageId: jump.messageId }).then(() => {
+			closeSearchPage();
+		});
 	}
 </script>
 
@@ -2339,7 +2352,11 @@
 	}
 	}
 	@media (max-width: 680px) {
-	:global(.shell.has-session) .side,
+	/*
+	 * A conversation covers the roster instead of replacing it, so the list is still here when
+	 * that page walks back out to the right. The calendar is a page of its own and takes the
+	 * column, so the roster steps aside for that one.
+	 */
 	:global(.shell.has-routines) .side {
 	display: none;
 	}
