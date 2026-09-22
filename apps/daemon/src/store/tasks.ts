@@ -253,14 +253,36 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
 
   const attachments = ctx.db
     .query<TraceAttachmentRow, [string]>(
+      // Keyed off this job's turns rather than the message's own job: a message written before
+      // jobs existed carries none, and its files would vanish from the card that produced them.
       `SELECT a.id, a.message_id, m.turn_id AS turn_id, a.workspace_relpath AS path, a.created_at
        FROM attachments a
        JOIN messages m ON m.id = a.message_id
-       WHERE m.task_id = ? AND m.turn_id IS NOT NULL
+       JOIN turns t ON t.id = m.turn_id
+       WHERE t.task_id = ?
        ORDER BY a.created_at ASC, a.id ASC`,
     )
     .all(taskId);
   const filesByTurn = new Map<string, TaskTraceNode["artifacts"]>();
+  // What you attached to the message that opened a stage belongs on your card, not on nobody's.
+  const yourFiles = ctx.db
+    .query<TraceAttachmentRow, [string]>(
+      `SELECT a.id, a.message_id, m.turn_id AS turn_id, a.workspace_relpath AS path, a.created_at
+       FROM attachments a
+       JOIN messages m ON m.id = a.message_id
+       WHERE m.turn_id IS NULL AND m.id IN (
+         SELECT trigger_message_id FROM turns WHERE task_id = ?
+       )
+       ORDER BY a.created_at ASC, a.id ASC`,
+    )
+    .all(taskId);
+  const filesByMessage = new Map<string, TaskTraceNode["artifacts"]>();
+  for (const row of yourFiles) {
+    const list = filesByMessage.get(row.message_id) ?? [];
+    if (list.some((file) => file.path === row.path)) continue;
+    list.push({ path: row.path, message_id: row.message_id, attachment_id: row.id });
+    filesByMessage.set(row.message_id, list);
+  }
   for (const row of attachments) {
     if (!turnIds.has(row.turn_id)) continue;
     const list = filesByTurn.get(row.turn_id) ?? [];
@@ -285,8 +307,13 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
 
   const nodes: TaskTraceNode[] = [];
   const userCards = new Map<string, string>();
+  /**
+   * Who sent the message decides whose card this is — not whether its turn happens to be on this
+   * board. A handoff from a job that is not on screen used to be drawn as a line you wrote.
+   */
+  const sentByYou = (turn: TraceTurnRow) => turn.trigger_author === USER_MEMBER;
   for (const turn of turns) {
-    const fromYou = !turn.trigger_turn_id || !turnIds.has(turn.trigger_turn_id);
+    const fromYou = sentByYou(turn);
     if (fromYou && !userCards.has(turn.trigger_message_id)) {
       userCards.set(turn.trigger_message_id, `user:${turn.trigger_message_id}`);
       nodes.push({
@@ -295,11 +322,12 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
         actor: USER_MEMBER,
         status: "completed",
         woken_by_turn_id: null,
+        woken_elsewhere: null,
         trigger_message_id: turn.trigger_message_id,
         focus_message_id: turn.trigger_message_id,
         summary: oneLine(turn.trigger_body),
         created_at: turn.trigger_created_at,
-        artifacts: [],
+        artifacts: filesByMessage.get(turn.trigger_message_id) ?? [],
         ask: null,
         approval: null,
         passed: watched.get(turn.trigger_message_id) ?? 0,
@@ -307,10 +335,17 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
     }
   }
   for (const turn of turns) {
-    const fromYou = !turn.trigger_turn_id || !turnIds.has(turn.trigger_turn_id);
+    const fromYou = sentByYou(turn);
+    const onBoard = Boolean(turn.trigger_turn_id && turnIds.has(turn.trigger_turn_id));
     const wokenBy = fromYou
       ? (userCards.get(turn.trigger_message_id) ?? null)
-      : turn.trigger_turn_id;
+      : onBoard
+        ? turn.trigger_turn_id
+        : null;
+    // Woken by someone whose turn belongs to another job: say so rather than inventing a card.
+    const elsewhere = fromYou || onBoard
+      ? null
+      : { actor: turn.trigger_author, message_id: turn.trigger_message_id };
     const word = lastWord.get(turn.id);
     const ask = turn.status === "waiting_ask" ? askByTurn.get(turn.id) : undefined;
     const pending = turn.status === "waiting_approval" ? approvalByTurn.get(turn.id) : undefined;
@@ -326,6 +361,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       actor: turn.bot_id,
       status: turn.status,
       woken_by_turn_id: wokenBy,
+      woken_elsewhere: elsewhere,
       trigger_message_id: turn.trigger_message_id,
       focus_message_id: ask?.id ?? word?.id ?? turn.trigger_message_id,
       summary,

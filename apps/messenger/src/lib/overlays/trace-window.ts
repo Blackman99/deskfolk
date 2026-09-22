@@ -14,6 +14,9 @@ export type TraceWindowFrame = {
   height: number;
 };
 
+/** The corner being pulled. Every corner resizes; the one across from it stays put. */
+export type TraceCorner = "nw" | "ne" | "sw" | "se";
+
 export function loadTraceWindow(): TraceWindowFrame | null {
   if (typeof window === "undefined" || !window.localStorage) return null;
   try {
@@ -36,12 +39,54 @@ export function saveTraceWindow(frame: TraceWindowFrame): void {
   }
 }
 
+/**
+ * The frame after dragging a corner by (dx, dy).
+ *
+ * The opposite corner is the anchor: pulling the top-left moves x and y as the window grows, so
+ * the bottom-right stays under the same pixel. Width and height are limited before the edges are
+ * derived from them, or a window squeezed past its minimum would start sliding across the screen
+ * instead of stopping.
+ */
+export function resizeTraceWindow(
+  frame: TraceWindowFrame,
+  corner: TraceCorner,
+  dx: number,
+  dy: number,
+  viewport: { width: number; height: number } = screenSize(),
+): TraceWindowFrame {
+  const west = corner === "nw" || corner === "sw";
+  const north = corner === "nw" || corner === "ne";
+  const right = frame.x + frame.width;
+  const bottom = frame.y + frame.height;
+  const width = fit(
+    west ? frame.width - dx : frame.width + dx,
+    TRACE_WINDOW_MIN_WIDTH,
+    west ? right - 8 : viewport.width - frame.x - 8,
+  );
+  const height = fit(
+    north ? frame.height - dy : frame.height + dy,
+    TRACE_WINDOW_MIN_HEIGHT,
+    north ? bottom - 8 : viewport.height - frame.y - 8,
+  );
+  return clampTraceWindow(
+    {
+      x: west ? right - width : frame.x,
+      y: north ? bottom - height : frame.y,
+      width,
+      height,
+    },
+    viewport,
+  );
+}
+
+function fit(value: number, min: number, max: number): number {
+  return Math.min(Math.max(min, max), Math.max(min, Math.round(value)));
+}
+
 /** Pulls a frame back inside the screen and up to the smallest size that still shows a card. */
 export function clampTraceWindow(
   frame: TraceWindowFrame,
-  viewport: { width: number; height: number } = typeof window === "undefined"
-    ? { width: 1280, height: 800 }
-    : { width: window.innerWidth, height: window.innerHeight },
+  viewport: { width: number; height: number } = screenSize(),
 ): TraceWindowFrame {
   const maxWidth = Math.max(TRACE_WINDOW_MIN_WIDTH, viewport.width - 16);
   const maxHeight = Math.max(TRACE_WINDOW_MIN_HEIGHT, viewport.height - 16);
@@ -59,4 +104,9 @@ function isFrame(value: Partial<TraceWindowFrame>): value is TraceWindowFrame {
   return [value.x, value.y, value.width, value.height].every(
     (part) => typeof part === "number" && Number.isFinite(part),
   );
+}
+
+function screenSize(): { width: number; height: number } {
+  if (typeof window === "undefined") return { width: 1280, height: 800 };
+  return { width: window.innerWidth, height: window.innerHeight };
 }

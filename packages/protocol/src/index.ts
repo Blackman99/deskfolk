@@ -239,8 +239,13 @@ export type TaskTraceNode = {
   /** `user` for the card that stands for your own message; otherwise the Bot who took the turn. */
   actor: typeof USER_MEMBER | string;
   status: TurnStatus;
-  /** The turn whose message woke this one. Null when you (or a routine speaking as you) started it. */
+  /** The turn whose message woke this one. Null when you started it, or when that turn is elsewhere. */
   woken_by_turn_id: string | null;
+  /**
+   * Set when what woke this turn is not on this board: a Bot's handoff that belongs to another
+   * job. Without it such a turn reads as though you sent the message yourself.
+   */
+  woken_elsewhere: { actor: string; message_id: string } | null;
   trigger_message_id: string;
   /** The message to scroll to: this turn's last word, or the trigger when it has not spoken yet. */
   focus_message_id: string;

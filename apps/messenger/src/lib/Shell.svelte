@@ -212,7 +212,8 @@
 				runtime.closeRouteLog();
 				return true;
 			case 'trace':
-				return false;
+				// Full screen over the flow is a page; the flow itself is an entry in history.
+				return tracePane?.backFromFullOutput() ?? false;
 			case 'routines':
 				return false;
 			case 'thread':
@@ -766,7 +767,8 @@
 		runtime.workspaceSelected = sanitizePreviewPath(path) ?? '';
 	}
 
-	let previewPane = $state<{ requestCloseFromParent: () => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
+	let previewPane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
+	let tracePane = $state<{ backFromFullOutput: () => boolean } | null>(null);
 
 	function startPreviewResize(ev: PointerEvent): void {
 		if (!artifactPreview) return;
@@ -1141,6 +1143,7 @@
 	{/if}
 	{#if runtime.traceOpen && selected}
 		<TaskTraceView
+			bind:this={tracePane}
 			api={runtime.client}
 			taskId={runtime.traceTaskId || null}
 			sessionId={runtime.traceSessionId || selected.id}

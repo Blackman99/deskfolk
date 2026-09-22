@@ -24,9 +24,26 @@
 		t: Copy;
 		onOpenPath: (path: string) => void;
 		onClose: () => void;
+		/**
+		 * Full screen, for a file that does not fit under a card. The flag and the layer live in
+		 * the board, because `position: fixed` inside a transformed ancestor is fixed to that
+		 * ancestor — a preview that promised the screen would have got the canvas.
+		 */
+		full?: boolean;
+		onToggleFull?: () => void;
 	}
 
-	let { path, handedBy, api, workspacePath, t, onOpenPath, onClose }: Props = $props();
+	let {
+		path,
+		handedBy,
+		api,
+		workspacePath,
+		t,
+		onOpenPath,
+		onClose,
+		full = false,
+		onToggleFull
+	}: Props = $props();
 
 	const kind = $derived(artifactKind(path));
 	const name = $derived(traceFileName(path));
@@ -100,12 +117,30 @@
 	}
 </script>
 
-<article class="trace-output" aria-label={name}>
+<article class="trace-output" class:is-full={full} aria-label={name}>
 	<header class="trace-output-head">
 		<div class="trace-output-titles">
 			<span class="trace-output-kicker">{handedBy ? t.trace.outputOf(handedBy) : t.trace.output}</span>
 			<strong class="trace-output-name" title={path}>{name}</strong>
 		</div>
+		<button
+			type="button"
+			class="trace-output-full"
+			title={full ? t.trace.outputExitFull : t.trace.outputFull}
+			aria-label={full ? t.trace.outputExitFull : t.trace.outputFull}
+			aria-pressed={full}
+			onclick={onToggleFull}
+		>
+			{#if full}
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"></path>
+				</svg>
+			{:else}
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"></path>
+				</svg>
+			{/if}
+		</button>
 		<button type="button" class="trace-output-close" title={t.trace.outputClose} onclick={onClose}>
 			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
 				<line x1="18" y1="6" x2="6" y2="18"></line>
@@ -149,6 +184,8 @@
 		flex: 0 0 auto;
 		width: 100%;
 		max-height: min(52vh, 480px);
+		/* The zoom the board is drawn at must not shrink the file: it is read, not surveyed. */
+		z-index: 3;
 		display: flex;
 		flex-direction: column;
 		border: 1px solid var(--accent-border);
@@ -185,6 +222,38 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/*
+	 * Out of the card, out of the board, out of the window: the same component, pinned to the
+	 * screen. Fixed positioning takes it out of the board's transform, so it is never drawn at
+	 * whatever the canvas happens to be zoomed to.
+	 */
+	.trace-output.is-full {
+		width: 100%;
+		height: 100%;
+		max-height: none;
+	}
+
+	.trace-output-full {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.trace-output-full:hover,
+	.trace-output-full[aria-pressed='true'] {
+		color: var(--ink);
+		background: var(--line-subtle);
 	}
 
 	.trace-output-close {
@@ -259,6 +328,18 @@
 	}
 
 	@media (max-width: 680px) {
+		/* A phone has no room to spare: the preview is already the screen, and full screen only
+		   drops the gutter. The button stays, because it is also how you get back. */
+		.trace-output.is-full {
+			border-radius: 0;
+		}
+
+		.trace-output-full,
+		.trace-output-close {
+			width: 32px;
+			height: 32px;
+		}
+
 		.trace-output {
 			width: 100%;
 			max-height: 52vh;

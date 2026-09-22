@@ -708,6 +708,11 @@ const zh = {
     }
   },
   trace: {
+    outputFull: "全屏",
+    outputExitFull: "退出全屏",
+    zoomIn: "放大",
+    zoomOut: "缩小",
+    zoomFit: "适应宽度",
     title: "这件事",
     topAction: "经过",
     none: "还没有可以看的事。",
@@ -1500,6 +1505,11 @@ const en: CopyShape<typeof zh> = {
     }
   },
   trace: {
+    outputFull: "Full screen",
+    outputExitFull: "Leave full screen",
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    zoomFit: "Fit width",
     title: "This job",
     topAction: "Trace",
     none: "Nothing to show yet.",
