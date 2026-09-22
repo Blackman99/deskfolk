@@ -247,7 +247,7 @@ export type TaskTraceNode = {
    */
   woken_elsewhere: { actor: string; message_id: string } | null;
   trigger_message_id: string;
-  /** The message to scroll to: this turn's last word, or the trigger when it has not spoken yet. */
+  /** The message to scroll to: the 中断 note on a cut turn, else this turn's last word, else the trigger. */
   focus_message_id: string;
   /** One line, already clipped. */
   summary: string;

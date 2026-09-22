@@ -4,7 +4,9 @@
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
+	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import TraceOutput from './TraceOutput.svelte';
 	import {
@@ -348,6 +350,13 @@
 		return botsById.get(actor)?.name ?? deletedLabel;
 	}
 
+	function avatarOf(actor: string): { src: string | null; letter: string; palette: ReturnType<typeof botAvatarColor> | null } {
+		if (actor === USER_MEMBER) return { src: null, letter: rosterLetter(youLabel), palette: null };
+		const bot = botsById.get(actor);
+		const name = bot?.name ?? deletedLabel;
+		return { src: avatarSrc(bot?.avatar), letter: rosterLetter(name), palette: botAvatarColor(actor) };
+	}
+
 	function placeOf(node: TaskTraceNode): string {
 		const session = sessionsById.get(node.session_id);
 		if (!session) return t.trace.sessionUnknown;
@@ -549,9 +558,24 @@
 		node.woken_by_turn_id && byId.has(node.woken_by_turn_id)
 			? null
 			: wokenByName(node, byId, nameOf)}
+	{@const face = avatarOf(node.actor)}
 	<article class="trace-card is-{node.status}" class:is-here={node.session_id === activeSessionId}>
 		<button type="button" class="trace-card-main" onclick={() => openCard(node)} title={t.trace.jump}>
 			<span class="trace-card-line">
+				<span
+					class="trace-avatar"
+					class:is-you={node.actor === USER_MEMBER}
+					style:background={face.palette?.bg}
+					style:color={face.palette?.text}
+					style:border-color={face.palette?.border}
+					aria-hidden="true"
+				>
+					{#if face.src}
+						<img src={face.src} alt="" class="avatar-img" />
+					{:else}
+						{face.letter}
+					{/if}
+				</span>
 				<span class="trace-card-who">{nameOf(node.actor)}</span>
 				<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
 			</span>
@@ -1141,7 +1165,33 @@
 		width: 100%;
 	}
 
+	.trace-avatar {
+		width: 22px;
+		height: 22px;
+		flex: none;
+		border-radius: 50%;
+		border: 1px solid;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
+		user-select: none;
+	}
+
+	.trace-avatar.is-you {
+		background: #1e293b;
+		color: #ffffff;
+		border-color: #334155;
+	}
+
 	.trace-card-who {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--ink);

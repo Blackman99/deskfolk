@@ -164,6 +164,12 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
     }))
     .sort((a, b) => a.top - b.top);
   expect(byRow.map((row) => row.who)).toEqual(["你", "制片", "分镜师"]);
+  const faces = [...view.host.querySelectorAll(".trace-avatar")];
+  expect(faces).toHaveLength(3);
+  expect(faces[0]?.classList.contains("is-you")).toBe(true);
+  expect(faces[0]?.querySelector("img")).toBeNull();
+  expect(faces[1]?.querySelector("img")?.getAttribute("src")).toBe(writer.avatar);
+  expect(faces[2]?.querySelector("img")?.getAttribute("src")).toBe(artist.avatar);
   expect(new Set(byRow.map((row) => row.top)).size).toBe(3);
   // Every handoff is a drawn curve now, not a divider between rows.
   const edges = [...view.host.querySelectorAll(".trace-edges path")];
