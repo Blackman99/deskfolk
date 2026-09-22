@@ -118,6 +118,26 @@ test("buildTaskArtifactTree marks only what this message cited", () => {
   expect(nodes.find((n) => n.path === "report.md")!.fresh).toBe(true);
 });
 
+/**
+ * The job's record is what the Mac noticed a turn write or link. A message that hands files over
+ * as `附件：` lines can name more than that — older ones always do — and a tree missing the file you
+ * just opened from that message reads as the list being wrong.
+ */
+test("buildTaskArtifactTree lists what this message handed over even when the job never recorded it", () => {
+  const nodes = buildTaskArtifactTree(
+    DIR,
+    [`${DIR}/data.csv`, "report.md"],
+    [`${DIR}/charts/q3.png`, "report.md", "inbox/raw.xlsx"],
+  );
+  expect(collectTreePaths(nodes)).toContain(`${DIR}/charts/q3.png`);
+  expect(collectTreePaths(nodes)).toContain("inbox/raw.xlsx");
+  const inside = nodes.find((n) => n.path === DIR)!.children!;
+  expect(inside.find((n) => n.kind === "dir")!.children![0]!.fresh).toBe(true);
+  // A path both sides know is one entry, listed once.
+  expect(collectTreePaths(nodes).filter((path) => path === "report.md")).toHaveLength(1);
+  expect(countCitedFiles(nodes)).toBe(4);
+});
+
 test("buildTaskArtifactTree is just the outside paths when the work dir holds nothing cited", () => {
   expect(buildTaskArtifactTree(DIR, ["report.md"]).map((n) => n.path)).toEqual(["report.md"]);
 });

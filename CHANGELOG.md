@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Fixed a message that hands over 21 files opening a file tree with four. The tree was built from the job's record alone — what the Mac noticed a turn write or link — so files a message named on its own `附件：` lines, which is every message stored before the Mac read those lines, were missing from it, including the one on screen. The tree is now the job's record plus what this message handed over, and it takes that list from the same reading as the bubble's entry, so the two cannot disagree — and prose like `1/3` never becomes a file in it.
+
 - A file a Bot hands over as its own line, `附件：<workspace path>`, becomes an attachment card under the bubble and opens in the preview. Messages already stored the same way get the card too, and that line no longer repeats in the body.
 
 - Restore the desktop conversation's height-constrained layout so the input stays visible and long chat histories scroll within the main area.

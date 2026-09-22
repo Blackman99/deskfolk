@@ -458,3 +458,55 @@ test('a snapshot that changes nothing leaves the workspace listing alone', async
   expect(listings).toBe(1);
   expect(rows()).toEqual(listed);
 });
+
+/**
+ * The job's record is what the Mac noticed; a message can hand over more than that with `附件：`
+ * lines, and messages stored before it read those lines always do. The bubble's entry counts them,
+ * so the tree beside the file must list them too — including the file that is open.
+ */
+test('the file tree lists what the message handed over, not just what the job recorded', async () => {
+  const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+  const session = aDirect({ id: 'bot-1', participants: [
+    { member: 'user', joined_at: 'now', left_at: null },
+    { member: 'bot-1', joined_at: 'now', left_at: null },
+  ] });
+  const attachment = anAttachment({
+    id: 'att-plan', message_id: 'm1', workspace_relpath: 'BEACON/docs/plan.md',
+    original_filename: 'plan.md', mime: 'text/markdown', size: 8,
+  });
+  const message = aMessage({
+    id: 'm1', session_id: session.id, kind: 'bot', author: 'bot-1', task_id: 'task-1',
+    attachments: [attachment],
+    body: [
+      '画左 1/3 破损圆柱舱，成果如下：',
+      '附件：BEACON/shots/C01_START.png',
+      '附件：BEACON/shots/C01_END.png',
+    ].join('\n'),
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [bot], sessions: [session], messages: [message],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, {
+    selectedId: session.id,
+    previewRelpath: 'BEACON/shots/C01_START.png',
+    previewMessageId: 'm1',
+  }));
+  runtime.client = {
+    kind: 'local',
+    taskArtifacts: async () => ({
+      id: 'task-1', dir: 'work/task', title: 'plan', closed_at: null,
+      items: [{ path: 'BEACON/docs/plan.md', last_cited_at: 'now', turn_id: null }],
+    }),
+    getWorkspaceFileBlob: async () => new Blob(['x'], { type: 'image/png' }),
+    getAttachmentBlob: async () => new Blob(['x'], { type: 'image/png' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  await settle();
+  const rows = [...host.querySelectorAll('.artifact-tree-row')].map((row) => row.textContent?.trim());
+  // Folder rows carry the disclosure mark; the rest are the files this tree lists.
+  const files = rows.filter((row) => !row?.includes('\u25b8'));
+  // `1/3` out of the prose is not among them: the context menu may guess, a file tree may not.
+  expect(files).toEqual(['plan.md', 'C01_END.png', 'C01_START.png']);
+});

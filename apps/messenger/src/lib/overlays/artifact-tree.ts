@@ -187,8 +187,13 @@ export function buildTaskArtifactTree(
 ): ArtifactTreeNode[] {
   const isFresh = new Set(fresh);
   const prefix = `${dir}/`;
-  const inside = paths.filter((path) => path.startsWith(prefix));
-  const outside = paths.filter((path) => !path.startsWith(prefix));
+  // What this message handed over belongs in the list even when the job's record does not have it:
+  // the record is what the Mac noticed, and a message can name files it never saw. A tree without
+  // the file you are looking at reads as the list being wrong, which is what it was.
+  const known = new Set(paths);
+  const all = [...paths, ...fresh.filter((path) => !known.has(path))];
+  const inside = all.filter((path) => path.startsWith(prefix));
+  const outside = all.filter((path) => !path.startsWith(prefix));
 
   const roots: ArtifactTreeNode[] = [];
   if (inside.length > 0) {

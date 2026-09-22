@@ -44,7 +44,7 @@
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
-	import { extractAssociatedFiles } from './chat/message-context-menu.ts';
+	import { handedOverPaths } from './overlays/artifacts.ts';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
@@ -653,7 +653,14 @@
 		if (messageId) {
 			const owner = snapshot.messages.find((message) => message.id === messageId);
 			if (owner) {
-				const associated = extractAssociatedFiles(owner);
+				// The same list the bubble's entry counts, so the file tree and the entry cannot
+				// disagree about what this message handed over. The context menu's looser reading
+				// belongs to a menu, where a stray `1/3` out of prose costs nothing; in a file tree
+				// it is a file that does not exist.
+				const associated = handedOverPaths(
+					owner.body ?? '',
+					owner.attachments.map((row) => row.workspace_relpath)
+				);
 				if (associated.length > 0) {
 					return associated.map((path) => {
 						const existing = owner.attachments.find((a) => a.workspace_relpath === path);
