@@ -260,8 +260,12 @@ export class MessengerRuntime {
    */
   private readonly boundedReadSent = new Map<string, string>();
   private ws: WebSocket | null = null;
-  /** One sink per live stream id: a terminal session, or a Bot's running command. */
-  private readonly streamSinks = new Map<string, (frame: StreamFrame) => void>();
+  /**
+   * The readers of each live stream id — a terminal session, or a Bot's running command. A set
+   * rather than one sink: the same terminal can be shown in two places at once, and a second
+   * reader used to replace the first silently instead of joining it.
+   */
+  private readonly streamSinks = new Map<string, Set<(frame: StreamFrame) => void>>();
   /**
    * What the Bots' commands are printing right now. Not `$state` itself — it is a plain map that
    * a frame mutates many times a second; {@link activityRevision} is what the view watches.
@@ -2884,7 +2888,8 @@ export class MessengerRuntime {
   private acceptEphemeral(value: unknown): value is StreamFrame | ToolFrame {
     const stream = parseStreamFrame(value);
     if (stream) {
-      this.streamSinks.get(stream.id)?.(stream);
+      // A copy: a reader that lets go while the frame is being delivered must not skip its peers.
+      for (const sink of [...(this.streamSinks.get(stream.id) ?? [])]) sink(stream);
       this.activity.applyStream(stream);
       this.activityRevision += 1;
       return true;
@@ -2926,9 +2931,17 @@ export class MessengerRuntime {
   }
 
   onStream(id: string, sink: (frame: StreamFrame) => void): () => void {
-    this.streamSinks.set(id, sink);
+    let sinks = this.streamSinks.get(id);
+    if (!sinks) {
+      sinks = new Set();
+      this.streamSinks.set(id, sinks);
+    }
+    sinks.add(sink);
     return () => {
-      if (this.streamSinks.get(id) === sink) this.streamSinks.delete(id);
+      const current = this.streamSinks.get(id);
+      if (!current?.delete(sink)) return;
+      // The id is dropped only once nobody is left, so a second reader keeps the entry alive.
+      if (current.size === 0) this.streamSinks.delete(id);
     };
   }
 

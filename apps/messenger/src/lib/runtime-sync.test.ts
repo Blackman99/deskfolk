@@ -1006,3 +1006,34 @@ test("each conversation keeps its own read on record", async () => {
   await runtime.submitBoundedRead("sess-a", "m-2");
   expect(reads).toHaveLength(3);
 });
+
+test("two readers of one stream both get the bytes", async () => {
+  // One sink per stream id meant the second reader replaced the first without a word. Two panes
+  // showing the same terminal, or two session panes watching the same command, need both.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const first: string[] = [];
+  const second: string[] = [];
+  const dropFirst = runtime.onStream("term-1", (frame) => first.push(frame.data));
+  const dropSecond = runtime.onStream("term-1", (frame) => second.push(frame.data));
+
+  const send = (data: string, offset: number) =>
+    Socket.current.dispatchEvent(new MessageEvent("message", {
+      data: JSON.stringify({ type: "stream", id: "term-1", offset, data }),
+    }));
+
+  send("aGk=", 0);
+  expect(first).toEqual(["aGk="]);
+  expect(second).toEqual(["aGk="]);
+
+  // Letting one go leaves the other listening rather than tearing the id down.
+  dropFirst();
+  send("dGhlcmU=", 2);
+  expect(first).toEqual(["aGk="]);
+  expect(second).toEqual(["aGk=", "dGhlcmU="]);
+
+  dropSecond();
+  send("Z29uZQ==", 7);
+  expect(second).toHaveLength(2);
+});
