@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- The terminal pane keeps a gap under the last line, so the prompt no longer sits on the window edge.
+
 - Fixed a plain fenced code block repainting a dozen times a second wherever markdown is shown — a message, the file preview. It painted to itself, the check for "already painted" looked for a token span that plain text never has, and the rewrite woke the observer that asked for the next paint.
 
 - Fixed the file list beside a conversation, and the workspace explorer, letting go of what they listed on every change to the conversation. Both take their props off one object the shell derives from the snapshot, so any snapshot at all re-ran their effects, and each cleared its listing to pull the same one back — a tree that blinks. A listing is now dropped only for a different job, a different workspace, or a reconnect.

@@ -423,7 +423,9 @@
 	.terminal-host {
 		flex: 1;
 		min-height: 0;
-		padding: 10px 12px;
+		/* Margin, not padding. Fit reads the host's height as the cell grid and ignores the
+		   parent's padding, so padding here just lets the last row paint over the gap. */
+		margin: 10px 12px 16px;
 	}
 
 	.terminal-host.is-hidden {
@@ -480,7 +482,7 @@
 		}
 
 		.terminal-host {
-			padding: 10px max(12px, env(safe-area-inset-left)) 6px max(12px, env(safe-area-inset-right));
+			margin: 10px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
 		}
 
 		.terminal-keys {
