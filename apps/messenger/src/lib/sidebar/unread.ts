@@ -1,7 +1,7 @@
 import { isHiddenTranscriptKind, USER_MEMBER, type Message, type SessionSummary } from "@real-bot/protocol";
 
-export function isSessionUnread(unreadCount: number | undefined | null, selected: boolean): boolean {
-  return !selected && (unreadCount ?? 0) > 0;
+export function isSessionUnread(unreadCount: number | undefined | null, _selected: boolean = false): boolean {
+  return (unreadCount ?? 0) > 0;
 }
 
 export function unreadBadge(unreadCount: number): string {
@@ -23,9 +23,8 @@ export type SessionUnreadTarget = Pick<SessionSummary, "id" | "last_message"> & 
 
 export function sessionUnreadCount(
   session: SessionUnreadTarget,
-  selectedId: string | null,
+  _selectedId?: string | null,
 ): number {
-  if (session.id === selectedId) return 0;
   if (typeof session.unread_count === "number") return session.unread_count;
   const last = session.last_message;
   if (!last || isHiddenTranscriptKind(last.kind) || !countsAsUnread(last)) return 0;

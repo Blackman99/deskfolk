@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS remote_push_subs (
   p256dh TEXT NOT NULL,
   auth TEXT NOT NULL,
   expires_at INTEGER,
+  generation INTEGER NOT NULL DEFAULT 1,
+  vapid_fingerprint TEXT,
+  last_diagnostics TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS remote_push_subs_hash ON remote_push_subs(endpoint_hash);
@@ -157,6 +160,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   kind TEXT NOT NULL CHECK (kind IN ('direct', 'group')),
   name TEXT,
   last_read_at TEXT,
+  read_through_seq INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
   origin_session_id TEXT,
   origin_message_id TEXT,
@@ -194,6 +198,7 @@ CREATE TABLE IF NOT EXISTS messages (
   body TEXT NOT NULL,
   source_turn_id TEXT,
   task_id TEXT REFERENCES tasks (id),
+  message_seq INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 
@@ -224,6 +229,9 @@ CREATE TABLE IF NOT EXISTS turns (
   trigger_message_id TEXT NOT NULL REFERENCES messages (id),
   partial_text TEXT,
   task_id TEXT REFERENCES tasks (id),
+  pending_ask_id TEXT REFERENCES messages (id) ON DELETE SET NULL,
+  routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL,
+  routine_due_at TEXT,
   last_activity_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -414,5 +422,122 @@ CREATE TABLE IF NOT EXISTS spend (
     (turn_id IS NOT NULL AND judgement_id IS NULL)
     OR (turn_id IS NULL AND judgement_id IS NOT NULL)
   )
+);
+
+CREATE TABLE IF NOT EXISTS notification_counters (
+  name TEXT PRIMARY KEY,
+  val INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO notification_counters (name, val) VALUES ('ordinal', 0), ('message_seq', 0), ('cleanup_revision', 1);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL UNIQUE,
+  semantic_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK (kind IN ('approval', 'ask', 'failure', 'interrupted', 'reply', 'routine_result')),
+  session_id TEXT REFERENCES sessions (id) ON DELETE CASCADE,
+  message_id TEXT REFERENCES messages (id) ON DELETE CASCADE,
+  turn_id TEXT REFERENCES turns (id) ON DELETE CASCADE,
+  approval_id TEXT REFERENCES approvals (id) ON DELETE CASCADE,
+  routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL,
+  routine_due_at TEXT,
+  created_at TEXT NOT NULL,
+  read_at TEXT,
+  terminal_at TEXT,
+  action_state TEXT NOT NULL CHECK (action_state IN ('none', 'open', 'resolved', 'voided')),
+  resolution_reason TEXT,
+  fail_kind TEXT,
+  revision INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS notifications_ordinal ON notifications (ordinal);
+CREATE INDEX IF NOT EXISTS notifications_kind_action ON notifications (kind, action_state);
+CREATE INDEX IF NOT EXISTS notifications_unread ON notifications (read_at, ordinal);
+CREATE INDEX IF NOT EXISTS notifications_session ON notifications (session_id);
+CREATE INDEX IF NOT EXISTS notifications_retention ON notifications (terminal_at, ordinal) WHERE action_state != 'open';
+
+CREATE TABLE IF NOT EXISTS notification_retention_notice (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  pruned_at TEXT NOT NULL,
+  read_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notification_policy (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  revision INTEGER NOT NULL DEFAULT 1,
+  cat_approval INTEGER NOT NULL DEFAULT 1,
+  cat_ask INTEGER NOT NULL DEFAULT 1,
+  cat_failure INTEGER NOT NULL DEFAULT 1,
+  cat_interrupted INTEGER NOT NULL DEFAULT 1,
+  cat_reply INTEGER NOT NULL DEFAULT 1,
+  cat_routine_result INTEGER NOT NULL DEFAULT 1,
+  quiet_enabled INTEGER NOT NULL DEFAULT 0,
+  quiet_start TEXT NOT NULL DEFAULT '22:00',
+  quiet_end TEXT NOT NULL DEFAULT '08:00',
+  quiet_tz TEXT NOT NULL DEFAULT 'UTC'
+);
+INSERT OR IGNORE INTO notification_policy (singleton, revision, cat_approval, cat_ask, cat_failure, cat_interrupted, cat_reply, cat_routine_result, quiet_enabled, quiet_start, quiet_end, quiet_tz)
+VALUES (1, 1, 1, 1, 1, 1, 1, 1, 0, '22:00', '08:00', 'UTC');
+
+CREATE TABLE IF NOT EXISTS notification_push_config (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  contact_uri TEXT,
+  revision INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO notification_push_config (singleton, contact_uri, revision)
+VALUES (1, NULL, 1);
+
+CREATE TABLE IF NOT EXISTS session_notification_preferences (
+  session_id TEXT PRIMARY KEY REFERENCES sessions (id) ON DELETE CASCADE,
+  muted INTEGER NOT NULL DEFAULT 0,
+  revision INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS notification_devices (
+  receiver_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  sound TEXT NOT NULL DEFAULT 'default',
+  preview TEXT NOT NULL DEFAULT 'generic',
+  badge INTEGER NOT NULL DEFAULT 1,
+  push_generation INTEGER NOT NULL DEFAULT 1,
+  planned_ordinal INTEGER NOT NULL DEFAULT 0,
+  last_invalid_endpoint_hash TEXT,
+  last_invalid_reason TEXT,
+  last_attempt_at INTEGER,
+  next_send_at INTEGER,
+  last_diagnostics TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  delivery_id TEXT PRIMARY KEY,
+  receiver_id TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  batch_key TEXT NOT NULL,
+  upper_ordinal INTEGER NOT NULL,
+  click_ref TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'claimed', 'accepted', 'retry_wait', 'suppressed', 'expired', 'failed', 'unknown')),
+  attempt INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER,
+  absolute_expires_at INTEGER NOT NULL,
+  claim_token TEXT,
+  claim_expires_at INTEGER,
+  permit TEXT,
+  push_generation INTEGER NOT NULL DEFAULT 1,
+  trust_generation INTEGER NOT NULL DEFAULT 1,
+  error_code TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE(receiver_id, channel, batch_key)
+);
+CREATE INDEX IF NOT EXISTS notification_deliveries_state ON notification_deliveries (state, next_attempt_at);
+CREATE INDEX IF NOT EXISTS notification_deliveries_receiver ON notification_deliveries (receiver_id, channel);
+CREATE UNIQUE INDEX IF NOT EXISTS notification_deliveries_active
+  ON notification_deliveries (receiver_id, channel)
+  WHERE state IN ('pending', 'claimed', 'retry_wait');
+
+CREATE TABLE IF NOT EXISTS notification_delivery_items (
+  delivery_id TEXT NOT NULL REFERENCES notification_deliveries (delivery_id) ON DELETE CASCADE,
+  notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
+  PRIMARY KEY (delivery_id, notification_id)
 );
 `;

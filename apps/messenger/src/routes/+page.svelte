@@ -233,6 +233,18 @@ const runtime = new MessengerRuntime();
 {#if runtime.connection !== 'connected'}
 	{#if showPairing}
 		<PairingScreen {runtime} t={copy} />
+	{:else if runtime.tabRole === 'standby'}
+		<main class="disconnected" data-testid="tab-standby">
+			<span>{copy.notifications.tabTakeoverNotice}</span>
+			<div class="disconnected-actions">
+				<button type="button" data-testid="tab-takeover" onclick={() => void runtime.requestTabTakeover()}>
+					{copy.notifications.tabTakeoverButton}
+				</button>
+			</div>
+			{#if runtime.tabTakeoverTimeout}
+				<p class="disconnected-hint">{copy.notifications.tabTakeoverTimeout}</p>
+			{/if}
+		</main>
 	{:else if runtime.connection === 'connecting'}
 		<main class="disconnected" data-testid="connecting">
 			<span>{connectingCopy}</span>

@@ -22,6 +22,7 @@ import * as mcp from "./mcp";
 import * as memories from "./memories";
 import * as messages from "./messages";
 import { migrateSchema } from "./migrate";
+import * as notifications from "./notifications";
 import * as providers from "./providers";
 import * as routines from "./routines";
 import * as routing from "./routing";
@@ -174,6 +175,8 @@ export class Store {
       skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),
       memories: memories.listMemories(this.ctx).map((memory) => memories.withLearning(this.ctx, memory)),
       routines: this.listRoutines(), allowRules: this.listAllowRules(),
+      notificationSummary: notifications.getNotificationSummary(this.ctx),
+      notificationPolicy: notifications.getNotificationPolicy(this.ctx),
     };
   }
 
@@ -282,6 +285,8 @@ export class Store {
   readonly redirectTurn = this.bind(turns.redirectTurn);
   readonly stopTurn = this.bind(turns.stopTurn);
   readonly interruptRunningTurns = this.bind(turns.interruptRunningTurns);
+  readonly interruptTurnRecord = this.bind(turns.interruptTurnRecord);
+  readonly voidPendingTurnActions = this.bind(turns.voidPendingTurnActions);
   readonly claimInterruptContinue = this.bind(turns.claimInterruptContinue);
   readonly pendingInterrupt = this.bind(turns.pendingInterrupt);
   readonly markInterruptPending = this.bind(turns.markInterruptPending);
@@ -338,4 +343,31 @@ export class Store {
 
   // Search ---------------------------------------------------------------------------------
   readonly search = this.bind(search.search);
+
+  // Notifications -------------------------------------------------------------------------
+  readonly createNotification = this.bind(notifications.createNotification);
+  readonly getNotification = this.bind(notifications.getNotification);
+  readonly getNotificationRow = this.bind(notifications.getNotificationRow);
+  readonly getNotificationBySemanticKey = this.bind(notifications.getNotificationBySemanticKey);
+  readonly updateNotificationActionState = this.bind(notifications.updateNotificationActionState);
+  readonly markNotificationRead = this.bind(notifications.markNotificationRead);
+  readonly markNotificationsReadBatch = this.bind(notifications.markNotificationsReadBatch);
+  readonly markNotificationsReadThroughMessage = this.bind(notifications.markNotificationsReadThroughMessage);
+  readonly acknowledgeNotification = this.bind(notifications.acknowledgeNotification);
+  readonly listNotifications = this.bind(notifications.listNotifications);
+  readonly getNotificationSummary = this.bind(notifications.getNotificationSummary);
+  readonly pruneNotificationsRetention = this.bind(notifications.pruneNotificationsRetention);
+  readonly pruneNotificationDeliveriesRetention = this.bind(notifications.pruneNotificationDeliveriesRetention);
+  readonly getNotificationPolicy = this.bind(notifications.getNotificationPolicy);
+  readonly updateNotificationPolicy = this.bind(notifications.updateNotificationPolicy);
+  readonly getSessionNotificationPreference = this.bind(notifications.getSessionNotificationPreference);
+  readonly setSessionNotificationPreference = this.bind(notifications.setSessionNotificationPreference);
+  readonly getNotificationDevice = this.bind(notifications.getNotificationDevice);
+  readonly getNotificationDeviceRow = this.bind(notifications.getNotificationDeviceRow);
+  readonly updateNotificationDevice = this.bind(notifications.updateNotificationDevice);
+  readonly markRetentionNoticeRead = this.bind(notifications.markRetentionNoticeRead);
+  readonly getCleanupRevision = this.bind(notifications.getCleanupRevision);
+  readonly bumpCleanupRevision = this.bind(notifications.bumpCleanupRevision);
+  readonly getNotificationPushConfig = this.bind(notifications.getNotificationPushConfig);
+  readonly updateNotificationPushConfig = this.bind(notifications.updateNotificationPushConfig);
 }

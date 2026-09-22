@@ -108,9 +108,16 @@ export class RemoteDispatcher {
       return json(maintenanceStatus(this.api, devices, this.remoteStatus(), this.maint));
     }
     if (request.method !== "POST" || request.query || request.ifMatch) deny();
-    if (request.path === "/remote/push/subscribe" || request.path === "/remote/push/unsubscribe") {
+    if (request.path === "/remote/push/subscribe" || request.path === "/remote/push/unsubscribe" || request.path === "/remote/push/test") {
       if (!this.push) throw new HttpError(503, "failed", "push unavailable");
-      if (request.path.endsWith("/unsubscribe") ? Object.keys(body).length : false) deny();
+      if (request.path === "/remote/push/test") {
+        if (body && Object.keys(body).length > 0) deny();
+        const result = await this.push.test(principal.device.device_id);
+        return json(result);
+      }
+      if (request.path.endsWith("/unsubscribe")) {
+        if (body && Object.keys(body).some(k => k !== "if_device_revision")) deny();
+      }
       const digest = requestDigest({ method: "POST", path: request.path, body, encoding: "json" });
       const scope = { deviceId: principal.device.device_id, requestId: request.id };
       const previous = this.trust.store.receipts.lookup(scope);
@@ -119,8 +126,11 @@ export class RemoteDispatcher {
         const receipt = this.trust.store.receipts.read(scope);
         return new Response(receipt.body, { status: receipt.status, headers: { "Content-Type": "application/json", ...receipt.headers } });
       }
+      if (request.path.endsWith("/subscribe")) {
+        await this.push.vapidFingerprint();
+      }
       this.trust.store.transaction(() => {
-        if (request.path.endsWith("/unsubscribe")) this.push!.unsubscribe(scope.deviceId);
+        if (request.path.endsWith("/unsubscribe")) this.push!.unsubscribe(scope.deviceId, body);
         else this.push!.subscribe(scope.deviceId, body);
         this.trust.store.db.run(`INSERT INTO request_receipts(device_id,request_id,payload_sha256,method,path,state,status,body,headers,created_at)
           VALUES (?, ?, ?, 'POST', ?, 'complete', 204, NULL, '{}', ?)`,

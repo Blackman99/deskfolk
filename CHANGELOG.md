@@ -6,21 +6,31 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- The terminal pane keeps a gap under the last line, so the prompt no longer sits on the window edge.
+
 - Fixed a message that hands over 21 files opening a file tree with four. The tree was built from the job's record alone — what the Mac noticed a turn write or link — so files a message named on its own `附件：` lines, which is every message stored before the Mac read those lines, were missing from it, including the one on screen. The tree is now the job's record plus what this message handed over, and it takes that list from the same reading as the bubble's entry, so the two cannot disagree — and prose like `1/3` never becomes a file in it.
+
+- Fixed the file list beside a conversation, and the workspace explorer, letting go of what they listed on every change to the conversation. Both take their props off one object the shell derives from the snapshot, so any snapshot at all re-ran their effects, and each cleared its listing to pull the same one back — a tree that blinks. A listing is now dropped only for a different job, a different workspace, or a reconnect.
+
+- Fixed a plain fenced code block repainting a dozen times a second wherever markdown is shown — a message, the file preview. It painted to itself, the check for "already painted" looked for a token span that plain text never has, and the rewrite woke the observer that asked for the next paint.
 
 - A file a Bot hands over as its own line, `附件：<workspace path>`, becomes an attachment card under the bubble and opens in the preview. Messages already stored the same way get the card too, and that line no longer repeats in the body.
 
 - Restore the desktop conversation's height-constrained layout so the input stays visible and long chat histories scroll within the main area.
 
-- Mobile chat suggestions stay in a single horizontally scrollable row, with long labels truncated and the full prompt preserved when selected. The suggestion background stays within the input area, and long drafts scroll inside a viewport-aware height limit.
-
 - On a phone, opening a conversation slides it in from the right over the chat list, and Back slides it back out to the right. The list underneath stays where it is. Wider windows keep the list and the conversation side by side.
 
-- The terminal pane keeps a gap under the last line, so the prompt no longer sits on the window edge.
+### Notifications (phases 1–7 candidate; native delivery still unqualified)
 
-- Fixed a plain fenced code block repainting a dozen times a second wherever markdown is shown — a message, the file preview. It painted to itself, the check for "already painted" looked for a token span that plain text never has, and the rewrite woke the observer that asked for the next paint.
+- Transactional inbox store: semantic unique keys, distinct read vs action states, exact `pending_ask_id`, and structured sources for approvals, questions, failures, interruptions, replies, and routine results.
+- Bounded reading: `message_seq` / `read_through_seq`, `/v1/sessions/:id/read` with `through_message_id`, inbox pagination. HTTP first/more pages apply at their watermark then replay a bounded live notification tail so a busy event stream does not starve an empty first page or drop later read/delete. Incomplete tails (`invalid` / instance mismatch / truncated past 256) keep the current list, do not stamp the live watermark, and offer an explicit retry.
+- Desktop local bridge and delivery scheduler: 2-second candidate batching, 30-second send slots, quiet hours, presence suppression, loopback claim/revalidate/report/click. Delivery history 7 days / 2,000 rows; a still-open item is not re-alerted after a terminal batch except one startup or quiet-end summary.
+- Remote Web Push v2 is available (`policyV1` + `pushSettingsV2` on the production local API, shared `PresenceManager`, recover on connecting/online/disconnected after the remote gate). Production `push_transport` is `policy_v2`. Outbound send and test require an open remote gate (`off` / `activation_gated` / `native_unavailable` / `trust_mismatch` refuse); subscribe also requires that gate, while unsubscribe stays available for cleanup. Isolation tests use a fake HTTPS service — no live APNs/FCM.
+- macOS native adapter exists in the Tauri process (UNUserNotificationCenter, click intent, dock badge, focus bridge). `NATIVE_DELIVERY_QUALIFIED` stays false until physical cold-click and signed-package gates pass. Desktop and local-browser “发送测试通知” stay disabled unless `native_delivery_v1`, permission, and the device are all enabled. Enqueueing a desktop test reports queued, not native-accepted. Hosted remote tests use the remote gate, contact, and subscription.
+- Messenger shows pending work on the conversation list. There is no notification bell or notification page. macOS banners and remote Web Push stay; a click opens that conversation, and a generic pending push returns to the list. A conversation whose latest line is a failure or an interruption shows that state on its row. Notification settings still choose which events become system notifications.
 
-- Fixed the file list beside a conversation, and the workspace explorer, letting go of what they listed on every change to the conversation. Both take their props off one object the shell derives from the snapshot, so any snapshot at all re-ran their effects, and each cleared its listing to pull the same one back — a tree that blinks. A listing is now dropped only for a different job, a different workspace, or a reconnect.
+
+- Mobile chat suggestions stay in a single horizontally scrollable row, with long labels truncated and the full prompt preserved when selected. The suggestion background stays within the input area, and long drafts scroll inside a viewport-aware height limit.
 
 - On mobile, the header of the chat list is redesigned into a unified, balanced bar: the archived entry is moved into the left-side tools menu alongside calendar and terminal, removing the cramped right-hand text link. The search bar now spans the full remaining width as an accessible capsule trigger. In archived view, the page displays a dedicated header with a prominent Back button.
 

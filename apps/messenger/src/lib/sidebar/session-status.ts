@@ -1,7 +1,14 @@
-import type { Approval, PendingJudgement, SessionSummary, Turn } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, type Approval, type Message, type PendingJudgement, type SessionSummary, type Turn } from "@real-bot/protocol";
 import { isLiveStatus } from "../chat/transcript.ts";
 
-export type SessionStateKind = "running" | "replying" | "waiting_approval" | "waiting_ask" | "idle";
+export type SessionStateKind =
+  | "running"
+  | "replying"
+  | "waiting_approval"
+  | "waiting_ask"
+  | "failed"
+  | "interrupted"
+  | "idle";
 
 export type SessionStatusResult = {
   kind: SessionStateKind;
@@ -15,8 +22,13 @@ export type StatusLabels = {
   replying: string;
   waitingApproval: string;
   waitingAsk: string;
+  failed: string;
+  interrupted: string;
   idle: string;
 };
+
+/** The transcript line a failed turn leaves behind, in either locale. */
+const FAIL_NOTE = /^(这一轮没写完：|This turn did not finish:)/;
 
 export function sessionStatus(
   sessionId: string,
@@ -54,8 +66,48 @@ export function sidebarStatus(
   approvals: readonly Approval[],
   labels: StatusLabels,
   pendingJudgements: readonly PendingJudgement[] = [],
+  messages: readonly Message[] = [],
 ): SessionStatusResult {
-  return sessionStatus(session.id, turns, approvals, labels, pendingJudgements);
+  const live = sessionStatus(session.id, turns, approvals, labels, pendingJudgements);
+  if (live.kind !== "idle") return live;
+  return settledNotice(session, messages, labels) ?? live;
+}
+
+/**
+ * A finished failure or interruption has no live turn, so the list would otherwise fall back to
+ * the last line of body text. The row is where that state belongs once there is no inbox page.
+ */
+function settledNotice(
+  session: SessionSummary,
+  messages: readonly Message[],
+  labels: StatusLabels,
+): SessionStatusResult | null {
+  const last = latestVisibleMessage(session, messages);
+  if (!last || last.kind !== "system") return null;
+  if (last.body === INTERRUPT_NOTE_BODY) {
+    return { kind: "interrupted", label: labels.interrupted, isBusy: false };
+  }
+  if (FAIL_NOTE.test(last.body)) {
+    return { kind: "failed", label: labels.failed, isBusy: false };
+  }
+  return null;
+}
+
+function latestVisibleMessage(
+  session: SessionSummary,
+  messages: readonly Message[],
+): Message | null {
+  let latest: Message | null = null;
+  for (const message of messages) {
+    if (message.session_id !== session.id || message.kind === "profile_change") continue;
+    if (!latest || message.created_at > latest.created_at || (message.created_at === latest.created_at && message.id > latest.id)) {
+      latest = message;
+    }
+  }
+  if (latest) return latest;
+  const summary = session.last_message;
+  if (!summary || summary.kind === "profile_change") return null;
+  return summary;
 }
 
 function workStatus(

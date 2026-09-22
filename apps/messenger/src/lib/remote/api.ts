@@ -67,6 +67,37 @@ import { ulid } from "./ids.ts";
 import type { StoredEnrollment } from "./idb.ts";
 import { RemoteTransport, type TransportHooks } from "./transport.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
+import type {
+  NotificationDevice,
+  NotificationDevicePatch,
+  NotificationFilter,
+  NotificationItem,
+  NotificationListPage,
+  NotificationPolicy,
+  NotificationPolicyPatch,
+  NotificationPresence,
+  PushStateV2,
+  PushSubscribeV2Request,
+  PushUnsubscribeV2Request,
+  SessionNotificationPreference,
+} from "../notifications/types.ts";
+import {
+  listNotifications,
+  getNotification,
+  markNotificationsRead,
+  acknowledgeNotification,
+  markSessionReadThrough,
+  getNotificationPolicy,
+  patchNotificationPolicy,
+  putSessionNotificationPreference,
+  getNotificationDevice,
+  patchNotificationDevice,
+  postNotificationPresence,
+  getPushStateV2,
+  subscribePushV2,
+  unsubscribePushV2,
+  testRemotePush,
+} from "../notifications/client.ts";
 
 export type RemoteDeviceRow = { id: string; name: string; revoked: boolean; hasUv: boolean; lastActiveAt: number | null };
 export type RemoteMaintenanceStatus = {
@@ -259,6 +290,9 @@ export class RemoteApi {
   async post<T>(path: string, body: unknown = {}): Promise<T> {
     return this.request<T>("POST", path, body);
   }
+  async put<T>(path: string, body: unknown = {}): Promise<T> {
+    return this.request<T>("PUT", path, body);
+  }
 
   async snapshot(): Promise<RuntimeSnapshot> {
     const snapshot = await this.get<RuntimeSnapshot>("/v1/snapshot");
@@ -395,7 +429,7 @@ export class RemoteApi {
     return (await this.get<ListPage<SearchHit>>(`/v1/search?q=${encodeURIComponent(q)}`)).items;
   }
   async postMessage(sessionId: string, body: string, opts: {
-    fork?: boolean; askId?: string | null; attachments?: File[]; parentId?: string | null;
+    fork?: boolean; askId?: string | null; attachments?: File[]; parentId?: string | null; requestId?: string;
   } = {}): Promise<Message> {
     const files = opts.attachments?.length ? await attachmentManifest(opts.attachments) : [];
     return this.request<Message>("POST", `/v1/sessions/${sessionId}/messages`, {
@@ -404,7 +438,7 @@ export class RemoteApi {
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
       ...(files.length ? { files: files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 })) } : {}),
-    }, undefined, {}, false, null, undefined, files);
+    }, undefined, {}, false, null, opts.requestId, files);
   }
   /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
   async taskArtifacts(taskId: string): Promise<TaskArtifacts> {
@@ -564,6 +598,76 @@ export class RemoteApi {
   }
   async unsubscribePush(): Promise<void> {
     await this.post("/remote/push/unsubscribe", {});
+  }
+
+  async getPushStateV2(): Promise<PushStateV2> {
+    return getPushStateV2(this);
+  }
+
+  async subscribePushV2(body: PushSubscribeV2Request): Promise<void> {
+    return subscribePushV2(this, body);
+  }
+
+  async unsubscribePushV2(body: PushUnsubscribeV2Request): Promise<void> {
+    return unsubscribePushV2(this, body);
+  }
+
+  async testRemotePush(): Promise<{ ok: boolean; status: string }> {
+    return testRemotePush(this);
+  }
+
+  async listNotifications(opts: {
+    filter: NotificationFilter;
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  }): Promise<NotificationListPage> {
+    return listNotifications(this, opts);
+  }
+
+  async getNotification(id: string): Promise<NotificationItem> {
+    return getNotification(this, id);
+  }
+
+  async markNotificationsRead(
+    body: { ids: string[] } | { through_ordinal: number; filter: "all" },
+  ): Promise<void> {
+    return markNotificationsRead(this, body);
+  }
+
+  async acknowledgeNotification(id: string, ifRevision: number): Promise<void> {
+    return acknowledgeNotification(this, id, ifRevision);
+  }
+
+  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionDetail> {
+    return markSessionReadThrough(this, sessionId, throughMessageId);
+  }
+
+  async getNotificationPolicy(): Promise<NotificationPolicy> {
+    return getNotificationPolicy(this);
+  }
+
+  async patchNotificationPolicy(patch: NotificationPolicyPatch): Promise<NotificationPolicy> {
+    return patchNotificationPolicy(this, patch);
+  }
+
+  async putSessionNotificationPreference(
+    sessionId: string,
+    body: { muted: boolean; if_revision: number },
+  ): Promise<SessionNotificationPreference> {
+    return putSessionNotificationPreference(this, sessionId, body);
+  }
+
+  async getNotificationDevice(): Promise<NotificationDevice> {
+    return getNotificationDevice(this);
+  }
+
+  async patchNotificationDevice(patch: NotificationDevicePatch): Promise<NotificationDevice> {
+    return patchNotificationDevice(this, patch);
+  }
+
+  async postNotificationPresence(body: NotificationPresence): Promise<void> {
+    return postNotificationPresence(this, body);
   }
 
   async registerUv(): Promise<void> {

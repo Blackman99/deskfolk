@@ -70,7 +70,7 @@ pnpm dev
 
 Alpha，仅 macOS。已接入、正在建设与明确不做：[官网](https://blackman99.github.io/real-bot/zh#boundaries) · [路线图](ROADMAP.md) · [CONTEXT.md](CONTEXT.md)（领域语言）。
 
-共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。默认关闭的 Bun 中继、原生门控 daemon 适配器和托管信使 PWA 客户端现可供隔离集成测试。托管生产包不含本机发现与回环 bearer；公网配对仍关闭。可选 Web Push 仅泛化待办提醒，由 Mac 出站；点击通知只重连并拉收件箱，绝不批准。这不是可用远控产品：独立安全复核（S-rev）、真机 iOS/Android 主屏幕 WebAuthn（G-uv）、真机 L1 与真机主屏幕 Web Push（G-push）**未通过**。见[自托管部署、bootstrap 恢复与路由契约](docs/deploy-remote.md)，含独立 `test:edge` 命令验证本机真实 Caddy HTTP/HTTPS/WSS（需要 Caddy 2.10.2 与 OpenSSL）。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要，本机 daemon 回执现也通过仅含规范编码的 workspace 导出使用它。daemon 仍保留更严格的路由及强 SHA-256 If-Match 校验。
+共享远控密码包是**实验性、默认关闭的原型**，不代表远控已可用。默认关闭的 Bun 中继、原生门控 daemon 适配器和托管信使 PWA 客户端现可供隔离集成测试。托管生产包不含本机发现与回环 bearer；公网配对仍关闭。可选 Web Push 仅泛化待办提醒，由 Mac 出站；点击通知只重连并回到会话列表，绝不批准。应用内状态标在会话列表上，没有单独的通知页。生产 daemon 会广告 `push_settings_v2`，`push_transport` 为 `policy_v2`。出站 Web Push 发送、订阅与测试受远控激活 / 原生 / 信任门约束，解绑仍可用于清理，不再停在临时升级暂停。macOS 通知中心投递仍未合格（`NATIVE_DELIVERY_QUALIFIED` 为 false），冷启动点击与签名包门未过。该标志为 false 时，桌面与本机浏览器测试通知保持关闭；入队结果是 queued，不是系统已展示。托管远程测试走远控门、联系人与订阅。这不是可用远控产品：独立安全复核（S-rev）、真机 iOS/Android 主屏幕 WebAuthn（G-uv）、真机 L1 与真机主屏幕 Web Push（G-push）**未通过**。见[自托管部署、bootstrap 恢复与路由契约](docs/deploy-remote.md)，含独立 `test:edge` 命令验证本机真实 Caddy HTTP/HTTPS/WSS（需要 Caddy 2.10.2 与 OpenSSL）。测试含官方 Noise 向量和独立 Rust snow 对端（`pnpm test` 需 Cargo）。见[协议/API 契约](docs/remote-protocol.md)，其中包含条件头与同名附件排序的唯一共享回执摘要，本机 daemon 回执现也通过仅含规范编码的 workspace 导出使用它。daemon 仍保留更严格的路由及强 SHA-256 If-Match 校验。
 
 ## 参与
 

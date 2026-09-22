@@ -24,6 +24,7 @@ import {
   type ToolFrame,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
+import { copyFor } from "./copy.ts";
 import { CommandActivity } from "./chat/command-activity.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
@@ -41,7 +42,68 @@ import type { MessengerApi } from "./messenger-api.ts";
 import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
 import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
-import { disablePush, enablePush, isInboxMessage, pushPermission, type PushPermission } from "./remote/push.ts";
+import { disablePush, enablePush, isInboxMessage, pushPermission, refreshPush, type DisablePushResult, type PushPermission } from "./remote/push.ts";
+import { readTauriInternals } from "./tauri.ts";
+import type {
+  AskDraftRecord,
+  NativeFocusFacts,
+  NativeNotificationCapabilities,
+  NotificationCapabilities,
+  NotificationDevice,
+  NotificationDevicePatch,
+  NotificationFilter,
+  NotificationIntent,
+  NotificationItem,
+  NotificationPermissionStateDto,
+  NotificationPolicy,
+  NotificationPolicyPatch,
+  NotificationSummary,
+  NotificationViewReport,
+  PushRecovery,
+  PushStateV2,
+  PushTransport,
+  SendAskResult,
+} from "./notifications/types.ts";
+import {
+  EMPTY_NATIVE_CAPABILITIES,
+  EMPTY_NOTIFICATION_CAPABILITIES,
+  EMPTY_NOTIFICATION_SUMMARY,
+} from "./notifications/types.ts";
+import {
+  parseNotificationCapabilities,
+  parseNotificationPolicy,
+  parseNotificationSummary,
+} from "./notifications/parse.ts";
+import {
+  acceptFirstPage,
+  acceptMore,
+  applySummary,
+  beginInboxLoad,
+  beginMore,
+  emptyInbox,
+  markLocalRead,
+  rejectInboxLoad,
+  removeInboxItem,
+  upsertInboxItem,
+  type InboxReplayEvent,
+  type InboxState,
+} from "./notifications/inbox-state.ts";
+import {
+  askSubmitAllowed,
+  classifySendAskFailure,
+  clearAskIfMatching,
+  nextDraftVersion,
+  recordAskError,
+} from "./notifications/ask-state.ts";
+import {
+  TAB_CHANNEL,
+  TAB_LOCK_NAME,
+  TAKEOVER_MS,
+  type TabControlMessage,
+  type TabRole,
+  isTabControlMessage,
+  supportsWebLocks,
+} from "./notifications/tab-owner.ts";
 
 /**
  * `connecting` is a real state, not a flavour of `disconnected`: a page that is still trying
@@ -163,6 +225,33 @@ export class MessengerRuntime {
   pushError = $state<string | null>(null);
   pushPermission = $state<PushPermission>("unsupported");
 
+  notificationSummary = $state<NotificationSummary>(EMPTY_NOTIFICATION_SUMMARY);
+  notificationPolicy = $state<NotificationPolicy | null>(null);
+  notificationDevice = $state<NotificationDevice | null>(null);
+  notificationCapabilities = $state<NotificationCapabilities>(EMPTY_NOTIFICATION_CAPABILITIES);
+  nativeCapabilities = $state<NativeNotificationCapabilities>(EMPTY_NATIVE_CAPABILITIES);
+  notificationInboxState = $state<InboxState>(emptyInbox());
+  pushTransport = $state<PushTransport>("legacy");
+  pushSubscribed = $state(false);
+  pushRecovery = $state<PushRecovery>("none");
+  remoteGated = $state(false);
+  get isDesktopShell(): boolean {
+    return !HOSTED_MESSENGER && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  }
+  askDrafts = $state<Map<string, AskDraftRecord>>(new Map());
+  instanceId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  tabRole = $state<TabRole>("single");
+  tabTakeoverTimeout = $state(false);
+  nativeFocusFacts = $state<NativeFocusFacts>({
+    visible: false,
+    focused: false,
+    minimized: false,
+    effectiveFocused: false,
+  });
+  private tabChannel: BroadcastChannel | null = null;
+  private releaseLock: (() => void) | null = null;
+  private presenceTimer: ReturnType<typeof setInterval> | null = null;
+
   private api: MessengerApi | null = null;
   private ws: WebSocket | null = null;
   /** One sink per live stream id: a terminal session, or a Bot's running command. */
@@ -194,6 +283,7 @@ export class MessengerRuntime {
   private historyRevision = 0;
   private profileNavigation = 0;
   private durablePending: DurablePendingRequest[] = [];
+  private notificationIntentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
 
   start(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -202,13 +292,36 @@ export class MessengerRuntime {
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", this.onPushMessage);
     }
+    if (this.presenceTimer) clearInterval(this.presenceTimer);
+    this.presenceTimer = setInterval(() => {
+      void this.sendPresenceHeartbeat();
+      if (this.isDesktopShell) void this.pollDesktopNativeState();
+    }, 5000);
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", this.onWindowFocus);
+      window.addEventListener("blur", this.onWindowBlur);
+      document.addEventListener("visibilitychange", this.onWindowVisibility);
+    }
     this.pump();
   }
 
   destroy(): void {
     this.stopped = true;
+    if (this.presenceTimer) {
+      clearInterval(this.presenceTimer);
+      this.presenceTimer = null;
+    }
+    this.releaseLock?.();
+    this.releaseLock = null;
+    this.tabChannel?.close();
+    this.tabChannel = null;
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.removeEventListener("message", this.onPushMessage);
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("focus", this.onWindowFocus);
+      window.removeEventListener("blur", this.onWindowBlur);
+      document.removeEventListener("visibilitychange", this.onWindowVisibility);
     }
     this.markDisconnected();
     if (this.timer) clearTimeout(this.timer);
@@ -535,12 +648,14 @@ export class MessengerRuntime {
       const focused = this.snapshot.turns.find((turn) => turn.id === this.focusedTurnId);
       if (!focused || focused.session_id !== id) this.focusedTurnId = null;
     }
-    this.snapshot = {
-      ...this.snapshot,
-      sessions: this.snapshot.sessions.map((s) =>
-        s.id === id ? { ...s, unread_count: 0 } : s,
-      ),
-    };
+    if (!this.notificationCapabilities.bounded_read_v1) {
+      this.snapshot = {
+        ...this.snapshot,
+        sessions: this.snapshot.sessions.map((s) =>
+          s.id === id ? { ...s, unread_count: 0 } : s,
+        ),
+      };
+    }
     if (!api || !sync) return;
     this.historyLoading = true;
     this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
@@ -556,7 +671,8 @@ export class MessengerRuntime {
         if (!frames) throw new Error("event gap");
         for (const frame of frames) this.ingest(frame.payload, frame);
         if (selection !== this.sessionSeq) return;
-        this.applySessionDetail(id, { ...detail.session, unread_count: 0 }, detail.judgements);
+        const unread = this.notificationCapabilities.bounded_read_v1 ? detail.session.unread_count : 0;
+        this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements);
         for (const frame of frames) {
           if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
           if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, frame);
@@ -569,7 +685,9 @@ export class MessengerRuntime {
           this.setHighlightedMessage(messageId);
         }
         if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq || this.selectedId !== id) return;
-        await this.markSessionRead(id);
+        if (!this.notificationCapabilities.bounded_read_v1) {
+          await this.markSessionRead(id);
+        }
       } catch {
         if (this.api === api) this.markDisconnected();
       } finally {
@@ -1107,21 +1225,722 @@ export class MessengerRuntime {
     }
   }
 
-  async sendAsk(askId: string, body: string): Promise<void> {
+  getAskDraft(askId: string): AskDraftRecord | undefined {
+    return this.askDrafts.get(askId);
+  }
+
+  setAskDraft(askId: string, body: string): void {
+    const current = this.askDrafts.get(askId);
+    const updated = { ...nextDraftVersion(current, body), askId };
+    const nextMap = new Map(this.askDrafts);
+    nextMap.set(askId, updated);
+    this.askDrafts = nextMap;
+  }
+
+  clearAskDraft(askId: string, submittedVersion: number): void {
+    const current = this.askDrafts.get(askId);
+    const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
+    const stillCurrent = Boolean(turn && turn.status === "waiting_ask" && turn.pending_ask_id === askId);
+    const cleared = clearAskIfMatching(current, submittedVersion, stillCurrent);
+    const nextMap = new Map(this.askDrafts);
+    if (!cleared) nextMap.delete(askId);
+    else nextMap.set(askId, cleared);
+    this.askDrafts = nextMap;
+  }
+
+  setAskError(askId: string, error: string): void {
+    const current = this.askDrafts.get(askId);
+    const updated = recordAskError(current, askId, current?.body ?? "", error);
+    const nextMap = new Map(this.askDrafts);
+    nextMap.set(askId, updated);
+    this.askDrafts = nextMap;
+  }
+
+  async sendAsk(askId: string, body: string): Promise<SendAskResult> {
     const api = this.api;
     const id = this.selectedId;
     const text = body.trim();
-    if (!api || !id || !text || this.busy) return;
+    const existingDraft = this.askDrafts.get(askId);
+    const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
+    if (this.notificationCapabilities.pending_ask_v1) {
+      const pendingId = turn ? (turn.pending_ask_id ?? null) : null;
+      const notAllowed = askSubmitAllowed(
+        this.connection === "connected",
+        this.busy,
+        text,
+        pendingId,
+        askId,
+        true,
+      );
+      if (notAllowed) return notAllowed;
+    } else {
+      if (!text) return { status: "not_submitted", reason: "empty" };
+      if (this.connection !== "connected") return { status: "not_submitted", reason: "disconnected" };
+      if (this.busy) return { status: "not_submitted", reason: "busy" };
+    }
+    if (!api || !id) return { status: "not_submitted", reason: "disconnected" };
+
+    const reqId = existingDraft?.requestId;
     this.busy = true;
     try {
-      await api.postMessage(id, text, { askId });
+      const res = await api.postMessage(id, text, { askId, ...(reqId ? { requestId: reqId } : {}) });
+      return {
+        status: "accepted",
+        request_id: reqId,
+        message_id: res.id,
+      };
     } catch (error) {
-      if (this.api !== api) return;
-      if (error instanceof ApiError && error.status === 422) return;
-      this.keepUnknownRequest(error, api);
-      this.markDisconnected();
+      if (this.api !== api) return { status: "not_submitted", reason: "stale_connection" };
+      if (error instanceof ApiError) {
+        if (error.status === 422 || error.status === 409) {
+          void this.selectSession(id);
+          const stillCurrent = Boolean(turn && turn.status === "waiting_ask" && turn.pending_ask_id === askId);
+          return classifySendAskFailure(error, stillCurrent);
+        }
+        if (error.code === "request_unknown" || error.code === "request_pending") {
+          this.keepUnknownRequest(error, api);
+          const activeRequestId = error.requestId ?? reqId;
+          const draft = existingDraft ?? { ...nextDraftVersion(undefined, text), askId };
+          draft.requestId = activeRequestId;
+          draft.error = error.message;
+          const nextMap = new Map(this.askDrafts);
+          nextMap.set(askId, draft);
+          this.askDrafts = nextMap;
+          return { status: "unknown", request_id: activeRequestId, error };
+        }
+        this.keepUnknownRequest(error, api);
+        this.markDisconnected();
+        return { status: "rejected", error };
+      }
+      const apiError = new ApiError(500, "failed", error instanceof Error ? error.message : "request failed");
+      return { status: "rejected", error: apiError };
     } finally {
       if (this.api === api) this.busy = false;
+    }
+  }
+
+  setNotificationIntentHandler(handler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null): void {
+    this.notificationIntentHandler = handler;
+  }
+
+  private dispatchNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
+    if (this.notificationIntentHandler) {
+      this.notificationIntentHandler(intent);
+      return;
+    }
+    this.applyNotificationIntent(intent);
+  }
+
+  /**
+   * A system banner or a PWA push click lands on the conversation it belongs to. A generic
+   * pending push has no session in it, so it returns to the chat list, where that state shows.
+   */
+  applyNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
+    this.closeSheets();
+    if (!intent.sessionId) {
+      this.selectedId = null;
+      return;
+    }
+    void this.selectSession(intent.sessionId, { messageId: intent.messageId ?? undefined });
+  }
+
+  async loadNotificationPolicy(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    try {
+      this.notificationPolicy = await api.getNotificationPolicy();
+    } catch {
+      // Graceful
+    }
+  }
+
+  async patchNotificationPolicy(patch: Omit<NotificationPolicyPatch, "if_revision">): Promise<void> {
+    const api = this.api;
+    if (!api || !this.notificationPolicy) return;
+    try {
+      const res = await api.patchNotificationPolicy({
+        ...patch,
+        if_revision: this.notificationPolicy.revision,
+      });
+      this.notificationPolicy = res;
+    } catch {
+      // Graceful
+    }
+  }
+
+  async loadNotificationDevice(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    try {
+      this.notificationDevice = await api.getNotificationDevice();
+    } catch {
+      // Graceful
+    }
+  }
+
+  async patchNotificationDevice(patch: Omit<NotificationDevicePatch, "if_revision">): Promise<void> {
+    const api = this.api;
+    if (!api || !this.notificationDevice) return;
+    try {
+      const res = await api.patchNotificationDevice({
+        ...patch,
+        if_revision: this.notificationDevice.revision,
+      });
+      this.notificationDevice = res;
+    } catch {
+      // Graceful
+    }
+  }
+
+  private liveInboxWatermark(): { event_instance_id: string; watermark_seq: number } | null {
+    return this.sync?.snapshotCursor() ?? null;
+  }
+
+  private inboxReplayAfter(page: { event_instance_id: string; watermark_seq: number }): {
+    complete: boolean;
+    replay: InboxReplayEvent[];
+    reason?: "invalid" | "instance" | "truncated";
+  } {
+    const result = this.sync?.notificationEventsAfter({
+      event_instance_id: page.event_instance_id,
+      watermark_seq: page.watermark_seq,
+    });
+    if (!result) return { complete: true, replay: [] };
+    if (!result.complete) return { complete: false, replay: [], reason: result.reason };
+    const replay: InboxReplayEvent[] = [];
+    for (const frame of result.frames) {
+      const payload = frame.payload;
+      if (payload.event === "notification.upsert") {
+        const { event: _e, occurred_at: _at, ...item } = payload;
+        replay.push({ seq: frame.seq, event: "notification.upsert", item: item as NotificationItem });
+      } else if (payload.event === "notification.removed") {
+        replay.push({ seq: frame.seq, event: "notification.removed", id: payload.id });
+      } else if (payload.event === "notification.summary") {
+        replay.push({ seq: frame.seq, event: "notification.summary", summary: payload.summary });
+      }
+    }
+    return { complete: true, replay };
+  }
+
+  private deferInboxReload(filter: NotificationFilter, generation: number, overflow: boolean): void {
+    if (overflow) {
+      this.notificationInboxState = {
+        ...this.notificationInboxState,
+        loading: false,
+        loadingMore: false,
+        error: "stale",
+      };
+      return;
+    }
+    queueMicrotask(() => {
+      if (this.stopped || this.notificationInboxState.generation !== generation) return;
+      void this.loadNotificationInbox(filter);
+    });
+  }
+
+  async loadNotificationInbox(filter: NotificationFilter): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    this.notificationInboxState = beginInboxLoad(this.notificationInboxState, filter);
+    const gen = this.notificationInboxState.generation;
+    const priorSummary = this.notificationInboxState.summary;
+    try {
+      const page = await api.listNotifications({ filter, limit: 50 });
+      if (this.notificationInboxState.generation !== gen) return;
+      const live = this.liveInboxWatermark();
+      const liveAhead = Boolean(live && live.event_instance_id === page.event_instance_id && live.watermark_seq > page.watermark_seq);
+      const replayed = this.inboxReplayAfter(page);
+      const instanceMismatch = replayed.reason === "invalid" || replayed.reason === "instance";
+      if (instanceMismatch || (liveAhead && !replayed.complete)) {
+        this.deferInboxReload(filter, gen, replayed.reason === "truncated");
+        return;
+      }
+      this.notificationInboxState = acceptFirstPage(this.notificationInboxState, {
+        filter,
+        generation: gen,
+        instanceId: page.event_instance_id,
+        watermark: page.watermark_seq,
+        upperOrdinal: page.upper_ordinal,
+        page,
+        live,
+        replay: replayed.replay,
+        replayComplete: replayed.complete,
+      });
+      if (!liveAhead) {
+        this.notificationSummary = this.notificationInboxState.summary;
+        this.syncAppBadge();
+      } else if (this.notificationInboxState.summary !== priorSummary) {
+        this.notificationSummary = this.notificationInboxState.summary;
+        this.syncAppBadge();
+      }
+    } catch {
+      this.notificationInboxState = rejectInboxLoad(this.notificationInboxState, gen, "offline");
+    }
+  }
+
+  async loadMoreNotifications(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    const state = this.notificationInboxState;
+    if (!state.next || state.loadingMore || state.loading) return;
+    this.notificationInboxState = beginMore(state);
+    const gen = this.notificationInboxState.generation;
+    const priorSummary = state.summary;
+    try {
+      const page = await api.listNotifications({
+        filter: state.filter,
+        limit: 50,
+        cursor: state.next,
+      });
+      if (this.notificationInboxState.generation !== gen) return;
+      const live = this.liveInboxWatermark();
+      const liveAhead = Boolean(live && live.event_instance_id === page.event_instance_id && live.watermark_seq > page.watermark_seq);
+      const replayed = this.inboxReplayAfter(page);
+      const instanceMismatch = replayed.reason === "invalid" || replayed.reason === "instance";
+      if (instanceMismatch || (liveAhead && !replayed.complete)) {
+        this.notificationInboxState = { ...state, loadingMore: false, error: replayed.reason === "truncated" ? "stale" : state.error };
+        if (replayed.reason !== "truncated") this.deferInboxReload(state.filter, gen, false);
+        return;
+      }
+      this.notificationInboxState = acceptMore(this.notificationInboxState, {
+        filter: state.filter,
+        generation: gen,
+        instanceId: page.event_instance_id,
+        watermark: page.watermark_seq,
+        upperOrdinal: state.upperOrdinal,
+        page,
+        live,
+        replay: replayed.replay,
+        replayComplete: replayed.complete,
+      });
+      if (!liveAhead) {
+        this.notificationSummary = this.notificationInboxState.summary;
+        this.syncAppBadge();
+      } else if (this.notificationInboxState.summary !== priorSummary) {
+        this.notificationSummary = this.notificationInboxState.summary;
+        this.syncAppBadge();
+      }
+    } catch {
+      this.notificationInboxState = {
+        ...this.notificationInboxState,
+        loadingMore: false,
+        error: "offline",
+      };
+    }
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    await this.markNotificationsRead([id]);
+  }
+
+  async markNotificationsRead(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const api = this.api;
+    if (!api) return;
+    try {
+      await api.markNotificationsRead({ ids });
+      const now = new Date().toISOString();
+      let openDecrements = 0;
+      for (const id of ids) {
+        const item = this.notificationInboxState.items.find((i) => i.id === id);
+        if (item && !item.read_at && item.action_state !== "open") {
+          openDecrements++;
+        }
+      }
+      this.notificationInboxState = markLocalRead(this.notificationInboxState, ids, now);
+      this.notificationSummary = {
+        ...this.notificationSummary,
+        unread_count: Math.max(0, this.notificationSummary.unread_count - ids.length),
+        attention_count: Math.max(0, this.notificationSummary.attention_count - openDecrements),
+      };
+      this.syncAppBadge();
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    const upper = this.notificationInboxState.upperOrdinal;
+    try {
+      await api.markNotificationsRead({ through_ordinal: upper, filter: "all" });
+      const now = new Date().toISOString();
+      const allIds = this.notificationInboxState.items.map((i: NotificationItem) => i.id);
+      this.notificationInboxState = markLocalRead(this.notificationInboxState, allIds, now);
+      this.notificationSummary = {
+        ...this.notificationSummary,
+        unread_count: 0,
+        attention_count: this.notificationSummary.open_count,
+      };
+      this.syncAppBadge();
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async acknowledgeNotification(id: string, ifRevision: number): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    try {
+      await api.acknowledgeNotification(id, ifRevision);
+      const item = this.notificationInboxState.items.find((i: NotificationItem) => i.id === id);
+      if (item) {
+        const updated: NotificationItem = {
+          ...item,
+          action_state: "resolved",
+          resolution_reason: "acknowledged",
+          revision: item.revision + 1,
+          read_at: item.read_at ?? new Date().toISOString(),
+        };
+        this.notificationInboxState = upsertInboxItem(this.notificationInboxState, updated);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  private syncAppBadge(): void {
+    if (typeof navigator === "undefined" || !("setAppBadge" in navigator)) return;
+    const attention = this.notificationSummary.attention_count;
+    if (attention <= 0) {
+      if ("clearAppBadge" in navigator) {
+        navigator.clearAppBadge().catch(() => {});
+      }
+    } else {
+      if (this.notificationDevice?.badge !== false) {
+        navigator.setAppBadge(attention).catch(() => {});
+      }
+    }
+  }
+
+  isSessionMuted(sessionId: string): boolean {
+    const session = this.snapshot.sessions.find((s) => s.id === sessionId);
+    return session?.notification_preference?.muted === true;
+  }
+
+  async setSessionMuted(sessionId: string, muted: boolean): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    const session = this.snapshot.sessions.find((s) => s.id === sessionId);
+    const revision = session?.notification_preference?.revision ?? 0;
+    try {
+      const pref = await api.putSessionNotificationPreference(sessionId, { muted, if_revision: revision });
+      this.snapshot = {
+        ...this.snapshot,
+        sessions: this.snapshot.sessions.map((s) =>
+          s.id === sessionId ? { ...s, notification_preference: pref } : s
+        ),
+      };
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async sendTestNotification(): Promise<{ ok: boolean; status: string }> {
+    const api = this.api;
+    const copy = copyFor(this.snapshot.settings.locale).notifications;
+    if (!api) {
+      throw new ApiError(0, "disconnected", copyFor(this.snapshot.settings.locale).disconnected.host);
+    }
+    const localNativePath = this.isDesktopShell || api.kind === "local";
+    if (localNativePath) {
+      if (!this.nativeCapabilities.native_delivery_v1 || this.pushPermission !== "granted" || !this.notificationDevice?.enabled) {
+        throw new ApiError(409, "delivery_gated", copy.testDeliveryGated);
+      }
+      if ("testDesktopNotification" in api) {
+        return api.testDesktopNotification();
+      }
+      throw new ApiError(409, "delivery_gated", copy.testDeliveryGated);
+    }
+    if (this.remoteGated) {
+      throw new ApiError(503, "gateway_unavailable", copyFor(this.snapshot.settings.locale).notifications.remoteGated);
+    }
+    if ("testRemotePush" in api) {
+      return api.testRemotePush();
+    }
+    throw new ApiError(409, "capability_unavailable", copy.upgradeRequired);
+  }
+
+  async enableDeviceNotifications(): Promise<boolean> {
+    const res = await this.setPushEnabled(true);
+    return Boolean(res);
+  }
+
+  async disableDeviceNotifications(): Promise<DisablePushResult | boolean> {
+    return this.setPushEnabled(false);
+  }
+
+  async pollDesktopNativeState(): Promise<void> {
+    const internals = readTauriInternals();
+    if (!internals?.invoke) return;
+    try {
+      const stateDto = (await internals.invoke("notification_permission_state")) as NotificationPermissionStateDto;
+      if (stateDto) {
+        this.nativeCapabilities = {
+          native_reading_v1: stateDto.nativeReadingV1,
+          native_delivery_v1: stateDto.nativeDeliveryV1,
+        };
+        this.pushPermission = (stateDto.permission === "granted" || stateDto.permission === "denied")
+          ? stateDto.permission
+          : "default";
+      }
+    } catch {
+      // Native call failure
+    }
+    try {
+      const intent = (await internals.invoke("take_notification_intent")) as NotificationIntent | null;
+      if (intent?.clickRef) {
+        await this.handleDesktopNotificationIntent(intent.clickRef);
+      }
+    } catch {
+      // Intent error
+    }
+  }
+
+  async handleDesktopNotificationIntent(clickRef: string): Promise<void> {
+    const api = this.api;
+    if (!api || !("getDesktopClickTarget" in api)) {
+      this.dispatchNotificationIntent({ openInbox: true });
+      return;
+    }
+    try {
+      const res = await api.getDesktopClickTarget(clickRef);
+      if (res.target?.session_id) {
+        this.dispatchNotificationIntent({
+          sessionId: res.target.session_id,
+          messageId: res.target.message_id ?? null,
+          openInbox: false,
+        });
+        return;
+      }
+      this.dispatchNotificationIntent({ openInbox: true });
+    } catch {
+      this.dispatchNotificationIntent({ openInbox: true });
+    }
+  }
+
+  async reportDesktopNotificationView(atLatest: boolean): Promise<NativeFocusFacts | null> {
+    const internals = readTauriInternals();
+    if (!internals?.invoke) return null;
+    try {
+      const report: NotificationViewReport = {
+        sessionId: this.selectedId,
+        atLatest,
+        visible: document.visibilityState === "visible",
+        focused: document.hasFocus(),
+      };
+      const facts = (await internals.invoke("report_notification_view", { report })) as NativeFocusFacts;
+      if (facts) {
+        this.nativeFocusFacts = facts;
+        return facts;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  async requestDesktopNotificationPermission(): Promise<void> {
+    const internals = readTauriInternals();
+    if (!internals?.invoke) return;
+    try {
+      const stateDto = (await internals.invoke("request_notification_permission")) as NotificationPermissionStateDto;
+      if (stateDto) {
+        this.nativeCapabilities = {
+          native_reading_v1: stateDto.nativeReadingV1,
+          native_delivery_v1: stateDto.nativeDeliveryV1,
+        };
+        this.pushPermission = (stateDto.permission === "granted" || stateDto.permission === "denied")
+          ? stateDto.permission
+          : "default";
+        if (stateDto.permission === "granted") {
+          await this.patchNotificationDevice({ enabled: true });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async sendPresenceHeartbeat(atLatest: boolean = false): Promise<void> {
+    const api = this.api;
+    if (!api || this.connection !== "connected" || typeof document === "undefined" || document.visibilityState !== "visible") return;
+    if (this.isDesktopShell) {
+      await this.reportDesktopNotificationView(atLatest);
+      return;
+    }
+    try {
+      await api.postNotificationPresence({
+        instance_id: this.instanceId,
+        visible: document.visibilityState === "visible",
+        focused: document.hasFocus(),
+        session_id: this.selectedId,
+        at_latest: atLatest,
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  private applyPushState(v2: PushStateV2): void {
+    this.pushSubscribed = v2.subscribed;
+    this.pushEnabled = v2.enabled;
+    this.pushRecovery = v2.recovery;
+    this.pushTransport = v2.push_transport;
+    const state = this.remoteStatus?.state;
+    this.remoteGated =
+      state === "activation_gated" ||
+      state === "native_unavailable" ||
+      state === "off" ||
+      state === "trust_mismatch";
+  }
+
+  async loadPushState(): Promise<void> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi)) return;
+    let v2: PushStateV2 | null = null;
+    try {
+      v2 = await api.getPushStateV2();
+      this.applyPushState(v2);
+    } catch {
+      try {
+        const legacy = await api.pushState();
+        this.pushSubscribed = legacy.subscribed;
+        this.pushEnabled = legacy.subscribed;
+        this.pushTransport = "legacy";
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    if (!v2.enabled || v2.push_transport !== "policy_v2") return;
+    try {
+      const result = await refreshPush(api, v2);
+      if (result === "needs_repair") {
+        if (this.pushRecovery === "none") this.pushRecovery = "registration_missing";
+        return;
+      }
+      this.applyPushState(await api.getPushStateV2());
+    } catch {
+      if (this.pushRecovery === "none") this.pushRecovery = "registration_missing";
+    }
+  }
+
+  async prefetchPushState(): Promise<PushStateV2 | null> {
+    const api = this.api;
+    if (!(api instanceof RemoteApi)) return null;
+    try {
+      const v2 = await api.getPushStateV2();
+      this.applyPushState(v2);
+      return v2;
+    } catch {
+      return null;
+    }
+  }
+
+  async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
+    const api = this.api;
+    if (!api || this.connection !== "connected" || this.selectedId !== sessionId) return;
+    try {
+      const detail = await api.markSessionReadThrough(sessionId, messageId);
+      if (this.api !== api) return;
+      this.snapshot = {
+        ...this.snapshot,
+        sessions: this.snapshot.sessions.map((s) =>
+          s.id === sessionId ? { ...s, unread_count: detail.unread_count, last_read_at: detail.last_read_at } : s
+        ),
+      };
+    } catch {
+      // Bounded read failure is non-fatal
+    }
+  }
+
+  setupTabChannel(): void {
+    if (typeof BroadcastChannel === "undefined") return;
+    if (this.tabChannel) return;
+    try {
+      const ch = new BroadcastChannel(TAB_CHANNEL);
+      this.tabChannel = ch;
+      ch.onmessage = (ev) => {
+        if (!isTabControlMessage(ev.data)) return;
+        const msg = ev.data as TabControlMessage;
+        if (msg.type === "inbox") {
+          this.dispatchNotificationIntent({ openInbox: true });
+        } else if (msg.type === "takeover-request") {
+          if (this.tabRole === "owner") {
+            this.releaseLock?.();
+            this.releaseLock = null;
+            this.resetConnection();
+            this.tabRole = "standby";
+            try { ch.postMessage({ type: "takeover-ack" }); } catch {}
+          }
+        } else if (msg.type === "takeover-ack") {
+          if (this.tabRole === "standby") {
+            void this.acquireTabLock().then((got) => {
+              if (got) {
+                this.tabTakeoverTimeout = false;
+                void this.tick();
+              }
+            });
+          }
+        }
+      };
+    } catch {
+      // BroadcastChannel not available in this environment
+    }
+  }
+
+  async acquireTabLock(): Promise<boolean> {
+    if (typeof navigator === "undefined" || !supportsWebLocks(navigator.locks)) {
+      this.tabRole = "single";
+      return true;
+    }
+    return new Promise<boolean>((resolve) => {
+      navigator.locks.request(TAB_LOCK_NAME, { ifAvailable: true }, async (lock) => {
+        if (!lock) {
+          this.tabRole = "standby";
+          this.setupTabChannel();
+          resolve(false);
+          return;
+        }
+        this.tabRole = "owner";
+        this.tabTakeoverTimeout = false;
+        this.setupTabChannel();
+        resolve(true);
+        await new Promise<void>((held) => {
+          this.releaseLock = held;
+        });
+      }).catch(() => {
+        this.tabRole = "single";
+        resolve(true);
+      });
+    });
+  }
+
+  async requestTabTakeover(): Promise<void> {
+    if (!this.tabChannel) this.setupTabChannel();
+    this.tabTakeoverTimeout = false;
+    try {
+      this.tabChannel?.postMessage({ type: "takeover-request" });
+    } catch {}
+
+    const timer = setTimeout(() => {
+      if (this.tabRole === "standby") {
+        this.tabTakeoverTimeout = true;
+      }
+    }, TAKEOVER_MS);
+
+    const start = Date.now();
+    while (Date.now() - start < TAKEOVER_MS) {
+      const got = await this.acquireTabLock();
+      if (got) {
+        clearTimeout(timer);
+        this.tabTakeoverTimeout = false;
+        void this.tick();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
 
@@ -1479,26 +2298,61 @@ export class MessengerRuntime {
     return this.maintenance.devices.filter((row) => row.id !== api.enrollment.deviceId && !row.revoked);
   }
 
-  private readonly onPushMessage = (event: MessageEvent): void => {
-    if (!isInboxMessage(event.data)) return;
-    this.hostUnreachable = "host";
-    this.markDisconnected();
-    this.pump();
+  private readonly onWindowFocus = (): void => {
+    if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
+    else void this.sendPresenceHeartbeat();
   };
 
-  async setPushEnabled(enabled: boolean): Promise<boolean> {
+  private readonly onWindowBlur = (): void => {
+    if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
+  };
+
+  private readonly onWindowVisibility = (): void => {
+    if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
+    else if (document.visibilityState === "visible") void this.sendPresenceHeartbeat();
+  };
+
+  private readonly onPushMessage = (event: MessageEvent): void => {
+    if (!isInboxMessage(event.data)) return;
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      if (navigator.serviceWorker.controller && event.source !== navigator.serviceWorker.controller) {
+        return;
+      }
+    }
+    this.dispatchNotificationIntent({ openInbox: true });
+    if (this.connection !== "connected") {
+      this.pump();
+    }
+  };
+
+  async setPushEnabled(enabled: boolean): Promise<DisablePushResult | boolean> {
     const api = this.api;
+    if (this.isDesktopShell) {
+      if (enabled) {
+        await this.requestDesktopNotificationPermission();
+      } else {
+        await this.patchNotificationDevice({ enabled: false });
+      }
+      return true;
+    }
     if (!(api instanceof RemoteApi) || this.pushBusy) return false;
     this.pushBusy = true;
     this.pushError = null;
     this.pushPermission = pushPermission();
     try {
-      if (enabled) await enablePush(api);
-      else await disablePush(api);
-      if (this.api !== api) return false;
-      this.pushEnabled = enabled;
-      this.pushPermission = pushPermission();
-      return true;
+      if (enabled) {
+        await enablePush(api, "enable");
+        this.pushEnabled = true;
+        this.pushSubscribed = true;
+        this.pushPermission = pushPermission();
+        return true;
+      } else {
+        const outcome = await disablePush(api);
+        this.pushEnabled = !outcome.hostDisabled;
+        this.pushSubscribed = !outcome.localRemoved;
+        this.pushPermission = pushPermission();
+        return outcome;
+      }
     } catch (error) {
       this.pushPermission = pushPermission();
       this.pushError = error instanceof Error && error.message === "denied" ? "denied"
@@ -1573,6 +2427,17 @@ export class MessengerRuntime {
       this.schedule();
       return;
     }
+    if (this.tabRole === "standby") {
+      this.schedule(this.remoteRetryMs);
+      return;
+    }
+    if (this.tabRole !== "owner" && typeof navigator !== "undefined" && supportsWebLocks(navigator.locks)) {
+      const acquired = await this.acquireTabLock();
+      if (!acquired) {
+        this.schedule(this.remoteRetryMs);
+        return;
+      }
+    }
     try {
       await this.connectRemote(enrollment);
       // The Mac is back: the next drop starts from the short delay again.
@@ -1599,7 +2464,25 @@ export class MessengerRuntime {
     if (!frames) throw new Error("event gap during snapshot");
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.remoteStatus = snapshot.remoteStatus ?? null;
-    if (api instanceof RemoteApi) void this.refreshMaintenance();
+    if (snapshot.notificationCapabilities) {
+      this.notificationCapabilities = parseNotificationCapabilities(snapshot.notificationCapabilities);
+    }
+    if (snapshot.notificationSummary) {
+      this.notificationSummary = parseNotificationSummary(snapshot.notificationSummary);
+      this.syncAppBadge();
+    }
+    if (snapshot.notificationPolicy) {
+      const parsed = parseNotificationPolicy(snapshot.notificationPolicy);
+      if (parsed) this.notificationPolicy = parsed;
+    }
+    if (this.isDesktopShell) {
+      void this.pollDesktopNativeState();
+      void this.reportDesktopNotificationView(false);
+    }
+    if (api instanceof RemoteApi) {
+      void this.refreshMaintenance();
+      void this.loadPushState();
+    }
     this.reconcilePendingMutation(api);
     this.syncSettingsDraft(snapshot.settings);
     for (const frame of frames) this.ingest(frame.payload, frame);
@@ -1655,11 +2538,6 @@ export class MessengerRuntime {
     const snapshot = await api.snapshot();
     await this.installSnapshot(api, sync, snapshot);
     this.uvReady = api.uvReady;
-    try {
-      this.pushEnabled = (await api.pushState()).subscribed;
-    } catch {
-      this.pushEnabled = false;
-    }
   }
 
   private openSocket(api: LocalApi, sync: EventSync): Promise<void> {
@@ -1808,6 +2686,7 @@ export class MessengerRuntime {
               last_message: s.last_message,
               live_turns: s.live_turns,
               unread_count: detail.unread_count ?? s.unread_count ?? 0,
+              notification_preference: detail.notification_preference ?? s.notification_preference,
             }
           : s,
       ),
@@ -1861,21 +2740,24 @@ export class MessengerRuntime {
       }
     }
     let next = applyEvent(this.snapshot, event);
-    if (
-      (event.event === "message.created" || event.event === "message.upsert") &&
-      event.session_id === this.selectedId &&
-      event.parent_id === null &&
-      event.author !== USER_MEMBER
-    ) {
-      next = {
-        ...next,
-        sessions: next.sessions.map((s) =>
-          s.id === event.session_id ? { ...s, unread_count: 0 } : s,
-        ),
-      };
-      void this.markSessionRead(event.session_id);
-    }
     this.snapshot = next;
+    if (event.event === "notification.upsert") {
+      this.notificationInboxState = upsertInboxItem(this.notificationInboxState, event as unknown as NotificationItem);
+      this.syncAppBadge();
+    }
+    if (event.event === "notification.removed" && typeof event.id === "string") {
+      this.notificationInboxState = removeInboxItem(this.notificationInboxState, event.id);
+      this.syncAppBadge();
+    }
+    if (event.event === "notification.summary") {
+      this.notificationSummary = event.summary;
+      this.notificationInboxState = applySummary(this.notificationInboxState, event.summary);
+      this.syncAppBadge();
+    }
+    if (event.event === "notification_policy.changed") {
+      const { event: _e, occurred_at: _at, ...policy } = event;
+      this.notificationPolicy = policy;
+    }
     if (this.api instanceof RemoteApi) this.api.observeSnapshot(this.snapshot);
     if (event.event === "settings.changed") {
       this.syncSettingsDraft(event);

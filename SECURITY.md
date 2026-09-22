@@ -24,7 +24,7 @@ SQLite stores public trust, replay reservations, COSE keys/counters and challeng
 
 Optional Web Push is Mac-outbound only. VAPID private material is native `vapid` (tests use fixtures, never the personal Keychain). Subscriptions store the HTTPS endpoint URL plus `endpoint_hash`/`p256dh`/`auth`/`expires_at` bound to `device_id`. Hosts are strictly parsed against `*.push.apple.com`, `fcm.googleapis.com` and `updates.push.services.mozilla.com`; unknown hosts and 3xx redirects fail closed (SSRF). Payload is only `{t:"pending"}` with fixed visible copy; no titles, bodies, filenames or Bot names. Click reconnects and pulls inbox and never resolves approvals. Deny/expiry must not drop inbox. Revoke best-effort deletes the row; APNs disappearance is not promised. The relay does not send. G-push (iOS 16.4+ home-screen standalone) is **not passed**.
 
-可选 Web Push 仅 Mac 出站。VAPID 私钥是原生 `vapid`（测试用 fixture，不读个人钥匙串）。订阅保存 HTTPS endpoint URL 以及 `endpoint_hash`/`p256dh`/`auth`/`expires_at`，绑定 `device_id`。主机严格解析，仅 `*.push.apple.com`、`fcm.googleapis.com`、`updates.push.services.mozilla.com`；未知主机与 3xx 重定向失败关闭（防 SSRF）。载荷只有 `{t:"pending"}` 与固定文案，无标题/正文/文件名/Bot 名。点击只重连拉收件箱，绝不批准。拒绝或过期不丢待办。吊销尽力删订阅，不承诺 APNs 立刻消失。中继不代发。G-push（iOS 16.4+ 主屏幕 standalone）**未通过**。
+可选 Web Push 仅 Mac 出站。VAPID 私钥是原生 `vapid`（测试用 fixture，不读个人钥匙串）。订阅保存 HTTPS endpoint URL 以及 `endpoint_hash`/`p256dh`/`auth`/`expires_at`，绑定 `device_id`。主机严格解析，仅 `*.push.apple.com`、`fcm.googleapis.com`、`updates.push.services.mozilla.com`；未知主机与 3xx 重定向失败关闭（防 SSRF）。载荷只有 `{t:"pending"}` 与固定文案，无标题/正文/文件名/Bot 名。点击只重连并回到会话列表，绝不批准。拒绝或过期不丢待办。吊销尽力删订阅，不承诺 APNs 立刻消失。中继不代发。G-push（iOS 16.4+ 主屏幕 standalone）**未通过**。
 
 ## 私密报告漏洞
 

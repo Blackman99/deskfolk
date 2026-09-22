@@ -1,7 +1,11 @@
-import { INTERRUPT_NOTE_BODY, type RouteOutcome, type Turn } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, USER_MEMBER, type Message, type RouteOutcome, type Turn } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
+import {
+  createNotification,
+  updateNotificationActionState,
+} from "./notifications";
 import { finishTurnRoute, type TurnExecution } from "./routing";
 import { isPresent } from "./sessions";
 import { resolveTurnTask, taskOfTurn } from "./tasks";
@@ -26,6 +30,8 @@ export function createTurn(
     triggerMessageId: string;
     /** A routine fires as a user message, so only the caller can say this is a fresh job. */
     newTask?: boolean;
+    routineId?: string | null;
+    routineDueAt?: string | null;
   },
 ): Turn {
   sessionRow(ctx, input.sessionId);
@@ -41,9 +47,20 @@ export function createTurn(
   ctx.db.transaction(() => {
     ctx.db.run(
       `INSERT INTO turns
-        (id, session_id, bot_id, status, trigger_message_id, task_id, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
-      [id, input.sessionId, input.botId, input.triggerMessageId, taskId, now, now, now],
+        (id, session_id, bot_id, status, trigger_message_id, task_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.sessionId,
+        input.botId,
+        input.triggerMessageId,
+        taskId,
+        input.routineId ?? null,
+        input.routineDueAt ?? null,
+        now,
+        now,
+        now,
+      ],
     );
     // The trigger belongs to the job it opened, so the user's own message carries the anchor too.
     ctx.db.run(`UPDATE messages SET task_id = ? WHERE id = ? AND task_id IS NULL`, [
@@ -113,6 +130,32 @@ export function setTurnPartial(ctx: StoreContext, id: string, partial: string | 
   ctx.db.run("UPDATE turns SET partial_text = ? WHERE id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask') AND partial_text IS NOT ?", [partial, id, partial]);
 }
 
+export function voidPendingTurnActions(
+  ctx: StoreContext,
+  turnId: string,
+  reason: string,
+  now: string = isoNow(),
+): void {
+  const pendingApps = ctx.db
+    .query<{ id: string }, [string]>("SELECT id FROM approvals WHERE turn_id = ? AND status = 'pending'")
+    .all(turnId);
+  for (const app of pendingApps) {
+    updateNotificationActionState(ctx, `approval:${app.id}`, "voided", reason);
+  }
+  ctx.db.run(
+    "UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'",
+    [now, turnId],
+  );
+
+  const turn = ctx.db
+    .query<{ pending_ask_id: string | null }, [string]>("SELECT pending_ask_id FROM turns WHERE id = ?")
+    .get(turnId);
+  if (turn?.pending_ask_id) {
+    updateNotificationActionState(ctx, `ask:${turn.pending_ask_id}`, "voided", reason);
+    ctx.db.run("UPDATE turns SET pending_ask_id = NULL WHERE id = ?", [turnId]);
+  }
+}
+
 export function touchTurn(ctx: StoreContext, id: string): Turn {
   const now = isoNow();
   ctx.db.run(`UPDATE turns SET last_activity_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
@@ -125,13 +168,10 @@ export function redirectTurn(ctx: StoreContext, id: string, execution: TurnExecu
   if (!isLive(row.status)) return toTurn(row);
   const now = isoNow();
   ctx.db.transaction(() => {
+    voidPendingTurnActions(ctx, id, "redirected", now);
     ctx.db.run(
       `UPDATE turns SET status = 'redirected', last_activity_at = ?, updated_at = ? WHERE id = ?`,
       [now, now, id],
-    );
-    ctx.db.run(
-      `UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'`,
-      [now, id],
     );
     finishTurnRoute(ctx, id, "redirected", null, execution);
   })();
@@ -195,45 +235,73 @@ export function stopTurn(
   }
   const now = isoNow();
   ctx.db.transaction(() => {
+    voidPendingTurnActions(ctx, row.id, "stopped", now);
     ctx.db.run(`UPDATE turns SET status = 'stopped', updated_at = ? WHERE id = ?`, [now, row.id]);
-    ctx.db.run(
-      `UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'`,
-      [now, row.id],
-    );
     finishTurnRoute(ctx, row.id, "stopped", null, opts.execution ?? null);
   })();
   return { ...row, status: "stopped", updated_at: now, partial_text: null };
+}
+
+export function interruptTurnRecord(
+  ctx: StoreContext,
+  turnId: string,
+  execution: TurnExecution | null = null,
+): { note: Message; turn: Turn } | null {
+  const row = ctx.db.query<TurnRow, [string]>("SELECT * FROM turns WHERE id = ?").get(turnId);
+  if (!row || !isLive(row.status)) return null;
+
+  const now = isoNow();
+  let note!: Message;
+  let turn!: Turn;
+
+  ctx.db.transaction(() => {
+    voidPendingTurnActions(ctx, turnId, "interrupted", now);
+    ctx.db.run(
+      `UPDATE turns SET status = 'interrupted', updated_at = ? WHERE id = ?`,
+      [now, turnId],
+    );
+
+    const noteId = ulid();
+    ctx.db.run(
+      `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, created_at)
+       VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?, ?)`,
+      [noteId, row.session_id, row.id, row.bot_id, INTERRUPT_NOTE_BODY, row.task_id, now],
+    );
+    note = getMessage(ctx, noteId);
+
+    markInterruptPending(ctx, row.bot_id);
+    finishTurnRoute(ctx, row.id, "interrupted", null, execution);
+
+    if (isPresent(ctx, row.session_id, USER_MEMBER)) {
+      createNotification(ctx, {
+        semantic_key: `interrupted:${row.id}`,
+        kind: "interrupted",
+        session_id: row.session_id,
+        turn_id: row.id,
+        message_id: noteId,
+        created_at: now,
+        action_state: "open",
+      });
+    }
+
+    turn = getTurn(ctx, turnId);
+  })();
+
+  return { note, turn };
 }
 
 export function interruptRunningTurns(
   ctx: StoreContext,
   executionFor: (turnId: string) => TurnExecution | null = () => null,
 ): void {
-  const now = isoNow();
   const live = ctx.db
     .query<TurnRow, []>(
       `SELECT * FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')`,
     )
     .all();
-  ctx.db.transaction(() => {
-    for (const turn of live) {
-      ctx.db.run(`UPDATE turns SET status = 'interrupted', updated_at = ? WHERE id = ?`, [
-        now,
-        turn.id,
-      ]);
-      ctx.db.run(
-        `UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'`,
-        [now, turn.id],
-      );
-      ctx.db.run(
-        `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, created_at)
-         VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?, ?)`,
-        [ulid(), turn.session_id, turn.id, turn.bot_id, INTERRUPT_NOTE_BODY, turn.task_id, now],
-      );
-      markInterruptPending(ctx, turn.bot_id);
-      finishTurnRoute(ctx, turn.id, "interrupted", null, executionFor(turn.id));
-    }
-  })();
+  for (const turn of live) {
+    interruptTurnRecord(ctx, turn.id, executionFor(turn.id));
+  }
 }
 
 export function claimInterruptContinue(ctx: StoreContext, messageId: string): Turn {
@@ -277,6 +345,13 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
     if (!updated) {
       throw new HttpError(422, "invalid_args", "interrupted turn already continued");
     }
+    updateNotificationActionState(
+      ctx,
+      `interrupted:${cut.id}`,
+      "resolved",
+      "continued",
+      true,
+    );
   })();
   touchSession(ctx, note.session_id, now);
   return getTurn(ctx, id);

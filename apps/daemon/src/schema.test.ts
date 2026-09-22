@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MEMORY_AGE_MAX, MEMORY_DIGEST_LIMIT, memoryEntryCost } from "./context";
+import { SCHEMA_SQL } from "./schema";
 import { Store } from "./store";
 import {
   MEMORY_BODY_MAX,
@@ -21,6 +22,12 @@ describe("schema", () => {
       )
       .all()
       .map((row) => row.name);
+    const deliveryCols = store.db
+      .query<{ name: string }, []>(`PRAGMA table_info(notification_deliveries)`)
+      .all()
+      .map((row) => row.name);
+    expect(SCHEMA_SQL).toContain("permit TEXT");
+    expect(deliveryCols).toContain("permit");
     expect(names).toEqual([
       "allow_rules",
       "approvals",
@@ -32,6 +39,14 @@ describe("schema", () => {
       "mcp_servers",
       "memories",
       "messages",
+      "notification_counters",
+      "notification_deliveries",
+      "notification_delivery_items",
+      "notification_devices",
+      "notification_policy",
+      "notification_push_config",
+      "notification_retention_notice",
+      "notifications",
       "pending_keys",
       "profile_revisions",
       "providers",
@@ -51,6 +66,7 @@ describe("schema", () => {
       "route_learnings",
       "route_reviews",
       "routines",
+      "session_notification_preferences",
       "session_participants",
       "sessions",
       "settings",

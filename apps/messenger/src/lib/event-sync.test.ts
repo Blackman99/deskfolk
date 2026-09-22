@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SequencedEvent } from "@real-bot/protocol";
-import { EventSync } from "./event-sync.ts";
+import { EventSync, MAX_NOTIFICATION_TAIL } from "./event-sync.ts";
 import { LocalApi } from "./local-api.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot } from "./snapshot.ts";
 
@@ -17,6 +17,7 @@ describe("snapshot event barrier", () => {
     expect(sync.receive(event(1))).toEqual([]);
     expect(sync.receive(event(2))).toEqual([]);
     expect(sync.install(cursor(1))).toEqual([event(2)]);
+    expect(sync.snapshotCursor()).toEqual(cursor(2));
     expect(sync.receive(event(2))).toEqual([]);
     expect(sync.receive(event(3))).toEqual([event(3)]);
     expect(sync.receive(event(5))).toBeNull();
@@ -40,6 +41,75 @@ describe("snapshot event barrier", () => {
     sync.receive(event(5)); sync.receive(event(6));
     expect(sync.install()).toEqual([event(5), event(6)]);
     expect(sync.receive(event(7))).toEqual([event(7)]);
+  });
+  test("notification tail replays only frames after an HTTP page watermark", () => {
+    const sync = new EventSync();
+    sync.install(cursor());
+    const unrelated = event(1);
+    const upsert: SequencedEvent = {
+      type: "event", event_instance_id: instance, seq: 2,
+      payload: {
+        event: "notification.upsert", occurred_at: "now",
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FAA", ordinal: 12, semantic_key: "ask:1", kind: "ask",
+        created_at: "now", action_state: "open", revision: 1,
+        display: { title: "Live", summary: "" }, target: {},
+      },
+    };
+    const removed: SequencedEvent = {
+      type: "event", event_instance_id: instance, seq: 3,
+      payload: { event: "notification.removed", occurred_at: "now", id: "01ARZ3NDEKTSV4RRFFQ69G5FAB" },
+    };
+    expect(sync.receive(unrelated)).toEqual([unrelated]);
+    expect(sync.receive(upsert)).toEqual([upsert]);
+    expect(sync.receive(removed)).toEqual([removed]);
+    const afterOne = sync.notificationEventsAfter(cursor(1));
+    expect(afterOne.complete).toBe(true);
+    if (afterOne.complete) expect(afterOne.frames.map((frame) => frame.seq)).toEqual([2, 3]);
+    const afterTwo = sync.notificationEventsAfter(cursor(2));
+    expect(afterTwo.complete).toBe(true);
+    if (afterTwo.complete) expect(afterTwo.frames.map((frame) => frame.seq)).toEqual([3]);
+    expect(sync.notificationEventsAfter({ event_instance_id: "b".repeat(32), watermark_seq: 0 })).toEqual({
+      complete: false, frames: [], reason: "instance",
+    });
+    const paused = new EventSync();
+    paused.install(cursor(4));
+    paused.pause();
+    const buffered: SequencedEvent = {
+      type: "event", event_instance_id: instance, seq: 5,
+      payload: { event: "notification.summary", occurred_at: "now", summary: { unread_count: 2, open_count: 1, attention_count: 2 } },
+    };
+    expect(paused.receive(buffered)).toEqual([]);
+    expect(paused.notificationEventsAfter(cursor(4))).toEqual({ complete: true, frames: [buffered] });
+  });
+  test("truncated notification tail is unavailable when a dropped removal is still needed", () => {
+    const sync = new EventSync();
+    sync.install(cursor());
+    const notice = (seq: number, id: string): SequencedEvent => ({
+      type: "event", event_instance_id: instance, seq,
+      payload: { event: "notification.removed", occurred_at: "now", id },
+    });
+    for (let seq = 1; seq <= MAX_NOTIFICATION_TAIL + 1; seq++) {
+      expect(sync.receive(notice(seq, String(seq).padStart(26, "0"))).map((frame) => frame.seq)).toEqual([seq]);
+    }
+    const behind = sync.notificationEventsAfter(cursor(0));
+    expect(behind.complete).toBe(false);
+    if (!behind.complete) expect(behind.reason).toBe("truncated");
+    const covered = sync.notificationEventsAfter(cursor(1));
+    expect(covered.complete).toBe(true);
+    if (covered.complete) expect(covered.frames[0]?.seq).toBe(2);
+  });
+  test("instance switch and invalid gap refuse replay and clear the live cursor", () => {
+    const switched = new EventSync();
+    switched.install(cursor());
+    expect(switched.receive({ ...event(1), event_instance_id: "b".repeat(32) })).toBeNull();
+    expect(switched.snapshotCursor()).toBeNull();
+    expect(switched.notificationEventsAfter(cursor())).toEqual({ complete: false, frames: [], reason: "invalid" });
+    const gapped = new EventSync();
+    gapped.install(cursor());
+    expect(gapped.receive(event(1))).toEqual([event(1)]);
+    expect(gapped.receive(event(3))).toBeNull();
+    expect(gapped.snapshotCursor()).toBeNull();
+    expect(gapped.notificationEventsAfter(cursor(1))).toEqual({ complete: false, frames: [], reason: "invalid" });
   });
   test("detail watermark waits are cancelled on close and never skip global gaps", async () => {
     const sync = new EventSync();

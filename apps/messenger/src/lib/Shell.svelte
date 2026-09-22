@@ -5,7 +5,7 @@
 		type Bot,
 		type SessionSummary
 	} from '@real-bot/protocol';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
 	import {
@@ -95,6 +95,24 @@
 		if (snapshot.settings.theme) {
 			themeManager.syncFromSnapshot(snapshot.settings.theme);
 		}
+	});
+
+	onMount(() => {
+		runtime.setNotificationIntentHandler((intent) => {
+			guardNotificationNavigation(() => {
+				runtime.applyNotificationIntent(intent);
+			});
+		});
+		if (runtime.isDesktopShell) {
+			void runtime.pollDesktopNativeState();
+			const onFocus = () => void runtime.pollDesktopNativeState();
+			window.addEventListener('focus', onFocus);
+			return () => {
+				runtime.setNotificationIntentHandler(null);
+				window.removeEventListener('focus', onFocus);
+			};
+		}
+		return () => runtime.setNotificationIntentHandler(null);
 	});
 
 	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
@@ -964,6 +982,32 @@
 	function openCreateGroup(): void {
 		runtime.openCreateGroup();
 	}
+
+	function guardNotificationNavigation(perform: () => void): void {
+		if (artifactPreview && previewPane?.requestCloseFromParent) {
+			previewPane.requestCloseFromParent(() => {
+				closeArtifactPreview();
+				if (runtime.workspaceOpen && workspacePane?.requestCloseFromParent) {
+					workspacePane.requestCloseFromParent(() => {
+						closeWorkspaceExplorer();
+						perform();
+					});
+					return;
+				}
+				perform();
+			});
+			return;
+		}
+		if (runtime.workspaceOpen && workspacePane?.requestCloseFromParent) {
+			workspacePane.requestCloseFromParent(() => {
+				closeWorkspaceExplorer();
+				perform();
+			});
+			return;
+		}
+		perform();
+	}
+
 	const mobileNavigationVisible = $derived(
 		!searchPageOpen &&
 		!runtime.routinesOpen &&

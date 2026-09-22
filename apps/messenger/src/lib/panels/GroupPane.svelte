@@ -98,6 +98,8 @@
 		replying: t.sidebar.statusReplying,
 		waitingApproval: t.sidebar.statusWaitingApproval,
 		waitingAsk: t.sidebar.statusWaitingAsk,
+		failed: t.sidebar.statusFailed,
+		interrupted: t.sidebar.statusInterrupted,
 		idle: t.sidebar.statusIdle
 	});
 
@@ -365,6 +367,17 @@
 					</div>
 				</div>
 			{/if}
+		</div>
+
+		<div class="form-group session-notifications-group mt-4 pt-4">
+			<label class="flex items-center justify-between cursor-pointer">
+				<span class="text-13 text-ink font-medium">{t.notifications.sessionMute}</span>
+				<input
+					type="checkbox"
+					checked={runtime.isSessionMuted(selected.id)}
+					onchange={(e) => void runtime.setSessionMuted(selected.id, (e.currentTarget as HTMLInputElement).checked)}
+				/>
+			</label>
 		</div>
 	</div>
 {:else if selectedKind === 'bot-bot' && shows('members')}
@@ -742,6 +755,10 @@
 	.btn-remove-member:disabled {
 		opacity: 0.35;
 		cursor: not-allowed;
+	}
+
+	.session-notifications-group {
+		border-top: 1px solid var(--line);
 	}
 
 	/* Pull in section */

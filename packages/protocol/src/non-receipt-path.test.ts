@@ -8,6 +8,7 @@ import { isNonReceiptPath } from "./index.ts";
  */
 test("terminal writes and model probes carry no receipt", () => {
   expect(isNonReceiptPath("/v1/models/probe")).toBe(true);
+  expect(isNonReceiptPath("/v1/notification-presence")).toBe(true);
   expect(isNonReceiptPath("/v1/terminals")).toBe(true);
   expect(isNonReceiptPath("/v1/terminals/01J0000000000000000000000B/input")).toBe(true);
   expect(isNonReceiptPath("/v1/terminals/01J0000000000000000000000B/scrollback?from=42")).toBe(true);

@@ -45,6 +45,27 @@ test("unknown remote results look up the same request id instead of minting a ne
   expect(calls.every((row) => row.method !== "POST" || row.id === originalId)).toBe(true);
 });
 
+test("postMessage retries keep the original request id on the wire", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      throw new Error("socket closed");
+    },
+  });
+  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "answer", { askId: "01ARZ3NDEKTSV4RRFFQ69G5FAZ" }))
+    .rejects.toMatchObject({ code: "request_unknown" });
+  const originalId = api.pendingRequests()[0]!.id;
+  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "answer", {
+    askId: "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
+    requestId: originalId,
+  })).rejects.toMatchObject({ code: "request_unknown", requestId: originalId });
+  const posts = calls.filter((row) => row.path.endsWith("/messages"));
+  expect(posts).toHaveLength(2);
+  expect(posts.every((row) => row.id === originalId)).toBe(true);
+  expect(posts[0]!.body).toEqual(posts[1]!.body);
+});
+
 test("remote attachments declare hashes instead of inventing a second file machine", async () => {
   const calls: RemoteRequest[] = [];
   const api = new RemoteApi(enrollment, {

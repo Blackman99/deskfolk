@@ -55,6 +55,32 @@ import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { ApiError, rememberBlobEtag } from "./api.ts";
 import { readResponseBlob, type FileProgressHandler } from "./file-progress.ts";
+import type {
+  DesktopClickResponse,
+  NotificationDevice,
+  NotificationDevicePatch,
+  NotificationFilter,
+  NotificationItem,
+  NotificationListPage,
+  NotificationPolicy,
+  NotificationPolicyPatch,
+  NotificationPresence,
+  SessionNotificationPreference,
+} from "./notifications/types.ts";
+import {
+  listNotifications,
+  getNotification,
+  markNotificationsRead,
+  acknowledgeNotification,
+  markSessionReadThrough,
+  getNotificationPolicy,
+  patchNotificationPolicy,
+  putSessionNotificationPreference,
+  getNotificationDevice,
+  patchNotificationDevice,
+  postNotificationPresence,
+  type NotificationTestResult,
+} from "./notifications/client.ts";
 
 type PendingRequest = {
   id: string; method: string; path: string; payload?: BodyInit; fingerprint: string; pending: boolean;
@@ -141,6 +167,10 @@ export class LocalApi {
 
   async post<T>(path: string, body: unknown = {}): Promise<T> {
     return this.request<T>("POST", path, body);
+  }
+
+  async put<T>(path: string, body: unknown = {}): Promise<T> {
+    return this.request<T>("PUT", path, body);
   }
 
   async snapshot(): Promise<RuntimeSnapshot> {
@@ -340,9 +370,11 @@ export class LocalApi {
       askId?: string | null;
       attachments?: File[];
       parentId?: string | null;
+      requestId?: string;
     } = {},
   ): Promise<Message> {
     const parentId = opts.parentId ?? null;
+    const path = `/v1/sessions/${sessionId}/messages`;
     if (opts.attachments && opts.attachments.length > 0) {
       const form = new FormData();
       form.append("body", body);
@@ -352,14 +384,14 @@ export class LocalApi {
       for (const file of opts.attachments) {
         form.append("files", file, file.name);
       }
-      return this.post<Message>(`/v1/sessions/${sessionId}/messages`, form);
+      return this.request<Message>("POST", path, form, undefined, {}, false, null, opts.requestId);
     }
-    return this.post<Message>(`/v1/sessions/${sessionId}/messages`, {
+    return this.request<Message>("POST", path, {
       body,
       parent_id: parentId,
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
-    });
+    }, undefined, {}, false, null, opts.requestId);
   }
 
   /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
@@ -581,6 +613,72 @@ export class LocalApi {
     return this.post<Approval>(`/v1/approvals/${id}/resolve`, body);
   }
 
+  async listNotifications(opts: {
+    filter: NotificationFilter;
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  }): Promise<NotificationListPage> {
+    return listNotifications(this, opts);
+  }
+
+  async getNotification(id: string): Promise<NotificationItem> {
+    return getNotification(this, id);
+  }
+
+  async markNotificationsRead(
+    body: { ids: string[] } | { through_ordinal: number; filter: "all" },
+  ): Promise<void> {
+    return markNotificationsRead(this, body);
+  }
+
+  async acknowledgeNotification(id: string, ifRevision: number): Promise<void> {
+    return acknowledgeNotification(this, id, ifRevision);
+  }
+
+  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionDetail> {
+    return markSessionReadThrough(this, sessionId, throughMessageId);
+  }
+
+  async getNotificationPolicy(): Promise<NotificationPolicy> {
+    return getNotificationPolicy(this);
+  }
+
+  async patchNotificationPolicy(patch: NotificationPolicyPatch): Promise<NotificationPolicy> {
+    return patchNotificationPolicy(this, patch);
+  }
+
+  async putSessionNotificationPreference(
+    sessionId: string,
+    body: { muted: boolean; if_revision: number },
+  ): Promise<SessionNotificationPreference> {
+    return putSessionNotificationPreference(this, sessionId, body);
+  }
+
+  async getNotificationDevice(): Promise<NotificationDevice> {
+    return getNotificationDevice(this);
+  }
+
+  async patchNotificationDevice(patch: NotificationDevicePatch): Promise<NotificationDevice> {
+    return patchNotificationDevice(this, patch);
+  }
+
+  async postNotificationPresence(body: NotificationPresence): Promise<void> {
+    return postNotificationPresence(this, body);
+  }
+
+  async getDesktopClickTarget(clickRef: string): Promise<DesktopClickResponse> {
+    return this.get<DesktopClickResponse>(`/v1/notifications/desktop/click/${encodeURIComponent(clickRef)}`);
+  }
+
+  async testDesktopNotification(): Promise<NotificationTestResult> {
+    const raw = await this.post<unknown>("/v1/notifications/desktop/test", {});
+    if (!raw || typeof raw !== "object") return { ok: true, status: "queued" };
+    const row = raw as { ok?: unknown; status?: unknown };
+    const status = typeof row.status === "string" ? row.status : "queued";
+    return { ok: row.ok !== false, status };
+  }
+
   eventsUrl(): string {
     return this.endpoint.origin.replace(/^http/, "ws") + "/v1/events";
   }
@@ -630,6 +728,7 @@ export class LocalApi {
     conditional: Record<string, string> = {},
     returnEtag = false,
     supersedes?: string | null,
+    id?: string,
   ): Promise<T> {
     if (method === "GET" || isNonReceiptPath(path)) {
       return this.sendRequest({ id: "", method, path, payload: body === undefined ? undefined : JSON.stringify(body), fingerprint: "", pending: false }, signal) as Promise<T>;
@@ -640,7 +739,7 @@ export class LocalApi {
     let row = this.pending.get(slot);
     if (row && row.fingerprint !== fingerprint) throw new ApiError(409, "request_pending", "resolve the pending request before changing its payload", row.id);
     if (!row) {
-      row = { id: requestId(), method, path, payload, fingerprint, pending: false, headers: conditional, returnEtag, supersedes };
+      row = { id: id ?? requestId(), method, path, payload, fingerprint, pending: false, headers: conditional, returnEtag, supersedes };
       this.pending.set(slot, row);
     }
     return this.sendRequest(row, signal) as Promise<T>;

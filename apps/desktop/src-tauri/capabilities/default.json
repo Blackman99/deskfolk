@@ -16,6 +16,10 @@
     "allow-app-version",
     "allow-check-for-update",
     "allow-open-external-url",
+    "allow-notification-permission-state",
+    "allow-request-notification-permission",
+    "allow-take-notification-intent",
+    "allow-report-notification-view",
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled"

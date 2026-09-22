@@ -15,6 +15,7 @@ import {
   type WsAuthMessage,
   type RuntimeSnapshot,
   type SessionSnapshot,
+  type NotificationFilter,
   type StreamFrame,
   type ToolFrame,
   isNonReceiptPath,
@@ -45,6 +46,7 @@ import { Quiesce, TurnAdmission } from "./quiesce";
 import type { RuntimeLifecycle } from "./lifecycle";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
 import { listHostDir } from "./host-paths";
+import { PresenceManager, NotificationDeliveryScheduler } from "./notifications";
 
 const AUTH_TIMEOUT_MS = 5_000;
 const REACTIONS = new Set<string>(REACTION_EMOJI);
@@ -81,6 +83,8 @@ export type LocalApiOptions = {
   lifecycle?: RuntimeLifecycle;
   onHandoff?: () => void;
   onRuntimeStop?: () => void;
+  policyV1?: boolean;
+  pushSettingsV2?: boolean;
 };
 
 export type LocalApi = {
@@ -106,6 +110,7 @@ export type LocalApi = {
   /** Stream frames, with the watchers they are meant for; the remote link routes by device id. */
   subscribeStreams: (listener: (id: string, read: StreamRead, watchers: readonly string[]) => void) => () => void;
   subscribeTools: (listener: (frame: ToolFrame) => void) => () => void;
+  presence: PresenceManager;
 };
 
 export function createLocalApi(options: LocalApiOptions): LocalApi {
@@ -122,6 +127,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   }
 
   const events = new EventStream();
+  const presence = new PresenceManager();
+  const notificationScheduler = new NotificationDeliveryScheduler(options.store, presence);
   events.subscribe((frame) => {
     const payload = JSON.stringify(frame);
     for (const ws of sockets) if (ws.data.authed && ws.data.sync) send(ws, payload);
@@ -335,7 +342,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         return () => {
           checkRevision(options.store, request, url, parsed.body, scope);
           const plan: Array<{ name: string; value: string }> = [];
-          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed, scope));
+          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed, scope, notificationScheduler, presence));
           if (result instanceof Promise) throw new HttpError(422, "not_retryable", "this endpoint cannot use request receipts");
           for (const op of plan) keyOps.push({ ...op, field: op.value === "" ? "" : url.pathname.startsWith("/v1/credential-operations/") ? "value" : url.pathname === "/v1/settings" ? "endpoint_api_key" : url.pathname.startsWith("/v1/mcp-servers") ? "auth" : "api_key" });
           options.store.afterCommit(() => {
@@ -464,10 +471,83 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       await options.store.hydrateSnapshot();
       const snapshot = options.store.db.transaction((): RuntimeSnapshot => {
         const state = options.store.readSnapshot();
-        return { ...state, sessions: snapshotSessions(state.sessions), ...events.cursor(),
-          ...(options.remoteStatus ? { remoteStatus: options.remoteStatus() } : {}) };
+        return {
+          ...state,
+          sessions: snapshotSessions(state.sessions),
+          notificationCapabilities: {
+            inbox_v1: true,
+            bounded_read_v1: true,
+            pending_ask_v1: true,
+            policy_v1: Boolean(options.policyV1),
+            push_settings_v2: Boolean(options.pushSettingsV2),
+          },
+          ...events.cursor(),
+          ...(options.remoteStatus ? { remoteStatus: options.remoteStatus() } : {}),
+        };
       })();
       return jsonResponse(snapshot, 200, null);
+    }
+    const clickMatch = matchPath(path, "/v1/notifications/desktop/click/:ref");
+    if (request.method === "GET" && clickMatch) {
+      if (scope?.deviceId && scope.deviceId !== "local") {
+        throw new HttpError(404, "not_found", "unknown route");
+      }
+      const res = notificationScheduler.resolveClick(clickMatch.ref!);
+      return jsonResponse(res ?? { open_inbox: false }, 200, null);
+    }
+    if (request.method === "GET" && path === "/v1/notifications/desktop/state") {
+      if (scope?.deviceId && scope.deviceId !== "local") {
+        throw new HttpError(404, "not_found", "unknown route");
+      }
+      return jsonResponse(notificationScheduler.getState(), 200, null);
+    }
+    if (request.method === "GET" && path === "/v1/notifications") {
+      const filterParam = url.searchParams.get("filter") ?? "actionable";
+      if (filterParam !== "actionable" && filterParam !== "unread" && filterParam !== "all") {
+        throw new HttpError(422, "invalid_args", "filter must be actionable, unread, or all");
+      }
+      const limitParam = url.searchParams.get("limit");
+      const limit = limitParam ? Number(limitParam) : 50;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new HttpError(422, "invalid_args", "limit must be an integer between 1 and 100");
+      }
+      const cursor = url.searchParams.get("cursor");
+      const result = options.store.db.transaction(() => {
+        const res = options.store.listNotifications({
+          filter: filterParam as NotificationFilter,
+          limit,
+          cursor: cursor || null,
+        });
+        return { ...res, ...events.cursor() };
+      })();
+      return jsonResponse(result, 200, null);
+    }
+    if (request.method === "GET" && path === "/v1/notifications/push-config") {
+      if (scope?.deviceId && scope.deviceId !== "local") {
+        throw new HttpError(404, "not_found", "unknown route");
+      }
+      return jsonResponse(options.store.getNotificationPushConfig(), 200, null);
+    }
+    const notifDetail = matchPath(path, "/v1/notifications/:id");
+    if (request.method === "GET" && notifDetail && notifDetail.id !== "read" && notifDetail.id !== "desktop" && notifDetail.id !== "push-config") {
+      const notif = options.store.getNotification(notifDetail.id!);
+      if (!notif) {
+        throw new HttpError(404, "not_found", "notification not found");
+      }
+      return jsonResponse(notif, 200, null);
+    }
+    if (request.method === "GET" && path === "/v1/notification-policy") {
+      if (!options.policyV1) {
+        throw new HttpError(409, "capability_unavailable", "notification policy is unavailable in this version");
+      }
+      return jsonResponse(options.store.getNotificationPolicy(), 200, null);
+    }
+    if (request.method === "GET" && path === "/v1/notification-device") {
+      if (!options.policyV1) {
+        throw new HttpError(409, "capability_unavailable", "notification policy is unavailable in this version");
+      }
+      const receiverId = scope?.deviceId && scope.deviceId !== "local" ? scope.deviceId : "desktop";
+      return jsonResponse(options.store.getNotificationDevice(receiverId), 200, null);
     }
     const session = matchPath(path, "/v1/sessions/:id/snapshot");
     if (request.method === "GET" && session) {
@@ -492,7 +572,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     if (path === "/v1/terminals" || path.startsWith("/v1/terminals/") || path.startsWith("/v1/streams/")) {
       return terminalRoute(request, url, scope);
     }
-    return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope);
+    return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope, notificationScheduler, presence);
   }
 
   async function handle(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
@@ -620,6 +700,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     quiesce,
     publish,
     engine,
+    presence,
     websocket: {
       data: { authed: false },
       open(ws) {
@@ -692,6 +773,8 @@ function dispatch(
   mcp: McpHost,
   input: ParsedMutation,
   scope?: RequestScope,
+  notificationScheduler?: NotificationDeliveryScheduler,
+  presence?: PresenceManager,
 ): Response | Promise<Response> {
   const { store, onQuit } = options;
   const method = request.method;
@@ -966,16 +1049,25 @@ function dispatch(
       throw new HttpError(422, "invalid_args", "remote file bytes must arrive on type 0x05");
     }
 
-    if (!askId) options.admission?.assertNew();
-    const message = store.postMessage(params.id!, {
-      body: bodyText,
-      parent_id: parentId,
-      attachments: fileInputs.length > 0 ? fileInputs : undefined,
+    const sessionId = params.id!;
+    if (askId) {
+      engine.assertAskPending(askId, sessionId);
+    } else {
+      options.admission?.assertNew();
+    }
+    const message = store.transaction(() => {
+      const msg = store.postMessage(sessionId, {
+        body: bodyText,
+        parent_id: parentId,
+        attachments: fileInputs.length > 0 ? fileInputs : undefined,
+      });
+      if (askId) {
+        engine.replyAsk(askId, msg);
+      }
+      return msg;
     });
     publish({ event: "message.created", occurred_at: occurred(), ...message });
-    if (askId) {
-      engine.replyAsk(askId, message);
-    } else {
+    if (!askId) {
       store.afterCommit(() => { void engine.handleInboundMessage(message, { fork, fromUser: true }); });
     }
     return jsonResponse(message, 201, null);
@@ -1112,13 +1204,221 @@ function dispatch(
 
   params = matchPath(path, "/v1/sessions/:id/read");
   if (params && method === "POST") {
-    const session = store.markSessionRead(params.id!);
+    const body = input.body as { through_message_id?: string };
+    if (
+      body &&
+      body.through_message_id !== undefined &&
+      (typeof body.through_message_id !== "string" ||
+        !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(body.through_message_id))
+    ) {
+      throw new HttpError(422, "invalid_args", "through_message_id must be a valid ULID");
+    }
+    const session = store.markSessionRead(
+      params.id!,
+      body?.through_message_id ? { through_message_id: body.through_message_id } : undefined,
+    );
     publish({
       event: "session.upsert",
       occurred_at: occurred(),
       ...sessionUpsertFields(session),
     });
     return jsonResponse(session, 200, null);
+  }
+
+  if (method === "POST" && path === "/v1/notifications/read") {
+    const body = input.body as Record<string, unknown>;
+    if (Array.isArray(body.ids)) {
+      if (
+        body.ids.length === 0 ||
+        body.ids.length > 100 ||
+        !body.ids.every((id) => typeof id === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(id))
+      ) {
+        throw new HttpError(422, "invalid_args", "ids must be 1-100 valid ULIDs");
+      }
+      store.markNotificationsReadBatch({ ids: body.ids as string[] });
+      return emptyResponse(204, null);
+    } else if (body.through_ordinal !== undefined) {
+      if (
+        body.filter !== "all" ||
+        typeof body.through_ordinal !== "number" ||
+        !Number.isInteger(body.through_ordinal) ||
+        body.through_ordinal < 0
+      ) {
+        throw new HttpError(
+          422,
+          "invalid_args",
+          "through_ordinal must be a non-negative integer and filter must be 'all'",
+        );
+      }
+      store.markNotificationsReadBatch({ through_ordinal: body.through_ordinal, filter: "all" });
+      return emptyResponse(204, null);
+    }
+    throw new HttpError(422, "invalid_args", "must provide either ids or through_ordinal with filter 'all'");
+  }
+
+  if (method === "POST" && path === "/v1/notifications/retention-notice/read") {
+    store.markRetentionNoticeRead();
+    return emptyResponse(204, null);
+  }
+
+  const ackMatch = matchPath(path, "/v1/notifications/:id/acknowledge");
+  if (method === "POST" && ackMatch) {
+    const body = input.body as Record<string, unknown>;
+    if (
+      typeof body.if_revision !== "number" ||
+      !Number.isInteger(body.if_revision) ||
+      body.if_revision < 0
+    ) {
+      throw new HttpError(422, "invalid_args", "if_revision must be a non-negative integer");
+    }
+    const item = store.acknowledgeNotification(ackMatch.id!, body.if_revision);
+    return jsonResponse(item, 200, null);
+  }
+
+  if (method === "PATCH" && path === "/v1/notification-policy") {
+    if (!options.policyV1) {
+      throw new HttpError(409, "capability_unavailable", "notification policy is unavailable in this version");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (typeof body.if_revision !== "number" || !Number.isInteger(body.if_revision)) {
+      throw new HttpError(422, "invalid_args", "if_revision is required");
+    }
+    const updated = store.updateNotificationPolicy(body as any);
+    return jsonResponse(updated, 200, null);
+  }
+
+  if (method === "PATCH" && path === "/v1/notification-device") {
+    if (!options.policyV1) {
+      throw new HttpError(409, "capability_unavailable", "notification policy is unavailable in this version");
+    }
+    const receiverId = scope?.deviceId && scope.deviceId !== "local" ? scope.deviceId : "desktop";
+    const body = input.body as Record<string, unknown>;
+    if (typeof body.if_revision !== "number" || !Number.isInteger(body.if_revision)) {
+      throw new HttpError(422, "invalid_args", "if_revision is required");
+    }
+    if (receiverId !== "desktop") {
+      if (body.enabled !== undefined) {
+        throw new HttpError(422, "invalid_args", "remote device enabled must be changed via push subscribe/unsubscribe");
+      }
+      if ((body.preview !== undefined && body.preview !== "generic") || (body.sound !== undefined && body.sound !== "system")) {
+        throw new HttpError(422, "invalid_args", "remote devices must use generic preview and system sound");
+      }
+    }
+    const updated = store.updateNotificationDevice(receiverId, body as any);
+    return jsonResponse(updated, 200, null);
+  }
+
+  if (method === "PATCH" && path === "/v1/notifications/push-config") {
+    if (scope?.deviceId && scope.deviceId !== "local") {
+      throw new HttpError(404, "not_found", "unknown route");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (typeof body.if_revision !== "number" || !Number.isInteger(body.if_revision) || body.if_revision < 0) {
+      throw new HttpError(422, "invalid_args", "if_revision is required");
+    }
+    if (!Object.hasOwn(body, "contact_uri")) {
+      throw new HttpError(422, "invalid_args", "contact_uri is required");
+    }
+    const contactUri = body.contact_uri === null ? null : (typeof body.contact_uri === "string" ? body.contact_uri : undefined);
+    if (contactUri === undefined) {
+      throw new HttpError(422, "invalid_args", "contact_uri must be string or null");
+    }
+    const updated = store.updateNotificationPushConfig(contactUri, body.if_revision);
+    return jsonResponse(updated, 200, null);
+  }
+
+  const prefMatch = matchPath(path, "/v1/sessions/:id/notification-preference");
+  if (method === "PUT" && prefMatch) {
+    if (!options.policyV1) {
+      throw new HttpError(409, "capability_unavailable", "notification policy is unavailable in this version");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (typeof body.muted !== "boolean" || typeof body.if_revision !== "number" || !Number.isInteger(body.if_revision)) {
+      throw new HttpError(422, "invalid_args", "muted (boolean) and if_revision (integer) are required");
+    }
+    const updated = store.setSessionNotificationPreference(prefMatch.id!, body.muted, body.if_revision);
+    return jsonResponse(updated, 200, null);
+  }
+
+  if (method === "POST" && path === "/v1/notification-presence") {
+    const body = input.body as Record<string, unknown>;
+    if (
+      typeof body.instance_id !== "string" ||
+      typeof body.visible !== "boolean" ||
+      typeof body.focused !== "boolean" ||
+      (body.session_id !== null && body.session_id !== undefined && typeof body.session_id !== "string") ||
+      typeof body.at_latest !== "boolean"
+    ) {
+      throw new HttpError(422, "invalid_args", "invalid presence fields");
+    }
+    const receiverId = scope?.deviceId && scope.deviceId !== "local" ? scope.deviceId : "desktop";
+    presence?.update(receiverId, body as any);
+    return emptyResponse(204, null);
+  }
+
+  if (method === "POST" && path === "/v1/notifications/desktop/claim") {
+    if (scope?.deviceId && scope.deviceId !== "local") {
+      throw new HttpError(404, "not_found", "unknown route");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (
+      typeof body.owner_id !== "string" ||
+      !body.owner_id ||
+      (body.permission !== "granted" && body.permission !== "denied" && body.permission !== "default")
+    ) {
+      throw new HttpError(422, "invalid_args", "invalid claim request fields");
+    }
+    const claimed = notificationScheduler?.claimDesktop(body as any);
+    if (!claimed) return emptyResponse(204, null);
+    return jsonResponse(claimed, 200, null);
+  }
+
+  if (method === "POST" && path === "/v1/notifications/desktop/revalidate") {
+    if (scope?.deviceId && scope.deviceId !== "local") {
+      throw new HttpError(404, "not_found", "unknown route");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (typeof body.delivery_id !== "string" || typeof body.claim_token !== "string") {
+      throw new HttpError(422, "invalid_args", "delivery_id and claim_token are required");
+    }
+    const result = notificationScheduler?.revalidateDesktop(body as any);
+    return jsonResponse(result ?? { action: "cancel" }, 200, null);
+  }
+
+  if (method === "POST" && path === "/v1/notifications/desktop/report") {
+    if (scope?.deviceId && scope.deviceId !== "local") {
+      throw new HttpError(404, "not_found", "unknown route");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (
+      typeof body.delivery_id !== "string" ||
+      typeof body.claim_token !== "string" ||
+      (body.result !== "accepted" && body.result !== "failed" && body.result !== "unknown")
+    ) {
+      throw new HttpError(422, "invalid_args", "delivery_id, claim_token, and valid result are required");
+    }
+    notificationScheduler?.reportDesktop(body as any);
+    return emptyResponse(204, null);
+  }
+
+  if (method === "POST" && path === "/v1/notifications/desktop/reconcile") {
+    if (scope?.deviceId && scope.deviceId !== "local") {
+      throw new HttpError(404, "not_found", "unknown route");
+    }
+    const body = input.body as Record<string, unknown>;
+    if (!Array.isArray(body.identifiers)) {
+      throw new HttpError(422, "invalid_args", "identifiers array required");
+    }
+    const result = notificationScheduler?.reconcile(body as any);
+    return jsonResponse(result ?? { remove_identifiers: [] }, 200, null);
+  }
+
+  if (method === "POST" && path === "/v1/notifications/desktop/test") {
+    if (scope?.deviceId && scope.deviceId !== "local") {
+      throw new HttpError(404, "not_found", "unknown route");
+    }
+    const result = notificationScheduler?.testDesktop();
+    return jsonResponse(result ?? { ok: true, status: "queued" }, 200, null);
   }
 
   params = matchPath(path, "/v1/sessions/:id/archive");

@@ -23,6 +23,8 @@ export type RemoteControllerOptions = {
   store: Store; api: LocalApi; config?: RelayConfig; native?: RemoteNativeProvider;
   socketFactory?: RelaySocketFactory; fetch?: typeof fetch; pushFetch?: PushFetch; now?: () => number;
   maint?: MaintenanceControl | null;
+  /** Test-only upgrade pause. Production leaves this unset so transport is `policy_v2`; sends still require an open remote gate. */
+  pausedUpgrade?: boolean;
 };
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
@@ -57,7 +59,14 @@ export class RemoteController {
     this.native = options.native ?? remoteNative;
     this.trust = new RemoteTrust(options.store, this.native, options.now);
     this.push = new PushService({
-      store: options.store, native: this.native, fetch: options.pushFetch, now: options.now,
+      store: options.store,
+      native: this.native,
+      fetch: options.pushFetch,
+      now: options.now,
+      trust: this.trust,
+      remoteStatus: () => this.status(),
+      presence: options.api.presence,
+      pausedUpgrade: options.pausedUpgrade ?? false,
     });
     this.dispatcher = new RemoteDispatcher(options.api, this.trust, options.maint ?? null, () => this.status(), this.push);
     this.localActions = new LocalTrustActions(this.trust, this.native);
@@ -71,7 +80,13 @@ export class RemoteController {
     });
   }
   status(): RemoteStatus { return { ...this.statusValue, devices: this.trust.devices().filter(d => !d.revoked).length }; }
-  private setStatus(state: RemoteStatus["state"], diagnostic: string | null = null): void { this.statusValue = { state, diagnostic, devices: 0 }; }
+  private setStatus(state: RemoteStatus["state"], diagnostic: string | null = null): void {
+    const previous = this.statusValue.state;
+    this.statusValue = { state, diagnostic, devices: 0 };
+    if (previous !== state && (state === "connecting" || state === "online" || state === "disconnected")) {
+      this.push.recoverScheduled();
+    }
+  }
   async start(): Promise<void> {
     if (!this.options.config || !this.stopped) return;
     this.stopped = false;

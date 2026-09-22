@@ -90,6 +90,43 @@ test("session.upsert keeps last_read_at and unread_count unless the event carrie
   expect(renamed.sessions[0]?.unread_count).toBe(2);
 });
 
+test("session.upsert keeps notification_preference unless the event carries it", () => {
+  const first = applyEvent(emptySnapshot(), {
+    event: "session.upsert",
+    occurred_at: "t",
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+    notification_preference: { muted: true, revision: 2 },
+  });
+  const renamed = applyEvent(first, {
+    event: "session.upsert",
+    occurred_at: "t2",
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t2",
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+  });
+  expect(renamed.sessions[0]?.notification_preference).toEqual({ muted: true, revision: 2 });
+  const unmuted = applyEvent(renamed, {
+    event: "session.upsert",
+    occurred_at: "t3",
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t3",
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+    notification_preference: { muted: false, revision: 3 },
+  });
+  expect(unmuted.sessions[0]?.notification_preference).toEqual({ muted: false, revision: 3 });
+});
+
 test("session.upsert preserves or updates archived_at", () => {
   const first = applyEvent(emptySnapshot(), {
     event: "session.upsert",

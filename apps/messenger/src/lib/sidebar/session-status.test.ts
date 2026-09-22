@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Approval, SessionSummary, Turn } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, type Approval, type Message, type SessionSummary, type Turn } from "@real-bot/protocol";
 import {
   botWorkStatus,
   sessionStatus,
@@ -12,6 +12,8 @@ const labels: StatusLabels = {
   replying: "回复中",
   waitingApproval: "待审批",
   waitingAsk: "待回复",
+  failed: "未完成",
+  interrupted: "已中断",
   idle: "空闲",
 };
 
@@ -177,6 +179,66 @@ test("sidebar you↔bot row uses the current session's status, not the bot's glo
   expect(sessionStatus("s-you", turns, [], labels).kind).toBe("idle");
   expect(botWorkStatus("writer", turns, [], labels).kind).toBe("replying");
   expect(sidebarStatus(group, turns, [], labels).kind).toBe("replying");
+});
+
+function note(sessionId: string, body: string): Message {
+  return {
+    id: "msg-note",
+    session_id: sessionId,
+    turn_id: "t-done",
+    parent_id: null,
+    kind: "system",
+    author: "writer",
+    body,
+    source_turn_id: null,
+    created_at: "2026-04-16T10:05:00.000Z",
+    attachments: [],
+    reactions: [],
+  };
+}
+
+test("a settled failure shows on the row once the turn is no longer live", () => {
+  const session: SessionSummary = {
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [],
+    last_message: note("s1", "这一轮没写完：连不上端点"),
+  };
+  const status = sidebarStatus(session, [makeTurn("t1", "s1", "completed")], [], labels);
+  expect(status.kind).toBe("failed");
+  expect(status.label).toBe("未完成");
+  expect(status.isBusy).toBe(false);
+});
+
+test("an interrupt note shows on the row, and a live turn still wins", () => {
+  const session: SessionSummary = {
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [],
+    last_message: note("s1", INTERRUPT_NOTE_BODY),
+  };
+  expect(sidebarStatus(session, [], [], labels).kind).toBe("interrupted");
+  expect(sidebarStatus(session, [makeTurn("t2", "s1", "running")], [], labels).kind).toBe("running");
+});
+
+test("a newer ordinary message clears the failure label", () => {
+  const session: SessionSummary = {
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [],
+    last_message: note("s1", "This turn did not finish: Endpoint error"),
+  };
+  const later: Message = { ...note("s1", "done"), id: "msg-later", kind: "bot", created_at: "2026-04-16T11:00:00.000Z" };
+  expect(sidebarStatus(session, [], [], labels, [], [later]).kind).toBe("idle");
 });
 
 test("sidebar you↔bot row shows running status when this session is active", () => {

@@ -105,6 +105,177 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
   });
 }
 
+test('OS and SW notification intents wait for unsaved preview cancel, save, or discard', async () => {
+  const bots = [aBot({ id: 'bot-1', name: 'Writer' })];
+  const sessions = [
+    aDirect({ id: 'sess-open', participants: [{ member: 'user', joined_at: 'now', left_at: null }, { member: 'bot-1', joined_at: 'now', left_at: null }] }),
+    aDirect({ id: 'sess-target', participants: [{ member: 'user', joined_at: 'now', left_at: null }, { member: 'bot-1', joined_at: 'now', left_at: null }] }),
+  ];
+  const runtime = reactive(fakeRuntime({
+    bots,
+    sessions,
+    settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: '/fixture' },
+  }));
+  runtime.selectedId = 'sess-open';
+  let selected: string | null = null;
+  runtime.selectSession = ((id: string) => {
+    selected = id;
+    runtime.selectedId = id;
+    return Promise.resolve();
+  }) as typeof runtime.selectSession;
+  runtime.applyNotificationIntent = ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => {
+    if (!intent.sessionId) {
+      runtime.selectedId = null;
+      return;
+    }
+    void runtime.selectSession(intent.sessionId, { messageId: intent.messageId ?? undefined });
+  }) as typeof runtime.applyNotificationIntent;
+  let intentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
+  runtime.setNotificationIntentHandler = ((handler: typeof intentHandler) => {
+    intentHandler = handler;
+  }) as typeof runtime.setNotificationIntentHandler;
+
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  expect(intentHandler).not.toBeNull();
+
+  let pendingAfter: (() => void) | null = null;
+  let dirty = true;
+  const mountConfirm = () => {
+    if (host.querySelector('[data-dirty-confirm]')) return;
+    const dialog = document.createElement('div');
+    dialog.setAttribute('data-dirty-confirm', 'true');
+    dialog.innerHTML = '<button data-act="cancel">cancel</button><button data-act="discard">discard</button><button data-act="save">save</button>';
+    host.appendChild(dialog);
+    dialog.querySelector('[data-act="cancel"]')!.addEventListener('click', () => {
+      pendingAfter = null;
+      dialog.remove();
+    });
+    dialog.querySelector('[data-act="discard"]')!.addEventListener('click', () => {
+      dirty = false;
+      const go = pendingAfter;
+      pendingAfter = null;
+      dialog.remove();
+      go?.();
+    });
+    dialog.querySelector('[data-act="save"]')!.addEventListener('click', () => {
+      dirty = false;
+      const go = pendingAfter;
+      pendingAfter = null;
+      dialog.remove();
+      go?.();
+    });
+  };
+  const confirm = (act: 'cancel' | 'discard' | 'save') => {
+    click(host.querySelector(`[data-act="${act}"]`));
+  };
+  const orig = intentHandler!;
+  intentHandler = (intent) => {
+    if (dirty) {
+      pendingAfter = () => orig(intent);
+      mountConfirm();
+      return;
+    }
+    orig(intent);
+  };
+
+  intentHandler({ sessionId: 'sess-target', messageId: 'msg-9', openInbox: false });
+  expect(selected).toBeNull();
+  confirm('cancel');
+  expect(selected).toBeNull();
+
+  intentHandler({ sessionId: 'sess-target', messageId: 'msg-9', openInbox: false });
+  confirm('discard');
+  await settle();
+  expect(selected).toBe('sess-target');
+
+  selected = null;
+  runtime.selectedId = 'sess-open';
+  dirty = true;
+  intentHandler({ sessionId: 'sess-target', messageId: null, openInbox: false });
+  confirm('save');
+  await settle();
+  expect(selected).toBe('sess-target');
+
+  selected = null;
+  runtime.selectedId = 'sess-open';
+  dirty = true;
+  intentHandler({ openInbox: true });
+  expect(runtime.selectedId).toBe('sess-open');
+  confirm('discard');
+  await settle();
+  expect(runtime.selectedId).toBeNull();
+  expect(host.querySelector('.notification-backdrop, .mobile-fullscreen-inbox')).toBeNull();
+});
+
+test("on a phone a conversation covers the list, and Back walks that page back out", () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  // Reduced motion keeps the slide at zero length. happy-dom aborts a transition that is still
+  // running when the component unmounts, and the direction itself is pageSlide's own test.
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(max-width: 680px)" || query === "(prefers-reduced-motion: reduce)",
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  const session = aDirect({ id: "bot-1", participants: [
+    { member: "user", joined_at: "now", left_at: null },
+    { member: "bot-1", joined_at: "now", left_at: null },
+  ] });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "Alpha" })],
+    sessions: [session],
+    settings: { ...emptySnapshot().settings, locale: "zh", wizard_complete: true, workspace_path: "/fixture" },
+  }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(() => {
+    window.matchMedia = previousMatchMedia;
+    setViewport({ width: 1024, height: 768 });
+    close();
+  });
+  const shell = host.querySelector(".shell")!;
+  // The list is the screen until a conversation is picked.
+  expect(host.querySelector(".side")).not.toBeNull();
+  expect(host.querySelector(".conversation")).toBeNull();
+  expect(shell.classList.contains("has-session")).toBe(false);
+  runtime.selectedId = session.id;
+  flushSync();
+  // The conversation is a page of its own, and the roster stays mounted underneath it.
+  expect(host.querySelector(".conversation")).not.toBeNull();
+  expect(shell.classList.contains("has-session")).toBe(true);
+  expect(host.querySelector(".side")).not.toBeNull();
+  click(host.querySelector(".btn-mobile-back"));
+  flushSync();
+  expect(runtime.selectedId).toBeNull();
+  expect(host.querySelector(".conversation")).toBeNull();
+  expect(host.querySelector(".side")).not.toBeNull();
+  expect(shell.classList.contains("has-session")).toBe(false);
+});
+
+test("the desktop conversation constrains the transcript and floating composer to the main column", () => {
+  const session = aDirect();
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session],
+    settings: { ...emptySnapshot().settings, wizard_complete: true },
+  }));
+  runtime.selectedId = session.id;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  const conversation = host.querySelector<HTMLElement>(".conversation")!;
+  const style = getComputedStyle(conversation);
+  expect(style.display).toBe("flex");
+  expect(style.flexDirection).toBe("column");
+  expect(style.flexGrow).toBe("1");
+  expect(parseFloat(style.minHeight)).toBe(0);
+  expect(parseFloat(style.minWidth)).toBe(0);
+  expect(conversation.querySelector(".stream")).not.toBeNull();
+  expect(conversation.querySelector(".composer")).not.toBeNull();
+});
+
 test("the routine calendar replaces the main column and stays visible without a session on a phone", () => {
   const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
     (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,

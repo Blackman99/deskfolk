@@ -40,6 +40,7 @@ test("reads the preview path out of the query", () => {
 
 test("reads overlays out of the query", () => {
   expect(overlayFromUrl(at("?o=settings"))).toEqual({ kind: "settings" });
+  expect(overlayFromUrl(at("?o=notifications"))).toEqual({ kind: "none" });
   expect(overlayFromUrl(at("?o=session"))).toEqual({ kind: "session" });
   expect(overlayFromUrl(at("?o=bot&b=bot-1"))).toEqual({ kind: "bot", botId: "bot-1" });
   expect(overlayFromUrl(at("?o=workspace"))).toEqual({ kind: "workspace", selected: null });
@@ -268,6 +269,7 @@ test("the routine calendar outranks workspace and trace, and does not carry a pr
   };
   expect(overlayFromFlags(flags)).toEqual({ kind: "routines" });
   expect(overlayFromFlags({ ...flags, settingsOpen: true })).toEqual({ kind: "settings" });
+  expect(overlayFromFlags({ ...flags, settingsOpen: false })).toEqual({ kind: "routines" });
   expect(overlayFromFlags({ ...flags, settingsOpen: false, sessionSettingsOpen: true, profileBotId: "bot-1" })).toEqual({
     kind: "bot",
     botId: "bot-1",

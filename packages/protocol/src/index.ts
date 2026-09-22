@@ -400,6 +400,7 @@ export type Session = {
   kind: SessionKind;
   name: string | null;
   last_read_at?: string | null;
+  read_through_seq?: number;
   archived_at?: string | null;
   /** The session whose message opened this one. Only a Bot↔Bot direct has one. */
   origin_session_id: string | null;
@@ -423,6 +424,7 @@ export type SessionSummary = Session & {
   live_turns?: Turn[];
   pending_judgements?: PendingJudgement[];
   unread_count?: number;
+  notification_preference?: import("./notifications.ts").SessionNotificationPreference;
 };
 
 export type TurnStatus =
@@ -446,6 +448,9 @@ export type Turn = {
   created_at: string;
   updated_at: string;
   partial_text?: string | null;
+  pending_ask_id?: string | null;
+  routine_id?: string | null;
+  routine_due_at?: string | null;
 };
 
 export type MessageKind = "user" | "bot" | "ask" | "approval" | "profile_change" | "system";
@@ -481,6 +486,7 @@ export type Message = {
   /** The work dir this message belongs to; the anchor its artifact entry opens. */
   task_id?: string | null;
   created_at: string;
+  message_seq?: number;
   attachments: Attachment[];
   reactions: Reaction[];
 };
@@ -491,6 +497,7 @@ export type SessionDetail = Session & {
   turns: Turn[];
   pending_judgements?: PendingJudgement[];
   unread_count?: number;
+  notification_preference?: import("./notifications.ts").SessionNotificationPreference;
 };
 
 export type CreateGroupRequest = {
@@ -845,6 +852,9 @@ export type RuntimeSnapshot = EventCursor & {
   memories: Memory[];
   routines: Routine[];
   allowRules: AllowRule[];
+  notificationSummary?: import("./notifications.ts").NotificationSummary;
+  notificationPolicy?: import("./notifications.ts").NotificationPolicy;
+  notificationCapabilities?: import("./notifications.ts").NotificationCapabilities;
 };
 
 export type SessionSnapshot = EventCursor & {
@@ -897,6 +907,7 @@ export type Terminal = {
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
   return withoutQuery === "/v1/models/probe"
+    || withoutQuery === "/v1/notification-presence"
     || withoutQuery === "/v1/terminals"
     || withoutQuery.startsWith("/v1/terminals/")
     || withoutQuery.startsWith("/v1/streams/");
@@ -1021,6 +1032,10 @@ export type ClientEvent =
   | { event: "provider.removed"; occurred_at: string; id: string }
   | ({ event: "allow_rule.upsert"; occurred_at: string } & AllowRule)
   | { event: "allow_rule.removed"; occurred_at: string; id: string }
+  | ({ event: "notification.upsert"; occurred_at: string } & import("./notifications.ts").NotificationItem)
+  | { event: "notification.removed"; occurred_at: string; id: string }
+  | { event: "notification.summary"; occurred_at: string; summary: import("./notifications.ts").NotificationSummary }
+  | ({ event: "notification_policy.changed"; occurred_at: string } & import("./notifications.ts").NotificationPolicy)
   // Lifecycle only — open, exit, gone. The bytes are a stream, not an event.
   | ({ event: "terminal.upsert"; occurred_at: string } & Terminal)
   | { event: "terminal.removed"; occurred_at: string; id: string };
@@ -1028,3 +1043,4 @@ export type ClientEvent =
 export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";
 export * from "./mentions.ts";
+export * from "./notifications.ts";

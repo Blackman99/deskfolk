@@ -3,6 +3,9 @@ mod handoff;
 mod installer;
 mod launchd;
 mod local_api;
+pub(crate) mod notifications;
+#[cfg(target_os = "macos")]
+pub(crate) mod notifications_macos;
 mod remote_native;
 mod remote_setup;
 mod supervisor;
@@ -31,12 +34,12 @@ struct AppState {
 }
 
 #[derive(serde::Serialize, Clone)]
-struct LocalApiEndpoint {
-    origin: String,
-    token: String,
+pub(crate) struct LocalApiEndpoint {
+    pub(crate) origin: String,
+    pub(crate) token: String,
 }
 
-fn read_endpoint(state: &AppState) -> Option<LocalApiEndpoint> {
+pub(crate) fn read_endpoint(state: &AppState) -> Option<LocalApiEndpoint> {
     state.supervisor.endpoint().map(|ep| LocalApiEndpoint {
         origin: ep.origin.clone(),
         token: ep.token.clone(),
@@ -267,7 +270,11 @@ fn cancel_update_install(app: AppHandle) -> InstallState {
 /// inside and relaunch. The preflight runs here so a refusal reaches the
 /// button press rather than the progress bar.
 #[tauri::command]
-fn start_update_install(app: AppHandle, url: String, version: String) -> Result<InstallState, String> {
+fn start_update_install(
+    app: AppHandle,
+    url: String,
+    version: String,
+) -> Result<InstallState, String> {
     let target = installable_bundle()?;
     if !installer::is_installable_asset_url(&url) {
         return Err("bad-url".into());
@@ -420,7 +427,8 @@ fn stage_from_mount(
     if cancel.load(Ordering::SeqCst) {
         return None;
     }
-    Some(staged)}
+    Some(staged)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -453,6 +461,7 @@ pub fn run() {
         .manage(Mutex::new(updates::UpdateCache::default()))
         .manage(remote_native::HelperState::default())
         .manage(Installer::default())
+        .manage(notifications::NotificationState::new())
         .invoke_handler(tauri::generate_handler![
             local_api_endpoint,
             pick_workspace_folder,
@@ -468,7 +477,11 @@ pub fn run() {
             can_install_update,
             start_update_install,
             update_install_state,
-            cancel_update_install
+            cancel_update_install,
+            notifications::notification_permission_state,
+            notifications::request_notification_permission,
+            notifications::take_notification_intent,
+            notifications::report_notification_view
         ])
         .setup(|app| {
             install_menus(app.handle())?;
@@ -476,6 +489,7 @@ pub fn run() {
             register_login_item(app.handle());
             restore_independent_mode(app.handle(), &local_api::data_dir());
             restore_window_size(app.handle());
+            notifications::setup_notifications(app.handle())?;
             if !launched_hidden(&std::env::args().collect::<Vec<_>>()) {
                 show_main(app.handle());
             }
@@ -518,6 +532,7 @@ pub fn run() {
         }
         RunEvent::Exit => {
             app.state::<remote_native::HelperState>().stop();
+            app.state::<notifications::NotificationState>().stop();
             persist_main_window(app);
             last_chance_quit(app);
         }
@@ -776,7 +791,7 @@ fn independent_runtime<R: tauri::Runtime>(
     independent_runtime_op(app, request)
 }
 
-fn show_main(app: &AppHandle) {
+pub(crate) fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -903,7 +918,10 @@ fn independent_mode_adopted<R: tauri::Runtime>(
     launchd::adopt_independent_marker(&policy, &marker, bootstrapped, agent_loaded)
 }
 
-fn restore_independent_mode<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_dir: &std::path::Path) {
+fn restore_independent_mode<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    data_dir: &std::path::Path,
+) {
     let marker = data_dir.join(launchd::MARKER_NAME);
     let (policy, bootstrapped, agent_loaded) = independent_adoption(app);
     let state = app.state::<Mutex<AppState>>();
@@ -1044,6 +1062,7 @@ fn request_stop(app: &AppHandle) {
 
 fn begin_quit(app: &AppHandle) {
     persist_main_window(app);
+    app.state::<notifications::NotificationState>().stop();
     let state = app.state::<Mutex<AppState>>();
     let (plan, child, was_supervising) = {
         let mut state = match state.lock() {
@@ -1055,7 +1074,11 @@ fn begin_quit(app: &AppHandle) {
         }
         state.quitting = true;
         let was_supervising = state.supervisor.is_supervising();
-        (state.supervisor.quit(), state.daemon.take(), was_supervising)
+        (
+            state.supervisor.quit(),
+            state.daemon.take(),
+            was_supervising,
+        )
     };
     let plan = match plan {
         QuitPlan::JustExit if was_supervising => descriptor_quit_fallback(),
@@ -1370,8 +1393,12 @@ mod tests {
                 },
             )
         };
-        let status = invoke("independent_runtime_status", "tauri://localhost/index.html", None)
-            .expect("status from bundled main");
+        let status = invoke(
+            "independent_runtime_status",
+            "tauri://localhost/index.html",
+            None,
+        )
+        .expect("status from bundled main");
         let status: serde_json::Value = match status {
             tauri::ipc::InvokeResponseBody::Json(body) => serde_json::from_str(&body).unwrap(),
             other => panic!("expected json status, got {other:?}"),
@@ -1416,7 +1443,12 @@ mod tests {
                 "{operation}"
             );
             assert!(
-                invoke("independent_runtime", "http://localhost:5173/", Some(operation)).is_err(),
+                invoke(
+                    "independent_runtime",
+                    "http://localhost:5173/",
+                    Some(operation)
+                )
+                .is_err(),
                 "{operation}"
             );
         }

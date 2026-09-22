@@ -48,8 +48,9 @@
 		setLaunchAtLogin,
 		type IndependentStatus
 	} from './independent-runtime.ts';
+	import NotificationSettings from './NotificationSettings.svelte';
 
-	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'about';
+	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'notifications' | 'about';
 
 	type Props = {
 		mobileSettingsDetail?: boolean;
@@ -181,7 +182,9 @@
 					? t.settings.tabModels
 					: tab === 'mcp'
 						? t.settings.tabMcp
-						: t.settings.tabAbout;
+						: tab === 'notifications'
+							? t.settings.tabNotifications
+							: t.settings.tabAbout;
 	}
 	let independent = $state<IndependentStatus>(gatedIndependentStatus('g_pack_not_verified'));
 	let independentBusy = $state(false);
@@ -766,6 +769,19 @@
 						{#if snapshot.mcpServers.length > 0}
 							<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary">{snapshot.mcpServers.length}</span>
 						{/if}
+					</button>
+
+					<button
+						type="button"
+						class="settings-tab-btn"
+						class:is-active={activeSettingsTab === 'notifications'}
+						onclick={() => openSettingsTab('notifications')}
+					>
+						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+							<path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+						</svg>
+						<span class="tab-name">{t.settings.tabNotifications}</span>
 					</button>
 
 					<button
@@ -1477,6 +1493,8 @@
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
+				{:else if activeSettingsTab === 'notifications'}
+					<NotificationSettings {runtime} {t} />
 				{:else if activeSettingsTab === 'about'}
 					<div class="settings-tab-pane">
 						<div class="settings-card settings-card-about">

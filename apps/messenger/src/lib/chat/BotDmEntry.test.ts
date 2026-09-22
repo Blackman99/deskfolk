@@ -12,6 +12,8 @@ const statusLabels = {
   replying: t.sidebar.statusReplying,
   waitingApproval: t.sidebar.statusWaitingApproval,
   waitingAsk: t.sidebar.statusWaitingAsk,
+  failed: t.sidebar.statusFailed,
+  interrupted: t.sidebar.statusInterrupted,
   idle: t.sidebar.statusIdle,
 };
 

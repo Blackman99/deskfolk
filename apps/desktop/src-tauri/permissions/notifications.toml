@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "allow-notification-permission-state"
+description = "Lets the main messenger read the macOS notification permission and capability state."
+commands.allow = ["notification_permission_state"]
+
+[[permission]]
+identifier = "allow-request-notification-permission"
+description = "Lets the main messenger request macOS notification permission."
+commands.allow = ["request_notification_permission"]
+
+[[permission]]
+identifier = "allow-take-notification-intent"
+description = "Lets the main messenger consume the buffered notification click intent."
+commands.allow = ["take_notification_intent"]
+
+[[permission]]
+identifier = "allow-report-notification-view"
+description = "Lets the main messenger report its view state and bridge native focus facts."
+commands.allow = ["report_notification_view"]

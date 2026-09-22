@@ -4,6 +4,7 @@ import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
 import { listMemories, withLearning as memoryWithLearning } from "./memories";
 import { getMessage } from "./messages";
+import { getNotification, getNotificationPolicy, getNotificationSummary } from "./notifications";
 import { providersCached } from "./providers";
 import { listRoutines } from "./routines";
 import { listSessions } from "./sessions";
@@ -17,12 +18,12 @@ type Change = { entity: string; id: string; op: string; session_id: string | nul
 /** TEMP triggers follow nested domain writes and roll back with the business transaction. */
 export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TABLE event_changes (entity TEXT, id TEXT, op TEXT, session_id TEXT)`);
-  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements"];
+  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       const row = op === "DELETE" ? "OLD" : "NEW";
       const id = table === "settings" ? "'settings'" : `${row}.id`;
-      const session = ["messages", "turns", "spend", "judgements"].includes(table) ? `${row}.session_id` : "NULL";
+      const session = ["messages", "turns", "spend", "judgements", "notifications"].includes(table) ? `${row}.session_id` : "NULL";
       ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
         BEGIN INSERT INTO event_changes VALUES ('${table}', ${id}, '${op}', ${session}); END`);
     }
@@ -30,6 +31,8 @@ export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TRIGGER event_settings_rev AFTER UPDATE ON main.request_meta
     WHEN OLD.settings_rev != NEW.settings_rev
     BEGIN INSERT INTO event_changes VALUES ('settings', 'settings', 'UPDATE', NULL); END`);
+  ctx.db.exec(`CREATE TEMP TRIGGER event_notification_policy AFTER UPDATE ON main.notification_policy
+    BEGIN INSERT INTO event_changes VALUES ('notification_policy', 'notification_policy', 'UPDATE', NULL); END`);
   for (const op of ["INSERT", "UPDATE", "DELETE"]) {
     const row = op === "DELETE" ? "OLD" : "NEW";
     ctx.db.exec(`CREATE TEMP TRIGGER event_pending_keys_${op} AFTER ${op} ON main.pending_keys
@@ -140,7 +143,22 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         if (row) out.push({ event: "judgement.created", occurred_at, ...row });
         break;
       }
+      case "notifications": {
+        const item = getNotification(ctx, id);
+        out.push(
+          item
+            ? { event: "notification.upsert", occurred_at, ...item }
+            : { event: "notification.removed", occurred_at, id },
+        );
+        break;
+      }
     }
+  }
+  if (changes.some((change) => change.entity === "notifications")) {
+    out.push({ event: "notification.summary", occurred_at, summary: getNotificationSummary(ctx) });
+  }
+  if (changes.some((change) => change.entity === "notification_policy")) {
+    out.push({ event: "notification_policy.changed", occurred_at, ...getNotificationPolicy(ctx) });
   }
   // Provider rows also determine default-model fields and wizard completion.
   if (changes.some((change) => change.entity === "settings" || change.entity === "providers")) {

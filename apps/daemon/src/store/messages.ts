@@ -11,9 +11,11 @@ import { attachmentMime } from "../artifact-mime";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { ensureReplyMention } from "../mentions";
+import { classifyBotMessage } from "../notification-policy";
 import { classifyPath } from "../workspace-paths";
 import { prepareFile, commitPreparedFile, discardFile, type FileCommit } from "./files";
 import { getBot, listBots } from "./bots";
+import { createNotification } from "./notifications";
 import {
   clampLimit,
   cursorId,
@@ -180,6 +182,69 @@ export function insertMessage(
   );
   if (input.paths && input.paths.length > 0) {
     insertPathAttachments(ctx, id, input.paths, now);
+  }
+  if (input.kind === "bot") {
+    const session = sessionRow(ctx, input.sessionId);
+    const isUserPresent = Boolean(
+      ctx.db
+        .query(
+          "SELECT 1 FROM session_participants WHERE session_id = ? AND member = ? AND left_at IS NULL",
+        )
+        .get(input.sessionId, USER_MEMBER),
+    );
+    let triggerAuthor: string | null = null;
+    let isRoutineRoot = false;
+    let turnIdForNotif: string | null = null;
+    const effectiveTurnId = input.turnId ?? input.sourceTurnId;
+    if (effectiveTurnId) {
+      const turn = ctx.db
+        .query<{ id: string; trigger_message_id: string; routine_id: string | null }, [string]>(
+          "SELECT id, trigger_message_id, routine_id FROM turns WHERE id = ?",
+        )
+        .get(effectiveTurnId);
+      if (turn) {
+        turnIdForNotif = turn.id;
+        isRoutineRoot = Boolean(turn.routine_id);
+        if (session.kind === "group") {
+          const triggerMsg = ctx.db
+            .query<{ author: string }, [string]>("SELECT author FROM messages WHERE id = ?")
+            .get(turn.trigger_message_id);
+          triggerAuthor = triggerMsg?.author ?? null;
+        }
+      }
+    }
+    const parentAuthor = session.kind === "group" ? (parent?.author ?? null) : null;
+    const rosterNames =
+      session.kind === "group"
+        ? ctx.db
+            .query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL")
+            .all()
+            .map((b) => b.name)
+        : [];
+
+    const category = classifyBotMessage({
+      kind: input.kind,
+      body,
+      author: input.author,
+      sessionKind: session.kind as "direct" | "group",
+      isUserPresent,
+      triggerAuthor,
+      parentAuthor,
+      rosterNames,
+      isRoutineRoot,
+    });
+
+    if (category) {
+      createNotification(ctx, {
+        semantic_key: `reply:${id}`,
+        kind: category,
+        session_id: input.sessionId,
+        message_id: id,
+        turn_id: turnIdForNotif,
+        created_at: now,
+        action_state: "none",
+      });
+    }
   }
   touchSession(ctx, input.sessionId, now);
   return getMessage(ctx, id);

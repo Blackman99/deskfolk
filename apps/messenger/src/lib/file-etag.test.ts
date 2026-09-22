@@ -2,6 +2,28 @@ import { afterEach, expect, test } from "bun:test";
 import { ApiError, etagForBlob } from "./api";
 import { LocalApi } from "./local-api.ts";
 
+test("postMessage retries keep the original X-Request-Id and body", async () => {
+  const sent: Array<{ id: string | null; body: unknown }> = [];
+  globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+    sent.push({ id: new Headers(init?.headers).get("X-Request-Id"), body: init?.body });
+    throw new Error("offline");
+  }) as typeof fetch;
+  const api = new LocalApi({ origin: "http://fixture", token: "fixture" });
+  const originalId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "answer", {
+    askId: "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
+    requestId: originalId,
+  })).rejects.toMatchObject({ code: "request_unknown", requestId: originalId });
+  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "answer", {
+    askId: "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
+    requestId: originalId,
+  })).rejects.toMatchObject({ code: "request_unknown", requestId: originalId });
+  expect(sent).toHaveLength(2);
+  expect(sent[0]!.id).toBe(originalId);
+  expect(sent[1]!.id).toBe(originalId);
+  expect(sent[0]!.body).toEqual(sent[1]!.body);
+});
+
 test("pending mutation payload is immutable in memory and only explicit retries send it", async () => {
   const sent: Array<{ id: string | null; body: unknown }> = [];
   let fail = true;

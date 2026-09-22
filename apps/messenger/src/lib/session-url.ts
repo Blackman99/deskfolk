@@ -52,6 +52,8 @@ export function attachmentFromUrl(url: URL): string | null {
 export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   const raw = url.searchParams.get(OVERLAY_PARAM);
   if (raw === OVERLAY_SETTINGS) return { kind: "settings" };
+  // Older links opened a notification page. There is no such page; the chat list carries the state.
+  if (raw === "notifications") return { kind: "none" };
   if (raw === OVERLAY_SESSION) return { kind: "session" };
   if (raw === OVERLAY_BOT) {
     const botId = sanitizeBotId(url.searchParams.get(OVERLAY_BOT_PARAM));

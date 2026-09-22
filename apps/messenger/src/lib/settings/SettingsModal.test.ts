@@ -91,7 +91,8 @@ test("closing the endpoint editor before the debounce still sends the edit", asy
 });
 
 function openAbout(host: HTMLElement): void {
-  click(host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")[4]);
+  const tabs = host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn");
+  click(tabs[tabs.length - 1]);
 }
 
 function withMobileViewport(run: () => void): void {

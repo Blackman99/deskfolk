@@ -770,6 +770,22 @@
 				</button>
 			{/if}
 		</div>
+		{#if runtime.selectedId}
+			<div class="action-list-row session-mute-row mt-4 pt-4">
+				<div class="action-list-info">
+					<span class="action-list-title">{t.notifications.sessionMute}</span>
+				</div>
+				<input
+					type="checkbox"
+					checked={runtime.isSessionMuted(runtime.selectedId)}
+					onchange={(e) => {
+						if (runtime.selectedId) {
+							void runtime.setSessionMuted(runtime.selectedId, (e.currentTarget as HTMLInputElement).checked);
+						}
+					}}
+				/>
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -1419,6 +1435,10 @@
 		font-weight: 500;
 		color: var(--ink);
 		cursor: pointer;
+	}
+
+	.session-mute-row {
+		border-top: 1px solid var(--line);
 	}
 
 	.skill-modal-foot {

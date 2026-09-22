@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import type { SessionSummary } from "@real-bot/protocol";
 import { countsAsUnread, isSessionUnread, sessionUnreadCount, unreadBadge } from "./unread.ts";
 
-test("selected session is never shown as unread", () => {
-  expect(isSessionUnread(3, true)).toBe(false);
+test("selected session unread count is preserved (selected does not imply read)", () => {
+  expect(isSessionUnread(3, true)).toBe(true);
   expect(isSessionUnread(3, false)).toBe(true);
   expect(isSessionUnread(0, false)).toBe(false);
   expect(isSessionUnread(undefined, false)).toBe(false);
@@ -22,7 +22,7 @@ test("messages from others count as unread, including quote-replies", () => {
   expect(countsAsUnread({ parent_id: null, author: "writer", kind: "profile_change" })).toBe(false);
 });
 
-test("sessionUnreadCount prefers the stored count and never marks the open session", () => {
+test("sessionUnreadCount prefers the stored count even for selected session", () => {
   const session = {
     id: "s1",
     unread_count: 4,
@@ -33,7 +33,7 @@ test("sessionUnreadCount prefers the stored count and never marks the open sessi
       created_at: "t1",
     } as SessionSummary["last_message"],
   };
-  expect(sessionUnreadCount(session, "s1")).toBe(0);
+  expect(sessionUnreadCount(session, "s1")).toBe(4);
   expect(sessionUnreadCount(session, "s2")).toBe(4);
 });
 

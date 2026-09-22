@@ -218,6 +218,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     api = createLocalApi({
       store,
       token,
+      policyV1: true,
+      pushSettingsV2: true,
       devSetup: devPairing && (async (request) => {
         if (!remote) throw new HttpError(503, "unavailable", "runtime is still starting");
         return devPairing(remote, request);

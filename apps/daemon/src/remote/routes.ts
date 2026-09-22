@@ -42,6 +42,10 @@ get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
 get("spend", { session_id: id, bot_id: id, turn_id: id }); get("search", { q: string }, ["q"]);
+get("notifications", { filter: one("actionable", "unread", "all"), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 100, cursor: v => typeof v === "string" && v.length <= 256 });
+get("notifications/:id");
+get("notification-policy");
+get("notification-device");
 add("POST", "models/probe", { endpoint_base_url: string, endpoint_api_key: string, provider_id: id });
 add("POST", "bots", bot, ["name", "duties", "boundaries"]);
 add("POST", "providers", provider, ["name", "base_url"]);
@@ -53,10 +57,17 @@ add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "sc
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
 add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= REMOTE_FILE_LIMIT, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])) }, ["body"]);
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);
-add("POST", "sessions/:id/read", {});
+add("POST", "sessions/:id/read", { through_message_id: id });
 add("POST", "sessions/:id/(archive|restore|clear)", revision); add("POST", "bots/:id/(archive|restore)", revision);
 add("POST", "approvals/:id/resolve", { action: one("allow_once", "deny", "always_allow"), scope: string, api_key: string }, ["action"]);
 add("POST", "credential-operations/:id/resolve", { action: one("repair", "cancel"), value: string }, ["action"]);
+add("POST", "notifications/read", { ids: list(id), through_ordinal: v => typeof v === "number" && Number.isInteger(v) && v >= 0, filter: one("all") });
+add("POST", "notifications/retention-notice/read", {});
+add("POST", "notifications/:id/acknowledge", { if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"]);
+add("PUT", "sessions/:id/notification-preference", { muted: bool, if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["muted", "if_revision"]);
+add("POST", "notification-presence", { instance_id: string, visible: bool, focused: bool, session_id: nullable(id), at_latest: bool }, ["instance_id", "visible", "focused", "at_latest"]);
+add("PATCH", "notification-policy", { categories: object({ approval: bool, ask: bool, failure: bool, interrupted: bool, reply: bool, routine_result: bool }), quiet_hours: object({ enabled: bool, start: string, end: string, time_zone: string }), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
+add("PATCH", "notification-device", { badge: bool, sound: one("system"), preview: one("generic"), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, endpoint_models: models, endpoint_default_model: string,
   default_provider_id: nullable(id), launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);

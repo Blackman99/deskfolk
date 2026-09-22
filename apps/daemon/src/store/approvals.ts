@@ -2,6 +2,11 @@ import type { Approval } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import {
+  createNotification,
+  markNotificationRead,
+  updateNotificationActionState,
+} from "./notifications";
+import {
   ALLOWED_KIND_KEYS,
   requireNonEmpty,
   toApproval,
@@ -108,6 +113,19 @@ export function insertApproval(
       row.requires_api_key ? 1 : 0,
     ],
   );
+  const turn = ctx.db
+    .query<{ session_id: string }, [string]>("SELECT session_id FROM turns WHERE id = ?")
+    .get(input.turnId);
+  createNotification(ctx, {
+    semantic_key: `approval:${row.id}`,
+    kind: "approval",
+    session_id: turn?.session_id ?? null,
+    message_id: row.message_id,
+    turn_id: row.turn_id,
+    approval_id: row.id,
+    created_at: now,
+    action_state: "open",
+  });
   return row;
 }
 
@@ -153,6 +171,13 @@ export function resolveApproval(
     const now = isoNow();
     const status = action === "deny" ? "denied" : "allowed_once";
     ctx.db.run(`UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?`, [status, now, id]);
+    updateNotificationActionState(
+      ctx,
+      `approval:${id}`,
+      "resolved",
+      action === "deny" ? "denied" : "resolved",
+      true,
+    );
     const next = ctx.db.query<ApprovalRow, [string]>(`SELECT * FROM approvals WHERE id = ?`).get(id)!;
     return toApproval(next);
   });

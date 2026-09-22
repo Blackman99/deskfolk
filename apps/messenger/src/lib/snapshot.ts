@@ -139,6 +139,10 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
           session.pending_judgements !== undefined
             ? session.pending_judgements
             : (existing?.pending_judgements ?? []),
+        notification_preference:
+          session.notification_preference !== undefined
+            ? session.notification_preference
+            : existing?.notification_preference,
       };
       return {
         ...snapshot,

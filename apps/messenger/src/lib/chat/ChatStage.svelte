@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
@@ -44,6 +44,11 @@
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
 	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
+	import {
+		transcriptReadingReady,
+		desktopReadingMode,
+		TRANSCRIPT_VISIBLE_MS
+	} from '../notifications/reading.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -80,6 +85,8 @@
 		replying: t.sidebar.statusReplying,
 		waitingApproval: t.sidebar.statusWaitingApproval,
 		waitingAsk: t.sidebar.statusWaitingAsk,
+		failed: t.sidebar.statusFailed,
+		interrupted: t.sidebar.statusInterrupted,
 		idle: t.sidebar.statusIdle
 	});
 	// Depends on the roster, not on turns, so a streaming token does not rebuild it.
@@ -183,7 +190,131 @@
 		liveTurnsHere.find((turn) => turn.id === runtime.focusedTurnId) ?? liveTurnsHere[0]
 	);
 
-	let askDrafts = $state<Record<string, string>>({});
+	function getDraft(askId: string): string {
+		return runtime.getAskDraft(askId)?.body ?? '';
+	}
+
+	function updateDraft(askId: string, val: string): void {
+		runtime.setAskDraft(askId, val);
+	}
+
+	async function replyAsk(askId: string): Promise<void> {
+		const record = runtime.getAskDraft(askId);
+		const body = (record?.body ?? '').trim();
+		if (!body) return;
+		const submittedVersion = record?.version ?? 1;
+		stickToBottom = true;
+		const res = await runtime.sendAsk(askId, body);
+		if (res.status === 'accepted') {
+			runtime.clearAskDraft(askId, submittedVersion);
+			await tick();
+			scrollToBottom(false);
+		} else if (res.status === 'rejected') {
+			const turn = snapshot.turns.find((trn) => trn.pending_ask_id === askId);
+			const stillCurrent = Boolean(turn && turn.status === 'waiting_ask' && turn.pending_ask_id === askId);
+			const errText = !stillCurrent
+				? t.notifications.askEnded
+				: (res.error?.message || t.notifications.executionFailed);
+			runtime.setAskError(askId, errText);
+		} else if (res.status === 'unknown') {
+			runtime.setAskError(askId, res.error?.message || t.disconnected.host);
+		}
+	}
+
+	let readTimer: ReturnType<typeof setTimeout> | null = null;
+	let windowFocused = $state(typeof document !== 'undefined' ? document.hasFocus() : true);
+	let windowVisible = $state(typeof document !== 'undefined' ? document.visibilityState === 'visible' : true);
+
+	onMount(() => {
+		const onFocus = () => {
+			windowFocused = true;
+			if (runtime.isDesktopShell) {
+				void runtime.pollDesktopNativeState();
+				void runtime.reportDesktopNotificationView(stickToBottom);
+			}
+		};
+		const onBlur = () => {
+			windowFocused = false;
+			if (readTimer) {
+				clearTimeout(readTimer);
+				readTimer = null;
+			}
+			if (runtime.isDesktopShell) void runtime.reportDesktopNotificationView(false);
+		};
+		const onVisibility = () => {
+			windowVisible = document.visibilityState === 'visible';
+			if (!windowVisible && readTimer) {
+				clearTimeout(readTimer);
+				readTimer = null;
+			}
+			if (runtime.isDesktopShell) void runtime.reportDesktopNotificationView(windowVisible && stickToBottom);
+		};
+		window.addEventListener('focus', onFocus);
+		window.addEventListener('blur', onBlur);
+		document.addEventListener('visibilitychange', onVisibility);
+		return () => {
+			window.removeEventListener('focus', onFocus);
+			window.removeEventListener('blur', onBlur);
+			document.removeEventListener('visibilitychange', onVisibility);
+			if (readTimer) {
+				clearTimeout(readTimer);
+				readTimer = null;
+			}
+		};
+	});
+
+	$effect(() => {
+		const sId = runtime.selectedId;
+		const msgs = stream;
+		void windowFocused;
+		void windowVisible;
+		if (!sId || msgs.length === 0) return;
+		const facts = {
+			visibility: document.visibilityState,
+			hasFocus: document.hasFocus(),
+			connected: runtime.connection === 'connected',
+			snapshotReady: true,
+			overlayBlocksTranscript: runtime.settingsOpen || runtime.workspaceOpen
+		};
+		const mode = desktopReadingMode(runtime.isDesktopShell, runtime.nativeCapabilities);
+		const nativeFacts = runtime.isDesktopShell ? runtime.nativeFocusFacts : null;
+		const ready = transcriptReadingReady(facts, mode, nativeFacts);
+		if (!ready || !stickToBottom) {
+			if (readTimer) {
+				clearTimeout(readTimer);
+				readTimer = null;
+			}
+			return;
+		}
+		let lastMsgId: string | null = null;
+		for (let i = msgs.length - 1; i >= 0; i--) {
+			const itm = msgs[i];
+			if (itm.type === 'message') {
+				lastMsgId = itm.message.id;
+				break;
+			}
+		}
+		if (!lastMsgId) return;
+		if (readTimer) clearTimeout(readTimer);
+		readTimer = setTimeout(() => {
+			if (typeof document !== 'undefined') {
+				if (!document.hasFocus() || document.visibilityState !== 'visible') {
+					readTimer = null;
+					return;
+				}
+			}
+			if (runtime.selectedId === sId && lastMsgId) {
+				void runtime.submitBoundedRead(sId, lastMsgId);
+			}
+			readTimer = null;
+		}, TRANSCRIPT_VISIBLE_MS);
+		return () => {
+			if (readTimer) {
+				clearTimeout(readTimer);
+				readTimer = null;
+			}
+		};
+	});
 
 	const starterOptions = $derived(
 		selectedPeerBot
@@ -493,18 +624,6 @@
 		}, 1800);
 	}
 
-	async function replyAsk(askId: string): Promise<void> {
-		const body = (askDrafts[askId] ?? '').trim();
-		if (!body) return;
-		stickToBottom = true;
-		await runtime.sendAsk(askId, body);
-		const next = { ...askDrafts };
-		delete next[askId];
-		askDrafts = next;
-		await tick();
-		scrollToBottom(false);
-	}
-
 	function approvalStatusCopy(status: 'allowed_once' | 'denied' | 'voided' | 'pending'): string {
 		if (status === 'allowed_once') return t.stream.allowed;
 		if (status === 'denied') return t.stream.denied;
@@ -769,17 +888,15 @@
 							<article class="msg is-ask">
 								<div class="who">{t.stream.ask} · {who(singleMsg.message)}</div>
 								<div class="body">{singleMsg.message.body}</div>
-								{#if isPendingAsk(singleMsg.message, snapshot.turns) && !lockedComposer}
+								{#if isPendingAsk(singleMsg.message, snapshot.turns, runtime.notificationCapabilities.pending_ask_v1) && !lockedComposer}
+									{@const askErr = runtime.getAskDraft(singleMsg.message.id)?.error}
 									<div class="ask-reply mt-5 flex gap-4">
 										<input
 											type="text"
 											placeholder={t.stream.reply}
-											value={askDrafts[singleMsg.message.id] ?? ''}
+											value={getDraft(singleMsg.message.id)}
 											oninput={(ev) =>
-												(askDrafts = {
-													...askDrafts,
-													[singleMsg.message.id]: (ev.currentTarget as HTMLInputElement).value
-												})}
+												updateDraft(singleMsg.message.id, (ev.currentTarget as HTMLInputElement).value)}
 											onkeydown={(ev) => {
 												if (ev.key === 'Enter') {
 													ev.preventDefault();
@@ -790,6 +907,13 @@
 										<button type="button" onclick={() => void replyAsk(singleMsg.message.id)}
 											>{t.stream.reply}</button
 										>
+									</div>
+									{#if askErr}
+										<p class="ask-error text-12 text-danger mt-1.5">{askErr}</p>
+									{/if}
+								{:else}
+									<div class="ask-ended text-12 text-muted mt-2">
+										{t.notifications.askEndedReadOnly}
 									</div>
 								{/if}
 							</article>

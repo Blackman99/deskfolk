@@ -132,6 +132,7 @@ export type SessionRow = {
   kind: SessionKind;
   name: string | null;
   last_read_at: string | null;
+  read_through_seq?: number;
   archived_at: string | null;
   origin_session_id: string | null;
   origin_message_id: string | null;
@@ -177,6 +178,7 @@ export type MessageRow = {
   body: string;
   source_turn_id: string | null;
   task_id: string | null;
+  message_seq?: number;
   created_at: string;
 };
 
@@ -188,6 +190,9 @@ export type TurnRow = {
   trigger_message_id: string;
   partial_text?: string | null;
   task_id: string | null;
+  pending_ask_id?: string | null;
+  routine_id?: string | null;
+  routine_due_at?: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;
@@ -391,7 +396,13 @@ export function toApproval(row: ApprovalRow): Approval {
 }
 
 export function toTurn(row: TurnRow): Turn {
-  return { ...row, partial_text: isLive(row.status) ? (row.partial_text ?? null) : null };
+  return {
+    ...row,
+    partial_text: isLive(row.status) ? (row.partial_text ?? null) : null,
+    pending_ask_id: row.pending_ask_id ?? null,
+    routine_id: row.routine_id ?? null,
+    routine_due_at: row.routine_due_at ?? null,
+  };
 }
 
 export function toBot(row: BotRow): Bot {

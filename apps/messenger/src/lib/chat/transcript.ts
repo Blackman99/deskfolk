@@ -153,9 +153,23 @@ function occupancyKey(triggerId: string, botId: string): string {
   return `${triggerId}\0${botId}`;
 }
 
-export function isPendingAsk(message: Message, turns: readonly Turn[]): boolean {
+export function isPendingAsk(
+  message: Message,
+  turns: readonly Turn[],
+  capability?: boolean,
+): boolean {
   if (message.kind !== "ask" || !message.turn_id) return false;
-  return turns.some((turn) => turn.id === message.turn_id && turn.status === "waiting_ask");
+  const turn = turns.find((t) => t.id === message.turn_id);
+  if (!turn || turn.status !== "waiting_ask") return false;
+  if (capability === false) return false;
+  const pendingId = (turn as { pending_ask_id?: string | null }).pending_ask_id;
+  if (capability === true) {
+    return typeof pendingId === "string" && pendingId === message.id;
+  }
+  if (pendingId !== undefined) {
+    return pendingId === message.id;
+  }
+  return true;
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   resolveIncomingThinkingLevel,
 } from "./providers";
 import { forgetBotMemories } from "./memories";
+import { bumpCleanupRevision } from "./notifications";
 import { forgetBotRoutes } from "./routing";
 import { getSession } from "./sessions";
 import {
@@ -173,6 +174,24 @@ export function deleteBot(ctx: StoreContext, id: string): void {
   const now = isoNow();
   ctx.db.transaction(() => {
     ctx.db.run(`UPDATE bots SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
+    ctx.db.run(
+      `DELETE FROM notifications
+       WHERE turn_id IN (SELECT id FROM turns WHERE bot_id = ?)
+          OR session_id IN (
+            SELECT session_id FROM session_participants
+            WHERE member = ? AND session_id IN (SELECT id FROM sessions WHERE kind = 'direct')
+          )`,
+      [id, id],
+    );
+    ctx.db.run(
+      `DELETE FROM session_notification_preferences
+       WHERE session_id IN (
+         SELECT session_id FROM session_participants
+         WHERE member = ? AND session_id IN (SELECT id FROM sessions WHERE kind = 'direct')
+       )`,
+      [id],
+    );
+    bumpCleanupRevision(ctx);
     forgetBotRoutes(ctx, id);
     forgetBotMemories(ctx, id);
   })();

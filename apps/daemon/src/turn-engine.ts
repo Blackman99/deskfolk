@@ -68,6 +68,7 @@ export type TurnEngine = {
     opts?: { fork?: boolean; fromUser?: boolean },
   ) => Promise<void>;
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
+  assertAskPending: (askId: string, sessionId: string) => void;
   replyAsk: (askId: string, answer: Message) => void;
   resolveApproval: (
     id: string,
@@ -770,7 +771,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     botId: string,
     trigger: Message,
     mode: "redirect" | "fork",
-    opts: { newTask?: boolean } = {},
+    opts: { newTask?: boolean; routineId?: string | null; routineDueAt?: string | null } = {},
   ): Turn {
     options.admission?.assertNew();
     if (mode === "redirect") {
@@ -794,6 +795,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       botId,
       triggerMessageId: trigger.id,
       newTask: opts.newTask,
+      routineId: opts.routineId,
+      routineDueAt: opts.routineDueAt,
     });
     attachLive(turn);
     return turn;
@@ -1198,16 +1201,33 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       result = withLatestMcp(call.name, result);
       noteWrittenPaths(live, call.name, result);
       if (result.waitAsk) {
-        const ask = store.insertMessage({
-          sessionId: turn.session_id,
-          turnId,
-          parentId: live.parentId,
-          kind: "ask",
-          author: turn.bot_id,
-          body: result.waitAsk.question,
+        const waitAsk = result.waitAsk;
+        const { ask, waiting } = store.transaction(() => {
+          const ask = store.insertMessage({
+            sessionId: turn.session_id,
+            turnId,
+            parentId: live.parentId,
+            kind: "ask",
+            author: turn.bot_id,
+            body: waitAsk.question,
+          });
+          store.db.run(
+            "UPDATE turns SET status = 'waiting_ask', pending_ask_id = ?, updated_at = ? WHERE id = ?",
+            [ask.id, isoNow(), turnId],
+          );
+          const waiting = store.getTurn(turnId);
+          store.createNotification({
+            semantic_key: `ask:${ask.id}`,
+            kind: "ask",
+            session_id: turn.session_id,
+            message_id: ask.id,
+            turn_id: turnId,
+            created_at: ask.created_at,
+            action_state: "open",
+          });
+          return { ask, waiting };
         });
         publishMessage(ask);
-        const waiting = store.setTurnStatus(turnId, "waiting_ask");
         publishTurn(waiting, null);
         const answer = await waitForAsk(turnId, ask.id, call.id);
         if (answer == null || !active(turnId, live)) return "wait";
@@ -1224,32 +1244,36 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         continue;
       }
       if (result.waitApproval) {
-        const card = store.insertMessage({
-          sessionId: turn.session_id,
-          turnId,
-          parentId: live.parentId,
-          kind: "approval",
-          author: turn.bot_id,
-          body: result.waitApproval.summary,
-        });
-        const approval = store.insertApproval({
-          turnId,
-          messageId: card.id,
-          kind_key: result.waitApproval.kind_key,
-          summary: result.waitApproval.summary,
-          target: result.waitApproval.target,
-          requires_api_key: Boolean(result.waitApproval.requiresApiKey),
+        const waitApproval = result.waitApproval;
+        const { card, approval, waiting } = store.transaction(() => {
+          const card = store.insertMessage({
+            sessionId: turn.session_id,
+            turnId,
+            parentId: live.parentId,
+            kind: "approval",
+            author: turn.bot_id,
+            body: waitApproval.summary,
+          });
+          const approval = store.insertApproval({
+            turnId,
+            messageId: card.id,
+            kind_key: waitApproval.kind_key,
+            summary: waitApproval.summary,
+            target: waitApproval.target,
+            requires_api_key: Boolean(waitApproval.requiresApiKey),
+          });
+          const waiting = store.setTurnStatus(turnId, "waiting_approval");
+          return { card, approval, waiting };
         });
         const pending = waitForApproval(
           turnId,
           approval.id,
           call.id,
-          result.waitApproval.run,
-          result.waitApproval.requiresApiKey,
+          waitApproval.run,
+          waitApproval.requiresApiKey,
         );
         publishMessage(card);
         publish({ event: "approval.upsert", occurred_at: occurred(), ...approval });
-        const waiting = store.setTurnStatus(turnId, "waiting_approval");
         publishTurn(waiting, null);
         let resolved = await pending;
         if (resolved == null || !active(turnId, live)) return "wait";
@@ -1482,16 +1506,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   function interruptTurn(current: Turn): void {
-    const { note, interrupted } = store.transaction(() => {
-      store.db.run("UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'", [isoNow(), current.id]);
-      store.markInterruptPending(current.bot_id);
-      const interrupted = store.setTurnStatus(current.id, "interrupted", executionOf(lives.get(current.id)));
-      const note = store.insertMessage({ sessionId: current.session_id, turnId: current.id,
-        kind: "system", author: current.bot_id, body: INTERRUPT_NOTE_BODY });
-      return { note, interrupted };
-    });
-    publishMessage(note);
-    publishTurn(interrupted);
+    const result = store.interruptTurnRecord(current.id, executionOf(lives.get(current.id)));
+    if (result) {
+      publishMessage(result.note);
+      publishTurn(result.turn);
+    }
   }
 
   function failTurn(turnId: string, kind: FailKind): void {
@@ -1499,6 +1518,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const current = store.getTurn(turnId);
     if (live?.abort.signal.aborted || !["running", "waiting_ask", "waiting_approval"].includes(current.status)) return;
     const locale = store.settingsCached().locale;
+    const now = isoNow();
     const { message, completed } = store.transaction(() => {
       const message = store.insertMessage({
         sessionId: current.session_id,
@@ -1508,8 +1528,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         author: current.bot_id,
         body: completionFailBody(locale, kind),
       });
-      store.db.run("UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'", [isoNow(), turnId]);
+      store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
+      if (store.isPresent(current.session_id, USER_MEMBER)) {
+        store.createNotification({
+          semantic_key: `failure:${turnId}`,
+          kind: "failure",
+          session_id: current.session_id,
+          turn_id: turnId,
+          message_id: message.id,
+          created_at: now,
+          action_state: "open",
+          fail_kind: kind,
+        });
+      }
       return { message, completed: store.setTurnStatus(turnId, "completed") };
     });
     publishMessage(message);
@@ -1873,31 +1905,69 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   function fireRoutine(routineId: string, now: Date = new Date()): Turn | null {
     options.admission?.assertNew();
-    const claimed = store.claimRoutineDue(routineId, now);
-    if (!claimed) return null;
-    const existing = store.findDirectSession(USER_MEMBER, claimed.bot_id);
-    const session = existing ?? store.createDirect(USER_MEMBER, claimed.bot_id);
-    if (!existing) {
+    const result = store.transaction(() => {
+      const claimed = store.claimRoutineDue(routineId, now);
+      if (!claimed) return null;
+      const existing = store.findDirectSession(USER_MEMBER, claimed.bot_id);
+      const session = existing ?? store.createDirect(USER_MEMBER, claimed.bot_id);
+      const trigger = store.insertMessage({
+        sessionId: session.id,
+        kind: "user",
+        author: USER_MEMBER,
+        body: claimed.instruction,
+      });
+      const turn = store.createTurn({
+        sessionId: session.id,
+        botId: claimed.bot_id,
+        triggerMessageId: trigger.id,
+        newTask: true,
+        routineId: claimed.id,
+        routineDueAt: claimed.last_fired_for_due_at,
+      });
+      return {
+        claimed,
+        session,
+        isNewSession: !existing,
+        trigger,
+        turn,
+      };
+    });
+
+    if (!result) return null;
+
+    if (result.isNewSession) {
       publish({
         event: "session.upsert",
         occurred_at: occurred(),
-        ...sessionUpsertFields(session),
+        ...sessionUpsertFields(result.session),
       });
     }
-    const trigger = store.insertMessage({
-      sessionId: session.id,
-      kind: "user",
-      author: USER_MEMBER,
-      body: claimed.instruction,
-    });
-    publishMessage(trigger);
+    publishMessage(result.trigger);
     publish({
       event: "routine.upsert",
       occurred_at: occurred(),
-      ...claimed,
+      ...result.claimed,
     });
-    // Each fire is its own job: the instruction repeats, the work does not continue the last one.
-    return startTurn(session.id, claimed.bot_id, trigger, "fork", { newTask: true });
+    attachLive(result.turn);
+    return result.turn;
+  }
+
+  function assertAskPending(askId: string, sessionId: string): void {
+    const ask = store.getMessage(askId);
+    if (ask.kind !== "ask" || !ask.turn_id) {
+      throw new HttpError(422, "invalid_args", "ask replies need a running turn");
+    }
+    if (sessionId !== ask.session_id) {
+      throw new HttpError(422, "invalid_args", "ask reply must be in its session");
+    }
+    const turn = store.getTurn(ask.turn_id);
+    if (turn.status !== "waiting_ask" || (turn.pending_ask_id && turn.pending_ask_id !== askId)) {
+      throw new HttpError(422, "invalid_args", "ask is no longer pending");
+    }
+    const live = lives.get(turn.id);
+    if (!live?.ask || live.ask.id !== askId) {
+      throw new HttpError(422, "invalid_args", "ask replies need a running turn");
+    }
   }
 
   return {
@@ -1922,6 +1992,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     sweepToolResults,
     sweepStalledTurns,
     fireRoutine,
+    assertAskPending,
     resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);
       const liveForGate = lives.get(rowForGate.turn_id);
@@ -1974,21 +2045,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return row;
     },
     replyAsk(askId, answer) {
+      assertAskPending(askId, answer.session_id);
       const ask = store.getMessage(askId);
-      if (ask.kind !== "ask" || !ask.turn_id) {
-        throw new HttpError(422, "invalid_args", "ask replies need a running turn");
-      }
-      if (answer.session_id !== ask.session_id) throw new HttpError(422, "invalid_args", "ask reply must be in its session");
-      const turn = store.getTurn(ask.turn_id);
-      if (turn.status !== "waiting_ask") {
-        throw new HttpError(422, "invalid_args", "ask is no longer pending");
-      }
-      const live = lives.get(turn.id);
-      if (!live?.ask || live.ask.id !== askId) {
-        throw new HttpError(422, "invalid_args", "ask replies need a running turn");
-      }
-      const waiter = live.ask.waiter;
-      const running = store.setTurnStatus(turn.id, "running");
+      const turn = store.getTurn(ask.turn_id!);
+      const live = lives.get(turn.id)!;
+      const waiter = live.ask!.waiter;
+      const now = isoNow();
+      const running = store.transaction(() => {
+        store.db.run(
+          "UPDATE turns SET status = 'running', pending_ask_id = NULL, updated_at = ? WHERE id = ?",
+          [now, turn.id],
+        );
+        store.updateNotificationActionState(`ask:${askId}`, "resolved", "answered", true);
+        return store.getTurn(turn.id);
+      });
       publishTurn(running);
       store.afterCommit(() => {
         live.ask = undefined;

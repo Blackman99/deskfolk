@@ -10,6 +10,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { hydrateMessage, listMessages } from "./messages";
+import { getSessionNotificationPreference, markNotificationsReadThroughMessage } from "./notifications";
 
 export { isPresent } from "./shared";
 import {
@@ -92,6 +93,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
       last_message: lastMessagesBySession.get(s.id) ?? null,
       live_turns: liveTurnsBySession.get(s.id) ?? [],
       unread_count: unreadBySession.get(s.id) ?? 0,
+      notification_preference: getSessionNotificationPreference(ctx, s.id),
     }));
 }
 
@@ -115,12 +117,54 @@ export function getSession(ctx: StoreContext, id: string): SessionDetail {
     messages,
     turns,
     unread_count: unreadCount(ctx, id),
+    notification_preference: getSessionNotificationPreference(ctx, id),
   };
 }
 
-export function markSessionRead(ctx: StoreContext, id: string, at: string = isoNow()): SessionDetail {
+export function markSessionRead(
+  ctx: StoreContext,
+  id: string,
+  options?: { through_message_id?: string; at?: string } | string,
+): SessionDetail {
   sessionRow(ctx, id);
-  ctx.db.run(`UPDATE sessions SET last_read_at = ? WHERE id = ?`, [at, id]);
+  const opts = typeof options === "string" ? { at: options } : options;
+  const now = opts?.at ?? isoNow();
+  ctx.db.transaction(() => {
+    if (opts?.through_message_id) {
+      const msg = ctx.db
+        .query<
+          { id: string; session_id: string; message_seq: number; created_at: string },
+          [string]
+        >("SELECT id, session_id, message_seq, created_at FROM messages WHERE id = ?")
+        .get(opts.through_message_id);
+      if (!msg || msg.session_id !== id) {
+        throw new HttpError(422, "invalid_args", "through_message_id not in this session");
+      }
+      ctx.db.run(
+        `UPDATE sessions
+         SET read_through_seq = MAX(read_through_seq, ?),
+             last_read_at = CASE WHEN last_read_at IS NULL OR ? > last_read_at THEN ? ELSE last_read_at END
+         WHERE id = ?`,
+        [msg.message_seq, msg.created_at, msg.created_at, id],
+      );
+      markNotificationsReadThroughMessage(ctx, id, msg.message_seq, msg.created_at);
+    } else {
+      const maxSeq =
+        ctx.db
+          .query<{ max_seq: number | null }, [string]>(
+            "SELECT MAX(message_seq) as max_seq FROM messages WHERE session_id = ?",
+          )
+          .get(id)?.max_seq ?? 0;
+      ctx.db.run(
+        `UPDATE sessions
+         SET last_read_at = ?,
+             read_through_seq = MAX(read_through_seq, ?)
+         WHERE id = ?`,
+        [now, maxSeq, id],
+      );
+      markNotificationsReadThroughMessage(ctx, id, maxSeq, now);
+    }
+  })();
   return getSession(ctx, id);
 }
 
@@ -213,6 +257,8 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM session_notification_preferences WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM spend WHERE session_id = ?`, [id]);
@@ -269,6 +315,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     // Clearing history ends the jobs it held: dirs nothing else belongs to go, the rest close.
@@ -499,7 +546,10 @@ export function unreadCount(ctx: StoreContext, sessionId: string): number {
        WHERE m.session_id = ?
          AND m.kind != 'profile_change'
          AND m.author != ?
-         AND (s.last_read_at IS NULL OR m.created_at > s.last_read_at)`,
+         AND (
+           (s.read_through_seq > 0 AND m.message_seq > s.read_through_seq)
+           OR (s.read_through_seq = 0 AND (s.last_read_at IS NULL OR m.created_at > s.last_read_at))
+         )`,
     )
     .get(sessionId, USER_MEMBER);
   return row?.n ?? 0;
@@ -513,7 +563,10 @@ export function unreadCountsBySession(ctx: StoreContext): Map<string, number> {
        JOIN sessions s ON s.id = m.session_id
        WHERE m.kind != 'profile_change'
          AND m.author != ?
-         AND (s.last_read_at IS NULL OR m.created_at > s.last_read_at)
+         AND (
+           (s.read_through_seq > 0 AND m.message_seq > s.read_through_seq)
+           OR (s.read_through_seq = 0 AND (s.last_read_at IS NULL OR m.created_at > s.last_read_at))
+         )
        GROUP BY m.session_id`,
     )
     .all(USER_MEMBER);

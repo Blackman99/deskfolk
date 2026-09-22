@@ -2,7 +2,9 @@ const CACHE = "real-bot-immutable-v1";
 
 function isImmutable(url) {
   try {
-    return new URL(url).pathname.startsWith("/_app/immutable/");
+    const parsed = new URL(url);
+    if (parsed.origin !== self.location.origin) return false;
+    return parsed.pathname.startsWith("/_app/immutable/");
   } catch {
     return false;
   }
@@ -27,7 +29,9 @@ self.addEventListener("fetch", (event) => {
       const cached = await cache.match(request);
       if (cached) return cached;
       const response = await fetch(request);
-      if (response.ok) await cache.put(request, response.clone());
+      if (response.ok && (response.type === "basic" || response.type === "default")) {
+        await cache.put(request, response.clone());
+      }
       return response;
     }),
   );
@@ -42,12 +46,15 @@ self.addEventListener("push", (event) => {
     pending = false;
   }
   if (!pending) return;
+  if (self.navigator && "setAppBadge" in self.navigator) {
+    self.navigator.setAppBadge().catch(() => {});
+  }
   event.waitUntil(
     self.registration.showNotification("Real Bot 有待处理事项", {
       body: "Real Bot has pending items",
-      tag: "pending",
+      tag: "real-bot-pending",
       data: { t: "pending" },
-      renotify: true,
+      renotify: false,
     }),
   );
 });
@@ -56,12 +63,23 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
-      for (const client of clients) {
-        await client.focus();
-        client.postMessage({ type: "inbox" });
+      const origin = self.location.origin;
+      const scope = self.registration.scope;
+      const inScope = clients.filter((c) => {
+        try {
+          const u = new URL(c.url);
+          return u.origin === origin && c.url.startsWith(scope);
+        } catch {
+          return false;
+        }
+      });
+      const target = inScope.find((c) => c.focused) || inScope[0];
+      if (target) {
+        await target.focus();
+        target.postMessage({ type: "inbox" });
         return;
       }
-      await self.clients.openWindow("/");
+      if (self.clients.openWindow) await self.clients.openWindow("/");
     }),
   );
 });

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aGroup, aMessage, aRoutine, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, fakeRuntime } from "../test-fixtures.ts";
 import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
 import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
@@ -144,6 +144,31 @@ test("the open direct stays listed even when it falls past the cap", () => {
 });
 
 /** You cannot reply one away, so a permanent badge would just be noise. */
+test("the session list has no notification bell or inbox entry", () => {
+  const { host, close } = open([]);
+  expect(host.querySelector(".notification-bell-btn, .mobile-bell-btn")).toBeNull();
+  expect(host.textContent).not.toContain(t.sidebar.notifications);
+  close();
+});
+
+test("a failed conversation shows that state on its row", () => {
+  const session = aDirect({
+    id: "sess-failed",
+    last_message: aMessage({
+      id: "msg-fail",
+      session_id: "sess-failed",
+      kind: "system",
+      author: "bot-1",
+      body: "这一轮没写完：连不上端点",
+    }),
+  });
+  const { host, close } = open([session]);
+  const row = [...host.querySelectorAll(".row")].find((el) => el.textContent?.includes("Writer"));
+  expect(row?.querySelector(".row-status")?.className).toContain("is-failed");
+  expect(row?.textContent).toContain(t.sidebar.statusFailed);
+  close();
+});
+
 test("Bot to Bot rows carry no unread badge", () => {
   const { host, close } = open([
     aBotDirect({ id: "d-01", last_message: aMessage({ author: "bot-1" }) }),

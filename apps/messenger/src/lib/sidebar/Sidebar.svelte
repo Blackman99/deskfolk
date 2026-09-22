@@ -82,6 +82,8 @@
 		replying: t.sidebar.statusReplying,
 		waitingApproval: t.sidebar.statusWaitingApproval,
 		waitingAsk: t.sidebar.statusWaitingAsk,
+		failed: t.sidebar.statusFailed,
+		interrupted: t.sidebar.statusInterrupted,
 		idle: t.sidebar.statusIdle
 	});
 	const searchKindLabels = $derived({
@@ -259,7 +261,8 @@
 			snapshot.turns,
 			snapshot.approvals,
 			statusLabels,
-			snapshot.pendingJudgements
+			snapshot.pendingJudgements,
+			snapshot.messages
 		);
 	}
 
@@ -2036,6 +2039,17 @@
 
 	.row-status.is-waiting_ask .row-status-text {
 		color: var(--purple);
+		font-weight: 600;
+	}
+
+	.row-status.is-failed .row-status-dot,
+	.row-status.is-interrupted .row-status-dot {
+		background: var(--danger);
+	}
+
+	.row-status.is-failed .row-status-text,
+	.row-status.is-interrupted .row-status-text {
+		color: var(--danger-text);
 		font-weight: 600;
 	}
 

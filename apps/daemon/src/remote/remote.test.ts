@@ -846,13 +846,38 @@ test("authenticated push subscribe stores the endpoint and revoke deletes it wit
   const p256dh = base64url(Buffer.concat([Buffer.from([4]), Buffer.from(ecdh.x!, "base64url"), Buffer.from(ecdh.y!, "base64url")]));
   const auth = base64url(randomBytes(16));
   const endpoint = "https://web.push.apple.com/v1/push/isolated";
-  const sub = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/subscribe",
+
+  // Legacy subscribe format returns 409 client_upgrade_required in PR6
+  const legacy = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/subscribe",
     body: { endpoint, p256dh, auth } });
+  expect(legacy.status).toBe(409);
+
+  // Read VAPID public state
+  const pushStateRes = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/remote/push" });
+  expect(pushStateRes.status).toBe(200);
+  const pushState = pushStateRes.body as { vapid_key_fingerprint: string; device_revision: number };
+
+  const sub = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/subscribe",
+    body: {
+      mode: "enable",
+      if_device_revision: pushState.device_revision,
+      application_server_key_fingerprint: pushState.vapid_key_fingerprint,
+      endpoint,
+      p256dh,
+      auth,
+    } });
   expect(sub.status).toBe(204);
   const row = f.store.db.query<{ endpoint: string }, [string]>("SELECT endpoint FROM remote_push_subs WHERE device_id = ?").get(d.deviceId);
   expect(row?.endpoint).toBe(endpoint);
   const denied = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/subscribe",
-    body: { endpoint: "https://evil.example/push", p256dh, auth } });
+    body: {
+      mode: "enable",
+      if_device_revision: 1,
+      application_server_key_fingerprint: pushState.vapid_key_fingerprint,
+      endpoint: "https://evil.example/push",
+      p256dh,
+      auth,
+    } });
   expect(denied.status).toBe(422);
   const bot = f.store.createBot({ name: "Inbox", duties: "fixture", boundaries: "fixture" });
   const trigger = f.store.insertMessage({ sessionId: bot.direct_session.id, kind: "user", author: "user", body: "go" });
