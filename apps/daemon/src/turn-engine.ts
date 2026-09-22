@@ -7,6 +7,7 @@ import {
   type Message,
   type McpServer,
   type PendingJudgement,
+  type RouteOutcome,
   type Spend,
   type ThinkingLevel,
   type Turn,
@@ -22,13 +23,21 @@ import {
 import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
 import { parseComposerSuggestions } from "./composer-suggestions";
 import { classifyMessage, messageSignature, type RouteDecision } from "./route-decision";
+import { verdictIsExperience } from "./route-agent";
+import { chainWarrantsReview } from "./route-learning";
+import { type TurnExecution } from "./store/routing";
 import { parseRoutePick, parseRouteReview, type RoutePick } from "./route-agent";
 import {
+  ROUTE_LEARN_SYSTEM,
   ROUTE_PICK_SYSTEM,
   ROUTE_REVIEW_SYSTEM,
+  routeLearnPayload,
   routePickPayload,
   routeReviewPayload,
 } from "./prompts/routing";
+import { toChatTools } from "./prompts/tool-schema";
+import { FORGET, REMEMBER } from "./prompts/tools/memory";
+import { UPDATE_SKILL } from "./prompts/tools/profile";
 import { dropToolResults, serializeToolResult } from "./tool-results";
 import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
@@ -74,6 +83,11 @@ export type TurnEngine = {
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
   /** Reviews chains the last run left open; called once after boot. */
   sweepStaleChains: () => void;
+  /**
+   * Counts a live turn has accumulated, so a shutdown that closes the row from outside the engine
+   * can still record them. Null when this process is not running that turn.
+   */
+  executionOf: (turnId: string) => TurnExecution | null;
   sweepToolResults: (now?: Date) => void;
   /** Closes turns that stopped making progress; called on every scheduler tick. */
   sweepStalledTurns: (now?: Date) => void;
@@ -107,6 +121,14 @@ type Live = {
   toolNames: Set<string>;
   spoke: boolean;
   drainRejection: boolean;
+  /** Completion hops this turn has started. Written onto the route row when the turn closes. */
+  hops: number;
+  toolCalls: number;
+  toolErrors: number;
+  /** Failed calls whose name and arguments match an earlier failure in this turn. */
+  repeatedFailures: number;
+  /** `${name}\n${arguments}` of calls that already failed, so a repeat can be recognised. */
+  failedCalls: Set<string>;
   ask?: {
     id: string;
     toolCallId: string;
@@ -233,8 +255,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
     if (!chain) return;
-    // Nothing came back from the user, so there is nothing to judge and no call to pay for.
-    if (chain.followUps.length === 0) {
+    // A quiet chain is only worth a review when the model side failed, or the tools failed twice.
+    // A clean finish is recorded locally so the chain closes, without paying for a call.
+    if (
+      !chainWarrantsReview({
+        followUps: chain.followUps.length,
+        outcome: chain.outcome === "running" ? null : (chain.outcome as RouteOutcome),
+        failKind: chain.execution.failKind,
+        toolErrors: chain.execution.toolErrors,
+      })
+    ) {
       try {
         store.recordRouteReview({
           botId: chain.botId,
@@ -268,6 +298,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       reply: chain.reply,
       outcome: chain.outcome,
       followUps: chain.followUps,
+      execution: {
+        hops: chain.execution.hops,
+        tool_calls: chain.execution.toolCalls,
+        tool_errors: chain.execution.toolErrors,
+        repeated_failures: chain.execution.repeatedFailures,
+        files_written: chain.execution.filesWritten,
+        fail_kind: chain.execution.failKind,
+        cost_usd_ticks: chain.execution.costUsdTicks,
+      },
     });
     let result;
     try {
@@ -300,7 +339,148 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         verdict,
       });
     } catch {
-      // best effort
+      return;
+    }
+    if (options.admission?.draining) return;
+    const stumbledAndFinished =
+      chain.outcome === "completed" &&
+      chain.execution.toolErrors !== null &&
+      chain.execution.toolErrors > 0;
+    if (!verdictIsExperience(verdict) && !stumbledAndFinished) return;
+    await learnFromChain(chain, routing, verdict);
+  }
+
+  /**
+   * One short call, on the default model, that may write a memory or revise an existing skill.
+   * Two tool hops at most. A call that uses no tool writes nothing, and nothing is posted to the
+   * transcript either way.
+   */
+  async function learnFromChain(
+    chain: NonNullable<ReturnType<Store["chainForReview"]>>,
+    routing: { baseUrl: string; apiKey: string; model: string },
+    verdict: { fault: string; direction: string; reason: string },
+  ): Promise<void> {
+    const written: { kind: "memory" | "skill"; label: string }[] = [];
+    const tools = toChatTools([REMEMBER, FORGET, UPDATE_SKILL], "zh");
+    const allowed = new Set(tools.map((tool) => tool.function.name));
+    let skills: { name: string; description: string }[] = [];
+    try {
+      skills = store.listSkills(chain.botId).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+      }));
+    } catch {
+      skills = [];
+    }
+    const messages: ChatMessage[] = [
+      { role: "system", content: ROUTE_LEARN_SYSTEM },
+      {
+        role: "user",
+        content: JSON.stringify(
+          routeLearnPayload({
+            message: chain.triggerMessage,
+            model: chain.model,
+            thinkingLevel: chain.thinkingLevel,
+            reply: chain.reply,
+            outcome: chain.outcome,
+            followUps: chain.followUps,
+            execution: {
+              hops: chain.execution.hops,
+              tool_calls: chain.execution.toolCalls,
+              tool_errors: chain.execution.toolErrors,
+              repeated_failures: chain.execution.repeatedFailures,
+              files_written: chain.execution.filesWritten,
+              fail_kind: chain.execution.failKind,
+              cost_usd_ticks: chain.execution.costUsdTicks,
+            },
+            verdict,
+            skills,
+          }),
+        ),
+      },
+    ];
+    for (let hop = 0; hop < 2; hop += 1) {
+      if (options.admission?.draining) return;
+      let result;
+      try {
+        result = await completions.judge({
+          baseUrl: routing.baseUrl,
+          apiKey: routing.apiKey,
+          model: routing.model,
+          messages,
+          tools,
+          signal: new AbortController().signal,
+        });
+      } catch {
+        return;
+      }
+      if (result.failKind && result.failKind !== "incomplete") break;
+      const calls = result.toolCalls.filter((call) => allowed.has(call.name));
+      if (calls.length === 0) break;
+      messages.push({
+        role: "assistant",
+        content: result.content,
+        tool_calls: calls,
+      });
+      for (const call of calls) {
+        let args: Record<string, unknown> = {};
+        try {
+          const parsed = JSON.parse(call.arguments) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            args = parsed as Record<string, unknown>;
+          }
+        } catch {
+          args = {};
+        }
+        const ran = await runCollabTool(
+          {
+            store,
+            botId: chain.botId,
+            sessionId: chain.sessionId,
+            turnId: chain.turnId,
+            parentId: null,
+            learnedChainId: chain.chainId,
+          },
+          call.name,
+          args,
+        );
+        for (const item of ran.emitted) {
+          if (item.kind === "memory") {
+            written.push({ kind: "memory", label: item.memory.subject });
+            publish({
+              event: "memory.upsert",
+              occurred_at: occurred(),
+              ...store.memoryWithLearning(item.memory),
+            });
+          } else if (item.kind === "memory_removed") {
+            publish({ event: "memory.removed", occurred_at: occurred(), id: item.id });
+          } else if (item.kind === "skill") {
+            written.push({ kind: "skill", label: item.skill.name });
+            publish({
+              event: "skill.upsert",
+              occurred_at: occurred(),
+              ...store.skillWithLearning(item.skill),
+            });
+          }
+        }
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: JSON.stringify(ran.ok ? { ok: true, data: ran.data } : { ok: false, error: ran.error }),
+        });
+      }
+    }
+    const kept = written.find((item) => item.kind === "memory") ?? written[0] ?? null;
+    try {
+      store.recordRouteLearning({
+        chainId: chain.chainId,
+        botId: chain.botId,
+        sessionId: chain.sessionId,
+        kind: kept?.kind ?? "none",
+        label: kept?.label ?? "",
+      });
+    } catch {
+      // the note is for the log; losing it does not undo what was written
     }
   }
 
@@ -408,6 +588,17 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     return { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model };
   }
 
+  /** The message a reviewed turn was opened by, trimmed to what the picker needs to recognise it. */
+  function triggerOf(turnId: string): string {
+    try {
+      const route = store.getTurnRoute(turnId);
+      if (!route) return "";
+      return store.getMessage(route.trigger_message_id).body;
+    } catch {
+      return "";
+    }
+  }
+
   /**
    * Asks a model what this message should run on. Everything that could go wrong — no endpoint, a
    * timeout, an answer naming something that does not exist — returns null and the rules take over.
@@ -448,12 +639,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         candidates,
         previous,
         pastReviews: store.recentRouteReviews(botId).map((row) => ({
+          message: triggerOf(row.turn_id),
+          signature: row.signature,
           model: row.model,
           thinkingLevel: row.thinking_level,
           direction: row.direction,
           rounds: row.rounds,
           reason: row.reason,
         })),
+        cleanCompletions: store.cleanCompletions(botId),
       });
     } catch {
       return null;
@@ -586,8 +780,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       const toRedirect = sessionKind === "group" ? livesForBot : livesForBot.slice(0, 1);
       for (const current of toRedirect) {
+        const counted = executionOf(lives.get(current.id));
         abortLive(current.id);
-        const redirected = store.redirectTurn(current.id);
+        const redirected = store.redirectTurn(current.id, counted);
         publishTurn(redirected);
       }
     }
@@ -615,6 +810,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       toolNames: new Set(),
       spoke: false,
       drainRejection: false,
+      hops: 0,
+      toolCalls: 0,
+      toolErrors: 0,
+      repeatedFailures: 0,
+      failedCalls: new Set(),
     };
     store.afterCommit(() => {
       lives.set(turn.id, live);
@@ -755,6 +955,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         drop();
         return;
       }
+      live.hops += 1;
       if (current.status !== "running") {
         drop();
         return;
@@ -876,7 +1077,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const closer = isNoWorkCloser(result.content);
       const rawBody = closer ? "" : result.content;
       const message = publishCitedBotMessage(current, live, turnId, rawBody);
-      const completed = store.setTurnStatus(turnId, "completed");
+      const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
       lives.delete(turnId);
       publishTurn(completed, null);
       if (message) {
@@ -904,7 +1105,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (live && !live.spoke && live.writtenPaths.length > 0) {
       publishCitedBotMessage(current, live, turnId, "");
     }
-    const completed = store.setTurnStatus(turnId, "completed");
+    const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
     lives.delete(turnId);
     publishTurn(completed, null);
   }
@@ -952,6 +1153,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     let spoke = false;
     for (const call of calls) {
       if (!active(turnId, live)) return "wait";
+      live.toolCalls += 1;
+      const fingerprint = `${call.name}\n${call.arguments}`;
+      if (live.failedCalls.has(fingerprint)) live.repeatedFailures += 1;
       let args: Record<string, unknown> = {};
       try {
         const parsed = JSON.parse(call.arguments) as unknown;
@@ -1043,6 +1247,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         const payload = resolved.ok
           ? { ok: true, data: resolved.data }
           : { ok: false, error: resolved.error };
+        if (!resolved.ok) {
+          live.toolErrors += 1;
+          live.failedCalls.add(fingerprint);
+        }
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
@@ -1061,6 +1269,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const payload = result.ok
         ? { ok: true, data: result.data }
         : { ok: false, error: result.error };
+      if (!result.ok) {
+        live.toolErrors += 1;
+        live.failedCalls.add(fingerprint);
+      }
       live.loop.push({
         role: "tool",
         tool_call_id: call.id,
@@ -1225,6 +1437,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     });
   }
 
+  /**
+   * The counts a live turn has accumulated. Null when this process was not running the turn, so
+   * the route row stays unknown instead of claiming a clean zero.
+   */
+  function executionOf(live: Live | undefined): TurnExecution | null {
+    if (!live) return null;
+    return {
+      hops: live.hops,
+      toolCalls: live.toolCalls,
+      toolErrors: live.toolErrors,
+      repeatedFailures: live.repeatedFailures,
+      filesWritten: live.writtenPaths.length,
+    };
+  }
+
   /** A Bot's `@token` matched nobody present: say so in the transcript so the miss is visible. */
   async function noteUnknownMentions(message: Message, tokens: string[], members: string[]): Promise<void> {
     const locale = (await store.settings()).locale;
@@ -1244,7 +1471,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const { note, interrupted } = store.transaction(() => {
       store.db.run("UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'", [isoNow(), current.id]);
       store.markInterruptPending(current.bot_id);
-      const interrupted = store.setTurnStatus(current.id, "interrupted");
+      const interrupted = store.setTurnStatus(current.id, "interrupted", executionOf(lives.get(current.id)));
       const note = store.insertMessage({ sessionId: current.session_id, turnId: current.id,
         kind: "system", author: current.bot_id, body: INTERRUPT_NOTE_BODY });
       return { note, interrupted };
@@ -1268,7 +1495,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         body: completionFailBody(locale, kind),
       });
       store.db.run("UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'", [isoNow(), turnId]);
-      store.finishTurnRoute(turnId, "failed", kind);
+      store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
       return { message, completed: store.setTurnStatus(turnId, "completed") };
     });
     publishMessage(message);
@@ -1675,6 +1902,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       );
     },
     sweepStaleChains,
+    executionOf(turnId) {
+      return executionOf(lives.get(turnId));
+    },
     sweepToolResults,
     sweepStalledTurns,
     fireRoutine,
@@ -1752,7 +1982,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       });
     },
     stop(turnId, opts) {
-      const turn = store.stopTurn(turnId, opts);
+      const turn = store.stopTurn(turnId, {
+        ...opts,
+        execution: turnId ? executionOf(lives.get(turnId)) : null,
+      });
       if (turn) {
         abortLive(turn.id);
         publishTurn(turn, null);

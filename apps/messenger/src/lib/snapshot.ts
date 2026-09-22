@@ -15,6 +15,7 @@ import {
   type Message,
   type Provider,
   type PendingJudgement,
+  type RouteLearning,
   type RouteRecord,
   type RouteReview,
   type SearchHit,
@@ -45,6 +46,8 @@ export type Snapshot = {
   routes: RouteRecord[];
   /** What the review made of each closed correction chain here. */
   routeReviews: RouteReview[];
+  /** What a learning hop wrote for a chain in the open session. */
+  routeLearnings: RouteLearning[];
   approvals: Approval[];
   searchHits: SearchHit[];
 };
@@ -80,6 +83,7 @@ export function emptySnapshot(): Snapshot {
     pendingJudgements: [],
     routes: [],
     routeReviews: [],
+    routeLearnings: [],
     approvals: [],
     searchHits: [],
   };
@@ -150,7 +154,8 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
         routes: snapshot.routes.filter((r) => r.session_id !== event.id),
-        routeReviews: [],
+        routeReviews: snapshot.routeReviews.filter((r) => r.session_id !== event.id),
+        routeLearnings: snapshot.routeLearnings.filter((r) => r.session_id !== event.id),
       };
     }
     case "session.cleared": {
@@ -164,7 +169,8 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
         routes: snapshot.routes.filter((r) => r.session_id !== event.id),
-        routeReviews: [],
+        routeReviews: snapshot.routeReviews.filter((r) => r.session_id !== event.id),
+        routeLearnings: snapshot.routeLearnings.filter((r) => r.session_id !== event.id),
       };
     }
     case "message.upsert": {

@@ -75,6 +75,11 @@ export type ToolCtx = {
   botId: string;
   sessionId: string;
   turnId: string;
+  /**
+   * Set on the learning hop. Remember then stamps the chain it came from, and create_skill is
+   * refused: one incident becomes a memory, and only an existing skill may be revised.
+   */
+  learnedChainId?: string | null;
   parentId: string | null;
   approved?: boolean;
   approvalApiKey?: string;
@@ -662,6 +667,12 @@ export function staleMcpToolNames(body: string, available: ReadonlySet<string> |
 }
 
 function createSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  if (ctx.learnedChainId) {
+    return fail(
+      "invalid_args",
+      "a learning hop records one incident as a memory; revise an existing skill with update_skill instead of creating one",
+    );
+  }
   const name = requireString(args.name, "name");
   const description = requireString(args.description, "description");
   const body = requireString(args.body, "body");
@@ -705,7 +716,11 @@ function updateSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   ) {
     return fail("invalid_args", "name, description, body, enabled, or uses is required");
   }
-  const skill = ctx.store.patchSkill(current.skill.id, patch);
+  const skill = ctx.store.patchSkill(
+    current.skill.id,
+    patch,
+    ctx.learnedChainId ? { learnedChainId: ctx.learnedChainId } : {},
+  );
   return { ok: true, data: serializeSkill(skill), emitted: [{ kind: "skill", skill }] };
 }
 
@@ -728,6 +743,7 @@ function remember(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     body: requireString(args.body, "body"),
     source_session_id: origin?.sessionId ?? ctx.sessionId,
     source_message_id: origin?.messageId ?? null,
+    learned_chain_id: ctx.learnedChainId ?? null,
   });
   return { ok: true, data: serializeMemory(memory), emitted: [{ kind: "memory", memory }] };
 }

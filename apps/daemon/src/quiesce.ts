@@ -84,7 +84,7 @@ export class Quiesce {
   force(): DrainState {
     this.begin();
     this.engine.abortAll();
-    this.store.interruptRunningTurns();
+    this.store.interruptRunningTurns((turnId) => this.engine.executionOf(turnId));
     this.forced = true;
     this.check();
     return this.state();

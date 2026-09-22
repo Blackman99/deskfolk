@@ -230,6 +230,7 @@ export type SkillRow = {
   enabled: number;
   created_at: string;
   updated_at: string;
+  learned_chain_id?: string | null;
 };
 
 export type MemoryRow = {
@@ -239,6 +240,7 @@ export type MemoryRow = {
   body: string;
   source_session_id: string | null;
   source_message_id: string | null;
+  learned_chain_id?: string | null;
   enabled: number;
   created_at: string;
   updated_at: string;

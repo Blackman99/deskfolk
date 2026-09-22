@@ -61,6 +61,11 @@ function record(over: Partial<RouteRecord> = {}): RouteRecord {
     chain_id: "t1",
     created_at: "2026-09-18T01:00:00.000Z",
     finished_at: "2026-09-18T01:00:12.000Z",
+    hops: null,
+    tool_calls: null,
+    tool_errors: null,
+    repeated_failures: null,
+    files_written: null,
     feedback: [],
     ...over,
   };
@@ -203,6 +208,7 @@ test("a verdict shows on the turn that started the chain, and only blames the mo
   const review = {
     chain_id: "t1",
     turn_id: "t1",
+    session_id: "s1",
     bot_id: "b1",
     signature: "coding",
     model: "gpt-5",
@@ -211,6 +217,8 @@ test("a verdict shows on the turn that started the chain, and only blames the mo
     confidence: 0.9,
     reason: "反复改不对",
     created_at: "2026-09-18T02:00:00.000Z",
+    retired_at: null,
+    effect: null,
   };
   const [blamed] = routeLogRows([record()], {
     bots: BOTS,
@@ -224,6 +232,9 @@ test("a verdict shows on the turn that started the chain, and only blames the mo
     rounds: 3,
     reason: "反复改不对",
     blamedModel: true,
+    effect: null,
+    cleaner: false,
+    retired: false,
   });
 
   // The @-mention correction case: the request was the problem, so there is no direction to give.
@@ -243,4 +254,49 @@ test("a verdict shows on the turn that started the chain, and only blames the mo
     labels: LABELS,
   });
   expect(none.review).toBeNull();
+});
+
+test("a row carries the counted work, a retired review, and what the chain remembered", () => {
+  const [row] = routeLogRows(
+    [record({ hops: 4, tool_errors: 2, repeated_failures: 1, files_written: 0 })],
+    {
+      bots: BOTS,
+      providers: [],
+      reviews: [
+        {
+          chain_id: "t1",
+          turn_id: "t1",
+          session_id: "s1",
+          bot_id: "b1",
+          signature: "coding",
+          model: "gpt-5",
+          thinking_level: "medium",
+          fault: "model",
+          direction: "stronger",
+          rounds: 2,
+          confidence: 0.9,
+          reason: "答得浅",
+          created_at: "2026-09-18T02:00:00.000Z",
+          retired_at: "2026-09-18T03:00:00.000Z",
+          effect: { followed: "followed", cleaner: false },
+        },
+      ],
+      learnings: [
+        {
+          chain_id: "t1",
+          bot_id: "b1",
+          session_id: "s1",
+          kind: "memory",
+          label: "重构先读现有函数",
+          created_at: "2026-09-18T02:00:00.000Z",
+          outcome: { later: 0, shorter: 0 },
+        },
+      ],
+      labels: LABELS,
+    },
+  );
+  expect(row.hops).toBe(4);
+  expect(row.toolErrors).toBe(2);
+  expect(row.review).toMatchObject({ retired: true, effect: "followed", cleaner: false });
+  expect(row.learning).toEqual({ kind: "memory", label: "重构先读现有函数" });
 });

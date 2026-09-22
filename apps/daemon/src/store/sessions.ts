@@ -210,6 +210,7 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     );
     // Reviews FK the turn and session; leaving them rolls the whole delete back.
     ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
@@ -265,6 +266,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     );
     // Reviews FK the turn and session; leaving them rolls the whole clear back.
     ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);

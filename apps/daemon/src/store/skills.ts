@@ -1,4 +1,5 @@
 import { type Skill } from "@real-bot/protocol";
+import { learningOutcome } from "./routing";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { codePointCount } from "../text";
@@ -71,6 +72,16 @@ export function parseSkillUsesJson(raw: string | null | undefined): string[] {
   }
 }
 
+/** Fills the learning counts a snapshot shows. A skill a turn wrote itself stays null. */
+export function withLearning(ctx: StoreContext, skill: Skill): Skill {
+  const chain = ctx.db
+    .query<{ learned_chain_id: string | null }, [string]>(`SELECT learned_chain_id FROM skills WHERE id = ?`)
+    .get(skill.id);
+  if (!chain?.learned_chain_id) return skill;
+  const outcome = learningOutcome(ctx, { botId: skill.bot_id, chainId: chain.learned_chain_id });
+  return outcome ? { ...skill, learning: outcome } : skill;
+}
+
 export function toSkill(row: SkillRow): Skill {
   return {
     id: row.id,
@@ -80,6 +91,7 @@ export function toSkill(row: SkillRow): Skill {
     body: row.body,
     uses: parseSkillUsesJson(row.uses),
     enabled: row.enabled === 1,
+    learning: null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -151,6 +163,7 @@ export function patchSkill(
   ctx: StoreContext,
   id: string,
   patch: Partial<{ name: string; description: string; body: string; uses: string[]; enabled: boolean }>,
+  opts: { learnedChainId?: string | null } = {},
 ): Skill {
   const current = ctx.db.query<SkillRow, [string]>(`SELECT * FROM skills WHERE id = ?`).get(id);
   if (!current) throw new HttpError(404, "not_found", "skill not found");
@@ -164,9 +177,10 @@ export function patchSkill(
     assertSkillNameFree(ctx, current.bot_id, name, id);
   }
   const now = isoNow();
+  const chain = opts.learnedChainId === undefined ? (current.learned_chain_id ?? null) : opts.learnedChainId;
   ctx.db.run(
-    `UPDATE skills SET name = ?, description = ?, body = ?, uses = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-    [name, description, body, uses, enabled, now, id],
+    `UPDATE skills SET name = ?, description = ?, body = ?, uses = ?, enabled = ?, learned_chain_id = ?, updated_at = ? WHERE id = ?`,
+    [name, description, body, uses, enabled, chain, now, id],
   );
   return getSkill(ctx, id);
 }

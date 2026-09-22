@@ -10,12 +10,17 @@
  * When the chain closes, the engine has it reviewed and the verdict lands in `route_reviews`.
  * Only a verdict that blames the model is kept, and it is kept as a conclusion, not a score: the
  * next pick reads the recent ones and weighs them itself.
+ *
+ * Closing a turn also writes how the work went — hops, tool calls, tool errors, repeated
+ * failures, files written. Those counts are null when the process stopped before it could count,
+ * and a review treats null as unknown rather than as a clean run.
  */
-import { USER_MEMBER, type RouteFeedback, type RouteOutcome, type RouteRecord, type ThinkingLevel } from "@real-bot/protocol";
+import { USER_MEMBER, type RouteFeedback, type RouteOutcome, type RouteRecord, type RouteReviewEffect, type ThinkingLevel } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { parseMentions } from "../mentions";
 import { candidateRows, decideCompletion, type CatalogEntry, type RouteDecision } from "../route-decision";
 import { REVIEW_CONFIDENCE_FLOOR, type RouteReviewVerdict } from "../route-agent";
+import { chainIsCleaner, choiceFollowed, shouldRetire, taskIsShorter, type ChainWork, type ReviewSubject } from "../route-learning";
 import { catalogEntries } from "./providers";
 import { defaultProviderId, providerRows, type StoreContext, type TurnRow } from "./shared";
 
@@ -34,6 +39,11 @@ type DecisionRow = {
   chain_id: string | null;
   created_at: string;
   finished_at: string | null;
+  hops: number | null;
+  tool_calls: number | null;
+  tool_errors: number | null;
+  repeated_failures: number | null;
+  files_written: number | null;
 };
 
 type FeedbackRow = {
@@ -167,23 +177,49 @@ export function staleOpenChains(
     .map((row) => row.chain_id);
 }
 
+/** Counts the engine kept while the turn ran. Absent means the process never got to count. */
+export type TurnExecution = {
+  hops: number;
+  toolCalls: number;
+  toolErrors: number;
+  repeatedFailures: number;
+  filesWritten: number;
+};
+
 /**
  * Closes the turn's decision with its outcome. The first outcome wins: a turn that failed is closed
  * as `failed` by the engine before its status flips to `completed`, so the later status hook does
  * not overwrite it with a success. Nothing is learned here — a completion failure is one input the
  * review weighs, not a score on its own.
+ *
+ * `execution` is written in the same update. A close that has no counts (a turn the engine was not
+ * running, or a process that died first) leaves the columns null.
  */
 export function finishTurnRoute(
   ctx: StoreContext,
   turnId: string,
   outcome: RouteOutcome,
   failKind: string | null = null,
+  execution: TurnExecution | null = null,
 ): void {
   const row = decisionRow(ctx, turnId);
   if (!row || row.outcome) return;
   ctx.db.run(
-    `UPDATE turn_route_decisions SET outcome = ?, fail_kind = ?, finished_at = ? WHERE turn_id = ? AND outcome IS NULL`,
-    [outcome, outcome === "failed" ? failKind : null, isoNow(), turnId],
+    `UPDATE turn_route_decisions
+     SET outcome = ?, fail_kind = ?, finished_at = ?,
+         hops = ?, tool_calls = ?, tool_errors = ?, repeated_failures = ?, files_written = ?
+     WHERE turn_id = ? AND outcome IS NULL`,
+    [
+      outcome,
+      outcome === "failed" ? failKind : null,
+      isoNow(),
+      execution?.hops ?? null,
+      execution?.toolCalls ?? null,
+      execution?.toolErrors ?? null,
+      execution?.repeatedFailures ?? null,
+      execution?.filesWritten ?? null,
+      turnId,
+    ],
   );
 }
 
@@ -246,6 +282,7 @@ export type RouteReviewRow = {
   confidence: number;
   reason: string;
   created_at: string;
+  retired_at: string | null;
 };
 
 /**
@@ -256,7 +293,7 @@ export function recentRouteReviews(ctx: StoreContext, botId: string, limit = 12)
   return ctx.db
     .query<RouteReviewRow, [string, number, number]>(
       `SELECT * FROM route_reviews
-       WHERE bot_id = ? AND fault = 'model' AND confidence >= ?
+       WHERE bot_id = ? AND fault = 'model' AND confidence >= ? AND retired_at IS NULL
        ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
     .all(botId, REVIEW_CONFIDENCE_FLOOR, limit);
@@ -298,6 +335,45 @@ export function previousDecisionFor(
   return { message: message.body, model: row.model, thinkingLevel: row.thinking_level };
 }
 
+/**
+ * Recent finishes the picker can treat as "this kind of message already worked at this size":
+ * completed, no tool errors, no user follow-up, at most one per message kind, newest first.
+ */
+export function cleanCompletions(
+  ctx: StoreContext,
+  botId: string,
+  limit = 4,
+): { message: string; signature: string; model: string; thinkingLevel: string }[] {
+  const rows = ctx.db
+    .query<DecisionRow, [string]>(
+      `SELECT * FROM turn_route_decisions
+       WHERE bot_id = ? AND outcome = 'completed' AND tool_errors = 0
+       ORDER BY created_at DESC, turn_id DESC`,
+    )
+    .all(botId);
+  const seen = new Set<string>();
+  const out: { message: string; signature: string; model: string; thinkingLevel: string }[] = [];
+  for (const row of rows) {
+    if (seen.has(row.signature) || out.length >= limit) continue;
+    const followed = ctx.db
+      .query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM route_feedback WHERE turn_id = ?`)
+      .get(row.turn_id);
+    if ((followed?.n ?? 0) > 0) continue;
+    const message = ctx.db
+      .query<{ body: string }, [string]>(`SELECT body FROM messages WHERE id = ?`)
+      .get(row.trigger_message_id);
+    if (!message) continue;
+    seen.add(row.signature);
+    out.push({
+      message: message.body,
+      signature: row.signature,
+      model: row.model,
+      thinkingLevel: row.thinking_level,
+    });
+  }
+  return out;
+}
+
 /** The models this turn may pick from, as the routing agent is shown them. */
 export function routeCandidates(
   ctx: StoreContext,
@@ -331,8 +407,8 @@ export function recordRouteReview(
   ctx.db.run(
     `INSERT INTO route_reviews (
        id, bot_id, chain_id, turn_id, session_id, signature, model, thinking_level,
-       fault, direction, rounds, confidence, reason, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       fault, direction, rounds, confidence, reason, created_at, retired_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(chain_id) DO NOTHING`,
     [
       ulid(),
@@ -351,11 +427,217 @@ export function recordRouteReview(
       isoNow(),
     ],
   );
+  // The new conclusion is itself the "later choice" for the one it follows.
+  weighOpenReviews(ctx, input.botId);
+}
+
+/**
+ * Recomputes, for this Bot, whether each still-active model conclusion was followed by a later
+ * same-kind choice the routing agent actually made, and whether that work was cleaner. Two follows
+ * that were not cleaner retire it. A choice the rules made (no agent reason) is unknown: a pinned
+ * Bot, or a fallback, did not follow the conclusion.
+ */
+export function weighOpenReviews(ctx: StoreContext, botId: string): void {
+  const reviews = ctx.db
+    .query<RouteReviewRow, [string, number]>(
+      `SELECT * FROM route_reviews
+       WHERE bot_id = ? AND fault = 'model' AND confidence >= ? AND retired_at IS NULL
+       ORDER BY created_at ASC, id ASC`,
+    )
+    .all(botId, REVIEW_CONFIDENCE_FLOOR);
+  if (reviews.length === 0) return;
+  const works = chainWorks(ctx, botId);
+  const now = isoNow();
+  for (const review of reviews) {
+    const followed = laterWorks(review, works).map((work) => ({
+      followed: work.agentPicked
+        ? choiceFollowed(subjectOf(review, works), followedChoice(ctx, review, work))
+        : ("unknown" as const),
+      cleaner: chainIsCleaner(subjectOf(review, works), work),
+    }));
+    if (shouldRetire(followed)) {
+      ctx.db.run(`UPDATE route_reviews SET retired_at = ? WHERE id = ? AND retired_at IS NULL`, [
+        now,
+        review.id,
+      ]);
+    }
+  }
+}
+
+/**
+ * Chains of the same kind that started after the reviewed chain. Compared on the chain's own
+ * start, not the review row's time: the turn that closes a chain is recorded before the review
+ * call comes back.
+ */
+function laterWorks(
+  review: RouteReviewRow,
+  works: readonly ChainWorkRow[],
+): ChainWorkRow[] {
+  const own = works.find((work) => work.chainId === review.chain_id);
+  const after = own?.createdAt ?? review.created_at;
+  return works.filter(
+    (work) =>
+      work.chainId !== review.chain_id &&
+      work.signature === review.signature &&
+      work.createdAt > after,
+  );
+}
+
+function subjectOf(review: RouteReviewRow, works: readonly ChainWorkRow[]): ReviewSubject {
+  const own = works.find((work) => work.chainId === review.chain_id);
+  return {
+    chainId: review.chain_id,
+    signature: review.signature,
+    model: review.model,
+    thinkingLevel: review.thinking_level,
+    direction: review.direction as ReviewSubject["direction"],
+    rounds: own?.rounds ?? review.rounds,
+    toolErrors: own?.toolErrors ?? null,
+  };
+}
+
+function followedChoice(
+  ctx: StoreContext,
+  review: RouteReviewRow,
+  work: ChainWork,
+): { model: string; thinkingLevel: string; price: number | null; reviewedPrice: number | null } {
+  const priceOf = (model: string): number | null => {
+    const rows = catalogEntries(ctx).filter((row) => row.name === model);
+    const priced = rows.find((row) => row.price !== null);
+    return priced?.price ?? null;
+  };
+  return {
+    model: work.model,
+    thinkingLevel: work.thinkingLevel,
+    price: priceOf(work.model),
+    reviewedPrice: priceOf(review.model),
+  };
+}
+
+/**
+ * One row per chain this Bot has closed, oldest first: the model its first turn ran, and the
+ * summed execution of every turn in it.
+ */
+type ChainWorkRow = ChainWork & { createdAt: string; agentPicked: boolean };
+
+function chainWorks(ctx: StoreContext, botId: string): ChainWorkRow[] {
+  const decisions = ctx.db
+    .query<DecisionRow, [string]>(
+      `SELECT * FROM turn_route_decisions
+       WHERE bot_id = ? AND chain_id IS NOT NULL
+       ORDER BY created_at ASC, turn_id ASC`,
+    )
+    .all(botId);
+  const byChain = new Map<string, DecisionRow[]>();
+  for (const row of decisions) {
+    const list = byChain.get(row.chain_id!) ?? [];
+    list.push(row);
+    byChain.set(row.chain_id!, list);
+  }
+  const out: ChainWorkRow[] = [];
+  for (const [chainId, rows] of byChain) {
+    const head = rows[0]!;
+    const execution = executionOf(rows, null);
+    const followUps = ctx.db
+      .query<{ n: number }, [string]>(
+        `SELECT COUNT(*) AS n FROM route_feedback WHERE turn_id IN (
+           SELECT turn_id FROM turn_route_decisions WHERE chain_id = ?
+         )`,
+      )
+      .get(chainId);
+    out.push({
+      chainId,
+      signature: head.signature,
+      model: head.model,
+      thinkingLevel: head.thinking_level,
+      hops: execution.hops,
+      toolErrors: execution.toolErrors,
+      rounds: followUps?.n ?? 0,
+      hardFailed: rows.some((row) => row.outcome === "failed" && (row.fail_kind === "refused" || row.fail_kind === "incomplete")),
+      createdAt: head.created_at,
+      agentPicked: Boolean(head.reason?.trim()),
+    });
+  }
+  return out;
+}
+
+/** The next same-kind chain after a review, and whether it followed and got cleaner. */
+export function reviewEffect(
+  ctx: StoreContext,
+  review: RouteReviewRow,
+): { followed: RouteReviewEffect; cleaner: boolean } | null {
+  const works = chainWorks(ctx, review.bot_id);
+  const later = laterWorks(review, works)[0];
+  if (!later) return null;
+  const subject = subjectOf(review, works);
+  return {
+    followed: later.agentPicked
+      ? choiceFollowed(subject, followedChoice(ctx, review, later))
+      : "unknown",
+    cleaner: chainIsCleaner(subject, later),
+  };
 }
 
 /** A deleted Bot takes its conclusions with it. Decisions stay on the turns for the record. */
 export function forgetBotRoutes(ctx: StoreContext, botId: string): void {
   ctx.db.run(`DELETE FROM route_reviews WHERE bot_id = ?`, [botId]);
+  ctx.db.run(`DELETE FROM route_learnings WHERE bot_id = ?`, [botId]);
+}
+
+export type RouteLearningRow = {
+  chain_id: string;
+  bot_id: string;
+  session_id: string;
+  kind: "memory" | "skill" | "none";
+  label: string;
+  created_at: string;
+};
+
+/** What the learning hop wrote for one chain. A second note for the same chain is ignored. */
+export function recordRouteLearning(
+  ctx: StoreContext,
+  input: { chainId: string; botId: string; sessionId: string; kind: RouteLearningRow["kind"]; label: string },
+): void {
+  ctx.db.run(
+    `INSERT INTO route_learnings (chain_id, bot_id, session_id, kind, label, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(chain_id) DO NOTHING`,
+    [input.chainId, input.botId, input.sessionId, input.kind, input.label, isoNow()],
+  );
+}
+
+/**
+ * How the same kind of task went after a learning hop wrote this memory or skill. Chains the hop
+ * did not count, and chains of another kind, are left out. Zero later chains is "no later task yet".
+ */
+export function learningOutcome(
+  ctx: StoreContext,
+  input: { botId: string; chainId: string },
+): { later: number; shorter: number } | null {
+  const works = chainWorks(ctx, input.botId);
+  const own = works.find((work) => work.chainId === input.chainId);
+  if (!own) return null;
+  const later = works.filter(
+    (work) => work.chainId !== own.chainId && work.signature === own.signature && work.createdAt > own.createdAt,
+  );
+  return {
+    later: later.length,
+    shorter: later.filter((work) =>
+      taskIsShorter(
+        { hops: own.hops, toolErrors: own.toolErrors },
+        { hops: work.hops, toolErrors: work.toolErrors },
+      ),
+    ).length,
+  };
+}
+
+/** Every learning note in a session, oldest first, for the model-choice log. */
+export function listSessionLearnings(ctx: StoreContext, sessionId: string): RouteLearningRow[] {
+  return ctx.db
+    .query<RouteLearningRow, [string]>(
+      `SELECT * FROM route_learnings WHERE session_id = ? ORDER BY created_at ASC, chain_id ASC`,
+    )
+    .all(sessionId);
 }
 
 /**
@@ -401,6 +683,16 @@ export type ChainForReview = {
   outcome: string;
   reply: string;
   followUps: string[];
+  /** Summed across the chain. Null when any turn was never counted. */
+  execution: {
+    hops: number | null;
+    toolCalls: number | null;
+    toolErrors: number | null;
+    repeatedFailures: number | null;
+    filesWritten: number | null;
+    failKind: string | null;
+    costUsdTicks: number | null;
+  };
 };
 
 /**
@@ -430,6 +722,11 @@ export function chainForReview(ctx: StoreContext, chainId: string): ChainForRevi
       `SELECT body FROM route_feedback WHERE turn_id IN (${placeholders}) ORDER BY created_at ASC, id ASC`,
     )
     .all(...turnIds);
+  const spend = ctx.db
+    .query<{ cost: number | null }, string[]>(
+      `SELECT SUM(cost_usd_ticks) AS cost FROM spend WHERE turn_id IN (${placeholders}) AND judgement_id IS NULL`,
+    )
+    .get(...turnIds);
   return {
     chainId,
     botId: head.bot_id,
@@ -442,6 +739,33 @@ export function chainForReview(ctx: StoreContext, chainId: string): ChainForRevi
     outcome: head.outcome ?? "running",
     reply: reply?.body ?? "",
     followUps: followUps.map((row) => row.body),
+    execution: executionOf(rows, spend?.cost ?? null),
+  };
+}
+
+/** Sums the counted columns. One uncounted turn makes the sum unknown rather than a partial zero. */
+function executionOf(
+  rows: readonly DecisionRow[],
+  costUsdTicks: number | null,
+): ChainForReview["execution"] {
+  const sum = (pick: (row: DecisionRow) => number | null): number | null => {
+    let total = 0;
+    for (const row of rows) {
+      const value = pick(row);
+      if (value === null) return null;
+      total += value;
+    }
+    return total;
+  };
+  const failed = [...rows].reverse().find((row) => row.outcome === "failed");
+  return {
+    hops: sum((row) => row.hops),
+    toolCalls: sum((row) => row.tool_calls),
+    toolErrors: sum((row) => row.tool_errors),
+    repeatedFailures: sum((row) => row.repeated_failures),
+    filesWritten: sum((row) => row.files_written),
+    failKind: failed?.fail_kind ?? null,
+    costUsdTicks,
   };
 }
 
@@ -533,6 +857,11 @@ function toRecord(row: DecisionRow, feedback: FeedbackRow[]): RouteRecord {
     chain_id: row.chain_id,
     created_at: row.created_at,
     finished_at: row.finished_at,
+    hops: row.hops,
+    tool_calls: row.tool_calls,
+    tool_errors: row.tool_errors,
+    repeated_failures: row.repeated_failures,
+    files_written: row.files_written,
     feedback: feedback.map(
       (item): RouteFeedback => ({ message_id: item.message_id, body: item.body, created_at: item.created_at }),
     ),

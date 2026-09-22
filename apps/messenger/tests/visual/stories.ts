@@ -165,6 +165,8 @@ const routeRows: RouteLogRow[] = [
 		outcome: 'completed',
 		outcomeLabel: '完成',
 		failReason: null,
+		toolErrors: 0,
+		hops: 2,
 		feedback: [],
 		reason: '这条要查证，挑了推理强的。',
 		review: {
@@ -172,8 +174,12 @@ const routeRows: RouteLogRow[] = [
 			directionLabel: null,
 			rounds: 1,
 			reason: '一次就答对了。',
-			blamedModel: false
+			blamedModel: false,
+			effect: null,
+			cleaner: false,
+			retired: false
 		},
+		learning: null,
 		createdAt: '2026-09-19T02:00:00.000Z',
 		finishedAt: '2026-09-19T02:00:04.200Z',
 		durationMs: 4200
@@ -193,6 +199,8 @@ const routeRows: RouteLogRow[] = [
 		outcome: 'failed',
 		outcomeLabel: '补全失败',
 		failReason: '连不上端点',
+		toolErrors: 1,
+		hops: 3,
 		feedback: [
 			{ message_id: 'msg-4', body: '这里不对，换个强一点的。', created_at: '2026-09-19T02:01:00.000Z' }
 		],
@@ -202,8 +210,12 @@ const routeRows: RouteLogRow[] = [
 			directionLabel: '换更强的',
 			rounds: 3,
 			reason: '同一件事来回三轮才对。',
-			blamedModel: true
+			blamedModel: true,
+			effect: 'followed',
+			cleaner: false,
+			retired: true
 		},
+		learning: { kind: 'memory', label: '先读再改' },
 		createdAt: '2026-09-19T02:00:06.000Z',
 		finishedAt: '2026-09-19T02:00:06.900Z',
 		durationMs: 900
@@ -289,6 +301,7 @@ const defs: Record<StoryName, Story> = {
 			contextMenuSessionId: null,
 			onOpenContextMenu: () => {},
 			onToggleWorkspace: () => {},
+			onOpenRoutines: () => {},
 			onOpenSettings: () => {},
 			onCreateBot: () => {},
 			onCreateGroup: () => {},
@@ -308,6 +321,7 @@ const defs: Record<StoryName, Story> = {
 			contextMenuSessionId: 'sess-2',
 			onOpenContextMenu: () => {},
 			onToggleWorkspace: () => {},
+			onOpenRoutines: () => {},
 			onOpenSettings: () => {},
 			onCreateBot: () => {},
 			onCreateGroup: () => {},
@@ -327,6 +341,7 @@ const defs: Record<StoryName, Story> = {
 			contextMenuSessionId: null,
 			onOpenContextMenu: () => {},
 			onToggleWorkspace: () => {},
+			onOpenRoutines: () => {},
 			onOpenSettings: () => {},
 			onCreateBot: () => {},
 			onCreateGroup: () => {},

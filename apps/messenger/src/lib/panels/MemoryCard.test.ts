@@ -52,6 +52,18 @@ test("a memory formed in a Bot to Bot direct says so", () => {
   close();
 });
 
+test("a memory a learning hop wrote says when no later task of its kind has run", () => {
+  const { host, close } = open([aMemory({ learning: { later: 0, shorter: 0 } })]);
+  expect(host.querySelector(".memory-learning")?.textContent).toBe(t.sidebar.learningNoneYet);
+  close();
+});
+
+test("a memory the Bot wrote during a turn shows no learning count", () => {
+  const { host, close } = open([aMemory()]);
+  expect(host.querySelector(".memory-learning")).toBeNull();
+  close();
+});
+
 test("a memory whose source is gone says so and offers no jump", () => {
   const { host, close } = open([aMemory({ source_session_id: null, source_message_id: null })]);
   expect(host.querySelector(".memory-origin-missing")?.textContent).toBe(t.sidebar.memoryOriginMissing);

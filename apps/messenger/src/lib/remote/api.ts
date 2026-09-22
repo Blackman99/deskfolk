@@ -23,6 +23,7 @@ import type {
   ProbeModelsResponse,
   Provider,
   ResolveApprovalRequest,
+  RouteLearning,
   RouteRecord,
   RouteReview,
   Routine,
@@ -371,9 +372,13 @@ export class RemoteApi {
   async judgements(sessionId: string): Promise<Judgement[]> {
     return (await this.get<ListPage<Judgement>>(`/v1/sessions/${sessionId}/judgements`)).items;
   }
-  async routes(sessionId: string): Promise<{ items: RouteRecord[]; reviews: RouteReview[] }> {
-    const page = await this.get<ListPage<RouteRecord> & { reviews?: RouteReview[] }>(`/v1/sessions/${sessionId}/routes`);
-    return { items: page.items, reviews: page.reviews ?? [] };
+  async routes(
+    sessionId: string,
+  ): Promise<{ items: RouteRecord[]; reviews: RouteReview[]; learnings: RouteLearning[] }> {
+    const page = await this.get<
+      ListPage<RouteRecord> & { reviews?: RouteReview[]; learnings?: RouteLearning[] }
+    >(`/v1/sessions/${sessionId}/routes`);
+    return { items: page.items, reviews: page.reviews ?? [], learnings: page.learnings ?? [] };
   }
   async composerSuggestions(sessionId: string, signal?: AbortSignal): Promise<ComposerSuggestion[]> {
     return (await this.get<ListPage<ComposerSuggestion>>(`/v1/sessions/${sessionId}/composer-suggestions`, signal)).items;

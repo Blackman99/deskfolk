@@ -28,8 +28,11 @@ function row(over: Partial<RouteLogRow> = {}): RouteLogRow {
     outcome: "completed",
     outcomeLabel: "完成",
     failReason: null,
+    toolErrors: null,
+    hops: null,
     feedback: [],
     reason: "要多步推理",
+    learning: null,
     review: null,
     createdAt: "2026-09-18T01:00:00.000Z",
     finishedAt: "2026-09-18T01:00:12.000Z",
@@ -60,6 +63,9 @@ const reviewer = row({
     rounds: 3,
     reason: "反复改不对",
     blamedModel: true,
+    effect: "followed",
+    cleaner: false,
+    retired: true,
   },
 });
 const live = row({
@@ -149,9 +155,13 @@ test("the feedback and blamed-model flags keep only those rows", () => {
       rounds: 1,
       reason: "点名写错了",
       blamedModel: false,
+      effect: null,
+      cleaner: false,
+      retired: false,
     },
   });
   expect(filterRouteLogRows([spared], filter({ blamedModel: true }))).toEqual([]);
+  expect(filterRouteLogRows(ROWS, filter({ retired: true })).map((r) => r.turnId)).toEqual(["t2"]);
 });
 
 test("facet counts come from the whole session, in a stable order", () => {

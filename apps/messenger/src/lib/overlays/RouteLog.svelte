@@ -7,6 +7,7 @@
 	import type { RouteLogRow } from './route-log.ts';
 	import {
 		blamedRowCount,
+		retiredRowCount,
 		emptyRouteLogFilter,
 		facetTriggerLabel,
 		feedbackRowCount,
@@ -52,6 +53,7 @@
 	);
 	const feedbackCount = $derived(feedbackRowCount(rows));
 	const blamedCount = $derived(blamedRowCount(rows));
+	const retiredCount = $derived(retiredRowCount(rows));
 
 	/** The gap under each row; it belongs to the row's pitch when the window does its arithmetic. */
 	const ROW_GAP_PX = 8;
@@ -285,6 +287,18 @@
 							<span class="route-toggle-badge mono">{blamedCount}</span>
 						{/if}
 					</button>
+					<button
+						type="button"
+						class="route-toggle-chip is-retired"
+						class:is-active={filter.retired}
+						aria-pressed={filter.retired}
+						onclick={() => setFilter({ ...filter, retired: !filter.retired })}
+					>
+						<span>{t.routes.filterRetired}</span>
+						{#if retiredCount > 0}
+							<span class="route-toggle-badge mono">{retiredCount}</span>
+						{/if}
+					</button>
 				</div>
 			</div>
 			<p class="muted route-log-hint">{t.routes.hint}</p>
@@ -338,6 +352,9 @@
 									{#if row.durationMs !== null}
 										<span class="route-duration mono text-10p5 text-muted-light">{formatDurationMs(row.durationMs)}</span>
 									{/if}
+									{#if row.hops !== null && row.toolErrors !== null}
+										<span class="route-duration mono text-10p5 text-muted-light">{t.routes.execution(row.hops, row.toolErrors)}</span>
+									{/if}
 								</span>
 								{#if row.reason}
 									<span class="route-why">
@@ -360,6 +377,22 @@
 										{#if row.review.reason}
 											<span class="route-review-reason">{row.review.reason}</span>
 										{/if}
+										{#if row.review.retired}
+											<span class="route-review-effect">{t.routes.effectRetired}</span>
+										{:else if row.review.effect === "unknown"}
+											<span class="route-review-effect">{t.routes.effectUnused}</span>
+										{:else if row.review.effect === "followed"}
+											<span class="route-review-effect">{t.routes.effectFollowed}{row.review.cleaner ? ` · ${t.routes.effectCleaner}` : ""}</span>
+										{/if}
+									</span>
+								{/if}
+								{#if row.learning}
+									<span class="route-learning">
+										{row.learning.kind === "memory"
+											? t.routes.learnedMemory(row.learning.label)
+											: row.learning.kind === "skill"
+												? t.routes.learnedSkill(row.learning.label)
+												: t.routes.learnedNone}
 									</span>
 								{/if}
 								{#if row.failReason}
@@ -1075,7 +1108,9 @@
 	  color: var(--muted);
 	}
 
-	.route-review-reason {
+	.route-review-reason,
+	.route-review-effect,
+	.route-learning {
 	  color: var(--ink-secondary);
 	  overflow-wrap: anywhere;
 	}

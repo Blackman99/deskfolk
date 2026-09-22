@@ -2,13 +2,13 @@ import type { ClientEvent, Judgement, Spend } from "@real-bot/protocol";
 import { listApprovals, listAllowRules } from "./approvals";
 import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
-import { listMemories } from "./memories";
+import { listMemories, withLearning as memoryWithLearning } from "./memories";
 import { getMessage } from "./messages";
 import { providersCached } from "./providers";
 import { listRoutines } from "./routines";
 import { listSessions } from "./sessions";
 import { settingsCached } from "./settings";
-import { listSkills } from "./skills";
+import { listSkills, withLearning as skillWithLearning } from "./skills";
 import { toBot, type BotRow, type StoreContext } from "./shared";
 import { getTurn } from "./turns";
 
@@ -112,12 +112,12 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       }
       case "skills": {
         const row = listSkills(ctx).find((r) => r.id === id);
-        out.push(row ? { event: "skill.upsert", occurred_at, ...row } : { event: "skill.removed", occurred_at, id });
+        out.push(row ? { event: "skill.upsert", occurred_at, ...skillWithLearning(ctx, row) } : { event: "skill.removed", occurred_at, id });
         break;
       }
       case "memories": {
         const row = listMemories(ctx).find((r) => r.id === id);
-        out.push(row ? { event: "memory.upsert", occurred_at, ...row } : { event: "memory.removed", occurred_at, id });
+        out.push(row ? { event: "memory.upsert", occurred_at, ...memoryWithLearning(ctx, row) } : { event: "memory.removed", occurred_at, id });
         break;
       }
       case "routines": {

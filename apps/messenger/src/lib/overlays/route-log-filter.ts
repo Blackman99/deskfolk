@@ -27,6 +27,7 @@ export type RouteLogFilter = {
   providers: readonly string[];
   hasFeedback: boolean;
   blamedModel: boolean;
+  retired: boolean;
 };
 
 export type RouteLogFacetOption<T extends string = string> = {
@@ -53,6 +54,7 @@ export function emptyRouteLogFilter(): RouteLogFilter {
     providers: [],
     hasFeedback: false,
     blamedModel: false,
+    retired: false,
   };
 }
 
@@ -66,7 +68,8 @@ export function routeLogFilterActive(filter: RouteLogFilter): boolean {
     filter.signatures.length > 0 ||
     filter.providers.length > 0 ||
     filter.hasFeedback ||
-    filter.blamedModel
+    filter.blamedModel ||
+    filter.retired
   );
 }
 
@@ -130,6 +133,7 @@ export function filterRouteLogRows(
     }
     if (filter.hasFeedback && row.feedback.length === 0) return false;
     if (filter.blamedModel && !row.review?.blamedModel) return false;
+    if (filter.retired && !row.review?.retired) return false;
     if (query.length > 0 && !rowHaystack(row).includes(query)) return false;
     return true;
   });
@@ -165,6 +169,10 @@ export function blamedRowCount(rows: readonly RouteLogRow[]): number {
   return rows.reduce((n, row) => n + (row.review?.blamedModel ? 1 : 0), 0);
 }
 
+export function retiredRowCount(rows: readonly RouteLogRow[]): number {
+  return rows.reduce((n, row) => n + (row.review?.retired ? 1 : 0), 0);
+}
+
 function rowHaystack(row: RouteLogRow): string {
   const parts = [
     row.botName,
@@ -181,6 +189,7 @@ function rowHaystack(row: RouteLogRow): string {
     row.review?.faultLabel,
     row.review?.directionLabel,
     row.review?.reason,
+    row.learning?.label,
     ...row.feedback.map((note) => note.body),
   ];
   return parts

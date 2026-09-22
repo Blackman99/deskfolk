@@ -2,7 +2,7 @@ import { INTERRUPT_NOTE_BODY, type RouteOutcome, type Turn } from "@real-bot/pro
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
-import { finishTurnRoute } from "./routing";
+import { finishTurnRoute, type TurnExecution } from "./routing";
 import { isPresent } from "./sessions";
 import { resolveTurnTask, taskOfTurn } from "./tasks";
 import {
@@ -78,7 +78,12 @@ export function listLiveTurns(
   return ctx.db.query<TurnRow, string[]>(sql).all(...args).map((row) => toTurn(row));
 }
 
-export function setTurnStatus(ctx: StoreContext, id: string, status: Turn["status"]): Turn {
+export function setTurnStatus(
+  ctx: StoreContext,
+  id: string,
+  status: Turn["status"],
+  execution: TurnExecution | null = null,
+): Turn {
   const row = ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(id);
   if (!row) throw new HttpError(404, "not_found", "turn not found");
   const now = isoNow();
@@ -87,7 +92,7 @@ export function setTurnStatus(ctx: StoreContext, id: string, status: Turn["statu
     [status, now, now, id],
   );
   const outcome = outcomeFor(status);
-  if (outcome) finishTurnRoute(ctx, id, outcome);
+  if (outcome) finishTurnRoute(ctx, id, outcome, null, execution);
   return getTurn(ctx, id);
 }
 
@@ -114,7 +119,7 @@ export function touchTurn(ctx: StoreContext, id: string): Turn {
   return getTurn(ctx, id);
 }
 
-export function redirectTurn(ctx: StoreContext, id: string): Turn {
+export function redirectTurn(ctx: StoreContext, id: string, execution: TurnExecution | null = null): Turn {
   const row = ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(id);
   if (!row) throw new HttpError(404, "not_found", "turn not found");
   if (!isLive(row.status)) return toTurn(row);
@@ -128,7 +133,7 @@ export function redirectTurn(ctx: StoreContext, id: string): Turn {
       `UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'`,
       [now, id],
     );
-    finishTurnRoute(ctx, id, "redirected");
+    finishTurnRoute(ctx, id, "redirected", null, execution);
   })();
   return getTurn(ctx, id);
 }
@@ -156,7 +161,7 @@ export function recoverInterruptedTurns(ctx: StoreContext): void {
 export function stopTurn(
   ctx: StoreContext,
   turnId?: string,
-  opts: { allowGroup?: boolean } = {},
+  opts: { allowGroup?: boolean; execution?: TurnExecution | null } = {},
 ): Turn | null {
   const row = turnId
     ? ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(turnId)
@@ -195,12 +200,15 @@ export function stopTurn(
       `UPDATE approvals SET status = 'voided', resolved_at = ? WHERE turn_id = ? AND status = 'pending'`,
       [now, row.id],
     );
-    finishTurnRoute(ctx, row.id, "stopped");
+    finishTurnRoute(ctx, row.id, "stopped", null, opts.execution ?? null);
   })();
   return { ...row, status: "stopped", updated_at: now, partial_text: null };
 }
 
-export function interruptRunningTurns(ctx: StoreContext): void {
+export function interruptRunningTurns(
+  ctx: StoreContext,
+  executionFor: (turnId: string) => TurnExecution | null = () => null,
+): void {
   const now = isoNow();
   const live = ctx.db
     .query<TurnRow, []>(
@@ -223,7 +231,7 @@ export function interruptRunningTurns(ctx: StoreContext): void {
         [ulid(), turn.session_id, turn.id, turn.bot_id, INTERRUPT_NOTE_BODY, turn.task_id, now],
       );
       markInterruptPending(ctx, turn.bot_id);
-      finishTurnRoute(ctx, turn.id, "interrupted");
+      finishTurnRoute(ctx, turn.id, "interrupted", null, executionFor(turn.id));
     }
   })();
 }

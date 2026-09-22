@@ -61,7 +61,7 @@ async function harness(options: { mcp?: McpHost; complete?: CompletionsClient["c
         if (options.complete) return options.complete(request);
         return requests.length === 1 ? first.promise : answer();
       },
-      async judge(request) { return options.judge ? options.judge(request) : { content: "{}", hadToolCalls: false, usage: null, failKind: null }; },
+      async judge(request) { return options.judge ? options.judge(request) : { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null }; },
     },
   });
   const quiesce = new Quiesce(store, engine, admission, null);
@@ -298,14 +298,14 @@ test("a pending group join is discarded during drain before persisting its judge
   const held = deferred<Awaited<ReturnType<CompletionsClient["judge"]>>>();
   let calls = 0;
   const h = await harness({ judge: async () => { calls++; return held.promise; } });
-  cleanup.push(() => held.resolve({ content: "{}", hadToolCalls: false, usage: null, failKind: null }));
+  cleanup.push(() => held.resolve({ content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null }));
   const other = h.store.createBot({ name: "Other", duties: "help", boundaries: "stay" });
   const group = h.store.createGroup({ name: "Group", members: [h.created.bot.id, other.bot.id] });
   const trigger = h.store.postMessage(group.id, { body: "Does anyone know?" });
   const pending = h.engine.handleInboundMessage(trigger);
   await until(() => calls === 2);
   h.quiesce.begin();
-  held.resolve({ content: '{"decision":"join","reason":"help"}', hadToolCalls: false, usage: null, failKind: null });
+  held.resolve({ content: '{"decision":"join","reason":"help"}', toolCalls: [], hadToolCalls: false, usage: null, failKind: null });
   await bounded(pending);
   expect(h.store.listLiveTurns()).toEqual([]);
   expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM judgements").get()!.n).toBe(0);

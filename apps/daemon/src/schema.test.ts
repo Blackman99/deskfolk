@@ -48,6 +48,7 @@ describe("schema", () => {
       "request_receipts",
       "route_feedback",
       "route_learned",
+      "route_learnings",
       "route_reviews",
       "routines",
       "session_participants",
@@ -599,7 +600,13 @@ describe("schema", () => {
     const created = first.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const { decision, turn } = decidedTurn(first, created.direct_session.id, created.bot.id);
     expect(decision).toMatchObject({ model: "code-pro", thinkingLevel: "medium" });
-    first.setTurnStatus(turn.id, "completed");
+    first.setTurnStatus(turn.id, "completed", {
+      hops: 3,
+      toolCalls: 2,
+      toolErrors: 1,
+      repeatedFailures: 0,
+      filesWritten: 1,
+    });
     const followUp = first.insertMessage({
       sessionId: created.direct_session.id,
       kind: "user",
@@ -637,6 +644,11 @@ describe("schema", () => {
       provider_id: providers[0]!.id,
       outcome: "completed",
       fail_kind: null,
+      hops: 3,
+      tool_calls: 2,
+      tool_errors: 1,
+      repeated_failures: 0,
+      files_written: 1,
       feedback: [{ message_id: followUp.id, body: "这里有 bug，选的模型不对" }],
     });
     expect(record?.finished_at).not.toBeNull();
@@ -743,6 +755,8 @@ describe("schema", () => {
     expect(chain.turnId).toBe(first.turn.id);
     expect(chain.reply).toBe("初稿");
     expect(chain.followUps).toEqual(["这里不对", "还是不行"]);
+    // Neither turn was counted, so the review is told it does not know rather than shown a zero.
+    expect(chain.execution.toolErrors).toBeNull();
 
     store.recordRouteReview({
       botId: writer.bot.id,
@@ -757,6 +771,52 @@ describe("schema", () => {
     // A reviewed chain is closed: the next turn starts a new one.
     expect(store.openChain(session, writer.bot.id)).toBeNull();
     expect(store.recentRouteReviews(writer.bot.id)).toHaveLength(1);
+    store.close();
+  });
+
+  test("a conclusion leaves the picker after two same-kind choices follow it and stay messy", async () => {
+    const store = await storeWithCodingCatalog();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const execution = { hops: 2, toolCalls: 2, toolErrors: 2, repeatedFailures: 1, filesWritten: 0 };
+
+    const reviewed = decidedTurn(store, session, writer.bot.id);
+    store.db.run(`UPDATE turn_route_decisions SET reason = ? WHERE turn_id = ?`, ["写代码", reviewed.turn.id]);
+    store.setTurnStatus(reviewed.turn.id, "completed", execution);
+    store.recordRouteReview({
+      botId: writer.bot.id,
+      chainId: reviewed.turn.id,
+      turnId: reviewed.turn.id,
+      sessionId: session,
+      signature: reviewed.decision!.signature,
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "model", direction: "stronger", rounds: 2, confidence: 0.9, reason: "答得浅" },
+    });
+
+    // Same kind, a heavier level, and still just as many errors: followed, not cleaner.
+    // The follow-up is recorded before the chain closes, which is when the weighing runs.
+    for (const level of ["high", "high"] as const) {
+      const next = decidedTurn(store, session, writer.bot.id, TASK, { model: "code-pro", thinkingLevel: level });
+      store.db.run(`UPDATE turn_route_decisions SET reason = ? WHERE turn_id = ?`, ["更重一档", next.turn.id]);
+      store.setTurnStatus(next.turn.id, "completed", execution);
+      const followUp = store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "还是不对" });
+      expect(store.collectRouteFeedback(followUp)).toBe(true);
+      store.recordRouteReview({
+        botId: writer.bot.id,
+        chainId: next.turn.id,
+        turnId: next.turn.id,
+        sessionId: session,
+        signature: "general",
+        model: "code-pro",
+        thinkingLevel: level,
+        verdict: { fault: "none", direction: "same", rounds: 0, confidence: 1, reason: "" },
+      });
+    }
+
+    expect(store.recentRouteReviews(writer.bot.id)).toHaveLength(0);
+    const kept = store.listSessionReviews(session);
+    expect(kept.some((row) => row.retired_at !== null && row.reason === "答得浅")).toBe(true);
     store.close();
   });
 

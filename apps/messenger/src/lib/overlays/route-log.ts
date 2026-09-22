@@ -1,4 +1,4 @@
-import type { Bot, Provider, RouteFeedback, RouteRecord, RouteReview } from "@real-bot/protocol";
+import type { Bot, Provider, RouteFeedback, RouteLearning, RouteRecord, RouteReview } from "@real-bot/protocol";
 
 /** How a turn's model choice ended. `live` stands in for a record the daemon has not closed yet. */
 export type RouteOutcomeKind =
@@ -40,6 +40,10 @@ export type RouteLogRow = {
   outcome: RouteOutcomeKind;
   outcomeLabel: string;
   failReason: string | null;
+  /** Tool errors this turn recorded. Null when the process never counted them. */
+  toolErrors: number | null;
+  /** Completion hops this turn recorded. Null when the process never counted them. */
+  hops: number | null;
   feedback: RouteFeedback[];
   /** The one line the agent gave for picking this, when an agent picked it. */
   reason: string | null;
@@ -50,7 +54,15 @@ export type RouteLogRow = {
     rounds: number;
     reason: string;
     blamedModel: boolean;
+    /** What the next same-kind choice did with this conclusion. */
+    effect: "followed" | "not_followed" | "unknown" | null;
+    /** That later choice also drew fewer follow-ups and no more tool errors. */
+    cleaner: boolean;
+    /** Left the picker after two follows that did not get cleaner. */
+    retired: boolean;
   } | null;
+  /** What the learning hop kept for the chain this turn started. */
+  learning: { kind: "memory" | "skill" | "none"; label: string } | null;
   createdAt: string;
   finishedAt: string | null;
   durationMs: number | null;
@@ -60,6 +72,7 @@ export type RouteLogInput = {
   bots: readonly Bot[];
   providers: readonly Provider[];
   reviews?: readonly RouteReview[];
+  learnings?: readonly RouteLearning[];
   labels: RouteLogLabels;
 };
 
@@ -69,12 +82,13 @@ export type RouteLogInput = {
  */
 export function routeLogRows(
   records: readonly RouteRecord[],
-  { bots, providers, reviews = [], labels }: RouteLogInput,
+  { bots, providers, reviews = [], learnings = [], labels }: RouteLogInput,
 ): RouteLogRow[] {
   const botNames = new Map(bots.map((bot) => [bot.id, bot.name]));
   const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
   // A verdict is about the whole chain, so it shows on the turn that started it.
   const reviewByTurn = new Map(reviews.map((review) => [review.turn_id, review]));
+  const learningByChain = new Map(learnings.map((learning) => [learning.chain_id, learning]));
   return [...records].reverse().map((record) => {
     const outcome: RouteOutcomeKind = record.outcome ?? "live";
     const name = botNames.get(record.bot_id);
@@ -93,9 +107,12 @@ export function routeLogRows(
       outcome,
       outcomeLabel: labels.outcome[outcome],
       failReason: outcome === "failed" ? failReasonOf(record.fail_kind, labels) : null,
+      toolErrors: record.tool_errors,
+      hops: record.hops,
       feedback: record.feedback,
       reason: record.reason?.trim() || null,
       review: reviewFor(reviewByTurn.get(record.turn_id), labels),
+      learning: record.turn_id === record.chain_id ? learningFor(record.chain_id, learningByChain) : null,
       createdAt: record.created_at,
       finishedAt: record.finished_at,
       durationMs: durationOf(record.created_at, record.finished_at),
@@ -116,7 +133,20 @@ function reviewFor(
     rounds: review.rounds,
     reason: review.reason.trim(),
     blamedModel,
+    effect: review.effect?.followed ?? null,
+    cleaner: review.effect?.cleaner ?? false,
+    retired: review.retired_at !== null,
   };
+}
+
+function learningFor(
+  chainId: string | null,
+  byChain: ReadonlyMap<string, RouteLearning>,
+): RouteLogRow["learning"] {
+  if (!chainId) return null;
+  const learning = byChain.get(chainId);
+  if (!learning) return null;
+  return { kind: learning.kind, label: learning.label };
 }
 
 function failReasonOf(kind: string | null, labels: RouteLogLabels): string | null {

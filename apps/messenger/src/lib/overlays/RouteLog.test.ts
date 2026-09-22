@@ -22,8 +22,11 @@ function row(over: Partial<RouteLogRow> = {}): RouteLogRow {
     outcome: "completed",
     outcomeLabel: "完成",
     failReason: null,
+    toolErrors: 1,
+    hops: 3,
     feedback: [],
     reason: "要多步推理",
+    learning: null,
     review: null,
     createdAt: "2026-09-18T01:00:00.000Z",
     finishedAt: "2026-09-18T01:00:12.000Z",
@@ -55,6 +58,9 @@ const reviewer = row({
     rounds: 3,
     reason: "反复改不对",
     blamedModel: true,
+    effect: "followed",
+    cleaner: false,
+    retired: true,
   },
 });
 
@@ -101,6 +107,15 @@ test("search keeps only the rows that mention the query", () => {
   fill(host.querySelector(".route-search-input"), "Reviewer");
   expect(host.textContent).toContain("视频组 · 1 / 2 轮");
   expect(rowBots(host)).toEqual(["Reviewer"]);
+  close();
+});
+
+test("the retired toggle keeps the review that left the picker, and the row shows its work", () => {
+  const { host, close } = open([writer, reviewer]);
+  expect(host.textContent).toContain("3 跳 · 1 次工具错误");
+  click(host.querySelector(".route-toggle-chip.is-retired"));
+  expect(rowBots(host)).toEqual(["Reviewer"]);
+  expect(host.textContent).toContain("已退出：照做两次仍无改善");
   close();
 });
 

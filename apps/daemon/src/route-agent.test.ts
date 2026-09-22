@@ -157,23 +157,35 @@ test("the picker's payload carries the shortlist and the recent conclusions, new
       { name: "cheap", price: 1, thinking_levels: ["none"], strengths: ["chat"] },
     ],
     pastReviews: Array.from({ length: 9 }, (_, i) => ({
+      message: `任务 ${i} ${"长".repeat(500)}`,
+      signature: "coding",
       model: `m${i}`,
       thinkingLevel: "low",
       direction: "stronger",
       rounds: 2,
       reason: `r${i}`,
     })),
+    cleanCompletions: [
+      { message: "写个函数", signature: "coding", model: "code-pro", thinkingLevel: "high" },
+      { message: "你好", signature: "simple", model: "cheap", thinkingLevel: "none" },
+    ],
   });
   // The model name is repeated as `model` because that is the key the prompt tells it to copy.
   expect(payload.candidates[0]).toMatchObject({ model: "grok-4.6", thinking_levels: ["low", "xhigh"] });
   expect(payload.past_reviews).toHaveLength(PAST_REVIEW_WINDOW);
-  expect(payload.past_reviews[0]).toEqual({
+  expect(payload.past_reviews[0]).toMatchObject({
+    signature: "coding",
     model: "m0",
     thinking_level: "low",
     direction: "stronger",
     rounds: 2,
     reason: "r0",
   });
+  expect(payload.past_reviews[0]!.message.length).toBeLessThanOrEqual(400);
+  expect(payload.clean_completions).toEqual([
+    { message: "写个函数", signature: "coding", model: "code-pro", thinking_level: "high" },
+    { message: "你好", signature: "simple", model: "cheap", thinking_level: "none" },
+  ]);
 });
 
 test("the reviewer's payload trims the reply but keeps every follow-up", () => {
@@ -185,8 +197,18 @@ test("the reviewer's payload trims the reply but keeps every follow-up", () => {
     reply: "x".repeat(5000),
     outcome: "completed",
     followUps: ["这里不对", "还是不行", "算了我自己改"],
+    execution: {
+      hops: 4,
+      tool_calls: 6,
+      tool_errors: 3,
+      repeated_failures: 2,
+      files_written: 1,
+      fail_kind: null,
+      cost_usd_ticks: 40,
+    },
   });
   expect(payload.turn.reply).toHaveLength(REVIEW_REPLY_LIMIT);
+  expect(payload.turn.execution.repeated_failures).toBe(2);
   expect(payload.follow_ups).toEqual(["这里不对", "还是不行", "算了我自己改"]);
 });
 
@@ -201,6 +223,10 @@ test("both prompts name every value their parser accepts", () => {
   expect(ROUTE_PICK_SYSTEM).toContain("candidates");
   expect(ROUTE_PICK_SYSTEM).toContain("thinking_levels");
   expect(ROUTE_PICK_SYSTEM).toContain("past_reviews");
+  expect(ROUTE_PICK_SYSTEM).toContain("clean_completions");
+  expect(ROUTE_PICK_SYSTEM).toContain("signature");
+  expect(ROUTE_REVIEW_SYSTEM).toContain("repeated_failures");
+  expect(ROUTE_REVIEW_SYSTEM).toContain("null");
   for (const prompt of [ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM]) {
     expect(prompt).toContain("只输出一个 JSON 对象");
     expect(prompt).toContain("不要 tool-call");

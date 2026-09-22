@@ -170,7 +170,9 @@ export class Store {
       credentialOperations: credentials.listCredentialOperations(this.ctx),
       settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
       spend: this.listSpend({}), approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
-      providers: providers.providersCached(this.ctx), skills: this.listSkills(), memories: this.listMemories(),
+      providers: providers.providersCached(this.ctx),
+      skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),
+      memories: memories.listMemories(this.ctx).map((memory) => memories.withLearning(this.ctx, memory)),
       routines: this.listRoutines(), allowRules: this.listAllowRules(),
     };
   }
@@ -312,7 +314,14 @@ export class Store {
   readonly chainForReview = this.bind(routing.chainForReview);
   readonly recordRouteReview = this.bind(routing.recordRouteReview);
   readonly recentRouteReviews = this.bind(routing.recentRouteReviews);
+  readonly reviewEffect = this.bind(routing.reviewEffect);
+  readonly cleanCompletions = this.bind(routing.cleanCompletions);
   readonly listSessionReviews = this.bind(routing.listSessionReviews);
+  readonly recordRouteLearning = this.bind(routing.recordRouteLearning);
+  readonly listSessionLearnings = this.bind(routing.listSessionLearnings);
+  readonly learningOutcome = this.bind(routing.learningOutcome);
+  readonly memoryWithLearning = this.bind(memories.withLearning);
+  readonly skillWithLearning = this.bind(skills.withLearning);
   readonly feedbackOwner = this.bind(routing.feedbackOwner);
   readonly previousDecisionFor = this.bind(routing.previousDecisionFor);
   readonly routeCandidates = this.bind(routing.routeCandidates);

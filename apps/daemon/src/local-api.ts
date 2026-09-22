@@ -470,7 +470,7 @@ function dispatch(
 
   if (method === "POST" && path === "/v1/runtime/quit") {
     engine.abortAll();
-    store.interruptRunningTurns();
+    store.interruptRunningTurns((turnId) => engine.executionOf(turnId));
     store.afterCommit(() => onQuit?.());
     return emptyResponse(204, null);
   }
@@ -813,6 +813,7 @@ function dispatch(
         reviews: store.listSessionReviews(params.id!).map((row) => ({
           chain_id: row.chain_id,
           turn_id: row.turn_id,
+          session_id: row.session_id,
           bot_id: row.bot_id,
           signature: row.signature,
           model: row.model,
@@ -823,6 +824,12 @@ function dispatch(
           confidence: row.confidence,
           reason: row.reason,
           created_at: row.created_at,
+          retired_at: row.retired_at,
+          effect: store.reviewEffect(row),
+        })),
+        learnings: store.listSessionLearnings(params.id!).map((row) => ({
+          ...row,
+          outcome: store.learningOutcome({ botId: row.bot_id, chainId: row.chain_id }),
         })),
       },
       200,

@@ -186,7 +186,7 @@ test("review2: approval-originated failed credential can be repaired after reope
   let fail = false; let calls = 0; const finished = gate();
   const keys = memoryKeyStore();
   const h = await harness({ get: keys.get, delete: keys.delete, async set(value, name) { if (fail) throw new Error("locked"); await keys.set(value, name); } }, { completions: {
-    async judge() { return { content: null, hadToolCalls: false, usage: null, failKind: "unreachable" }; },
+    async judge() { return { content: null, toolCalls: [], hadToolCalls: false, usage: null, failKind: "unreachable" }; },
     async complete() { calls++; if (calls > 1) finished.resolve(); return { ok: true, content: calls > 1 ? "finished" : "", toolCalls: calls === 1 ? [{ id: "add", name: "add_endpoint", arguments: JSON.stringify({ name: "orphan", base_url: "https://example.invalid" }) }] : [], finishReason: "stop", hadChoices: true, usage: null, missingReason: "endpoint_omitted" }; },
   } });
   const provider = await h.store.createProvider({ name: "model", base_url: "https://example.invalid", api_key: "model-key", models: ["fake"] });

@@ -572,6 +572,11 @@ export type Skill = {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  /**
+   * Same-kind tasks after the learning hop last revised this skill, and how many of them were
+   * shorter. Null when a turn wrote it, or no hop has revised it.
+   */
+  learning: { later: number; shorter: number } | null;
 };
 
 export type CreateSkillRequest = {
@@ -608,6 +613,11 @@ export type Memory = {
   source_session_id: string | null;
   /** The message that woke the turn it was formed in. Null once that history is cleared. */
   source_message_id: string | null;
+  /**
+   * Same-kind tasks after the learning hop wrote this memory, and how many of them were shorter.
+   * Null when the Bot wrote it during a turn.
+   */
+  learning: { later: number; shorter: number } | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -680,13 +690,43 @@ export type RouteRecord = {
   chain_id: string | null;
   created_at: string;
   finished_at: string | null;
+  /**
+   * What the turn actually did, counted when it closed. Null means the process stopped before it
+   * could count — unknown, not a clean zero.
+   */
+  hops: number | null;
+  tool_calls: number | null;
+  tool_errors: number | null;
+  /** Failed calls whose name and arguments were identical to an earlier failure in the same turn. */
+  repeated_failures: number | null;
+  files_written: number | null;
   feedback: RouteFeedback[];
+};
+
+/**
+ * What later choices made of one review, counted locally from the rows that followed it.
+ * `unknown` is a follow whose price or level could not be compared, and it never retires a review.
+ */
+export type RouteReviewEffect = "followed" | "not_followed" | "unknown";
+
+/** What the learning hop wrote for one closed chain. `none` means it ran and kept nothing. */
+export type RouteLearning = {
+  chain_id: string;
+  bot_id: string;
+  session_id: string;
+  kind: "memory" | "skill" | "none";
+  /** The memory's subject or the skill's name. Empty when nothing was kept. */
+  label: string;
+  created_at: string;
+  /** Same-kind chains after this one, and how many of them took fewer hops with no more errors. */
+  outcome: { later: number; shorter: number } | null;
 };
 
 /** What the review made of one closed correction chain. */
 export type RouteReview = {
   chain_id: string;
   turn_id: string;
+  session_id: string;
   bot_id: string;
   signature: string;
   model: string;
@@ -699,6 +739,13 @@ export type RouteReview = {
   confidence: number;
   reason: string;
   created_at: string;
+  /**
+   * Set once the conclusion was followed twice without the later work getting cleaner. The row
+   * stays for the record; the picker stops reading it.
+   */
+  retired_at: string | null;
+  /** The next same-kind choice after this review, and whether that work was cleaner. */
+  effect: { followed: RouteReviewEffect; cleaner: boolean } | null;
 };
 
 export type SearchKind = "bot" | "session" | "message" | "routine" | "file";

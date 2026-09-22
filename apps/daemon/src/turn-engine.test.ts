@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
-import { ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
+import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
 import { runCollabTool } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
@@ -73,11 +73,11 @@ function routingAnswer(content: string): Response {
   return Response.json({ choices: [{ message: { role: "assistant", content } }] });
 }
 
-/** True for the routing agent's own calls: picking a model, and reviewing a closed chain. */
+/** True for the routing agent's own calls: picking a model, reviewing a chain, learning from it. */
 function isRoutingCall(body: Record<string, unknown>): boolean {
   const messages = body.messages as Array<{ role?: string; content?: string }> | undefined;
   const system = messages?.find((row) => row.role === "system")?.content ?? "";
-  return system === ROUTE_PICK_SYSTEM || system === ROUTE_REVIEW_SYSTEM;
+  return system === ROUTE_PICK_SYSTEM || system === ROUTE_REVIEW_SYSTEM || system === ROUTE_LEARN_SYSTEM;
 }
 
 /**
@@ -2176,6 +2176,15 @@ describe("file tools and workspace shell on the local API", () => {
     expect(botMsg.body).toContain("wrote it");
     expect(botMsg.body).toContain("[report.md](report.md)");
     expect(readFileSync(join(workspace, "report.md"), "utf8")).toBe("full report");
+    const route = h.store.getTurnRoute(String(botMsg.turn_id));
+    expect(route).toMatchObject({
+      outcome: "completed",
+      hops: 2,
+      tool_calls: 1,
+      tool_errors: 0,
+      repeated_failures: 0,
+      files_written: 1,
+    });
     sub.close();
   });
 
@@ -3073,6 +3082,182 @@ describe("per-message model and thinking-level routing", () => {
     const reviews = h.store.recentRouteReviews(body.bot.id);
     expect(reviews.length).toBeGreaterThan(0);
     expect(reviews[0]).toMatchObject({ fault: "model", direction: "stronger", reason: "反复改不对" });
+    // A model verdict opens one learning hop. This answer names no tool, so nothing is written
+    // and the transcript gains no line from it.
+    await waitFor(sub.events, () => routingCalls.some((row) => row.system === ROUTE_LEARN_SYSTEM), 4000);
+    const before = h.store.listMainMessages(body.direct_session.id, 40).length;
+    expect(h.store.listMemories(body.bot.id)).toHaveLength(0);
+    expect(h.store.listMainMessages(body.direct_session.id, 40)).toHaveLength(before);
+    sub.close();
+  });
+
+  test("a reviewed chain's learning hop writes one memory and no transcript line", async () => {
+    const fixture = await startFixture(
+      ({ body }) => {
+        if (isJudgementRequest(body)) return judgementPass();
+        return sse(textChunks("ok"));
+      },
+      ({ body }) => {
+        const messages = body.messages as Array<{ role?: string; content?: string }>;
+        const system = messages.find((row) => row.role === "system")?.content ?? "";
+        if (system === ROUTE_LEARN_SYSTEM) {
+          const tools = body.tools as Array<{ function?: { name?: string } }>;
+          expect(tools.map((tool) => tool.function?.name).sort()).toEqual(["forget", "remember", "update_skill"]);
+          return Response.json({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_learn",
+                      type: "function",
+                      function: {
+                        name: "remember",
+                        arguments: JSON.stringify({ subject: "重构先读现有函数", body: "先读再改，不要整段重写" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        if (system === ROUTE_REVIEW_SYSTEM) {
+          return routingAnswer(
+            '{"fault": "model", "direction": "stronger", "rounds": 1, "confidence": 0.9, "reason": "改偏了"}',
+          );
+        }
+        return routingAnswer(
+          '{"model": "code-pro", "thinking_level": "high", "reason": "要改代码", "continues_previous": false}',
+        );
+      },
+    );
+    const h = await startApi();
+    mkdirSync("/tmp/real-bot-ws", { recursive: true });
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h),
+      body: JSON.stringify({
+        workspace_path: "/tmp/real-bot-ws",
+        endpoint_base_url: fixture.origin,
+        endpoint_api_key: "sk-test",
+        endpoint_models: [{ name: "code-pro", price: 12, thinking_levels: ["high"], strengths: ["code"] }],
+        endpoint_default_model: "code-pro",
+      }),
+    });
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay" }),
+    });
+    const body = (await created.json()) as { bot: { id: string }; direct_session: { id: string } };
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "把这个函数重构一下" }),
+    });
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "你好" }),
+    });
+    await waitFor(sub.events, (e) => e.event === "memory.upsert" && e.subject === "重构先读现有函数", 4000);
+    const memory = h.store.listMemories(body.bot.id)[0]!;
+    expect(memory.body).toBe("先读再改，不要整段重写");
+    expect(memory.source_message_id).not.toBeNull();
+    const chain = h.store.db
+      .query<{ learned_chain_id: string | null }, [string]>(`SELECT learned_chain_id FROM memories WHERE id = ?`)
+      .get(memory.id);
+    expect(chain?.learned_chain_id).not.toBeNull();
+    const transcript = h.store.listMainMessages(body.direct_session.id, 40);
+    expect(transcript.some((row) => row.body.includes("重构先读现有函数"))).toBe(false);
+    const learning = h.store.listSessionLearnings(body.direct_session.id);
+    expect(learning).toHaveLength(1);
+    expect(learning[0]).toMatchObject({ kind: "memory", label: "重构先读现有函数" });
+    sub.close();
+  });
+
+  test("a learning hop cannot create a skill from one incident", async () => {
+    let learnCalls = 0;
+    const fixture = await startFixture(
+      ({ body }) => {
+        if (isJudgementRequest(body)) return judgementPass();
+        return sse(textChunks("ok"));
+      },
+      ({ body }) => {
+        const messages = body.messages as Array<{ role?: string; content?: string }>;
+        const system = messages.find((row) => row.role === "system")?.content ?? "";
+        if (system === ROUTE_LEARN_SYSTEM) {
+          learnCalls += 1;
+          return Response.json({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_skill",
+                      type: "function",
+                      function: {
+                        name: "create_skill",
+                        arguments: JSON.stringify({ name: "重构", description: "先读", body: "先读再改" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        if (system === ROUTE_REVIEW_SYSTEM) {
+          return routingAnswer(
+            '{"fault": "model", "direction": "stronger", "rounds": 1, "confidence": 0.9, "reason": "改偏了"}',
+          );
+        }
+        return routingAnswer(
+          '{"model": "code-pro", "thinking_level": "high", "reason": "要改代码", "continues_previous": false}',
+        );
+      },
+    );
+    const h = await startApi();
+    mkdirSync("/tmp/real-bot-ws", { recursive: true });
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h),
+      body: JSON.stringify({
+        workspace_path: "/tmp/real-bot-ws",
+        endpoint_base_url: fixture.origin,
+        endpoint_api_key: "sk-test",
+        endpoint_models: [{ name: "code-pro", price: 12, thinking_levels: ["high"], strengths: ["code"] }],
+        endpoint_default_model: "code-pro",
+      }),
+    });
+    const created = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay" }),
+    });
+    const body = (await created.json()) as { bot: { id: string }; direct_session: { id: string } };
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "把这个函数重构一下" }),
+    });
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    await fetch(`${h.origin}/v1/sessions/${body.direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "你好" }),
+    });
+    // create_skill is not in the hop's tools, so the call is dropped and the hop ends.
+    await waitFor(sub.events, () => learnCalls >= 1, 4000);
+    expect(h.store.listSkills(body.bot.id)).toHaveLength(0);
     sub.close();
   });
 
@@ -3378,6 +3563,11 @@ describe("per-message model and thinking-level routing", () => {
       signature: "coding",
       outcome: "completed",
       fail_kind: null,
+      hops: 1,
+      tool_calls: 0,
+      tool_errors: 0,
+      repeated_failures: 0,
+      files_written: 0,
       feedback: [{ body: "这里有 bug，选的模型不对" }],
     });
     // The third message lands on the turn before it: whether re-asking means the model failed is

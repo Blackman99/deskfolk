@@ -408,7 +408,7 @@ test("model probe cancellation after stored credential hydration never starts an
 
 test("composer and model probe recheck revocation after credential waits; probes never replay", async () => {
   let calls = 0;
-  const f = await fixture({ judge: async () => { calls++; return { content: "{}", hadToolCalls: false, usage: null, failKind: null }; },
+  const f = await fixture({ judge: async () => { calls++; return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null }; },
     complete: async () => { throw new Error("unused"); } });
   const endpoint = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => { calls++; return Response.json({ data: [{ id: "fixture-model" }] }); } });
   cleanup.push(() => endpoint.stop(true));
@@ -575,7 +575,7 @@ test("wire errors preserve pending credentials, superseded receipt, revision con
 });
 
 test("remote chat uses the actual engine and event stream, not a parallel business implementation", async () => {
-  const f = await fixture({ judge: async () => ({ content: "{}", hadToolCalls: false, usage: null, failKind: null }),
+  const f = await fixture({ judge: async () => ({ content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null }),
     complete: async request => { request.onToken?.("remote fixture"); return { ok: true, content: "remote fixture", toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null }; } });
   await f.store.patchSettings({ endpoint_base_url: "https://fixture.invalid", endpoint_api_key: "fixture-only", endpoint_models: ["fixture"], endpoint_default_model: "fixture" });
   const d = await f.pair(), c = await f.connect(d), bot = f.store.createBot({ name: "Remote Chat", duties: "", boundaries: "" });
@@ -810,7 +810,7 @@ test("real WebAuthn registration, fresh assertions, CAS races, expiry and exact 
 test("quiesce keeps existing ask/reply alive, rejects new body and resumes without exit", async () => {
   let calls = 0;
   const completions: import("../completions").CompletionsClient = {
-    judge: async () => ({ content: "{}", hadToolCalls: false, usage: null, failKind: null }),
+    judge: async () => ({ content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null }),
     complete: async () => ({ ok: true, content: calls++ ? "finished" : "", toolCalls: calls === 1 ? [{ id: "ask", name: "ask_user", arguments: '{"question":"continue?"}' }] : [],
       finishReason: "stop", hadChoices: true, usage: null, missingReason: null }),
   };

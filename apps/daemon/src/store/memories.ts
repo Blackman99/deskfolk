@@ -8,6 +8,7 @@
  * makes the Bot weigh what is worth keeping; nothing behind its back knows better.
  */
 import { type Memory } from "@real-bot/protocol";
+import { learningOutcome } from "./routing";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { codePointCount } from "../text";
@@ -36,6 +37,16 @@ export function parseMemoryBody(value: unknown): string {
   return body;
 }
 
+/** Fills the learning counts a snapshot shows. The prompt digest reads the row without them. */
+export function withLearning(ctx: StoreContext, memory: Memory): Memory {
+  const chain = ctx.db
+    .query<{ learned_chain_id: string | null }, [string]>(`SELECT learned_chain_id FROM memories WHERE id = ?`)
+    .get(memory.id);
+  if (!chain?.learned_chain_id) return memory;
+  const outcome = learningOutcome(ctx, { botId: memory.bot_id, chainId: chain.learned_chain_id });
+  return outcome ? { ...memory, learning: outcome } : memory;
+}
+
 function toMemory(row: MemoryRow): Memory {
   return {
     id: row.id,
@@ -44,6 +55,7 @@ function toMemory(row: MemoryRow): Memory {
     body: row.body,
     source_session_id: row.source_session_id,
     source_message_id: row.source_message_id,
+    learning: null,
     enabled: row.enabled === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -117,18 +129,22 @@ export function rememberMemory(
     body: string;
     source_session_id?: string | null;
     source_message_id?: string | null;
+    /** Set only by the learning hop. A turn's own remember leaves it null. */
+    learned_chain_id?: string | null;
   },
 ): Memory {
   aliveBot(ctx, input.bot_id);
   const subject = parseMemorySubject(input.subject);
   const body = parseMemoryBody(input.body);
   const now = isoNow();
+  const chain = input.learned_chain_id ?? null;
   const existing = findMemoryBySubject(ctx, input.bot_id, subject);
   if (existing) {
     ctx.db.run(
-      `UPDATE memories SET subject = ?, body = ?, source_session_id = ?, source_message_id = ?, updated_at = ?
+      `UPDATE memories SET subject = ?, body = ?, source_session_id = ?, source_message_id = ?,
+         learned_chain_id = ?, updated_at = ?
        WHERE id = ?`,
-      [subject, body, input.source_session_id ?? null, input.source_message_id ?? null, now, existing.id],
+      [subject, body, input.source_session_id ?? null, input.source_message_id ?? null, chain, now, existing.id],
     );
     return getMemory(ctx, existing.id);
   }
@@ -137,8 +153,8 @@ export function rememberMemory(
   const id = ulid();
   ctx.db.run(
     `INSERT INTO memories
-       (id, bot_id, subject, body, source_session_id, source_message_id, enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+       (id, bot_id, subject, body, source_session_id, source_message_id, learned_chain_id, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     [
       id,
       input.bot_id,
@@ -146,6 +162,7 @@ export function rememberMemory(
       body,
       input.source_session_id ?? null,
       input.source_message_id ?? null,
+      chain,
       now,
       now,
     ],

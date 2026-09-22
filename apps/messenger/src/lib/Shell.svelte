@@ -414,6 +414,7 @@
 						bots: snapshot.bots,
 						providers: snapshot.providers,
 						reviews: snapshot.routeReviews,
+						learnings: snapshot.routeLearnings,
 						labels: {
 							outcome: t.routes.outcome,
 							fault: t.routes.fault,

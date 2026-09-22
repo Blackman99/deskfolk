@@ -68,7 +68,7 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 - `sidebar/`：`Sidebar.svelte` 是整条侧栏（名册行、搜索入口与手机上的搜索整页、会话分组、归档视图、手机上的浮动新建按钮、底部工具栏、主题菜单），两张新建弹窗和右键菜单也在这里。模块有会话分组 / 状态 / 标题、未读、搜索跳转、置顶、宽度。
 - `panels/`：会话设置抽屉的两片 —— `ProfilePane.svelte`（人设与技能，自己管草稿与自动保存）和 `GroupPane.svelte`（群名、成员、拉人）。抽屉外壳还在 `Shell.svelte`。
 - `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。工作区、端点和 MCP 名称 / 备注改完即写入；模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
-- `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。模型选择记录的筛选是 `route-log-filter.ts`（搜索、结果 / Bot / 模型 / 类别、有反馈、归咎模型），窗口化仍是 `route-log-window.ts`。
+- `overlays/`：产物预览、工作区浏览、模型选择记录、危险动作确认框，以及 Monaco / 产物树 / 路由日志窗口化这些模块。模型选择记录的筛选是 `route-log-filter.ts`（搜索、结果 / Bot / 模型 / 类别、有反馈、归咎模型、已退出），窗口化仍是 `route-log-window.ts`。
 - 跨面共用的留在 `lib/` 顶层：`copy.ts`（中英文案树）、`api.ts` / `runtime.svelte.ts` / `snapshot.ts`（本机接口与快照）、`theme.ts`、`avatar.ts`（含 `avatarSrc` 与 `botAvatarColor`）、`markdown.ts`、`MarkdownBody.svelte`（聊天气泡与产物预览共用的 markdown 渲染，样式写在组件里）、`discovery.ts`、着色相关，以及 `Shell.svelte`、`Onboarding.svelte`、`Select.svelte`、`SessionAvatar.svelte`、`AvatarEditor.svelte`。会话在场 Bot 名单是 `sidebar/session-groups.ts` 的 `presentBotIds`；点名解析走 `@real-bot/protocol` 的 `parseMentions`，芯片 DOM 仍在 `chat/mention-chips.ts`。
 - `styles/`：**只剩没有任何一个组件能认领的规则**，1052 条里的 134 条；其余都回到了渲染那个元素的组件里（见下面「信使样式分层」）。每个文件的头注释写明它为什么搬不动：
   - `tokens.css` 配色令牌与暗色覆盖，`base.css` reset —— 全局底座。

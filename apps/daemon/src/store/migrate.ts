@@ -316,6 +316,13 @@ function migrateRouteTables(db: Database, tables: string[]): void {
     // Old decisions were never chained; each stands alone so nothing reviews them as a group.
     db.run(`UPDATE turn_route_decisions SET chain_id = turn_id WHERE chain_id IS NULL`);
   }
+  // Counts of what the turn actually did. Left null on rows a previous build already closed:
+  // a review treats null as "not counted", never as a clean zero.
+  for (const column of ["hops", "tool_calls", "tool_errors", "repeated_failures", "files_written"]) {
+    if (!decisionCols.includes(column)) {
+      db.run(`ALTER TABLE turn_route_decisions ADD COLUMN ${column} INTEGER`);
+    }
+  }
   db.run(
     `CREATE INDEX IF NOT EXISTS turn_route_decisions_chain ON turn_route_decisions (chain_id)`,
   );
@@ -369,6 +376,28 @@ function migrateRouteTables(db: Database, tables: string[]): void {
     db.run(`UPDATE route_reviews SET chain_id = turn_id WHERE chain_id IS NULL OR chain_id = ''`);
   }
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS route_reviews_chain ON route_reviews (chain_id)`);
+  const retiredCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(route_reviews)`)
+    .all()
+    .map((row) => row.name);
+  if (tables.includes("route_reviews") && !retiredCols.includes("retired_at")) {
+    db.run(`ALTER TABLE route_reviews ADD COLUMN retired_at TEXT`);
+  }
+  // Which closed chain a learning hop wrote this from. Turns that write their own row leave it null.
+  const memoryCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(memories)`)
+    .all()
+    .map((row) => row.name);
+  if (tables.includes("memories") && !memoryCols.includes("learned_chain_id")) {
+    db.run(`ALTER TABLE memories ADD COLUMN learned_chain_id TEXT`);
+  }
+  const skillCols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(skills)`)
+    .all()
+    .map((row) => row.name);
+  if (tables.includes("skills") && !skillCols.includes("learned_chain_id")) {
+    db.run(`ALTER TABLE skills ADD COLUMN learned_chain_id TEXT`);
+  }
   const legacy = db
     .query<{ value: string }, [string]>(`SELECT value FROM settings WHERE key = ?`)
     .get("route_learned");

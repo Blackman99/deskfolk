@@ -74,10 +74,17 @@ export type JudgeRequest = {
   signal: AbortSignal;
   /** Override the first-byte timeout used for this short call. */
   timeoutMs?: number;
+  /**
+   * Tools this short call may use. Absent keeps the call tool-less, which is what the routing
+   * calls are. Present, the answer's tool calls come back for the caller to run.
+   */
+  tools?: unknown[];
 };
 
 export type JudgeResult = {
   content: string | null;
+  toolCalls: ToolCall[];
+  /** True when the answer carried any tool call. Derived so callers can read either field. */
   hadToolCalls: boolean;
   usage: MappedUsage | null;
   failKind: FailKind | null;
@@ -574,7 +581,7 @@ async function completeJudge(
 ): Promise<JudgeResult> {
   const acquired = await gate.acquire(originKey(request.baseUrl), request.signal);
   if (!acquired) {
-    return { content: null, hadToolCalls: false, usage: null, failKind: "unreachable" };
+    return { content: null, toolCalls: [], hadToolCalls: false, usage: null, failKind: "unreachable" };
   }
   try {
     return await completeJudgeBody(fetchImpl, clock, request);
@@ -600,8 +607,9 @@ async function completeJudgeBody(
         model: request.model,
         messages: toApiMessages(request.messages),
         temperature: 0,
-        max_tokens: 256,
+        max_tokens: request.tools?.length ? 512 : 256,
         stream: false,
+        ...(request.tools?.length ? { tools: request.tools } : {}),
       }),
       signal: AbortSignal.any([
         request.signal,
@@ -610,37 +618,58 @@ async function completeJudgeBody(
     });
   } catch (error) {
     const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-    return {
+    return judgeResult({
       content: null,
-      hadToolCalls: false,
+      toolCalls: [],
       usage: null,
       failKind: timeout && !request.signal.aborted ? "first_byte" : "unreachable",
-    };
+    });
   }
   if (response.status >= 500) {
-    return { content: null, hadToolCalls: false, usage: mapUsageFromResponse(await peekJson(response)), failKind: "endpoint_error" };
+    return judgeResult({ content: null, toolCalls: [], usage: mapUsageFromResponse(await peekJson(response)), failKind: "endpoint_error" });
   }
   if (response.status >= 400) {
-    return { content: null, hadToolCalls: false, usage: mapUsageFromResponse(await peekJson(response)), failKind: "endpoint_error" };
+    return judgeResult({ content: null, toolCalls: [], usage: mapUsageFromResponse(await peekJson(response)), failKind: "endpoint_error" });
   }
   const body = (await peekJson(response)) as Record<string, unknown> | null;
   if (!body) {
-    return { content: null, hadToolCalls: false, usage: null, failKind: "incomplete" };
+    return judgeResult({ content: null, toolCalls: [], usage: null, failKind: "incomplete" });
   }
   const usage = mapUsage(body.usage);
   const choices = body.choices;
   if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") {
-    return { content: null, hadToolCalls: false, usage, failKind: "incomplete" };
+    return judgeResult({ content: null, toolCalls: [], usage, failKind: "incomplete" });
   }
   const message = (choices[0] as { message?: Record<string, unknown> }).message ?? {};
-  const toolCalls = message.tool_calls;
   const content = message.content;
-  return {
+  return judgeResult({
     content: typeof content === "string" ? content : content == null ? null : String(content),
-    hadToolCalls: Array.isArray(toolCalls) && toolCalls.length > 0,
+    toolCalls: judgeToolCalls(message.tool_calls),
     usage,
     failKind: null,
-  };
+  });
+}
+
+function judgeResult(result: Omit<JudgeResult, "hadToolCalls">): JudgeResult {
+  return { ...result, hadToolCalls: result.toolCalls.length > 0 };
+}
+
+/** Tool calls on a non-streaming judge answer. A call missing its name is dropped. */
+function judgeToolCalls(raw: unknown): ToolCall[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ToolCall[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const call = item as { id?: unknown; function?: { name?: unknown; arguments?: unknown } };
+    const name = typeof call.function?.name === "string" ? call.function.name : "";
+    if (!name) continue;
+    out.push({
+      id: typeof call.id === "string" && call.id ? call.id : `call_${out.length}`,
+      name,
+      arguments: typeof call.function?.arguments === "string" ? call.function.arguments : "{}",
+    });
+  }
+  return out;
 }
 
 async function peekJson(response: Response): Promise<unknown> {

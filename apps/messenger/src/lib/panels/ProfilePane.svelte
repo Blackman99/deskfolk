@@ -693,6 +693,13 @@
 							{/if}
 						</div>
 						<span class="skill-desc" title={skill.description}>{skill.description}</span>
+						{#if skill.learning}
+							<span class="skill-learning">
+								{skill.learning.later === 0
+									? t.sidebar.learningNoneYet
+									: t.sidebar.learningLater(skill.learning.later, skill.learning.shorter)}
+							</span>
+						{/if}
 					</div>
 				</button>
 				<div class="skill-row-actions">
@@ -1262,6 +1269,11 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 100%;
+	}
+
+	.skill-learning {
+		font-size: 11px;
+		color: var(--muted);
 	}
 
 	.skill-row-actions {

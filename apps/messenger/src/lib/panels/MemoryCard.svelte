@@ -176,6 +176,14 @@
 							<span aria-hidden="true">·</span>
 							<span class="memory-origin-missing">{t.sidebar.memoryOriginMissing}</span>
 						{/if}
+						{#if memory.learning}
+							<span aria-hidden="true">·</span>
+							<span class="memory-learning">
+								{memory.learning.later === 0
+									? t.sidebar.learningNoneYet
+									: t.sidebar.learningLater(memory.learning.later, memory.learning.shorter)}
+							</span>
+						{/if}
 					</div>
 				</div>
 			{/each}

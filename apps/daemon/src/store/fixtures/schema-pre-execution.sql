@@ -1,4 +1,7 @@
-export const SCHEMA_SQL = `
+-- The schema as it shipped before execution counts, review retirement, and learning-hop sources.
+-- A test opens a database built from this file with the current Store and expects it to come up.
+-- Do not edit: it is a record of a shape that exists on real machines, not a live schema.
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -283,9 +286,7 @@ CREATE TABLE IF NOT EXISTS skills (
   uses TEXT NOT NULL DEFAULT '[]',
   enabled INTEGER NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  -- The correction chain whose learning hop last wrote this skill. Null when a turn wrote it.
-  learned_chain_id TEXT
+  updated_at TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS skills_bot_name
@@ -298,8 +299,6 @@ CREATE TABLE IF NOT EXISTS memories (
   body TEXT NOT NULL,
   source_session_id TEXT,
   source_message_id TEXT,
-  -- The correction chain whose learning hop wrote this memory. Null when a turn wrote it.
-  learned_chain_id TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -327,14 +326,7 @@ CREATE TABLE IF NOT EXISTS turn_route_decisions (
   reason TEXT,
   chain_id TEXT,
   created_at TEXT NOT NULL,
-  finished_at TEXT,
-  -- How the work went, written once when the turn closes. Null means the process stopped before
-  -- it could count, which a review reads as unknown rather than as zero errors.
-  hops INTEGER,
-  tool_calls INTEGER,
-  tool_errors INTEGER,
-  repeated_failures INTEGER,
-  files_written INTEGER
+  finished_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS turn_route_decisions_session
@@ -377,22 +369,11 @@ CREATE TABLE IF NOT EXISTS route_reviews (
   rounds INTEGER NOT NULL DEFAULT 0,
   confidence REAL NOT NULL DEFAULT 0,
   reason TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL,
-  -- Set when the conclusion was followed twice and neither time got cleaner. The picker skips it.
-  retired_at TEXT
+  created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS route_reviews_bot
   ON route_reviews (bot_id, created_at);
-
-CREATE TABLE IF NOT EXISTS route_learnings (
-  chain_id TEXT PRIMARY KEY,
-  bot_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('memory', 'skill', 'none')),
-  label TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS spend (
   id TEXT PRIMARY KEY,
@@ -415,4 +396,4 @@ CREATE TABLE IF NOT EXISTS spend (
     OR (turn_id IS NULL AND judgement_id IS NOT NULL)
   )
 );
-`;
+

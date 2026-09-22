@@ -124,7 +124,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         api?.quiesce.close();
         api?.scheduler?.stop();
         await api?.engine.close();
-        store?.interruptRunningTurns();
+        store?.interruptRunningTurns((turnId) => api?.engine.executionOf(turnId) ?? null);
       } catch {
         // boot failed before schema
       }
