@@ -178,6 +178,8 @@ for (const query of [
   "?s=direct-1&o=session",
   "?s=direct-1&o=bot&b=bot-1",
   "?o=workspace&w=notes.txt",
+  "?s=direct-1&o=trace&k=task-1",
+  "?o=routines",
 ]) test(`real page preserves ${query} while initial snapshot is delayed`, async () => {
   page.url = new URL(query, "http://localhost/");
   const wanted = overlayFromUrl(page.url);
@@ -214,6 +216,39 @@ for (const query of [
   expect(overlayFromUrl(page.url)).toEqual(wanted);
   expect(overlayFromFlags(runtime)).toEqual(wanted);
   expect(navigations).toEqual([]);
+});
+
+for (const selectedId of [null, 'direct-1', 'direct-2']) test(`selecting a conversation leaves the calendar opened over ${selectedId ?? 'the roster'}`, async () => {
+  const query = selectedId ? `?s=${selectedId}&o=routines` : '?o=routines';
+  page.url = new URL(query, 'http://localhost/');
+  entries[0] = `/${query}`;
+  const sessions = [aDirect(), aDirect({ id: 'direct-2' })];
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions });
+    if (path.endsWith('/snapshot')) {
+      const session = sessions.find((item) => path.includes(item.id))!;
+      return Response.json({ ...cursor, session: { ...session, messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  close = render(Page, {}).close;
+  const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+  await until(() => runtime.connection === 'connected');
+  expect(runtime.routinesOpen).toBe(true);
+  await runtime.selectSession('direct-1');
+  await until(() => page.url.search === '?s=direct-1');
+  expect(runtime.routinesOpen).toBe(false);
+  expect(runtime.selectedId).toBe('direct-1');
+
+  // Restoring the calendar through history must still work after switching conversations.
+  page.url = new URL(query, page.url);
+  await until(() => runtime.routinesOpen && runtime.selectedId === selectedId);
+  page.url = new URL('?s=direct-1', page.url);
+  await until(() => !runtime.routinesOpen && runtime.selectedId === 'direct-1');
 });
 
 test('opening a screen pushes, closing it walks back, and a deep link rewrites its own entry', async () => {

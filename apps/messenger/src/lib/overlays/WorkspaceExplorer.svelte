@@ -24,7 +24,10 @@
 	export function requestCloseFromParent(afterClose?: () => void): void {
 		if (!afterClose && pane?.closeFind()) return;
 		if (pane) pane.requestCloseFromParent(afterClose);
-		else { onClose(); afterClose?.(); }
+		else {
+			onClose();
+			afterClose?.();
+		}
 	}
 
 	export function closeFind(): boolean {
@@ -43,12 +46,14 @@
 	aria-modal="true"
 	tabindex="-1"
 	aria-label={t.stream.workspaceExplorer}
+	in:pageSlide={{ instant: true }}
+	out:pageSlide={{ instant: true }}
 	onmousedowncapture={workspaceBackdrop.press}
 	onclick={(e) => {
 		if (workspaceBackdrop.isOutside(e)) requestCloseFromParent();
 	}}
 >
-	<div class="workspace-overlay-pane" transition:pageSlide>
+	<div class="workspace-overlay-pane">
 		{#if !workspacePath}
 			<section class="workspace-unset">
 				<h2>{t.sidebar.workspace}</h2>
@@ -126,7 +131,6 @@
 	@media (max-width: 680px) {
 	.workspace-overlay-pane {
 	width: 100%;
-	/* The page transition moves it now, in whichever direction the tab bar went. */
 	animation: none;
 	border-left: 0;
 	box-shadow: none;

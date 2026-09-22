@@ -29,6 +29,35 @@ function open(draft = "写点什么", remote = false) {
   return { ...view, runtime, editor, sent };
 }
 
+test("single-line text is vertically centered within the action button height", () => {
+  const viewport = (window as unknown as {
+    happyDOM: { setViewport: (size: { width: number; height: number }) => void };
+  }).happyDOM;
+  const original = { width: window.innerWidth, height: window.innerHeight };
+  try {
+    for (const width of [320, 390, 680, 1180]) {
+      viewport.setViewport({ width, height: 844 });
+      for (const draft of ["", "中文输入 test"]) {
+        const { host, editor, close } = open(draft);
+        try {
+          const input = getComputedStyle(editor);
+          const button = getComputedStyle(host.querySelector(".composer-action")!);
+          const line = parseFloat(input.lineHeight);
+          const top = parseFloat(input.paddingTop);
+          const bottom = parseFloat(input.paddingBottom);
+          expect(top).toBe(bottom);
+          expect(line + top + bottom).toBe(parseFloat(button.height));
+          expect(parseFloat(input.minHeight)).toBe(parseFloat(button.height));
+        } finally {
+          close();
+        }
+      }
+    }
+  } finally {
+    viewport.setViewport(original);
+  }
+});
+
 /** The editor follows `runtime.draft`, whoever set it — a quote reply, a starter chip, a send. */
 test("the contenteditable mirrors the runtime draft", async () => {
   const { editor, runtime, close } = open("初始草稿");

@@ -32,6 +32,12 @@
 		searchPageOpen?: boolean;
 		/** What the phone's + button opens. A menu, so Back and Escape close it first. */
 		createMenuOpen?: boolean;
+		/**
+		 * The phone's tools menu beside the search field — the calendar and the terminal, which
+		 * on a desktop live in the footer the phone does not show. A menu, so the shell's Back
+		 * and Escape close it first.
+		 */
+		toolsMenuOpen?: boolean;
 		workspaceOpen: boolean;
 		/** Marks the row the context menu belongs to. */
 		contextMenuSessionId: string | null;
@@ -53,6 +59,7 @@
 		themeMenuOpen = $bindable(false),
 		searchPageOpen = $bindable(false),
 		createMenuOpen = $bindable(false),
+		toolsMenuOpen = $bindable(false),
 		workspaceOpen,
 		contextMenuSessionId,
 		onOpenContextMenu,
@@ -144,6 +151,8 @@
 
 	let themeMenuEl = $state<HTMLElement | null>(null);
 	let themeToggleBtnEl = $state<HTMLButtonElement | null>(null);
+	let toolsMenuEl = $state<HTMLElement | null>(null);
+	let toolsToggleBtnEl = $state<HTMLButtonElement | null>(null);
 	let themePreference = $state(themeManager.preference);
 	const currentTheme = $derived(snapshot.settings.theme || themePreference);
 
@@ -155,6 +164,30 @@
 	$effect(() => themeManager.subscribe(() => (themePreference = themeManager.preference)));
 
 	$effect(() => {
+		if (toolsMenuOpen && toolsMenuEl) {
+			toolsMenuEl.querySelector<HTMLButtonElement>('.tools-menu-item')?.focus();
+		}
+	});
+
+	/** Arrow keys and Escape inside the tools menu, the same way the theme menu behaves. */
+	function onToolsMenuKeyDown(e: KeyboardEvent): void {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			e.stopPropagation();
+			toolsMenuOpen = false;
+			toolsToggleBtnEl?.focus();
+			return;
+		}
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+		e.preventDefault();
+		if (!toolsMenuEl) return;
+		const items = Array.from(toolsMenuEl.querySelectorAll<HTMLButtonElement>('.tools-menu-item'));
+		const index = items.indexOf(document.activeElement as HTMLButtonElement);
+		const next = e.key === 'ArrowDown' ? index + 1 : index - 1;
+		items[(next + items.length) % items.length]?.focus();
+	}
+
+	$effect(() => {
 		if (themeMenuOpen && themeMenuEl) {
 			const activeItem =
 				themeMenuEl.querySelector<HTMLButtonElement>('.theme-menu-item.is-selected') ??
@@ -163,11 +196,14 @@
 		}
 	});
 
-	/** Two popups that close on a click elsewhere. Escape order is the shell's; this is not. */
+	/** Popups that close on a click elsewhere. Escape order is the shell's; this is not. */
 	function onWindowClick(e: MouseEvent): void {
 		const target = e.target as Node | null;
 		if (themeMenuOpen && isOutside(target, themeMenuEl, themeToggleBtnEl)) {
 			themeMenuOpen = false;
+		}
+		if (toolsMenuOpen && isOutside(target, toolsMenuEl, toolsToggleBtnEl)) {
+			toolsMenuOpen = false;
 		}
 		if (searchFocused && isOutside(target, searchWrapEl)) {
 			searchFocused = false;
@@ -512,76 +548,188 @@
 		{/if}
 	</div>
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
-	<div class="search-wrap relative mt-5 mx-6 mb-3" bind:this={searchWrapEl}>
-		{@render searchGlyph()}
-		{#if phone}
-			<!-- Looks like the field it replaces, so the list still reads as having a search box. -->
-			<button type="button" class="search search-trigger" onclick={openSearchPage}>
-				{t.sidebar.searchShort}
+	{#if phone && viewingArchived}
+		<div class="mobile-archived-head">
+			<button
+				type="button"
+				class="mobile-archived-back"
+				title={t.sidebar.backToSessions}
+				aria-label={t.sidebar.backToSessions}
+				onclick={() => (viewingArchived = false)}
+			>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polyline points="15 18 9 12 15 6"></polyline>
+				</svg>
 			</button>
-		{:else}
-			<input
-				bind:this={searchInputEl}
-				class="search"
-				placeholder={t.sidebar.search}
-				value={runtime.searchQuery}
-				role="combobox"
-				aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
-				aria-controls="search-dropdown-list"
-				aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
-				oninput={onSearchInput}
-				onfocus={() => {
-					searchFocused = true;
-				}}
-				onblur={(e) => {
-					const next = e.relatedTarget as Node | null;
-					if (searchWrapEl && next && searchWrapEl.contains(next)) {
-						return;
-					}
-					searchFocused = false;
-					searchHighlightIndex = -1;
-				}}
-				onkeydown={onSearchKeyDown}
-			/>
-			{#if runtime.searchQuery.trim()}
-				<button
-					type="button"
-					class="search-clear"
-					title={t.sidebar.searchClear}
-					aria-label={t.sidebar.searchClear}
-					onmousedown={(e) => e.preventDefault()}
-					onclick={() => {
-						void runtime.runSearch('');
-						searchFocused = true;
-						searchHighlightIndex = -1;
-						searchInputEl?.focus();
-					}}
-				>✕</button>
-			{/if}
-			{#if searchFocused && runtime.searchQuery.trim()}
-				<div
-					bind:this={searchDropEl}
-					id="search-dropdown-list"
-					class="search-drop"
-					role="listbox"
-					tabindex="-1"
-					onmousedown={(e) => {
-						e.preventDefault();
-					}}
-				>
-					{@render hitList()}
+			<h2 class="mobile-archived-title">
+				<span>{t.sidebar.archivedSessions}</span>
+				{#if archivedSessions.length > 0}
+					<span class="mobile-archived-count">({archivedSessions.length})</span>
+				{/if}
+			</h2>
+			<div class="mobile-archived-spacer" aria-hidden="true"></div>
+		</div>
+	{:else}
+		<div class="search-wrap relative mt-5 mx-6 mb-3" bind:this={searchWrapEl}>
+			{#if phone}
+				<!--
+					The footer that carries these on a desktop is not on screen here, and one icon per
+					tool would crowd the line the search field already shares with the archive. One
+					button, opened on demand.
+				-->
+				<div class="tools-entry-wrap">
+					<button
+						bind:this={toolsToggleBtnEl}
+						type="button"
+						class="tools-entry"
+						class:is-active={toolsMenuOpen}
+						title={t.sidebar.tools}
+						aria-label={t.sidebar.tools}
+						aria-haspopup="menu"
+						aria-expanded={toolsMenuOpen}
+						onclick={() => (toolsMenuOpen = !toolsMenuOpen)}
+					>
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+							<rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+							<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+							<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+						</svg>
+						{#if archivedSessions.length > 0}
+							<span class="tools-entry-dot" aria-hidden="true"></span>
+						{/if}
+					</button>
+					{#if toolsMenuOpen}
+						<div
+							bind:this={toolsMenuEl}
+							class="tools-menu"
+							role="menu"
+							tabindex="-1"
+							onkeydown={onToolsMenuKeyDown}
+						>
+							<button
+								type="button"
+								class="tools-menu-item"
+								role="menuitem"
+								aria-current={runtime.routinesOpen ? 'true' : undefined}
+								onclick={() => {
+									toolsMenuOpen = false;
+									onOpenRoutines();
+								}}
+							>
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<rect x="3" y="4" width="18" height="17" rx="2"></rect>
+									<line x1="3" y1="9" x2="21" y2="9"></line>
+									<line x1="8" y1="2" x2="8" y2="6"></line>
+									<line x1="16" y1="2" x2="16" y2="6"></line>
+								</svg>
+								<span>{t.calendar.open}</span>
+							</button>
+							<button
+								type="button"
+								class="tools-menu-item"
+								role="menuitem"
+								aria-current={runtime.terminalOpen ? 'true' : undefined}
+								onclick={() => {
+									toolsMenuOpen = false;
+									runtime.openTerminal();
+								}}
+							>
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<polyline points="4 17 10 11 4 5"></polyline>
+									<line x1="12" y1="19" x2="20" y2="19"></line>
+								</svg>
+								<span>{t.terminal.title}</span>
+							</button>
+							<button
+								type="button"
+								class="tools-menu-item tools-menu-archived"
+								role="menuitem"
+								aria-current={viewingArchived ? 'true' : undefined}
+								onclick={() => {
+									toolsMenuOpen = false;
+									viewingArchived = true;
+								}}
+							>
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<polyline points="21 8 21 21 3 21 3 8"></polyline>
+									<rect x="1" y="3" width="22" height="5"></rect>
+									<line x1="10" y1="12" x2="14" y2="12"></line>
+								</svg>
+								<span>{t.sidebar.archivedSessions}</span>
+								{#if archivedSessions.length > 0}
+									<span class="tools-menu-badge">{archivedSessions.length}</span>
+								{/if}
+							</button>
+						</div>
+					{/if}
 				</div>
 			{/if}
-		{/if}
-	</div>
-	<div class="mobile-session-tools" class:is-archived={viewingArchived}>
-		<span>{viewingArchived ? t.sidebar.archivedSessions : t.sidebar.sessions}</span>
-		<button type="button" aria-pressed={viewingArchived} onclick={() => (viewingArchived = !viewingArchived)}>
-			{viewingArchived ? t.sidebar.backToSessions : t.sidebar.archivedSessions}
-			{#if !viewingArchived && archivedSessions.length > 0}<span class="archive-count">{archivedSessions.length}</span>{/if}
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-		</button>
-	</div>
+			{#if phone}
+				<div class="search-trigger-wrap relative flex-1 min-w-0 flex items-center">
+					{@render searchGlyph()}
+					<!-- Looks like the field it replaces, so the list still reads as having a search box. -->
+					<button type="button" class="search search-trigger w-full" onclick={openSearchPage}>
+						{t.sidebar.searchShort}
+					</button>
+				</div>
+			{:else}
+				{@render searchGlyph()}
+				<input
+					bind:this={searchInputEl}
+					class="search"
+					placeholder={t.sidebar.search}
+					value={runtime.searchQuery}
+					role="combobox"
+					aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
+					aria-controls="search-dropdown-list"
+					aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
+					oninput={onSearchInput}
+					onfocus={() => {
+						searchFocused = true;
+					}}
+					onblur={(e) => {
+						const next = e.relatedTarget as Node | null;
+						if (searchWrapEl && next && searchWrapEl.contains(next)) {
+							return;
+						}
+						searchFocused = false;
+						searchHighlightIndex = -1;
+					}}
+					onkeydown={onSearchKeyDown}
+				/>
+				{#if runtime.searchQuery.trim()}
+					<button
+						type="button"
+						class="search-clear"
+						title={t.sidebar.searchClear}
+						aria-label={t.sidebar.searchClear}
+						onmousedown={(e) => e.preventDefault()}
+						onclick={() => {
+							void runtime.runSearch('');
+							searchFocused = true;
+							searchHighlightIndex = -1;
+							searchInputEl?.focus();
+						}}
+					>✕</button>
+				{/if}
+				{#if searchFocused && runtime.searchQuery.trim()}
+					<div
+						bind:this={searchDropEl}
+						id="search-dropdown-list"
+						class="search-drop"
+						role="listbox"
+						tabindex="-1"
+						onmousedown={(e) => {
+							e.preventDefault();
+						}}
+					>
+						{@render hitList()}
+					</div>
+				{/if}
+			{/if}
+		</div>
+	{/if}
 	<div class="groups">
 		{#if viewingArchived}
 			<div class="ghead archived-ghead flex items-center justify-between">
@@ -775,6 +923,22 @@
 			<button
 				type="button"
 				class="foot-icon-btn"
+				class:is-active={runtime.routinesOpen}
+				title={t.calendar.open}
+				aria-label={t.calendar.open}
+				aria-pressed={runtime.routinesOpen}
+				onclick={() => onOpenRoutines()}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<rect x="3" y="4" width="18" height="17" rx="2"></rect>
+					<line x1="3" y1="9" x2="21" y2="9"></line>
+					<line x1="8" y1="2" x2="8" y2="6"></line>
+					<line x1="16" y1="2" x2="16" y2="6"></line>
+				</svg>
+			</button>
+			<button
+				type="button"
+				class="foot-icon-btn"
 				class:is-active={viewingArchived}
 				title={t.sidebar.archivedSessions}
 				aria-label={t.sidebar.archivedSessions}
@@ -905,6 +1069,19 @@
 			<button
 				type="button"
 				class="foot-icon-btn"
+				class:is-active={runtime.terminalOpen}
+				title={t.terminal.open}
+				aria-label={t.terminal.open}
+				onclick={() => runtime.openTerminal()}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polyline points="4 17 10 11 4 5"></polyline>
+					<line x1="12" y1="19" x2="20" y2="19"></line>
+				</svg>
+			</button>
+			<button
+				type="button"
+				class="foot-icon-btn"
 				class:is-active={runtime.settingsOpen}
 				title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
 				aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
@@ -927,7 +1104,7 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchPageOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen}
+{#if phone && !selected && !searchPageOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen}
 	<div class="fab-wrap" bind:this={fabEl}>
 		{#if createMenuOpen}
 			<div class="fab-menu" role="menu">
@@ -1027,35 +1204,6 @@
 				{/if}
 			</div>
 		</div>
-			<button
-				type="button"
-				class="foot-icon-btn"
-				class:is-active={runtime.routinesOpen}
-				title={t.calendar.open}
-				aria-label={t.calendar.open}
-				aria-pressed={runtime.routinesOpen}
-				onclick={() => onOpenRoutines()}
-			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="3" y="4" width="18" height="17" rx="2"></rect>
-					<line x1="3" y1="9" x2="21" y2="9"></line>
-					<line x1="8" y1="2" x2="8" y2="6"></line>
-					<line x1="16" y1="2" x2="16" y2="6"></line>
-				</svg>
-			</button>
-			<button
-				type="button"
-				class="foot-icon-btn"
-				class:is-active={runtime.terminalOpen}
-				title={t.terminal.open}
-				aria-label={t.terminal.open}
-				onclick={() => runtime.openTerminal()}
-			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="4 17 10 11 4 5"></polyline>
-					<line x1="12" y1="19" x2="20" y2="19"></line>
-				</svg>
-			</button>
 		{#if runtime.searchQuery.trim()}
 			<div
 				bind:this={searchDropEl}
@@ -1071,13 +1219,9 @@
 {/if}
 
 <style>
-	.mobile-session-tools { display: none; }
+	.mobile-archived-head { display: none; }
 	@media (max-width: 680px) {
 		.side > .foot { display: none; }
-		.mobile-session-tools { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0; min-height: 44px; font-size: 13px; color: var(--muted); }
-		.mobile-session-tools button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px; border: 0; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
-		.mobile-session-tools button:focus-visible { outline: 2px solid var(--accent); border-radius: var(--radius-sm); }
-		.archive-count { font-variant-numeric: tabular-nums; color: var(--muted); }
 		.groups .archived-ghead { display: none; }
 	}
 
@@ -1091,6 +1235,11 @@
 		margin: 10px 12px 6px;
 		display: flex;
 		align-items: center;
+		gap: 8px;
+	}
+
+	.tools-entry-wrap {
+		display: none;
 	}
 
 	.search-clear {
@@ -2358,60 +2507,206 @@
 		}
 
 		/*
-		 * Search and the archived entry share one 40px line. The label beside it said 会话, which
-		 * is what the bar at the bottom of the screen already says, so it goes. Between this and
-		 * the collapsed pinned rail the list starts about 140px higher — two more chats.
+		 * Mobile side body: natural vertical flex column.
 		 */
 		.side-body {
-			display: grid;
-			grid-template-columns: minmax(0, 1fr) auto;
-			grid-template-rows: auto minmax(0, 1fr);
+			display: flex;
+			flex-direction: column;
+			height: 100%;
 		}
 
 		/*
-		 * One left edge for the whole screen. The list's own content starts at 22px (8px of
-		 * `.groups` padding plus 14px of row padding), so the field and the group headers start
-		 * there too instead of 10px further out.
+		 * Mobile header bar: tools menu on the left, full-width capsule search on the right.
+		 * Padding accommodates safe-area notch and aligns with the conversation list (16px).
 		 */
 		.search-wrap {
-			grid-column: 1;
-			grid-row: 1;
-			margin: 6px 4px 6px 22px;
+			--tools-entry-size: 38px;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			margin: 0;
+			padding: max(8px, env(safe-area-inset-top, 0px)) 16px 8px 16px;
+			flex-shrink: 0;
 		}
 
-		.search {
-			padding: 7px 10px 7px 30px;
+		.tools-entry-wrap {
+			position: relative;
+			display: inline-flex;
+			flex: 0 0 auto;
+		}
+
+		.tools-entry {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: var(--tools-entry-size);
+			height: var(--tools-entry-size);
+			border: 1px solid var(--line);
+			border-radius: var(--radius-md);
+			background: var(--pane);
+			color: var(--ink-secondary);
+			cursor: pointer;
+			position: relative;
+			transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+		}
+
+		.tools-entry:active,
+		.tools-entry.is-active {
+			background: var(--row-hover);
+			color: var(--ink);
+			border-color: var(--line-active, var(--line));
+		}
+
+		.tools-entry-dot {
+			position: absolute;
+			top: 5px;
+			right: 5px;
+			width: 6px;
+			height: 6px;
+			border-radius: 50%;
+			background: var(--accent);
+		}
+
+		.tools-menu {
+			position: absolute;
+			top: calc(var(--tools-entry-size) + 6px);
+			left: 0;
+			z-index: 30;
+			display: flex;
+			flex-direction: column;
+			min-width: 180px;
+			padding: 5px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-md);
+			background: var(--pane);
+			box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+		}
+
+		.tools-menu-item {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			min-height: 42px;
+			padding: 0 12px;
+			border: 0;
+			border-radius: var(--radius-sm);
+			background: transparent;
+			color: var(--ink);
+			font: 500 14px/1.2 var(--font);
+			text-align: left;
+			cursor: pointer;
+			transition: background 0.12s ease;
+		}
+
+		.tools-menu-item:hover,
+		.tools-menu-item:focus-visible {
+			background: var(--line-subtle);
+			outline: none;
+		}
+
+		.tools-menu-badge {
+			margin-left: auto;
+			padding: 1px 7px;
+			border-radius: 9999px;
+			background: var(--line-subtle);
+			color: var(--muted);
+			font-size: 11.5px;
+			font-weight: 600;
+		}
+
+		.search-trigger-wrap {
+			flex: 1;
+			min-width: 0;
+			position: relative;
+			display: flex;
+			align-items: center;
+		}
+
+		.search-trigger-wrap .search-icon-badge {
+			position: absolute;
+			left: 12px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			pointer-events: none;
+			color: var(--muted);
+		}
+
+		.search-trigger {
+			width: 100%;
+			height: var(--tools-entry-size);
+			padding: 0 14px 0 34px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-full);
+			background: var(--pane);
+			color: var(--muted);
 			font-size: 14px;
+			display: flex;
+			align-items: center;
+			text-align: left;
+			cursor: pointer;
+			transition: background 0.15s ease, border-color 0.15s ease;
 		}
 
-		/* 18px + the button's own 4px puts the chevron on the same edge as the row times. */
-		.mobile-session-tools {
-			grid-column: 2;
-			grid-row: 1;
-			min-height: 40px;
-			padding: 0 18px 0 0;
+		.search-trigger:active {
+			background: var(--row-hover);
+			color: var(--ink);
 		}
 
-		/* The label said 会话, which the bar at the bottom already says — but the archived view has
-		   no other title, so it keeps its own. */
-		.mobile-session-tools:not(.is-archived) > span {
-			display: none;
+		/*
+		 * Mobile archived navigation bar: clear Back button on the left, centered title with count.
+		 */
+		.mobile-archived-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			height: 52px;
+			padding: max(6px, env(safe-area-inset-top, 0px)) 12px 6px 8px;
+			background: var(--pane);
+			border-bottom: 1px solid var(--line);
+			flex-shrink: 0;
 		}
 
-		.mobile-session-tools.is-archived {
-			grid-column: 1 / -1;
-			grid-row: 2;
-			padding: 0 14px;
-			border-bottom: 1px solid var(--line-subtle);
+		.mobile-archived-back {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 38px;
+			height: 38px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			cursor: pointer;
+			flex-shrink: 0;
+			transition: background 0.15s ease;
 		}
 
-		.mobile-session-tools.is-archived + .groups,
-		.side-body:has(.mobile-session-tools.is-archived) .groups {
-			grid-row: 3;
+		.mobile-archived-back:active {
+			background: var(--row-hover);
 		}
 
-		.side-body:has(.mobile-session-tools.is-archived) {
-			grid-template-rows: auto auto minmax(0, 1fr);
+		.mobile-archived-title {
+			margin: 0;
+			font-size: 16px;
+			font-weight: 600;
+			color: var(--ink);
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+
+		.mobile-archived-count {
+			font-size: 13px;
+			font-weight: 500;
+			color: var(--muted);
+		}
+
+		.mobile-archived-spacer {
+			width: 38px;
+			flex-shrink: 0;
 		}
 
 		.groups {

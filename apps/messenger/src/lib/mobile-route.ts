@@ -94,6 +94,7 @@ export function stackAfter(stack: readonly string[], search: string, replaced: b
  */
 export type BackLayer =
   | "theme-menu"
+  | "tools-menu"
   | "create-menu"
   | "danger"
   | "create-bot"
@@ -113,6 +114,7 @@ export type BackLayer =
 
 export type LayerState = {
   themeMenuOpen: boolean;
+  toolsMenuOpen: boolean;
   createMenuOpen: boolean;
   dangerConfirm: boolean;
   createBotOpen: boolean;
@@ -133,6 +135,8 @@ export type LayerState = {
 
 const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["theme-menu", "themeMenuOpen"],
+  // The phone's tools menu: over everything, gone at the first Back, like any other menu.
+  ["tools-menu", "toolsMenuOpen"],
   // The phone's + menu, like any other menu: over everything, gone at the first Back.
   ["create-menu", "createMenuOpen"],
   ["danger", "dangerConfirm"],

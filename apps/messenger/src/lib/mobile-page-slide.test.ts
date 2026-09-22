@@ -34,6 +34,14 @@ test("a page arrives from the right and leaves the way it came", () => {
   });
 });
 
+test("the tab bar switches without a slide", () => {
+  withMedia(phone, () => {
+    const swap = pageSlide(document.createElement("div"), { instant: true });
+    expect(swap.duration).toBe(0);
+    expect(swap.css(0)).toBe("");
+  });
+});
+
 test("wider windows and reduced motion leave the page where the stylesheet put it", () => {
   withMedia(() => false, () => {
     const wide = pageSlide(document.createElement("div"));

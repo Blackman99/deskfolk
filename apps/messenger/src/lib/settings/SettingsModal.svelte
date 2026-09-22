@@ -659,7 +659,8 @@
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
-		transition:pageSlide
+		in:pageSlide={{ instant: true }}
+		out:pageSlide={{ instant: true }}
 		onmousedowncapture={settingsBackdrop.press}
 		onclick={(e) => {
 			if (settingsBackdrop.isOutside(e) && !providerEditor && !confirmingProvider && !confirmingIndependent)

@@ -26,6 +26,14 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions],
   });
   const runtime = live ? reactive(stub) : stub;
+  if (live) {
+    runtime.openRoutines = () => {
+      runtime.routinesOpen = true;
+    };
+    runtime.closeRoutines = () => {
+      runtime.routinesOpen = false;
+    };
+  }
   runtime.selectedId = selectedId;
   const view = render(Sidebar, {
     runtime,
@@ -37,6 +45,7 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     contextMenuSessionId: null,
     onOpenContextMenu: () => {},
     onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
     onOpenSettings: () => {},
     onCreateBot: () => created.push("bot"),
     onCreateGroup: () => created.push("group"),
@@ -143,17 +152,6 @@ test("Bot to Bot rows carry no unread badge", () => {
   close();
 });
 
-test('mobile archive entry opens an empty archive and returns to active sessions', () => {
-  const { host, close } = open([]);
-  click(host.querySelector('.mobile-session-tools button'));
-  expect(host.querySelector('.archived-empty-hint')?.textContent).toContain(t.sidebar.archivedEmpty);
-  expect(host.querySelector('.mobile-session-tools button')?.textContent).toContain(t.sidebar.backToSessions);
-  click(host.querySelector('.mobile-session-tools button'));
-  expect(host.querySelector('.archived-empty-hint')).toBeNull();
-  expect(host.querySelector('.groups')?.textContent).toContain('视频组');
-  close();
-});
-
 /**
  * Phone width, with the media listener kept so a window that grows back can be tested too. The
  * 680px query is the one the stylesheet uses; reduced motion keeps the page slide out of the way,
@@ -186,6 +184,20 @@ function withPhone(run: (grow: () => void) => void): void {
     window.matchMedia = previous;
   }
 }
+
+test('mobile archive entry opens an empty archive and returns to active sessions', () => {
+  withPhone(() => {
+    const { host, close } = open([], null, true);
+    click(host.querySelector('.tools-entry'));
+    click(host.querySelector('.tools-menu-archived'));
+    expect(host.querySelector('.archived-empty-hint')?.textContent).toContain(t.sidebar.archivedEmpty);
+    expect(host.querySelector('.mobile-archived-title')?.textContent).toContain(t.sidebar.archivedSessions);
+    click(host.querySelector('.mobile-archived-back'));
+    expect(host.querySelector('.archived-empty-hint')).toBeNull();
+    expect(host.querySelector('.groups')?.textContent).toContain('视频组');
+    close();
+  });
+});
 
 function hits(runtime: ReturnType<typeof open>["runtime"], query = '视频') {
   flushSync(() => {
@@ -302,11 +314,24 @@ test("creating on a phone is one floating button, asking which once", () => {
 test("the button belongs to the list of chats: not the archive, not the search page", () => {
   withPhone(() => {
     const { host, close } = open([], null, true);
-    click(host.querySelector('.mobile-session-tools button'));
+    click(host.querySelector('.tools-entry'));
+    click(host.querySelector('.tools-menu-archived'));
     expect(host.querySelector('.fab')).toBeNull();
-    click(host.querySelector('.mobile-session-tools button'));
+    click(host.querySelector('.mobile-archived-back'));
     expect(host.querySelector('.fab')).not.toBeNull();
     click(host.querySelector('.search-trigger'));
+    expect(host.querySelector('.fab')).toBeNull();
+    close();
+  });
+});
+
+test("the floating create button steps aside while the routine calendar is open", () => {
+  withPhone(() => {
+    const { host, runtime, close } = open([], null, true);
+    flushSync();
+    expect(host.querySelector('.fab')).not.toBeNull();
+    runtime.openRoutines();
+    flushSync();
     expect(host.querySelector('.fab')).toBeNull();
     close();
   });
@@ -322,4 +347,31 @@ test("the group headers keep their own + on a wider window, and there is no floa
   click(adds[1]);
   expect(created).toEqual(['group', 'bot']);
   close();
+});
+
+test("on a phone the calendar and the terminal live behind one button", () => {
+  withPhone(() => {
+    const { host, runtime, close } = open([], null, true);
+    // The footer that carries these on a desktop is not on screen here, and the line the search
+    // field shares with the archive entry has no room for one icon per tool.
+    expect(host.querySelector('.calendar-entry')).toBeNull();
+    const entry = host.querySelector<HTMLButtonElement>('.tools-entry');
+    expect(entry).not.toBeNull();
+    expect(entry?.getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelector('.tools-menu')).toBeNull();
+
+    click(entry);
+    // Tools live here; the menu is free to grow, so this checks membership and order, not the list.
+    const items = Array.from(host.querySelectorAll('.tools-menu-item')).map((el) => el.textContent?.trim());
+    expect(items.indexOf(t.calendar.open)).toBe(0);
+    expect(items.indexOf(t.terminal.title)).toBe(1);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(2);
+
+    const terminalItem = host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')[1];
+    click(terminalItem);
+    expect(runtime.calls.some((call) => call.name === 'openTerminal')).toBe(true);
+    // Picking one closes the menu rather than leaving it hanging over the list.
+    expect(host.querySelector('.tools-menu')).toBeNull();
+    close();
+  });
 });

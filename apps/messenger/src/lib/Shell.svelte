@@ -98,6 +98,8 @@
 
 	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
 	let themeMenuOpen = $state(false);
+	/** The phone's tools menu beside the search field; Escape and Back close it first. */
+	let toolsMenuOpen = $state(false);
 	/**
 	 * Searching on a phone is a screen, not a dropdown. The sidebar renders it; the flag lives
 	 * here because Back and Escape have to close it, and because the bar at the bottom steps out
@@ -147,6 +149,7 @@
 	export function backMobileLayer(): boolean {
 		switch (topLayer({
 			themeMenuOpen,
+			toolsMenuOpen,
 			createMenuOpen,
 			dangerConfirm: dangerConfirm !== null,
 			createBotOpen: runtime.createBotOpen,
@@ -166,6 +169,9 @@
 		})) {
 			case 'theme-menu':
 				themeMenuOpen = false;
+				return true;
+			case 'tools-menu':
+				toolsMenuOpen = false;
 				return true;
 			case 'create-menu':
 				createMenuOpen = false;
@@ -245,20 +251,27 @@
 	);
 	function navigateMobile(destination: MobileDestination): void {
 		if (destination === mobileDestination) return;
+		// The three tab-bar pages replace one another. No slide: selecting a destination is not
+		// pushing a page.
 		const navigate = () => {
 			themeMenuOpen = false;
+			toolsMenuOpen = false;
 			createMenuOpen = false;
 			sidebar?.closeSearchPage();
-			if (destination === 'settings') runtime.openSettings();
-			else if (destination === 'workspace') runtime.openWorkspace();
+			if (destination === 'settings') {
+				runtime.openSettings();
+			} else if (destination === 'workspace') {
+				runtime.openWorkspace();
+			}
 			else {
 				closeSettings();
 				runtime.closeWorkspace();
 				runtime.selectedId = null;
 			}
 		};
-		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(navigate);
-		else navigate();
+		if (runtime.workspaceOpen && workspacePane) {
+			workspacePane.requestCloseFromParent(navigate);
+		} else navigate();
 	}
 
 	function togglePin(sessionId: string): void {
@@ -962,6 +975,8 @@
 		if (e.key === 'Escape') {
 			if (themeMenuOpen) {
 				themeMenuOpen = false;
+			} else if (toolsMenuOpen) {
+				toolsMenuOpen = false;
 			} else if (createMenuOpen) {
 				createMenuOpen = false;
 			} else if (escapeDismissesDanger) {
@@ -1046,6 +1061,7 @@
 		{selected}
 		{pinnedSessionIds}
 		bind:themeMenuOpen
+		bind:toolsMenuOpen
 		bind:searchPageOpen
 		bind:createMenuOpen
 		workspaceOpen={runtime.workspaceOpen}

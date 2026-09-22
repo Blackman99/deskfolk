@@ -1423,9 +1423,7 @@
 	@media (max-width: 680px) {
 	.composer .composer-input {
 	font-size: 15px;
-	line-height: 21px;
-	min-height: 29px;
-	padding: 4px;
+	padding: 6px 4px;
 	}
 
 	.composer-inline-limit {
@@ -1437,8 +1435,7 @@
 	.composer .composer-input.is-empty::before {
 	left: 4px;
 	right: 4px;
-	top: 4px;
-	line-height: 21px;
+	top: 6px;
 	}
 	}
 	@media (max-width: 680px) {

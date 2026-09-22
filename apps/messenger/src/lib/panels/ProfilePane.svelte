@@ -990,10 +990,14 @@
 		display: none;
 	}
 
+	/*
+	 * Flush with the drawer: the title's rule is the top edge and the tabs run to both sides.
+	 * A padded, rounded pill used to float in a gap of its own.
+	 */
 	.bot-nav-sticky {
 		flex-shrink: 0;
-		padding: 12px 18px 10px;
-		background: var(--bg);
+		padding: 0;
+		background: var(--sidebar-bg);
 		border-bottom: 1px solid var(--line);
 		box-sizing: border-box;
 	}
@@ -1017,13 +1021,13 @@
 
 	.bot-tabs {
 		display: flex;
-		align-items: center;
+		align-items: stretch;
 		width: 100%;
-		gap: 3px;
-		padding: 3px;
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
+		gap: 0;
+		padding: 0;
+		background: transparent;
+		border: 0;
+		border-radius: 0;
 		box-sizing: border-box;
 	}
 
@@ -1034,30 +1038,34 @@
 		align-items: center;
 		justify-content: center;
 		gap: 5px;
-		padding: 6px 4px;
-		border-radius: var(--radius-sm);
+		min-height: 40px;
+		padding: 10px 4px 8px;
+		border-radius: 0;
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--ink-secondary);
 		background: transparent;
 		border: none;
+		border-bottom: 2px solid transparent;
+		margin-bottom: -1px;
 		cursor: pointer;
 		white-space: nowrap;
-		transition: all 0.15s ease;
+		transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 		line-height: 1.2;
 		box-sizing: border-box;
 	}
 
 	.bot-tab-btn:hover {
 		color: var(--ink);
-		background: var(--chip);
+		background: var(--row-hover);
 	}
 
 	.bot-tab-btn.is-active {
-		color: var(--ink);
+		color: var(--accent);
 		font-weight: 600;
-		background: var(--pane);
-		box-shadow: var(--shadow-sm);
+		background: transparent;
+		border-bottom-color: var(--accent);
+		box-shadow: none;
 	}
 
 	.bot-tab-btn .tab-icon {
@@ -1502,7 +1510,9 @@
 			gap: 10px;
 			min-height: 54px;
 			padding: 0 14px;
+			margin-bottom: 0;
 			border-radius: 0;
+			border-bottom: 0;
 			background: var(--pane);
 			font-size: 15px;
 			font-weight: 500;

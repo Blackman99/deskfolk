@@ -73,7 +73,10 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     searchPageOpen: false,
     settingsOpen: false,
     sessionSettingsOpen: false,
+    toolsMenuOpen: false,
     routeLogOpen: false,
+    traceOpen: false,
+    routinesOpen: false,
     threadOpen: false,
     workspaceOpen: false,
     artifactPreview: false,
@@ -106,4 +109,13 @@ test("Back closes the innermost thing on top", () => {
   expect(topLayer(layers({ searchPageOpen: true, threadOpen: true }))).toBe("search-page");
   expect(topLayer(layers({ searchPageOpen: true, themeMenuOpen: true }))).toBe("theme-menu");
   expect(topLayer(layers({ createMenuOpen: true, settingsOpen: true }))).toBe("create-menu");
+});
+
+test("the phone's tools menu is a menu: it goes before anything Back would navigate to", () => {
+  // It holds the calendar and the terminal, which on a desktop live in a footer the phone does
+  // not show. Like every other menu, one Back closes it and nothing navigates.
+  expect(topLayer(layers({ toolsMenuOpen: true }))).toBe("tools-menu");
+  expect(topLayer(layers({ toolsMenuOpen: true, settingsOpen: true, workspaceOpen: true }))).toBe("tools-menu");
+  // The theme menu still wins: it is the one opened from on top of everything else.
+  expect(topLayer(layers({ toolsMenuOpen: true, themeMenuOpen: true }))).toBe("theme-menu");
 });

@@ -446,6 +446,7 @@
 	function requestClose(afterClose?: () => void): void {
 		if (saving) return;
 		if (dirty) {
+			// The file is not closing yet. `afterClose` runs only if this close goes through.
 			pendingNav = { kind: 'close', afterClose };
 			return;
 		}

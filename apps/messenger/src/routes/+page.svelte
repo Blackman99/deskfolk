@@ -65,8 +65,11 @@ const runtime = new MessengerRuntime();
 	// workspace wait for the snapshot so a missing session or Bot does not flash the wrong pane.
 	const fromUrl = viewFromUrl(page.url, HOSTED_MESSENGER);
 	if (fromUrl.selectedId) runtime.selectedId = fromUrl.selectedId;
-	if (fromUrl.previewRelpath) runtime.previewRelpath = fromUrl.previewRelpath;
-	if (fromUrl.previewAttachmentId) runtime.previewAttachmentId = fromUrl.previewAttachmentId;
+	// The calendar drops a file preview: seeding one and then clearing it would flash the pane.
+	if (fromUrl.overlay.kind !== 'routines') {
+		if (fromUrl.previewRelpath) runtime.previewRelpath = fromUrl.previewRelpath;
+		if (fromUrl.previewAttachmentId) runtime.previewAttachmentId = fromUrl.previewAttachmentId;
+	}
 	if (fromUrl.overlay.kind !== 'none') runtime.applyOverlay(fromUrl.overlay);
 
 	onMount(() => {
@@ -93,15 +96,17 @@ const runtime = new MessengerRuntime();
 				runtime.snapshot.sessions.map((session) => session.id)
 			);
 			if (next.action === 'clear') runtime.selectedId = null;
-			else if (next.action === 'select') void runtime.selectSession(next.id);
+			else if (next.action === 'select') void runtime.selectSession(next.id, { preservePage: true });
 		});
 	});
 
 	$effect(() => {
 		if (HOSTED_MESSENGER) return;
 		const wanted = previewFromUrl(page.url);
+		const calendar = overlayFromUrl(page.url).kind === 'routines' || runtime.routinesOpen;
 		untrack(() => {
-			if (wanted !== runtime.previewRelpath) runtime.previewRelpath = wanted;
+			const next = calendar ? null : wanted;
+			if (next !== runtime.previewRelpath) runtime.previewRelpath = next;
 		});
 	});
 
@@ -115,6 +120,11 @@ const runtime = new MessengerRuntime();
 
 	$effect(() => {
 		const wanted = overlayFromUrl(page.url, HOSTED_MESSENGER);
+		// The calendar is a page: snapshot updates must not reopen it after a session click.
+		if (wanted.kind === 'routines') {
+			untrack(() => runtime.applyOverlay(wanted));
+			return;
+		}
 		const urlSession = sessionFromUrl(page.url);
 		const sessions = runtime.snapshot.sessions;
 		const bots = runtime.snapshot.bots;
@@ -125,9 +135,13 @@ const runtime = new MessengerRuntime();
 			// Session and overlay queries can land a tick apart. Wait until they name the same
 			// session so a click that already closed the drawer is not reopened from a stale `?o=`.
 			if (
-				(wanted.kind === 'session' || wanted.kind === 'bot') &&
+				(wanted.kind === 'session' || wanted.kind === 'bot' || wanted.kind === 'trace') &&
 				urlSession !== selectedId
 			) {
+				return;
+			}
+			// The window follows the conversation, so a stale job id in the URL must not win.
+			if (wanted.kind === 'trace' && runtime.traceOpen && urlSession === selectedId) {
 				return;
 			}
 			const current = overlayFromFlags({
@@ -135,7 +149,10 @@ const runtime = new MessengerRuntime();
 				sessionSettingsOpen: runtime.sessionSettingsOpen,
 				profileBotId: runtime.profileBotId,
 				workspaceOpen: runtime.workspaceOpen,
-				workspaceSelected: runtime.workspaceSelected
+				workspaceSelected: runtime.workspaceSelected,
+				traceOpen: runtime.traceOpen,
+				traceTaskId: runtime.traceTaskId,
+				routinesOpen: runtime.routinesOpen
 			});
 			const next = overlayApply(wanted, current, {
 				selectedId,
@@ -179,7 +196,10 @@ const runtime = new MessengerRuntime();
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			profileBotId: runtime.profileBotId,
 			workspaceOpen: runtime.workspaceOpen,
-			workspaceSelected: runtime.workspaceSelected
+			workspaceSelected: runtime.workspaceSelected,
+			traceOpen: runtime.traceOpen,
+			traceTaskId: runtime.traceTaskId,
+			routinesOpen: runtime.routinesOpen
 		});
 		untrack(() => {
 			const wanted = { selectedId: id, previewRelpath, previewAttachmentId, overlay };

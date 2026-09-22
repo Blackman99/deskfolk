@@ -11,6 +11,10 @@ import { cubicOut } from "svelte/easing";
  *
  * The screen underneath does not move. Only the one on top travels, which is what makes it read
  * as a page being put down and picked back up rather than two pages sliding past each other.
+ *
+ * The phone tab bar is the exception. Chats, Workspace and Settings replace one another, so a
+ * slide there reads as a page being pushed rather than a destination being selected. Pass
+ * `instant` from those three and the page appears where it is.
  */
 export const MOBILE_PAGE_MS = 220;
 
@@ -28,14 +32,18 @@ function sliding(): boolean {
 /**
  * Use as `transition:pageSlide` — one directive, because in and out are the same path walked in
  * opposite directions. Wider windows and reduced motion get a zero-length transition, so the
- * page just appears and whatever CSS animation belongs to that layout is left alone.
+ * page just appears and whatever CSS animation belongs to that layout is left alone. `instant`
+ * does the same on a phone: the tab bar switches Chats, Workspace and Settings without a slide.
  */
-export function pageSlide(_node: Element): {
+export function pageSlide(
+  _node: Element,
+  { instant = false }: { instant?: boolean } = {},
+): {
   duration: number;
   easing: (t: number) => number;
   css: (t: number) => string;
 } {
-  if (!sliding()) return { duration: 0, easing: cubicOut, css: () => "" };
+  if (instant || !sliding()) return { duration: 0, easing: cubicOut, css: () => "" };
   return {
     duration: MOBILE_PAGE_MS,
     easing: cubicOut,

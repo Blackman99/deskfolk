@@ -88,6 +88,23 @@ test("a phone row's count sits against the chevron, not in the middle of the row
   });
 });
 
+test("the section tabs sit flush under the title on a wide window", () => {
+  const { host, close } = openProfile();
+  const nav = getComputedStyle(host.querySelector(".bot-nav-sticky")!);
+  const tabs = getComputedStyle(host.querySelector(".bot-tabs")!);
+  const active = getComputedStyle(host.querySelector(".bot-tab-btn.is-active")!);
+  expect(nav.paddingTop).toBe("0px");
+  expect(nav.paddingRight).toBe("0px");
+  expect(nav.paddingBottom).toBe("0px");
+  expect(nav.paddingLeft).toBe("0px");
+  expect(tabs.paddingTop).toBe("0px");
+  expect(tabs.borderTopWidth).toBe("0px");
+  expect(tabs.borderRadius).toBe("0px");
+  expect(active.borderBottomWidth).toBe("2px");
+  expect(active.boxShadow).toBe("none");
+  close();
+});
+
 test("a Bot's sections are a list on a phone, and a row opens that section", () => {
   withPhone(() => {
     const { host, close } = openProfile();
