@@ -8,7 +8,7 @@ mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', 
 const { default: Shell } = await import('./Shell.svelte');
 import { ApiError } from './api.ts';
 import { applyEvent, emptySnapshot } from './snapshot.ts';
-import { aBot, aDirect, aGroup, aProvider, aRoutine, fakeRuntime } from './test-fixtures.ts';
+import { aBot, aDirect, aGroup, aMessage, anAttachment, aProvider, aRoutine, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, render } from './test-render.ts';
 
@@ -365,4 +365,96 @@ test('mounted Shell: the floating + is on the list of chats and nowhere else', (
   } finally {
     window.matchMedia = previousMatchMedia;
   }
+});
+
+/**
+ * Every prop of the file pane comes off one object the shell derives from the snapshot, so a
+ * snapshot that says nothing new still re-runs the pane's effects. Letting go of the listing there
+ * — and pulling the same job again — is what made the tree blink while a conversation was live.
+ */
+test('a snapshot that changes nothing leaves the file tree alone', async () => {
+  const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+  const session = aDirect({ id: 'bot-1', participants: [
+    { member: 'user', joined_at: 'now', left_at: null },
+    { member: 'bot-1', joined_at: 'now', left_at: null },
+  ] });
+  const attachment = anAttachment({
+    id: 'att-plan', message_id: 'm1', workspace_relpath: 'work/plan.md',
+    original_filename: 'plan.md', mime: 'text/markdown', size: 8,
+  });
+  const message = aMessage({
+    id: 'm1', session_id: session.id, kind: 'bot', author: 'bot-1',
+    task_id: 'task-1', attachments: [attachment],
+  });
+  let pulls = 0;
+  const runtime = reactive(fakeRuntime({
+    bots: [bot], sessions: [session], messages: [message],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id, previewRelpath: 'work/plan.md', previewMessageId: 'm1' }));
+  runtime.client = {
+    kind: 'local',
+    taskArtifacts: async () => {
+      pulls += 1;
+      return {
+        id: 'task-1', dir: 'work', title: 'plan', closed_at: null,
+        items: [
+          { path: 'work/plan.md', last_cited_at: 'now', turn_id: null },
+          { path: 'work/notes.md', last_cited_at: 'now', turn_id: null },
+        ],
+      };
+    },
+    getWorkspaceFileBlob: async () => new Blob(['# plan'], { type: 'text/markdown' }),
+    getAttachmentBlob: async () => new Blob(['# plan'], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  await settle();
+  const rows = () => [...host.querySelectorAll('.artifact-tree-row')].map((row) => row.textContent?.trim());
+  expect(pulls).toBe(1);
+  expect(rows()).toContain('notes.md');
+
+  const listed = rows();
+  runtime.snapshot = { ...runtime.snapshot, sessions: [...runtime.snapshot.sessions] };
+  await settle();
+  expect(pulls).toBe(1);
+  expect(rows()).toEqual(listed);
+});
+
+/** The explorer reads the same snapshot, and re-read its root on every one of them. */
+test('a snapshot that changes nothing leaves the workspace listing alone', async () => {
+  const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+  const session = aDirect({ id: 'bot-1', participants: [
+    { member: 'user', joined_at: 'now', left_at: null },
+    { member: 'bot-1', joined_at: 'now', left_at: null },
+  ] });
+  let listings = 0;
+  const runtime = reactive(fakeRuntime({
+    bots: [bot], sessions: [session],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id, workspaceOpen: true, workspaceSelected: '' }));
+  runtime.client = {
+    kind: 'local',
+    workspaceTree: async (path = '') => {
+      listings += 1;
+      return { path, truncated: false, items: [
+        { name: 'docs', path: 'docs', kind: 'dir' },
+        { name: 'plan.md', path: 'plan.md', kind: 'file' },
+      ] };
+    },
+    getWorkspaceFileBlob: async () => new Blob(['# plan'], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  await settle();
+  const rows = () => [...host.querySelectorAll('.artifact-tree-row')].map((row) => row.textContent?.trim());
+  expect(listings).toBe(1);
+  expect(rows()).toContain('plan.md');
+
+  const listed = rows();
+  runtime.snapshot = { ...runtime.snapshot, sessions: [...runtime.snapshot.sessions] };
+  await settle();
+  expect(listings).toBe(1);
+  expect(rows()).toEqual(listed);
 });

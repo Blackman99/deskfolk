@@ -143,15 +143,32 @@
 	let taskTreeLoading = $state(false);
 	let taskTreeFailed = $state(false);
 	let taskTreeRetry = $state(0);
+	/** The job whose files are listed, so the same job is never pulled twice. */
+	let loadedTaskKey: string | null = null;
+	let loadedTaskClient: MessengerApi | null = null;
+	let taskTreeAbort: AbortController | null = null;
+	/**
+	 * The props of this pane come off one object the shell derives, so every snapshot re-runs this
+	 * — and clearing the list to pull the same job again is the tree blinking. Only a different
+	 * job, or the retry button, is a reason to let go of what is listed.
+	 */
 	$effect(() => {
 		const id = taskId;
 		const client = api;
-		taskTreeRetry;
+		const retry = taskTreeRetry;
+		const key = id && client && mode !== 'workspace' ? `${retry}:${id}` : null;
+		// A reconnect hands over a new client, and what it listed belongs to the old one.
+		if (key === loadedTaskKey && client === loadedTaskClient) return;
+		loadedTaskKey = key;
+		loadedTaskClient = client;
+		taskTreeAbort?.abort();
+		taskTreeAbort = null;
 		taskArtifacts = null;
 		taskTreeFailed = false;
 		taskTreeLoading = false;
-		if (!id || !client || mode === 'workspace') return;
+		if (!key || !id || !client) return;
 		const controller = new AbortController();
+		taskTreeAbort = controller;
 		taskTreeLoading = true;
 		client.taskArtifacts(id, controller.signal)
 			.then((rows) => {
@@ -163,7 +180,6 @@
 			.finally(() => {
 				if (!controller.signal.aborted) taskTreeLoading = false;
 			});
-		return () => controller.abort();
 	});
 
 	let ownPaths = $derived(siblings.map((row) => row.workspace_relpath));
@@ -236,10 +252,21 @@
 		showSource = false;
 	});
 
+	/** Which workspace root is listed; `null` when this pane is not the explorer. */
+	let loadedWorkspaceKey: string | null | undefined = undefined;
+	let loadedWorkspaceClient: MessengerApi | null = null;
+	/**
+	 * Same story as the job's files above: the explorer threw its listing away and re-read the
+	 * root on every snapshot, which read as the tree blinking once a second.
+	 */
 	$effect(() => {
 		const client = api;
 		const workspaceMode = mode === 'workspace';
-		workspacePath;
+		const root = workspacePath;
+		const key = workspaceMode && client ? (root ?? '') : null;
+		if (key === loadedWorkspaceKey && client === loadedWorkspaceClient) return;
+		loadedWorkspaceKey = key;
+		loadedWorkspaceClient = client;
 		untrack(() => {
 			treeGeneration += 1;
 			workspaceTree = [];
@@ -247,13 +274,15 @@
 			loadingDirs = new Set();
 			failedDirs = new Set();
 			truncatedHint = false;
-			if (workspaceMode && client) void loadWorkspaceDir('.');
+			if (key !== null) void loadWorkspaceDir('.');
 		});
-		return () => { treeGeneration += 1; };
 	});
 
 	onDestroy(() => {
 		revoke();
+		taskTreeAbort?.abort();
+		// Anything still in flight for this pane belongs to a listing that is gone.
+		treeGeneration += 1;
 		if (copiedTimer) clearTimeout(copiedTimer);
 	});
 

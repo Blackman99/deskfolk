@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Fixed the file list beside a conversation, and the workspace explorer, letting go of what they listed on every change to the conversation. Both take their props off one object the shell derives from the snapshot, so any snapshot at all re-ran their effects, and each cleared its listing to pull the same one back — a tree that blinks. A listing is now dropped only for a different job, a different workspace, or a reconnect.
+
 - On mobile, the header of the chat list is redesigned into a unified, balanced bar: the archived entry is moved into the left-side tools menu alongside calendar and terminal, removing the cramped right-hand text link. The search bar now spans the full remaining width as an accessible capsule trigger. In archived view, the page displays a dedicated header with a prominent Back button.
 
 - The phone tab bar no longer slides between Chats, Workspace and Settings. Tapping an entry switches straight to that page. Search, creating, and the settings sections keep their own page transitions.
