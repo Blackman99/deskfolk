@@ -1652,6 +1652,18 @@
 		overflow: hidden;
 	}
 
+	/*
+	 * The conversation is one column of the shell, so it has to fill that column and let the
+	 * transcript scroll inside it. On a phone the media query below lifts it out of the flow.
+	 */
+	.conversation {
+		flex: 1 1 auto;
+		min-width: 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
 	/* Shell Layout */
 	.shell {
 		height: 100%;

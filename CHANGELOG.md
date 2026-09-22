@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Restore the desktop conversation's height-constrained layout so the input stays visible and long chat histories scroll within the main area.
+
 - Mobile chat suggestions stay in a single horizontally scrollable row, with long labels truncated and the full prompt preserved when selected. The suggestion background stays within the input area, and long drafts scroll inside a viewport-aware height limit.
 
 - On a phone, opening a conversation slides it in from the right over the chat list, and Back slides it back out to the right. The list underneath stays where it is. Wider windows keep the list and the conversation side by side.
