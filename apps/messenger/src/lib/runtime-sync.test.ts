@@ -973,3 +973,36 @@ test("loading one session's model choices keeps another session's reviews", asyn
   await runtime.refreshRoutes("sess-a");
   expect(runtime.snapshot.routeReviews.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
 });
+
+test("each conversation keeps its own read on record", async () => {
+  // One slot for the whole app meant the second conversation's read overwrote the first's, so
+  // coming back to the first re-sent a read the daemon already had — the loop 938d714 removed,
+  // reintroduced by switching. Two panes will make this constant rather than occasional.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const reads: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("/read") && init?.method === "POST") {
+      reads.push(path.slice(path.indexOf("/v1/")));
+      return Response.json({ unread_count: 0, last_read_at: "2026-01-01T00:00:00Z" });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+
+  runtime.selectedId = "sess-a";
+  await runtime.submitBoundedRead("sess-a", "m-1");
+  runtime.selectedId = "sess-b";
+  await runtime.submitBoundedRead("sess-b", "m-1");
+  expect(reads).toHaveLength(2);
+
+  // Back where we were: the same message is already on record for this conversation.
+  runtime.selectedId = "sess-a";
+  await runtime.submitBoundedRead("sess-a", "m-1");
+  expect(reads).toHaveLength(2);
+
+  // A message that really is newer still goes.
+  await runtime.submitBoundedRead("sess-a", "m-2");
+  expect(reads).toHaveLength(3);
+});

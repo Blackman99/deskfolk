@@ -253,8 +253,12 @@ export class MessengerRuntime {
   private presenceTimer: ReturnType<typeof setInterval> | null = null;
 
   private api: MessengerApi | null = null;
-  /** The read this conversation has already put on record: `<session>:<message>`. */
-  private boundedReadSent: string | null = null;
+  /**
+   * The read each conversation has already put on record, session id to message id. One slot for
+   * the whole app was enough while only one conversation could be on screen; with several, the
+   * second one's read landed on the first one's slot and was swallowed.
+   */
+  private readonly boundedReadSent = new Map<string, string>();
   private ws: WebSocket | null = null;
   /** One sink per live stream id: a terminal session, or a Bot's running command. */
   private readonly streamSinks = new Map<string, (frame: StreamFrame) => void>();
@@ -1864,9 +1868,8 @@ export class MessengerRuntime {
   async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
     const api = this.api;
     if (!api || this.connection !== "connected" || this.selectedId !== sessionId) return;
-    const key = `${sessionId}:${messageId}`;
-    if (this.boundedReadSent === key) return;
-    this.boundedReadSent = key;
+    if (this.boundedReadSent.get(sessionId) === messageId) return;
+    this.boundedReadSent.set(sessionId, messageId);
     try {
       const detail = await api.markSessionReadThrough(sessionId, messageId);
       if (this.api !== api) return;
@@ -1887,7 +1890,7 @@ export class MessengerRuntime {
       };
     } catch {
       // Bounded read failure is non-fatal, but the next attempt must be allowed through.
-      if (this.boundedReadSent === key) this.boundedReadSent = null;
+      if (this.boundedReadSent.get(sessionId) === messageId) this.boundedReadSent.delete(sessionId);
     }
   }
 
@@ -2387,12 +2390,14 @@ export class MessengerRuntime {
         this.pushEnabled = true;
         this.pushSubscribed = true;
         this.pushPermission = pushPermission();
+        await this.loadNotificationDevice();
         return true;
       } else {
         const outcome = await disablePush(api);
         this.pushEnabled = !outcome.hostDisabled;
         this.pushSubscribed = !outcome.localRemoved;
         this.pushPermission = pushPermission();
+        await this.loadNotificationDevice();
         return outcome;
       }
     } catch (error) {
@@ -2847,7 +2852,7 @@ export class MessengerRuntime {
 
   private resetConnection(): void {
     this.rememberDraftOnDisconnect();
-    this.boundedReadSent = null;
+    this.boundedReadSent.clear();
     this.connectFailures += 1;
     this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
     this.teardownSocket();
