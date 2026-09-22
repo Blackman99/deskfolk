@@ -59,9 +59,10 @@ export default defineConfig({
       adapter: adapter({
         fallback: "index.html",
       }),
-      // A phone keeps one page open for days, so the hosted app checks whether the Mac has
-      // published a newer build. The window is updated by the app installer instead.
-      ...(hosted ? { version: { pollInterval: 30_000 } } : {}),
+      // No `version.pollInterval`: the hosted page runs its own poll over the same
+      // `_app/version.json` (see build-version.ts), because a dismissible notice needs the
+      // version itself and `updated` only latches a boolean. The window never polls — it is
+      // updated by the app installer.
     }),
   ],
   server: {
