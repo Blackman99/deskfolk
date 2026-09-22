@@ -1042,6 +1042,30 @@ function dispatch(
     );
   }
 
+  params = matchPath(path, "/v1/tasks/:id/trace");
+  if (params && method === "GET") {
+    const trace = store.taskTrace(params.id!);
+    // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
+    return jsonResponse(
+      {
+        ...trace,
+        nodes: trace.nodes.map((node) => {
+          if (node.status !== "running") return node;
+          const live = engine.partialText(node.turn_id)?.replace(/\s+/g, " ").trim();
+          return live ? { ...node, summary: [...live].slice(0, 80).join("") } : node;
+        }),
+      },
+      200,
+      null,
+    );
+  }
+
+  params = matchPath(path, "/v1/sessions/:id/tasks");
+  if (params && method === "GET") {
+    store.getSession(params.id!);
+    return jsonResponse({ items: store.sessionTasks(params.id!) }, 200, null);
+  }
+
   params = matchPath(path, "/v1/sessions/:id/judgements");
   if (params && method === "GET") {
     return jsonResponse({ items: store.listJudgements(params.id!) }, 200, null);

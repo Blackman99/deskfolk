@@ -229,6 +229,53 @@ export type TaskArtifacts = {
   items: Array<{ path: string; last_cited_at: string; turn_id: string | null }>;
 };
 
+/**
+ * One card on a job's trace: a turn that happened, with the files that turn handed over.
+ * Computed when the trace is opened. Nothing here is a plan, a step, or an assignee.
+ */
+export type TaskTraceNode = {
+  turn_id: string;
+  session_id: string;
+  /** `user` for the card that stands for your own message; otherwise the Bot who took the turn. */
+  actor: typeof USER_MEMBER | string;
+  status: TurnStatus;
+  /** The turn whose message woke this one. Null when you (or a routine speaking as you) started it. */
+  woken_by_turn_id: string | null;
+  trigger_message_id: string;
+  /** The message to scroll to: this turn's last word, or the trigger when it has not spoken yet. */
+  focus_message_id: string;
+  /** One line, already clipped. */
+  summary: string;
+  created_at: string;
+  artifacts: Array<{ path: string; message_id: string; attachment_id: string }>;
+  /** Set only while the turn is still waiting on you. */
+  ask: { message_id: string; question: string } | null;
+  approval: { message_id: string | null; summary: string } | null;
+  /** Bots who watched the trigger instead of joining. Only the card that opened them carries it. */
+  passed: number;
+};
+
+/** A job as one picture: the turns that share its work dir, across sessions. */
+export type TaskTrace = {
+  id: string;
+  dir: string;
+  title: string;
+  /** The session the work dir was opened in. Null once that session is gone. */
+  session_id: string | null;
+  closed_at: string | null;
+  nodes: TaskTraceNode[];
+};
+
+/** One row of the switcher: a job this session took part in. */
+export type SessionTaskSummary = {
+  id: string;
+  dir: string;
+  title: string;
+  session_id: string | null;
+  closed_at: string | null;
+  last_activity_at: string;
+};
+
 export type WorkspaceTreePage = {
   path: string;
   truncated: boolean;

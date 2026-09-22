@@ -233,6 +233,8 @@ export class Store {
   readonly turnWorkDir = this.bind(tasks.turnWorkDir);
   readonly tasksClosedBefore = this.bind(tasks.tasksClosedBefore);
   readonly taskArtifacts = this.bind(tasks.taskArtifacts);
+  readonly taskTrace = this.bind(tasks.taskTrace);
+  readonly sessionTasks = this.bind(tasks.sessionTasks);
   readonly joinableTask = this.bind(tasks.joinableTask);
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
 

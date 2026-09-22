@@ -35,6 +35,8 @@ get("sessions/:id/(snapshot|judgements|routes|composer-suggestions)");
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200 });
 get("bots/:id/profile-revisions"); get("attachments/:id/content");
 get("tasks/:id/artifacts");
+get("tasks/:id/trace");
+get("sessions/:id/tasks");
 get("workspace/tree", { path: string }); get("workspace/file", { path: string }, ["path"]);
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
