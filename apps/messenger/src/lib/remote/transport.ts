@@ -18,7 +18,10 @@ import {
   type RemoteRequest,
   type RemoteResponse,
 } from "@real-bot/remote";
-import type { SyncFrame as ProtocolSyncFrame } from "@real-bot/protocol";
+import type { SyncFrame as ProtocolSyncFrame,
+  StreamFrame,
+  ToolFrame,
+} from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import type { FileProgressHandler } from "../file-progress.ts";
 import type { StoredEnrollment } from "./idb.ts";
@@ -66,7 +69,7 @@ export class RemoteTransport {
   private waiter: Waiter | null = null;
   private queue: Array<() => void> = [];
   private closed = false;
-  private events: Array<(frame: ProtocolSyncFrame) => void> = [];
+  private events: Array<(frame: ProtocolSyncFrame | StreamFrame | ToolFrame) => void> = [];
   readyFrame: RemoteReady | null = null;
   constructor(
     readonly enrollment: StoredEnrollment,
@@ -74,7 +77,8 @@ export class RemoteTransport {
     private readonly hooks: TransportHooks = {},
   ) {}
 
-  subscribe(listener: (frame: ProtocolSyncFrame) => void): () => void {
+  /** Type 3 also carries the ephemeral stream and tool frames, which have no cursor. */
+  subscribe(listener: (frame: ProtocolSyncFrame | StreamFrame | ToolFrame) => void): () => void {
     this.events.push(listener);
     return () => {
       this.events = this.events.filter((item) => item !== listener);
@@ -236,7 +240,7 @@ export class RemoteTransport {
   }
 
   private emit(value: unknown): void {
-    const frame = value as ProtocolSyncFrame;
+    const frame = value as ProtocolSyncFrame | StreamFrame | ToolFrame;
     if (!frame || typeof frame !== "object") return;
     for (const listener of this.events) listener(frame);
   }

@@ -15,12 +15,18 @@ import {
   type WsAuthMessage,
   type RuntimeSnapshot,
   type SessionSnapshot,
+  type StreamFrame,
+  type ToolFrame,
+  isNonReceiptPath,
 } from "@real-bot/protocol";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { corsHeaders, originDecision } from "./origin";
 import { EventStream, sessionUpsertFields } from "./session-events";
+import { StreamHub, type StreamRead } from "./streams";
+import { Terminals } from "./terminals";
+import type { PtySignal } from "./pty";
 import { HttpError } from "./errors";
 import { type AttachmentInput, type Store } from "./store";
 import type { CompletionsClient } from "./completions";
@@ -47,6 +53,9 @@ type SocketData = {
   authed: boolean;
   sync?: boolean;
 };
+
+/** Stands for every window socket at once: there is one window, and it either watches or does not. */
+export const LOCAL_WATCHER = "local" as const;
 
 export type LocalApiOptions = {
   store: Store;
@@ -89,6 +98,14 @@ export type LocalApi = {
   quiesce: Quiesce;
   subscribeSync: EventStream["subscribe"];
   syncCursor: EventStream["cursor"];
+  terminals: Terminals;
+  streams: StreamHub;
+  /** Start sending a stream to one watcher, from a byte offset, with its backlog first. */
+  watchStream: (id: string, watcher: string, from: number) => void;
+  unwatchStream: (id: string, watcher: string) => void;
+  /** Stream frames, with the watchers they are meant for; the remote link routes by device id. */
+  subscribeStreams: (listener: (id: string, read: StreamRead, watchers: readonly string[]) => void) => () => void;
+  subscribeTools: (listener: (frame: ToolFrame) => void) => () => void;
 };
 
 export function createLocalApi(options: LocalApiOptions): LocalApi {
@@ -119,7 +136,99 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     if (credentialEvents.has(event.event)) publishLegacy(event);
   });
 
+  /**
+   * Terminal and command output. Watched-only: nothing is sent while nobody is looking, which is
+   * what keeps a build running under a closed panel off the phone's radio. A watcher is either
+   * every window socket ({@link LOCAL_WATCHER}) or one paired device, by id.
+   */
+  const streams = new StreamHub();
+  const streamWatchers = new Map<string, Set<string>>();
+  const streamSubscriptions = new Map<string, () => void>();
+  const streamListeners = new Set<(id: string, read: StreamRead, watchers: readonly string[]) => void>();
+  const toolListeners = new Set<(frame: ToolFrame) => void>();
+
+  function emitStream(id: string, read: StreamRead): void {
+    const watching = streamWatchers.get(id);
+    if (!watching?.size) return;
+    const frame: StreamFrame = {
+      type: "stream",
+      id,
+      offset: read.offset,
+      data: Buffer.from(read.bytes).toString("base64"),
+      ...(read.skipped ? { skipped: read.skipped } : {}),
+      ...(read.closed ? { closed: true } : {}),
+    };
+    if (watching.has(LOCAL_WATCHER)) {
+      const payload = JSON.stringify(frame);
+      for (const ws of sockets) if (ws.data.authed && ws.data.sync) send(ws, payload);
+    }
+    if (!streamListeners.size) return;
+    const list = [...watching];
+    // Raw bytes for anyone else: the remote link coalesces before it encodes, and re-decoding
+    // base64 per chunk just to batch it would be silly.
+    for (const listener of streamListeners) listener(id, read, list);
+  }
+
+  function watchStream(id: string, watcher: string, from: number): void {
+    const watching = streamWatchers.get(id) ?? new Set<string>();
+    streamWatchers.set(id, watching);
+    const first = watching.size === 0;
+    watching.add(watcher);
+    if (first) {
+      streamSubscriptions.set(id, streams.subscribe(id, from, (read) => emitStream(id, read)));
+      return;
+    }
+    // Already live for someone else: this watcher still needs its own backlog.
+    const backlog = streams.read(id, from);
+    if (backlog.bytes.length || backlog.skipped) emitStream(id, backlog);
+  }
+
+  const terminals = new Terminals({
+    streams,
+    now: options.now,
+    // Straight onto the sequenced ring: open / resize / exit / gone is a handful of frames, not
+    // a firehose, and clients get ordering and catch-up for free. The bytes go elsewhere.
+    publish: (event) => {
+      events.publish(event);
+      publishLegacy(event);
+    },
+  });
+
+  function unwatchStream(id: string, watcher: string): void {
+    const watching = streamWatchers.get(id);
+    if (!watching) return;
+    watching.delete(watcher);
+    if (watching.size) return;
+    streamWatchers.delete(id);
+    streamSubscriptions.get(id)?.();
+    streamSubscriptions.delete(id);
+  }
+
+
+  /**
+   * Tool phases go out beside the stream bytes, not through the event ring. A few frames a turn
+   * is nothing, but they are as ephemeral as the bytes they describe: miss them and you have
+   * missed nothing that a reload would not rebuild from the turn itself.
+   */
+  function publishTool(frame: ToolFrame): void {
+    const payload = JSON.stringify(frame);
+    for (const ws of sockets) if (ws.data.authed && ws.data.sync) send(ws, payload);
+    for (const listener of toolListeners) listener(frame);
+  }
+
   function publish(event: ClientEvent): void {
+    if (event.event === "turn.tool" && (event.phase === "started" || event.phase === "exited")) {
+      publishTool({
+        type: "tool",
+        turn_id: event.turn_id,
+        id: event.id,
+        name: event.name ?? "",
+        phase: event.phase,
+        ...(shellCommandOf(event.name, event.arguments) ? { command: shellCommandOf(event.name, event.arguments) } : {}),
+        ...(event.exit_code === undefined ? {} : { exit_code: event.exit_code }),
+        ...(event.duration_ms === undefined ? {} : { duration_ms: event.duration_ms }),
+      });
+    }
     options.store.afterCommit(() => {
       if (!credentialEvents.has(event.event)) publishLegacy(event);
       // Persisted rows come from Store commits, never a delayed tool/API result.
@@ -147,6 +256,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       sleep: options.sleep,
       mcp,
       admission: options.admission,
+      streams,
     });
 
   const scheduler =
@@ -187,7 +297,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       scope.guard?.();
       return response;
     }
-    if (url.pathname === "/v1/models/probe") {
+    if (isNonReceiptPath(url.pathname)) {
       const response = await readBusiness(request, url, scope);
       scope.guard?.();
       return response;
@@ -249,6 +359,105 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     }
   }
 
+  /**
+   * Terminals never write a request receipt. Receipts are keyed by `(device_id, request_id)` and
+   * stored, which is right for a message and absurd for a keystroke; `/v1/models/probe` already
+   * set the precedent for a POST that is not replayable. The cost is stated rather than hidden:
+   * a keystroke lost to a dropped connection is lost, and retrying one is not idempotent.
+   */
+  async function terminalRoute(request: Request, url: URL, scope?: RequestScope): Promise<Response> {
+    const path = url.pathname;
+    const method = request.method;
+    const watcher = scope?.deviceId && scope.deviceId !== "local" ? scope.deviceId : LOCAL_WATCHER;
+    const body = method === "POST" ? (await readJson(request)) as Record<string, unknown> : {};
+
+    if (method === "GET" && path === "/v1/terminals") return jsonResponse({ items: terminals.list() }, 200, null);
+    if (method === "POST" && path === "/v1/terminals") {
+      const cwd = typeof body.cwd === "string" ? body.cwd : "";
+      return jsonResponse(terminals.open({ cwd, rows: numberOr(body.rows), cols: numberOr(body.cols) }), 200, null);
+    }
+
+    // A command's stream is watched the same way a terminal's is, but its id is
+    // `<turn_id>:<tool_call_id>` — not a ULID, and not something to put in a path segment.
+    if (method === "POST" && (path === "/v1/streams/watch" || path === "/v1/streams/unwatch")) {
+      const id = typeof body.id === "string" ? body.id : "";
+      if (!/^[0-9A-HJKMNP-TV-Z]{26}:[A-Za-z0-9_-]{1,128}$/.test(id)) {
+        throw new HttpError(422, "invalid_args", "id must be <turn>:<tool call>");
+      }
+      if (path.endsWith("/unwatch")) {
+        unwatchStream(id, watcher);
+        return emptyResponse(204, null);
+      }
+      if (!streams.has(id)) throw new HttpError(404, "not_found", "no such stream");
+      watchStream(id, watcher, Math.max(0, numberOr(body.from) ?? 0));
+      return emptyResponse(204, null);
+    }
+
+    const one = matchPath(path, "/v1/terminals/:id");
+    if (one && method === "GET") return jsonResponse(terminals.get(one.id!), 200, null);
+    if (one && method === "DELETE") {
+      terminals.remove(one.id!);
+      unwatchStream(one.id!, watcher);
+      return emptyResponse(204, null);
+    }
+
+    const scrollback = matchPath(path, "/v1/terminals/:id/scrollback");
+    if (scrollback && method === "GET") {
+      const id = terminals.get(scrollback.id!).id;
+      const raw = url.searchParams.get("from") ?? "0";
+      if (!/^(0|[1-9][0-9]*)$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+        throw new HttpError(422, "invalid_args", "from must be a byte offset");
+      }
+      const read = streams.read(id, Number(raw));
+      return jsonResponse({
+        offset: read.offset,
+        data: Buffer.from(read.bytes).toString("base64"),
+        skipped: read.skipped,
+        end: read.end,
+        closed: read.closed,
+      }, 200, null);
+    }
+
+    const input = matchPath(path, "/v1/terminals/:id/input");
+    if (input && method === "POST") {
+      const data = typeof body.data === "string" ? body.data : "";
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new HttpError(422, "invalid_args", "data must be base64");
+      terminals.write(input.id!, new Uint8Array(Buffer.from(data, "base64")));
+      return emptyResponse(204, null);
+    }
+
+    const resize = matchPath(path, "/v1/terminals/:id/resize");
+    if (resize && method === "POST") {
+      return jsonResponse(terminals.resize(resize.id!, numberOr(body.rows) ?? 24, numberOr(body.cols) ?? 80), 200, null);
+    }
+
+    const signal = matchPath(path, "/v1/terminals/:id/signal");
+    if (signal && method === "POST") {
+      const name = typeof body.signal === "string" ? body.signal : "";
+      if (!["SIGINT", "SIGQUIT", "SIGTSTP", "SIGTERM", "SIGKILL"].includes(name)) {
+        throw new HttpError(422, "invalid_args", "unknown signal");
+      }
+      terminals.signal(signal.id!, name as PtySignal);
+      return emptyResponse(204, null);
+    }
+
+    const watch = matchPath(path, "/v1/terminals/:id/watch");
+    if (watch && method === "POST") {
+      const id = terminals.get(watch.id!).id;
+      const from = numberOr(body.from) ?? 0;
+      watchStream(id, watcher, Math.max(0, from));
+      return jsonResponse(terminals.get(id), 200, null);
+    }
+
+    const unwatch = matchPath(path, "/v1/terminals/:id/unwatch");
+    if (unwatch && method === "POST") {
+      unwatchStream(unwatch.id!, watcher);
+      return emptyResponse(204, null);
+    }
+
+    throw new HttpError(404, "not_found", "unknown route");
+  }
+
   async function readBusiness(request: Request, url: URL, scope?: RequestScope): Promise<Response> {
     const path = url.pathname;
     if (request.method === "GET" && path === "/v1/snapshot") {
@@ -279,6 +488,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         throw new HttpError(422, "invalid_args", "invalid event cursor");
       }
       return jsonResponse(events.catchup({ event_instance_id: instance, watermark_seq: Number(rawSeq) }), 200, null);
+    }
+    if (path === "/v1/terminals" || path.startsWith("/v1/terminals/") || path.startsWith("/v1/streams/")) {
+      return terminalRoute(request, url, scope);
     }
     return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope);
   }
@@ -365,11 +577,15 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         return emptyResponse(204, origin);
       }
       if (request.method === "POST" && path === "/v1/runtime/stop") {
+        terminals.shutdown();
         await options.lifecycle?.writeStopLatch();
         options.onRuntimeStop?.();
         return emptyResponse(204, origin);
       }
-      const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && path !== "/v1/models/probe";
+      // Quit ends your terminals with the daemon that holds them. A shell outliving the app it
+      // was opened from is an orphan nobody goes looking for.
+      if (request.method === "POST" && path === "/v1/runtime/quit") terminals.shutdown();
+      const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && !isNonReceiptPath(path);
       const response = isMutation
         ? await mutate(request, url, { deviceId: "local", requestId: request.headers.get("X-Request-Id") ?? ulid() })
         : await readBusiness(request, url);
@@ -389,6 +605,18 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     dispatchBusiness,
     subscribeSync: (listener) => events.subscribe(listener),
     syncCursor: () => events.cursor(),
+    terminals,
+    streams,
+    watchStream,
+    unwatchStream,
+    subscribeStreams: (listener) => {
+      streamListeners.add(listener);
+      return () => streamListeners.delete(listener);
+    },
+    subscribeTools: (listener) => {
+      toolListeners.add(listener);
+      return () => toolListeners.delete(listener);
+    },
     quiesce,
     publish,
     engine,
@@ -438,6 +666,21 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
 
 function occurred(): string {
   return new Date().toISOString();
+}
+
+/** The command line out of a `shell` call's arguments, so a finished row can name itself. */
+function shellCommandOf(name: string | undefined, args: string | undefined): string | undefined {
+  if (name !== "shell" || !args) return undefined;
+  try {
+    const parsed = JSON.parse(args) as { command?: unknown };
+    return typeof parsed.command === "string" ? parsed.command.slice(0, 500) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function numberOr(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function dispatch(

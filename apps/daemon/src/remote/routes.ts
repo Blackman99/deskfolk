@@ -66,6 +66,26 @@ add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);
 add("PUT", "workspace/file", { path: string, content: string }, ["path", "content"]);
 
+// Terminals. A paired device has the same reach as the window here — that is the decision, and
+// the gate is remote itself (default off, native activation), not a second one bolted on.
+// `host/tree` already let a device read outside the workspace, so this is not a new frontier.
+const axis: Check = v => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 1000;
+const offset: Check = v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+const base64: Check = v => typeof v === "string" && v.length <= 87_384 && /^[A-Za-z0-9+/]*={0,2}$/.test(v);
+get("terminals");
+get("terminals/:id");
+get("terminals/:id/scrollback", { from: v => typeof v === "string" && /^(0|[1-9][0-9]{0,15})$/.test(v) });
+add("POST", "terminals", { cwd: string, rows: axis, cols: axis }, ["cwd"]);
+add("POST", "terminals/:id/input", { data: base64 }, ["data"]);
+add("POST", "terminals/:id/resize", { rows: axis, cols: axis }, ["rows", "cols"]);
+add("POST", "terminals/:id/signal", { signal: one("SIGINT", "SIGQUIT", "SIGTSTP", "SIGTERM", "SIGKILL") }, ["signal"]);
+add("POST", "terminals/:id/watch", { from: offset });
+add("POST", "terminals/:id/unwatch", {});
+add("DELETE", "terminals/:id");
+const streamId: Check = v => typeof v === "string" && /^[0-9A-HJKMNP-TV-Z]{26}:[A-Za-z0-9_-]{1,128}$/.test(v);
+add("POST", "streams/watch", { id: streamId, from: offset }, ["id"]);
+add("POST", "streams/unwatch", { id: streamId }, ["id"]);
+
 export function validateBusiness(request: RemoteRequest): void {
   try {
     const route = routes.find(r => r.method === request.method && r.path.test(request.path));

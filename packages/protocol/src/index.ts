@@ -807,6 +807,96 @@ export type SequencedEvent = {
   seq: number;
   payload: DurableEvent;
 };
+/**
+ * Live bytes from a terminal or from a Bot's running command, on the same socket as events but
+ * outside their cursor: ephemeral, never sequenced, never caught up, never a resnapshot. Ten
+ * megabytes of build output must not cost every client a full reload, which is exactly what
+ * putting this in the event ring would do.
+ *
+ * The cursor is a byte offset, so a transport may coalesce or re-chunk freely.
+ */
+/**
+ * A shell session you opened yourself. Held by the daemon, so it outlives the window; Quit ends
+ * it. Not a Bot's tool, not approval-gated, and invisible to every Bot.
+ */
+export type Terminal = {
+  id: string;
+  /** Last segment of the cwd, for a tab label. */
+  title: string;
+  cwd: string;
+  rows: number;
+  cols: number;
+  created_at: string;
+  /** `interrupted` means the daemon went away underneath it, same word the transcript uses. */
+  status: "live" | "exited" | "interrupted";
+  exit_code: number | null;
+  /** Total bytes ever written to its stream; a reader resumes from an offset. */
+  stream_end: number;
+};
+
+/**
+ * Paths whose writes carry no request receipt, and therefore no in-flight slot on a client.
+ *
+ * Both ends have to agree, which is why this lives here. A receipt is keyed `(device, request)`
+ * and stored in the same transaction as its effect — right for a message, absurd for a keystroke.
+ * A client that treats these as ordinary mutations will refuse the second keystroke while the
+ * first is still in flight, which looks exactly like a terminal dropping characters.
+ */
+export function isNonReceiptPath(path: string): boolean {
+  const withoutQuery = path.split("?")[0] ?? "";
+  return withoutQuery === "/v1/models/probe"
+    || withoutQuery === "/v1/terminals"
+    || withoutQuery.startsWith("/v1/terminals/")
+    || withoutQuery.startsWith("/v1/streams/");
+}
+
+/** What a Stop button can send. Ordinary keys, `^C` included, are bytes the tty line discipline owns. */
+export const TERMINAL_SIGNALS = ["SIGINT", "SIGQUIT", "SIGTSTP", "SIGTERM", "SIGKILL"] as const;
+export type TerminalSignal = (typeof TERMINAL_SIGNALS)[number];
+
+/** Retained bytes from an offset, for a reader that just connected or fell behind. */
+export type TerminalScrollback = {
+  offset: number;
+  /** base64 */
+  data: string;
+  skipped: number;
+  end: number;
+  closed: boolean;
+};
+
+/**
+ * A tool call starting and finishing, on the same socket as {@link StreamFrame} and with the same
+ * standing: ephemeral, no cursor, no catch-up. It is what turns a stream of bytes into something
+ * readable — which command produced them, and how it ended. The record that survives a reload is
+ * the turn's, not this.
+ */
+export type ToolFrame = {
+  type: "tool";
+  turn_id: string;
+  /** The tool call id; with the turn id it is also the output stream's id. */
+  id: string;
+  name: string;
+  phase: "started" | "exited";
+  /** The `shell` command line, when that is what ran. */
+  command?: string;
+  exit_code?: number | null;
+  duration_ms?: number;
+};
+
+export type StreamFrame = {
+  type: "stream";
+  /** A terminal session id, or `<turn_id>:<tool_call_id>` for a command. */
+  id: string;
+  /** Byte offset of the first byte of `data` within the stream. */
+  offset: number;
+  /** base64 */
+  data: string;
+  /** Bytes the ring dropped before `offset`; the reader fell behind. */
+  skipped?: number;
+  /** The producer is done. No more frames for this id. */
+  closed?: boolean;
+};
+
 export type SyncFrame = SequencedEvent
   | ({ type: "ready" } & EventCursor)
   | ({ type: "resnapshot" } & EventCursor);
@@ -836,6 +926,14 @@ export type ClientEvent =
       id: string;
       name?: string;
       arguments?: string;
+      /**
+       * `announced` is the model still writing the call out; `started` and `exited` bracket the
+       * execution. Ephemeral like the rest of this event: the record that survives a reload is
+       * the turn's, not this.
+       */
+      phase?: "announced" | "started" | "exited";
+      exit_code?: number | null;
+      duration_ms?: number;
     }
   | ({ event: "approval.upsert"; occurred_at: string } & Approval)
   | { event: "approval.removed"; occurred_at: string; id: string }
@@ -870,7 +968,10 @@ export type ClientEvent =
   | ({ event: "provider.upsert"; occurred_at: string } & Provider)
   | { event: "provider.removed"; occurred_at: string; id: string }
   | ({ event: "allow_rule.upsert"; occurred_at: string } & AllowRule)
-  | { event: "allow_rule.removed"; occurred_at: string; id: string };
+  | { event: "allow_rule.removed"; occurred_at: string; id: string }
+  // Lifecycle only — open, exit, gone. The bytes are a stream, not an event.
+  | ({ event: "terminal.upsert"; occurred_at: string } & Terminal)
+  | { event: "terminal.removed"; occurred_at: string; id: string };
 
 export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";

@@ -2,7 +2,7 @@ import { join } from "node:path";
 import config from "../src-tauri/tauri.conf.json";
 
 export const minimumMacOS = config.bundle.macOS.minimumSystemVersion;
-const nativeFiles = ["real-bot-daemon", "real-bot-runtime-helper", "libRemoteCredentials.dylib"];
+const nativeFiles = ["real-bot-daemon", "real-bot-runtime-helper", "real-bot-pty", "libRemoteCredentials.dylib"];
 
 export function assertMinimum(advertised: string, required: string): void {
   const parse = (value: string) => {

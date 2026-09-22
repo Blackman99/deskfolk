@@ -15,7 +15,7 @@
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
 | `@real-bot/protocol` | `packages/protocol` | 本机接口类型，加上点名解析和工作区路径判定（无 I/O） |
 | `@real-bot/remote` | `packages/remote` | 浏览器/Bun 纯密码与编码接口；实验性、默认关闭，见[协议契约](remote-protocol.md) |
-| `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+，原生远控凭据/认证（默认禁用） |
+| `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+，原生远控凭据/认证（默认禁用），以及终端会话的 pty（`real-bot-pty`） |
 
 根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
 
@@ -185,7 +185,9 @@ DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 
 ## 原生远控凭据接口（默认禁用）
 
-应用发布包（含默认必需 daemon）最低要求 macOS 13.0，Tauri 元数据与打包检查一致。`apps/runtime-helper` 是 Swift 6/macOS 13+ helper 与 `libRemoteCredentials.dylib`。`pnpm --filter @real-bot/desktop build:native` 编译并打包 helper、库、独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
+应用发布包（含默认必需 daemon）最低要求 macOS 13.0，Tauri 元数据与打包检查一致。`apps/runtime-helper` 是 Swift 6/macOS 13+ helper、`libRemoteCredentials.dylib` 与 `real-bot-pty`。`pnpm --filter @real-bot/desktop build:native` 编译并打包三者和独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
+
+终端的 pty 单独一个 product：`swift build --package-path apps/runtime-helper --product real-bot-pty`。开发态不必先跑 `build:native`，`apps/daemon/src/pty.ts` 会去 `.build/{release,debug}/` 找它；`REAL_BOT_PTY_HELPER` 可指定别处。它不带钥匙串访问组——开 shell 这件事你在 Terminal.app 里本来就能做，没有可提升的权限，所以它是独立 product 而不是凭据 helper 的一个子命令。控制终端只能在 fork 和 exec 之间用 `ioctl(TIOCSCTTY)` 拿到，`posix_spawn` 没有那个接缝，所以这一小块必须是原生的；两条路线的实测对照留在 `.scratch/terminal/prototypes/`。
 
 Swift 验证用 `swift build --package-path apps/runtime-helper` 与 `swift run --package-path apps/runtime-helper RemoteCoreTests`。后者是兼容仅安装 Command Line Tools（没有 XCTest）的原生 fixture 测试，不调用个人钥匙串或 LA，也不启动登录任务。格式检查用 `xcrun swift-format lint --strict --recursive apps/runtime-helper/Sources apps/runtime-helper/Tests`。真实签名/共享 entitlement/退出窗后无提示自读属于尚未运行的 G-pack；stock Bun 的 `BUN_BE_BUN` 解释器与 `BUN_OPTIONS --preload/--config` 入口是授予凭据前必须解决的实现前置条件，不只是缺证书，不能加 entitlement 冒充解决。自动配置加载关闭不封闭这些入口；macOS desktop 测试用独立 print-only fixture 验证 stock Bun 仍不合格。
 

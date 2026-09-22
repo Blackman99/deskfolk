@@ -4,6 +4,7 @@
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
+	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
@@ -1279,6 +1280,13 @@
 											>
 												<span class="streaming-cursor"></span>
 											</MarkdownBody>
+											<!--
+												What it is doing while it does it. Ephemeral: the turn's own record is what
+												survives a reload, so nothing here is stored and nothing enters the transcript.
+											-->
+											{#key runtime.activityRevision}
+												<CommandActivity rows={runtime.activity.forTurn(item.turn.id)} {t} />
+											{/key}
 										</article>
 									{:else if item.type === 'message'}
 										{@const rxGroups = groupReactions(item.message.reactions, USER_MEMBER)}

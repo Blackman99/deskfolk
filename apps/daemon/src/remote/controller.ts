@@ -27,6 +27,10 @@ export type RemoteControllerOptions = {
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
 
+/** One window's worth of output per frame, and a ceiling on how much of it travels. */
+const REMOTE_STREAM_WINDOW_MS = 50;
+const REMOTE_STREAM_MAX_BYTES = 8 * 1024;
+
 export class RemoteController {
   readonly trust: RemoteTrust;
   readonly dispatcher: RemoteDispatcher;
@@ -342,7 +346,7 @@ export class RemoteController {
       binding: { hostId: host.host_id, deviceId, trustEpoch: device.grant_epoch, protocolVersion: 1, relayOrigin: host.relay_origin },
       isTrusted: () => this.trust.trusted(device), claimReplay: claim => this.trust.claimReplay(device, claim), recentRttMs: 5000 });
     const assembler = new Reassembler();
-    let alive = true, busy = false, assembling = false, assemblyStarted = 0, principal: RemotePrincipal | undefined, unsubscribe: (() => void) | undefined;
+    let alive = true, busy = false, assembling = false, assemblyStarted = 0, principal: RemotePrincipal | undefined, unsubscribe: (() => void) | undefined, unsubscribeStreams: (() => void) | undefined, unsubscribeTools: (() => void) | undefined;
     let queuedBytes = 0, sending = false;
     const abort = new AbortController();
     const outgoing: Array<{ type: number; body: Uint8Array; stream?: number; done?: () => void }> = [];
@@ -372,6 +376,7 @@ export class RemoteController {
     const close = () => {
       if (!alive) return; alive = false; abort.abort();
       clearInterval(timer); clearTimeout(handshakeTimer); session.close(); assembler.clear(); unsubscribe?.();
+      unsubscribeStreams?.(); unsubscribeTools?.(); clearTimeout(streamTimer); streamBuffers.clear();
       if (principal) {
         this.dispatcher.uv.clearSession(principal.sessionId);
         if (this.principals.get(deviceId) === principal) this.principals.delete(deviceId);
@@ -404,6 +409,39 @@ export class RemoteController {
     };
     const sendFile = (body: Uint8Array, stream: number) => new Promise<void>(resolve => enqueue(5, body, stream, resolve));
     const sendJson = (type: LogicalType, value: unknown) => { for (const frame of fragmentMessage(type, canonicalBytes(value))) enqueue(frame.type, frame.body); };
+    /**
+     * Terminal and command bytes, coalesced before they leave the machine. A Noise frame tops out
+     * at 32 KiB and this is a phone on a radio, so a window's worth of output goes out as one
+     * frame, capped: past the cap the oldest bytes are dropped and counted, exactly as the ring
+     * does. Dropping beats {@link enqueue}'s backpressure here — losing scrollback is a scrolled
+     * past line, and closing the link would cost the session.
+     */
+    const streamBuffers = new Map<string, { offset: number; chunks: Uint8Array[]; total: number; skipped: number; closed: boolean }>();
+    let streamTimer: ReturnType<typeof setTimeout> | undefined;
+    const flushStreams = () => {
+      streamTimer = undefined;
+      for (const [id, buffer] of streamBuffers) {
+        let bytes = new Uint8Array(buffer.total);
+        let filled = 0;
+        for (const chunk of buffer.chunks) { bytes.set(chunk, filled); filled += chunk.length; }
+        let offset = buffer.offset;
+        let skipped = buffer.skipped;
+        if (bytes.length > REMOTE_STREAM_MAX_BYTES) {
+          const dropped = bytes.length - REMOTE_STREAM_MAX_BYTES;
+          bytes = bytes.subarray(dropped);
+          offset += dropped;
+          skipped += dropped;
+        }
+        if (!bytes.length && !skipped && !buffer.closed) continue;
+        sendJson(3, {
+          type: "stream", id, offset,
+          data: Buffer.from(bytes).toString("base64"),
+          ...(skipped ? { skipped } : {}),
+          ...(buffer.closed ? { closed: true } : {}),
+        });
+      }
+      streamBuffers.clear();
+    };
     const claimedFiles = (request: RemoteRequest): Array<{ filename: string; size: number; sha256: string }> => {
       if (request.method !== "POST" || !/^\/v1\/sessions\/[0-9A-HJKMNP-TV-Z]{26}\/messages$/.test(request.path)) return [];
       const files = request.body?.files;
@@ -552,6 +590,25 @@ export class RemoteController {
           this.trust.bindOnboarding(device, principal.sessionId);
           sendJson(3, { type: "ready", protocol: "remote-v1", ...this.options.api.syncCursor(), deviceId, trustEpoch: device.grant_epoch });
           unsubscribe = this.options.api.subscribeSync(frame => { try { sendJson(3, frame); } catch { close(); } });
+          unsubscribeTools = this.options.api.subscribeTools(frame => {
+            // Not watch-gated: a handful of frames a turn, and without them the bytes on screen
+            // have no name and no ending.
+            try { sendJson(3, frame); } catch { close(); }
+          });
+          unsubscribeStreams = this.options.api.subscribeStreams((id, read, watchers) => {
+            // Only what this device asked to watch: a build running under a closed panel has no
+            // business waking someone's radio.
+            if (!watchers.includes(deviceId)) return;
+            try {
+              const buffer = streamBuffers.get(id)
+                ?? { offset: read.offset, chunks: [], total: 0, skipped: 0, closed: false };
+              if (!streamBuffers.has(id)) streamBuffers.set(id, buffer);
+              buffer.skipped += read.skipped;
+              if (read.bytes.length) { buffer.chunks.push(read.bytes); buffer.total += read.bytes.length; }
+              if (read.closed) buffer.closed = true;
+              if (!streamTimer) streamTimer = setTimeout(flushStreams, REMOTE_STREAM_WINDOW_MS);
+            } catch { close(); }
+          });
           return;
         }
         const frame = session.receive(data);

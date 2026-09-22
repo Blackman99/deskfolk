@@ -57,7 +57,9 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Local API',
     'Local token',
     'Interrupted',
-    'Catch-up'
+    'Catch-up',
+    'Terminal',
+    'Command stream'
   ],
   models: [
     'Model endpoint',

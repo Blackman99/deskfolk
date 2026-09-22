@@ -59,7 +59,7 @@ import { isoNow, ulid } from "./ids";
 import { isReservedTaskPath, type Store } from "./store";
 import { linkifyWorkspacePaths, mergeCitedPaths, writtenPathFromToolData } from "./artifact-paths";
 import { classifyPath } from "./workspace-paths";
-import { isWorkspaceTool, runWorkspaceTool } from "./workspace-tools";
+import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "./workspace-tools";
 
 export type TurnEngine = {
   handleInboundMessage: (
@@ -103,6 +103,8 @@ export type TurnEngineOptions = {
   sleep?: (ms: number) => Promise<void>;
   mcp?: McpHost;
   admission?: TurnAdmission;
+  /** Where a running command's output goes while it runs; absent means nobody can watch. */
+  streams?: ShellStream;
 };
 
 type Live = {
@@ -1017,6 +1019,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
                 id: call.id,
                 name: call.function?.name,
                 arguments: call.function?.arguments,
+                phase: "announced",
               });
             }
           },
@@ -1168,7 +1171,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       // A tool is the one place a hop can legitimately sit still for minutes, so mark both ends of
       // it: the stale sweep reads `last_activity_at` and must not cut a long shell or MCP call off.
       store.touchTurn(turnId);
-      let result = await dispatchTool(turn, live, call.name, args);
+      // Bracket the execution so a watcher can tell "still running" from "finished": the
+      // announce event only says the model asked for it.
+      const streamId = `${turnId}:${call.id}`;
+      const startedAt = Date.now();
+      publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
+        name: call.name, arguments: call.arguments, phase: "started" });
+      let result = await dispatchTool(turn, live, call.name, args, streamId);
+      publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
+        name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
+        exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null });
       if (!active(turnId, live)) return "wait";
       store.touchTurn(turnId);
       if (result.error?.code === "draining") {
@@ -1301,11 +1313,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     live: Live,
     name: string,
     args: Record<string, unknown>,
+    streamId?: string,
   ): Promise<ToolResult> {
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {
       return isWorkspaceTool(name)
         ? await runWorkspaceTool(
-            { store, signal: live.abort.signal, workDir: live.workDir },
+            { store, signal: live.abort.signal, workDir: live.workDir, stream: options.streams, streamId },
             name,
             args,
           )

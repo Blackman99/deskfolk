@@ -19,11 +19,11 @@ async function run(args: string[], capture = false): Promise<string> {
   return text.trim();
 }
 
-for (const product of ["real-bot-runtime-helper", "RemoteCredentials"]) {
+for (const product of ["real-bot-runtime-helper", "real-bot-pty", "RemoteCredentials"]) {
   await run(["swift", "build", "--package-path", "apps/runtime-helper", "-c", "release", "--triple", triple, "--product", product]);
 }
 const bin = await run(["swift", "build", "--package-path", "apps/runtime-helper", "-c", "release", "--triple", triple, "--show-bin-path"], true);
-for (const name of ["real-bot-runtime-helper", "libRemoteCredentials.dylib"]) {
+for (const name of ["real-bot-runtime-helper", "real-bot-pty", "libRemoteCredentials.dylib"]) {
   await copyFile(resolve(bin, name), resolve(output, name));
 }
 await run(["bun", "build", "--compile", `--target=bun-darwin-${arch === "arm64" ? "arm64" : "x64"}`,
@@ -36,6 +36,8 @@ await verifyNativeMinimum(output);
 const identity = process.env.APPLE_SIGNING_IDENTITY ?? "-";
 for (const [file, id] of [
   ["real-bot-runtime-helper", "com.real-bot.runtime-helper"],
+  // Signed like the rest, but it carries no access group: a pty is not a credential principal.
+  ["real-bot-pty", "com.real-bot.pty"],
   ["libRemoteCredentials.dylib", "com.real-bot.remote-credentials"],
   ["real-bot-daemon", "com.real-bot.daemon"],
 ]) {

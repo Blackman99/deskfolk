@@ -19,8 +19,13 @@ import {
   type CreateRoutineRequest,
   type PatchRoutineRequest,
   type RuntimeSnapshot,
+  type StreamFrame,
+  type Terminal,
+  type ToolFrame,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
+import { CommandActivity } from "./chat/command-activity.ts";
+import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
@@ -152,6 +157,14 @@ export class MessengerRuntime {
 
   private api: MessengerApi | null = null;
   private ws: WebSocket | null = null;
+  /** One sink per live stream id: a terminal session, or a Bot's running command. */
+  private readonly streamSinks = new Map<string, (frame: StreamFrame) => void>();
+  /**
+   * What the Bots' commands are printing right now. Not `$state` itself — it is a plain map that
+   * a frame mutates many times a second; {@link activityRevision} is what the view watches.
+   */
+  readonly activity = new CommandActivity();
+  activityRevision = $state(0);
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private searchSeq = 0;
@@ -242,6 +255,34 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.routeLogOpen = true;
     void this.refreshRoutes(this.selectedId);
+  }
+
+  /** Sessions the daemon holds. Lifecycle only; the bytes are a stream, not state. */
+  terminals = $state<Terminal[]>([]);
+  terminalOpen = $state(false);
+
+  openTerminal(): void {
+    this.closeSheets();
+    void this.refreshTerminals();
+    this.threadOpen = false;
+    this.routeLogOpen = false;
+    this.terminalOpen = true;
+  }
+
+  /** The daemon is the list's source of truth; events keep it fresh after this first read. */
+  async refreshTerminals(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    try {
+      const items = await api.terminals();
+      if (this.api === api) this.terminals = items;
+    } catch {
+      // A list that will not load is not worth a banner; the pane shows its own failure.
+    }
+  }
+
+  closeTerminal(): void {
+    this.terminalOpen = false;
   }
 
   closeRouteLog(): void {
@@ -1501,6 +1542,10 @@ export class MessengerRuntime {
     this.hostUnreachable = "host";
     const ready = await api.connect((frame) => {
       if (this.api !== api || this.sync !== sync) return;
+      // The relay carries stream and tool frames on the same channel as events. Letting one
+      // reach `EventSync` reads as a cursor mismatch and drops the link, which is what "the
+      // host is unreachable" looked like the moment a terminal was opened on a phone.
+      if (this.acceptEphemeral(frame)) return;
       const frames = sync.receive(frame);
       if (!frames) {
         this.markDisconnected();
@@ -1532,7 +1577,17 @@ export class MessengerRuntime {
       ws.addEventListener("open", () => ws.send(api.authFrame()));
       ws.addEventListener("message", (ev) => {
         if (this.ws !== ws) return;
-        const frame = api.parseSyncFrame(String(ev.data));
+        const raw = String(ev.data);
+        // Ephemeral frames ride the same socket but not the event cursor, so they have to leave
+        // before the sequenced path, which reads anything without an instance id as a gap.
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = null;
+        }
+        if (this.acceptEphemeral(parsed)) return;
+        const frame = api.parseSyncFrame(raw);
         if (!frame || (!ready && frame.type !== "ready")) {
           reject(new Error("invalid event stream"));
           this.markDisconnected();
@@ -1680,6 +1735,14 @@ export class MessengerRuntime {
 
   private ingest(event: ClientEvent, frame?: SequencedEvent): void {
     if (frame) this.api?.observeCredentialFrame(frame);
+    if (event.event === "terminal.upsert") {
+      const { event: _event, occurred_at: _at, ...row } = event;
+      const rest = this.terminals.filter((existing) => existing.id !== row.id);
+      this.terminals = [...rest, row];
+    }
+    if (event.event === "terminal.removed") {
+      this.terminals = this.terminals.filter((existing) => existing.id !== event.id);
+    }
     if (this.api) this.reconcilePendingMutation(this.api);
     if (event.event === "session.cleared" || event.event === "session.removed") this.historyRevision++;
     if (event.event === "session.removed") {
@@ -1765,6 +1828,61 @@ export class MessengerRuntime {
     this.sessionMessageNext = null;
     this.sessionSeq++;
     this.busy = false;
+  }
+
+  /**
+   * Take a stream or tool frame off the socket. True means it was one and the sequenced reader
+   * must not see it.
+   */
+  private acceptEphemeral(value: unknown): value is StreamFrame | ToolFrame {
+    const stream = parseStreamFrame(value);
+    if (stream) {
+      this.streamSinks.get(stream.id)?.(stream);
+      this.activity.applyStream(stream);
+      this.activityRevision += 1;
+      return true;
+    }
+    const tool = parseToolFrame(value);
+    if (!tool) return false;
+    this.activity.applyTool(tool);
+    this.activityRevision += 1;
+    // A command's bytes are only worth carrying while someone can see them run — and only for
+    // the conversation that is open. A phone on a radio should not receive the output of a
+    // build happening in a session nobody is looking at.
+    const streamId = `${tool.turn_id}:${tool.id}`;
+    if (tool.phase === "started" && this.watchesTurn(tool.turn_id)) void this.watchCommand(streamId);
+    if (tool.phase === "exited") void this.unwatchCommand(streamId);
+    return true;
+  }
+
+  /** Whether this turn belongs to the conversation on screen. */
+  private watchesTurn(turnId: string): boolean {
+    if (!this.selectedId) return false;
+    return this.snapshot.turns.some((turn) => turn.id === turnId && turn.session_id === this.selectedId);
+  }
+
+  /** Ask the daemon to send a command's bytes. Nothing is sent to a client that never asks. */
+  private async watchCommand(id: string): Promise<void> {
+    try {
+      await this.api?.watchCommand(id, 0);
+    } catch {
+      // A command whose output cannot be followed still runs; the turn is what matters.
+    }
+  }
+
+  private async unwatchCommand(id: string): Promise<void> {
+    try {
+      await this.api?.unwatchCommand(id);
+    } catch {
+      // Nothing to undo: the stream ends with the command either way.
+    }
+  }
+
+  onStream(id: string, sink: (frame: StreamFrame) => void): () => void {
+    this.streamSinks.set(id, sink);
+    return () => {
+      if (this.streamSinks.get(id) === sink) this.streamSinks.delete(id);
+    };
   }
 
   private markDisconnected(): void {

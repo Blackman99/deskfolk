@@ -8,6 +8,7 @@ fn main() {
         for file in [
             "real-bot-daemon",
             "real-bot-runtime-helper",
+            "real-bot-pty",
             "libRemoteCredentials.dylib",
         ] {
             assert!(

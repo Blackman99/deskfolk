@@ -18,6 +18,7 @@ import { RemoteUv } from "./uv";
 import { dispatchLocalSetup } from "./local-setup";
 import { finishLifecycle, recoverLifecycle } from "./lifecycle";
 import { validateBusiness } from "./routes";
+import { ptyHelperPath } from "../pty";
 import { remoteError } from "./errors";
 import { finishRestart, finishStop, maintenanceDiagnostics, restartAvailable, type MaintenanceControl } from "./maint";
 import { RuntimeLifecycle } from "../lifecycle";
@@ -466,6 +467,9 @@ test("route contracts reject unknown fields and wrong types across every mutatio
     ["POST", "/v1/allow-rules", { kind_key: "k", scope: "s" }], ["POST", "/v1/models/probe", {}],
     ["PUT", "/v1/workspace/file", { path: "x", content: "y" }], ["PUT", `/v1/messages/${id}/reactions`, { emoji: "x" }],
     ["DELETE", `/v1/bots/${id}`, { if_revision: "r" }], ["PATCH", "/v1/settings", { theme: "dark", if_revision: 1 }],
+    ["POST", "/v1/terminals", { cwd: "/tmp" }], ["POST", `/v1/terminals/${id}/input`, { data: "AA==" }],
+    ["POST", `/v1/terminals/${id}/resize`, { rows: 24, cols: 80 }], ["POST", `/v1/terminals/${id}/signal`, { signal: "SIGINT" }],
+    ["POST", `/v1/terminals/${id}/watch`, { from: 0 }],
   ];
   for (const [method, path, body] of cases) {
     expect((await c.rpc({ v: 1, id: ulid(), method, path, body: { ...body, unknown_property: true } })).status).toBe(422);
@@ -1238,4 +1242,45 @@ test("concurrent finishRestart and finishStop do not mix latch and restart", asy
     expect(existsSync(maint.lifecycle.latchPath)).toBe(true);
     expect(exits).toEqual(["stop"]);
   }
+});
+
+test("a watched terminal streams to the device that asked, and stops when it stops asking", async () => {
+  const helper = (() => { try { return ptyHelperPath(); } catch { return null; } })();
+  if (!helper) return;
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/terminals/x/bogus", body: {} })).status).toBe(404);
+
+  const opened = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/terminals", body: { cwd: f.root, rows: 24, cols: 80 } });
+  expect(opened.status).toBe(200);
+  const id = opened.body.id as string;
+
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/terminals/${id}/watch`, body: { from: 0 } })).status).toBe(200);
+  await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/terminals/${id}/input`,
+    body: { data: Buffer.from("echo REMOTE_MARK\n").toString("base64") } });
+
+  /** Frames only land in `events` while an rpc is in flight, so poll with a harmless one. */
+  const streamed = async (): Promise<string> => {
+    await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/terminals/${id}` });
+    return c.events
+      .filter((event): event is { type: string; id: string; data: string } =>
+        !!event && typeof event === "object" && (event as { type?: string }).type === "stream" && (event as { id?: string }).id === id)
+      .map((event) => Buffer.from(event.data, "base64").toString("utf8"))
+      .join("");
+  };
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(await streamed()).includes("REMOTE_MARK")) await Bun.sleep(100);
+  expect(await streamed()).toContain("REMOTE_MARK");
+
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/terminals/${id}/unwatch`, body: {} })).status).toBe(204);
+  const seen = (await streamed()).length;
+  await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/terminals/${id}/input`,
+    body: { data: Buffer.from("echo AFTER_UNWATCH\n").toString("base64") } });
+  await Bun.sleep(400);
+  const after = await streamed();
+  expect(after).not.toContain("AFTER_UNWATCH");
+  expect(after.length).toBe(seen);
+
+  // Keystrokes are not receipted: nothing to replay, nothing stored.
+  expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n).toBe(0);
 });

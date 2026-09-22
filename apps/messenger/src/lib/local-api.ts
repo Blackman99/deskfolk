@@ -8,6 +8,11 @@ import type {
   RuntimeSnapshot,
   SessionSnapshot,
   SyncFrame,
+  StreamFrame,
+  Terminal,
+  TerminalScrollback,
+  TerminalSignal,
+  ToolFrame,
   SequencedEvent,
   Bot,
   CreateBotRequest,
@@ -43,6 +48,8 @@ import type {
   TaskArtifacts,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
+import { isNonReceiptPath } from "@real-bot/protocol";
+import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { ApiError, rememberBlobEtag } from "./api.ts";
 import { readResponseBlob, type FileProgressHandler } from "./file-progress.ts";
@@ -367,6 +374,52 @@ export class LocalApi {
     return this.request<unknown>("POST", "/v1/remote/setup", request);
   }
 
+  /** Follow a running command's output. The id is `<turn_id>:<tool_call_id>`. */
+  async watchCommand(id: string, from: number): Promise<void> {
+    await this.post<void>("/v1/streams/watch", { id, from });
+  }
+
+  async unwatchCommand(id: string): Promise<void> {
+    await this.post<void>("/v1/streams/unwatch", { id });
+  }
+
+  async terminals(): Promise<Terminal[]> {
+    return (await this.get<{ items: Terminal[] }>("/v1/terminals")).items;
+  }
+
+  async openTerminal(cwd: string, rows: number, cols: number): Promise<Terminal> {
+    return this.post<Terminal>("/v1/terminals", { cwd, rows, cols });
+  }
+
+  async terminalInput(id: string, data: string): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/input`, { data });
+  }
+
+  async terminalResize(id: string, rows: number, cols: number): Promise<Terminal> {
+    return this.post<Terminal>(`/v1/terminals/${id}/resize`, { rows, cols });
+  }
+
+  async terminalSignal(id: string, signal: TerminalSignal): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/signal`, { signal });
+  }
+
+  /** Start receiving this terminal's bytes on the event socket, from a byte offset. */
+  async watchTerminal(id: string, from: number): Promise<Terminal> {
+    return this.post<Terminal>(`/v1/terminals/${id}/watch`, { from });
+  }
+
+  async unwatchTerminal(id: string): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/unwatch`, {});
+  }
+
+  async terminalScrollback(id: string, from: number): Promise<TerminalScrollback> {
+    return this.get<TerminalScrollback>(`/v1/terminals/${id}/scrollback?from=${from}`);
+  }
+
+  async closeTerminal(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/terminals/${id}`);
+  }
+
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {
     const query = path ? `?path=${encodeURIComponent(path)}` : "";
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);
@@ -520,6 +573,23 @@ export class LocalApi {
     return JSON.stringify({ type: "auth", token: this.endpoint.token, protocol: "sync-v1" });
   }
 
+  /** Ephemeral frames arrive as raw text here; the rule itself is shared with the remote link. */
+  parseStreamFrame(raw: string): StreamFrame | null {
+    try {
+      return parseStreamFrame(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
+  parseToolFrame(raw: string): ToolFrame | null {
+    try {
+      return parseToolFrame(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
   parseSyncFrame(raw: string): SyncFrame | null {
     try {
       const frame = JSON.parse(raw);
@@ -545,7 +615,7 @@ export class LocalApi {
     returnEtag = false,
     supersedes?: string | null,
   ): Promise<T> {
-    if (method === "GET" || path === "/v1/models/probe") {
+    if (method === "GET" || isNonReceiptPath(path)) {
       return this.sendRequest({ id: "", method, path, payload: body === undefined ? undefined : JSON.stringify(body), fingerprint: "", pending: false }, signal) as Promise<T>;
     }
     const payload = body instanceof FormData ? cloneForm(body) : JSON.stringify(body ?? {});

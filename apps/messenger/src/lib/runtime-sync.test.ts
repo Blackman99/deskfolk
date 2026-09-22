@@ -899,3 +899,23 @@ test("a page that lands after the history was cleared is dropped", async () => {
   await older;
   expect(runtime.snapshot.messages.map((m) => m.id)).not.toContain("old-1");
 });
+
+test("terminal bytes on the event socket do not drop the connection", async () => {
+  // A stream frame has no cursor, so handing one to the sequenced reader reads as a gap and the
+  // page goes to "the host is unreachable". That is what opening a terminal used to do on a
+  // phone, where the relay carries these on the same channel as events.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  Socket.current.dispatchEvent(new MessageEvent("message", {
+    data: JSON.stringify({ type: "stream", id: "01ARZ3NDEKTSV4RRFFQ69G5FAV:call_1", offset: 0, data: "aGVsbG8=" }),
+  }));
+  Socket.current.dispatchEvent(new MessageEvent("message", {
+    data: JSON.stringify({ type: "tool", turn_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", id: "call_1", name: "shell", phase: "started", command: "pnpm build" }),
+  }));
+  flushSync();
+
+  expect(runtime.connection).toBe("connected");
+  // And they landed where they belong rather than being thrown away.
+  expect(runtime.activity.forTurn("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toHaveLength(1);
+});

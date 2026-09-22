@@ -22,6 +22,7 @@
 	} from './settings/provider-form.ts';
 	import { routeLogRows } from './overlays/route-log.ts';
 	import RouteLog from './overlays/RouteLog.svelte';
+	import TerminalPane from './overlays/TerminalPane.svelte';
 	import { presentBotIds } from './sidebar/session-groups.ts';
 	import {
 		cleanPinnedIds,
@@ -153,6 +154,7 @@
 			searchPageOpen,
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
+			terminalOpen: runtime.terminalOpen,
 			routeLogOpen: runtime.routeLogOpen,
 			threadOpen: runtime.threadOpen,
 			workspaceOpen: runtime.workspaceOpen,
@@ -193,6 +195,9 @@
 					return true;
 				}
 				return false;
+			case 'terminal':
+				runtime.closeTerminal();
+				return true;
 			case 'route-log':
 				runtime.closeRouteLog();
 				return true;
@@ -957,6 +962,8 @@
 				closeNestedProfile();
 			} else if (runtime.sessionSettingsOpen) {
 				runtime.closeSessionSettings();
+			} else if (runtime.terminalOpen) {
+				runtime.closeTerminal();
 			} else if (runtime.routeLogOpen) {
 				runtime.closeRouteLog();
 			} else if (runtime.workspaceOpen) {
@@ -1083,6 +1090,17 @@
 					runtime.previewMessageId,
 					runtime.forceArtifactTree
 				)}
+		/>
+	{/if}
+	{#if runtime.terminalOpen}
+		<TerminalPane
+			api={runtime.client}
+			workspacePath={snapshot.settings.workspace_path}
+			rows={runtime.terminals}
+			{t}
+			onStream={(id, sink) => runtime.onStream(id, sink)}
+			onChanged={() => runtime.refreshTerminals()}
+			onClose={() => runtime.closeTerminal()}
 		/>
 	{/if}
 	{#if runtime.routeLogOpen && selected}

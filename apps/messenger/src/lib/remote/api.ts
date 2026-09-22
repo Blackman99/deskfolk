@@ -1,4 +1,9 @@
 import type {
+  StreamFrame,
+  Terminal,
+  TerminalScrollback,
+  TerminalSignal,
+  ToolFrame,
   Approval,
   AllowRule,
   Bot,
@@ -43,6 +48,7 @@ import type {
   TaskArtifacts,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
+import { isNonReceiptPath } from "@real-bot/protocol";
 import {
   fromBase64url,
   REMOTE_FILE_LIMIT,
@@ -229,7 +235,7 @@ export class RemoteApi {
     if (row.supersedes) this.retireSuperseded(row.supersedes);
   }
 
-  async connect(onEvent: (frame: SyncFrame) => void): Promise<SyncFrame> {
+  async connect(onEvent: (frame: SyncFrame | StreamFrame | ToolFrame) => void): Promise<SyncFrame> {
     this.close();
     const transport = new RemoteTransport(this.enrollment, this.identity, this.hooks);
     transport.subscribe(onEvent);
@@ -402,6 +408,52 @@ export class RemoteApi {
   async taskArtifacts(taskId: string): Promise<TaskArtifacts> {
     return this.get<TaskArtifacts>(`/v1/tasks/${encodeURIComponent(taskId)}/artifacts`);
   }
+  /** Follow a running command's output. The id is `<turn_id>:<tool_call_id>`. */
+  async watchCommand(id: string, from: number): Promise<void> {
+    await this.post<void>("/v1/streams/watch", { id, from });
+  }
+
+  async unwatchCommand(id: string): Promise<void> {
+    await this.post<void>("/v1/streams/unwatch", { id });
+  }
+
+  async terminals(): Promise<Terminal[]> {
+    return (await this.get<{ items: Terminal[] }>("/v1/terminals")).items;
+  }
+
+  async openTerminal(cwd: string, rows: number, cols: number): Promise<Terminal> {
+    return this.post<Terminal>("/v1/terminals", { cwd, rows, cols });
+  }
+
+  async terminalInput(id: string, data: string): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/input`, { data });
+  }
+
+  async terminalResize(id: string, rows: number, cols: number): Promise<Terminal> {
+    return this.post<Terminal>(`/v1/terminals/${id}/resize`, { rows, cols });
+  }
+
+  async terminalSignal(id: string, signal: TerminalSignal): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/signal`, { signal });
+  }
+
+  /** Start receiving this terminal's bytes on the event socket, from a byte offset. */
+  async watchTerminal(id: string, from: number): Promise<Terminal> {
+    return this.post<Terminal>(`/v1/terminals/${id}/watch`, { from });
+  }
+
+  async unwatchTerminal(id: string): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/unwatch`, {});
+  }
+
+  async terminalScrollback(id: string, from: number): Promise<TerminalScrollback> {
+    return this.get<TerminalScrollback>(`/v1/terminals/${id}/scrollback?from=${from}`);
+  }
+
+  async closeTerminal(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/terminals/${id}`);
+  }
+
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {
     const query = path ? `?path=${encodeURIComponent(path)}` : "";
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);
@@ -570,7 +622,7 @@ export class RemoteApi {
   ): Promise<T> {
     void signal;
     const splitPath = split(path);
-    if (method === "GET" || path === "/v1/models/probe") {
+    if (method === "GET" || isNonReceiptPath(path)) {
       return this.send({
         id: id ?? ulid(), method, path: splitPath.path, query: splitPath.query,
         body: method === "GET" ? undefined : jsonBody(body), fingerprint: "", pending: false, returnEtag,

@@ -1,4 +1,5 @@
 /** Small stand-ins for the runtime and its rows, so a component test says only what it is about. */
+import { CommandActivity } from "./chat/command-activity.ts";
 import type {
   Approval,
   Attachment,
@@ -368,11 +369,20 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openCreateGroup: record("openCreateGroup"),
     toggleRouteLog: record("toggleRouteLog"),
     closeRouteLog: record("closeRouteLog"),
+    openTerminal: record("openTerminal"),
+    closeTerminal: record("closeTerminal"),
+    refreshTerminals: record("refreshTerminals"),
     settingsOpen: false,
     sessionSettingsOpen: false,
     createBotOpen: false,
     createGroupOpen: false,
     routeLogOpen: false,
+    terminalOpen: false,
+    terminals: [],
+    // The real runtime always has one; a stub without it would hide a broken wiring rather than
+    // fail on it, and the transcript reads `runtime.activity` while a turn is live.
+    activity: new CommandActivity(),
+    activityRevision: 0,
     workspaceOpen: false,
     workspaceSelected: "",
     threadOpen: false,

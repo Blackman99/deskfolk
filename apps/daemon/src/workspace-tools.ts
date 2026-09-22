@@ -14,6 +14,7 @@ import { HttpError } from "./errors";
 import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
+import { COMMAND_STREAM_BYTES } from "./streams";
 
 const READ_BYTES_MAX = 1_000_000;
 
@@ -53,6 +54,21 @@ export type WorkspaceToolCtx = {
   workDir?: string | null;
   /** Overrides {@link SHELL_TIMEOUT_MS}; tests use a short one. */
   shellTimeoutMs?: number;
+  /**
+   * Where a running command's output goes while it runs. Visibility only: it does not change what
+   * a `shell` is. stdin stays closed, the timeout still kills, and the path check still happens
+   * once per spawn. Absent in tests that do not care.
+   */
+  stream?: ShellStream;
+  /** This call's stream id, `<turn_id>:<tool_call_id>`. Without it nothing is streamed. */
+  streamId?: string;
+};
+
+/** The slice of the daemon's stream hub a command needs. */
+export type ShellStream = {
+  open: (id: string, limit?: number) => void;
+  push: (id: string, bytes: Uint8Array) => void;
+  close: (id: string) => void;
 };
 
 /**
@@ -260,6 +276,8 @@ async function runShell(
   }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   const before = snapshotWorkDir(root, ctx.workDir);
+  const streaming = Boolean(ctx.stream && ctx.streamId);
+  if (streaming) ctx.stream!.open(ctx.streamId!, COMMAND_STREAM_BYTES);
   try {
     const proc = Bun.spawn(["/bin/sh", "-c", command], {
       cwd: classified.cwdAbs,
@@ -293,12 +311,19 @@ async function runShell(
         resolve("timeout");
       }, timeoutMs);
     });
+    // Read both pipes as they fill rather than after the fact: the whole point is that a ten
+    // minute build is visible while it runs. Still raced rather than awaited — see above.
+    const drain = async (pipe: ReadableStream<Uint8Array>): Promise<string> => {
+      const decoder = new TextDecoder();
+      let text = "";
+      for await (const chunk of pipe) {
+        text += decoder.decode(chunk, { stream: true });
+        if (streaming) ctx.stream?.push(ctx.streamId!, chunk);
+      }
+      return text + decoder.decode();
+    };
     const settled = await Promise.race([
-      Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]),
+      Promise.all([drain(proc.stdout), drain(proc.stderr), proc.exited]),
       expired,
     ]);
     clearTimeout(timer);
@@ -312,6 +337,8 @@ async function runShell(
     return ok({ exit_code: exit, stdout, stderr, ...produced });
   } catch {
     return fail("failed", "shell failed");
+  } finally {
+    if (streaming) ctx.stream!.close(ctx.streamId!);
   }
 }
 
