@@ -66,6 +66,7 @@
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
+	import RoutineCalendar from './calendar/RoutineCalendar.svelte';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	import SettingsModal from './settings/SettingsModal.svelte';
@@ -941,10 +942,19 @@
 	}
 	const mobileNavigationVisible = $derived(
 		!searchPageOpen &&
+		!runtime.routinesOpen &&
+		// The terminal is a full screen here, and the bar would sit on top of its key row.
+		!runtime.terminalOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !dangerConfirm &&
 		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
 	);
+
+	function openRoutinesFromUi(): void {
+		const open = () => runtime.openRoutines();
+		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
+		else open();
+	}
 </script>
 
 <svelte:window
@@ -1021,6 +1031,7 @@
 	class:has-mobile-navigation={mobileNavigationVisible}
 	class:is-thread={runtime.threadOpen}
 	class:has-session={Boolean(selected)}
+	class:has-routines={runtime.routinesOpen}
 	class:is-preview={Boolean(artifactPreview)}
 	class:is-preview-dragging={previewDragging}
 	class:is-sidebar-dragging={sidebarDragging}
@@ -1041,6 +1052,7 @@
 		contextMenuSessionId={contextMenu?.session.id ?? null}
 		onOpenContextMenu={openContextMenu}
 		onToggleWorkspace={toggleWorkspaceExplorer}
+		onOpenRoutines={openRoutinesFromUi}
 		onOpenSettings={() => runtime.openSettings()}
 		onCreateBot={openCreateBot}
 		onCreateGroup={openCreateGroup}
@@ -1054,6 +1066,9 @@
 		onpointerdown={startSidebarResize}
 	></button>
 	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
+		{#if runtime.routinesOpen}
+			<RoutineCalendar {runtime} {t} />
+		{:else}
 		<ChatHeader
 			{runtime}
 			{t}
@@ -1072,6 +1087,7 @@
 			onOpenArtifact={openArtifactPath}
 			onCreateBot={openCreateBot}
 		/>
+		{/if}
 	</section>
 	{#if artifactPreview}
 		<button
@@ -1666,7 +1682,8 @@
 			display: none;
 		}
 
-		.shell.has-session .main {
+		.shell.has-session .main,
+		.shell.has-routines .main {
 			display: flex;
 			min-width: 0;
 		}

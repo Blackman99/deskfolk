@@ -8,7 +8,7 @@ mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', 
 const { default: Shell } = await import('./Shell.svelte');
 import { ApiError } from './api.ts';
 import { applyEvent, emptySnapshot } from './snapshot.ts';
-import { aBot, aDirect, aGroup, aProvider, fakeRuntime } from './test-fixtures.ts';
+import { aBot, aDirect, aGroup, aProvider, aRoutine, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, render } from './test-render.ts';
 
@@ -105,6 +105,45 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
   });
 }
 
+test("the routine calendar replaces the main column and stays visible without a session on a phone", () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    routines: [aRoutine()],
+    settings: { ...emptySnapshot().settings, locale: "zh", wizard_complete: true, workspace_path: "/fixture" },
+  }));
+  runtime.openRoutines = () => {
+    runtime.routinesOpen = true;
+  };
+  runtime.closeRoutines = () => {
+    runtime.routinesOpen = false;
+  };
+  const { host, app, close } = render(Shell, { runtime });
+  cleanups.push(() => {
+    setViewport({ width: 1024, height: 768 });
+    close();
+  });
+  runtime.openRoutines();
+  flushSync();
+  const shell = host.querySelector(".shell")!;
+  expect(shell.classList.contains("has-routines")).toBe(true);
+  expect(getComputedStyle(host.querySelector(".main")!).display).not.toBe("none");
+  expect(getComputedStyle(host.querySelector(".side")!).display).toBe("none");
+  expect(host.querySelector(".routine-calendar")).not.toBeNull();
+  expect(host.querySelector(".mobile-navigation")).toBeNull();
+  expect(getComputedStyle(host.querySelector(".calendar-phone-note")!).display).toBe("block");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(runtime.routinesOpen).toBe(false);
+  runtime.openRoutines();
+  flushSync();
+  expect((app as { backMobileLayer: () => boolean }).backMobileLayer()).toBe(false);
+  expect(runtime.routinesOpen).toBe(true);
+});
+
 test('mobile destinations preserve selection state, repeat safely and expose unconfigured workspace recovery', async () => {
   const runtime = reactive(fakeRuntime({
     settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: null },
@@ -119,13 +158,16 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
   click(nav(2));
   expect(runtime.settingsOpen).toBe(true);
   click(nav(1));
+  await settle();
   expect(runtime.workspaceOpen).toBe(true);
   expect(runtime.settingsOpen).toBe(false);
   expect(host.querySelector('.workspace-unset')).not.toBeNull();
   click(host.querySelector('.workspace-unset button'));
+  await settle();
   expect(runtime.settingsOpen).toBe(true);
   expect(runtime.workspaceOpen).toBe(false);
   click(nav(0));
+  await settle();
   expect(runtime.settingsOpen).toBe(false);
   expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('会话');
 });

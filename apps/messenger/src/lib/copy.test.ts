@@ -259,6 +259,15 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.detail.cancel).toBe("Cancel");
 });
 
+test("the routine calendar is named in both locales and says the phone cannot drag", () => {
+  expect(COPY.zh.calendar.title).toBe("日程图");
+  expect(COPY.en.calendar.title).toBe("Routine calendar");
+  expect(COPY.zh.calendar.detail).toBe("日程详情");
+  expect(COPY.en.calendar.detail).toBe("Routine");
+  expect(COPY.zh.calendar.phoneReadOnly).toContain("桌面");
+  expect(COPY.en.calendar.phoneReadOnly).toContain("desktop");
+});
+
 test("sidebar search chrome names sessions and messages in both locales", () => {
   expect(COPY.zh.sidebar.search).toBe("搜索会话、消息、文件、日程");
   expect(COPY.en.sidebar.search).toBe("Search sessions, messages, files, routines");

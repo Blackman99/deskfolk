@@ -212,6 +212,9 @@ importers:
       shiki:
         specifier: ^4.4.3
         version: 4.4.3
+      svelte5plus-calendar:
+        specifier: 0.5.5
+        version: 0.5.5(svelte@5.57.0)
     devDependencies:
       '@happy-dom/global-registrator':
         specifier: ^20.14.5
@@ -1549,6 +1552,11 @@ packages:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: ^5.0.0 || ^6.0.0
 
+  svelte5plus-calendar@0.5.5:
+    resolution: {integrity: sha512-hnTVgQa0bWFcunxrL/Zs7flWZxLs6/1L2vx86EieROaLXIGzu6LBicN6egMU68u6BAkRcd9GqPJgFne9Qmg/vA==}
+    peerDependencies:
+      svelte: ^5.0.0
+
   svelte@5.57.0:
     resolution: {integrity: sha512-NdbDn7fl4be1ViUG0oq/lvG6OZy3oENolV2ONjiqqsfVoeAfzaQAKUcEX3MrQod/Bebv1PgwET9rfXhgn9s4Kg==}
     engines: {node: '>=18'}
@@ -2860,6 +2868,10 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - picomatch
+
+  svelte5plus-calendar@0.5.5(svelte@5.57.0):
+    dependencies:
+      svelte: 5.57.0
 
   svelte@5.57.0:
     dependencies:

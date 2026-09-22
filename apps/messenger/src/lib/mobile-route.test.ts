@@ -81,6 +81,15 @@ function layers(over: Partial<LayerState> = {}): LayerState {
   };
 }
 
+test("the routine calendar is a screen of its own, between the trace and the thread", () => {
+  const routines: UrlView = { ...roster, overlay: { kind: "routines" } };
+  expect(routeLayers(routines)).toEqual(["routines"]);
+  expect(routeStep(roster, routines)).toBe("deeper");
+  expect(routeStep(routines, roster)).toBe("shallower");
+  expect(topLayer(layers({ routinesOpen: true, workspaceOpen: true }))).toBe("routines");
+  expect(topLayer(layers({ routinesOpen: true, traceOpen: true }))).toBe("trace");
+});
+
 test("Back closes the innermost thing on top", () => {
   expect(topLayer(layers())).toBeNull();
   expect(topLayer(layers({ settingsOpen: true }))).toBe("settings");

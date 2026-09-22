@@ -30,6 +30,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+## svelte5plus-calendar
+
+The roster routine calendar in `apps/messenger` uses [svelte5plus-calendar](https://github.com/Blackman99/svelte5plus-calendar) 0.5.5, which is released under the MIT license:
+
+```text
+MIT License
+
+Copyright (c) 2026 svelte5plus-calendar contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Boring Avatars
 
 The avatar generator in `packages/protocol/src/boring-avatars.ts` adapts algorithms and SVG designs from [Boring Avatars](https://github.com/boringdesigners/boring-avatars), including its utilities and avatar variants, into a TypeScript SVG-string implementation. The upstream [MIT license](https://github.com/boringdesigners/boring-avatars/blob/master/LICENSE) is reproduced below.

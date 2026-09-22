@@ -58,7 +58,7 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 ## 手机宽度导航
 
-680px 及以下由 `Shell.svelte` 组合 `MobileNavigation.svelte`，共享会话、工作区和设置三个主入口。设置根页显示底栏，分类详情和编辑页隐藏底栏；会话详情沿用顶部返回。`Sidebar.svelte` 的归档入口与搜索并排在同一行，搜索本身是整页进入（见下文「手机返回」），新建则是列表右下角的浮动 `+`（`.fab`，点开选「新建 Bot / 新建群」，分组标题里那两个 `+` 在手机上隐藏），宽屏保留原工具栏与标题里的 `+`。手机上这一列的左右边界统一：搜索框、分组标题、头像都从 22px（`.groups` 8px + 行内 14px）起，归档入口的箭头、标题右侧控件、行时间和 Bot↔Bot 的来源行都齐在右侧 22px；列表在手机宽度下隐藏滚动条，否则滚动条会把内容推离那条边界。工作区通过 `requestCloseFromParent(afterClose)` 完成未保存确认后执行导航，取消时释放目标回调并保留草稿。配置仍使用已有设置和工作区 URL 状态。
+680px 及以下由 `Shell.svelte` 组合 `MobileNavigation.svelte`，共享会话、工作区和设置三个主入口。设置根页显示底栏，分类详情和编辑页隐藏底栏；会话详情沿用顶部返回。`Sidebar.svelte` 的归档入口移入左侧工具菜单中（与日程图、终端并列，归档有条目时带角标提示），顶栏由左侧功能入口按钮与通栏胶囊搜索条组成，搜索本身是整页进入（见下文「手机返回」），进入已归档视图后顶部提供专属导航页头与返回按钮；新建则是列表右下角的浮动 `+`（`.fab`，点开选「新建 Bot / 新建群」，分组标题里那两个 `+` 在手机上隐藏），宽屏保留原工具栏与标题里的 `+`。手机上这一列的左右边界统一：搜索框、分组标题、头像都从 16px 起；列表在手机宽度下隐藏滚动条。工作区通过 `requestCloseFromParent(afterClose)` 完成未保存确认后执行导航，取消时释放目标回调并保留草稿。配置仍使用已有设置和工作区 URL 状态。
 
 ## 信使源码布局
 
@@ -89,6 +89,8 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 日程搜索同时检查快照日程与当前 Bot 名册。软删除 Bot 保留历史日程，结果标为不可用而不是静默关闭。资料导航序号覆盖后来日程/资料、会话设置、关闭和 URL 浮层变化，较早详情返回不能重开旧编辑器或丢弃新草稿。
 
 Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现有每天/每周与 `HH:MM` 字段，归属固定为当前 Bot。时间按执行 Mac 的本地日历解释，不提供浏览器时区转换或新 cron 语法；使用步骤见 [README](../README.zh.md#每日与每周日程)。
+
+名册日程图（`?o=routines`，`calendar/RoutineCalendar.svelte`）把同一份快照投影到 `svelte5plus-calendar@0.5.5` 的周视图上，只读。格子由 `project-routines.ts` 按库回调的闭区间展开，不设 `recurrence`，也不 `bind:events`。窄屏用 `has-routines` 显示主栏；打开时清掉 `?p=`。组件测试经 `calendar-entry.ts` 用相对路径引进库，因为包的导出只有 `svelte` 条件，bun 解析不到。
 
 `LocalApi.createRoutine` / `patchRoutine` / `deleteRoutine` 经 runtime 捕获当前 API 实例调用；HTTP 返回行不写入快照，只有 `routine.upsert` / `routine.removed` 和重连快照更新列表。编辑草稿或删除确认保留当时的 `updated_at`；PATCH 和 DELETE JSON 体传 `if_revision`，不匹配返回 `409 revision_conflict`，格式错误返回 422，已删除返回 404。旧本机调用可省略该字段；注入 `requireRevision: true` 时日程 PATCH/DELETE 均不可省略。请求体先参与回执摘要，日程版本字段保留至 Store，在业务+回执的同一外层事务中仅比较一次，不先被通用 PATCH 检查剥离。Store 使日程 `updated_at` 至少递增一毫秒（含 scheduler claim）；不另包一套 Store 事务。未修改的表单跟随实时更新，有修改的表单保留草稿并要求显式载入最新版，连接变化不会自动重试写入。网络结果未知时沿用 `LocalApi` 待确认请求与原始 id，只允许显式重试同一载荷；不得为了显示日程错误丢弃该 API 实例。成功或终态回执只清理对应请求，不合成快照行。日程错误按 code 区分 `request_unknown` / `request_pending` 与 `revision_conflict`；卡片中的“重试原请求”调用既有 `runtime.retryPendingMutation` → `LocalApi.retryPending`，不重建载荷或 id。该 runtime 方法返回 `ApiError | null`，使卡片保留重试收到的真实终态错误。重试明确说明不会发送后来修改的草稿，待确认退休后保留草稿并禁用提交，用户核对列表/重新打开后继续；不把原请求成功说成后来草稿已保存。
 
@@ -240,6 +242,8 @@ Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后�
 
 消息末尾那个产物入口点开后，左侧的树不再只有这一条消息的路径：`GET /v1/tasks/:id/artifacts` 给出**这件事**引用过的全部路径（`attachments` join `messages` 按 `task_id` 聚合，一条路径一行，最近引用在前，上限 200），`buildTaskArtifactTree` 把工作目录做成唯一的树根、目录之外的路径与它并列平铺、本条消息自己引用的那几个打点。不用最深公共祖先——只要有一个 `report.md` 在工作区根上，公共祖先立刻退化成根，读者又得先展开 `work / <带日期的目录> /` 才看见文件。和路由记录一样是开面板拉一次，没有推送事件；拉失败就退回只列这一条消息，入口照常能用。⌘O 冷启动时也会跳到本会话当前的工作目录。
 
+同一件事也能按状态流转看。`GET /v1/tasks/:id/trace` 把共享这个工作目录的轮次读成一张经过：你的发言一张卡，每个 Bot 的一轮一张卡，边是触发消息的 `turn_id`（没有就是你），产物是这一轮消息上的附件，旁观人数记在叫醒它们的那张卡下。信使按这条边从上到下排成流程图（同一轮叫醒的人并排在一行）。点一个文件，它作为交出它的那一轮的下一站展开：只读，图、Markdown、音视频和 PDF 直接看，没有聊天旁那条预览的文件树、源码切换和保存；再点同一个文件、它自己的 ✕ 或第一次 Escape 收起。`GET /v1/sessions/:id/tasks` 列出这个会话参与过的事，按最近活动倒序。会话顶栏的「经过」在桌面端开成一块浮动窗口（`TaskTrace.svelte`，右下角，拖标题栏移动，拖右下角改大小，位置和大小记在 `localStorage` 的 `real-bot-trace-window`，下次打开恢复；不挡对话的点击；点一个节点，对话切到那一轮所在的会话并高亮，窗口留着，当前会话里的节点加一圈标记；换一条对话，窗口改成那条对话最近的一件事）。手机上是单独的一页，铺满屏幕，不能拖也不能改大小，消息菜单的「看这件事」和 Bot↔Bot 私聊来源头打开同一张；地址是 `?o=trace&k=<taskId>`，开着时该工作的轮次或消息一变就再拉一次。超过 40 张卡片时不再画线，改由卡片自己写「由谁的上一轮叫醒」。手机宽度改成从上到下，预览改到流程图下面。
+
 `shell` 每次调用前后会扫一遍工作目录（深度 2，跳过保留子目录和点文件 / `node_modules`），新增或 mtime 变了的文件作为 `paths` 回在工具结果里，并自动挂成消息产物——`write_file` 会报出自己的路径，命令不会，下载 / 转换 / 渲染留下的文件此前一个都不上榜。超过 200 个条目就一个都不报并标 `paths_truncated`，`npm install` 不是一份产物清单。
 
 工作目录下有两个保留子目录：`tool-results/`（守护进程的大工具结果）和 `scratch/`（轮次指令让 Bot 放纯过程文件的地方）。**写进这两处的文件不会自动挂成消息产物**，其余位置照旧；这条规则在 `store/tasks.ts` 的 `isReservedTaskPath`，由 `turn-engine.ts` 的 `noteWrittenPaths` 执行。
@@ -265,7 +269,7 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 ## 本机接口
 
-守护进程绑 `127.0.0.1:17890`，并在同一端口再听 `[::1]`（给 Vite 开发页的 IPv6 回环用）。前缀 `/v1`。`GET /v1/health` 不鉴权；其余 HTTP 用 `Authorization: Bearer`。WebSocket `ws://127.0.0.1:17890/v1/events`（或 `ws://[::1]:17890/v1/events`）连上后第一条消息 `{ "type": "auth", "token" }`。HTTP 还校验 Origin：缺省（curl / 测试）放行；`http://localhost`、`http://127.0.0.1`、`http://[::1]` 和 `tauri://localhost` 放行并回显 CORS（含 `Access-Control-Allow-Private-Network`）；其它 Origin 是 `403 forbidden_origin`。信使 Vite 常只听 `[::1]:5173`；浏览器开发态发现接口时按页面地址族拼 origin（`[::1]` 页连 `[::1]:17890`），避免 Chrome 把跨地址族回环请求当成本地网络访问拦掉。`GET /v1/tasks/:id/artifacts` 返回这件事的工作目录、标题和它引用过的全部路径。`POST /v1/turns/continue` 用中断系统消息的 `message_id` 给该 Bot 新开一轮。`GET /v1/sessions/:id/composer-suggestions` 按该会话最近转录返回用户下一步草稿（`{ items: [{ id, label, prompt }] }`）；打默认端点上名字带 flash / mini / lite / fast 的模型（没有就用默认模型），无工具，8 秒超时；失败或没配端点返回空列表。
+守护进程绑 `127.0.0.1:17890`，并在同一端口再听 `[::1]`（给 Vite 开发页的 IPv6 回环用）。前缀 `/v1`。`GET /v1/health` 不鉴权；其余 HTTP 用 `Authorization: Bearer`。WebSocket `ws://127.0.0.1:17890/v1/events`（或 `ws://[::1]:17890/v1/events`）连上后第一条消息 `{ "type": "auth", "token" }`。HTTP 还校验 Origin：缺省（curl / 测试）放行；`http://localhost`、`http://127.0.0.1`、`http://[::1]` 和 `tauri://localhost` 放行并回显 CORS（含 `Access-Control-Allow-Private-Network`）；其它 Origin 是 `403 forbidden_origin`。信使 Vite 常只听 `[::1]:5173`；浏览器开发态发现接口时按页面地址族拼 origin（`[::1]` 页连 `[::1]:17890`），避免 Chrome 把跨地址族回环请求当成本地网络访问拦掉。`GET /v1/tasks/:id/artifacts` 返回这件事的工作目录、标题和它引用过的全部路径。`GET /v1/tasks/:id/trace` 把同一件事的轮次读成一张经过：你的发言一张卡，每个 Bot 的一轮一张卡，边是谁叫醒了谁，产物挂在交出它的那一轮上，旁观记在叫醒它们的那张卡下；`GET /v1/sessions/:id/tasks` 列出这个会话参与过的事，按最近活动倒序。会话顶栏的「经过」从右侧滑出这块板（`TaskTrace.svelte`），消息菜单和 Bot↔Bot 私聊的来源头也能打开同一张；地址是 `?o=trace&k=<taskId>`，开着时该工作的轮次或消息一变就再拉一次。`POST /v1/turns/continue` 用中断系统消息的 `message_id` 给该 Bot 新开一轮。`GET /v1/sessions/:id/composer-suggestions` 按该会话最近转录返回用户下一步草稿（`{ items: [{ id, label, prompt }] }`）；打默认端点上名字带 flash / mini / lite / fast 的模型（没有就用默认模型），无工具，8 秒超时；失败或没配端点返回空列表。
 
 每次守护进程启动新铸本机 token，写到 `~/Library/Application Support/real-bot/local-api.json`（目录 `0700`，文件 `0600`）。库文件同目录 `state.sqlite`。每个端点的 API key 在钥匙串 `com.real-bot.daemon` / `endpoint-api-key:<provider-id>`（旧的单端点项 `endpoint-api-key` 会迁到默认端点）。测试或隔离跑可设 `REAL_BOT_DATA_DIR` 换这个目录。
 
