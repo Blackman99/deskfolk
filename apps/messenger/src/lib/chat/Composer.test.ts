@@ -23,7 +23,7 @@ function open(draft = "写点什么", remote = false) {
       sent.push(files);
       runtime.draft = "";
     },
-    onPickPrompt: () => {},
+    onPickPrompt: (prompt: string) => { runtime.draft = prompt; },
   });
   const editor = view.host.querySelector(".composer-input") as HTMLElement;
   return { ...view, runtime, editor, sent };
@@ -51,6 +51,46 @@ test("single-line text is vertically centered within the action button height", 
         } finally {
           close();
         }
+      }
+    }
+  } finally {
+    viewport.setViewport(original);
+  }
+});
+
+test("phone suggestions stay in one scrollable row and insert the complete prompt", () => {
+  const viewport = (window as unknown as {
+    happyDOM: { setViewport: (size: { width: number; height: number }) => void };
+  }).happyDOM;
+  const original = { width: window.innerWidth, height: window.innerHeight };
+  try {
+    for (const width of [320, 390, 680]) {
+      viewport.setViewport({ width, height: 844 });
+      const { host, runtime, editor, sent, close } = open("");
+      try {
+        const prompt = "核对所有镜头字幕与配音细节。".repeat(50);
+        runtime.composerSuggestions = Array.from({ length: 3 }, (_, i) => ({
+          id: String(i), label: "请审片员复审并同步完整结果".repeat(20), prompt,
+        }));
+        flushSync();
+        const bar = host.querySelector(".composer-suggest-bar")!;
+        const style = getComputedStyle(bar);
+        expect(style.flexWrap).toBe("nowrap");
+        expect(style.overflowX).toBe("auto");
+        expect(style.overflowY).toBe("hidden");
+        expect(style.pointerEvents).toBe("auto");
+        const chip = bar.querySelector("button")!;
+        expect(getComputedStyle(chip).whiteSpace).toBe("nowrap");
+        expect(getComputedStyle(chip).textOverflow).toBe("ellipsis");
+        expect(getComputedStyle(chip).maxWidth).toBe("85%");
+        expect(getComputedStyle(editor).maxHeight).toBe("min(120px, 25dvh)");
+        chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        flushSync();
+        expect(runtime.draft).toBe(prompt);
+        expect(editor.textContent).toBe(prompt);
+        expect(sent).toHaveLength(0);
+      } finally {
+        close();
       }
     }
   } finally {

@@ -821,8 +821,10 @@
 		padding: 4px 8px 10px 4px;
 		margin: 0 0 -8px;
 		border-radius: 22px 22px 8px 8px;
-		pointer-events: none;
+		pointer-events: auto;
 		overflow-x: auto;
+		overflow-y: hidden;
+		overscroll-behavior-x: contain;
 		scrollbar-width: none;
 	}
 
@@ -1393,8 +1395,7 @@
 			width: 100%;
 			padding: 2px 2px 8px;
 			margin: 0 0 -6px;
-			flex-wrap: wrap;
-			overflow: visible;
+			flex-wrap: nowrap;
 		}
 
 		.composer-suggest-bar::before {
@@ -1403,7 +1404,7 @@
 
 		.suggest-chip {
 			min-height: 30px;
-			max-width: 100%;
+			max-width: 85%;
 			padding: 4px 9px;
 			font-size: 11.5px;
 		}
@@ -1423,6 +1424,7 @@
 	@media (max-width: 680px) {
 	.composer .composer-input {
 	font-size: 15px;
+	max-height: min(120px, 25dvh);
 	padding: 6px 4px;
 	}
 
