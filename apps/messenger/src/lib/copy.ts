@@ -467,6 +467,9 @@ const zh = {
   },
   stream: {
     empty: "还没有消息。",
+    loadEarlier: "载入更早的消息",
+    loadingEarlier: "正在载入…",
+    loadingHistory: "正在载入这段对话…",
     mentionUnresolved: "这个 @ 没有匹配到群成员",
     streaming: "正在写",
     replying: "回复中",
@@ -1165,6 +1168,9 @@ const en: CopyShape<typeof zh> = {
   },
   stream: {
     empty: "No messages yet.",
+    loadEarlier: "Load earlier messages",
+    loadingEarlier: "Loading…",
+    loadingHistory: "Loading this conversation…",
     mentionUnresolved: "This @ matches no member here",
     streaming: "streaming",
     replying: "replying",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Message, Reaction, Turn } from "@real-bot/protocol";
 import {
+  buildMessageLookup,
   calculateBotDuration,
   canContinueInterrupt,
   formatDateDivider,
@@ -466,5 +467,33 @@ describe("chat-view helpers", () => {
         },
       ]),
     ).toBe(false);
+  });
+});
+
+describe("buildMessageLookup", () => {
+  const rows: Message[] = [
+    { id: "b", session_id: "s1", kind: "bot", author: "bot-1", body: "", created_at: "t2" } as Message,
+    { id: "a", session_id: "s1", kind: "user", author: "you", body: "", created_at: "t1" } as Message,
+    { id: "c", session_id: "s2", kind: "user", author: "you", body: "", created_at: "t3" } as Message,
+  ];
+
+  test("indexes by id and by what came before it in the same session", () => {
+    const lookup = buildMessageLookup(rows);
+    expect(lookup.byId.get("a")?.created_at).toBe("t1");
+    expect(lookup.previousInSession.get("b")?.id).toBe("a");
+    // First in its session, and first across a different session: nothing before either.
+    expect(lookup.previousInSession.get("a")).toBeUndefined();
+    expect(lookup.previousInSession.get("c")).toBeUndefined();
+  });
+
+  test("the same message list is indexed once", () => {
+    expect(buildMessageLookup(rows)).toBe(buildMessageLookup(rows));
+    expect(buildMessageLookup([...rows])).not.toBe(buildMessageLookup(rows));
+  });
+
+  test("a bot reply with no turn is timed from the user message before it", () => {
+    const asked = { ...rows[1]!, created_at: "2026-01-01T00:00:00.000Z" };
+    const answered = { ...rows[0]!, created_at: "2026-01-01T00:00:03.000Z" };
+    expect(calculateBotDuration(answered, [asked, answered], [])?.ms).toBe(3000);
   });
 });

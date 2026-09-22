@@ -121,3 +121,21 @@ test("unresolved @tokens carry the configured title, and lenient members resolve
     '<span class="md-mention-unresolved" title="这个 @ 没有匹配到群成员">@路人</span>',
   );
 });
+
+test("the same text under a different roster is rendered again, not served from the cache", () => {
+  const source = "@分镜师 看一下";
+  const storyboard = { id: "storyboard-1", name: "分镜师" };
+  const plain = renderMarkdown(source, { mentionBots: [] });
+  const mentioned = renderMarkdown(source, { mentionBots: [storyboard], mentionMembers: [storyboard] });
+  expect(plain).not.toContain("md-mention-chip");
+  expect(mentioned).toContain('href="bot:storyboard-1"');
+  // A repeat of either one is the same HTML; the cache keys on what reached the renderer.
+  expect(renderMarkdown(source, { mentionBots: [] })).toBe(plain);
+  expect(renderMarkdown(source, { mentionBots: [storyboard], mentionMembers: [storyboard] })).toBe(mentioned);
+  // A rename is a different roster, so the chip label follows it.
+  const renamed = renderMarkdown(source, {
+    mentionBots: [{ id: "storyboard-1", name: "分镜" }],
+    mentionMembers: [{ id: "storyboard-1", name: "分镜" }],
+  });
+  expect(renamed).not.toBe(mentioned);
+});

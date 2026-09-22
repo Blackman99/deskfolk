@@ -54,10 +54,48 @@ export function formatDurationMs(ms: number): string {
  * Calculates how long a bot took to reply to a prompt.
  * Uses the associated turn or triggering message timestamp.
  */
+/**
+ * Message lookups the transcript needs per row, built once per message list instead.
+ *
+ * Every bubble used to answer "what was quoted here" and "what came before this" by scanning the
+ * whole snapshot, so a long history cost rows × messages on every render. The list only changes
+ * when a message arrives, so the maps are remembered until it does.
+ */
+export type MessageLookup = {
+  byId: ReadonlyMap<string, Message>;
+  /** The message directly before this one in its own session, in transcript order. */
+  previousInSession: ReadonlyMap<string, Message>;
+};
+
+let lookupCache: { messages: readonly Message[]; lookup: MessageLookup } | null = null;
+
+export function buildMessageLookup(messages: readonly Message[]): MessageLookup {
+  if (lookupCache && lookupCache.messages === messages) return lookupCache.lookup;
+  const byId = new Map<string, Message>();
+  const bySession = new Map<string, Message[]>();
+  for (const message of messages) {
+    byId.set(message.id, message);
+    const list = bySession.get(message.session_id);
+    if (list) list.push(message);
+    else bySession.set(message.session_id, [message]);
+  }
+  const previousInSession = new Map<string, Message>();
+  for (const list of bySession.values()) {
+    list.sort((a, b) =>
+      a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    );
+    for (let i = 1; i < list.length; i++) previousInSession.set(list[i]!.id, list[i - 1]!);
+  }
+  const lookup: MessageLookup = { byId, previousInSession };
+  lookupCache = { messages, lookup };
+  return lookup;
+}
+
 export function calculateBotDuration(
   message: Message,
   messages: readonly Message[],
   turns: readonly Turn[],
+  lookup: MessageLookup = buildMessageLookup(messages),
 ): BotDuration | null {
   if (message.kind !== "bot") return null;
 
@@ -67,25 +105,17 @@ export function calculateBotDuration(
     const turn = turns.find((t) => t.id === message.turn_id);
     if (turn) {
       if (turn.trigger_message_id) {
-        const trigger = messages.find((m) => m.id === turn.trigger_message_id);
+        const trigger = lookup.byId.get(turn.trigger_message_id);
         if (trigger) startTime = trigger.created_at;
       }
       if (!startTime) startTime = turn.created_at;
     }
   }
 
-  // If no turn or trigger found, check previous message in the session
+  // No turn or trigger: the user message it answered is the one directly before it.
   if (!startTime) {
-    const sessionMsgs = messages
-      .filter((m) => m.session_id === message.session_id && m.created_at <= message.created_at)
-      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
-    const idx = sessionMsgs.findIndex((m) => m.id === message.id);
-    if (idx > 0) {
-      const prev = sessionMsgs[idx - 1];
-      if (prev.kind === "user") {
-        startTime = prev.created_at;
-      }
-    }
+    const previous = lookup.previousInSession.get(message.id);
+    if (previous && previous.kind === "user") startTime = previous.created_at;
   }
 
   if (!startTime) return null;

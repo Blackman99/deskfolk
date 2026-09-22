@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- A long conversation opens and keeps up. The transcript mounted every loaded message and rebuilt all of them whenever anything in the snapshot moved, so a streamed token cost about 2.5 seconds of work at two thousand messages and opening one took nearly two. It now mounts the newest sixty and grows as you scroll back: opening is about 80ms and a token about 1.5ms, whatever the length of the history. Bubbles keep the markdown they already rendered instead of parsing it again, quote and timing lookups are indexed once per message list instead of scanned per row, and the messages behind the first page are reachable at last — scrolling to the top brings back what is already loaded, and a button asks the Mac for the page before it. A conversation whose first page is still on its way says so instead of showing an empty room, and a page of very long messages is cut to fit the relay's envelope rather than failing to arrive at all.
+
 - Phone navigation now groups Chats, Workspace and Settings into three labeled destinations with an active state and safe-area spacing. Archived sessions move below chat search, and appearance is available in Preferences. Detail screens hide the bar; switching away from edited files preserves the save/discard/cancel flow.
 
 ### Desktop

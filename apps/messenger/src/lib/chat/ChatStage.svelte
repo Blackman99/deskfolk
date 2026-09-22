@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
@@ -16,6 +16,7 @@
 	} from './approval-card.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import {
+		buildMessageLookup,
 		calculateBotDuration,
 		canContinueInterrupt,
 		formatDateDivider,
@@ -29,6 +30,7 @@
 	import { composerLocked } from './composer-mode.ts';
 	import type { Copy } from '../copy.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
+	import type { RenderMarkdownOptions } from '../markdown.ts';
 	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
@@ -39,6 +41,7 @@
 	import { getStarterOptions } from './starter-prompts.ts';
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
+	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -129,7 +132,39 @@
 			: []
 	);
 
-	const groupedStream = $derived(groupTranscript(stream));
+	/** Quote targets and "what came before" for the rows on screen, indexed once per message list. */
+	const messageLookup = $derived(buildMessageLookup(snapshot.messages));
+
+	/**
+	 * Only the tail of a long conversation is mounted; see history-window.ts for why. The window
+	 * grows when the person scrolls into it, and the runtime fetches another page once the window
+	 * has reached the oldest message it holds.
+	 */
+	let historyWindow = $state(HISTORY_WINDOW_INITIAL);
+	const windowedStream = $derived(windowedItems(stream, historyWindow));
+	const hiddenOlder = $derived(stream.length - windowedStream.length);
+	const groupedStream = $derived(groupTranscript(windowedStream));
+
+	/**
+	 * Growing the window prepends content, and the browser keeps `scrollTop`, so the view would
+	 * slide down by whatever was added. Anchoring on the distance to the bottom keeps the message
+	 * the person was reading exactly where it was.
+	 */
+	async function showEarlier(): Promise<void> {
+		const el = streamContainer;
+		const anchor = el ? el.scrollHeight - el.scrollTop : null;
+		stickToBottom = false;
+		if (hiddenOlder > 0) historyWindow += HISTORY_WINDOW_STEP;
+		else if (runtime.hasOlderMessages) {
+			await runtime.loadOlderMessages();
+			historyWindow += HISTORY_WINDOW_STEP;
+		}
+		await tick();
+		if (el && anchor !== null) {
+			ignoreStreamScroll = true;
+			el.scrollTop = el.scrollHeight - anchor;
+		}
+	}
 
 	const liveTurnsHere = $derived(
 		selected
@@ -200,6 +235,7 @@
 	$effect(() => {
 		void runtime.selectedId;
 		cancelJumpToBottom();
+		historyWindow = HISTORY_WINDOW_INITIAL;
 		if (runtime.highlightedMessageId) {
 			stickToBottom = false;
 			return () => cancelJumpToBottom();
@@ -218,6 +254,8 @@
 		void snapshot.messages;
 		void runtime.selectedId;
 		void token;
+		const at = stream.findIndex((item) => item.type === 'message' && item.message.id === id);
+		historyWindow = windowForIndex(stream.length, at, untrack(() => historyWindow));
 		void tick().then(() => {
 			if (runtime.highlightedMessageId !== id) return;
 			scrollHighlightedMessage();
@@ -285,20 +323,57 @@
 		}, 320);
 	}
 
-	function markdownOpts(message?: Message, extra?: { streaming?: boolean }) {
-		const session = message ? snapshot.sessions.find((s) => s.id === message.session_id) : undefined;
-		const mentionMembers = session
-			? presentBotIds(session)
+	/**
+	 * Markdown options per bubble, reused as long as nothing in them changed.
+	 *
+	 * This used to build a fresh object for every bubble on every render. The object is a prop,
+	 * so a new one means `renderMarkdown` runs again — marked, sanitize-html and both mention
+	 * passes, for the whole transcript, on every streamed token. The roster and the member list
+	 * only move when the snapshot says so, so they are derived once and the per-message object is
+	 * kept until the message itself is replaced or that signature changes.
+	 */
+	const mentionMembers = $derived(
+		selected
+			? presentBotIds(selected)
 					.map((id) => botsById.get(id))
 					.filter((b): b is Bot => Boolean(b))
-			: snapshot.bots;
-		return {
+			: snapshot.bots
+	);
+	const markdownSignature = $derived(
+		[
+			snapshot.bots.map((bot) => `${bot.id}:${bot.name}`).join(','),
+			mentionMembers.map((bot) => bot.id).join(','),
+			t.stream.mentionUnresolved
+		].join('|')
+	);
+	let markdownOptsCache = new WeakMap<Message, RenderMarkdownOptions>();
+	let markdownOptsSignature = '';
+
+	function markdownOpts(message?: Message, extra?: { streaming?: boolean }): RenderMarkdownOptions {
+		if (markdownOptsSignature !== markdownSignature) {
+			markdownOptsCache = new WeakMap();
+			markdownOptsSignature = markdownSignature;
+		}
+		if (!message) {
+			return {
+				streaming: extra?.streaming,
+				extraPaths: [],
+				mentionBots: snapshot.bots,
+				mentionMembers,
+				unresolvedMentionTitle: t.stream.mentionUnresolved
+			};
+		}
+		const cached = markdownOptsCache.get(message);
+		if (cached) return cached;
+		const opts: RenderMarkdownOptions = {
 			streaming: extra?.streaming,
-			extraPaths: message?.attachments.map((att) => att.workspace_relpath) ?? [],
+			extraPaths: message.attachments.map((att) => att.workspace_relpath),
 			mentionBots: snapshot.bots,
 			mentionMembers,
 			unresolvedMentionTitle: t.stream.mentionUnresolved
 		};
+		markdownOptsCache.set(message, opts);
+		return opts;
 	}
 
 	function pickStarterPrompt(prompt: string): void {
@@ -328,6 +403,11 @@
 		}
 		showScrollBottom = !next.stick;
 		stickToBottom = next.stick;
+		// Already-fetched messages come back seamlessly; a page that needs the Mac waits for the
+		// button, so scrolling never blocks on the network. Only for someone who has actually
+		// scrolled up: a transcript shorter than its pane sits at the top and would otherwise
+		// keep asking for more.
+		if (hiddenOlder > 0 && !next.stick && el.scrollTop < 240) void showEarlier();
 	}
 
 	function onStreamScrollEnd(): void {
@@ -491,6 +571,15 @@
 			<h2>{t.top.pickSession}</h2>
 			<p class="muted">{t.top.pickSession}</p>
 		</div>
+	{:else if stream.length === 0 && runtime.historyLoading}
+		<!-- A remote transcript arrives over the relay; saying so beats an empty room that fills
+		     without warning. -->
+		<div class="history-loading m-auto flex flex-col items-center gap-3 text-center py-20" role="status">
+			<svg class="history-spinner" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+				<path d="M12 3a9 9 0 1 0 9 9" />
+			</svg>
+			<p class="muted">{t.stream.loadingHistory}</p>
+		</div>
 	{:else if stream.length === 0}
 		<div class="empty-chat-welcome m-auto flex flex-col items-center text-center py-16 px-10 max-w-[460px]">
 			{#if selectedKind === 'you-bot' && selectedPeerBot}
@@ -550,6 +639,13 @@
 			<p class="muted">{t.stream.empty}</p>
 		</div>
 	{:else}
+		{#if runtime.hasOlderMessages && hiddenOlder === 0}
+			<div class="load-earlier flex justify-center py-3">
+				<button type="button" class="btn-xs" disabled={runtime.olderLoading} onclick={() => void showEarlier()}>
+					{runtime.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
+				</button>
+			</div>
+		{/if}
 		{#each groupedStream as group, gIdx (group.id)}
 			{@const groupDate = group.created_at}
 			{@const prevGroup = gIdx > 0 ? groupedStream[gIdx - 1] : null}
@@ -887,7 +983,7 @@
 												</button>
 											</div>
 											{#if item.message.parent_id}
-												{@const quoted = snapshot.messages.find((m) => m.id === item.message.parent_id)}
+												{@const quoted = messageLookup.byId.get(item.message.parent_id)}
 												<button
 													type="button"
 													class="quote-ref"
@@ -1054,7 +1150,7 @@
 										</button>
 									{/if}
 								{:else if single.type === 'message'}
-									{@const duration = calculateBotDuration(single.message, snapshot.messages, snapshot.turns)}
+									{@const duration = calculateBotDuration(single.message, snapshot.messages, snapshot.turns, messageLookup)}
 									<span class="msg-time mono" title={formatFullTimestamp(single.message.created_at)}>
 										{formatMessageTime(single.message.created_at)}
 									</span>
@@ -1105,7 +1201,7 @@
 													</button>
 												{/if}
 											{:else if item.type === 'message'}
-												{@const duration = calculateBotDuration(item.message, snapshot.messages, snapshot.turns)}
+												{@const duration = calculateBotDuration(item.message, snapshot.messages, snapshot.turns, messageLookup)}
 												<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
 													{formatMessageTime(item.message.created_at)}
 												</span>
@@ -1166,7 +1262,7 @@
 												</button>
 											</div>
 											{#if item.message.parent_id}
-												{@const quoted = snapshot.messages.find((m) => m.id === item.message.parent_id)}
+												{@const quoted = messageLookup.byId.get(item.message.parent_id)}
 												<button
 													type="button"
 													class="quote-ref"
@@ -2256,6 +2352,27 @@
 		.scroll-bottom-btn {
 			bottom: 120px;
 			right: 16px;
+		}
+	}
+
+	/* The seams of the mounted window: what it is waiting for, and how to reach further back. */
+	.history-spinner {
+		color: var(--muted);
+		animation: historySpin 0.9s linear infinite;
+	}
+
+	@keyframes historySpin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.history-spinner {
+			animation: none;
 		}
 	}
 </style>

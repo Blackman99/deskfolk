@@ -31,17 +31,52 @@ export function transcriptItemKey(item: TranscriptItem): string {
   return `replying-${item.trigger_message_id}`;
 }
 
+/**
+ * One wrapper per message, reused for as long as that message object is.
+ *
+ * The transcript is rebuilt whenever anything in the snapshot moves — a streamed token does it
+ * several times a second — and the view keys its rows by message id. Handing back the same item
+ * object for an unchanged message means those rows compare equal and the row's own work is
+ * skipped; a fresh wrapper each time made every bubble in a long history re-evaluate instead.
+ */
+const messageItems = new WeakMap<Message, TranscriptItem>();
+
+function messageItem(message: Message): TranscriptItem {
+  const reused = messageItems.get(message);
+  if (reused) return reused;
+  const item: TranscriptItem = { type: "message", message };
+  messageItems.set(message, item);
+  return item;
+}
+
+/**
+ * The sorted message list for one session, remembered for as long as the snapshot's message
+ * array is the same one. A streamed token replaces `turns`, not `messages`, so without this the
+ * whole history would be filtered and sorted again several times a second.
+ */
+let sortedMain: { messages: readonly Message[]; sessionId: string; items: readonly TranscriptItem[] } | null = null;
+
+function mainItems(messages: readonly Message[], sessionId: string): TranscriptItem[] {
+  if (sortedMain && sortedMain.messages === messages && sortedMain.sessionId === sessionId) {
+    return sortedMain.items.slice();
+  }
+  const items = messages
+    .filter((m) => m.session_id === sessionId && !isHiddenTranscriptKind(m.kind))
+    .slice()
+    .sort(byTime)
+    .map(messageItem);
+  sortedMain = { messages, sessionId, items };
+  // The caller splices live turns into this list, so it never gets the cached array itself.
+  return items.slice();
+}
+
 export function composeTranscript(
   messages: readonly Message[],
   turns: readonly Turn[],
   sessionId: string,
   pendingJudgements: readonly PendingJudgement[] = [],
 ): TranscriptItem[] {
-  const main = messages
-    .filter((m) => m.session_id === sessionId && !isHiddenTranscriptKind(m.kind))
-    .slice()
-    .sort(byTime);
-  const items: TranscriptItem[] = main.map((message) => ({ type: "message", message }));
+  const items: TranscriptItem[] = mainItems(messages, sessionId);
   const running = turns
     .filter((turn) => turn.session_id === sessionId && turn.status === "running")
     .slice()

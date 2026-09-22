@@ -37,6 +37,9 @@ export type AttachmentInput = {
   staged?: FileCommit;
 };
 
+/** Body bytes per page, well inside the remote link's one-megabyte logical message. */
+export const MESSAGE_PAGE_BYTES = 256 * 1024;
+
 export function listMessages(
   ctx: StoreContext,
   sessionId: string,
@@ -63,8 +66,24 @@ export function listMessages(
         )
         .all(sessionId, limit + 1);
   const page = rows.slice(0, limit);
-  const next = rows.length > limit ? `${page[page.length - 1]!.created_at}|${page[page.length - 1]!.id}` : null;
-  const items = page.map((row) => hydrateMessage(ctx, row));
+  // A page also has to fit the remote link, which carries one response as a single logical
+  // message of at most a megabyte. Bodies are the only part that grows without bound, so the
+  // page stops once they pass the budget and the cursor picks up from there — a conversation of
+  // very long messages arrives in more, smaller pages instead of failing to arrive at all.
+  let bytes = 0;
+  let kept = page.length;
+  for (let i = 0; i < page.length; i++) {
+    bytes += page[i]!.body.length;
+    if (bytes >= MESSAGE_PAGE_BYTES && i + 1 < page.length) {
+      kept = i + 1;
+      break;
+    }
+  }
+  const window = page.slice(0, kept);
+  const last = window[window.length - 1];
+  const more = rows.length > limit || kept < page.length;
+  const next = more && last ? `${last.created_at}|${last.id}` : null;
+  const items = window.map((row) => hydrateMessage(ctx, row));
   return { items, next };
 }
 

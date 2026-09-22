@@ -846,3 +846,56 @@ test("stale HTTP mutation response does not overwrite a newer sequenced update",
   await runtime.patchBot("bot-1", { name: "old response" });
   expect(runtime.snapshot.bots[0]!.name).toBe("latest");
 });
+
+test("the page behind the first one is appended once, and the cursor moves with it", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.endsWith("/snapshot")) {
+      return Response.json({
+        ...cursor,
+        session: { ...aDirect(), messages: { items: [aMessage({ id: "new-1", session_id: "direct-1" })], next: "older" }, turns: [] },
+        judgements: [],
+      });
+    }
+    if (path.includes("/messages")) {
+      return Response.json({ items: [aMessage({ id: "old-1", session_id: "direct-1" })], next: null });
+    }
+    return Response.json({ ...aDirect(), messages: { items: [], next: null }, turns: [] });
+  }) as typeof fetch;
+  await runtime.selectSession("direct-1");
+  expect(runtime.hasOlderMessages).toBe(true);
+  await runtime.loadOlderMessages();
+  expect(runtime.snapshot.messages.map((m) => m.id).sort()).toEqual(["new-1", "old-1"]);
+  // The server said that was the end, so nothing offers another page.
+  expect(runtime.hasOlderMessages).toBe(false);
+  await runtime.loadOlderMessages();
+  expect(runtime.snapshot.messages).toHaveLength(2);
+});
+
+test("a page that lands after the history was cleared is dropped", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const page = deferred<{ items: ReturnType<typeof aMessage>[]; next: null }>();
+  const requested = deferred<void>();
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.endsWith("/snapshot")) {
+      return Response.json({
+        ...cursor,
+        session: { ...aDirect(), messages: { items: [aMessage({ id: "new-1", session_id: "direct-1" })], next: "older" }, turns: [] },
+        judgements: [],
+      });
+    }
+    if (path.includes("/messages")) { requested.resolve(); return Response.json(await page.promise); }
+    return Response.json({ ...aDirect(), messages: { items: [], next: null }, turns: [] });
+  }) as typeof fetch;
+  await runtime.selectSession("direct-1");
+  const older = runtime.loadOlderMessages();
+  await requested.promise;
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { event: "session.cleared", id: "direct-1", occurred_at: "now" } });
+  page.resolve({ items: [aMessage({ id: "old-1", session_id: "direct-1" })], next: null });
+  await older;
+  expect(runtime.snapshot.messages.map((m) => m.id)).not.toContain("old-1");
+});

@@ -156,7 +156,11 @@ export class MessengerRuntime {
   private stopped = false;
   private searchSeq = 0;
   private pendingFocusTrigger: string | null = null;
-  private sessionMessageNext: string | null = null;
+  /** The first page of a selected session is in flight: the stage waits rather than looks empty. */
+  historyLoading = $state(false);
+  /** A page further back is in flight, asked for by scrolling to the top of what is loaded. */
+  olderLoading = $state(false);
+  private sessionMessageNext = $state<string | null>(null);
   private sessionDetailId: string | null = null;
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
   private routesInFlight: string | null = null;
@@ -400,6 +404,7 @@ export class MessengerRuntime {
       ),
     };
     if (!api || !sync) return;
+    this.historyLoading = true;
     this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
       if (selection !== this.sessionSeq || this.api !== api || this.sync !== sync) return;
       sync.pause();
@@ -429,9 +434,48 @@ export class MessengerRuntime {
         await this.markSessionRead(id);
       } catch {
         if (this.api === api) this.markDisconnected();
+      } finally {
+        // Only the newest selection owns the flag; an older one finishing must not clear it.
+        if (selection === this.sessionSeq) this.historyLoading = false;
       }
     });
     await this.sessionLoad;
+  }
+
+  /** The transcript holds everything that was fetched for it, and the Mac has more behind it. */
+  get hasOlderMessages(): boolean {
+    return this.sessionMessageNext !== null;
+  }
+
+  /**
+   * One page further back. The cursor belongs to the fetch that produced it, so a page landing
+   * after the selection moved, the history was cleared, or the connection was replaced is
+   * dropped rather than mixed into a transcript it does not belong to.
+   */
+  async loadOlderMessages(): Promise<void> {
+    const api = this.api;
+    const sync = this.sync;
+    const id = this.selectedId;
+    const cursor = this.sessionMessageNext;
+    if (!api || !id || !cursor || this.olderLoading) return;
+    const selection = this.sessionSeq;
+    const revision = this.historyRevision;
+    this.olderLoading = true;
+    try {
+      const page = await api.messages(id, { cursor });
+      if (this.api !== api || this.sync !== sync || this.selectedId !== id ||
+        this.sessionSeq !== selection || this.historyRevision !== revision) return;
+      this.sessionMessageNext = page.next ?? null;
+      const known = new Set(this.snapshot.messages.map((message) => message.id));
+      const added = page.items.filter((message) => !known.has(message.id));
+      if (added.length > 0) {
+        this.snapshot = { ...this.snapshot, messages: [...this.snapshot.messages, ...added] };
+      }
+    } catch {
+      // What is on screen stays; a real drop surfaces as the socket closing.
+    } finally {
+      this.olderLoading = false;
+    }
   }
 
   async markSessionRead(id: string): Promise<void> {

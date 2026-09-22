@@ -90,9 +90,59 @@ export type RenderMarkdownOptions = {
   unresolvedMentionTitle?: string;
 };
 
+/**
+ * Rendering one bubble is marked + sanitize-html + two mention passes: fine once, expensive when
+ * a long transcript re-renders on every streamed token or re-mounts bubbles while scrolling. The
+ * same text under the same options is the same HTML, so the last few hundred results are kept.
+ *
+ * The key is what actually reaches the renderer, not the options object's identity — a caller
+ * that rebuilds its options every render would otherwise never hit. Building that key walks the
+ * roster, so it is remembered per options object for the callers that do keep one.
+ */
+const RENDER_CACHE_LIMIT = 240;
+const renderCache = new Map<string, string>();
+const optionSignatures = new WeakMap<RenderMarkdownOptions, string>();
+
+function rosterSignature(bots: readonly MentionableBot[] | undefined): string {
+  return (bots ?? []).map((bot) => `${bot.id}:${bot.name}`).join(",");
+}
+
+function optionsSignature(options: RenderMarkdownOptions): string {
+  const remembered = optionSignatures.get(options);
+  if (remembered !== undefined) return remembered;
+  const signature = [
+    (options.extraPaths ?? []).join("|"),
+    rosterSignature(options.mentionBots),
+    rosterSignature(options.mentionMembers),
+    options.unresolvedMentionTitle ?? "",
+  ].join("\u0001");
+  optionSignatures.set(options, signature);
+  return signature;
+}
+
 /** Chat markdown to sanitized HTML. Streaming heals unclosed emphasis and fences so the bubble does not flash raw markers. */
 export function renderMarkdown(source: string, options: RenderMarkdownOptions = {}): string {
   if (!source && !(options.extraPaths && options.extraPaths.length > 0)) return "";
+  // A partial line is different text on every token; caching it would only evict the settled ones.
+  if (options.streaming) return renderUncached(source, options);
+  const key = `${optionsSignature(options)}\u0000${source}`;
+  const hit = renderCache.get(key);
+  if (hit !== undefined) {
+    // Re-insert so the entries a scrolling transcript keeps asking for are the ones that survive.
+    renderCache.delete(key);
+    renderCache.set(key, hit);
+    return hit;
+  }
+  const html = renderUncached(source, options);
+  renderCache.set(key, html);
+  if (renderCache.size > RENDER_CACHE_LIMIT) {
+    const oldest = renderCache.keys().next();
+    if (!oldest.done) renderCache.delete(oldest.value);
+  }
+  return html;
+}
+
+function renderUncached(source: string, options: RenderMarkdownOptions): string {
   const linked = linkifyWorkspacePaths(source, options.extraPaths ?? []);
   const prepared = options.streaming ? healStreaming(linked) : linked;
   const mentioned = linkifyRosterMentions(prepared, options.mentionBots ?? [], {
