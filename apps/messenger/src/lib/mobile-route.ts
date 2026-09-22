@@ -21,6 +21,7 @@ export type UrlNavigation = "push" | "replace" | "back";
 function overlayLayers(overlay: UrlOverlay): string[] {
   if (overlay.kind === "none") return [];
   if (overlay.kind === "bot") return [`bot:${overlay.botId}`];
+  if (overlay.kind === "trace") return [overlay.taskId ? `trace:${overlay.taskId}` : "trace"];
   if (overlay.kind === "workspace") {
     // The file open inside the workspace is its own screen: closing it keeps the workspace.
     return overlay.selected ? ["workspace", `workspace-file:${overlay.selected}`] : ["workspace"];
@@ -104,6 +105,8 @@ export type BackLayer =
   | "session-settings"
   | "terminal"
   | "route-log"
+  | "trace"
+  | "routines"
   | "thread"
   | "workspace"
   | "preview";
@@ -121,6 +124,8 @@ export type LayerState = {
   sessionSettingsOpen: boolean;
   terminalOpen: boolean;
   routeLogOpen: boolean;
+  traceOpen: boolean;
+  routinesOpen: boolean;
   threadOpen: boolean;
   workspaceOpen: boolean;
   artifactPreview: boolean;
@@ -143,6 +148,8 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   // Yours, not a place in a conversation: the app closes it, Back never navigates to it.
   ["terminal", "terminalOpen"],
   ["route-log", "routeLogOpen"],
+  ["trace", "traceOpen"],
+  ["routines", "routinesOpen"],
   ["thread", "threadOpen"],
   ["workspace", "workspaceOpen"],
   ["preview", "artifactPreview"],

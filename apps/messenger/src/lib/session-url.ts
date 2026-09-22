@@ -10,19 +10,25 @@ export const PREVIEW_PARAM = "p";
 export const OVERLAY_PARAM = "o";
 export const OVERLAY_BOT_PARAM = "b";
 export const WORKSPACE_FILE_PARAM = "w";
+/** The job a trace overlay is showing. Absent means the session's most recent one. */
+export const TRACE_PARAM = "k";
 export const ATTACHMENT_PARAM = "a";
 
 export const OVERLAY_SETTINGS = "settings";
 export const OVERLAY_SESSION = "session";
 export const OVERLAY_BOT = "bot";
 export const OVERLAY_WORKSPACE = "workspace";
+export const OVERLAY_TRACE = "trace";
+export const OVERLAY_ROUTINES = "routines";
 
 export type UrlOverlay =
   | { kind: "none" }
   | { kind: "settings" }
   | { kind: "session" }
   | { kind: "bot"; botId: string }
-  | { kind: "workspace"; selected: string | null };
+  | { kind: "workspace"; selected: string | null }
+  | { kind: "trace"; taskId: string | null }
+  | { kind: "routines" };
 
 export type UrlView = {
   selectedId: string | null;
@@ -54,6 +60,8 @@ export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   if (raw === OVERLAY_WORKSPACE) {
     return { kind: "workspace", selected: remote ? null : sanitizePreviewPath(url.searchParams.get(WORKSPACE_FILE_PARAM)) };
   }
+  if (raw === OVERLAY_TRACE) return { kind: "trace", taskId: sanitizeBotId(url.searchParams.get(TRACE_PARAM)) };
+  if (raw === OVERLAY_ROUTINES) return { kind: "routines" };
   return { kind: "none" };
 }
 
@@ -72,15 +80,21 @@ export function overlayFromFlags(flags: {
   profileBotId: string | null;
   workspaceOpen: boolean;
   workspaceSelected: string | null;
+  traceOpen?: boolean;
+  traceTaskId?: string | null;
+  /** Optional so older flag objects keep compiling. Absent means the calendar is closed. */
+  routinesOpen?: boolean;
 }): UrlOverlay {
   if (flags.settingsOpen) return { kind: "settings" };
   if (flags.sessionSettingsOpen) {
     const botId = sanitizeBotId(flags.profileBotId);
     return botId ? { kind: "bot", botId } : { kind: "session" };
   }
+  if (flags.routinesOpen) return { kind: "routines" };
   if (flags.workspaceOpen) {
     return { kind: "workspace", selected: sanitizePreviewPath(flags.workspaceSelected) };
   }
+  if (flags.traceOpen) return { kind: "trace", taskId: sanitizeBotId(flags.traceTaskId) };
   return { kind: "none" };
 }
 
@@ -88,6 +102,7 @@ export function overlaysEqual(a: UrlOverlay, b: UrlOverlay): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "bot" && b.kind === "bot") return a.botId === b.botId;
   if (a.kind === "workspace" && b.kind === "workspace") return a.selected === b.selected;
+  if (a.kind === "trace" && b.kind === "trace") return a.taskId === b.taskId;
   return true;
 }
 
@@ -128,9 +143,15 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
   if (view.selectedId) next.searchParams.set(SESSION_PARAM, view.selectedId);
   else next.searchParams.delete(SESSION_PARAM);
 
+  // The calendar replaces the main column. A preview beside it, or over it on a phone,
+  // would cover the grid, so the roster view does not carry a file.
+  const roster = view.overlay.kind === "routines";
   if (remote) {
     next.searchParams.delete(PREVIEW_PARAM);
     next.searchParams.delete(WORKSPACE_FILE_PARAM);
+    next.searchParams.delete(ATTACHMENT_PARAM);
+  } else if (roster) {
+    next.searchParams.delete(PREVIEW_PARAM);
     next.searchParams.delete(ATTACHMENT_PARAM);
   } else {
     next.searchParams.delete(ATTACHMENT_PARAM);
@@ -161,6 +182,7 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
   url.searchParams.delete(OVERLAY_PARAM);
   url.searchParams.delete(OVERLAY_BOT_PARAM);
   url.searchParams.delete(WORKSPACE_FILE_PARAM);
+  url.searchParams.delete(TRACE_PARAM);
   if (overlay.kind === "settings") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_SETTINGS);
     return;
@@ -177,6 +199,15 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
   if (overlay.kind === "workspace") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_WORKSPACE);
     if (overlay.selected) url.searchParams.set(WORKSPACE_FILE_PARAM, overlay.selected);
+    return;
+  }
+  if (overlay.kind === "trace") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_TRACE);
+    if (overlay.taskId) url.searchParams.set(TRACE_PARAM, overlay.taskId);
+    return;
+  }
+  if (overlay.kind === "routines") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_ROUTINES);
   }
 }
 
@@ -236,7 +267,7 @@ export function overlayApply(
 }
 
 function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "wait" {
-  if (wanted.kind === "none" || wanted.kind === "settings") return wanted;
+  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines") return wanted;
   if (wanted.kind === "workspace") {
     if (!ctx.snapshotReady) return "wait";
     if (!ctx.hasWorkspacePath) return { kind: "none" };
@@ -246,7 +277,7 @@ function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "
   if (!ctx.knownSessionIds.includes(ctx.selectedId)) {
     return ctx.snapshotReady ? { kind: "none" } : "wait";
   }
-  if (wanted.kind === "session") return wanted;
+  if (wanted.kind === "session" || wanted.kind === "trace") return wanted;
   if (!ctx.snapshotReady) return "wait";
   if (!ctx.knownBotIds.includes(wanted.botId)) return { kind: "none" };
   return wanted;

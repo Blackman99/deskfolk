@@ -104,10 +104,18 @@ export class MessengerRuntime {
   createGroupOpen = $state(false);
   sessionSettingsOpen = $state(false);
   routeLogOpen = $state(false);
+  /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
+  traceTaskId = $state<string | null>(null);
+  /** The session the trace was opened from. The chat can move on; the window stays on this job. */
+  traceSessionId = $state<string | null>(null);
+  /** Bumped when a turn or message of the open job changes, so the trace pulls again. */
+  traceReload = $state(0);
   routesLoading = $state(false);
   profileBotId = $state<string | null>(null);
   profileRoutineId = $state<string | null>(null);
   workspaceOpen = $state(false);
+  /** The roster calendar. It replaces the main column; it is not a fourth phone destination. */
+  routinesOpen = $state(false);
   workspaceSelected = $state("");
   threadOpen = $state(false);
   searchQuery = $state("");
@@ -221,6 +229,7 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
+    this.routinesOpen = false;
     this.createBotOpen = true;
   }
 
@@ -229,6 +238,7 @@ export class MessengerRuntime {
     this.createBotOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
+    this.routinesOpen = false;
     this.createGroupOpen = true;
   }
 
@@ -240,6 +250,7 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.threadOpen = false;
     this.workspaceOpen = false;
+    this.routinesOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
   }
@@ -289,6 +300,25 @@ export class MessengerRuntime {
     this.routeLogOpen = false;
   }
 
+  /** `taskId` null opens whatever job this session touched most recently. */
+  openTrace(taskId: string | null = null): void {
+    if (!this.selectedId) return;
+    this.closeSheets();
+    this.threadOpen = false;
+    this.routinesOpen = false;
+    this.traceSessionId = this.selectedId;
+    this.traceTaskId = taskId ?? "";
+  }
+
+  closeTrace(): void {
+    this.traceTaskId = null;
+    this.traceSessionId = null;
+  }
+
+  get traceOpen(): boolean {
+    return this.traceTaskId !== null;
+  }
+
   async openRoutine(botId: string, routineId: string): Promise<void> {
     let navigation = ++this.profileNavigation;
     if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
@@ -317,6 +347,7 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.threadOpen = false;
     this.workspaceOpen = false;
+    this.routinesOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
   }
@@ -340,6 +371,7 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
+    this.routinesOpen = false;
     this.settingsOpen = !this.settingsOpen;
   }
 
@@ -347,12 +379,36 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
+    this.routinesOpen = false;
     this.workspaceOpen = true;
     if (selected) this.workspaceSelected = selected;
   }
 
   closeWorkspace(): void {
     this.workspaceOpen = false;
+  }
+
+  /**
+   * Open the roster calendar. The caller has already settled an unsaved workspace file.
+   * A preview open beside the chat would cover the grid, so it goes too.
+   */
+  openRoutines(): void {
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createGroupOpen = false;
+    this.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.traceTaskId = null;
+    this.traceSessionId = null;
+    this.routeLogOpen = false;
+    this.threadOpen = false;
+    this.previewRelpath = null;
+    this.previewAttachmentId = null;
+    this.routinesOpen = true;
+  }
+
+  closeRoutines(): void {
+    this.routinesOpen = false;
   }
 
   /** Restore settings, the session drawer, or the workspace overlay from the URL. */
@@ -363,6 +419,7 @@ export class MessengerRuntime {
       this.createGroupOpen = false;
       this.closeSessionSettings();
       this.workspaceOpen = false;
+      this.routinesOpen = false;
       this.settingsOpen = true;
       return;
     }
@@ -372,6 +429,7 @@ export class MessengerRuntime {
       this.createGroupOpen = false;
       this.threadOpen = false;
       this.workspaceOpen = false;
+      this.routinesOpen = false;
       this.profileBotId = null;
       this.sessionSettingsOpen = true;
       return;
@@ -382,6 +440,7 @@ export class MessengerRuntime {
       this.createGroupOpen = false;
       this.threadOpen = false;
       this.workspaceOpen = false;
+      this.routinesOpen = false;
       this.profileBotId = overlay.botId;
       this.sessionSettingsOpen = true;
       return;
@@ -390,13 +449,45 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createGroupOpen = false;
       this.closeSessionSettings();
+      this.traceTaskId = null;
+      this.routinesOpen = false;
       this.workspaceOpen = true;
       this.workspaceSelected = overlay.selected ?? "";
+      return;
+    }
+    if (overlay.kind === "trace") {
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.threadOpen = false;
+      this.closeSessionSettings();
+      this.workspaceOpen = false;
+      this.routinesOpen = false;
+      this.traceSessionId = this.traceSessionId ?? this.selectedId;
+      this.traceTaskId = overlay.taskId ?? "";
+      return;
+    }
+    if (overlay.kind === "routines") {
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.closeSessionSettings();
+      this.workspaceOpen = false;
+      this.traceTaskId = null;
+      this.traceSessionId = null;
+      this.routeLogOpen = false;
+      this.threadOpen = false;
+      this.previewRelpath = null;
+      this.previewAttachmentId = null;
+      this.routinesOpen = true;
       return;
     }
     this.settingsOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
+    this.traceTaskId = null;
+    this.traceSessionId = null;
+    this.routinesOpen = false;
   }
 
   closeSheets(): void {
@@ -405,16 +496,22 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.routeLogOpen = false;
+    this.traceTaskId = null;
+    this.traceSessionId = null;
     this.workspaceOpen = false;
+    this.routinesOpen = false;
   }
 
-  async selectSession(id: string, opts?: { messageId?: string }): Promise<void> {
+  async selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> {
+    if (!opts?.preservePage) this.closeRoutines();
     const api = this.api;
     const sync = this.sync;
     const selection = ++this.sessionSeq;
     const messageId = opts?.messageId;
     this.setHighlightedMessage(messageId ?? null);
     this.routeLogOpen = false;
+    // The window stays open across conversations and follows the one on screen.
+    if (this.traceOpen && this.selectedId !== id) this.traceSessionId = id;
     if (this.selectedId !== id) {
       this.closeSessionSettings();
       this.threadOpen = false;
@@ -1514,7 +1611,7 @@ export class MessengerRuntime {
     if (this.draftReconnect && !this.draftReconnect.confirm) this.draft = this.draftReconnect.draft;
     const selected = this.selectedId;
     if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
-      void this.selectSession(selected);
+      void this.selectSession(selected, { preservePage: true });
     } else if (selected) {
       this.selectedId = null;
     }
@@ -1788,6 +1885,15 @@ export class MessengerRuntime {
       if (this.routeLogOpen && event.session_id === this.selectedId) {
         void this.refreshRoutes(event.session_id);
       }
+      if (this.traceOpen && event.task_id && event.task_id === this.traceTaskId) this.traceReload += 1;
+    }
+    if (
+      (event.event === "message.created" || event.event === "message.upsert") &&
+      this.traceOpen &&
+      event.task_id &&
+      event.task_id === this.traceTaskId
+    ) {
+      this.traceReload += 1;
     }
     if (
       (event.event === "message.created" || event.event === "message.upsert" || event.event === "session.cleared") &&
@@ -1830,6 +1936,10 @@ export class MessengerRuntime {
     this.busy = false;
   }
 
+  /**
+   * Receive one stream's bytes until the caller lets go. Watching is asked for over HTTP; this
+   * only says where the frames should land once they arrive.
+   */
   /**
    * Take a stream or tool frame off the socket. True means it was one and the sequenced reader
    * must not see it.

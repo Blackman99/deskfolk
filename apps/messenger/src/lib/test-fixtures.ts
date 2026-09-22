@@ -257,6 +257,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
         ? (override as (...a: unknown[]) => unknown)(...args)
         : Promise.resolve(result);
     };
+  const runtime = {} as FakeRuntime;
   const base = {
     calls,
     snapshot: { ...emptySnapshot(), ...over },
@@ -369,20 +370,35 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openCreateGroup: record("openCreateGroup"),
     toggleRouteLog: record("toggleRouteLog"),
     closeRouteLog: record("closeRouteLog"),
+    openTrace: record("openTrace"),
+    closeTrace: record("closeTrace"),
     openTerminal: record("openTerminal"),
     closeTerminal: record("closeTerminal"),
     refreshTerminals: record("refreshTerminals"),
+    openRoutines: () => {
+      calls.push({ name: "openRoutines", args: [] });
+      runtime.routinesOpen = true;
+    },
+    closeRoutines: () => {
+      calls.push({ name: "closeRoutines", args: [] });
+      runtime.routinesOpen = false;
+    },
     settingsOpen: false,
     sessionSettingsOpen: false,
     createBotOpen: false,
     createGroupOpen: false,
     routeLogOpen: false,
-    terminalOpen: false,
-    terminals: [],
     // The real runtime always has one; a stub without it would hide a broken wiring rather than
     // fail on it, and the transcript reads `runtime.activity` while a turn is live.
     activity: new CommandActivity(),
     activityRevision: 0,
+    traceOpen: false,
+    traceTaskId: null,
+    traceSessionId: null,
+    routinesOpen: false,
+    terminalOpen: false,
+    terminals: [],
+    traceReload: 0,
     workspaceOpen: false,
     workspaceSelected: "",
     threadOpen: false,
@@ -396,5 +412,5 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     endpointDefaultModel: "",
     client: null,
   };
-  return Object.assign(base, stubs, { calls }) as unknown as FakeRuntime;
+  return Object.assign(runtime, base, stubs, { calls });
 }

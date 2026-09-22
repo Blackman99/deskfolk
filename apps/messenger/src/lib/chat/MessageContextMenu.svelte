@@ -17,6 +17,7 @@
 		onReply,
 		onCopy,
 		onOpenFileTree,
+		onShowTrace,
 		onCopyId,
 		onReaction
 	}: {
@@ -30,6 +31,7 @@
 		onReply: () => void;
 		onCopy: (text: string) => void;
 		onOpenFileTree: (path: string | null) => void;
+		onShowTrace: () => void;
 		onCopyId: () => void;
 		onReaction: (emoji: string) => void;
 	} = $props();
@@ -230,6 +232,26 @@
 		</svg>
 		<span>{t.chat.openAssociatedFileTree}</span>
 	</button>
+
+	{#if data.canShowTrace}
+		<button
+			type="button"
+			class="msg-context-menu-item"
+			role="menuitem"
+			onclick={() => {
+				onShowTrace();
+				onClose();
+			}}
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="3" y="3" width="7" height="7"></rect>
+				<rect x="14" y="3" width="7" height="7"></rect>
+				<rect x="14" y="14" width="7" height="7"></rect>
+				<rect x="3" y="14" width="7" height="7"></rect>
+			</svg>
+			<span>{t.chat.showTrace}</span>
+		</button>
+	{/if}
 
 	{#if data.associatedFiles.length > 1}
 		<div class="msg-context-sublist flex flex-col gap-[1px] pl-6 pr-1 pb-1">

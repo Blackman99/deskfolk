@@ -17,6 +17,9 @@
 		/** How many chips sit inline before the rest collapse into a +N. */
 		inlineLimit?: number;
 		onOpen: (sessionId: string) => void;
+		/** Opens the job the message this entry hangs under belongs to. */
+		onShowTrace?: () => void;
+		traceLabel?: string;
 	}
 
 	let {
@@ -30,7 +33,9 @@
 		rosterLabels,
 		openedText,
 		inlineLimit = 3,
-		onOpen
+		onOpen,
+		onShowTrace,
+		traceLabel
 	}: Props = $props();
 
 	const shown = $derived(sessions.slice(0, inlineLimit));
@@ -47,6 +52,10 @@
 </script>
 
 {#if sessions.length > 0}
+	<div class="bot-dm-block">
+	{#if onShowTrace && traceLabel}
+		<button type="button" class="bot-dm-trace" onclick={onShowTrace}>{traceLabel}</button>
+	{/if}
 	{#if sessions.length === 1}
 		{@const session = sessions[0]}
 		{@const status = statusOf(session)}
@@ -101,9 +110,26 @@
 			</div>
 		</div>
 	{/if}
+	</div>
 {/if}
 
 <style>
+	.bot-dm-block {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+
+	.bot-dm-trace {
+		border: 0;
+		background: transparent;
+		padding: 0 4px;
+		font-size: 11.5px;
+		color: var(--accent);
+		cursor: pointer;
+	}
+
 	.bot-dm-card {
 		box-sizing: border-box;
 		animation: botDmFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);

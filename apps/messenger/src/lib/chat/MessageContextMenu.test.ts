@@ -34,6 +34,7 @@ function openMessageMenu(
     reply: 0,
     copy: 0,
     openFileTree: [] as (string | null)[],
+    showTrace: 0,
     copyId: 0,
     reaction: [] as string[],
   };
@@ -55,6 +56,9 @@ function openMessageMenu(
     },
     onOpenFileTree: (path: string | null) => {
       calls.openFileTree.push(path);
+    },
+    onShowTrace: () => {
+      calls.showTrace += 1;
     },
     onCopyId: () => {
       calls.copyId += 1;

@@ -23,6 +23,7 @@
 	import { routeLogRows } from './overlays/route-log.ts';
 	import RouteLog from './overlays/RouteLog.svelte';
 	import TerminalPane from './overlays/TerminalPane.svelte';
+	import TaskTraceView from './overlays/TaskTrace.svelte';
 	import { presentBotIds } from './sidebar/session-groups.ts';
 	import {
 		cleanPinnedIds,
@@ -156,6 +157,8 @@
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
 			routeLogOpen: runtime.routeLogOpen,
+			traceOpen: runtime.traceOpen,
+			routinesOpen: runtime.routinesOpen,
 			threadOpen: runtime.threadOpen,
 			workspaceOpen: runtime.workspaceOpen,
 			artifactPreview: artifactPreview !== null
@@ -201,6 +204,10 @@
 			case 'route-log':
 				runtime.closeRouteLog();
 				return true;
+			case 'trace':
+				return false;
+			case 'routines':
+				return false;
 			case 'thread':
 				runtime.threadOpen = false;
 				return true;
@@ -437,6 +444,10 @@
 	function jumpToRouteTrigger(messageId: string): void {
 		if (!selected) return;
 		void runtime.selectSession(selected.id, { messageId });
+	}
+
+	function jumpToTrace(sessionId: string, messageId: string): void {
+		void runtime.selectSession(sessionId, { messageId });
 	}
 	let saveFailed = $state(false);
 	let dismissedOnboarding = $state(false);
@@ -966,6 +977,10 @@
 				runtime.closeTerminal();
 			} else if (runtime.routeLogOpen) {
 				runtime.closeRouteLog();
+			} else if (runtime.traceOpen) {
+				runtime.closeTrace();
+			} else if (runtime.routinesOpen) {
+				runtime.closeRoutines();
 			} else if (runtime.workspaceOpen) {
 				if (workspacePane?.closeFind()) {
 					e.preventDefault();
@@ -1090,6 +1105,26 @@
 					runtime.previewMessageId,
 					runtime.forceArtifactTree
 				)}
+		/>
+	{/if}
+	{#if runtime.traceOpen && selected}
+		<TaskTraceView
+			api={runtime.client}
+			taskId={runtime.traceTaskId || null}
+			sessionId={runtime.traceSessionId || selected.id}
+			activeSessionId={selected.id}
+			sessions={snapshot.sessions}
+			bots={snapshot.bots}
+			youLabel={t.common.you}
+			deletedLabel={t.top.deleted}
+			workspacePath={snapshot.settings.workspace_path}
+			{t}
+			reloadToken={runtime.traceReload}
+			onClose={() => runtime.closeTrace()}
+			onJump={jumpToTrace}
+			onTask={(id) => {
+				if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
+			}}
 		/>
 	{/if}
 	{#if runtime.terminalOpen}

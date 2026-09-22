@@ -46,6 +46,8 @@ import type {
   ThinkingLevel,
   Turn,
   TaskArtifacts,
+  TaskTrace,
+  SessionTaskSummary,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import { isNonReceiptPath } from "@real-bot/protocol";
@@ -407,6 +409,16 @@ export class RemoteApi {
   /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
   async taskArtifacts(taskId: string): Promise<TaskArtifacts> {
     return this.get<TaskArtifacts>(`/v1/tasks/${encodeURIComponent(taskId)}/artifacts`);
+  }
+
+  /** The turns that share a work dir, read back as one picture. Pulled when the trace opens. */
+  async taskTrace(taskId: string): Promise<TaskTrace> {
+    return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`);
+  }
+
+  /** The jobs this session took part in, newest activity first. */
+  async sessionTasks(sessionId: string): Promise<SessionTaskSummary[]> {
+    return (await this.get<ListPage<SessionTaskSummary>>(`/v1/sessions/${encodeURIComponent(sessionId)}/tasks`)).items;
   }
   /** Follow a running command's output. The id is `<turn_id>:<tool_call_id>`. */
   async watchCommand(id: string, from: number): Promise<void> {

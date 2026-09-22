@@ -99,6 +99,8 @@ export type MessageContextMenuData = {
   canCopy: boolean;
   associatedFiles: string[];
   canOpenFileTree: boolean;
+  /** A message that belongs to a job can open that job's trace. */
+  canShowTrace: boolean;
   targetPath: string | null;
 };
 
@@ -120,6 +122,7 @@ export function deriveMessageContextMenu(
     canCopy,
     associatedFiles,
     canOpenFileTree,
+    canShowTrace: Boolean(message.task_id),
     targetPath,
   };
 }

@@ -1097,6 +1097,10 @@
 													{rosterLabels}
 													openedText={t.chat.botDmOpened}
 													onOpen={(id) => void runtime.selectSession(id)}
+													traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
+													onShowTrace={item.message.task_id
+														? () => runtime.openTrace(item.message.task_id!)
+														: undefined}
 												/>
 											</div>
 										{/if}
@@ -1391,6 +1395,10 @@
 													{rosterLabels}
 													openedText={t.chat.botDmOpened}
 													onOpen={(id) => void runtime.selectSession(id)}
+													traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
+													onShowTrace={item.message.task_id
+														? () => runtime.openTrace(item.message.task_id!)
+														: undefined}
 												/>
 											</div>
 										{/if}
@@ -1440,6 +1448,9 @@
 			onReply={() => startQuoteReply(activeMenu.message)}
 			onCopy={(text) => copyMessageBody(activeMenu.message.id, text)}
 			onOpenFileTree={(path) => handleOpenFileTree(path, activeMenu.message)}
+			onShowTrace={() => {
+				if (activeMenu.message.task_id) runtime.openTrace(activeMenu.message.task_id);
+			}}
 			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
 			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
 		/>

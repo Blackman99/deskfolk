@@ -10,6 +10,7 @@ import {
   sessionFromUrl,
   sessionUrl,
   viewFromUrl,
+  overlaysEqual,
   type UrlOverlay,
   type UrlView,
 } from "./session-url.ts";
@@ -234,6 +235,53 @@ test("overlayApply drops a drawer the snapshot will never have", () => {
 });
 
 
+
+test("a trace overlay round-trips through the URL with its job", () => {
+  const overlay: UrlOverlay = { kind: "trace", taskId: "task-1" };
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc", overlay }))).toBe("/?s=abc&o=trace&k=task-1");
+  expect(overlayFromUrl(at("?s=abc&o=trace&k=task-1"))).toEqual(overlay);
+  expect(overlayFromUrl(at("?s=abc&o=trace"))).toEqual({ kind: "trace", taskId: null });
+  expect(
+    overlayFromFlags({
+      settingsOpen: false,
+      sessionSettingsOpen: false,
+      profileBotId: null,
+      workspaceOpen: false,
+      workspaceSelected: null,
+      traceOpen: true,
+      traceTaskId: "task-1",
+    }),
+  ).toEqual(overlay);
+  expect(overlaysEqual(overlay, { kind: "trace", taskId: "task-2" })).toBe(false);
+});
+
+test("the routine calendar outranks workspace and trace, and does not carry a preview", () => {
+  const flags = {
+    settingsOpen: false,
+    sessionSettingsOpen: false,
+    profileBotId: null,
+    workspaceOpen: true,
+    workspaceSelected: "inbox/a.md",
+    traceOpen: true,
+    traceTaskId: "task-1",
+    routinesOpen: true,
+  };
+  expect(overlayFromFlags(flags)).toEqual({ kind: "routines" });
+  expect(overlayFromFlags({ ...flags, settingsOpen: true })).toEqual({ kind: "settings" });
+  expect(overlayFromFlags({ ...flags, settingsOpen: false, sessionSettingsOpen: true, profileBotId: "bot-1" })).toEqual({
+    kind: "bot",
+    botId: "bot-1",
+  });
+  expect(sessionUrl(at("?s=abc&p=notes/a.md"), view({ selectedId: "abc", previewRelpath: "notes/a.md", overlay: { kind: "routines" } }))).toBe(
+    "/?s=abc&o=routines",
+  );
+  expect(overlayFromUrl(at("?o=routines"))).toEqual({ kind: "routines" });
+  expect(overlayApply({ kind: "routines" }, { kind: "none" }, { ...ready, selectedId: null, snapshotReady: false })).toEqual({
+    action: "set",
+    overlay: { kind: "routines" },
+  });
+  expect(overlayFromUrl(at("?s=abc&o=trace&k=task-1")).kind).toBe("trace");
+});
 
 test("overlayApply opens the overlay the URL asked for", () => {
   const overlay: UrlOverlay = { kind: "workspace", selected: "inbox/a.md" };

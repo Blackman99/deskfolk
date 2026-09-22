@@ -1,0 +1,267 @@
+<script lang="ts">
+	/**
+	 * One file, shown as the next station of the flow. It reads the file and shows it; it is not
+	 * the artifact editor beside the chat, so there is no tree, no source toggle and no saving.
+	 */
+	import { onDestroy } from 'svelte';
+	import type { Copy } from '../copy.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
+	import MarkdownBody from '../MarkdownBody.svelte';
+	import {
+		artifactKind,
+		htmlPreviewBlob,
+		HTML_PREVIEW_SANDBOX,
+		svgDisplayBlob
+	} from './artifacts.ts';
+	import { openWorkspacePath } from './open-workspace.ts';
+	import { traceFileName } from './task-trace.ts';
+
+	interface Props {
+		path: string;
+		handedBy: string;
+		api: MessengerApi | null;
+		workspacePath: string | null;
+		t: Copy;
+		onOpenPath: (path: string) => void;
+		onClose: () => void;
+	}
+
+	let { path, handedBy, api, workspacePath, t, onOpenPath, onClose }: Props = $props();
+
+	const kind = $derived(artifactKind(path));
+	const name = $derived(traceFileName(path));
+
+	let phase = $state<'loading' | 'ready' | 'missing' | 'plain'>('loading');
+	let text = $state<string | null>(null);
+	let url = $state<string | null>(null);
+	let generation = 0;
+	let liveUrl: string | null = null;
+
+	function dropUrl(): void {
+		if (liveUrl) URL.revokeObjectURL(liveUrl);
+		liveUrl = null;
+		url = null;
+	}
+
+	function keep(next: string): void {
+		dropUrl();
+		liveUrl = next;
+		url = next;
+	}
+
+	async function load(target: string): Promise<void> {
+		const mine = ++generation;
+		phase = 'loading';
+		text = null;
+		dropUrl();
+		const shown = artifactKind(target);
+		if (shown === 'directory' || shown === 'file') {
+			phase = 'plain';
+			return;
+		}
+		if (!api) {
+			phase = 'missing';
+			return;
+		}
+		try {
+			const blob = await api.getWorkspaceFileBlob(target);
+			if (mine !== generation) return;
+			if (shown === 'markdown' || shown === 'text') {
+				text = await blob.text();
+			} else if (shown === 'html') {
+				keep(URL.createObjectURL(htmlPreviewBlob(await blob.text())));
+			} else if (shown === 'svg') {
+				keep(URL.createObjectURL(await svgDisplayBlob(await blob.text())));
+			} else {
+				keep(URL.createObjectURL(blob));
+			}
+			if (mine !== generation) return;
+			phase = 'ready';
+		} catch {
+			if (mine !== generation) return;
+			phase = 'missing';
+		}
+	}
+
+	$effect(() => {
+		void load(path);
+	});
+
+	onDestroy(dropUrl);
+
+	function onOpenArtifact(next: string): void {
+		onOpenPath(next);
+	}
+
+	function openWithSystem(): void {
+		if (!workspacePath) return;
+		const root = workspacePath.endsWith('/') ? workspacePath.slice(0, -1) : workspacePath;
+		void openWorkspacePath(`${root}/${path}`);
+	}
+</script>
+
+<article class="trace-output" aria-label={name}>
+	<header class="trace-output-head">
+		<div class="trace-output-titles">
+			<span class="trace-output-kicker">{handedBy ? t.trace.outputOf(handedBy) : t.trace.output}</span>
+			<strong class="trace-output-name" title={path}>{name}</strong>
+		</div>
+		<button type="button" class="trace-output-close" title={t.trace.outputClose} onclick={onClose}>
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+				<line x1="18" y1="6" x2="6" y2="18"></line>
+				<line x1="6" y1="6" x2="18" y2="18"></line>
+			</svg>
+		</button>
+	</header>
+	<div class="trace-output-body">
+		{#if phase === 'loading'}
+			<p class="trace-output-note">{t.trace.loading}</p>
+		{:else if phase === 'missing'}
+			<p class="trace-output-note">{t.trace.outputMissing}</p>
+		{:else if phase === 'plain'}
+			<p class="trace-output-note">{t.trace.outputPlain}</p>
+			{#if workspacePath}
+				<button type="button" class="trace-output-open" onclick={openWithSystem}>{t.trace.outputOpen}</button>
+			{/if}
+		{:else if kind === 'markdown' && text !== null}
+			<MarkdownBody
+				source={text}
+				copyLabel={t.chat.copyCode}
+				copiedLabel={t.chat.copied}
+				{onOpenArtifact}
+			/>
+		{:else if kind === 'text' && text !== null}
+			<pre class="trace-output-text">{text}</pre>
+		{:else if kind === 'image' || kind === 'svg'}
+			<img src={url} alt={name} class="trace-output-image" />
+		{:else if kind === 'audio'}
+			<audio controls src={url}></audio>
+		{:else if kind === 'video'}
+			<video controls src={url}></video>
+		{:else if kind === 'pdf' || kind === 'html'}
+			<iframe title={name} class="trace-output-frame" src={url} sandbox={kind === 'html' ? HTML_PREVIEW_SANDBOX : undefined}></iframe>
+		{/if}
+	</div>
+</article>
+
+<style>
+	.trace-output {
+		flex: 0 0 auto;
+		width: 100%;
+		max-height: min(52vh, 480px);
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		overflow: hidden;
+	}
+
+	.trace-output-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 9px 10px 8px;
+		border-bottom: 1px solid var(--line-subtle);
+	}
+
+	.trace-output-titles {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.trace-output-kicker {
+		font-size: 11px;
+		color: var(--accent);
+	}
+
+	.trace-output-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.trace-output-close {
+		flex: none;
+		width: 24px;
+		height: 24px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.trace-output-close:hover {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
+	.trace-output-body {
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
+		padding: 12px 14px 16px;
+	}
+
+	.trace-output-body :global(audio),
+	.trace-output-body :global(video) {
+		width: 100%;
+		max-height: 100%;
+	}
+
+	.trace-output-note {
+		margin: 8px 0;
+		font-size: 12.5px;
+		color: var(--muted);
+	}
+
+	.trace-output-open {
+		height: 26px;
+		padding: 0 10px;
+		border-radius: 999px;
+		border: 1px solid var(--line);
+		background: transparent;
+		color: var(--ink-secondary);
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.trace-output-text {
+		margin: 0;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--ink-secondary);
+	}
+
+	.trace-output-image {
+		display: block;
+		max-width: 100%;
+		margin: 0 auto;
+	}
+
+	.trace-output-frame {
+		width: 100%;
+		height: 420px;
+		border: 0;
+		background: white;
+	}
+
+	@media (max-width: 680px) {
+		.trace-output {
+			width: 100%;
+			max-height: 52vh;
+		}
+	}
+</style>

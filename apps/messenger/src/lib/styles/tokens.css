@@ -44,6 +44,8 @@
   --danger-text: #b91c1c;
 
   --purple: #8b5cf6;
+  --purple-bg: #f5f3ff;
+  --purple-line: #ddd6fe;
 
   --chip: #f1f5f9;
   --chip-line: #e2e8f0;
@@ -135,6 +137,8 @@ body.dark,
   --danger-text: #f87171;
 
   --purple: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.15);
+  --purple-line: rgba(167, 139, 250, 0.4);
 
   --chip: #1d2737;
   --chip-line: #2a374c;
@@ -211,6 +215,8 @@ body.dark,
     --danger-text: #f87171;
 
     --purple: #a78bfa;
+    --purple-bg: rgba(167, 139, 250, 0.15);
+    --purple-line: rgba(167, 139, 250, 0.4);
 
     --chip: #1d2737;
     --chip-line: #2a374c;

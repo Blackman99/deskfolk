@@ -10,9 +10,9 @@ import type {
   SyncFrame,
   StreamFrame,
   Terminal,
+  ToolFrame,
   TerminalScrollback,
   TerminalSignal,
-  ToolFrame,
   SequencedEvent,
   Bot,
   CreateBotRequest,
@@ -46,6 +46,8 @@ import type {
   ThinkingLevel,
   Turn,
   TaskArtifacts,
+  TaskTrace,
+  SessionTaskSummary,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import { isNonReceiptPath } from "@real-bot/protocol";
@@ -363,6 +365,20 @@ export class LocalApi {
   /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
   async taskArtifacts(taskId: string, signal?: AbortSignal): Promise<TaskArtifacts> {
     return this.get<TaskArtifacts>(`/v1/tasks/${encodeURIComponent(taskId)}/artifacts`, signal);
+  }
+
+  /** The turns that share a work dir, read back as one picture. Pulled when the trace opens. */
+  async taskTrace(taskId: string, signal?: AbortSignal): Promise<TaskTrace> {
+    return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`, signal);
+  }
+
+  /** The jobs this session took part in, newest activity first. */
+  async sessionTasks(sessionId: string, signal?: AbortSignal): Promise<SessionTaskSummary[]> {
+    const page = await this.get<ListPage<SessionTaskSummary>>(
+      `/v1/sessions/${encodeURIComponent(sessionId)}/tasks`,
+      signal,
+    );
+    return page.items;
   }
 
   /**

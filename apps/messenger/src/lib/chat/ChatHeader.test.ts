@@ -45,11 +45,11 @@ test("the identity area opens session details", () => {
 test("mobile details and model log actions close the menu", () => {
   const { host, runtime, toggled, close } = openHeader();
   click(host.querySelector(".btn-mobile-actions"));
-  click(host.querySelectorAll(".mobile-actions-menu button")[2]);
+  click(host.querySelectorAll(".mobile-actions-menu button")[3]);
   expect(toggled).toEqual(["settings"]);
   expect(host.querySelector(".mobile-actions-menu")).toBeNull();
   click(host.querySelector(".btn-mobile-actions"));
-  click(host.querySelectorAll(".mobile-actions-menu button")[1]);
+  click(host.querySelectorAll(".mobile-actions-menu button")[2]);
   expect(runtime.calls.some((call) => call.name === "toggleRouteLog")).toBe(true);
   expect(host.querySelector(".mobile-actions-menu")).toBeNull();
   close();
@@ -63,7 +63,7 @@ test("mobile actions stay behind one menu trigger", () => {
 
   click(trigger);
   const menu = host.querySelector(".mobile-actions-menu");
-  expect(menu?.querySelectorAll("button")).toHaveLength(3);
+  expect(menu?.querySelectorAll("button")).toHaveLength(4);
   click(menu?.querySelector("button"));
   expect(toggled).toEqual([selected.id]);
   expect(host.querySelector(".mobile-actions-menu")).toBeNull();

@@ -194,6 +194,21 @@
 			<button
 				type="button"
 				class="btn-top-action"
+				class:is-active={runtime.traceOpen}
+				title={t.trace.title}
+				onclick={() => (runtime.traceOpen ? runtime.closeTrace() : runtime.openTrace(null))}
+			>
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="3" y="3" width="7" height="7"></rect>
+					<rect x="14" y="3" width="7" height="7"></rect>
+					<rect x="14" y="14" width="7" height="7"></rect>
+					<rect x="3" y="14" width="7" height="7"></rect>
+				</svg>
+				<span>{t.trace.topAction}</span>
+			</button>
+			<button
+				type="button"
+				class="btn-top-action"
 				class:is-active={runtime.routeLogOpen}
 				title={t.routes.title}
 				onclick={() => runtime.toggleRouteLog()}
@@ -227,7 +242,7 @@
 			<button
 				type="button"
 				class="btn-mobile-actions"
-				class:is-active={mobileActionsOpen || runtime.routeLogOpen || runtime.sessionSettingsOpen || isSessionPinned(pinnedSessionIds, selected.id)}
+				class:is-active={mobileActionsOpen || runtime.routeLogOpen || runtime.traceOpen || runtime.sessionSettingsOpen || isSessionPinned(pinnedSessionIds, selected.id)}
 				title={t.top.moreActions}
 				aria-label={t.top.moreActions}
 				aria-expanded={mobileActionsOpen}
@@ -251,6 +266,15 @@
 							<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
 						</svg>
 						<span>{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.unpin : t.top.pin}</span>
+					</button>
+					<button type="button" class:is-active={runtime.traceOpen} onclick={() => runMobileAction(() => (runtime.traceOpen ? runtime.closeTrace() : runtime.openTrace(null)))}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="3" y="3" width="7" height="7"></rect>
+							<rect x="14" y="3" width="7" height="7"></rect>
+							<rect x="14" y="14" width="7" height="7"></rect>
+							<rect x="3" y="14" width="7" height="7"></rect>
+						</svg>
+						<span>{t.trace.topAction}</span>
 					</button>
 					<button type="button" class:is-active={runtime.routeLogOpen} onclick={() => runMobileAction(() => runtime.toggleRouteLog())}>
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -110,6 +110,7 @@ describe("deriveMessageContextMenu", () => {
     expect(data.canReply).toBe(true);
     expect(data.canCopy).toBe(true);
     expect(data.canOpenFileTree).toBe(true);
+    expect(data.canShowTrace).toBe(false);
     expect(data.associatedFiles).toEqual(["out/result.csv"]);
     expect(data.targetPath).toBe("out/result.csv");
   });
@@ -127,5 +128,10 @@ describe("deriveMessageContextMenu", () => {
     const data = deriveMessageContextMenu(msg);
     expect(data.canOpenFileTree).toBe(false);
     expect(data.targetPath).toBeNull();
+  });
+
+  test("a message that belongs to a job can open its trace", () => {
+    const msg = createMessage({ body: "Plain text", task_id: "task-1" });
+    expect(deriveMessageContextMenu(msg).canShowTrace).toBe(true);
   });
 });
