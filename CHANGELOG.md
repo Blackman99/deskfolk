@@ -6,6 +6,12 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Fixed a phone staying disconnected once the remote link ended. Whether the relay closed it, the Mac went away or the phone changed network, the browser tells the page — and the page was not listening: it went on showing the conversation as if nothing had happened, until a tap or a message failed and only then started reconnecting. Reconnecting was something you triggered. The page now knows the link is gone by itself and reconnects on the delay it already had. The link a phone is left holding after a change of network — open as far as the browser knows, carrying nothing — is read as gone too, when an answer is outstanding, the send buffer has stopped moving and not one frame has arrived for half a minute; an idle link and one still uploading are neither. Coming back from a locked screen, a tunnel or the background (the page visible, the window focused, the network back, a push arriving) brings the next attempt forward to the moment it was owed, and never past it: the relay allows ten handshakes a minute and refuses the rest, so trying harder only comes back slower.
+
+- Fixed a handshake that never finished keeping the device's only route at the relay. The relay gives a device one route and one is all it gives, so a page that died halfway through a handshake and held its socket was kept out by the link it had already abandoned, on every retry after it.
+
+- Fixed the handshake's frame reader going on collecting after the session was live. Its job is to hold frames nobody is waiting for, and once the session is live nobody ever is: every frame of a session stayed in that queue, a 50 MiB download kept whole in the memory of the phone that asked for it.
+
 - Messages keep file inventories in the attachment tree and preview entry. New messages no longer append unmentioned attachment paths to the body; older messages hide trailing plain path-link lists already covered by attachments, while preserving contextual references.
 
 - A card on a job's flow now shows that person's avatar beside their name. Clicking a card for a turn that was cut lands on the 中断 line itself; it used to land on the message just above it.

@@ -1,9 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
+import type { RuntimeSnapshot } from "@real-bot/protocol";
 import { base64url, generateIdentity, identityPublic, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import { ApiError } from "../api.ts";
 import { MessengerRuntime, nextRemoteRetry } from "../runtime.svelte.ts";
+import { emptySnapshot } from "../snapshot.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
 import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
+import { enrollment as liveEnrollment, serveRemote } from "./test-host.ts";
 
 const keys = generateIdentity();
 const pub = identityPublic(keys);
@@ -23,10 +26,25 @@ const enrollment: StoredEnrollment = {
 };
 
 const runtimes: MessengerRuntime[] = [];
+const restores: Array<() => void> = [];
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.destroy();
+  for (const restore of restores.splice(0)) restore();
   useEnrollmentDriver(null);
 });
+
+/** A Mac that answers the one read a connect needs, and nothing else it does not have. */
+function hostAnswers(request: RemoteRequest): RemoteResponse {
+  if (request.path === "/v1/snapshot") {
+    const snapshot: RuntimeSnapshot = {
+      ...emptySnapshot(),
+      event_instance_id: "a".repeat(32),
+      watermark_seq: 0,
+    } as RuntimeSnapshot;
+    return { v: 1, id: request.id, status: 200, body: snapshot };
+  }
+  return { v: 1, id: request.id, status: 404, body: { error: { code: "not_found", message: "no such route" } } };
+}
 
 /**
  * Clearing site data under a live page force-closes the IndexedDB connection, and every read
@@ -168,4 +186,67 @@ test("a connection that comes back resets the delay", async () => {
   internals.remoteRetryMs = 16_000;
   await internals.tickRemote();
   expect(internals.remoteRetryMs).toBe(1000);
+});
+
+/**
+ * The regression this file is named for. A phone loses the link — the relay closes it, the Mac
+ * goes away, the radio changes network — and nothing was typed afterwards. The page used to go
+ * on showing a live conversation until the next tap failed, and only then start reconnecting.
+ */
+test("a link that ends with nobody touching the page brings the page back by itself", async () => {
+  const remote = serveRemote({ answer: hostAnswers });
+  restores.push(remote.restore);
+  useEnrollmentDriver({ get: () => Promise.resolve(liveEnrollment), set: () => Promise.resolve() });
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as { tickRemote(): Promise<void>; timer: ReturnType<typeof setTimeout> | null };
+
+  await internals.tickRemote();
+  expect(runtime.connection).toBe("connected");
+  const first = runtime.client;
+
+  // Nothing here is a user: the socket ends the way a network ends one.
+  remote.sockets[0]!.drop();
+  expect(runtime.connection).not.toBe("connected");
+  expect(runtime.client).toBeNull();
+  expect(internals.timer).not.toBeNull();
+
+  // What that timer runs. The old page short-circuited here — it still believed it was connected.
+  await internals.tickRemote();
+  expect(runtime.connection).toBe("connected");
+  expect(runtime.client).not.toBe(first);
+  expect(remote.sockets).toHaveLength(2);
+});
+
+/**
+ * Coming back — from a locked screen, a tunnel, a frozen tab — is worth an attempt, but the relay
+ * allows ten handshakes a minute and refuses the rest of them. So a wake-up takes the delay the
+ * loop already owes, and only a page that has been away longer than that tries at once.
+ */
+test("a wake-up brings the next attempt forward but never past the delay the loop owes", () => {
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as { nextAttemptAt: number; reconnectNow(): void };
+  runtime.connection = "disconnected";
+
+  internals.nextAttemptAt = Date.now() + 20_000;
+  internals.reconnectNow();
+  expect(internals.nextAttemptAt - Date.now()).toBeGreaterThan(19_000);
+
+  // Frozen for an hour: it owes nothing, so it goes now.
+  internals.nextAttemptAt = Date.now() - 3_600_000;
+  internals.reconnectNow();
+  expect(internals.nextAttemptAt - Date.now()).toBeLessThanOrEqual(0);
+  runtime.destroy();
+});
+
+/** A connected page has nothing to reconnect to, and a relay handshake is not free. */
+test("a wake-up on a live link costs nothing", () => {
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as { nextAttemptAt: number; reconnectNow(): void };
+  runtime.connection = "connected";
+  internals.nextAttemptAt = Date.now() + 999_000;
+  internals.reconnectNow();
+  expect(internals.nextAttemptAt - Date.now()).toBeGreaterThan(900_000);
 });

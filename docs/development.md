@@ -293,6 +293,16 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 回归在 `apps/daemon/src/session-events.test.ts` 与信使 `event-sync.test.ts` / `runtime-sync.test.ts` / `page-startup.test.ts`（真实页面 URL effects + 延迟首次快照）；全仓跑 `pnpm test` / `pnpm typecheck`，再构建信使。隔离 UI fixture 可调用 `startRuntime({ dataDir, bind, endpointKey, completions, schedule: false })` 注入 fake keystore / fake completions，Vite 用相同 `REAL_BOT_DATA_DIR` 并选独立端口；单设数据目录不能隔离个人钥匙串。此协议不扩大 loopback / Origin，也不启用远控或离线命令；日程 CRUD 界面沿用上述快照与事件通道。
 
+### 断线怎么被发现，什么时候再连
+
+本机事件 socket 的 close 事件由 `openSocket` 报告。远控链路由 `RemoteTransport` 区分「自己关」（`close()`，不报）与「被关」（`fail()`，一次性 `ondrop`）：socket 的 close/error、type 7、帧或响应对不上都走后者，`RemoteApi.connect(onEvent, onDrop)` 把它交给 `runtime.markDisconnected()` + `reconnectNow()`。没有这一路，掉线的页面在下一次写失败之前一直显示已连接，重连只能由交互触发。
+
+浏览器不报的那种死链（换网后 socket 仍称 open 却什么都不送）按静默判定：有未回答的请求、发送缓冲与上次检查相比没变、且距最后一帧或该请求发出满 30 秒，才判死。空闲链路不判（没有等待就没有证据），仍在上传的链路不判（缓冲在动就是还在走）。窗口取 30 秒是因为主机侧模型探测封顶 12 秒、一轮工作期间事件本来就在流；判错的代价是一次握手加一次回执查询，判不出的代价是页面一直装作连着。
+
+握手失败必须关掉 socket：中继一台设备只给一条路由，留着它会让之后每一次重连都被自己丢下的链路挡住。握手期间那个读帧监听器在 Split 之后必须摘掉，否则整个会话的帧都堆在没人取的队列里。
+
+重连仍由同一个 tick 循环执行：`schedule()` 只保留一个定时器（掉线撞上正在跑的 tick 不能留下两个循环），`pump()` 不并发跑第二次 tick（第二条链路会被中继拒），`nextAttemptAt` 记住下一次尝试该在什么时候。`visibilitychange` / `focus` / `online` / 推送只把定时器提前到那个时刻，不重置退避、不越过中继每分钟十次握手的额度。远控退避仍是 `nextRemoteRetry`（1s 起、20s 封顶、带抖动），连上即归零。回归在 `remote/transport.test.ts`（进程内真实 Noise 主机与可被「网络」掐断的 socket）与 `remote/runtime-remote.test.ts`。
+
 ### 事务回执、版本与文件完整性
 
 Store 的 `ctx.commit`、`Store.transaction` 和回执共用 `Transactions.run`：只有最外层业务+回执 SQLite 提交后同步清空 journal 并发布当前映射，再按顺序执行文件提交与引擎回调。文件预暂存不包入业务事务；`postMessage` 自管暂存/事务；快照读事务内不嵌套会触发发布的写事务。pending_keys 与设置版本也进入 journal，凭据写入等待不持有 SQLite 事务，完成事务一次性发布当前凭据状态和设置版本。新增可选 `RuntimeSnapshot.credentialOperations`（缺省为空）与 `credential_operations.changed {items}`，只用于协商同步流，不改变旧客户端原始帧；设置直接消费同步状态，第二客户端修复/取消也能移除原客户端已确认待写的内存请求。客户端只在EventSync接纳的连续流中，先观察到该request_id自己的operation id，再观察到同实例更大seq中该操作移除/替换时退休请求；不能把较旧的空列表当作较新HTTP503已完成。LocalApi的请求对象保留终态标记，迟到503/网络失败不能复活已退休载荷，终态HTTP回执也同时清理内存请求与对应横幅。display code与已观察操作证据独立，改载荷产生的本地409不抹掉确认。重复详情回放的旧seq不推进生命周期。没有本请求的操作转换或终态回执时保留未知结果，不因无关列表或成功变更而清除，也不自动重放。

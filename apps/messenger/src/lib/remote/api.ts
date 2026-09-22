@@ -268,12 +268,24 @@ export class RemoteApi {
     if (row.supersedes) this.retireSuperseded(row.supersedes);
   }
 
-  async connect(onEvent: (frame: SyncFrame | StreamFrame | ToolFrame) => void): Promise<SyncFrame> {
+  /**
+   * `onDrop` is how the page learns the link ended without it asking — the relay, the Mac or the
+   * radio, not this client. Without it a dropped link looks connected until something is typed.
+   */
+  async connect(
+    onEvent: (frame: SyncFrame | StreamFrame | ToolFrame) => void,
+    onDrop?: () => void,
+  ): Promise<SyncFrame> {
     this.close();
     const transport = new RemoteTransport(this.enrollment, this.identity, this.hooks);
     transport.subscribe(onEvent);
     const ready = await transport.connect();
     this.transport = transport;
+    transport.ondrop = () => {
+      if (this.transport !== transport) return;
+      this.transport = null;
+      onDrop?.();
+    };
     return { type: "ready", event_instance_id: ready.event_instance_id, watermark_seq: ready.watermark_seq };
   }
   close(): void {

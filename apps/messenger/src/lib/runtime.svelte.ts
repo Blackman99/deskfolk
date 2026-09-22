@@ -265,6 +265,9 @@ export class MessengerRuntime {
   readonly activity = new CommandActivity();
   activityRevision = $state(0);
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** When the loop owes its next attempt. A wake-up may bring the timer here, never past it. */
+  private nextAttemptAt = 0;
+  private ticking = false;
   private stopped = false;
   private searchSeq = 0;
   private pendingFocusTrigger: string | null = null;
@@ -302,6 +305,7 @@ export class MessengerRuntime {
     if (typeof window !== "undefined") {
       window.addEventListener("focus", this.onWindowFocus);
       window.addEventListener("blur", this.onWindowBlur);
+      window.addEventListener("online", this.onNetworkOnline);
       document.addEventListener("visibilitychange", this.onWindowVisibility);
     }
     this.pump();
@@ -323,6 +327,7 @@ export class MessengerRuntime {
     if (typeof window !== "undefined") {
       window.removeEventListener("focus", this.onWindowFocus);
       window.removeEventListener("blur", this.onWindowBlur);
+      window.removeEventListener("online", this.onNetworkOnline);
       document.removeEventListener("visibilitychange", this.onWindowVisibility);
     }
     this.markDisconnected();
@@ -2323,6 +2328,7 @@ export class MessengerRuntime {
   private readonly onWindowFocus = (): void => {
     if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
     else void this.sendPresenceHeartbeat();
+    this.reconnectNow();
   };
 
   private readonly onWindowBlur = (): void => {
@@ -2332,6 +2338,14 @@ export class MessengerRuntime {
   private readonly onWindowVisibility = (): void => {
     if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
     else if (document.visibilityState === "visible") void this.sendPresenceHeartbeat();
+    // A phone freezes this page while it is away and thaws it when you look again. That is the
+    // moment the timer it left behind is worth the least, so the loop is asked again here.
+    if (document.visibilityState === "visible") this.reconnectNow();
+  };
+
+  /** The radio came back. Nothing else is going to say so. */
+  private readonly onNetworkOnline = (): void => {
+    this.reconnectNow();
   };
 
   private readonly onPushMessage = (event: MessageEvent): void => {
@@ -2342,9 +2356,7 @@ export class MessengerRuntime {
       }
     }
     this.dispatchNotificationIntent({ openInbox: true });
-    if (this.connection !== "connected") {
-      this.pump();
-    }
+    this.reconnectNow();
   };
 
   async setPushEnabled(enabled: boolean): Promise<DisablePushResult | boolean> {
@@ -2554,6 +2566,13 @@ export class MessengerRuntime {
         return;
       }
       for (const event of frames) this.ingest(event.payload, event);
+    }, () => {
+      // The link went without being asked to: the relay closed it, the Mac went away, the phone
+      // changed network. Nobody is going to type to find out, so the page notices by itself and
+      // the loop tries again on its own delay.
+      if (this.api !== api) return;
+      this.markDisconnected();
+      this.reconnectNow();
     });
     const frames = sync.receive(ready);
     if (!frames) throw new Error("invalid remote ready");
@@ -2997,17 +3016,41 @@ export class MessengerRuntime {
 
   private schedule(delay = RETRY_MS): void {
     if (this.stopped) return;
+    // One timer, always the newest: a drop landing while a tick is in flight must not leave two
+    // loops running, which on a relay that allows ten handshakes a minute is a way to be refused.
+    if (this.timer) clearTimeout(this.timer);
+    this.nextAttemptAt = Date.now() + delay;
     this.timer = setTimeout(() => {
       this.pump();
     }, delay);
   }
 
+  /**
+   * Try now — as soon as the delay the loop already owes allows it. A phone comes back from a
+   * dropped link, a locked screen or a changed network with its timers frozen and no interaction
+   * to ride on, and asking again is worth nothing if the relay refuses it: the handshake budget
+   * is spent per minute, so a page that just tried still waits, and one frozen for an hour does
+   * not.
+   */
+  private reconnectNow(): void {
+    if (this.stopped || this.connection === "connected") return;
+    this.schedule(Math.max(0, this.nextAttemptAt - Date.now()));
+  }
+
   /** A tick that throws must still leave a timer behind, or the page never reconnects. */
   private pump(): void {
-    void this.tick().catch(() => {
-      this.markDisconnected();
-      this.schedule();
-    });
+    // An attempt already running owns the next one; a second pass would open a second socket for
+    // the same device, which the relay refuses while the first route is still there.
+    if (this.ticking) return;
+    this.ticking = true;
+    void this.tick()
+      .catch(() => {
+        this.markDisconnected();
+        this.schedule();
+      })
+      .finally(() => {
+        this.ticking = false;
+      });
   }
 }
 
