@@ -185,3 +185,110 @@ test("RemoteApi does not expose a local bearer", () => {
   expect(JSON.stringify(api.endpoint)).not.toContain("Bearer");
   expect(api.endpoint.token).toBe("");
 });
+
+test("a save the link dropped does not block the next one once the Mac says it never landed", async () => {
+  let drop = true;
+  const asked: string[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      asked.push(`${request.method} ${request.path}`);
+      if (request.path.startsWith("/v1/requests/")) {
+        return { v: 1, id: request.id, status: 404, body: { error: { code: "not_found", message: "request receipt not found" } } } satisfies RemoteResponse;
+      }
+      if (drop) throw new Error("socket closed");
+      return { v: 1, id: request.id, status: 200, body: { id: "bot" } } satisfies RemoteResponse;
+    },
+  });
+  const bot = "01ARZ3NDEKTSV4RRFFQ69G5FAX";
+  await expect(api.patchBot(bot, { model: "one" })).rejects.toMatchObject({ code: "request_unknown" });
+  const dropped = api.pendingRequests()[0]!.id;
+  drop = false;
+  // A different model: the receipt says nothing was committed, so the new payload takes the slot.
+  await expect(api.patchBot(bot, { model: "two" })).resolves.toMatchObject({ id: "bot" });
+  expect(asked).toContain(`GET /v1/requests/${dropped}`);
+  expect(api.pendingRequests()).toHaveLength(0);
+});
+
+test("the dropped save is settled from its receipt before the next payload goes out", async () => {
+  let drop = true;
+  const sent: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      sent.push(request);
+      if (request.path.startsWith("/v1/requests/")) {
+        return { v: 1, id: request.id, status: 200, body: { id: "bot", model: "one" } } satisfies RemoteResponse;
+      }
+      if (drop) throw new Error("socket closed");
+      return { v: 1, id: request.id, status: 200, body: { id: "bot", model: "two" } } satisfies RemoteResponse;
+    },
+  });
+  const bot = "01ARZ3NDEKTSV4RRFFQ69G5FAX";
+  await expect(api.patchBot(bot, { model: "one" })).rejects.toMatchObject({ code: "request_unknown" });
+  drop = false;
+  await expect(api.patchBot(bot, { model: "two" })).resolves.toMatchObject({ model: "two" });
+  expect(api.pendingRequests()).toHaveLength(0);
+  // The first one was never re-sent; its receipt spoke for it.
+  expect(sent.filter((request) => request.method === "PATCH")).toHaveLength(2);
+});
+
+test("a Mac that cannot be asked keeps the slot blocked rather than guessing", async () => {
+  const api = new RemoteApi(enrollment, { rpc: async () => { throw new Error("socket closed"); } });
+  const bot = "01ARZ3NDEKTSV4RRFFQ69G5FAX";
+  await expect(api.patchBot(bot, { model: "one" })).rejects.toMatchObject({ code: "request_unknown" });
+  await expect(api.patchBot(bot, { model: "two" })).rejects.toMatchObject({ code: "request_pending" });
+  expect(api.pendingRequests()).toHaveLength(1);
+});
+
+test("a queued key write still needs the person before a different payload is accepted", async () => {
+  let drop = true;
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      if (request.path.startsWith("/v1/requests/")) {
+        return { v: 1, id: request.id, status: 503, body: { error: { code: "key_write_pending", message: "credential not saved; retry the same request id" } } } satisfies RemoteResponse;
+      }
+      if (drop) throw new Error("socket closed");
+      return { v: 1, id: request.id, status: 200, body: { id: "p" } } satisfies RemoteResponse;
+    },
+  });
+  const provider = "01ARZ3NDEKTSV4RRFFQ69G5FAY";
+  await expect(api.patchProvider(provider, { api_key: "one" })).rejects.toMatchObject({ code: "request_unknown" });
+  drop = false;
+  await expect(api.patchProvider(provider, { api_key: "two" })).rejects.toMatchObject({ code: "request_pending" });
+  expect(api.pendingRequests()).toHaveLength(1);
+});
+
+test("a pending save restored after a reload is settled the same way", async () => {
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      if (request.path.startsWith("/v1/requests/")) {
+        return { v: 1, id: request.id, status: 404, body: { error: { code: "not_found", message: "request receipt not found" } } } satisfies RemoteResponse;
+      }
+      return { v: 1, id: request.id, status: 200, body: { id: "bot" } } satisfies RemoteResponse;
+    },
+  }, [
+    { id: "01ARZ3NDEKTSV4RRFFQ69G5FB0", method: "PATCH", path: "/v1/bots/01ARZ3NDEKTSV4RRFFQ69G5FAX", fingerprint: "old", body: { model: "one" } },
+  ]);
+  await expect(api.patchBot("01ARZ3NDEKTSV4RRFFQ69G5FAX", { model: "two" })).resolves.toMatchObject({ id: "bot" });
+  expect(api.pendingRequests()).toHaveLength(0);
+});
+
+test("a create whose receipt exists is never replaced by an edited payload", async () => {
+  let drop = true;
+  const posts: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      if (request.path.startsWith("/v1/requests/")) {
+        return { v: 1, id: request.id, status: 201, body: { id: "bot", name: "Original" } } satisfies RemoteResponse;
+      }
+      posts.push(request);
+      if (drop) throw new Error("socket closed");
+      return { v: 1, id: request.id, status: 201, body: { id: "bot2" } } satisfies RemoteResponse;
+    },
+  });
+  await expect(api.createBot({ name: "Original", duties: "d", boundaries: "b" })).rejects.toMatchObject({ code: "request_unknown" });
+  drop = false;
+  // The Mac did create it; sending the edited draft would make a second Bot.
+  await expect(api.createBot({ name: "Edited", duties: "d", boundaries: "b" })).rejects.toMatchObject({ code: "request_pending" });
+  expect(posts).toHaveLength(1);
+  expect(api.pendingRequests()).toHaveLength(1);
+});

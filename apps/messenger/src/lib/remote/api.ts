@@ -88,6 +88,8 @@ export type DurablePendingRequest = {
   ifMatch?: string;
   returnEtag?: boolean;
   supersedes?: string | null;
+  /** The send itself failed: nobody knows whether the Mac ran it. Not the same as a queued key write. */
+  unknown?: boolean;
 };
 
 type PendingRemote = DurablePendingRequest & {
@@ -172,6 +174,9 @@ export class RemoteApi {
       this.pending.set(`${row.method} ${row.path}`, {
         ...row,
         pending: true,
+        // A row that outlived the page never had its answer read here, so its result is unknown
+        // until the Mac says otherwise — which is what lets a later edit settle it.
+        unknown: true,
       });
     }
   }
@@ -563,7 +568,16 @@ export class RemoteApi {
     const fingerprint = JSON.stringify([payload, conditional]);
     const slot = `${method} ${splitPath.path}`;
     let row = this.pending.get(slot);
-    if (row && row.fingerprint !== fingerprint) throw new ApiError(409, "request_pending", "resolve the pending request before changing its payload", row.id);
+    if (row && row.fingerprint !== fingerprint) {
+      // A new payload cannot silently take the place of a request whose result is unknown — so
+      // ask the Mac what became of that one first. Its receipt is written in the same
+      // transaction as the effect, so an answer settles the slot either way, and a phone that
+      // lost the link mid-save is not stuck refusing every later edit. Only a Mac that cannot
+      // be asked, or a key write still queued, keeps the slot blocked.
+      if (row.pending && row.unknown) await this.settleOrphan(row);
+      row = this.pending.get(slot);
+      if (row) throw new ApiError(409, "request_pending", "resolve the pending request before changing its payload", row.id);
+    }
     if (!row) {
       row = {
         id: id ?? ulid(), method, path: splitPath.path, query: splitPath.query, body: payload,
@@ -584,6 +598,7 @@ export class RemoteApi {
     } catch (error) {
       if (!(error instanceof ApiError) || (error.status === 503 && error.code === "request_unknown")) {
         row.pending = Boolean(row.id) && !row.terminal;
+        row.unknown = row.pending;
       }
       if (error instanceof ApiError) throw error;
       throw new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", row.id);
@@ -591,16 +606,59 @@ export class RemoteApi {
   }
 
   private async lookupReceipt(id: string): Promise<RemoteResponse | null> {
+    const receipt = await this.readReceipt(id);
+    return receipt.state === "answered" ? receipt.response : null;
+  }
+
+  /**
+   * What the Mac says became of a request id. `missing` is a real answer: the receipt shares the
+   * effect's transaction, so no receipt means nothing was committed. `unreachable` is not an
+   * answer and must never be read as one.
+   */
+  private async readReceipt(id: string): Promise<
+    { state: "answered"; response: RemoteResponse } | { state: "missing" } | { state: "unreachable" }
+  > {
+    let response: RemoteResponse;
     try {
-      const response = await this.dispatch({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${id}` });
-      if (response.status === 404) return null;
-      return { ...response, id };
+      response = await this.dispatch({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${id}` });
     } catch {
-      return null;
+      return { state: "unreachable" };
+    }
+    const code = (response.body as ErrorBody | undefined)?.error?.code;
+    // An expired receipt says the same thing a missing one does: start over with a new id.
+    if (response.status === 404 || code === "receipt_expired") return { state: "missing" };
+    return { state: "answered", response: { ...response, id } };
+  }
+
+  /**
+   * Clears the slot of a request that is over, so a fresh payload can take it.
+   *
+   * No receipt means the Mac committed nothing, whatever the method: the slot is free. If it did
+   * run, only an edit of the same entity may go on top — a second PATCH cannot duplicate
+   * anything, while a create could, so that one stays for the person to retire explicitly.
+   */
+  private async settleOrphan(row: PendingRemote): Promise<void> {
+    const receipt = await this.readReceipt(row.id);
+    if (receipt.state === "unreachable") return;
+    if (receipt.state === "missing") {
+      this.forgetResolvedRequest(row.id);
+      return;
+    }
+    if (row.method !== "PATCH") {
+      row.unknown = false;
+      return;
+    }
+    // A queued key write is the one answer that still needs the person: it leaves the row pending.
+    try {
+      this.applyResponse(row, receipt.response);
+    } catch {
+      // Whatever the Mac answered, the request is no longer outstanding unless it said so.
     }
   }
 
   private applyResponse(row: PendingRemote, response: RemoteResponse): unknown {
+    // The Mac answered, so its result is no longer unknown, whatever it says.
+    row.unknown = false;
     const json = response.body as ErrorBody | undefined;
     if (row.supersedes && (response.status < 400 || json?.error?.code === "key_write_pending")) {
       this.retireSuperseded(row.supersedes);
