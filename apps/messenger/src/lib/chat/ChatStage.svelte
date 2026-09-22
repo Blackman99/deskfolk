@@ -2330,12 +2330,12 @@
 
 	@media (max-width: 680px) {
 	.msg-wrap.is-bot {
-	max-width: 95%;
+	max-width: 100%;
 	}
 	}
 	@media (max-width: 680px) {
 	.msg-wrap.is-user {
-	max-width: 92%;
+	max-width: 100%;
 	}
 	}
 	@media (max-width: 680px) {
@@ -2352,6 +2352,60 @@
 		.scroll-bottom-btn {
 			bottom: 120px;
 			right: 16px;
+		}
+	}
+
+	@media (max-width: 680px) {
+		/*
+		 * A phone leaves a bubble about 340px wide, so the line above each message has to earn
+		 * its place. It used to wrap twice over: the Bot's name broke across lines and the model
+		 * chip broke mid-token, and the hover toolbar landed on top of both. Now the name takes
+		 * what it needs and truncates, the model is left to the conversation header that already
+		 * shows it, and the time and duration sit together against the right edge.
+		 */
+		.msg-header {
+			flex-wrap: nowrap;
+			gap: 5px;
+			min-width: 0;
+		}
+
+		.sender-name,
+		button.sender-name.is-clickable {
+			min-width: 0;
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+		}
+
+		.msg-header .model-badge {
+			display: none;
+		}
+
+		.msg-header .bot-badge,
+		.msg-header .segment-count-badge,
+		.msg-header .duration-badge,
+		.msg-header .msg-time,
+		.msg-header .streaming-status {
+			flex-shrink: 0;
+		}
+
+		.msg-header .msg-time {
+			margin-left: auto;
+		}
+
+		/* Long-press opens the same copy and reply actions, so the hover pill has no job here —
+		   and it used to sit on top of the line above the bubble. */
+		.msg-toolbar {
+			display: none;
+		}
+
+		/* Your own portrait next to a name that already says 你 costs 42px of every line. */
+		.msg-wrap.is-user .avatar-col {
+			display: none;
+		}
+
+		.msg {
+			padding: 9px 12px;
 		}
 	}
 

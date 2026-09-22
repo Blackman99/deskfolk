@@ -512,4 +512,18 @@
 	.md-body.is-inverted :global(th) {
 		background: rgba(255, 255, 255, 0.12);
 	}
+	@media (max-width: 680px) {
+		/* Markers sit closer to the text, so a wrapped line does not read as a new bullet. */
+		.md-body :global(ul),
+		.md-body :global(ol) {
+			padding-left: 1.05em;
+		}
+
+		/* A commit hash or a long path breaks where it must, rather than taking a line of its
+		   own and leaving the line before it half empty. */
+		.md-body :global(code),
+		.md-body :global(a) {
+			overflow-wrap: anywhere;
+		}
+	}
 </style>
