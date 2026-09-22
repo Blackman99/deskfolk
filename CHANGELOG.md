@@ -6,6 +6,12 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Messages keep file inventories in the attachment tree and preview entry. New messages no longer append unmentioned attachment paths to the body; older messages hide trailing plain path-link lists already covered by attachments, while preserving contextual references.
+
+- A card on a job's flow now shows that person's avatar beside their name. Clicking a card for a turn that was cut lands on the 中断 line itself; it used to land on the message just above it.
+
+- Redesigned the Notification Settings page to align with the application's card and row design system, featuring macOS/iOS-style switch toggles, category icons and explanations, a refined quiet hours time range selector, and full mobile responsiveness with touch-friendly targets and adaptive single-column layouts.
+
 - The terminal pane keeps a gap under the last line, so the prompt no longer sits on the window edge.
 
 - Fixed a message that hands over 21 files opening a file tree with four. The tree was built from the job's record alone — what the Mac noticed a turn write or link — so files a message named on its own `附件：` lines, which is every message stored before the Mac read those lines, were missing from it, including the one on screen. The tree is now the job's record plus what this message handed over, and it takes that list from the same reading as the bubble's entry, so the two cannot disagree — and prose like `1/3` never becomes a file in it.
