@@ -1,0 +1,50 @@
+/**
+ * The smallest each kind of content stays usable at.
+ *
+ * Pixels, not fractions: "eighty columns" and "the composer plus one bubble" are real sizes that
+ * do not scale with the window. Where a number matches one the app already uses, it is that
+ * number rather than a second opinion about the same thing.
+ */
+import type { MinSizeLookup, PaneMin, WorkbenchTab } from "./layout-types.ts";
+
+/** The tab strip above every pane's body, added to each height below. */
+export const WB_STRIP_PX = 28;
+
+export const PANE_MINS = {
+  /** Composer plus one bubble. Narrower than `--chat-max-width`, which is a ceiling, not a floor. */
+  chat: { width: 360, height: 240 },
+  /** Matches `PREVIEW_MIN` in overlays/preview-width.ts — the same panel, a different host. */
+  preview: { width: 280, height: 240 },
+  /** Matches `TRACE_WINDOW_MIN_WIDTH` / `_HEIGHT` in overlays/trace-window.ts. */
+  trace: { width: 300, height: 280 },
+  /**
+   * Eighty columns of 12px `ui-monospace` is about 576px, plus the host's padding and a
+   * scrollbar. Arithmetic, not a measurement — settle it with `FitAddon` in a real window and
+   * write the measured number here.
+   */
+  terminal: { width: 600, height: 200 },
+  workspace: { width: 260, height: 200 },
+  /** Seven day columns; the `routine-card` story is shot at 520 wide for the same reason. */
+  routines: { width: 520, height: 420 },
+  "route-log": { width: 420, height: 240 },
+  "session-settings": { width: 320, height: 320 },
+} as const satisfies Record<string, PaneMin>;
+
+export type PaneKind = keyof typeof PANE_MINS;
+
+/** An unknown kind still has to fit somewhere, so it gets a floor rather than zero. */
+export const WB_FALLBACK_MIN: PaneMin = { width: 240, height: 160 };
+
+/**
+ * A pane's minimum is its **active** tab's, not the largest of its tabs'.
+ *
+ * Taking the largest would mean adding a terminal tab to a 360px chat pane shoves every other
+ * pane sideways, which is astonishing. Taking the active one means clicking a tab can leave it
+ * cramped, which is merely annoying and explains itself.
+ */
+export const paneMin: MinSizeLookup = (tab: WorkbenchTab | null): PaneMin => {
+  if (!tab) return WB_FALLBACK_MIN;
+  const known = (PANE_MINS as Record<string, PaneMin | undefined>)[tab.kind];
+  const base = known ?? WB_FALLBACK_MIN;
+  return { width: base.width, height: base.height + WB_STRIP_PX };
+};
