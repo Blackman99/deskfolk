@@ -376,7 +376,7 @@ GitHub 仓库侧的展示信息：描述、主页（落地页地址）和 topics
 
 桌面 App 图标的源文件是 `apps/desktop/src-tauri/icons/app-icon.svg`（1024 画布、macOS 式圆角方块留透明边距）。改动后在 `apps/desktop` 下执行 `pnpm exec tauri icon src-tauri/icons/app-icon.svg --output src-tauri/icons` 重新生成 `tauri.conf.json` 引用的 `32x32.png` / `128x128.png` / `128x128@2x.png` / `icon.icns` / `icon.ico` 以及 Windows 商店尺寸；托盘图标取自窗口默认图标，无需单独维护。SVG 注释里不能出现 `--`，否则 CLI 的 SVG 解析会失败。信使窗口的 favicon 在 `apps/messenger/src/lib/assets/favicon.svg`，与落地页 `static/favicon.svg` 是同一份标识。
 
-release 正文由 `apps/desktop/scripts/release-notes.ts` 生成：按 `tauri.conf.json` 的版本在 `CHANGELOG.md` 里找 `## <版本>` 那一段，正文 = 该段内容 + 未签名说明，`generateReleaseNotes` 关掉。信使的「关于」卡片直接画这份正文（见下一段），所以正文必须是「改了什么」而不是「去看 CHANGELOG」。找不到该段时脚本以非零退出、打包任务失败——发版前先滚 CHANGELOG。脚本的纯函数由 `apps/desktop/scripts/release-notes.test.ts` 覆盖（`pnpm test` 会跑），其中一条直接拿本仓库的 CHANGELOG 和当前版本对，防止两边脱节。
+release 正文由 `apps/desktop/scripts/release-notes.ts` 生成：按 `tauri.conf.json` 的版本在 `CHANGELOG.md` 里找 `## <版本>` 那一段，正文 = 该段内容 + 未签名说明，`generateReleaseNotes` 关掉。信使的「关于」卡片直接画这份正文（见下一段），所以正文必须是「改了什么」而不是「去看 CHANGELOG」。找不到该段时脚本以非零退出、打包任务失败——发版前先滚 CHANGELOG。GitHub 拒收超过 125,000 字符的正文，一个周期攒得太长时，脚本从较长那种语言的末尾（最早的条目）逐条去掉，并在那一节末尾写明「另有 N 条」、指回 CHANGELOG。脚本的纯函数由 `apps/desktop/scripts/release-notes.test.ts` 覆盖（`pnpm test` 会跑），其中一条直接拿本仓库的 CHANGELOG 和当前版本对，防止两边脱节。
 
 当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致（去掉 `v` 前缀），否则 `tauri-action` 会按配置里的版本建 release。例如标签 `v0.1.0-alpha.1` 对应配置版本 `0.1.0-alpha.1`。Windows / Linux 不在发布范围。Apple Developer 证书与公证需要以后另配仓库 secrets，不写进工作流。
 
