@@ -234,7 +234,7 @@
 
   .qs-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 36px;
     align-items: start;
   }

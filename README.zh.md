@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-hero-dark.png">
-    <img alt="Real Bot：三个 Bot 的群聊、一张待批准卡和 Markdown 预览" src="docs/assets/readme-hero-light.png">
+    <img alt="Real Bot：群聊与它的流程图、一张待批准卡和 Markdown 预览" src="docs/assets/readme-hero-light.png">
   </picture>
 </p>
 

@@ -6,7 +6,7 @@ import type { BotId, Dict } from '$lib/i18n';
  * (scene, beat) is a pure function, so jumping around while scrolling is safe.
  */
 
-export const SCENE_COUNT = 9; // 0 = hero, 1..8 = steps
+export const SCENE_COUNT = 11; // 0 = hero, 1..10 = steps
 
 /** Beat offsets in ms from scene activation. beat 0 = scene just activated. */
 export const SCENE_BEATS: readonly (readonly number[])[] = [
@@ -16,9 +16,11 @@ export const SCENE_BEATS: readonly (readonly number[])[] = [
   /* 3 hire      */ [300, 2600, 3100, 4200, 4700, 5300, 6000],
   /* 4 group     */ [300, 900, 3000, 3500, 4200, 5400],
   /* 5 approval  */ [400, 1000, 1500, 2800, 3400],
-  /* 6 handoff   */ [500, 1300, 2800],
+  /* 6 handoff   */ [400, 1100, 1800, 2500, 3300, 4400, 5600],
   /* 7 artifact  */ [400, 1000, 2200, 3200],
-  /* 8 tray      */ [500, 1100, 2400]
+  /* 8 flow      */ [400, 1100, 1800, 2800, 3500],
+  /* 9 terminal  */ [400, 1200, 1900, 2600, 3300, 4600, 5400, 6200],
+  /* 10 tray     */ [500, 1100, 2300, 3700]
 ];
 
 export type Part = { type: 'text'; text: string } | { type: 'mention'; bot: BotId };
@@ -39,6 +41,9 @@ export type TranscriptItem =
 
 export type SessionId = 'coordinator' | 'research';
 
+/** Where the keyboard is. Only drawn once the window holds more than one pane. */
+export type PaneId = 'chat' | 'right' | 'bottom';
+
 export type MockState = {
   roster: BotId[];
   groups: { id: 'research'; name: string; pending: boolean }[];
@@ -52,8 +57,21 @@ export type MockState = {
   transcripts: Record<SessionId, TranscriptItem[]>;
   composer: { text: string } | null;
   judgement: boolean;
+  /** Researcher's shell command: output lines shown while it runs, then one folded line. */
+  command: { running: boolean; lines: number } | null;
+  /** The workbench: the conversation pane, plus a right column once something opens beside it. */
+  right: { tabs: ('preview' | 'flow')[]; active: 'preview' | 'flow' } | null;
+  /** A pane split off under the right column: empty until something is picked into it. */
+  bottom: 'empty' | 'terminal' | null;
+  focus: PaneId;
+  /** The ⋯ menu in a narrow conversation pane's header. */
+  chatMenu: boolean;
+  /** The right-click menu in the right pane. */
+  splitMenu: boolean;
   preview: { edited: boolean; saved: boolean } | null;
-  tray: { menu: boolean } | null;
+  flow: { unfolded: boolean; coordinator: boolean };
+  terminal: { lines: number } | null;
+  tray: { menu: boolean; banner: boolean } | null;
   cursor: { target: string; click: boolean } | null;
 };
 
@@ -68,7 +86,15 @@ const EMPTY: MockState = {
   transcripts: { coordinator: [], research: [] },
   composer: null,
   judgement: false,
+  command: null,
+  right: null,
+  bottom: null,
+  focus: 'chat',
+  chatMenu: false,
+  splitMenu: false,
   preview: null,
+  flow: { unfolded: false, coordinator: false },
+  terminal: null,
   tray: null,
   cursor: null
 };
@@ -84,10 +110,19 @@ function clone(s: MockState): MockState {
       research: s.transcripts.research.map((i) => ({ ...i }))
     },
     composer: s.composer ? { ...s.composer } : null,
+    command: s.command ? { ...s.command } : null,
+    right: s.right ? { ...s.right, tabs: [...s.right.tabs] } : null,
     preview: s.preview ? { ...s.preview } : null,
+    flow: { ...s.flow },
+    terminal: s.terminal ? { ...s.terminal } : null,
     tray: s.tray ? { ...s.tray } : null,
     cursor: s.cursor ? { ...s.cursor } : null
   };
+}
+
+function dropReplying(items: TranscriptItem[]): void {
+  const idx = items.findIndex((i) => i.kind === 'replying');
+  if (idx >= 0) items.splice(idx, 1);
 }
 
 /* ---- Per-scene beat appliers. Each receives the state at beat 0 and the beat index. ---- */
@@ -143,8 +178,7 @@ function scene3(s: MockState, beat: number, t: Dict): MockState {
   }
   if (beat >= 6) s.groups = [{ id: 'research', name: t.script.groupName, pending: false }];
   if (beat >= 7) {
-    const idx = items.findIndex((i) => i.kind === 'replying');
-    if (idx >= 0) items.splice(idx, 1);
+    dropReplying(items);
     items.push({
       kind: 'bot',
       id: 'b1',
@@ -171,8 +205,7 @@ function scene4(s: MockState, beat: number, t: Dict): MockState {
   if (beat >= 4) s.judgement = true;
   if (beat >= 5) items.push({ kind: 'replying', id: 'gr1', bots: ['researcher'] });
   if (beat >= 6) {
-    const idx = items.findIndex((i) => i.kind === 'replying');
-    if (idx >= 0) items.splice(idx, 1);
+    dropReplying(items);
     items.push({
       kind: 'bot',
       id: 'g2',
@@ -189,8 +222,7 @@ function scene5(s: MockState, beat: number): MockState {
   s.judgement = false;
   if (beat >= 1) items.push({ kind: 'replying', id: 'gr2', bots: ['researcher'] });
   if (beat >= 2) {
-    const idx = items.findIndex((i) => i.kind === 'replying');
-    if (idx >= 0) items.splice(idx, 1);
+    dropReplying(items);
     items.push({ kind: 'approval', id: 'ap1', bot: 'researcher', status: 'pending', time: '14:26' });
   }
   if (beat >= 3) s.groups = s.groups.map((g) => ({ ...g, pending: true }));
@@ -207,10 +239,14 @@ function scene5(s: MockState, beat: number): MockState {
 
 function scene6(s: MockState, beat: number, t: Dict): MockState {
   const items = s.transcripts.research;
-  // Base: researcher still replying after approval.
-  if (beat >= 1) {
-    const idx = items.findIndex((i) => i.kind === 'replying');
-    if (idx >= 0) items.splice(idx, 1);
+  // Base: Researcher still replying after the approval. Its command runs under that line.
+  if (beat >= 1) s.command = { running: true, lines: 1 };
+  if (beat >= 2) s.command = { running: true, lines: 2 };
+  if (beat >= 3) s.command = { running: true, lines: 3 };
+  if (beat >= 4) s.command = { running: true, lines: t.script.commandOutput.length };
+  if (beat >= 5) {
+    s.command = { running: false, lines: t.script.commandOutput.length };
+    dropReplying(items);
     items.push({
       kind: 'bot',
       id: 'g3',
@@ -224,10 +260,9 @@ function scene6(s: MockState, beat: number, t: Dict): MockState {
       artifacts: [t.script.researcherNotePath]
     });
   }
-  if (beat >= 2) items.push({ kind: 'replying', id: 'gr4', bots: ['writer'] });
-  if (beat >= 3) {
-    const idx = items.findIndex((i) => i.kind === 'replying');
-    if (idx >= 0) items.splice(idx, 1);
+  if (beat >= 6) items.push({ kind: 'replying', id: 'gr4', bots: ['writer'] });
+  if (beat >= 7) {
+    dropReplying(items);
     items.push({
       kind: 'bot',
       id: 'g4',
@@ -241,9 +276,12 @@ function scene6(s: MockState, beat: number, t: Dict): MockState {
 }
 
 function scene7(s: MockState, beat: number): MockState {
+  // The file opens in a pane of its own beside the conversation.
   if (beat >= 1) s.cursor = { target: 'artifact-report', click: true };
   if (beat >= 2) {
     s.cursor = null;
+    s.right = { tabs: ['preview'], active: 'preview' };
+    s.focus = 'right';
     s.preview = { edited: false, saved: false };
   }
   if (beat >= 3) s.preview = { edited: true, saved: false };
@@ -252,21 +290,85 @@ function scene7(s: MockState, beat: number): MockState {
 }
 
 function scene8(s: MockState, beat: number): MockState {
-  s.preview = null;
+  // The conversation pane is narrow now, so Trace sits in its ⋯ menu.
+  if (beat >= 1) s.cursor = { target: 'chat-more', click: true };
+  if (beat >= 2) {
+    s.chatMenu = true;
+    s.cursor = { target: 'menu-trace', click: true };
+  }
+  if (beat >= 3) {
+    s.chatMenu = false;
+    s.cursor = null;
+    s.right = { tabs: ['preview', 'flow'], active: 'flow' };
+    s.focus = 'right';
+  }
+  if (beat >= 4) s.cursor = { target: 'route-line', click: true };
+  if (beat >= 5) {
+    s.cursor = null;
+    s.flow = { ...s.flow, unfolded: true };
+  }
+  return s;
+}
+
+function scene9(s: MockState, beat: number): MockState {
+  const items = s.transcripts.research;
+  // Right-click in the flow pane, split down, start a terminal in the new pane.
+  if (beat >= 1) s.cursor = { target: 'rc-point', click: true };
+  if (beat >= 2) {
+    s.splitMenu = true;
+    s.cursor = { target: 'split-down', click: true };
+  }
+  if (beat >= 3) {
+    s.splitMenu = false;
+    s.cursor = null;
+    s.bottom = 'empty';
+    s.focus = 'bottom';
+  }
+  if (beat >= 4) s.cursor = { target: 'empty-new-terminal', click: true };
+  if (beat >= 5) {
+    s.cursor = null;
+    s.bottom = 'terminal';
+    s.terminal = { lines: 0 };
+  }
+  if (beat >= 6) s.terminal = { lines: 3 };
+  if (beat >= 7) s.terminal = { lines: 99 };
+  if (beat >= 8) {
+    // Coordinator picks the job up to check it over; it is still going when the window closes.
+    items.push({ kind: 'replying', id: 'gr5', bots: ['coordinator'] });
+    s.flow = { ...s.flow, coordinator: true };
+  }
+  return s;
+}
+
+function scene10(s: MockState, beat: number, t: Dict): MockState {
+  const items = s.transcripts.research;
   if (beat >= 1) s.cursor = { target: 'window-close', click: true };
   if (beat >= 2) {
     s.cursor = null;
-    s.tray = { menu: false };
+    s.tray = { menu: false, banner: false };
   }
-  if (beat >= 3) s.tray = { menu: true };
+  if (beat >= 3) s.tray = { menu: true, banner: false };
+  if (beat >= 4) {
+    // Coordinator finishes while the window is away: a banner, and the Dock badge counts it.
+    s.tray = { menu: false, banner: true };
+    dropReplying(items);
+    items.push({
+      kind: 'bot',
+      id: 'g5',
+      bot: 'coordinator',
+      time: '14:36',
+      parts: [{ type: 'text', text: t.script.coordinatorClose }]
+    });
+  }
   return s;
 }
 
 function scene0(s: MockState, beat: number, t: Dict): MockState {
-  // Hero: the finished team, with Coordinator wrapping up live.
-  s.preview = null;
+  // Hero: the finished team beside its flow, with Coordinator wrapping up live.
   s.tray = null;
   s.cursor = null;
+  s.focus = 'chat';
+  s.flow = { unfolded: true, coordinator: true };
   if (beat >= 1) {
     s.transcripts.research.push({
       kind: 'bot',
@@ -289,7 +391,9 @@ const APPLIERS: ((s: MockState, beat: number, t: Dict) => MockState)[] = [
   scene5,
   scene6,
   scene7,
-  scene8
+  scene8,
+  scene9,
+  scene10
 ];
 
 /** Final state after the last beat of `scene` (scene >= 1). */
@@ -301,8 +405,8 @@ function finalState(scene: number, t: Dict): MockState {
 
 export function stateAt(scene: number, beat: number, t: Dict): MockState {
   if (scene === 0) {
-    // Hero builds on the completed walkthrough up to the handoff scene.
-    return scene0(finalState(6, t), beat, t);
+    // Hero builds on the completed walkthrough up to the flow scene.
+    return scene0(finalState(8, t), beat, t);
   }
   const base = scene === 1 ? clone(EMPTY) : finalState(scene - 1, t);
   return APPLIERS[scene](base, beat, t);
