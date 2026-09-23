@@ -203,7 +203,7 @@
 		height: 36px;
 		border-radius: 6px;
 		flex-shrink: 0;
-		background: #00000008;
+		background: var(--line-subtle);
 	}
 
 	.attachment-chip-thumb {
@@ -214,7 +214,6 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		background: var(--line-subtle);
 	}
 
 	.attachment-chip-ring {

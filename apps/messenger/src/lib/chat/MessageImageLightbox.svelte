@@ -450,7 +450,7 @@
 	}
 
 	.msg-image-lightbox.is-shown {
-		background: rgba(0, 0, 0, 0.84);
+		background: color-mix(in srgb, var(--bg) 92%, transparent);
 	}
 
 	.msg-image-frame {
@@ -462,7 +462,7 @@
 		min-height: 0;
 		max-width: none;
 		border-radius: 6px;
-		background: #000;
+		background: var(--pane);
 		/* Text and the bar appear once the box has grown past the thumbnail. */
 		container-type: size;
 		transition:
@@ -471,11 +471,6 @@
 			width 220ms ease,
 			height 220ms ease,
 			border-radius 220ms ease;
-	}
-
-	.msg-image-frame.is-loading {
-		/* Solid, so the spinner and the byte count stay readable over the transcript. */
-		background: #0b1220;
 	}
 
 	.msg-image-lightbox.is-shown .msg-image-frame {
@@ -499,7 +494,7 @@
 		max-width: none;
 		/* Follow the frame as it grows out of a cropped thumb and shrinks back into it. */
 		object-fit: cover;
-		background: #000;
+		background: var(--pane);
 	}
 
 	.msg-image-caption,
@@ -525,10 +520,10 @@
 		max-width: calc(100vw - 48px);
 		height: 32px;
 		padding: 0 14px;
-		border: 1px solid rgba(255, 255, 255, 0.22);
+		border: 1px solid var(--line);
 		border-radius: 999px;
-		background: rgba(15, 23, 42, 0.72);
-		color: #fff;
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
 		font-size: 12px;
 		font-weight: 600;
 		white-space: nowrap;
@@ -540,7 +535,7 @@
 
 	.msg-image-original:hover,
 	.msg-image-original:focus-visible {
-		background: rgba(15, 23, 42, 0.9);
+		background: var(--btn-secondary-hover);
 		outline: none;
 	}
 
@@ -559,13 +554,13 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.86);
+		color: var(--ink-secondary);
 	}
 
 	.msg-image-status {
 		margin: 0;
 		padding: 28px 20px;
-		color: rgba(255, 255, 255, 0.86);
+		color: var(--ink);
 		font-size: 13px;
 	}
 
@@ -579,8 +574,8 @@
 		align-items: center;
 		gap: 8px;
 		padding: 18px 12px 12px;
-		background: linear-gradient(to top, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0));
-		color: #fff;
+		background: linear-gradient(to top, var(--pane), color-mix(in srgb, var(--pane) 88%, transparent), transparent);
+		color: var(--ink);
 		font-size: 12px;
 		font-weight: 600;
 		pointer-events: none;
@@ -602,8 +597,8 @@
 		height: 14px;
 		flex: 0 0 auto;
 		border-radius: 50%;
-		border: 2px solid rgba(255, 255, 255, 0.45);
-		border-top-color: #fff;
+		border: 2px solid var(--line-hover);
+		border-top-color: var(--accent);
 		animation: msg-image-spin 0.9s linear infinite;
 	}
 
@@ -612,7 +607,7 @@
 		font-family: var(--mono);
 		font-size: 11.5px;
 		font-weight: 400;
-		color: rgba(255, 255, 255, 0.82);
+		color: var(--ink-secondary);
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -629,8 +624,9 @@
 		min-width: 168px;
 		padding: 14px 18px;
 		border-radius: 12px;
-		background: rgba(15, 23, 42, 0.78);
-		color: #fff;
+		background: var(--pane);
+		box-shadow: var(--shadow-lg);
+		color: var(--ink);
 		font-size: 13px;
 		font-weight: 600;
 		pointer-events: none;
@@ -670,10 +666,10 @@
 		height: 16px;
 		flex: 0 0 auto;
 		border-radius: 50%;
-		border: 2px solid rgba(255, 255, 255, 0.45);
-		border-top-color: #fff;
-		background: rgba(15, 23, 42, 0.55);
-		box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+		border: 2px solid var(--line-hover);
+		border-top-color: var(--accent);
+		background: var(--pane);
+		box-shadow: var(--shadow-sm);
 		animation: msg-image-spin 0.9s linear infinite;
 	}
 
@@ -695,7 +691,7 @@
 		width: min(160px, 78%);
 		height: 4px;
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.28);
+		background: var(--line-hover);
 		overflow: hidden;
 	}
 
@@ -703,7 +699,7 @@
 		height: 100%;
 		width: 0;
 		border-radius: inherit;
-		background: #fff;
+		background: var(--accent);
 		transition: width 0.2s ease;
 	}
 
@@ -729,7 +725,7 @@
 			clip: auto;
 			max-width: 100%;
 			text-align: center;
-			color: #fff;
+			color: var(--ink);
 		}
 
 		.msg-image-loading-copy {
@@ -740,7 +736,7 @@
 		.msg-image-loading-bytes {
 			font-family: var(--mono);
 			font-size: 11.5px;
-			color: rgba(255, 255, 255, 0.82);
+			color: var(--ink-secondary);
 		}
 
 		.msg-image-loading-bar {
@@ -775,14 +771,14 @@
 		justify-content: center;
 		border: 0;
 		border-radius: 999px;
-		background: rgba(15, 23, 42, 0.72);
-		color: #fff;
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
 		cursor: pointer;
 	}
 
 	.msg-image-close:hover,
 	.msg-image-close:focus-visible {
-		background: rgba(15, 23, 42, 0.9);
+		background: var(--btn-secondary-hover);
 		outline: none;
 	}
 

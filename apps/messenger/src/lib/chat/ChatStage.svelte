@@ -1793,12 +1793,6 @@
 	/* Room for the index; a conversation narrow enough to hide it takes this back below. */
 	.has-message-index .stream-inner { padding-left: 40px; padding-right: 40px; }
 
-	.msg.is-you :global(.attachment-file-btn),
-
-	.msg.is-you :global(.attachment-bundle-btn) {
-		background: rgba(255, 255, 255, 0.9);
-		color: #0f172a;
-	}
 
 	.empty-icon {
 		width: 60px;
