@@ -35,7 +35,7 @@ get("sessions/:id/(snapshot|judgements|routes|composer-suggestions)");
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200 });
 get("bots/:id/profile-revisions"); get("attachments/:id/content");
 get("tasks/:id/artifacts");
-get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, session_id: id, message_id: id, target_message_id: id, status: one("draft", "open", "resolved") });
+get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, session_id: id, target_session_id: id, message_id: id, target_message_id: id, status: one("draft", "open", "resolved") });
 get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/trace");
 get("sessions/:id/tasks");

@@ -1545,7 +1545,7 @@ function dispatch(
   if (method === "GET" && path === "/v1/annotations") {
     const q = url.searchParams;
     const filter: AnnotationFilter = {};
-    for (const key of ["relpath", "session_id", "message_id", "target_message_id", "status"] as const) {
+    for (const key of ["relpath", "session_id", "target_session_id", "message_id", "target_message_id", "status"] as const) {
       const value = q.get(key);
       if (value !== null) (filter as Record<string, string>)[key] = value;
     }

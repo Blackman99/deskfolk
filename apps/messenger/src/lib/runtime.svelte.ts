@@ -22,6 +22,10 @@ import {
   type StreamFrame,
   type Terminal,
   type ToolFrame,
+  type Annotation,
+  type AnnotationFilter,
+  type CreateAnnotationRequest,
+  type PatchAnnotationRequest,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
 import { copyFor } from "./copy.ts";
@@ -160,6 +164,8 @@ export class MessengerRuntime {
   /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
   previewRelpath = $state<string | null>(null);
   previewMessageId = $state<string | null>(null);
+  /** The annotation a card or a row asked the preview to scroll to; cleared with the preview. */
+  annotationFocusId = $state<string | null>(null);
   forceArtifactTree = $state(false);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
@@ -675,6 +681,10 @@ export class MessengerRuntime {
         if (selection !== this.sessionSeq) return;
         const unread = this.notificationCapabilities.bounded_read_v1 ? detail.session.unread_count : 0;
         this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements);
+        // Pulled, not in the snapshot: what was sent here, and what hangs on this conversation's
+        // deliveries (drafts on a Bot↔Bot artifact live in your direct but belong to this view).
+        void this.loadAnnotations({ session_id: id });
+        void this.loadAnnotations({ target_session_id: id });
         for (const frame of frames) {
           if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
           if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, frame);
@@ -926,6 +936,104 @@ export class MessengerRuntime {
     if (!api) return null;
     try {
       await api.deleteMemory(id);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  // Annotations ----------------------------------------------------------------------------
+  /**
+   * Pull the annotations one filter names and put them in the snapshot in place of whatever it
+   * held for that filter — a draft deleted from another device is gone here too. Events keep
+   * them current afterwards; a failed pull keeps what is on screen.
+   */
+  async loadAnnotations(filter: AnnotationFilter & { target_session_id?: string }): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    try {
+      const rows = await api.listAnnotations(filter);
+      if (this.api !== api) return;
+      const scoped = (row: Annotation): boolean =>
+        (!filter.relpath || row.relpath === filter.relpath) &&
+        (!filter.session_id || row.session_id === filter.session_id) &&
+        (!filter.target_session_id || row.target_session_id === filter.target_session_id) &&
+        (!filter.message_id || row.message_id === filter.message_id) &&
+        (!filter.target_message_id || row.target_message_id === filter.target_message_id) &&
+        (!filter.status || row.status === filter.status);
+      const kept = this.snapshot.annotations.filter((row) => !scoped(row));
+      this.snapshot = { ...this.snapshot, annotations: [...kept, ...rows] };
+    } catch {
+      // Keep what is on screen.
+    }
+  }
+
+  async createAnnotation(input: CreateAnnotationRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return null;
+    try {
+      const row = await api.createAnnotation(input);
+      if (this.api !== api) return null;
+      // The event follows; showing the draft now spares the pane a flicker.
+      this.snapshot = { ...this.snapshot, annotations: [...this.snapshot.annotations.filter((a) => a.id !== row.id), row] };
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  async patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return null;
+    try {
+      const row = await api.patchAnnotation(id, patch);
+      if (this.api !== api) return null;
+      this.snapshot = { ...this.snapshot, annotations: this.snapshot.annotations.map((a) => (a.id === row.id ? row : a)) };
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  async deleteAnnotation(id: string): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return null;
+    try {
+      await api.deleteAnnotation(id);
+      if (this.api !== api) return null;
+      this.snapshot = { ...this.snapshot, annotations: this.snapshot.annotations.filter((a) => a.id !== id) };
+      if (this.annotationFocusId === id) this.annotationFocusId = null;
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  /**
+   * Send a batch: one reply the Mac composes, quoting the delivery and naming the Bot. The
+   * transcript follows the new message the way `send()` does; a batch that lands in another
+   * conversation (a Bot↔Bot artifact) takes you there.
+   */
+  async sendAnnotations(sessionId: string, summary: string, ids: string[]): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api || ids.length === 0) return null;
+    try {
+      const sent = await api.sendAnnotations({ session_id: sessionId, body: summary, annotation_ids: ids });
+      if (this.api !== api) return null;
+      const byId = new Map(sent.annotations.map((row) => [row.id, row]));
+      this.snapshot = {
+        ...this.snapshot,
+        annotations: this.snapshot.annotations.map((a) => byId.get(a.id) ?? a),
+      };
+      this.annotationFocusId = null;
+      if (sent.message.session_id === this.selectedId) {
+        this.pendingFocusTrigger = sent.message.id;
+        this.claimFocus(sent.message.id);
+        this.setHighlightedMessage(sent.message.id);
+      } else {
+        this.pendingFocusTrigger = sent.message.id;
+        void this.selectSession(sent.message.session_id, { messageId: sent.message.id });
+      }
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);

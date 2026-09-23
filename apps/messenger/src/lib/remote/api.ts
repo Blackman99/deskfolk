@@ -49,6 +49,11 @@ import type {
   TaskTrace,
   SessionTaskSummary,
   WorkspaceTreePage,
+  Annotation,
+  AnnotationFilter,
+  CreateAnnotationRequest,
+  PatchAnnotationRequest,
+  SendAnnotationsRequest,
 } from "@real-bot/protocol";
 import { isNonReceiptPath } from "@real-bot/protocol";
 import {
@@ -60,6 +65,7 @@ import {
   type RemoteResponse,
 } from "@real-bot/remote";
 import { ApiError, rememberBlobEtag } from "../api.ts";
+import { createAnnotation, listAnnotations, patchAnnotation, sendAnnotations, type SendAnnotationsResult } from "../annotations/client.ts";
 import type { FileProgressHandler } from "../file-progress.ts";
 import type { LocalEndpoint } from "../discovery.ts";
 import type { Snapshot } from "../snapshot.ts";
@@ -253,6 +259,7 @@ export class RemoteApi {
     for (const row of snapshot.memories) note("memories", row.id, row.updated_at);
     for (const row of snapshot.routines) note("routines", row.id, row.updated_at);
     for (const row of snapshot.allowRules) note("allow-rules", row.id, row.created_at);
+    if ("annotations" in snapshot) for (const row of snapshot.annotations) note("annotations", row.id, row.updated_at);
   }
   forgetResolvedRequest(id: string): void {
     for (const [key, row] of this.pending) if (row.id === id) {
@@ -552,6 +559,26 @@ export class RemoteApi {
   }
   async deleteMemory(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/memories/${id}`, this.revisionBody("memories", id));
+  }
+
+  // Annotations ----------------------------------------------------------------------------
+  listAnnotations(filter: AnnotationFilter & { target_session_id?: string } = {}): Promise<Annotation[]> {
+    return listAnnotations(this, filter);
+  }
+  createAnnotation(body: CreateAnnotationRequest): Promise<Annotation> {
+    return createAnnotation(this, body);
+  }
+  patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<Annotation> {
+    return patchAnnotation(this, id, this.withRevision("annotations", id, patch) as PatchAnnotationRequest);
+  }
+  async deleteAnnotation(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/annotations/${encodeURIComponent(id)}`, this.revisionBody("annotations", id));
+  }
+  sendAnnotations(body: SendAnnotationsRequest): Promise<SendAnnotationsResult> {
+    return sendAnnotations(this, body);
+  }
+  getAnnotationCropBlob(id: string): Promise<Blob> {
+    return this.fileBlob(`/v1/annotations/${encodeURIComponent(id)}/crop`);
   }
   async createMcpServer(body: {
     name: string; transport?: "stdio" | "http"; command?: string; args?: string[]; url?: string;

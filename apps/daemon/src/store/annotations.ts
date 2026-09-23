@@ -152,6 +152,7 @@ export function listAnnotations(ctx: StoreContext, filter: AnnotationFilter = {}
   };
   add("relpath", filter.relpath === undefined ? undefined : normalizeCitedPath(filter.relpath) ?? filter.relpath);
   add("session_id", filter.session_id);
+  add("target_session_id", filter.target_session_id);
   add("message_id", filter.message_id);
   add("target_message_id", filter.target_message_id);
   if (filter.status !== undefined && filter.status !== null && (filter.status as string) !== "") {

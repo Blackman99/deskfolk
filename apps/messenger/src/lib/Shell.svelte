@@ -46,6 +46,7 @@
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
 	import { handedOverPaths } from './overlays/artifacts.ts';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
+	import { deliveryFor, targetFromMessage } from './annotations/model.ts';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
 		clampPreviewWidth,
@@ -712,10 +713,12 @@
 			if (!id) return null;
 			const attachment = findAttachmentById(id);
 			if (!attachment) return null;
+			const owner = snapshot.messages.find((message) => message.id === attachment.message_id);
 			return {
 				relpath: attachment.workspace_relpath,
 				attachment,
 				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
+				target: targetFromMessage(owner) ?? targetFromMessage(deliveryFor(snapshot.messages, attachment.workspace_relpath, { sessionId: runtime.selectedId })),
 			};
 		}
 		const relpath = runtime.previewRelpath;
@@ -730,7 +733,12 @@
 			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
 			forceTree: runtime.forceArtifactTree,
 			// The entry opens the job's tree, not just this message's; older messages have none.
-			taskId: owner?.task_id ?? null
+			taskId: owner?.task_id ?? null,
+			// 挂到谁：the message this was opened from, else the latest Bot message in this
+			// conversation that handed the path over — in this job first.
+			target:
+				targetFromMessage(owner) ??
+				targetFromMessage(deliveryFor(snapshot.messages, relpath, { sessionId: runtime.selectedId, taskId: owner?.task_id ?? null }))
 		};
 	});
 
@@ -757,6 +765,7 @@
 		runtime.previewAttachmentId = null;
 		runtime.previewMessageId = null;
 		runtime.forceArtifactTree = false;
+		runtime.annotationFocusId = null;
 	}
 
 	function toggleWorkspaceExplorer(): void {
@@ -1202,6 +1211,18 @@
 			workspacePath={snapshot.settings.workspace_path}
 			forceTree={artifactPreview.forceTree}
 			taskId={artifactPreview.taskId}
+			target={artifactPreview.target}
+			annotations={snapshot.annotations}
+			annotationFocusId={runtime.annotationFocusId}
+			bots={botsById}
+			{locale}
+			sessions={snapshot.sessions}
+			viewedSessionId={runtime.selectedId}
+			onLoadAnnotations={(path) => void runtime.loadAnnotations({ relpath: path })}
+			onCreateAnnotation={(input) => runtime.createAnnotation(input)}
+			onPatchAnnotation={(id, patch) => runtime.patchAnnotation(id, patch)}
+			onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
+			onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
 			{t}
 			onClose={closeArtifactPreview}
 			onSelect={(att) =>

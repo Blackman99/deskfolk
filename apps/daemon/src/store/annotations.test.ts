@@ -316,6 +316,7 @@ describe("stale", () => {
     expect(w.store.listAnnotations({ relpath: "./report.md" })).toHaveLength(2);
     expect(w.store.listAnnotations({ target_message_id: w.delivery.id })).toHaveLength(2);
     expect(w.store.listAnnotations({ session_id: w.group })).toHaveLength(0);
+    expect(w.store.listAnnotations({ target_session_id: w.direct })).toHaveLength(2);
     expect(w.store.openAnnotationCount("report.md")).toBe(1);
     expect(() => w.store.listAnnotations({ status: "weird" as never })).toThrow(/status/);
   });

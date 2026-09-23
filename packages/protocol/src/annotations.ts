@@ -159,6 +159,8 @@ export type SendAnnotationsRequest = {
 export type AnnotationFilter = {
   relpath?: string;
   session_id?: string;
+  /** The session the deliveries were in — what a Bot↔Bot direct's view asks for. */
+  target_session_id?: string;
   message_id?: string;
   target_message_id?: string;
   status?: AnnotationStatus;

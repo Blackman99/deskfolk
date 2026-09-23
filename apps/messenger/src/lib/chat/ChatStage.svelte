@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary,
+		type Annotation,
+	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
+	import AnnotationCards from '../annotations/AnnotationCards.svelte';
+	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import {
@@ -94,6 +98,30 @@
 		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
 	);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
+	// Keyed by the message that carries them; a separate collection, so a batch's cards never
+	// touch the memoized message wrappers.
+	const annotationIndex = $derived(annotationsByMessage(snapshot.annotations));
+
+	function openAnnotation(row: Annotation): void {
+		runtime.annotationFocusId = row.id;
+		onOpenArtifact(row.relpath, undefined, row.target_message_id);
+	}
+
+	/** A batch routed into your direct names the Bot↔Bot session its artifact came from. */
+	function annotationSourceLabel(message: Message): string | null {
+		if (!message.annotation_source_message_id) return null;
+		const rows = annotationIndex.get(message.id) ?? [];
+		const sourceSession = rows[0] ? snapshot.sessions.find((s) => s.id === rows[0]!.target_session_id) : undefined;
+		return t.chat.annotationSource(sourceSession ? titleOf(sourceSession) : t.top.deleted);
+	}
+
+	function openAnnotationSource(message: Message): void {
+		const sourceId = message.annotation_source_message_id;
+		const rows = annotationIndex.get(message.id) ?? [];
+		const sessionId = rows[0]?.target_session_id;
+		if (!sourceId || !sessionId) return;
+		void runtime.selectSession(sessionId, { messageId: sourceId });
+	}
 
 	let composer = $state<{ focus: () => void } | null>(null);
 
@@ -1188,6 +1216,18 @@
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 												/>
 											{/if}
+											{#if annotationIndex.get(item.message.id)}
+												<AnnotationCards
+													annotations={annotationIndex.get(item.message.id) ?? []}
+													{t}
+													{locale}
+													bots={botsById}
+													onOpen={openAnnotation}
+													onToggleStatus={lockedComposer ? undefined : (row, status) => void runtime.patchAnnotation(row.id, { status })}
+													sourceLabel={annotationSourceLabel(item.message)}
+													onOpenSource={() => openAnnotationSource(item.message)}
+												/>
+											{/if}
 										</article>
 										{#if rxGroups.length > 0}
 											<div class="rx-row is-right flex flex-wrap gap-2 mt-2">
@@ -1486,6 +1526,18 @@
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
+												/>
+											{/if}
+											{#if annotationIndex.get(item.message.id)}
+												<AnnotationCards
+													annotations={annotationIndex.get(item.message.id) ?? []}
+													{t}
+													{locale}
+													bots={botsById}
+													onOpen={openAnnotation}
+													onToggleStatus={lockedComposer ? undefined : (row, status) => void runtime.patchAnnotation(row.id, { status })}
+													sourceLabel={annotationSourceLabel(item.message)}
+													onOpenSource={() => openAnnotationSource(item.message)}
 												/>
 											{/if}
 										</article>

@@ -1,7 +1,21 @@
 <script lang="ts">
-	import type { Attachment, TaskArtifacts } from '@real-bot/protocol';
+	import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary, TaskArtifacts, TextRangeAnchor } from '@real-bot/protocol';
+	import { describeAnchor } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { ApiError, etagForBlob } from '../api.ts';
+	import AnnotationList from '../annotations/AnnotationList.svelte';
+	import AnnotationSendBar from '../annotations/AnnotationSendBar.svelte';
+	import AnnotationComposer from '../annotations/AnnotationComposer.svelte';
+	import {
+		annotateGate,
+		annotationsForFile,
+		contentShaFromEtag,
+		destinationLabel,
+		draftsForView,
+		groupByDestination,
+		type AnnotationTarget,
+	} from '../annotations/model.ts';
+	import { anchorFromSelection, type EditorRange } from '../annotations/text-range.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import {
 		absWorkspacePath,
@@ -61,6 +75,20 @@
 		forceTree?: boolean;
 		/** The work dir this message belongs to; its whole job is listed, not just this message. */
 		taskId?: string | null;
+		/** 挂到谁：the Bot message this preview hangs on; null means nothing can be annotated here. */
+		target?: AnnotationTarget | null;
+		/** Every annotation the runtime holds; the pane keeps this file's. */
+		annotations?: Annotation[];
+		annotationFocusId?: string | null;
+		bots?: ReadonlyMap<string, { name: string }>;
+		locale?: 'zh' | 'en';
+		sessions?: SessionSummary[];
+		viewedSessionId?: string | null;
+		onLoadAnnotations?: (relpath: string) => void;
+		onCreateAnnotation?: (input: CreateAnnotationRequest) => Promise<ApiError | null>;
+		onPatchAnnotation?: (id: string, patch: PatchAnnotationRequest) => Promise<ApiError | null>;
+		onDeleteAnnotation?: (id: string) => Promise<ApiError | null>;
+		onSendAnnotations?: (sessionId: string, summary: string, ids: string[]) => Promise<ApiError | null>;
 	}
 
 	let {
@@ -76,6 +104,18 @@
 		onSelectWorkspacePath,
 		forceTree = false,
 		taskId = null,
+		target = null,
+		annotations = [],
+		annotationFocusId = null,
+		bots = new Map(),
+		locale = 'zh',
+		sessions = [],
+		viewedSessionId = null,
+		onLoadAnnotations,
+		onCreateAnnotation,
+		onPatchAnnotation,
+		onDeleteAnnotation,
+		onSendAnnotations,
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
@@ -108,12 +148,121 @@
 		findPrevious: () => void;
 		isFindOpen: () => boolean;
 		closeFind: () => boolean;
+		revealAnnotation: (id: string) => void;
 	} | null>(null);
 	let dirty = $state(false);
+	// Annotations: this file's rows, the list column, the composer for a new one, the send bar.
+	let annotOpen = $state(false);
+	let annotFocus = $state<string | null>(null);
+	let pendingAnchor = $state<{ range: EditorRange; anchor: TextRangeAnchor } | null>(null);
+	let annotBusy = $state(false);
+	let annotError = $state<string | null>(null);
+	let sendBusy = $state(false);
+	let sendError = $state<string | null>(null);
+	const fileAnnotations = $derived(annotationsForFile(annotations, relpath));
+	const annotDrafts = $derived(groupByDestination(draftsForView(annotations, viewedSessionId)));
+	let annotLoadedPath: string | null = null;
+	$effect(() => {
+		const path = relpath;
+		const load = onLoadAnnotations;
+		if (!path || !load || mode === 'workspace' && !path) return;
+		if (path === annotLoadedPath) return;
+		annotLoadedPath = path;
+		load(path);
+	});
+	$effect(() => {
+		const id = annotationFocusId;
+		if (!id) return;
+		annotFocus = id;
+		annotOpen = true;
+		untrack(() => editor?.revealAnnotation(id));
+	});
+	$effect(() => {
+		// A new file: the composer for the old one has nothing to hang on.
+		const path = relpath;
+		void path;
+		pendingAnchor = null;
+		annotError = null;
+	});
+
+	function offerAnnotation(range: EditorRange, value: string): void {
+		if (!gate.ok) return;
+		pendingAnchor = { range, anchor: anchorFromSelection(value, range) };
+		annotError = null;
+	}
+
+	async function saveDraft(body: string): Promise<void> {
+		const pending = pendingAnchor;
+		const sha = contentSha;
+		if (!pending || !target || !sha || !onCreateAnnotation) return;
+		annotBusy = true;
+		annotError = null;
+		const failed = await onCreateAnnotation({
+			target_message_id: target.messageId,
+			relpath,
+			anchor_kind: 'text_range',
+			anchor: pending.anchor,
+			content_sha256: sha,
+			body,
+		});
+		annotBusy = false;
+		if (failed) {
+			annotError = t.stream.annotationSaveFailed;
+			return;
+		}
+		pendingAnchor = null;
+		annotOpen = true;
+	}
+
+	async function editDraft(row: Annotation, body: string): Promise<void> {
+		if (!onPatchAnnotation) return;
+		annotBusy = true;
+		const failed = await onPatchAnnotation(row.id, { body });
+		annotBusy = false;
+		annotError = failed ? t.stream.annotationSaveFailed : null;
+	}
+
+	async function deleteDraft(row: Annotation): Promise<void> {
+		if (!onDeleteAnnotation) return;
+		annotBusy = true;
+		const failed = await onDeleteAnnotation(row.id);
+		annotBusy = false;
+		annotError = failed ? t.stream.annotationSaveFailed : null;
+	}
+
+	async function toggleAnnotation(row: Annotation, status: 'open' | 'resolved'): Promise<void> {
+		if (!onPatchAnnotation) return;
+		annotBusy = true;
+		const failed = await onPatchAnnotation(row.id, { status });
+		annotBusy = false;
+		annotError = failed ? t.stream.annotationSaveFailed : null;
+	}
+
+	function revealAnnotation(row: Annotation): void {
+		annotFocus = row.id;
+		editor?.revealAnnotation(row.id);
+	}
+
+	async function sendDrafts(sessionId: string, summary: string, ids: string[]): Promise<void> {
+		if (!onSendAnnotations) return;
+		sendBusy = true;
+		sendError = null;
+		const failed = await onSendAnnotations(sessionId, summary, ids);
+		sendBusy = false;
+		if (failed) sendError = t.stream.annotationSendFailed;
+	}
+
+	async function clearDrafts(ids: string[]): Promise<void> {
+		if (!onDeleteAnnotation) return;
+		sendBusy = true;
+		for (const id of ids) await onDeleteAnnotation(id);
+		sendBusy = false;
+	}
 	let saving = $state(false);
 	let saveError = $state(false);
 	let saveConflict = $state(false);
 	let loadedEtag = $state<string | null>(null);
+	const contentSha = $derived(contentShaFromEtag(loadedEtag));
 	let pendingNav = $state<null | { kind: 'close'; afterClose?: () => void } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
@@ -225,6 +374,7 @@
 	);
 	let canRemoteFile = $derived(remoteClient && Boolean(relpath) && kind !== 'directory' && !missing);
 	let canSave = $derived(Boolean(api && relpath && canShowSource && sourceMode && text !== null));
+	const gate = $derived(annotateGate({ target: mode === 'workspace' ? null : target, kind, sourceMode, dirty }));
 
 	$effect(() => {
 		const path = relpath;
@@ -682,6 +832,16 @@
 					{copied ? t.chat.copied : t.chat.copyCode}
 				</button>
 			{/if}
+			{#if mode !== 'workspace' && (fileAnnotations.length > 0 || gate.ok || (!gate.ok && gate.reason !== 'kind'))}
+				<button
+					type="button"
+					class="artifact-tool-btn artifact-annot-toggle"
+					class:is-on={annotOpen}
+					aria-pressed={annotOpen}
+					onclick={() => (annotOpen = !annotOpen)}
+					data-annotation-toggle
+				>{t.stream.annotationsTitle}{fileAnnotations.length > 0 ? ` (${fileAnnotations.length})` : ''}</button>
+			{/if}
 			{#if canOpenOnDisk}
 				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(false)}>{t.stream.artifactOpenSystem}</button>
 				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(true)}>{t.stream.artifactReveal}</button>
@@ -697,6 +857,15 @@
 	{/if}
 	{#if remoteClient}
 		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.settings.fileLimitRemote}</p>
+	{/if}
+	{#if mode !== 'workspace' && sourceMode && text !== null}
+		{#if gate.ok}
+			<p class="muted artifact-annot-hint pt-0 px-8 pb-3" data-annotation-hint>{t.stream.annotationAddHint}</p>
+		{:else if gate.reason === 'dirty'}
+			<p class="muted artifact-annot-hint pt-0 px-8 pb-3" data-annotation-hint="dirty">{t.stream.annotationDirtyHint}</p>
+		{:else if gate.reason === 'no-target'}
+			<p class="muted artifact-annot-hint pt-0 px-8 pb-3" data-annotation-hint="no-target">{t.stream.annotationNoTarget}</p>
+		{/if}
 	{/if}
 	{#if showTree}
 		<div class="artifact-picker">
@@ -755,6 +924,7 @@
 				onclick={() => (treeOpen = false)}
 			></button>
 		{/if}
+		<div class="artifact-body-with-annots flex-1 min-h-0 min-w-0 flex" class:has-annots={annotOpen && mode !== 'workspace'}>
 		<div
 			class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8"
 			class:is-editor={sourceMode && text !== null}
@@ -799,6 +969,12 @@
 						path={relpath}
 						{wrap}
 						onDirty={(next) => (dirty = next)}
+						annotations={fileAnnotations}
+						focusAnnotationId={annotFocus}
+						annotateEnabled={gate.ok && !pendingAnchor}
+						annotateLabel={t.stream.annotationAdd}
+						onAnnotate={offerAnnotation}
+						onPickAnnotation={(id) => { annotFocus = id; annotOpen = true; }}
 					/>
 				{/if}
 			{:else if kind === "image" || kind === "svg"}
@@ -838,8 +1014,52 @@
 			{#if openHint}
 				<p class="muted">{t.stream.artifactOpenUnavailable}</p>
 			{/if}
+			{#if pendingAnchor}
+				<div class="artifact-annot-composer">
+					<AnnotationComposer
+						{t}
+						position={describeAnchor('text_range', pendingAnchor.anchor, locale)}
+						busy={annotBusy}
+						error={annotError}
+						onSave={(body) => void saveDraft(body)}
+						onCancel={() => (pendingAnchor = null)}
+					/>
+				</div>
+			{/if}
+		</div>
+		{#if annotOpen && mode !== 'workspace'}
+			<div class="artifact-annot-col">
+				<AnnotationList
+					annotations={fileAnnotations}
+					{t}
+					{locale}
+					{bots}
+					focusId={annotFocus}
+					busy={annotBusy}
+					error={annotError}
+					onReveal={revealAnnotation}
+					onEdit={(row, body) => void editDraft(row, body)}
+					onDelete={(row) => void deleteDraft(row)}
+					onToggleStatus={(row, status) => void toggleAnnotation(row, status)}
+					onClose={() => (annotOpen = false)}
+				/>
+			</div>
+		{/if}
 		</div>
 	</div>
+	{#if mode !== 'workspace'}
+		{#each annotDrafts as group (group.sessionId)}
+			<AnnotationSendBar
+				count={group.drafts.length}
+				destination={destinationLabel(t, group.sessionId, viewedSessionId, bots, group.botIds, sessions)}
+				sending={sendBusy}
+				error={sendError}
+				{t}
+				onSend={(summary) => void sendDrafts(group.sessionId, summary, group.drafts.map((row) => row.id))}
+				onClear={() => void clearDrafts(group.drafts.map((row) => row.id))}
+			/>
+		{/each}
+	{/if}
 </aside>
 {#if pendingNav}
 	<div class="modal-backdrop confirm-backdrop" role="presentation">
@@ -923,6 +1143,30 @@
 
 	.artifact-pane-body {
 		position: relative;
+	}
+
+	.artifact-body-with-annots {
+		position: relative;
+	}
+	.artifact-annot-col {
+		width: min(300px, 45%);
+		flex-shrink: 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.artifact-annot-col :global(.annot-list) {
+		flex: 1;
+		min-height: 0;
+	}
+	.artifact-annot-composer {
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		z-index: 6;
+	}
+	.artifact-annot-hint {
+		font-size: 11.5px;
 	}
 
 	.artifact-pane-body.is-editor {
@@ -1202,6 +1446,23 @@
 		/* Dragging a divider is a mouse idea. */
 		.artifact-tree-split {
 			display: none;
+		}
+		/* The list of annotations sits under the file, not beside it. */
+		.artifact-body-with-annots {
+			flex-direction: column;
+		}
+		.artifact-body-with-annots.has-annots .artifact-pane-body {
+			flex: 1 1 55%;
+		}
+		.artifact-annot-col {
+			width: auto;
+			flex: 0 0 45%;
+			max-height: 45%;
+		}
+		.artifact-annot-composer {
+			top: 8px;
+			right: 8px;
+			left: 8px;
 		}
 	}
 </style>

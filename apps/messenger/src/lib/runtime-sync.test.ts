@@ -919,3 +919,58 @@ test("terminal bytes on the event socket do not drop the connection", async () =
   // And they landed where they belong rather than being thrown away.
   expect(runtime.activity.forTurn("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toHaveLength(1);
 });
+
+test("annotations: a draft made through the runtime, sent as one quoted reply, follows the events", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createHash } = await import("node:crypto");
+  const h = await credentialFixture("/v1/annotations");
+  const root = mkdtempSync(join(tmpdir(), "rb-annot-runtime-"));
+  fixtureCloses.push(async () => rmSync(root, { recursive: true, force: true }));
+  const text = "export const x = 1;\nexport const y = 2;\n";
+  writeFileSync(join(root, "pick.ts"), text);
+  h.store.patchSettingsSync({ workspace_path: root });
+  const { bot, direct_session } = h.store.createBot({ name: "Writer", duties: "", boundaries: "" });
+  const trigger = h.store.postMessage(direct_session.id, { body: "写个文件" });
+  const turn = h.store.createTurn({ sessionId: direct_session.id, botId: bot.id, triggerMessageId: trigger.id });
+  const delivery = h.store.insertMessage({ sessionId: direct_session.id, turnId: turn.id, kind: "bot", author: bot.id, body: "写好了", paths: ["pick.ts"] });
+  h.store.setTurnStatus(turn.id, "completed");
+  h.drain();
+  await h.runtime.selectSession(direct_session.id);
+  h.drain();
+
+  const sha = createHash("sha256").update(text).digest("hex");
+  const anchor = { start_line: 1, start_col: 14, end_line: 1, end_col: 15, quote: "x", prefix: "export const ", suffix: " = 1;" };
+  expect(await h.runtime.createAnnotation({ target_message_id: delivery.id, relpath: "pick.ts", anchor_kind: "text_range", anchor, content_sha256: sha, body: "换个名字" })).toBeNull();
+  expect(await h.runtime.createAnnotation({ target_message_id: delivery.id, relpath: "pick.ts", anchor_kind: "text_range", anchor: { ...anchor, start_line: 2, end_line: 2, quote: "y", prefix: "export const ", suffix: " = 2;" }, content_sha256: sha, body: "这个也换" })).toBeNull();
+  const upserts = h.drain().filter((frame) => frame.type === "event" && frame.payload.event === "annotation.upsert");
+  expect(upserts).toHaveLength(2);
+  const drafts = h.runtime.snapshot.annotations.filter((row) => row.status === "draft");
+  expect(drafts).toHaveLength(2);
+
+  // A reconnect-free reload of the file's annotations replaces, it does not duplicate.
+  await h.runtime.loadAnnotations({ relpath: "pick.ts" });
+  expect(h.runtime.snapshot.annotations).toHaveLength(2);
+
+  expect(await h.runtime.sendAnnotations(direct_session.id, "两处请改", drafts.map((row) => row.id))).toBeNull();
+  const frames = h.drain();
+  const created = frames.find((frame) => frame.type === "event" && frame.payload.event === "message.created");
+  expect(created).toBeDefined();
+  const message = (created as { payload: { id: string; parent_id: string | null; body: string } }).payload;
+  expect(message.parent_id).toBe(delivery.id);
+  expect(message.body).toBe("@Writer 两处请改");
+  const opened = h.runtime.snapshot.annotations;
+  expect(opened.every((row) => row.status === "open" && row.message_id === message.id)).toBe(true);
+  expect(h.requests.filter((r) => r.path === "/v1/annotations/send" && r.method === "POST")).toHaveLength(1);
+
+  // The user resolves one from the card; the event lands in the snapshot.
+  expect(await h.runtime.patchAnnotation(opened[0]!.id, { status: "resolved" })).toBeNull();
+  h.drain();
+  expect(h.runtime.snapshot.annotations.find((row) => row.id === opened[0]!.id)?.status).toBe("resolved");
+
+  // Clearing the conversation takes its annotations along.
+  h.store.clearSessionMessages(direct_session.id);
+  h.drain();
+  expect(h.runtime.snapshot.annotations).toEqual([]);
+});
