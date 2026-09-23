@@ -59,7 +59,9 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Interrupted',
     'Catch-up',
     'Terminal',
-    'Command stream'
+    'Command stream',
+    'Pane',
+    'Layout'
   ],
   models: [
     'Model endpoint',
