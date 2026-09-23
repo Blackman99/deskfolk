@@ -6,7 +6,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+- The website shows and documents remote access. The walkthrough gains an eleventh step: with the Mac's window hidden, a paired phone opens the group from the relay's page, sends `@Writer` a follow-up, and Writer starts on the Mac while the phone watches; reading it on the phone clears the Mac's Dock badge. The docs gain a Guides section with a Remote access page — what a paired device can do, deploying the relay, pointing a source-run Mac at it, pairing a phone, Web Push, and what the error states mean — built from the new `docs/remote-access.md` and `docs/remote-access.zh.md`. Both READMEs have a Remote access section, and the roadmap now says pairing uses a one-time code rather than a QR scan. Remote access is still experimental and off by default; a release build cannot pair yet.
 
 ## 0.1.0-rc.6 — 2026-09-24
 

@@ -6,7 +6,7 @@ import type { BotId, Dict } from '$lib/i18n';
  * (scene, beat) is a pure function, so jumping around while scrolling is safe.
  */
 
-export const SCENE_COUNT = 11; // 0 = hero, 1..10 = steps
+export const SCENE_COUNT = 12; // 0 = hero, 1..11 = steps
 
 /** Beat offsets in ms from scene activation. beat 0 = scene just activated. */
 export const SCENE_BEATS: readonly (readonly number[])[] = [
@@ -20,7 +20,8 @@ export const SCENE_BEATS: readonly (readonly number[])[] = [
   /* 7 artifact  */ [400, 1000, 2200, 3200],
   /* 8 flow      */ [400, 1100, 1800, 2800, 3500],
   /* 9 terminal  */ [400, 1200, 1900, 2600, 3300, 4600, 5400, 6200],
-  /* 10 tray     */ [500, 1100, 2300, 3700]
+  /* 10 tray     */ [500, 1100, 2300, 3700],
+  /* 11 remote   */ [400, 1300, 2300, 3100, 4700, 5300, 6000]
 ];
 
 export type Part = { type: 'text'; text: string } | { type: 'mention'; bot: BotId };
@@ -71,8 +72,12 @@ export type MockState = {
   preview: { edited: boolean; saved: boolean } | null;
   flow: { unfolded: boolean; coordinator: boolean };
   terminal: { lines: number } | null;
-  tray: { menu: boolean; banner: boolean } | null;
-  cursor: { target: string; click: boolean } | null;
+  /** `badge` is the Dock count: it outlives the banner and clears once the conversation is read. */
+  tray: { menu: boolean; banner: boolean; badge: boolean } | null;
+  /** A paired phone reaching the Mac through your own relay, while the window stays hidden. */
+  phone: { view: 'list' | 'chat'; composer: string | null } | null;
+  /** `touch` draws a fingertip instead of the pointer, for taps on the phone. */
+  cursor: { target: string; click: boolean; touch?: boolean } | null;
 };
 
 const EMPTY: MockState = {
@@ -96,6 +101,7 @@ const EMPTY: MockState = {
   flow: { unfolded: false, coordinator: false },
   terminal: null,
   tray: null,
+  phone: null,
   cursor: null
 };
 
@@ -116,6 +122,7 @@ function clone(s: MockState): MockState {
     flow: { ...s.flow },
     terminal: s.terminal ? { ...s.terminal } : null,
     tray: s.tray ? { ...s.tray } : null,
+    phone: s.phone ? { ...s.phone } : null,
     cursor: s.cursor ? { ...s.cursor } : null
   };
 }
@@ -345,12 +352,12 @@ function scene10(s: MockState, beat: number, t: Dict): MockState {
   if (beat >= 1) s.cursor = { target: 'window-close', click: true };
   if (beat >= 2) {
     s.cursor = null;
-    s.tray = { menu: false, banner: false };
+    s.tray = { menu: false, banner: false, badge: false };
   }
-  if (beat >= 3) s.tray = { menu: true, banner: false };
+  if (beat >= 3) s.tray = { menu: true, banner: false, badge: false };
   if (beat >= 4) {
     // Coordinator finishes while the window is away: a banner, and the Dock badge counts it.
-    s.tray = { menu: false, banner: true };
+    s.tray = { menu: false, banner: true, badge: true };
     dropReplying(items);
     items.push({
       kind: 'bot',
@@ -360,6 +367,30 @@ function scene10(s: MockState, beat: number, t: Dict): MockState {
       parts: [{ type: 'text', text: t.script.coordinatorClose }]
     });
   }
+  return s;
+}
+
+function scene11(s: MockState, beat: number, t: Dict): MockState {
+  const items = s.transcripts.research;
+  // The banner has gone by; the window stays hidden and the Mac keeps the work.
+  if (s.tray) s.tray = { ...s.tray, menu: false, banner: false };
+  if (beat >= 1) s.phone = { view: 'list', composer: null };
+  if (beat >= 2) s.cursor = { target: 'phone-row-research', click: true, touch: true };
+  if (beat >= 3) {
+    // Read on the phone, so the Mac's Dock stops counting it.
+    s.cursor = null;
+    s.phone = { view: 'chat', composer: null };
+    if (s.tray) s.tray.badge = false;
+  }
+  if (beat >= 4) s.phone = { view: 'chat', composer: t.script.phoneReply };
+  if (beat >= 5) s.cursor = { target: 'phone-send', click: true, touch: true };
+  if (beat >= 6) {
+    s.cursor = null;
+    s.phone = { view: 'chat', composer: null };
+    items.push({ kind: 'user', id: 'g6', text: t.script.phoneReply, time: '14:41' });
+  }
+  // Writer picks it up on the Mac; the phone only watches it run.
+  if (beat >= 7) items.push({ kind: 'replying', id: 'gr6', bots: ['writer'] });
   return s;
 }
 
@@ -393,7 +424,8 @@ const APPLIERS: ((s: MockState, beat: number, t: Dict) => MockState)[] = [
   scene7,
   scene8,
   scene9,
-  scene10
+  scene10,
+  scene11
 ];
 
 /** Final state after the last beat of `scene` (scene >= 1). */

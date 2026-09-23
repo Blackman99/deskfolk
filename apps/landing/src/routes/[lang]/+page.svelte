@@ -63,6 +63,7 @@
         <a class="text-link" href="{GITHUB_BLOB_MAIN}/docs/development.md" target="_blank" rel="noreferrer">{t.quickstart.linkDocs}</a>
         <a class="text-link" href="{base}/{lang}/manifesto">{t.quickstart.linkManifesto}</a>
         <a class="text-link" href="{base}/{lang}/roadmap">{t.quickstart.linkRoadmap}</a>
+        <a class="text-link" href="{base}/{lang}/remote">{t.quickstart.linkRemote}</a>
         <a class="text-link" href={GITHUB_URL} target="_blank" rel="noreferrer">{t.nav.github}</a>
       </div>
     </div>

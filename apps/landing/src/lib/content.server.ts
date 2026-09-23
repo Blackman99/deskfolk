@@ -86,9 +86,24 @@ function contextHref(lang: 'zh' | 'en', hash?: string, termTargets?: Record<stri
   return withBase(`/${lang}/manifesto`);
 }
 
+/** The site page a guide under docs/ is published as, keyed by its repository path. */
+const GUIDE_PAGES: Record<string, { lang: 'zh' | 'en'; path: string }> = {
+  'docs/remote-access.md': { lang: 'en', path: '/remote' },
+  'docs/remote-access.zh.md': { lang: 'zh', path: '/remote' }
+};
+
+/** Resolves a relative link in a file under `dir` to a repository path; other links are left alone. */
+function repoRelative(href: string, dir: string): string | null {
+  if (!dir || !href || href.startsWith('#') || href.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
+    return null;
+  }
+  return path.posix.normalize(path.posix.join(dir, href));
+}
+
 function sanitizeOptions(
   lang: 'zh' | 'en',
-  termTargets?: Record<string, string>
+  termTargets?: Record<string, string>,
+  dir = ''
 ): sanitizeHtml.IOptions {
   return {
     allowedTags: [
@@ -115,6 +130,8 @@ function sanitizeOptions(
     transformTags: {
       a: (_tagName, attribs) => {
         let href = attribs.href || '';
+        const resolved = repoRelative(href, dir);
+        if (resolved) href = resolved;
         const hashIdx = href.indexOf('#');
         const pathPart = hashIdx >= 0 ? href.slice(0, hashIdx) : href;
         const hash = hashIdx >= 0 ? href.slice(hashIdx + 1) : '';
@@ -129,7 +146,10 @@ function sanitizeOptions(
           pathPart === 'README.zh.md'
         ) {
           href = withBase(`/${lang}`);
-        } else if (pathPart.endsWith('.md') || pathPart.startsWith('docs/')) {
+        } else if (GUIDE_PAGES[pathPart]) {
+          const guide = GUIDE_PAGES[pathPart];
+          href = withBase(`/${guide.lang}${guide.path}`) + (hash ? `#${hash}` : '');
+        } else if (resolved || pathPart.endsWith('.md') || pathPart.startsWith('docs/')) {
           const cleanPath = href.replace(/^\.\//, '');
           href = `${GITHUB_BLOB_MAIN}/${cleanPath}`;
         }
@@ -171,10 +191,11 @@ function renderMarkdown(
   lang: 'zh' | 'en',
   toc: TocEntry[],
   termTargets?: Record<string, string>,
-  headingId?: (text: string, depth: number) => string | undefined
+  headingId?: (text: string, depth: number) => string | undefined,
+  dir = ''
 ): string {
   const rawHtml = createMarked(toc, headingId).parse(raw) as string;
-  return sanitizeHtml(rawHtml, sanitizeOptions(lang, termTargets));
+  return sanitizeHtml(rawHtml, sanitizeOptions(lang, termTargets, dir));
 }
 
 function stripLeadingH1(markdown: string): string {
@@ -254,8 +275,15 @@ export function getManifestoTopic(topic: ManifestoTopic, lang: 'zh' | 'en'): Doc
   };
 }
 
+/** Repository path of a document page's source, per language. */
+export function documentSource(docType: 'roadmap' | 'readme' | 'remote', lang: 'zh' | 'en'): string {
+  if (docType === 'roadmap') return 'ROADMAP.md';
+  if (docType === 'remote') return lang === 'en' ? 'docs/remote-access.md' : 'docs/remote-access.zh.md';
+  return lang === 'en' ? 'README.md' : 'README.zh.md';
+}
+
 export function getDocumentContent(
-  docType: 'manifesto' | 'roadmap' | 'readme',
+  docType: 'manifesto' | 'roadmap' | 'readme' | 'remote',
   lang: 'zh' | 'en' = 'zh'
 ): DocsDocument {
   if (docType === 'manifesto') {
@@ -263,9 +291,10 @@ export function getDocumentContent(
     return { title: 'CONTEXT.md', contentHtml: hub.preambleHtml, toc: hub.toc };
   }
 
-  const filename =
-    docType === 'roadmap' ? 'ROADMAP.md' : lang === 'en' ? 'README.md' : 'README.zh.md';
-  const raw = readRepoFile(filename);
+  const filename = documentSource(docType, lang);
+  const source = readRepoFile(filename);
+  // A guide's first line links its other language; the site's own switch does that job.
+  const raw = source?.replace(/^(#\s+.+\n+)\[[^\]\n]+\]\([^)\s]+\.md\)\s*\n+/, '$1') ?? null;
   if (!raw) {
     return {
       title: filename,
@@ -277,6 +306,7 @@ export function getDocumentContent(
   const titleMatch = raw.match(/^#\s+(.+)$/m);
   const title = titleMatch ? titleMatch[1].trim() : filename;
   const toc: TocEntry[] = [];
-  const contentHtml = renderMarkdown(raw, lang, toc, getTermTargets());
+  const dir = path.posix.dirname(filename);
+  const contentHtml = renderMarkdown(raw, lang, toc, getTermTargets(), undefined, dir === '.' ? '' : dir);
   return { title, contentHtml, toc };
 }
