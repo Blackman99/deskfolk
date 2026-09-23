@@ -76,11 +76,15 @@
 	import { activeSessionId, openContent } from './workbench/pane-open.ts';
 	import type { PaneContent } from './workbench/pane-content.ts';
 	import {
+		MENU_COMMANDS,
 		applyCommand,
 		isTypingTarget,
 		matchWorkbenchKey,
-		type CommandContext
+		type CommandContext,
+		type WorkbenchCommand
 	} from './workbench/workbench-commands.ts';
+	import { hideDesktopWindow, listenToWindow } from './tauri.ts';
+	import { allLeaves, emptyLayout as freshLayout } from './workbench/layout-tree.ts';
 	import {
 		closeTab as closeWorkbenchTab,
 		activateTab,
@@ -453,6 +457,35 @@
 		const params: Record<string, string> = terminalId ? { terminalId } : {};
 		commitLayout(replaceTabParams(layout, leafId, tabId, params));
 	}
+
+	function runWorkbenchCommand(command: WorkbenchCommand): void {
+		commitLayout(
+			applyCommand(layout, command, workbenchCommandContext(), (current, leafId, axis, side) =>
+				splitLeaf(current, leafId, axis, side, [], { leaf: freshPaneId(), branch: freshPaneId() })
+			)
+		);
+	}
+
+	/**
+	 * The native menu owns its accelerators, so a command picked there is handed to the page
+	 * rather than guessed at by it. ⌘W closes the tab in front of you and, once there is nothing
+	 * left to close, asks the window to hide — which is what 关窗 has always meant.
+	 */
+	$effect(() => {
+		if (!wide) return;
+		return listenToWindow('pane-command', (id) => {
+			if (id === 'pane-reset') {
+				commitLayout(freshLayout(freshPaneId()));
+				return;
+			}
+			if (id === 'pane-close-tab' && allLeaves(layout).every((leaf) => leaf.tabs.length === 0)) {
+				void hideDesktopWindow();
+				return;
+			}
+			const command = typeof id === 'string' ? MENU_COMMANDS[id] : undefined;
+			if (command) runWorkbenchCommand(command);
+		});
+	});
 
 	function workbenchCommandContext(): CommandContext {
 		return {
@@ -1253,11 +1286,7 @@
 			const command = matchWorkbenchKey(e);
 			if (command) {
 				e.preventDefault();
-				commitLayout(
-					applyCommand(layout, command, workbenchCommandContext(), (current, leafId, axis, side) =>
-						splitLeaf(current, leafId, axis, side, [], { leaf: freshPaneId(), branch: freshPaneId() })
-					)
-				);
+				runWorkbenchCommand(command);
 			}
 		}
 	}}

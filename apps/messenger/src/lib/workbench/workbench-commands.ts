@@ -27,6 +27,15 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 /** How far a keyboard nudge moves a divider. The accessible equivalent of dragging one. */
 export const WB_KEY_RESIZE_PX = 16;
 
+/** The menu ids the window sends over, and what each one means here. */
+export const MENU_COMMANDS: Readonly<Record<string, WorkbenchCommand>> = {
+  "pane-split-right": { kind: "split", axis: "row", side: "after" },
+  "pane-split-down": { kind: "split", axis: "column", side: "after" },
+  "pane-close": { kind: "close-pane" },
+  "pane-equalise": { kind: "equalise" },
+  "pane-close-tab": { kind: "close-tab" },
+};
+
 export type WorkbenchCommand =
   | { kind: "split"; axis: Axis; side: "before" | "after" }
   | { kind: "close-tab" }

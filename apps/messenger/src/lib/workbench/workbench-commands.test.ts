@@ -3,6 +3,7 @@ import type { MinSizeLookup, NodeId, Rect, WorkbenchLayout, WorkbenchTab } from 
 import { makeBranch, makeLeaf, leafById, splitLeaf, tiledLeaves } from "./layout-tree.ts";
 import { computeGeometry } from "./layout-geometry.ts";
 import {
+  MENU_COMMANDS,
   TYPING_TARGETS,
   WB_KEY_RESIZE_PX,
   applyCommand,
@@ -153,4 +154,18 @@ test("equalise evens out the division the focused pane belongs to", () => {
   // One pane on its own belongs to no division.
   const alone = layoutOf(makeLeaf("a", [aTab("t1")]));
   expect(applyCommand(alone, { kind: "equalise" }, ctx(), split)).toBe(alone);
+});
+
+test("every menu id the window sends maps to a command", () => {
+  // The ids live in two places by necessity — Rust builds the menu, this answers it — so the
+  // shapes are pinned rather than trusted.
+  expect(Object.keys(MENU_COMMANDS).sort()).toEqual([
+    "pane-close",
+    "pane-close-tab",
+    "pane-equalise",
+    "pane-split-down",
+    "pane-split-right",
+  ]);
+  expect(MENU_COMMANDS["pane-split-right"]).toEqual({ kind: "split", axis: "row", side: "after" });
+  expect(MENU_COMMANDS["pane-split-down"]).toEqual({ kind: "split", axis: "column", side: "after" });
 });

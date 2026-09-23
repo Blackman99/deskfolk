@@ -22,7 +22,7 @@ use local_api::{endpoint_from_descriptor, probe_bind, stop_latch_present, BIND_P
 use supervisor::{launched_hidden, Action, Endpoint, Probe, QuitPlan, Supervisor};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, LogicalSize, Manager, PhysicalSize, RunEvent, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalSize, RunEvent, Window, WindowEvent};
 use updates::UpdateCheck;
 
 struct AppState {
@@ -144,6 +144,16 @@ fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
     {
         let _ = reveal;
         Err("open with system is only on macOS".into())
+    }
+}
+
+/// Put the window away, the way the close button does. The messenger asks for this when ⌘W finds
+/// no tab left to close, so 关窗 still means 隐藏到托盘 rather than quitting.
+#[tauri::command]
+fn hide_main_window(app: AppHandle) {
+    persist_main_window(&app);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
     }
 }
 
@@ -432,6 +442,7 @@ fn stage_from_mount(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]
@@ -467,6 +478,7 @@ pub fn run() {
             pick_workspace_folder,
             open_workspace_path,
             app_version,
+            hide_main_window,
             check_for_update,
             open_external_url,
             set_launch_at_login,
@@ -515,6 +527,9 @@ pub fn run() {
             "quit" => begin_quit(app),
             "show" => show_main(app),
             "stop" => request_stop(app),
+            // The pane commands belong to the messenger: it holds the arrangement, so it is the
+            // only thing that can say what "close this" means right now.
+            id if id.starts_with("pane-") => send_pane_command(app, id),
             _ => {}
         })
         .build(app_context())
@@ -540,6 +555,19 @@ pub fn run() {
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}
     });
+}
+
+/**
+ * Hand a pane command to the messenger.
+ *
+ * Nothing is decided here: the window does not know how many panes there are or which one the
+ * keyboard is in. When ⌘W finds nothing left to close the messenger asks for the window to hide,
+ * which is the behaviour 关窗 has always had.
+ */
+fn send_pane_command(app: &AppHandle, id: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("pane-command", id);
+    }
 }
 
 fn install_menus(app: &AppHandle) -> tauri::Result<()> {
@@ -568,6 +596,22 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::select_all(app, None)?,
         ],
     )?;
+    let view = Submenu::with_items(
+        app,
+        "视图",
+        true,
+        &[
+            &MenuItem::with_id(app, "pane-split-right", "向右分割", true, Some("CmdOrCtrl+\\"))?,
+            &MenuItem::with_id(app, "pane-split-down", "向下分割", true, Some("CmdOrCtrl+Shift+\\"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "pane-close", "关闭窗格", true, None::<&str>)?,
+            &MenuItem::with_id(app, "pane-equalise", "平分", true, None::<&str>)?,
+            &MenuItem::with_id(app, "pane-reset", "重置布局", true, None::<&str>)?,
+        ],
+    )?;
+    // ⌘W closes the tab in front of you. The window still hides to the tray, but only once there
+    // is nothing left to close — the webview answers first and asks for the hide itself, so the
+    // locked behaviour of 关窗 survives with a step in front of it.
     let window = Submenu::with_items(
         app,
         "窗口",
@@ -575,10 +619,10 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
+            &MenuItem::with_id(app, "pane-close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?,
         ],
     )?;
-    app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &window])?)?;
+    app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &view, &window])?)?;
     Ok(())
 }
 
