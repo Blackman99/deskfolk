@@ -7,7 +7,14 @@
 	import { copyText, readClipboardText } from '../clipboard.ts';
 	import { openExternalLink } from '../open-link.ts';
 	import { registerPaneEdit } from '../workbench/pane-edit.ts';
-	import { macEditingBytes, terminalShortcut, type TerminalShortcut } from './terminal-keys.ts';
+	import {
+		arrowBytes,
+		controlByte,
+		macEditingBytes,
+		terminalShortcut,
+		type Arrow,
+		type TerminalShortcut
+	} from './terminal-keys.ts';
 	import {
 		documentTheme,
 		findDecorations,
@@ -27,8 +34,10 @@
 		pickActive,
 		startCursor,
 		statusLabel,
-		TERMINAL_KEYS,
+		TERMINAL_KEY_ROWS,
 		terminalNames,
+		tildePath,
+		type PhoneKey,
 		type StreamCursor
 	} from './terminals.ts';
 
@@ -70,6 +79,18 @@
 	/** The session an "end this" is waiting on confirmation for. Ending one stops what it runs. */
 	let endConfirmId = $state<string | null>(null);
 
+	/** The phone page's two menus: the session list under the title, and ⋯. */
+	let switcherOpen = $state(false);
+	let moreOpen = $state(false);
+	/** The bar's Ctrl: on for the next key, from the bar or the software keyboard, then off. */
+	let ctrlArmed = $state(false);
+	/** Whether the shell has the keyboard. On a phone that is whether the software keyboard is up. */
+	let keyboardUp = $state(false);
+	/** An arrow held down on the bar repeats, as a key on a keyboard does. */
+	let holdTimer: ReturnType<typeof setTimeout> | null = null;
+	/** The press already sent this key on the way down; the click that ends it must not again. */
+	let sentOnPress: string | null = null;
+
 	let host = $state<HTMLDivElement>();
 	let activeId = $state<string | null>(null);
 	let error = $state<string | null>(null);
@@ -87,7 +108,10 @@
 	let stopTheme: (() => void) | null = null;
 	let stopEdit: (() => void) | null = null;
 	let stopQuiet: (() => void) | null = null;
-	/** What pressed last, read by a link's activation: that arrives as a plain mouse event either way. */
+	/**
+	 * What pressed last anywhere in the pane: a link's activation arrives as a plain mouse event
+	 * either way, and a finger is what must not be handed a keyboard it did not ask for.
+	 */
 	let lastPointer = 'mouse';
 	let unwatch: (() => void) | null = null;
 	let cursor: StreamCursor = startCursor();
@@ -187,15 +211,24 @@
 		const quiet = silenceRequests(term.parser, () => replaying || daemonAnswers);
 		stopQuiet = () => quiet.dispose();
 		term.open(host);
-		host.addEventListener('pointerdown', (event) => (lastPointer = event.pointerType), { capture: true });
 		loadGpuRenderer(term, WebglAddon);
 		fit.fit();
 		term.onData((data) => {
 			// Typing here takes the size back from the phone, or whichever other client last
 			// showed this session: the pty fits the screen you are using, as tmux's "latest" does.
 			if (active && term && (active.rows !== term.rows || active.cols !== term.cols)) resizeToFit();
+			// The bar's Ctrl applies to one key typed on the software keyboard. A paste or a
+			// composed word is not a key, and leaves it on for the key that comes after.
+			if (ctrlArmed && data.length === 1) {
+				ctrlArmed = false;
+				data = controlByte(data) ?? data;
+			}
 			// Bytes, not keystrokes: `^C` is 0x03 and the pty's line discipline owns what that means.
 			input?.push(new TextEncoder().encode(data));
+		});
+		host.addEventListener('focusin', () => (keyboardUp = true));
+		host.addEventListener('focusout', (event) => {
+			if (!(event.relatedTarget instanceof Node && host?.contains(event.relatedTarget))) keyboardUp = false;
 		});
 		term.attachCustomKeyEventHandler(onTerminalKey);
 		stopFit = onPaneResize(host, () => resizeToFit());
@@ -216,6 +249,7 @@
 	});
 
 	onDestroy(() => {
+		releaseKey();
 		stopFit?.();
 		stopFit = null;
 		stopTheme?.();
@@ -338,7 +372,16 @@
 		findOpen = false;
 		findResult = null;
 		search?.clearDecorations();
-		term?.focus();
+		if (!touchFirst()) term?.focus();
+	}
+
+	/**
+	 * Whether what just happened was a finger. Handing the shell the focus then raises the
+	 * software keyboard over half the screen, so after a tap only a tap on the terminal itself, or
+	 * the bar's keyboard key, does it.
+	 */
+	function touchFirst(): boolean {
+		return lastPointer === 'touch';
 	}
 
 	/** 0 is as you type: stay on the match you are on if it still matches. */
@@ -373,11 +416,101 @@
 		}
 	}
 
-	/** Paste from the right-click menu. Into the shell as a paste, so bracketed-paste mode holds. */
-	async function pasteClipboard(): Promise<void> {
+	/**
+	 * Paste from the right-click menu or the phone's bar. Into the shell as a paste, so
+	 * bracketed-paste mode holds. The bar's leaves the keyboard as it was.
+	 */
+	async function pasteClipboard(refocus = true): Promise<void> {
 		const text = await readClipboardText();
 		if (text && term && active?.status === 'live') term.paste(text);
-		term?.focus();
+		if (refocus) term?.focus();
+	}
+
+	/**
+	 * A key on the phone's bar. It never takes the focus: the bar stops the press from moving it,
+	 * and nothing here hands it to the shell, so a tap with the keyboard down leaves it down and
+	 * one with it up leaves it up. The keyboard key is the one that changes that, on purpose.
+	 */
+	function pressKey(key: PhoneKey): void {
+		switch (key.kind) {
+			case 'ctrl':
+				ctrlArmed = !ctrlArmed;
+				return;
+			case 'keyboard':
+				if (keyboardUp) term?.blur();
+				else term?.focus();
+				return;
+			case 'paste':
+				void pasteClipboard(false);
+				return;
+			case 'arrow':
+				sendArrow(key.arrow, takeCtrl());
+				return;
+			case 'bytes':
+				// Its own bytes already say what it is; Ctrl-Esc and Ctrl-Tab have no other meaning.
+				takeCtrl();
+				input?.push(new TextEncoder().encode(key.bytes));
+				return;
+		}
+	}
+
+	function takeCtrl(): boolean {
+		const was = ctrlArmed;
+		ctrlArmed = false;
+		return was;
+	}
+
+	function sendArrow(arrow: Arrow, ctrl: boolean): void {
+		const application = term?.modes.applicationCursorKeysMode ?? false;
+		input?.push(new TextEncoder().encode(arrowBytes(arrow, { application, ctrl })));
+	}
+
+	/** An arrow goes on the way down and then repeats while held; the click at the end is spent. */
+	function holdKey(event: PointerEvent, key: PhoneKey): void {
+		sentOnPress = null;
+		if (key.kind !== 'arrow' || event.button !== 0) return;
+		releaseKey();
+		const ctrl = takeCtrl();
+		sendArrow(key.arrow, ctrl);
+		sentOnPress = key.id;
+		const repeat = (delay: number) => {
+			holdTimer = setTimeout(() => {
+				sendArrow(key.arrow, ctrl);
+				repeat(60);
+			}, delay);
+		};
+		repeat(400);
+	}
+
+	function releaseKey(): void {
+		if (holdTimer) clearTimeout(holdTimer);
+		holdTimer = null;
+	}
+
+	function clickKey(key: PhoneKey): void {
+		if (sentOnPress === key.id) {
+			sentOnPress = null;
+			return;
+		}
+		pressKey(key);
+	}
+
+	/** Anything but the bar and the menus closes the menus, the terminal included. */
+	function onWindowClick(event: MouseEvent): void {
+		if (!switcherOpen && !moreOpen) return;
+		const target = event.target instanceof Element ? event.target : null;
+		if (switcherOpen && !target?.closest('.terminal-switch')) switcherOpen = false;
+		if (moreOpen && !target?.closest('.terminal-more')) closeMore();
+	}
+
+	function closeMore(): void {
+		moreOpen = false;
+		endConfirmId = null;
+	}
+
+	function fromMenu(action: () => void): void {
+		closeMore();
+		action();
 	}
 
 	/** The pane's own tokens as they resolve right now, so the terminal is the pane it sits in. */
@@ -528,7 +661,7 @@
 			// A tab that had no session is this one's now; the phone's page just switches to it.
 			if (single) onBind?.(created.id);
 			await activate(created.id);
-			term?.focus();
+			if (!touchFirst()) term?.focus();
 		} catch (cause) {
 			report(cause);
 		} finally {
@@ -567,9 +700,151 @@
 	});
 </script>
 
-<div class="terminal-pane">
+<svelte:window onclick={onWindowClick} />
+
+<div
+	class="terminal-pane"
+	class:is-gathered={!single}
+	onpointerdowncapture={(event) => (lastPointer = event.pointerType)}
+>
 	<header class="terminal-head">
-		{#if single}
+		{#if !single}
+			<!--
+				The phone's page, one screen high: Back, which shell this is and where, a new one, and
+				everything else behind ⋯. The tabs a desktop has would not fit a thumb's width here, so
+				the title is the switch between them.
+			-->
+			<button type="button" class="terminal-icon terminal-back" aria-label={t.common.back} title={t.common.back} onclick={onClose}>
+				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			</button>
+			<div class="terminal-switch">
+				<button
+					type="button"
+					class="terminal-title"
+					aria-haspopup="menu"
+					aria-expanded={switcherOpen}
+					aria-label={t.terminal.sessions}
+					disabled={ordered.length < 2}
+					onclick={() => {
+						closeMore();
+						switcherOpen = !switcherOpen;
+					}}
+				>
+					<span class="terminal-title-name">
+						<span class="terminal-title-text">{active ? (names.get(active.id) ?? active.title) : t.terminal.title}</span>
+						{#if ordered.length > 1}
+							<span class="terminal-title-count">{ordered.length}</span>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+						{/if}
+					</span>
+					{#if active}
+						{@const label = statusLabel(active, t)}
+						<span class="terminal-title-where" title={active.cwd}>
+							{tildePath(active.cwd)}{#if label}<span class="terminal-tab-status"> · {label}</span>{/if}
+						</span>
+					{/if}
+				</button>
+				{#if switcherOpen}
+					<div class="terminal-menu terminal-sessions" role="menu" aria-label={t.terminal.sessions}>
+						{#each ordered as row (row.id)}
+							{@const label = statusLabel(row, t)}
+							<button
+								type="button"
+								role="menuitemradio"
+								aria-checked={row.id === activeId}
+								class="terminal-tab"
+								class:is-active={row.id === activeId}
+								class:is-done={row.status !== 'live'}
+								title={row.cwd}
+								onclick={() => {
+									switcherOpen = false;
+									void activate(row.id);
+								}}
+							>
+								<span class="terminal-tab-name">{names.get(row.id) ?? row.title}</span>
+								<span class="terminal-tab-where">{tildePath(row.cwd)}{#if label} · {label}{/if}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+			<button
+				type="button"
+				class="terminal-icon terminal-add"
+				aria-label={t.terminal.newTab}
+				title={t.terminal.newTab}
+				disabled={!workspacePath || busy}
+				onclick={() => {
+					switcherOpen = false;
+					closeMore();
+					void create();
+				}}
+			>
+				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+			</button>
+			{#if active}
+				<div class="terminal-more">
+					<button
+						type="button"
+						class="terminal-icon"
+						class:is-active={moreOpen}
+						aria-haspopup="menu"
+						aria-expanded={moreOpen}
+						aria-label={t.terminal.more}
+						title={t.terminal.more}
+						onclick={() => {
+							switcherOpen = false;
+							if (moreOpen) closeMore();
+							else moreOpen = true;
+						}}
+					>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+					</button>
+					{#if moreOpen}
+						<div class="terminal-menu" role="menu" aria-label={t.terminal.more}>
+							{#if active.status === 'live'}
+								<button type="button" role="menuitem" onclick={() => fromMenu(() => void stop())}>{t.terminal.stop}</button>
+							{/if}
+							<button type="button" role="menuitem" onclick={() => fromMenu(openFind)}>{t.terminal.find}</button>
+							<button type="button" role="menuitem" onclick={() => fromMenu(() => runShortcut('clear'))}>{t.terminal.clear}</button>
+							<!-- Stays open: text size is something you step until it looks right. -->
+							<div class="terminal-menu-font" role="group" aria-label={t.terminal.fontSize}>
+								<span>{t.terminal.fontSize}</span>
+								<button type="button" aria-label={t.terminal.fontSmaller} title={t.terminal.fontSmaller} onclick={() => terminalFontSize.step(-1)}>A−</button>
+								<span class="terminal-menu-font-size">{terminalFontSize.current}</span>
+								<button type="button" aria-label={t.terminal.fontBigger} title={t.terminal.fontBigger} onclick={() => terminalFontSize.step(1)}>A+</button>
+							</div>
+							<div class="terminal-menu-sep" role="separator"></div>
+							{#if endConfirmId === active.id}
+								<p class="terminal-confirm">{t.terminal.endConfirm}</p>
+								<div class="terminal-menu-confirm">
+									<button type="button" onclick={closeMore}>{t.detail.cancel}</button>
+									<button
+										type="button"
+										class="terminal-end is-armed"
+										onclick={() => {
+											const id = active.id;
+											closeMore();
+											void close(id);
+										}}>{t.terminal.end}</button
+									>
+								</div>
+							{:else}
+								<button
+									type="button"
+									role="menuitem"
+									class="terminal-end"
+									onclick={() => {
+										if (active.status === 'live') endConfirmId = active.id;
+										else fromMenu(() => void close(active.id));
+									}}>{t.terminal.end}</button
+								>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
+		{:else}
 			<!-- The tab above already carries the title; here is where the shell is and how it is. -->
 			<div class="terminal-where">
 				{#if active}
@@ -578,66 +853,40 @@
 					{#if label}<span class="terminal-tab-status">{label}</span>{/if}
 				{/if}
 			</div>
-		{:else}
-			<div class="terminal-tabs">
-				{#each ordered as row (row.id)}
-					{@const label = statusLabel(row, t)}
-					<button
-						type="button"
-						class="terminal-tab"
-						class:is-active={row.id === activeId}
-						class:is-done={row.status !== 'live'}
-						title={row.cwd}
-						onclick={() => activate(row.id)}
-					>
-						<span class="terminal-tab-name">{names.get(row.id) ?? row.title}</span>
-						{#if label}<span class="terminal-tab-status">{label}</span>{/if}
-					</button>
-				{/each}
-				<button
-					type="button"
-					class="terminal-new"
-					disabled={!workspacePath || busy}
-					onclick={create}>{t.terminal.newSession}</button
-				>
+		{/if}
+		{#if single}
+			<div class="terminal-actions">
+				{#if active?.status === 'live'}
+					<button type="button" class="terminal-stop" onclick={stop}>{t.terminal.stop}</button>
+				{/if}
+				{#if active}
+					{#if endConfirmId === active.id}
+						<span class="terminal-confirm">{t.terminal.endConfirm}</span>
+						<button
+							type="button"
+							class="terminal-end is-armed"
+							onclick={() => {
+								const id = active.id;
+								endConfirmId = null;
+								void close(id);
+							}}>{t.terminal.end}</button
+						>
+						<button type="button" class="terminal-new" onclick={() => (endConfirmId = null)}
+							>{t.detail.cancel}</button
+						>
+					{:else}
+						<button
+							type="button"
+							class="terminal-end"
+							onclick={() => {
+								if (active.status === 'live') endConfirmId = active.id;
+								else void close(active.id);
+							}}>{t.terminal.end}</button
+						>
+					{/if}
+				{/if}
 			</div>
 		{/if}
-		<div class="terminal-actions">
-			{#if active?.status === 'live'}
-				<button type="button" class="terminal-stop" onclick={stop}>{t.terminal.stop}</button>
-			{/if}
-			{#if active}
-				{#if endConfirmId === active.id}
-					<span class="terminal-confirm">{t.terminal.endConfirm}</span>
-					<button
-						type="button"
-						class="terminal-end is-armed"
-						onclick={() => {
-							const id = active.id;
-							endConfirmId = null;
-							void close(id);
-						}}>{t.terminal.end}</button
-					>
-					<button type="button" class="terminal-new" onclick={() => (endConfirmId = null)}
-						>{t.detail.cancel}</button
-					>
-				{:else}
-					<button
-						type="button"
-						class="terminal-end"
-						onclick={() => {
-							if (active.status === 'live') endConfirmId = active.id;
-							else void close(active.id);
-						}}>{t.terminal.end}</button
-					>
-				{/if}
-			{/if}
-			{#if tabIds === 'all'}
-				<button type="button" class="terminal-close" aria-label={t.common.close} onclick={onClose}
-					>✕</button
-				>
-			{/if}
-		</div>
 	</header>
 
 	{#if !workspacePath}
@@ -688,18 +937,60 @@
 
 	{#if showing}
 		<!--
-			A software keyboard has no Ctrl, no Tab, no arrows and no Escape, so without this row
-			a phone could watch a command run but never stop one. Bytes straight into the queue.
+			A software keyboard has no Ctrl, no Tab, no arrows and no Escape, so without this bar a
+			phone could watch a command run but never stop one. Bytes straight into the queue. The
+			press is kept from moving the focus: a tap on a key must not raise the keyboard, nor
+			drop it when it is up.
 		-->
-		<div class="terminal-keys" aria-label={t.terminal.keys}>
-			{#each TERMINAL_KEYS as key (key.id)}
-				<button
-					type="button"
-					onclick={() => {
-						input?.push(new TextEncoder().encode(key.bytes));
-						term?.focus();
-					}}>{key.label}</button
-				>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="terminal-keys"
+			role="toolbar"
+			tabindex="-1"
+			aria-label={t.terminal.keys}
+			onmousedown={(event) => event.preventDefault()}
+			ontouchstart={() => {}}
+		>
+			{#each TERMINAL_KEY_ROWS as keys, row (row)}
+				<div class="terminal-keys-row">
+					{#each keys as key (key.id)}
+						<button
+							type="button"
+							class="terminal-key"
+							class:is-action={key.kind === 'paste' || key.kind === 'keyboard'}
+							class:is-glyph={'label' in key && key.label.length === 1}
+							class:is-armed={key.kind === 'ctrl' && ctrlArmed}
+							aria-pressed={key.kind === 'ctrl' ? ctrlArmed : key.kind === 'keyboard' ? keyboardUp : undefined}
+							aria-label={key.kind === 'paste'
+								? t.terminal.paste
+								: key.kind === 'keyboard'
+									? keyboardUp
+										? t.terminal.hideKeyboard
+										: t.terminal.showKeyboard
+									: key.kind === 'ctrl'
+										? t.terminal.ctrl
+										: undefined}
+							data-key={key.id}
+							onpointerdown={(event) => holdKey(event, key)}
+							onpointerup={releaseKey}
+							onpointercancel={releaseKey}
+							onpointerleave={releaseKey}
+							onclick={() => clickKey(key)}
+						>
+							{#if key.kind === 'paste'}
+								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
+							{:else if key.kind === 'keyboard'}
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<rect x="2" y="4" width="20" height="12" rx="2"></rect>
+									<path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M7 12h10"></path>
+									{#if keyboardUp}<polyline points="9 19 12 22 15 19"></polyline>{:else}<polyline points="9 22 12 19 15 22"></polyline>{/if}
+								</svg>
+							{:else}
+								{key.label}
+							{/if}
+						</button>
+					{/each}
+				</div>
 			{/each}
 		</div>
 	{/if}
@@ -738,44 +1029,6 @@
 		border-bottom: 1px solid var(--line);
 	}
 
-	.terminal-tabs {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		/* The tabs give way to the actions; a Stop button broken across two lines is not a button. */
-		min-width: 0;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.terminal-tab {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 4px 8px;
-		border: 1px solid transparent;
-		border-radius: 6px;
-		background: transparent;
-		color: var(--muted);
-		font-size: 12px;
-		white-space: nowrap;
-		cursor: pointer;
-	}
-
-	.terminal-tab.is-active {
-		background: var(--chip);
-		color: var(--ink);
-	}
-
-	.terminal-tab.is-done {
-		opacity: 0.6;
-	}
-
-	.terminal-tab-status {
-		font-size: 11px;
-		opacity: 0.75;
-	}
-
 	/* Where a tab's shell is. The tab above names it; the path is what tells two apart. */
 	.terminal-where {
 		display: flex;
@@ -795,8 +1048,7 @@
 	}
 
 	.terminal-new,
-	.terminal-stop,
-	.terminal-close {
+	.terminal-stop {
 		flex: 0 0 auto;
 		padding: 4px 8px;
 		white-space: nowrap;
@@ -894,11 +1146,6 @@
 		color: var(--ink);
 	}
 
-	/* Desktop has a real keyboard; this row is for the phone. */
-	.terminal-keys {
-		display: none;
-	}
-
 	.terminal-empty {
 		padding: 24px 16px;
 		color: var(--muted);
@@ -918,53 +1165,353 @@
 		font-size: 12px;
 	}
 
-	@media (max-width: 720px) {
-		.terminal-pane {
-			width: 100vw;
-			height: 100dvh;
-			border-left: none;
-		}
+	/* A real keyboard has all of these; the bar is for a finger. */
+	.terminal-keys {
+		display: none;
+	}
 
-		/* The notch above, the home indicator below, and a gutter the text is not pressed against. */
-		.terminal-head {
-			padding: calc(6px + env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px
-				max(8px, env(safe-area-inset-left));
-		}
+	/* The phone's page: Back, the shell and where it is, a new one, and ⋯. */
+	.is-gathered .terminal-head {
+		position: relative;
+		/* Over the terminal, so the menus that drop from it are too. */
+		z-index: 10;
+		justify-content: flex-start;
+		gap: 2px;
+		min-height: 56px;
+		/* The notch above, and the rounded corners on either side in landscape. */
+		padding: env(safe-area-inset-top) max(4px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left));
+	}
 
-		/* A thumb, not a mouse: the same 44px every other target on a phone screen gets. */
-		.terminal-tab,
-		.terminal-new,
-		.terminal-stop,
-		.terminal-close {
-			min-height: 44px;
-		}
+	/* A thumb, not a mouse: the same 44px every other target on a phone screen gets. */
+	.terminal-icon {
+		flex: 0 0 auto;
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink-secondary);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
 
-		.terminal-host {
-			margin: 10px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
-		}
+	.terminal-icon:active,
+	.terminal-icon.is-active {
+		background: var(--line-subtle);
+		color: var(--accent);
+	}
 
+	.terminal-icon:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
+	.terminal-switch,
+	.terminal-more {
+		position: relative;
+	}
+
+	.terminal-switch {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.terminal-more {
+		flex: 0 0 auto;
+	}
+
+	.terminal-title {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
+		width: 100%;
+		min-width: 0;
+		min-height: 44px;
+		padding: 4px 6px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink);
+		text-align: left;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	/* One shell has nothing to switch to; the title is just a title then. */
+	.terminal-title:disabled {
+		color: var(--ink);
+		cursor: default;
+	}
+
+	.terminal-title:not(:disabled):active {
+		background: var(--line-subtle);
+	}
+
+	.terminal-title-name {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 100%;
+		font-size: 16px;
+		font-weight: 600;
+		line-height: 21px;
+	}
+
+	.terminal-title-text,
+	.terminal-title-where,
+	.terminal-tab-name,
+	.terminal-tab-where {
+		min-width: 0;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.terminal-title-count {
+		flex: 0 0 auto;
+		min-width: 18px;
+		padding: 0 5px;
+		border-radius: 9px;
+		background: var(--chip);
+		color: var(--muted);
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 18px;
+		text-align: center;
+	}
+
+	.terminal-title-name svg {
+		flex: 0 0 auto;
+		color: var(--muted);
+	}
+
+	.terminal-title-where,
+	.terminal-tab-where {
+		color: var(--muted);
+		font: 12px/17px var(--mono);
+	}
+
+	.terminal-tab-status {
+		font-size: 11px;
+		opacity: 0.75;
+	}
+
+	.terminal-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		width: 224px;
+		padding: 6px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.terminal-sessions {
+		right: auto;
+		left: 0;
+		width: min(320px, calc(100vw - 64px));
+		max-height: 60dvh;
+		overflow-y: auto;
+	}
+
+	.terminal-menu > button,
+	.terminal-menu-confirm button {
+		display: flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 12px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink-secondary);
+		font-size: 14px;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.terminal-menu > button:hover,
+	.terminal-menu > button:active {
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.terminal-menu > .terminal-tab {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		gap: 1px;
+		padding: 6px 12px;
+	}
+
+	.terminal-tab-name {
+		color: var(--ink);
+		font-size: 14px;
+		font-weight: 600;
+	}
+
+	.terminal-tab.is-active {
+		background: var(--accent-tint);
+	}
+
+	.terminal-tab.is-active .terminal-tab-name {
+		color: var(--accent);
+	}
+
+	.terminal-tab.is-done {
+		opacity: 0.6;
+	}
+
+	.terminal-menu-font {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		min-height: 44px;
+		padding: 0 4px 0 12px;
+		color: var(--ink-secondary);
+		font-size: 14px;
+	}
+
+	.terminal-menu-font > span:first-child {
+		flex: 1;
+	}
+
+	.terminal-menu-font button {
+		width: 40px;
+		height: 34px;
+		padding: 0;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.terminal-menu-font-size {
+		min-width: 2.2em;
+		color: var(--muted);
+		font-size: 13px;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+	}
+
+	.terminal-menu-sep {
+		height: 1px;
+		margin: 4px 6px;
+		background: var(--line);
+	}
+
+	.terminal-menu .terminal-end {
+		color: var(--danger);
+	}
+
+	.terminal-menu .terminal-confirm {
+		margin: 0;
+		padding: 4px 12px;
+		white-space: normal;
+		line-height: 1.5;
+	}
+
+	.terminal-menu-confirm {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+	}
+
+	.terminal-menu-confirm button {
+		justify-content: center;
+		border: 1px solid var(--line);
+	}
+
+	.terminal-menu-confirm .is-armed {
+		border-color: var(--danger);
+		color: var(--danger);
+	}
+
+	.is-gathered .terminal-host {
+		margin: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+	}
+
+	/*
+		Two rows of seven across the full width, so none sits off the edge of a 390px screen.
+		Its bottom clears the home indicator, except while the keyboard is up and covers that:
+		the page sets the inset to 0 then.
+	*/
+	@media (max-width: 720px), (pointer: coarse) {
 		.terminal-keys {
 			display: flex;
-			/* Six keys, spread across the width: none of them should sit half off the screen. */
-			justify-content: space-between;
+			flex-direction: column;
 			gap: 6px;
-			padding: 8px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom))
-				max(12px, env(safe-area-inset-left));
-			overflow-x: auto;
+			padding: 6px max(6px, env(safe-area-inset-right))
+				calc(6px + var(--terminal-bottom-inset, env(safe-area-inset-bottom))) max(6px, env(safe-area-inset-left));
 			border-top: 1px solid var(--line);
-			scrollbar-width: none;
+			outline: none;
+			-webkit-user-select: none;
+			user-select: none;
+			-webkit-touch-callout: none;
 		}
 
-		.terminal-keys button {
-			flex: 1 1 auto;
-			min-width: 44px;
-			max-width: 72px;
-			min-height: 40px;
+		.terminal-keys-row {
+			display: grid;
+			grid-template-columns: repeat(7, minmax(0, 1fr));
+			gap: 6px;
+		}
+
+		.terminal-key {
+			display: grid;
+			place-items: center;
+			min-width: 0;
+			height: 40px;
+			padding: 0;
 			border: 1px solid var(--line);
 			border-radius: 8px;
-			background: transparent;
-			color: inherit;
-			font: 500 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+			background: var(--btn-secondary-bg);
+			box-shadow: 0 1px 0 var(--line);
+			color: var(--ink);
+			font: 500 13px/1 var(--mono);
+			cursor: pointer;
+			/* Two quick taps on ↓ are two keys, not a zoom. */
+			touch-action: manipulation;
+			-webkit-tap-highlight-color: transparent;
+		}
+
+		.terminal-key:active {
+			background: var(--row-hover);
+			box-shadow: none;
+			transform: translateY(1px);
+		}
+
+		.terminal-key.is-action {
+			color: var(--ink-secondary);
+		}
+
+		/* Arrows and ⏎ are a single glyph, which a monospace face draws at half the size of a letter. */
+		.terminal-key.is-glyph {
+			font: 500 18px/1 var(--font);
+		}
+
+		.terminal-key[data-key='keyboard'][aria-pressed='true'] {
+			border-color: var(--accent-border);
+			background: var(--accent-tint);
+			color: var(--accent);
+		}
+
+		.terminal-key.is-armed {
+			border-color: var(--accent);
+			background: var(--accent);
+			box-shadow: none;
+			color: #fff;
 		}
 	}
 </style>

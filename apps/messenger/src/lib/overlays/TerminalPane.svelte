@@ -5,6 +5,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import TerminalView from './TerminalView.svelte';
+	import { keyboardViewport } from './terminal-viewport.ts';
 
 	/**
 	 * The narrow host for terminals: one slide-over page with every session the daemon holds as
@@ -25,11 +26,31 @@
 
 	let { api, workspacePath, rows, t, onStream, onChanged, onClose }: Props = $props();
 	const terminalBackdrop = backdropClick();
+
+	/** The part of the screen a software keyboard leaves, while one is up; see `keyboardViewport`. */
+	let above = $state<{ top: number; height: number } | null>(null);
+
+	$effect(() => {
+		const viewport = window.visualViewport;
+		if (!viewport) return;
+		const follow = () => (above = keyboardViewport(window.innerHeight, viewport));
+		follow();
+		viewport.addEventListener('resize', follow);
+		viewport.addEventListener('scroll', follow);
+		return () => {
+			viewport.removeEventListener('resize', follow);
+			viewport.removeEventListener('scroll', follow);
+		};
+	});
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="terminal-overlay"
+	class:has-keyboard={above !== null}
+	style:top={above ? `${above.top}px` : null}
+	style:bottom={above ? 'auto' : null}
+	style:height={above ? `${above.height}px` : null}
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
@@ -61,5 +82,16 @@
 		height: 100%;
 		min-height: 0;
 		border-left: 1px solid var(--line);
+	}
+
+	/* The keyboard covers the home indicator, so the key bar sits right on top of it. */
+	.terminal-overlay.has-keyboard {
+		--terminal-bottom-inset: 0px;
+	}
+
+	@media (max-width: 680px) {
+		.terminal-overlay-pane {
+			border-left: none;
+		}
 	}
 </style>

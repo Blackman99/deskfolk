@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { macEditingBytes, terminalShortcut } from "./terminal-keys.ts";
+import { arrowBytes, controlByte, macEditingBytes, terminalShortcut } from "./terminal-keys.ts";
 
 const key = (k: string, mods: Partial<Record<"metaKey" | "ctrlKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
   key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods,
@@ -37,4 +37,30 @@ test("⌘K, ⌘F, ⌘G and the size keys are the terminal's; the rest of ⌘ is 
   // Ctrl-K is the shell's kill-line, not a clear.
   expect(terminalShortcut(key("k", { ctrlKey: true }))).toBeNull();
   expect(terminalShortcut(key("k"))).toBeNull();
+});
+
+test("the phone's Ctrl turns a key into the byte a hardware Ctrl sends", () => {
+  expect(controlByte("c")).toBe("\x03");
+  expect(controlByte("C")).toBe("\x03");
+  expect(controlByte("r")).toBe("\x12");
+  expect(controlByte("v")).toBe("\x16");
+  expect(controlByte("[")).toBe("\x1b");
+  expect(controlByte("@")).toBe("\x00");
+  expect(controlByte(" ")).toBe("\x00");
+  expect(controlByte("?")).toBe("\x7f");
+  // A key Ctrl has no byte for, and anything that is not one key, go as typed.
+  expect(controlByte("1")).toBeNull();
+  expect(controlByte("中")).toBeNull();
+  expect(controlByte("ab")).toBeNull();
+  expect(controlByte("")).toBeNull();
+});
+
+test("an arrow goes the way the program on screen asked for it", () => {
+  expect(arrowBytes("up", { application: false })).toBe("\x1b[A");
+  expect(arrowBytes("down", { application: false })).toBe("\x1b[B");
+  expect(arrowBytes("right", { application: true })).toBe("\x1bOC");
+  expect(arrowBytes("left", { application: true })).toBe("\x1bOD");
+  // Ctrl's form is the same in either mode.
+  expect(arrowBytes("left", { application: true, ctrl: true })).toBe("\x1b[1;5D");
+  expect(arrowBytes("up", { application: false, ctrl: true })).toBe("\x1b[1;5A");
 });

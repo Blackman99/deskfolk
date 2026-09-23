@@ -16,6 +16,10 @@ class FakeTerminal {
   unicode = { activeVersion: "6" };
   keyHandler: KeyHandler | null = null;
   cleared = 0;
+  /** How many times the shell was handed the focus, which on a phone raises the keyboard. */
+  focused = 0;
+  blurred = 0;
+  modes = { applicationCursorKeysMode: false };
   selection = "";
   pasted: string[] = [];
   /** Registered request handlers; a DA1 in what is written is put to them the way xterm would. */
@@ -46,13 +50,16 @@ class FakeTerminal {
     this.written.push({ text, swallowedDA1: text.includes("\x1b[c") ? (da1?.fn() ?? false) : null });
     done?.();
   }
-  focus() {}
+  focus() { this.focused += 1; }
+  blur() { this.blurred += 1; }
   clear() { this.cleared += 1; }
   resizedTo: Array<[number, number]> = [];
   resize(cols: number, rows: number) { this.cols = cols; this.rows = rows; this.resizedTo.push([cols, rows]); }
   hasSelection() { return this.selection !== ""; }
   getSelection() { return this.selection; }
   paste(text: string) { this.pasted.push(text); this.dataSink?.(text); }
+  /** A key on the software keyboard, as xterm hands it on. */
+  type(data: string) { this.dataSink?.(data); }
   dispose() {}
   /** A keystroke the way xterm hands it to the custom handler: true means xterm goes on with it. */
   key(key: string, init: KeyboardEventInit = {}): boolean {
@@ -152,21 +159,198 @@ test("a tab whose shell never started offers to start one, and becomes that term
   view.close();
 });
 
-test("the phone's page gathers every shell as its tabs, told apart by number", async () => {
+test("the phone's page names the shell it shows, and its title switches between all of them", async () => {
   const { api, watched } = fakeApi([older, newer]);
+  const closed: number[] = [];
   const view = render(TerminalView, {
     api: api as never, workspacePath: "/work/real-bot", rows: [older, newer], t,
+    onStream: () => () => {}, onChanged: () => {}, onClose: () => closed.push(1), tabIds: "all",
+  });
+  await settle();
+  // It opens on the newest live one; the title says which, and how many there are.
+  expect(watched.at(-1)).toBe("term-new");
+  expect(view.host.querySelector(".terminal-title-text")?.textContent).toBe("real-bot 2");
+  expect(view.host.querySelector(".terminal-title-count")?.textContent).toBe("2");
+  expect(view.host.querySelector(".terminal-sessions")).toBeNull();
+  click(view.host.querySelector(".terminal-title"));
+  const tabs = [...view.host.querySelectorAll(".terminal-sessions .terminal-tab-name")].map((el) => el.textContent);
+  expect(tabs).toEqual(["real-bot", "real-bot 2"]);
+  click(view.host.querySelector(".terminal-sessions .terminal-tab"));
+  await settle();
+  expect(watched.at(-1)).toBe("term-old");
+  expect(view.host.querySelector(".terminal-sessions")).toBeNull();
+  // A new one is + in the header, and Back leaves the page.
+  expect(view.host.querySelector(".terminal-add")).not.toBeNull();
+  click(view.host.querySelector(".terminal-back"));
+  expect(closed).toEqual([1]);
+  view.close();
+});
+
+test("with one shell the title is only a title, and nothing drops from it", async () => {
+  const { api } = fakeApi([older]);
+  const view = render(TerminalView, {
+    api: api as never, workspacePath: "/work/real-bot", rows: [older], t,
     onStream: () => () => {}, onChanged: () => {}, onClose: () => {}, tabIds: "all",
   });
   await settle();
-  const tabs = [...view.host.querySelectorAll(".terminal-tab .terminal-tab-name")].map((el) => el.textContent);
-  expect(tabs).toEqual(["real-bot", "real-bot 2"]);
-  // It opens on the newest live one, and a tab switches to another.
-  expect(watched.at(-1)).toBe("term-new");
-  click(view.host.querySelector(".terminal-tab"));
+  expect(view.host.querySelector<HTMLButtonElement>(".terminal-title")?.disabled).toBe(true);
+  expect(view.host.querySelector(".terminal-title-count")).toBeNull();
+  view.close();
+});
+
+function mountPhone(items: Terminal[] = [older], over: Record<string, unknown> = {}) {
+  const { api, typed } = fakeApi(items);
+  const view = render(TerminalView, {
+    api: { ...api, ...over } as never, workspacePath: "/work/real-bot", rows: items, t,
+    onStream: () => () => {}, onChanged: () => {}, onClose: () => {}, tabIds: "all",
+  });
+  const key = (id: string) => view.host.querySelector<HTMLButtonElement>(`.terminal-keys [data-key="${id}"]`);
+  return { view, typed, key, term: () => made.at(-1)! };
+}
+
+test("a key on the phone's bar goes to the shell and never raises the keyboard", async () => {
+  const { view, typed, key, term } = mountPhone();
   await settle();
-  expect(watched.at(-1)).toBe("term-old");
-  expect(view.host.querySelector(".terminal-tabs .terminal-new")).not.toBeNull();
+  const before = term().focused;
+  click(key("ctrl-v"));
+  click(key("ctrl-c"));
+  click(key("enter"));
+  click(key("shift-tab"));
+  await settle();
+  expect(typed.join("")).toBe("\x16\x03\r\x1b[Z");
+  expect(term().focused).toBe(before);
+  // Nor does the press take the focus away from the shell, which would drop a keyboard that is up.
+  const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  key("esc")!.dispatchEvent(press);
+  expect(press.defaultPrevented).toBe(true);
+  view.close();
+});
+
+test("the bar's Ctrl applies to the next key, from the keyboard or the bar, and then lets go", async () => {
+  const { view, typed, key, term } = mountPhone();
+  await settle();
+  click(key("ctrl"));
+  expect(key("ctrl")?.getAttribute("aria-pressed")).toBe("true");
+  term().type("r");
+  await settle();
+  expect(typed.join("")).toBe("\x12");
+  expect(key("ctrl")?.getAttribute("aria-pressed")).toBe("false");
+  term().type("r");
+  click(key("ctrl"));
+  click(key("left"));
+  await settle();
+  expect(typed.join("")).toBe("\x12r\x1b[1;5D");
+  // Tapped twice, it is off again and the next key is plain.
+  click(key("ctrl"));
+  click(key("ctrl"));
+  term().type("a");
+  await settle();
+  expect(typed.join("")).toBe("\x12r\x1b[1;5Da");
+  view.close();
+});
+
+test("the bar's arrows follow the cursor-key mode the program on screen set", async () => {
+  const { view, typed, key, term } = mountPhone();
+  await settle();
+  click(key("up"));
+  term().modes.applicationCursorKeysMode = true;
+  click(key("up"));
+  await settle();
+  expect(typed.join("")).toBe("\x1b[A\x1bOA");
+  view.close();
+});
+
+test("an arrow held on the bar repeats until it is let go, and the click that ends it adds nothing", async () => {
+  const { view, typed, key } = mountPhone();
+  await settle();
+  const down = key("down")!;
+  down.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+  await new Promise((resolve) => setTimeout(resolve, 560));
+  down.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 }));
+  click(down);
+  await settle();
+  const held = typed.join("").split("\x1b[B").length - 1;
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await settle();
+  expect(held).toBeGreaterThanOrEqual(3);
+  expect(typed.join("").split("\x1b[B").length - 1).toBe(held);
+  view.close();
+});
+
+test("the keyboard key is the one that raises and drops the keyboard", async () => {
+  const { view, key, term } = mountPhone();
+  await settle();
+  const before = term().focused;
+  expect(key("keyboard")?.getAttribute("aria-label")).toBe(t.terminal.showKeyboard);
+  click(key("keyboard"));
+  expect(term().focused).toBe(before + 1);
+  // xterm's textarea takes the focus inside the terminal's host.
+  const field = document.createElement("textarea");
+  view.host.querySelector(".terminal-host")!.appendChild(field);
+  field.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+  await settle();
+  expect(key("keyboard")?.getAttribute("aria-label")).toBe(t.terminal.hideKeyboard);
+  click(key("keyboard"));
+  expect(term().blurred).toBe(1);
+  field.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+  await settle();
+  expect(key("keyboard")?.getAttribute("aria-pressed")).toBe("false");
+  view.close();
+});
+
+test("paste on the bar pastes the phone's clipboard and leaves the keyboard where it was", async () => {
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => "git status" } });
+  const { view, key, term } = mountPhone();
+  try {
+    await settle();
+    const before = term().focused;
+    click(key("paste"));
+    await settle();
+    expect(term().pasted).toEqual(["git status"]);
+    expect(term().focused).toBe(before);
+  } finally {
+    view.close();
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+  }
+});
+
+test("⋯ holds stop, find and clear, and ending the session asks first", async () => {
+  const signals: string[] = [];
+  const closedIds: string[] = [];
+  const { view, term } = mountPhone([older], {
+    terminalSignal: async (_id: string, signal: string) => { signals.push(signal); },
+    closeTerminal: async (id: string) => { closedIds.push(id); },
+  });
+  await settle();
+  const more = () => view.host.querySelector(".terminal-more > .terminal-icon");
+  const item = (text: string) => [...view.host.querySelectorAll(".terminal-menu button")].find((b) => b.textContent?.trim() === text);
+  click(more());
+  click(item(t.terminal.stop));
+  await settle();
+  expect(signals).toEqual(["SIGINT"]);
+  expect(view.host.querySelector(".terminal-menu")).toBeNull();
+  click(more());
+  click(item(t.terminal.clear));
+  expect(term().cleared).toBe(1);
+  click(more());
+  click(item(t.terminal.end));
+  expect(view.host.querySelector(".terminal-menu .terminal-confirm")?.textContent).toBe(t.terminal.endConfirm);
+  expect(closedIds).toEqual([]);
+  click(view.host.querySelector(".terminal-menu-confirm .is-armed"));
+  await settle();
+  expect(closedIds).toEqual(["term-old"]);
+  view.close();
+});
+
+test("a tap outside the menu closes it", async () => {
+  const { view } = mountPhone();
+  await settle();
+  click(view.host.querySelector(".terminal-more > .terminal-icon"));
+  expect(view.host.querySelector(".terminal-menu")).not.toBeNull();
+  click(view.host.querySelector(".terminal-host"));
+  expect(view.host.querySelector(".terminal-menu")).toBeNull();
   view.close();
 });
 

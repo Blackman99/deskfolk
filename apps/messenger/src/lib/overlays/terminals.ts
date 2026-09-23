@@ -1,5 +1,6 @@
 import type { Copy } from "../copy.ts";
 import type { Terminal } from "@real-bot/protocol";
+import type { Arrow } from "./terminal-keys.ts";
 
 /**
  * What a reader has taken so far. Bytes arrive from two places — a scrollback read over HTTP and
@@ -138,21 +139,48 @@ export class InputQueue {
   }
 }
 
+/** `/Users/you/x` as the prompt writes it, `~/x`. The daemon's is a Mac, so home is under /Users. */
+export function tildePath(path: string): string {
+  return path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+}
+
+/** One key of the phone's key bar. Paste and the keyboard toggle draw an icon, so they carry no label. */
+export type PhoneKey =
+  | { id: string; kind: "bytes"; label: string; bytes: string }
+  | { id: string; kind: "arrow"; label: string; arrow: Arrow }
+  | { id: "ctrl"; kind: "ctrl"; label: string }
+  | { id: "paste"; kind: "paste" }
+  | { id: "keyboard"; kind: "keyboard" };
+
 /**
- * The keys a phone keyboard cannot send.
+ * The phone's key bar: two rows of seven, laid out like the corners of a keyboard — Esc top left,
+ * Ctrl under it, the arrows bottom right with Enter above them.
  *
- * Without these a terminal on a phone is a log viewer: there is no Ctrl, no Tab, no arrows, and
- * no Escape on a software keyboard, so a running command could be watched but never stopped and
- * a path could never be completed. Bytes, not key names — the pty's line discipline reads bytes.
- *
- * Only what the keyboard cannot send. `/` and `-` were here too and earned their place by
- * pushing the last key off the edge of a 390px screen.
+ * Without it a terminal on a phone is a log viewer: a software keyboard has no Ctrl, no Tab, no
+ * arrows and no Escape, so a running command could be watched but never stopped. It also answers
+ * a prompt with the keyboard down — ↓ ↓ ⏎ picks an option in a TUI — which is why Enter is here
+ * although the keyboard has one. Ctrl latches for the next key, from the bar or the keyboard, so
+ * every Ctrl combination is one tap away without a key for each; the ones you reach for with the
+ * keyboard down (^C, ^D, and ^V, which is how Claude Code pastes an image) have their own.
+ * `/` and `-` are on every keyboard and stay off.
  */
-export const TERMINAL_KEYS: ReadonlyArray<{ id: string; label: string; bytes: string }> = [
-  { id: "ctrl-c", label: "^C", bytes: "\x03" },
-  { id: "ctrl-d", label: "^D", bytes: "\x04" },
-  { id: "tab", label: "Tab", bytes: "\t" },
-  { id: "up", label: "↑", bytes: "\x1b[A" },
-  { id: "down", label: "↓", bytes: "\x1b[B" },
-  { id: "esc", label: "Esc", bytes: "\x1b" },
+export const TERMINAL_KEY_ROWS: ReadonlyArray<ReadonlyArray<PhoneKey>> = [
+  [
+    { id: "esc", kind: "bytes", label: "Esc", bytes: "\x1b" },
+    { id: "ctrl-c", kind: "bytes", label: "^C", bytes: "\x03" },
+    { id: "ctrl-d", kind: "bytes", label: "^D", bytes: "\x04" },
+    { id: "ctrl-v", kind: "bytes", label: "^V", bytes: "\x16" },
+    { id: "paste", kind: "paste" },
+    { id: "up", kind: "arrow", label: "↑", arrow: "up" },
+    { id: "enter", kind: "bytes", label: "⏎", bytes: "\r" },
+  ],
+  [
+    { id: "ctrl", kind: "ctrl", label: "Ctrl" },
+    { id: "tab", kind: "bytes", label: "Tab", bytes: "\t" },
+    { id: "shift-tab", kind: "bytes", label: "⇧Tab", bytes: "\x1b[Z" },
+    { id: "keyboard", kind: "keyboard" },
+    { id: "left", kind: "arrow", label: "←", arrow: "left" },
+    { id: "down", kind: "arrow", label: "↓", arrow: "down" },
+    { id: "right", kind: "arrow", label: "→", arrow: "right" },
+  ],
 ];

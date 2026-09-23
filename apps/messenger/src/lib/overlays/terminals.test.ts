@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Terminal } from "@real-bot/protocol";
-import { accept, decodeBase64, encodeBase64, InputQueue, TERMINAL_KEYS, orderTerminals, pickActive, startCursor, statusLabel, terminalNames } from "./terminals.ts";
+import { accept, decodeBase64, encodeBase64, InputQueue, TERMINAL_KEY_ROWS, orderTerminals, pickActive, startCursor, statusLabel, terminalNames, tildePath } from "./terminals.ts";
 import { COPY } from "../copy.ts";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -109,20 +109,34 @@ test("a failed send does not wedge the queue", async () => {
   expect(sent).toEqual(["b"]);
 });
 
-test("the phone key row sends bytes a software keyboard cannot", () => {
-  const keys = Object.fromEntries(TERMINAL_KEYS.map((key) => [key.id, key.bytes]));
-  expect(keys["ctrl-c"]).toBe("\x03");
-  expect(keys["ctrl-d"]).toBe("\x04");
-  expect(keys["tab"]).toBe("\t");
-  expect(keys["up"]).toBe("\x1b[A");
-  expect(keys["esc"]).toBe("\x1b");
-  // Only keys a software keyboard cannot send: `/` and `-` are on it, and they pushed the last
-  // key off the edge of a 390px screen.
-  expect(TERMINAL_KEYS).toHaveLength(6);
-  expect(TERMINAL_KEYS.some((key) => key.label === "/")).toBe(false);
-  // Every entry is a distinct id with a label a thumb can read.
-  expect(new Set(TERMINAL_KEYS.map((key) => key.id)).size).toBe(TERMINAL_KEYS.length);
-  expect(TERMINAL_KEYS.every((key) => key.label.length <= 4 && key.bytes.length > 0)).toBe(true);
+test("the phone key bar sends bytes a software keyboard cannot, Ctrl-V among them", () => {
+  const all = TERMINAL_KEY_ROWS.flat();
+  const bytes = Object.fromEntries(all.flatMap((key) => (key.kind === "bytes" ? [[key.id, key.bytes]] : [])));
+  expect(bytes["ctrl-c"]).toBe("\x03");
+  expect(bytes["ctrl-d"]).toBe("\x04");
+  expect(bytes["ctrl-v"]).toBe("\x16");
+  expect(bytes["tab"]).toBe("\t");
+  expect(bytes["shift-tab"]).toBe("\x1b[Z");
+  expect(bytes["esc"]).toBe("\x1b");
+  // Enter is on the keyboard too, but a TUI's choices are answered with the keyboard down.
+  expect(bytes["enter"]).toBe("\r");
+  expect(all.filter((key) => key.kind === "arrow").map((key) => key.id).sort()).toEqual(["down", "left", "right", "up"]);
+  expect(all.map((key) => key.kind)).toEqual(expect.arrayContaining(["ctrl", "paste", "keyboard"]));
+  // Two full rows of seven: across a 390px screen, none sits off the edge.
+  expect(TERMINAL_KEY_ROWS.map((row) => row.length)).toEqual([7, 7]);
+  // `/` and `-` are on every keyboard.
+  expect(all.some((key) => "label" in key && (key.label === "/" || key.label === "-"))).toBe(false);
+  // Every entry is a distinct id, and a label a thumb can read where it has one.
+  expect(new Set(all.map((key) => key.id)).size).toBe(all.length);
+  expect(all.every((key) => !("label" in key) || key.label.length <= 4)).toBe(true);
+});
+
+test("a path under a home folder reads the way the prompt writes it", () => {
+  expect(tildePath("/Users/you/real-bot-workspace")).toBe("~/real-bot-workspace");
+  expect(tildePath("/Users/you")).toBe("~");
+  expect(tildePath("/Users/you/a/b")).toBe("~/a/b");
+  expect(tildePath("/tmp/Users/you")).toBe("/tmp/Users/you");
+  expect(tildePath("/")).toBe("/");
 });
 
 test("shells opened in the same folder are told apart by number, oldest first, the same everywhere", () => {
