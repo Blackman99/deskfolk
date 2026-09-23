@@ -45,6 +45,8 @@
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
 	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
+	import { INDEX_MIN_MARKS, activeIndexMark, messageIndexMarks, type IndexMark } from './message-index.ts';
+	import MessageIndex from './MessageIndex.svelte';
 	import {
 		transcriptReadingReady,
 		desktopReadingMode,
@@ -169,6 +171,14 @@
 	const windowedStream = $derived(windowedItems(stream, historyWindow));
 	const hiddenOlder = $derived(stream.length - windowedStream.length);
 	const groupedStream = $derived(groupTranscript(windowedStream));
+
+	/** One anchor for each visible message, including the unmounted history. */
+	const indexMarks = $derived(messageIndexMarks(stream));
+	const showMessageIndex = $derived(indexMarks.length >= INDEX_MIN_MARKS || runtime.hasOlderMessages);
+	let activeIndexId = $state<string | null>(null);
+	/** Held while a tick is being brought into view, so sticking to the bottom cannot undo the jump. */
+	let indexJumpSequence = 0;
+	let indexJumping = false;
 
 	/**
 	 * Growing the window prepends content, and the browser keeps `scrollTop`, so the view would
@@ -374,6 +384,9 @@
 
 	$effect(() => {
 		void runtime.selectedId;
+		indexJumpSequence++;
+		indexJumping = false;
+		activeIndexId = null;
 		cancelJumpToBottom();
 		historyWindow = HISTORY_WINDOW_INITIAL;
 		if (runtime.highlightedMessageId) {
@@ -382,7 +395,7 @@
 		}
 		stickToBottom = true;
 		showScrollBottom = false;
-		void tick().then(() => pinStreamToBottom());
+		void tick().then(() => { if (stickToBottom) pinStreamToBottom(); });
 		return () => cancelJumpToBottom();
 	});
 
@@ -408,12 +421,10 @@
 		if (!outer || !inner) return;
 		void stickToBottom;
 		const follow = () => {
-			if (jumpToBottom) return;
-			if (stickToBottom) {
-				pinStreamToBottom();
-				return;
-			}
-			showScrollBottom = !isNearBottom(outer.scrollHeight, outer.scrollTop, outer.clientHeight);
+			if (jumpToBottom || indexJumping) return;
+			if (stickToBottom) pinStreamToBottom();
+			else showScrollBottom = !isNearBottom(outer.scrollHeight, outer.scrollTop, outer.clientHeight);
+			refreshActiveIndex();
 		};
 		const ro = new ResizeObserver(follow);
 		ro.observe(inner);
@@ -461,6 +472,40 @@
 				streamContainer.clientHeight
 			);
 		}, 320);
+	}
+
+	function refreshActiveIndex(): void {
+		const root = streamContainer;
+		if (!root || indexJumping) return;
+		const rootTop = root.getBoundingClientRect().top;
+		const positions = new Map<string, number>();
+		for (const el of root.querySelectorAll<HTMLElement>('[data-message-id]')) {
+			positions.set(el.dataset.messageId!, el.getBoundingClientRect().top - rootTop + root.scrollTop);
+		}
+		activeIndexId = activeIndexMark(indexMarks, positions, root.scrollTop,
+			isNearBottom(root.scrollHeight, root.scrollTop, root.clientHeight));
+	}
+
+	async function jumpToIndexMark(mark: IndexMark): Promise<void> {
+		const sessionId = selected?.id;
+		const sequence = ++indexJumpSequence;
+		cancelJumpToBottom();
+		stickToBottom = false;
+		ignoreStreamScroll = false;
+		indexJumping = true;
+		const at = stream.findIndex((item) => item.type === 'message' && item.message.id === mark.id);
+		historyWindow = windowForIndex(stream.length, at, historyWindow);
+		await tick();
+		if (sequence !== indexJumpSequence || selected?.id !== sessionId) return;
+		const root = streamContainer;
+		const el = root?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(mark.id)}"]`);
+		if (root && el) {
+			const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 24;
+			root.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+			showScrollBottom = !isNearBottom(root.scrollHeight, root.scrollTop, root.clientHeight);
+			activeIndexId = mark.id;
+		}
+		indexJumping = false;
 	}
 
 	/**
@@ -539,7 +584,8 @@
 
 	function onStreamScroll(e: Event): void {
 		const el = e.currentTarget as HTMLElement;
-		if (!el) return;
+		if (!el || indexJumping) return;
+		refreshActiveIndex();
 		const near = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
 		const next = stickAfterScroll(ignoreStreamScroll, near, jumpToBottom);
 		ignoreStreamScroll = next.ignore;
@@ -709,7 +755,7 @@
 	}
 </script>
 
-<div class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
+<div class:has-message-index={showMessageIndex} class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -1555,6 +1601,24 @@
 		</div>
 	</div>
 
+	{#if showMessageIndex}
+		{#key selected?.id}
+		<MessageIndex
+			marks={indexMarks}
+			activeId={activeIndexId}
+			{locale}
+			label={t.stream.messageIndex}
+			emptyLabel={t.stream.messageIndexEmpty}
+			sender={(mark) => mark.kind === 'system' ? (locale === 'zh' ? '系统' : 'System') : whoAuthor(mark.author)}
+			hasEarlier={runtime.hasOlderMessages}
+			loading={runtime.olderLoading}
+			earlierLabel={runtime.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
+			onLoadEarlier={() => void runtime.loadOlderMessages()}
+			onJump={jumpToIndexMark}
+		/>
+		{/key}
+	{/if}
+
 	<Composer
 		bind:this={composer}
 		{runtime}
@@ -1589,6 +1653,10 @@
 </div>
 
 <style>
+	@media (min-width: 681px) {
+		.has-message-index .stream-inner { padding-left: 40px; padding-right: 40px; }
+	}
+
 	.msg.is-you :global(.attachment-file-btn),
 
 	.msg.is-you :global(.attachment-bundle-btn) {

@@ -531,6 +531,8 @@ const zh = {
   },
   stream: {
     empty: "还没有消息。",
+    messageIndex: "消息位置",
+    messageIndexEmpty: "（无文字）",
     loadEarlier: "载入更早的消息",
     loadingEarlier: "正在载入…",
     loadingHistory: "正在载入这段对话…",
@@ -1437,6 +1439,8 @@ const en: CopyShape<typeof zh> = {
   },
   stream: {
     empty: "No messages yet.",
+    messageIndex: "Message index",
+    messageIndexEmpty: "(no text)",
     loadEarlier: "Load earlier messages",
     loadingEarlier: "Loading…",
     loadingHistory: "Loading this conversation…",
