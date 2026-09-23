@@ -285,7 +285,8 @@ export function planPatchProvider(
   },
   draft: ProviderDraft,
 ): ProviderPatchPlan {
-  const parsed = parseProviderDraft(draft, false);
+  // An existing endpoint may keep an empty enabled list and no default. A new one already could.
+  const parsed = parseProviderDraft(draft, false, { allowEmptyModels: true });
   if (!parsed.ok) return parsed;
   const patch: PatchProviderRequest = {};
   if (parsed.name !== current.name) patch.name = parsed.name;
@@ -295,8 +296,14 @@ export function planPatchProvider(
   if (!sameList(parsed.availableModels, current.available_models ?? [])) {
     patch.available_models = parsed.availableModels;
   }
-  if (parsed.defaultModel !== (current.default_model ?? "")) patch.default_model = parsed.defaultModel;
   if (draft.apiKey.length > 0) patch.api_key = draft.apiKey;
+  // Omitting default_model makes the daemon pick the first enabled name. Send "" whenever this
+  // patch changes anything and the draft default is empty, including when the saved default is already empty.
+  if (parsed.defaultModel !== (current.default_model ?? "")) {
+    patch.default_model = parsed.defaultModel;
+  } else if (parsed.defaultModel.length === 0 && Object.keys(patch).length > 0) {
+    patch.default_model = "";
+  }
   return { ok: true, patch };
 }
 

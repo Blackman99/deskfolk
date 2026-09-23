@@ -267,7 +267,7 @@
 				runtime.createGroupOpen = false;
 				return true;
 			case 'provider-editor':
-				providerEditor = null;
+				settingsModal?.backFromProviderEditor();
 				return true;
 			case 'independent-confirm':
 				return true;
@@ -1397,7 +1397,7 @@
 				runtime.createGroupOpen = false;
 			} else if (providerEditor) {
 				e.stopPropagation();
-				providerEditor = null;
+				settingsModal?.backFromProviderEditor();
 			} else if (confirmingIndependent) {
 				e.stopPropagation();
 			} else if (searchPageOpen) {

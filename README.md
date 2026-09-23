@@ -63,6 +63,8 @@ On phone-width screens, the messenger has **Chats / Workspace / Settings** navig
 
 On a desktop window, a conversation's left edge carries a compact message index: hover a tick for the sender and text, click it to jump there, step through with the arrow keys, and load earlier history from its top. A conversation pane narrower than a phone lays out like a phone. A picture the app rendered — in a message, enlarged, in a preview, on the flow or in the composer — copies from its right-click menu, and a picture in a file preview enlarges when clicked, the way one in a message does.
 
+On a phone, **Settings → Models** shows endpoint cards with a system picker for the default model. Open **Models** on a card to search and enable model names; **Attributes** opens a separate page for price, thinking levels and strengths. Changes save automatically, the footer shows their status, and Back returns one level at a time.
+
 Experimental remote audio and video previews play while loading in message attachments, the workspace and flow outputs, and seeking loads the requested part. This requires a browser with Service Worker support and a host with byte-range support; other environments keep whole-file previews. The existing 50 MiB remote file limit and browser codec support still apply.
 
 ## Daily and weekly routines

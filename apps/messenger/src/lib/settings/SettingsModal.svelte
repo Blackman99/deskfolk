@@ -139,6 +139,13 @@
 	}
 
 	let mcpSettings = $state<McpSettings>();
+	let providerForm = $state<ProviderForm>();
+	let providerDetailModel = $state<string | null>(null);
+
+	export function backFromProviderEditor(): void {
+		if (providerForm?.backFromDetails()) return;
+		closeProviderEditor();
+	}
 
 	/**
 	 * What ✕ closes: the screen it sits on, not everything under it. Deep in a section or an
@@ -154,7 +161,7 @@
 		if (!runtime.settingsOpen || !window.matchMedia('(max-width: 720px)').matches) return false;
 		if (confirmingProvider || confirmingIndependent) return true;
 		if (providerEditor) {
-			closeProviderEditor();
+			backFromProviderEditor();
 			return true;
 		}
 		if (mcpSettings?.backFromEditor()) return true;
@@ -384,6 +391,7 @@
 		const editor = providerEditor;
 		if (!editor) return;
 		const synced = withSyncedDefaultModel(draft);
+		providerSavedTick = 0;
 		providerEditor = { ...editor, draft: synced, errors: {}, failed: false };
 		scheduleProviderProbe(editor.target, synced, editorKeySet(editor.target));
 		scheduleProviderSave();
@@ -475,6 +483,7 @@
 		const plan = planPatchProvider(provider, editor.draft);
 		if (!plan.ok) {
 			if (providerEditor?.target === id) patchProviderEditor(id, { errors: plan.errors, failed: false });
+			else saveFailed = true;
 			return;
 		}
 		if (Object.keys(plan.patch).length === 0) return;
@@ -525,6 +534,7 @@
 		}
 		lastCreatedSignature = null;
 		providerSavedTick = 0;
+		providerDetailModel = null;
 		providerEditor = {
 			target,
 			view: 'connection',
@@ -560,6 +570,7 @@
 
 	function closeProviderEditor(): void {
 		resetProviderProbe();
+		providerDetailModel = null;
 		providerEditor = null;
 	}
 
@@ -688,6 +699,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop settings-backdrop"
+		inert={Boolean(providerEditor)}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -865,7 +877,7 @@
 					>✕</button>
 				</div>
 
-			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'}>
+			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-models={activeSettingsTab === 'models'}>
 				{#if !providerEditor && (runtime.pendingMutation || credentialOps.length)}<div role="region" aria-label="Pending credentials">{@render pendingCredentials()}</div>{/if}
 				{#if saveFailed}
 					<p class="field-error">{t.settings.saveFailed}</p>
@@ -1394,7 +1406,7 @@ void runtime.setPushEnabled(enabled);
 						</div>
 					</div>
 				{:else if activeSettingsTab === 'models'}
-					<div class="settings-tab-pane">
+					<div class="settings-tab-pane provider-settings-pane">
 						<div class="provider-list-head flex items-start justify-between gap-6">
 							<p class="muted">{t.settings.providersHint}</p>
 							<button type="button" class="btn-provider-add" onclick={openAddProvider}>
@@ -1478,6 +1490,13 @@ void runtime.setPushEnabled(enabled);
 										</div>
 									</div>
 
+									<div class="provider-mobile-default">
+										<label for={`default-model-${provider.id}`}>{t.settings.defaultModel}</label>
+										<select id={`default-model-${provider.id}`} aria-label={`${t.settings.defaultModel}: ${provider.name}`} value={provider.default_model ?? ''} disabled={provider.models.length === 0 || providerSaving} onchange={(event) => void setProviderDefaultModel(provider.id, event.currentTarget.value)}>
+											<option value="" disabled>{provider.models.length ? t.settings.providerChooseDefault : t.settings.providerEnableFirst}</option>
+											{#each provider.models as model (model)}<option value={model}>{model}</option>{/each}
+										</select>
+									</div>
 									<div class="provider-model-rail" role="radiogroup" aria-label={t.settings.defaultModel}>
 										{#if provider.models.length === 0}
 											<button
@@ -1495,6 +1514,7 @@ void runtime.setPushEnabled(enabled);
 													class="provider-model-pick mono"
 													class:is-default={chosen}
 													role="radio"
+													disabled={providerSaving}
 													aria-checked={chosen}
 													aria-label={chosen
 														? t.settings.providerDefaultModel(model)
@@ -1512,10 +1532,9 @@ void runtime.setPushEnabled(enabled);
 											aria-label={`${t.settings.providerModels}: ${provider.name}`}
 											onclick={() => openProviderModels(provider.id)}
 										>
-											{t.settings.providerModels}
-											{#if provider.models.length > 0}
-												<span class="provider-model-manage-count">{provider.models.length}</span>
-											{/if}
+											<span>{t.settings.providerModels}</span>
+											<span class="provider-model-manage-count">{t.settings.modelsEnabledCount(provider.models.length)}</span>
+											<svg class="provider-manage-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
 										</button>
 									</div>
 								</div>
@@ -1707,13 +1726,15 @@ void runtime.setPushEnabled(enabled);
 				<button
 					type="button"
 					class="settings-subpage-back"
-					aria-label={locale === 'en' ? 'Back to model providers' : '返回模型服务'}
-					onclick={closeProviderEditor}
+					aria-label={providerDetailModel ? t.common.back : locale === 'en' ? 'Back to model providers' : '返回模型服务'}
+					onclick={backFromProviderEditor}
 				>
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<h2>
-					{#if providerEditor.target === 'add'}
+					{#if providerDetailModel}
+						{t.settings.modelSettings}
+					{:else if providerEditor.target === 'add'}
 						{t.settings.providerAdd}
 					{:else if providerEditor.view === 'models'}
 						{t.settings.providerModels}
@@ -1743,12 +1764,21 @@ void runtime.setPushEnabled(enabled);
 					type="button"
 					class="modal-close settings-subpage-close"
 					title={t.common.close}
-					onclick={closeProviderEditor}
+					onclick={backFromProviderEditor}
 				>✕</button>
 			</div>
-			<div class="modal-body">
+			<div class="modal-body provider-editor-body">
 				{@render pendingCredentials()}
+				{#if providerEditor.target !== 'add'}
+					<div class="provider-editor-context">
+						<strong>{providerEditor.draft.name}</strong>
+						<span>{providerHost(providerEditor.draft.baseUrl)}</span>
+					</div>
+				{/if}
+				{#key `${providerEditor.target}:${providerEditor.view}`}
 				<ProviderForm
+					bind:this={providerForm}
+					bind:detailModel={providerDetailModel}
 					draft={providerEditor.draft}
 					errors={providerEditor.errors}
 					failed={providerEditor.failed}
@@ -1763,6 +1793,11 @@ void runtime.setPushEnabled(enabled);
 					onchange={setProviderDraft}
 					onfetch={() => void fetchProviderModels()}
 				/>
+				{/key}
+			</div>
+			<div class="provider-mobile-status" class:is-error={providerEditor.failed || Object.values(providerEditor.errors).some(Boolean)}>
+				<span role="status">{providerSaving ? t.sidebar.autoSaving : providerEditor.failed || Object.values(providerEditor.errors).some(Boolean) ? t.settings.saveFailed : providerSavedTick > 0 ? t.sidebar.autoSaved : t.sidebar.autoSaveHint}</span>
+				{#if providerEditor.failed}<button type="button" disabled={providerSaving} onclick={() => providerEditor && void persistProviderEditor(providerEditor)}>{t.settings.retry}</button>{/if}
 			</div>
 		</div>
 	</div>
@@ -2136,6 +2171,8 @@ void runtime.setPushEnabled(enabled);
 		gap: 12px;
 		box-shadow: var(--shadow-xs);
 	}
+
+	.provider-mobile-default, .provider-editor-context, .provider-mobile-status, .provider-manage-chevron { display: none; }
 
 	.provider-list-head :global(.muted) {
 		margin: 0;
@@ -3419,33 +3456,6 @@ void runtime.setPushEnabled(enabled);
 			overscroll-behavior: contain;
 		}
 
-		.provider-card {
-			padding: 13px;
-			box-shadow: none;
-		}
-
-		.provider-card-head {
-			align-items: flex-start;
-		}
-
-		.provider-card-acts {
-			gap: 6px;
-		}
-
-		.btn-provider-action {
-			min-height: 40px;
-		}
-
-		.btn-provider-setdefault span,
-		.btn-provider-edit span {
-			display: none;
-		}
-
-		.provider-model-pick,
-		.provider-model-empty,
-		.provider-model-manage {
-			min-height: 40px;
-		}
 	}
 
 	@keyframes settings-subpage-in {
@@ -3499,5 +3509,47 @@ void runtime.setPushEnabled(enabled);
 		to {
 			transform: rotate(360deg);
 		}
+	}
+
+	@media (max-width: 720px) {
+		.settings-main > .modal-body.is-models { padding: 20px 16px max(28px, env(safe-area-inset-bottom)); scrollbar-width: none; }
+		.settings-main > .modal-body.is-models::-webkit-scrollbar { display: none; }
+		.provider-settings-pane { gap: 20px; }
+		.provider-list-head { flex-direction: column; gap: 16px; }
+		.provider-list-head .muted { font-size: 14px; line-height: 1.6; }
+		.btn-provider-add { width: 100%; min-height: 48px; justify-content: center; padding: 10px 16px; border: 1px solid var(--accent-border); border-radius: var(--radius-md); background: var(--accent-tint); font-size: 15px; }
+		.btn-provider-add svg { width: 18px; height: 18px; }
+		.provider-card-list { gap: 20px; }
+		.provider-card, .provider-card.is-default { position: relative; gap: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); box-shadow: none; overflow: hidden; }
+		.provider-card-head { display: contents; }
+		.provider-card-identity { align-items: flex-start; gap: 12px; padding: 18px 16px 16px; }
+		.provider-card-mark { width: 40px; height: 40px; border-radius: var(--radius-md); font-size: 17px; box-shadow: none; }
+		.provider-name-row { gap: 6px; }
+		.provider-card-name { flex: 1 0 100%; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+		.provider-badge-default, .provider-badge-key { padding: 3px 6px; font-size: 11px; }
+		.provider-card-host { width: 100%; font-size: 12px; margin-top: 4px; }
+		.provider-card-host span { overflow: hidden; text-overflow: ellipsis; }
+		.provider-status-dot.is-set { box-shadow: none; }
+		.provider-card-acts { order: 3; gap: 0; border-top: 1px solid var(--line); }
+		.btn-provider-action { flex: 1; justify-content: center; gap: 6px; min-height: 48px; padding: 8px; border: 0; border-radius: 0; background: transparent; font-size: 13px; }
+		.btn-provider-action + .btn-provider-action { border-left: 1px solid var(--line); }
+		.btn-provider-action svg { width: 16px; height: 16px; }
+		.btn-provider-action.btn-provider-delete { flex: 0 0 52px; min-height: 48px; padding: 8px; border-left: 1px solid var(--line); }
+		.provider-mobile-default { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 16px; }
+		.provider-mobile-default label { font-size: 12px; font-weight: 500; color: var(--muted); }
+		.provider-mobile-default select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; font-family: var(--font); font-size: 16px; color: var(--ink); background: var(--sidebar-bg); border: 1px solid var(--line); border-radius: var(--radius-md); text-overflow: ellipsis; }
+		.provider-model-rail { gap: 0; padding: 0; }
+		.provider-model-pick, .provider-model-empty { display: none; }
+		.provider-model-manage { min-height: 56px; padding: 12px 16px; border-radius: 0; font-size: 15px; color: var(--ink); }
+		.provider-model-manage-count { font-size: 12px; }
+		.provider-manage-chevron { display: block; flex-shrink: 0; color: var(--muted); }
+		.provider-editor-modal > .provider-editor-body { padding: 20px 16px 24px; min-height: 0; }
+		.provider-editor-context { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+		.provider-editor-context strong { font-size: 20px; font-weight: 650; overflow-wrap: anywhere; }
+		.provider-editor-context span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+		.provider-mobile-status { display: flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 12px; min-height: calc(52px + env(safe-area-inset-bottom)); padding: 4px 16px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--pane); color: var(--muted); font-size: 12px; }
+		.provider-mobile-status.is-error { color: var(--danger-text); }
+		.provider-mobile-status button { min-height: 44px; padding: 4px 12px; border: 0; border-radius: var(--radius-sm); background: var(--danger-bg); color: var(--danger-text); }
+		.settings-subpage-back, .settings-subpage-close { width: 44px; }
 	}
 </style>

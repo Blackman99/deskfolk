@@ -147,6 +147,147 @@ test("patch sends the probed list only when it changed", () => {
   });
 });
 
+const gpt4o = { name: "gpt-4o", price: null, thinking_levels: [...ALL_LEVELS], strengths: [] };
+
+test("clearing the current default sends an explicit empty default_model", () => {
+  const current = {
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o", "gpt-4o-mini"],
+    available_models: ["gpt-4o", "gpt-4o-mini"],
+    default_model: "gpt-4o",
+  };
+  expect(
+    planPatchProvider(
+      current,
+      draft({
+        models: ["gpt-4o", "gpt-4o-mini"],
+        availableModels: ["gpt-4o", "gpt-4o-mini"],
+        defaultModel: "",
+      }),
+    ),
+  ).toEqual({ ok: true, patch: { default_model: "" } });
+});
+
+test("deselecting every model is allowed and clears the default", () => {
+  const current = {
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o", "gpt-4o-mini"],
+    available_models: ["gpt-4o", "gpt-4o-mini"],
+    default_model: "gpt-4o",
+  };
+  expect(
+    planPatchProvider(
+      current,
+      draft({ models: [], availableModels: ["gpt-4o", "gpt-4o-mini"], defaultModel: "" }),
+    ),
+  ).toEqual({ ok: true, patch: { models: [], default_model: "" } });
+});
+
+test("enabling the first model on an empty list keeps an empty default", () => {
+  expect(
+    planPatchProvider(
+      {
+        name: "OpenAI",
+        base_url: "https://api.openai.com/v1",
+        models: [],
+        available_models: [],
+        default_model: null,
+      },
+      draft({ models: ["llama3"], availableModels: [], defaultModel: "" }),
+    ),
+  ).toEqual({
+    ok: true,
+    patch: {
+      models: [{ name: "llama3", price: null, thinking_levels: [...ALL_LEVELS], strengths: [] }],
+      default_model: "",
+    },
+  });
+});
+
+test("a connection or attribute edit keeps an empty default explicit", () => {
+  const current = {
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o"],
+    model_catalog: [gpt4o],
+    available_models: ["gpt-4o"],
+    default_model: null,
+  };
+  expect(
+    planPatchProvider(
+      current,
+      draft({
+        baseUrl: "https://cpa.example/v1",
+        apiKey: "sk-new",
+        models: ["gpt-4o"],
+        availableModels: ["gpt-4o"],
+        defaultModel: "",
+      }),
+    ),
+  ).toEqual({
+    ok: true,
+    patch: { base_url: "https://cpa.example/v1", api_key: "sk-new", default_model: "" },
+  });
+  expect(
+    planPatchProvider(
+      current,
+      draft({
+        models: ["gpt-4o"],
+        availableModels: ["gpt-4o"],
+        defaultModel: "",
+        modelAttrs: { "gpt-4o": { price: "2", thinkingLevels: ["low", "high"], strengths: ["code"] } },
+      }),
+    ),
+  ).toEqual({
+    ok: true,
+    patch: {
+      models: [{ name: "gpt-4o", price: 2, thinking_levels: ["low", "high"], strengths: ["code"] }],
+      default_model: "",
+    },
+  });
+});
+
+test("an unchanged endpoint with an empty default sends no patch", () => {
+  const current = {
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o"],
+    available_models: ["gpt-4o"],
+    default_model: null,
+  };
+  expect(
+    planPatchProvider(
+      current,
+      draft({ models: ["gpt-4o"], availableModels: ["gpt-4o"], defaultModel: "" }),
+    ),
+  ).toEqual({ ok: true, patch: {} });
+});
+
+test("a non-empty default still has to be one of the enabled models", () => {
+  const current = {
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o"],
+    available_models: ["gpt-4o", "gpt-4o-mini"],
+    default_model: "gpt-4o",
+  };
+  expect(
+    planPatchProvider(
+      current,
+      draft({
+        models: ["gpt-4o"],
+        availableModels: ["gpt-4o", "gpt-4o-mini"],
+        defaultModel: "gpt-4o-mini",
+      }),
+    ),
+  ).toEqual({ ok: false, errors: { defaultModel: "invalid" } });
+  expect(
+    planPatchProvider(current, draft({ models: [], availableModels: ["gpt-4o"], defaultModel: "gpt-4o" })),
+  ).toEqual({ ok: false, errors: { defaultModel: "invalid" } });
+});
+
 test("model select values encode the provider", () => {
   expect(modelSelectValue("p1", "gpt-4o")).toBe("p1::gpt-4o");
   expect(parseModelSelectValue("p1::gpt-4o")).toEqual({ provider_id: "p1", model: "gpt-4o" });
