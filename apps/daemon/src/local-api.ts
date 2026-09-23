@@ -344,6 +344,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         await options.store.listMcpServersHydrated();
         scope.guard?.();
         options.store.recoverFiles();
+        // Only a post carries files. One that will be refused must not stage them anywhere first.
+        const posting = request.method === "POST" && parsed.files.length ? matchPath(url.pathname, "/v1/sessions/:id/messages") : null;
+        if (posting) options.store.assertUserMayPost(posting.id!);
         if (parsed.files.some((file) => !file.staged)) options.store.prepareAttachments(parsed.files);
         if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
           const root = options.store.workspacePath();

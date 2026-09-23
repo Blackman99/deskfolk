@@ -94,19 +94,27 @@ export function postMessage(
   sessionId: string,
   input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] },
 ): Message {
+  // Refuse before staging: a post that is not allowed must not put its files anywhere, even briefly.
+  assertUserMayPost(ctx, sessionId);
   const nested = ctx.db.inTransaction;
   if (!nested) prepareAttachments(ctx, input.attachments ?? []);
   try { return ctx.tx.run(() => postMessageRows(ctx, sessionId, input)); }
   finally { if (!nested) for (const att of input.attachments ?? []) if (att.staged) discardFile(ctx, att.staged); }
 }
 
-function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] }): Message {
+/**
+ * This is the user's own write — every route that posts as the user lands here. A Bot↔Bot
+ * direct is theirs to read, not to join.
+ */
+export function assertUserMayPost(ctx: StoreContext, sessionId: string): void {
   sessionRow(ctx, sessionId);
-  // This is the user's own write — every route that posts as the user lands here. A Bot↔Bot
-  // direct is theirs to read, not to join.
   if (!isPresent(ctx, sessionId, USER_MEMBER)) {
     throw new HttpError(403, "not_a_member", "you are not in this session");
   }
+}
+
+function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] }): Message {
+  assertUserMayPost(ctx, sessionId);
   const parentId = input.parent_id ?? null;
   const parent = parentId ? requireMainParent(ctx, sessionId, parentId) : null;
   const body = withReplyMention(ctx, requireString("body", input.body), parent, USER_MEMBER);

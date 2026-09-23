@@ -273,6 +273,7 @@ export class Store {
   // Transcript -----------------------------------------------------------------------------
   readonly listMessages = this.bind(messages.listMessages);
   readonly postMessage = (...args: Parameters<Bound<typeof messages.postMessage>>) => messages.postMessage(this.ctx, ...args);
+  readonly assertUserMayPost = this.bind(messages.assertUserMayPost);
   readonly insertMessage = this.bind(messages.insertMessage);
   readonly getMessage = this.bind(messages.getMessage);
   readonly listMainMessages = this.bind(messages.listMainMessages);
