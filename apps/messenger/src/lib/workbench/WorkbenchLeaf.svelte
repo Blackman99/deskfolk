@@ -207,9 +207,6 @@
 		 * enough to not be worth a menu landing in the wrong place.
 		 */
 	}
-	.wb-leaf.is-focused .wb-tab.is-active .wb-tab-button {
-		font-weight: 600;
-	}
 	/* Along the top, not the bottom: the bottom is where the tab joins the content, and a line
 	   there would cut the join the flares exist to make. */
 	.wb-leaf.is-focused .wb-tab.is-active {
@@ -278,9 +275,14 @@
 	.wb-tab:not(.is-active):hover {
 		background: var(--row-hover);
 	}
+	/*
+	 * Activating a tab changes its colour and its shape, never its box. A heavier weight made
+	 * Latin labels a few pixels wider — `storyboard.md` went from 83 to 88 — and a taller active
+	 * tab jumped up two pixels, so every click nudged the strip. The flares and the surface
+	 * colour say which tab is active; nothing about its size should.
+	 */
 	.wb-tab.is-active {
 		background: var(--pane);
-		height: 30px;
 	}
 	/*
 	 * The two pieces that carry the active tab's base out into the content. Each is a square of

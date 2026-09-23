@@ -215,3 +215,32 @@ test("a drag does not write the variable the branch already owns", () => {
   expect(paintBody).toContain("grid-template-columns");
   expect(paintBody).toContain("grid-template-rows");
 });
+
+test("activating or focusing a tab never changes the size of its box", () => {
+  // A heavier weight on the active tab made Latin labels a few pixels wider, and a taller active
+  // tab jumped up two pixels: every click nudged the whole strip. The active tab is told apart by
+  // colour and shape. Read from the source because happy-dom does not lay text out, so a width
+  // that depends on font weight cannot be measured there.
+  const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
+  const style = source
+    .slice(source.indexOf("<style>"), source.indexOf("</style>"))
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const sizing = /^(font-weight|font-size|letter-spacing|height|min-height|max-height|width|min-width|max-width|padding[a-z-]*|margin[a-z-]*|border-width|inset)$/;
+  const offending: string[] = [];
+  for (const block of style.split("}")) {
+    const [selector, body] = block.split("{");
+    if (!selector || !body) continue;
+    // Only the states a click or a focus moves into. The flare pieces are absolutely placed, so
+    // their size never reaches the tab's box.
+    const stateful = selector
+      .split(",")
+      .filter((part) => /is-active|is-focused|:hover|:focus/.test(part))
+      .filter((part) => !part.includes("wb-tab-flare") && !part.includes("wb-new-tab") && !part.includes("wb-pane-menu") && !part.includes("wb-tab-close"));
+    if (stateful.length === 0) continue;
+    for (const declaration of body.split(";")) {
+      const property = declaration.split(":")[0]?.trim() ?? "";
+      if (sizing.test(property)) offending.push(`${stateful.join(",").trim()} { ${property} }`);
+    }
+  }
+  expect(offending).toEqual([]);
+});
