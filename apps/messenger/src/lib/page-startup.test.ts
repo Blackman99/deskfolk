@@ -6,7 +6,7 @@ import { reactive } from "./test-reactive.svelte.ts";
 import { fill, render } from "./test-render.ts";
 import RoutineCard from './panels/RoutineCard.svelte';
 import { copyFor } from './copy.ts';
-import { aBot, aDirect, aRoutine } from "./test-fixtures.ts";
+import { aBot, aDirect, aGroup, aRoutine } from "./test-fixtures.ts";
 import { emptySnapshot } from "./snapshot.ts";
 import { overlayFromFlags, overlayFromUrl } from "./session-url.ts";
 
@@ -305,6 +305,48 @@ test('opening a screen pushes, closing it walks back, and a deep link rewrites i
     await until(() => page.url.searchParams.get('o') === null);
     expect(navigationModes).toEqual(['replace']);
     expect(entries).toEqual(['/?s=direct-1']);
+  } finally {
+    window.history.back = previousBack;
+  }
+});
+
+test('a Bot opened from group settings leaves the conversation underneath, so Back returns there', async () => {
+  page.url = new URL('http://localhost/');
+  entries.length = 0;
+  entries.push('/');
+  navigationModes.length = 0;
+  const group = aGroup({ id: 'g1' });
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor, bots: [aBot(), aBot({ id: 'bot-2', name: 'Beta' })], sessions: [group] });
+    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...group, messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const previousBack = window.history.back;
+  window.history.back = () => {
+    entries.pop();
+    page.url = new URL(entries[entries.length - 1]!, page.url);
+    flushSync();
+  };
+  try {
+    close = render(Page, {}).close;
+    const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+    await until(() => runtime.connection === 'connected');
+    await runtime.selectSession('g1');
+    await until(() => page.url.searchParams.get('s') === 'g1');
+    runtime.openSessionSettings();
+    await until(() => page.url.searchParams.get('o') === 'session');
+    runtime.openProfile('bot-1');
+    await until(() => page.url.searchParams.get('o') === 'bot');
+    expect(entries).toEqual(['/', '/?s=g1', '/?s=g1&o=bot&b=bot-1']);
+    runtime.closeSessionSettings();
+    await until(() => page.url.searchParams.get('o') === null);
+    expect(entries).toEqual(['/', '/?s=g1']);
+    expect(runtime.sessionSettingsOpen).toBe(false);
+    expect(runtime.profileBotId).toBeNull();
   } finally {
     window.history.back = previousBack;
   }

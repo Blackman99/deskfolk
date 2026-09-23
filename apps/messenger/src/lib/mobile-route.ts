@@ -58,6 +58,13 @@ export function routeStep(prev: UrlView, next: UrlView): RouteStep {
     const kind = fileLayer(before[changed[0]]);
     if (kind && kind === fileLayer(after[changed[0]])) return "swap";
   }
+  // A Bot opened from a group's settings is that Bot's settings page. It takes the group's
+  // place, so leaving it returns to the conversation rather than to the group.
+  if (
+    prev.selectedId === next.selectedId &&
+    prev.overlay.kind === "session" &&
+    next.overlay.kind === "bot"
+  ) return "swap";
   return "lateral";
 }
 
@@ -71,9 +78,9 @@ export function planUrlNavigation(args: {
   stack: readonly string[];
   step: RouteStep;
 }): UrlNavigation {
-  // Landing exactly on the entry underneath is a step back, whatever the depth says: closing a
-  // Bot's profile inside a group drawer swaps one screen for another, and the drawer is where it
-  // came from.
+  // Landing exactly on the entry underneath is a step back, whatever the depth says. A Bot
+  // opened from a group takes that group's settings entry, so the conversation is what is
+  // underneath when it closes.
   if (args.stack[args.stack.length - 2] === args.target) return "back";
   if (args.step === "shallower" || args.step === "swap") return "replace";
   return "push";

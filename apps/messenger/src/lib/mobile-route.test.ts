@@ -26,20 +26,27 @@ test("the step is which way the stack moved", () => {
   expect(routeStep(drawer, session)).toBe("shallower");
   expect(routeStep(session, roster)).toBe("shallower");
   expect(routeStep(workspaceFile, workspace)).toBe("shallower");
-  // Another Bot's profile from the group drawer, or another session: same depth, new screen.
-  expect(routeStep(drawer, botDrawer)).toBe("lateral");
+  // A Bot opened from the group drawer takes that settings page. Closing it goes to the
+  // conversation, which is one screen less.
+  expect(routeStep(drawer, botDrawer)).toBe("swap");
+  expect(routeStep(botDrawer, session)).toBe("shallower");
   expect(routeStep(session, { ...roster, selectedId: "s2" })).toBe("lateral");
 });
 
 test("closing a screen never pushes: it walks back when that is where the URL came from", () => {
   const stack = ["", "?s=s1", "?s=s1&o=session"];
   expect(planUrlNavigation({ target: "?s=s1", stack, step: "shallower" })).toBe("back");
-  // Swapping a screen for the one underneath — a Bot's profile back to the group drawer — is a
-  // step back too, even though the depth is the same.
+  // Opening a Bot from the group drawer rewrites that settings entry, so closing it walks
+  // back to the conversation underneath.
   expect(planUrlNavigation({
-    target: "?s=s1&o=session",
-    stack: ["", "?s=s1&o=session", "?s=s1&o=bot&b=bot-1"],
-    step: "lateral",
+    target: "?s=s1&o=bot&b=bot-1",
+    stack: ["", "?s=s1", "?s=s1&o=session"],
+    step: "swap",
+  })).toBe("replace");
+  expect(planUrlNavigation({
+    target: "?s=s1",
+    stack: ["", "?s=s1", "?s=s1&o=bot&b=bot-1"],
+    step: "shallower",
   })).toBe("back");
   // Nothing of ours underneath — a deep link straight into the drawer — so rewrite the entry
   // rather than walking out of the app.
@@ -69,7 +76,9 @@ test("picking another file in a preview is not a new screen, so it rewrites the 
     step: "swap",
   })).toBe("replace");
   // Opening the first file is still a screen, and a file in another session is another place.
+  // A Bot's settings opened from the conversation is a screen too.
   expect(routeStep(session, preview)).toBe("deeper");
+  expect(routeStep(session, botDrawer)).toBe("deeper");
   expect(routeStep(preview, { ...preview, selectedId: "s2", previewRelpath: "notes/b.md" })).toBe("lateral");
 });
 

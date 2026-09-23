@@ -370,6 +370,78 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
   expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('会话');
 });
 
+test('on a phone, a Bot opened from a group is that Bot\'s settings, and Back leaves for the conversation', () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const t = copyFor('zh');
+    const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+    const group = aGroup({ id: 'g1', name: 'Alpha group', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+      { member: 'bot-2', joined_at: 'now', left_at: null },
+    ] });
+    const runtime = reactive(fakeRuntime({
+      bots: [bot, aBot({ id: 'bot-2', name: 'Beta' })],
+      sessions: [group],
+      settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: '/fixture' },
+    }, { selectedId: 'g1', sessionSettingsOpen: true, profileBotId: null }));
+    runtime.openProfile = (botId: string) => { runtime.profileBotId = botId; };
+    runtime.closeProfile = () => { runtime.profileBotId = null; };
+    runtime.closeSessionSettings = () => { runtime.sessionSettingsOpen = false; runtime.profileBotId = null; };
+    const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+    click(host.querySelectorAll('.group-section-btn')[0]);
+    click(host.querySelector('.member-name-btn'));
+    const sheet = host.querySelector('.profile-backdrop .sheet');
+    expect(sheet?.querySelector('h2')).toBeNull();
+    expect(sheet?.querySelector('.profile-pane')).not.toBeNull();
+    const back = sheet?.querySelector('.sheet-back');
+    expect(back).not.toBeNull();
+    expect(back?.getAttribute('aria-label')).toBe(t.common.back);
+    expect(back?.querySelector('svg')).not.toBeNull();
+    const label = back?.querySelector('.sheet-back-label');
+    expect(getComputedStyle(label!).display).toBe('none');
+    // The group's section is not this page's business: Back is the conversation's history.
+    const leave = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
+    expect(leave()).toBe(false);
+    expect(runtime.sessionSettingsOpen).toBe(true);
+    click(back);
+    expect(runtime.sessionSettingsOpen).toBe(false);
+    expect(host.querySelector('.profile-backdrop')).toBeNull();
+  } finally {
+    window.matchMedia = previousMatchMedia;
+    setViewport({ width: 1024, height: 768 });
+  }
+});
+
+test('a wider window still labels the way back from a nested Bot', () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 1180, height: 820 });
+  const t = copyFor('en');
+  const bot = aBot({ id: 'bot-1', name: 'Alpha' });
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  const runtime = reactive(fakeRuntime({
+    bots: [bot, aBot({ id: 'bot-2', name: 'Beta' })],
+    sessions: [group],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'g1', sessionSettingsOpen: true, profileBotId: 'bot-1' }));
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  const back = host.querySelector('.profile-backdrop .sheet-back');
+  expect(back?.querySelector('.sheet-back-label')?.textContent).toBe(t.detail.backToGroup);
+  expect(getComputedStyle(back!.querySelector('.sheet-back-label')!).display).not.toBe('none');
+});
+
 test('mounted Shell: a phone opens Bot settings as a page, and Back leaves the section first', () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({

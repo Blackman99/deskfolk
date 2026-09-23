@@ -211,11 +211,14 @@
 	 * may still have unsaved work.
 	 */
 	/**
-	 * What ✕ closes in the Bot and group drawers: the screen it sits on. A section or a Bot's
-	 * profile opened inside the drawer steps out one level; on the drawer's own screen there is
-	 * nothing above it, so it closes.
+	 * What ✕ closes. A section of the drawer's own screen steps out one level. A Bot opened from a
+	 * group is that Bot's settings page, so its ✕ leaves settings for the conversation.
 	 */
 	function closeCurrentDrawerScreen(): void {
+		if (nestedProfile && narrow) {
+			runtime.closeSessionSettings();
+			return;
+		}
 		if (paneMobileDetail) {
 			paneMobileDetail = false;
 			return;
@@ -277,8 +280,9 @@
 				// Only its inner pages are ours to unwind; settings itself is an entry in history.
 				return settingsModal?.backWithinSettings() ?? false;
 			case 'session-settings':
-				// Same split: the skill sheet and the section list are not in the URL, the drawer
-				// and a Bot's profile inside it are.
+				// The skill sheet and the section list are not in the URL. A Bot opened from a
+				// group is its own settings page, so Back leaves for the conversation.
+				if (nestedProfile) return false;
 				if (profilePane?.backFromEditor()) return true;
 				if (paneMobileDetail) {
 					paneMobileDetail = false;
@@ -1457,7 +1461,8 @@
 
 <!--
 	The head of a conversation's settings, in the narrow drawer and beside a workbench pane alike.
-	`nested` is a Bot's profile opened from inside a group's settings: the way out is back to them.
+	`nested` is a Bot opened from a group's settings. On a phone that page's way out is the
+	conversation; a wider window still steps back to the group's settings.
 -->
 {#snippet settingsHead(group: boolean, nested: boolean, onBack: () => void, onClose: () => void, groupSession: SessionSummary | null = null)}
 	<div class="sheet-head">
@@ -1465,10 +1470,11 @@
 			<button
 				type="button"
 				class="sheet-back"
+				aria-label={narrow ? t.common.back : (group ? t.detail.backToGroup : t.detail.backToBot)}
 				onclick={onBack}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-				<span>{group ? t.detail.backToGroup : t.detail.backToBot}</span>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<span class="sheet-back-label">{group ? t.detail.backToGroup : t.detail.backToBot}</span>
 			</button>
 		{:else if group && groupSession}
 			<GroupIdentity {runtime} session={groupSession} bind:detail={groupDetail} {t} />
@@ -1901,6 +1907,7 @@
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
 					if (drawerHasDanger) dismissDangerConfirm();
+					else if (nestedProfile && narrow) runtime.closeSessionSettings();
 					else if (nestedProfile) closeNestedProfile();
 					else if (profilePane?.backFromEditor()) e.stopPropagation();
 					else runtime.closeSessionSettings();
@@ -1911,7 +1918,7 @@
 				{@render settingsHead(
 					selectedKind === 'group',
 					nestedProfile,
-					closeNestedProfile,
+					() => (narrow ? runtime.closeSessionSettings() : closeNestedProfile()),
 					closeCurrentDrawerScreen,
 					selectedKind === 'group' && !nestedProfile && selected ? selected : null
 				)}
@@ -2267,6 +2274,30 @@
 	.sheet-back:hover {
 		color: var(--accent-hover);
 		background: var(--accent-tint);
+	}
+
+	/*
+	 * A phone already has a back chevron on every other settings page. The words ("返回群组设置")
+	 * stay for a wider window, where this control is a labelled link, and for the button's name.
+	 */
+	@media (max-width: 680px) {
+		.sheet-back {
+			flex: 0 0 44px;
+			width: 44px;
+			height: 44px;
+			justify-content: center;
+			gap: 0;
+			padding: 0;
+			border-radius: var(--radius-md);
+		}
+
+		.sheet-back-label {
+			display: none;
+		}
+
+		.sheet.session-settings:has(.sheet-back) :global(.sheet-head) {
+			padding-left: 4px;
+		}
 	}
 
 	.sheet.is-right.session-settings {
