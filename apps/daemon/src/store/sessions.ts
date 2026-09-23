@@ -236,6 +236,8 @@ export function deleteSession(ctx: StoreContext, id: string): void {
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
     );
+    // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
+    ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(
       `DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
@@ -294,6 +296,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
     );
+    // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
+    ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(
       `DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],

@@ -485,6 +485,11 @@ export type Message = {
   source_turn_id: string | null;
   /** The work dir this message belongs to; the anchor its artifact entry opens. */
   task_id?: string | null;
+  /**
+   * A batch of annotations on an artifact from a Bot↔Bot direct lands in your direct with that
+   * Bot, with no parent to quote; this points back at the message the artifact came from.
+   */
+  annotation_source_message_id?: string | null;
   created_at: string;
   message_seq?: number;
   attachments: Attachment[];
@@ -1032,6 +1037,8 @@ export type ClientEvent =
   | { event: "provider.removed"; occurred_at: string; id: string }
   | ({ event: "allow_rule.upsert"; occurred_at: string } & AllowRule)
   | { event: "allow_rule.removed"; occurred_at: string; id: string }
+  | ({ event: "annotation.upsert"; occurred_at: string } & import("./annotations.ts").Annotation)
+  | { event: "annotation.removed"; occurred_at: string; id: string }
   | ({ event: "notification.upsert"; occurred_at: string } & import("./notifications.ts").NotificationItem)
   | { event: "notification.removed"; occurred_at: string; id: string }
   | { event: "notification.summary"; occurred_at: string; summary: import("./notifications.ts").NotificationSummary }
@@ -1040,6 +1047,7 @@ export type ClientEvent =
   | ({ event: "terminal.upsert"; occurred_at: string } & Terminal)
   | { event: "terminal.removed"; occurred_at: string; id: string };
 
+export * from "./annotations.ts";
 export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";
 export * from "./mentions.ts";

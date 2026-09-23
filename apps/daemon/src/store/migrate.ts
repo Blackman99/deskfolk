@@ -202,6 +202,7 @@ export function migrateSchema(db: Database): void {
   }
   migrateRouteTables(db, tables);
   migrateBotThinkingPins(db);
+  migrateAnnotations(db);
   if (!tables.includes("remote_push_subs")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS remote_push_subs (
@@ -494,6 +495,14 @@ function migrateNotifications(db: Database): void {
   `);
 
   backfillInitialNotifications(db);
+}
+
+/** A batch of annotations sent into your direct records the Bot↔Bot message it came from. */
+function migrateAnnotations(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
+  if (!cols.includes("annotation_source_message_id")) {
+    db.run("ALTER TABLE messages ADD COLUMN annotation_source_message_id TEXT");
+  }
 }
 
 function migrateBotThinkingPins(db: Database): void {

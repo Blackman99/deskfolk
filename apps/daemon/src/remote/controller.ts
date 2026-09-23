@@ -540,7 +540,7 @@ export class RemoteController {
         const result: RemoteResponse = { v: 1, id, status: response.status, body: null,
           headers: { contentType, ...(response.headers.has("ETag") ? { etag: response.headers.get("ETag")! } : {}) } };
         if (response.status >= 400) result.body = await responseError(response);
-        else if (response.body && contentType.includes("application/json") && request.path !== "/v1/workspace/file" && !/^\/v1\/attachments\/[^/]+\/content$/.test(request.path)) result.body = await response.json();
+        else if (response.body && contentType.includes("application/json") && request.path !== "/v1/workspace/file" && !/^\/v1\/attachments\/[^/]+\/content$/.test(request.path) && !/^\/v1\/annotations\/[^/]+\/crop$/.test(request.path)) result.body = await response.json();
         else if (response.body) {
           const data = new Uint8Array(await response.arrayBuffer());
           try {

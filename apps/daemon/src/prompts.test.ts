@@ -53,6 +53,26 @@ describe("prompts", () => {
     expect(text.endsWith("区内。")).toBe(true);
   });
 
+  test("both locales tell the Bot to handle annotations one by one", () => {
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
+    const zh = turnSystemPrompt({ ...profile, locale: "zh" });
+    for (const rule of ["用户会在你交出的产物上写批注", "改了的用 resolve_annotation 标成已处理并写一句怎么改的", "不同意或做不到的，在回复里说明原因、不要标已处理", "不要默默跳过", "list_annotations 查还没处理完的批注"]) {
+      expect(zh).toContain(rule);
+    }
+    expect(zh.endsWith("区内。")).toBe(true);
+    const en = turnSystemPrompt({ ...profile, locale: "en" });
+    for (const rule of ["The user annotates the artifacts you hand over", "call resolve_annotation with one sentence on what changed", "leave it pending", "never skip one silently", "list_annotations finds the ones still pending"]) {
+      expect(en).toContain(rule);
+    }
+    const tools = builtinTools("zh");
+    const list = tools.find((t) => t.function.name === "list_annotations")!;
+    expect(list.function.description).toContain("默认列出这件事（当前工作目录、这个会话）里所有待处理的批注");
+    const resolve = tools.find((t) => t.function.name === "resolve_annotation")!;
+    expect(resolve.function.parameters.required).toEqual(["id", "note"]);
+    expect(resolve.function.description).toContain("不能重新打开、不能删、不能新建批注");
+    expect(builtinTools("en").find((t) => t.function.name === "resolve_annotation")!.function.description).toContain("You cannot reopen, delete, or create annotations");
+  });
+
   test("every locale requires active recovery before asking the user", () => {
     const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
     const zh = turnSystemPrompt({ ...profile, locale: "zh" });

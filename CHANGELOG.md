@@ -6,6 +6,10 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Annotations, part 2 (the Bot's side): a message that carries annotations spells each one out under its body for the Bot — path, position, the quoted text or the cropped region as an image, your remark — and marks the ones whose text has moved or whose file is gone. Bots get `list_annotations` to find what is still pending on this job and `resolve_annotation` to mark one handled with a note; reading a file that still has pending annotations says so. The turn instructions tell a Bot to handle them one by one and to say why when it disagrees rather than skip.
+
+- Annotations, part 1 (data and interface): the Mac now keeps annotations — a note you write on one spot of an artifact a Bot handed over, anchored to a workspace path and a position, hung on the message that delivered it. Drafts live on the Mac, so a crashed window or another device still has them. Sending a batch makes one reply that quotes the delivery and @-mentions the Bot, opens the drafts as pending, and wakes the Bot in the work dir the artifact came from, even hours later. A Bot resolves one with a note; you can resolve or reopen. A changed file marks the note as moved or stale rather than hiding it; a deleted file marks it missing. Artifacts from a Bot↔Bot direct are annotated into your own direct with that Bot, with a pointer back. Links cannot be annotated. The preview surface for writing them lands in the next parts.
+
 - The terminal pane keeps a gap under the last line, so the prompt no longer sits on the window edge.
 
 - Fixed a message that hands over 21 files opening a file tree with four. The tree was built from the job's record alone — what the Mac noticed a turn write or link — so files a message named on its own `附件：` lines, which is every message stored before the Mac read those lines, were missing from it, including the one on screen. The tree is now the job's record plus what this message handed over, and it takes that list from the same reading as the bubble's entry, so the two cannot disagree — and prose like `1/3` never becomes a file in it.

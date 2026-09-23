@@ -18,6 +18,11 @@ import {
   type Skill,
   type SessionDetail,
   type SessionSummary,
+  clipQuote,
+  describeAnchor,
+  normalizeCitedPath,
+  type Annotation,
+  type TextRangeAnchor,
 } from "@real-bot/protocol";
 import { avatarMimeFromPath, rasterFileToAvatarDataUri } from "./avatar-image";
 import { parseMentions } from "./mentions";
@@ -146,6 +151,10 @@ export async function runCollabTool(
         return remember(ctx, args);
       case "forget":
         return forget(ctx, args);
+      case "list_annotations":
+        return listAnnotations(ctx, args);
+      case "resolve_annotation":
+        return resolveAnnotation(ctx, args);
       case "list_endpoints":
         return await listEndpoints(ctx);
       case "add_endpoint":
@@ -1494,4 +1503,77 @@ function unknownMentionError(tokens: string[], members: string[]): string {
 
 function fail(code: string, message: string): ToolResult {
   return { ok: false, error: { code, message }, emitted: [] };
+}
+
+const ANNOTATION_LIST_MAX = 100;
+
+/**
+ * The user's annotations for this job: by default every pending one on a file in this turn's work
+ * dir, on this job's deliveries, or sent in this session; one file when `path` names it.
+ */
+function listAnnotations(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const locale = ctx.store.settingsCached().locale === "en" ? "en" : "zh";
+  const status = optionalString(args.status) ?? "open";
+  if (!["open", "resolved", "all"].includes(status)) return fail("invalid_args", "status must be open, resolved, or all");
+  const wanted = (row: Annotation): boolean => row.status !== "draft" && (status === "all" || row.status === status);
+  const path = optionalString(args.path);
+  let rows: Annotation[];
+  if (path) {
+    const relpath = normalizeCitedPath(path) ?? path;
+    rows = ctx.store.listAnnotations({ relpath }).filter(wanted);
+    if (rows.length === 0 && ctx.workDir && !relpath.startsWith(`${ctx.workDir}/`)) {
+      rows = ctx.store.listAnnotations({ relpath: `${ctx.workDir}/${relpath}` }).filter(wanted);
+    }
+  } else {
+    const taskId = ctx.store.taskOfTurn(ctx.turnId);
+    const inJob = (row: Annotation): boolean =>
+      row.session_id === ctx.sessionId
+      || (ctx.workDir !== undefined && ctx.workDir !== null && row.relpath.startsWith(`${ctx.workDir}/`))
+      || (taskId !== null && row.target_turn_id !== null && ctx.store.taskOfTurn(row.target_turn_id) === taskId);
+    rows = ctx.store.listAnnotations().filter((row) => wanted(row) && inJob(row));
+  }
+  const names = new Map<string, string>();
+  const nameOf = (id: string | null): string | null => {
+    if (!id) return null;
+    if (id === USER_MEMBER) return locale === "en" ? "user" : "用户";
+    const known = names.get(id);
+    if (known) return known;
+    let name = id;
+    try { name = ctx.store.getBot(id).name; } catch { /* a deleted Bot keeps its id */ }
+    names.set(id, name);
+    return name;
+  };
+  const items = rows.slice(0, ANNOTATION_LIST_MAX).map((row) => ({
+    id: row.id,
+    path: row.relpath,
+    kind: row.anchor_kind,
+    position: describeAnchor(row.anchor_kind, row.anchor, locale),
+    ...(row.anchor_kind === "text_range" ? { quote: clipQuote((row.anchor as TextRangeAnchor).quote, undefined, locale) } : {}),
+    note: row.body,
+    status: row.status,
+    stale: row.stale?.kind ?? null,
+    ...(row.stale?.kind === "moved" ? { moved_to: { start_line: row.stale.start_line, end_line: row.stale.end_line } } : {}),
+    has_crop: Boolean(row.crop_mime),
+    message_id: row.message_id,
+    resolved_by: nameOf(row.resolved_by),
+    resolved_note: row.resolved_note,
+  }));
+  return { ok: true, data: { annotations: items, total: rows.length, truncated: rows.length > ANNOTATION_LIST_MAX }, emitted: [] };
+}
+
+/** Any Bot may mark one handled — a Bot is not a permission boundary — and the mark records who. */
+function resolveAnnotation(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const id = requireString(args.id, "id");
+  const note = optionalString(args.note) ?? "";
+  if (!note.trim()) return fail("invalid_args", "note is required: say what changed");
+  try {
+    const row = ctx.store.resolveAnnotationByBot(id, ctx.botId, note);
+    return { ok: true, data: { id: row.id, path: row.relpath, status: row.status, resolved_note: row.resolved_note }, emitted: [] };
+  } catch (error) {
+    if (error instanceof HttpError) {
+      if (error.code === "not_found") return fail("not_found", "annotation not found");
+      return fail(error.code, error.message);
+    }
+    throw error;
+  }
 }

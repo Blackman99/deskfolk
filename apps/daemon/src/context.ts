@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
+import { annotationContext } from "./annotation-context";
 import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
@@ -286,12 +287,15 @@ function serializeTranscript(
   for (const att of message.attachments) {
     body += `\n附件：${att.workspace_relpath}`;
   }
+  // A batch of annotations is spelled out under the message that carries it, crops as pixels.
+  const annotated = message.kind === "user" ? annotationContext(store, message.id, store.settingsCached().locale) : { text: "", images: [] };
+  body += annotated.text;
   const triggerLine = message.id === triggerMessageId ? `${TRIGGER_FLAG}\n` : "";
   if (message.kind === "bot" && message.author === selfBotId) {
     return { role: "assistant", content: `${triggerLine}${body}` };
   }
   const text = `${prefix(store, message)}\n${triggerLine}${body}`;
-  const images = visionImageParts(store, message.attachments);
+  const images = [...visionImageParts(store, message.attachments), ...annotated.images];
   return {
     role: "user",
     content: images.length > 0 ? [{ type: "text", text }, ...images] : text,

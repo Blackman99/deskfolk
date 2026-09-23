@@ -442,10 +442,20 @@ export function resolveTurnTask(
     trigger: { body: string; turn_id: string | null };
     /** A routine fires as a user message, so only the caller can say it is a new job. */
     newTask?: boolean;
+    /**
+     * The job this turn continues, named outright: a batch of annotations wakes the Bot to fix
+     * the delivery, so the turn works in the folder the artifact came from — however long the
+     * session has been quiet, and even if that job was closed since.
+     */
+    taskId?: string | null;
     now?: Date;
   },
 ): string {
   const at = input.now ?? new Date();
+  if (input.taskId) {
+    reopenTask(ctx, input.taskId, input.sessionId);
+    return input.taskId;
+  }
   if (input.trigger.turn_id) {
     const inherited = taskOfTurn(ctx, input.trigger.turn_id);
     if (inherited) return inherited;
@@ -455,6 +465,19 @@ export function resolveTurnTask(
     if (open) return open.id;
   }
   return openTask(ctx, { sessionId: input.sessionId, title: input.trigger.body, now: at }).id;
+}
+
+/**
+ * Put a job back in front: it stops being closed, and the session's other open job closes the
+ * way it would when a new one opens — one open dir per session.
+ */
+export function reopenTask(ctx: StoreContext, id: string, sessionId: string): void {
+  getTask(ctx, id);
+  const now = isoNow();
+  ctx.db.transaction(() => {
+    ctx.db.run(`UPDATE tasks SET closed_at = ? WHERE session_id = ? AND closed_at IS NULL AND id != ?`, [now, sessionId, id]);
+    ctx.db.run(`UPDATE tasks SET closed_at = NULL WHERE id = ?`, [id]);
+  })();
 }
 
 function quietFloor(at: Date): string {

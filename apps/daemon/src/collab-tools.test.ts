@@ -958,3 +958,71 @@ describe("memory tools", () => {
     store.close();
   });
 });
+
+describe("annotations tools", () => {
+  const REPORT = "# Title\n\nfirst paragraph\n\nsecond paragraph\n";
+  function annotated() {
+    const root = mkdtempSync(join(tmpdir(), "real-bot-annotation-tools-"));
+    dirs.push(root);
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    store.patchSettingsSync({ workspace_path: root });
+    writeFileSync(join(root, "report.md"), REPORT);
+    mkdirSync(join(root, "work", "job"), { recursive: true });
+    writeFileSync(join(root, "work", "job", "notes.md"), "notes\n");
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const editor = store.createBot({ name: "Editor", duties: "edit", boundaries: "stay" });
+    const direct = writer.direct_session.id;
+    const trigger = store.postMessage(direct, { body: "写个报告" });
+    const turn = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: trigger.id });
+    const delivery = store.insertMessage({ sessionId: direct, turnId: turn.id, kind: "bot", author: writer.bot.id, body: "写好了 report.md", paths: ["report.md"] });
+    store.setTurnStatus(turn.id, "completed");
+    const make = (relpath: string, body: string) => store.createAnnotation({
+      target_message_id: delivery.id,
+      relpath,
+      anchor_kind: "text_range",
+      anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 6, quote: relpath === "report.md" ? "# Tit" : "notes", prefix: "", suffix: "" },
+      content_sha256: "0".repeat(64),
+      body,
+    });
+    const a = make("report.md", "太长");
+    const b = make("work/job/notes.md", "补一句");
+    const c = make("report.md", "还是草稿");
+    store.sendAnnotations({ session_id: direct, body: "看看", annotation_ids: [a.id, b.id] });
+    const woken = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: store.listMainMessages(direct, 1)[0]!.id });
+    const ctx: ToolCtx = { store, botId: writer.bot.id, sessionId: direct, turnId: woken.id, parentId: null, workDir: "work/job" };
+    return { store, writer, editor, direct, a, b, c, ctx };
+  }
+
+  test("list_annotations lists this job's pending ones by default, one file with path, and never drafts", async () => {
+    const w = annotated();
+    const all = await runCollabTool(w.ctx, "list_annotations", {});
+    expect(all.ok).toBe(true);
+    const items = all.data!.annotations as Array<{ id: string; path: string; position: string; quote: string; note: string; status: string; stale: string | null }>;
+    expect(items.map((i) => i.id).sort()).toEqual([w.a.id, w.b.id].sort());
+    // The stored hash is not the file's, and the quote is still there: moved, with the new lines.
+    expect(items.find((i) => i.id === w.a.id)).toMatchObject({ path: "report.md", position: "第 1 行", quote: "# Tit", note: "太长", status: "open", stale: "moved", moved_to: { start_line: 1, end_line: 1 } });
+    const one = await runCollabTool(w.ctx, "list_annotations", { path: "report.md" });
+    expect((one.data!.annotations as Array<{ id: string }>).map((i) => i.id)).toEqual([w.a.id]);
+    // A path the Bot writes from its work dir's point of view still resolves.
+    const relative = await runCollabTool(w.ctx, "list_annotations", { path: "notes.md" });
+    expect((relative.data!.annotations as Array<{ id: string }>).map((i) => i.id)).toEqual([w.b.id]);
+    expect((await runCollabTool(w.ctx, "list_annotations", { status: "weird" })).ok).toBe(false);
+    expect((await runCollabTool(w.ctx, "list_annotations", { status: "resolved" })).data!.annotations).toEqual([]);
+    w.store.close();
+  });
+
+  test("resolve_annotation needs a note, marks once, and records which Bot did it", async () => {
+    const w = annotated();
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.a.id, note: "" })).error?.code).toBe("invalid_args");
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", note: "x" })).error?.code).toBe("not_found");
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.c.id, note: "x" })).error?.code).toBe("invalid_args");
+    const done = await runCollabTool({ ...w.ctx, botId: w.editor.bot.id }, "resolve_annotation", { id: w.a.id, note: "缩成一句" });
+    expect(done.ok).toBe(true);
+    expect(done.data).toMatchObject({ id: w.a.id, status: "resolved", resolved_note: "缩成一句" });
+    expect(w.store.getAnnotation(w.a.id).resolved_by).toBe(w.editor.bot.id);
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.a.id, note: "再来" })).error?.code).toBe("conflict");
+    const resolved = await runCollabTool(w.ctx, "list_annotations", { status: "resolved" });
+    expect((resolved.data!.annotations as Array<{ id: string; resolved_by: string }>).map((i) => [i.id, i.resolved_by])).toEqual([[w.a.id, "Editor"]]);
+    w.store.close();
+  });
+});

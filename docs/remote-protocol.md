@@ -148,6 +148,11 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 | Route | Method | Allowed body / query |
 |---|---|---|
 | `/v1/snapshot`, settings, providers, bots, sessions, allow-rules, mcp-servers, skills, memories, routines, credential-operations | GET | No body/query |
+| annotations | GET | query relpath string (≤4096), session_id/message_id/target_message_id ULIDs, status draft/open/resolved |
+| annotations `/:id`; annotations `/:id/crop` (bytes on type 0x05, PNG/JPEG) | GET | No body/query |
+| annotations | POST | required target_message_id ULID, relpath string, anchor_kind text_range/image_region/pdf_region/html_element/media_time, anchor exact object of that kind's fields, content_sha256 64-hex, body string; nullable crop exact{mime image/png|image/jpeg, base64} |
+| annotations `/:id` | PATCH/DELETE | draft: body/anchor/crop/content_sha256; sent: status open/resolved; if_revision string (= updated_at); DELETE if_revision |
+| annotations/send | POST | required session_id ULID, annotation_ids ULID[] (≤50); body string |
 | providers/bots/sessions/attachments/requests `/:id`; sessions `/:id/{snapshot,judgements,routes,composer-suggestions}`; bots `/:id/profile-revisions`; attachments `/:id/content` | GET | No body/query |
 | sessions `/:id/messages` | GET | query cursor exact `ISO-UTC-millisecond|ULID` from the shared history response, limit decimal1..200 |
 | workspace/tree; workspace/file | GET | query path string (required for file) |

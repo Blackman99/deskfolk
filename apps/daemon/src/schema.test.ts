@@ -30,6 +30,7 @@ describe("schema", () => {
     expect(deliveryCols).toContain("permit");
     expect(names).toEqual([
       "allow_rules",
+      "annotations",
       "approvals",
       "attachments",
       "bots",
