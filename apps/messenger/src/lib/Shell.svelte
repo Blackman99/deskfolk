@@ -95,7 +95,7 @@
 		splitLeaf
 	} from './workbench/layout-tree.ts';
 	import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from './workbench/workbench-layout.ts';
-	import { PANE_KIND_SET } from './workbench/pane-content.ts';
+	import { contentToParams, PANE_KIND_SET } from './workbench/pane-content.ts';
 	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
 	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
@@ -886,6 +886,9 @@
 				}
 			}
 		}
+		if (runtime.previewSiblings && runtime.previewSiblings.length > 0) {
+			return runtime.previewSiblings;
+		}
 		if (att) {
 			const owner = snapshot.messages.find((message) => message.id === att.message_id);
 			if (owner && owner.attachments.length > 0) return owner.attachments;
@@ -902,27 +905,29 @@
 		if (runtime.hosted) {
 			const id = runtime.previewAttachmentId;
 			if (!id) return null;
-			const attachment = findAttachmentById(id);
+			const attachment = findAttachmentById(id) ?? runtime.previewSiblings?.find((s) => s.id === id);
 			if (!attachment) return null;
 			return {
 				relpath: attachment.workspace_relpath,
 				attachment,
 				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
+				forceTree: runtime.forceArtifactTree,
+				taskId: runtime.previewTaskId ?? null,
 			};
 		}
 		const relpath = runtime.previewRelpath;
 		if (!relpath) return null;
-		const attachment = findAttachmentByPath(relpath);
+		const attachment = findAttachmentByPath(relpath) ?? runtime.previewSiblings?.find((s) => s.workspace_relpath === relpath);
 		const owner = runtime.previewMessageId
 			? snapshot.messages.find((message) => message.id === runtime.previewMessageId)
 			: undefined;
 		return {
 			relpath,
-			attachment,
+			attachment: attachment ?? null,
 			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
 			forceTree: runtime.forceArtifactTree,
 			// The entry opens the job's tree, not just this message's; older messages have none.
-			taskId: owner?.task_id ?? null
+			taskId: runtime.previewTaskId ?? owner?.task_id ?? null
 		};
 	});
 
@@ -930,18 +935,41 @@
 		relpath: string,
 		att?: Attachment,
 		messageId?: string | null,
-		forceTree = false
+		forceTree = false,
+		taskId?: string | null,
+		siblings?: Attachment[] | null
 	): void {
+		if (runtime.paneOpener) {
+			const sourceMessageId = messageId ?? att?.message_id ?? null;
+			const owner = snapshot.messages.find((row) => row.id === sourceMessageId);
+			runtime.paneOpener({
+				kind: 'preview',
+				sessionId: owner?.session_id ?? selected?.id ?? null,
+				relpath: sanitizePreviewPath(relpath),
+				attachmentId: att?.id ?? null,
+				messageId: sourceMessageId,
+				taskId: taskId ?? owner?.task_id ?? null,
+				forceTree,
+				siblings: siblings ?? siblingsForPath(relpath, att, sourceMessageId)
+			});
+			return;
+		}
 		if (runtime.hosted) {
 			// A remote URL never carries a file path, so the preview goes by attachment id.
 			runtime.previewRelpath = null;
 			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(relpath)?.id ?? null;
+			runtime.previewMessageId = messageId ?? att?.message_id ?? null;
+			runtime.forceArtifactTree = forceTree;
+			runtime.previewTaskId = taskId ?? null;
+			runtime.previewSiblings = siblings ?? null;
 			return;
 		}
 		runtime.previewAttachmentId = null;
 		runtime.previewRelpath = sanitizePreviewPath(relpath);
 		runtime.previewMessageId = messageId ?? att?.message_id ?? null;
 		runtime.forceArtifactTree = forceTree;
+		runtime.previewTaskId = taskId ?? null;
+		runtime.previewSiblings = siblings ?? null;
 	}
 
 	function closeArtifactPreview(): void {
@@ -949,6 +977,8 @@
 		runtime.previewAttachmentId = null;
 		runtime.previewMessageId = null;
 		runtime.forceArtifactTree = false;
+		runtime.previewTaskId = null;
+		runtime.previewSiblings = null;
 	}
 
 	function toggleWorkspaceExplorer(): void {
@@ -1407,6 +1437,7 @@
 						onRemoveTab={onPaneCloseTab}
 						onSelectWorkspacePath={openWorkspaceFile}
 						onBindTerminal={bindTerminalTab}
+onUpdatePreview={(content) => commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
 						onJump={jumpToTrace}
 						{paneTitle}
 					/>
@@ -1504,14 +1535,18 @@
 					att.workspace_relpath,
 					att,
 					runtime.previewMessageId,
-					runtime.forceArtifactTree
+					runtime.forceArtifactTree,
+					runtime.previewTaskId,
+					runtime.previewSiblings
 				)}
 			onSelectWorkspacePath={(path) =>
 				openArtifactPath(
 					path,
 					undefined,
 					runtime.previewMessageId,
-					runtime.forceArtifactTree
+					runtime.forceArtifactTree,
+					runtime.previewTaskId,
+					runtime.previewSiblings
 				)}
 		/>
 	{/if}
@@ -1531,6 +1566,7 @@
 			reloadToken={runtime.traceReload}
 			onClose={() => runtime.closeTrace()}
 			onJump={jumpToTrace}
+			onOpenArtifact={openArtifactPath}
 			onTask={(id) => {
 				if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
 			}}
@@ -2163,7 +2199,7 @@
 		.shell.is-preview :global(.artifact-pane) {
 			position: fixed;
 			inset: 0;
-			z-index: 60;
+			z-index: 80;
 		}
 	}
 </style>

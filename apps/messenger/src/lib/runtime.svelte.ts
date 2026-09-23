@@ -1,5 +1,6 @@
 import {
   USER_MEMBER,
+  type Attachment,
   type ClientEvent,
   type SequencedEvent,
   type CreateBotRequest,
@@ -237,6 +238,8 @@ export class MessengerRuntime {
   previewRelpath = $state<string | null>(null);
   previewMessageId = $state<string | null>(null);
   forceArtifactTree = $state(false);
+  previewTaskId = $state<string | null>(null);
+  previewSiblings = $state<Attachment[] | null>(null);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
   createGroupOpen = $state(false);
@@ -626,6 +629,8 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.previewRelpath = null;
     this.previewAttachmentId = null;
+    this.previewTaskId = null;
+    this.previewSiblings = null;
     this.routinesOpen = true;
   }
 
@@ -701,6 +706,8 @@ export class MessengerRuntime {
       this.threadOpen = false;
       this.previewRelpath = null;
       this.previewAttachmentId = null;
+      this.previewTaskId = null;
+      this.previewSiblings = null;
       this.routinesOpen = true;
       return;
     }

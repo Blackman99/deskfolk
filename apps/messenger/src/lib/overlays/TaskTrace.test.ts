@@ -186,7 +186,7 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   click(view.host.querySelector(".trace-card.is-running .trace-card-main"));
   expect(view.jumps).toEqual([["direct-1", "m-approval"]]);
 
-  click(buttonByText(view.host, "board.pdf"));
+  click(view.host.querySelector<HTMLButtonElement>(".trace-file")!);
   const output = await until(view.host, ".trace-output");
   expect(output.querySelector(".trace-output-kicker")?.textContent).toBe("分镜师交出");
   expect(output.querySelector(".trace-output-name")?.textContent).toBe("board.pdf");
@@ -248,7 +248,7 @@ test("on a phone, Back steps out of full screen and leaves the flow standing", a
     // Nothing over the flow: Back is history's, and the flow is what it closes.
     expect(back()).toBe(false);
 
-    click(buttonByText(view.host, "board.pdf"));
+    click(view.host.querySelector<HTMLButtonElement>(".trace-file")!);
     const output = await until(view.host, ".trace-output");
     // A file unfolded under its card is part of this page, so Back still belongs to history.
     expect(back()).toBe(false);
@@ -368,4 +368,167 @@ test("the board still lays out after the job is fetched again", async () => {
     flushSync();
     expect(tops()).toEqual(measured);
   });
+});
+
+test("a node with multiple attachments renders a single bundle button and opens through preview panel", async () => {
+  const opened: Array<{
+    relpath: string;
+    att: any;
+    messageId: string | null;
+    forceTree: boolean;
+    taskId: string | null;
+    siblings: any[];
+  }> = [];
+
+  const multiTrace: TaskTrace = {
+    id: "task-multi",
+    dir: "work/2026-09-22-继续-qb3y",
+    title: "继续",
+    session_id: "group-1",
+    closed_at: null,
+    nodes: [
+      {
+        turn_id: "t-reviewer",
+        session_id: "group-1",
+        actor: "bot-1",
+        status: "completed",
+        woken_by_turn_id: null,
+        woken_elsewhere: null,
+        trigger_message_id: "m1",
+        focus_message_id: "m1",
+        summary: "【驳回重跑】EP01 v4 不能进 120 秒预演",
+        created_at: "2026-09-22T00:00:00.000Z",
+        artifacts: [
+          { path: "work/2026-09-22-继续-qb3y/pair_01.jpg", message_id: "m1", attachment_id: "a1" },
+          { path: "work/2026-09-22-继续-qb3y/pair_02.jpg", message_id: "m1", attachment_id: "a2" },
+          { path: "work/2026-09-22-继续-qb3y/pair_03.jpg", message_id: "m1", attachment_id: "a3" },
+          { path: "work/2026-09-22-继续-qb3y/pair_04.jpg", message_id: "m1", attachment_id: "a4" },
+          { path: "work/2026-09-22-继续-qb3y/pair_05.jpg", message_id: "m1", attachment_id: "a5" },
+        ],
+        ask: null,
+        approval: null,
+        passed: 0,
+      },
+    ],
+  };
+
+  const props = reactive({
+    api: {
+      sessionTasks: async () => [job({ id: "task-multi", title: "继续" })],
+      taskTrace: async () => multiTrace,
+    } as never,
+    taskId: "task-multi",
+    sessionId: "group-1",
+    activeSessionId: "group-1",
+    sessions: [group],
+    bots: [writer],
+    youLabel: "你",
+    deletedLabel: "已删除",
+    workspacePath: "/work",
+    t,
+    reloadToken: 0,
+    onClose: () => {},
+    onJump: () => {},
+    onOpenArtifact: (relpath: string, att: any, messageId: string | null, forceTree: boolean, taskId: string | null, siblings: any[]) => {
+      opened.push({ relpath, att, messageId, forceTree, taskId, siblings });
+    },
+  });
+
+  const view = render(TaskTraceView, props as never);
+  await until(view.host, ".trace-slot");
+
+  // There are 5 files, but ONLY 1 button is rendered (unified entry), not 5 buttons
+  const buttons = view.host.querySelectorAll(".trace-file-btn");
+  expect(buttons).toHaveLength(1);
+
+  const btn = buttons[0] as HTMLButtonElement;
+  expect(btn.classList.contains("is-bundle")).toBe(true);
+  expect(btn.textContent).toContain("5 个文件");
+
+  click(btn);
+  expect(opened).toHaveLength(1);
+  expect(opened[0].relpath).toBe("work/2026-09-22-继续-qb3y/pair_01.jpg");
+  expect(opened[0].forceTree).toBe(true);
+  expect(opened[0].taskId).toBe("task-multi");
+  expect(opened[0].siblings).toHaveLength(5);
+  expect(opened[0].messageId).toBe("m1");
+
+  view.close();
+});
+
+test("a node with a single attachment renders 1 file button and opens through preview panel", async () => {
+  const opened: Array<{
+    relpath: string;
+    att: any;
+    messageId: string | null;
+    forceTree: boolean;
+    taskId: string | null;
+    siblings: any[];
+  }> = [];
+
+  const singleTrace: TaskTrace = {
+    id: "task-single",
+    dir: "work/2026-09-22-继续-qb3y",
+    title: "继续",
+    session_id: "group-1",
+    closed_at: null,
+    nodes: [
+      {
+        turn_id: "t-single",
+        session_id: "group-1",
+        actor: "bot-1",
+        status: "completed",
+        woken_by_turn_id: null,
+        trigger_message_id: "m1",
+        focus_message_id: "m1",
+        summary: "单个产物",
+        created_at: "2026-09-22T00:00:00.000Z",
+        artifacts: [
+          { path: "work/2026-09-22-继续-qb3y/report.md", message_id: "m1", attachment_id: "a1" },
+        ],
+        ask: null,
+        approval: null,
+        passed: 0,
+      },
+    ],
+  };
+
+  const props = reactive({
+    api: {
+      sessionTasks: async () => [job({ id: "task-single", title: "继续" })],
+      taskTrace: async () => singleTrace,
+    } as never,
+    taskId: "task-single",
+    sessionId: "group-1",
+    activeSessionId: "group-1",
+    sessions: [group],
+    bots: [writer],
+    youLabel: "你",
+    deletedLabel: "已删除",
+    workspacePath: "/work",
+    t,
+    reloadToken: 0,
+    onClose: () => {},
+    onJump: () => {},
+    onOpenArtifact: (relpath: string, att: any, messageId: string | null, forceTree: boolean, taskId: string | null, siblings: any[]) => {
+      opened.push({ relpath, att, messageId, forceTree, taskId, siblings });
+    },
+  });
+
+  const view = render(TaskTraceView, props as never);
+  await until(view.host, ".trace-slot");
+
+  const btn = view.host.querySelector(".trace-file-btn") as HTMLButtonElement;
+  expect(btn).not.toBeNull();
+  expect(btn.classList.contains("is-bundle")).toBe(false);
+  expect(btn.textContent).toContain("report.md");
+
+  click(btn);
+  expect(opened).toHaveLength(1);
+  expect(opened[0].relpath).toBe("work/2026-09-22-继续-qb3y/report.md");
+  expect(opened[0].forceTree).toBe(false);
+  expect(opened[0].taskId).toBe("task-single");
+  expect(opened[0].siblings).toHaveLength(1);
+
+  view.close();
 });

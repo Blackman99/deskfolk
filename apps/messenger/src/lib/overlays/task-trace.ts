@@ -120,7 +120,7 @@ function estimateHeight(node: TaskTraceNode): number {
     lines * 20 +
     waiting * 20 +
     (node.passed > 0 ? 18 : 0) +
-    node.artifacts.length * 28
+    (node.artifacts.length > 0 ? 38 : 0)
   );
 }
 

@@ -859,6 +859,7 @@
 
 <style>
 	.artifact-pane {
+		height: 100%;
 		background: var(--pane);
 		min-width: 0;
 		min-height: 0;
@@ -1035,6 +1036,7 @@
 
 	.artifact-pane-main.has-tree {
 		display: grid;
+		grid-template-rows: minmax(0, 1fr);
 		grid-template-columns: var(--artifact-tree-width, 168px) 8px minmax(0, 1fr);
 	}
 

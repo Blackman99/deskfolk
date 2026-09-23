@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Restored the file tree when opening message artifacts in desktop workbench previews. Preview tabs retain the source message, task and attachment list across layout restoration; choosing a file updates the current preview tab. Long file trees scroll within the pane so every file remains reachable.
+
 - Web Push now honors the daemon's HTTP/HTTPS proxy environment and `NO_PROXY`, preserving destination validation, pinned public addresses, TLS verification, and redirect rejection. Remote notification tests distinguish push-service acceptance from phone delivery and report a timed-out first attempt with its scheduled retry.
 
 - Desktop system banners now follow the app's bundle identity and the permission you granted in System Settings, instead of waiting on the still-unverified cold-start click check. `tauri dev` re-executes inside a debug `.app` with the same `com.real-bot.desktop` identifier, so Notification Center accepts its banners and a permission already granted to the installed app applies. Cold-start click from a signed installed package remains unverified (`NATIVE_DELIVERY_QUALIFIED` stays false) and is now reported on its own as `cold_click_qualified`.

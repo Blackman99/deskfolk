@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { USER_MEMBER, type Bot, type SessionSummary, type SessionTaskSummary, type TaskTrace, type TaskTraceNode } from '@real-bot/protocol';
+	import { USER_MEMBER, type Attachment, type Bot, type SessionSummary, type SessionTaskSummary, type TaskTrace, type TaskTraceNode } from '@real-bot/protocol';
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -8,6 +8,7 @@
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import TraceOutput from './TraceOutput.svelte';
+	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
 	import {
 		clampZoom,
 		filterTrace,
@@ -48,6 +49,14 @@
 		onJump: (sessionId: string, messageId: string) => void;
 		/** The job actually on screen, so the address follows the switcher. */
 		onTask?: (taskId: string) => void;
+		onOpenArtifact?: (
+			relpath: string,
+			att?: Attachment,
+			messageId?: string | null,
+			forceTree?: boolean,
+			taskId?: string | null,
+			siblings?: Attachment[] | null
+		) => void;
 	}
 
 	let {
@@ -64,7 +73,8 @@
 		reloadToken,
 		onClose,
 		onJump,
-		onTask
+		onTask,
+		onOpenArtifact
 	}: Props = $props();
 
 	let jobs = $state<SessionTaskSummary[]>([]);
@@ -473,6 +483,46 @@
 			? { path: known.path, messageId: known.message_id, attachmentId: known.attachment_id }
 			: { path: next, messageId: '', attachmentId: next };
 	}
+
+	function nodeBundleInfo(node: TaskTraceNode) {
+		const tree = buildCitedPathTree(node.artifacts.map((a) => a.path));
+		const fileCount = countCitedFiles(tree);
+		const bundle = citedBundleRoot(tree);
+		return { tree, fileCount, bundle };
+	}
+
+	function firstPreviewable(rows: Attachment[]): Attachment {
+		return (
+			rows.find((row) => row.exists !== false && !row.is_dir) ??
+			rows.find((row) => row.exists !== false) ??
+			rows[0]!
+		);
+	}
+
+	function openNodeArtifacts(node: TaskTraceNode): void {
+		if (node.artifacts.length === 0) return;
+		const isBundle = node.artifacts.length > 1;
+		const siblings: Attachment[] = node.artifacts.map((file) => ({
+			id: file.attachment_id,
+			message_id: file.message_id,
+			workspace_relpath: file.path,
+			original_filename: file.path.split('/').pop() || file.path,
+			created_at: node.created_at,
+		}));
+		const target = firstPreviewable(siblings);
+		if (onOpenArtifact) {
+			onOpenArtifact(
+				target.workspace_relpath,
+				target,
+				node.focus_message_id || node.trigger_message_id,
+				isBundle,
+				currentId ?? taskId,
+				siblings
+			);
+		} else {
+			showFile({ path: target.workspace_relpath, messageId: target.message_id, attachmentId: target.id });
+		}
+	}
 </script>
 
 {#snippet card(node: TaskTraceNode)}
@@ -520,22 +570,41 @@
 			<span class="trace-place">{placeOf(node)}</span>
 		</button>
 		{#if node.artifacts.length > 0}
-			<ul class="trace-files">
-				{#each node.artifacts as file (file.attachment_id)}
-					<li>
-						<button
-							type="button"
-							class="trace-file"
-							class:is-open={openFile?.attachmentId === file.attachment_id}
-							aria-expanded={openFile?.attachmentId === file.attachment_id}
-							onclick={() => showFile({ path: file.path, messageId: file.message_id, attachmentId: file.attachment_id })}
-							title={file.path}
-						>
-							<span class="trace-file-name">{traceFileName(file.path)}</span>
-						</button>
-					</li>
-				{/each}
-			</ul>
+			{@const isBundle = node.artifacts.length > 1}
+			{@const info = isBundle ? nodeBundleInfo(node) : null}
+			{@const single = node.artifacts[0]!}
+			<div class="trace-files">
+				<button
+					type="button"
+					class="trace-file-btn trace-file"
+					class:is-bundle={isBundle}
+					class:is-open={node.artifacts.some((a) => openFile?.attachmentId === a.attachment_id)}
+					aria-expanded={node.artifacts.some((a) => openFile?.attachmentId === a.attachment_id)}
+					onclick={() => openNodeArtifacts(node)}
+					title={isBundle ? node.artifacts.map((a) => a.path).join('\n') : single.path}
+				>
+					<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
+						{#if isBundle}
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+							</svg>
+						{:else}
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+								<polyline points="14 2 14 8 20 8"></polyline>
+							</svg>
+						{/if}
+					</div>
+					<div class="file-meta-col flex flex-col min-w-0 flex-1">
+						<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">
+							{isBundle ? (info?.bundle ?? t.stream.artifactBundle) : traceFileName(single.path)}
+						</span>
+						<span class="file-sub text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap" class:mono={!isBundle}>
+							{isBundle ? t.stream.artifactBundleCount(info?.fileCount ?? node.artifacts.length) : single.path}
+						</span>
+					</div>
+				</button>
+			</div>
 		{/if}
 	</article>
 {/snippet}
@@ -1080,43 +1149,66 @@
 	}
 
 	.trace-files {
-		list-style: none;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin: 0;
 		padding: 0 10px 9px;
 	}
 
-	.trace-file {
-		display: inline-flex;
+	.trace-file-btn {
+		display: flex;
 		align-items: center;
-		gap: 4px;
-		max-width: 100%;
-		height: 24px;
-		padding: 0 8px;
-		border-radius: 999px;
-		border: 1px solid var(--line);
+		gap: 8px;
+		width: 100%;
+		padding: 6px 10px;
 		background: var(--chip);
-		color: var(--ink-secondary);
-		font-size: 11.5px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
 		cursor: pointer;
+		text-align: left;
+		transition: border-color 0.15s ease, background 0.15s ease;
+		color: var(--ink);
+		box-sizing: border-box;
 	}
 
-	.trace-file:hover,
-	.trace-file.is-open {
+	.trace-file-btn:hover,
+	.trace-file-btn.is-open {
 		border-color: var(--accent-border);
-		color: var(--accent);
+		background: var(--line-subtle);
 	}
 
-	.trace-file.is-open {
+	.trace-file-btn.is-open {
 		background: var(--accent-tint);
 	}
 
-	.trace-file-name {
+	.trace-file-btn .file-icon-box {
+		flex: none;
+		display: flex;
+		align-items: center;
+		color: var(--accent);
+	}
+
+	.trace-file-btn .file-meta-col {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.trace-file-btn .file-title {
+		font-size: 12px;
+		font-weight: 600;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		line-height: 1.25;
+	}
+
+	.trace-file-btn .file-sub {
+		font-size: 10px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		line-height: 1.25;
+		margin-top: 1px;
 	}
 
 </style>

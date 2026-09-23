@@ -6,12 +6,13 @@
  * strings turn back into something the app understands, and it is the only place that knows both
  * sides.
  */
+import type { Attachment } from "@real-bot/protocol";
 import type { WorkbenchTab } from "./layout-types.ts";
 import type { UrlOverlay } from "../session-url.ts";
 
 export type PaneContent =
   | { kind: "chat"; sessionId: string }
-  | { kind: "preview"; sessionId: string | null; relpath: string | null; attachmentId: string | null }
+  | { kind: "preview"; sessionId: string | null; relpath: string | null; attachmentId: string | null; messageId?: string | null; taskId?: string | null; forceTree?: boolean; siblings?: Attachment[] | null }
   | { kind: "session-settings"; sessionId: string; botId: string | null }
   | { kind: "trace"; sessionId: string; taskId: string | null }
   | { kind: "route-log"; sessionId: string }
@@ -45,6 +46,10 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       if (content.sessionId) params.sessionId = content.sessionId;
       if (content.relpath) params.relpath = content.relpath;
       if (content.attachmentId) params.attachmentId = content.attachmentId;
+      if (content.messageId) params.messageId = content.messageId;
+      if (content.taskId) params.taskId = content.taskId;
+      if (content.forceTree) params.forceTree = "true";
+      if (content.siblings?.length) params.siblings = JSON.stringify(content.siblings);
       return params;
     }
     case "session-settings": {
@@ -80,6 +85,10 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
         sessionId: p.sessionId ?? null,
         relpath: p.relpath ?? null,
         attachmentId: p.attachmentId ?? null,
+        messageId: p.messageId ?? null,
+        taskId: p.taskId ?? null,
+        forceTree: p.forceTree === "true",
+        siblings: parsePreviewSiblings(p.siblings),
       };
     case "session-settings":
       return p.sessionId
@@ -168,5 +177,19 @@ export function contentFromOverlay(overlay: UrlOverlay, sessionId: string | null
       return { kind: "routines" };
     default:
       return null;
+  }
+}
+
+function parsePreviewSiblings(value: string | undefined): Attachment[] | null {
+  if (!value) return null;
+  try {
+    const rows: unknown = JSON.parse(value);
+    if (!Array.isArray(rows)) return null;
+    return rows.filter((row): row is Attachment => row &&
+      typeof row.id === "string" && typeof row.message_id === "string" &&
+      typeof row.workspace_relpath === "string" && typeof row.original_filename === "string" &&
+      typeof row.created_at === "string");
+  } catch {
+    return null;
   }
 }

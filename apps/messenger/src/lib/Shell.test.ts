@@ -688,3 +688,39 @@ test('the file tree lists what the message handed over, not just what the job re
   // `1/3` out of the prose is not among them: the context menu may guess, a file tree may not.
   expect(files).toEqual(['plan.md', 'C01_END.png', 'C01_START.png']);
 });
+
+test('opening message attachments in a workbench pane keeps its tree and selects files in place', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const session = aDirect();
+  const attachments = ['plan.md', 'notes.md'].map((name, i) => anAttachment({
+    id: `tree-att-${i}`, message_id: 'tree-message', workspace_relpath: `work/${name}`,
+    original_filename: name, mime: 'text/markdown',
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session],
+    messages: [aMessage({ id: 'tree-message', session_id: session.id, kind: 'bot', author: 'bot-1', attachments })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id }));
+  runtime.client = {
+    kind: 'local',
+    getAttachmentBlob: async (id: string) => new Blob([`# ${id}`], { type: 'text/markdown' }),
+    getWorkspaceFileBlob: async (path: string) => new Blob([`# ${path}`], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  click(host.querySelector('.attachment-bundle-btn'));
+  await settle();
+  expect(host.querySelector('.artifact-pane')).not.toBeNull();
+  expect(host.querySelector('.artifact-tree')).not.toBeNull();
+  expect(getComputedStyle(host.querySelector('.artifact-pane')!).height).toBe('100%');
+  expect(getComputedStyle(host.querySelector('.artifact-pane-main')!).gridTemplateRows).toBe('minmax(0, 1fr)');
+  const rows = () => [...host.querySelectorAll<HTMLButtonElement>('.artifact-tree-row')];
+  expect(rows().map((row) => row.title)).toContain('work/notes.md');
+  const tabs = host.querySelectorAll('[role="tab"]').length;
+  click(rows().find((row) => row.title === 'work/notes.md'));
+  await settle();
+  expect(host.querySelector('.artifact-tree-row.is-selected')?.getAttribute('title')).toBe('work/notes.md');
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain('notes.md');
+  expect(host.querySelectorAll('[role="tab"]').length).toBe(tabs);
+  expect(rows().map((row) => row.title)).toContain('work/plan.md');
+});

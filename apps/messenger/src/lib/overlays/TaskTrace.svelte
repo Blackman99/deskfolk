@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Bot, SessionSummary } from '@real-bot/protocol';
+	import type { Attachment, Bot, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
@@ -28,6 +28,14 @@
 		onClose: () => void;
 		onJump: (sessionId: string, messageId: string) => void;
 		onTask?: (taskId: string) => void;
+		onOpenArtifact?: (
+			relpath: string,
+			att?: Attachment,
+			messageId?: string | null,
+			forceTree?: boolean,
+			taskId?: string | null,
+			siblings?: Attachment[] | null
+		) => void;
 	}
 
 	let {
@@ -44,7 +52,8 @@
 		reloadToken,
 		onClose,
 		onJump,
-		onTask
+		onTask,
+		onOpenArtifact
 	}: Props = $props();
 
 	let view = $state<{ backFromFullOutput: () => boolean } | null>(null);
@@ -79,6 +88,7 @@
 		{onClose}
 		{onJump}
 		{onTask}
+		{onOpenArtifact}
 	/>
 </div>
 

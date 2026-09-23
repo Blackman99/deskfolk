@@ -3,7 +3,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Attachment } from '@real-bot/protocol';
 	import type { WorkbenchTab } from './layout-types.ts';
-	import { contentOfTab } from './pane-content.ts';
+	import { contentOfTab, type PaneContent } from './pane-content.ts';
 	import ChatHeader from '../chat/ChatHeader.svelte';
 	import ChatStage from '../chat/ChatStage.svelte';
 	import RoutineCalendar from '../calendar/RoutineCalendar.svelte';
@@ -12,7 +12,8 @@
 	import RouteLogView from '../overlays/RouteLogView.svelte';
 	import TraceView from '../overlays/TraceView.svelte';
 	import ArtifactPreview from '../overlays/ArtifactPreview.svelte';
-	import { routeLogRows } from '../overlays/route-log.ts';
+	import { previewContext } from './preview-context.ts';
+import { routeLogRows } from '../overlays/route-log.ts';
 
 	/**
 	 * Turns a tab into the thing it stands for.
@@ -28,12 +29,20 @@
 		pinnedSessionIds: string[];
 		onTogglePin: (id: string) => void;
 		onOpenProfile: (botId: string) => void;
-		onOpenArtifact: (relpath: string, attachment?: Attachment, messageId?: string | null) => void;
+		onOpenArtifact: (
+			relpath: string,
+			attachment?: Attachment,
+			messageId?: string | null,
+			forceTree?: boolean,
+			taskId?: string | null,
+			siblings?: Attachment[] | null
+		) => void;
 		onCreateBot: () => void;
 		onRemoveTab: (leafId: string, tabId: string) => void;
 		onSelectWorkspacePath: (path: string) => void;
 		/** A terminal pane remembers which session it settled on. */
-		onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
+		onUpdatePreview?: (content: Extract<PaneContent, { kind: 'preview' }>) => void;
+onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
 		/** Jump the conversation to a message, from the board or the model-choice log. */
 		onJump: (sessionId: string, messageId: string) => void;
 		/** What to call a tab. The shell names conversations; this only shows the name. */
@@ -53,12 +62,25 @@
 		onRemoveTab,
 		onSelectWorkspacePath,
 		onBindTerminal,
+		onUpdatePreview,
 		onJump,
 		paneTitle
 	}: Props = $props();
 
 	const content = $derived(contentOfTab(tab));
 	const snapshot = $derived(runtime.snapshot);
+const preview = $derived(content?.kind === 'preview' ? previewContext(content, snapshot.messages) : null);
+function selectPreview(att: Attachment): void {
+if (content?.kind !== 'preview' || !preview) return;
+onUpdatePreview?.({
+...content,
+relpath: att.workspace_relpath,
+attachmentId: att.id ?? null,
+messageId: preview.messageId,
+taskId: preview.taskId,
+siblings: preview.siblings
+});
+}
 	const session = $derived(
 		content && 'sessionId' in content && content.sessionId
 			? (snapshot.sessions.find((row) => row.id === content.sessionId) ?? null)
@@ -175,19 +197,21 @@
 		{t}
 		reloadToken={runtime.traceReload}
 		{onJump}
+		{onOpenArtifact}
 	/>
 {:else if content.kind === 'preview'}
-	{#if content.relpath}
+	{#if preview?.relpath}
 		<ArtifactPreview
-			attachment={null}
-			relpath={content.relpath}
-			siblings={[]}
+			attachment={preview.attachment}
+			relpath={preview.relpath}
+			siblings={preview.siblings}
+			taskId={preview.taskId}
+			forceTree={content.forceTree}
 			api={runtime.client}
 			workspacePath={snapshot.settings.workspace_path}
 			{t}
 			onClose={() => onRemoveTab(leafId, tab.id)}
-			onSelect={() => {}}
-			onSelectWorkspacePath={onSelectWorkspacePath}
+			onSelect={selectPreview}
 		/>
 	{:else}
 		<p class="pane-gone">{t.pane.emptyHint}</p>
