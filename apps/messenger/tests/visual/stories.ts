@@ -301,6 +301,11 @@ const storyLabel = createRawSnippet((tab: () => WorkbenchTab) => ({
  * column, which paints itself `--pane`. A shot only tests what the component does not leave to
  * whatever is behind it.
  */
+const storyEmptyActions = createRawSnippet(() => ({
+	render: () =>
+		`<div><button type="button" class="pane-open">${t.terminal.title}</button></div>`
+}));
+
 function workbenchProps(layout: WorkbenchLayout, wide = true) {
 	return {
 		layout,
@@ -309,6 +314,9 @@ function workbenchProps(layout: WorkbenchLayout, wide = true) {
 		wide,
 		tabBody: storyBody,
 		tabLabel: storyLabel,
+		// What the shell passes: it is what puts the new-tab button on the strip and what an
+		// empty pane offers, so a shot without it is missing a piece the app always has.
+		emptyActions: storyEmptyActions,
 		onLayout: () => {}
 	};
 }
