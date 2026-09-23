@@ -295,8 +295,13 @@ test("switching the conversation reloads that conversation's job", async () => {
 
 test("the switcher opens another job from this session", async () => {
   const view = open();
+  const trigger = await until(view.host, ".trace-title-trigger");
+  click(trigger);
   await until(view.host, ".trace-job");
-  click(buttonByText(view.host, "上周的排期"));
+  const jobBtn = [...view.host.querySelectorAll<HTMLButtonElement>(".trace-job")].find((b) =>
+    b.textContent?.includes("上周的排期")
+  )!;
+  click(jobBtn);
   await until(view.host, ".trace-empty");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("上周的排期");
   view.close();

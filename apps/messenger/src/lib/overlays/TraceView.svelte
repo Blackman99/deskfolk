@@ -9,6 +9,7 @@
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import TraceOutput from './TraceOutput.svelte';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
+	import { isOutside } from '../click-outside.ts';
 	import {
 		clampZoom,
 		filterTrace,
@@ -83,6 +84,9 @@
 	let loading = $state(true);
 	let failed = $state(false);
 	let notableOnly = $state(false);
+	let switcherOpen = $state(false);
+	let titleMenuEl = $state<HTMLDivElement | null>(null);
+	let titleTriggerEl = $state<HTMLButtonElement | null>(null);
 	/** A file opened inside this board. The preview stays here; it never opens the chat's pane. */
 	let openFile = $state<{ path: string; messageId: string; attachmentId: string } | null>(null);
 	/**
@@ -144,16 +148,13 @@
 
 	function fitBoard(): void {
 		if (!flow?.width || !viewportEl) return;
-		// The switcher and the tools float over the canvas, so fitting aims at what is actually
-		// clear: a board centred under a strip of chrome is a board half hidden.
+		// The bottom tools float over the canvas, so fitting aims at what is actually clear.
 		const body = viewportEl.parentElement;
-		const chrome =
-			(body?.querySelector('.trace-switcher')?.clientHeight ?? 0) +
-			(body?.querySelector('.trace-tools')?.clientHeight ?? 0);
+		const bottomChrome = body?.querySelector('.trace-tools')?.clientHeight ?? 0;
 		const box = viewportBox();
-		const clear = { width: box.width - 24, height: Math.max(120, box.height - chrome - 24) };
+		const clear = { width: box.width - 24, height: Math.max(120, box.height - bottomChrome - 24) };
 		const fitted = fitView(boardBox(), clear);
-		view = { ...fitted, y: fitted.y + (body?.querySelector('.trace-switcher')?.clientHeight ?? 0) + 12 };
+		view = { ...fitted, y: fitted.y + 12 };
 	}
 
 	function zoomBy(factor: number, at?: { x: number; y: number }): void {
@@ -390,7 +391,54 @@
 		}
 	}
 
+	function toggleSwitcher(event: MouseEvent): void {
+		event.stopPropagation();
+		switcherOpen = !switcherOpen;
+	}
+
+	function onMenuKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			switcherOpen = false;
+			titleTriggerEl?.focus();
+		} else if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			const items = Array.from(titleMenuEl?.querySelectorAll<HTMLButtonElement>('.trace-job') ?? []);
+			const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+			const next = items[currentIndex + 1] ?? items[0];
+			next?.focus();
+		} else if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			const items = Array.from(titleMenuEl?.querySelectorAll<HTMLButtonElement>('.trace-job') ?? []);
+			const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+			const prev = items[currentIndex - 1] ?? items[items.length - 1];
+			prev?.focus();
+		}
+	}
+
+	$effect(() => {
+		if (!switcherOpen) return;
+		function onPointerDown(e: PointerEvent): void {
+			if (isOutside(e.target as Node, titleMenuEl)) {
+				switcherOpen = false;
+			}
+		}
+		document.addEventListener('pointerdown', onPointerDown);
+		return () => {
+			document.removeEventListener('pointerdown', onPointerDown);
+		};
+	});
+
+	$effect(() => {
+		if (switcherOpen) {
+			const activeBtn = titleMenuEl?.querySelector<HTMLButtonElement>('.trace-job.is-current');
+			activeBtn?.focus();
+		}
+	});
+
 	function selectJob(id: string): void {
+		switcherOpen = false;
 		if (id === currentId) return;
 		void load(id);
 	}
@@ -406,6 +454,13 @@
 		 */
 		function onKey(event: KeyboardEvent): void {
 			if (event.key !== 'Escape') return;
+			if (switcherOpen) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				switcherOpen = false;
+				titleTriggerEl?.focus();
+				return;
+			}
 			if (outputFull) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
@@ -631,7 +686,73 @@
 <div class="trace-pane">
 		<header class="trace-header">
 			<div class="trace-titles">
-				<h2>{trace ? `${t.trace.title} · ${trace.title}` : t.trace.title}</h2>
+				{#if jobs.length > 1}
+					<div class="trace-title-select" bind:this={titleMenuEl}>
+						<button
+							type="button"
+							class="trace-title-trigger"
+							bind:this={titleTriggerEl}
+							aria-haspopup="listbox"
+							aria-expanded={switcherOpen}
+							onclick={toggleSwitcher}
+							title={trace ? `${t.trace.title} · ${trace.title || trace.dir}` : t.trace.title}
+						>
+							<h2>{trace ? `${t.trace.title} · ${trace.title || trace.dir}` : t.trace.title}</h2>
+							<svg
+								class="trace-title-arrow"
+								class:is-open={switcherOpen}
+								width="12"
+								height="12"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<polyline points="6 9 12 15 18 9"></polyline>
+							</svg>
+						</button>
+						{#if switcherOpen}
+							<div
+								class="trace-switcher-popover"
+								role="listbox"
+								tabindex="-1"
+								aria-label={t.trace.title}
+								onkeydown={onMenuKeydown}
+							>
+								{#each jobs as job (job.id)}
+									<button
+										type="button"
+										role="option"
+										class="trace-job"
+										class:is-current={job.id === currentId}
+										aria-selected={job.id === currentId}
+										onclick={() => {
+											selectJob(job.id);
+											titleTriggerEl?.focus();
+										}}
+									>
+										<span class="trace-job-check" aria-hidden="true">
+											{#if job.id === currentId}
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+													<polyline points="20 6 9 17 4 12"></polyline>
+												</svg>
+											{/if}
+										</span>
+										<div class="trace-job-info">
+											<span class="trace-job-title">{job.title || job.dir}</span>
+											<span class="trace-job-meta mono">{job.closed_at ? t.trace.closed : t.trace.open} · {job.dir}</span>
+										</div>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<h2>{trace ? `${t.trace.title} · ${trace.title || trace.dir}` : t.trace.title}</h2>
+				{/if}
 				{#if trace}
 					<span class="trace-meta">{trace.closed_at ? t.trace.closed : t.trace.open} · {trace.dir}</span>
 				{/if}
@@ -646,23 +767,6 @@
 			{/if}
 		</header>
 		<div class="trace-body">
-		{#if jobs.length > 1}
-			<div class="trace-switcher" role="tablist">
-				{#each jobs as job (job.id)}
-					<button
-						type="button"
-						role="tab"
-						class="trace-job"
-						class:is-current={job.id === currentId}
-						aria-selected={job.id === currentId}
-						onclick={() => selectJob(job.id)}
-					>
-						{job.title || job.dir}
-					</button>
-				{/each}
-			</div>
-		{/if}
-
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
 				<label class="trace-filter">
@@ -779,6 +883,8 @@
 
 
 	.trace-header {
+		position: relative;
+		z-index: 10;
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
@@ -786,13 +892,7 @@
 		padding: 12px 14px 10px;
 		border-bottom: 1px solid var(--line);
 		background: var(--sidebar-bg);
-		cursor: grab;
-		touch-action: none;
 		user-select: none;
-	}
-
-	.trace-header:active {
-		cursor: grabbing;
 	}
 
 	.trace-titles {
@@ -812,41 +912,146 @@
 		white-space: nowrap;
 	}
 
-	.trace-meta {
-		font-size: 11.5px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.trace-title-select {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		min-width: 0;
+		max-width: 100%;
 	}
 
-	.trace-switcher {
-		display: flex;
+	.trace-title-trigger {
+		display: inline-flex;
+		align-items: center;
 		gap: 6px;
-		overflow-x: auto;
-		padding: 10px 16px 0;
+		min-width: 0;
+		max-width: 100%;
+		margin: -3px -6px;
+		padding: 3px 6px;
+		border-radius: var(--radius-sm);
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--ink);
+		cursor: pointer;
+		text-align: left;
+		transition: background 0.15s ease, border-color 0.15s ease;
+	}
+
+	.trace-title-trigger:hover {
+		background: var(--chip);
+		border-color: var(--line-subtle);
+	}
+
+	.trace-title-trigger:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.trace-title-arrow {
+		flex: none;
+		color: var(--muted);
+		transition: transform 0.2s ease;
+	}
+
+	.trace-title-arrow.is-open {
+		transform: rotate(180deg);
+	}
+
+	.trace-switcher-popover {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 100;
+		min-width: 260px;
+		max-width: min(440px, calc(100vw - 32px));
+		max-height: 280px;
+		overflow-y: auto;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-md);
+		padding: 4px;
+		box-sizing: border-box;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	.trace-job {
-		flex: none;
-		max-width: 220px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		height: 26px;
-		padding: 0 10px;
-		border-radius: 999px;
-		border: 1px solid var(--line);
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		width: 100%;
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		border: 1px solid transparent;
 		background: transparent;
-		color: var(--ink-secondary);
-		font-size: 12px;
+		color: var(--ink);
 		cursor: pointer;
+		text-align: left;
+		font-size: 12px;
+		transition: background 0.12s ease, color 0.12s ease;
+		box-sizing: border-box;
+	}
+
+	.trace-job:hover,
+	.trace-job:focus-visible {
+		background: var(--chip);
+		outline: none;
 	}
 
 	.trace-job.is-current {
 		background: var(--accent-tint);
 		border-color: var(--accent-border);
 		color: var(--accent);
+		font-weight: 500;
+	}
+
+	.trace-job-check {
+		flex: none;
+		width: 14px;
+		height: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-top: 2px;
+		color: var(--accent);
+	}
+
+	.trace-job-info {
+		min-width: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.trace-job-title {
+		font-weight: inherit;
+		color: inherit;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.trace-job-meta {
+		font-size: 11px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.trace-job.is-current .trace-job-meta {
+		color: color-mix(in srgb, var(--accent) 70%, var(--muted));
+	}
+
+	.trace-meta {
+		font-size: 11.5px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.trace-filter {
@@ -869,24 +1074,15 @@
 		min-height: 0;
 	}
 
-	.trace-switcher,
 	.trace-tools {
 		position: absolute;
 		z-index: 1;
 		left: 0;
 		right: 0;
-		background: color-mix(in srgb, var(--pane) 86%, transparent);
-		backdrop-filter: blur(6px);
-	}
-
-	.trace-switcher {
-		top: 0;
-		padding: 6px 10px;
-	}
-
-	.trace-tools {
 		bottom: 0;
 		padding: 6px 10px;
+		background: color-mix(in srgb, var(--pane) 86%, transparent);
+		backdrop-filter: blur(6px);
 	}
 
 	.trace-viewport {

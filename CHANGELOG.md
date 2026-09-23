@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Merged the task trace title bar with the task switcher options: the currently selected job title serves as the header title directly, expanding into a dropdown menu to switch between jobs when multiple are available, freeing vertical canvas space and removing duplicated titles.
+
 - Restored the file tree when opening message artifacts in desktop workbench previews. Preview tabs retain the source message, task and attachment list across layout restoration; choosing a file updates the current preview tab. Long file trees scroll within the pane so every file remains reachable.
 
 - Web Push now honors the daemon's HTTP/HTTPS proxy environment and `NO_PROXY`, preserving destination validation, pinned public addresses, TLS verification, and redirect rejection. Remote notification tests distinguish push-service acceptance from phone delivery and report a timed-out first attempt with its scheduled retry.
