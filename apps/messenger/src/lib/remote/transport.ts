@@ -386,6 +386,31 @@ export class RemoteTransport {
       return;
     }
     if (response.file) {
+      // A file that fitted in the response is already here. Anything else names a stream whose
+      // chunks arrive afterwards, and an empty file has neither.
+      if (response.file.bytes !== undefined) {
+        let bytes: Uint8Array;
+        try { bytes = fromBase64url(response.file.bytes); }
+        catch {
+          this.fail();
+          return;
+        }
+        if (bytes.length !== response.file.size) {
+          this.fail();
+          return;
+        }
+        const etag = response.headers?.etag?.replaceAll('"', "");
+        if (etag && sha256Hex(bytes) !== etag) {
+          waiter.reject(new ApiError(422, "invalid_args", "file hash mismatch", waiter.id));
+          this.waiter = null;
+          const next = this.queue.shift();
+          if (next) next();
+          return;
+        }
+        waiter.onProgress?.({ loaded: bytes.length, total: bytes.length });
+        this.finish({ ...response, body: new Blob([Uint8Array.from(bytes)]) });
+        return;
+      }
       waiter.file = { streamId: response.file.streamId, size: response.file.size, chunks: [], offset: 0, headers: response.headers };
       waiter.onProgress?.({
         loaded: 0,

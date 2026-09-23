@@ -1,6 +1,6 @@
 import { base64url, canonicalBytes, canonicalHash, decodeFileChunk, fromBase64url, fragmentMessage, HostSession, identityPublic,
   openPairing, parseRemoteRequest, randomBytes, Reassembler, sealPairingGrant, sha256Hex, signGrant, text,
-  encodeFileChunk, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
+  encodeFileChunk, MAX_BODY, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
   type PairingContext, type PairingQr, type PairingRequest, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import type { LocalApi } from "../local-api";
 import type { LiveFile, Store } from "../store";
@@ -408,8 +408,13 @@ export class RemoteController {
           const next = outgoing.shift()!; queuedBytes -= next.body.length;
           try {
             const deadline = Date.now() + 5000;
-            while (alive && connection.socket.bufferedAmount > 0 && Date.now() < deadline) await Bun.sleep(2);
-            if (!alive || connection.socket.bufferedAmount > 0) throw new Error("backpressure");
+            // Wait only when the next ciphertext would pass the socket's 64 KiB ceiling. Waiting
+            // for a completely empty buffer turns a download into stop-and-wait: the amount still
+            // buffered lags the bytes, so the frame after "here is the file" sits out this
+            // deadline and the link is dropped. A note never finishes opening.
+            const cipherBytes = next.body.length + 41;
+            while (alive && connection.socket.bufferedAmount + cipherBytes > 65536 && Date.now() < deadline) await Bun.sleep(2);
+            if (!alive || connection.socket.bufferedAmount + cipherBytes > 65536) throw new Error("backpressure");
             await this.budget.take(next.body.length + 41, abort.signal);
             if (!alive) throw new Error("closed");
             if (next.stream !== undefined && fileStreams.get(next.stream)?.cancelled) continue;
@@ -545,6 +550,18 @@ export class RemoteController {
           const data = new Uint8Array(await response.arrayBuffer());
           try {
             if (data.length > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "file too large");
+            // A file whose response still fits in one frame rides inside it. The old path sent
+            // "here it comes" and then the bytes, and the second frame was the one that waited.
+            if (data.length > 0 && data.length <= MAX_FILE_CHUNK) {
+              const inline: RemoteResponse = { ...result, file: { streamId: 0, size: data.length, bytes: base64url(data) } };
+              const encoded = canonicalBytes(inline);
+              const fits = encoded.length <= MAX_BODY;
+              encoded.fill(0);
+              if (fits) {
+                sendJson(2, inline);
+                return;
+              }
+            }
             if (fileStreams.size >= REMOTE_FILE_STREAMS || streamId === 0xffff_ffff) throw new HttpError(429, "stream_limit", "file stream limit");
             const currentStream = ++streamId, stream: FileStream = { cancelled: false, direction: "down" };
             fileStreams.set(currentStream, stream);

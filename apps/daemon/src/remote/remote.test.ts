@@ -128,7 +128,9 @@ async function fixture(completions?: import("../completions").CompletionsClient,
           if (typeof bytes === "string" && JSON.parse(bytes).mode === "link") link = true;
           send(bytes); if (link && typeof bytes !== "string" && ++sent === 3) hold = true;
         };
-        Object.defineProperty(ws, "bufferedAmount", { get: () => link && hold ? 1 : 0 });
+        // A full 64 KiB buffer is what actually holds the pump. A leftover byte does not:
+        // the amount still buffered lags the bytes that already left.
+        Object.defineProperty(ws, "bufferedAmount", { get: () => link && hold ? 65536 : 0 });
       }
       return ws;
     },
@@ -206,6 +208,11 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     async function download(path: string): Promise<{ bytes: number; hash: string; streamId: number }> {
       const meta = await rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path } });
       expect(meta.status).toBe(200);
+      if (typeof meta.file?.bytes === "string") {
+        const inline = fromBase64url(meta.file.bytes);
+        expect(inline.length).toBe(meta.file.size);
+        return { bytes: inline.length, hash: createHash("sha256").update(inline).digest("hex"), streamId: 0 };
+      }
       const hash = createHash("sha256"); let offset = 0;
       for (;;) {
         const frame = noise.receive(await next() as Uint8Array);
@@ -637,9 +644,9 @@ test("actual relay + native confirmation fixture + signed mailbox grant + Noise 
   expect(received).toEqual(new Uint8Array(bytes));
   writeFileSync(join(f.root, "fixture.json"), '{"file":true}');
   const jsonFile = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "fixture.json" } });
-  expect(jsonFile.body).toBeNull(); expect(jsonFile.file.size).toBe(13);
-  const jsonChunk = decodeFileChunk(c.noise.receive(await c.next() as Uint8Array).body);
-  expect(new TextDecoder().decode(jsonChunk.chunk)).toBe('{"file":true}');
+  expect(jsonFile.body).toBeNull();
+  expect(jsonFile.file).toEqual({ streamId: 0, size: 13, bytes: base64url(Buffer.from('{"file":true}')) });
+  expect(new TextDecoder().decode(fromBase64url(jsonFile.file.bytes))).toBe('{"file":true}');
   c.socket.close();
 }, 15_000);
 

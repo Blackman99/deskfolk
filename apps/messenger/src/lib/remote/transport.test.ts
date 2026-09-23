@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { base64url, sha256Hex } from "@real-bot/remote";
 import { RemoteTransport } from "./transport.ts";
 import { deviceKeys, enrollment, fakeHost, type FakeSocket } from "./test-host.ts";
 
@@ -108,6 +109,61 @@ test("a handshake that never becomes a link lets go of the socket", async () => 
   const transport = transportFor(relay.socket);
   await expect(transport.connect()).rejects.toThrow();
   expect(relay.socket.closedByPage).toBe(true);
+});
+
+/** A note is one frame. It comes back inside the response, and the preview does not wait for another. */
+test("a file carried on the response is the blob", async () => {
+  const bytes = new TextEncoder().encode("hello");
+  const relay = fakeHost({
+    answer: (request) => ({
+      v: 1, id: request.id, status: 200, body: null,
+      headers: { contentType: "text/plain", etag: `"${sha256Hex(bytes)}"` },
+      file: { streamId: 0, size: bytes.length, bytes: base64url(bytes) },
+    }),
+  });
+  const transport = transportFor(relay.socket);
+  await transport.connect();
+  const seen: Array<{ loaded: number; total: number | null }> = [];
+  const response = await transport.rpc(
+    { v: 1, id: requestId, method: "GET", path: "/v1/workspace/file", query: { path: "a.txt" } },
+    undefined,
+    (progress) => seen.push(progress),
+  );
+  expect(await (response.body as Blob).text()).toBe("hello");
+  expect(seen).toEqual([{ loaded: 5, total: 5 }]);
+  // The link stays up: the next request is answered, rather than the page reconnecting.
+  const again = await transport.rpc({ v: 1, id: "01ARZ3NDEKTSV4RRFFQ69G5FAZ", method: "GET", path: "/v1/workspace/file" });
+  expect(await (again.body as Blob).text()).toBe("hello");
+});
+
+/** Bytes that are not the file they claim to be never become a preview, and a lie about the length drops the link. */
+test("inline file bytes are checked before they become a blob", async () => {
+  const bytes = new TextEncoder().encode("hello");
+  const wrongHash = fakeHost({
+    answer: (request) => ({
+      v: 1, id: request.id, status: 200, body: null,
+      headers: { etag: `"${"ab".repeat(32)}"` },
+      file: { streamId: 0, size: bytes.length, bytes: base64url(bytes) },
+    }),
+  });
+  const hashed = transportFor(wrongHash.socket);
+  await hashed.connect();
+  await expect(hashed.rpc({ v: 1, id: requestId, method: "GET", path: "/v1/workspace/file" }))
+    .rejects.toMatchObject({ status: 422, code: "invalid_args" });
+
+  const wrongLength = fakeHost({
+    answer: (request) => ({
+      v: 1, id: request.id, status: 200, body: null,
+      file: { streamId: 0, size: 4, bytes: base64url(bytes) },
+    }),
+  });
+  const sized = transportFor(wrongLength.socket);
+  await sized.connect();
+  let dropped = false;
+  sized.ondrop = () => { dropped = true; };
+  await expect(sized.rpc({ v: 1, id: requestId, method: "GET", path: "/v1/workspace/file" }))
+    .rejects.toMatchObject({ code: "request_unknown" });
+  expect(dropped).toBe(true);
 });
 
 /** The handshake's reader queues whatever nobody is waiting for, and nobody ever is again. */
