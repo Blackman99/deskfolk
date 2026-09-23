@@ -560,6 +560,19 @@ describe("schema", () => {
       body: "这一轮没写完：没有可用的模型",
     });
     expect(() => store.claimInterruptContinue(fail.id)).toThrow("message is not an interrupted turn");
+
+    const unreachable = store.insertMessage({
+      sessionId: writer.direct_session.id,
+      turnId: turn.id,
+      kind: "system",
+      author: writer.bot.id,
+      body: "这一轮没写完：连不上端点",
+    });
+    const continued = store.claimInterruptContinue(unreachable.id);
+    expect(continued.status).toBe("running");
+    expect(continued.trigger_message_id).toBe(unreachable.id);
+    expect(store.getMessage(unreachable.id).source_turn_id).toBe(continued.id);
+    expect(store.pendingInterrupt(writer.bot.id)).toBe(true);
     store.close();
   });
 

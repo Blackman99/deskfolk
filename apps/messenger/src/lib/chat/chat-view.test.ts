@@ -12,7 +12,9 @@ import {
   groupReactions,
   groupTranscript,
   isDifferentDay,
+  isContinuableNote,
   isInterruptNote,
+  isUnreachableNote,
   itemGroupInfo,
 } from "./chat-view.ts";
 import type { TranscriptItem } from "./transcript.ts";
@@ -437,7 +439,23 @@ describe("chat-view helpers", () => {
   test("isInterruptNote matches only the locked 中断 body", () => {
     expect(isInterruptNote({ kind: "system", body: "中断" })).toBe(true);
     expect(isInterruptNote({ kind: "system", body: "这一轮没写完：端点拒绝了这次补全" })).toBe(false);
+    expect(isInterruptNote({ kind: "system", body: "这一轮没写完：连不上端点" })).toBe(false);
     expect(isInterruptNote({ kind: "bot", body: "中断" })).toBe(false);
+  });
+
+  test("isUnreachableNote matches unreachable failure in zh and en", () => {
+    expect(isUnreachableNote({ kind: "system", body: "这一轮没写完：连不上端点" })).toBe(true);
+    expect(isUnreachableNote({ kind: "system", body: "This turn did not finish: Couldn't reach the endpoint" })).toBe(true);
+    expect(isUnreachableNote({ kind: "system", body: "这一轮没写完：端点拒绝了这次补全" })).toBe(false);
+    expect(isUnreachableNote({ kind: "system", body: "中断" })).toBe(false);
+    expect(isUnreachableNote({ kind: "bot", body: "这一轮没写完：连不上端点" })).toBe(false);
+  });
+
+  test("isContinuableNote matches both interrupt and unreachable notes", () => {
+    expect(isContinuableNote({ kind: "system", body: "中断" })).toBe(true);
+    expect(isContinuableNote({ kind: "system", body: "这一轮没写完：连不上端点" })).toBe(true);
+    expect(isContinuableNote({ kind: "system", body: "This turn did not finish: Couldn't reach the endpoint" })).toBe(true);
+    expect(isContinuableNote({ kind: "system", body: "这一轮没写完：端点拒绝了这次补全" })).toBe(false);
   });
 
   test("canContinueInterrupt is on until a follow-up turn is recorded on the note", () => {
@@ -467,6 +485,41 @@ describe("chat-view helpers", () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  test("canContinueInterrupt supports unreachable failures with completed turns", () => {
+    const unreachable = {
+      id: "fail-1",
+      kind: "system" as const,
+      body: "这一轮没写完：连不上端点",
+      author: "bot-1",
+      turn_id: "turn-fail",
+      source_turn_id: null as string | null,
+    };
+    expect(canContinueInterrupt(unreachable, [])).toBe(true);
+    expect(canContinueInterrupt(unreachable, [{
+      id: "turn-fail",
+      session_id: "s1",
+      bot_id: "bot-1",
+      status: "completed",
+      trigger_message_id: "prev-1",
+      last_activity_at: "t1",
+      created_at: "t1",
+      updated_at: "t1",
+    }])).toBe(true);
+    expect(canContinueInterrupt(unreachable, [], { locked: true })).toBe(false);
+    expect(canContinueInterrupt(unreachable, [], { hasLiveTurnForBot: true })).toBe(false);
+    expect(canContinueInterrupt({ ...unreachable, source_turn_id: "turn-resumed" }, [])).toBe(false);
+
+    const nonContinuable = {
+      id: "fail-2",
+      kind: "system" as const,
+      body: "这一轮没写完：端点拒绝了这次补全",
+      author: "bot-1",
+      turn_id: "turn-fail",
+      source_turn_id: null as string | null,
+    };
+    expect(canContinueInterrupt(nonContinuable, [])).toBe(false);
   });
 });
 

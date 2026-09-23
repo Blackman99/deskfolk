@@ -474,13 +474,21 @@ export function listNotifications(
   };
 }
 
+/**
+ * What the badge counts: anything unread, plus approvals and asks still waiting on you. A seen
+ * interruption or failure stays open for Continue, but with no inbox there is nowhere to dismiss
+ * it, so it would hold the badge up forever.
+ */
+export const NEEDS_ATTENTION_SQL =
+  "(read_at IS NULL OR (action_state = 'open' AND kind IN ('approval', 'ask')))";
+
 export function getNotificationSummary(ctx: StoreContext): NotificationSummary {
   const counts = ctx.db
     .query<{ unread_count: number; open_count: number; attention_count: number }, []>(`
       SELECT
         COUNT(CASE WHEN read_at IS NULL THEN 1 END) as unread_count,
         COUNT(CASE WHEN action_state = 'open' THEN 1 END) as open_count,
-        COUNT(CASE WHEN read_at IS NULL OR action_state = 'open' THEN 1 END) as attention_count
+        COUNT(CASE WHEN ${NEEDS_ATTENTION_SQL} THEN 1 END) as attention_count
       FROM notifications
     `)
     .get();

@@ -432,6 +432,10 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.continueInterruptHint).toBe(
     "Continue from the interruption without retrying the cut action",
   );
+  expect(COPY.zh.stream.continueUnreachableHint).toBe("从断开处继续");
+  expect(COPY.en.stream.continueUnreachableHint).toBe(
+    "Continue from where the connection was lost",
+  );
   expect(COPY.zh.stream.ask).toBe("提问");
   expect(COPY.en.stream.ask).toBe("ask");
   expect(COPY.zh.stream.reply).toBe("回复");

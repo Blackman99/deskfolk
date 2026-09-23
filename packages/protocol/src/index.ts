@@ -47,6 +47,26 @@ export function isHiddenTranscriptKind(kind: string): boolean {
 /** Transcript body when a live turn is marked interrupted. Chinese in every locale. */
 export const INTERRUPT_NOTE_BODY = "中断" as const;
 
+export const UNREACHABLE_NOTE_BODIES = [
+  "这一轮没写完：连不上端点",
+  "This turn did not finish: Couldn't reach the endpoint",
+] as const;
+
+export function isInterruptNote(message: Pick<Message, "kind" | "body">): boolean {
+  return message.kind === "system" && message.body === INTERRUPT_NOTE_BODY;
+}
+
+export function isUnreachableNote(message: Pick<Message, "kind" | "body">): boolean {
+  return (
+    message.kind === "system" &&
+    (UNREACHABLE_NOTE_BODIES as readonly string[]).includes(message.body)
+  );
+}
+
+export function isContinuableNote(message: Pick<Message, "kind" | "body">): boolean {
+  return isInterruptNote(message) || isUnreachableNote(message);
+}
+
 /** Encrypted Web Push body. Visible copy is fixed; never titles, filenames or Bot names. */
 export const WEB_PUSH_PAYLOAD = { t: "pending" } as const;
 export const WEB_PUSH_COPY = {

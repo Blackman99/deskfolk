@@ -17,6 +17,7 @@ import { HttpError } from "./errors";
 import { ulid } from "./ids";
 import { truncateCodePoints } from "./notification-policy";
 import type { Store } from "./store";
+import { NEEDS_ATTENTION_SQL } from "./store/notifications";
 
 export const BATCHING_WINDOW_MS = 2_000;
 export const SEND_SLOT_INTERVAL_MS = 30_000;
@@ -920,7 +921,7 @@ export class NotificationDeliveryScheduler {
         const activeCount = this.store.db
           .query<{ count: number }, [string]>(`
             SELECT COUNT(*) as count FROM notifications
-            WHERE session_id = ? AND (read_at IS NULL OR action_state = 'open')
+            WHERE session_id = ? AND ${NEEDS_ATTENTION_SQL}
           `)
           .get(sessionId)?.count ?? 0;
         if (activeCount === 0) {

@@ -1588,6 +1588,69 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  test("continuing an unreachable turn from 这一轮没写完：连不上端点 resumes and finishes", async () => {
+    let callCount = 0;
+    const client: import("./completions").CompletionsClient = {
+      async complete() {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            ok: false,
+            failKind: "unreachable",
+            hadChoices: false,
+            usage: null,
+            missingReason: null,
+          };
+        }
+        return {
+          ok: true,
+          content: "resumed reply after reconnection",
+          toolCalls: [],
+          finishReason: "stop",
+          hadChoices: true,
+          usage: null,
+          missingReason: null,
+        };
+      },
+      async judge() {
+        return {
+          content: null,
+          toolCalls: [],
+          hadToolCalls: false,
+          usage: null,
+          failKind: "unreachable",
+        };
+      },
+    };
+    const h = await startApi(undefined, { completions: client });
+    const { botId, sessionId } = await createWriter(h, "https://mock.invalid");
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "do task" }),
+    });
+    const sys = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === botId,
+    );
+    expect(sys.body).toBe("这一轮没写完：连不上端点");
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+
+    const continued = await fetch(`${h.origin}/v1/turns/continue`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ message_id: sys.id }),
+    });
+    expect(continued.status).toBe(200);
+    const botMsg = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
+    );
+    expect(botMsg.body).toBe("resumed reply after reconnection");
+    sub.close();
+  });
+
   test("a 400 completion inserts a locale-zh system line and completes the turn", async () => {
     const fixture = await startFixture(() => new Response("nope", { status: 400 }));
     const h = await startApi();

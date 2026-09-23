@@ -1972,30 +1972,6 @@
 		filter: brightness(0.95);
 	}
 
-	.btn-mini-continue {
-		display: inline-flex;
-		align-items: center;
-		flex-shrink: 0;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--accent);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
-		border-radius: var(--radius-sm);
-		padding: 1px 8px;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.btn-mini-continue:hover:not(:disabled) {
-		filter: brightness(0.97);
-	}
-
-	.btn-mini-continue:disabled {
-		opacity: 0.55;
-		cursor: default;
-	}
-
 	.stop-icon-mini {
 		font-size: 8px;
 		line-height: 1;
@@ -2506,6 +2482,88 @@
 		font-size: 13px;
 		border-radius: 4px 16px 16px 16px;
 		box-shadow: none;
+		display: inline-flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+	}
+
+	.msg.is-system.has-continue {
+		background: var(--pane);
+		border-style: solid;
+		border-color: var(--line);
+		padding: 10px 14px;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	}
+
+	.msg.is-system.is-unreachable {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+	}
+
+	.system-msg-content {
+		line-height: 1.4;
+	}
+
+	.system-msg-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.system-msg-icon.is-unreachable {
+		color: var(--warn);
+	}
+
+	.system-msg-icon.is-interrupt {
+		color: var(--muted);
+	}
+
+	.system-msg-actions {
+		display: flex;
+		align-items: center;
+		margin-top: 2px;
+	}
+
+	.btn-continue-turn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 12px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--accent);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		user-select: none;
+	}
+
+	.btn-continue-turn:hover:not(:disabled) {
+		background: var(--accent);
+		color: #ffffff;
+		border-color: var(--accent);
+		box-shadow: 0 1px 4px var(--accent-glow);
+	}
+
+	.btn-continue-turn:active:not(:disabled) {
+		background: var(--accent-active);
+		color: #ffffff;
+		border-color: var(--accent-active);
+	}
+
+	.btn-continue-turn:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+
+	.btn-continue-turn .continue-icon {
+		flex-shrink: 0;
 	}
 
 	.msg-wrap.is-system-row .msg.is-system .who {

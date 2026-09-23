@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- Fixed the app icon badge in the Dock that never went away. An interrupted or unfinished turn only counted as handled once you pressed Continue, so it kept the badge up after you had seen it, and with no notifications page there was nowhere else to dismiss it. If you didn't mean to continue that turn, the number stayed; sending another message there cleared the row's "Interrupted" but not the badge. The badge now counts what you haven't seen plus approvals and questions still waiting on you. A seen interruption or failure no longer counts; the session row still shows it and Continue still works. Notification Center pulls a session's banners under the same rule.
+
 - On the desktop workbench, each conversation now has exactly one artifact preview and one flow board. Opening another file from the conversation — an attachment, a file link, the preview's own file tree, or a file on a flow-board card — turns that conversation's preview to it instead of adding another preview tab, and asking for another of its jobs turns its flow board. Opening the flow board without naming a job just brings it forward on the job it shows. If the preview has unsaved edits, it asks to save or discard first. Layouts saved with several previews or boards for one conversation keep only the one nearest the keyboard.
 
 - Merged the task trace title bar with the task switcher options: the currently selected job title serves as the header title directly, expanding into a dropdown menu to switch between jobs when multiple are available, freeing vertical canvas space and removing duplicated titles.

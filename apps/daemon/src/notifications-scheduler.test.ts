@@ -869,6 +869,35 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
     }
   });
 
+  it("clears a session's banner and the badge once its only open item is a seen interruption", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
+      const cut = store.createNotification({
+        semantic_key: "interrupted:turn_1",
+        kind: "interrupted",
+        session_id: writer.direct_session.id,
+      });
+      const waiting = store.createNotification({
+        semantic_key: "approval:app_1",
+        kind: "approval",
+        session_id: reviewer.direct_session.id,
+      });
+      store.markNotificationsReadBatch({ ids: [cut.id, waiting.id] });
+
+      const scheduler = new NotificationDeliveryScheduler(store, new PresenceManager());
+      expect(scheduler.getState().attention_count).toBe(1);
+      expect(
+        scheduler.reconcile({
+          identifiers: [`session:${writer.direct_session.id}`, `session:${reviewer.direct_session.id}`],
+        }).remove_identifiers,
+      ).toEqual([`session:${writer.direct_session.id}`]);
+    } finally {
+      store.close();
+    }
+  });
+
   it("prunes delivery history to 7 days / 2000 rows and keeps live batches", () => {
     const store = new Store({ endpointKey: memoryKeyStore() });
     try {
