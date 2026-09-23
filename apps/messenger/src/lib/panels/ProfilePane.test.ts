@@ -381,3 +381,51 @@ test("skills tab shows count badge matching skills count", () => {
   expect(countBadge?.textContent?.trim()).toBe("2");
   close();
 });
+
+test("mobile toggle switches skill enabled without opening editor", () => {
+  const skill = aSkill({ id: "s1", name: "Skill 1", enabled: true });
+  const { host, runtime, close } = open({ skills: [skill], initialTab: "skills" });
+  const box = host.querySelector(".skill-mobile-toggle input") as HTMLInputElement;
+  expect(box).not.toBeNull();
+  expect(box.checked).toBe(true);
+
+  box.checked = false;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+
+  const patch = runtime.calls.find((c) => c.name === "patchSkill");
+  expect(patch?.args).toEqual(["s1", { enabled: false }]);
+  expect(host.querySelector(".skill-modal")).toBeNull();
+  close();
+});
+
+test("mobile skill delete button inside editor invokes danger confirm", async () => {
+  const skill = aSkill({ id: "s1", name: "Skill 1" });
+  const bot = aBot();
+  const runtime = fakeRuntime({ bots: [bot], skills: [skill] });
+  runtime.profileBotId = bot.id;
+  let asked: { kind: string; run: (isCurrent: () => boolean) => Promise<void> } | null = null;
+  const { host, close } = render(ProfilePane, {
+    runtime,
+    bot,
+    t,
+    modelOptions: [],
+    selectedKind: "you-bot",
+    profileFailed: false,
+    initialTab: "skills",
+    openDangerConfirm: (kind: "skill", run: (isCurrent: () => boolean) => Promise<void>) => (asked = { kind, run }),
+    clearDanger: () => {},
+    onDeleteBot: () => {},
+    onClearHistory: () => {},
+  });
+
+  click(host.querySelector(".skill-open"));
+  expect(host.querySelector(".skill-modal")).not.toBeNull();
+  const deleteBtn = host.querySelector<HTMLButtonElement>(".skill-page-delete");
+  expect(deleteBtn).not.toBeNull();
+  click(deleteBtn);
+  expect(asked).not.toBeNull();
+  expect(asked!.kind).toBe("skill");
+  await asked!.run(() => true);
+  expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["s1"]);
+  close();
+});

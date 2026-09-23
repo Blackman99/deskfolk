@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aGroup, aRoutine, aSkill, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aGroup, aMemory, aRoutine, aSkill, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import GroupPane from "./GroupPane.svelte";
@@ -32,9 +32,9 @@ function withPhone(run: () => void, reducedMotion = false): void {
   }
 }
 
-function openProfile(routines: ReturnType<typeof aRoutine>[] = []) {
+function openProfile(routines: ReturnType<typeof aRoutine>[] = [], memories: ReturnType<typeof aMemory>[] = []) {
   const bot = aBot({ id: "bot-1", name: "Researcher" });
-  const runtime = reactive(fakeRuntime({ bots: [bot], skills: [aSkill()], routines }, { profileBotId: "bot-1" }));
+  const runtime = reactive(fakeRuntime({ bots: [bot], skills: [aSkill()], routines, memories }, { profileBotId: "bot-1" }));
   const rendered = render(ProfilePane, {
     runtime,
     bot,
@@ -155,6 +155,33 @@ test("on a phone the routines header carries the count and opens a new routine",
     expect(host.querySelector(".routine-page h3")?.textContent).toBe(t.routines.add);
     flushSync(() => { runtime.connection = "disconnected"; });
     expect(host.querySelector<HTMLButtonElement>(".bot-detail-action")!.disabled).toBe(true);
+    close();
+  }, true);
+});
+
+test("on a phone the skills header carries the count and opens a new skill", () => {
+  withPhone(() => {
+    const { host, close } = openProfile();
+    click([...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][1]);
+    expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabSkills);
+    expect(host.querySelector(".bot-detail-count")?.textContent).toBe("1");
+    const add = host.querySelector<HTMLButtonElement>(".bot-detail-action")!;
+    expect(add.textContent?.trim()).toBe(t.sidebar.skillAdd);
+    click(add);
+    flushSync();
+    expect(host.querySelector("#skill-modal-title")?.textContent?.trim()).toBe(t.sidebar.skillAdd);
+    close();
+  }, true);
+});
+
+test("on a phone the memory header carries the count and tab row shows count", () => {
+  withPhone(() => {
+    const { host, close } = openProfile([], [aMemory({ id: "mem-1", bot_id: "bot-1" }), aMemory({ id: "mem-2", bot_id: "bot-1" })]);
+    const memoryTab = [...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][3]!;
+    expect(memoryTab.querySelector(".tab-count")?.textContent).toBe("2");
+    click(memoryTab);
+    expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabMemory);
+    expect(host.querySelector(".bot-detail-count")?.textContent).toBe("2");
     close();
   }, true);
 });

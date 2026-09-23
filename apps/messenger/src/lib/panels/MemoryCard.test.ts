@@ -190,3 +190,33 @@ test("the memory editor carries the phone page frame and its way back", () => {
   expect(host.querySelector(".memory-modal")).toBeNull();
   close();
 });
+
+test("mobile toggle switches memory enabled without opening editor", () => {
+  const { host, runtime, close } = open([aMemory({ id: "m-1", enabled: true })]);
+  const box = host.querySelector(".memory-mobile-toggle input") as HTMLInputElement;
+  expect(box).not.toBeNull();
+  expect(box.checked).toBe(true);
+
+  box.checked = false;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+
+  const patch = runtime.calls.find((c) => c.name === "patchMemory");
+  expect(patch?.args).toEqual(["m-1", { enabled: false }]);
+  expect(host.querySelector(".memory-modal")).toBeNull();
+  close();
+});
+
+test("mobile memory delete button inside editor invokes danger confirm", async () => {
+  const { host, runtime, danger, close } = open([aMemory({ id: "m-del" })]);
+  click(host.querySelector(".memory-icon-btn"));
+  expect(host.querySelector(".memory-modal")).not.toBeNull();
+
+  const deleteBtn = host.querySelector<HTMLButtonElement>(".memory-page-delete");
+  expect(deleteBtn).not.toBeNull();
+  click(deleteBtn);
+
+  expect(danger[0]?.kind).toBe("memory");
+  await danger[0]!.run(() => true);
+  expect(runtime.calls.find((c) => c.name === "deleteMemory")?.args).toEqual(["m-del"]);
+  close();
+});
