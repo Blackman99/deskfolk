@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
 import type { RuntimeSnapshot } from "@real-bot/protocol";
 import type { MessengerRuntime } from "./runtime.svelte.ts";
@@ -30,6 +30,12 @@ mock.module("$app/navigation", () => ({
   },
 }));
 // Keep the actual page effects and runtime; the Shell's own effects are outside this startup test.
+// Bun keeps a module mock for the rest of the run, so the real Shell goes back afterwards: a file
+// that runs after this one (Shell.test.ts, on Linux) would otherwise mount the stub and find nothing.
+const { default: RealShell } = await import("$lib/Shell.svelte");
+afterAll(() => {
+  mock.module("$lib/Shell.svelte", () => ({ default: RealShell }));
+});
 mock.module("$lib/Shell.svelte", () => ({ default: () => ({
   backMobileLayer() { settingsBackCalls++; return settingsBackHandled; },
 }) }));
