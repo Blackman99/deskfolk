@@ -202,6 +202,18 @@ export function migrateSchema(db: Database): void {
   }
   migrateRouteTables(db, tables);
   migrateBotThinkingPins(db);
+  if (!tables.includes("terminals")) {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS terminals (
+        id TEXT PRIMARY KEY,
+        cwd TEXT NOT NULL,
+        rows INTEGER NOT NULL,
+        cols INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        scrollback BLOB NOT NULL
+      )
+    `);
+  }
   if (!tables.includes("remote_push_subs")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS remote_push_subs (

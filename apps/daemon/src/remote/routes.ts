@@ -88,12 +88,16 @@ const base64: Check = v => typeof v === "string" && v.length <= 87_384 && /^[A-Z
 get("terminals");
 get("terminals/:id");
 get("terminals/:id/scrollback", { from: v => typeof v === "string" && /^(0|[1-9][0-9]{0,15})$/.test(v) });
+get("terminals/:id/screen");
 add("POST", "terminals", { cwd: string, rows: axis, cols: axis }, ["cwd"]);
 add("POST", "terminals/:id/input", { data: base64 }, ["data"]);
 add("POST", "terminals/:id/resize", { rows: axis, cols: axis }, ["rows", "cols"]);
 add("POST", "terminals/:id/signal", { signal: one("SIGINT", "SIGQUIT", "SIGTSTP", "SIGTERM", "SIGKILL") }, ["signal"]);
 add("POST", "terminals/:id/watch", { from: offset });
 add("POST", "terminals/:id/unwatch", {});
+add("POST", "terminals/:id/clear", {});
+const colour: Check = v => typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
+add("POST", "terminals/:id/colors", { foreground: colour, background: colour, cursor: colour, palette: v => Array.isArray(v) && v.length <= 16 && v.every(colour) }, ["foreground", "background"]);
 add("DELETE", "terminals/:id");
 const streamId: Check = v => typeof v === "string" && /^[0-9A-HJKMNP-TV-Z]{26}:[A-Za-z0-9_-]{1,128}$/.test(v);
 add("POST", "streams/watch", { id: streamId, from: offset }, ["id"]);

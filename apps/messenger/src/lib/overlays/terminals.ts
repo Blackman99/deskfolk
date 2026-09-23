@@ -59,8 +59,22 @@ export function pickActive(items: Terminal[], current: string | null): string | 
   return (live.at(-1) ?? orderTerminals(items).at(-1))?.id ?? null;
 }
 
-export function terminalLabel(row: Terminal): string {
-  return row.title || "/";
+/**
+ * What to call each session. The daemon titles a shell after its folder, so every one opened in
+ * the workspace comes back with the same title; the second and later of a title get a number,
+ * oldest first. Computed over the whole list, so a desktop tab and the phone's strip call the
+ * same shell the same thing.
+ */
+export function terminalNames(items: readonly Terminal[]): Map<string, string> {
+  const seen = new Map<string, number>();
+  const names = new Map<string, string>();
+  for (const row of orderTerminals([...items])) {
+    const base = row.title || "/";
+    const count = (seen.get(base) ?? 0) + 1;
+    seen.set(base, count);
+    names.set(row.id, count === 1 ? base : `${base} ${count}`);
+  }
+  return names;
 }
 
 export function statusLabel(row: Terminal, t: Copy): string | null {

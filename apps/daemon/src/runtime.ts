@@ -123,6 +123,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         remote?.stop();
         api?.quiesce.close();
         api?.scheduler?.stop();
+        // Stop the shells before the store closes. Their rows stay, so the next start puts them back.
+        api?.terminals.shutdown();
         await api?.engine.close();
         store?.interruptRunningTurns((turnId) => api?.engine.executionOf(turnId) ?? null);
       } catch {
@@ -218,6 +220,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     api = createLocalApi({
       store,
       token,
+      dataDir: options.dataDir,
       policyV1: true,
       pushSettingsV2: true,
       devSetup: devPairing && (async (request) => {

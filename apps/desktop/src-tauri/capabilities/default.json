@@ -21,6 +21,7 @@
     "allow-hide-main-window",
     "allow-check-for-update",
     "allow-open-external-url",
+    "allow-read-clipboard-text",
     "allow-notification-permission-state",
     "allow-request-notification-permission",
     "allow-take-notification-intent",

@@ -32,9 +32,9 @@ function leavesOf(layout: WorkbenchLayout) {
   return [...tiledLeaves(layout.root), ...layout.floating.map((pane) => pane.leaf)];
 }
 
-/** The pane showing this kind of thing, whatever it is pointed at. */
+/** The pane showing this kind of thing, whatever it is pointed at — the focused pane first. */
 export function findKind(layout: WorkbenchLayout, kind: PaneContent["kind"]): Located | null {
-  for (const leaf of leavesOf(layout)) {
+  for (const leaf of focusedFirst(layout)) {
     const tab = leaf.tabs.find((candidate) => candidate.kind === kind);
     if (tab) return { leafId: leaf.id, tab };
   }

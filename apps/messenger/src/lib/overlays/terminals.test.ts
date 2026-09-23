@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Terminal } from "@real-bot/protocol";
-import { accept, decodeBase64, encodeBase64, InputQueue, TERMINAL_KEYS, orderTerminals, pickActive, startCursor, statusLabel } from "./terminals.ts";
+import { accept, decodeBase64, encodeBase64, InputQueue, TERMINAL_KEYS, orderTerminals, pickActive, startCursor, statusLabel, terminalNames } from "./terminals.ts";
 import { COPY } from "../copy.ts";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -123,4 +123,17 @@ test("the phone key row sends bytes a software keyboard cannot", () => {
   // Every entry is a distinct id with a label a thumb can read.
   expect(new Set(TERMINAL_KEYS.map((key) => key.id)).size).toBe(TERMINAL_KEYS.length);
   expect(TERMINAL_KEYS.every((key) => key.label.length <= 4 && key.bytes.length > 0)).toBe(true);
+});
+
+test("shells opened in the same folder are told apart by number, oldest first, the same everywhere", () => {
+  const row = (id: string, title: string, created_at: string): Terminal => ({
+    id, title, cwd: `/work/${title}`, rows: 24, cols: 80, created_at, status: "live", exit_code: null, stream_end: 0,
+  });
+  const names = terminalNames([
+    row("c", "real-bot", "2026-09-23T03:00:00.000Z"),
+    row("a", "real-bot", "2026-09-23T01:00:00.000Z"),
+    row("d", "scratch", "2026-09-23T04:00:00.000Z"),
+    row("b", "real-bot", "2026-09-23T02:00:00.000Z"),
+  ]);
+  expect([...["a", "b", "c", "d"]].map((id) => names.get(id))).toEqual(["real-bot", "real-bot 2", "real-bot 3", "scratch"]);
 });

@@ -5,12 +5,30 @@ import type { ClientEvent } from '@real-bot/protocol';
 mock.module('monaco-editor-css', () => ({}));
 mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
 mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', () => ({}));
+// A terminal tab mounts xterm, which draws to a canvas happy-dom does not have.
+mock.module('@xterm/xterm', () => ({
+  Terminal: class {
+    rows = 24; cols = 80; options = {}; unicode = { activeVersion: '6' };
+    parser = { registerCsiHandler: () => ({ dispose() {} }), registerDcsHandler: () => ({ dispose() {} }), registerOscHandler: () => ({ dispose() {} }) };
+    loadAddon() {} open() {} onData() {} attachCustomKeyEventHandler() {} reset() {} clear() {} resize() {} focus() {} dispose() {}
+    write(_data: unknown, done?: () => void) { done?.(); }
+    hasSelection() { return false; } getSelection() { return ''; } paste() {}
+  },
+}));
+mock.module('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
+mock.module('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }));
+mock.module('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
+mock.module('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }));
+mock.module('@xterm/addon-search', () => ({ SearchAddon: class { onDidChangeResults() {} findNext() { return false; } findPrevious() { return false; } clearDecorations() {} } }));
+mock.module('@xterm/xterm/css/xterm.css', () => ({}));
 const { default: Shell } = await import('./Shell.svelte');
 import { ApiError } from './api.ts';
 import { applyEvent, emptySnapshot } from './snapshot.ts';
 import { aBot, aDirect, aGroup, aMessage, anAttachment, aProvider, aRoutine, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
-import { buttonByText, click, render } from './test-render.ts';
+import { buttonByText, click, fill, render } from './test-render.ts';
+import { copyFor } from './copy.ts';
+import { makeBranch, makeLeaf } from './workbench/layout-tree.ts';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });

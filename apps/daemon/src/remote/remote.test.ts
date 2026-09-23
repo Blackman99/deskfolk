@@ -476,7 +476,8 @@ test("route contracts reject unknown fields and wrong types across every mutatio
     ["DELETE", `/v1/bots/${id}`, { if_revision: "r" }], ["PATCH", "/v1/settings", { theme: "dark", if_revision: 1 }],
     ["POST", "/v1/terminals", { cwd: "/tmp" }], ["POST", `/v1/terminals/${id}/input`, { data: "AA==" }],
     ["POST", `/v1/terminals/${id}/resize`, { rows: 24, cols: 80 }], ["POST", `/v1/terminals/${id}/signal`, { signal: "SIGINT" }],
-    ["POST", `/v1/terminals/${id}/watch`, { from: 0 }],
+    ["POST", `/v1/terminals/${id}/watch`, { from: 0 }], ["POST", `/v1/terminals/${id}/clear`, {}],
+    ["POST", `/v1/terminals/${id}/colors`, { foreground: "#000000", background: "#ffffff", cursor: "#000000", palette: ["#000000"] }],
   ];
   for (const [method, path, body] of cases) {
     expect((await c.rpc({ v: 1, id: ulid(), method, path, body: { ...body, unknown_property: true } })).status).toBe(422);

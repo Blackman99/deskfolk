@@ -193,7 +193,6 @@
 		onStream={(id, sink) => runtime.onStream(id, sink)}
 		onChanged={() => runtime.refreshTerminals()}
 		onClose={() => onRemoveTab(leafId, tab.id)}
-		onRemoveTab={() => onRemoveTab(leafId, tab.id)}
 		onBind={(id) => onBindTerminal(leafId, tab.id, id)}
 	/>
 {:else if content.kind === 'workspace'}

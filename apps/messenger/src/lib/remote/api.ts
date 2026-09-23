@@ -2,6 +2,8 @@ import type {
   StreamFrame,
   Terminal,
   TerminalScrollback,
+  TerminalScreenSnapshot,
+  TerminalColors,
   TerminalSignal,
   ToolFrame,
   Approval,
@@ -506,6 +508,21 @@ export class RemoteApi {
 
   async terminalScrollback(id: string, from: number): Promise<TerminalScrollback> {
     return this.get<TerminalScrollback>(`/v1/terminals/${id}/scrollback?from=${from}`);
+  }
+
+  /** The screen as the daemon holds it, and the offset live bytes resume at. What a pane attaches to. */
+  async terminalScreen(id: string): Promise<TerminalScreenSnapshot> {
+    return this.get<TerminalScreenSnapshot>(`/v1/terminals/${id}/screen`);
+  }
+
+  /** ⌘K for the session, so a pane that attaches later does not bring the history back. */
+  async clearTerminalScreen(id: string): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/clear`, {});
+  }
+
+  /** This pane's colours, which the daemon answers a program's colour requests with. */
+  async terminalColors(id: string, colors: TerminalColors): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/colors`, colors);
   }
 
   async closeTerminal(id: string): Promise<void> {

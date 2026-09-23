@@ -3,7 +3,8 @@
 		USER_MEMBER,
 		type Attachment,
 		type Bot,
-		type SessionSummary
+		type SessionSummary,
+		type Terminal
 	} from '@real-bot/protocol';
 	import { onMount, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
@@ -24,6 +25,7 @@
 	import RouteLog from './overlays/RouteLog.svelte';
 	import TerminalPane from './overlays/TerminalPane.svelte';
 	import TaskTraceView from './overlays/TaskTrace.svelte';
+	import { orderTerminals, statusLabel, terminalNames } from './overlays/terminals.ts';
 	import { presentBotIds } from './sidebar/session-groups.ts';
 	import {
 		cleanPinnedIds,
@@ -77,7 +79,8 @@
 		activeSessionId,
 		dropDuplicateBoundTabs,
 		existingTarget,
-		openContent
+		findKind,
+		openContent,
 	} from './workbench/pane-open.ts';
 	import type { PreviewHandle } from './workbench/preview-context.ts';
 	import type { PaneContent } from './workbench/pane-content.ts';
@@ -389,11 +392,20 @@
 		});
 	});
 
+	/**
+	 * Terminal tabs name sessions the snapshot does not carry, so the list is read as soon as the
+	 * workbench is connected — and again after a reconnect — rather than when a terminal opens.
+	 */
+	$effect(() => {
+		if (!wide || runtime.connection !== 'connected') return;
+		untrack(() => void runtime.refreshTerminals());
+	});
+
 	/** Drop tabs whose conversation or terminal has gone, the way pinned rows are cleaned. */
 	$effect(() => {
 		const live = {
 			sessionIds: new Set(snapshot.sessions.map((row) => row.id)),
-			terminalIds: new Set(runtime.terminals.map((row) => row.id)),
+			terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
 			knownKinds: PANE_KIND_SET
 		};
 		const viewport = { x: 0, y: 0, width: shellWidth, height: 800 };
@@ -484,13 +496,63 @@
 		commitLayout(openContent(focused, content, { id: freshPaneId, replaceActive: true }));
 	}
 
+	/**
+	 * A terminal tab is one shell. A new tab starts its own and is bound to it before it shows, so
+	 * two tabs are never the same terminal. If it cannot start one it opens anyway and says why.
+	 */
+	async function openNewTerminal(leafId: string | null): Promise<void> {
+		const created = await runtime.startTerminal();
+		const content: PaneContent = {
+			kind: 'terminal',
+			terminalId: created?.id ?? null,
+			cwd: created?.cwd ?? null
+		};
+		if (leafId && leafById(layout, leafId)) openInPane(leafId, content);
+		else commitLayout(openContent(layout, content, { id: freshPaneId }));
+	}
+
+	/** The sidebar's terminal button: the terminal tab you have, nearest first, or a new one. */
+	async function showTerminal(): Promise<void> {
+		const open = findKind(layout, 'terminal');
+		if (open) {
+			commitLayout(activateTab(focusLeaf(layout, open.leafId), open.leafId, open.tab.id));
+			return;
+		}
+		await openNewTerminal(null);
+	}
+
+	/**
+	 * Sessions no tab shows. Closing a terminal tab never stops its shell, and a phone can start one,
+	 * so what is still there has to be reachable from where you open things.
+	 */
+	const untabbedTerminals = $derived.by(() => {
+		const shown = new Set(
+			allLeaves(layout)
+				.flatMap((leaf) => leaf.tabs)
+				.filter((tab) => tab.kind === 'terminal')
+				.map((tab) => tab.params.terminalId)
+		);
+		return orderTerminals(runtime.terminals.filter((row) => !shown.has(row.id)));
+	});
+	const terminalNamesById = $derived(terminalNames(runtime.terminals));
+
+	/** A session's name, and how it ended when it has. */
+	function terminalName(row: Terminal): string {
+		const name = terminalNamesById.get(row.id) ?? row.title;
+		const status = statusLabel(row, t);
+		return status ? `${name} · ${status}` : name;
+	}
+
 	/** Write the session a terminal pane settled on back into its tab, so a restart comes back to it. */
 	function bindTerminalTab(leafId: string, tabId: string, terminalId: string | null): void {
 		const leaf = leafById(layout, leafId);
 		const tab = leaf?.tabs.find((candidate) => candidate.id === tabId);
 		if (!tab || tab.kind !== 'terminal') return;
 		if ((tab.params.terminalId ?? null) === terminalId) return;
-		const params: Record<string, string> = terminalId ? { terminalId } : {};
+		const cwd = (terminalId && runtime.terminals.find((row) => row.id === terminalId)?.cwd) || tab.params.cwd;
+		const params: Record<string, string> = {};
+		if (terminalId) params.terminalId = terminalId;
+		if (cwd) params.cwd = cwd;
 		commitLayout(replaceTabParams(layout, leafId, tabId, params));
 	}
 

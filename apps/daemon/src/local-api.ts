@@ -27,6 +27,7 @@ import { corsHeaders, originDecision } from "./origin";
 import { EventStream, sessionUpsertFields } from "./session-events";
 import { StreamHub, type StreamRead } from "./streams";
 import { Terminals } from "./terminals";
+import { ensureZshIntegration } from "./terminal-env";
 import type { PtySignal } from "./pty";
 import { HttpError } from "./errors";
 import { type AttachmentInput, type Store } from "./store";
@@ -85,6 +86,8 @@ export type LocalApiOptions = {
   onRuntimeStop?: () => void;
   policyV1?: boolean;
   pushSettingsV2?: boolean;
+  /** Where Real Bot's own zsh shell integration is written, for terminals the person opens. */
+  dataDir?: string;
 };
 
 export type LocalApi = {
@@ -193,6 +196,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const terminals = new Terminals({
     streams,
     now: options.now,
+    store: options.store,
+    shellIntegrationDir: options.dataDir ? ensureZshIntegration(options.dataDir) : null,
     // Straight onto the sequenced ring: open / resize / exit / gone is a handful of frames, not
     // a firehose, and clients get ordering and catch-up for free. The bytes go elsewhere.
     publish: (event) => {
@@ -423,6 +428,30 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         end: read.end,
         closed: read.closed,
       }, 200, null);
+    }
+
+    // What a pane attaches to. The scrollback above stays for readers that predate it.
+    const screen = matchPath(path, "/v1/terminals/:id/screen");
+    if (screen && method === "GET") {
+      const snapshot = await terminals.screen(screen.id!);
+      return jsonResponse({
+        offset: snapshot.offset,
+        data: Buffer.from(snapshot.data, "utf8").toString("base64"),
+        rows: snapshot.rows,
+        cols: snapshot.cols,
+      }, 200, null);
+    }
+
+    const clear = matchPath(path, "/v1/terminals/:id/clear");
+    if (clear && method === "POST") {
+      terminals.clear(clear.id!);
+      return emptyResponse(204, null);
+    }
+
+    const colors = matchPath(path, "/v1/terminals/:id/colors");
+    if (colors && method === "POST") {
+      terminals.colors(colors.id!, terminalColors(body));
+      return emptyResponse(204, null);
     }
 
     const input = matchPath(path, "/v1/terminals/:id/input");
@@ -662,8 +691,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         options.onRuntimeStop?.();
         return emptyResponse(204, origin);
       }
-      // Quit ends your terminals with the daemon that holds them. A shell outliving the app it
-      // was opened from is an orphan nobody goes looking for.
+      // Quit stops the processes. The rows stay, so the next start puts each shell back where it was.
       if (request.method === "POST" && path === "/v1/runtime/quit") terminals.shutdown();
       const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && !isNonReceiptPath(path);
       const response = isMutation
@@ -758,6 +786,17 @@ function shellCommandOf(name: string | undefined, args: string | undefined): str
   } catch {
     return undefined;
   }
+}
+
+/** A pane's colours: `#rrggbb` text and background, optionally a cursor and the sixteen ANSI colours. */
+function terminalColors(body: Record<string, unknown>): { foreground: string; background: string; cursor?: string; palette?: string[] } {
+  const hex = (value: unknown): value is string => typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+  const { foreground, background, cursor, palette } = body;
+  if (!hex(foreground) || !hex(background) || (cursor !== undefined && !hex(cursor))
+    || (palette !== undefined && !(Array.isArray(palette) && palette.length <= 16 && palette.every(hex)))) {
+    throw new HttpError(422, "invalid_args", "colours are #rrggbb");
+  }
+  return { foreground, background, ...(cursor ? { cursor } : {}), ...(palette ? { palette: palette as string[] } : {}) };
 }
 
 function numberOr(value: unknown): number | undefined {

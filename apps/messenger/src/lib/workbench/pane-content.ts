@@ -16,7 +16,11 @@ export type PaneContent =
   | { kind: "session-settings"; sessionId: string; botId: string | null }
   | { kind: "trace"; sessionId: string; taskId: string | null }
   | { kind: "route-log"; sessionId: string }
-  | { kind: "terminal"; terminalId: string | null }
+  /**
+   * One shell. `cwd` is where it was opened, which is where a restart starts it again when the
+   * process did not survive — the split it sits in is the layout's, and this is what fills it.
+   */
+  | { kind: "terminal"; terminalId: string | null; cwd?: string | null }
   | { kind: "workspace"; selected: string | null }
   | { kind: "routines" };
 

@@ -239,6 +239,25 @@ fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+/// The pasteboard's text, for Paste in the terminal's right-click menu. WebKit's own
+/// `clipboard.readText` stops for a second confirming click, which no terminal asks for;
+/// ⌘V never comes here, it is the Edit menu's paste into the focused field.
+#[tauri::command]
+fn read_clipboard_text() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+        let pasteboard = NSPasteboard::generalPasteboard();
+        // SAFETY: an AppKit constant, initialised before any code of ours runs.
+        let kind = unsafe { NSPasteboardTypeString };
+        pasteboard.stringForType(kind).map(|text| text.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
 fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }
@@ -485,6 +504,7 @@ pub fn run() {
             hide_main_window,
             check_for_update,
             open_external_url,
+            read_clipboard_text,
             set_launch_at_login,
             independent_runtime_status,
             independent_runtime,

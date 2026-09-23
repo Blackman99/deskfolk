@@ -40,6 +40,7 @@ import {
 import * as skills from "./skills";
 import * as spend from "./spend";
 import * as tasks from "./tasks";
+import * as terminals from "./terminals";
 import * as turns from "./turns";
 
 export { HttpError } from "../errors";
@@ -261,6 +262,11 @@ export class Store {
   readonly createDirect = this.bind(sessions.createDirect);
   readonly createBotDirect = this.bind(sessions.createBotDirect);
   readonly unreadCount = this.bind(sessions.unreadCount);
+
+  // Terminals you opened. The process dies with the daemon; the row is what the next one starts. --
+  readonly listKeptTerminals = this.bind(terminals.listKeptTerminals);
+  readonly rememberTerminal = this.bind(terminals.rememberTerminal);
+  readonly forgetTerminal = this.bind(terminals.forgetTerminal);
 
   // Transcript -----------------------------------------------------------------------------
   readonly listMessages = this.bind(messages.listMessages);

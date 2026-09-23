@@ -488,6 +488,8 @@ export class MessengerRuntime {
 
   /** Sessions the daemon holds. Lifecycle only; the bytes are a stream, not state. */
   terminals = $state<Terminal[]>([]);
+  /** Whether `terminals` has been read at all. An empty list before that means "not asked yet". */
+  terminalsLoaded = $state(false);
   terminalOpen = $state(false);
 
   openTerminal(): void {
@@ -496,8 +498,27 @@ export class MessengerRuntime {
     this.closeSheets();
     void this.refreshTerminals();
     this.threadOpen = false;
-    this.routeLogOpen = false;
     this.terminalOpen = true;
+  }
+
+  /**
+   * A new shell in the workspace, in the list before the next read comes back: a desktop tab
+   * bound to it must not be healed away for naming a session nobody has heard of yet. Null when
+   * there is no workspace or the daemon would not start one; the tab says so itself.
+   */
+  async startTerminal(): Promise<Terminal | null> {
+    const api = this.api;
+    const where = this.snapshot.settings.workspace_path;
+    if (!api || !where) return null;
+    try {
+      const created = await api.openTerminal(where, 24, 80);
+      if (this.api === api && !this.terminals.some((row) => row.id === created.id)) {
+        this.terminals = [...this.terminals, created];
+      }
+      return created;
+    } catch {
+      return null;
+    }
   }
 
   /** The daemon is the list's source of truth; events keep it fresh after this first read. */
@@ -506,7 +527,10 @@ export class MessengerRuntime {
     if (!api) return;
     try {
       const items = await api.terminals();
-      if (this.api === api) this.terminals = items;
+      if (this.api === api) {
+        this.terminals = items;
+        this.terminalsLoaded = true;
+      }
     } catch {
       // A list that will not load is not worth a banner; the pane shows its own failure.
     }

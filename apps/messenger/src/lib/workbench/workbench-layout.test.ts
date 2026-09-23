@@ -17,7 +17,7 @@ const termTab = (id: string, terminalId: string): WorkbenchTab => ({ id, kind: "
 function live(overrides: Partial<LiveRefs> = {}): LiveRefs {
   return {
     sessionIds: overrides.sessionIds ?? new Set(["s1", "s2"]),
-    terminalIds: overrides.terminalIds ?? new Set(["term1"]),
+    terminalIds: "terminalIds" in overrides ? (overrides.terminalIds ?? null) : new Set(["term1"]),
     knownKinds: overrides.knownKinds ?? new Set(["chat", "terminal", "workspace", "routines"]),
   };
 }
@@ -117,6 +117,14 @@ test("a layout with nothing stale comes back as the very same object", () => {
   // The effect that runs this fires on every snapshot; rebuilding each time would be wasteful.
   const layout = layoutOf(makeLeaf("a", [chatTab("t1", "s1")]));
   expect(healLayout(layout, live(), viewport, floatMin, "fresh")).toBe(layout);
+});
+
+test("terminal tabs are kept while the terminal list has not been read yet", () => {
+  // Terminals are not in the snapshot. Judged against an empty list before the first read, every
+  // terminal tab named a dead session and a restart dropped them all.
+  const layout = layoutOf(makeLeaf("a", [termTab("t1", "term-anything"), chatTab("t2", "gone")]));
+  const healed = healLayout(layout, live({ terminalIds: null }), viewport, floatMin, "fallback");
+  expect(tiledLeaves(healed.root)[0]!.tabs.map((tab) => tab.id)).toEqual(["t1"]);
 });
 
 test("tabs for conversations and terminals that are gone are dropped", () => {
