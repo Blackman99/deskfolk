@@ -1,4 +1,6 @@
 mod daemon;
+#[cfg(all(target_os = "macos", debug_assertions))]
+mod dev_bundle;
 mod handoff;
 mod installer;
 mod launchd;
@@ -442,6 +444,8 @@ fn stage_from_mount(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    dev_bundle::reexec_inside_bundle();
 
     let mut builder = tauri::Builder::default();
 

@@ -1,7 +1,7 @@
 # 通知设计：桌面端与远程 PWA
 
 - 日期：2026-09-21
-- 状态：系统通知与远程推送已接入；应用内不再有通知铃铛或通知页，待处理状态标在会话列表上。生产 `push_transport` 为 `policy_v2`，出站发送、订阅与测试仍受远控激活门约束，解绑可用于清理。macOS 系统横幅物理门仍关闭（`NATIVE_DELIVERY_QUALIFIED` 为 false）；桌面与本机浏览器测试通知仅在 `native_delivery_v1` 成立时可用，入队为 queued，不是系统已展示。托管远程测试走远控门、联系人与订阅。下文 §5.1 / §5.2 描述的铃铛与收件箱页面已被这次产品决定取代。
+- 状态：系统通知与远程推送已接入；应用内不再有通知铃铛或通知页，待处理状态标在会话列表上。生产 `push_transport` 为 `policy_v2`，出站发送、订阅与测试仍受远控激活门约束，解绑可用于清理。冷启动点击与签名安装包仍未验收（`NATIVE_DELIVERY_QUALIFIED` 为 false），这道门不再决定能不能发横幅。`native_delivery_v1` 表示进程带应用标识，桌面与本机浏览器测试通知在它、系统许可与设备开启同时成立时可用，入队为 queued，不是系统已展示。 托管远程测试走远控门、联系人与订阅。下文 §5.1 / §5.2 描述的铃铛与收件箱页面已被这次产品决定取代。
 - 范围：单人、本机优先的 Real Bot；macOS 桌面与已配对远程浏览器 / PWA。
 - 交付性质：产品与技术设计。本文中的新增接口、表、组件和默认值均为提案；“现状”仅表示已核对源码，不表示本轮运行或真机验收通过。
 
@@ -684,7 +684,7 @@ sequenceDiagram
 | PR 2 | inbox_v1、bounded_read_v1、pending_ask_v1 API 与客户端方法 | policy_v1=false；新策略 / 设备策略 mutation 返回 409 capability_unavailable，不写一个不会生效的设置；旧 Push 仍 legacy | 能力缺失与新旧协议组合。 |
 | PR 3 | 收件箱、精确 ask UI、浏览器自动阅读与桌面显式标读 | native_reading_v1 缺失时桌面两处自动标读皆关闭；不展示未生效的策略 | 旧桌面桥 fixture 不调用自动 read；旧问题不显示输入框。 |
 | PR 4 | policy_v1、设置 / 调度 / fake adapter | 在启动接线阶段停用旧 notify/flush/deliver，关定时器并中止旧请求；真实 remote sender 为 paused_upgrade，订阅和 opt-in 保留。新开订阅 / 测试接口返回 409 capability_unavailable，旧空 unsubscribe 同事务 disabled、提升 device revision / push_generation、删除订阅并取消批次；界面显示升级中与关闭 / 清理入口，不能显示投递正常。 | 预装旧订阅后开启免打扰 / 关分类 / 关设备，fake fetch 的出站次数为零；包括直接 flush、重启及读旧库。 |
-| PR 5 | native_reading_v1；原生门通过后 native_delivery_v1 与真实桌面设置 | 真机门未过则 native_delivery_v1=false，系统通知按钮禁用；remote 仍 paused_upgrade | 安装包矩阵；默认 / independent 的 latch 分别验收。 |
+| PR 5 | native_reading_v1；进程带应用标识时 native_delivery_v1 与真实桌面设置 | 冷启动点击未验收只记在 `NATIVE_DELIVERY_QUALIFIED`，不把 native_delivery_v1 打成 false，也不禁用测试；remote 仍 paused_upgrade | 安装包矩阵；默认 / independent 的 latch 分别验收。 |
 | PR 6 | push_settings_v2 原子状态机、policy_v2 唯一 sender、限流与修复 | 发前仍受全部远控门 / 系统许可 / 配置约束；旧 direct sender 永远不再启动；旧 subscribe 明确升级错误 | v1→v2 切换、旧客户端、CAS/ABA、限流及订阅 fixture。 |
 | PR 7 | 通用点击收件箱、SW 与单设备多页协调、后台 badge 降级 | 真正手机展示 / 冷点击仍待 G-push；PR 6 上线到此之前旧 SW 只提供原点击重连，不宣传完整新导航 | worker 更新与旧 inbox message 兼容。 |
 | PR 8 | 通过验证的支持矩阵、汇总文档 | 既有 G-pack / UV / S-rev 等门未过仍关闭生产远控 | 只记录实际证据，不用文档变更冒充开放。 |

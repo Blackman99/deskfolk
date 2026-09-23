@@ -16,7 +16,10 @@ pub struct NotificationIntent {
 pub struct NotificationPermissionStateDto {
     pub permission: String,
     pub native_reading_v1: bool,
+    /// The process can hand a banner to Notification Center.
     pub native_delivery_v1: bool,
+    /// Cold-start click from a signed installed package has been verified.
+    pub cold_click_qualified: bool,
     pub operational: bool,
     pub gated_reason: Option<String>,
     pub attention_count: u32,
@@ -250,6 +253,17 @@ impl NotificationState {
 }
 
 pub struct TrustedNotificationCaller;
+
+fn cold_click_qualified() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        crate::notifications_macos::NATIVE_DELIVERY_QUALIFIED
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
 
 fn authorize_notification_document(
     label: &str,
@@ -684,6 +698,7 @@ pub fn notification_permission_state(
         permission,
         native_reading_v1: true,
         native_delivery_v1: operational,
+        cold_click_qualified: cold_click_qualified(),
         operational,
         gated_reason,
         attention_count,
@@ -715,6 +730,7 @@ pub fn request_notification_permission(
         permission,
         native_reading_v1: true,
         native_delivery_v1: operational,
+        cold_click_qualified: cold_click_qualified(),
         operational,
         gated_reason,
         attention_count,
@@ -942,6 +958,7 @@ mod tests {
             permission: state.adapter.get_permission_state().unwrap(),
             native_reading_v1: true,
             native_delivery_v1: state.adapter.is_operational(),
+            cold_click_qualified: cold_click_qualified(),
             operational: state.adapter.is_operational(),
             gated_reason: state.adapter.gated_reason(),
             attention_count: state.last_attention_count.load(Ordering::SeqCst),
@@ -950,6 +967,7 @@ mod tests {
         assert_eq!(dto.permission, "default");
         assert!(dto.native_reading_v1);
         assert!(!dto.native_delivery_v1);
+        assert!(!dto.cold_click_qualified);
         assert!(!dto.operational);
         assert_eq!(
             dto.gated_reason,
@@ -970,6 +988,7 @@ mod tests {
             permission: state.adapter.get_permission_state().unwrap(),
             native_reading_v1: true,
             native_delivery_v1: state.adapter.is_operational(),
+            cold_click_qualified: cold_click_qualified(),
             operational: state.adapter.is_operational(),
             gated_reason: state.adapter.gated_reason(),
             attention_count: state.last_attention_count.load(Ordering::SeqCst),

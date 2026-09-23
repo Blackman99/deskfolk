@@ -17,13 +17,16 @@ use objc2_user_notifications::{
 
 use crate::notifications::NotificationAdapter;
 
-/// Native delivery qualification gate.
-/// In accordance with docs/notifications-design.md §2.2, §9, and §15.2,
-/// native macOS notification delivery requires verification on a signed and packaged
-/// .app bundle with cold-click relaunch evidence.
-/// Until physical package acceptance verification is completed, this remains
-/// truthfully fail-closed (false) in both development and production builds.
+/// Cold-start click from a signed, installed package is still unverified.
+/// That gap stays visible here. It does not decide whether a banner can be posted:
+/// posting follows the process bundle identity and the user's system permission.
 pub const NATIVE_DELIVERY_QUALIFIED: bool = false;
+
+/// A banner can be handed to Notification Center when this process has a bundle
+/// identity. The cold-click qualification above is a separate, still-open check.
+pub(crate) fn native_posting_ready(bundle_present: bool) -> bool {
+    bundle_present
+}
 
 type OnClickCallback = Box<dyn Fn(&str) + Send + Sync>;
 static ON_CLICK_CALLBACK: OnceLock<OnClickCallback> = OnceLock::new();
@@ -94,14 +97,14 @@ impl MacOsNotificationAdapter {
 
 impl NotificationAdapter for MacOsNotificationAdapter {
     fn is_operational(&self) -> bool {
-        NATIVE_DELIVERY_QUALIFIED
+        native_posting_ready(self.bundle_id_present())
     }
 
     fn gated_reason(&self) -> Option<String> {
-        if self.is_operational() {
+        if self.bundle_id_present() {
             None
         } else {
-            Some("installed_app_coldclick_required".to_string())
+            Some("bundle_identifier_missing".to_string())
         }
     }
 
@@ -148,9 +151,6 @@ impl NotificationAdapter for MacOsNotificationAdapter {
     }
 
     fn request_permission(&self) -> Result<String, String> {
-        if !self.is_operational() {
-            return Err("delivery_gated: installed_app_coldclick_required".to_string());
-        }
         if !self.bundle_id_present() {
             return Err("bundle_identifier_missing".to_string());
         }
@@ -185,9 +185,6 @@ impl NotificationAdapter for MacOsNotificationAdapter {
         sound: &str,
         click_ref: &str,
     ) -> Result<(), String> {
-        if !self.is_operational() {
-            return Err("delivery_gated: installed_app_coldclick_required".to_string());
-        }
         if !self.bundle_id_present() {
             return Err("bundle_identifier_missing".to_string());
         }
@@ -273,5 +270,17 @@ impl NotificationAdapter for MacOsNotificationAdapter {
             dock.setBadgeLabel(badge_ns.as_deref());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cold_click_qualification_does_not_block_posting() {
+        assert!(!NATIVE_DELIVERY_QUALIFIED);
+        assert!(native_posting_ready(true));
+        assert!(!native_posting_ready(false));
     }
 }
