@@ -77,6 +77,35 @@ test("an incomplete add draft does not POST", async () => {
   close();
 });
 
+test("clicking an enabled model sets it as that endpoint's default", async () => {
+  const { host, runtime, close } = open();
+  openModels(host);
+  const picks = [...host.querySelectorAll<HTMLButtonElement>(".provider-model-pick")];
+  expect(picks.map((row) => row.textContent?.trim())).toEqual(["grok-4.6", "gemini-3.8-flash"]);
+  expect(picks[0]?.getAttribute("aria-checked")).toBe("true");
+  click(picks[1]);
+  await sleep(20);
+  expect(runtime.calls.filter((c) => c.name === "patchProvider")).toEqual([
+    { name: "patchProvider", args: ["prov-1", { default_model: "gemini-3.8-flash" }] },
+  ]);
+  close();
+});
+
+test("the model list and the connection open as separate editors", () => {
+  const { host, close } = open();
+  openModels(host);
+  click(host.querySelector(".provider-model-manage"));
+  expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.providerModels);
+  expect(host.querySelector("#provider-prov-1-name")).toBeNull();
+  expect(host.querySelector(".model-picker")).toBeTruthy();
+  click(host.querySelector(".provider-editor-modal .modal-close"));
+  click(host.querySelector(".btn-provider-edit"));
+  expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.providerConnection);
+  expect(host.querySelector("#provider-prov-1-name")).toBeTruthy();
+  expect(host.querySelector(".model-picker")).toBeNull();
+  close();
+});
+
 test("closing the endpoint editor before the debounce still sends the edit", async () => {
   const { host, runtime, close } = open();
   openModels(host);

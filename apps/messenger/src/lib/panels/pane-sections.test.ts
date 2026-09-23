@@ -143,18 +143,16 @@ test("a group's sections are a list, and only the open one is rendered", () => {
     const { host, close } = openGroup();
     const rows = [...host.querySelectorAll<HTMLButtonElement>(".group-section-btn")];
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, " ").trim())).toEqual([
-      t.detail.groupProfile,
       `${t.detail.members} 3`,
       t.detail.sessionActions,
       t.detail.dangerZone,
     ]);
     // The list screen alone: none of the cards are mounted behind it.
-    expect(host.querySelector(".group-hero-card")).toBeNull();
-    click(rows[1]);
+    expect(host.querySelector(".group-members-card")).toBeNull();
+    click(rows[0]);
     flushSync();
     expect(host.querySelector(".group-detail-title")?.textContent).toBe(t.detail.members);
     expect(host.querySelector(".group-members-card")).not.toBeNull();
-    expect(host.querySelector(".group-hero-card")).toBeNull();
     expect(host.querySelector(".danger-zone-card")).toBeNull();
     click(host.querySelector(".group-detail-back"));
     flushSync();
@@ -177,7 +175,6 @@ test("a Bot-to-Bot session lists only the sections it has", () => {
 
 test("wider windows keep one scrolling column with every card and no section list", () => {
   const { host, close } = openGroup();
-  expect(host.querySelector(".group-hero-card")).not.toBeNull();
   expect(host.querySelector(".group-members-card")).not.toBeNull();
   expect(host.querySelector(".danger-zone-card")).not.toBeNull();
   // The list and the section header exist in the markup but are the phone layout's business.

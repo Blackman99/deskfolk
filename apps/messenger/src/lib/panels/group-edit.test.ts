@@ -3,6 +3,7 @@ import type { Bot, SessionSummary } from "@real-bot/protocol";
 import { presentBotIds } from "../sidebar/session-groups.ts";
 import {
   canRemoveGroupBot,
+  groupNameCommit,
   mapGroupEditError,
   planGroupName,
   pullInCandidates,
@@ -39,6 +40,12 @@ const brief: SessionSummary = {
 test("whitespace group name does not produce a PATCH", () => {
   expect(planGroupName("   ")).toEqual({ ok: false, error: "empty" });
   expect(planGroupName(" Brief ")).toEqual({ ok: true, name: "Brief" });
+});
+
+test("leaving the title saves only a name that changed", () => {
+  expect(groupNameCommit(" Brief ", "Brief")).toEqual({ action: "noop" });
+  expect(groupNameCommit("新名字", "Brief")).toEqual({ action: "save", name: "新名字" });
+  expect(groupNameCommit("   ", "Brief")).toEqual({ action: "invalid" });
 });
 
 test("present bots ignore you and members who already left", () => {

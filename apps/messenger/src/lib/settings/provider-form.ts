@@ -64,6 +64,11 @@ export function emptyModelAttr(): ModelAttrDraft {
 export type ProviderEditorState = {
   /** `"add"`, or the id of the endpoint being edited. */
   target: "add" | string;
+  /**
+   * Which layer of the editor is showing. `connection` is the name, URL and key; `models` is the
+   * enable list and per-model attributes. The default model is picked on the list, not here.
+   */
+  view: "connection" | "models";
   draft: ProviderDraft;
   errors: ProviderFieldErrors;
   failed: boolean;
@@ -89,7 +94,6 @@ export function withSyncedDefaultModel(draft: ProviderDraft): ProviderDraft {
   const modelAttrs = pruneAttrs(draft.modelAttrs, models, draft.advertisedThinking);
   const next = { ...draft, models, modelAttrs };
   if (next.defaultModel && models.includes(next.defaultModel)) return next;
-  if (models[0]) return { ...next, defaultModel: models[0] };
   if (!next.defaultModel) return next;
   return { ...next, defaultModel: "" };
 }
@@ -256,15 +260,16 @@ export function draftFromProvider(input: {
 }
 
 export function planCreateProvider(draft: ProviderDraft, requireKey: boolean): ProviderSavePlan {
-  const parsed = parseProviderDraft(draft, requireKey);
+  // A new endpoint starts as a connection. The model list and its default are chosen afterwards.
+  const parsed = parseProviderDraft(draft, requireKey, { allowEmptyModels: true });
   if (!parsed.ok) return parsed;
   const body: CreateProviderRequest = {
     name: parsed.name,
     base_url: parsed.baseUrl,
     api_key: parsed.apiKey || undefined,
     models: parsed.models,
-    default_model: parsed.defaultModel,
   };
+  if (parsed.defaultModel) body.default_model = parsed.defaultModel;
   if (parsed.availableModels.length > 0) body.available_models = parsed.availableModels;
   return { ok: true, body };
 }
@@ -319,6 +324,7 @@ export function parseModelSelectValue(raw: string): { provider_id: string | null
 function parseProviderDraft(
   draft: ProviderDraft,
   requireKey: boolean,
+  options: { allowEmptyModels?: boolean } = {},
 ):
   | {
       ok: true;
@@ -339,9 +345,10 @@ function parseProviderDraft(
   if (baseUrl.length === 0) errors.endpoint = "empty";
   else if (!isHttpOrHttpsUrl(baseUrl)) errors.endpoint = "invalid";
   if (requireKey && draft.apiKey.length === 0) errors.endpointKey = "empty";
-  if (names.length === 0) errors.models = "empty";
-  if (defaultModel.length === 0) errors.defaultModel = "empty";
-  else if (names.length > 0 && !names.includes(defaultModel)) errors.defaultModel = "invalid";
+  if (names.length === 0 && !options.allowEmptyModels) errors.models = "empty";
+  if (defaultModel.length === 0) {
+    if (!options.allowEmptyModels) errors.defaultModel = "empty";
+  } else if (!names.includes(defaultModel)) errors.defaultModel = "invalid";
   if (errors.name || errors.endpoint || errors.endpointKey || errors.models || errors.defaultModel) {
     return { ok: false, errors };
   }

@@ -458,6 +458,7 @@
 				providerEditor = {
 					...providerEditor,
 					target: created.id,
+					view: 'models',
 					draft: { ...providerEditor.draft, apiKey: '' },
 					errors: {},
 					failed: false
@@ -526,12 +527,19 @@
 		providerSavedTick = 0;
 		providerEditor = {
 			target,
+			view: 'connection',
 			draft,
 			errors: {},
 			failed: false,
 			fetching: false,
 			fetchError: null
 		};
+	}
+
+	/** Opens the enable list for an endpoint that already exists. A new one has nothing to list yet. */
+	function openProviderModels(id: string): void {
+		openEditProvider(id);
+		if (providerEditor?.target === id) providerEditor = { ...providerEditor, view: 'models' };
 	}
 
 	function openAddProvider(): void {
@@ -591,6 +599,27 @@
 			errors: {}
 		};
 		scheduleProviderSave();
+	}
+
+	/**
+	 * The default model is one click on the list, not a field inside the editor. The patch is the
+	 * model name alone, so a half-typed connection draft cannot ride along.
+	 */
+	async function setProviderDefaultModel(id: string, model: string): Promise<void> {
+		const provider = snapshot.providers.find((row) => row.id === id);
+		if (!provider || provider.default_model === model || !provider.models.includes(model)) return;
+		saveFailed = false;
+		const api = runtime.client;
+		const error = await runtime.patchProvider(id, { default_model: model });
+		if (runtime.client !== api || !runtime.settingsOpen) return;
+		if (error) {
+			saveFailed = true;
+			return;
+		}
+		const open = providerEditor;
+		if (open?.target === id) {
+			providerEditor = { ...open, draft: { ...open.draft, defaultModel: model }, errors: {}, failed: false };
+		}
 	}
 
 	async function setDefaultProvider(id: string): Promise<void> {
@@ -1385,12 +1414,7 @@ void runtime.setPushEnabled(enabled);
 								{@const host = providerHost(provider.base_url)}
 								<div class="provider-card" class:is-default={isDefault}>
 									<div class="provider-card-head flex items-center justify-between gap-5 min-w-0">
-										<button
-											type="button"
-											class="provider-card-identity"
-											onclick={() => openEditProvider(provider.id)}
-											title={`${t.settings.providerEdit}: ${provider.name}`}
-										>
+										<div class="provider-card-identity">
 											<span
 												class="provider-card-mark"
 												style:background={palette.bg}
@@ -1418,7 +1442,7 @@ void runtime.setPushEnabled(enabled);
 													</span>
 												{/if}
 											</span>
-										</button>
+										</div>
 
 										<div class="provider-card-acts flex items-center gap-3 shrink-0">
 											{#if !isDefault}
@@ -1435,12 +1459,12 @@ void runtime.setPushEnabled(enabled);
 											<button
 												type="button"
 												class="btn-provider-action btn-provider-edit"
-												aria-label={`${t.settings.providerEdit}: ${provider.name}`}
+												aria-label={`${t.settings.providerConnection}: ${provider.name}`}
 												onclick={() => openEditProvider(provider.id)}
-												title={t.settings.providerEdit}
+												title={t.settings.providerConnection}
 											>
-												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-												<span>{t.settings.providerEdit}</span>
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+												<span>{t.settings.providerConnection}</span>
 											</button>
 											<button
 												type="button"
@@ -1454,44 +1478,46 @@ void runtime.setPushEnabled(enabled);
 										</div>
 									</div>
 
-									{#if provider.default_model || provider.models.length > 0}
+									<div class="provider-model-rail" role="radiogroup" aria-label={t.settings.defaultModel}>
+										{#if provider.models.length === 0}
+											<button
+												type="button"
+												class="provider-model-empty"
+												onclick={() => openProviderModels(provider.id)}
+											>
+												{t.settings.providerNoDefault}
+											</button>
+										{:else}
+											{#each provider.models as model (model)}
+												{@const chosen = model === provider.default_model}
+												<button
+													type="button"
+													class="provider-model-pick mono"
+													class:is-default={chosen}
+													role="radio"
+													aria-checked={chosen}
+													aria-label={chosen
+														? t.settings.providerDefaultModel(model)
+														: t.settings.providerPickDefault}
+													onclick={() => void setProviderDefaultModel(provider.id, model)}
+												>
+													<span class="provider-model-mark" aria-hidden="true"></span>
+													<span class="provider-model-pick-name">{model}</span>
+												</button>
+											{/each}
+										{/if}
 										<button
 											type="button"
-											class="provider-card-body-btn"
-											onclick={() => openEditProvider(provider.id)}
-											title={`${t.settings.providerEdit}: ${provider.name}`}
+											class="provider-model-manage"
+											aria-label={`${t.settings.providerModels}: ${provider.name}`}
+											onclick={() => openProviderModels(provider.id)}
 										>
-											<div class="provider-meta-row flex items-center justify-between gap-4 flex-wrap w-full">
-												{#if provider.default_model}
-													<div class="provider-default-model-tag" title={`${t.settings.defaultModel}: ${provider.default_model}`}>
-														<span class="tag-icon">
-															<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-														</span>
-														<span class="tag-label">{t.settings.defaultModel}:</span>
-														<span class="tag-val mono">{provider.default_model}</span>
-													</div>
-												{/if}
-												<span class="provider-model-count-label text-11p5 text-muted font-medium ml-auto">
-													{t.settings.providerModelCount(provider.models.length)}
-												</span>
-											</div>
-
+											{t.settings.providerModels}
 											{#if provider.models.length > 0}
-												<div class="provider-model-chips flex items-center gap-[5px] flex-wrap w-full">
-													{#each provider.models.slice(0, 4) as model}
-														<span class="provider-model-chip mono" class:is-default={model === provider.default_model}>
-															{model}
-														</span>
-													{/each}
-													{#if provider.models.length > 4}
-														<span class="provider-model-chip is-overflow">
-															+{provider.models.length - 4}
-														</span>
-													{/if}
-												</div>
+												<span class="provider-model-manage-count">{provider.models.length}</span>
 											{/if}
 										</button>
-									{/if}
+									</div>
 								</div>
 							{/each}
 						</div>
@@ -1687,7 +1713,13 @@ void runtime.setPushEnabled(enabled);
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<h2>
-					{providerEditor.target === 'add' ? t.settings.providerAdd : t.settings.providerEdit}
+					{#if providerEditor.target === 'add'}
+						{t.settings.providerAdd}
+					{:else if providerEditor.view === 'models'}
+						{t.settings.providerModels}
+					{:else}
+						{t.settings.providerConnection}
+					{/if}
 				</h2>
 				<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={providerEditor.failed} aria-live="polite">
 					{#if providerSaving}
@@ -1722,6 +1754,7 @@ void runtime.setPushEnabled(enabled);
 					failed={providerEditor.failed}
 					fetching={providerEditor.fetching}
 					fetchError={providerEditor.fetchError}
+					view={providerEditor.view}
 					fieldPrefix={providerEditor.target === 'add'
 						? 'provider-add'
 						: `provider-${providerEditor.target}`}
@@ -2165,18 +2198,7 @@ void runtime.setPushEnabled(enabled);
 		gap: 10px;
 		flex: 1;
 		min-width: 0;
-		border: none;
-		background: transparent;
-		padding: 0;
-		text-align: left;
-		cursor: pointer;
 		color: inherit;
-		border-radius: var(--radius-sm);
-	}
-
-	.provider-card-identity:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
 	}
 
 	.provider-card-mark {
@@ -2279,90 +2301,91 @@ void runtime.setPushEnabled(enabled);
 		border-color: var(--danger-line);
 	}
 
-	/* Card Body Button (clickable area for models / default model) */
-	.provider-card-body-btn {
+	/* The default model is a row you click. Connection and the enable list live behind their own buttons. */
+	.provider-model-rail {
 		display: flex;
 		flex-direction: column;
+		gap: 2px;
+		padding-top: 8px;
+		border-top: 1px solid var(--line);
+	}
+
+	.provider-model-pick,
+	.provider-model-empty,
+	.provider-model-manage {
+		display: flex;
+		align-items: center;
 		gap: 8px;
 		width: 100%;
+		min-height: 32px;
+		padding: 4px 8px;
 		border: none;
+		border-radius: var(--radius-sm);
 		background: transparent;
-		padding: 8px 0 0 0;
-		border-top: 1px solid var(--line);
+		color: var(--ink-secondary);
+		font-size: 12.5px;
 		text-align: left;
 		cursor: pointer;
-		color: inherit;
-		border-radius: var(--radius-sm);
 	}
 
-	.provider-card-body-btn:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	.provider-default-model-tag {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11.5px;
-		padding: 2px 8px;
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-		border: 1px solid var(--chip-line);
-		color: var(--ink-secondary);
-		max-width: 100%;
-	}
-
-	.provider-default-model-tag .tag-icon {
-		display: inline-flex;
-		color: var(--accent);
-		flex-shrink: 0;
-	}
-
-	.provider-default-model-tag .tag-label {
-		color: var(--muted);
-		font-size: 11px;
-	}
-
-	.provider-default-model-tag .tag-val {
-		font-weight: 600;
+	.provider-model-pick:hover,
+	.provider-model-empty:hover,
+	.provider-model-manage:hover {
+		background: var(--line-subtle);
 		color: var(--ink);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
-	.provider-model-chip {
-		font-size: 11px;
-		padding: 2px 7px;
-		border-radius: 4px;
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
-		color: var(--ink-secondary);
-		max-width: 180px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		transition: all 0.12s ease;
+	.provider-model-pick:focus-visible,
+	.provider-model-empty:focus-visible,
+	.provider-model-manage:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
 	}
 
-	.provider-card:hover .provider-model-chip {
-		border-color: var(--chip-line);
+	.provider-model-mark {
+		flex: none;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 1.5px solid var(--line-hover);
+		background: var(--input-bg);
+		box-sizing: border-box;
 	}
 
-	.provider-model-chip.is-default {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
+	.provider-model-pick.is-default {
+		color: var(--ink);
 		font-weight: 600;
 	}
 
-	.provider-model-chip.is-overflow {
-		font-size: 10.5px;
+	.provider-model-pick.is-default .provider-model-mark {
+		border-color: var(--accent);
+		background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
+	}
+
+	.provider-model-pick-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.provider-model-empty {
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	.provider-model-manage {
+		color: var(--accent);
+		font-weight: 600;
+		font-size: 12px;
+	}
+
+	.provider-model-manage-count {
+		margin-left: auto;
 		font-weight: 500;
 		color: var(--muted);
-		background: transparent;
-		border-style: dashed;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.modal-dialog.provider-editor-modal {
@@ -3416,6 +3439,12 @@ void runtime.setPushEnabled(enabled);
 		.btn-provider-setdefault span,
 		.btn-provider-edit span {
 			display: none;
+		}
+
+		.provider-model-pick,
+		.provider-model-empty,
+		.provider-model-manage {
+			min-height: 40px;
 		}
 	}
 

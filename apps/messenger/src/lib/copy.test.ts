@@ -87,6 +87,14 @@ test("provider settings chrome lives on settings.*", () => {
   expect(COPY.en.settings.providerConfirmDelete).toBe("Confirm delete");
   expect(COPY.zh.settings.providerModelCount(2)).toBe("2 个模型");
   expect(COPY.en.settings.providerModelCount(1)).toBe("1 model");
+  expect(COPY.zh.settings.providerConnection).toBe("连接");
+  expect(COPY.en.settings.providerConnection).toBe("Connection");
+  expect(COPY.zh.settings.providerModels).toBe("名单");
+  expect(COPY.en.settings.providerModels).toBe("Models");
+  expect(COPY.zh.settings.providerPickDefault).toBe("设为这个端点的默认模型");
+  expect(COPY.en.settings.providerPickDefault).toBe("Make this the endpoint's default model");
+  expect(COPY.zh.settings.providerDefaultModel("grok-4.6")).toBe("默认模型 grok-4.6");
+  expect(COPY.en.settings.providerDefaultModel("grok-4.6")).toBe("Default model grok-4.6");
 });
 
 test("independent runtime copy stays gated and bilingual", () => {
@@ -225,8 +233,6 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.detail.backToGroup).toBe("Back to group settings");
   expect(COPY.zh.detail.backToBot).toBe("返回 Bot 设置");
   expect(COPY.en.detail.backToBot).toBe("Back to bot settings");
-  expect(COPY.zh.detail.saveName).toBe("保存");
-  expect(COPY.en.detail.saveName).toBe("Save");
   expect(COPY.zh.detail.pullIn).toBe("拉入");
   expect(COPY.en.detail.pullIn).toBe("Pull in");
   expect(COPY.zh.detail.remove).toBe("移出");

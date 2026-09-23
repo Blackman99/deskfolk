@@ -40,15 +40,26 @@ function draft(overrides: Partial<ProviderDraft> = {}): ProviderDraft {
   };
 }
 
-test("create provider requires name, http URL, key, models, and a listed default", () => {
+test("create provider requires a name, an http URL and a key; the model list comes later", () => {
   expect(planCreateProvider({ ...emptyProviderDraft(), name: " " }, true)).toEqual({
     ok: false,
     errors: {
       name: "empty",
       endpoint: "empty",
       endpointKey: "empty",
-      models: "empty",
-      defaultModel: "empty",
+    },
+  });
+  const plan = planCreateProvider(
+    draft({ apiKey: "sk", models: [], defaultModel: "", availableModels: [] }),
+    true,
+  );
+  expect(plan).toEqual({
+    ok: true,
+    body: {
+      name: "OpenAI",
+      base_url: "https://api.openai.com/v1",
+      api_key: "sk",
+      models: [],
     },
   });
 });
@@ -145,7 +156,7 @@ test("model select values encode the provider", () => {
 test("syncs default model onto the enabled names and prunes stray attributes", () => {
   expect(
     withSyncedDefaultModel(draft({ models: ["gpt-4o", "gpt-4o-mini"], defaultModel: "gone" })).defaultModel,
-  ).toBe("gpt-4o");
+  ).toBe("");
   expect(withSyncedDefaultModel(draft()).defaultModel).toBe("gpt-4o");
   expect(withSyncedDefaultModel(draft({ models: [], defaultModel: "gpt-4o" })).defaultModel).toBe("");
   const synced = withSyncedDefaultModel(
@@ -166,7 +177,7 @@ test("probed models are recorded and enabled names are left alone", () => {
 test("a short probed list is enabled wholesale when nothing was picked; a long one waits", () => {
   const short = applyProbedModels(draft({ models: [], defaultModel: "" }), ["llama3", "qwen2.5"]);
   expect(short.models).toEqual(["llama3", "qwen2.5"]);
-  expect(short.defaultModel).toBe("llama3");
+  expect(short.defaultModel).toBe("");
   const long = applyProbedModels(draft({ models: [], defaultModel: "" }), ["a", "b", "c", "d"]);
   expect(long.models).toEqual([]);
   expect(long.defaultModel).toBe("");
@@ -177,13 +188,13 @@ test("toggling, bulk-setting, and hand-adding names keep the default in range", 
   expect(next.models).toEqual(["gpt-4o", "o3"]);
   next = toggleDraftModel(next, "gpt-4o");
   expect(next.models).toEqual(["o3"]);
-  expect(next.defaultModel).toBe("o3");
+  expect(next.defaultModel).toBe("");
   next = setDraftModels(next, []);
   expect(next.models).toEqual([]);
   expect(next.defaultModel).toBe("");
   next = addDraftModel(next, "  my-finetune ");
   expect(next.models).toEqual(["my-finetune"]);
-  expect(next.defaultModel).toBe("my-finetune");
+  expect(next.defaultModel).toBe("");
   expect(addDraftModel(next, "my-finetune")).toBe(next);
   expect(addDraftModel(next, "   ")).toBe(next);
   expect(pickerModels(next)).toEqual(["gpt-4o", "o3", "my-finetune"]);

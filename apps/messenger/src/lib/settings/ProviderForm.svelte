@@ -19,7 +19,6 @@
 		type ProviderDraft,
 		type ProviderFieldErrors
 	} from './provider-form.ts';
-	import Select from '../Select.svelte';
 	import { thinkingLevelLabel } from '../copy.ts';
 
 	interface Props {
@@ -31,6 +30,8 @@
 		fieldPrefix: string;
 		/** Set when editing: whether the daemon already holds a key for this endpoint. */
 		keySet?: boolean;
+		/** `connection` is name, URL and key. `models` is the enable list and its attributes. */
+		view?: 'connection' | 'models';
 		t: Copy;
 		onchange: (draft: ProviderDraft) => void;
 		onfetch: () => void;
@@ -44,6 +45,7 @@
 		fetchError,
 		fieldPrefix,
 		keySet,
+		view = 'connection',
 		t,
 		onchange,
 		onfetch
@@ -151,6 +153,7 @@
 {#if failed}
 	<p class="field-error">{t.settings.saveFailed}</p>
 {/if}
+{#if view === 'connection'}
 <div class="modal-section">
 	<label for={`${fieldPrefix}-name`}>{t.settings.providerName}</label>
 	<input
@@ -205,7 +208,7 @@
 		<p class="field-error">{t.settings.keyEmpty}</p>
 	{/if}
 </div>
-
+{:else}
 <div class="modal-section">
 	<div class="field-head-row">
 		<span class="field-head model-picker-head inline-flex items-center" id={`${fieldPrefix}-models-label`}>
@@ -297,9 +300,6 @@
 							>
 								<span class="model-row-box" aria-hidden="true">{on ? '✓' : ''}</span>
 								<span class="model-row-name mono flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-12p5">{name}</span>
-								{#if name === draft.defaultModel}
-									<span class="model-default-tag">{t.settings.modelAttrsDefaultBadge}</span>
-								{/if}
 								{#if !available.has(name)}
 									<span class="model-custom-tag">{t.settings.modelCustomBadge}</span>
 								{/if}
@@ -483,25 +483,13 @@
 	{#if errors.models}
 		<p class="field-error">{t.settings.modelsEmpty}</p>
 	{/if}
-</div>
-
-<div class="modal-section">
-	<label for={`${fieldPrefix}-default`}>{t.settings.defaultModel}</label>
-	<Select
-		id={`${fieldPrefix}-default`}
-		value={draft.defaultModel}
-		placeholder={t.settings.defaultModelEmpty}
-		emptyLabel={t.settings.defaultModelEmpty}
-		options={draft.models}
-		error={!!errors.defaultModel}
-		onchange={(value) => patch({ defaultModel: value })}
-	/>
 	{#if errors.defaultModel}
 		<p class="field-error">
 			{fieldCopy(errors.defaultModel, t.settings.defaultModelEmpty, t.settings.defaultModelInvalid)}
 		</p>
 	{/if}
 </div>
+{/if}
 
 <style>
 	:global([data-theme='dark']) .attr-pill.pill-price,
@@ -555,17 +543,6 @@
 		color: var(--muted);
 		margin-left: 6px;
 		vertical-align: middle;
-	}
-
-	.model-default-tag {
-		font-size: 10.5px;
-		padding: 1px 6px;
-		border-radius: 4px;
-		background: var(--accent-tint);
-		color: var(--accent);
-		border: 1px solid var(--accent-border);
-		font-weight: 500;
-		flex-shrink: 0;
 	}
 
 	.attr-pill {

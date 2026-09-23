@@ -48,7 +48,7 @@
 	 * section at a time on top of it. Only the open section is rendered there, so the screen holds
 	 * what it says it holds; wider windows keep the single scrolling column of cards.
 	 */
-	type GroupSection = 'profile' | 'members' | 'actions' | 'danger';
+	type GroupSection = 'members' | 'actions' | 'danger';
 	let phone = $state(false);
 	$effect(() => {
 		const query = window.matchMedia('(max-width: 680px)');
@@ -57,7 +57,7 @@
 		query.addEventListener('change', apply);
 		return () => query.removeEventListener('change', apply);
 	});
-	let activeSection = $state<GroupSection>('profile');
+	let activeSection = $state<GroupSection>('members');
 	const shows = (section: GroupSection): boolean => !phone || (mobileDetail && activeSection === section);
 
 	function openSection(section: GroupSection): void {
@@ -73,13 +73,11 @@
 	}
 
 	function sectionLabel(section: GroupSection): string {
-		return section === 'profile'
-			? t.detail.groupProfile
-			: section === 'members'
-				? t.detail.members
-				: section === 'actions'
-					? t.detail.sessionActions
-					: t.detail.dangerZone;
+		return section === 'members'
+			? t.detail.members
+			: section === 'actions'
+				? t.detail.sessionActions
+				: t.detail.dangerZone;
 	}
 
 	const snapshot = $derived(runtime.snapshot);
@@ -92,55 +90,11 @@
 	const groupCandidates = $derived(
 		selected.kind === 'group' ? pullInCandidates(visibleBots, selected) : []
 	);
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
-	const statusLabels = $derived({
-		running: t.sidebar.statusRunning,
-		replying: t.sidebar.statusReplying,
-		waitingApproval: t.sidebar.statusWaitingApproval,
-		waitingAsk: t.sidebar.statusWaitingAsk,
-		failed: t.sidebar.statusFailed,
-		interrupted: t.sidebar.statusInterrupted,
-		idle: t.sidebar.statusIdle
-	});
-
-	function titleOf(session: SessionSummary): string {
-		return sessionTitle(session, botsById, rosterLabels);
-	}
-
-	function botStatusOf(botId: string) {
-		return botWorkStatus(
-			botId,
-			snapshot.turns,
-			snapshot.approvals,
-			statusLabels,
-			snapshot.pendingJudgements
-		);
-	}
-
 	function memberLabel(id: string): string {
 		if (id === USER_MEMBER) return t.common.you;
 		const bot = botsById.get(id);
 		if (!bot) return t.top.deleted;
 		return bot.archived_at ? `${bot.name} · ${t.top.archived}` : bot.name;
-	}
-
-	async function saveGroupName(): Promise<void> {
-		if (selected.kind !== 'group') return;
-		detail.failed = false;
-		detail.nameError = undefined;
-		const plan = planGroupName(detail.name);
-		if (!plan.ok) {
-			detail.nameError = plan.error;
-			return;
-		}
-		const error = await runtime.patchSession(selected.id, { name: plan.name });
-		if (!error) {
-			detail.name = plan.name;
-			return;
-		}
-		const mapped = mapGroupEditError(error.message);
-		if ('name' in mapped) detail.nameError = mapped.name;
-		else detail.failed = true;
 	}
 
 	async function pullInMember(): Promise<void> {
@@ -165,13 +119,6 @@
 <div class="group-pane" class:is-mobile-detail={mobileDetail}>
 	<!-- Phone only: the sections as a list. Wider windows show them all at once, as before. -->
 	<nav class="group-sections" aria-label={selected.kind === 'group' ? t.detail.titleGroup : t.detail.titleBot}>
-		{#if selected.kind === 'group'}
-			<button type="button" class="group-section-btn" onclick={() => openSection('profile')}>
-				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
-				<span class="section-name">{t.detail.groupProfile}</span>
-				<span class="section-chevron" aria-hidden="true"></span>
-			</button>
-		{/if}
 		<button type="button" class="group-section-btn" onclick={() => openSection('members')}>
 			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 			<span class="section-name">{t.detail.members}</span>
@@ -211,56 +158,6 @@
 	<div class="panel-alert is-error">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
 		<span>{t.detail.saveFailed}</span>
-	</div>
-{/if}
-
-{#if selected.kind === 'group' && shows('profile')}
-	<!-- Group Profile Section -->
-	<div class="panel-card group-hero-card p-8">
-		<div class="group-hero-header">
-			<div class="group-hero-avatar has-composite" aria-hidden="true">
-				<SessionAvatar session={selected} bots={botsById} size="hero" botStatus={botStatusOf} />
-			</div>
-			<div class="group-hero-info flex-1 min-w-0 flex flex-col gap-2">
-				<div class="group-hero-title-row flex items-center gap-4 min-w-0">
-					<h3 class="group-hero-name text-16 font-bold text-ink whitespace-nowrap overflow-hidden text-ellipsis m-0">{detail.name || titleOf(selected)}</h3>
-					{#if selected.archived_at}
-						<span class="badge-archived">{t.top.archived}</span>
-					{/if}
-				</div>
-				<span class="group-hero-count text-12 text-muted font-medium">{groupPresent.length + 1} {t.detail.members}</span>
-			</div>
-		</div>
-
-		<div class="form-group group-name-edit mt-0">
-			<label for="detail-group-name">{t.sidebar.groupName}</label>
-			<div class="name-row">
-				<input
-					id="detail-group-name"
-					type="text"
-					bind:value={detail.name}
-					placeholder={t.sidebar.groupName}
-					onkeydown={(e) => {
-						if (e.key === 'Enter') {
-							e.preventDefault();
-							void saveGroupName();
-						}
-					}}
-				/>
-				<button
-					type="button"
-					class="btn-save-name"
-					class:is-active={detail.name.trim() !== (selected.name ?? '').trim()}
-					disabled={detail.name.trim() === (selected.name ?? '').trim()}
-					onclick={() => void saveGroupName()}
-				>
-					{t.detail.saveName}
-				</button>
-			</div>
-			{#if detail.nameError}
-				<p class="field-error">{t.sidebar.groupNameEmpty}</p>
-			{/if}
-		</div>
 	</div>
 {/if}
 
@@ -546,83 +443,6 @@
 		flex-shrink: 0;
 	}
 
-	.badge-archived {
-		align-self: flex-start;
-		font-size: 11px;
-		font-weight: 600;
-		padding: 2px 8px;
-		border-radius: 999px;
-		background: var(--warn-bg);
-		color: var(--warn-text);
-		border: 1px solid var(--warn-line);
-	}
-
-	.group-hero-header {
-		display: flex;
-		align-items: center;
-		gap: 14px;
-		margin-bottom: 14px;
-		padding-bottom: 14px;
-		border-bottom: 1px solid var(--line-subtle);
-	}
-
-	.group-hero-avatar {
-		width: 48px;
-		height: 48px;
-		border-radius: var(--radius-md);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
-		color: var(--accent);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-shadow: var(--shadow-xs);
-		flex-shrink: 0;
-		position: relative;
-	}
-
-	.group-hero-avatar.has-composite {
-		background: transparent;
-		border: none;
-		box-shadow: none;
-	}
-
-	:global(.sheet.session-settings) .name-row {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-	}
-
-	:global(.sheet.session-settings) .name-row :global(input) {
-		flex: 1;
-		min-width: 0;
-	}
-
-	:global(.sheet.session-settings) .btn-save-name {
-		background: var(--line-subtle);
-		border: 1px solid var(--line);
-		color: var(--muted);
-		font-weight: 600;
-		font-size: 12.5px;
-		padding: 8px 14px;
-		border-radius: var(--radius-md);
-		cursor: not-allowed;
-		white-space: nowrap;
-		transition: all 0.15s ease;
-	}
-
-	:global(.sheet.session-settings) .btn-save-name.is-active {
-		background: var(--accent);
-		color: #ffffff;
-		border-color: var(--accent);
-		cursor: pointer;
-	}
-
-	:global(.sheet.session-settings) .btn-save-name.is-active:hover {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-
 	:global(.sheet.session-settings) .member.you {
 		background: var(--pane);
 		border: 1px solid var(--line-subtle);
@@ -808,10 +628,6 @@
 		background: var(--line-subtle);
 		border-color: var(--line);
 		color: var(--muted);
-	}
-
-	.group-hero-avatar :global(.row-avatar) {
-		--avatar-ring: var(--pane);
 	}
 
 	@media (max-width: 680px) {
