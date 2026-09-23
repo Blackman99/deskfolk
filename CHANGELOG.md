@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Fixed the self-hosted relay's Caddyfile not starting. The rule that rejects file-path queries wrote CEL's `matches` as an operator, which Caddy refuses to compile, so `caddy run` with `deploy/remote/Caddyfile` exited at once. It now calls `.matches(...)` on the query.
+
 - Fixed files sent into a Bot-to-Bot chat being written out before the post was refused. That chat is yours to read, not to join, but a post with files staged them in the workspace (or the app's inbox folder when no workspace was set) before checking, and failed with an internal error where that folder did not exist. The post is now refused first, with nothing written.
 
 - In a Bot-to-Bot chat, an interrupted turn and a turn that did not finish — the endpoint unreachable, a refusal, a runtime error, a stall — can be continued. That chat has no composer, so Continue used to be hidden with it, and of the "this turn did not finish" notes only an unreachable endpoint could be resumed. A group and a chat between you and a Bot can resume those unfinished turns the same way.
