@@ -183,7 +183,7 @@
 		height: 28px;
 		padding: 0 4px;
 		background: var(--pane);
-		box-shadow: inset 0 -1px 0 0 var(--hairline);
+		box-shadow: inset 0 -1px 0 0 var(--line);
 		flex: 0 0 auto;
 	}
 	.wb-tabs {
@@ -219,7 +219,7 @@
 		cursor: default;
 	}
 	.wb-tab.is-active .wb-tab-button {
-		color: var(--text);
+		color: var(--ink);
 	}
 	.wb-tab-close {
 		width: 16px;
@@ -239,7 +239,7 @@
 	}
 	.wb-tab-close:hover {
 		background: var(--row-hover);
-		color: var(--text);
+		color: var(--ink);
 	}
 	.wb-pane-menu {
 		flex: 0 0 auto;
@@ -252,7 +252,7 @@
 	}
 	.wb-pane-menu:hover {
 		background: var(--row-hover);
-		color: var(--text);
+		color: var(--ink);
 	}
 	.wb-body {
 		flex: 1;
@@ -271,7 +271,7 @@
 		text-align: center;
 	}
 	.wb-empty-title {
-		color: var(--text);
+		color: var(--ink);
 		font-size: 14px;
 	}
 	.wb-empty-hint {

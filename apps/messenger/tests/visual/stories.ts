@@ -294,6 +294,13 @@ const storyLabel = createRawSnippet((tab: () => WorkbenchTab) => ({
 	render: () => `<span>${tab().params.label ?? tab().kind}</span>`
 }));
 
+/**
+ * The workbench paints its own gutters, so these shots show the dividers the same way the app
+ * does. That is worth saying because it was once the other way round: the gutters were
+ * transparent and read correctly here, sitting on `--bg`, while being invisible in the main
+ * column, which paints itself `--pane`. A shot only tests what the component does not leave to
+ * whatever is behind it.
+ */
 function workbenchProps(layout: WorkbenchLayout, wide = true) {
 	return {
 		layout,

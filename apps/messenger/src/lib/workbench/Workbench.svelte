@@ -64,6 +64,8 @@
 	let host = $state<HTMLDivElement>();
 	let viewport = $state<Rect>({ x: 0, y: 0, width: 0, height: 0 });
 	let dragging = $state(false);
+	/** Which divider is under the pointer right now; it keeps the accent for the whole drag. */
+	let draggingSash = $state<string | null>(null);
 	let paneDrag = $state<PaneDrag | null>(null);
 	let dropZone = $state<DropZone>({ kind: 'none' });
 	let ghost = $state<{ x: number; y: number; label: string } | null>(null);
@@ -152,6 +154,7 @@
 		const originX = event.clientX;
 		const originY = event.clientY;
 		dragging = true;
+		draggingSash = sashId;
 		dragGate.begin();
 
 		const move = (moveEvent: PointerEvent) => {
@@ -164,6 +167,7 @@
 			target.removeEventListener('pointercancel', finish);
 			clearPaint([drag.branchId]);
 			dragging = false;
+			draggingSash = null;
 			dragGate.end();
 			const delta = drag.axis === 'row' ? endEvent.clientX - originX : endEvent.clientY - originY;
 			if (delta !== 0) onLayout(resizeSash(layout, drag, delta));
@@ -344,6 +348,7 @@
 			onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 			onSashPointerDown={startSash}
+			{draggingSash}
 			onTabPointerDown={(event, leafId, tabId) =>
 				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
@@ -425,6 +430,13 @@
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
+		/*
+		 * The gutter colour, owned here rather than inherited. Panes paint themselves `--pane`,
+		 * so whatever shows between them is the seam — and if that is left to whatever happens to
+		 * be behind the workbench, the seam is invisible wherever the host is also `--pane`,
+		 * which is exactly what the main column is.
+		 */
+		background: var(--bg);
 	}
 	/* While a divider is moving, nothing inside a pane may swallow the pointer — an editor or a
 	   terminal would otherwise take it the moment the cursor crossed into one. */
@@ -447,19 +459,31 @@
 		cursor: move;
 		touch-action: none;
 	}
+	/*
+	 * Visible at rest, because a point that drags in two directions is not something to discover
+	 * by sweeping the pointer around. A small diamond sitting on the crossing, taking the accent
+	 * and growing when you are on it.
+	 */
 	.wb-junction::before {
 		content: '';
 		position: absolute;
-		inset: 8px;
+		inset: 9px;
 		border-radius: 2px;
-		background: var(--hairline);
-		opacity: 0;
+		background: var(--line-hover);
 		transform: rotate(45deg);
+		transition:
+			inset 0.12s ease,
+			background 0.12s ease;
 	}
 	.wb-junction:hover::before,
 	.wb-junction:focus-visible::before {
-		opacity: 1;
+		inset: 6px;
 		background: var(--accent);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.wb-junction::before {
+			transition: none;
+		}
 	}
 	.wb-drop {
 		position: absolute;
@@ -476,15 +500,10 @@
 		padding: 2px 8px;
 		border-radius: 6px;
 		font-size: 12px;
-		color: var(--text);
+		color: var(--ink);
 		background: var(--pane);
 		box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
 		pointer-events: none;
 		white-space: nowrap;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.wb-junction::before {
-			transition: none;
-		}
 	}
 </style>

@@ -134,7 +134,7 @@
 		overflow: hidden;
 		background: var(--pane);
 		box-shadow: 0 10px 30px rgb(0 0 0 / 0.22);
-		outline: 1px solid var(--hairline);
+		outline: 1px solid var(--line);
 		outline-offset: -1px;
 	}
 	.wb-float.is-focused {
