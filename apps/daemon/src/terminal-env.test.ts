@@ -40,7 +40,7 @@ test("sets a real TERM and identifies itself, the way Terminal.app does", () => 
   expect(env.SHELL).toBe("/bin/bash");
   expect(env.TERM).toBe("xterm-256color");
   expect(env.COLORTERM).toBe("truecolor");
-  expect(env.TERM_PROGRAM).toBe("RealBot");
+  expect(env.TERM_PROGRAM).toBe("Deskfolk");
 });
 
 test("LANG/LC_ALL already in the source are left alone", () => {
@@ -114,7 +114,7 @@ test("ensureZshIntegration writes .zshenv under <dataDir>/shell-integration/zsh 
   const dir = ensureZshIntegration(dataDir);
   expect(dir).toBe(join(dataDir, "shell-integration", "zsh"));
   const content = readFileSync(join(dir!, ".zshenv"), "utf8");
-  expect(content).toContain("Real Bot shell integration");
+  expect(content).toContain("Deskfolk shell integration");
   expect(content).toContain("REAL_BOT_ZSH_ZDOTDIR");
   expect(content).toContain("add-zsh-hook precmd _real_bot_report_cwd");
 });
@@ -135,7 +135,7 @@ test("ensureZshIntegration rewrites a file whose content has drifted", () => {
   const file = join(dir, ".zshenv");
   writeFileSync(file, "# tampered\n");
   ensureZshIntegration(dataDir);
-  expect(readFileSync(file, "utf8")).toContain("Real Bot shell integration");
+  expect(readFileSync(file, "utf8")).toContain("Deskfolk shell integration");
 });
 
 test("ensureZshIntegration returns null rather than throwing when it cannot write", () => {

@@ -1,4 +1,4 @@
-# Real Bot
+# Deskfolk
 
 本机 macOS 上的单人 agent 协作应用。术语见 [`CONTEXT.md`](CONTEXT.md)。
 

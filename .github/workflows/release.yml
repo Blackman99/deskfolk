@@ -108,7 +108,7 @@ jobs:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
           tagName: v__VERSION__
-          releaseName: Real Bot v__VERSION__
+          releaseName: Deskfolk v__VERSION__
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: true

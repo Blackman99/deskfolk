@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Real Bot",
-  "short_name": "Real Bot",
+  "name": "Deskfolk",
+  "short_name": "Deskfolk",
   "description": "Self-hosted remote messenger for a single Mac. Experimental; public pairing stays off.",
   "start_url": "./",
   "scope": "./",

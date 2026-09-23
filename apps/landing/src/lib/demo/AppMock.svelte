@@ -800,7 +800,7 @@
         <div class="banner" data-hit="notif-banner" in:fly={{ x: 60, duration: instant ? 0 : 360 }}>
           <span class="bn-icon"><Logo size={30} /></span>
           <div class="bn-text">
-            <div class="bn-top"><span class="bn-app">Real Bot</span><span class="bn-time">{t.mock.bannerNow}</span></div>
+            <div class="bn-top"><span class="bn-app">Deskfolk</span><span class="bn-time">{t.mock.bannerNow}</span></div>
             <div class="bn-title">{t.script.groupName} · {botName('coordinator')}</div>
             <div class="bn-body">{t.script.coordinatorClose}</div>
           </div>

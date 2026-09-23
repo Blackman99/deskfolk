@@ -321,7 +321,7 @@ const zh: Dict = {
     ]
   },
   mock: {
-    windowTitle: 'Real Bot',
+    windowTitle: 'Deskfolk',
     roster: '名册',
     addBot: '新建 Bot',
     search: '搜索会话、消息、文件、日程',
@@ -425,7 +425,7 @@ const zh: Dict = {
   },
   script: {
     groupName: '调研',
-    workspacePath: '/Users/you/real-bot-workspace',
+    workspacePath: '/Users/you/deskfolk-workspace',
     endpointName: '本地 vLLM',
     endpointUrl: 'http://127.0.0.1:8000/v1',
     models: [
@@ -492,7 +492,7 @@ const zh: Dict = {
       '2 / 2 个数字一致'
     ],
     commandTook: '3.1s',
-    terminalFolder: 'real-bot-workspace',
+    terminalFolder: 'deskfolk-workspace',
     terminalCommand: 'pnpm dev',
     terminalOutput: [
       '> report-site@0.1.0 dev',
@@ -571,7 +571,7 @@ const zh: Dict = {
       title: '下载 Alpha 快照',
       body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg。构建未签名：首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（完整 FAQ：docs/gatekeeper.zh.md；昂贵动作仍会先问你）：',
       link: '前往最新 Release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
+      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
     },
     linkDocs: '开发说明',
     linkManifesto: '设计理念',
@@ -580,13 +580,13 @@ const zh: Dict = {
   footer: {
     tagline: '本机 macOS 上的单人 agent 协作应用。',
     mit: 'MIT 协议开源。与 xAI / Grok 无官方附属关系。',
-    contributors: 'Real Bot Contributors'
+    contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Real Bot — 在自己的电脑上，用对话组一支持久的 AI 队友',
+    title: 'Deskfolk — 在自己的电脑上，用对话组一支持久的 AI 队友',
     description:
       'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，桌面窗能分屏开终端。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，Alpha 阶段。',
-    imageAlt: 'Real Bot：信使窗口里三个 Bot 在群里协作完成 report.md'
+    imageAlt: 'Deskfolk：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
     onThisPage: '本页',
@@ -598,7 +598,7 @@ const zh: Dict = {
     manifestoIndexHeading: '按主题读术语',
     manifestoIndexLead: '每个主题一页。点开后左侧是整份文档导航，右侧是本页术语。',
     roadmapTag: 'ROADMAP.md',
-    roadmapIntro: 'Real Bot 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
+    roadmapIntro: 'Deskfolk 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
     pagerPrev: '上一页',
     pagerNext: '下一页',
     navGroup: {
@@ -719,7 +719,7 @@ const en: Dict = {
     ]
   },
   mock: {
-    windowTitle: 'Real Bot',
+    windowTitle: 'Deskfolk',
     roster: 'Roster',
     addBot: 'New bot',
     search: 'Search sessions, messages, files, routines',
@@ -823,7 +823,7 @@ const en: Dict = {
   },
   script: {
     groupName: 'Research',
-    workspacePath: '/Users/you/real-bot-workspace',
+    workspacePath: '/Users/you/deskfolk-workspace',
     endpointName: 'Local vLLM',
     endpointUrl: 'http://127.0.0.1:8000/v1',
     models: [
@@ -891,7 +891,7 @@ const en: Dict = {
       '2 / 2 figures match'
     ],
     commandTook: '3.1s',
-    terminalFolder: 'real-bot-workspace',
+    terminalFolder: 'deskfolk-workspace',
     terminalCommand: 'pnpm dev',
     terminalOutput: [
       '> report-site@0.1.0 dev',
@@ -970,7 +970,7 @@ const en: Dict = {
       title: 'Download the alpha snapshot',
       body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel. The build is unsigned: if Gatekeeper blocks the first launch, right-click and choose Open, or run (full FAQ: docs/gatekeeper.md; expensive actions still ask first):',
       link: 'Go to the latest release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
+      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
     },
     linkDocs: 'Development guide',
     linkManifesto: 'Manifesto',
@@ -979,13 +979,13 @@ const en: Dict = {
   footer: {
     tagline: 'A single-user agent collaboration app for your Mac.',
     mit: 'Open source under MIT. Not affiliated with xAI / Grok.',
-    contributors: 'Real Bot Contributors'
+    contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Real Bot — Persistent AI teammates, organized by conversation, on your own Mac',
+    title: 'Deskfolk — Persistent AI teammates, organized by conversation, on your own Mac',
     description:
       'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Every job reads as a flow, and the window splits into panes with your own terminal. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, alpha.',
-    imageAlt: 'Real Bot: three bots collaborating on report.md in a group chat window'
+    imageAlt: 'Deskfolk: three bots collaborating on report.md in a group chat window'
   },
   docs: {
     onThisPage: 'On this page',
@@ -997,7 +997,7 @@ const en: Dict = {
     manifestoIndexHeading: 'Terms by topic',
     manifestoIndexLead: 'One page per topic. The left rail is the whole docs tree; the right rail is this page.',
     roadmapTag: 'ROADMAP.md',
-    roadmapIntro: 'Where Real Bot is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
+    roadmapIntro: 'Where Deskfolk is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
     pagerPrev: 'Previous',
     pagerNext: 'Next',
     navGroup: {

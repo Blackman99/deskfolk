@@ -239,7 +239,7 @@ describe("notifications scheduler and presence (PR4)", () => {
       });
       expect(claimRes.status).toBe(200);
       const claim = (await claimRes.json()) as DesktopClaimResponse;
-      expect(claim.title).toBe("Real Bot");
+      expect(claim.title).toBe("Deskfolk");
       expect(claim.body).toBe("这是一条测试通知");
       expect(claim.identifier).toBe("test");
 
@@ -331,7 +331,7 @@ describe("notifications scheduler and presence (PR4)", () => {
       });
       expect(claimRes.status).toBe(200);
       const claim = (await claimRes.json()) as DesktopClaimResponse;
-      expect(claim.title).toBe("Real Bot");
+      expect(claim.title).toBe("Deskfolk");
       expect(claim.body).toBe("有待批准事项，打开查看");
     } finally {
       api.scheduler?.stop();
@@ -772,7 +772,7 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
       const first = scheduler.claimDesktop(GRANT, t0);
       expect(first).toBeTruthy();
       expect(first!.identifier).toBe("test");
-      expect(first!.title).toBe("Real Bot");
+      expect(first!.title).toBe("Deskfolk");
       expect(first!.body).toBe("这是一条测试通知");
       expect(attachedOrdinals(store, first!.delivery_id)).toEqual([]);
       expect(
@@ -807,7 +807,7 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
       expect(reclaimed).toBeTruthy();
       expect(reclaimed!.delivery_id).toBe(first!.delivery_id);
       expect(reclaimed!.identifier).toBe("test");
-      expect(reclaimed!.title).toBe("Real Bot");
+      expect(reclaimed!.title).toBe("Deskfolk");
       expect(reclaimed!.body).toBe("这是一条测试通知");
       expect(reclaimed!.identifier).not.toBe("host:all");
       expect(reclaimed!.body).not.toBe("有待处理事项，打开查看");

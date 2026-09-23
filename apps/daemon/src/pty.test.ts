@@ -135,12 +135,12 @@ withHelper("closing a session takes the shell with it, not just the helper", asy
 });
 
 /**
- * A real zsh, with Real Bot's own environment and shell integration: the user's `.zshenv` and
+ * A real zsh, with Deskfolk's own environment and shell integration: the user's `.zshenv` and
  * `.zshrc` still run, `ZDOTDIR` ends up back where it started, and `cd` is reported as OSC 7 in a
  * form {@link CwdTracker} can decode back to the real path — including a directory name with a
  * space and CJK text in it, which is exactly the case percent-encoding exists for.
  */
-withHelper("zsh keeps the user's own dotfiles and reports its cwd via Real Bot's integration", async () => {
+withHelper("zsh keeps the user's own dotfiles and reports its cwd via Deskfolk's integration", async () => {
   const home = scratch();
   const dataDir = scratch();
   writeFileSync(join(home, ".zshenv"), 'export M1="one"\n');

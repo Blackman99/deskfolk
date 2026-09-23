@@ -636,9 +636,9 @@ const defs: Record<StoryName, Story> = {
 				current: '0.1.0-rc.2',
 				latest: '0.1.0-rc.3',
 				updateAvailable: true,
-				releaseUrl: 'https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-rc.3',
+				releaseUrl: 'https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0-rc.3',
 				downloadUrl:
-					'https://github.com/Blackman99/real-bot/releases/download/v0.1.0-rc.3/Real.Bot_0.1.0-rc.3_aarch64.dmg',
+					'https://github.com/Blackman99/deskfolk/releases/download/v0.1.0-rc.3/Deskfolk_0.1.0-rc.3_aarch64.dmg',
 				publishedAt: '2026-09-19T00:00:00Z',
 				notes: [
 					'未签名的 macOS rc。优先从源码运行。',

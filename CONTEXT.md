@@ -1,4 +1,4 @@
-# Real Bot
+# Deskfolk
 
 本机 macOS 上的单人 agent 协作应用。协作形态对齐 Grok Bot：命名持久的队友、私聊、群、点名、异步交接；电脑是本机共享目录，不是云 VM。
 

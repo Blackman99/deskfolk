@@ -1567,7 +1567,7 @@ void runtime.setPushEnabled(enabled);
 							<div class="settings-rows">
 								<div class="settings-row">
 									<div class="settings-row-info">
-										<span class="settings-row-title">Real Bot</span>
+										<span class="settings-row-title">Deskfolk</span>
 										<span class="settings-row-desc">
 											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.5')}</span>
 										</span>

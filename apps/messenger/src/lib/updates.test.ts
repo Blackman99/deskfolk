@@ -29,8 +29,8 @@ const FULL_PAYLOAD = {
   current: "0.1.0-alpha.3",
   latest: "0.1.0-alpha.4",
   updateAvailable: true,
-  releaseUrl: "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-alpha.4",
-  downloadUrl: "https://github.com/Blackman99/real-bot/releases/download/v0.1.0-alpha.4/Real.Bot_0.1.0-alpha.4_aarch64.dmg",
+  releaseUrl: "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0-alpha.4",
+  downloadUrl: "https://github.com/Blackman99/deskfolk/releases/download/v0.1.0-alpha.4/Deskfolk_0.1.0-alpha.4_aarch64.dmg",
   publishedAt: "2026-09-01T00:00:00Z",
   notes: "### Messenger\n\n- 一条更新说明。",
 } satisfies UpdateCheck;
@@ -127,7 +127,7 @@ test("fetchAppVersion returns null with undefined internals", async () => {
 });
 
 test("openExternalUrl returns false with undefined internals", async () => {
-  await expect(openExternalUrl("https://github.com/Blackman99/real-bot/", undefined)).resolves.toBe(
+  await expect(openExternalUrl("https://github.com/Blackman99/deskfolk/", undefined)).resolves.toBe(
     false,
   );
 });
@@ -135,10 +135,10 @@ test("openExternalUrl returns false with undefined internals", async () => {
 test("openExternalUrl returns true and passes { url } on success", async () => {
   const internals = fakeInternals(async () => null);
   await expect(
-    openExternalUrl("https://github.com/Blackman99/real-bot/releases", internals),
+    openExternalUrl("https://github.com/Blackman99/deskfolk/releases", internals),
   ).resolves.toBe(true);
   expect(internals.calls).toEqual([
-    { cmd: "open_external_url", args: { url: "https://github.com/Blackman99/real-bot/releases" } },
+    { cmd: "open_external_url", args: { url: "https://github.com/Blackman99/deskfolk/releases" } },
   ]);
 });
 

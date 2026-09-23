@@ -25,8 +25,8 @@ const enrollment: StoredEnrollment = {
 test("notification payload is only pending and click never carries an approval", () => {
   expect(WEB_PUSH_PAYLOAD).toEqual({ t: "pending" });
   expect(Object.keys(WEB_PUSH_PAYLOAD)).toEqual(["t"]);
-  expect(WEB_PUSH_COPY.zh).toBe("Real Bot 有待处理事项");
-  expect(WEB_PUSH_COPY.en).toBe("Real Bot has pending items");
+  expect(WEB_PUSH_COPY.zh).toBe("Deskfolk 有待处理事项");
+  expect(WEB_PUSH_COPY.en).toBe("Deskfolk has pending items");
   expect(isInboxMessage({ type: "inbox" })).toBe(true);
   expect(isInboxMessage({ type: "inbox", resolve: "allow_once" })).toBe(false);
 });

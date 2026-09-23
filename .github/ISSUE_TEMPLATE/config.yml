@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a vulnerability / 报告漏洞
-    url: https://github.com/Blackman99/real-bot/security/advisories/new
+    url: https://github.com/Blackman99/deskfolk/security/advisories/new
     about: Use private vulnerability reporting, not a public issue. 请走私密漏洞报告，不要开公开 Issue。

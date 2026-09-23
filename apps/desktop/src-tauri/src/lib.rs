@@ -475,7 +475,7 @@ pub fn run() {
         }));
         let mut autostart = tauri_plugin_autostart::Builder::new()
             .args(["--hidden"])
-            .app_name("Real Bot");
+            .app_name("Deskfolk");
         #[cfg(target_os = "macos")]
         {
             autostart =
@@ -560,7 +560,7 @@ pub fn run() {
             _ => {}
         })
         .build(app_context())
-        .expect("error while building Real Bot");
+        .expect("error while building Deskfolk");
 
     app.run(|app, event| match event {
         RunEvent::ExitRequested { api, code, .. } => {
@@ -602,10 +602,10 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
     let sep = PredefinedMenuItem::separator(app)?;
     let hide = PredefinedMenuItem::hide(app, None)?;
     let hide_others = PredefinedMenuItem::hide_others(app, None)?;
-    let quit = MenuItem::with_id(app, "quit", "退出 Real Bot", true, Some("CmdOrCtrl+Q"))?;
+    let quit = MenuItem::with_id(app, "quit", "退出 Deskfolk", true, Some("CmdOrCtrl+Q"))?;
     let app_menu = Submenu::with_items(
         app,
-        "Real Bot",
+        "Deskfolk",
         true,
         &[&about, &sep, &hide, &hide_others, &sep, &quit],
     )?;
@@ -666,7 +666,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::new()
         .icon(icon)
         .icon_as_template(false)
-        .tooltip("Real Bot")
+        .tooltip("Deskfolk")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {

@@ -1,4 +1,4 @@
-//! Check GitHub Releases for a newer Real Bot build and cache the result.
+//! Check GitHub Releases for a newer Deskfolk build and cache the result.
 //!
 //! All network access happens here, off the webview (the CSP `connect-src`
 //! only allows the loopback local API). `fetch_releases` does the HTTP call;
@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 pub const GITHUB_RELEASES_URL: &str =
-    "https://api.github.com/repos/Blackman99/real-bot/releases?per_page=10";
-pub const RELEASE_URL_PREFIX: &str = "https://github.com/Blackman99/real-bot/";
+    "https://api.github.com/repos/Blackman99/deskfolk/releases?per_page=10";
+pub const RELEASE_URL_PREFIX: &str = "https://github.com/Blackman99/deskfolk/";
 pub const FEED_ENV: &str = "REAL_BOT_UPDATE_FEED";
 pub const CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
@@ -60,7 +60,7 @@ pub fn feed_url() -> String {
 }
 
 /// Map a Rust `std::env::consts::ARCH` value to the suffix used in release
-/// asset names (`Real.Bot_<ver>_<arch>.dmg`).
+/// asset names (`Deskfolk_<ver>_<arch>.dmg`).
 pub fn arch_tag_for(arch: &str) -> Option<&'static str> {
     match arch {
         "aarch64" => Some("aarch64"),
@@ -264,7 +264,7 @@ mod tests {
     fn release(tag: &str, draft: bool, prerelease: bool) -> Release {
         Release {
             tag_name: tag.to_string(),
-            html_url: format!("https://github.com/Blackman99/real-bot/releases/tag/{tag}"),
+            html_url: format!("https://github.com/Blackman99/deskfolk/releases/tag/{tag}"),
             draft,
             prerelease,
             published_at: Some("2026-01-01T00:00:00Z".into()),
@@ -360,12 +360,12 @@ mod tests {
         let mut r = release("v0.2.0", false, false);
         r.assets = vec![
             Asset {
-                name: "Real.Bot_0.2.0_aarch64.dmg".into(),
-                browser_download_url: "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_aarch64.dmg".into(),
+                name: "Deskfolk_0.2.0_aarch64.dmg".into(),
+                browser_download_url: "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg".into(),
             },
             Asset {
-                name: "Real.Bot_0.2.0_x64.dmg".into(),
-                browser_download_url: "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_x64.dmg".into(),
+                name: "Deskfolk_0.2.0_x64.dmg".into(),
+                browser_download_url: "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_x64.dmg".into(),
             },
         ];
         let releases = vec![r];
@@ -373,19 +373,19 @@ mod tests {
         let aarch64 = pick_update(&current, &releases, Some("aarch64"));
         assert_eq!(
             aarch64.download_url.as_deref(),
-            Some("https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_aarch64.dmg")
+            Some("https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg")
         );
 
         let x64 = pick_update(&current, &releases, Some("x64"));
         assert_eq!(
             x64.download_url.as_deref(),
-            Some("https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_x64.dmg")
+            Some("https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_x64.dmg")
         );
 
         let none_arch = pick_update(&current, &releases, None);
         assert_eq!(
             none_arch.download_url.as_deref(),
-            Some("https://github.com/Blackman99/real-bot/releases/tag/v0.2.0")
+            Some("https://github.com/Blackman99/deskfolk/releases/tag/v0.2.0")
         );
 
         let mut r2 = release("v0.3.0", false, false);
@@ -394,7 +394,7 @@ mod tests {
         let missing_asset = pick_update(&current, &releases_missing, Some("aarch64"));
         assert_eq!(
             missing_asset.download_url.as_deref(),
-            Some("https://github.com/Blackman99/real-bot/releases/tag/v0.3.0")
+            Some("https://github.com/Blackman99/deskfolk/releases/tag/v0.3.0")
         );
     }
 
@@ -403,16 +403,16 @@ mod tests {
         let json = r#"[
             {
                 "tag_name": "v0.1.0-alpha.4",
-                "html_url": "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-alpha.4",
+                "html_url": "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0-alpha.4",
                 "draft": false,
                 "prerelease": true,
                 "published_at": "2026-09-10T00:00:00Z",
-                "name": "Real Bot 0.1.0-alpha.4",
+                "name": "Deskfolk 0.1.0-alpha.4",
                 "body": "- 群聊输入框上方改成草稿建议。",
                 "assets": [
                     {
-                        "name": "Real.Bot_0.1.0-alpha.4_aarch64.dmg",
-                        "browser_download_url": "https://github.com/Blackman99/real-bot/releases/download/v0.1.0-alpha.4/Real.Bot_0.1.0-alpha.4_aarch64.dmg",
+                        "name": "Deskfolk_0.1.0-alpha.4_aarch64.dmg",
+                        "browser_download_url": "https://github.com/Blackman99/deskfolk/releases/download/v0.1.0-alpha.4/Deskfolk_0.1.0-alpha.4_aarch64.dmg",
                         "content_type": "application/x-apple-diskimage",
                         "size": 12345678
                     }
@@ -425,7 +425,7 @@ mod tests {
         assert!(releases[0].prerelease);
         assert!(!releases[0].draft);
         assert_eq!(releases[0].assets.len(), 1);
-        assert_eq!(releases[0].assets[0].name, "Real.Bot_0.1.0-alpha.4_aarch64.dmg");
+        assert_eq!(releases[0].assets[0].name, "Deskfolk_0.1.0-alpha.4_aarch64.dmg");
         assert!(releases[0].body.as_deref().unwrap().contains("草稿建议"));
     }
 
@@ -514,18 +514,18 @@ mod tests {
     #[test]
     fn allowed_release_url_prefix_only() {
         assert!(is_allowed_release_url(
-            "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0"
+            "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0"
         ));
         assert!(is_allowed_release_url(
-            "https://github.com/Blackman99/real-bot/releases/download/v0.1.0/Real.Bot_0.1.0_aarch64.dmg"
+            "https://github.com/Blackman99/deskfolk/releases/download/v0.1.0/Deskfolk_0.1.0_aarch64.dmg"
         ));
         assert!(!is_allowed_release_url("https://github.com/other/x"));
-        assert!(!is_allowed_release_url("http://github.com/Blackman99/real-bot/"));
+        assert!(!is_allowed_release_url("http://github.com/Blackman99/deskfolk/"));
         assert!(!is_allowed_release_url(
-            "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0 evil"
+            "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0 evil"
         ));
         assert!(!is_allowed_release_url(
-            "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0\nevil"
+            "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0\nevil"
         ));
     }
 

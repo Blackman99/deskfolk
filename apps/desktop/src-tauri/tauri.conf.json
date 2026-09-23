@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Real Bot",
+  "productName": "Deskfolk",
   "version": "0.1.0-rc.5",
   "identifier": "com.real-bot.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Real Bot",
+        "title": "Deskfolk",
         "width": 1100,
         "height": 760,
         "minWidth": 640,

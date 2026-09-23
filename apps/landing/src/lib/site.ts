@@ -1,5 +1,5 @@
 export const GITHUB_OWNER = 'Blackman99';
-export const GITHUB_REPO = 'real-bot';
+export const GITHUB_REPO = 'deskfolk';
 export const GITHUB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 export const GITHUB_BLOB_MAIN = `${GITHUB_URL}/blob/main`;
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
@@ -13,7 +13,7 @@ export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
  */
 export const SITE_URL = `https://${GITHUB_OWNER.toLowerCase()}.github.io/${GITHUB_REPO}`;
 
-export const SITE_NAME = 'Real Bot';
+export const SITE_NAME = 'Deskfolk';
 
 /** Open Graph image size (static/og-zh.png and static/og-en.png). */
 export const OG_IMAGE_WIDTH = 1200;

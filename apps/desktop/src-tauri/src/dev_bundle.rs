@@ -3,7 +3,7 @@
 //! after the user allowed notifications. This wraps the debug executable in a
 //! minimal `.app` and replaces the process image with that copy, keeping the
 //! same pid so the dev runner still tracks it. Release builds already ship
-//! inside `Real Bot.app` and never take this path.
+//! inside `Deskfolk.app` and never take this path.
 
 use std::fs;
 use std::io::Write;
@@ -61,7 +61,7 @@ fn ensure_dev_app(exe: &Path) -> Result<PathBuf, String> {
     let dir = exe
         .parent()
         .ok_or_else(|| "executable has no parent".to_string())?;
-    let app = dir.join("Real Bot Dev.app");
+    let app = dir.join("Deskfolk Dev.app");
     let macos = app.join("Contents").join("MacOS");
     fs::create_dir_all(&macos).map_err(|err| err.to_string())?;
     let name = exe
@@ -80,9 +80,9 @@ fn ensure_dev_app(exe: &Path) -> Result<PathBuf, String> {
   <key>CFBundleIdentifier</key>
   <string>{BUNDLE_ID}</string>
   <key>CFBundleName</key>
-  <string>Real Bot</string>
+  <string>Deskfolk</string>
   <key>CFBundleDisplayName</key>
-  <string>Real Bot</string>
+  <string>Deskfolk</string>
   <key>CFBundleExecutable</key>
   <string>{}</string>
   <key>CFBundlePackageType</key>
@@ -140,8 +140,8 @@ mod tests {
     #[test]
     fn bundle_root_recognizes_only_a_real_app_layout() {
         assert_eq!(
-            bundle_root(Path::new("/tmp/Real Bot Dev.app/Contents/MacOS/real-bot-desktop")),
-            Some(PathBuf::from("/tmp/Real Bot Dev.app"))
+            bundle_root(Path::new("/tmp/Deskfolk Dev.app/Contents/MacOS/real-bot-desktop")),
+            Some(PathBuf::from("/tmp/Deskfolk Dev.app"))
         );
         assert_eq!(
             bundle_root(Path::new("/repo/apps/desktop/src-tauri/target/debug/real-bot-desktop")),

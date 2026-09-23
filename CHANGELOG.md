@@ -1,10 +1,12 @@
 # Changelog
 
-All notable changes to Real Bot are documented in this file. The project is currently **WIP** and has not published a stable release; `Unreleased` does not represent a published release.
+All notable changes to Deskfolk are documented in this file. The project is currently **WIP** and has not published a stable release; `Unreleased` does not represent a published release.
 
 [简体中文 (Chinese version)](CHANGELOG.zh.md)
 
 ## Unreleased
+
+- Real Bot is now Deskfolk. The app, its window, menus, tray, notifications and web push, the Touch ID prompt, the website and the docs carry the new name, and the app installs as `Deskfolk.app`. The repository moved to [Blackman99/deskfolk](https://github.com/Blackman99/deskfolk) and the website to blackman99.github.io/deskfolk: old repository links redirect, the old website address does not. Nothing on your Mac moves — the bundle identifier, the data folder, Keychain items and notification permission stay as they were. A build from before the rename only trusts the old repository address, so Settings → About cannot open or download the new release; download the new `.dmg` from the releases page once. If Launch at login was on, turn it off and on again so the login item carries the new name. A new setup suggests `~/deskfolk-workspace` as the workspace; an existing workspace is untouched.
 
 - Redesigned Bot Skills and Memory settings with touch-friendly mobile layouts. On mobile screens, skill and memory rows display as spacious touch cards with inline switch toggles for quick enable/disable. Tapping a card opens a full-page slide-over editor with clear card groups for owner attribution, description, prompt body, and danger delete zones, anchored by a sticky full-width save button. The skills header features an item count badge and quick-add button, while the memory list presents provenance jump links and learning counts. Mobile back navigation cleanly unwinds the open editor before leaving the section or drawer. Desktop layouts remain intact.
 

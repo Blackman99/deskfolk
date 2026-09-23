@@ -21,7 +21,7 @@ use std::time::Duration;
 use serde::Serialize;
 
 /// Release assets live under this prefix. Only a `.dmg` below it is installable.
-pub const ASSET_URL_PREFIX: &str = "https://github.com/Blackman99/real-bot/releases/download/";
+pub const ASSET_URL_PREFIX: &str = "https://github.com/Blackman99/deskfolk/releases/download/";
 /// A release `.dmg` is ~100MB. Anything past this is a bogus feed, not a build.
 pub const MAX_DOWNLOAD_BYTES: u64 = 1_500_000_000;
 /// Chunk the body so the progress bar moves without hammering the state lock.
@@ -147,8 +147,8 @@ pub fn is_installable_asset_url(url: &str) -> bool {
         && !url.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
-/// The `.app` that holds the running executable: `…/Real Bot.app` from
-/// `…/Real Bot.app/Contents/MacOS/Real Bot`. `None` for anything that is not
+/// The `.app` that holds the running executable: `…/Deskfolk.app` from
+/// `…/Deskfolk.app/Contents/MacOS/Deskfolk`. `None` for anything that is not
 /// running out of a bundle (a `cargo run` binary, a plain CLI build).
 pub fn bundle_root(exe: &Path) -> Option<PathBuf> {
     let macos = exe.parent()?;
@@ -435,7 +435,7 @@ pub fn copy_bundle(src: &Path, dest: &Path) -> Result<(), String> {
 /// installed rather than an empty `/Applications` entry. `REAL_BOT_OPEN` is
 /// the seam the test uses to run the swap without launching anything.
 pub const SWAP_SCRIPT: &str = r#"#!/bin/sh
-# Real Bot update swap. Args: <target .app> <staged .app> <window pid> <staging dir>
+# Deskfolk update swap. Args: <target .app> <staged .app> <window pid> <staging dir>
 target="$1"
 staged="$2"
 pid="$3"
@@ -546,37 +546,37 @@ mod tests {
     #[test]
     fn only_dmg_assets_of_this_repository_are_installable() {
         assert!(is_installable_asset_url(
-            "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_aarch64.dmg"
+            "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg"
         ));
         // The release page is a valid download link but not something to install.
         assert!(!is_installable_asset_url(
-            "https://github.com/Blackman99/real-bot/releases/tag/v0.2.0"
+            "https://github.com/Blackman99/deskfolk/releases/tag/v0.2.0"
         ));
         assert!(!is_installable_asset_url(
-            "https://github.com/other/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_aarch64.dmg"
+            "https://github.com/other/real-bot/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg"
         ));
         assert!(!is_installable_asset_url(
-            "http://github.com/Blackman99/real-bot/releases/download/v0.2.0/a.dmg"
+            "http://github.com/Blackman99/deskfolk/releases/download/v0.2.0/a.dmg"
         ));
         assert!(!is_installable_asset_url(
-            "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/app.zip"
+            "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/app.zip"
         ));
         assert!(!is_installable_asset_url(
-            "https://github.com/Blackman99/real-bot/releases/download/../../evil.dmg"
+            "https://github.com/Blackman99/deskfolk/releases/download/../../evil.dmg"
         ));
         assert!(!is_installable_asset_url(
-            "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/a b.dmg"
+            "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/a b.dmg"
         ));
         assert!(!is_installable_asset_url(
-            "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/a\n.dmg"
+            "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/a\n.dmg"
         ));
     }
 
     #[test]
     fn bundle_root_walks_up_from_the_executable() {
         assert_eq!(
-            bundle_root(Path::new("/Applications/Real Bot.app/Contents/MacOS/Real Bot")),
-            Some(PathBuf::from("/Applications/Real Bot.app"))
+            bundle_root(Path::new("/Applications/Deskfolk.app/Contents/MacOS/Deskfolk")),
+            Some(PathBuf::from("/Applications/Deskfolk.app"))
         );
         // A `cargo run` / `tauri dev` binary is not in a bundle.
         assert_eq!(
@@ -585,7 +585,7 @@ mod tests {
         );
         assert_eq!(bundle_root(Path::new("/usr/local/bin/real-bot")), None);
         assert_eq!(
-            bundle_root(Path::new("/Applications/Real Bot/Contents/MacOS/Real Bot")),
+            bundle_root(Path::new("/Applications/Deskfolk/Contents/MacOS/Deskfolk")),
             None
         );
         assert_eq!(bundle_root(Path::new("/")), None);
@@ -595,9 +595,9 @@ mod tests {
     fn download_file_name_comes_from_the_url_and_never_escapes() {
         assert_eq!(
             download_file_name(
-                "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_aarch64.dmg"
+                "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg"
             ),
-            "Real.Bot_0.2.0_aarch64.dmg"
+            "Deskfolk_0.2.0_aarch64.dmg"
         );
         assert_eq!(download_file_name("https://example.com/"), "update.dmg");
         assert_eq!(download_file_name("https://example.com/.hidden"), "update.dmg");
@@ -607,23 +607,23 @@ mod tests {
     fn staging_paths_keep_everything_under_one_folder() {
         let paths = staging_paths(
             Path::new("/Users/me/Library/Caches/com.real-bot.desktop"),
-            "https://github.com/Blackman99/real-bot/releases/download/v0.2.0/Real.Bot_0.2.0_aarch64.dmg",
+            "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg",
         );
         assert_eq!(
             paths.root,
             PathBuf::from("/Users/me/Library/Caches/com.real-bot.desktop/updates")
         );
-        assert_eq!(paths.dmg, paths.root.join("Real.Bot_0.2.0_aarch64.dmg"));
+        assert_eq!(paths.dmg, paths.root.join("Deskfolk_0.2.0_aarch64.dmg"));
         assert_eq!(paths.mount, paths.root.join("mount"));
     }
 
     #[test]
     fn parse_mount_point_reads_hdiutil_output() {
         let stdout = "/dev/disk4          \tGUID_partition_scheme          \t\n\
-                      /dev/disk4s1        \tApple_HFS                      \t/private/tmp/dmg.XXXX/Real Bot\n";
+                      /dev/disk4s1        \tApple_HFS                      \t/private/tmp/dmg.XXXX/Deskfolk\n";
         assert_eq!(
             parse_mount_point(stdout),
-            Some("/private/tmp/dmg.XXXX/Real Bot".to_string())
+            Some("/private/tmp/dmg.XXXX/Deskfolk".to_string())
         );
         assert_eq!(parse_mount_point("/dev/disk4\tGUID_partition_scheme\t\n"), None);
         assert_eq!(parse_mount_point(""), None);
@@ -631,7 +631,7 @@ mod tests {
 
     #[test]
     fn verify_bundle_matches_identifier_and_version() {
-        let plist = r#"{"CFBundleIdentifier":"com.real-bot.desktop","CFBundleShortVersionString":"0.2.0","CFBundleName":"Real Bot"}"#;
+        let plist = r#"{"CFBundleIdentifier":"com.real-bot.desktop","CFBundleShortVersionString":"0.2.0","CFBundleName":"Deskfolk"}"#;
         assert_eq!(
             bundle_info(plist).unwrap(),
             ("com.real-bot.desktop".to_string(), "0.2.0".to_string())
@@ -777,12 +777,12 @@ mod tests {
     #[test]
     fn an_unwritable_bundle_or_folder_stops_the_install_before_it_starts() {
         let dir = temp_dir("writable");
-        let app = dir.join("Real Bot.app");
+        let app = dir.join("Deskfolk.app");
         std::fs::create_dir_all(&app).unwrap();
         assert!(is_writable(&dir));
         assert!(can_replace_bundle(&app));
         assert!(!is_writable(&dir.join("missing")));
-        assert!(!can_replace_bundle(&dir.join("missing").join("Real Bot.app")));
+        assert!(!can_replace_bundle(&dir.join("missing").join("Deskfolk.app")));
 
         #[cfg(unix)]
         {
@@ -799,9 +799,9 @@ mod tests {
     #[test]
     fn find_app_bundle_picks_the_app_in_the_image() {
         let dir = temp_dir("mount");
-        std::fs::create_dir_all(dir.join("Real Bot.app")).unwrap();
+        std::fs::create_dir_all(dir.join("Deskfolk.app")).unwrap();
         std::fs::write(dir.join("Applications"), b"link").unwrap();
-        assert_eq!(find_app_bundle(&dir), Some(dir.join("Real Bot.app")));
+        assert_eq!(find_app_bundle(&dir), Some(dir.join("Deskfolk.app")));
         assert_eq!(find_app_bundle(&dir.join("missing")), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -831,14 +831,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The script has to survive paths with spaces (`/Applications/Real Bot.app`)
+    /// The script has to survive paths with spaces (`/Applications/Deskfolk.app`)
     /// and run without the app around: exercise it against stand-in folders.
     #[test]
     fn the_swap_script_replaces_the_bundle_and_cleans_up() {
         let dir = temp_dir("swap");
         let staging = dir.join("updates");
-        let target = dir.join("Real Bot.app");
-        let staged = staging.join("Real Bot.app");
+        let target = dir.join("Deskfolk.app");
+        let staged = staging.join("Deskfolk.app");
         std::fs::create_dir_all(&target).unwrap();
         std::fs::write(target.join("version.txt"), b"old").unwrap();
         std::fs::create_dir_all(&staged).unwrap();

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Real Bot's own code is licensed under the [MIT License](LICENSE). Third-party components retain their respective licenses.
+Deskfolk's own code is licensed under the [MIT License](LICENSE). Third-party components retain their respective licenses.
 
 ## xterm.js
 
@@ -145,7 +145,7 @@ Only JSON formatting/filtering was changed; vector values are unmodified. Their 
 
 ## Package dependencies
 
-JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and `apps/desktop/src-tauri/Cargo.lock`. Their licenses remain applicable independently of Real Bot's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.
+JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and `apps/desktop/src-tauri/Cargo.lock`. Their licenses remain applicable independently of Deskfolk's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.
 
 ## Web Push proxy dependencies
 

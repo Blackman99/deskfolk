@@ -1,7 +1,7 @@
 /**
  * Where the shell says it is, read off its own output rather than guessed at from what was typed.
  *
- * zsh reports it on its own, via Real Bot's own shell integration ({@link "./terminal-env"}):
+ * zsh reports it on its own, via Deskfolk's own shell integration ({@link "./terminal-env"}):
  * OSC 7 after every prompt, `ESC ] 7 ; file://<host><path>`, terminated by BEL or ST. Scanning
  * raw bytes for exactly that — rather than parsing a full terminal emulator's worth of escape
  * sequences — is enough; anything else a program writes just passes through unrecognized.

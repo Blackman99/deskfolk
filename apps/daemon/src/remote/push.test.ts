@@ -227,8 +227,8 @@ describe("isolated fake push service", () => {
     assertNoContentLeak(haystack, ["secret-file.txt", "Writer", you.bot.name, "Wrote"]);
     expect(PUSH_PLAINTEXT).toBe(JSON.stringify({ t: "pending" }));
     expect(PUSH_PLAINTEXT).toBe( JSON.stringify(WEB_PUSH_PAYLOAD));
-    expect(WEB_PUSH_COPY.zh).toBe("Real Bot 有待处理事项");
-    expect(WEB_PUSH_COPY.en).toBe("Real Bot has pending items");
+    expect(WEB_PUSH_COPY.zh).toBe("Deskfolk 有待处理事项");
+    expect(WEB_PUSH_COPY.en).toBe("Deskfolk has pending items");
     expect(JSON.parse(PUSH_PLAINTEXT)).toEqual({ t: "pending" });
     expect(Object.keys(JSON.parse(PUSH_PLAINTEXT))).toEqual(["t"]);
   });

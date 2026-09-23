@@ -41,7 +41,7 @@
     <div class="page nav-inner">
       <a class="brand" href="{base}/{lang}">
         <span class="brand-mark"><Logo size={26} /></span>
-        <span class="brand-name serif">Real Bot</span>
+        <span class="brand-name serif">Deskfolk</span>
         <span class="brand-wip">{t.nav.wip}</span>
       </a>
 
@@ -99,7 +99,7 @@
   <footer class="foot">
     <div class="page foot-inner">
       <div class="foot-brand">
-        <span class="foot-id"><Logo size={22} /><span class="brand-name serif">Real Bot</span></span>
+        <span class="foot-id"><Logo size={22} /><span class="brand-name serif">Deskfolk</span></span>
         <p>{t.footer.tagline}</p>
         <p class="fine">{t.footer.mit}</p>
       </div>

@@ -67,7 +67,7 @@ export type TerminalsOptions = {
   /** Swapped in tests; production opens a real pty. */
   spawn?: (options: { cwd: string; rows: number; cols: number }) => Pty;
   /**
-   * Where Real Bot's own zsh integration lives, from {@link ensureZshIntegration}. Only zsh
+   * Where Deskfolk's own zsh integration lives, from {@link ensureZshIntegration}. Only zsh
    * sessions use it (see `terminal-env.ts`); absent, a session gets no `ZDOTDIR` and so no OSC 7
    * cwd reporting.
    */

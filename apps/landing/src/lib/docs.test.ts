@@ -20,7 +20,7 @@ test('parseContextMarkdown reads every glossary term from CONTEXT.md', () => {
   const raw = fs.readFileSync(CONTEXT_PATH, 'utf-8');
   const { preamble, terms } = parseContextMarkdown(raw);
 
-  expect(preamble).toContain('# Real Bot');
+  expect(preamble).toContain('# Deskfolk');
   expect(preamble).toContain('WIP');
   expect(terms.length).toBeGreaterThan(40);
 

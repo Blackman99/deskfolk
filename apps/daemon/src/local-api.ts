@@ -92,7 +92,7 @@ export type LocalApiOptions = {
   onRuntimeStop?: () => void;
   policyV1?: boolean;
   pushSettingsV2?: boolean;
-  /** Where Real Bot's own zsh shell integration is written, for terminals the person opens. */
+  /** Where Deskfolk's own zsh shell integration is written, for terminals the person opens. */
   dataDir?: string;
 };
 

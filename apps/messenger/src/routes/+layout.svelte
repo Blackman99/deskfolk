@@ -34,7 +34,7 @@
 </script>
 
 <svelte:head>
-	<title>Real Bot</title>
+	<title>Deskfolk</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 

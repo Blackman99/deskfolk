@@ -252,7 +252,7 @@ function fakeWindow(
 }
 
 const OFFERED_DMG =
-  "https://github.com/Blackman99/real-bot/releases/download/v0.1.0-rc.5/Real.Bot_0.1.0-rc.5_aarch64.dmg";
+  "https://github.com/Blackman99/deskfolk/releases/download/v0.1.0-rc.5/Deskfolk_0.1.0-rc.5_aarch64.dmg";
 
 function offerUpdate(over: Partial<UpdateInstallState> = {}, canInstall = true): void {
   updateChecker.status = "ok";
@@ -264,7 +264,7 @@ function offerUpdate(over: Partial<UpdateInstallState> = {}, canInstall = true):
     current: "0.1.0-rc.4",
     latest: "0.1.0-rc.5",
     updateAvailable: true,
-    releaseUrl: "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-rc.5",
+    releaseUrl: "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0-rc.5",
     downloadUrl: OFFERED_DMG,
     publishedAt: null,
     notes: null,
@@ -343,7 +343,7 @@ test("a failed install says why, keeps the detail, and still offers the browser"
     phase: "failed",
     version: "0.1.0-rc.5",
     error: "read-only",
-    detail: "/Applications/Real Bot.app is not writable",
+    detail: "/Applications/Deskfolk.app is not writable",
   });
   const { host, close } = open();
   openAbout(host);

@@ -4,7 +4,7 @@
  * The daemon's own process env can hold secrets — API keys, `REAL_BOT_*` config — that a shell
  * the person opened themselves has no business seeing. So the default is a narrow whitelist of
  * what a login shell actually needs, not everything launchd handed the daemon, plus what
- * Terminal.app would set on top: a real `TERM`, a locale, and — for zsh — Real Bot's own shell
+ * Terminal.app would set on top: a real `TERM`, a locale, and — for zsh — Deskfolk's own shell
  * integration, so the session's cwd is something the daemon can read back off its output.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -72,7 +72,7 @@ export function terminalEnv(source: Record<string, string | undefined>, options:
   env.SHELL = options.shell;
   env.TERM = "xterm-256color";
   env.COLORTERM = "truecolor";
-  env.TERM_PROGRAM = "RealBot";
+  env.TERM_PROGRAM = "Deskfolk";
 
   // A daemon started from launchd has neither LANG nor LC_ALL at all; left alone, a shell falls
   // back to POSIX and mangles anything non-ASCII. Derive what Terminal.app would show instead of
@@ -107,13 +107,13 @@ export function macSystemLocale(): string | null {
 
 /**
  * Ghostty and VS Code's technique: `.zshenv` is the only zsh startup file guaranteed to run, so
- * it is the only one Real Bot needs to own. It puts the user's own `ZDOTDIR` back (or unsets it)
+ * it is the only one Deskfolk needs to own. It puts the user's own `ZDOTDIR` back (or unsets it)
  * before sourcing their real `.zshenv`, so every later startup file — `.zshrc` included — runs
  * exactly as it would in Terminal.app. The `precmd` hook it installs is what makes {@link
  * ensureZshIntegration}'s directory report the session's cwd back to the daemon (see
  * `terminal-cwd.ts`), the same way `/etc/zshrc_Apple_Terminal` does for Terminal.app.
  */
-const ZSHENV_CONTENT = `# Real Bot shell integration, written by the daemon; edits here are overwritten.
+const ZSHENV_CONTENT = `# Deskfolk shell integration, written by the daemon; edits here are overwritten.
 # Put ZDOTDIR back before anything else, so every later startup file is the user's own.
 if [[ -n "\${REAL_BOT_ZSH_ZDOTDIR+X}" ]]; then
   builtin export ZDOTDIR="$REAL_BOT_ZSH_ZDOTDIR"

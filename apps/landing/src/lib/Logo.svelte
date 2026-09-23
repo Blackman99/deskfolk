@@ -1,6 +1,6 @@
 <script lang="ts">
-  /** The Real Bot mark: a message bubble holding two stacked teammates. */
-  let { size = 24, title = 'Real Bot' }: { size?: number; title?: string } = $props();
+  /** The Deskfolk mark: a message bubble holding two stacked teammates. */
+  let { size = 24, title = 'Deskfolk' }: { size?: number; title?: string } = $props();
 </script>
 
 <svg viewBox="0 0 64 64" width={size} height={size} role="img" aria-label={title}>

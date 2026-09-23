@@ -1,9 +1,9 @@
 [package]
 name = "real-bot-desktop"
 version = "0.1.0-rc.5"
-description = "Real Bot window"
+description = "Deskfolk window"
 license = "MIT"
-authors = ["Real Bot contributors"]
+authors = ["Deskfolk contributors"]
 edition = "2021"
 
 [lib]

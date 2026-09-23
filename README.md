@@ -1,25 +1,25 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-hero-dark.png">
-    <img alt="Real Bot: a group chat beside its flow board, a pending approval card and a Markdown preview" src="docs/assets/readme-hero-light.png">
+    <img alt="Deskfolk: a group chat beside its flow board, a pending approval card and a Markdown preview" src="docs/assets/readme-hero-light.png">
   </picture>
 </p>
 
-<h1 align="center">Real Bot</h1>
+<h1 align="center">Deskfolk</h1>
 
 <p align="center">Persistent AI teammates, organized by conversation, on your own Mac.</p>
 
 <p align="center">
-  <a href="https://blackman99.github.io/real-bot/"><b>Website</b></a> ·
-  <a href="https://github.com/Blackman99/real-bot/releases/latest"><b>Download alpha</b></a> ·
+  <a href="https://blackman99.github.io/deskfolk/"><b>Website</b></a> ·
+  <a href="https://github.com/Blackman99/deskfolk/releases/latest"><b>Download alpha</b></a> ·
   <a href="README.zh.md">简体中文</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Blackman99/real-bot/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Blackman99/real-bot/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-146a7c.svg"></a>
   <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-0f172a.svg">
-  <a href="https://github.com/Blackman99/real-bot/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
+  <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
 ## What it does
@@ -39,20 +39,20 @@
 
 **System requirement: macOS 13.0 (Ventura) or later**, on Apple silicon or Intel.
 
-**Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/real-bot/releases/latest): unsigned `.dmg` for Apple silicon and Intel. The app carries its own runtime and native helper, so there is nothing else to install — no Bun, no Node, no checkout. If Gatekeeper blocks the first launch, right-click → Open, or run:
+**Download** the latest alpha from [GitHub Releases](https://github.com/Blackman99/deskfolk/releases/latest): unsigned `.dmg` for Apple silicon and Intel. The app carries its own runtime and native helper, so there is nothing else to install — no Bun, no Node, no checkout. If Gatekeeper blocks the first launch, right-click → Open, or run:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
+xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"
 ```
 
-More detail: [Gatekeeper FAQ](docs/gatekeeper.md) · notarization path: [docs/notarization.md](docs/notarization.md) ([#10](https://github.com/Blackman99/real-bot/issues/10)).
+More detail: [Gatekeeper FAQ](docs/gatekeeper.md) · notarization path: [docs/notarization.md](docs/notarization.md) ([#10](https://github.com/Blackman99/deskfolk/issues/10)).
 
 **Updates:** the app checks GitHub Releases in the background and shows a dot on the settings gear when a newer build exists. Settings → General → About lists the current version and opens the matching `.dmg` in your browser; while builds are unsigned there is no in-app installer.
 
 **Run from source** (macOS 13.0+, Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
 
 ```bash
-cd real-bot
+cd deskfolk
 pnpm install
 pnpm dev
 ```
@@ -77,7 +77,7 @@ Times are civil times in the **execution Mac’s local time zone**, not the brow
 
 ## Status
 
-Alpha, macOS only. What is live, in progress and out of scope: [website](https://blackman99.github.io/real-bot/en#boundaries) · [Roadmap](ROADMAP.md) · [CONTEXT.md](CONTEXT.md) (domain language).
+Alpha, macOS only. What is live, in progress and out of scope: [website](https://blackman99.github.io/deskfolk/en#boundaries) · [Roadmap](ROADMAP.md) · [CONTEXT.md](CONTEXT.md) (domain language).
 
 The shared remote-crypto package is an **experimental, default-off prototype**, not available remote access. A default-off Bun relay, native-gated daemon adapter, and hosted messenger PWA client now exist for isolated integration testing. Hosted production builds omit local discovery and the loopback bearer; public pairing stays off. A link that ends — the relay closing it, the Mac going away, a phone changing network — is noticed by the page itself and retried with backoff, including the silently dead link a browser never reports; nothing is queued while it is down, and coming back from a locked screen or the background tries again without waiting to be tapped, asking the Mac only for what changed meanwhile. Pictures arrive as scaled copies with the original one tap away. A remote connection has its own Files conversation: a file posted there is copied into the workspace `inbox/`, text stays as a note to yourself, and neither wakes a Bot; the desktop lists the same conversation. Web Push honors the daemon's proxy environment (`https_proxy` / `HTTPS_PROXY`, with `ALL_PROXY` fallback and `NO_PROXY` exclusions); see [proxy setup](docs/deploy-remote.md#web-push-proxy). Optional Web Push is a generic pending-item reminder from the Mac; a notification click reconnects and returns to the chat list and never approves. In-app state lives on the conversation list; there is no notification page. The production daemon advertises `push_settings_v2` with `push_transport=policy_v2`. Outbound Web Push send, subscribe and test require an open remote gate (activation / native / trust); unsubscribe stays available for cleanup. It does not stay on a temporary upgrade pause. Cold-start click from a signed installed package is still unverified (`NATIVE_DELIVERY_QUALIFIED` is false). A banner posts when the process has a bundle identity and the system permission is granted; that flag no longer disables the test. Enqueueing reports queued, not native-accepted. `tauri dev` re-executes inside a debug `.app` with the same `com.real-bot.desktop` identity, so Notification Center and an already granted system permission both apply.  Hosted remote tests use the remote gate, contact, and subscription. This is not a ready remote product: independent security review (S-rev), physical iOS/Android home-screen WebAuthn (G-uv), physical L1, and physical home-screen Web Push (G-push) have **not passed**. See [self-hosted deployment, bootstrap recovery and routing contracts](docs/deploy-remote.md), including the separate `test:edge` command for real local Caddy HTTP/HTTPS/WSS checks (Caddy 2.10.2 and OpenSSL required). Its tests include official Noise vectors and an independent Rust snow peer (`pnpm test` requires Cargo). See the [protocol/API contract](docs/remote-protocol.md), including the single shared receipt digest with conditional headers and duplicate-filename ordering, now also consumed by local daemon receipts through the canonical-only workspace export. The daemon retains its stricter route and strong-SHA256 If-Match checks.
 

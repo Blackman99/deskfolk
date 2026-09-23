@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Real Bot mark: a message bubble holding two stacked teammates. -->
+  <!-- Deskfolk mark: a message bubble holding two stacked teammates. -->
   <path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z"/>
   <circle cx="25" cy="29" r="10.5" fill="#ffffff"/>
   <circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3"/>

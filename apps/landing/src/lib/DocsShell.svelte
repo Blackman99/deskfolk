@@ -47,7 +47,7 @@
 
 <Seo
   {lang}
-  title="{copy.title} — {pageKey === 'roadmap' ? t.nav.roadmap : t.nav.manifesto} — Real Bot"
+  title="{copy.title} — {pageKey === 'roadmap' ? t.nav.roadmap : t.nav.manifesto} — Deskfolk"
   {description}
   {suffix}
   imageAlt={t.seo.imageAlt}
@@ -84,7 +84,7 @@
 
   <div class="main">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <a href="{base}/{lang}">Real Bot</a>
+      <a href="{base}/{lang}">Deskfolk</a>
       <span aria-hidden="true">/</span>
       {#if pageKey === 'roadmap'}
         <span>{t.nav.roadmap}</span>

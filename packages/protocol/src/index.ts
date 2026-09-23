@@ -76,8 +76,8 @@ export function isContinuableNote(message: Pick<Message, "kind" | "body">): bool
 /** Encrypted Web Push body. Visible copy is fixed; never titles, filenames or Bot names. */
 export const WEB_PUSH_PAYLOAD = { t: "pending" } as const;
 export const WEB_PUSH_COPY = {
-  zh: "Real Bot 有待处理事项",
-  en: "Real Bot has pending items",
+  zh: "Deskfolk 有待处理事项",
+  en: "Deskfolk has pending items",
 } as const;
 
 export const REACTION_EMOJI = ["👍", "👀", "❤️", "❗"] as const;

@@ -46,7 +46,7 @@ test("a pending push supplies the PWA icon and a dedicated notification badge", 
   await w.dispatch("push", { data: { json: () => ({ t: "pending" }) } });
   expect(w.shown).toHaveLength(1);
   const { title, options } = w.shown[0]!;
-  expect(title).toBe("Real Bot 有待处理事项");
+  expect(title).toBe("Deskfolk 有待处理事项");
   expect(options).toMatchObject({ icon: "/icon-192.png", badge: "/notification-badge.png", tag: "real-bot-pending", data: { t: "pending" } });
   expect(pngSize(options.icon!)).toEqual([192, 192]);
   expect(pngSize(options.badge!)).toEqual([96, 96]);

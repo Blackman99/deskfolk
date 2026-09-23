@@ -155,8 +155,8 @@ self.addEventListener("push", (event) => {
     self.navigator.setAppBadge().catch(() => {});
   }
   event.waitUntil(
-    self.registration.showNotification("Real Bot 有待处理事项", {
-      body: "Real Bot has pending items",
+    self.registration.showNotification("Deskfolk 有待处理事项", {
+      body: "Deskfolk has pending items",
       icon: "/icon-192.png",
       badge: "/notification-badge.png",
       tag: "real-bot-pending",
