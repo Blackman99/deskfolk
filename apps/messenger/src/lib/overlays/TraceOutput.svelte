@@ -6,6 +6,7 @@
 	import { onDestroy } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
+	import type { MediaSourceHandle } from '../remote/media-source.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import {
 		artifactKind,
@@ -53,8 +54,12 @@
 	let url = $state<string | null>(null);
 	let generation = 0;
 	let liveUrl: string | null = null;
+	let mediaSource: MediaSourceHandle | null = null;
+	let loadAbort: AbortController | null = null;
 
 	function dropUrl(): void {
+		mediaSource?.dispose();
+		mediaSource = null;
 		if (liveUrl) URL.revokeObjectURL(liveUrl);
 		liveUrl = null;
 		url = null;
@@ -68,6 +73,9 @@
 
 	async function load(target: string): Promise<void> {
 		const mine = ++generation;
+		loadAbort?.abort();
+		const abort = new AbortController();
+		loadAbort = abort;
 		phase = 'loading';
 		text = null;
 		dropUrl();
@@ -81,7 +89,21 @@
 			return;
 		}
 		try {
-			const blob = await api.getWorkspaceFileBlob(target);
+			if ((shown === 'audio' || shown === 'video') && api.kind === 'remote' && api.openMediaSource) {
+				const stream = await api.openMediaSource({ path: target }, abort.signal, () => {
+					if (mine !== generation) return;
+					phase = 'missing';
+					abort.abort();
+				});
+				if (mine !== generation || abort.signal.aborted) { stream?.dispose(); return; }
+				if (stream) {
+					mediaSource = stream;
+					url = stream.url;
+					phase = 'ready';
+					return;
+				}
+			}
+			const blob = await api.getWorkspaceFileBlob(target, undefined, { signal: abort.signal });
 			if (mine !== generation) return;
 			if (shown === 'markdown' || shown === 'text') {
 				text = await blob.text();
@@ -104,7 +126,7 @@
 		void load(path);
 	});
 
-	onDestroy(dropUrl);
+	onDestroy(() => { generation += 1; loadAbort?.abort(); dropUrl(); });
 
 	function onOpenArtifact(next: string): void {
 		onOpenPath(next);
@@ -168,11 +190,11 @@
 		{:else if kind === 'text' && text !== null}
 			<pre class="trace-output-text">{text}</pre>
 		{:else if kind === 'image' || kind === 'svg'}
-			<img src={url} alt={name} class="trace-output-image" />
+			<img src={url} alt={name} class="trace-output-image" data-copy-image />
 		{:else if kind === 'audio'}
-			<audio controls src={url}></audio>
+			<audio controls preload="metadata" src={url} onerror={() => { phase = 'missing'; loadAbort?.abort(); }}></audio>
 		{:else if kind === 'video'}
-			<video controls src={url}></video>
+			<video controls playsinline preload="metadata" src={url} onerror={() => { phase = 'missing'; loadAbort?.abort(); }}></video>
 		{:else if kind === 'pdf' || kind === 'html'}
 			<iframe title={name} class="trace-output-frame" src={url} sandbox={kind === 'html' ? HTML_PREVIEW_SANDBOX : undefined}></iframe>
 		{/if}

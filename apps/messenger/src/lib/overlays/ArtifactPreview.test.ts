@@ -6,7 +6,8 @@ mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}))
 mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
 import { copyFor } from "../copy.ts";
-import type { FileProgressHandler } from "../file-progress.ts";
+import type { FileLoadOptions, FileProgressHandler } from "../file-progress.ts";
+import { rememberBlobOriginalSize } from "../api.ts";
 import { anAttachment } from "../test-fixtures.ts";
 import { render } from "../test-render.ts";
 
@@ -33,8 +34,8 @@ function deferredBlob(): {
 }
 
 function open(opts: {
-  getWorkspaceFileBlob?: (path: string, onProgress?: FileProgressHandler) => Promise<Blob>;
-  getAttachmentBlob?: (id: string, onProgress?: FileProgressHandler) => Promise<Blob>;
+  getWorkspaceFileBlob?: (path: string, onProgress?: FileProgressHandler, options?: FileLoadOptions) => Promise<Blob>;
+  getAttachmentBlob?: (id: string, onProgress?: FileProgressHandler, options?: FileLoadOptions) => Promise<Blob>;
   relpath?: string;
   filename?: string;
   size?: number | null;
@@ -111,6 +112,8 @@ test("an attachment size fills the bar before the first chunk", async () => {
   const pending = deferredBlob();
   const { host, close } = open({
     size: 4096,
+    filename: "clip.mp4",
+    relpath: "shots/clip.mp4",
     getAttachmentBlob: () => pending.promise,
   });
   await Promise.resolve();

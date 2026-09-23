@@ -10,6 +10,7 @@ import {
   injectHtmlPreviewColorScheme,
   injectHtmlPreviewNonce,
   isInAppPreviewKind,
+  isInlineImageName,
   previewLoadKey,
   pageCspNonce,
   handedOverPaths,
@@ -37,6 +38,10 @@ test("artifactKind maps extensions and directories", () => {
   expect(isInAppPreviewKind("text")).toBe(true);
   expect(isInAppPreviewKind("file")).toBe(false);
   expect(isInAppPreviewKind("directory")).toBe(false);
+  expect(isInlineImageName("inbox/image-3.png")).toBe(true);
+  expect(isInlineImageName("icon.SVG")).toBe(true);
+  expect(isInlineImageName("clip.mp4")).toBe(false);
+  expect(isInlineImageName("photos", { isDir: true })).toBe(false);
 });
 
 test("looksLikeWorkspaceHref accepts relative files and rejects urls", () => {

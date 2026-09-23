@@ -6,7 +6,7 @@
 	import { isSessionPinned } from '../sidebar/pinned-sessions.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
+	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
 
@@ -51,6 +51,7 @@
 	const sessionSettingsLabel = $derived(
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
+	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
 	const selectedWork = $derived(
 		selected
 			? sidebarStatus(
@@ -321,6 +322,15 @@
 </header>
 
 <style>
+	.file-drop-mark {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--accent-tint);
+		color: var(--accent);
+		border-color: transparent;
+	}
+
 	.setup-guide-pill {
 		display: inline-flex;
 		align-items: center;
@@ -341,19 +351,25 @@
 		border-color: var(--warn);
 	}
 
-	.top-identity-btn {
+	.top-identity-btn,
+	.top-file-identity {
 		display: flex;
+		flex-direction: row;
 		align-items: center;
 		gap: 12px;
 		min-width: 0;
+		flex: 1;
+		padding: 4px 8px;
+		margin: -4px -8px;
+		text-align: left;
+	}
+
+	.top-identity-btn {
 		background: transparent;
 		border: none;
 		box-shadow: none;
-		padding: 4px 8px;
-		margin: -4px -8px;
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		text-align: left;
 		transition: background 0.15s ease, opacity 0.15s ease;
 		color: inherit;
 		font: inherit;
@@ -623,7 +639,8 @@
 			align-items: stretch;
 		}
 
-		.top-identity-btn {
+		.top-identity-btn,
+		.top-file-identity {
 			flex: 1;
 			gap: 10px;
 			padding: 8px 6px;
@@ -698,6 +715,7 @@
 
 		.top-subline {
 			gap: 8px;
+			min-width: 0;
 			font-size: 12px;
 			line-height: 17px;
 		}

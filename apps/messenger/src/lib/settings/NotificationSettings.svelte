@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
+	import { ApiError } from '../api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifyPushHealth, closeCopyKey } from '../notifications/tab-owner.ts';
 	import { pushPermission } from '../remote/push.ts';
@@ -182,7 +183,23 @@
 				testFeedback = usesNativeTestGate ? t.notifications.testQueued : t.notifications.testRemoteQueued;
 			}
 		} catch (err) {
-			testFeedback = err instanceof Error ? err.message : t.disconnected.host;
+			if (err instanceof ApiError) {
+				const messages: Record<string, string> = {
+					push_pending: t.notifications.testPushPending,
+					rate_limited: t.notifications.testRateLimited,
+					push_contact_required: t.notifications.testContactRequired,
+					push_disabled: t.notifications.needsRepair,
+					no_subscription: t.notifications.needsRepair,
+					gateway_unavailable: t.notifications.remoteGated,
+					delivery_gated: t.notifications.testDeliveryGated,
+					capability_unavailable: t.notifications.upgradeRequired,
+					request_unknown: t.disconnected.host,
+					disconnected: t.disconnected.host
+				};
+				testFeedback = messages[err.code] ?? `${t.notifications.testFailed} (${err.code})`;
+			} else {
+				testFeedback = t.notifications.testFailed;
+			}
 		} finally {
 			testBusy = false;
 		}

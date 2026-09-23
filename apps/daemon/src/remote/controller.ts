@@ -1,7 +1,9 @@
+import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { base64url, canonicalBytes, canonicalHash, decodeFileChunk, fromBase64url, fragmentMessage, HostSession, identityPublic,
   openPairing, parseRemoteRequest, randomBytes, Reassembler, sealPairingGrant, sha256Hex, signGrant, text,
   encodeFileChunk, MAX_BODY, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
   type PairingContext, type PairingQr, type PairingRequest, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
+import { deflateRawSync } from "node:zlib";
 import type { LocalApi } from "../local-api";
 import type { LiveFile, Store } from "../store";
 import { ulid } from "../ids";
@@ -363,6 +365,8 @@ export class RemoteController {
     const assembler = new Reassembler();
     let alive = true, busy = false, assembling = false, assemblyStarted = 0, principal: RemotePrincipal | undefined, unsubscribe: (() => void) | undefined, unsubscribeStreams: (() => void) | undefined, unsubscribeTools: (() => void) | undefined;
     let queuedBytes = 0, sending = false;
+    /** The device asked, with `/remote/features`, for compressed answers (see {@link packJson}). */
+    let deflate = false;
     const abort = new AbortController();
     const outgoing: Array<{ type: number; body: Uint8Array; stream?: number; done?: () => void }> = [];
     let streamId = 0;
@@ -428,7 +432,10 @@ export class RemoteController {
       queuedBytes += body.length; outgoing.push({ type, body: new Uint8Array(body), stream, done }); void pump();
     };
     const sendFile = (body: Uint8Array, stream: number) => new Promise<void>(resolve => enqueue(5, body, stream, resolve));
-    const sendJson = (type: LogicalType, value: unknown) => { for (const frame of fragmentMessage(type, canonicalBytes(value))) enqueue(frame.type, frame.body); };
+    const sendJson = (type: LogicalType, value: unknown) => {
+      const bytes = canonicalBytes(value);
+      for (const frame of fragmentMessage(type, deflate && compressibleAnswer(type, value) ? packJson(bytes) : bytes)) enqueue(frame.type, frame.body);
+    };
     /**
      * Terminal and command bytes, coalesced before they leave the machine. A Noise frame tops out
      * at 32 KiB and this is a phone on a radio, so a window's worth of output goes out as one
@@ -463,7 +470,7 @@ export class RemoteController {
       streamBuffers.clear();
     };
     const claimedFiles = (request: RemoteRequest): Array<{ filename: string; size: number; sha256: string }> => {
-      if (request.method !== "POST" || !/^\/v1\/sessions\/[0-9A-HJKMNP-TV-Z]{26}\/messages$/.test(request.path)) return [];
+      if (request.method !== "POST" || !new RegExp(`^/v1/sessions/(?:[0-9A-HJKMNP-TV-Z]{26}|${FILE_DROP_SESSION_ID})/messages$`).test(request.path)) return [];
       const files = request.body?.files;
       if (!Array.isArray(files) || !files.length) return [];
       return files.map((row) => {
@@ -531,6 +538,13 @@ export class RemoteController {
       try {
         const request = parseRemoteRequest(bytes); id = request.id;
         this.trust.touchActive(device);
+        if (request.method === "POST" && request.path === "/remote/features") {
+          // What this device reads, asked once per link before anything that would use it.
+          const compress = request.body?.compress;
+          deflate = Array.isArray(compress) && compress.includes("deflate-raw");
+          sendJson(2, { v: 1, id, status: 200, body: { compress: deflate ? "deflate-raw" : null } });
+          return;
+        }
         const files = claimedFiles(request);
         const waited = files.length ? await waitForUploads(request, files) : { staged: [] };
         const staged = "staged" in waited ? waited.staged : [];
@@ -543,7 +557,8 @@ export class RemoteController {
         this.dispatcher.uv.assert(principal!);
         const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
         const result: RemoteResponse = { v: 1, id, status: response.status, body: null,
-          headers: { contentType, ...(response.headers.has("ETag") ? { etag: response.headers.get("ETag")! } : {}) } };
+          headers: { contentType, ...(response.headers.has("Content-Range") ? { contentRange: response.headers.get("Content-Range")! } : {}), ...(response.headers.has("ETag") ? { etag: response.headers.get("ETag")! } : {}),
+            ...(response.headers.has("X-Original-Size") ? { originalSize: Number(response.headers.get("X-Original-Size")) } : {}) } };
         if (response.status >= 400) result.body = await responseError(response);
         else if (response.body && contentType.includes("application/json") && request.path !== "/v1/workspace/file" && !/^\/v1\/attachments\/[^/]+\/content$/.test(request.path)) result.body = await response.json();
         else if (response.body) {
@@ -713,4 +728,32 @@ export class RemoteController {
     this.keys = undefined;
   }
   stop(): void { this.push.close(); this.stopTransport(); this.setStatus("off"); }
+}
+
+/**
+ * Answers worth compressing once a device has asked: JSON responses and snapshot pages. Never a
+ * file (its bytes may be anything, a key file included), an upload, an event, or anything the
+ * device sends.
+ */
+function compressibleAnswer(type: LogicalType, value: unknown): boolean {
+  if (type !== 2 && type !== 8) return false;
+  const response = value as RemoteResponse;
+  return !response.file && !response.upload;
+}
+
+const COMPRESS_OVER = 1024;
+
+/**
+ * One answer deflated on its own — no dictionary shared across messages — behind a 0x00 marker
+ * byte, which JSON cannot start with. A snapshot is a fifth of its JSON this way. Compression
+ * under encryption lets a length hint at content, which is why it stops at answers: they carry
+ * no secret of their own (keys never leave the Mac), and a small one goes as it is.
+ */
+function packJson(bytes: Uint8Array): Uint8Array {
+  if (bytes.length < COMPRESS_OVER) return bytes;
+  const packed = deflateRawSync(bytes, { level: 6 });
+  if (packed.length + 1 >= bytes.length) return bytes;
+  const out = new Uint8Array(packed.length + 1);
+  out.set(packed, 1);
+  return out;
 }

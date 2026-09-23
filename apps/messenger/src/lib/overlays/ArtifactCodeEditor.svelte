@@ -1,7 +1,7 @@
 <script lang="ts">
-	import 'monaco-editor-css';
-	import 'monaco-editor/esm/vs/platform/hover/browser/hover.css';
-	import 'monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css';
+	// Monaco's CSS (editor.main.css plus the hover/contextview widget styles) is loaded lazily,
+	// alongside the Monaco JS itself below, so it never lands in the page's own stylesheet — it
+	// used to be roughly half of that file's bytes even though Monaco's JS was already dynamic.
 	import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 	import { untrack } from 'svelte';
 	import {

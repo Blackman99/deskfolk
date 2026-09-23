@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Bot, SessionSummary } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, type Bot, type SessionSummary } from "@real-bot/protocol";
 import {
   computeContextMenuPosition,
   deriveSessionContextMenu,
@@ -125,6 +125,15 @@ describe("deriveSessionContextMenu", () => {
   test("you-bot with deleted bot disables archive and delete", () => {
     const s = direct("d3", ["user", "deleted_bot"]);
     const res = deriveSessionContextMenu(s, false, botsMap);
+    expect(res.archive.enabled).toBe(false);
+    expect(res.delete.enabled).toBe(false);
+  });
+
+  test("the file drop can be cleared and nothing else", () => {
+    const s = direct(FILE_DROP_SESSION_ID, ["user"]);
+    const res = deriveSessionContextMenu(s, false, botsMap);
+    expect(res.canViewInfo).toBe(false);
+    expect(res.canClearHistory).toBe(true);
     expect(res.archive.enabled).toBe(false);
     expect(res.delete.enabled).toBe(false);
   });

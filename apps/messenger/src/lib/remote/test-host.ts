@@ -2,12 +2,14 @@ import {
   HostSession,
   base64url,
   canonicalBytes,
+  encodeFileChunk,
   generateIdentity,
   identityPublic,
   parseRemoteRequest,
   type RemoteRequest,
   type RemoteResponse,
 } from "@real-bot/remote";
+import { deflateSync } from "fflate";
 import type { StoredEnrollment } from "./idb.ts";
 
 /**
@@ -91,7 +93,12 @@ export class FakeSocket {
 }
 
 /** The relay's text handshake and a real host session behind it. */
-export function fakeHost(options: { mode?: string; answer?: (request: RemoteRequest) => RemoteResponse | null } = {}) {
+export function fakeHost(options: {
+  mode?: string;
+  answer?: (request: RemoteRequest) => RemoteResponse | null;
+  /** The event cursor the ready frame reports; a Mac that restarted has another instance. */
+  ready?: { event_instance_id?: string; watermark_seq?: number };
+} = {}) {
   const host = new HostSession({
     binding,
     identity: hostKeys,
@@ -101,6 +108,9 @@ export function fakeHost(options: { mode?: string; answer?: (request: RemoteRequ
     recentRttMs: 50,
   });
   let split = false;
+  /** What the page asked for, in the order the host heard it; and which streams it stopped. */
+  const requests: RemoteRequest[] = [];
+  const cancels: number[] = [];
   const socket = new FakeSocket((data, sock) => {
     if (typeof data === "string") {
       const message = JSON.parse(data) as { type: string; nonce_c?: string };
@@ -119,16 +129,55 @@ export function fakeHost(options: { mode?: string; answer?: (request: RemoteRequ
       split = true;
       sock.deliver(host.accept(data));
       sock.deliver(host.send(3, canonicalBytes({
-        type: "ready", protocol: "remote-v1", event_instance_id: "a".repeat(32),
-        watermark_seq: 0, deviceId, trustEpoch: 1,
+        type: "ready", protocol: "remote-v1", event_instance_id: options.ready?.event_instance_id ?? "a".repeat(32),
+        watermark_seq: options.ready?.watermark_seq ?? 0, deviceId, trustEpoch: 1,
       })));
       return;
     }
-    const request = parseRemoteRequest(host.receive(data).body);
+    const frame = host.receive(data);
+    if (frame.type === 6) {
+      cancels.push(new DataView(frame.body.buffer, frame.body.byteOffset, 4).getUint32(0));
+      return;
+    }
+    const request = parseRemoteRequest(frame.body);
+    // Every link opens by asking what the Mac can compress. Unless a test answers it, this Mac is
+    // an older one that does not know the route, and the ask stays out of `requests`.
+    if (request.path === "/remote/features") {
+      const answered = options.answer?.(request);
+      sock.deliver(host.send(2, canonicalBytes(answered ?? {
+        v: 1, id: request.id, status: 404, body: { error: { code: "not_found", message: "unknown remote route" } },
+      })));
+      return;
+    }
+    requests.push(request);
     const response = options.answer?.(request);
     if (response) sock.deliver(host.send(2, canonicalBytes(response)));
   });
-  return { socket, host, event: (payload: unknown) => socket.deliver(host.send(3, canonicalBytes(payload))) };
+  const streamFrame = (streamId: number) => {
+    const body = new Uint8Array(4);
+    new DataView(body.buffer).setUint32(0, streamId);
+    return body;
+  };
+  return {
+    socket,
+    host,
+    requests,
+    cancels,
+    event: (payload: unknown) => socket.deliver(host.send(3, canonicalBytes(payload))),
+    /** An answer the test sends when it chooses, rather than the moment the request lands. */
+    respond: (response: RemoteResponse) => socket.deliver(host.send(2, canonicalBytes(response))),
+    /** The same, deflated behind the 0x00 marker, as a Mac sends it once a device asked. */
+    respondPacked: (response: RemoteResponse) => {
+      const packed = deflateSync(canonicalBytes(response));
+      const body = new Uint8Array(packed.length + 1);
+      body.set(packed, 1);
+      socket.deliver(host.send(2, body));
+    },
+    chunk: (streamId: number, offset: number, bytes: Uint8Array, eof: boolean) =>
+      socket.deliver(host.send(5, encodeFileChunk({ streamId, offset: BigInt(offset), eof, chunk: bytes }))),
+    /** The host confirming a stream is over: the answer to a cancel, or its own giving up. */
+    streamEnded: (streamId: number) => socket.deliver(host.send(6, streamFrame(streamId))),
+  };
 }
 
 
@@ -137,16 +186,23 @@ export function fakeHost(options: { mode?: string; answer?: (request: RemoteRequ
  * that reconnects is answered by a second link rather than the one it lost.
  */
 export function serveRemote(
-  options: { mode?: string; answer?: (request: RemoteRequest) => RemoteResponse | null } = {},
-): { sockets: FakeSocket[]; restore: () => void } {
+  options: {
+    mode?: string;
+    answer?: (request: RemoteRequest) => RemoteResponse | null;
+    /** The ready cursor of the nth link, counting from 0. */
+    ready?: (link: number) => { event_instance_id?: string; watermark_seq?: number };
+  } = {},
+): { sockets: FakeSocket[]; hosts: ReturnType<typeof fakeHost>[]; restore: () => void } {
   const original = globalThis.WebSocket;
   const sockets: FakeSocket[] = [];
+  const hosts: ReturnType<typeof fakeHost>[] = [];
   globalThis.WebSocket = class {
     constructor(_url: string) {
-      const relay = fakeHost(options);
+      const relay = fakeHost({ mode: options.mode, answer: options.answer, ready: options.ready?.(sockets.length) });
       sockets.push(relay.socket);
+      hosts.push(relay);
       return relay.socket as never;
     }
   } as never;
-  return { sockets, restore: () => { globalThis.WebSocket = original; } };
+  return { sockets, hosts, restore: () => { globalThis.WebSocket = original; } };
 }

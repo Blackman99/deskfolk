@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="96" height="96">
+  <!-- Monochrome teammates from the app icon; transparent for notification masking. -->
+  <defs>
+    <mask id="back">
+      <rect width="64" height="64" fill="white"/>
+      <circle cx="41" cy="32" r="14.75" fill="black"/>
+    </mask>
+  </defs>
+  <circle cx="24" cy="32" r="13" fill="white" mask="url(#back)"/>
+  <circle cx="41" cy="32" r="13" fill="white"/>
+</svg>

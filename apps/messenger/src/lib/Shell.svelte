@@ -9,6 +9,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
+	import ImageCopy from './ImageCopy.svelte';
 	import {
 		dangerCopy,
 		shouldDropConfirm,
@@ -37,6 +38,7 @@
 	import { themeManager } from './theme.ts';
 	import {
 		classifySession,
+		isFileDropSession,
 		youBotPeer
 	} from './sidebar/session-groups.ts';
 	import { sessionTitle } from './sidebar/session-title.ts';
@@ -109,7 +111,11 @@
 	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
-	import SettingsModal from './settings/SettingsModal.svelte';
+	// SettingsModal.svelte (~3.5k lines, plus its provider/MCP/notification sub-panels) is
+	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
+	// template is already gated on `runtime.settingsOpen` (see settingsHead/`{#if runtime.settingsOpen}`
+	// inside that file), so deferring the mount changes nothing but when the bytes are fetched.
+	import type SettingsModal from './settings/SettingsModal.svelte';
 
 	let { runtime }: { runtime: MessengerRuntime } = $props();
 
@@ -169,6 +175,16 @@
 	let sidebar = $state<Sidebar>();
 	let mobileSettingsDetail = $state(false);
 	let settingsModal = $state<SettingsModal>();
+	/**
+	 * Settings is opened far more often than once, but its module is only worth fetching the
+	 * first time it is. Once true this never goes back to false, so the lazy-loaded
+	 * `<SettingsModal>` below stays mounted across opens/closes exactly as the old, always-mounted
+	 * import did (its own template already no-ops while `runtime.settingsOpen` is false).
+	 */
+	let settingsEverOpened = $state(false);
+	$effect(() => {
+		if (runtime.settingsOpen) settingsEverOpened = true;
+	});
 	/**
 	 * The Bot and group drawers are two screens on a phone, the same way settings is: the list of
 	 * sections, then one section. The shell holds which one is showing because the drawer's own
@@ -651,6 +667,7 @@
 	}
 
 	async function handleMenuViewInfo(session: SessionSummary): Promise<void> {
+		if (isFileDropSession(session)) return;
 		if (runtime.selectedId !== session.id) {
 			await runtime.selectSession(session.id);
 		}
@@ -707,7 +724,7 @@
 	const selected = $derived(snapshot.sessions.find((s) => s.id === runtime.selectedId) ?? null);
 	const connected = $derived(runtime.connection === 'connected');
 	let composer = $state<{ focus: () => void } | null>(null);
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(
@@ -1825,19 +1842,23 @@
 	{#if mobileNavigationVisible}
 		<MobileNavigation active={mobileDestination} {t} updateAvailable={updateChecker.updateVisible} onNavigate={navigateMobile} />
 	{/if}
-	<SettingsModal
-		bind:this={settingsModal}
-		bind:mobileSettingsDetail
-		{runtime}
-		{t}
-		bind:saveFailed
-		bind:providerEditor
-		confirmingProvider={dangerConfirm?.kind === 'provider'}
-		bind:confirmingIndependent
-		{patchImmediate}
-		{openDeleteProviderConfirm}
-		{closeSettings}
-	/>
+	{#if settingsEverOpened}
+		{#await import('./settings/SettingsModal.svelte') then { default: SettingsModal }}
+			<SettingsModal
+				bind:this={settingsModal}
+				bind:mobileSettingsDetail
+				{runtime}
+				{t}
+				bind:saveFailed
+				bind:providerEditor
+				confirmingProvider={dangerConfirm?.kind === 'provider'}
+				bind:confirmingIndependent
+				{patchImmediate}
+				{openDeleteProviderConfirm}
+				{closeSettings}
+			/>
+		{/await}
+	{/if}
 	{#if runtime.createBotOpen}
 		<CreateBotSheet
 			{runtime}

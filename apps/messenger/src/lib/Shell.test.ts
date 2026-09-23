@@ -79,7 +79,8 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
     }
     show('a');
     const { host, close } = render(Shell, { runtime }); cleanups.push(close);
-    if (kind === 'provider') click(buttonByText(host, 'Models 2'));
+    // Settings is lazy-mounted: its module resolves a tick after `settingsOpen` first turns true.
+    if (kind === 'provider') { await settle(); click(buttonByText(host, 'Models 2')); }
     function open(id: string) {
       // A Bot's danger zone lives behind the profile's actions tab.
       if (kind === 'bot') {
@@ -301,7 +302,7 @@ test("a conversation pane constrains the transcript and floating composer", () =
   expect(conversation.querySelector(".composer")).not.toBeNull();
 });
 
-test("the routine calendar replaces the main column and stays visible without a session on a phone", () => {
+test("the routine calendar replaces the main column and stays visible without a session on a phone", async () => {
   const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
     (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
   );
@@ -323,7 +324,8 @@ test("the routine calendar replaces the main column and stays visible without a 
     close();
   });
   runtime.openRoutines();
-  flushSync();
+  // The calendar is lazy-mounted: its module resolves a tick after `routinesOpen` turns true.
+  await settle();
   const shell = host.querySelector(".shell")!;
   expect(shell.classList.contains("has-routines")).toBe(true);
   expect(getComputedStyle(host.querySelector(".main")!).display).not.toBe("none");

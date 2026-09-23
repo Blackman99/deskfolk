@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAttachment, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { click } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
@@ -296,7 +297,23 @@ test("left clicking a message does not add is-selected class, right clicking sel
 
   // Context menu must remain open after attaching listeners (no flickering/auto-dismiss)
   expect(host.querySelector(".msg-context-menu")).not.toBeNull();
-  expect(botSegment.classList.contains("is-selected")).toBe(true);
+
+  // A rendered picture keeps this menu closed so its own menu can copy the pixels.
+  const image = document.createElement("img");
+  image.dataset.copyImage = "";
+  Object.defineProperty(image, "currentSrc", { configurable: true, get: () => "blob:http://localhost/shot" });
+  Object.defineProperty(image, "naturalWidth", { configurable: true, value: 8 });
+  botSegment.append(image);
+  const onPicture = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  image.dispatchEvent(onPicture);
+  flushSync();
+  expect(onPicture.defaultPrevented).toBe(false);
+  expect(onPicture.cancelBubble).toBe(false);
+  expect(host.querySelector(".msg-context-menu")).toBeNull();
+  expect(botSegment.classList.contains("is-selected")).toBe(false);
+  const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 2 });
+  image.dispatchEvent(down);
+  expect(down.defaultPrevented).toBe(false);
 
   // Press Escape to close context menu and deselect
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -305,6 +322,170 @@ test("left clicking a message does not add is-selected class, right clicking sel
   expect(host.querySelector(".msg-context-menu")).toBeNull();
 
   close();
+});
+
+test("a slow picture waits in its thumbnail's box, with the bytes received shown, and grows once", async () => {
+  let report: ((progress: { loaded: number; total: number | null }) => void) | undefined;
+  let resolveBlob!: (blob: Blob) => void;
+  const pending = new Promise<Blob>((resolve) => {
+    resolveBlob = resolve;
+  });
+  const session = aDirect();
+  const picture = anAttachment({
+    id: "pic",
+    message_id: "msg-pic",
+    original_filename: "image.png",
+    workspace_relpath: "inbox/image-3.png",
+    mime: "image/png",
+    size: 4096,
+  });
+  const message = aMessage({
+    id: "msg-pic",
+    session_id: session.id,
+    kind: "user",
+    body: "选哪个",
+    attachments: [picture],
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, {
+    selectedId: session.id,
+    client: {
+      getAttachmentBlob: (_id: string, onProgress?: (progress: { loaded: number; total: number | null }) => void) => {
+        report = onProgress;
+        return pending;
+      },
+    },
+  }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: () => {},
+    onCreateBot: () => {},
+  });
+  try {
+    const chip = host.querySelector(".attachment-file-btn")!;
+    const thumb = chip.querySelector(".attachment-chip-pending")!;
+    thumb.getBoundingClientRect = () =>
+      ({ top: 40, left: 80, width: 36, height: 36, right: 116, bottom: 76, x: 80, y: 40, toJSON() {} }) as DOMRect;
+    click(chip);
+    const frame = host.querySelector<HTMLElement>(".msg-image-frame");
+    expect(frame).not.toBeNull();
+    // The first paint keeps the thumbnail's box; the spinner is already inside it.
+    expect(frame!.style.top).toBe("40px");
+    expect(frame!.style.left).toBe("80px");
+    expect(frame!.style.width).toBe("36px");
+    expect(frame!.style.height).toBe("36px");
+    expect(frame!.querySelector(".msg-image-loading-ring")).not.toBeNull();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    flushSync();
+    // No pixels yet, so no shape to grow to: the frame stays in the thumbnail's box instead of
+    // growing to a guessed one and resizing again when the picture comes.
+    expect(frame!.style.width).toBe("36px");
+    expect(frame!.style.height).toBe("36px");
+    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("正在打开文件…");
+    const loading = frame!.querySelector(".msg-image-loading");
+    expect(loading?.getAttribute("aria-busy")).toBe("true");
+    expect(loading?.textContent).toContain("正在打开文件…");
+    expect(frame!.querySelector(".msg-image-loading-ring")).not.toBeNull();
+    expect(frame!.querySelector(".msg-image-full")).toBeNull();
+    const bar = frame!.querySelector(".msg-image-loading-bar");
+    expect(bar?.getAttribute("aria-valuenow")).toBe("0");
+    expect(frame!.textContent).toContain("0 B / 4.0 KB");
+    report?.({ loaded: 2048, total: 4096 });
+    flushSync();
+    expect(bar?.getAttribute("aria-valuenow")).toBe("50");
+    expect(frame!.querySelector<HTMLElement>(".msg-image-loading-fill")?.style.width).toBe("50%");
+    expect(frame!.textContent).toContain("2.0 KB / 4.0 KB");
+    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("2.0 KB / 4.0 KB");
+    resolveBlob(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }));
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+    expect(host.querySelector(".msg-image-loading")).toBeNull();
+    expect(host.querySelector(".msg-image-waiting")).toBeNull();
+    expect(host.querySelector(".msg-image-full")).not.toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("clicking a picture attachment opens it over the messages", () => {
+  const session = aDirect();
+  const picture = anAttachment({
+    id: "pic",
+    message_id: "msg-pic",
+    original_filename: "image.png",
+    workspace_relpath: "inbox/image-3.png",
+    mime: "image/png",
+  });
+  const message = aMessage({
+    id: "msg-pic",
+    session_id: session.id,
+    kind: "user",
+    body: "选哪个",
+    attachments: [picture],
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, {
+    selectedId: session.id,
+    client: {
+      getAttachmentBlob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+      getWorkspaceFileBlob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+    },
+  }));
+  const opened: string[] = [];
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: (path: string) => opened.push(path),
+    onCreateBot: () => {},
+  });
+  try {
+    click(host.querySelector(".attachment-file-btn"));
+    const stage = host.querySelector(".msg-image-lightbox");
+    expect(stage).not.toBeNull();
+    expect(getComputedStyle(stage!).position).toBe("fixed");
+    expect(stage?.getAttribute("role")).not.toBe("dialog");
+    expect(host.querySelector(".msg-image-frame")?.getAttribute("aria-label")).toBe("image.png");
+    expect(opened).toEqual([]);
+    click(host.querySelector(".msg-image-close"));
+    expect(host.querySelector(".msg-image-lightbox")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("a markdown image link opens over the messages and a text link still opens the preview", () => {
+  const session = aDirect();
+  const message = aMessage({
+    id: "msg-links",
+    session_id: session.id,
+    kind: "bot",
+    author: "bot-1",
+    body: "看 [shot.png](inbox/shot.png) 和 [notes.md](inbox/notes.md)",
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, { selectedId: session.id }));
+  const opened: string[] = [];
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: (path: string) => opened.push(path),
+    onCreateBot: () => {},
+  });
+  try {
+    const links = [...host.querySelectorAll("a")];
+    click(links.find((link) => link.textContent?.includes("shot.png")));
+    expect(host.querySelector(".msg-image-lightbox")).not.toBeNull();
+    expect(opened).toEqual([]);
+    click(links.find((link) => link.textContent?.includes("notes.md")));
+    expect(opened).toEqual(["inbox/notes.md"]);
+  } finally {
+    close();
+  }
 });
 
 for (const session of [aDirect(), aGroup(), aBotDirect()]) {

@@ -732,7 +732,7 @@ export class PushService {
   recoverScheduled(): void {
     if (this.pausedUpgrade || this.closed) return;
     const now = this.now();
-    this.reclaimStrandedClaimed(now);
+    this.reconcileDeliveries(now);
     const rows = this.options.store.db
       .query<{ receiver_id: string; next_attempt_at: number | null; next_send_at: number | null }, [number]>(`
         SELECT d.receiver_id, d.next_attempt_at, nd.next_send_at
@@ -977,7 +977,10 @@ export class PushService {
     if (now - lastTest < TEST_RATE_LIMIT_MS) {
       throw new HttpError(429, "rate_limited", "test push rate limited to once per 60 seconds");
     }
-    this.lastTestAtByReceiver.set(deviceId, now);
+    this.reconcileDeliveries(now);
+    if (this.activeBatch(deviceId)) {
+      throw new HttpError(409, "push_pending", "a push delivery is still pending for this device");
+    }
 
     const deliveryId = ulid();
     this.options.store.db.run(
@@ -999,6 +1002,7 @@ export class PushService {
       ],
     );
 
+    this.lastTestAtByReceiver.set(deviceId, now);
     if (devRow.last_attempt_at && now < (devRow.next_send_at ?? 0)) {
       this.scheduleDevice(deviceId, devRow.next_send_at ?? now);
       return { ok: true, status: "waiting_send_slot" };
@@ -1099,14 +1103,20 @@ export class PushService {
     );
   }
 
-  private reclaimStrandedClaimed(now: number): void {
+  private reconcileDeliveries(now: number): void {
+    this.options.store.db.run(
+      `UPDATE notification_deliveries SET state = 'expired', error_code = 'expired', next_attempt_at = NULL
+       WHERE channel = 'remote_push' AND state IN ('pending', 'retry_wait', 'unknown')
+         AND absolute_expires_at <= ?`,
+      [now],
+    );
     const stranded = this.options.store.db
-      .query<PushDeliveryRow & { receiver_id: string }, [number]>(`
+      .query<PushDeliveryRow & { receiver_id: string }, []>(`
         SELECT delivery_id, receiver_id, batch_key, state, attempt, absolute_expires_at, next_attempt_at, push_generation, trust_generation
         FROM notification_deliveries
         WHERE channel = 'remote_push' AND state = 'claimed'
       `)
-      .all(now);
+      .all();
     for (const row of stranded) {
       if (this.inFlightByDevice.has(row.receiver_id)) continue;
       if (now >= row.absolute_expires_at || row.attempt + 1 >= MAX_DELIVERY_ATTEMPTS) {
@@ -1268,7 +1278,7 @@ export class PushService {
 
   private async deliverPending(deviceId: string, skipBatchWindow = false): Promise<void> {
     if (this.closed || this.pausedUpgrade) return;
-    this.reclaimStrandedClaimed(this.now());
+    this.reconcileDeliveries(this.now());
     if (!this.isRemoteGateOpen() || !this.isDeviceTrusted(deviceId)) {
       this.scheduleDevice(deviceId, this.now() + this.GATE_RETRY_MS);
       return;

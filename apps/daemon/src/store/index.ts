@@ -88,6 +88,7 @@ export class Store {
     this.receipts = new Receipts(this.db, this.ctx.tx, this.ctx.keys, () => files.recoverFiles(this.ctx));
     files.recoverFiles(this.ctx);
     settings.ensureLegacyProviderRow(this.ctx);
+    sessions.ensureFileDropSession(this.ctx);
     installChangeJournal(this.ctx);
     this.journalReady = true;
   }
@@ -171,7 +172,7 @@ export class Store {
     return {
       credentialOperations: credentials.listCredentialOperations(this.ctx),
       settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
-      spend: this.listSpend({}), approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
+      approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
       providers: providers.providersCached(this.ctx),
       skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),
       memories: memories.listMemories(this.ctx).map((memory) => memories.withLearning(this.ctx, memory)),
@@ -243,6 +244,7 @@ export class Store {
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
 
   // Sessions -------------------------------------------------------------------------------
+  readonly ensureFileDropSession = this.bind(sessions.ensureFileDropSession);
   readonly listSessions = this.bind(sessions.listSessions);
   readonly getSession = this.bind(sessions.getSession);
   readonly markSessionRead = this.bind(sessions.markSessionRead);

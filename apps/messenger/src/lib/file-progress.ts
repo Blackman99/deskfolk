@@ -1,6 +1,18 @@
 /** Bytes seen so far, and the declared size when the transfer names one. */
 export type FileProgress = { loaded: number; total: number | null };
 export type FileProgressHandler = (progress: FileProgress) => void;
+/**
+ * How a file read is asked for. Remotely every request shares one link that answers one at a
+ * time: `background` reads (a chat's pictures) step aside for everything else, and `signal` takes
+ * a read nobody is waiting for any more out of line. `size` asks for a scaled copy of a picture,
+ * locally too. Locally `background` means nothing.
+ */
+export type FileLoadOptions = { background?: boolean; signal?: AbortSignal; size?: ImageSize };
+/**
+ * A scaled copy of a picture instead of its bytes: `thumb` for a chip, `preview` for an
+ * enlargement. Anything that is not a larger raster comes back as the original.
+ */
+export type ImageSize = "thumb" | "preview";
 
 function concat(chunks: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(chunks.reduce((n, chunk) => n + chunk.length, 0));

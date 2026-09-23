@@ -1,8 +1,10 @@
 <script lang="ts">
 	import type { Attachment, TaskArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { ApiError, etagForBlob } from '../api.ts';
+	import { onPaneResize } from '../workbench/pane-resize.svelte.ts';
+	import { ApiError, etagForBlob, originalSizeForBlob } from '../api.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
+	import type { MediaSourceHandle } from '../remote/media-source.ts';
 	import {
 		absWorkspacePath,
 		artifactByteSource,
@@ -1116,6 +1118,34 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--pane);
+	}
+
+	/*
+	 * The button fills the body so the picture keeps fitting exactly as it did, and it lets the
+	 * pointer through: only the picture is a target, not the empty space around a small one.
+	 */
+	.artifact-img-open {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		border: 0;
+		background: none;
+		pointer-events: none;
+	}
+
+	.artifact-img-open .artifact-img {
+		pointer-events: auto;
+		cursor: zoom-in;
+	}
+
+	.artifact-img-open:focus-visible {
+		outline: none;
+	}
+
+	.artifact-img-open:focus-visible .artifact-img {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.artifact-pane-body audio,

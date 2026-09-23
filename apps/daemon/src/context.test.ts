@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
-import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG } from "./context";
+import type { ChatMessage } from "./completions";
+import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
 import { Store } from "./store";
 
 const PNG_1X1 = Buffer.from(
@@ -19,6 +20,59 @@ afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** A group where a designer posts pictures into the workspace and a reviewer is woken to look. */
+async function pictureRoom(tag: string) {
+  const root = mkdtempSync(join(tmpdir(), `real-bot-ctx-${tag}-`));
+  workspaces.push(root);
+  mkdirSync(join(root, "out"));
+  const store = new Store();
+  await store.patchSettings({ workspace_path: root });
+  const designer = store.createBot({ name: "设计师", duties: "design", boundaries: "stay" });
+  const reviewer = store.createBot({ name: "审片员", duties: "review", boundaries: "stay" });
+  const group = store.createGroup({ name: "Brief", members: [designer.bot.id, reviewer.bot.id] });
+  let written = 0;
+  return {
+    store,
+    post(body: string, count: number, bytes: Buffer) {
+      const paths = Array.from({ length: count }, () => {
+        const rel = `out/frame-${written++}.png`;
+        writeFileSync(join(root, rel), bytes);
+        return rel;
+      });
+      return store.insertMessage({ sessionId: group.id, kind: "bot", author: designer.bot.id, body, paths });
+    },
+    assemble(triggerMessageId: string): ChatMessage[] {
+      const turn = store.createTurn({ sessionId: group.id, botId: reviewer.bot.id, triggerMessageId });
+      return assembleTurnMessages(store, {
+        sessionId: group.id,
+        botId: reviewer.bot.id,
+        turnId: turn.id,
+        triggerMessageId,
+        locale: "zh",
+        interrupt: false,
+        loop: [],
+      });
+    },
+  };
+}
+
+function pictures(messages: ChatMessage[]): number {
+  let count = 0;
+  for (const m of messages) {
+    if (Array.isArray(m.content)) count += m.content.filter((part) => part.type === "image_url").length;
+  }
+  return count;
+}
+
+function lineWith(messages: ChatMessage[], body: string): ChatMessage | undefined {
+  return messages.find((m) => {
+    if (m.role !== "user") return false;
+    const text = String((Array.isArray(m.content) ? m.content.find((part) => part.type === "text")?.text : m.content) ?? "");
+    // The situation block names the work dir after the trigger, so it can quote the body too.
+    return !text.startsWith(SITUATION_HEADING) && text.includes(body);
+  });
+}
 
 describe("assembleTurnMessages", () => {
   test("marks only the trigger line in the transcript window", () => {
@@ -291,6 +345,43 @@ describe("assembleTurnMessages", () => {
       image_url: { url: `data:image/png;base64,${PNG_1X1.toString("base64")}` },
     });
     store.close();
+  });
+
+  test("the window carries only the newest pictures; older lines keep their path lines", async () => {
+    const room = await pictureRoom("count");
+    const perLine = 5;
+    const lines = Array.from({ length: VISION_WINDOW_IMAGES / perLine + 1 }, (_, i) =>
+      room.post(`第 ${i} 版`, perLine, PNG_1X1),
+    );
+    const messages = room.assemble(lines.at(-1)!.id);
+    expect(pictures(messages)).toBe(VISION_WINDOW_IMAGES);
+    const oldest = lineWith(messages, "第 0 版");
+    expect(typeof oldest?.content).toBe("string");
+    expect(String(oldest?.content)).toContain(`附件：${lines[0]!.attachments[0]!.workspace_relpath}`);
+    for (const line of lines.slice(1)) expect(pictures([lineWith(messages, line.body)!])).toBe(perLine);
+    room.store.close();
+  });
+
+  test("the trigger's pictures go ahead of newer lines", async () => {
+    const room = await pictureRoom("trigger");
+    const trigger = room.post("原稿", 1, PNG_1X1);
+    room.post("新一版", VISION_WINDOW_IMAGES, PNG_1X1);
+    const messages = room.assemble(trigger.id);
+    expect(pictures([lineWith(messages, "原稿")!])).toBe(1);
+    expect(pictures([lineWith(messages, "新一版")!])).toBe(VISION_WINDOW_IMAGES - 1);
+    room.store.close();
+  });
+
+  test("the window's picture bytes are capped, dropping the oldest first", async () => {
+    const room = await pictureRoom("bytes");
+    const heavy = Buffer.alloc(Math.floor(VISION_WINDOW_BYTES / 3) + 1);
+    room.post("第 0 版", 1, heavy);
+    room.post("第 1 版", 1, heavy);
+    const trigger = room.post("第 2 版", 1, heavy);
+    const messages = room.assemble(trigger.id);
+    expect(pictures(messages)).toBe(2);
+    expect(typeof lineWith(messages, "第 0 版")?.content).toBe("string");
+    room.store.close();
   });
 
   test("a group's situation block keeps its facts and adds the work dir", () => {

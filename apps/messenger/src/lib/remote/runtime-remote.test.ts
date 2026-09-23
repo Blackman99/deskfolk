@@ -7,6 +7,7 @@ import { emptySnapshot } from "../snapshot.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
 import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
 import { enrollment as liveEnrollment, serveRemote } from "./test-host.ts";
+import { aBot } from "../test-fixtures.ts";
 
 const keys = generateIdentity();
 const pub = identityPublic(keys);

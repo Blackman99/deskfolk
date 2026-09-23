@@ -16,7 +16,7 @@
 		type ComposerImeState
 	} from './composer-ime.ts';
 	import type { Copy } from '../copy.ts';
-	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
+	import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import {
 		deleteChipElement,
 		getTextBeforeCaret,
@@ -674,7 +674,7 @@
 			{#each pendingAttachments as att (att.id)}
 				<div class="composer-attachment-item" class:is-img={att.isImage}>
 					{#if att.isImage && att.previewUrl}
-						<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" />
+						<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
 					{:else}
 						<div class="attachment-file-icon">
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>

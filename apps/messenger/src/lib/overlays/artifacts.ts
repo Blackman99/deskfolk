@@ -180,6 +180,13 @@ export function isRasterImageName(name: string): boolean {
   return IMAGE.has(extensionOf(name));
 }
 
+/** A picture looked at inside the message area: raster and SVG, never a directory. */
+export function isInlineImageName(name: string, opts: { isDir?: boolean } = {}): boolean {
+  if (opts.isDir) return false;
+  const kind = artifactKind(name);
+  return kind === "image" || kind === "svg";
+}
+
 /** Kinds the messenger can preview itself. Everything else uses the system opener. */
 export function isInAppPreviewKind(kind: ArtifactKind): boolean {
   return (

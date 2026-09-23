@@ -55,8 +55,8 @@ import type {
 import { isNonReceiptPath } from "@real-bot/protocol";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
-import { ApiError, rememberBlobEtag } from "./api.ts";
-import { readResponseBlob, type FileProgressHandler } from "./file-progress.ts";
+import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "./api.ts";
+import { readResponseBlob, type FileLoadOptions, type FileProgressHandler } from "./file-progress.ts";
 import type {
   DesktopClickResponse,
   NotificationDevice,
@@ -299,8 +299,8 @@ export class LocalApi {
     return this.get<SessionDetail>(`/v1/sessions/${id}`);
   }
 
-  async markSessionRead(id: string): Promise<SessionDetail> {
-    return this.post<SessionDetail>(`/v1/sessions/${id}/read`);
+  async markSessionRead(id: string): Promise<SessionSummary> {
+    return this.post<SessionSummary>(`/v1/sessions/${id}/read`);
   }
 
   async archiveSession(id: string): Promise<SessionDetail> {
@@ -498,11 +498,11 @@ export class LocalApi {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
 
-  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler): Promise<Blob> {
+  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
     const res = await fetch(
-      `${this.endpoint.origin}/v1/workspace/file?path=${encodeURIComponent(path)}`,
-      { method: "GET", headers },
+      `${this.endpoint.origin}/v1/workspace/file?path=${encodeURIComponent(path)}${options?.size ? `&size=${options.size}` : ""}`,
+      { method: "GET", headers, signal: options?.signal },
     );
     if (!res.ok) {
       const json = (await res.json().catch(() => null)) as ErrorBody | null;
@@ -515,14 +515,16 @@ export class LocalApi {
     const blob = await readResponseBlob(res, onProgress);
     const etag = res.headers.get("ETag");
     rememberBlobEtag(blob, etag);
+    rememberBlobOriginalSize(blob, res.headers.get("X-Original-Size"));
     return blob;
   }
 
-  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler): Promise<Blob> {
+  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
-    const res = await fetch(`${this.endpoint.origin}/v1/attachments/${id}/content`, {
+    const res = await fetch(`${this.endpoint.origin}/v1/attachments/${id}/content${options?.size ? `?size=${options.size}` : ""}`, {
       method: "GET",
       headers,
+      signal: options?.signal,
     });
     if (!res.ok) {
       throw new ApiError(res.status, "not_found", "failed to fetch attachment");
@@ -530,6 +532,7 @@ export class LocalApi {
     const blob = await readResponseBlob(res, onProgress);
     const etag = res.headers.get("ETag");
     rememberBlobEtag(blob, etag);
+    rememberBlobOriginalSize(blob, res.headers.get("X-Original-Size"));
     return blob;
   }
 
@@ -653,7 +656,7 @@ export class LocalApi {
     return acknowledgeNotification(this, id, ifRevision);
   }
 
-  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionDetail> {
+  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionSummary> {
     return markSessionReadThrough(this, sessionId, throughMessageId);
   }
 

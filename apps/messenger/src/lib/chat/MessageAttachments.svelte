@@ -2,9 +2,10 @@
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import { artifactKind, handedOverPaths, svgDisplayBlob } from '../overlays/artifacts.ts';
+	import { artifactKind, handedOverPaths, isInlineImageName, svgDisplayBlob } from '../overlays/artifacts.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from '../overlays/artifact-tree.ts';
 	import { onDestroy } from 'svelte';
+	import { whenVisible } from '../when-visible.ts';
 
 	interface Props {
 		attachments: Attachment[];
@@ -13,12 +14,16 @@
 		api: MessengerApi | null;
 		t: Copy;
 		onPreview: (att: Attachment) => void;
+		/** A picture stays in the app. `from` is the control the picture grows out of. */
+		onOpenImage?: (att: Attachment, from?: HTMLElement) => void;
 	}
 
-	let { attachments, body = null, api, t, onPreview }: Props = $props();
+	let { attachments, body = null, api, t, onPreview, onOpenImage }: Props = $props();
 
 	let thumbs = $state<Record<string, string>>({});
 	let missing = $state<Record<string, true>>({});
+	/** Picture chips whose bytes are still on the way. A file icon is not a picture loading. */
+	let pendingThumbs = $state<Record<string, true>>({});
 	const rows = $derived(withHandoffRows(attachments, body));
 	const tree = $derived(buildCitedPathTree(rows.map((row) => row.workspace_relpath)));
 	const fileCount = $derived(countCitedFiles(tree));
@@ -43,33 +48,44 @@
 		});
 	}
 
-	let loading = new Set<string>();
+	/** Ids already requested. Clearing the spinner writes state, and that must not fetch again. */
+	let started = new Set<string>();
+	/**
+	 * A chip is 36 px, so it asks for the Mac's 256 px copy rather than the original. Remotely the
+	 * pictures share one link with everything else: they wait behind anything opened on purpose,
+	 * and a chat left behind stops asking for them.
+	 */
+	const thumbLoads = new AbortController();
 
 	async function loadThumb(att: Attachment): Promise<void> {
-		if (!api || loading.has(att.id)) return;
+		if (!api || started.has(att.id)) return;
 		const kind = artifactKind(att.original_filename, { isDir: att.is_dir });
 		if ((kind !== "image" && kind !== "svg") || att.exists === false || att.is_dir) return;
-		loading.add(att.id);
+		started.add(att.id);
+		pendingThumbs = { ...pendingThumbs, [att.id]: true };
+		const options = { background: true, signal: thumbLoads.signal, size: 'thumb' as const };
 		try {
 			const blob = att.id.startsWith("handoff:")
-				? await api.getWorkspaceFileBlob(att.workspace_relpath)
-				: await api.getAttachmentBlob(att.id);
+				? await api.getWorkspaceFileBlob(att.workspace_relpath, undefined, options)
+				: await api.getAttachmentBlob(att.id, undefined, options);
 			const thumb = kind === "svg" ? await svgDisplayBlob(blob) : blob;
+			if (thumbLoads.signal.aborted) return;
 			thumbs = { ...thumbs, [att.id]: URL.createObjectURL(thumb) };
 		} catch {
+			if (thumbLoads.signal.aborted) return;
 			if (att.id.startsWith("handoff:")) missing = { ...missing, [att.workspace_relpath]: true };
 		} finally {
-			loading.delete(att.id);
+			if (pendingThumbs[att.id]) {
+				const next = { ...pendingThumbs };
+				delete next[att.id];
+				pendingThumbs = next;
+			}
 		}
 	}
 
-	$effect(() => {
-		for (const att of rows) {
-			if (!thumbs[att.id]) void loadThumb(att);
-		}
-	});
 
 	onDestroy(() => {
+		thumbLoads.abort();
 		for (const url of Object.values(thumbs)) URL.revokeObjectURL(url);
 	});
 
@@ -81,8 +97,17 @@
 		);
 	}
 
+	/** A bundle is several files, so it opens the preview with its tree even when all are pictures. */
 	function openBundle(): void {
 		if (previewTarget) onPreview(previewTarget);
+	}
+
+	function openRow(att: Attachment, ev: MouseEvent): void {
+		if (onOpenImage && isInlineImageName(att.original_filename, { isDir: att.is_dir })) {
+			onOpenImage(att, ev.currentTarget instanceof HTMLElement ? ev.currentTarget : undefined);
+			return;
+		}
+		onPreview(att);
 	}
 </script>
 
@@ -90,7 +115,7 @@
 	{#if collapse}
 		<button
 			type="button"
-			class="attachment-bundle-btn mt-4 max-w-[280px]"
+			class="attachment-bundle-btn mt-4"
 			onclick={openBundle}
 			title={rows.map((row) => row.workspace_relpath).join("\n")}
 		>
@@ -106,14 +131,25 @@
 		<div class="msg-attachments-grid flex flex-wrap gap-4 mt-4">
 			{#each rows as att (att.id)}
 				{@const thumb = thumbs[att.id]}
+				{@const thumbPending = !thumb && pendingThumbs[att.id] === true}
+				<!-- A picture is fetched once its chip is scrolled near, not when the transcript loads. A
+				     bundle has no chips, so a folder of pictures fetches nothing until it is opened. -->
 				<button
 					type="button"
 					class="attachment-file-btn"
-					onclick={() => onPreview(att)}
+					class:is-thumb-pending={thumbPending}
+					use:whenVisible={() => void loadThumb(att)}
+					onclick={(ev) => openRow(att, ev)}
 					title={att.workspace_relpath}
+					aria-busy={thumbPending ? 'true' : undefined}
 				>
 					{#if thumb}
-						<img src={thumb} alt="" class="attachment-chip-thumb" />
+						<img src={thumb} alt="" class="attachment-chip-thumb" data-copy-image />
+					{:else if thumbPending}
+						<span class="attachment-chip-pending" role="status">
+							<span class="attachment-chip-ring" aria-hidden="true"></span>
+							<span class="sr-only">{t.stream.artifactLoading}</span>
+						</span>
 					{:else}
 						<div class="file-icon-box text-accent flex items-center">
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
@@ -146,18 +182,72 @@
 		color: var(--ink);
 	}
 
+	/* A bubble narrowed by the window holds its chip: the name and path give way, not the bubble edge. */
+	.attachment-file-btn {
+		max-width: 100%;
+	}
+
+	.attachment-bundle-btn {
+		max-width: min(100%, 280px);
+	}
+
 	.attachment-file-btn:hover,
 	.attachment-bundle-btn:hover {
 		border-color: var(--accent);
 		box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 	}
 
-	.attachment-chip-thumb {
+	.attachment-chip-thumb,
+	.attachment-chip-pending {
 		width: 36px;
 		height: 36px;
-		object-fit: cover;
 		border-radius: 6px;
 		flex-shrink: 0;
 		background: #00000008;
+	}
+
+	.attachment-chip-thumb {
+		object-fit: cover;
+	}
+
+	.attachment-chip-pending {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--line-subtle);
+	}
+
+	.attachment-chip-ring {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		border: 2px solid var(--line);
+		border-top-color: var(--accent);
+		animation: attachment-chip-spin 0.9s linear infinite;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	@keyframes attachment-chip-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.attachment-chip-ring {
+			animation: none;
+			border-top-color: var(--accent);
+		}
 	}
 </style>

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { FILE_DROP_SESSION_ID, USER_MEMBER } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";

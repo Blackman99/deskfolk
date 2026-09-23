@@ -3,6 +3,8 @@
 	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
+	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
+	import { copyableImageAt } from '../image-context.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
@@ -26,13 +28,15 @@
 		formatMessageTime,
 		groupReactions,
 		groupTranscript,
-		isDifferentDay
+		isDifferentDay,
+		isInterruptNote,
+		isUnreachableNote
 	} from './chat-view.ts';
 	import { composerLocked } from './composer-mode.ts';
 	import type { Copy } from '../copy.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { RenderMarkdownOptions } from '../markdown.ts';
-	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
+	import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
@@ -82,7 +86,7 @@
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -99,6 +103,53 @@
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
 
 	let composer = $state<{ focus: () => void } | null>(null);
+	/** A picture opened from this transcript, enlarged over the whole app. */
+	let inlineImage = $state<{
+		sessionId: string | null;
+		attachment: Attachment | null;
+		relpath: string | null;
+		origin: ImageOrigin | null;
+		placeholder: string | null;
+	} | null>(null);
+	const shownImage = $derived(
+		inlineImage && inlineImage.sessionId === (selected?.id ?? null) ? inlineImage : null
+	);
+
+	function pictureOrigin(from?: HTMLElement | null): ImageOrigin | null {
+		const picture =
+			from?.querySelector('img, .attachment-chip-pending, .md-artifact-pending') ?? from;
+		if (!(picture instanceof HTMLElement)) return null;
+		const box = picture.getBoundingClientRect();
+		if (box.width < 2 || box.height < 2) return null;
+		return { top: box.top, left: box.left, width: box.width, height: box.height };
+	}
+
+	/**
+	 * The thumbnail already on screen for this picture, if any: the enlargement shows it at the
+	 * picture's own proportions while the real bytes come, instead of growing to a guess first.
+	 * The chip keeps owning the object URL; it stays mounted under the enlargement.
+	 */
+	function pictureStandIn(from?: HTMLElement | null): string | null {
+		const img = from instanceof HTMLImageElement ? from : from?.querySelector('img');
+		return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0 ? img.currentSrc || img.src : null;
+	}
+
+	function openInlineImage(attachment: Attachment | null, relpath: string | null, from?: HTMLElement | null): void {
+		inlineImage = {
+			sessionId: selected?.id ?? null,
+			attachment,
+			relpath,
+			origin: pictureOrigin(from),
+			placeholder: pictureStandIn(from)
+		};
+		closeMessageContextMenu();
+	}
+
+	function openBodyImage(message: Message, path: string, from?: HTMLElement | null): void {
+		const attachment =
+			message.attachments.find((row) => row.workspace_relpath === path && !row.is_dir) ?? null;
+		openInlineImage(attachment, path, from);
+	}
 
 	function titleOf(session: SessionSummary): string {
 		return sessionTitle(session, botsById, rosterLabels);
@@ -694,6 +745,8 @@
 	let lastTouchTimestamp = 0;
 
 	function handleMessageMouseDown(e: MouseEvent): void {
+		// A rendered picture keeps the secondary press: its own menu copies the pixels.
+		if (copyableImageAt(e.target)) return;
 		// WebKit selects the word on secondary mousedown, before contextmenu fires.
 		if (e.button === 2 || (e.button === 0 && e.ctrlKey)) e.preventDefault();
 	}
@@ -713,6 +766,11 @@
 	}
 
 	function handleMessageContextMenu(e: MouseEvent, message: Message): void {
+		// The picture's menu is mounted on the document and runs first. Leave this one closed.
+		if (copyableImageAt(e.target)) {
+			messageContextMenu = null;
+			return;
+		}
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -1224,6 +1282,7 @@
 												copiedLabel={t.chat.copied}
 												inverted
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
+												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if messageShowsAttachments(item.message)}
@@ -1233,6 +1292,7 @@
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
+													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
 											{/if}
 										</article>
@@ -1466,6 +1526,7 @@
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenImage={(path, from) => openInlineImage(null, path, from)}
 												onOpenProfile={onOpenProfile}
 											>
 												<span class="streaming-cursor"></span>
@@ -1524,6 +1585,7 @@
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
+												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if messageShowsAttachments(item.message)}
@@ -1533,6 +1595,7 @@
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
+													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
 											{/if}
 										</article>
@@ -1629,6 +1692,18 @@
 		onSend={sendFromComposer}
 		onPickPrompt={pickStarterPrompt}
 	/>
+
+	{#if shownImage}
+		<MessageImageLightbox
+			attachment={shownImage.attachment}
+			relpath={shownImage.relpath}
+			origin={shownImage.origin}
+			placeholder={shownImage.placeholder}
+			api={runtime.client}
+			{t}
+			onClose={() => (inlineImage = null)}
+		/>
+	{/if}
 
 	{#if messageContextMenu}
 		{@const activeMenu = messageContextMenu}

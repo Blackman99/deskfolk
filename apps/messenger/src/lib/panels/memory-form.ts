@@ -76,7 +76,7 @@ export function resolveMemoryOrigin(
   if (!memory.source_session_id) return { kind: "missing" };
   const session = sessionsById.get(memory.source_session_id);
   if (!session) return { kind: "missing" };
-  const title = sessionTitle(session, bots, { deleted: t.top.deleted, archived: t.top.archived });
+  const title = sessionTitle(session, bots, { deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
   const label = classifySession(session) === "bot-bot" ? `${t.sidebar.botBot} · ${title}` : title;
   return { kind: "session", session, messageId: memory.source_message_id, label };
 }

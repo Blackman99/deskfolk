@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
@@ -10,6 +10,7 @@ import {
 } from "./prompts/composer-suggestions";
 import type { Store } from "./store";
 import { codePointCount, takeCodePoints } from "./text";
+import { visionImage } from "./vision-image";
 
 const MAIN_LIMIT = 40;
 const BODY_LIMIT = 4000;
@@ -269,16 +270,53 @@ function transcriptWindow(
     seen.add(m.id);
     unique.push(m);
   }
-  return unique.map((m) => serializeTranscript(store, m, input.selfBotId, input.triggerMessageId));
+  const images = windowImages(store, unique, input.selfBotId, input.triggerMessageId);
+  return unique.map((m) =>
+    serializeTranscript(store, m, input.selfBotId, input.triggerMessageId, images.get(m.id) ?? []),
+  );
 }
 
+/** One image over this is skipped on its own; it never counts against the window. */
 const VISION_BYTES_MAX = 10_000_000;
+/**
+ * What the whole window may carry as pictures. Every raster in the last forty lines used to ride
+ * on every request, and a storyboard group grew one turn to 54 images and 85 MB of base64: the
+ * endpoint never answered, and the turn read as "couldn't reach the endpoint" however often it
+ * was continued. Spent newest first with the trigger ahead of everything, and the first picture
+ * that does not fit closes it, so what drops out is always the oldest. Those keep their path line.
+ * Bytes are counted as sent, after `visionImage` has shrunk them.
+ */
+export const VISION_WINDOW_IMAGES = 20;
+export const VISION_WINDOW_BYTES = 20_000_000;
+
+type VisionBudget = { images: number; bytes: number; closed: boolean };
+
+function windowImages(
+  store: Store,
+  messages: Message[],
+  selfBotId: string,
+  triggerMessageId: string,
+): Map<string, ChatContentPart[]> {
+  const budget: VisionBudget = { images: VISION_WINDOW_IMAGES, bytes: VISION_WINDOW_BYTES, closed: false };
+  const trigger = messages.find((m) => m.id === triggerMessageId);
+  const newestFirst = [...(trigger ? [trigger] : []), ...messages.filter((m) => m !== trigger).reverse()];
+  const out = new Map<string, ChatContentPart[]>();
+  for (const message of newestFirst) {
+    if (budget.closed) break;
+    // The Bot's own lines go out as assistant text, which carries no pictures.
+    if (message.kind === "bot" && message.author === selfBotId) continue;
+    const parts = visionImageParts(store, message.attachments, budget);
+    if (parts.length > 0) out.set(message.id, parts);
+  }
+  return out;
+}
 
 function serializeTranscript(
   store: Store,
   message: Message,
   selfBotId: string,
   triggerMessageId: string,
+  images: ChatContentPart[],
 ): ChatMessage {
   const clipped = takeCodePoints(message.body, BODY_LIMIT);
   let body = clipped.text;
@@ -291,7 +329,6 @@ function serializeTranscript(
     return { role: "assistant", content: `${triggerLine}${body}` };
   }
   const text = `${prefix(store, message)}\n${triggerLine}${body}`;
-  const images = visionImageParts(store, message.attachments);
   return {
     role: "user",
     content: images.length > 0 ? [{ type: "text", text }, ...images] : text,
@@ -314,20 +351,32 @@ function visionMime(filename: string): string | null {
   }
 }
 
-function visionImageParts(store: Store, attachments: Attachment[]): ChatContentPart[] {
+function visionImageParts(store: Store, attachments: Attachment[], budget: VisionBudget): ChatContentPart[] {
   const parts: ChatContentPart[] = [];
   for (const att of attachments) {
+    if (budget.closed) break;
     const mime = visionMime(att.original_filename) ?? visionMime(att.workspace_relpath);
     if (!mime) continue;
     try {
       const abs = store.getAttachmentFilePath(att);
       if (!existsSync(abs)) continue;
-      if (statSync(abs).size > VISION_BYTES_MAX) continue;
-      const buf = readFileSync(abs);
-      if (buf.byteLength > VISION_BYTES_MAX) continue;
+      const stat = statSync(abs);
+      if (stat.size > VISION_BYTES_MAX) continue;
+      if (budget.images === 0) {
+        budget.closed = true;
+        break;
+      }
+      const image = visionImage(abs, mime, stat);
+      if (image.bytes.byteLength > VISION_BYTES_MAX) continue;
+      if (image.bytes.byteLength > budget.bytes) {
+        budget.closed = true;
+        break;
+      }
+      budget.images -= 1;
+      budget.bytes -= image.bytes.byteLength;
       parts.push({
         type: "image_url",
-        image_url: { url: `data:${mime};base64,${buf.toString("base64")}` },
+        image_url: { url: `data:${image.mime};base64,${image.bytes.toString("base64")}` },
       });
     } catch {
       // Missing or unreadable files stay as the path line only.

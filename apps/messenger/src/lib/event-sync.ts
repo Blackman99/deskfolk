@@ -112,6 +112,33 @@ export class EventSync {
     };
   }
 
+  /**
+   * Install from a cursor the page already applied plus the frames it missed, in place of a
+   * snapshot: what a phone does when it comes back to the Mac it left. Everything — the missed
+   * frames, then what the new link buffered — must continue that cursor without a gap. When it
+   * does not, nothing changes and null says to take the snapshot instead.
+   */
+  resume(cursor: EventCursor, missed: SequencedEvent[]): SequencedEvent[] | null {
+    if (this.invalid) return null;
+    const frames = [...missed, ...this.buffer];
+    let seq = cursor.watermark_seq;
+    for (const frame of frames) {
+      if (frame.event_instance_id !== cursor.event_instance_id) return null;
+      if (frame.seq <= seq) continue;
+      if (frame.seq !== seq + 1) return null;
+      seq = frame.seq;
+    }
+    this.notificationTail = [];
+    this.droppedThrough = null;
+    this.cursor = { event_instance_id: cursor.event_instance_id, watermark_seq: cursor.watermark_seq };
+    this.buffering = false;
+    this.buffer = [];
+    this.bytes = 0;
+    const accepted: SequencedEvent[] = [];
+    for (const frame of frames) accepted.push(...(this.advance(frame) ?? []));
+    return accepted;
+  }
+
   install(cursor?: EventCursor): SequencedEvent[] | null {
     if (this.invalid) return null;
     if (cursor) {

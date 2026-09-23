@@ -12,7 +12,7 @@
 		pendingJudgements?: readonly PendingJudgement[];
 		isUser?: boolean;
 		statusLabels: StatusLabels;
-		rosterLabels: { deleted: string; archived: string };
+		rosterLabels: { deleted: string; archived: string; fileDrop?: string };
 		openedText: string;
 		/** How many chips sit inline before the rest collapse into a +N. */
 		inlineLimit?: number;

@@ -1,6 +1,11 @@
-import { USER_MEMBER, type Bot, type SessionParticipant, type SessionSummary } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, USER_MEMBER, type Bot, type SessionParticipant, type SessionSummary } from "@real-bot/protocol";
 
-export type SessionGroup = "group" | "you-bot" | "bot-bot";
+export type SessionGroup = "group" | "you-bot" | "bot-bot" | "file-drop";
+
+/** The remote file drop: you, no Bot, and nothing to wake. */
+export function isFileDropSession(session: Pick<SessionSummary, "id">): boolean {
+  return session.id === FILE_DROP_SESSION_ID;
+}
 
 export function activeMembers(participants: SessionParticipant[]): string[] {
   return participants.filter((p) => p.left_at === null).map((p) => p.member);
@@ -12,6 +17,7 @@ export function presentBotIds(session: SessionSummary): string[] {
 }
 
 export function classifySession(session: SessionSummary): SessionGroup {
+  if (isFileDropSession(session)) return "file-drop";
   if (session.kind === "group") return "group";
   return activeMembers(session.participants).includes(USER_MEMBER) ? "you-bot" : "bot-bot";
 }
@@ -40,14 +46,20 @@ export function groupSessions(
   groups: SessionSummary[];
   youBot: SessionSummary[];
   botBot: SessionSummary[];
+  fileDrop: SessionSummary | null;
 } {
   const pinSet = pinnedIds instanceof Set ? pinnedIds : new Set(pinnedIds ?? []);
   const pinned: SessionSummary[] = [];
   const groups: SessionSummary[] = [];
   const youBot: SessionSummary[] = [];
   const botBot: SessionSummary[] = [];
+  let fileDrop: SessionSummary | null = null;
 
   for (const session of sessions) {
+    if (isFileDropSession(session)) {
+      fileDrop = session;
+      continue;
+    }
     if (aliveBotIds) {
       if (session.kind === "direct") {
         const active = activeMembers(session.participants);
@@ -71,7 +83,7 @@ export function groupSessions(
     else if (kind === "you-bot") youBot.push(session);
     else botBot.push(session);
   }
-  return { pinned, groups, youBot, botBot };
+  return { pinned, groups, youBot, botBot, fileDrop };
 }
 
 export function youBotSession(sessions: SessionSummary[], botId: string): SessionSummary | undefined {

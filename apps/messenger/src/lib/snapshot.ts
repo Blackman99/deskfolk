@@ -31,7 +31,6 @@ export type Snapshot = {
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
-  spend: Spend[];
   mcpServers: McpServer[];
   providers: Provider[];
   skills: Skill[];
@@ -70,7 +69,6 @@ export function emptySnapshot(): Snapshot {
     credentialOperations: [],
     bots: [],
     sessions: [],
-    spend: [],
     mcpServers: [],
     providers: [],
     skills: [],
@@ -237,11 +235,11 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         ),
       };
     }
-    case "spend.created": {
-      const { event: _e, occurred_at: _at, ...row } = event;
-      if (snapshot.spend.some((s) => s.id === row.id)) return snapshot;
-      return { ...snapshot, spend: [...snapshot.spend, row] };
-    }
+    // Usage is not kept on the client: nothing shows it, and on a phone it was most of every
+    // snapshot. A view that needs it asks `GET /v1/spend` when it opens.
+    case "spend.created":
+    case "spend.removed":
+      return snapshot;
     case "judgement.started": {
       const { event: _e, occurred_at: _at, ...row } = event;
       if (snapshot.pendingJudgements.some((j) => j.id === row.id)) return snapshot;
@@ -267,8 +265,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     }
     case "approval.removed":
       return { ...snapshot, approvals: snapshot.approvals.filter((row) => row.id !== event.id) };
-    case "spend.removed":
-      return { ...snapshot, spend: snapshot.spend.filter((row) => row.id !== event.id) };
     case "approval.upsert": {
       const { event: _e, occurred_at: _at, ...row } = event;
       return {

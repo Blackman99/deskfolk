@@ -1,4 +1,5 @@
 import {
+  FILE_DROP_SESSION_ID,
   LOCAL_API_BIND,
   LOCAL_API_NAME,
   REACTION_EMOJI,
@@ -15,6 +16,7 @@ import {
   type WsAuthMessage,
   type RuntimeSnapshot,
   type SessionSnapshot,
+  type SessionSummary,
   type NotificationFilter,
   type StreamFrame,
   type ToolFrame,
@@ -38,10 +40,14 @@ import { startScheduler, type Scheduler } from "./scheduler";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
+import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
 import { ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
+import { fileRangeResponse } from "./file-range";
+import { parseImageVariant, reduceImage, type ImageVariant } from "./image-variant";
+import { displayAvatar, isDisplayAvatar, warmDisplayAvatar, withoutDisplayMark } from "./avatar-display";
 import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import type { RuntimeLifecycle } from "./lifecycle";
@@ -130,6 +136,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   }
 
   const events = new EventStream();
+  // Portraits are sent as small copies; making them before the first snapshot asks is cheaper
+  // than sending the originals once.
+  for (const bot of options.store.listBots()) void warmDisplayAvatar(bot.avatar);
   const presence = new PresenceManager();
   const notificationScheduler = new NotificationDeliveryScheduler(options.store, presence);
   events.subscribe((frame) => {
@@ -502,6 +511,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         const state = options.store.readSnapshot();
         return {
           ...state,
+          bots: state.bots.map(displayBot),
           sessions: snapshotSessions(state.sessions),
           notificationCapabilities: {
             inbox_v1: true,
@@ -581,8 +591,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     const session = matchPath(path, "/v1/sessions/:id/snapshot");
     if (request.method === "GET" && session) {
       const id = session.id!;
+      const limitText = url.searchParams.get("limit");
+      const messageLimit = limitText ? Number(limitText) : undefined;
       const snapshot = options.store.db.transaction((): SessionSnapshot => {
-        const session = options.store.getSession(id);
+        const session = options.store.getSession(id, { messageLimit });
         return {
           session: { ...session, turns: session.turns.map(withPartial), pending_judgements: engine.pendingJudgements(id) },
           judgements: options.store.listJudgements(id), ...events.cursor(),
@@ -803,6 +815,37 @@ function numberOr(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * A file's bytes, or with `size` a smaller copy of the picture. The copy is announced by
+ * `X-Original-Size`, the original's length, so a client can offer the original and say what it
+ * costs; without the header the bytes are the original. The remote cap applies to what is sent,
+ * so a picture too large to send whole can still be shown scaled.
+ */
+/** A Bot as clients are sent it: its portrait as the small marked copy (see avatar-display). */
+function displayBot<T extends { avatar: string | null }>(bot: T): T {
+  return { ...bot, avatar: displayAvatar(bot.avatar) };
+}
+
+async function fileResponse(abs: string, mime: string, filename: string, variant: ImageVariant | null, remote: boolean, range: string | null): Promise<Response> {
+  if (range !== null) {
+    if (variant) throw new HttpError(422, "invalid_args", "range cannot be combined with image size");
+    return fileRangeResponse(abs, mime, filename, range, remote);
+  }
+  const reduced = variant ? await reduceImage(abs, mime, variant) : null;
+  if (!reduced && remote && statSync(abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
+  const file = reduced?.bytes ?? readFileSync(abs);
+  return new Response(file, {
+    status: 200,
+    headers: {
+      "ETag": fileEtag(file),
+      "Content-Type": reduced?.mime ?? mime,
+      "Content-Length": String(file.byteLength),
+      "Content-Disposition": `inline; filename="${encodeURIComponent(filename)}"`,
+      ...(reduced ? { "X-Original-Size": String(statSync(abs).size) } : {}),
+    },
+  });
+}
+
 function dispatch(
   request: Request,
   url: URL,
@@ -881,21 +924,12 @@ function dispatch(
     const root = store.workspacePath();
     if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
     const rel = url.searchParams.get("path") ?? "";
+    const variant = parseImageVariant(url.searchParams.get("size"));
     const located = locateWorkspaceFile(root, rel);
     if (!existsSync(located.abs)) {
       throw new HttpError(404, "not_found", "path not found");
     }
-    if (url.hostname === "remote.invalid" && statSync(located.abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
-    const file = readFileSync(located.abs);
-    return new Response(file, {
-      status: 200,
-      headers: {
-        "ETag": fileEtag(file),
-        "Content-Type": located.mime,
-        "Content-Length": String(file.byteLength),
-        "Content-Disposition": `inline; filename="${encodeURIComponent(located.rel.split("/").pop() ?? located.rel)}"`,
-      },
-    });
+    return fileResponse(located.abs, located.mime, located.rel.split("/").pop() ?? located.rel, variant, url.hostname === "remote.invalid", url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   if (method === "PUT" && path === "/v1/workspace/file") {
@@ -991,11 +1025,13 @@ function dispatch(
   }
 
   if (method === "GET" && path === "/v1/bots") {
-    return jsonResponse({ items: store.listBots() }, 200, null);
+    return jsonResponse({ items: store.listBots().map(displayBot) }, 200, null);
   }
 
   if (method === "POST" && path === "/v1/bots") {
-    const body = (input.body) as CreateBotRequest;
+    let body = (input.body) as CreateBotRequest;
+    // A portrait copied from another Bot's card is that picture: keep it, without the mark.
+    if (typeof body.avatar === "string" && isDisplayAvatar(body.avatar)) body = { ...body, avatar: withoutDisplayMark(body.avatar) };
     const created = store.createBot(body);
     const at = occurred();
     publish({ event: "bot.upsert", occurred_at: at, ...created.bot, deleted_at: null });
@@ -1004,20 +1040,20 @@ function dispatch(
       occurred_at: at,
       ...sessionUpsertFields(created.direct_session),
     });
-    return jsonResponse(created, 201, null);
+    return jsonResponse({ ...created, bot: displayBot(created.bot) }, 201, null);
   }
 
   params = matchPath(path, "/v1/bots/:id/archive");
   if (params && method === "POST") {
     const bot = store.archiveBot(params.id!);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
-    return jsonResponse(bot, 200, null);
+    return jsonResponse(displayBot(bot), 200, null);
   }
   params = matchPath(path, "/v1/bots/:id/restore");
   if (params && method === "POST") {
     const bot = store.restoreBot(params.id!);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
-    return jsonResponse(bot, 200, null);
+    return jsonResponse(displayBot(bot), 200, null);
   }
   params = matchPath(path, "/v1/bots/:id/profile-revisions");
   if (params && method === "GET") {
@@ -1025,13 +1061,19 @@ function dispatch(
   }
   params = matchPath(path, "/v1/bots/:id");
   if (params && method === "GET") {
-    return jsonResponse(store.getBot(params.id!), 200, null);
+    return jsonResponse(displayBot(store.getBot(params.id!)), 200, null);
   }
   if (params && method === "PATCH") {
-    const body = (input.body) as PatchBotRequest;
+    let body = (input.body) as PatchBotRequest;
+    // A profile save sends back the portrait it was shown with every other edit. That is the
+    // small copy, never a new picture: the stored original stays.
+    if (typeof body.avatar === "string" && isDisplayAvatar(body.avatar)) {
+      const { avatar: _shown, ...rest } = body;
+      body = rest;
+    }
     const bot = store.patchBot(params.id!, body);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
-    return jsonResponse(bot, 200, null);
+    return jsonResponse(displayBot(bot), 200, null);
   }
   if (params && method === "DELETE") {
     const bot = store.getBot(params.id!);
@@ -1094,6 +1136,10 @@ function dispatch(
     } else {
       options.admission?.assertNew();
     }
+    const fileDrop = sessionId === FILE_DROP_SESSION_ID;
+    if (fileDrop && askId) {
+      throw new HttpError(422, "invalid_args", "the file drop does not answer asks");
+    }
     const message = store.transaction(() => {
       const msg = store.postMessage(sessionId, {
         body: bodyText,
@@ -1106,7 +1152,8 @@ function dispatch(
       return msg;
     });
     publish({ event: "message.created", occurred_at: occurred(), ...message });
-    if (!askId) {
+    // A file dropped here is already in inbox/. Nothing is woken.
+    if (!askId && !fileDrop) {
       store.afterCommit(() => { void engine.handleInboundMessage(message, { fork, fromUser: true }); });
     }
     return jsonResponse(message, 201, null);
@@ -1261,7 +1308,10 @@ function dispatch(
       occurred_at: occurred(),
       ...sessionUpsertFields(session),
     });
-    return jsonResponse(session, 200, null);
+    // The read state, not the transcript: a client already has the messages it just read, and
+    // on a phone the whole detail was 150 KB every time a conversation was opened.
+    const { messages: _messages, turns: _turns, pending_judgements: _pending, ...summary } = session;
+    return jsonResponse(summary satisfies SessionSummary, 200, null);
   }
 
   if (method === "POST" && path === "/v1/notifications/read") {
@@ -1556,18 +1606,9 @@ function dispatch(
     if (located.isDir) {
       throw new HttpError(422, "invalid_args", "attachment is a directory");
     }
-    if (url.hostname === "remote.invalid" && statSync(located.abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
-    const file = readFileSync(located.abs);
+    const variant = parseImageVariant(url.searchParams.get("size"));
     const mime = attachmentMime(att.original_filename, att.workspace_relpath);
-    return new Response(file, {
-      status: 200,
-      headers: {
-        "ETag": fileEtag(file),
-        "Content-Type": mime,
-        "Content-Length": String(file.byteLength),
-        "Content-Disposition": `inline; filename="${encodeURIComponent(att.original_filename)}"`,
-      },
-    });
+    return fileResponse(located.abs, mime, att.original_filename, variant, url.hostname === "remote.invalid", url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   params = matchPath(path, "/v1/attachments/:id");

@@ -17,6 +17,21 @@ if (!(globalThis as { document?: unknown }).document) {
   GlobalRegistrator.register();
 }
 
+// happy-dom's IntersectionObserver never reports anything, so a component that waits to be seen
+// (a transcript picture, see when-visible.ts) would wait forever. In a test everything rendered
+// is on screen, and it is seen as it is observed.
+(globalThis as { IntersectionObserver: unknown }).IntersectionObserver = class {
+  constructor(private readonly callback: (entries: Array<{ isIntersecting: boolean; target: Element }>, observer: unknown) => void) {}
+  observe(target: Element): void {
+    this.callback([{ isIntersecting: true, target }], this);
+  }
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): [] {
+    return [];
+  }
+};
+
 const tsToJs = new Bun.Transpiler({ loader: "ts" });
 
 plugin({

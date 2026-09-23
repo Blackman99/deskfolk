@@ -21,6 +21,22 @@ export function rememberBlobEtag(blob: Blob, etag: string | null | undefined): v
   if (etag) blobEtags.set(blob, etag);
 }
 
+const blobOriginalSizes = new WeakMap<Blob, number>();
+
+/**
+ * The original's length when this blob is a scaled copy of a picture — what a file GET with
+ * `size` answers with once the picture is larger than asked for. Null means these are the
+ * original bytes.
+ */
+export function originalSizeForBlob(blob: Blob): number | null {
+  return blobOriginalSizes.get(blob) ?? null;
+}
+
+export function rememberBlobOriginalSize(blob: Blob, size: number | string | null | undefined): void {
+  const bytes = typeof size === "string" ? Number(size) : size;
+  if (typeof bytes === "number" && Number.isSafeInteger(bytes) && bytes > 0) blobOriginalSizes.set(blob, bytes);
+}
+
 export type { CredentialOperation };
 
 export async function probeHealth(origin: string): Promise<{ status: number | null; body: unknown }> {

@@ -8,14 +8,16 @@
  * rewrites the current entry, and Back keeps retreating instead of bouncing.
  *
  * Switching to another screen at the same depth — a different session, another Bot's profile —
- * pushes, so Back retraces where you have been rather than dropping you at the roster.
+ * pushes, so Back retraces where you have been rather than dropping you at the roster. Picking
+ * another file inside a preview is not one of those: it is still the same screen, so it rewrites
+ * the entry and Back leaves the preview instead of stepping through every file looked at.
  */
 import type { UrlOverlay, UrlView } from "./session-url.ts";
 
 /** The phone's three destinations, in the order the bottom bar shows them. */
 export type MobileDestination = "sessions" | "workspace" | "settings";
 
-export type RouteStep = "deeper" | "shallower" | "lateral";
+export type RouteStep = "deeper" | "shallower" | "lateral" | "swap";
 export type UrlNavigation = "push" | "replace" | "back";
 
 function overlayLayers(overlay: UrlOverlay): string[] {
@@ -39,11 +41,23 @@ export function routeLayers(view: UrlView): string[] {
   return layers;
 }
 
+/** The screens that show one file, where picking another file is not going anywhere. */
+const FILE_LAYERS = ["preview:", "attachment:", "workspace-file:"];
+
+function fileLayer(layer: string): string | null {
+  return FILE_LAYERS.find((prefix) => layer.startsWith(prefix)) ?? null;
+}
+
 export function routeStep(prev: UrlView, next: UrlView): RouteStep {
-  const before = routeLayers(prev).length;
-  const after = routeLayers(next).length;
-  if (after > before) return "deeper";
-  if (after < before) return "shallower";
+  const before = routeLayers(prev);
+  const after = routeLayers(next);
+  if (after.length > before.length) return "deeper";
+  if (after.length < before.length) return "shallower";
+  const changed = before.flatMap((layer, i) => (layer === after[i] ? [] : [i]));
+  if (changed.length === 1) {
+    const kind = fileLayer(before[changed[0]]);
+    if (kind && kind === fileLayer(after[changed[0]])) return "swap";
+  }
   return "lateral";
 }
 
@@ -61,7 +75,7 @@ export function planUrlNavigation(args: {
   // Bot's profile inside a group drawer swaps one screen for another, and the drawer is where it
   // came from.
   if (args.stack[args.stack.length - 2] === args.target) return "back";
-  if (args.step === "shallower") return "replace";
+  if (args.step === "shallower" || args.step === "swap") return "replace";
   return "push";
 }
 

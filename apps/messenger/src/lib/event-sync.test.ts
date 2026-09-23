@@ -152,3 +152,27 @@ describe("snapshot event barrier", () => {
     expect(snapshot.allowRules).toEqual([]);
   });
 });
+
+describe("resume from a cursor already applied", () => {
+  /** A phone back on the Mac it left: missed frames, then what the new link buffered, one line. */
+  test("missed frames and the new link's buffer continue the cursor", () => {
+    const sync = new EventSync();
+    expect(sync.receive(event(4))).toEqual([]);
+    expect(sync.receive(event(5))).toEqual([]);
+    expect(sync.resume(cursor(1), [event(2), event(3), event(4)])).toEqual([event(2), event(3), event(4), event(5)]);
+    expect(sync.snapshotCursor()).toEqual(cursor(5));
+    expect(sync.receive(event(6))).toEqual([event(6)]);
+  });
+
+  /** Anything that does not line up changes nothing, so the snapshot can still be installed. */
+  test("a gap or another instance leaves the sync untouched for the snapshot", () => {
+    const gap = new EventSync();
+    gap.receive(event(5));
+    expect(gap.resume(cursor(1), [event(2)])).toBeNull();
+    expect(gap.install(cursor(4))).toEqual([event(5)]);
+
+    const other = new EventSync();
+    expect(other.resume(cursor(1), [{ ...event(2), event_instance_id: "b".repeat(32) }])).toBeNull();
+    expect(other.install(cursor(0))).toEqual([]);
+  });
+});

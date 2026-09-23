@@ -1,4 +1,6 @@
 import type {
+  CatchupResponse,
+  EventCursor,
   StreamFrame,
   Terminal,
   TerminalScrollback,
@@ -61,13 +63,14 @@ import {
   type RemoteRequest,
   type RemoteResponse,
 } from "@real-bot/remote";
-import { ApiError, rememberBlobEtag } from "../api.ts";
-import type { FileProgressHandler } from "../file-progress.ts";
+import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "../api.ts";
+import type { FileLoadOptions, FileProgressHandler, ImageSize } from "../file-progress.ts";
 import type { LocalEndpoint } from "../discovery.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { ulid } from "./ids.ts";
 import type { StoredEnrollment } from "./idb.ts";
-import { RemoteTransport, type TransportHooks } from "./transport.ts";
+import { RemoteTransport, type RpcOptions, type TransportHooks } from "./transport.ts";
+import { createRemoteMediaSource, type MediaSourceHandle } from "./media-source.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
 import type {
   NotificationDevice,
@@ -99,6 +102,7 @@ import {
   subscribePushV2,
   unsubscribePushV2,
   testRemotePush,
+  type NotificationTestResult,
 } from "../notifications/client.ts";
 
 export type RemoteDeviceRow = { id: string; name: string; revoked: boolean; hasUv: boolean; lastActiveAt: number | null };
@@ -190,11 +194,18 @@ async function attachmentManifest(files: File[]): Promise<Array<{ filename: stri
   return out;
 }
 
+/**
+ * Messages per page on a phone. The first page is what fills the screen; older ones come as the
+ * transcript is scrolled back, so fifty at a time was mostly bytes nobody scrolled to.
+ */
+const REMOTE_MESSAGE_PAGE = 20;
+
 export class RemoteApi {
   readonly kind = "remote" as const;
   readonly endpoint: LocalEndpoint;
   private readonly pending = new Map<string, PendingRemote>();
   private transport: RemoteTransport | null = null;
+  private mediaAbort = new AbortController();
   private readonly identity: IdentitySecrets;
   private revisions = new Map<string, string>();
   private settingsRev: number | undefined;
@@ -282,15 +293,25 @@ export class RemoteApi {
     const transport = new RemoteTransport(this.enrollment, this.identity, this.hooks);
     transport.subscribe(onEvent);
     const ready = await transport.connect();
+    // Asks the Mac to deflate its answers — a snapshot is a fifth of its JSON that way. An older
+    // Mac says 404 and they come as they always did.
+    try {
+      await transport.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: ["deflate-raw"] } });
+    } catch {
+      // Answers stay uncompressed; nothing else depends on it.
+    }
     this.transport = transport;
     transport.ondrop = () => {
       if (this.transport !== transport) return;
+      this.mediaAbort.abort();
       this.transport = null;
       onDrop?.();
     };
     return { type: "ready", event_instance_id: ready.event_instance_id, watermark_seq: ready.watermark_seq };
   }
   close(): void {
+    this.mediaAbort.abort();
+    this.mediaAbort = new AbortController();
     this.transport?.close();
     this.transport = null;
   }
@@ -313,8 +334,19 @@ export class RemoteApi {
     this.observeSnapshot(snapshot);
     return snapshot;
   }
+  /** The events after a cursor, or `resnapshot` when the Mac cannot say (restarted, ring rolled over). */
+  async catchup(cursor: EventCursor): Promise<CatchupResponse> {
+    const query = `event_instance_id=${encodeURIComponent(cursor.event_instance_id)}&after_seq=${cursor.watermark_seq}`;
+    return this.get<CatchupResponse>(`/v1/events/catchup?${query}`);
+  }
   async sessionSnapshot(id: string): Promise<SessionSnapshot> {
-    return this.get<SessionSnapshot>(`/v1/sessions/${id}/snapshot`);
+    try {
+      return await this.get<SessionSnapshot>(`/v1/sessions/${id}/snapshot?limit=${REMOTE_MESSAGE_PAGE}`);
+    } catch (error) {
+      // A Mac from before paged snapshots refuses `limit`; its fifty messages still open the chat.
+      if (!(error instanceof ApiError) || error.status !== 422) throw error;
+      return this.get<SessionSnapshot>(`/v1/sessions/${id}/snapshot`);
+    }
   }
   async routines(): Promise<Routine[]> {
     return (await this.get<ListPage<Routine>>("/v1/routines")).items;
@@ -400,8 +432,8 @@ export class RemoteApi {
   async session(id: string): Promise<SessionDetail> {
     return this.get<SessionDetail>(`/v1/sessions/${id}`);
   }
-  async markSessionRead(id: string): Promise<SessionDetail> {
-    return this.post<SessionDetail>(`/v1/sessions/${id}/read`);
+  async markSessionRead(id: string): Promise<SessionSummary> {
+    return this.post<SessionSummary>(`/v1/sessions/${id}/read`);
   }
   async archiveSession(id: string): Promise<SessionDetail> {
     return this.post<SessionDetail>(`/v1/sessions/${id}/archive`, this.revisionBody("sessions", id));
@@ -418,7 +450,7 @@ export class RemoteApi {
   async messages(sessionId: string, opts: { cursor?: string | null; limit?: number } = {}): Promise<ListPage<Message>> {
     const params = new URLSearchParams();
     if (opts.cursor) params.set("cursor", opts.cursor);
-    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    params.set("limit", String(opts.limit ?? REMOTE_MESSAGE_PAGE));
     const query = params.toString();
     return this.get<ListPage<Message>>(`/v1/sessions/${sessionId}/messages${query ? `?${query}` : ""}`);
   }
@@ -540,11 +572,26 @@ export class RemoteApi {
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
-  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler): Promise<Blob> {
-    return this.fileBlob("/v1/workspace/file", { path }, onProgress);
+  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
+    return this.fileBlob("/v1/workspace/file", { path }, onProgress, options);
   }
-  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler): Promise<Blob> {
-    return this.fileBlob(`/v1/attachments/${id}/content`, undefined, onProgress);
+  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
+    return this.fileBlob(`/v1/attachments/${id}/content`, undefined, onProgress, options);
+  }
+  async openMediaSource(source: { path: string; attachmentId?: string }, signal?: AbortSignal, onError?: () => void): Promise<MediaSourceHandle | null> {
+    const path = source.attachmentId ? `/v1/attachments/${source.attachmentId}/content` : "/v1/workspace/file";
+    return createRemoteMediaSource(async (range, signal) => {
+      const response = await this.dispatch({
+        v: 1, id: ulid(), method: "GET", path,
+        query: { ...(source.attachmentId ? {} : { path: source.path }), range },
+      }, undefined, undefined, { preempt: true, signal });
+      return {
+        status: response.status,
+        contentType: response.headers?.contentType,
+        contentRange: response.headers?.contentRange,
+        bytes: response.body instanceof Blob ? await response.body.arrayBuffer() : undefined,
+      };
+    }, signal ? AbortSignal.any([signal, this.mediaAbort.signal]) : this.mediaAbort.signal, onError);
   }
   async stop(turnId?: string): Promise<void> {
     await this.post("/v1/turns/stop", turnId ? { turn_id: turnId } : {});
@@ -641,7 +688,7 @@ export class RemoteApi {
     return unsubscribePushV2(this, body);
   }
 
-  async testRemotePush(): Promise<{ ok: boolean; status: string }> {
+  async testRemotePush(): Promise<NotificationTestResult> {
     return testRemotePush(this);
   }
 
@@ -668,7 +715,7 @@ export class RemoteApi {
     return acknowledgeNotification(this, id, ifRevision);
   }
 
-  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionDetail> {
+  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionSummary> {
     return markSessionReadThrough(this, sessionId, throughMessageId);
   }
 
@@ -735,21 +782,28 @@ export class RemoteApi {
     return revision ? { if_revision: revision } : {};
   }
 
+  /** A file read in the foreground is one somebody opened, and it does not wait behind pictures. */
   private async fileBlob(
     path: string,
     query?: Record<string, string>,
     onProgress?: FileProgressHandler,
+    options: FileLoadOptions = {},
   ): Promise<Blob> {
     onProgress?.({ loaded: 0, total: null });
-    const response = await this.dispatch({
-      v: 1, id: ulid(), method: "GET", path, query, body: undefined,
-    }, undefined, onProgress);
+    const background = options.background === true;
+    const ask = (size?: ImageSize) => this.dispatch({
+      v: 1, id: ulid(), method: "GET", path, query: size ? { ...query, size } : query, body: undefined,
+    }, undefined, onProgress, { background, preempt: !background, signal: options.signal });
+    let response = await ask(options.size);
+    // A Mac from before scaled pictures refuses the parameter; the original still answers.
+    if (options.size && response.status === 422) response = await ask();
     if (response.status >= 400) {
       const error = response.body as ErrorBody;
       throw new ApiError(response.status, error?.error?.code ?? "failed", error?.error?.message ?? "failed to fetch file");
     }
     const blob = response.body instanceof Blob ? response.body : new Blob([new Uint8Array()]);
     rememberBlobEtag(blob, response.headers?.etag);
+    rememberBlobOriginalSize(blob, response.headers?.originalSize);
     if (onProgress) onProgress({ loaded: blob.size, total: blob.size });
     return blob;
   }
@@ -887,6 +941,7 @@ export class RemoteApi {
     request: RemoteRequest,
     uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
     onProgress?: FileProgressHandler,
+    options?: RpcOptions,
   ): Promise<RemoteResponse> {
     const full: RemoteRequest = {
       v: 1, id: request.id, method: request.method, path: request.path,
@@ -897,6 +952,6 @@ export class RemoteApi {
     if (this.hooks.rpc) return this.hooks.rpc(full);
     const transport = this.transport;
     if (!transport) throw new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", request.id);
-    return transport.rpc(full, uploads, onProgress);
+    return transport.rpc(full, uploads, onProgress, options);
   }
 }

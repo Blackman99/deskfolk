@@ -131,6 +131,7 @@
 		{/if}
 	</button>
 
+	{#if data.canViewInfo}
 	<button
 		type="button"
 		class="session-context-menu-item"
@@ -147,6 +148,7 @@
 		</svg>
 		<span>{t.sidebar.viewInfo}</span>
 	</button>
+	{/if}
 
 	<div class="session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2" role="separator"></div>
 

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
+import { ApiError } from "../api.ts";
 import { click, render } from "../test-render.ts";
 import { fakeRuntime } from "../test-fixtures.ts";
 import { MessengerRuntime } from "../runtime.svelte.ts";
@@ -145,6 +146,22 @@ test("remote timeout explains the host network failure and pending retry", async
   click(host.querySelector(".test-row button"));
   await new Promise((r) => setTimeout(r, 10));
   expect(host.textContent).toContain("执行 Mac 连接推送服务超时");
+  close();
+});
+
+test.each([
+  ["push_pending", "上一条推送仍在发送或等待重试"],
+  ["rate_limited", "每 60 秒"],
+  ["push_contact_required", "联系人"],
+  ["no_subscription", "重新开启"],
+  ["rejected", "rejected"],
+])("remote test explains %s without showing the generic rejection", async (code, expected) => {
+  const { host, runtime, close } = mountSettings({ deviceEnabled: true, remote: true });
+  runtime.sendTestNotification = async () => { throw new ApiError(409, code, "remote request rejected"); };
+  click(host.querySelector(".test-row button"));
+  await new Promise((r) => setTimeout(r, 10));
+  expect(host.querySelector(".test-feedback")?.textContent).toContain(expected);
+  expect(host.querySelector(".test-feedback")?.textContent).not.toContain("remote request rejected");
   close();
 });
 

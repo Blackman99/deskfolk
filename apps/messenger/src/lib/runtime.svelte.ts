@@ -1,7 +1,10 @@
 import {
   USER_MEMBER,
   type Attachment,
+  type CatchupResponse,
   type ClientEvent,
+  type EventCursor,
+  type SyncFrame,
   type SequencedEvent,
   type CreateBotRequest,
   type CreateGroupRequest,
@@ -138,6 +141,11 @@ export function nextRemoteRetry(previous: number, random = Math.random): number 
 const HOST_PAIRING_POLL_MS = 3000;
 /** Attempts that still read as "connecting" before the page says the host cannot be reached. */
 const CONNECTING_ATTEMPTS = 3;
+/**
+ * Past this many missed events a phone takes the snapshot instead: replaying hundreds of frames
+ * costs about what the snapshot does, and the snapshot also re-reads the open conversation.
+ */
+const RESUME_MAX_EVENTS = 300;
 
 export type HostPairing =
   | null

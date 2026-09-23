@@ -54,6 +54,25 @@ test("opening and switching screens push, so Back retraces them", () => {
   expect(planUrlNavigation({ target: "?s=s2", stack, step: "lateral" })).toBe("push");
 });
 
+test("picking another file in a preview is not a new screen, so it rewrites the entry", () => {
+  // Back from the preview goes to the page it was opened from, not through every file looked at.
+  const other: UrlView = { ...preview, previewRelpath: "notes/b.md" };
+  expect(routeStep(preview, other)).toBe("swap");
+  expect(routeStep(
+    { ...session, previewAttachmentId: "att-1" },
+    { ...session, previewAttachmentId: "att-2" },
+  )).toBe("swap");
+  expect(routeStep(workspaceFile, { ...roster, overlay: { kind: "workspace", selected: "notes/b.md" } })).toBe("swap");
+  expect(planUrlNavigation({
+    target: "?s=s1&p=notes%2Fb.md",
+    stack: ["", "?s=s1", "?s=s1&p=notes%2Fa.md"],
+    step: "swap",
+  })).toBe("replace");
+  // Opening the first file is still a screen, and a file in another session is another place.
+  expect(routeStep(session, preview)).toBe("deeper");
+  expect(routeStep(preview, { ...preview, selectedId: "s2", previewRelpath: "notes/b.md" })).toBe("lateral");
+});
+
 test("the stack follows the URL: back pops, a replacement rewrites the top, anything else extends", () => {
   expect(stackAfter(["", "?s=s1"], "?s=s1", false)).toEqual(["", "?s=s1"]);
   expect(stackAfter(["", "?s=s1", "?s=s1&o=session"], "?s=s1", false)).toEqual(["", "?s=s1"]);

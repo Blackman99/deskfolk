@@ -1053,6 +1053,137 @@ describe("anti-SSRF and IP validation", () => {
 });
 
 describe("rate limit and 120s deadline", () => {
+  test("a test after an expired retry sends again without a remote rejection", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    let attempts = 0;
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => {
+        if (++attempts === 1) throw Object.assign(new Error("timeout"), { name: "AbortError" });
+        return new Response(null, { status: 201 });
+      },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    expect(await service.test(device)).toMatchObject({ status: "queued", error_code: "timeout" });
+    now += 180_000;
+    expect(await service.test(device)).toMatchObject({ status: "accepted" });
+    expect(attempts).toBe(2);
+    expect(s.db.query<{ state: string }, []>("SELECT state FROM notification_deliveries ORDER BY created_at").all())
+      .toEqual([{ state: "expired" }, { state: "accepted" }]);
+  });
+
+  test("a test during a live retry returns push_pending and preserves the original delivery", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    let attempts = 0;
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => {
+        attempts++;
+        throw Object.assign(new Error("timeout"), { name: "AbortError" });
+      },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    await service.test(device);
+    const before = s.db.query("SELECT * FROM notification_deliveries").all();
+    now += 60_000;
+    await expect(service.test(device)).rejects.toMatchObject({ status: 409, code: "push_pending" });
+    expect(s.db.query("SELECT * FROM notification_deliveries").all()).toEqual(before);
+    expect(attempts).toBe(1);
+  });
+
+  test.each(["pending", "retry_wait", "unknown", "claimed"])("startup expires a stranded %s delivery at its deadline", async (state) => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    const first = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => { throw Object.assign(new Error("timeout"), { name: "AbortError" }); },
+    });
+    cleanup.push(() => first.close());
+    await enablePush(first, device, uaKeys());
+    await first.test(device);
+    first.close();
+    s.db.run("UPDATE notification_deliveries SET state = ?", [state]);
+    now += 120_000;
+    const recovered = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => new Response(null, { status: 201 }),
+    });
+    cleanup.push(() => recovered.close());
+    recovered.recoverScheduled();
+    expect(s.db.query("SELECT state FROM notification_deliveries").all()).toEqual([{ state: "expired" }]);
+    expect(await recovered.test(device)).toMatchObject({ status: "accepted" });
+  });
+
+  test("an expired retry also releases automatic notification delivery", async () => {
+    const s = store();
+    const device = ulid();
+    const you = youBot(s);
+    const vapid = vapidBytes();
+    let now = Date.now();
+    let attempts = 0;
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => {
+        if (++attempts === 1) throw Object.assign(new Error("timeout"), { name: "AbortError" });
+        return new Response(null, { status: 201 });
+      },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    await service.test(device);
+    now += 120_000;
+    s.insertMessage({ sessionId: you.session.id, kind: "bot", author: you.bot.id, body: "a new reply" });
+    await service.flush();
+    expect(attempts).toBe(2);
+    expect(s.db.query("SELECT state FROM notification_deliveries ORDER BY created_at").all())
+      .toEqual([{ state: "expired" }, { state: "accepted" }]);
+  });
+
+  test("recovery preserves an in-flight delivery even across its deadline", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    const started = Promise.withResolvers<void>();
+    const response = Promise.withResolvers<Response>();
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => { started.resolve(); return response.promise; },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    const sending = service.test(device);
+    await started.promise;
+    now += 120_000;
+    service.recoverScheduled();
+    await expect(service.test(device)).rejects.toMatchObject({ code: "push_pending" });
+    expect(s.db.query("SELECT state FROM notification_deliveries").all()).toEqual([{ state: "claimed" }]);
+    response.resolve(new Response(null, { status: 201 }));
+    expect(await sending).toMatchObject({ status: "accepted" });
+  });
+
   test("test reports the timeout that caused a queued retry", async () => {
     const s = store();
     const device = ulid();

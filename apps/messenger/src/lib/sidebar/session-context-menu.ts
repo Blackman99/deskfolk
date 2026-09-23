@@ -1,5 +1,5 @@
 import type { Bot, SessionSummary } from "@real-bot/protocol";
-import { classifySession, youBotPeer } from "./session-groups.ts";
+import { classifySession, isFileDropSession, youBotPeer } from "./session-groups.ts";
 
 export type SessionContextMenuData = {
   sessionId: string;
@@ -23,6 +23,16 @@ export function deriveSessionContextMenu(
   isPinned: boolean,
   botsById: ReadonlyMap<string, Bot>,
 ): SessionContextMenuData {
+  if (isFileDropSession(session)) {
+    return {
+      sessionId: session.id,
+      isPinned,
+      canViewInfo: false,
+      canClearHistory: true,
+      archive: { enabled: false, isArchived: false, botId: null },
+      delete: { enabled: false, kind: null, targetId: null },
+    };
+  }
   const kind = classifySession(session);
   if (kind === "group") {
     const isArchived = Boolean(session.archived_at);

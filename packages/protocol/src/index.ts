@@ -39,6 +39,12 @@ export const STATE_DB_NAME = "state.sqlite" as const;
 
 export const USER_MEMBER = "user" as const;
 
+/**
+ * The one you↔Mac conversation that exists only to receive files sent over remote control.
+ * Not a Bot: a file posted here is copied into `inbox/` and never starts a turn.
+ */
+export const FILE_DROP_SESSION_ID = "filedrop" as const;
+
 /** Bot `update_profile` used to insert these; they are no longer shown. */
 export function isHiddenTranscriptKind(kind: string): boolean {
   return kind === "profile_change";
@@ -864,7 +870,8 @@ export type RuntimeSnapshot = EventCursor & {
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
-  spend: Spend[];
+  // No `spend`: 3,700 usage rows were 1.4 MB of every snapshot and nothing on screen read them.
+  // `GET /v1/spend` serves them to whatever view needs them, when it opens.
   approvals: Approval[];
   mcpServers: McpServer[];
   providers: Provider[];

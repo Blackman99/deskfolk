@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { CatchupResponse, ClientEvent, EventCursor, SequencedEvent, SyncFrame } from "@real-bot/protocol";
+import { displayAvatar } from "./avatar-display";
 
 export const EVENT_RING_COUNT = 2000;
 export const EVENT_RING_BYTES = 16 * 1024 * 1024;
@@ -29,6 +30,9 @@ export class EventStream {
 
   publish(payload: ClientEvent): void {
     if (payload.event === "turn.token" || payload.event === "turn.tool") return;
+    // Every sequenced portrait passes here — live, replayed from the journal, caught up — so this
+    // is the one place it becomes the small marked copy clients are sent.
+    if (payload.event === "bot.upsert") payload = { ...payload, avatar: displayAvatar(payload.avatar) };
     let frame: SequencedEvent = {
       type: "event", event_instance_id: this.instance, seq: this.seq + 1, payload,
     };

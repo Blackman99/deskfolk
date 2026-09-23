@@ -20,6 +20,8 @@ import { finishLifecycle, recoverLifecycle } from "./lifecycle";
 import { validateBusiness } from "./routes";
 import { ptyHelperPath } from "../pty";
 import { remoteError } from "./errors";
+import { noisePng } from "../test-images";
+import { inflateRawSync } from "node:zlib";
 import { finishRestart, finishStop, maintenanceDiagnostics, restartAvailable, type MaintenanceControl } from "./maint";
 import { RuntimeLifecycle } from "../lifecycle";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
@@ -180,6 +182,8 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     expect(ready.type).toBe("ready");
     const assembler = new Reassembler();
     const events: unknown[] = [];
+    /** Ids of answers that came compressed. */
+    const compressed: string[] = [];
     const snapshotPages = new Map<string, { transfer: string; count: number; chunks: Uint8Array[] }>();
     async function rpc(request: RemoteRequest) {
       socket.send(new Uint8Array(noise.send(1, canonicalBytes(request))));
@@ -189,7 +193,9 @@ async function fixture(completions?: import("../completions").CompletionsClient,
         if (frame.type === 6) continue;
         const logical = frame.type === 4 ? assembler.accept(frame.body, performance.now()) : frame;
         if (!logical) continue;
-        const message = JSON.parse(new TextDecoder().decode(logical.body));
+        if (logical.body[0] === 0) compressed.push(request.id);
+        const json = logical.body[0] === 0 ? inflateRawSync(logical.body.subarray(1)) : logical.body;
+        const message = JSON.parse(new TextDecoder().decode(json));
         if (message.id === request.id) {
           if (message.snapshotPage) {
             const page = message.snapshotPage;
@@ -259,7 +265,7 @@ async function fixture(completions?: import("../completions").CompletionsClient,
         if (message.id === id) return message;
       }
     }
-    return { socket, noise, next, rpc, download, upload, events, ready };
+    return { socket, noise, next, rpc, download, upload, events, ready, compressed };
   }
   return { root, store, endpointKeys, api, native, controller, relay, pair, connect, post, maint: control, releasePressure: () => { hold = false; } };
 }
@@ -273,6 +279,65 @@ test("cancel fences the pump's current unsent frame under held socket pressure",
   await Bun.sleep(10); f.releasePressure();
   const frame = c.noise.receive(await c.next() as Uint8Array); expect(frame.type).toBe(6);
   expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+});
+
+/** A phone asks for a chip-sized picture, and hears what the original would cost to open. */
+test.skipIf(process.platform !== "darwin")("a picture's scaled copy crosses the link with the original's size", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const picture = noisePng(1200, 800);
+  writeFileSync(join(f.root, "frame.png"), picture);
+  const thumb = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "frame.png", size: "thumb" } });
+  expect(thumb.status).toBe(200);
+  expect(thumb.headers).toMatchObject({ contentType: "image/jpeg", originalSize: picture.byteLength });
+  expect(fromBase64url(thumb.file.bytes).byteLength).toBeLessThan(picture.byteLength / 10);
+  const original = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "frame.png" } });
+  expect(original.headers.originalSize).toBeUndefined();
+  expect(original.file.size).toBe(picture.byteLength);
+});
+
+test("size names a picture variant on the file GETs and nothing else", () => {
+  const get = (path: string, query: Record<string, string>) => () => validateBusiness({ v: 1, id: ulid(), method: "GET", path, query });
+  const attachment = `/v1/attachments/${ulid()}/content`;
+  expect(get("/v1/workspace/file", { path: "a.png", size: "thumb" })).not.toThrow();
+  expect(get("/v1/workspace/file", { path: "a.png", size: "preview" })).not.toThrow();
+  expect(get(attachment, { size: "thumb" })).not.toThrow();
+  expect(get("/v1/workspace/file", { path: "a.png", size: "full" })).toThrow();
+  expect(get(attachment, { size: "full" })).toThrow();
+  expect(get("/v1/workspace/tree", { path: "", size: "thumb" })).toThrow();
+});
+
+test("a conversation snapshot takes a page limit and nothing else", () => {
+  const get = (query: Record<string, string>) => () => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${ulid()}/snapshot`, query });
+  expect(get({ limit: "20" })).not.toThrow();
+  expect(get({})).not.toThrow();
+  expect(get({ limit: "0" })).toThrow();
+  expect(get({ limit: "201" })).toThrow();
+  expect(get({ cursor: "x" })).toThrow();
+});
+
+/** A device that asks gets its JSON answers deflated; one that does not, and file bytes, never. */
+test("answers are compressed only for a device that asked, and never a file", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  for (let i = 0; i < 40; i++) f.store.createBot({ name: `Bot ${i}`, duties: "the same duties text again and again", boundaries: "" });
+  const plain = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" });
+  expect(plain.status).toBe(200);
+  expect(c.compressed).toEqual([]);
+  const asked = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: ["deflate-raw"] } });
+  expect(asked.body).toEqual({ compress: "deflate-raw" });
+  const bots = { v: 1 as const, id: ulid(), method: "GET" as const, path: "/v1/bots" };
+  const packed = await c.rpc(bots);
+  expect(packed.body.items).toHaveLength(40);
+  expect(c.compressed).toEqual([bots.id]);
+  // A file keeps its bytes as they are, whatever the device asked for.
+  writeFileSync(join(f.root, "notes.md"), "same line\n".repeat(500));
+  const file = { v: 1 as const, id: ulid(), method: "GET" as const, path: "/v1/workspace/file", query: { path: "notes.md" } };
+  await c.rpc(file);
+  expect(c.compressed).not.toContain(file.id);
+  // Asking for nothing turns it off again.
+  await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: [] } });
+  const again = { ...bots, id: ulid() };
+  await c.rpc(again);
+  expect(c.compressed).not.toContain(again.id);
 });
 
 test("real relay budget supports 50MiB and concurrent 1MiB GETs, cancellation and paged snapshot", async () => {
@@ -896,6 +961,40 @@ test("authenticated push subscribe stores the endpoint and revoke deletes it wit
   expect(f.store.getApproval(approval.id).status).toBe("pending");
 });
 
+test("encrypted push tests recover expired retries and preserve a live delivery with a safe error code", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  let now = Date.now();
+  const clock = spyOn(f.controller.push, "now").mockImplementation(() => now);
+  cleanup.push(() => { clock.mockRestore(); });
+  const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "jwk" });
+  const state = await f.controller.push.publicState(d.deviceId);
+  f.controller.push.subscribe(d.deviceId, {
+    mode: "enable", if_device_revision: state.device_revision,
+    application_server_key_fingerprint: state.vapid_key_fingerprint,
+    endpoint: "https://fcm.googleapis.com/fcm/send/isolated",
+    p256dh: base64url(Buffer.concat([Buffer.from([4]), Buffer.from(key.x!, "base64url"), Buffer.from(key.y!, "base64url")])),
+    auth: base64url(randomBytes(16)),
+  });
+  const expired = ulid();
+  f.store.db.run(`INSERT INTO notification_deliveries
+    (delivery_id, receiver_id, channel, batch_key, upper_ordinal, click_ref, state, attempt,
+     next_attempt_at, absolute_expires_at, push_generation, trust_generation, error_code, created_at)
+    VALUES (?, ?, 'remote_push', ?, 0, ?, 'retry_wait', 2, ?, ?, ?, 1, 'timeout', ?)`,
+  [expired, d.deviceId, `test:${expired}`, ulid(), now - 60_000, now - 1, state.push_generation + 1, now - 120_000]);
+  const send = () => c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/push/test", body: {} });
+  const first = await send();
+  expect(first.status).toBe(200);
+  expect(first.body).toMatchObject({ ok: true, status: "queued", error_code: "network_error" });
+  expect(f.store.db.query<{ state: string }, [string]>("SELECT state FROM notification_deliveries WHERE delivery_id = ?").get(expired)?.state).toBe("expired");
+  now += 60_000;
+  const busy = await send();
+  expect(busy.status).toBe(409);
+  expect(busy.body.error.code).toBe("push_pending");
+  expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM notification_deliveries WHERE state = 'retry_wait'").get()?.n).toBe(1);
+  now += 60_000;
+  expect((await send()).status).toBe(200);
+});
+
 test("pair native proof is single use and bound to authoritative keys, not browser UV claims", async () => {
   const f = await fixture(), qr = await f.controller.openPair();
   await expect(f.controller.confirmPair(qr.pairingId, Buffer.from(randomBytes(32)).toString("base64"))).rejects.toThrow();
@@ -1316,4 +1415,16 @@ test("a watched terminal streams to the device that asked, and stops when it sto
 
   // Keystrokes are not receipted: nothing to replay, nothing stored.
   expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n).toBe(0);
+});
+
+test("encrypted media ranges carry 206 metadata and only the selected bytes", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  writeFileSync(join(f.root, "media.mp4"), "0123456789");
+  const response = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "media.mp4", range: "bytes=3-6" } });
+  expect(response.status).toBe(206);
+  expect(response.headers).toMatchObject({ contentType: "video/mp4", contentRange: "bytes 3-6/10" });
+  expect(new TextDecoder().decode(fromBase64url(response.file.bytes))).toBe("3456");
+  const invalid = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "media.mp4", range: "bytes=99-" } });
+  expect(invalid.status).toBe(416);
+  expect(invalid.headers.contentRange).toBe("bytes */10");
 });

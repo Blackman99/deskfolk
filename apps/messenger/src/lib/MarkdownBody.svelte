@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { whenVisible } from './when-visible.ts';
 	import type { Snippet } from 'svelte';
 	import { markdownCode } from './chat/code-blocks.ts';
 	import { parseMentionHref } from './chat/mention-chips.ts';
@@ -15,6 +16,8 @@
 		inverted?: boolean;
 		class?: string;
 		onOpenArtifact?: (relpath: string) => void;
+		/** A picture stays in the app. `from` is the link the picture grows out of. */
+		onOpenImage?: (relpath: string, from?: HTMLElement) => void;
 		loadArtifactImage?: (relpath: string) => Promise<Blob>;
 		hideStandaloneArtifactLinks?: string[];
 		onOpenProfile?: (botId: string) => void;
@@ -29,6 +32,7 @@
 		inverted = false,
 		class: className = '',
 		onOpenArtifact,
+		onOpenImage,
 		loadArtifactImage,
 		hideStandaloneArtifactLinks = [],
 		onOpenProfile,
@@ -52,6 +56,10 @@
 		}
 		const artifact = parseArtifactHref(raw);
 		if (artifact) {
+			if (onOpenImage && ['image', 'svg'].includes(artifactKind(artifact))) {
+				onOpenImage(artifact, a);
+				return;
+			}
 			onOpenArtifact?.(artifact);
 			return;
 		}
@@ -92,11 +100,20 @@
 		}
 	}
 
-	function enhanceArtifactImages(node: HTMLElement, urls: Map<HTMLAnchorElement, string>): void {
+	function enhanceArtifactImages(
+		node: HTMLElement,
+		urls: Map<HTMLAnchorElement, string>,
+		watching: Map<HTMLAnchorElement, { destroy(): void }>,
+	): void {
 		for (const [anchor, url] of urls) {
 			if (anchor.isConnected && node.contains(anchor)) continue;
 			URL.revokeObjectURL(url);
 			urls.delete(anchor);
+		}
+		for (const [anchor, watch] of watching) {
+			if (anchor.isConnected && node.contains(anchor)) continue;
+			watch.destroy();
+			watching.delete(anchor);
 		}
 		if (!loadArtifactImage) return;
 		for (const anchor of node.querySelectorAll('a')) {
@@ -105,34 +122,50 @@
 			if (!path || !['image', 'svg'].includes(artifactKind(path))) continue;
 			anchor.dataset.artifactImage = 'loading';
 			anchor.classList.add('md-artifact-image');
-			void loadArtifactImage(path)
-				.then(async (blob) => {
-					if (!anchor.isConnected || !node.contains(anchor)) return;
-					const display = artifactKind(path) === 'svg' ? await svgDisplayBlob(blob) : blob;
-					if (!anchor.isConnected || !node.contains(anchor)) return;
-					const url = URL.createObjectURL(display);
-					urls.set(anchor, url);
-					const image = document.createElement('img');
-					image.src = url;
-					image.alt = anchor.textContent?.trim() || path.split('/').pop() || path;
-					image.className = 'md-artifact-thumb';
-					anchor.prepend(image);
-					anchor.dataset.artifactImage = 'ready';
-				})
-				.catch(() => {
-					anchor.dataset.artifactImage = 'failed';
-					anchor.classList.remove('md-artifact-image');
-				});
+			const pending = document.createElement('span');
+			pending.className = 'md-artifact-pending';
+			pending.setAttribute('aria-hidden', 'true');
+			anchor.prepend(pending);
+			// A long note can hold dozens of pictures; each is fetched once it is scrolled near.
+			const load = loadArtifactImage;
+			let seen = false;
+			const watch = whenVisible(anchor, () => {
+				seen = true;
+				watching.delete(anchor);
+				void load(path)
+					.then(async (blob) => {
+						if (!anchor.isConnected || !node.contains(anchor)) return;
+						const display = artifactKind(path) === 'svg' ? await svgDisplayBlob(blob) : blob;
+						if (!anchor.isConnected || !node.contains(anchor)) return;
+						const url = URL.createObjectURL(display);
+						urls.set(anchor, url);
+						anchor.querySelector(':scope > .md-artifact-pending')?.remove();
+						const image = document.createElement('img');
+						image.src = url;
+						image.alt = anchor.textContent?.trim() || path.split('/').pop() || path;
+						image.className = 'md-artifact-thumb';
+						image.dataset.copyImage = '';
+						anchor.prepend(image);
+						anchor.dataset.artifactImage = 'ready';
+					})
+					.catch(() => {
+						anchor.querySelector(':scope > .md-artifact-pending')?.remove();
+						anchor.dataset.artifactImage = 'failed';
+						anchor.classList.remove('md-artifact-image');
+					});
+			});
+			if (!seen) watching.set(anchor, watch);
 		}
 	}
 
 	function enhance(node: HTMLElement, labels: { copy: string; copied: string }) {
 		const code = markdownCode(node, labels);
 		const imageUrls = new Map<HTMLAnchorElement, string>();
+		const imageWatches = new Map<HTMLAnchorElement, { destroy(): void }>();
 		const enhanceContent = () => {
 			hideDuplicateArtifactLinks(node);
 			wrapTables(node);
-			enhanceArtifactImages(node, imageUrls);
+			enhanceArtifactImages(node, imageUrls, imageWatches);
 		};
 		enhanceContent();
 		const content = new MutationObserver(enhanceContent);
@@ -144,6 +177,7 @@
 			},
 			destroy() {
 				content.disconnect();
+				for (const watch of imageWatches.values()) watch.destroy();
 				for (const url of imageUrls.values()) URL.revokeObjectURL(url);
 				node.removeEventListener('click', onClick);
 				code.destroy();
@@ -322,14 +356,48 @@
 		outline: none;
 	}
 
-	.md-body :global(.md-artifact-thumb) {
+	.md-body :global(.md-artifact-thumb),
+	.md-body :global(.md-artifact-pending) {
 		display: block;
 		width: 72px;
 		height: 54px;
-		object-fit: cover;
 		border-radius: calc(var(--radius-md) - 3px);
 		background: var(--line-subtle);
 		flex: 0 0 auto;
+	}
+
+	.md-body :global(.md-artifact-thumb) {
+		object-fit: cover;
+	}
+
+	.md-body :global(.md-artifact-pending) {
+		position: relative;
+	}
+
+	.md-body :global(.md-artifact-pending)::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 18px;
+		height: 18px;
+		margin: -9px 0 0 -9px;
+		border-radius: 50%;
+		border: 2px solid var(--line);
+		border-top-color: var(--accent);
+		animation: md-artifact-spin 0.9s linear infinite;
+	}
+
+	@keyframes md-artifact-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.md-body :global(.md-artifact-pending)::after {
+			animation: none;
+		}
 	}
 
 	.md-body :global(a.md-artifact-image[data-artifact-image='ready']) {

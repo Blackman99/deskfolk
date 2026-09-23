@@ -1,3 +1,4 @@
+import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { REMOTE_FILE_LIMIT, type RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 
@@ -22,7 +23,7 @@ const skill = { name: string, description: string, body: string, uses: list(stri
 const routine = { title: string, instruction: string, schedule, enabled: bool };
 const revision = { if_revision: string };
 type Route = { method: RemoteRequest["method"]; path: RegExp; body?: Fields; required?: string[]; query?: Fields; queryRequired?: string[]; patch?: boolean };
-const entity = "[0-9A-HJKMNP-TV-Z]{26}";
+const entity = `(?:[0-9A-HJKMNP-TV-Z]{26}|${FILE_DROP_SESSION_ID})`;
 const path = (pattern: string) => new RegExp(`^/v1/${pattern.replaceAll(":id", entity)}$`);
 const routes: Route[] = [];
 function add(method: Route["method"], pattern: string, body?: Fields, required?: string[], patch = false): void {
@@ -31,13 +32,15 @@ function add(method: Route["method"], pattern: string, body?: Fields, required?:
 function get(pattern: string, query?: Fields, queryRequired?: string[]): void { routes.push({ method: "GET", path: path(pattern), query, queryRequired }); }
 get("(snapshot|settings|providers|bots|sessions|allow-rules|mcp-servers|skills|memories|routines|credential-operations)");
 get("(providers|bots|sessions|attachments|requests)/:id");
-get("sessions/:id/(snapshot|judgements|routes|composer-suggestions)");
-get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200 });
-get("bots/:id/profile-revisions"); get("attachments/:id/content");
+get("sessions/:id/(judgements|routes|composer-suggestions)");
+const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
+get("sessions/:id/snapshot", { limit: pageLimit });
+get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });
+get("bots/:id/profile-revisions"); get("attachments/:id/content", { size: one("thumb", "preview"), range: string });
 get("tasks/:id/artifacts");
 get("tasks/:id/trace");
 get("sessions/:id/tasks");
-get("workspace/tree", { path: string }); get("workspace/file", { path: string }, ["path"]);
+get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
