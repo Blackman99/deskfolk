@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { createRawSnippet, flushSync } from "svelte";
 import Workbench from "./Workbench.svelte";
 import { copyFor } from "../copy.ts";
@@ -182,4 +183,21 @@ test("closing a tab is reported rather than applied behind the host's back", () 
   } finally {
     close();
   }
+});
+
+test("a pane is not a containing block, so menus land where they were opened", () => {
+  // `contain: layout` and `contain: paint` both make an element a containing block for
+  // `position: fixed` descendants. The app places several of those from `clientX` / `clientY`,
+  // which are viewport coordinates — the message menu, the conversation menu, the calendar's
+  // dialog backdrop. Contain a pane and a right-click in the second column opens its menu one
+  // column's width away from the pointer. Checked in the source because happy-dom has no layout
+  // to measure, and this is the kind of thing added back later for a performance reason.
+  const source = readFileSync(
+    new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname,
+    "utf8",
+  );
+  const declarations = source
+    .split("\n")
+    .filter((line) => /^\s*contain\s*:/.test(line));
+  expect(declarations).toEqual([]);
 });

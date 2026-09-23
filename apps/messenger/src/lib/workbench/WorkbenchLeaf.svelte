@@ -153,9 +153,18 @@
 		position: relative;
 		overflow: hidden;
 		background: var(--pane);
-		/* Keeps one pane's reflow out of the rest, and makes the pane the containing block for
-		   any fixed-position widget inside it, which is what a pane-scoped overlay needs. */
-		contain: layout style paint;
+		/*
+		 * No `contain` here, deliberately.
+		 *
+		 * `contain: layout` and `contain: paint` both make the element a containing block for
+		 * `position: fixed` descendants, and the app has several — the message and conversation
+		 * context menus, the calendar's dialog backdrop — that are placed from `clientX` /
+		 * `clientY`, which are viewport coordinates. Inside a contained pane those resolve
+		 * against the pane instead, so a right-click menu in the second column opened one
+		 * column's width to the right of the pointer. What containment bought was reflow
+		 * isolation between panes, which `overflow: hidden` and the minimums already cover well
+		 * enough to not be worth a menu landing in the wrong place.
+		 */
 	}
 	.wb-leaf.is-focused .wb-tab.is-active .wb-tab-button {
 		font-weight: 600;
