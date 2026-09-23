@@ -484,6 +484,19 @@
 		void load(currentId ?? taskId);
 	});
 
+	/**
+	 * Pointed at another job from outside — a card, a link, the conversation's own button. The
+	 * job picked in here comes back through `onTask` and lands as the same value, so it is not
+	 * fetched twice.
+	 */
+	let requestedTask = untrack(() => taskId);
+	$effect(() => {
+		const next = taskId;
+		if (next === requestedTask) return;
+		requestedTask = next;
+		if (next && next !== untrack(() => currentId)) untrack(() => void load(next));
+	});
+
 	/** A different conversation shows that conversation's job. */
 	let loadedFor = sessionId;
 	$effect(() => {

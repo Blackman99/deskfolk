@@ -12,8 +12,8 @@
 	import RouteLogView from '../overlays/RouteLogView.svelte';
 	import TraceView from '../overlays/TraceView.svelte';
 	import ArtifactPreview from '../overlays/ArtifactPreview.svelte';
-	import { previewContext } from './preview-context.ts';
-import { routeLogRows } from '../overlays/route-log.ts';
+	import { previewContext, type PreviewHandle } from './preview-context.ts';
+	import { routeLogRows } from '../overlays/route-log.ts';
 
 	/**
 	 * Turns a tab into the thing it stands for.
@@ -29,20 +29,31 @@ import { routeLogRows } from '../overlays/route-log.ts';
 		pinnedSessionIds: string[];
 		onTogglePin: (id: string) => void;
 		onOpenProfile: (botId: string) => void;
+		/**
+		 * Open a file in the conversation's preview. `sessionId` says whose — a board shows one
+		 * conversation's job whether or not that conversation's history has been loaded.
+		 */
 		onOpenArtifact: (
 			relpath: string,
 			attachment?: Attachment,
 			messageId?: string | null,
 			forceTree?: boolean,
 			taskId?: string | null,
-			siblings?: Attachment[] | null
+			siblings?: Attachment[] | null,
+			sessionId?: string | null
 		) => void;
 		onCreateBot: () => void;
 		onRemoveTab: (leafId: string, tabId: string) => void;
 		onSelectWorkspacePath: (path: string) => void;
+		/**
+		 * The tab now shows something else of the same kind — another file picked in the
+		 * preview's tree, another job picked on the board — so a restart comes back to it.
+		 */
+		onUpdateContent?: (content: PaneContent) => void;
 		/** A terminal pane remembers which session it settled on. */
-		onUpdatePreview?: (content: Extract<PaneContent, { kind: 'preview' }>) => void;
-onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
+		onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
+		/** A preview mounted in this tab (or `null` once it is gone). */
+		onPreviewPane?: (tabId: string, pane: PreviewHandle | null) => void;
 		/** Jump the conversation to a message, from the board or the model-choice log. */
 		onJump: (sessionId: string, messageId: string) => void;
 		/** What to call a tab. The shell names conversations; this only shows the name. */
@@ -62,25 +73,41 @@ onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => vo
 		onRemoveTab,
 		onSelectWorkspacePath,
 		onBindTerminal,
-		onUpdatePreview,
+		onUpdateContent,
+		onPreviewPane,
 		onJump,
 		paneTitle
 	}: Props = $props();
 
 	const content = $derived(contentOfTab(tab));
 	const snapshot = $derived(runtime.snapshot);
-const preview = $derived(content?.kind === 'preview' ? previewContext(content, snapshot.messages) : null);
-function selectPreview(att: Attachment): void {
-if (content?.kind !== 'preview' || !preview) return;
-onUpdatePreview?.({
-...content,
-relpath: att.workspace_relpath,
-attachmentId: att.id ?? null,
-messageId: preview.messageId,
-taskId: preview.taskId,
-siblings: preview.siblings
-});
-}
+	const preview = $derived(content?.kind === 'preview' ? previewContext(content, snapshot.messages) : null);
+	function selectPreview(att: Attachment): void {
+		if (content?.kind !== 'preview' || !preview) return;
+		onUpdateContent?.({
+			...content,
+			relpath: att.workspace_relpath,
+			attachmentId: att.id ?? null,
+			messageId: preview.messageId,
+			taskId: preview.taskId,
+			siblings: preview.siblings
+		});
+	}
+
+	/** The board settled on a job — picked in its switcher, or the latest when none was named. */
+	function traceTask(taskId: string): void {
+		if (content?.kind !== 'trace' || content.taskId === taskId) return;
+		onUpdateContent?.({ ...content, taskId });
+	}
+
+	let previewPane = $state<PreviewHandle | null>(null);
+	$effect(() => {
+		const id = tab.id;
+		const pane = previewPane;
+		if (!pane) return;
+		onPreviewPane?.(id, pane);
+		return () => onPreviewPane?.(id, null);
+	});
 	const session = $derived(
 		content && 'sessionId' in content && content.sessionId
 			? (snapshot.sessions.find((row) => row.id === content.sessionId) ?? null)
@@ -141,7 +168,15 @@ siblings: preview.siblings
 				{onCreateBot}
 				onShowOnboarding={() => {}}
 			/>
-			<ChatStage {runtime} {t} selected={session} {onOpenProfile} {onOpenArtifact} {onCreateBot} />
+			<ChatStage
+				{runtime}
+				{t}
+				selected={session}
+				{onOpenProfile}
+				onOpenArtifact={(relpath, att, messageId, forceTree) =>
+					onOpenArtifact(relpath, att, messageId, forceTree, null, null, content.sessionId)}
+				{onCreateBot}
+			/>
 		</div>
 	{:else}
 		<p class="pane-gone">{t.top.deleted}</p>
@@ -197,11 +232,14 @@ siblings: preview.siblings
 		{t}
 		reloadToken={runtime.traceReload}
 		{onJump}
-		{onOpenArtifact}
+		onTask={traceTask}
+		onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings) =>
+			onOpenArtifact(relpath, att, messageId, forceTree, taskId, siblings, content.sessionId)}
 	/>
 {:else if content.kind === 'preview'}
 	{#if preview?.relpath}
 		<ArtifactPreview
+			bind:this={previewPane}
 			attachment={preview.attachment}
 			relpath={preview.relpath}
 			siblings={preview.siblings}

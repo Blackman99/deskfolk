@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { WorkbenchLayout } from "./layout-types.ts";
 import { assertInvariants, leafById, makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 import { tabFor } from "./pane-content.ts";
-import { activeSessionId, findContent, openContent } from "./pane-open.ts";
+import { activeSessionId, dropDuplicateBoundTabs, existingTarget, findContent, openContent } from "./pane-open.ts";
 
 let seq = 0;
 const ids = { id: () => `t${++seq}` };
@@ -98,4 +98,93 @@ test("the calendar is single-instance too", () => {
   const again = openContent(layout, { kind: "routines" }, ids);
   expect(tiledLeaves(again.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
   expect(again.focus.leafId).toBe("a");
+});
+
+const preview = (sessionId: string | null, relpath: string) =>
+  ({ kind: "preview", sessionId, relpath, attachmentId: null }) as const;
+const trace = (sessionId: string, taskId: string | null) => ({ kind: "trace", sessionId, taskId }) as const;
+
+test("a conversation's preview turns to another file instead of opening a second one", () => {
+  // The chat is focused and asks for a file: the preview it already has, over in the other
+  // pane, is the one that changes.
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(preview("s1", "docs/a.md"), "t-prev")]),
+  ]), "a");
+  expect(existingTarget(layout, preview("s1", "docs/b.md"))).toEqual({ leafId: "b", tab: leafById(layout, "b")!.tabs[0]! });
+
+  const next = openContent(layout, { ...preview("s1", "docs/b.md"), taskId: "job-1", forceTree: true }, ids);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(leafById(next, "b")!.tabs[0]!.params).toEqual({
+    sessionId: "s1",
+    relpath: "docs/b.md",
+    taskId: "job-1",
+    forceTree: "true",
+  });
+  expect(next.focus.leafId).toBe("b");
+  assertInvariants(next);
+});
+
+test("each conversation keeps a preview of its own", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(chat("s2"), "t-chat"), tabFor(preview("s1", "a.md"), "t-prev")]));
+  const next = openContent(layout, preview("s2", "b.md"), ids);
+  const tabs = leafById(next, "a")!.tabs;
+  expect(tabs.map((tab) => [tab.kind, tab.params.sessionId, tab.params.relpath])).toEqual([
+    ["chat", "s2", undefined],
+    ["preview", "s1", "a.md"],
+    ["preview", "s2", "b.md"],
+  ]);
+});
+
+test("a background preview tab is brought forward when it turns", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(preview("s1", "a.md"), "t-prev"), tabFor(chat("s1"), "t-chat")]));
+  const focusedChat = { ...layout, root: { ...layout.root, activeTabId: "t-chat" } } as WorkbenchLayout;
+  const next = openContent(focusedChat, preview("s1", "b.md"), ids);
+  expect(leafById(next, "a")!.activeTabId).toBe("t-prev");
+  expect(leafById(next, "a")!.tabs[0]!.params.relpath).toBe("b.md");
+});
+
+test("the board turns to another job of the same conversation", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
+  ]), "a");
+  const next = openContent(layout, trace("s1", "job-2"), ids);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(leafById(next, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-2" });
+  expect(next.focus.leafId).toBe("b");
+});
+
+test("asking for the board with no job in mind shows it on the job it has", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
+  ]), "a");
+  const next = openContent(layout, trace("s1", null), ids);
+  expect(leafById(next, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-1" });
+  expect(next.focus.leafId).toBe("b");
+});
+
+test("another conversation's board is its own pane", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(trace("s1", "job-1"), "t-trace")]));
+  const next = openContent(layout, trace("s2", "job-9"), ids);
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s1", "s2"]);
+});
+
+test("a layout saved with two previews of one conversation keeps the one nearest the keyboard", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat"), tabFor(preview("s1", "old.md"), "t-old")]),
+    makeLeaf("b", [tabFor(preview("s1", "new.md"), "t-new"), tabFor(preview("s2", "x.md"), "t-other")]),
+    makeLeaf("c", [tabFor(trace("s1", "job-1"), "t-trace-1")]),
+    makeLeaf("d", [tabFor(trace("s1", "job-2"), "t-trace-2")]),
+  ]), "b");
+  const next = dropDuplicateBoundTabs(layout, ids.id);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([
+    ["t-chat"],
+    ["t-new", "t-other"],
+    ["t-trace-1"],
+  ]);
+  assertInvariants(next);
+  // Nothing to drop is the same layout, so the shell does not save a layout that did not change.
+  expect(dropDuplicateBoundTabs(next, ids.id)).toBe(next);
 });

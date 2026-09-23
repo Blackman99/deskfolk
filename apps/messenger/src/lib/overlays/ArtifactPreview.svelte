@@ -114,7 +114,12 @@
 	let saveError = $state(false);
 	let saveConflict = $state(false);
 	let loadedEtag = $state<string | null>(null);
-	let pendingNav = $state<null | { kind: 'close'; afterClose?: () => void } | { kind: 'node'; node: ArtifactTreeNode }>(null);
+	let pendingNav = $state<
+		| null
+		| { kind: 'close'; afterClose?: () => void }
+		| { kind: 'node'; node: ArtifactTreeNode }
+		| { kind: 'leave'; after: () => void }
+	>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
 	/** Phone only: the list drops down over the top of the preview, which stays put. */
@@ -516,6 +521,7 @@
 			nav.afterClose?.();
 		}
 		else if (nav?.kind === 'node') commitSelect(nav.node);
+		else if (nav?.kind === 'leave') nav.after();
 	}
 
 	function confirmDiscard(): void {
@@ -528,6 +534,7 @@
 			nav.afterClose?.();
 		}
 		else if (nav?.kind === 'node') commitSelect(nav.node);
+		else if (nav?.kind === 'leave') nav.after();
 	}
 
 	export function closeFind(): boolean {
@@ -536,6 +543,20 @@
 
 	export function requestCloseFromParent(afterClose?: () => void): void {
 		requestClose(afterClose);
+	}
+
+	/**
+	 * Another file is about to take this pane — the conversation's preview is one pane, so opening
+	 * a different file turns it rather than opening beside it. An unsaved edit is asked about the
+	 * way leaving it from the tree is; `after` runs once it is saved or let go, never on cancel.
+	 */
+	export function requestLeaveFromParent(after: () => void): void {
+		if (saving) return;
+		if (dirty) {
+			pendingNav = { kind: 'leave', after };
+			return;
+		}
+		after();
 	}
 
 	/** True when closing would have to ask — an unsaved edit, or a save in flight. */

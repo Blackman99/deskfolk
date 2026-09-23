@@ -108,8 +108,9 @@ function drag(el: Element, by: { x: number; y: number }): void {
   flushSync();
 }
 
-function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string } = {}) {
+function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string; writeBack?: boolean } = {}) {
   const jumps: Array<[string, string]> = [];
+  const settled: string[] = [];
   let closed = 0;
   const asked: string[] = [];
   const api = {
@@ -139,9 +140,14 @@ function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string
     reloadToken: 0,
     onClose: () => (closed += 1),
     onJump: (sessionId: string, messageId: string) => jumps.push([sessionId, messageId]),
+    onTask: (taskId: string) => {
+      settled.push(taskId);
+      // What a pane does: the tab records the job on screen, which comes back as the prop.
+      if (opts.writeBack) props.taskId = taskId;
+    },
   });
   const view = render(TaskTraceView, props as never);
-  return { ...view, props, jumps, asked, closed: () => closed };
+  return { ...view, props, jumps, asked, settled, closed: () => closed };
 }
 
 async function until(host: HTMLElement, selector: string): Promise<Element> {
@@ -304,6 +310,25 @@ test("the switcher opens another job from this session", async () => {
   click(jobBtn);
   await until(view.host, ".trace-empty");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("上周的排期");
+  view.close();
+});
+
+test("pointed at another job from outside, the board turns to it without a second read of its own", async () => {
+  // A conversation has one board: a card or a link asking for another of its jobs changes the
+  // job this board shows, rather than opening another board beside it.
+  const view = open({ writeBack: true });
+  await until(view.host, ".trace-slot");
+  expect(view.settled).toEqual(["task-1"]);
+  const reads = view.asked.length;
+
+  view.props.taskId = "task-2";
+  flushSync();
+  await until(view.host, ".trace-empty");
+  expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("上周的排期");
+  expect(view.settled).toEqual(["task-1", "task-2"]);
+
+  // The job it settled on coming back as the prop is not another request.
+  expect(view.asked.length).toBe(reads + 1);
   view.close();
 });
 

@@ -84,7 +84,7 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 `Shell.svelte` 只剩三栏骨架：把上面这些面摆好、按固定优先级处理 Escape（主题菜单 → 危险确认 → 新建 Bot → 新建群 → 端点浮层 → 设置 → 人设 → 会话设置 → 路由日志 → 工作区 → 产物预览）、持有哪一层浮层开着的标志，以及会话右键菜单。跨面的窗口级监听只有 Escape 这一条留在这里；点击外部关闭没有优先级，各自在自己的组件里用 `click-outside.ts` 的 `isOutside`。
 
-桌面工作台的产物标签通过 `workbench/pane-content.ts` 保存来源会话、消息、任务、强制显示树标志和附件列表；`preview-context.ts` 从来源消息补齐交付路径，历史尚未载入时使用保存的列表。`PaneContentHost.svelte` 将这些上下文传给产物预览，文件树内的选择更新当前标签参数，保留原消息和任务范围。产物面板使用父容器的完整高度，文件树网格行采用 `minmax(0, 1fr)`，长列表在树内滚动。回归测试从消息附件入口实际点击打开并切换文件，另覆盖标签恢复、旧路径标签和关联文件入口。
+桌面工作台的产物标签通过 `workbench/pane-content.ts` 保存来源会话、消息、任务、强制显示树标志和附件列表；`preview-context.ts` 从来源消息补齐交付路径，历史尚未载入时使用保存的列表。`PaneContentHost.svelte` 将这些上下文传给产物预览，文件树内的选择更新当前标签参数，保留原消息和任务范围。预览和流程图按会话各只有一块（`pane-open.ts` 的 `ONE_PER_SESSION`）：同一会话再打开别的文件或别的那件事，`openContent` 把已有的那块标签改指过去而不是另开；流程图自己切换任务时经 `onTask` 写回标签参数，外面改了 `taskId` 它也会跟着读。改指一块有未保存编辑的预览前，`Shell.svelte` 的 `openGuarded` 先调用它的 `requestLeaveFromParent`。旧布局里的重复由 `dropDuplicateBoundTabs` 在自愈时收掉。产物面板使用父容器的完整高度，文件树网格行采用 `minmax(0, 1fr)`，长列表在树内滚动。回归测试从消息附件入口实际点击打开并切换文件，另覆盖标签恢复、旧路径标签和关联文件入口。
 
 共用 `DangerDialog.svelte` 用原生 `dialog.showModal()` 隔离背景（含已有资料/技能/端点浮层），在组件内处理 Tab/Shift+Tab 和 Escape，不加全局键盘或 inert DOM 补丁。取消/卸载后归还仍存在的触发控件；busy 时焦点停在对话框，拒绝取消与重复确认。Shell 每个确认对象拥有自己的 running 状态，重复提交只拦截同一对象；事件先移除旧确认时，新确认可独立执行。所有异步完成后的清理/错误反馈校验确切确认身份；技能/记忆回调使用 `isCurrent`，不能按种类清除替代确认。触摸按钮至少 44×44px。
 

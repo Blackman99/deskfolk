@@ -6,6 +6,8 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 ## Unreleased
 
+- On the desktop workbench, each conversation now has exactly one artifact preview and one flow board. Opening another file from the conversation — an attachment, a file link, the preview's own file tree, or a file on a flow-board card — turns that conversation's preview to it instead of adding another preview tab, and asking for another of its jobs turns its flow board. Opening the flow board without naming a job just brings it forward on the job it shows. If the preview has unsaved edits, it asks to save or discard first. Layouts saved with several previews or boards for one conversation keep only the one nearest the keyboard.
+
 - Merged the task trace title bar with the task switcher options: the currently selected job title serves as the header title directly, expanding into a dropdown menu to switch between jobs when multiple are available, freeing vertical canvas space and removing duplicated titles.
 
 - Restored the file tree when opening message artifacts in desktop workbench previews. Preview tabs retain the source message, task and attachment list across layout restoration; choosing a file updates the current preview tab. Long file trees scroll within the pane so every file remains reachable.

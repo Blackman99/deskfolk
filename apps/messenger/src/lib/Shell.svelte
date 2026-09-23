@@ -73,7 +73,13 @@
 	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
 	import { paneMin } from './workbench/pane-mins.ts';
 	import { contentOfTab } from './workbench/pane-content.ts';
-	import { activeSessionId, openContent } from './workbench/pane-open.ts';
+	import {
+		activeSessionId,
+		dropDuplicateBoundTabs,
+		existingTarget,
+		openContent
+	} from './workbench/pane-open.ts';
+	import type { PreviewHandle } from './workbench/preview-context.ts';
 	import type { PaneContent } from './workbench/pane-content.ts';
 	import {
 		MENU_COMMANDS,
@@ -95,7 +101,7 @@
 		splitLeaf
 	} from './workbench/layout-tree.ts';
 	import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from './workbench/workbench-layout.ts';
-	import { contentToParams, PANE_KIND_SET } from './workbench/pane-content.ts';
+	import { contentsEqual, contentToParams, PANE_KIND_SET } from './workbench/pane-content.ts';
 	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
 	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
@@ -392,7 +398,10 @@
 		};
 		const viewport = { x: 0, y: 0, width: shellWidth, height: 800 };
 		untrack(() => {
-			const healed = healLayout(layout, live, viewport, WB_FALLBACK_MIN, freshPaneId());
+			const healed = dropDuplicateBoundTabs(
+				healLayout(layout, live, viewport, WB_FALLBACK_MIN, freshPaneId()),
+				freshPaneId
+			);
 			if (healed !== layout) commitLayout(healed);
 		});
 	});
@@ -435,12 +444,39 @@
 			return;
 		}
 		runtime.paneOpener = (content) => {
-			untrack(() => commitLayout(openContent(layout, content, { id: freshPaneId })));
+			untrack(() => openGuarded(content));
 		};
 		return () => {
 			runtime.paneOpener = null;
 		};
 	});
+
+	/** The previews on screen, by tab, so one holding an unsaved edit can be asked before it turns. */
+	const previewPanes = new Map<string, PreviewHandle>();
+
+	function trackPreviewPane(tabId: string, pane: PreviewHandle | null): void {
+		if (pane) previewPanes.set(tabId, pane);
+		else previewPanes.delete(tabId);
+	}
+
+	/**
+	 * Open through the layout, asking first when this would turn a conversation's preview away
+	 * from a file with an unsaved edit. That preview is its conversation's only one, so "open
+	 * beside it instead" is not on offer; its own save / discard / cancel question decides.
+	 */
+	function openGuarded(content: PaneContent): void {
+		const open = () => commitLayout(openContent(layout, content, { id: freshPaneId }));
+		const at = existingTarget(layout, content);
+		const pane = at ? previewPanes.get(at.tab.id) : undefined;
+		const current = at ? contentOfTab(at.tab) : null;
+		if (at && pane?.blocksClose() && !(current && contentsEqual(current, content))) {
+			// Bring the question to where the keyboard is, then turn only once it is answered.
+			commitLayout(activateTab(focusLeaf(layout, at.leafId), at.leafId, at.tab.id));
+			pane.requestLeaveFromParent(open);
+			return;
+		}
+		open();
+	}
 
 	/** Fill a pane from its own empty state: whatever you pick lands in that pane, not elsewhere. */
 	function openInPane(leafId: string, content: PaneContent): void {
@@ -937,14 +973,16 @@
 		messageId?: string | null,
 		forceTree = false,
 		taskId?: string | null,
-		siblings?: Attachment[] | null
+		siblings?: Attachment[] | null,
+		sessionId?: string | null
 	): void {
 		if (runtime.paneOpener) {
 			const sourceMessageId = messageId ?? att?.message_id ?? null;
 			const owner = snapshot.messages.find((row) => row.id === sourceMessageId);
 			runtime.paneOpener({
 				kind: 'preview',
-				sessionId: owner?.session_id ?? selected?.id ?? null,
+				// Whose preview this is decides which pane turns: every conversation has one.
+				sessionId: sessionId ?? owner?.session_id ?? selected?.id ?? null,
 				relpath: sanitizePreviewPath(relpath),
 				attachmentId: att?.id ?? null,
 				messageId: sourceMessageId,
@@ -1437,7 +1475,9 @@
 						onRemoveTab={onPaneCloseTab}
 						onSelectWorkspacePath={openWorkspaceFile}
 						onBindTerminal={bindTerminalTab}
-onUpdatePreview={(content) => commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
+						onUpdateContent={(content) =>
+							commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
+						onPreviewPane={trackPreviewPane}
 						onJump={jumpToTrace}
 						{paneTitle}
 					/>
