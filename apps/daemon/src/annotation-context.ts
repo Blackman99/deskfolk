@@ -8,6 +8,7 @@ import {
   describeAnchor,
   type Annotation,
   type AnnotationLocale,
+  type HtmlElementAnchor,
   type Locale,
   type PdfRegionAnchor,
   type TextRangeAnchor,
@@ -20,6 +21,8 @@ const COPY = {
     tag: "批注",
     where: "位置",
     quote: "引文",
+    element: "元素文字",
+    html: "HTML 片段",
     note: "意见",
     crop: "（附区域裁图）",
     movedTo: (lines: string) => `（原文已变，重新定位到${lines}）`,
@@ -32,6 +35,8 @@ const COPY = {
     tag: "Annotation",
     where: "Where",
     quote: "Quote",
+    element: "Element text",
+    html: "HTML",
     note: "Note",
     crop: "(region crop attached)",
     movedTo: (lines: string) => `(the text moved; now at ${lines})`,
@@ -71,6 +76,12 @@ export function annotationLines(annotation: Annotation, index: number, total: nu
       ? (annotation.anchor as PdfRegionAnchor).quote ?? ""
       : "";
   if (quote.trim()) lines.push(`  ${c.quote}：${clipQuote(quote, undefined, l as AnnotationLocale).replace(/\n/g, "\n    ")}`);
+  if (annotation.anchor_kind === "html_element") {
+    // No pixels cross the sandbox: the Bot gets the selector (in the position line), the text, and the markup.
+    const element = annotation.anchor as HtmlElementAnchor;
+    if (element.text.trim()) lines.push(`  ${c.element}：${element.text.trim()}`);
+    if (element.outer_html.trim()) lines.push(`  ${c.html}：${element.outer_html.trim().replace(/\s*\n\s*/g, " ")}`);
+  }
   lines.push(`  ${c.note}：${annotation.body}`);
   if (annotation.crop_mime) lines.push(`  ${c.crop}`);
   return lines;

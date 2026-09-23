@@ -1568,7 +1568,8 @@ function resolveAnnotation(ctx: ToolCtx, args: Record<string, unknown>): ToolRes
   if (!note.trim()) return fail("invalid_args", "note is required: say what changed");
   try {
     const row = ctx.store.resolveAnnotationByBot(id, ctx.botId, note);
-    return { ok: true, data: { id: row.id, path: row.relpath, status: row.status, resolved_note: row.resolved_note }, emitted: [] };
+    // `relpath`, not `path`: a top-level `path` in tool data reads as a file this turn wrote.
+    return { ok: true, data: { id: row.id, relpath: row.relpath, status: row.status, resolved_note: row.resolved_note }, emitted: [] };
   } catch (error) {
     if (error instanceof HttpError) {
       if (error.code === "not_found") return fail("not_found", "annotation not found");

@@ -47,7 +47,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Ask',
     'Stop'
   ],
-  workspace: ['Workspace', 'Work dir', 'Artifact', 'Attachment', 'Search'],
+  workspace: ['Workspace', 'Work dir', 'Artifact', 'Annotation', 'Attachment', 'Search'],
   runtime: [
     'Daemon',
     'App window',

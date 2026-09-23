@@ -44,7 +44,13 @@ async function start(): Promise<Harness> {
   const completions: CompletionsClient = {
     async complete(request) {
       requests.push(request);
-      return answer();
+      // A Bot that handles a batch the way the turn instructions ask: resolve each, then say so.
+      const last = request.messages.at(-1);
+      if (last?.role === "tool") return answer();
+      const trigger = request.messages.filter((m) => m.role === "user").map((m) => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => (p.type === "text" ? p.text : "")).join(""))).find((t) => t.includes("（本轮触发）")) ?? "";
+      const ids = [...trigger.matchAll(/id=([0-9A-HJKMNP-TV-Z]{26})\]/g)].map((m) => m[1]!);
+      if (ids.length === 0) return answer();
+      return { ok: true, content: "", toolCalls: ids.map((id, i) => ({ id: `call_${i}`, name: "resolve_annotation", arguments: JSON.stringify({ id, note: `改了第 ${i + 1} 处` }) })), finishReason: "tool_calls", hadChoices: true, usage: null, missingReason: null };
     },
     async judge() {
       return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
@@ -209,6 +215,13 @@ describe("sending a batch over HTTP", () => {
     expect(woken?.task_id).toBe(turn.task_id!);
     await until(() => h.store.getTurn(woken!.id).status === "completed");
     expect(h.store.getTask(turn.task_id!).closed_at).toBeNull();
+    // The Bot saw both annotations with the tools to handle them, and resolved each one.
+    expect(String(JSON.stringify(h.requests[0]!.messages))).toContain("[批注 1/2 · id=");
+    expect(h.requests[0]!.tools.map((tool) => (tool as { function: { name: string } }).function.name)).toEqual(expect.arrayContaining(["list_annotations", "resolve_annotation"]));
+    expect(h.store.listAnnotations({ message_id: result.message.id }).map((row) => [row.status, row.resolved_by])).toEqual([["resolved", bot.id], ["resolved", bot.id]]);
+    // Resolving names a file but writes nothing: the closing reply hands nothing over.
+    const closing = h.store.listMainMessages(direct, 20).find((m) => m.kind === "bot" && m.body === "收到，改好了。");
+    expect(closing?.attachments).toEqual([]);
     expect(h.store.getTask(otherTurn.task_id!).closed_at).not.toBeNull();
   });
 

@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChatContentPart } from "./completions";
-import { annotationContext } from "./annotation-context";
+import { annotationContext, annotationLines } from "./annotation-context";
+import type { Annotation } from "@real-bot/protocol";
 import { assembleJudgementUser, assembleTurnMessages } from "./context";
 import { sha256 } from "./request-digest";
 import { Store } from "./store";
@@ -125,5 +126,37 @@ describe("the turn window", () => {
     // The judgement window is text only and never spells out annotations.
     const judged = assembleJudgementUser(w.store, { sessionId: w.direct, botId: w.bot.id, message: w.message, mentions: [], everyone: false });
     expect(String(judged)).not.toContain("[批注");
+  });
+});
+
+describe("the other kinds' lines", () => {
+  const base: Annotation = {
+    id: "A1", status: "open", relpath: "x", anchor_kind: "text_range",
+    anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 2, quote: "", prefix: "", suffix: "" },
+    content_sha256: "0".repeat(64), target_message_id: "m", target_session_id: "s", target_turn_id: null, bot_id: "b",
+    session_id: "s", message_id: "m2", body: "意见", crop_mime: null, resolved_by: null, resolved_note: null, resolved_at: null,
+    created_at: "2026-09-23T00:00:00.000Z", updated_at: "2026-09-23T00:00:00.000Z", stale: null,
+  };
+  const name = () => "Writer";
+
+  test("a PDF region names the page, the box, and the quote", () => {
+    const lines = annotationLines({ ...base, relpath: "spec.pdf", anchor_kind: "pdf_region", anchor: { page: 3, x: 0.1, y: 0.2, w: 0.5, h: 0.15, quote: "Total 42" }, crop_mime: "image/png" }, 1, 1, "zh", name);
+    expect(lines).toEqual(["[批注 1/1 · id=A1] spec.pdf · PDF 区域", "  位置：第 3 页，x 10%–60%，y 20%–35%", "  引文：Total 42", "  意见：意见", "  （附区域裁图）"]);
+  });
+
+  test("an HTML element names the selector, its text, and its markup on one line", () => {
+    const lines = annotationLines({ ...base, relpath: "site.html", anchor_kind: "html_element", anchor: { selector: ".hero > .cta:nth-of-type(2)", tag: "button", text: "立即开始", outer_html: "<button class=\"cta\">\n  立即开始\n</button>", rect: { x: 0.1, y: 0.2, w: 0.1, h: 0.05 } } }, 1, 1, "zh", name);
+    expect(lines).toEqual([
+      "[批注 1/1 · id=A1] site.html · HTML 元素",
+      "  位置：<button> .hero > .cta:nth-of-type(2)「立即开始」",
+      "  元素文字：立即开始",
+      '  HTML 片段：<button class="cta"> 立即开始 </button>',
+      "  意见：意见",
+    ]);
+  });
+
+  test("a media span names its times, and the English lines read the same way", () => {
+    const lines = annotationLines({ ...base, relpath: "cut.mp4", anchor_kind: "media_time", anchor: { start_ms: 83_000, end_ms: 101_000, duration_ms: 120_000 }, crop_mime: "image/jpeg", status: "resolved", resolved_by: "b", resolved_note: "剪短了" }, 2, 3, "en", name);
+    expect(lines).toEqual(["[Annotation 2/3 · id=A1] cut.mp4 · time point · resolved (Writer: 剪短了)", "  Where：01:23–01:41", "  Note：意见", "  (region crop attached)"]);
   });
 });

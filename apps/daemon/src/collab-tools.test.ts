@@ -1018,7 +1018,8 @@ describe("annotations tools", () => {
     expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.c.id, note: "x" })).error?.code).toBe("invalid_args");
     const done = await runCollabTool({ ...w.ctx, botId: w.editor.bot.id }, "resolve_annotation", { id: w.a.id, note: "缩成一句" });
     expect(done.ok).toBe(true);
-    expect(done.data).toMatchObject({ id: w.a.id, status: "resolved", resolved_note: "缩成一句" });
+    expect(done.data).toMatchObject({ id: w.a.id, relpath: "report.md", status: "resolved", resolved_note: "缩成一句" });
+    expect(done.data?.path).toBeUndefined();
     expect(w.store.getAnnotation(w.a.id).resolved_by).toBe(w.editor.bot.id);
     expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.a.id, note: "再来" })).error?.code).toBe("conflict");
     const resolved = await runCollabTool(w.ctx, "list_annotations", { status: "resolved" });
