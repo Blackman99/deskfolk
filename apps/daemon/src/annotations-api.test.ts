@@ -48,7 +48,7 @@ async function start(): Promise<Harness> {
       const last = request.messages.at(-1);
       if (last?.role === "tool") return answer();
       const trigger = request.messages.filter((m) => m.role === "user").map((m) => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => (p.type === "text" ? p.text : "")).join(""))).find((t) => t.includes("（本轮触发）")) ?? "";
-      const ids = [...trigger.matchAll(/id=([0-9A-HJKMNP-TV-Z]{26})\]/g)].map((m) => m[1]!);
+      const ids = [...trigger.matchAll(/id=([0-9A-HJKMNP-TV-Z]{26})/g)].map((m) => m[1]!);
       if (ids.length === 0) return answer();
       return { ok: true, content: "", toolCalls: ids.map((id, i) => ({ id: `call_${i}`, name: "resolve_annotation", arguments: JSON.stringify({ id, note: `改了第 ${i + 1} 处` }) })), finishReason: "tool_calls", hadChoices: true, usage: null, missingReason: null };
     },
@@ -161,6 +161,8 @@ describe("annotation drafts over HTTP", () => {
       draftBody(delivery.id, { body: "" }),
       draftBody(delivery.id, { content_sha256: "zz" }),
       draftBody(delivery.id, { crop: { mime: "image/gif", base64: "AAAA" } }),
+      draftBody(delivery.id, { crop: { mime: "image/png", base64: "not*base64*at#all" } }),
+      draftBody(delivery.id, { crop: { mime: "image/png", base64: Buffer.from("<html><script>alert(1)</script>").toString("base64") } }),
       null,
     ]) {
       const res = await call(h, "POST", "/v1/annotations", body);
@@ -173,7 +175,7 @@ describe("annotation drafts over HTTP", () => {
   test("a crop round-trips as bytes with an ETag, and a draft without one is 404", async () => {
     const h = await start();
     const { delivery } = delivered(h);
-    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
     const created = await call(h, "POST", "/v1/annotations", draftBody(delivery.id, { crop: { mime: "image/png", base64: png.toString("base64") } }));
     const row = (await created.json()) as Annotation;
     expect(row.crop_mime).toBe("image/png");

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ANNOTATION_BODY_MAX } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 
 	interface Props {
@@ -35,7 +36,7 @@
 <div class="annot-composer flex flex-col gap-6 p-8" role="dialog" aria-label={t.stream.annotationAdd} data-annotation-composer>
 	<span class="annot-composer-pos mono text-11">{position}</span>
 	<!-- svelte-ignore a11y_autofocus -->
-	<textarea class="annot-composer-input" rows="3" placeholder={t.stream.annotationPlaceholder} bind:value={body} autofocus onkeydown={onKey} disabled={busy}></textarea>
+	<textarea class="annot-composer-input" rows="3" placeholder={t.stream.annotationPlaceholder} maxlength={ANNOTATION_BODY_MAX} bind:value={body} autofocus onkeydown={onKey} disabled={busy}></textarea>
 	{#if error}<p class="annot-composer-error text-11 m-0">{error}</p>{/if}
 	<div class="flex gap-6 justify-end">
 		<button type="button" class="artifact-tool-btn annot-composer-btn" onclick={onCancel} disabled={busy}>{t.stream.annotationCancel}</button>

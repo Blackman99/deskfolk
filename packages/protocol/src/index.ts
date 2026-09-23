@@ -1047,6 +1047,15 @@ export type ClientEvent =
   | ({ event: "terminal.upsert"; occurred_at: string } & Terminal)
   | { event: "terminal.removed"; occurred_at: string; id: string };
 
+/**
+ * Longest crop `base64` a remote annotation request may carry. A remote request is one logical
+ * message of at most 1 MiB (`MAX_LOGICAL_MESSAGE` in `@real-bot/remote`), so the crop gets this
+ * much and the envelope and the other fields keep the rest: about 750 KB once decoded, below the
+ * 1 MB a local save takes. The hosted messenger sends each RPC as one unfragmented frame and
+ * shrinks (or drops) a crop to fit that, far under this ceiling.
+ */
+export const ANNOTATION_REMOTE_CROP_BASE64_MAX = 1_000_000;
+
 export * from "./annotations.ts";
 export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";

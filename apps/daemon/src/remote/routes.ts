@@ -1,3 +1,4 @@
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX } from "@real-bot/protocol";
 import { REMOTE_FILE_LIMIT, type RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 
@@ -61,10 +62,11 @@ add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), as
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);
 const num: Check = v => typeof v === "number" && Number.isFinite(v);
 // The union of every anchor kind's fields; the daemon checks the shape per kind, this only shuts out strangers.
-const anchor: Check = object({ start_line: num, start_col: num, end_line: num, end_col: num, quote: string, prefix: string, suffix: string, view: one("rendered"),
+const anchor: Check = object({ start_line: num, start_col: num, end_line: num, end_col: num, quote: string, prefix: string, suffix: string, view: one("rendered"), span_length: num, span_hash: string,
   x: num, y: num, w: num, h: num, natural_width: num, natural_height: num, page: num, selector: string, tag: string, text: string, outer_html: string,
   rect: object({ x: num, y: num, w: num, h: num }, ["x", "y", "w", "h"]), start_ms: num, end_ms: num, duration_ms: num });
-const crop = nullable(object({ mime: one("image/png", "image/jpeg"), base64: v => typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length <= 1_400_000 }, ["mime", "base64"]));
+// The whole request is one logical message (≤ MAX_LOGICAL_MESSAGE), so a crop cannot be promised the 1 MB a local save takes.
+const crop = nullable(object({ mime: one("image/png", "image/jpeg"), base64: v => typeof v === "string" && v.length <= ANNOTATION_REMOTE_CROP_BASE64_MAX && /^[A-Za-z0-9+/=]+$/.test(v) }, ["mime", "base64"]));
 add("POST", "annotations", { target_message_id: id, relpath: string, anchor_kind: one("text_range", "image_region", "pdf_region", "html_element", "media_time"), anchor, content_sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v), body: string, crop }, ["target_message_id", "relpath", "anchor_kind", "anchor", "content_sha256", "body"]);
 add("POST", "annotations/send", { session_id: id, body: string, annotation_ids: list(id) }, ["session_id", "annotation_ids"]);
 add("PATCH", "annotations/:id", { body: string, anchor, crop, content_sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v), status: one("open", "resolved"), ...revision }, [], true);

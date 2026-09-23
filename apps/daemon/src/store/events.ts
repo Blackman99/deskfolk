@@ -4,7 +4,7 @@ import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
 import { listMemories, withLearning as memoryWithLearning } from "./memories";
 import { getMessage } from "./messages";
-import { getAnnotation, hasAnnotation } from "./annotations";
+import { FileProbe, getAnnotation, hasAnnotation } from "./annotations";
 import { getNotification, getNotificationPolicy, getNotificationSummary } from "./notifications";
 import { providersCached } from "./providers";
 import { listRoutines } from "./routines";
@@ -75,6 +75,8 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   const cleared = new Set(changes.filter((c) => c.entity === "messages" && c.op === "DELETE").map((c) => c.session_id!));
   for (const id of cleared) out.push({ event: "session.cleared", occurred_at, id });
   const sessions = listSessions(ctx);
+  // One look at each annotated file per pass, however many of its annotations changed.
+  let probe: FileProbe | undefined;
   for (const { entity, id } of unique.values()) {
     switch (entity) {
       case "settings": break;
@@ -145,7 +147,7 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         break;
       }
       case "annotations": {
-        out.push(hasAnnotation(ctx, id) ? { event: "annotation.upsert", occurred_at, ...getAnnotation(ctx, id) } : { event: "annotation.removed", occurred_at, id });
+        out.push(hasAnnotation(ctx, id) ? { event: "annotation.upsert", occurred_at, ...getAnnotation(ctx, id, (probe ??= new FileProbe(ctx))) } : { event: "annotation.removed", occurred_at, id });
         break;
       }
       case "notifications": {

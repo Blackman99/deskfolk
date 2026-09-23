@@ -51,13 +51,16 @@ import type {
   WorkspaceTreePage,
   Annotation,
   AnnotationFilter,
+  AnnotationCrop,
   CreateAnnotationRequest,
   PatchAnnotationRequest,
   SendAnnotationsRequest,
 } from "@real-bot/protocol";
 import { isNonReceiptPath } from "@real-bot/protocol";
 import {
+  canonicalBytes,
   fromBase64url,
+  MAX_BODY,
   REMOTE_FILE_LIMIT,
   sha256Hex,
   type IdentitySecrets,
@@ -66,6 +69,7 @@ import {
 } from "@real-bot/remote";
 import { ApiError, rememberBlobEtag } from "../api.ts";
 import { createAnnotation, listAnnotations, patchAnnotation, sendAnnotations, type SendAnnotationsResult } from "../annotations/client.ts";
+import { shrinkCrop, type CropCodec } from "../annotations/region-box.ts";
 import type { FileProgressHandler } from "../file-progress.ts";
 import type { LocalEndpoint } from "../discovery.ts";
 import type { Snapshot } from "../snapshot.ts";
@@ -159,6 +163,14 @@ function durablePending(row: PendingRemote): DurablePendingRequest {
   };
 }
 
+/**
+ * 远控一个 RPC 就是一帧 type 1（明文 ≤ MAX_BODY），信使不分片。带裁图的批注请求整条规范 JSON 要比这个
+ * 再小一截，装不下就先把裁图压小，还不行就不带裁图地存。
+ */
+export const ANNOTATION_REQUEST_BUDGET = MAX_BODY - 512;
+/** A stand-in the length of a real ULID, for measuring a request before it has its id. */
+const MEASURE_ID = "0".repeat(26);
+
 function identityFrom(enrollment: StoredEnrollment): IdentitySecrets {
   return {
     dh: fromBase64url(enrollment.dh, 32),
@@ -208,6 +220,8 @@ export class RemoteApi {
     private readonly hooks: TransportHooks & {
       webauthn?: WebAuthnBridge;
       rpc?: (request: RemoteRequest) => Promise<RemoteResponse>;
+      /** Re-encodes a crop that does not fit a frame; the browser's canvas unless a test hands one in. */
+      cropCodec?: CropCodec;
     } = {},
     restore: DurablePendingRequest[] = [],
   ) {
@@ -259,7 +273,19 @@ export class RemoteApi {
     for (const row of snapshot.memories) note("memories", row.id, row.updated_at);
     for (const row of snapshot.routines) note("routines", row.id, row.updated_at);
     for (const row of snapshot.allowRules) note("allow-rules", row.id, row.created_at);
-    if ("annotations" in snapshot) for (const row of snapshot.annotations) note("annotations", row.id, row.updated_at);
+    if ("annotations" in snapshot) this.noteAnnotations(snapshot.annotations);
+  }
+  /**
+   * 批注不在守护进程的快照里：它们的修订号从拉回来的每一行记——列表、建、改、整批发送的回包，和
+   * 事件落进来的快照——安静的会话里改和删才带得上 if_revision。只往新里记：一张在路上的列表可能比
+   * 刚到的事件旧，和 mergeAnnotationRows 的「新者为准」一致。
+   */
+  private noteAnnotations(rows: readonly Annotation[]): void {
+    for (const row of rows) {
+      const key = `annotations/${row.id}`;
+      const seen = this.revisions.get(key);
+      if (!seen || row.updated_at > seen) this.revisions.set(key, row.updated_at);
+    }
   }
   forgetResolvedRequest(id: string): void {
     for (const [key, row] of this.pending) if (row.id === id) {
@@ -562,20 +588,30 @@ export class RemoteApi {
   }
 
   // Annotations ----------------------------------------------------------------------------
-  listAnnotations(filter: AnnotationFilter & { target_session_id?: string } = {}): Promise<Annotation[]> {
-    return listAnnotations(this, filter);
+  async listAnnotations(filter: AnnotationFilter & { target_session_id?: string } = {}): Promise<Annotation[]> {
+    const rows = await listAnnotations(this, filter);
+    this.noteAnnotations(rows);
+    return rows;
   }
-  createAnnotation(body: CreateAnnotationRequest): Promise<Annotation> {
-    return createAnnotation(this, body);
+  async createAnnotation(body: CreateAnnotationRequest): Promise<Annotation> {
+    const row = await createAnnotation(this, await this.fitCrop("POST", "/v1/annotations", body));
+    this.noteAnnotations([row]);
+    return row;
   }
-  patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<Annotation> {
-    return patchAnnotation(this, id, this.withRevision("annotations", id, patch) as PatchAnnotationRequest);
+  async patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<Annotation> {
+    const body = this.withRevision("annotations", id, patch) as PatchAnnotationRequest;
+    const row = await patchAnnotation(this, id, await this.fitCrop("PATCH", `/v1/annotations/${encodeURIComponent(id)}`, body));
+    this.noteAnnotations([row]);
+    return row;
   }
   async deleteAnnotation(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/annotations/${encodeURIComponent(id)}`, this.revisionBody("annotations", id));
+    this.revisions.delete(`annotations/${id}`);
   }
-  sendAnnotations(body: SendAnnotationsRequest): Promise<SendAnnotationsResult> {
-    return sendAnnotations(this, body);
+  async sendAnnotations(body: SendAnnotationsRequest): Promise<SendAnnotationsResult> {
+    const sent = await sendAnnotations(this, body);
+    this.noteAnnotations(sent.annotations);
+    return sent;
   }
   getAnnotationCropBlob(id: string): Promise<Blob> {
     return this.fileBlob(`/v1/annotations/${encodeURIComponent(id)}/crop`);
@@ -721,6 +757,31 @@ export class RemoteApi {
     const path = operation.action === "runtime.restart" ? "/remote/runtime/restart"
       : operation.action === "runtime.stop" ? "/remote/runtime/stop" : "/remote/action";
     return this.request("POST", path, { operation: body, challenge: challenge.challenge, assertion, ...force }, undefined, {}, false, null, requestId);
+  }
+
+  /**
+   * 让带裁图的批注请求一帧装得下。量的是传输真正发出去的那条规范 JSON（占位 id 与 ULID 同长）：装得下
+   * 原样发；装不下把裁图压进剩下的字节；还不行就不带裁图——新建时去掉，改草稿时清掉（新框配旧裁图只会误导）。
+   */
+  private async fitCrop<B extends { crop?: AnnotationCrop | null }>(method: "POST" | "PATCH", path: string, body: B): Promise<B> {
+    const crop = body.crop;
+    if (!crop) return body;
+    const size = (value: B): number => canonicalBytes({ v: 1, id: MEASURE_ID, method, path, body: value }).length;
+    let envelope: number;
+    try {
+      if (size(body) <= ANNOTATION_REQUEST_BUDGET) return body;
+      // The longer of the two mimes, so a PNG that comes back as JPEG is already counted.
+      envelope = size({ ...body, crop: { mime: "image/jpeg", base64: "" } });
+    } catch {
+      return body; // Not canonical JSON at all: the transport says so, as it always has.
+    }
+    const room = ANNOTATION_REQUEST_BUDGET - envelope;
+    const smaller = room > 0 ? await shrinkCrop(crop, Math.floor(room / 4) * 3, this.hooks.cropCodec) : null;
+    if (smaller && size({ ...body, crop: smaller }) <= ANNOTATION_REQUEST_BUDGET) return { ...body, crop: smaller };
+    if (method === "PATCH") return { ...body, crop: null };
+    const bare = { ...body };
+    delete bare.crop;
+    return bare;
   }
 
   private withRevision(kind: string, id: string, body: object): object {

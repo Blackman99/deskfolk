@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import {
+  base64ByteLength,
   boxBetween,
+  browserCropCodec,
   clickBox,
   cropRect,
   encodeCrop,
@@ -9,9 +11,12 @@ import {
   moveBox,
   resizeBox,
   scaledSize,
+  shrinkCrop,
   toNorm,
   toPercentStyle,
   toScreen,
+  type CropCodec,
+  type EncodedCrop,
 } from "./region-box.ts";
 
 test("a pointer maps onto the drawn image whatever its displayed size, clamped to the edges", () => {
@@ -96,4 +101,96 @@ test("encoding picks PNG when it fits, falls back to JPEG, and gives up past eve
   expect(jpeg?.mime).toBe("image/jpeg");
   expect(qualities).toEqual([0.9, 0.8, 0.7]);
   expect(await encodeCrop({ toBlob: async () => blob(5_000_000) })).toBeNull();
+});
+
+/** A crop of `bytes` bytes, as it travels. */
+const cropOf = (bytes: number, mime: EncodedCrop["mime"] = "image/png"): EncodedCrop => ({
+  mime,
+  base64: btoa(String.fromCharCode(...new Uint8Array(bytes).fill(7))),
+});
+
+/** A codec whose output shrinks with the area and the quality, and that notes every try. */
+function fakeCodec(natural = { width: 1000, height: 500 }, bytesPerPixel = 0.5) {
+  const tries: string[] = [];
+  let released = 0;
+  const codec: CropCodec<string> = {
+    decode: async () => ({ image: "decoded", ...natural }),
+    encode: async (image, size, type, quality) => {
+      expect(image).toBe("decoded");
+      tries.push(`${size.width}x${size.height} ${type === "image/png" ? "png" : `jpeg@${quality}`}`);
+      const scale = type === "image/png" ? 1 : quality!;
+      return new Blob([new Uint8Array(Math.round(size.width * size.height * bytesPerPixel * scale))]);
+    },
+    release: () => {
+      released += 1;
+    },
+  };
+  return { codec, tries, released: () => released };
+}
+
+test("base64 length maps to the bytes it carries", () => {
+  expect(base64ByteLength(btoa("abc"))).toBe(3);
+  expect(base64ByteLength(btoa("abcd"))).toBe(4);
+  expect(base64ByteLength(btoa("abcde"))).toBe(5);
+  expect(base64ByteLength(cropOf(30_000).base64)).toBe(30_000);
+});
+
+test("a crop that already fits the budget goes out as it is, never decoded", async () => {
+  const crop = cropOf(20_000);
+  let decoded = false;
+  const codec: CropCodec = { decode: async () => ((decoded = true), null), encode: async () => null };
+  expect(await shrinkCrop(crop, 20_000, codec)).toBe(crop);
+  expect(decoded).toBe(false);
+});
+
+test("a crop over the budget is re-encoded smaller: JPEG at falling quality, then a shorter long side", async () => {
+  const { codec, tries, released } = fakeCodec();
+  // 1000×500 at 0.5 B/px: 250 KB as it is. JPEG 0.4 of the full size is 100 KB — still over — so
+  // the long side steps down; at 384×192 JPEG 0.8 is 29.5 KB — still over — and 0.6 is 22 KB.
+  const out = await shrinkCrop(cropOf(250_000), 24_000, codec);
+  expect(out?.mime).toBe("image/jpeg");
+  expect(base64ByteLength(out!.base64)).toBe(Math.round(384 * 192 * 0.5 * 0.6));
+  expect(base64ByteLength(out!.base64)).toBeLessThanOrEqual(24_000);
+  expect(tries).toEqual([
+    "1000x500 jpeg@0.8", "1000x500 jpeg@0.6", "1000x500 jpeg@0.4",
+    "768x384 png", "768x384 jpeg@0.8", "768x384 jpeg@0.6", "768x384 jpeg@0.4",
+    "512x256 png", "512x256 jpeg@0.8", "512x256 jpeg@0.6", "512x256 jpeg@0.4",
+    "384x192 png", "384x192 jpeg@0.8", "384x192 jpeg@0.6",
+  ]);
+  expect(released()).toBe(1);
+});
+
+test("a PNG crop stays PNG when a smaller PNG is what fits", async () => {
+  // Flat pixels compress well as PNG: the fake makes PNG cheaper than any JPEG here.
+  const codec: CropCodec<string> = {
+    decode: async () => ({ image: "decoded", width: 800, height: 800 }),
+    encode: async (_image, size, type) => new Blob([new Uint8Array(type === "image/png" ? size.width * 10 : size.width * 100)]),
+  };
+  const out = await shrinkCrop(cropOf(100_000), 6_000, codec);
+  expect(out?.mime).toBe("image/png");
+  expect(base64ByteLength(out!.base64)).toBe(5_120);
+  // A JPEG source never turns into a PNG.
+  const jpeg = await shrinkCrop(cropOf(100_000, "image/jpeg"), 60_000, codec);
+  expect(jpeg?.mime).toBe("image/jpeg");
+});
+
+test("a crop nothing can squeeze in, or that cannot be decoded, is given up", async () => {
+  const { codec, tries, released } = fakeCodec({ width: 1000, height: 500 }, 50);
+  expect(await shrinkCrop(cropOf(250_000), 1_000, codec)).toBeNull();
+  // Every step down to the smallest long side was tried, then it stopped.
+  expect(tries.at(-1)).toBe("128x64 jpeg@0.4");
+  expect(released()).toBe(1);
+  expect(await shrinkCrop(cropOf(50_000), 0, codec)).toBeNull();
+  expect(await shrinkCrop(cropOf(50_000), 1_000, { decode: async () => null, encode: async () => null })).toBeNull();
+  expect(await shrinkCrop(cropOf(50_000), 1_000, { decode: async () => { throw new Error("broken"); }, encode: async () => null })).toBeNull();
+  const failing: CropCodec<string> = {
+    decode: async () => ({ image: "decoded", width: 10, height: 10 }),
+    encode: async () => { throw new Error("canvas lost"); },
+  };
+  expect(await shrinkCrop(cropOf(50_000), 1_000, failing)).toBeNull();
+});
+
+test("without a canvas that can draw (happy-dom), the browser codec gives the crop up instead of throwing", async () => {
+  expect(await shrinkCrop(cropOf(50_000), 1_000, browserCropCodec())).toBeNull();
+  expect(await shrinkCrop(cropOf(50_000), 1_000)).toBeNull();
 });

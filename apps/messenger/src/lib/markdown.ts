@@ -1,4 +1,4 @@
-import { Marked } from "marked";
+import { Marked, Renderer, type Tokens } from "marked";
 import remend, { isWithinCodeBlock } from "remend";
 import sanitizeHtml from "sanitize-html";
 import {
@@ -16,6 +16,15 @@ import {
   parseMentionHref,
   type MentionableBot,
 } from "./chat/mention-chips.ts";
+import {
+  SRC_END_ATTR,
+  SRC_START_ATTR,
+  lexWithSourceLines,
+  normalizeSource,
+  sourceLinesOf,
+  splitFrontMatter,
+  type SourceLines,
+} from "./annotations/markdown-lines.ts";
 
 const marked = new Marked({ gfm: true, breaks: true });
 
@@ -106,6 +115,12 @@ export type RenderMarkdownOptions = {
   mentionMembers?: readonly MentionableBot[];
   /** Title attribute for an unresolved @token marker. */
   unresolvedMentionTitle?: string;
+  /**
+   * Mark every block with the source lines it came from (`data-src-start` / `data-src-end`), for the
+   * artifact preview's annotations to map a selection back to lines. Leading YAML front matter shows
+   * as a yaml block. Chat bubbles leave it off and render exactly as before.
+   */
+  sourceLines?: boolean;
 };
 
 /**
@@ -133,6 +148,7 @@ function optionsSignature(options: RenderMarkdownOptions): string {
     rosterSignature(options.mentionBots),
     rosterSignature(options.mentionMembers),
     options.unresolvedMentionTitle ?? "",
+    options.sourceLines ? "lines" : "",
   ].join("\u0001");
   optionSignatures.set(options, signature);
   return signature;
@@ -174,18 +190,143 @@ export function decorateExternalLinks(html: string): string {
 }
 
 function renderUncached(source: string, options: RenderMarkdownOptions): string {
-  const linked = linkifyWorkspacePaths(source, options.extraPaths ?? []);
+  const lines = options.sourceLines === true;
+  // Front matter is split off before the path and mention passes, so it shows as it was written.
+  const text = lines ? normalizeSource(source) : source;
+  const front = lines ? frontMatterOf(text) : "";
+  const linked = linkifyWorkspacePaths(text.slice(front.length), options.extraPaths ?? []);
   const prepared = options.streaming ? healStreaming(linked) : linked;
   const mentioned = linkifyRosterMentions(prepared, options.mentionBots ?? [], {
     members: options.mentionMembers,
   });
-  const html = marked.parse(mentioned, { async: false });
-  const sanitized = sanitizeHtml(html, SANITIZE);
+  const html = lines
+    ? lineMarked.parser(lexWithSourceLines(front + mentioned, (src) => lineMarked.lexer(src)))
+    : marked.parse(mentioned, { async: false });
+  const sanitized = sanitizeHtml(html, lines ? SANITIZE_WITH_LINES : SANITIZE);
   const withMentions = decorateMentionChips(sanitized, options.mentionBots ?? [], {
     unresolvedTitle: options.unresolvedMentionTitle,
   });
   return decorateExternalLinks(withMentions);
 }
+
+function frontMatterOf(text: string): string {
+  return splitFrontMatter(text)?.raw ?? "";
+}
+
+/*
+ * The `sourceLines` renderer: marked's own output, with each block's opening tag carrying the
+ * lines `assignSourceLines` gave its token. Table rows get their own line, so a selection inside
+ * one cell maps to that row. Raw HTML loses any `data-src-*` it brought along — only the
+ * renderer may say where a block is. The name is defused wherever it could be an attribute,
+ * whatever comes before it: an HTML parser also reads `title="x"data-src-start=…` (no space
+ * after the quote) as an attribute.
+ *
+ * A raw HTML block that opens and closes everything it opens is wrapped in a `div` so it has
+ * lines too. One that does not — `<div align="center">` here, `</div>` three blocks later — is
+ * left unwrapped: a wrapper would take the other's closing tag and swallow what follows. Raw
+ * `div`s are renamed to a tag the sanitizer drops (keeping their text, as chat bubbles do), so
+ * the wrapper is the only `div` there is.
+ */
+const LINE_ATTR_RE = /data-src-(start|end)(?=[\s/>=]|$)/gi;
+const RAW_DIV_RE = /<(\/?)div(?=[\s/>]|$)/gi;
+
+function defuseLineAttrs(html: string): string {
+  return html.replace(LINE_ATTR_RE, "data-src_$1").replace(RAW_DIV_RE, "<$1rb-raw-div");
+}
+
+const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+const HTML_TAG_RE = /<!--[\s\S]*?-->|<(\/?)([A-Za-z][A-Za-z0-9-]*)(?:\s[^>]*?)?(\/?)>/g;
+
+/** Whether raw HTML closes, in order, every tag it opens and nothing it did not. */
+function selfContainedHtml(html: string): boolean {
+  const open: string[] = [];
+  for (const match of html.matchAll(HTML_TAG_RE)) {
+    const name = match[2]?.toLowerCase();
+    if (!name) continue;
+    if (match[1]) {
+      if (open.pop() !== name) return false;
+    } else if (!match[3] && !VOID_TAGS.has(name)) {
+      open.push(name);
+    }
+  }
+  return open.length === 0;
+}
+
+function lineAttrs(lines: SourceLines | undefined): string {
+  return lines ? ` ${SRC_START_ATTR}="${lines.start}" ${SRC_END_ATTR}="${lines.end}"` : "";
+}
+
+function withLines(html: string, lines: SourceLines | undefined): string {
+  if (!lines) return html;
+  return html.replace(/^<([a-z][a-z0-9]*)/i, (open) => `${open}${lineAttrs(lines)}`);
+}
+
+const lineMarked = new Marked({
+  gfm: true,
+  breaks: true,
+  renderer: {
+    paragraph(token) {
+      return withLines(Renderer.prototype.paragraph.call(this, token), sourceLinesOf(token));
+    },
+    heading(token) {
+      return withLines(Renderer.prototype.heading.call(this, token), sourceLinesOf(token));
+    },
+    blockquote(token) {
+      return withLines(Renderer.prototype.blockquote.call(this, token), sourceLinesOf(token));
+    },
+    list(token) {
+      return withLines(Renderer.prototype.list.call(this, token), sourceLinesOf(token));
+    },
+    listitem(token) {
+      return withLines(Renderer.prototype.listitem.call(this, token), sourceLinesOf(token));
+    },
+    code(token) {
+      return withLines(Renderer.prototype.code.call(this, token), sourceLinesOf(token));
+    },
+    hr(token) {
+      return withLines(Renderer.prototype.hr.call(this, token), sourceLinesOf(token));
+    },
+    html(token) {
+      const text = defuseLineAttrs(token.text);
+      const lines = token.block && selfContainedHtml(text) ? sourceLinesOf(token) : undefined;
+      return lines ? `<div class="md-html-block"${lineAttrs(lines)}>${text}</div>\n` : text;
+    },
+    table(token) {
+      const lines = sourceLinesOf(token);
+      const row = (cells: Tokens.TableCell[], line: number | null): string =>
+        withLines(
+          this.tablerow({ text: cells.map((cell) => this.tablecell(cell)).join("") }),
+          line === null ? undefined : { start: line, end: line },
+        );
+      const head = row(token.header, lines ? lines.start : null);
+      const rows = token.rows.map((cells, r) => row(cells, lines ? lines.start + 2 + r : null)).join("");
+      const body = rows ? `<tbody>${rows}</tbody>` : "";
+      return withLines(`<table>\n<thead>\n${head}</thead>\n${body}</table>\n`, lines);
+    },
+  },
+});
+
+const LINE_TAGS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "table", "tr", "hr", "div"];
+
+const SANITIZE_WITH_LINES: sanitizeHtml.IOptions = {
+  ...SANITIZE,
+  allowedTags: [...(SANITIZE.allowedTags as string[]), "div"],
+  allowedAttributes: {
+    ...(SANITIZE.allowedAttributes as Record<string, string[]>),
+    ...Object.fromEntries(
+      LINE_TAGS.map((tag) => [
+        tag,
+        [
+          ...((SANITIZE.allowedAttributes as Record<string, string[]>)[tag] ?? []),
+          ...(tag === "div" ? ["class"] : []),
+          SRC_START_ATTR,
+          SRC_END_ATTR,
+        ],
+      ]),
+    ),
+  },
+  allowedClasses: { div: ["md-html-block"] },
+};
 
 function healStreaming(source: string): string {
   const healed = remend(source, {

@@ -1,6 +1,7 @@
 /**
  * 框选的几何，图片（#26）和 PDF 页面（#27）共用：指针位置 → 归一化坐标、拖出来的框、点一下的小框、
- * 挪动与改大小、裁图区域（四周留 10%）、缩到长边 1024 以内，以及把画布编码成 1 MB 以内的 PNG / JPEG。
+ * 挪动与改大小、裁图区域（四周留 10%）、缩到长边 1024 以内，以及把画布编码成 1 MB 以内的 PNG / JPEG；
+ * 远控一帧装不下时，再把编好的裁图压进更小的字节预算（`shrinkCrop`）。
  * 全部按「0–1 归一化到原图（或该页）尺寸」计算，显示时怎么缩放都不影响存下的锚点。
  */
 
@@ -163,4 +164,105 @@ export async function cropDrawable(source: CanvasImageSource, rect: PixelRect): 
     return null;
   }
   return encodeCrop(canvasEncoder(canvas));
+}
+
+/** How many bytes a base64 string decodes to, without decoding it. */
+export function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/**
+ * 把一张编好的裁图解回像素、再按别的尺寸和格式编一次的两步。浏览器里是位图加画布（{@link browserCropCodec}），
+ * 测试给替身——happy-dom 没有真画布。
+ */
+export type CropCodec<Image = unknown> = {
+  /** The decoded image and its pixel size; null when it cannot be decoded. */
+  decode(crop: EncodedCrop): Promise<(Size & { image: Image }) | null>;
+  /** Draw it at `size` and encode it as `type` (JPEG with `quality`). */
+  encode(image: Image, size: Size, type: EncodedCrop["mime"], quality?: number): Promise<Blob | null>;
+  release?(image: Image): void;
+};
+
+/** The long sides a shrink tries below the crop's own, largest first; past the last it is not worth sending. */
+export const SHRINK_LONG_SIDES = [768, 512, 384, 256, 192, 128];
+export const SHRINK_JPEG_QUALITIES = [0.8, 0.6, 0.4];
+
+/**
+ * 把裁图压进 `maxBytes`：本来就装得下原样返回；否则解回像素，从原尺寸起一级级缩小长边，每一级先试 PNG
+ * （原本是 PNG、且已经缩小时），再试质量递减的 JPEG，取第一个装得下的。解不开、或缩到最小还装不下是
+ * null——调用方就不带裁图。
+ */
+export async function shrinkCrop(crop: EncodedCrop, maxBytes: number, codec: CropCodec = browserCropCodec()): Promise<EncodedCrop | null> {
+  if (base64ByteLength(crop.base64) <= maxBytes) return crop;
+  if (maxBytes <= 0) return null;
+  let decoded: (Size & { image: unknown }) | null;
+  try {
+    decoded = await codec.decode(crop);
+  } catch {
+    return null;
+  }
+  if (!decoded) return null;
+  const { image, width, height } = decoded;
+  try {
+    if (width < 1 || height < 1) return null;
+    const long = Math.max(width, height);
+    for (const side of [long, ...SHRINK_LONG_SIDES.filter((side) => side < long)]) {
+      const size = scaledSize(width, height, side);
+      if (crop.mime === "image/png" && side < long) {
+        const png = await codec.encode(image, size, "image/png");
+        if (png && png.size > 0 && png.size <= maxBytes) return { mime: "image/png", base64: await blobToBase64(png) };
+      }
+      for (const quality of SHRINK_JPEG_QUALITIES) {
+        const jpeg = await codec.encode(image, size, "image/jpeg", quality);
+        if (jpeg && jpeg.size > 0 && jpeg.size <= maxBytes) return { mime: "image/jpeg", base64: await blobToBase64(jpeg) };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    codec.release?.(image);
+  }
+}
+
+/**
+ * 浏览器里的 {@link CropCodec}：`createImageBitmap` 解，`OffscreenCanvas`（没有就用 `<canvas>`）画和编。
+ * JPEG 没有透明，先铺白底，免得透明的地方变黑。哪一步拿不到都给 null。
+ */
+export function browserCropCodec(): CropCodec<ImageBitmap> {
+  return {
+    async decode(crop) {
+      if (typeof createImageBitmap !== "function") return null;
+      const bytes = Uint8Array.from(atob(crop.base64), (char) => char.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes], { type: crop.mime }));
+      return { image, width: image.width, height: image.height };
+    },
+    async encode(image, size, type, quality) {
+      const paint = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): void => {
+        if (type === "image/jpeg") {
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, size.width, size.height);
+        }
+        ctx.drawImage(image, 0, 0, size.width, size.height);
+      };
+      if (typeof OffscreenCanvas === "function") {
+        const canvas = new OffscreenCanvas(size.width, size.height);
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          paint(ctx);
+          return canvas.convertToBlob({ type, quality });
+        }
+      }
+      if (typeof document === "undefined") return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = size.width;
+      canvas.height = size.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      paint(ctx);
+      return canvasEncoder(canvas).toBlob(type, quality);
+    },
+    release: (image) => image.close?.(),
+  };
 }

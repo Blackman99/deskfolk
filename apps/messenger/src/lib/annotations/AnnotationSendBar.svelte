@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ANNOTATION_BATCH_MAX } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 
 	interface Props {
@@ -8,24 +9,31 @@
 		sending: boolean;
 		error: string | null;
 		t: Copy;
-		onSend: (summary: string) => void;
+		/**
+		 * Send the batch — the oldest `ANNOTATION_BATCH_MAX` drafts when there are more — and say
+		 * whether it went out. The summary stays until it has.
+		 */
+		onSend: (summary: string) => Promise<boolean>;
 		onClear: () => void;
 	}
 
 	let { count, destination, sending, error, t, onSend, onClear }: Props = $props();
 	let summary = $state('');
 	let confirmClear = $state(false);
+	/** The daemon takes at most this many at once; the rest wait for the next send. */
+	const capped = $derived(count > ANNOTATION_BATCH_MAX);
 
-	function send(): void {
+	async function send(): Promise<void> {
 		if (sending || count === 0) return;
-		onSend(summary.trim());
-		summary = '';
+		const sent = summary;
+		// A failed send (the daemon draining, a network drop) keeps what was typed for the retry.
+		if ((await onSend(sent.trim())) && summary === sent) summary = '';
 	}
 
 	function onKey(ev: KeyboardEvent): void {
 		if (ev.key === 'Enter' && !ev.shiftKey) {
 			ev.preventDefault();
-			send();
+			void send();
 		}
 	}
 </script>
@@ -46,7 +54,7 @@
 			onkeydown={onKey}
 			disabled={sending}
 		/>
-		<button type="button" class="annot-send-btn" onclick={send} disabled={sending || count === 0}>
+		<button type="button" class="annot-send-btn" onclick={() => void send()} disabled={sending || count === 0}>
 			{sending ? t.stream.annotationSending : t.stream.annotationSend}
 		</button>
 		{#if confirmClear}
@@ -57,6 +65,9 @@
 			<button type="button" class="artifact-tool-btn annot-send-clear" onclick={() => (confirmClear = true)} disabled={sending}>{t.stream.annotationClear}</button>
 		{/if}
 	</div>
+	{#if capped}
+		<p class="annot-send-cap text-11 m-0" data-annotation-send-cap>{t.stream.annotationSendCapped(ANNOTATION_BATCH_MAX)}</p>
+	{/if}
 	{#if error}
 		<p class="annot-send-error text-11 m-0">{error}</p>
 	{/if}
@@ -106,6 +117,9 @@
 	}
 	.annot-send-clear.is-danger {
 		color: var(--danger);
+	}
+	.annot-send-cap {
+		color: var(--muted);
 	}
 	.annot-send-error {
 		color: var(--danger);

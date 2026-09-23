@@ -4,10 +4,12 @@
  * Bot↔Bot batch), and the send bar (summary, send, clear only after confirming).
  */
 import { expect, test } from "bun:test";
-import type { Annotation } from "@real-bot/protocol";
+import { flushSync } from "svelte";
+import { ANNOTATION_BATCH_MAX, ANNOTATION_BODY_MAX, type Annotation } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { buttonByText, click, fill, press, render } from "../test-render.ts";
 import AnnotationCards from "./AnnotationCards.svelte";
+import AnnotationComposer from "./AnnotationComposer.svelte";
 import AnnotationList from "./AnnotationList.svelte";
 import AnnotationSendBar from "./AnnotationSendBar.svelte";
 
@@ -155,7 +157,7 @@ test("a batch routed from a Bot↔Bot direct shows the way back; a read-only vie
   close();
 });
 
-test("the send bar sends the summary, and clears only after a confirm", () => {
+test("the send bar sends the summary, and clears only after a confirm", async () => {
   const calls: string[] = [];
   const { host, close } = render(AnnotationSendBar, {
     count: 3,
@@ -163,13 +165,19 @@ test("the send bar sends the summary, and clears only after a confirm", () => {
     sending: false,
     error: null,
     t,
-    onSend: (summary: string) => calls.push(`send:${summary}`),
+    onSend: async (summary: string) => {
+      calls.push(`send:${summary}`);
+      return true;
+    },
     onClear: () => calls.push("clear"),
   });
   expect(host.textContent).toContain("3 条批注待发送");
   expect(host.textContent).toContain("将发到你和 Writer 的私聊");
+  expect(host.querySelector("[data-annotation-send-cap]")).toBeNull();
   fill(host.querySelector("input"), "  三处都改一下 ");
   press(host.querySelector("input"), "Enter");
+  await Promise.resolve();
+  flushSync();
   expect((host.querySelector("input") as HTMLInputElement).value).toBe("");
   click(buttonByText(host, "清空"));
   expect(calls).toEqual(["send:三处都改一下"]);
@@ -180,4 +188,56 @@ test("the send bar sends the summary, and clears only after a confirm", () => {
   click(buttonByText(host, "发送批注"));
   expect(calls).toEqual(["send:三处都改一下", "clear", "send:"]);
   close();
+});
+
+test("a send that fails keeps the summary for the retry; only a send that went out clears it", async () => {
+  let ok = false;
+  const sent: string[] = [];
+  const { host, close } = render(AnnotationSendBar, {
+    count: 2,
+    destination: null,
+    sending: false,
+    error: null,
+    t,
+    onSend: async (summary: string) => {
+      sent.push(summary);
+      return ok;
+    },
+    onClear: () => {},
+  });
+  const input = () => host.querySelector("input") as HTMLInputElement;
+  fill(input(), "两处都改一下");
+  click(buttonByText(host, "发送批注"));
+  await Promise.resolve();
+  flushSync();
+  expect(sent).toEqual(["两处都改一下"]);
+  expect(input().value).toBe("两处都改一下");
+  ok = true;
+  press(input(), "Enter");
+  await Promise.resolve();
+  flushSync();
+  expect(sent).toEqual(["两处都改一下", "两处都改一下"]);
+  expect(input().value).toBe("");
+  close();
+});
+
+test("past the batch limit the bar says only the oldest go now", () => {
+  const view = (count: number) => render(AnnotationSendBar, { count, destination: null, sending: false, error: null, t, onSend: async () => true, onClear: () => {} });
+  const at = view(ANNOTATION_BATCH_MAX);
+  expect(at.host.querySelector("[data-annotation-send-cap]")).toBeNull();
+  at.close();
+  const over = view(ANNOTATION_BATCH_MAX + 1);
+  expect(over.host.querySelector("[data-annotation-send-cap]")?.textContent).toBe("一次最多发 50 条，这次先发最早的 50 条");
+  over.close();
+  expect(copyFor("en").stream.annotationSendCapped(ANNOTATION_BATCH_MAX)).toBe("At most 50 per batch — sending the oldest 50 now");
+});
+
+test("a remark is capped at the daemon's limit, in the composer and when editing a draft", () => {
+  const composer = render(AnnotationComposer, { t, position: "第 3 行", busy: false, error: null, onSave: () => {}, onCancel: () => {} });
+  expect(composer.host.querySelector("textarea")?.getAttribute("maxlength")).toBe(String(ANNOTATION_BODY_MAX));
+  composer.close();
+  const list = listHarness([row({ id: "d", status: "draft", message_id: null })]);
+  click(buttonByText(list.host, "编辑"));
+  expect(list.host.querySelector("textarea")?.getAttribute("maxlength")).toBe(String(ANNOTATION_BODY_MAX));
+  list.close();
 });

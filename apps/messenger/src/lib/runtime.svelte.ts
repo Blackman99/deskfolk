@@ -36,6 +36,7 @@ import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
 import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
+import { canonicalRelpath, mergeAnnotationRows } from "./annotations/model.ts";
 import { EventSync } from "./event-sync.ts";
 import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
@@ -166,6 +167,11 @@ export class MessengerRuntime {
   previewMessageId = $state<string | null>(null);
   /** The annotation a card or a row asked the preview to scroll to; cleared with the preview. */
   annotationFocusId = $state<string | null>(null);
+  /**
+   * The file each previewed path resolves to, as the daemon named it on the rows it returned for
+   * that path: how a preview recognises annotations made on another spelling of the same file.
+   */
+  annotationFileKeys = $state<Record<string, string>>({});
   forceArtifactTree = $state(false);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
@@ -289,6 +295,14 @@ export class MessengerRuntime {
   private sessionLoad = Promise.resolve();
   private sessionSeq = 0;
   private historyRevision = 0;
+  /**
+   * While an annotation list is on its way, the ids an event or a write's reply changed since, by
+   * a running count: the list was read before them, so for those rows the snapshot is the newer
+   * word. Only kept while a list is in flight.
+   */
+  private annotationWriteSeq = 0;
+  private readonly annotationWrites = new Map<string, number>();
+  private annotationLoads = 0;
   private profileNavigation = 0;
   private durablePending: DurablePendingRequest[] = [];
   private notificationIntentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
@@ -951,21 +965,53 @@ export class MessengerRuntime {
   async loadAnnotations(filter: AnnotationFilter & { target_session_id?: string }): Promise<void> {
     const api = this.api;
     if (!api) return;
+    const since = this.annotationWriteSeq;
+    this.annotationLoads++;
     try {
       const rows = await api.listAnnotations(filter);
       if (this.api !== api) return;
+      const fetched = new Set(rows.map((row) => row.id));
+      if (filter.relpath) {
+        const key = rows.find((row) => row.file_key)?.file_key;
+        if (key && this.annotationFileKeys[filter.relpath] !== key) this.annotationFileKeys = { ...this.annotationFileKeys, [filter.relpath]: key };
+      }
+      // The daemon folds a path filter (absolute, `./`, `//`) and also matches the file's resolved
+      // spelling, so a row it returned is in scope whatever this filter looked like, and the rest
+      // are compared folded the same way — else a reload would keep the old copy beside the new.
+      const wantPath = filter.relpath ? canonicalRelpath(filter.relpath, this.workspacePath || null) : null;
       const scoped = (row: Annotation): boolean =>
-        (!filter.relpath || row.relpath === filter.relpath) &&
+        (!filter.relpath || fetched.has(row.id) || row.relpath === filter.relpath || canonicalRelpath(row.relpath, this.workspacePath || null) === wantPath) &&
         (!filter.session_id || row.session_id === filter.session_id) &&
         (!filter.target_session_id || row.target_session_id === filter.target_session_id) &&
         (!filter.message_id || row.message_id === filter.message_id) &&
         (!filter.target_message_id || row.target_message_id === filter.target_message_id) &&
         (!filter.status || row.status === filter.status);
-      const kept = this.snapshot.annotations.filter((row) => !scoped(row));
-      this.snapshot = { ...this.snapshot, annotations: [...kept, ...rows] };
+      // What the filter covers is replaced (a draft deleted elsewhere is gone), but a row an event
+      // or a write's reply touched while the list was on its way stays as it left it: one created
+      // after the read is kept, one deleted after it is not brought back, and an updated one keeps
+      // the newer copy.
+      const touched = (id: string): boolean => (this.annotationWrites.get(id) ?? 0) > since;
+      const current = this.snapshot.annotations;
+      const held = new Set(current.map((row) => row.id));
+      const kept = current.filter((row) => !scoped(row) && !fetched.has(row.id));
+      const inScope = current.filter(scoped);
+      const merged = mergeAnnotationRows(
+        inScope.filter((row) => fetched.has(row.id) || touched(row.id)),
+        rows.filter((row) => held.has(row.id) || !touched(row.id)),
+        "replace",
+      );
+      // One row per id, whatever else went wrong: every keyed list over annotations relies on it.
+      this.snapshot = { ...this.snapshot, annotations: mergeAnnotationRows(kept, merged, "replace") };
     } catch {
       // Keep what is on screen.
+    } finally {
+      if (--this.annotationLoads === 0) this.annotationWrites.clear();
     }
+  }
+
+  /** An event or a write's reply changed (or removed) this row; see {@link annotationWrites}. */
+  private noteAnnotationWrite(id: string): void {
+    if (this.annotationLoads > 0) this.annotationWrites.set(id, ++this.annotationWriteSeq);
   }
 
   async createAnnotation(input: CreateAnnotationRequest): Promise<ApiError | null> {
@@ -975,7 +1021,8 @@ export class MessengerRuntime {
       const row = await api.createAnnotation(input);
       if (this.api !== api) return null;
       // The event follows; showing the draft now spares the pane a flicker.
-      this.snapshot = { ...this.snapshot, annotations: [...this.snapshot.annotations.filter((a) => a.id !== row.id), row] };
+      this.snapshot = { ...this.snapshot, annotations: mergeAnnotationRows(this.snapshot.annotations, [row]) };
+      this.noteAnnotationWrite(row.id);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -988,7 +1035,10 @@ export class MessengerRuntime {
     try {
       const row = await api.patchAnnotation(id, patch);
       if (this.api !== api) return null;
-      this.snapshot = { ...this.snapshot, annotations: this.snapshot.annotations.map((a) => (a.id === row.id ? row : a)) };
+      if (this.snapshot.annotations.some((a) => a.id === row.id)) {
+        this.snapshot = { ...this.snapshot, annotations: mergeAnnotationRows(this.snapshot.annotations, [row]) };
+        this.noteAnnotationWrite(row.id);
+      }
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -1002,6 +1052,7 @@ export class MessengerRuntime {
       await api.deleteAnnotation(id);
       if (this.api !== api) return null;
       this.snapshot = { ...this.snapshot, annotations: this.snapshot.annotations.filter((a) => a.id !== id) };
+      this.noteAnnotationWrite(id);
       if (this.annotationFocusId === id) this.annotationFocusId = null;
       return null;
     } catch (error) {
@@ -1020,11 +1071,13 @@ export class MessengerRuntime {
     try {
       const sent = await api.sendAnnotations({ session_id: sessionId, body: summary, annotation_ids: ids });
       if (this.api !== api) return null;
-      const byId = new Map(sent.annotations.map((row) => [row.id, row]));
+      // A quick Bot may have resolved the batch before this reply landed; its events are newer.
+      const held = new Set(this.snapshot.annotations.map((a) => a.id));
       this.snapshot = {
         ...this.snapshot,
-        annotations: this.snapshot.annotations.map((a) => byId.get(a.id) ?? a),
+        annotations: mergeAnnotationRows(this.snapshot.annotations, sent.annotations.filter((row) => held.has(row.id))),
       };
+      for (const row of sent.annotations) if (held.has(row.id)) this.noteAnnotationWrite(row.id);
       this.annotationFocusId = null;
       if (sent.message.session_id === this.selectedId) {
         this.pendingFocusTrigger = sent.message.id;
@@ -2871,6 +2924,7 @@ export class MessengerRuntime {
     }
     let next = applyEvent(this.snapshot, event);
     this.snapshot = next;
+    if (event.event === "annotation.upsert" || event.event === "annotation.removed") this.noteAnnotationWrite(event.id);
     if (event.event === "notification.upsert") {
       this.notificationInboxState = upsertInboxItem(this.notificationInboxState, event as unknown as NotificationItem);
       this.syncAppBadge();

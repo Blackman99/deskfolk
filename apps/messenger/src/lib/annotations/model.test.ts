@@ -6,16 +6,19 @@ import {
   annotateGate,
   annotationsByMessage,
   annotationsForFile,
+  canonicalRelpath,
   contentShaFromEtag,
   deliveryFor,
   destinationLabel,
   draftsForView,
   filterAnnotations,
   groupByDestination,
+  mergeAnnotationRows,
   positionLabel,
   resolverName,
   staleLabel,
   statusLabel,
+  targetFor,
   targetFromMessage,
 } from "./model.ts";
 
@@ -123,12 +126,77 @@ test("the target is the Bot message the preview was opened from, or the latest B
   expect(deliveryFor(messages, "report.md", { sessionId: null })).toBeNull();
 });
 
-test("the gate: text in source mode with a target and no unsaved edits", () => {
+test("the message the preview was opened from is the target only for a path it handed over itself", () => {
+  // Bot B delivered review.md; Bot A delivered draft.md earlier in the same job; you uploaded data.csv.
+  const byA = aMessage({ id: "m-a", kind: "bot", author: "bot-a", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:00:00.000Z", body: "初稿\n附件：work/draft.md" });
+  const upload = aMessage({ id: "m-me", kind: "user", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:01:00.000Z", attachments: [anAttachment({ message_id: "m-me", workspace_relpath: "work/data.csv" })] });
+  const byB = aMessage({ id: "m-b", kind: "bot", author: "bot-b", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:02:00.000Z", attachments: [anAttachment({ message_id: "m-b", workspace_relpath: "work/review.md" })] });
+  const messages = [byA, upload, byB];
+  const scope = { sessionId: "sess-1", taskId: "task-1" };
+  expect(targetFor(messages, "work/review.md", byB, scope)?.messageId).toBe("m-b");
+  // Walked to draft.md in the tree while the preview still hangs on B's message: it goes to A.
+  expect(targetFor(messages, "work/draft.md", byB, scope)).toEqual({ messageId: "m-a", sessionId: "sess-1", turnId: null, botId: "bot-a" });
+  // Your own upload was handed over by no Bot: nothing to hang it on.
+  expect(targetFor(messages, "work/data.csv", byB, scope)).toBeNull();
+  expect(targetFor(messages, "work/data.csv", upload, scope)).toBeNull();
+  // No message it was opened from (the workspace explorer): the latest delivery.
+  expect(targetFor(messages, "work/review.md", undefined, scope)?.messageId).toBe("m-b");
+});
+
+test("the gate picks the adapter for the view, needs a target, and refuses unsaved text", () => {
   const target = { messageId: "m1", sessionId: "s1", turnId: null, botId: "bot-1" };
-  expect(annotateGate({ target, kind: "text", sourceMode: true, dirty: false })).toEqual({ ok: true });
-  expect(annotateGate({ target, kind: "markdown", sourceMode: true, dirty: false })).toEqual({ ok: true });
-  expect(annotateGate({ target, kind: "markdown", sourceMode: false, dirty: false })).toEqual({ ok: false, reason: "kind" });
-  expect(annotateGate({ target, kind: "image", sourceMode: false, dirty: false })).toEqual({ ok: false, reason: "kind" });
+  expect(annotateGate({ target, kind: "text", sourceMode: true, dirty: false })).toEqual({ ok: true, adapter: "text" });
+  expect(annotateGate({ target, kind: "markdown", sourceMode: true, dirty: false })).toEqual({ ok: true, adapter: "text" });
+  expect(annotateGate({ target, kind: "markdown", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "markdown" });
+  expect(annotateGate({ target, kind: "html", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "html" });
+  expect(annotateGate({ target, kind: "image", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "image" });
+  expect(annotateGate({ target, kind: "svg", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "image" });
+  expect(annotateGate({ target, kind: "pdf", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "pdf" });
+  expect(annotateGate({ target, kind: "video", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "media" });
+  expect(annotateGate({ target, kind: "directory", sourceMode: false, dirty: false })).toEqual({ ok: false, reason: "kind" });
   expect(annotateGate({ target: null, kind: "text", sourceMode: true, dirty: false })).toEqual({ ok: false, reason: "no-target" });
   expect(annotateGate({ target, kind: "text", sourceMode: true, dirty: true })).toEqual({ ok: false, reason: "dirty" });
+  expect(annotateGate({ target, kind: "markdown", sourceMode: false, dirty: true })).toEqual({ ok: false, reason: "dirty" });
+  // An image has no editor to be dirty in.
+  expect(annotateGate({ target, kind: "image", sourceMode: false, dirty: true })).toEqual({ ok: true, adapter: "image" });
+});
+
+test("a reply that lands after newer events does not paint over them; a fresh read wins a tie", () => {
+  const sent = row({ id: "a", status: "open", updated_at: "2026-09-23T00:00:01.000Z" });
+  const resolved = row({ id: "a", status: "resolved", resolved_by: "bot-1", updated_at: "2026-09-23T00:00:02.000Z" });
+  const other = row({ id: "b" });
+  expect(mergeAnnotationRows([resolved, other], [sent]).find((r) => r.id === "a")?.status).toBe("resolved");
+  expect(mergeAnnotationRows([sent, other], [resolved]).find((r) => r.id === "a")?.status).toBe("resolved");
+  // Same instant: a write's own reply is the event's twin, a read carries the freshly computed stale.
+  const twin = { ...resolved, status: "open" as const };
+  expect(mergeAnnotationRows([resolved], [twin])[0]!.status).toBe("resolved");
+  const reread = { ...resolved, stale: { kind: "changed" as const } };
+  expect(mergeAnnotationRows([resolved], [reread], "replace")[0]!.stale).toEqual({ kind: "changed" });
+  // New rows are added; nothing is dropped.
+  expect(mergeAnnotationRows([other], [sent]).map((r) => r.id).sort()).toEqual(["a", "b"]);
+});
+
+test("a file's rows are found however the preview spelled its path", () => {
+  expect(canonicalRelpath("./deliveries//pick.ts")).toBe("deliveries/pick.ts");
+  expect(canonicalRelpath("deliveries/./pick.ts/")).toBe("deliveries/pick.ts");
+  expect(canonicalRelpath("/Users/you/ws/deliveries/pick.ts", "/Users/you/ws/")).toBe("deliveries/pick.ts");
+  expect(canonicalRelpath("/Users/you/wsx/pick.ts", "/Users/you/ws")).toBe("Users/you/wsx/pick.ts");
+  const rows = [row({ id: "a", relpath: "deliveries/pick.ts" }), row({ id: "b", relpath: "other.ts" })];
+  expect(annotationsForFile(rows, "./deliveries//pick.ts").map((r) => r.id)).toEqual(["a"]);
+  expect(annotationsForFile(rows, "/Users/you/ws/deliveries/pick.ts", "/Users/you/ws").map((r) => r.id)).toEqual(["a"]);
+});
+
+test("a preview shows the rows on its own spelling and, by the resolved file, those on any other", () => {
+  const rows = [
+    row({ id: "own", relpath: "docs/r.ts", file_key: "docs/r.ts" }),
+    row({ id: "link", relpath: "linked/r.ts", file_key: "docs/r.ts" }),
+    row({ id: "other", relpath: "docs/other.ts", file_key: "docs/other.ts" }),
+    row({ id: "dots", relpath: "linked/../r.ts", file_key: "x/r.ts" }),
+  ];
+  expect(annotationsForFile(rows, "docs/r.ts").map((r) => r.id).sort()).toEqual(["link", "own"]);
+  // The key the daemon named for this path also works when this spelling has no rows of its own.
+  expect(annotationsForFile(rows, "~/ws/docs/r.ts", null, "docs/r.ts").map((r) => r.id).sort()).toEqual(["link", "own"]);
+  // `..` is not folded here: through a link it can name another file.
+  expect(canonicalRelpath("linked/../r.ts")).toBe("linked/../r.ts");
+  expect(annotationsForFile(rows, "r.ts").map((r) => r.id)).toEqual([]);
 });

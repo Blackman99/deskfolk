@@ -44,8 +44,8 @@ export function createTurn(
     sessionId: input.sessionId,
     trigger,
     newTask: input.newTask,
-    // A batch of annotations continues the job that delivered the artifact.
-    taskId: annotationTaskOfMessage(ctx, trigger.id),
+    // A batch of annotations continues the job that delivered this Bot's artifact.
+    taskId: annotationTaskOfMessage(ctx, trigger.id, input.botId),
   });
   ctx.db.transaction(() => {
     ctx.db.run(

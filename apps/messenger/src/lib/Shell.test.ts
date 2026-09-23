@@ -681,3 +681,41 @@ test('the file tree lists what the message handed over, not just what the job re
   // `1/3` out of the prose is not among them: the context menu may guess, a file tree may not.
   expect(files).toEqual(['plan.md', 'C01_END.png', 'C01_START.png']);
 });
+
+/**
+ * The tree keeps the message the preview was opened from while you walk to other files. A file
+ * that message never handed over hangs on whichever Bot message did — and on none, when no Bot did.
+ */
+test('a file walked to in the tree hangs on the message that handed it over, not the one the pane was opened from', async () => {
+  const session = aGroup({ id: 'g1', name: 'Team' });
+  const byA = aMessage({ id: 'm-a', session_id: session.id, kind: 'bot', author: 'bot-a', task_id: 'task-1', created_at: '2026-09-23T00:00:00.000Z', body: '初稿\n附件：work/draft.txt' });
+  const upload = aMessage({ id: 'm-me', session_id: session.id, task_id: 'task-1', created_at: '2026-09-23T00:01:00.000Z', attachments: [anAttachment({ id: 'att-csv', message_id: 'm-me', workspace_relpath: 'work/notes.txt', original_filename: 'notes.txt', mime: 'text/plain' })] });
+  const byB = aMessage({ id: 'm-b', session_id: session.id, kind: 'bot', author: 'bot-b', task_id: 'task-1', created_at: '2026-09-23T00:02:00.000Z', attachments: [anAttachment({ id: 'att-review', message_id: 'm-b', workspace_relpath: 'work/review.txt', original_filename: 'review.txt', mime: 'text/plain' })] });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: 'bot-a', name: 'Alpha' }), aBot({ id: 'bot-b', name: 'Beta' })], sessions: [session], messages: [byA, upload, byB],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id, previewRelpath: 'work/review.txt', previewMessageId: 'm-b' }));
+  runtime.client = {
+    kind: 'local',
+    taskArtifacts: async () => ({ id: 'task-1', dir: 'work', title: 'review', closed_at: null, items: [] }),
+    getWorkspaceFileBlob: async () => new Blob(['text'], { type: 'text/plain' }),
+    getAttachmentBlob: async () => new Blob(['text'], { type: 'text/plain' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  const hint = () => host.querySelector('[data-annotation-hint]')?.getAttribute('data-annotation-hint');
+  await settle();
+  await settle();
+  expect(hint()).toBe('');
+  // Your own upload, opened from the same tree: no Bot handed it over.
+  runtime.previewRelpath = 'work/notes.txt';
+  await settle();
+  await settle();
+  expect(runtime.previewMessageId).toBe('m-b');
+  expect(hint()).toBe('no-target');
+  // Alpha's file can be annotated: it goes to Alpha's message.
+  runtime.previewRelpath = 'work/draft.txt';
+  await settle();
+  await settle();
+  expect(hint()).toBe('');
+});

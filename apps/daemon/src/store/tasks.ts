@@ -468,12 +468,20 @@ export function resolveTurnTask(
 }
 
 /**
- * Put a job back in front: it stops being closed, and the session's other open job closes the
- * way it would when a new one opens — one open dir per session.
+ * Put a job back in front for a turn that continues it. In the job's own session it stops being
+ * closed, and that session's other open job closes the way it would when a new one opens — one
+ * open dir per session. A turn in another session (a batch on a routed Bot↔Bot delivery wakes a
+ * turn in your direct with that Bot) works in the job through its own task id and reopens nothing:
+ * the job's own session keeps joining whatever it joins now, and your job there stays open. A
+ * closed job only has its closing moved to now, so the tool-results sweep leaves the turn's files.
  */
 export function reopenTask(ctx: StoreContext, id: string, sessionId: string): void {
-  getTask(ctx, id);
+  const task = getTask(ctx, id);
   const now = isoNow();
+  if (task.session_id !== sessionId) {
+    if (task.closed_at) ctx.db.run(`UPDATE tasks SET closed_at = ? WHERE id = ?`, [now, id]);
+    return;
+  }
   ctx.db.transaction(() => {
     ctx.db.run(`UPDATE tasks SET closed_at = ? WHERE session_id = ? AND closed_at IS NULL AND id != ?`, [now, sessionId, id]);
     ctx.db.run(`UPDATE tasks SET closed_at = NULL WHERE id = ?`, [id]);

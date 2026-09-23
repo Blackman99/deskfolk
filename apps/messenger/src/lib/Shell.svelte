@@ -46,7 +46,7 @@
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
 	import { handedOverPaths } from './overlays/artifacts.ts';
 	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
-	import { deliveryFor, targetFromMessage } from './annotations/model.ts';
+	import { targetFor } from './annotations/model.ts';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
 		clampPreviewWidth,
@@ -718,7 +718,7 @@
 				relpath: attachment.workspace_relpath,
 				attachment,
 				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
-				target: targetFromMessage(owner) ?? targetFromMessage(deliveryFor(snapshot.messages, attachment.workspace_relpath, { sessionId: runtime.selectedId })),
+				target: targetFor(snapshot.messages, attachment.workspace_relpath, owner, { sessionId: runtime.selectedId }),
 			};
 		}
 		const relpath = runtime.previewRelpath;
@@ -734,11 +734,10 @@
 			forceTree: runtime.forceArtifactTree,
 			// The entry opens the job's tree, not just this message's; older messages have none.
 			taskId: owner?.task_id ?? null,
-			// 挂到谁：the message this was opened from, else the latest Bot message in this
-			// conversation that handed the path over — in this job first.
-			target:
-				targetFromMessage(owner) ??
-				targetFromMessage(deliveryFor(snapshot.messages, relpath, { sessionId: runtime.selectedId, taskId: owner?.task_id ?? null }))
+			// 挂到谁：the message this was opened from when it handed this very path over — the tree
+			// keeps that message while you walk to other files — else the latest Bot message in this
+			// conversation that did, in this job first.
+			target: targetFor(snapshot.messages, relpath, owner, { sessionId: runtime.selectedId, taskId: owner?.task_id ?? null })
 		};
 	});
 
@@ -1214,6 +1213,7 @@
 			target={artifactPreview.target}
 			annotations={snapshot.annotations}
 			annotationFocusId={runtime.annotationFocusId}
+			annotationFileKey={runtime.annotationFileKeys[artifactPreview.relpath] ?? null}
 			bots={botsById}
 			{locale}
 			sessions={snapshot.sessions}

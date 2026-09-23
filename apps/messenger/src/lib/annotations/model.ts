@@ -38,16 +38,61 @@ export function effectiveLines(row: Annotation): { start_line: number; end_line:
   return { start_line: anchor.start_line, end_line: anchor.end_line };
 }
 
-/** One file's annotations in reading order: by position for text, by time for the rest. */
-export function annotationsForFile(rows: readonly Annotation[], relpath: string): Annotation[] {
+/**
+ * A cited path with the spelling noise taken off — the workspace prefix of an absolute path,
+ * `./`, doubled and trailing slashes — so two spellings of the same place compare equal. `..` is
+ * left alone: through a symlink it can name another file, and only the daemon knows which
+ * (`file_key`).
+ */
+export function canonicalRelpath(path: string, workspacePath: string | null = null): string {
+  let p = path.trim();
+  const root = workspacePath?.trim().replace(/\/+$/, "");
+  if (root && (p === root || p.startsWith(`${root}/`))) p = p.slice(root.length);
+  return p
+    .split("/")
+    .filter((part) => part && part !== ".")
+    .join("/");
+}
+
+/**
+ * One file's annotations in reading order: by position for text, by time for the rest. The rows
+ * made on this spelling of its path, and — by the file the daemon resolved them to — the ones
+ * made on any other spelling of the same file.
+ */
+export function annotationsForFile(
+  rows: readonly Annotation[],
+  relpath: string,
+  workspacePath: string | null = null,
+  fileKey: string | null = null,
+): Annotation[] {
+  const want = canonicalRelpath(relpath, workspacePath);
+  const own = (row: Annotation): boolean => row.relpath === relpath || canonicalRelpath(row.relpath, workspacePath) === want;
+  const key = fileKey ?? rows.find((row) => own(row) && row.file_key)?.file_key ?? null;
   return rows
-    .filter((row) => row.relpath === relpath)
+    .filter((row) => own(row) || (key !== null && row.file_key === key))
     .sort((a, b) => {
       const la = effectiveLines(a);
       const lb = effectiveLines(b);
       if (la && lb && la.start_line !== lb.start_line) return la.start_line - lb.start_line;
       return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1;
     });
+}
+
+/**
+ * Put rows a reply brought back into the list, unless the list already holds a newer copy: a
+ * reply can land after the events it raced (a fast Bot resolves a batch before the send returns),
+ * and the reply's `open` must not paint over the event's `resolved`. On a tie `onTie` decides — a
+ * write's own reply is the event's twin, so the list keeps its row; a fresh read carries `stale`,
+ * which no event refreshes, so the read wins.
+ */
+export function mergeAnnotationRows(list: readonly Annotation[], incoming: readonly Annotation[], onTie: "keep" | "replace" = "keep"): Annotation[] {
+  const next = new Map(list.map((row) => [row.id, row]));
+  for (const row of incoming) {
+    const current = next.get(row.id);
+    const newer = !current || row.updated_at > current.updated_at || (row.updated_at === current.updated_at && onTie === "replace");
+    if (newer) next.set(row.id, row);
+  }
+  return [...next.values()];
 }
 
 /** Rows keyed by the message that carries them, for the transcript's cards. */
@@ -145,7 +190,7 @@ export function deliveryFor(
     message.kind === "bot" &&
     message.author !== USER_MEMBER &&
     message.session_id === scope.sessionId &&
-    handedOverPaths(message.body ?? "", message.attachments.map((row) => row.workspace_relpath)).includes(relpath);
+    handsOver(message, relpath);
   const later = (a: Message, b: Message): number => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1);
   const citing = messages.filter(cites).sort(later);
   if (scope.taskId) {
@@ -155,15 +200,62 @@ export function deliveryFor(
   return citing.at(-1) ?? null;
 }
 
-export type AnnotateGate = { ok: true } | { ok: false; reason: "no-target" | "dirty" | "kind" };
+/** Whether a message handed this path over: attached it, or named it on an `附件：` line. */
+function handsOver(message: Message, relpath: string): boolean {
+  return handedOverPaths(message.body ?? "", message.attachments.map((row) => row.workspace_relpath)).includes(relpath);
+}
 
-/** Whether the preview on screen can take a new annotation, and if not, why. */
+/**
+ * 挂到谁，给预览上的这个路径：打开预览的那条消息自己交出了这个路径，就挂它；否则（在文件树里切到了
+ * 别的 Bot 交出的文件、你自己上传的文件）按 `deliveryFor` 找——同一会话里最近交出它的 Bot 消息，先找
+ * 那件事里的。没有哪条 Bot 消息交出过的文件没有去处。
+ */
+export function targetFor(
+  messages: readonly Message[],
+  relpath: string,
+  owner: Message | null | undefined,
+  scope: { sessionId: string | null; taskId?: string | null },
+): AnnotationTarget | null {
+  const own = owner && handsOver(owner, relpath) ? targetFromMessage(owner) : null;
+  return own ?? targetFromMessage(deliveryFor(messages, relpath, scope));
+}
+
+/** Which anchor adapter the view on screen uses; null for a kind nothing can be annotated on. */
+export type AnnotationAdapter = "text" | "markdown" | "image" | "pdf" | "html" | "media";
+
+export function adapterFor(kind: ArtifactKind, sourceMode: boolean): AnnotationAdapter | null {
+  if (kind === "text") return "text";
+  if (kind === "markdown") return sourceMode ? "text" : "markdown";
+  if (kind === "html") return sourceMode ? "text" : "html";
+  if (kind === "image" || kind === "svg") return "image";
+  if (kind === "pdf") return "pdf";
+  if (kind === "audio" || kind === "video") return "media";
+  return null;
+}
+
+/** The anchor kind each adapter writes. */
+export const ADAPTER_ANCHOR_KIND = {
+  text: "text_range",
+  markdown: "text_range",
+  image: "image_region",
+  pdf: "pdf_region",
+  html: "html_element",
+  media: "media_time",
+} as const satisfies Record<AnnotationAdapter, Annotation["anchor_kind"]>;
+
+export type AnnotateGate = { ok: true; adapter: AnnotationAdapter } | { ok: false; reason: "no-target" | "dirty" | "kind" };
+
+/**
+ * Whether the preview on screen can take a new annotation, and if not, why. Unsaved edits block
+ * every text-backed view: an anchor must point at text that is on disk.
+ */
 export function annotateGate(input: { target: AnnotationTarget | null; kind: ArtifactKind; sourceMode: boolean; dirty: boolean }): AnnotateGate {
-  const textLike = input.kind === "text" || ((input.kind === "markdown" || input.kind === "html") && input.sourceMode);
-  if (!textLike) return { ok: false, reason: "kind" };
+  const adapter = adapterFor(input.kind, input.sourceMode);
+  if (!adapter) return { ok: false, reason: "kind" };
   if (!input.target) return { ok: false, reason: "no-target" };
-  if (input.dirty) return { ok: false, reason: "dirty" };
-  return { ok: true };
+  const textBacked = input.kind === "text" || input.kind === "markdown" || input.kind === "html";
+  if (input.dirty && textBacked) return { ok: false, reason: "dirty" };
+  return { ok: true, adapter };
 }
 
 /** The label of a session for the send bar's "will be sent to" line. */

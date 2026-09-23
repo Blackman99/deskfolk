@@ -214,6 +214,7 @@ CREATE TABLE IF NOT EXISTS annotations (
   id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('draft', 'open', 'resolved')),
   relpath TEXT NOT NULL,
+  file_key TEXT,
   anchor_kind TEXT NOT NULL CHECK (anchor_kind IN ('text_range', 'image_region', 'pdf_region', 'html_element', 'media_time')),
   anchor TEXT NOT NULL,
   content_sha256 TEXT NOT NULL,

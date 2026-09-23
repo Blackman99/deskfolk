@@ -14,7 +14,7 @@
  *
  * Rules for a streamed turn, when nothing is queued:
  *   1. The last message is a tool result → a short closing reply.
- *   2. The trigger carries a batch of annotations (`[批注 i/n · id=…]` / `[Annotation i/n · id=…]`) →
+ *   2. The trigger carries a batch of annotations (`[批注 i/n · id=… · 给 Writer]` / `[Annotation i/n · id=… · for Writer]`, at the start of a line) →
  *      one `resolve_annotation` call per id, each with a note; then (rule 1) a closing reply.
  *   3. Otherwise → a plain acknowledgement quoting the first line of the trigger.
  */
@@ -53,7 +53,7 @@ function decide(messages: ChatMessage[]): Scripted {
     return { content: resolved > 0 ? `已按批注改好，逐条标成了已处理（${resolved} 条）。` : "好了。" };
   }
   const body = text(trigger(messages)?.content ?? "");
-  const ids = [...body.matchAll(/\[(?:批注|Annotation) \d+\/\d+ · id=([0-9A-HJKMNP-TV-Z]{26})\]/g)].map((m) => m[1]!);
+  const ids = [...body.matchAll(/^\[(?:批注|Annotation) \d+\/\d+ · id=([0-9A-HJKMNP-TV-Z]{26}) · /gm)].map((m) => m[1]!);
   if (ids.length > 0) {
     return {
       tool_calls: ids.map((id, i) => ({ name: "resolve_annotation", arguments: { id, note: `按第 ${i + 1} 条意见改了` } })),

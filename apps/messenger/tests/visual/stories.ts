@@ -3,6 +3,7 @@
  * this" and not "the database happened to contain that". No daemon, no WebSocket, no real rows.
  */
 import { flushSync, type Component } from 'svelte';
+import type { Annotation } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import type { RouteLogRow } from '../../src/lib/overlays/route-log.ts';
@@ -247,6 +248,83 @@ const previewAttachments = [
 	anAttachment({ id: 'att-2', workspace_relpath: 'outline/ep-12.md', original_filename: 'ep-12.md', mime: 'text/markdown' }),
 	anAttachment({ id: 'att-3', workspace_relpath: 'shots/board.mp4', original_filename: 'board.mp4', mime: 'video/mp4' })
 ];
+
+/** Annotations the preview and the transcript draw: one pending, one draft, one resolved and stale. */
+const annotationRow = (over: Record<string, unknown>): Annotation => ({
+	id: 'ann-1',
+	status: 'open',
+	relpath: 'shots/cover.png',
+	anchor_kind: 'image_region',
+	anchor: { x: 0.12, y: 0.18, w: 0.36, h: 0.3, natural_width: 64, natural_height: 64 },
+	content_sha256: '0'.repeat(64),
+	target_message_id: 'msg-2',
+	target_session_id: 'sess-1',
+	target_turn_id: 'turn-done',
+	bot_id: 'bot-1',
+	session_id: 'sess-1',
+	message_id: 'msg-4',
+	body: '左上这块颜色太跳，压暗一点。',
+	crop_mime: 'image/png',
+	resolved_by: null,
+	resolved_note: null,
+	resolved_at: null,
+	created_at: '2026-09-19T02:01:00.000Z',
+	updated_at: '2026-09-19T02:01:00.000Z',
+	stale: null,
+	...over
+}) as Annotation;
+
+const previewAnnotations: Annotation[] = [
+	annotationRow({}),
+	annotationRow({ id: 'ann-2', status: 'draft', message_id: null, anchor: { x: 0.55, y: 0.52, w: 0.3, h: 0.28, natural_width: 64, natural_height: 64 }, body: '右下角的字换成白色。', created_at: '2026-09-19T02:02:00.000Z' }),
+	annotationRow({ id: 'ann-3', status: 'resolved', resolved_by: 'bot-1', resolved_note: '压暗了 20%', stale: { kind: 'changed' }, anchor: { x: 0.6, y: 0.08, w: 0.25, h: 0.2, natural_width: 64, natural_height: 64 }, body: '标题靠右一点。', created_at: '2026-09-19T02:03:00.000Z' })
+];
+
+const annotationPreviewProps = {
+	attachment: previewAttachments[0]!,
+	relpath: 'shots/cover.png',
+	siblings: previewAttachments,
+	api: previewApi,
+	workspacePath: '/Users/you/real-bot-workspace',
+	t,
+	onClose: () => {},
+	onSelect: () => {},
+	mode: 'cited',
+	target: { messageId: 'msg-2', sessionId: 'sess-1', turnId: 'turn-done', botId: 'bot-1' },
+	annotations: previewAnnotations,
+	bots: botsById,
+	locale: 'zh',
+	sessions,
+	viewedSessionId: 'sess-1',
+	onLoadAnnotations: () => {},
+	onCreateAnnotation: async () => null,
+	onPatchAnnotation: async () => null,
+	onDeleteAnnotation: async () => null,
+	onSendAnnotations: async () => null
+};
+
+/** The list column opens on the pane's own button, the way a person opens it. */
+const openAnnotationList = (host: HTMLElement) => {
+	host.querySelector<HTMLButtonElement>('[data-annotation-toggle]')?.click();
+	flushSync();
+};
+
+const annotatedWorld = {
+	...world,
+	messages: [
+		...messages,
+		aMessage({
+			id: 'msg-4',
+			parent_id: 'msg-2',
+			body: '@Researcher 两处请改',
+			created_at: '2026-09-19T02:04:00.000Z'
+		})
+	],
+	annotations: [
+		previewAnnotations[0]!,
+		annotationRow({ id: 'ann-4', relpath: 'outline/ep-12.md', anchor_kind: 'text_range', anchor: { start_line: 12, start_col: 1, end_line: 14, end_col: 8, quote: '第二个方向', prefix: '', suffix: '' }, crop_mime: null, body: '这一段展开写三句。', status: 'resolved', resolved_by: 'bot-1', resolved_note: '补了三句例子', stale: { kind: 'moved', start_line: 15, start_col: 1, end_line: 17, end_col: 8 } })
+	]
+};
 
 /** The settings modal keeps the open tab to itself, so the story clicks it like a person would. */
 const settingsTab = (index: number) => (host: HTMLElement) => {
@@ -568,6 +646,27 @@ const defs: Record<StoryName, Story> = {
 			onClose: () => {},
 			onSelect: () => {},
 			mode: 'cited'
+		}
+	},
+	'artifact-annotations': {
+		component: ArtifactPreview as never,
+		props: annotationPreviewProps,
+		afterMount: openAnnotationList
+	},
+	'artifact-annotations-narrow': {
+		component: ArtifactPreview as never,
+		props: annotationPreviewProps,
+		afterMount: openAnnotationList
+	},
+	'chat-stage-annotations': {
+		component: ChatStage as never,
+		props: {
+			runtime: fakeRuntime(annotatedWorld, { selectedId: 'sess-1' }),
+			t,
+			selected: group,
+			onOpenProfile: () => {},
+			onOpenArtifact: () => {},
+			onCreateBot: () => {}
 		}
 	},
 	'artifact-code': {

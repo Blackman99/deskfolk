@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ANNOTATION_QUOTE_MAX,
   annotationStale,
   clipQuote,
   describeAnchor,
@@ -88,6 +89,21 @@ describe("annotationStale", () => {
       end_line: 4,
       end_col: 12,
     });
+  });
+
+  test("an edit elsewhere that leaves the quote where it was is not stale", () => {
+    const anchor = textRangeFromSelection("abc def\nsecond line\n", { start_line: 1, start_col: 1, end_line: 1, end_col: 4 });
+    const own = { anchor_kind: "text_range" as const, anchor, content_sha256: "abc" };
+    expect(annotationStale(own, { exists: true, sha256: "def", text: "abc def\nsecond line\nappended\n" })).toBeNull();
+    // Same line is not enough: a different column did move.
+    expect(annotationStale(own, { exists: true, sha256: "def", text: "  abc def\nsecond line\n" })).toEqual({
+      kind: "moved",
+      start_line: 1,
+      start_col: 3,
+      end_line: 1,
+      end_col: 6,
+    });
+    expect(annotationStale(stored, { exists: true, sha256: "def", text: "zero\nfirst\nsecond line\nthird, now longer\n" })).toBeNull();
   });
 
   test("a deleted quote is changed", () => {
@@ -185,4 +201,77 @@ describe("formatMediaTime and clipQuote", () => {
     expect(clipped.startsWith("x".repeat(300))).toBe(true);
     expect(clipped.endsWith("…（已截断）")).toBe(true);
   });
+});
+
+test("a selection longer than the quote is judged by its whole span: edits outside leave it be, edits inside change it", () => {
+  const long = Array.from({ length: 60 }, (_, i) => `line ${i} ${"x".repeat(40)}`).join("\n");
+  const text = `head\n${long}\ntail\n`;
+  const lines = text.split("\n");
+  const range = { start_line: 2, start_col: 1, end_line: 51, end_col: lines[50]!.length + 1 };
+  const anchor = textRangeFromSelection(text, range);
+  expect([...anchor.quote].length).toBe(ANNOTATION_QUOTE_MAX);
+  expect(anchor.span_length).toBeGreaterThan(ANNOTATION_QUOTE_MAX);
+  expect(validateAnchor("text_range", anchor)).toMatchObject({ ok: true });
+  const annotation = { anchor_kind: "text_range" as const, anchor, content_sha256: "0".repeat(64) };
+  const now = (next: string) => annotationStale(annotation, { exists: true, sha256: "1".repeat(64), text: next });
+  // Edits after the range, even on the very next line, leave it where it was.
+  expect(now(`${text}more\n`)).toBeNull();
+  expect(now(text.replace("line 50 ", "line fifty "))).toBeNull();
+  // A line inside the unquoted tail rewritten to the same width, or the end cut off: changed.
+  expect(now(text.replace("line 45 xxxx", "line 45 yyyy"))).toEqual({ kind: "changed" });
+  expect(now(text.split("\n").slice(0, 40).join("\n"))).toEqual({ kind: "changed" });
+  // Two lines added above: moved by two lines, the same span.
+  expect(now(`a\nb\n${text}`)).toEqual({ kind: "moved", start_line: 4, start_col: 1, end_line: 53, end_col: range.end_col });
+  // Tampered fingerprints are refused.
+  expect(validateAnchor("text_range", { ...anchor, span_hash: "zz" })).toMatchObject({ ok: false });
+  expect(validateAnchor("text_range", { ...anchor, span_length: undefined })).toMatchObject({ ok: false });
+});
+
+test("a long selection is found past two hundred earlier copies of its head, and on the right one of two copies", () => {
+  const head = "trace ".repeat(400);
+  const entries = Array.from({ length: 260 }, (_, i) => `${head}\nentry ${i}\n`).join("");
+  const text = `start\n${entries}end\n`;
+  const lines = text.split("\n");
+  // The 250th entry's head and the line after it.
+  const startLine = 2 + 250 * 2;
+  const range = { start_line: startLine, start_col: 1, end_line: startLine + 1, end_col: lines[startLine]!.length + 1 };
+  const anchor = textRangeFromSelection(text, range);
+  expect(anchor.span_length).toBeDefined();
+  const annotation = { anchor_kind: "text_range" as const, anchor, content_sha256: "0".repeat(64) };
+  expect(annotationStale(annotation, { exists: true, sha256: "1".repeat(64), text: `${text}more\n` })).toBeNull();
+
+  // Two identical long sections: the note on the second stays on the second when lines move.
+  const block = Array.from({ length: 40 }, (_, i) => `row ${i} ${"y".repeat(60)}`).join("\n");
+  const doc = `# A\n${block}\n# B\n${block}\n# C\nend\n`;
+  const docLines = doc.split("\n");
+  const second = { start_line: 43, start_col: 1, end_line: 82, end_col: docLines[81]!.length + 1 };
+  const onSecond = textRangeFromSelection(doc, second);
+  expect(onSecond.span_length).toBeDefined();
+  const note = { anchor_kind: "text_range" as const, anchor: onSecond, content_sha256: "0".repeat(64) };
+  const pad = Array.from({ length: 50 }, (_, i) => `pad ${i}`).join("\n");
+  expect(annotationStale(note, { exists: true, sha256: "1".repeat(64), text: `${pad}\n${doc}` })).toMatchObject({ kind: "moved", start_line: 93 });
+  const between = doc.replace("# B\n", `${pad}\n# B\n`);
+  expect(annotationStale(note, { exists: true, sha256: "1".repeat(64), text: between })).toMatchObject({ kind: "moved", start_line: 93 });
+});
+
+test("a long selection in a file of one short thing repeated is judged quickly", () => {
+  const text = `values\n${"0\n".repeat(500_000)}0.5\n0.25\n`;
+  const lines = text.split("\n");
+  const last = lines.length - 1;
+  // The last 1600 lines: the head is two thousand characters of "0\n", found half a million times.
+  const range = { start_line: last - 1600, start_col: 1, end_line: last, end_col: lines[last - 1]!.length + 1 };
+  const anchor = textRangeFromSelection(text, range);
+  expect(anchor.span_length).toBeDefined();
+  const annotation = { anchor_kind: "text_range" as const, anchor, content_sha256: "0".repeat(64) };
+  const timed = (next: string) => {
+    const t0 = performance.now();
+    const result = annotationStale(annotation, { exists: true, sha256: "1".repeat(64), text: next });
+    return { result, ms: performance.now() - t0 };
+  };
+  const header = timed(text.replace("values", "numbers"));
+  expect(header.result).toBeNull();
+  const tail = timed(text.replace("0.25", "0.75"));
+  expect(tail.result).toEqual({ kind: "changed" });
+  expect(header.ms).toBeLessThan(1000);
+  expect(tail.ms).toBeLessThan(1000);
 });

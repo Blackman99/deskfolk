@@ -1,6 +1,10 @@
 /**
- * 批注在上下文窗里的样子：带批注的那条用户消息，在正文后面把每条批注按固定格式展开——路径、种类、
- * 位置、引文或裁图、意见——让 Bot 不用猜「这一段」是哪一段。裁图按栅格附件的同一套规则作为像素发给模型。
+ * 批注在上下文窗里的样子：带批注的那条用户消息，在正文后面把每条批注按固定格式展开——交给哪个 Bot、
+ * 路径、种类、位置、引文或裁图、意见——让 Bot 不用猜「这一段」是哪一段、这条归不归自己。裁图按栅格附件的
+ * 同一套规则作为像素发给模型。
+ *
+ * 这些行在用户那条消息里，里面的字段却有一半来自文件或页面（路径、选择器、元素文字、HTML、引文），
+ * 所以任何字段都不能自己起一行、冒充一条批注：单行字段把换行折成空格，多行字段的续行缩进到字段之下。
  */
 import {
   anchorKindLabel,
@@ -30,6 +34,7 @@ const COPY = {
     missing: "（文件不在了）",
     resolved: (by: string, note: string | null) => `已处理（${by}${note ? `：${note}` : ""}）`,
     user: "用户",
+    forBot: (name: string | null) => (name === null ? "给已删除的 Bot" : `给 ${name}`),
   },
   en: {
     tag: "Annotation",
@@ -44,22 +49,51 @@ const COPY = {
     missing: "(the file is gone)",
     resolved: (by: string, note: string | null) => `resolved (${by}${note ? `: ${note}` : ""})`,
     user: "the user",
+    forBot: (name: string | null) => (name === null ? "for a deleted Bot" : `for ${name}`),
   },
 } as const;
 
+/** Every break a model may read as a new line, not just `\n`. */
+const LINE_BREAK = /\r\n|[\n\r\v\f\u0085\u2028\u2029]/;
+const LINE_BREAKS = new RegExp(LINE_BREAK.source, "g");
+
+/** A field that must stay on its line (path, selector, element text, markup, names): breaks fold into one space. */
+export function oneLine(value: string): string {
+  return value
+    .split(LINE_BREAK)
+    .map((part) => part.trim())
+    .filter((part) => part !== "")
+    .join(" ");
+}
+
+/** A field that may run over several lines (quote, remark): each continuation sits under the field, never at a line's start. */
+export function indented(value: string): string {
+  return value.replace(LINE_BREAKS, "\n    ");
+}
+
+function oneLineElement(element: HtmlElementAnchor): HtmlElementAnchor {
+  return { ...element, selector: oneLine(element.selector), text: oneLine(element.text), outer_html: oneLine(element.outer_html) };
+}
+
 /**
  * The lines one annotation contributes, plus whether its crop should follow as an image.
- * @param index - 1-based position in the batch, for `[批注 2/3 · id=…]`.
+ * @param index - 1-based position in the batch, for `[批注 2/3 · id=… · 给 Beta]`.
+ * @param botName - A Bot's name, or null once it is deleted; names the Bot it was handed to and who resolved it.
  */
-export function annotationLines(annotation: Annotation, index: number, total: number, locale: Locale, resolverName: (id: string) => string): string[] {
+export function annotationLines(annotation: Annotation, index: number, total: number, locale: Locale, botName: (id: string) => string | null): string[] {
   const l = locale === "en" ? "en" : "zh";
   const c = COPY[l];
   const kind = anchorKindLabel(annotation.anchor_kind, l as AnnotationLocale);
+  const resolver = annotation.resolved_by === "user" ? c.user : annotation.resolved_by ? botName(annotation.resolved_by) ?? annotation.resolved_by : "?";
   const status = annotation.status === "resolved"
-    ? ` · ${c.resolved(annotation.resolved_by === "user" ? c.user : resolverName(annotation.resolved_by ?? ""), annotation.resolved_note)}`
+    ? ` · ${c.resolved(oneLine(resolver), annotation.resolved_note === null ? null : oneLine(annotation.resolved_note))}`
     : "";
-  const lines = [`[${c.tag} ${index}/${total} · id=${annotation.id}] ${annotation.relpath} · ${kind}${status}`];
-  let where = describeAnchor(annotation.anchor_kind, annotation.anchor, l as AnnotationLocale);
+  // Which Bot the batch was handed to: in a group, one batch can carry annotations for several.
+  const owner = botName(annotation.bot_id);
+  const lines = [`[${c.tag} ${index}/${total} · id=${annotation.id} · ${c.forBot(owner === null ? null : oneLine(owner))}] ${oneLine(annotation.relpath)} · ${kind}${status}`];
+  // The selector, the text and the markup are the page's; the position line quotes the first two.
+  const element = annotation.anchor_kind === "html_element" ? oneLineElement(annotation.anchor as HtmlElementAnchor) : null;
+  let where = describeAnchor(annotation.anchor_kind, element ?? annotation.anchor, l as AnnotationLocale);
   const stale = annotation.stale;
   if (stale?.kind === "moved") {
     const moved = describeAnchor("text_range", { ...(annotation.anchor as TextRangeAnchor), start_line: stale.start_line, end_line: stale.end_line }, l as AnnotationLocale);
@@ -75,14 +109,13 @@ export function annotationLines(annotation: Annotation, index: number, total: nu
     : annotation.anchor_kind === "pdf_region"
       ? (annotation.anchor as PdfRegionAnchor).quote ?? ""
       : "";
-  if (quote.trim()) lines.push(`  ${c.quote}：${clipQuote(quote, undefined, l as AnnotationLocale).replace(/\n/g, "\n    ")}`);
-  if (annotation.anchor_kind === "html_element") {
+  if (quote.trim()) lines.push(`  ${c.quote}：${indented(clipQuote(quote, undefined, l as AnnotationLocale))}`);
+  if (element) {
     // No pixels cross the sandbox: the Bot gets the selector (in the position line), the text, and the markup.
-    const element = annotation.anchor as HtmlElementAnchor;
-    if (element.text.trim()) lines.push(`  ${c.element}：${element.text.trim()}`);
-    if (element.outer_html.trim()) lines.push(`  ${c.html}：${element.outer_html.trim().replace(/\s*\n\s*/g, " ")}`);
+    if (element.text) lines.push(`  ${c.element}：${element.text}`);
+    if (element.outer_html) lines.push(`  ${c.html}：${element.outer_html}`);
   }
-  lines.push(`  ${c.note}：${annotation.body}`);
+  lines.push(`  ${c.note}：${indented(annotation.body)}`);
   if (annotation.crop_mime) lines.push(`  ${c.crop}`);
   return lines;
 }
@@ -94,16 +127,14 @@ export function annotationLines(annotation: Annotation, index: number, total: nu
 export function annotationContext(store: Store, messageId: string, locale: Locale): { text: string; images: ChatContentPart[] } {
   const annotations = store.annotationsOfMessage(messageId);
   if (annotations.length === 0) return { text: "", images: [] };
-  const names = new Map<string, string>();
-  const resolverName = (id: string): string => {
-    if (!id) return "?";
-    const known = names.get(id);
-    if (known) return known;
-    let name = id;
+  const names = new Map<string, string | null>();
+  const botName = (id: string): string | null => {
+    if (names.has(id)) return names.get(id) ?? null;
+    let name: string | null = null;
     try {
       name = store.getBot(id).name;
     } catch {
-      // A deleted Bot keeps its id on the line.
+      // Deleted: the line says so (or keeps the resolver's id).
     }
     names.set(id, name);
     return name;
@@ -111,7 +142,7 @@ export function annotationContext(store: Store, messageId: string, locale: Local
   const blocks: string[] = [];
   const images: ChatContentPart[] = [];
   annotations.forEach((annotation, i) => {
-    blocks.push(annotationLines(annotation, i + 1, annotations.length, locale, resolverName).join("\n"));
+    blocks.push(annotationLines(annotation, i + 1, annotations.length, locale, botName).join("\n"));
     if (annotation.crop_mime) {
       const crop = store.annotationCrop(annotation.id);
       if (crop) images.push({ type: "image_url", image_url: { url: `data:${crop.mime};base64,${Buffer.from(crop.bytes).toString("base64")}` } });

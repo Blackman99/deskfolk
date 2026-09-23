@@ -17,6 +17,8 @@
 	} from './artifact-monaco.ts';
 	import { themeManager, type ResolvedTheme } from '../theme.ts';
 
+	type MonacoApi = typeof Monaco;
+
 	interface Props {
 		code: string;
 		path: string;
@@ -26,12 +28,21 @@
 		annotations?: Annotation[];
 		/** The one to scroll to and flash, when a card or a row was clicked. */
 		focusAnnotationId?: string | null;
+		/** Bumped on every request to go to `focusAnnotationId`: the one already focused is shown again. */
+		focusAnnotationSeq?: number;
+		/**
+		 * What is on disk. The buffer is unsaved whenever it differs from this — also right after the
+		 * editor is made from a buffer carried over from the rendered view. Left out, what it was made with.
+		 */
+		baseline?: string | null;
 		/** Whether a selection offers the annotate button, and what it says. */
 		annotateEnabled?: boolean;
 		annotateLabel?: string;
 		onAnnotate?: (range: EditorRange, text: string) => void;
 		/** A click on a drawn annotation. */
 		onPickAnnotation?: (id: string) => void;
+		/** Test seam: how Monaco is loaded; happy-dom cannot run the real one. */
+		loadMonaco?: () => Promise<MonacoApi>;
 	}
 
 	let {
@@ -41,10 +52,13 @@
 		onDirty,
 		annotations = [],
 		focusAnnotationId = null,
+		focusAnnotationSeq = 0,
+		baseline = null,
 		annotateEnabled = false,
 		annotateLabel = '',
 		onAnnotate,
 		onPickAnnotation,
+		loadMonaco = ensureMonaco,
 	}: Props = $props();
 	let host = $state<HTMLDivElement | undefined>(undefined);
 	let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
@@ -58,15 +72,24 @@
 	let annotateWidget: Monaco.editor.IContentWidget | null = null;
 	let annotateNode: HTMLButtonElement | null = null;
 	let widgetPosition: Monaco.IPosition | null = null;
+	let widgetShown = false;
 	/** The drawn ranges by annotation id, for a click to find which one it landed on. */
 	let drawn: Array<{ id: string; range: EditorRange }> = [];
+	/**
+	 * The annotation behind each margin mark, in the order the marks were set (every annotation
+	 * adds a highlight, then its mark): the marks move with edits, so a click asks Monaco where they are now.
+	 */
+	let markIds: string[] = [];
 
 	/** Scroll to one annotation and flash it. Idempotent for an id the file does not hold. */
 	export function revealAnnotation(id: string): void {
 		const view = editor;
 		if (!view) return;
 		const row = annotations.find((item) => item.id === id);
-		const range = row ? rangeForAnnotation(row, view.getValue()) : null;
+		// Where the highlight is now (Monaco carries it with edits), else where the anchor says.
+		const k = markIds.indexOf(id);
+		const live = k >= 0 ? decorations?.getRanges()[2 * k] : undefined;
+		const range = live ?? (row ? rangeForAnnotation(row, view.getValue()) : null);
 		if (!range) return;
 		view.revealRangeInCenterIfOutsideViewport(range);
 		flash?.set([{ range, options: { className: 'rb-annot-flash', isWholeLine: false } }]);
@@ -78,21 +101,18 @@
 		const text = view.getValue();
 		const next: Monaco.editor.IModelDeltaDecoration[] = [];
 		drawn = [];
+		markIds = [];
 		for (const row of rows) {
 			const range = rangeForAnnotation(row, text);
 			if (!range) continue;
 			drawn.push({ id: row.id, range });
 			const cls = decorationClass(row);
-			next.push({
-				range,
-				options: {
-					className: cls,
-					glyphMarginClassName: `rb-annot-glyph ${cls}`,
-					hoverMessage: { value: row.body },
-					glyphMarginHoverMessage: { value: row.body },
-					stickiness: 1,
-				},
-			});
+			next.push({ range, options: { className: cls, hoverMessage: { value: row.body }, stickiness: 1 } });
+			// One mark per annotation, at its first character: a range's own glyph repeats on every
+			// wrapped row of every line it covers.
+			const at = { startLineNumber: range.startLineNumber, startColumn: range.startColumn, endLineNumber: range.startLineNumber, endColumn: range.startColumn };
+			next.push({ range: at, options: { glyphMarginClassName: `rb-annot-glyph ${cls}`, glyphMarginHoverMessage: { value: row.body }, stickiness: 1 } });
+			markIds.push(row.id);
 		}
 		decorations?.set(next);
 	}
@@ -110,9 +130,10 @@
 	function showAnnotateButton(view: Monaco.editor.IStandaloneCodeEditor, at: Monaco.IPosition | null): void {
 		widgetPosition = at;
 		if (!annotateWidget) return;
-		if (at) view.layoutContentWidget(annotateWidget);
-		else view.removeContentWidget(annotateWidget);
-		if (at) view.addContentWidget(annotateWidget);
+		if (at && widgetShown) view.layoutContentWidget(annotateWidget);
+		else if (at) view.addContentWidget(annotateWidget);
+		else if (widgetShown) view.removeContentWidget(annotateWidget);
+		widgetShown = at !== null;
 	}
 
 	function currentRange(view: Monaco.editor.IStandaloneCodeEditor): EditorRange | null {
@@ -138,7 +159,8 @@
 
 	export function revert(value: string): void {
 		editor?.setValue(value);
-		markSaved(value);
+		// What the model holds after its line-ending folding, or a no-op edit would read as unsaved.
+		markSaved(editor?.getValue() ?? value);
 	}
 
 	export function openFind(): void {
@@ -183,7 +205,7 @@
 		let themeUnsub: (() => void) | null = null;
 		void (async () => {
 			try {
-				const monaco = await ensureMonaco();
+				const monaco = await loadMonaco();
 				if (cancelled || !el.isConnected) return;
 				const lang = monacoLanguageFromPath(file);
 				created = monaco.editor.create(el, {
@@ -192,7 +214,9 @@
 					theme: monacoThemeName(themeManager.resolved),
 					readOnly: false,
 					wordWrap: wrapOn ? 'on' : 'off',
-					glyphMargin: true,
+					// The column for annotation marks, only while the file has some: a file nobody
+					// annotated keeps its code where it always was.
+					glyphMargin: untrack(() => annotations.length > 0),
 					minimap: { enabled: false },
 					scrollBeyondLastLine: false,
 					fontSize: 12,
@@ -205,9 +229,19 @@
 					...MONACO_EDITOR_BASE_OPTIONS,
 				});
 				editor = created;
-				saved = doc;
-				dirty = false;
-				onDirty?.(false);
+				// Made from a buffer the rendered view carried over, it is as unsaved as it was there.
+				saved = untrack(() => baseline) ?? doc;
+				// Monaco folds mixed or lone-CR line endings when it builds the model: a clean buffer is
+				// measured against what the model holds, or it would read as edited before any edit; a
+				// carried one against the disk text folded the same way.
+				if (doc === saved) saved = created.getValue();
+				else if (typeof monaco.editor.createModel === 'function') {
+					const folded = monaco.editor.createModel(saved);
+					saved = folded.getValue();
+					folded.dispose();
+				}
+				dirty = created.getValue() !== saved;
+				onDirty?.(dirty);
 				created.layout();
 				sub = created.onDidChangeModelContent(() => {
 					const next = created?.getValue() ?? '';
@@ -254,9 +288,15 @@
 						view.setSelection(range);
 						return;
 					}
-					if ((type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN || type === monaco.editor.MouseTargetType.CONTENT_TEXT) && ev.target.position) {
-						const hit = annotationAt(ev.target.position);
-						if (hit) onPickAnnotation?.(hit);
+					// The mark in the margin opens its annotation; a click in the text is only a click in
+					// the text (placing the cursor must not scroll a long range back to its top).
+					if (type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN && ev.target.position) {
+						// A margin hit reports column 1; the mark sits on its range's first line — wherever
+						// edits since it was drawn have moved that line.
+						const line = ev.target.position.lineNumber;
+						const ranges = decorations?.getRanges() ?? [];
+						const k = markIds.findIndex((_, i) => ranges[2 * i + 1]?.startLineNumber === line);
+						if (k >= 0) onPickAnnotation?.(markIds[k]!);
 					}
 				});
 				editorReady += 1;
@@ -284,6 +324,7 @@
 			flash = null;
 			annotateWidget = null;
 			annotateNode = null;
+			widgetShown = false;
 			created?.dispose();
 			if (editor === created) editor = null;
 		};
@@ -310,6 +351,7 @@
 
 	$effect(() => {
 		const id = focusAnnotationId;
+		void focusAnnotationSeq;
 		const ready = editorReady;
 		if (!id || !ready) return;
 		// After the decorations for this batch of rows are on screen.
@@ -322,13 +364,22 @@
 	});
 
 	$effect(() => {
+		const marks = annotations.length > 0;
+		editor?.updateOptions({ glyphMargin: marks });
+	});
+
+	// A new `code` (the file read again) replaces a buffer with nothing unsaved in it. Only a new
+	// `code` runs this: `dirty` going false is the person's own edits matching the disk again.
+	$effect(() => {
 		const doc = code;
 		const view = editor;
-		if (!view || dirty) return;
+		if (!view || untrack(() => dirty)) return;
 		if (view.getValue() !== doc) {
 			view.setValue(doc);
-			saved = doc;
-			onDirty?.(false);
+			saved = untrack(() => baseline) ?? doc;
+			if (doc === saved) saved = view.getValue();
+			dirty = view.getValue() !== saved;
+			onDirty?.(dirty);
 		}
 	});
 </script>

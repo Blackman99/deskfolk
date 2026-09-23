@@ -503,6 +503,11 @@ function migrateAnnotations(db: Database): void {
   if (!cols.includes("annotation_source_message_id")) {
     db.run("ALTER TABLE messages ADD COLUMN annotation_source_message_id TEXT");
   }
+  // The file an annotation is on, symlinks and letter case resolved, beside the path as it was
+  // cited: the Bot's tools look files up resolved. A row without one matches on its relpath only.
+  const annotationCols = db.query<{ name: string }, []>("PRAGMA table_info(annotations)").all().map((row) => row.name);
+  if (!annotationCols.includes("file_key")) db.run("ALTER TABLE annotations ADD COLUMN file_key TEXT");
+  db.run("CREATE INDEX IF NOT EXISTS annotations_file_key ON annotations (file_key, status)");
 }
 
 function migrateBotThinkingPins(db: Database): void {

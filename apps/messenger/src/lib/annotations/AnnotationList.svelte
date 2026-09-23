@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Annotation } from '@real-bot/protocol';
+	import { ANNOTATION_BODY_MAX, type Annotation } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { filterAnnotations, positionLabel, resolverName, staleLabel, statusLabel, type AnnotationListFilter } from './model.ts';
 
@@ -94,7 +94,7 @@
 				{#if editingId === row.id}
 					<div class="annot-item-edit flex flex-col gap-4">
 						<!-- svelte-ignore a11y_autofocus -->
-						<textarea class="annot-textarea" rows="3" bind:value={editBody} autofocus onkeydown={(ev) => onEditKey(ev, row)}></textarea>
+						<textarea class="annot-textarea" rows="3" maxlength={ANNOTATION_BODY_MAX} bind:value={editBody} autofocus onkeydown={(ev) => onEditKey(ev, row)}></textarea>
 						<div class="flex gap-4">
 							<button type="button" class="artifact-tool-btn annot-btn" onclick={() => commitEdit(row)} disabled={busy || !editBody.trim()}>{t.stream.annotationSaveDraft}</button>
 							<button type="button" class="artifact-tool-btn annot-btn" onclick={() => (editingId = null)}>{t.stream.annotationCancel}</button>

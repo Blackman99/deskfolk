@@ -1,12 +1,20 @@
 <script lang="ts">
-	import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary, TaskArtifacts, TextRangeAnchor } from '@real-bot/protocol';
-	import { describeAnchor } from '@real-bot/protocol';
+	import type { AnchorOf, Annotation, AnnotationAnchor, AnnotationAnchorKind, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary, TaskArtifacts } from '@real-bot/protocol';
+	import type { EncodedCrop } from '../annotations/region-box.ts';
+	import { ANNOTATION_BATCH_MAX, describeAnchor } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { ApiError, etagForBlob } from '../api.ts';
 	import AnnotationList from '../annotations/AnnotationList.svelte';
 	import AnnotationSendBar from '../annotations/AnnotationSendBar.svelte';
 	import AnnotationComposer from '../annotations/AnnotationComposer.svelte';
+	import ImageAnnotator from '../annotations/ImageAnnotator.svelte';
+	import MarkdownAnnotator from '../annotations/MarkdownAnnotator.svelte';
+	import HtmlAnnotator from '../annotations/HtmlAnnotator.svelte';
+	import PdfViewer from './PdfViewer.svelte';
+	import MediaAnnotator from '../annotations/MediaAnnotator.svelte';
 	import {
+		ADAPTER_ANCHOR_KIND,
+		adapterFor,
 		annotateGate,
 		annotationsForFile,
 		contentShaFromEtag,
@@ -21,12 +29,7 @@
 		absWorkspacePath,
 		artifactByteSource,
 		artifactKind,
-		htmlPreviewBlob,
-		HTML_PREVIEW_SANDBOX,
-		injectHtmlPreviewColorScheme,
-		injectHtmlPreviewNonce,
 		isInAppPreviewKind,
-		pageCspNonce,
 		previewLoadKey,
 		stripSvgActiveContent,
 		svgDisplayBlob,
@@ -59,7 +62,7 @@
 		saveArtifactTreeWidth,
 	} from './artifact-tree-width.ts';
 	import { themeManager } from '../theme.ts';
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, untrack, type ComponentProps } from 'svelte';
 
 	interface Props {
 		attachment: Attachment | null;
@@ -80,6 +83,8 @@
 		/** Every annotation the runtime holds; the pane keeps this file's. */
 		annotations?: Annotation[];
 		annotationFocusId?: string | null;
+		/** The file this path resolves to, as the daemon names it; rows on other spellings of it show too. */
+		annotationFileKey?: string | null;
 		bots?: ReadonlyMap<string, { name: string }>;
 		locale?: 'zh' | 'en';
 		sessions?: SessionSummary[];
@@ -89,6 +94,8 @@
 		onPatchAnnotation?: (id: string, patch: PatchAnnotationRequest) => Promise<ApiError | null>;
 		onDeleteAnnotation?: (id: string) => Promise<ApiError | null>;
 		onSendAnnotations?: (sessionId: string, summary: string, ids: string[]) => Promise<ApiError | null>;
+		/** Test seam: how the source editor loads Monaco; happy-dom cannot run the real one. */
+		loadMonaco?: ComponentProps<typeof ArtifactCodeEditor>['loadMonaco'];
 	}
 
 	let {
@@ -107,6 +114,7 @@
 		target = null,
 		annotations = [],
 		annotationFocusId = null,
+		annotationFileKey = null,
 		bots = new Map(),
 		locale = 'zh',
 		sessions = [],
@@ -116,11 +124,11 @@
 		onPatchAnnotation,
 		onDeleteAnnotation,
 		onSendAnnotations,
+		loadMonaco,
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
 	let text = $state<string | null>(null);
-	let htmlSrc = $state<string | null>(null);
 	let missing = $state(false);
 	let loading = $state(false);
 	let progress = $state<FileProgress | null>(null);
@@ -132,7 +140,6 @@
 	let copied = $state(false);
 	let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 	let liveBlob: string | null = null;
-	let liveHtml: string | null = null;
 	let loadGen = 0;
 	/** The key of the bytes on screen; a repeat of it must not swap the object URL. */
 	let loadedKey: string | null = null;
@@ -150,17 +157,64 @@
 		closeFind: () => boolean;
 		revealAnnotation: (id: string) => void;
 	} | null>(null);
-	let dirty = $state(false);
+	/** What is on disk for a text-backed file, as loaded or last saved; null for any other kind. */
+	let diskText = $state<string | null>(null);
+	/** The source editor's word on its buffer, which it compares with `diskText`. */
+	let editorDirty = $state(false);
 	// Annotations: this file's rows, the list column, the composer for a new one, the send bar.
 	let annotOpen = $state(false);
 	let annotFocus = $state<string | null>(null);
-	let pendingAnchor = $state<{ range: EditorRange; anchor: TextRangeAnchor } | null>(null);
+	/**
+	 * Bumped on every request to go to `annotFocus` — a list row, a mark, a card — so asking for the
+	 * one that already has focus shows it again. Every adapter reveals when this changes.
+	 */
+	let annotFocusSeq = $state(0);
+	/**
+	 * The spot chosen and waiting for its remark: which kind, the anchor, and — for a region or a
+	 * frame — how to cut the crop when the draft is saved. The file's path and hash and the message
+	 * it hangs on are taken when the spot is picked: the anchor was read off that file.
+	 */
+	let pendingDraft = $state<{
+		kind: AnnotationAnchorKind;
+		anchor: AnnotationAnchor;
+		crop?: () => Promise<EncodedCrop | null>;
+		relpath: string;
+		sha: string | null;
+		target: AnnotationTarget;
+	} | null>(null);
+	/** Box and element kinds need a mode: the pointer draws instead of scrolling or clicking through. */
+	let annotMode = $state(false);
+	/** The file's scroller, and how far down the composer sits so it clears the view's own toolbar. */
+	let bodyEl = $state<HTMLElement | null>(null);
+	let composerTop = $state<number | null>(null);
 	let annotBusy = $state(false);
 	let annotError = $state<string | null>(null);
 	let sendBusy = $state(false);
 	let sendError = $state<string | null>(null);
-	const fileAnnotations = $derived(annotationsForFile(annotations, relpath));
+	const fileAnnotations = $derived(annotationsForFile(annotations, relpath, workspacePath, annotationFileKey));
 	const annotDrafts = $derived(groupByDestination(draftsForView(annotations, viewedSessionId)));
+	// The HTML picker's bar and the PDF toolbar hold controls the pending spot needs (外层 / 内层,
+	// pages, zoom): the composer goes under them instead of over them.
+	$effect(() => {
+		const body = bodyEl;
+		if (!pendingDraft || !body) {
+			composerTop = null;
+			return;
+		}
+		const measure = () => {
+			const top = body.getBoundingClientRect().top;
+			let bottom = 0;
+			for (const bar of body.querySelectorAll<HTMLElement>('[data-annotator-bar]')) {
+				bottom = Math.max(bottom, bar.getBoundingClientRect().bottom - top + body.scrollTop);
+			}
+			composerTop = bottom > 0 ? Math.round(bottom + 8) : null;
+		};
+		measure();
+		if (typeof ResizeObserver !== 'function') return;
+		const observer = new ResizeObserver(measure);
+		for (const bar of body.querySelectorAll('[data-annotator-bar]')) observer.observe(bar);
+		return () => observer.disconnect();
+	});
 	let annotLoadedPath: string | null = null;
 	$effect(() => {
 		const path = relpath;
@@ -173,44 +227,94 @@
 	$effect(() => {
 		const id = annotationFocusId;
 		if (!id) return;
-		annotFocus = id;
-		annotOpen = true;
-		untrack(() => editor?.revealAnnotation(id));
+		untrack(() => {
+			focusAnnotation(id);
+			annotOpen = true;
+		});
 	});
+	/** The file the composer and annotate mode belong to. */
+	let draftPath: string | null = null;
 	$effect(() => {
-		// A new file: the composer for the old one has nothing to hang on.
+		// A new file: the composer for the old one has nothing to hang on. The shell hands the path
+		// over off an object it rebuilds on every snapshot, so the same path again is no new file —
+		// letting go there threw away a remark half typed whenever any event came in.
 		const path = relpath;
-		void path;
-		pendingAnchor = null;
-		annotError = null;
+		if (path === draftPath) return;
+		draftPath = path;
+		untrack(() => {
+			pendingDraft = null;
+			annotMode = false;
+			annotError = null;
+		});
 	});
+
+	/** Go to an annotation: a request, so the one already focused is revealed and flashed again. */
+	function focusAnnotation(id: string): void {
+		annotFocus = id;
+		annotFocusSeq += 1;
+	}
 
 	function offerAnnotation(range: EditorRange, value: string): void {
 		if (!gate.ok) return;
-		pendingAnchor = { range, anchor: anchorFromSelection(value, range) };
+		offerDraft('text_range', anchorFromSelection(value, range));
+	}
+
+	/** Any adapter's chosen spot: the composer opens for it. */
+	function offerDraft(kind: AnnotationAnchorKind, anchor: AnnotationAnchor, crop?: () => Promise<EncodedCrop | null>): void {
+		if (!gate.ok || !target) return;
+		pendingDraft = { kind, anchor, crop, relpath, sha: contentSha, target };
 		annotError = null;
 	}
 
+	function cancelDraft(): void {
+		pendingDraft = null;
+		annotError = null;
+	}
+
+	/** Escape from an adapter: the spot waiting for its remark first, then annotate mode; then the pane's. */
+	function escapeAnnotation(): void {
+		if (pendingDraft) cancelDraft();
+		else annotMode = false;
+	}
+
 	async function saveDraft(body: string): Promise<void> {
-		const pending = pendingAnchor;
-		const sha = contentSha;
-		if (!pending || !target || !sha || !onCreateAnnotation) return;
+		const pending = pendingDraft;
+		if (!pending || !onCreateAnnotation) return;
+		const sha = pending.sha;
+		if (!sha) {
+			annotError = t.stream.annotationSaveFailed;
+			return;
+		}
+		// Saved, or edited and not saved, since the spot was picked: the anchor describes text that is
+		// no longer what is on disk, and the daemon would take it as fresh against the new hash.
+		if (sha !== contentSha || (!gate.ok && gate.reason === 'dirty')) {
+			annotError = t.stream.annotationFileChanged;
+			return;
+		}
 		annotBusy = true;
 		annotError = null;
+		// The crop is cut once, from what is on screen, when the draft is kept.
+		let crop: EncodedCrop | null = null;
+		try {
+			crop = (await pending.crop?.()) ?? null;
+		} catch {
+			crop = null;
+		}
 		const failed = await onCreateAnnotation({
-			target_message_id: target.messageId,
-			relpath,
-			anchor_kind: 'text_range',
+			target_message_id: pending.target.messageId,
+			relpath: pending.relpath,
+			anchor_kind: pending.kind,
 			anchor: pending.anchor,
 			content_sha256: sha,
 			body,
+			...(crop ? { crop } : {}),
 		});
 		annotBusy = false;
 		if (failed) {
 			annotError = t.stream.annotationSaveFailed;
 			return;
 		}
-		pendingAnchor = null;
+		pendingDraft = null;
 		annotOpen = true;
 	}
 
@@ -239,29 +343,56 @@
 	}
 
 	function revealAnnotation(row: Annotation): void {
-		annotFocus = row.id;
-		editor?.revealAnnotation(row.id);
+		focusAnnotation(row.id);
 	}
 
-	async function sendDrafts(sessionId: string, summary: string, ids: string[]): Promise<void> {
-		if (!onSendAnnotations) return;
+	/**
+	 * A click on a drawn mark: open the list on it. The mark is where the person is looking, so a
+	 * second click on the same one is not a new request to go there.
+	 */
+	function pickAnnotation(id: string): void {
+		if (annotFocus !== id) focusAnnotation(id);
+		annotOpen = true;
+	}
+
+	/**
+	 * A control that stands for an annotation away from its spot (the HTML bar's numbered chips):
+	 * every click is a request to go there, the same one again included.
+	 */
+	function goToAnnotation(id: string): void {
+		focusAnnotation(id);
+		annotOpen = true;
+	}
+
+	/** True once the batch went out; the send bar keeps its summary until then. */
+	async function sendDrafts(sessionId: string, summary: string, ids: string[]): Promise<boolean> {
+		if (!onSendAnnotations) return false;
 		sendBusy = true;
 		sendError = null;
 		const failed = await onSendAnnotations(sessionId, summary, ids);
 		sendBusy = false;
 		if (failed) sendError = t.stream.annotationSendFailed;
+		return !failed;
 	}
 
 	async function clearDrafts(ids: string[]): Promise<void> {
 		if (!onDeleteAnnotation) return;
 		sendBusy = true;
-		for (const id of ids) await onDeleteAnnotation(id);
+		sendError = null;
+		let failed = 0;
+		for (const id of ids) if (await onDeleteAnnotation(id)) failed += 1;
 		sendBusy = false;
+		if (failed) sendError = t.stream.annotationClearFailed;
 	}
 	let saving = $state(false);
 	let saveError = $state(false);
 	let saveConflict = $state(false);
 	let loadedEtag = $state<string | null>(null);
+	/** The PDF's bytes, for the pdf.js viewer. */
+	let pdfBlob = $state<Blob | null>(null);
+	let pdfViewer = $state<{ openFind: () => void; closeFind: () => boolean } | null>(null);
+	/** An SVG's source, kept so an image annotation can size a drawing that declares no size. */
+	let svgRaw = $state<string | null>(null);
 	const contentSha = $derived(contentShaFromEtag(loadedEtag));
 	let pendingNav = $state<null | { kind: 'close'; afterClose?: () => void } | { kind: 'node'; node: ArtifactTreeNode }>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
@@ -373,8 +504,33 @@
 		!remoteClient && Boolean(workspacePath) && Boolean(relpath) && kind !== 'directory' && !missing
 	);
 	let canRemoteFile = $derived(remoteClient && Boolean(relpath) && kind !== 'directory' && !missing);
-	let canSave = $derived(Boolean(api && relpath && canShowSource && sourceMode && text !== null));
+	// The rendered view can hold an unsaved buffer carried over from the source view; the dirty
+	// prompt's Save must be able to write it.
+	let canSave = $derived(Boolean(api && relpath && canShowSource && text !== null && (sourceMode || text !== diskText)));
+	/**
+	 * Unsaved: what is on screen differs from what is on disk — the editor's buffer in the source
+	 * view, the text the rendered view shows otherwise. Not the editor's flag alone: a new editor
+	 * made from a buffer the rendered view carried over used to start out clean.
+	 */
+	const dirty = $derived(
+		sourceMode && editor ? editorDirty : text !== null && diskText !== null && text !== diskText
+	);
 	const gate = $derived(annotateGate({ target: mode === 'workspace' ? null : target, kind, sourceMode, dirty }));
+	/** The adapter drawing this view's annotations, whether or not new ones can be made here. */
+	const viewAdapter = $derived(adapterFor(kind, sourceMode));
+	/** This view's rows of the kind its adapter draws; the list still shows every kind. */
+	const viewAnnotations = $derived(
+		viewAdapter ? fileAnnotations.filter((row) => row.anchor_kind === ADAPTER_ANCHOR_KIND[viewAdapter]) : []
+	);
+	/** Box and element kinds draw in a mode; text is selected, media has its own buttons. */
+	const needsMode = $derived(viewAdapter === 'image' || viewAdapter === 'pdf' || viewAdapter === 'html');
+	/** The pending anchor, handed back to the adapter that made it so it can keep drawing it. */
+	function pendingOf<K extends AnnotationAnchorKind>(k: K): AnchorOf<K> | null {
+		return pendingDraft && pendingDraft.kind === k ? (pendingDraft.anchor as AnchorOf<K>) : null;
+	}
+	function movePending(anchor: AnnotationAnchor): void {
+		if (pendingDraft) pendingDraft = { ...pendingDraft, anchor };
+	}
 
 	$effect(() => {
 		const path = relpath;
@@ -436,31 +592,11 @@
 		if (copiedTimer) clearTimeout(copiedTimer);
 	});
 
-	function publishHtml(raw: string, scheme: "light" | "dark" = resolvedTheme): void {
-		const next = URL.createObjectURL(
-			htmlPreviewBlob(
-				injectHtmlPreviewNonce(injectHtmlPreviewColorScheme(raw, scheme), pageCspNonce()),
-			),
-		);
-		if (liveHtml) URL.revokeObjectURL(liveHtml);
-		liveHtml = next;
-		htmlSrc = next;
-	}
-
-	$effect(() => {
-		const scheme = resolvedTheme;
-		const raw = text;
-		if (kind !== 'html' || raw == null) return;
-		publishHtml(raw, scheme);
-	});
-
 	function revoke(): void {
 		if (liveBlob) URL.revokeObjectURL(liveBlob);
-		if (liveHtml) URL.revokeObjectURL(liveHtml);
 		liveBlob = null;
-		liveHtml = null;
 		blobUrl = null;
-		htmlSrc = null;
+		pdfBlob = null;
 	}
 
 	async function loadWorkspaceDir(dirPath: string): Promise<void> {
@@ -503,6 +639,7 @@
 			loading = false;
 			revoke();
 			text = null;
+			diskText = null;
 			return;
 		}
 		loading = true;
@@ -528,29 +665,36 @@
 				const raw = await blob.text();
 				if (gen !== loadGen) return;
 				if (previewKind === 'svg') {
+					svgRaw = raw;
 					const next = URL.createObjectURL(await svgDisplayBlob(raw));
 					if (gen !== loadGen) return;
 					if (liveBlob) URL.revokeObjectURL(liveBlob);
 					liveBlob = next;
 					blobUrl = next;
 					text = null;
+					diskText = null;
 				} else {
 					text = raw;
+					diskText = raw;
 				}
 				return;
 			}
 			if (previewKind === 'html') {
 				const raw = await blob.text();
 				if (gen !== loadGen) return;
+				// The HTML view builds its own sandboxed blob from the text (and a picker, in annotate mode).
 				text = raw;
-				publishHtml(raw);
+				diskText = raw;
 				return;
 			}
 			const next = URL.createObjectURL(blob);
 			if (liveBlob) URL.revokeObjectURL(liveBlob);
 			liveBlob = next;
 			blobUrl = next;
+			// pdf.js reads the bytes, not a URL.
+			pdfBlob = previewKind === 'pdf' ? blob : null;
 			text = null;
+			diskText = null;
 		} catch {
 			if (gen !== loadGen) return;
 			loadedKey = null;
@@ -642,8 +786,9 @@
 			const value = editor?.getValue() ?? text ?? '';
 			loadedEtag = await api.putWorkspaceFile(relpath, value, loadedEtag);
 			text = value;
+			diskText = value;
 			editor?.markSaved(value);
-			dirty = false;
+			editorDirty = false;
 			return true;
 		} catch (error) {
 			saveConflict = error instanceof ApiError && error.status === 409;
@@ -671,8 +816,11 @@
 	function confirmDiscard(): void {
 		const nav = pendingNav;
 		pendingNav = null;
-		editor?.revert(text ?? '');
-		dirty = false;
+		// Back to the disk, not to `text`: that is the unsaved buffer when it came through the rendered view.
+		const disk = diskText ?? text ?? '';
+		text = disk;
+		editor?.revert(disk);
+		editorDirty = false;
 		if (nav?.kind === 'close') {
 			onClose();
 			nav.afterClose?.();
@@ -681,7 +829,7 @@
 	}
 
 	export function closeFind(): boolean {
-		return editor?.closeFind() ?? false;
+		return (editor?.closeFind() ?? false) || (pdfViewer?.closeFind() ?? false);
 	}
 
 	export function requestCloseFromParent(afterClose?: () => void): void {
@@ -734,6 +882,12 @@
 			ev.preventDefault();
 			ev.stopPropagation();
 			void save();
+			return;
+		}
+		if (!ev.shiftKey && key === 'f' && kind === 'pdf' && pdfViewer) {
+			ev.preventDefault();
+			ev.stopPropagation();
+			pdfViewer.openFind();
 			return;
 		}
 		if (!sourceMode || !editor) return;
@@ -809,7 +963,9 @@
 						class="artifact-tool-btn"
 						class:is-on={!showSource}
 						onclick={() => {
-							if (editor) text = editor.getValue();
+							// Only an edit is carried over: the model's own line-ending folding is not one. A
+							// buffer brought back to the disk by hand is the disk again, not the old carried edit.
+							if (editor) text = editor.isDirty() ? editor.getValue() : (diskText ?? text);
 							showSource = false;
 						}}
 					>{t.stream.artifactRendered}</button>
@@ -841,6 +997,19 @@
 					onclick={() => (annotOpen = !annotOpen)}
 					data-annotation-toggle
 				>{t.stream.annotationsTitle}{fileAnnotations.length > 0 ? ` (${fileAnnotations.length})` : ''}</button>
+			{/if}
+			{#if mode !== 'workspace' && needsMode && gate.ok}
+				<button
+					type="button"
+					class="artifact-tool-btn"
+					class:is-on={annotMode}
+					aria-pressed={annotMode}
+					onclick={() => {
+						annotMode = !annotMode;
+						if (!annotMode) cancelDraft();
+					}}
+					data-annotation-mode
+				>{annotMode ? t.stream.annotationModeExit : t.stream.annotationMode}</button>
 			{/if}
 			{#if canOpenOnDisk}
 				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(false)}>{t.stream.artifactOpenSystem}</button>
@@ -926,6 +1095,7 @@
 		{/if}
 		<div class="artifact-body-with-annots flex-1 min-h-0 min-w-0 flex" class:has-annots={annotOpen && mode !== 'workspace'}>
 		<div
+			bind:this={bodyEl}
 			class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8"
 			class:is-editor={sourceMode && text !== null}
 		>
@@ -966,40 +1136,102 @@
 					<ArtifactCodeEditor
 						bind:this={editor}
 						code={text}
+						baseline={diskText}
 						path={relpath}
 						{wrap}
-						onDirty={(next) => (dirty = next)}
+						onDirty={(next) => (editorDirty = next)}
 						annotations={fileAnnotations}
 						focusAnnotationId={annotFocus}
-						annotateEnabled={gate.ok && !pendingAnchor}
+						focusAnnotationSeq={annotFocusSeq}
+						annotateEnabled={gate.ok && gate.adapter === 'text' && !pendingDraft}
 						annotateLabel={t.stream.annotationAdd}
 						onAnnotate={offerAnnotation}
-						onPickAnnotation={(id) => { annotFocus = id; annotOpen = true; }}
+						onPickAnnotation={pickAnnotation}
+						{loadMonaco}
 					/>
 				{/if}
 			{:else if kind === "image" || kind === "svg"}
 				{#if blobUrl}
-					<img src={blobUrl} alt={relpath} class="artifact-img max-w-full max-h-full block my-0 mx-auto" />
+					<ImageAnnotator
+						src={blobUrl}
+						alt={relpath}
+						isSvg={kind === 'svg'}
+						svgText={svgRaw}
+						annotations={viewAnnotations}
+						focusId={annotFocus}
+						focusSeq={annotFocusSeq}
+						active={annotMode}
+						enabled={gate.ok && gate.adapter === 'image' && !pendingDraft}
+						labels={t.stream.annotImage}
+						onDraft={(draft) => offerDraft('image_region', draft.anchor, draft.crop)}
+						onPick={pickAnnotation}
+						pending={pendingOf('image_region')}
+						onPendingChange={movePending}
+						onCancel={escapeAnnotation}
+					/>
 				{/if}
-			{:else if kind === "audio" && blobUrl}
-				<audio controls src={blobUrl}></audio>
-			{:else if kind === "video" && blobUrl}
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<video controls src={blobUrl}></video>
-			{:else if kind === "pdf" && blobUrl}
-				<iframe title={relpath} class="artifact-frame" src={blobUrl}></iframe>
-			{:else if kind === "html" && htmlSrc}
-				<iframe
+			{:else if (kind === "audio" || kind === "video") && blobUrl}
+				<MediaAnnotator
+					src={blobUrl}
+					kind={kind}
+					annotations={viewAnnotations}
+					focusId={annotFocus}
+					focusSeq={annotFocusSeq}
+					enabled={gate.ok && gate.adapter === 'media' && !pendingDraft}
+					labels={t.stream.annotMedia}
+					onDraft={(draft) => offerDraft('media_time', draft.anchor, draft.crop)}
+					onPick={pickAnnotation}
+					pending={pendingOf('media_time')}
+					onPendingChange={movePending}
+					onCancel={escapeAnnotation}
+				/>
+			{:else if kind === "pdf" && pdfBlob}
+				<PdfViewer
+					bind:this={pdfViewer}
+					data={pdfBlob}
+					theme={resolvedTheme}
+					labels={t.stream.annotPdf}
+					annotations={viewAnnotations}
+					focusId={annotFocus}
+					focusSeq={annotFocusSeq}
+					active={annotMode}
+					enabled={gate.ok && gate.adapter === 'pdf' && !pendingDraft}
+					onDraft={(draft) => offerDraft('pdf_region', draft.anchor, draft.crop)}
+					onPick={pickAnnotation}
+					pending={pendingOf('pdf_region')}
+					onPendingChange={movePending}
+					onCancel={escapeAnnotation}
+				/>
+			{:else if kind === "html" && text !== null}
+				<HtmlAnnotator
+					html={text}
+					scheme={resolvedTheme}
 					title={relpath}
-					class="artifact-frame"
-					src={htmlSrc}
-					sandbox={HTML_PREVIEW_SANDBOX}
-					referrerpolicy="no-referrer"
-					style:color-scheme={resolvedTheme}
-				></iframe>
+					annotations={viewAnnotations}
+					focusId={annotFocus}
+					focusSeq={annotFocusSeq}
+					active={annotMode && gate.ok && gate.adapter === 'html'}
+					enabled={gate.ok && gate.adapter === 'html' && (!pendingDraft || pendingDraft.kind === 'html_element')}
+					labels={t.stream.annotHtml}
+					onDraft={(draft) => offerDraft('html_element', draft.anchor)}
+					onPick={goToAnnotation}
+					pending={pendingOf('html_element')}
+					onPendingChange={movePending}
+					onCancel={escapeAnnotation}
+				/>
 			{:else if kind === "markdown" && text !== null}
-				<MarkdownBody
+				<MarkdownAnnotator
 					source={text}
+					annotations={viewAnnotations}
+					focusId={annotFocus}
+					focusSeq={annotFocusSeq}
+					active={gate.ok && gate.adapter === 'markdown'}
+					enabled={gate.ok && gate.adapter === 'markdown' && !pendingDraft}
+					labels={t.stream.annotMarkdown}
+					onDraft={(draft) => offerDraft('text_range', draft.anchor)}
+					onPick={pickAnnotation}
+					pending={pendingOf('text_range')}
+					onCancel={escapeAnnotation}
 					copyLabel={t.chat.copyCode}
 					copiedLabel={t.chat.copied}
 					onOpenArtifact={openMarkdownPath}
@@ -1014,15 +1246,15 @@
 			{#if openHint}
 				<p class="muted">{t.stream.artifactOpenUnavailable}</p>
 			{/if}
-			{#if pendingAnchor}
-				<div class="artifact-annot-composer">
+			{#if pendingDraft}
+				<div class="artifact-annot-composer" style:top={composerTop === null ? undefined : `${composerTop}px`}>
 					<AnnotationComposer
 						{t}
-						position={describeAnchor('text_range', pendingAnchor.anchor, locale)}
+						position={describeAnchor(pendingDraft.kind, pendingDraft.anchor, locale)}
 						busy={annotBusy}
 						error={annotError}
 						onSave={(body) => void saveDraft(body)}
-						onCancel={() => (pendingAnchor = null)}
+						onCancel={cancelDraft}
 					/>
 				</div>
 			{/if}
@@ -1055,7 +1287,7 @@
 				sending={sendBusy}
 				error={sendError}
 				{t}
-				onSend={(summary) => void sendDrafts(group.sessionId, summary, group.drafts.map((row) => row.id))}
+				onSend={(summary) => sendDrafts(group.sessionId, summary, group.drafts.slice(0, ANNOTATION_BATCH_MAX).map((row) => row.id))}
 				onClear={() => void clearDrafts(group.drafts.map((row) => row.id))}
 			/>
 		{/each}
@@ -1145,6 +1377,11 @@
 		position: relative;
 	}
 
+	/* The list goes beside the file only when the pane itself is wide enough: beside the chat on a
+	 * desktop window the pane is often narrower than a phone. */
+	.artifact-pane-main {
+		container: artifact-main / inline-size;
+	}
 	.artifact-body-with-annots {
 		position: relative;
 	}
@@ -1154,6 +1391,20 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+	}
+	@container artifact-main (max-width: 720px) {
+		.artifact-body-with-annots {
+			flex-direction: column;
+		}
+		.artifact-body-with-annots.has-annots .artifact-pane-body {
+			flex: 1 1 55%;
+		}
+		.artifact-annot-col {
+			width: auto;
+			flex: 0 0 45%;
+			max-height: 45%;
+			border-top: 1px solid var(--line);
+		}
 	}
 	.artifact-annot-col :global(.annot-list) {
 		flex: 1;
@@ -1330,21 +1581,6 @@
 		border-color: transparent !important;
 	}
 
-	.artifact-frame {
-		width: 100%;
-		height: 100%;
-		min-height: 280px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-	}
-
-	.artifact-pane-body audio,
-	.artifact-pane-body video {
-		width: 100%;
-		max-height: 100%;
-	}
-
 @media (max-width: 680px) {
 		/*
 		 * On a phone this pane used to be dealt a second grid row under the composer, and then
@@ -1430,6 +1666,9 @@
 			display: block;
 		}
 
+		/* The main area is a block here (the tree floats over it), so the file and its list take
+		 * its height explicitly; left to their content they would run under the send bar. */
+		.artifact-body-with-annots,
 		.artifact-pane-body {
 			height: 100%;
 		}
@@ -1446,18 +1685,6 @@
 		/* Dragging a divider is a mouse idea. */
 		.artifact-tree-split {
 			display: none;
-		}
-		/* The list of annotations sits under the file, not beside it. */
-		.artifact-body-with-annots {
-			flex-direction: column;
-		}
-		.artifact-body-with-annots.has-annots .artifact-pane-body {
-			flex: 1 1 55%;
-		}
-		.artifact-annot-col {
-			width: auto;
-			flex: 0 0 45%;
-			max-height: 45%;
 		}
 		.artifact-annot-composer {
 			top: 8px;

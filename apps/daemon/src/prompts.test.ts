@@ -56,20 +56,27 @@ describe("prompts", () => {
   test("both locales tell the Bot to handle annotations one by one", () => {
     const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
     const zh = turnSystemPrompt({ ...profile, locale: "zh" });
-    for (const rule of ["用户会在你交出的产物上写批注", "改了的用 resolve_annotation 标成已处理并写一句怎么改的", "不同意或做不到的，在回复里说明原因、不要标已处理", "不要默默跳过", "list_annotations 查还没处理完的批注"]) {
+    for (const rule of ["用户会在你交出的产物上写批注", "改了的用 resolve_annotation 标成已处理并写一句怎么改的", "不同意或做不到的，在回复里说明原因、不要标已处理", "不要默默跳过", "list_annotations 查还没处理完的批注", "每条有 id、交给哪个 Bot、路径", "交给你的批注逐条处理", "交给别的 Bot 的留给那个 Bot：可以提一句", "交给已删除的 Bot 的没人接，归这条消息叫醒的你处理"]) {
       expect(zh).toContain(rule);
     }
     expect(zh.endsWith("区内。")).toBe(true);
     const en = turnSystemPrompt({ ...profile, locale: "en" });
-    for (const rule of ["The user annotates the artifacts you hand over", "call resolve_annotation with one sentence on what changed", "leave it pending", "never skip one silently", "list_annotations finds the ones still pending"]) {
+    for (const rule of ["The user annotates the artifacts you hand over", "call resolve_annotation with one sentence on what changed", "leave it pending", "never skip one silently", "list_annotations finds the ones still pending", "each with an id, the Bot it is for, a path", "Handle the ones for you one by one", "Leave the ones for another Bot to that Bot: you may mention them", "The ones for a deleted Bot have no one else to take them"]) {
       expect(en).toContain(rule);
     }
     const tools = builtinTools("zh");
     const list = tools.find((t) => t.function.name === "list_annotations")!;
     expect(list.function.description).toContain("默认列出这件事（当前工作目录、这个会话）里所有待处理的批注");
+    expect(list.function.description).toContain("for_bot（交给了哪个 Bot）");
+    expect(list.function.description).toContain("交给别的 Bot 的留给它，可以提一句");
+    expect(list.function.description).toContain("路径和 read_file 一样解析，工作区外的路径会报错");
     const resolve = tools.find((t) => t.function.name === "resolve_annotation")!;
     expect(resolve.function.parameters.required).toEqual(["id", "note"]);
     expect(resolve.function.description).toContain("不能重新打开、不能删、不能新建批注");
+    expect(resolve.function.description).toContain("只标交给你的批注（交给已删除的 Bot 的也算你的）；交给别的 Bot 的留给它");
+    const enTools = builtinTools("en");
+    expect(enTools.find((t) => t.function.name === "list_annotations")!.function.description).toContain("leave the ones for another Bot to that Bot (you may mention them)");
+    expect(enTools.find((t) => t.function.name === "resolve_annotation")!.function.description).toContain("Mark only the ones handed to you");
     expect(builtinTools("en").find((t) => t.function.name === "resolve_annotation")!.function.description).toContain("You cannot reopen, delete, or create annotations");
   });
 

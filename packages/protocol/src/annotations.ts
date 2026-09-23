@@ -37,6 +37,12 @@ export type TextRangeAnchor = {
   suffix: string;
   /** 在 Markdown 渲染态下加的：信使据此决定定位时切到哪个视图。 */
   view?: "rendered";
+  /**
+   * 选区长于引文上限时（引文只留了开头），整段选区的长度（UTF-16 单元，换行按 `\n`）和指纹
+   * （{@link spanHash}）：据此判断文件改动后这一段还在不在、有没有变，而不是只看开头。
+   */
+  span_length?: number;
+  span_hash?: string;
 };
 
 /** 图片框选：按原图尺寸归一化到 0–1。 */
@@ -93,8 +99,9 @@ export type AnchorOf<K extends AnnotationAnchorKind> = K extends "text_range"
         : MediaTimeAnchor;
 
 /**
- * 现算的陈旧状态：`null` 不陈旧；`missing` 文件不在了；`changed` 文件已变、位置可能不准；`moved`
- * 文件变了但按引文重新定位到了新的行区间（只用于显示，不改库里存的锚点）。
+ * 现算的陈旧状态：`null` 不陈旧（文件没变，或者变的是别处、引文还在原位）；`missing` 文件不在了；
+ * `changed` 文件已变、位置可能不准；`moved` 文件变了但按引文重新定位到了新的行区间（只用于显示，
+ * 不改库里存的锚点）。
  */
 export type AnnotationStale =
   | null
@@ -131,6 +138,11 @@ export type Annotation = {
   updated_at: string;
   /** `GET /v1/annotations` 每条都带上现算的陈旧状态。 */
   stale?: AnnotationStale;
+  /**
+   * 批注所在的文件：相对工作区、解析掉符号链接和大小写。`relpath` 是引用时的写法，同一个文件
+   * 换一种写法引用时靠它认出来。老数据可能没有。
+   */
+  file_key?: string | null;
 };
 
 export type CreateAnnotationRequest = {
@@ -206,6 +218,10 @@ export function validateAnchor(kind: string, anchor: unknown): AnchorCheck {
       if (!isText(anchor.prefix ?? "", ANNOTATION_AFFIX_MAX)) return { ok: false, reason: `prefix must be text up to ${ANNOTATION_AFFIX_MAX} characters` };
       if (!isText(anchor.suffix ?? "", ANNOTATION_AFFIX_MAX)) return { ok: false, reason: `suffix must be text up to ${ANNOTATION_AFFIX_MAX} characters` };
       if (anchor.view !== undefined && anchor.view !== "rendered") return { ok: false, reason: "view must be \"rendered\" when present" };
+      const hasSpan = anchor.span_length !== undefined || anchor.span_hash !== undefined;
+      if (hasSpan && (!isInt(anchor.span_length, 0) || typeof anchor.span_hash !== "string" || !/^[0-9a-f]{14}$/.test(anchor.span_hash))) {
+        return { ok: false, reason: "span_length and span_hash come together: a length and a 14-digit hex fingerprint" };
+      }
       const out: TextRangeAnchor = {
         start_line: a.start_line!,
         start_col: a.start_col!,
@@ -215,6 +231,7 @@ export function validateAnchor(kind: string, anchor: unknown): AnchorCheck {
         prefix: (anchor.prefix as string | undefined) ?? "",
         suffix: (anchor.suffix as string | undefined) ?? "",
         ...(anchor.view === "rendered" ? { view: "rendered" as const } : {}),
+        ...(hasSpan ? { span_length: anchor.span_length as number, span_hash: anchor.span_hash as string } : {}),
       };
       return { ok: true, anchor: out };
     }
@@ -291,7 +308,8 @@ export type CurrentContent = { exists: false } | { exists: true; sha256: string;
 
 /**
  * 现算陈旧状态。文件不存在 → `missing`；哈希一样 → 不陈旧；哈希变了、是 `text_range` 且给了内容
- * → 按「引文 + 前后缀」重新定位，找到了是 `moved`，找不到是 `changed`；其它种类哈希变了就是 `changed`。
+ * → 按「引文 + 前后缀」重新定位：落回原来的行列区间还是不陈旧（改的是文件别处），落到别处是 `moved`，
+ * 找不到是 `changed`；其它种类哈希变了就是 `changed`。
  */
 export function annotationStale(
   annotation: { anchor_kind: AnnotationAnchorKind; anchor: AnnotationAnchor; content_sha256: string },
@@ -300,8 +318,15 @@ export function annotationStale(
   if (!current.exists) return { kind: "missing" };
   if (current.sha256 === annotation.content_sha256) return null;
   if (annotation.anchor_kind === "text_range" && typeof current.text === "string") {
-    const moved = relocateTextRange(annotation.anchor as TextRangeAnchor, current.text);
-    return moved ? { kind: "moved", ...moved } : { kind: "changed" };
+    const anchor = annotation.anchor as TextRangeAnchor;
+    const moved = relocateTextRange(anchor, current.text);
+    if (!moved) return { kind: "changed" };
+    const unmoved =
+      moved.start_line === anchor.start_line &&
+      moved.start_col === anchor.start_col &&
+      moved.end_line === anchor.end_line &&
+      moved.end_col === anchor.end_col;
+    return unmoved ? null : { kind: "moved", ...moved };
   }
   return { kind: "changed" };
 }
@@ -321,16 +346,46 @@ function lineColAt(text: string, offset: number): LineCol {
   return { line, col: offset - lineStart + 1 };
 }
 
-function occurrences(haystack: string, needle: string): number[] {
+function occurrences(haystack: string, needle: string, cap = 200): number[] {
   const found: number[] = [];
   if (!needle) return found;
   let at = haystack.indexOf(needle);
   while (at >= 0) {
     found.push(at);
-    if (found.length > 200) break;
+    if (found.length > cap) break;
     at = haystack.indexOf(needle, at + 1);
   }
   return found;
+}
+
+/** 找长选区时最多看引文开头的这么多处，最多对排在前面的这么多处算整段指纹。 */
+const SPAN_HEADS_MAX = 5000;
+const SPAN_HASHES_MAX = 50;
+
+/** 1 起的行列 → 字符偏移；落在文本外时为 null。 */
+function offsetOf(text: string, line: number, col: number): number | null {
+  let offset = 0;
+  for (let l = 1; l < line; l += 1) {
+    const next = text.indexOf("\n", offset);
+    if (next < 0) return null;
+    offset = next + 1;
+  }
+  const end = text.indexOf("\n", offset);
+  if (col < 1 || col - 1 > (end < 0 ? text.length : end) - offset) return null;
+  return offset + col - 1;
+}
+
+/** 升序的偏移 → 各自所在的行号（1 起），一趟数完换行。 */
+function linesAt(text: string, offsets: readonly number[]): number[] {
+  const lines: number[] = [];
+  let line = 1;
+  let from = 0;
+  for (const at of offsets) {
+    for (let i = from; i < at; i += 1) if (text.charCodeAt(i) === 10) line += 1;
+    from = at;
+    lines.push(line);
+  }
+  return lines;
 }
 
 function affixScore(text: string, at: number, quoteLength: number, prefix: string, suffix: string): number {
@@ -369,6 +424,32 @@ export function relocateTextRange(
   if (!quote) return null;
   const prefix = anchor.prefix.replace(/\r\n/g, "\n");
   const suffix = anchor.suffix.replace(/\r\n/g, "\n");
+  if (anchor.span_length !== undefined && anchor.span_hash !== undefined) {
+    // The quote is only the head of a longer selection: the whole span decides. Every place the
+    // head occurs is a candidate, best first — the stored prefix and suffix (the suffix follows the
+    // whole span), then the nearest line — and the first one followed by the same span is the
+    // range (moved or not). None → it changed. Hashing stops at the first match, usually the first try.
+    const length = anchor.span_length;
+    const spanAt = (at: number): boolean => at + length <= normalized.length && spanHash(normalized.slice(at, at + length)) === anchor.span_hash;
+    // Where it was is where it usually still is: one hash settles an edit elsewhere.
+    const stored = offsetOf(normalized, anchor.start_line, anchor.start_col);
+    let hitAt: number | null = stored !== null && normalized.startsWith(quote, stored) && spanAt(stored) ? stored : null;
+    if (hitAt === null) {
+      // Bounded, for files of one short thing repeated: a few thousand places the head occurs, and
+      // the best-ranked few of them hashed.
+      const heads = occurrences(normalized, quote, SPAN_HEADS_MAX).filter((at) => at + length <= normalized.length);
+      const lines = linesAt(normalized, heads);
+      const ranked = heads
+        .map((at, i) => ({ at, score: affixScore(normalized, at, length, prefix, suffix), distance: Math.abs(lines[i]! - anchor.start_line) }))
+        .sort((a, b) => b.score - a.score || a.distance - b.distance || a.at - b.at);
+      hitAt = ranked.slice(0, SPAN_HASHES_MAX).find((candidate) => spanAt(candidate.at))?.at ?? null;
+    }
+    if (hitAt === null) return null;
+    const hit = { at: hitAt };
+    const from = lineColAt(normalized, hit.at);
+    const to = lineColAt(normalized, hit.at + length);
+    return { start_line: from.line, start_col: from.col, end_line: to.line, end_col: to.col };
+  }
   let candidates = occurrences(normalized, prefix + quote + suffix).map((at) => at + prefix.length);
   if (candidates.length !== 1) {
     const all = occurrences(normalized, quote);
@@ -392,6 +473,16 @@ export function relocateTextRange(
     }
   }
   const start = lineColAt(normalized, chosen);
+  if ([...anchor.quote].length >= ANNOTATION_QUOTE_MAX) {
+    // Written before selections carried their span: all that is known is the head and the shape.
+    const lines = anchor.end_line - anchor.start_line;
+    return {
+      start_line: start.line,
+      start_col: start.col,
+      end_line: start.line + lines,
+      end_col: lines === 0 ? start.col + (anchor.end_col - anchor.start_col) : anchor.end_col,
+    };
+  }
   const end = lineColAt(normalized, chosen + quote.length);
   return { start_line: start.line, start_col: start.col, end_line: end.line, end_col: end.col };
 }
@@ -412,10 +503,29 @@ export function textRangeFromSelection(
   const from = offsetOf(range.start_line, range.start_col);
   const to = Math.max(from, offsetOf(range.end_line, range.end_col));
   const quoteFull = joined.slice(from, to);
-  const quote = [...quoteFull].slice(0, ANNOTATION_QUOTE_MAX).join("");
+  const cut = [...quoteFull];
+  const quote = cut.slice(0, ANNOTATION_QUOTE_MAX).join("");
+  const span = cut.length > ANNOTATION_QUOTE_MAX ? { span_length: quoteFull.length, span_hash: spanHash(quoteFull) } : {};
   const prefix = [...joined.slice(Math.max(0, from - ANNOTATION_AFFIX_MAX * 2), from)].slice(-ANNOTATION_AFFIX_MAX).join("");
   const suffix = [...joined.slice(to, to + ANNOTATION_AFFIX_MAX * 2)].slice(0, ANNOTATION_AFFIX_MAX).join("");
-  return { ...range, quote, prefix, suffix };
+  return { ...range, quote, prefix, suffix, ...span };
+}
+
+/**
+ * 一段文字的指纹：53 位的 cyrb53，十六进制 14 位。只用来认「这段还是不是原来那段」，不防伪造——
+ * 信使和守护进程两边算得一样，不依赖任何加密库。
+ */
+export function spanHash(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
 }
 
 export type AnnotationLocale = "zh" | "en";

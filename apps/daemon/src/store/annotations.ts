@@ -4,7 +4,9 @@
  * 「待处理」，Bot 或你把它标成「已处理」。批注不是产物的快照：只记下当时的引文、位置和哈希，
  * 陈旧与否每次现算（`packages/protocol` 的 `annotationStale`）。
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, realpathSync, statSync, type Stats } from "node:fs";
+import { isAbsolute, relative, sep } from "node:path";
 import {
   ANNOTATION_BATCH_MAX,
   ANNOTATION_BODY_MAX,
@@ -30,17 +32,17 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { sha256 } from "../request-digest";
 import { getBot, listBots } from "./bots";
 import { hydrateMessage, resolveAttachmentLocation } from "./messages";
 import { createDirect } from "./sessions";
-import { isPresent, messageRow, requireString, sessionRow, touchSession, type MessageRow, type StoreContext } from "./shared";
+import { isPresent, messageRow, requireString, sessionRow, touchSession, workspacePath, type MessageRow, type StoreContext } from "./shared";
 import { taskOfTurn } from "./tasks";
 
 type AnnotationRow = {
   id: string;
   status: AnnotationStatus;
   relpath: string;
+  file_key: string | null;
   anchor_kind: AnnotationAnchorKind;
   anchor: string;
   content_sha256: string;
@@ -61,16 +63,99 @@ type AnnotationRow = {
 
 /** Everything but the crop bytes, which a list never needs and a card fetches on its own. */
 const COLUMNS =
-  "id, status, relpath, anchor_kind, anchor, content_sha256, target_message_id, target_session_id, target_turn_id, bot_id, session_id, message_id, body, crop_mime, resolved_by, resolved_note, resolved_at, created_at, updated_at";
+  "id, status, relpath, file_key, anchor_kind, anchor, content_sha256, target_message_id, target_session_id, target_turn_id, bot_id, session_id, message_id, body, crop_mime, resolved_by, resolved_note, resolved_at, created_at, updated_at";
 
 /** Text bigger than this is not read back for relocation; the hash alone decides. */
 const RELOCATE_TEXT_MAX = 4 * 1024 * 1024;
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
+/** Hashes remembered across calls, one per file, least recently used dropped first. */
+const HASH_CACHE_MAX = 256;
+/** A file written this recently can still change inside the same timestamp tick, so its hash is not kept. */
+const HASH_SETTLE_MS = 2000;
+const HASH_CHUNK_BYTES = 1024 * 1024;
+const hashCache = new Map<string, { stamp: string; sha256: string }>();
+
+function stampOf(st: Stats): string {
+  return `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
+}
+
 /**
- * What a file looks like now, read at most once per path while one call runs: a list over the
- * same file asks for the hash once, not once per annotation.
+ * Lowercase hex SHA-256 of the file's bytes — the string the file routes send as the ETag, which is
+ * what the messenger saves as `content_sha256`. Read in chunks, so a large clip never sits in memory
+ * whole, and kept per path until its size, times, or inode change: every read of an annotation, every
+ * sync event, and every model hop asks again, and a 1 GB render must be hashed once, not each time.
+ */
+function fileSha256(abs: string): { sha256: string; size: number } {
+  const st = statSync(abs);
+  if (!st.isFile()) throw new Error("not a file");
+  const stamp = stampOf(st);
+  const hit = hashCache.get(abs);
+  if (hit && hit.stamp === stamp) {
+    hashCache.delete(abs);
+    hashCache.set(abs, hit);
+    return { sha256: hit.sha256, size: st.size };
+  }
+  const startedAt = Date.now();
+  const hash = createHash("sha256");
+  const fd = openSync(abs, "r");
+  let held = false;
+  try {
+    const chunk = Buffer.allocUnsafe(Math.max(1, Math.min(HASH_CHUNK_BYTES, st.size)));
+    let offset = 0;
+    for (let read = readSync(fd, chunk, 0, chunk.length, offset); read > 0; read = readSync(fd, chunk, 0, chunk.length, offset)) {
+      hash.update(chunk.subarray(0, read));
+      offset += read;
+    }
+    // Only a file that held still while it was read is worth remembering.
+    held = stampOf(fstatSync(fd)) === stamp;
+  } finally {
+    closeSync(fd);
+  }
+  const sha256 = hash.digest("hex");
+  hashCache.delete(abs);
+  if (held && startedAt - st.mtimeMs > HASH_SETTLE_MS) {
+    hashCache.set(abs, { stamp, sha256 });
+    while (hashCache.size > HASH_CACHE_MAX) hashCache.delete(hashCache.keys().next().value!);
+  }
+  return { sha256, size: st.size };
+}
+
+function readText(abs: string): string | null {
+  try {
+    const bytes = readFileSync(abs);
+    return bytes.byteLength <= RELOCATE_TEXT_MAX ? new TextDecoder("utf-8", { fatal: false }).decode(bytes) : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentContent(ctx: StoreContext, relpath: string): CurrentContent {
+  const located = resolveAttachmentLocation(ctx, relpath);
+  if (!located || located.isDir) return { exists: false };
+  let hashed: { sha256: string; size: number };
+  try {
+    hashed = fileSha256(located.abs);
+  } catch {
+    return { exists: false };
+  }
+  let text: string | null | undefined;
+  return {
+    exists: true,
+    sha256: hashed.sha256,
+    // Only a text anchor whose hash moved relocates by the text, so it is read then, and only when small.
+    get text(): string | null {
+      if (text === undefined) text = hashed.size <= RELOCATE_TEXT_MAX ? readText(located.abs) : null;
+      return text;
+    },
+  };
+}
+
+/**
+ * What a file looks like now, looked up at most once per path while one call runs: a list over the
+ * same file asks for the hash once, not once per annotation. Across calls the hash cache above keeps
+ * an unchanged file from being read again.
  */
 export class FileProbe {
   private readonly seen = new Map<string, CurrentContent>();
@@ -78,23 +163,42 @@ export class FileProbe {
   constructor(private readonly ctx: StoreContext) {}
 
   probe(relpath: string, wantText: boolean): CurrentContent {
-    const key = `${wantText ? "t" : "b"}:${relpath}`;
-    const cached = this.seen.get(key);
-    if (cached) return cached;
-    const located = resolveAttachmentLocation(this.ctx, relpath);
-    let current: CurrentContent = { exists: false };
-    if (located && !located.isDir && existsSync(located.abs)) {
-      try {
-        const bytes = readFileSync(located.abs);
-        const text = wantText && bytes.byteLength <= RELOCATE_TEXT_MAX ? new TextDecoder("utf-8", { fatal: false }).decode(bytes) : null;
-        current = { exists: true, sha256: sha256(bytes), text };
-      } catch {
-        current = { exists: false };
-      }
+    let current = this.seen.get(relpath);
+    if (!current) {
+      current = currentContent(this.ctx, relpath);
+      this.seen.set(relpath, current);
     }
-    this.seen.set(key, current);
-    return current;
+    return wantText || !current.exists ? current : { exists: true, sha256: current.sha256 };
   }
+}
+
+/**
+ * The file a cited path names, relative to the workspace with symlinks and on-disk letter case
+ * resolved — how `read_file` and the file routes name it. Stored beside the path as cited
+ * (`file_key`), so the Bot's tools find an annotation however the delivery spelled its path.
+ */
+function resolvedPath(ctx: StoreContext, path: string): string | null {
+  const located = resolveAttachmentLocation(ctx, path);
+  if (!located) return null;
+  try {
+    // The file's own name in its on-disk case too: classifyPath resolves the folders, not the leaf.
+    const abs = existsSync(located.abs) ? realpathSync(located.abs) : located.abs;
+    const rel = relative(realpathSync(workspacePath(ctx) || ctx.inboxRoot), abs);
+    if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+    return rel.split(sep).join("/");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A path filter: the path as cited (what a preview of that citation stored) or the file it
+ * resolves to (what an annotation made through any other spelling of the same file carries).
+ */
+function pathMatch(ctx: StoreContext, path: string): { sql: string; args: string[] } {
+  const cited = normalizeCitedPath(path) ?? path;
+  const key = resolvedPath(ctx, cited);
+  return key ? { sql: "(relpath = ? OR file_key = ?)", args: [cited, key] } : { sql: "relpath = ?", args: [cited] };
 }
 
 function toAnnotation(row: AnnotationRow, probe: FileProbe | null): Annotation {
@@ -103,6 +207,7 @@ function toAnnotation(row: AnnotationRow, probe: FileProbe | null): Annotation {
     id: row.id,
     status: row.status,
     relpath: row.relpath,
+    file_key: row.file_key,
     anchor_kind: row.anchor_kind,
     anchor,
     content_sha256: row.content_sha256,
@@ -150,7 +255,11 @@ export function listAnnotations(ctx: StoreContext, filter: AnnotationFilter = {}
     where.push(`${column} = ?`);
     args.push(value);
   };
-  add("relpath", filter.relpath === undefined ? undefined : normalizeCitedPath(filter.relpath) ?? filter.relpath);
+  if (typeof filter.relpath === "string" && filter.relpath) {
+    const match = pathMatch(ctx, filter.relpath);
+    where.push(match.sql);
+    args.push(...match.args);
+  } else add("relpath", filter.relpath);
   add("session_id", filter.session_id);
   add("target_session_id", filter.target_session_id);
   add("message_id", filter.message_id);
@@ -175,10 +284,10 @@ export function annotationsOfMessage(ctx: StoreContext, messageId: string): Anno
 
 /** Annotations still waiting on a file; `read_file` names the count. */
 export function openAnnotationCount(ctx: StoreContext, relpath: string): number {
-  const normalized = normalizeCitedPath(relpath) ?? relpath;
+  const match = pathMatch(ctx, relpath);
   const row = ctx.db
-    .query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM annotations WHERE relpath = ? AND status = 'open'`)
-    .get(normalized);
+    .query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM annotations WHERE ${match.sql} AND status = 'open'`)
+    .get(...match.args);
   return row?.n ?? 0;
 }
 
@@ -189,6 +298,13 @@ export function annotationCrop(ctx: StoreContext, id: string): { mime: string; b
   return { mime: row.crop_mime, bytes: row.crop };
 }
 
+/** Standard alphabet, padded to a multiple of four. */
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const CROP_MAGIC: Record<string, readonly number[]> = {
+  "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  "image/jpeg": [0xff, 0xd8, 0xff],
+};
+
 function decodeCrop(input: unknown): { mime: string; bytes: Uint8Array } | null {
   if (input === undefined || input === null) return null;
   if (typeof input !== "object" || Array.isArray(input)) throw new HttpError(422, "invalid_args", "crop must be { mime, base64 }");
@@ -197,14 +313,16 @@ function decodeCrop(input: unknown): { mime: string; bytes: Uint8Array } | null 
     throw new HttpError(422, "invalid_args", "crop must be a PNG or JPEG");
   }
   if (typeof crop.base64 !== "string" || !crop.base64) throw new HttpError(422, "invalid_args", "crop needs base64 bytes");
-  let bytes: Uint8Array;
-  try {
-    bytes = Uint8Array.from(Buffer.from(crop.base64, "base64"));
-  } catch {
-    throw new HttpError(422, "invalid_args", "crop is not valid base64");
-  }
+  // Buffer.from skips what it cannot decode, so junk would pass as a few stray bytes.
+  if (!BASE64.test(crop.base64)) throw new HttpError(422, "invalid_args", "crop is not valid base64");
+  const bytes = Uint8Array.from(Buffer.from(crop.base64, "base64"));
   if (bytes.byteLength === 0) throw new HttpError(422, "invalid_args", "crop is empty");
   if (bytes.byteLength > ANNOTATION_CROP_MAX_BYTES) throw new HttpError(422, "invalid_args", "crop must be 1 MB or smaller");
+  // The crop goes to the model as this image type on every later hop; bytes that are not one would fail each of them.
+  const magic = CROP_MAGIC[crop.mime]!;
+  if (bytes.byteLength < magic.length || magic.some((byte, i) => bytes[i] !== byte)) {
+    throw new HttpError(422, "invalid_args", `crop bytes are not ${crop.mime === "image/png" ? "a PNG" : "a JPEG"}`);
+  }
   return { mime: crop.mime, bytes };
 }
 
@@ -230,23 +348,25 @@ function checkAnchor(kind: unknown, anchor: unknown): { kind: AnnotationAnchorKi
 
 /**
  * Only a workspace file can be annotated: a link has nobody to hand the note to, and a path
- * outside the workspace is not something a Bot can change.
+ * outside the workspace is not something a Bot can change. An artifact cited by its absolute path
+ * inside the workspace is still a workspace file. The path is stored as it was cited, so the preview of that citation
+ * and the card that opens it spell it the same way; the file it resolves to ({@link resolvedPath})
+ * is stored beside it, and `read_file`'s pending count and a path filter match either.
  */
-export function checkAnnotatedPath(ctx: StoreContext, value: unknown): string {
+export function checkAnnotatedPath(ctx: StoreContext, value: unknown): { relpath: string; fileKey: string } {
   const raw = requireString("relpath", value);
-  const relpath = normalizeCitedPath(raw);
-  if (!relpath || relpath === ".") throw new HttpError(422, "invalid_args", "relpath must name a file");
-  if (/^[a-z][a-z0-9+.-]*:/i.test(relpath) || relpath.includes("://")) {
+  const cited = normalizeCitedPath(raw);
+  if (!cited || cited === ".") throw new HttpError(422, "invalid_args", "relpath must name a file");
+  if (/^[a-z][a-z0-9+.-]*:/i.test(cited) || cited.includes("://")) {
     throw new HttpError(422, "invalid_args", "only workspace files can be annotated, not links");
   }
-  if (relpath.startsWith("/") || relpath.startsWith("~") || relpath.split(/[\\/]/).some((part) => part === "..")) {
-    throw new HttpError(422, "invalid_args", "relpath must stay inside the workspace");
-  }
-  const located = resolveAttachmentLocation(ctx, relpath);
+  const located = resolveAttachmentLocation(ctx, cited);
   if (!located) throw new HttpError(422, "invalid_args", "relpath must stay inside the workspace");
   if (!existsSync(located.abs)) throw new HttpError(422, "invalid_args", "the file does not exist");
   if (located.isDir || statSync(located.abs).isDirectory()) throw new HttpError(422, "invalid_args", "relpath must name a file, not a directory");
-  return relpath;
+  const fileKey = resolvedPath(ctx, cited);
+  if (!fileKey) throw new HttpError(422, "invalid_args", "relpath must stay inside the workspace");
+  return { relpath: cited, fileKey };
 }
 
 /**
@@ -265,7 +385,7 @@ function targetOf(ctx: StoreContext, messageId: unknown): { target: MessageRow; 
 
 export function createAnnotation(ctx: StoreContext, input: CreateAnnotationRequest): Annotation {
   const { target, botId, sessionId } = targetOf(ctx, input.target_message_id);
-  const relpath = checkAnnotatedPath(ctx, input.relpath);
+  const { relpath, fileKey } = checkAnnotatedPath(ctx, input.relpath);
   const { kind, anchor } = checkAnchor(input.anchor_kind, input.anchor);
   const sha = checkSha(input.content_sha256);
   const body = checkBody(input.body);
@@ -274,10 +394,10 @@ export function createAnnotation(ctx: StoreContext, input: CreateAnnotationReque
   const id = ulid();
   ctx.db.run(
     `INSERT INTO annotations
-       (id, status, relpath, anchor_kind, anchor, content_sha256, target_message_id, target_session_id, target_turn_id, bot_id,
+       (id, status, relpath, file_key, anchor_kind, anchor, content_sha256, target_message_id, target_session_id, target_turn_id, bot_id,
         session_id, message_id, body, crop_mime, crop, resolved_by, resolved_note, resolved_at, created_at, updated_at)
-     VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
-    [id, relpath, kind, JSON.stringify(anchor), sha, target.id, target.session_id, target.turn_id, botId, sessionId, body, crop?.mime ?? null, crop?.bytes ?? null, now, now],
+     VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+    [id, relpath, fileKey, kind, JSON.stringify(anchor), sha, target.id, target.session_id, target.turn_id, botId, sessionId, body, crop?.mime ?? null, crop?.bytes ?? null, now, now],
   );
   return getAnnotation(ctx, id);
 }
@@ -319,6 +439,9 @@ export function patchAnnotation(ctx: StoreContext, id: string, patch: PatchAnnot
   const editing = keys.filter((key) => key !== "status");
   if (editing.length > 0) throw new HttpError(422, "invalid_args", "a sent annotation only changes state");
   if (patch.status !== "open" && patch.status !== "resolved") throw new HttpError(422, "invalid_args", "status must be open or resolved");
+  // Already there — say, a Resolve clicked on a card the Bot's resolution had not reached yet: nothing
+  // to write, and the Bot's name and note on it stay.
+  if (patch.status === row.status) return toAnnotation(row, new FileProbe(ctx));
   if (patch.status === "resolved") {
     ctx.db.run(`UPDATE annotations SET status = 'resolved', resolved_by = ?, resolved_note = NULL, resolved_at = ?, updated_at = ? WHERE id = ?`, [USER_MEMBER, now, now, id]);
   } else {
@@ -420,15 +543,24 @@ function sendAnnotationsRows(ctx: StoreContext, input: SendAnnotationsRequest): 
 }
 
 /**
- * The task a message's annotations point back at: the delivery turn's, so the woken turn keeps
- * working in the folder the artifact came from. Null for a message that carries none.
+ * The task a message's annotations point back at for the turn `botId` is woken into: the delivery
+ * turn's, so that turn keeps working in the folder the artifact came from. Of this Bot's deliveries in
+ * the batch (all of them, for a Bot the batch only @-mentions) the newest decides — the rule
+ * `sendAnnotations` files the message under — so a batch over two of one Bot's jobs runs in the job the
+ * message sits in, and each Bot of a group batch works in its own folder. Null for a message that
+ * carries none.
  */
-export function annotationTaskOfMessage(ctx: StoreContext, messageId: string): string | null {
-  const rows = ctx.db
-    .query<{ target_turn_id: string | null }, [string]>(
-      `SELECT target_turn_id FROM annotations WHERE message_id = ? ORDER BY created_at DESC, id DESC`,
+export function annotationTaskOfMessage(ctx: StoreContext, messageId: string, botId: string): string | null {
+  const all = ctx.db
+    .query<{ bot_id: string; target_turn_id: string | null }, [string]>(
+      `SELECT a.bot_id, a.target_turn_id FROM annotations a
+       JOIN messages m ON m.id = a.target_message_id
+       WHERE a.message_id = ?
+       ORDER BY m.created_at DESC, m.id DESC`,
     )
     .all(messageId);
+  const own = all.filter((row) => row.bot_id === botId);
+  const rows = own.length > 0 ? own : all;
   for (const row of rows) {
     if (!row.target_turn_id) continue;
     const taskId = taskOfTurn(ctx, row.target_turn_id);

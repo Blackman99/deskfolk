@@ -17,9 +17,11 @@
 		/** For a batch routed into your direct: the way back to the Bot↔Bot message it came from. */
 		sourceLabel?: string | null;
 		onOpenSource?: () => void;
+		/** Why the last status change on this batch did not go through. */
+		error?: string | null;
 	}
 
-	let { annotations, t, locale, bots, onOpen, onToggleStatus, sourceLabel = null, onOpenSource }: Props = $props();
+	let { annotations, t, locale, bots, onOpen, onToggleStatus, sourceLabel = null, onOpenSource, error = null }: Props = $props();
 </script>
 
 <div class="annot-cards mt-6 flex flex-col gap-4" data-annotation-cards>
@@ -60,6 +62,9 @@
 			{/if}
 		</div>
 	{/each}
+	{#if error}
+		<p class="annot-cards-error text-11 m-0" role="alert">{error}</p>
+	{/if}
 </div>
 
 <style>
@@ -74,6 +79,16 @@
 	}
 	.annot-card.is-resolved {
 		opacity: 0.78;
+	}
+	.annot-cards-error {
+		color: inherit;
+		opacity: 0.9;
+		text-decoration: underline wavy color-mix(in srgb, currentColor 60%, transparent);
+	}
+	/* A batch is always your message: on the accent bubble a kind's own tint (TS blue on blue)
+	 * can vanish, so the glyph takes the card's text colour. */
+	.annot-card-file :global(.file-glyph) {
+		color: inherit !important;
 	}
 	.annot-card-main {
 		flex: 1;
