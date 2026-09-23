@@ -256,7 +256,13 @@ test("on a phone a conversation covers the list, and Back walks that page back o
   expect(shell.classList.contains("has-session")).toBe(false);
 });
 
-test("the desktop conversation constrains the transcript and floating composer to the main column", () => {
+/**
+ * The desktop main column is a workbench now, so the conversation lives inside a pane rather
+ * than directly in the grid. What this has always protected is unchanged and still checked here:
+ * the wrapper can shrink to nothing in both directions, so a long transcript scrolls instead of
+ * pushing the composer out of view.
+ */
+test("a conversation pane constrains the transcript and floating composer", () => {
   const session = aDirect();
   const runtime = reactive(fakeRuntime({
     bots: [aBot()], sessions: [session],
@@ -265,7 +271,8 @@ test("the desktop conversation constrains the transcript and floating composer t
   runtime.selectedId = session.id;
   const { host, close } = render(Shell, { runtime });
   cleanups.push(close);
-  const conversation = host.querySelector<HTMLElement>(".conversation")!;
+  const conversation = host.querySelector<HTMLElement>(".pane-conversation")!;
+  expect(conversation).not.toBeNull();
   const style = getComputedStyle(conversation);
   expect(style.display).toBe("flex");
   expect(style.flexDirection).toBe("column");

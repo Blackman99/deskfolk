@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import type { Attachment } from '@real-bot/protocol';
 	import type { WorkbenchTab } from './layout-types.ts';
 	import { contentOfTab } from './pane-content.ts';
 	import ChatHeader from '../chat/ChatHeader.svelte';
@@ -23,7 +24,7 @@
 		pinnedSessionIds: string[];
 		onTogglePin: (id: string) => void;
 		onOpenProfile: (botId: string) => void;
-		onOpenArtifact: (relpath: string, attachment?: unknown, messageId?: string | null) => void;
+		onOpenArtifact: (relpath: string, attachment?: Attachment, messageId?: string | null) => void;
 		onCreateBot: () => void;
 		onRemoveTab: (leafId: string, tabId: string) => void;
 		onSelectWorkspacePath: (path: string) => void;
@@ -107,8 +108,12 @@
 	.pane-conversation {
 		display: flex;
 		flex-direction: column;
+		flex-grow: 1;
 		height: 100%;
+		/* Both zero so the transcript can shrink and scroll rather than pushing the composer out
+		   of the pane. This is what the three-column shell guaranteed for the main column. */
 		min-height: 0;
+		min-width: 0;
 	}
 	.pane-gone {
 		display: flex;

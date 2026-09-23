@@ -68,6 +68,21 @@
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
 	import RoutineCalendar from './calendar/RoutineCalendar.svelte';
+	import Workbench from './workbench/Workbench.svelte';
+	import PaneContentHost from './workbench/PaneContentHost.svelte';
+	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
+	import { paneMin } from './workbench/pane-mins.ts';
+	import { contentOfTab, tabFor } from './workbench/pane-content.ts';
+	import { closeTab as closeWorkbenchTab, activateTab, emptyLayout, leafById } from './workbench/layout-tree.ts';
+	import {
+		healLayout,
+		loadWorkbenchLayout,
+		saveWorkbenchLayout,
+		defaultLayout
+	} from './workbench/workbench-layout.ts';
+	import { PANE_KIND_SET } from './workbench/pane-content.ts';
+	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
+	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	import SettingsModal from './settings/SettingsModal.svelte';
@@ -316,6 +331,95 @@
 	const previewWidth = $derived(clampPreviewWidth(previewPreferred, shellWidth));
 	const sidebarWidth = $derived(clampSidebarWidth(sidebarPreferred, shellWidth));
 	const isMobile = $derived(shellWidth <= 680);
+	/**
+	 * The desktop workbench. Above the narrow breakpoint the main column is a tree of panes; at or
+	 * below it the app is what it has always been, one screen at a time with a back stack, and
+	 * none of this renders.
+	 */
+	let narrow = $state(false);
+	$effect(() => watchNarrow((value) => (narrow = value)));
+	const wide = $derived(isWorkbenchSurface(narrow));
+	let layout = $state<WorkbenchLayout>(loadWorkbenchLayout() ?? emptyLayout('wb-root'));
+	let paneSeq = 0;
+	const freshPaneId = () => `wb-${Date.now().toString(36)}-${++paneSeq}`;
+
+	function commitLayout(next: WorkbenchLayout): void {
+		if (next === layout) return;
+		layout = next;
+		saveWorkbenchLayout(next);
+	}
+
+	/** Seed the arrangement from whatever the app was already showing, so nobody's world changes. */
+	$effect(() => {
+		if (!wide) return;
+		untrack(() => {
+			const leaf = leafById(layout, layout.focus.leafId);
+			if (leaf && leaf.tabs.length > 0) return;
+			const id = runtime.selectedId;
+			if (!id) return;
+			commitLayout(defaultLayout(layout.focus.leafId, [
+				tabFor({ kind: 'chat', sessionId: id }, freshPaneId())
+			]));
+		});
+	});
+
+	/** Drop tabs whose conversation or terminal has gone, the way pinned rows are cleaned. */
+	$effect(() => {
+		const live = {
+			sessionIds: new Set(snapshot.sessions.map((row) => row.id)),
+			terminalIds: new Set(runtime.terminals.map((row) => row.id)),
+			knownKinds: PANE_KIND_SET
+		};
+		const viewport = { x: 0, y: 0, width: shellWidth, height: 800 };
+		untrack(() => {
+			const healed = healLayout(layout, live, viewport, WB_FALLBACK_MIN, freshPaneId());
+			if (healed !== layout) commitLayout(healed);
+		});
+	});
+
+	/** What a tab is called. The layout carries ids; the names come from what they point at. */
+	function paneTitle(tab: WorkbenchTab): string {
+		const content = contentOfTab(tab);
+		if (!content) return t.pane.title;
+		switch (content.kind) {
+			case 'chat': {
+				const session = snapshot.sessions.find((row) => row.id === content.sessionId);
+				return session ? titleOf(session) : t.top.deleted;
+			}
+			case 'terminal': {
+				const row = runtime.terminals.find((candidate) => candidate.id === content.terminalId);
+				return row ? (row.title || t.terminal.title) : t.terminal.title;
+			}
+			case 'workspace':
+				return content.selected ? (content.selected.split('/').pop() ?? t.sidebar.workspace) : t.sidebar.workspace;
+			case 'routines':
+				return t.routines.title;
+			case 'trace':
+				return t.trace.title;
+			case 'route-log':
+				return t.routes.title;
+			case 'preview':
+				return content.relpath ? (content.relpath.split('/').pop() ?? t.pane.title) : t.pane.title;
+			case 'session-settings':
+				return t.top.botSettings;
+		}
+	}
+
+	function onPaneCloseTab(leafId: string, tabId: string): void {
+		commitLayout(closeWorkbenchTab(layout, leafId, tabId, freshPaneId()));
+	}
+
+	/** Following the active pane keeps Stop, the composer and the URL pointing at one conversation. */
+	$effect(() => {
+		if (!wide) return;
+		const leaf = leafById(layout, layout.focus.leafId);
+		const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
+		const content = tab ? contentOfTab(tab) : null;
+		const id = content && 'sessionId' in content ? content.sessionId : null;
+		untrack(() => {
+			if (id && runtime.selectedId !== id) void runtime.selectSession(id, { preservePage: true });
+		});
+	});
 
 	$effect(() => {
 		const el = shellEl;
@@ -1137,7 +1241,36 @@
 		onpointerdown={startSidebarResize}
 	></button>
 	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
-		{#if runtime.routinesOpen}
+		{#if wide}
+			<Workbench
+				{layout}
+				mins={paneMin}
+				{t}
+				wide={true}
+				onLayout={commitLayout}
+				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
+				onCloseTab={onPaneCloseTab}
+			>
+				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}
+					<PaneContentHost
+						{tab}
+						{leafId}
+						{runtime}
+						{t}
+						{pinnedSessionIds}
+						onTogglePin={togglePin}
+						onOpenProfile={openProfile}
+						onOpenArtifact={openArtifactPath}
+						onCreateBot={openCreateBot}
+						onRemoveTab={onPaneCloseTab}
+						onSelectWorkspacePath={openWorkspaceFile}
+					/>
+				{/snippet}
+				{#snippet tabLabel(tab: WorkbenchTab)}
+					<span>{paneTitle(tab)}</span>
+				{/snippet}
+			</Workbench>
+		{:else if runtime.routinesOpen}
 			<RoutineCalendar {runtime} {t} />
 		{:else if selected}
 		<!--
