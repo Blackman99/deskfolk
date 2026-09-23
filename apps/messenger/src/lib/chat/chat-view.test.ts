@@ -451,11 +451,14 @@ describe("chat-view helpers", () => {
     expect(isUnreachableNote({ kind: "bot", body: "这一轮没写完：连不上端点" })).toBe(false);
   });
 
-  test("isContinuableNote matches both interrupt and unreachable notes", () => {
+  test("isContinuableNote matches an interrupt and every unfinished-turn note", () => {
     expect(isContinuableNote({ kind: "system", body: "中断" })).toBe(true);
     expect(isContinuableNote({ kind: "system", body: "这一轮没写完：连不上端点" })).toBe(true);
     expect(isContinuableNote({ kind: "system", body: "This turn did not finish: Couldn't reach the endpoint" })).toBe(true);
-    expect(isContinuableNote({ kind: "system", body: "这一轮没写完：端点拒绝了这次补全" })).toBe(false);
+    expect(isContinuableNote({ kind: "system", body: "这一轮没写完：端点拒绝了这次补全" })).toBe(true);
+    expect(isContinuableNote({ kind: "system", body: "This turn did not finish: The runtime errored" })).toBe(true);
+    expect(isContinuableNote({ kind: "system", body: "这一轮没写完" })).toBe(false);
+    expect(isContinuableNote({ kind: "bot", body: "这一轮没写完：运行时出错" })).toBe(false);
   });
 
   test("canContinueInterrupt is on until a follow-up turn is recorded on the note", () => {
@@ -469,6 +472,8 @@ describe("chat-view helpers", () => {
     };
     expect(canContinueInterrupt(note, [])).toBe(true);
     expect(canContinueInterrupt(note, [], { locked: true })).toBe(false);
+    // A Bot↔Bot chat is locked because you cannot type there. Continue is still the way back in.
+    expect(canContinueInterrupt(note, [], { locked: true, readOnly: true })).toBe(true);
     expect(canContinueInterrupt(note, [], { hasLiveTurnForBot: true })).toBe(false);
     expect(canContinueInterrupt({ ...note, source_turn_id: "turn-next" }, [])).toBe(false);
     expect(
@@ -511,7 +516,7 @@ describe("chat-view helpers", () => {
     expect(canContinueInterrupt(unreachable, [], { hasLiveTurnForBot: true })).toBe(false);
     expect(canContinueInterrupt({ ...unreachable, source_turn_id: "turn-resumed" }, [])).toBe(false);
 
-    const nonContinuable = {
+    const refused = {
       id: "fail-2",
       kind: "system" as const,
       body: "这一轮没写完：端点拒绝了这次补全",
@@ -519,7 +524,18 @@ describe("chat-view helpers", () => {
       turn_id: "turn-fail",
       source_turn_id: null as string | null,
     };
-    expect(canContinueInterrupt(nonContinuable, [])).toBe(false);
+    expect(canContinueInterrupt(refused, [{
+      id: "turn-fail",
+      session_id: "s1",
+      bot_id: "bot-1",
+      status: "completed",
+      trigger_message_id: "prev-1",
+      last_activity_at: "t1",
+      created_at: "t1",
+      updated_at: "t1",
+    }])).toBe(true);
+    expect(canContinueInterrupt(refused, [], { locked: true })).toBe(false);
+    expect(canContinueInterrupt(refused, [], { locked: true, readOnly: true })).toBe(true);
   });
 });
 

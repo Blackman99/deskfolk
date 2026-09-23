@@ -3,7 +3,6 @@ import {
   USER_MEMBER,
   isContinuableNote,
   isInterruptNote,
-  isUnreachableNote,
   type Message,
   type RouteOutcome,
   type Turn,
@@ -316,8 +315,7 @@ export function interruptRunningTurns(
 export function claimInterruptContinue(ctx: StoreContext, messageId: string): Turn {
   const note = getMessage(ctx, messageId);
   const isInterrupt = isInterruptNote(note);
-  const isUnreachable = isUnreachableNote(note);
-  if (note.kind !== "system" || (!isInterrupt && !isUnreachable) || !note.turn_id) {
+  if (!isContinuableNote(note) || !note.turn_id) {
     throw new HttpError(422, "invalid_args", "message is not an interrupted turn");
   }
   if (note.source_turn_id) {
@@ -327,7 +325,7 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
   if (isInterrupt && cut.status !== "interrupted") {
     throw new HttpError(422, "invalid_args", "turn is not interrupted");
   }
-  if (isUnreachable && cut.status !== "completed" && cut.status !== "interrupted") {
+  if (!isInterrupt && cut.status !== "completed" && cut.status !== "interrupted") {
     throw new HttpError(422, "invalid_args", "turn is not continuable");
   }
   if (cut.bot_id !== note.author) {

@@ -58,6 +58,9 @@ export const UNREACHABLE_NOTE_BODIES = [
   "This turn did not finish: Couldn't reach the endpoint",
 ] as const;
 
+/** A turn that stopped on its own, in either locale: 「这一轮没写完：…」. */
+const FAIL_NOTE = /^(?:这一轮没写完：|This turn did not finish:)/;
+
 export function isInterruptNote(message: Pick<Message, "kind" | "body">): boolean {
   return message.kind === "system" && message.body === INTERRUPT_NOTE_BODY;
 }
@@ -70,7 +73,7 @@ export function isUnreachableNote(message: Pick<Message, "kind" | "body">): bool
 }
 
 export function isContinuableNote(message: Pick<Message, "kind" | "body">): boolean {
-  return isInterruptNote(message) || isUnreachableNote(message);
+  return isInterruptNote(message) || (message.kind === "system" && FAIL_NOTE.test(message.body));
 }
 
 /** Encrypted Web Push body. Visible copy is fixed; never titles, filenames or Bot names. */

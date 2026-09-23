@@ -1141,11 +1141,16 @@
 					{@const pal = botAvatarColor(singleMsg.message.author)}
 					{@const showContinue = canContinueInterrupt(singleMsg.message, snapshot.turns, {
 						locked: lockedComposer,
+						readOnly: selectedKind === 'bot-bot',
 						hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author)
 					})}
 					{@const isUnreachable = isUnreachableNote(singleMsg.message)}
 					{@const isInterrupt = isInterruptNote(singleMsg.message)}
-					{@const continueHint = isUnreachable ? t.stream.continueUnreachableHint : t.stream.continueInterruptHint}
+					{@const continueHint = isInterrupt
+						? t.stream.continueInterruptHint
+						: isUnreachable
+							? t.stream.continueUnreachableHint
+							: t.stream.continueFailedHint}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div

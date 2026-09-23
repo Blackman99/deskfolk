@@ -560,7 +560,10 @@ describe("schema", () => {
       author: writer.bot.id,
       body: "这一轮没写完：没有可用的模型",
     });
-    expect(() => store.claimInterruptContinue(fail.id)).toThrow("message is not an interrupted turn");
+    // The cut turn is still interrupted, so a failure note on it can be continued too.
+    const resumedFail = store.claimInterruptContinue(fail.id);
+    expect(resumedFail.trigger_message_id).toBe(fail.id);
+    store.setTurnStatus(resumedFail.id, "completed");
 
     const unreachable = store.insertMessage({
       sessionId: writer.direct_session.id,
@@ -574,6 +577,32 @@ describe("schema", () => {
     expect(continued.trigger_message_id).toBe(unreachable.id);
     expect(store.getMessage(unreachable.id).source_turn_id).toBe(continued.id);
     expect(store.pendingInterrupt(writer.bot.id)).toBe(true);
+
+    const researcher = store.createBot({ name: "Researcher", duties: "dig", boundaries: "stay" });
+    const pair = store.createBotDirect(writer.bot.id, researcher.bot.id, null);
+    const pairTrigger = store.insertMessage({
+      sessionId: pair.id,
+      kind: "bot",
+      author: writer.bot.id,
+      body: "look at this",
+    });
+    const pairTurn = store.createTurn({
+      sessionId: pair.id,
+      botId: researcher.bot.id,
+      triggerMessageId: pairTrigger.id,
+    });
+    store.setTurnStatus(pairTurn.id, "completed");
+    const pairFail = store.insertMessage({
+      sessionId: pair.id,
+      turnId: pairTurn.id,
+      kind: "system",
+      author: researcher.bot.id,
+      body: "这一轮没写完：运行时出错",
+    });
+    const pairContinued = store.claimInterruptContinue(pairFail.id);
+    expect(pairContinued.session_id).toBe(pair.id);
+    expect(pairContinued.bot_id).toBe(researcher.bot.id);
+    expect(pairContinued.trigger_message_id).toBe(pairFail.id);
     store.close();
   });
 

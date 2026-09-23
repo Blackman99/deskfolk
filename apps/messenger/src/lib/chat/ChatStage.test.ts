@@ -50,6 +50,84 @@ for (const [label, session, showAvatars] of [
   });
 }
 
+test("a Bot-to-Bot chat offers Continue on an interruption and on a failed turn", () => {
+  const session = aBotDirect();
+  const messages = [
+    aMessage({
+      id: "cut", session_id: session.id, kind: "system", author: "bot-1",
+      body: "中断", turn_id: "turn-cut", created_at: "2026-09-19T02:00:01.000Z",
+    }),
+    aMessage({
+      id: "fail", session_id: session.id, kind: "system", author: "bot-2",
+      body: "这一轮没写完：运行时出错", turn_id: "turn-fail", created_at: "2026-09-19T02:00:02.000Z",
+    }),
+  ];
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot(), aBot({ id: "bot-2", name: "审片员" })],
+    sessions: [session],
+    messages,
+    turns: [
+      aTurn({ id: "turn-cut", session_id: session.id, bot_id: "bot-1", status: "interrupted" }),
+      aTurn({ id: "turn-fail", session_id: session.id, bot_id: "bot-2", status: "completed" }),
+    ],
+  }, { selectedId: session.id }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".btn-continue-turn")];
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => !button.disabled)).toBe(true);
+    expect(buttons[0]?.getAttribute("title")).toBe(t.stream.continueInterruptHint);
+    expect(buttons[1]?.getAttribute("title")).toBe(t.stream.continueFailedHint);
+    click(buttons[1]);
+    expect(runtime.calls.some((call) => call.name === "continueInterrupt" && call.args[0] === "fail")).toBe(true);
+  } finally {
+    close();
+  }
+});
+
+test("a direct chat you can type in still continues a failed turn, and an archived one does not", () => {
+  const session = aDirect();
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [session],
+    messages: [aMessage({
+      id: "fail", session_id: session.id, kind: "system", author: "bot-1",
+      body: "这一轮没写完：端点拒绝了这次补全", turn_id: "turn-fail",
+    })],
+    turns: [aTurn({ id: "turn-fail", session_id: session.id, status: "completed" })],
+  }, { selectedId: session.id }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    expect(host.querySelector(".btn-continue-turn")).not.toBeNull();
+  } finally {
+    close();
+  }
+  const archived = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [{ ...session, archived_at: "2026-09-19T03:00:00.000Z" }],
+    messages: [aMessage({
+      id: "fail-2", session_id: session.id, kind: "system", author: "bot-1",
+      body: "中断", turn_id: "turn-cut",
+    })],
+    turns: [aTurn({ id: "turn-cut", session_id: session.id, status: "interrupted" })],
+  }, { selectedId: session.id }));
+  const second = render(ChatStage, {
+    runtime: archived, t, selected: { ...session, archived_at: "2026-09-19T03:00:00.000Z" },
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    expect(second.host.querySelector(".btn-continue-turn")).toBeNull();
+  } finally {
+    second.close();
+  }
+});
+
 test("empty direct chat keeps its welcome avatar and profile entry", () => {
   const session = aDirect();
   const runtime = reactive(fakeRuntime({
