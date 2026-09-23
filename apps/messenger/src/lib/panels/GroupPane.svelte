@@ -1,24 +1,18 @@
 <script lang="ts">
 	import { USER_MEMBER, type SessionSummary } from '@real-bot/protocol';
-	import SessionAvatar from '../SessionAvatar.svelte';
 	import Select from '../Select.svelte';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
-	import { canRemoveGroupBot, mapGroupEditError, planGroupName, pullInCandidates } from './group-edit.ts';
+	import {
+		canRemoveGroupBot,
+		pullInCandidates,
+		type GroupDetailDraft
+	} from './group-edit.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifySession, presentBotIds } from '../sidebar/session-groups.ts';
-	import { botWorkStatus } from '../sidebar/session-status.ts';
-	import { sessionTitle } from '../sidebar/session-title.ts';
 
-	/** Kept by the shell: the reset runs on every session change, drawer open or not. */
-	export type GroupDetailDraft = {
-		sessionId: string | null;
-		name: string;
-		nameError: 'empty' | undefined;
-		failed: boolean;
-		pullPick: string;
-	};
+	export type { GroupDetailDraft };
 
 	type Props = {
 		runtime: MessengerRuntime;

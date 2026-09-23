@@ -230,6 +230,25 @@ const storyEmptyActions = createRawSnippet(() => ({
 		`<div><button type="button" class="pane-open">${t.terminal.title}</button></div>`
 }));
 
+/** What the shell puts in the + menu, and what an empty pane now lays out as the same list. */
+const storyMenuActions = createRawSnippet(() => {
+	const term = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`;
+	const layers = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5L3 7.5Z"></path><path d="M3 12l9 4.5 9-4.5"></path><path d="M3 16.5 12 21l9-4.5"></path></svg>`;
+	const calendar = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="16" y1="3" x2="16" y2="7"></line></svg>`;
+	const row = (name: string, mark: string, quiet: boolean, meta?: string) =>
+		`<button type="button" class="wb-menu-row" role="menuitem"><span class="wb-menu-mark${quiet ? ' is-quiet' : ''}" aria-hidden="true">${mark}</span>` +
+		(meta
+			? `<span class="wb-menu-copy"><span class="wb-menu-name">${name}</span><span class="wb-menu-meta">${meta}</span></span>`
+			: `<span class="wb-menu-name">${name}</span>`) +
+		`</button>`;
+	return {
+		render: () =>
+			`<div>${row(t.terminal.newTab, term, false)}${row(t.sidebar.workspace, layers, true)}${row(t.routines.title, calendar, true)}` +
+			`<div class="wb-menu-section" role="presentation">${t.pane.runningTerminals}</div>` +
+			`${row('real-bot-workspace', term, true, '/Users/me/real-bot-workspace')}${row('real-bot-workspace 2', term, true, '/Users/me/real-bot-workspace')}</div>`
+	};
+});
+
 function workbenchProps(layout: WorkbenchLayout, wide = true) {
 	return {
 		layout,
@@ -647,12 +666,15 @@ const defs: Record<StoryName, Story> = {
 	},
 	'workbench-empty': {
 		component: Workbench as never,
-		props: workbenchProps({
-			version: 1,
-			root: makeLeaf('p1', []),
-			floating: [],
-			focus: { zone: 'tiled', leafId: 'p1' }
-		})
+		props: {
+			...workbenchProps({
+				version: 1,
+				root: makeLeaf('p1', []),
+				floating: [],
+				focus: { zone: 'tiled', leafId: 'p1' }
+			}),
+			menuActions: storyMenuActions
+		}
 	},
 	'workbench-solo': {
 		component: Workbench as never,

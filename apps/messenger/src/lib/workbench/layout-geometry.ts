@@ -129,10 +129,21 @@ function roundToTotal(sizes: readonly number[], total: number): number[] {
   return out;
 }
 
+/**
+ * How much each share is scaled by before it becomes an `fr`. The browser treats flexible
+ * tracks whose factors add up to less than 1 as owed only that fraction of the free space, so
+ * shares that sum to 1 stopped filling the branch the moment one pane sat at its minimum: the
+ * rest came to less than 1 and left a strip of nothing at the far edge. Scaled up, any track
+ * that is not a sliver keeps a factor of at least 1 and the tracks fill the branch again.
+ */
+const FR_SCALE = 1000;
+
 /** The `grid-template-*` value for one branch: tracks with sashes between them. */
 export function trackTemplate(branch: BranchNode, childMins: readonly number[]): string {
   const share = renormalise(branch.weights);
-  const tracks = branch.children.map((_, i) => `minmax(${Math.round(childMins[i] ?? 0)}px, ${share[i]!.toFixed(6)}fr)`);
+  const tracks = branch.children.map(
+    (_, i) => `minmax(${Math.round(childMins[i] ?? 0)}px, ${(share[i]! * FR_SCALE).toFixed(3)}fr)`,
+  );
   return tracks.join(` ${WB_SASH_PX}px `);
 }
 

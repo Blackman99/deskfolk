@@ -34,9 +34,6 @@ import type {
   ProbeModelsResponse,
   Provider,
   ResolveApprovalRequest,
-  RouteLearning,
-  RouteRecord,
-  RouteReview,
   ComposerSuggestion,
   SearchHit,
   SessionDetail,
@@ -340,15 +337,6 @@ export class LocalApi {
   async judgements(sessionId: string): Promise<Judgement[]> {
     const page = await this.get<ListPage<Judgement>>(`/v1/sessions/${sessionId}/judgements`);
     return page.items;
-  }
-
-  async routes(
-    sessionId: string,
-  ): Promise<{ items: RouteRecord[]; reviews: RouteReview[]; learnings: RouteLearning[] }> {
-    const page = await this.get<
-      ListPage<RouteRecord> & { reviews?: RouteReview[]; learnings?: RouteLearning[] }
-    >(`/v1/sessions/${sessionId}/routes`);
-    return { items: page.items, reviews: page.reviews ?? [], learnings: page.learnings ?? [] };
   }
 
   async composerSuggestions(sessionId: string, signal?: AbortSignal): Promise<ComposerSuggestion[]> {

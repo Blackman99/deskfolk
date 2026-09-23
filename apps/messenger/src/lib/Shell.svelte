@@ -22,11 +22,11 @@
 		modelSelectValue,
 		type ProviderEditorState
 	} from './settings/provider-form.ts';
-	import { routeLogRows } from './overlays/route-log.ts';
-	import RouteLog from './overlays/RouteLog.svelte';
 	import TerminalPane from './overlays/TerminalPane.svelte';
-	import TaskTraceView from './overlays/TaskTrace.svelte';
 	import { orderTerminals, statusLabel, terminalNames } from './overlays/terminals.ts';
+	// TaskTrace.svelte (the flow board) drags in @dagrejs/dagre and its own graph-layout code;
+	// it is only ever seen after `runtime.traceOpen` fires, so it is loaded with the same
+	// `{#await import(...)}` lazy-mount pattern as the other panels below.
 	import { presentBotIds } from './sidebar/session-groups.ts';
 	import {
 		cleanPinnedIds,
@@ -49,7 +49,8 @@
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
 	import { handedOverPaths } from './overlays/artifacts.ts';
-	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
+	// ArtifactPreview.svelte is lazy-loaded below (see the artifactPreview block): it only
+	// mounts once a file is actually opened.
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
 		clampPreviewWidth,
@@ -64,14 +65,17 @@
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
-	import GroupPane, { type GroupDetailDraft } from './panels/GroupPane.svelte';
+	import GroupIdentity from './panels/GroupIdentity.svelte';
+	import GroupPane from './panels/GroupPane.svelte';
+	import type { GroupDetailDraft } from './panels/group-edit.ts';
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
-	import RoutineCalendar from './calendar/RoutineCalendar.svelte';
+	// RoutineCalendar.svelte pulls in svelte5plus-calendar; it is loaded lazily below, only once
+	// `runtime.routinesOpen` is true.
 	import Workbench from './workbench/Workbench.svelte';
 	import PaneContentHost from './workbench/PaneContentHost.svelte';
 	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
@@ -79,10 +83,13 @@
 	import { contentOfTab } from './workbench/pane-content.ts';
 	import {
 		activeSessionId,
+		closeChatSide,
 		dropDuplicateBoundTabs,
 		existingTarget,
 		findKind,
 		openContent,
+		settingsSide,
+		toggleChatSide
 	} from './workbench/pane-open.ts';
 	import type { PreviewHandle } from './workbench/preview-context.ts';
 	import type { PaneContent } from './workbench/pane-content.ts';
@@ -435,27 +442,27 @@
 		const content = contentOfTab(tab);
 		if (!content) return t.pane.title;
 		switch (content.kind) {
-			case 'chat': {
-				const session = snapshot.sessions.find((row) => row.id === content.sessionId);
-				return session ? titleOf(session) : t.top.deleted;
-			}
+			case 'chat':
+				return sessionName(content.sessionId);
 			case 'terminal': {
 				const row = runtime.terminals.find((candidate) => candidate.id === content.terminalId);
-				return row ? (row.title || t.terminal.title) : t.terminal.title;
+				return row ? (terminalNamesById.get(row.id) ?? row.title) : t.terminal.title;
 			}
 			case 'workspace':
 				return content.selected ? (content.selected.split('/').pop() ?? t.sidebar.workspace) : t.sidebar.workspace;
 			case 'routines':
 				return t.routines.title;
 			case 'trace':
-				return t.trace.title;
-			case 'route-log':
-				return t.routes.title;
+				return t.pane.flowOf(sessionName(content.sessionId));
 			case 'preview':
-				return content.relpath ? (content.relpath.split('/').pop() ?? t.pane.title) : t.pane.title;
-			case 'session-settings':
-				return t.top.botSettings;
+				return content.sessionId ? t.pane.artifactsOf(sessionName(content.sessionId)) : t.pane.title;
 		}
+	}
+
+	/** The conversation's own name, the same words its chat tab uses. */
+	function sessionName(sessionId: string): string {
+		const session = snapshot.sessions.find((row) => row.id === sessionId);
+		return session ? titleOf(session) : t.top.deleted;
 	}
 
 	/**
@@ -468,12 +475,28 @@
 			return;
 		}
 		runtime.paneOpener = (content) => {
-			untrack(() => openGuarded(content));
+			untrack(() => {
+				// "The terminal", asked for without naming one, is the one you have if there is one.
+				if (content.kind === 'terminal' && !content.terminalId) void showTerminal();
+				else openGuarded(ownSettings(content));
+			});
 		};
 		return () => {
 			runtime.paneOpener = null;
 		};
 	});
+
+	/**
+	 * A direct conversation's own settings are its Bot's profile, however they were asked for — the
+	 * header's button or the Bot's avatar in the transcript. One spelling, so the header can tell
+	 * they are open and toggling them finds them.
+	 */
+	function ownSettings(content: PaneContent): PaneContent {
+		if (content.kind !== 'chat' || content.side?.kind !== 'settings' || !content.side.botId) return content;
+		const session = sessionsById.get(content.sessionId);
+		if (!session || classifySession(session) !== 'you-bot' || youBotPeer(session) !== content.side.botId) return content;
+		return { ...content, side: { kind: 'settings', botId: null } };
+	}
 
 	/** The previews on screen, by tab, so one holding an unsaved edit can be asked before it turns. */
 	const previewPanes = new Map<string, PreviewHandle>();
@@ -746,44 +769,10 @@
 	const sessionSettingsLabel = $derived(
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
-	const sessionSettingsTitle = $derived(
-		selectedKind === 'group' ? t.detail.titleGroup : t.detail.titleBot
-	);
 	const nestedProfile = $derived(
 		Boolean(runtime.profileBotId && selectedKind !== 'you-bot')
 	);
-	const nestedBackLabel = $derived(
-		selectedKind === 'group' ? t.detail.backToGroup : t.detail.backToBot
-	);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
-	const routeRows = $derived(
-		selected
-			? routeLogRows(
-					snapshot.routes.filter((route) => route.session_id === selected.id),
-					{
-						bots: snapshot.bots,
-						providers: snapshot.providers,
-						reviews: snapshot.routeReviews,
-						learnings: snapshot.routeLearnings,
-						labels: {
-							outcome: t.routes.outcome,
-							fault: t.routes.fault,
-							direction: t.routes.direction,
-							signature: t.routes.signature,
-							failReason: t.routes.failReason,
-							thinking: t.routes.thinking,
-							unknownBot: t.top.deleted
-						}
-					}
-				)
-			: []
-	);
-
-	function jumpToRouteTrigger(messageId: string): void {
-		if (!selected) return;
-		void runtime.selectSession(selected.id, { messageId });
-	}
-
 	function jumpToTrace(sessionId: string, messageId: string): void {
 		void runtime.selectSession(sessionId, { messageId });
 	}
@@ -886,8 +875,19 @@
 		document.documentElement.lang = locale === 'zh' ? 'zh-Hans' : 'en';
 	});
 
+	/** The conversation whose settings are open beside it on the workbench, if any. */
+	const settingsBeside = $derived(wide ? settingsSide(layout) : null);
+	/**
+	 * Whose settings the draft is for. On the workbench that is the conversation they are open
+	 * beside, which need not be the one the keyboard is in: clicking into another pane must not
+	 * swap the group name being edited for that pane's.
+	 */
+	const draftSession = $derived(
+		settingsBeside ? (sessionsById.get(settingsBeside.sessionId) ?? null) : selected
+	);
+
 	$effect(() => {
-		const session = selected;
+		const session = draftSession;
 		if (!session) {
 			groupDetail.sessionId = null;
 			untrack(() => {
@@ -909,7 +909,7 @@
 	});
 
 	$effect(() => {
-		if (!runtime.sessionSettingsOpen) {
+		if (!runtime.sessionSettingsOpen && !settingsBeside) {
 			untrack(() => {
 				if (shouldDropConfirm('session-settings-closed', dangerConfirm)) {
 					clearDanger('bot', 'group', 'history');
@@ -1211,13 +1211,33 @@
 		return !error;
 	}
 
-	function openProfile(botId: string): void {
+	/**
+	 * `sessionId` is the conversation the profile opens beside on the workbench — the one it was
+	 * asked for from, rather than whichever conversation the keyboard happens to be in.
+	 */
+	function openProfile(botId: string, sessionId?: string): void {
 		if (!botsById.has(botId)) return;
 		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
 		profileFailed = false;
 		// The pane is keyed on the Bot, so opening or switching remounts it with a fresh draft.
+		if (sessionId && runtime.paneOpener) {
+			runtime.paneOpener({ kind: 'chat', sessionId, side: { kind: 'settings', botId } });
+			return;
+		}
 		runtime.openProfile(botId);
 	}
+
+	/** A pane header's settings button: slide the conversation's settings over it, or close them. */
+	function togglePaneSettings(sessionId: string): void {
+		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
+		profileFailed = false;
+		commitLayout(toggleChatSide(layout, sessionId, { kind: 'settings', botId: null }, { id: freshPaneId }));
+	}
+
+	function closePaneSide(sessionId: string): void {
+		commitLayout(closeChatSide(layout, sessionId));
+	}
+
 
 	function toggleSessionSettings(): void {
 		if (runtime.sessionSettingsOpen) {
@@ -1435,9 +1455,107 @@
 	}}
 />
 
+<!--
+	The head of a conversation's settings, in the narrow drawer and beside a workbench pane alike.
+	`nested` is a Bot's profile opened from inside a group's settings: the way out is back to them.
+-->
+{#snippet settingsHead(group: boolean, nested: boolean, onBack: () => void, onClose: () => void, groupSession: SessionSummary | null = null)}
+	<div class="sheet-head">
+		{#if nested}
+			<button
+				type="button"
+				class="sheet-back"
+				onclick={onBack}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<span>{group ? t.detail.backToGroup : t.detail.backToBot}</span>
+			</button>
+		{:else if group && groupSession}
+			<GroupIdentity {runtime} session={groupSession} bind:detail={groupDetail} {t} />
+		{:else}
+			<div class="panel-header-title-wrap flex items-center gap-5">
+				<div class="panel-header-icon" aria-hidden="true">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="3"></circle>
+						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+					</svg>
+				</div>
+				<h2>{t.detail.titleBot}</h2>
+			</div>
+		{/if}
+		<button
+			type="button"
+			class="sheet-close"
+			title={t.common.close}
+			onclick={onClose}
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+				<line x1="18" y1="6" x2="6" y2="18"></line>
+				<line x1="6" y1="6" x2="18" y2="18"></line>
+			</svg>
+		</button>
+	</div>
+{/snippet}
+
+<!--
+	A conversation's settings, sliding over its transcript on the workbench. Drawn here rather than
+	in the pane host because they run on state this file holds one copy of — the unsaved draft,
+	which danger confirm is armed — which is also why only one conversation has them open at a time.
+	With no Bot named, a direct conversation shows its Bot and a group its own settings. A Bot
+	picked from a group is simply that Bot's settings: no way back to the group's, the ✕ or the
+	scrim closes it.
+-->
+{#snippet paneSettings(sessionId: string, botId: string | null)}
+	{@const paneSession = sessionsById.get(sessionId)}
+	{@const paneKind = paneSession ? classifySession(paneSession) : null}
+	{@const shownBotId = botId ?? (paneKind === 'you-bot' && paneSession ? youBotPeer(paneSession) : null)}
+	{@const paneBot = shownBotId ? botsById.get(shownBotId) : undefined}
+	<div class="sheet session-settings is-beside" class:is-mobile-detail={paneMobileDetail}>
+		{@render settingsHead(
+			paneKind === 'group' && !paneBot,
+			false,
+			() => {},
+			() => closePaneSide(sessionId),
+			paneKind === 'group' && !paneBot && paneSession ? paneSession : null
+		)}
+		{#if paneBot}
+			{#key paneBot.id}
+				<ProfilePane
+					bind:this={profilePane}
+					{runtime}
+					bot={paneBot}
+					{t}
+					modelOptions={availableModelOptions}
+					selectedKind={paneKind}
+					bind:profileFailed
+					bind:mobileDetail={paneMobileDetail}
+					openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
+					{clearDanger}
+					onDeleteBot={() => openDeleteBotConfirm(paneBot.id)}
+					onClearHistory={() => openClearHistoryConfirm(sessionId)}
+				/>
+			{/key}
+		{:else if paneSession}
+			<GroupPane
+				{runtime}
+				selected={paneSession}
+				{t}
+				bind:detail={groupDetail}
+				bind:mobileDetail={paneMobileDetail}
+				onOpenProfile={(id) => openProfile(id, sessionId)}
+				onDeleteGroup={() => openDeleteGroupConfirm(sessionId)}
+				onClearHistory={() => openClearHistoryConfirm(sessionId)}
+			/>
+		{:else}
+			<p class="pane-settings-gone">{t.top.deleted}</p>
+		{/if}
+	</div>
+{/snippet}
+
 {#if showOnboarding}
 	<Onboarding {runtime} onDismiss={() => (dismissedOnboarding = true)} />
 {:else}
+<ImageCopy {t} />
 <div
 	class="shell"
 	class:has-mobile-navigation={mobileNavigationVisible}
@@ -1491,52 +1609,6 @@
 				onCloseTab={onPaneCloseTab}
 			>
 				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}
-					{@const paneContent = contentOfTab(tab)}
-					{#if paneContent?.kind === 'session-settings'}
-						<!--
-							Rendered here rather than in the pane host because these panels are driven by
-							state this file holds one copy of — the unsaved draft, which danger confirm is
-							armed, which screen a narrow window is on. That is also why there is only ever
-							one of them: a second would be showing the first one's edits.
-						-->
-						{@const paneSession = snapshot.sessions.find((row) => row.id === paneContent.sessionId)}
-						{@const paneBot = paneContent.botId
-							? snapshot.bots.find((row) => row.id === paneContent.botId)
-							: undefined}
-						<div class="pane-settings">
-							{#if paneBot}
-								{#key paneBot.id}
-									<ProfilePane
-										{runtime}
-										bot={paneBot}
-										{t}
-										modelOptions={availableModelOptions}
-										{selectedKind}
-										bind:profileFailed
-										bind:mobileDetail={paneMobileDetail}
-										openDangerConfirm={(kind, run) =>
-											(dangerConfirm = { kind, run, source: 'drawer' })}
-										{clearDanger}
-										onDeleteBot={() => openDeleteBotConfirm()}
-										onClearHistory={() => openClearHistoryConfirm()}
-									/>
-								{/key}
-							{:else if paneSession}
-								<GroupPane
-									{runtime}
-									selected={paneSession}
-									{t}
-									bind:detail={groupDetail}
-									bind:mobileDetail={paneMobileDetail}
-									onOpenProfile={openProfile}
-									onDeleteGroup={() => openDeleteGroupConfirm()}
-									onClearHistory={() => openClearHistoryConfirm()}
-								/>
-							{:else}
-								<p class="pane-settings-gone">{t.top.deleted}</p>
-							{/if}
-						</div>
-					{:else}
 					<PaneContentHost
 						{tab}
 						{leafId}
@@ -1548,23 +1620,33 @@
 						onOpenArtifact={openArtifactPath}
 						onCreateBot={openCreateBot}
 						onRemoveTab={onPaneCloseTab}
-						onSelectWorkspacePath={openWorkspaceFile}
 						onBindTerminal={bindTerminalTab}
 						onUpdateContent={(content) =>
 							commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
 						onPreviewPane={trackPreviewPane}
 						onJump={jumpToTrace}
-						{paneTitle}
+						onToggleSettings={togglePaneSettings}
+						onCloseSide={closePaneSide}
+						settingsSide={paneSettings}
 					/>
-					{/if}
 				{/snippet}
 				{#snippet tabLabel(tab: WorkbenchTab)}
 					<span>{paneTitle(tab)}</span>
 				{/snippet}
 				{#snippet emptyActions(leafId: string)}
-					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: null })}>
-						{t.terminal.title}
+					<button type="button" class="pane-open" onclick={() => void openNewTerminal(leafId)}>
+						{t.terminal.newTab}
 					</button>
+					{#each untabbedTerminals as row (row.id)}
+						<button
+							type="button"
+							class="pane-open is-reattach"
+							title={row.cwd}
+							onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
+						>
+							{t.terminal.reattach(terminalName(row))}
+						</button>
+					{/each}
 					<button
 						type="button"
 						class="pane-open"
@@ -1577,9 +1659,87 @@
 						{t.routines.title}
 					</button>
 				{/snippet}
+				{#snippet menuActions(leafId: string, query: string)}
+					{@const needle = query.trim().toLowerCase()}
+					{@const listed = needle
+						? untabbedTerminals.filter((row) =>
+								`${terminalName(row)} ${row.cwd}`.toLowerCase().includes(needle))
+						: untabbedTerminals}
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						onclick={() => void openNewTerminal(leafId)}
+					>
+						<span class="wb-menu-mark" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="4 17 10 11 4 5"></polyline>
+								<line x1="12" y1="19" x2="20" y2="19"></line>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{t.terminal.newTab}</span>
+					</button>
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						disabled={!snapshot.settings.workspace_path}
+						onclick={() => openInPane(leafId, { kind: 'workspace', selected: null })}
+					>
+						<span class="wb-menu-mark is-quiet" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M3 7.5 12 3l9 4.5-9 4.5L3 7.5Z"></path>
+								<path d="M3 12l9 4.5 9-4.5"></path>
+								<path d="M3 16.5 12 21l9-4.5"></path>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{t.sidebar.workspace}</span>
+					</button>
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						onclick={() => openInPane(leafId, { kind: 'routines' })}
+					>
+						<span class="wb-menu-mark is-quiet" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<rect x="3" y="5" width="18" height="16" rx="2"></rect>
+								<line x1="3" y1="10" x2="21" y2="10"></line>
+								<line x1="8" y1="3" x2="8" y2="7"></line>
+								<line x1="16" y1="3" x2="16" y2="7"></line>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{t.routines.title}</span>
+					</button>
+					<div class="wb-menu-section" role="presentation">{t.pane.runningTerminals}</div>
+					{#each listed as row (row.id)}
+						<button
+							type="button"
+							class="wb-menu-row"
+							role="menuitem"
+							title={row.cwd}
+							onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
+						>
+							<span class="wb-menu-mark is-quiet" aria-hidden="true">
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<polyline points="4 17 10 11 4 5"></polyline>
+									<line x1="12" y1="19" x2="20" y2="19"></line>
+								</svg>
+							</span>
+							<span class="wb-menu-copy">
+								<span class="wb-menu-name">{terminalName(row)}</span>
+								<span class="wb-menu-meta">{row.cwd}</span>
+							</span>
+						</button>
+					{:else}
+						<p class="wb-menu-empty">{needle ? t.sidebar.emptySearch : t.pane.noRunningTerminals}</p>
+					{/each}
+				{/snippet}
 			</Workbench>
 		{:else if runtime.routinesOpen}
-			<RoutineCalendar {runtime} {t} />
+			{#await import('./calendar/RoutineCalendar.svelte') then { default: RoutineCalendar }}
+				<RoutineCalendar {runtime} {t} />
+			{/await}
 		{:else if selected}
 		<!--
 			On a phone this is a page over the roster: it arrives from the right and Back walks
@@ -1634,58 +1794,65 @@
 			aria-label={t.stream.artifactResize}
 			onpointerdown={startPreviewResize}
 		></button>
-		<ArtifactPreview
-			bind:this={previewPane}
-			attachment={artifactPreview.attachment}
-			relpath={artifactPreview.relpath}
-			siblings={artifactPreview.siblings}
-			api={runtime.client}
-			workspacePath={snapshot.settings.workspace_path}
-			forceTree={artifactPreview.forceTree}
-			taskId={artifactPreview.taskId}
-			{t}
-			onClose={closeArtifactPreview}
-			onSelect={(att) =>
-				openArtifactPath(
-					att.workspace_relpath,
-					att,
-					runtime.previewMessageId,
-					runtime.forceArtifactTree,
-					runtime.previewTaskId,
-					runtime.previewSiblings
-				)}
-			onSelectWorkspacePath={(path) =>
-				openArtifactPath(
-					path,
-					undefined,
-					runtime.previewMessageId,
-					runtime.forceArtifactTree,
-					runtime.previewTaskId,
-					runtime.previewSiblings
-				)}
-		/>
+		{#await import('./overlays/ArtifactPreview.svelte') then { default: ArtifactPreview }}
+			<ArtifactPreview
+				bind:this={previewPane}
+				attachment={artifactPreview.attachment}
+				relpath={artifactPreview.relpath}
+				siblings={artifactPreview.siblings}
+				api={runtime.client}
+				workspacePath={snapshot.settings.workspace_path}
+				forceTree={artifactPreview.forceTree}
+				taskId={artifactPreview.taskId}
+				{t}
+				onClose={closeArtifactPreview}
+				onSelect={(att) =>
+					openArtifactPath(
+						att.workspace_relpath,
+						att,
+						runtime.previewMessageId,
+						runtime.forceArtifactTree,
+						runtime.previewTaskId,
+						runtime.previewSiblings
+					)}
+				onSelectWorkspacePath={(path) =>
+					openArtifactPath(
+						path,
+						undefined,
+						runtime.previewMessageId,
+						runtime.forceArtifactTree,
+						runtime.previewTaskId,
+						runtime.previewSiblings
+					)}
+			/>
+		{/await}
 	{/if}
 	{#if runtime.traceOpen && selected}
-		<TaskTraceView
-			bind:this={tracePane}
-			api={runtime.client}
-			taskId={runtime.traceTaskId || null}
-			sessionId={runtime.traceSessionId || selected.id}
-			activeSessionId={selected.id}
-			sessions={snapshot.sessions}
-			bots={snapshot.bots}
-			youLabel={t.common.you}
-			deletedLabel={t.top.deleted}
-			workspacePath={snapshot.settings.workspace_path}
-			{t}
-			reloadToken={runtime.traceReload}
-			onClose={() => runtime.closeTrace()}
-			onJump={jumpToTrace}
-			onOpenArtifact={openArtifactPath}
-			onTask={(id) => {
-				if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
-			}}
-		/>
+		{#await import('./overlays/TaskTrace.svelte') then { default: TaskTraceView }}
+			<TaskTraceView
+				bind:this={tracePane}
+				api={runtime.client}
+				taskId={runtime.traceTaskId || null}
+				focus={runtime.traceFocus}
+				focusToken={runtime.traceFocusToken}
+				sessionId={runtime.traceSessionId || selected.id}
+				activeSessionId={selected.id}
+				sessions={snapshot.sessions}
+				bots={snapshot.bots}
+				providers={snapshot.providers}
+				youLabel={t.common.you}
+				deletedLabel={t.top.deleted}
+				workspacePath={snapshot.settings.workspace_path}
+				{t}
+				reloadToken={runtime.traceReload}
+				onClose={() => runtime.closeTrace()}
+				onJump={jumpToTrace}
+				onOpenArtifact={openArtifactPath}
+				onTask={(id) => {
+					if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
+				}}
+			/>
+		{/await}
 	{/if}
 	{#if runtime.terminalOpen}
 		<TerminalPane
@@ -1696,17 +1863,6 @@
 			onStream={(id, sink) => runtime.onStream(id, sink)}
 			onChanged={() => runtime.refreshTerminals()}
 			onClose={() => runtime.closeTerminal()}
-		/>
-	{/if}
-	{#if runtime.routeLogOpen && selected}
-		<RouteLog
-			rows={routeRows}
-			sessionTitle={titleOf(selected)}
-			loading={runtime.routesLoading}
-			showEndpoint={snapshot.providers.length > 1}
-			{t}
-			onClose={() => runtime.closeRouteLog()}
-			onJump={jumpToRouteTrigger}
 		/>
 	{/if}
 	{#if runtime.workspaceOpen}
@@ -1746,53 +1902,19 @@
 				if (e.key === 'Escape') {
 					if (drawerHasDanger) dismissDangerConfirm();
 					else if (nestedProfile) closeNestedProfile();
+					else if (profilePane?.backFromEditor()) e.stopPropagation();
 					else runtime.closeSessionSettings();
 				}
 			}}
 		>
 			<div class="sheet is-right session-settings" class:is-mobile-detail={paneMobileDetail}>
-				<div class="sheet-head">
-					{#if nestedProfile}
-						<button
-							type="button"
-							class="sheet-back"
-							onclick={closeNestedProfile}
-						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-							<span>{nestedBackLabel}</span>
-						</button>
-					{:else}
-						<div class="panel-header-title-wrap flex items-center gap-5">
-							<div class="panel-header-icon" aria-hidden="true">
-								{#if selectedKind === 'group'}
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-										<circle cx="9" cy="7" r="4"></circle>
-										<path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-										<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-									</svg>
-								{:else}
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<circle cx="12" cy="12" r="3"></circle>
-										<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-									</svg>
-								{/if}
-							</div>
-							<h2>{sessionSettingsTitle}</h2>
-						</div>
-					{/if}
-					<button
-						type="button"
-						class="sheet-close"
-						title={t.common.close}
-						onclick={closeCurrentDrawerScreen}
-					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="18" y1="6" x2="6" y2="18"></line>
-							<line x1="6" y1="6" x2="18" y2="18"></line>
-						</svg>
-					</button>
-				</div>
+				{@render settingsHead(
+					selectedKind === 'group',
+					nestedProfile,
+					closeNestedProfile,
+					closeCurrentDrawerScreen,
+					selectedKind === 'group' && !nestedProfile && selected ? selected : null
+				)}
 
 				{#if profileBot}
 					{#key profileBot.id}
@@ -1898,10 +2020,23 @@
 
 	}
 
-	.pane-settings {
+	/* The drawer's sheet, sliding over one pane instead of over the whole window. */
+	.sheet.session-settings.is-beside {
+		position: relative;
+		inset: auto;
+		width: 100%;
 		height: 100%;
 		min-height: 0;
-		overflow-y: auto;
+		box-sizing: border-box;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		border-right: 0;
+		box-shadow: none;
+		background: var(--bg);
+		z-index: auto;
+		animation: none;
 	}
 	.pane-settings-gone {
 		display: flex;
@@ -2194,6 +2329,15 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+	}
+
+	/*
+	 * The column's own width, not the window's, decides when a conversation takes the phone
+	 * layout (see `.pane-conversation` for a pane of the workbench). A size query only: unlike
+	 * `contain`, it does not re-anchor the `fixed` menus placed from `clientX` / `clientY`.
+	 */
+	.main {
+		container: conversation / inline-size;
 	}
 
 	/* Shell Layout */

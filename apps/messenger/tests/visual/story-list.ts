@@ -42,7 +42,7 @@ export const STORY_SIZES = {
 	workbench: { width: 1280, height: 820 },
 	// A strip with more tabs than fit: the overflow scrolls and the pane menu holds its place.
 	'workbench-tabs': { width: 520, height: 320 },
-	'workbench-empty': { width: 520, height: 320 },
+	'workbench-empty': { width: 520, height: 480 },
 	// Below the breakpoint the tree is kept but only the focused pane is drawn.
 	'workbench-solo': { width: 600, height: 820 },
 	// Two panes lifted out of the tree, overlapping, so the z-order and the shadow are visible.

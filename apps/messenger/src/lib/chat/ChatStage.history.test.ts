@@ -92,23 +92,6 @@ test("Bot-only histories have an index", () => {
   close();
 });
 
-test("a phone hides the message index and a desktop window shows it", () => {
-  const dom = (window as unknown as { happyDOM?: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM;
-  dom?.setViewport({ width: 390, height: 844 });
-  const phone = stage(history(8));
-  const phoneRail = phone.host.querySelector(".message-index");
-  expect(phoneRail).not.toBeNull();
-  expect(getComputedStyle(phoneRail!).display).toBe("none");
-  phone.close();
-
-  dom?.setViewport({ width: 1180, height: 820 });
-  const desktop = stage(history(8));
-  const desktopRail = desktop.host.querySelector(".message-index");
-  expect(desktopRail).not.toBeNull();
-  expect(getComputedStyle(desktopRail!).display).not.toBe("none");
-  desktop.close();
-});
-
 test("one message from the person is not enough for an index", () => {
   const { host, close } = stage(history(1));
   expect(host.querySelector(".message-index")).toBeNull();

@@ -12,6 +12,7 @@
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
 	import { isOutside } from '../click-outside.ts';
+	import { deferWhileDragging } from '../workbench/pane-resize.svelte.ts';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
 	import {
 		clampZoom,
@@ -490,16 +491,18 @@
 	/** Measure a card and keep the layout honest about it. */
 	function measured(element: HTMLElement, id: string) {
 		slots.set(id, element);
-		const record = () => {
-			recordBox(id, element);
-		};
-		record();
-		if (typeof ResizeObserver === 'undefined') return { destroy: () => slots.delete(id) };
-		const observer = new ResizeObserver(record);
+		// A pane resize used to write every card's box on each frame and lay the board out again.
+		const deferred = deferWhileDragging(() => recordBox(id, element));
+		deferred.run();
+		if (typeof ResizeObserver === 'undefined') {
+			return { destroy: () => { deferred.cancel(); slots.delete(id); } };
+		}
+		const observer = new ResizeObserver(deferred.run);
 		observer.observe(element);
 		return {
 			destroy: () => {
 				observer.disconnect();
+				deferred.cancel();
 				slots.delete(id);
 			}
 		};

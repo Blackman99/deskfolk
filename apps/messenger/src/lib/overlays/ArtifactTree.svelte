@@ -8,6 +8,8 @@
 		selected: string;
 		label: string;
 		onSelect: (node: ArtifactTreeNode) => void;
+		/** Right-click on a row. The preview uses it for Finder and the system app. */
+		onContextMenu?: (node: ArtifactTreeNode, event: MouseEvent) => void;
 		lazyDirs?: boolean;
 		loadedDirs?: ReadonlySet<string>;
 		onExpandDir?: (path: string) => void;
@@ -24,7 +26,7 @@
 	}
 
 	let {
-		nodes, selected, label, onSelect, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
+		nodes, selected, label, onSelect, onContextMenu, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
 		loadingDirs, failedDirs, loading = false, failed = false,
 		loadingLabel, failedLabel, emptyLabel, retryLabel, onRetry,
 	}: Props = $props();
@@ -86,6 +88,12 @@
 			title={node.path}
 			aria-expanded={node.kind === 'dir' ? isOpen(node.path) : undefined}
 			onclick={() => onNode(node)}
+			oncontextmenu={(event) => {
+				if (!onContextMenu) return;
+				event.preventDefault();
+				event.stopPropagation();
+				onContextMenu(node, event);
+			}}
 		>
 			{#if node.kind === 'dir'}
 				<span class="artifact-tree-chevron" class:is-open={isOpen(node.path)} aria-hidden="true">▸</span>

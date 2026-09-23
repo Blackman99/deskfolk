@@ -11,7 +11,11 @@ import type { MinSizeLookup, PaneMin, WorkbenchTab } from "./layout-types.ts";
 export const WB_STRIP_PX = 28;
 
 export const PANE_MINS = {
-  /** Composer plus one bubble. Narrower than `--chat-max-width`, which is a ceiling, not a floor. */
+  /**
+   * Composer plus one bubble. Narrower than `--chat-max-width`, which is a ceiling, not a floor.
+   * Not widened for the settings or the model-choice log: they slide over the transcript, so
+   * opening one never shoves the neighbouring panes.
+   */
   chat: { width: 360, height: 240 },
   /** Matches `PREVIEW_MIN` in overlays/preview-width.ts — the same panel, a different host. */
   preview: { width: 280, height: 240 },
@@ -26,8 +30,6 @@ export const PANE_MINS = {
   workspace: { width: 260, height: 200 },
   /** Seven day columns; the `routine-card` story is shot at 520 wide for the same reason. */
   routines: { width: 520, height: 420 },
-  "route-log": { width: 420, height: 240 },
-  "session-settings": { width: 320, height: 320 },
 } as const satisfies Record<string, PaneMin>;
 
 export type PaneKind = keyof typeof PANE_MINS;

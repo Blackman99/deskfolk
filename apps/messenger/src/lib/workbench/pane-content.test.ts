@@ -14,14 +14,20 @@ import { overlayFromFlags, overlaysEqual, type UrlOverlay } from "../session-url
 
 const samples: PaneContent[] = [
   { kind: "chat", sessionId: "s1" },
+  { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: null } },
+  { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: "bot-1" } },
   { kind: "preview", sessionId: "s1", relpath: "work/a.md", attachmentId: null },
   { kind: "preview", sessionId: null, relpath: null, attachmentId: "att-1" },
-  { kind: "session-settings", sessionId: "s1", botId: null },
-  { kind: "session-settings", sessionId: "s1", botId: "bot-1" },
   { kind: "trace", sessionId: "s1", taskId: null },
   { kind: "trace", sessionId: "s1", taskId: "task-1" },
-  { kind: "route-log", sessionId: "s1" },
-  { kind: "terminal", terminalId: "term-1" },
+  {
+    kind: "trace",
+    sessionId: "s1",
+    taskId: "task-1",
+    focus: { messageId: "m1", turnId: "turn-1" },
+    focusNonce: 2,
+  },
+  { kind: "terminal", terminalId: "term-1", cwd: "/work/real-bot" },
   { kind: "terminal", terminalId: null },
   { kind: "workspace", selected: "work/a.md" },
   { kind: "workspace", selected: null },
@@ -51,6 +57,22 @@ test("a kind this build does not know reads as nothing rather than a blank pane"
   expect(contentOfTab({ id: "t1", kind: "trace", params: {} })).toBeNull();
 });
 
+test("settings are a conversation's sidebar and the model-choice log is no pane at all", () => {
+  // A layout saved when they were tabs names kinds this build no longer draws; healing drops them.
+  expect(contentOfTab({ id: "t1", kind: "session-settings", params: { sessionId: "s1" } })).toBeNull();
+  expect(contentOfTab({ id: "t1", kind: "route-log", params: { sessionId: "s1" } })).toBeNull();
+  expect(PANE_KINDS).not.toContain("session-settings" as never);
+  expect(PANE_KINDS).not.toContain("route-log" as never);
+  // A side this build does not know — the log's, say — is nothing open, not a broken sidebar.
+  for (const side of ["route-log", "from-the-future"]) {
+    expect(contentOfTab({ id: "t1", kind: "chat", params: { sessionId: "s1", side } })).toEqual({
+      kind: "chat",
+      sessionId: "s1",
+      side: null,
+    });
+  }
+});
+
 test("the kind list covers every case the union has", () => {
   const kinds = new Set(samples.map((content) => content.kind));
   expect([...kinds].sort()).toEqual([...PANE_KINDS].sort());
@@ -58,7 +80,7 @@ test("the kind list covers every case the union has", () => {
 
 test("a pane says which conversation it belongs to, so closing it can release the history", () => {
   expect(contentSessionId({ kind: "chat", sessionId: "s1" })).toBe("s1");
-  expect(contentSessionId({ kind: "route-log", sessionId: "s1" })).toBe("s1");
+  expect(contentSessionId({ kind: "chat", sessionId: "s1", side: { kind: "settings", botId: null } })).toBe("s1");
   expect(contentSessionId({ kind: "terminal", terminalId: "t" })).toBeNull();
   expect(contentSessionId({ kind: "routines" })).toBeNull();
 });
@@ -70,11 +92,11 @@ test("a pane says which conversation it belongs to, so closing it can release th
 test("a pane and the old flags describe the same overlay", () => {
   const cases: Array<{ content: PaneContent; flags: Parameters<typeof overlayFromFlags>[0] }> = [
     {
-      content: { kind: "session-settings", sessionId: "s1", botId: null },
+      content: { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: null } },
       flags: { settingsOpen: false, sessionSettingsOpen: true, profileBotId: null, workspaceOpen: false, workspaceSelected: null },
     },
     {
-      content: { kind: "session-settings", sessionId: "s1", botId: "bot-1" },
+      content: { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: "bot-1" } },
       flags: { settingsOpen: false, sessionSettingsOpen: true, profileBotId: "bot-1", workspaceOpen: false, workspaceSelected: null },
     },
     {
@@ -98,15 +120,18 @@ test("a pane and the old flags describe the same overlay", () => {
 test("what was never in the URL stays out of it", () => {
   expect(overlayFromContent({ kind: "chat", sessionId: "s1" })).toEqual({ kind: "none" });
   expect(overlayFromContent({ kind: "terminal", terminalId: "t" })).toEqual({ kind: "none" });
-  expect(overlayFromContent({ kind: "route-log", sessionId: "s1" })).toEqual({ kind: "none" });
   expect(overlayFromContent(null)).toEqual({ kind: "none" });
 });
 
 test("a deep link becomes the pane it asks for", () => {
   const cases: Array<[UrlOverlay, string | null, PaneContent | null]> = [
-    [{ kind: "session" }, "s1", { kind: "session-settings", sessionId: "s1", botId: null }],
-    [{ kind: "bot", botId: "bot-1" }, "s1", { kind: "session-settings", sessionId: "s1", botId: "bot-1" }],
-    [{ kind: "trace", taskId: "task-1" }, "s1", { kind: "trace", sessionId: "s1", taskId: "task-1" }],
+    [{ kind: "session" }, "s1", { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: null } }],
+    [{ kind: "bot", botId: "bot-1" }, "s1", { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: "bot-1" } }],
+    [
+      { kind: "trace", taskId: "task-1" },
+      "s1",
+      { kind: "trace", sessionId: "s1", taskId: "task-1", focus: null, focusNonce: null },
+    ],
     [{ kind: "workspace", selected: null }, null, { kind: "workspace", selected: null }],
     [{ kind: "routines" }, null, { kind: "routines" }],
     // Settings stays a modal on the desktop, so it is not a pane at all.

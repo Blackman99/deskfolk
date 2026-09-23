@@ -4,9 +4,10 @@
  * The rule everything here follows: **never rearrange the layout behind the person's back.** If a
  * pane already shows what is being asked for, that pane is focused and nothing else moves. A
  * conversation's preview and flow board are one pane each, so a request for another file or job
- * of that conversation turns the one it has. Only when nothing shows it does the active pane take
- * it, and even then the layout's shape is untouched — a tab is added or replaced, never a pane
- * opened or closed.
+ * of that conversation turns the one it has; its settings are not a pane at all but a sidebar
+ * inside its own tab. Only when nothing shows it does the active pane take it,
+ * and even then the layout's shape is untouched — a tab is added or replaced, never a pane opened
+ * or closed.
  */
 import type { NodeId, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import {
@@ -23,6 +24,8 @@ import {
   contentToParams,
   contentsEqual,
   tabFor,
+  type ChatContent,
+  type ChatSide,
   type PaneContent,
 } from "./pane-content.ts";
 
@@ -80,13 +83,10 @@ export type OpenOptions = {
 };
 
 /**
- * Kinds there can only be one of at a time.
- *
- * The settings panels are driven by state the shell holds one copy of — the unsaved draft, which
- * danger confirm is armed, which screen a narrow window is on — so a second one would be showing
- * the first one's edits. Asking for it again moves the single pane rather than making a rival.
+ * Kinds there can only be one of at a time. Asking for it again moves the single pane rather than
+ * making a rival. (The settings sidebar has the same rule for the same reason; see `openChat`.)
  */
-const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["session-settings", "routines"]);
+const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines"]);
 
 /**
  * Kinds a conversation has exactly one of.
@@ -143,11 +143,12 @@ export function openContent(
   content: PaneContent,
   opts: OpenOptions,
 ): WorkbenchLayout {
+  if (content.kind === "chat") return openChat(layout, content, opts);
   const existing = existingTarget(layout, content);
   if (existing) {
     // Asking for the board with no job in mind is asking to see it, not to move it off the job
-    // it is showing.
-    const keep = content.kind === "trace" && !content.taskId;
+    // it is showing. A message's card is a request to move, so it is applied.
+    const keep = content.kind === "trace" && !content.taskId && !content.focus;
     return retarget(layout, existing, keep ? null : content);
   }
   const found = findContent(layout, content);
@@ -155,7 +156,15 @@ export function openContent(
     const focused = focusLeaf(layout, found.leafId);
     return activateTab(focused, found.leafId, found.tab.id);
   }
+  return placeInActivePane(layout, content, opts);
+}
 
+/** A new tab in the pane the keyboard is in. */
+function placeInActivePane(
+  layout: WorkbenchLayout,
+  content: PaneContent,
+  opts: OpenOptions,
+): WorkbenchLayout {
   const leafId = layout.focus.leafId;
   const leaf = leafById(layout, leafId);
   if (!leaf) return layout;
@@ -172,6 +181,86 @@ export function openContent(
     }
   }
   return focusLeaf(addTab(layout, leafId, tab), leafId);
+}
+
+/**
+ * A conversation is one tab, whatever it has open beside the transcript.
+ *
+ * Asking for it again brings that tab forward and leaves its sidebar as it is — clicking the
+ * conversation in the roster is not asking to close its settings. A request that names a sidebar
+ * opens that one there instead. The settings panels read state the shell holds one copy of — the
+ * unsaved draft, which danger confirm is armed — so settings are beside one conversation at a
+ * time: opening them here closes them wherever else they were, rather than showing the first
+ * one's edits in a second.
+ */
+function openChat(layout: WorkbenchLayout, content: ChatContent, opts: OpenOptions): WorkbenchLayout {
+  const existing = findBound(layout, "chat", content.sessionId);
+  let next: WorkbenchLayout;
+  if (existing) {
+    const current = contentOfTab(existing.tab);
+    const turned = content.side !== undefined && current?.kind === "chat" ? { ...current, side: content.side } : null;
+    next = retarget(layout, existing, turned);
+  } else {
+    next = placeInActivePane(layout, { ...content, side: content.side ?? null }, opts);
+  }
+  return content.side?.kind === "settings" ? closeSettingsBesideOthers(next, content.sessionId) : next;
+}
+
+function closeSettingsBesideOthers(layout: WorkbenchLayout, sessionId: string): WorkbenchLayout {
+  let next = layout;
+  for (const leaf of leavesOf(layout)) {
+    for (const tab of leaf.tabs) {
+      const its = contentOfTab(tab);
+      if (its?.kind !== "chat" || its.sessionId === sessionId || its.side?.kind !== "settings") continue;
+      next = replaceTabContent(next, leaf.id, tab.id, { ...its, side: null });
+    }
+  }
+  return next;
+}
+
+/**
+ * The header's buttons: open this sidebar beside the conversation, or close it when it is the one
+ * already open there. A group member's settings are not the group's, so the group's button turns
+ * the sidebar to the group rather than closing it. Closing leaves the tab where it is and the
+ * keyboard where it was.
+ */
+export function toggleChatSide(
+  layout: WorkbenchLayout,
+  sessionId: string,
+  side: ChatSide,
+  opts: OpenOptions,
+): WorkbenchLayout {
+  const at = findBound(layout, "chat", sessionId);
+  const current = at ? contentOfTab(at.tab) : null;
+  if (at && current?.kind === "chat" && current.side && sameSide(current.side, side)) {
+    return replaceTabContent(layout, at.leafId, at.tab.id, { ...current, side: null });
+  }
+  return openContent(layout, { kind: "chat", sessionId, side }, opts);
+}
+
+function sameSide(a: ChatSide, b: ChatSide): boolean {
+  return a.kind === b.kind && a.botId === b.botId;
+}
+
+/** Close whatever this conversation has open beside its transcript. */
+export function closeChatSide(layout: WorkbenchLayout, sessionId: string): WorkbenchLayout {
+  const at = findBound(layout, "chat", sessionId);
+  const current = at ? contentOfTab(at.tab) : null;
+  if (!at || current?.kind !== "chat" || !current.side) return layout;
+  return replaceTabContent(layout, at.leafId, at.tab.id, { ...current, side: null });
+}
+
+/** The conversation whose settings are open beside it, and which Bot they are on, if any. */
+export function settingsSide(layout: WorkbenchLayout): { sessionId: string; botId: string | null } | null {
+  for (const leaf of leavesOf(layout)) {
+    for (const tab of leaf.tabs) {
+      const its = contentOfTab(tab);
+      if (its?.kind === "chat" && its.side?.kind === "settings") {
+        return { sessionId: its.sessionId, botId: its.side.botId };
+      }
+    }
+  }
+  return null;
 }
 
 /**

@@ -101,9 +101,9 @@
 	/** Bumped on every accepted save so the header can say 「已自动保存」. */
 	let profileSavedTick = $state(0);
 	let profileSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	/** The Bot the current draft belongs to; a save resolving after a switch must not touch the new draft. */
-	let profileSaveBotId: string | null = null;
 	let profileSaveQueued = false;
+	/** Cleared on unmount: a save that fails after the pane is gone must not flag the next one. */
+	let mounted = true;
 
 	let skillEditor = $state<'add' | string | null>(null);
 	let skillDraft = $state<SkillDraft>(emptySkillDraft());
@@ -117,7 +117,10 @@
 	);
 
 	// Closing the drawer or switching Bots unmounts this pane; a pending autosave goes out first.
-	$effect(() => () => flushProfileSave());
+	$effect(() => () => {
+		flushProfileSave();
+		mounted = false;
+	});
 
 	/** Server-side edits (a Bot changing its own profile) land in the draft unless you are editing. */
 	$effect(() => {
@@ -196,7 +199,7 @@
 	}
 
 	async function saveSkill(): Promise<void> {
-		if (!runtime.profileBotId || !skillEditor) return;
+		if (!skillEditor) return;
 		skillFailed = false;
 		skillErrors = {};
 		const plan = planSkill(skillDraft);
@@ -207,7 +210,7 @@
 		skillBusy = true;
 		const error =
 			skillEditor === 'add'
-				? await runtime.createSkill({ bot_id: runtime.profileBotId, ...plan.body })
+				? await runtime.createSkill({ bot_id: bot.id, ...plan.body })
 				: await runtime.patchSkill(skillEditor, plan.body);
 		skillBusy = false;
 		if (!error) {
@@ -268,8 +271,6 @@
 	}
 
 	function scheduleProfileSave(delay = 600): void {
-		if (!runtime.profileBotId) return;
-		profileSaveBotId = runtime.profileBotId;
 		if (profileSaveTimer) clearTimeout(profileSaveTimer);
 		profileSaveTimer = setTimeout(() => {
 			profileSaveTimer = null;
@@ -286,8 +287,6 @@
 	}
 
 	async function saveProfile(): Promise<void> {
-		const botId = profileSaveBotId;
-		if (!botId) return;
 		if (profileSaving) {
 			profileSaveQueued = true;
 			return;
@@ -296,21 +295,18 @@
 		if (!profileNeedsSave(sent, profileBaseline)) return;
 		const plan = planCreateBot(sent, modelValues);
 		if (!plan.ok) {
-			if (profileSaveBotId === botId) profileErrors = plan.errors;
+			profileErrors = plan.errors;
 			return;
 		}
 		profileSaving = true;
 		profileFailed = false;
 		profileErrors = {};
-		const error = await runtime.patchBot(botId, plan.body);
+		const error = await runtime.patchBot(bot.id, plan.body);
 		profileSaving = false;
-		const stillHere = profileSaveBotId === botId && runtime.profileBotId === botId;
 		if (!error) {
-			if (stillHere) {
-				profileBaseline = sent;
-				profileSavedTick += 1;
-			}
-		} else if (stillHere) {
+			profileBaseline = sent;
+			profileSavedTick += 1;
+		} else if (mounted) {
 			const mapped = mapCreateBotError(error.status, error.message);
 			if ('top' in mapped) profileFailed = true;
 			else profileErrors = mapped;
@@ -322,16 +318,14 @@
 	}
 
 	async function archiveProfile(): Promise<void> {
-		if (!runtime.profileBotId) return;
 		profileFailed = false;
-		const error = await runtime.archiveBot(runtime.profileBotId);
+		const error = await runtime.archiveBot(bot.id);
 		if (error) profileFailed = true;
 	}
 
 	async function restoreProfile(): Promise<void> {
-		if (!runtime.profileBotId) return;
 		profileFailed = false;
-		const error = await runtime.restoreBot(runtime.profileBotId);
+		const error = await runtime.restoreBot(bot.id);
 		if (error) profileFailed = true;
 	}
 

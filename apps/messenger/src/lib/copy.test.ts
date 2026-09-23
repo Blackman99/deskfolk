@@ -428,6 +428,10 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.artifactFind).toBe("Find");
   expect(COPY.zh.stream.artifactFindNext).toBe("下一个");
   expect(COPY.en.stream.artifactFindNext).toBe("Next");
+  expect(COPY.zh.pane.flowOf("研究")).toBe("研究流程");
+  expect(COPY.en.pane.flowOf("Research")).toBe("Research flow");
+  expect(COPY.zh.pane.artifactsOf("研究")).toBe("研究的产物");
+  expect(COPY.en.pane.artifactsOf("Research")).toBe("Research's artifacts");
   expect(COPY.zh.sidebar.workspace).toBe("工作区");
   expect(COPY.en.sidebar.workspace).toBe("Workspace");
   expect(COPY.zh.sidebar.workspaceUnset).toBe("先在设置里选择工作区目录。");
@@ -484,21 +488,12 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   );
 });
 
-test("the model choice log names the log, the outcomes and the message kinds in both locales", () => {
-  expect(COPY.zh.routes.title).toBe("模型选择记录");
-  expect(COPY.zh.routes.topAction).toBe("模型选择记录");
-  expect(COPY.en.routes.topAction).toBe("Model log");
-  expect(COPY.zh.routes.subtitle("视频组", 383)).toBe("视频组 · 383 轮");
-  expect(COPY.en.routes.subtitle("Writer", 1)).toBe("Writer · 1 turn");
-  expect(COPY.en.routes.subtitle("Writer", 2)).toBe("Writer · 2 turns");
-  expect(COPY.zh.routes.subtitleFiltered("视频组", 4, 383)).toBe("视频组 · 4 / 383 轮");
-  expect(COPY.en.routes.subtitleFiltered("Writer", 1, 2)).toBe("Writer · 1 of 2 turns");
+test("a card's model choice names itself, the outcomes and the message kinds in both locales", () => {
+  expect(COPY.zh.routes.cardTitle).toBe("模型选择");
+  expect(COPY.en.routes.cardTitle).toBe("Model choice");
+  expect(COPY.zh.routes.cardToggle).toBe("看这一轮怎么选的模型");
   expect(COPY.zh.routes.filterFeedback).toBe("有反馈");
   expect(COPY.en.routes.filterBlamed).toBe("Model blamed");
-  expect(COPY.zh.routes.filterNoMatch).toBe("没有匹配的记录");
-  expect(COPY.en.routes.title).toBe("Model choice log");
-  expect(COPY.zh.routes.none).toBe("还没有模型选择记录。");
-  expect(COPY.en.routes.none).toBe("No model choices yet.");
   expect(COPY.zh.routes.outcome.live).toBe("进行中");
   expect(COPY.zh.routes.outcome.completed).toBe("完成");
   // A failed completion is not a fifth terminal state for the turn; it is this choice's failure.

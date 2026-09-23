@@ -538,12 +538,15 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
-                persist_current_window(window);
+                persist_current_window(window, true);
                 let _ = window.hide();
                 api.prevent_close();
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                persist_current_window(window);
+                // A live resize fires this on every pointer move. Asking whether the window is
+                // zoomed from inside that drag moves it on macOS, so the drag keeps the flag it
+                // already had and the release asks again.
+                persist_current_window(window, !macos_live_resize(window));
             }
             _ => {}
         })
@@ -889,7 +892,7 @@ fn restore_window_size(app: &AppHandle) {
     window_state::mark_ready();
 }
 
-fn persist_current_window(window: &Window) {
+fn persist_current_window(window: &Window, ask_zoomed: bool) {
     let Ok(physical) = window.inner_size() else {
         return;
     };
@@ -898,8 +901,36 @@ fn persist_current_window(window: &Window) {
         physical,
         window.scale_factor().unwrap_or(1.0),
         window.is_minimized().unwrap_or(false),
-        window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false),
+        if ask_zoomed {
+            Some(window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false))
+        } else {
+            None
+        },
     );
+}
+
+/// True while the user is dragging a window edge.
+///
+/// `isZoomed` (what `is_maximized` calls) is not safe to ask then: AppKit answers it by
+/// recomputing the standard frame, and doing that from inside the resize tracking loop
+/// moves the window off the pointer.
+#[cfg(target_os = "macos")]
+fn macos_live_resize(window: &Window) -> bool {
+    let Ok(handle) = window.ns_window() else {
+        return false;
+    };
+    let ns_window = handle as *mut objc2_app_kit::NSWindow;
+    if ns_window.is_null() {
+        return false;
+    }
+    // The pointer is borrowed from the window for this call. `inLiveResize` does not retain it.
+    let ns_window = unsafe { &*ns_window };
+    ns_window.inLiveResize()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_live_resize(_window: &Window) -> bool {
+    false
 }
 
 fn persist_main_window(app: &AppHandle) {
@@ -914,7 +945,7 @@ fn persist_main_window(app: &AppHandle) {
         physical,
         window.scale_factor().unwrap_or(1.0),
         window.is_minimized().unwrap_or(false),
-        window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false),
+        Some(window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false)),
     );
 }
 
@@ -923,14 +954,20 @@ fn persist_window_size(
     physical: PhysicalSize<u32>,
     scale: f64,
     minimized: bool,
-    zoomed: bool,
+    zoomed: Option<bool>,
 ) {
     if !window_state::is_ready() || minimized {
         return;
     }
     let dir = window_state_dir(app);
     let previous = window_state::load(&dir);
-    let size = window_state::snapshot(physical.width, physical.height, scale, zoomed, &previous);
+    let size = match zoomed {
+        Some(zoomed) => {
+            window_state::snapshot(physical.width, physical.height, scale, zoomed, &previous)
+        }
+        // Mid-drag: keep the size that was restored, and do not rewrite the maximized flag.
+        None => previous,
+    };
     let _ = window_state::save(&dir, &size);
 }
 

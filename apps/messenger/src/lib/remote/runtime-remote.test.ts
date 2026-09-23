@@ -251,3 +251,86 @@ test("a wake-up on a live link costs nothing", () => {
   internals.reconnectNow();
   expect(internals.nextAttemptAt - Date.now()).toBeGreaterThan(900_000);
 });
+
+const INSTANCE = "a".repeat(32);
+const botEvent = (seq: number, id: string, name: string, instance = INSTANCE) => ({
+  type: "event" as const,
+  event_instance_id: instance,
+  seq,
+  payload: { event: "bot.upsert" as const, occurred_at: "2026-09-23T00:00:00.000Z", ...aBot({ id, name }), deleted_at: null },
+});
+const snapshotAt = (request: RemoteRequest, instance: string, watermark: number): RemoteResponse => ({
+  v: 1, id: request.id, status: 200,
+  body: { ...emptySnapshot(), event_instance_id: instance, watermark_seq: watermark } as unknown as RuntimeSnapshot,
+});
+
+/**
+ * A phone that slept comes back to the Mac it left. It used to pull the whole snapshot again —
+ * 1.6 MB on a real roster — plus every open transcript; the events it missed are a few KB.
+ */
+test("a phone back on the same Mac replays what it missed instead of the snapshot", async () => {
+  const asked: Array<{ link: number; path: string; query?: Record<string, string> }> = [];
+  const remote: ReturnType<typeof serveRemote> = serveRemote({
+    ready: (link) => ({ event_instance_id: INSTANCE, watermark_seq: link === 0 ? 0 : 2 }),
+    answer: (request) => {
+      asked.push({ link: remote.sockets.length - 1, path: request.path, query: request.query });
+      if (request.path === "/v1/snapshot") return snapshotAt(request, INSTANCE, 0);
+      if (request.path === "/v1/events/catchup") {
+        return { v: 1, id: request.id, status: 200, body: {
+          event_instance_id: INSTANCE, watermark_seq: 2, resnapshot: false, events: [botEvent(2, "bot-c", "C")],
+        } };
+      }
+      return hostAnswers(request);
+    },
+  });
+  restores.push(remote.restore);
+  useEnrollmentDriver({ get: () => Promise.resolve(liveEnrollment), set: () => Promise.resolve() });
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as { tickRemote(): Promise<void> };
+
+  await internals.tickRemote();
+  expect(runtime.connection).toBe("connected");
+  remote.hosts[0]!.event(botEvent(1, "bot-b", "B"));
+  expect(runtime.snapshot.bots.map((bot) => bot.name)).toEqual(["B"]);
+
+  remote.sockets[0]!.drop();
+  await internals.tickRemote();
+  expect(runtime.connection).toBe("connected");
+  const second = asked.filter((row) => row.link === 1);
+  expect(second.map((row) => row.path)).toContain("/v1/events/catchup");
+  expect(second.map((row) => row.path)).not.toContain("/v1/snapshot");
+  expect(second.find((row) => row.path === "/v1/events/catchup")?.query).toEqual({ event_instance_id: INSTANCE, after_seq: "1" });
+  expect(runtime.snapshot.bots.map((bot) => bot.name).sort()).toEqual(["B", "C"]);
+});
+
+/** A restarted Mac is another event instance: there is nothing to replay, so the snapshot it is. */
+test("a Mac that restarted is read again from its snapshot", async () => {
+  const other = "b".repeat(32);
+  const asked: Array<{ link: number; path: string }> = [];
+  const remote: ReturnType<typeof serveRemote> = serveRemote({
+    ready: (link) => ({ event_instance_id: link === 0 ? INSTANCE : other, watermark_seq: 0 }),
+    answer: (request) => {
+      const link = remote.sockets.length - 1;
+      asked.push({ link, path: request.path });
+      if (request.path === "/v1/snapshot") return snapshotAt(request, link === 0 ? INSTANCE : other, 0);
+      return hostAnswers(request);
+    },
+  });
+  restores.push(remote.restore);
+  useEnrollmentDriver({ get: () => Promise.resolve(liveEnrollment), set: () => Promise.resolve() });
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  const internals = runtime as unknown as { tickRemote(): Promise<void> };
+
+  await internals.tickRemote();
+  remote.hosts[0]!.event(botEvent(1, "bot-b", "B"));
+  remote.sockets[0]!.drop();
+  await internals.tickRemote();
+  expect(runtime.connection).toBe("connected");
+  const second = asked.filter((row) => row.link === 1).map((row) => row.path);
+  expect(second).toContain("/v1/snapshot");
+  expect(second).not.toContain("/v1/events/catchup");
+  // The restarted Mac's snapshot is the truth now, not what the page held before.
+  expect(runtime.snapshot.bots).toEqual([]);
+});

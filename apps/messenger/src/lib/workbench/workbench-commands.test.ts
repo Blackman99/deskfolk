@@ -4,6 +4,7 @@ import { makeBranch, makeLeaf, leafById, splitLeaf, tiledLeaves } from "./layout
 import { computeGeometry } from "./layout-geometry.ts";
 import {
   MENU_COMMANDS,
+  SPLIT_TOWARDS,
   TYPING_TARGETS,
   WB_KEY_RESIZE_PX,
   applyCommand,
@@ -168,4 +169,21 @@ test("every menu id the window sends maps to a command", () => {
   ]);
   expect(MENU_COMMANDS["pane-split-right"]).toEqual({ kind: "split", axis: "row", side: "after" });
   expect(MENU_COMMANDS["pane-split-down"]).toEqual({ kind: "split", axis: "column", side: "after" });
+});
+
+test("the four split directions say which side the new pane goes, and agree with ⌘\\ and the menu", () => {
+  // The right-click menu offers all four; right and down must stay the ones the keys make.
+  expect(SPLIT_TOWARDS.right).toEqual({ axis: "row", side: "after" });
+  expect(SPLIT_TOWARDS.left).toEqual({ axis: "row", side: "before" });
+  expect(SPLIT_TOWARDS.down).toEqual({ axis: "column", side: "after" });
+  expect(SPLIT_TOWARDS.up).toEqual({ axis: "column", side: "before" });
+  expect(MENU_COMMANDS["pane-split-right"]).toEqual({ kind: "split", ...SPLIT_TOWARDS.right });
+  expect(MENU_COMMANDS["pane-split-down"]).toEqual({ kind: "split", ...SPLIT_TOWARDS.down });
+
+  const layout = { version: 1, root: makeLeaf("a", [aTab("t")]), floating: [], focus: { zone: "tiled", leafId: "a" } } as WorkbenchLayout;
+  const upward = applyCommand(layout, { kind: "split", ...SPLIT_TOWARDS.up }, ctx(), split);
+  if (upward.root.type !== "branch") throw new Error("expected a branch");
+  expect(upward.root.axis).toBe("column");
+  expect(upward.root.children[1]!.id).toBe("a");
+  expect(upward.focus.leafId).toBe(upward.root.children[0]!.id);
 });

@@ -7,15 +7,29 @@
  * sides.
  */
 import type { Attachment } from "@real-bot/protocol";
+import type { TraceFocus } from "../overlays/task-trace.ts";
 import type { WorkbenchTab } from "./layout-types.ts";
 import type { UrlOverlay } from "../session-url.ts";
 
+/**
+ * What a conversation pane has sliding over its transcript: the conversation's settings, or a
+ * Bot's when `botId` names one. It belongs to the conversation's tab, so it moves, splits and
+ * comes back after a restart along with it. (Model choices are read on the flow board's cards.)
+ */
+export type ChatSide = { kind: "settings"; botId: string | null };
+
 export type PaneContent =
-  | { kind: "chat"; sessionId: string }
+  /** `side` left out means "whatever it has open"; `null` means nothing beside the transcript. */
+  | { kind: "chat"; sessionId: string; side?: ChatSide | null }
   | { kind: "preview"; sessionId: string | null; relpath: string | null; attachmentId: string | null; messageId?: string | null; taskId?: string | null; forceTree?: boolean; siblings?: Attachment[] | null }
-  | { kind: "session-settings"; sessionId: string; botId: string | null }
-  | { kind: "trace"; sessionId: string; taskId: string | null }
-  | { kind: "route-log"; sessionId: string }
+  | {
+      kind: "trace";
+      sessionId: string;
+      taskId: string | null;
+      /** The message a "show this job" asked to land on, and which request it was. */
+      focus?: TraceFocus | null;
+      focusNonce?: number | null;
+    }
   /**
    * One shell. `cwd` is where it was opened, which is where a restart starts it again when the
    * process did not survive — the split it sits in is the layout's, and this is what fills it.
@@ -25,14 +39,13 @@ export type PaneContent =
   | { kind: "routines" };
 
 export type PaneKind = PaneContent["kind"];
+export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
 
 /** Every kind this build can draw. A layout naming anything else is healed away rather than shown. */
 export const PANE_KINDS: readonly PaneKind[] = [
   "chat",
   "preview",
-  "session-settings",
   "trace",
-  "route-log",
   "terminal",
   "workspace",
   "routines",
@@ -43,8 +56,12 @@ export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
 /** The parameters a tab carries. Only strings, because a layout has to survive `JSON.stringify`. */
 export function contentToParams(content: PaneContent): Record<string, string> {
   switch (content.kind) {
-    case "chat":
-      return { sessionId: content.sessionId };
+    case "chat": {
+      const params: Record<string, string> = { sessionId: content.sessionId };
+      if (content.side) params.side = content.side.kind;
+      if (content.side?.botId) params.botId = content.side.botId;
+      return params;
+    }
     case "preview": {
       const params: Record<string, string> = {};
       if (content.sessionId) params.sessionId = content.sessionId;
@@ -56,20 +73,22 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       if (content.siblings?.length) params.siblings = JSON.stringify(content.siblings);
       return params;
     }
-    case "session-settings": {
-      const params: Record<string, string> = { sessionId: content.sessionId };
-      if (content.botId) params.botId = content.botId;
-      return params;
-    }
     case "trace": {
       const params: Record<string, string> = { sessionId: content.sessionId };
       if (content.taskId) params.taskId = content.taskId;
+      if (content.focus) {
+        params.focusMessageId = content.focus.messageId;
+        if (content.focus.turnId) params.focusTurnId = content.focus.turnId;
+      }
+      if (content.focusNonce) params.focusNonce = String(content.focusNonce);
       return params;
     }
-    case "route-log":
-      return { sessionId: content.sessionId };
-    case "terminal":
-      return content.terminalId ? { terminalId: content.terminalId } : {};
+    case "terminal": {
+      const params: Record<string, string> = {};
+      if (content.terminalId) params.terminalId = content.terminalId;
+      if (content.cwd) params.cwd = content.cwd;
+      return params;
+    }
     case "workspace":
       return content.selected ? { selected: content.selected } : {};
     case "routines":
@@ -82,7 +101,7 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
   const p = tab.params;
   switch (tab.kind) {
     case "chat":
-      return p.sessionId ? { kind: "chat", sessionId: p.sessionId } : null;
+      return p.sessionId ? { kind: "chat", sessionId: p.sessionId, side: chatSideOf(p) } : null;
     case "preview":
       return {
         kind: "preview",
@@ -94,16 +113,10 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
         forceTree: p.forceTree === "true",
         siblings: parsePreviewSiblings(p.siblings),
       };
-    case "session-settings":
-      return p.sessionId
-        ? { kind: "session-settings", sessionId: p.sessionId, botId: p.botId ?? null }
-        : null;
     case "trace":
-      return p.sessionId ? { kind: "trace", sessionId: p.sessionId, taskId: p.taskId ?? null } : null;
-    case "route-log":
-      return p.sessionId ? { kind: "route-log", sessionId: p.sessionId } : null;
+      return p.sessionId ? traceContent(p.sessionId, p) : null;
     case "terminal":
-      return { kind: "terminal", terminalId: p.terminalId ?? null };
+      return { kind: "terminal", terminalId: p.terminalId ?? null, cwd: p.cwd ?? null };
     case "workspace":
       return { kind: "workspace", selected: p.selected ?? null };
     case "routines":
@@ -121,9 +134,7 @@ export function tabFor(content: PaneContent, id: string): WorkbenchTab {
 export function contentSessionId(content: PaneContent): string | null {
   switch (content.kind) {
     case "chat":
-    case "session-settings":
     case "trace":
-    case "route-log":
       return content.sessionId;
     case "preview":
       return content.sessionId;
@@ -151,8 +162,10 @@ export function contentsEqual(a: PaneContent, b: PaneContent): boolean {
 export function overlayFromContent(content: PaneContent | null): UrlOverlay {
   if (!content) return { kind: "none" };
   switch (content.kind) {
-    case "session-settings":
-      return content.botId ? { kind: "bot", botId: content.botId } : { kind: "session" };
+    case "chat":
+      // The settings over a conversation are what the drawer is on a narrow window.
+      if (!content.side) return { kind: "none" };
+      return content.side.botId ? { kind: "bot", botId: content.side.botId } : { kind: "session" };
     case "trace":
       return { kind: "trace", taskId: content.taskId };
     case "workspace":
@@ -160,8 +173,8 @@ export function overlayFromContent(content: PaneContent | null): UrlOverlay {
     case "routines":
       return { kind: "routines" };
     default:
-      // A chat, a preview, a terminal or the model-choice log is not an overlay: the first two
-      // are the conversation itself and the last two were never in the URL to begin with.
+      // A preview or a terminal is not an overlay: the first is the conversation's own and the
+      // second was never in the URL to begin with.
       return { kind: "none" };
   }
 }
@@ -170,11 +183,13 @@ export function overlayFromContent(content: PaneContent | null): UrlOverlay {
 export function contentFromOverlay(overlay: UrlOverlay, sessionId: string | null): PaneContent | null {
   switch (overlay.kind) {
     case "session":
-      return sessionId ? { kind: "session-settings", sessionId, botId: null } : null;
+      return sessionId ? { kind: "chat", sessionId, side: { kind: "settings", botId: null } } : null;
     case "bot":
-      return sessionId ? { kind: "session-settings", sessionId, botId: overlay.botId } : null;
+      return sessionId ? { kind: "chat", sessionId, side: { kind: "settings", botId: overlay.botId } } : null;
     case "trace":
-      return sessionId ? { kind: "trace", sessionId, taskId: overlay.taskId } : null;
+      return sessionId
+        ? { kind: "trace", sessionId, taskId: overlay.taskId, focus: null, focusNonce: null }
+        : null;
     case "workspace":
       return { kind: "workspace", selected: overlay.selected };
     case "routines":
@@ -182,6 +197,23 @@ export function contentFromOverlay(overlay: UrlOverlay, sessionId: string | null
     default:
       return null;
   }
+}
+
+/** A board tab, including the message it was asked to land on. */
+function traceContent(sessionId: string, p: Record<string, string>): PaneContent {
+  const nonce = Number(p.focusNonce);
+  return {
+    kind: "trace",
+    sessionId,
+    taskId: p.taskId ?? null,
+    focus: p.focusMessageId ? { messageId: p.focusMessageId, turnId: p.focusTurnId ?? null } : null,
+    focusNonce: Number.isInteger(nonce) && nonce > 0 ? nonce : null,
+  };
+}
+
+/** Only settings slide over a conversation; any other value a layout carries is nothing open. */
+function chatSideOf(p: Record<string, string>): ChatSide | null {
+  return p.side === "settings" ? { kind: "settings", botId: p.botId ?? null } : null;
 }
 
 function parsePreviewSiblings(value: string | undefined): Attachment[] | null {

@@ -6,6 +6,11 @@
 	type Props = {
 		leaf: LeafNode;
 		focused: boolean;
+		/**
+		 * Draw the frame that says "this is the current pane". Only worth it while there is
+		 * another pane to tell it from; a lone pane framed in accent is just noise.
+		 */
+		framed?: boolean;
 		t: Copy;
 		/** The content of the active tab. The workbench never imports a content component itself. */
 		tabBody: Snippet<[WorkbenchTab, string]>;
@@ -18,11 +23,17 @@
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		/** What an empty pane offers to fill itself with. */
 		emptyActions?: Snippet<[string]>;
+		/**
+		 * The same offer, shaped for the strip's menu: a fixed-width list rather than a wrapping
+		 * row of chips, so a long history of shells does not stretch it across the window.
+		 */
+		menuActions?: Snippet<[string, string]>;
 	};
 
 	let {
 		leaf,
 		focused,
+		framed = false,
 		t,
 		tabBody,
 		tabLabel,
@@ -32,30 +43,148 @@
 		onTabPointerDown,
 		onStripPointerDown,
 		onMenu,
-		emptyActions
+		emptyActions,
+		menuActions
 	}: Props = $props();
 
 	const active = $derived(leaf.tabs.find((tab) => tab.id === leaf.activeTabId) ?? null);
 	let strip = $state<HTMLDivElement>();
+	let newTabButton = $state<HTMLButtonElement>();
+	let newTabMenu = $state<HTMLDivElement>();
+	let newTabQuery = $state<HTMLInputElement>();
 	let newTabOpen = $state(false);
+	let newTabFilter = $state('');
+	/** The same list, laid out in an empty pane rather than hung off the +. */
+	let emptyList = $state<HTMLDivElement>();
+	let emptyQuery = $state<HTMLInputElement>();
+	let emptyFilter = $state('');
+	/** The + is there when the pane has something to offer, whether or not the menu is shaped. */
+	const canOpen = $derived(Boolean(menuActions ?? emptyActions));
 
-	/** Anything outside the little menu closes it, the way every other menu in the app behaves. */
-	function closeOnOutside(node: HTMLElement) {
+	/**
+	 * The menu is moved to `document.body`. A pane clips overflow, and a floating pane's
+	 * transform would make `fixed` resolve against the pane instead of the window.
+	 */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
 		const onDown = (event: PointerEvent) => {
-			if (!node.contains(event.target as Node)) newTabOpen = false;
+			if (!node.contains(event.target as Node) && event.target !== newTabButton) newTabOpen = false;
+		};
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') return;
+			event.stopPropagation();
+			newTabOpen = false;
+			newTabButton?.focus();
+		};
+		const onReflow = () => placeNewMenu();
+		const onPick = (event: MouseEvent) => {
+			if ((event.target as HTMLElement | null)?.closest('[role="menuitem"]')) newTabOpen = false;
 		};
 		window.addEventListener('pointerdown', onDown, true);
+		window.addEventListener('resize', onReflow);
+		node.addEventListener('keydown', onKey);
+		node.addEventListener('click', onPick);
+		queueMicrotask(onReflow);
 		return {
 			destroy() {
 				window.removeEventListener('pointerdown', onDown, true);
+				window.removeEventListener('resize', onReflow);
+				node.removeEventListener('keydown', onKey);
+				node.removeEventListener('click', onPick);
+				node.remove();
 			}
 		};
+	}
+
+	function toggleNewTab(): void {
+		newTabOpen = !newTabOpen;
+		if (newTabOpen) newTabFilter = '';
+	}
+
+	/**
+	 * Hangs under the +. Flips upward or inward when that would run off the window.
+	 */
+	function placeNewMenu(): void {
+		const button = newTabButton;
+		const menu = newTabMenu;
+		if (!button || !menu) return;
+		const anchor = button.getBoundingClientRect();
+		const box = menu.getBoundingClientRect();
+		const margin = 8;
+		let left = anchor.left;
+		if (left + box.width > window.innerWidth - margin) left = window.innerWidth - margin - box.width;
+		if (left < margin) left = margin;
+		const below = anchor.bottom + 4;
+		const above = anchor.top - 4 - box.height;
+		const top = below + box.height > window.innerHeight - margin && above >= margin ? above : below;
+		menu.style.left = `${left}px`;
+		menu.style.top = `${Math.max(margin, top)}px`;
+	}
+
+	function onNewTabKey(event: KeyboardEvent): void {
+		if (event.key === 'ArrowDown' && newTabOpen) {
+			event.preventDefault();
+			focusMenuItem(0);
+		} else if (event.key === 'Escape' && newTabOpen) {
+			event.preventDefault();
+			event.stopPropagation();
+			newTabOpen = false;
+		}
+	}
+
+	/**
+	 * Arrow keys walk the rows that are actually on screen; typing filters the running shells.
+	 * One handler for both places the list appears: the + menu and an empty pane.
+	 */
+	function onMenuKey(event: KeyboardEvent, list = newTabMenu, query = newTabQuery): void {
+		// In the filter, Home and End move the caret.
+		if (event.target === query && (event.key === 'Home' || event.key === 'End')) return;
+		const items = menuItems(list);
+		const index = items.indexOf(document.activeElement as HTMLElement);
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			focusMenuItem(index < 0 ? 0 : (index + 1) % items.length, list);
+		} else if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			if (index <= 0) query?.focus();
+			else focusMenuItem(index - 1, list);
+		} else if (event.key === 'Home') {
+			event.preventDefault();
+			focusMenuItem(0, list);
+		} else if (event.key === 'End') {
+			event.preventDefault();
+			focusMenuItem(items.length - 1, list);
+		}
+	}
+
+	function menuItems(list = newTabMenu): HTMLElement[] {
+		return [...(list?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [])];
+	}
+
+	function focusMenuItem(index: number, list = newTabMenu): void {
+		const items = menuItems(list);
+		const item = items[Math.min(Math.max(index, 0), items.length - 1)];
+		item?.focus();
+		item?.scrollIntoView({ block: 'nearest' });
 	}
 
 	$effect(() => {
 		// A pane that changes what it holds should not leave the menu hanging open over it.
 		void leaf.tabs.length;
 		newTabOpen = false;
+		emptyFilter = '';
+	});
+
+	$effect(() => {
+		if (!newTabOpen) return;
+		queueMicrotask(() => newTabQuery?.focus());
+	});
+
+	$effect(() => {
+		if (!newTabOpen) return;
+		// Filtering changes how tall the menu is, so it is placed again.
+		void newTabFilter;
+		queueMicrotask(() => placeNewMenu());
 	});
 
 	/**
@@ -82,11 +211,13 @@
 <div
 	class="wb-leaf"
 	class:is-focused={focused}
+	class:is-framed={framed}
 	data-leaf={leaf.id}
 	data-testid="wb-leaf"
 >
 	<div
 		class="wb-strip"
+		class:is-menu-open={newTabOpen}
 		role="tablist"
 		aria-orientation="horizontal"
 		aria-label={t.pane.tabsIn.replace('{name}', t.pane.title)}
@@ -136,14 +267,18 @@
 				</div>
 			{/each}
 		</div>
-		{#if emptyActions && leaf.tabs.length > 0}
+		{#if canOpen && leaf.tabs.length > 0}
 			<button
 				type="button"
 				class="wb-new-tab"
+				bind:this={newTabButton}
 				aria-label={t.pane.newTab}
+				aria-haspopup="menu"
 				aria-expanded={newTabOpen}
+				aria-controls={newTabOpen ? `wb-new-${leaf.id}` : undefined}
 				title={t.pane.newTab}
-				onclick={() => (newTabOpen = !newTabOpen)}>＋</button
+				onclick={toggleNewTab}
+				onkeydown={onNewTabKey}>＋</button
 			>
 		{/if}
 		{#if onMenu}
@@ -155,11 +290,45 @@
 				onclick={(event) => onMenu(event, leaf.id)}>⋯</button
 			>
 		{/if}
-		{#if newTabOpen && emptyActions}
-			<!-- The same three things an empty pane offers, so there is one answer to "put
-			     something here" whether the pane is empty or already holds a tab. -->
-			<div class="wb-new-menu" role="menu" use:closeOnOutside>
-				{@render emptyActions(leaf.id)}
+		{#if newTabOpen && canOpen}
+			<!-- Listed, and only as wide as the menu: a row of chips grew with every shell. -->
+			<div
+				class="wb-new-menu"
+				id={`wb-new-${leaf.id}`}
+				role="menu"
+				tabindex="-1"
+				aria-label={t.pane.newTab}
+				bind:this={newTabMenu}
+				use:portal
+				onkeydown={onMenuKey}
+			>
+				<label class="wb-new-query">
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+						<circle cx="11" cy="11" r="7"></circle>
+						<line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+					</svg>
+					<input
+						bind:this={newTabQuery}
+						type="search"
+						placeholder={t.pane.findOpen}
+						aria-label={t.pane.findOpen}
+						bind:value={newTabFilter}
+						onkeydown={(event) => {
+							if (event.key === 'ArrowDown') {
+								event.preventDefault();
+								event.stopPropagation();
+								focusMenuItem(0);
+							}
+						}}
+					/>
+				</label>
+				<div class="wb-new-scroll">
+					{#if menuActions}
+						{@render menuActions(leaf.id, newTabFilter)}
+					{:else if emptyActions}
+						{@render emptyActions(leaf.id)}
+					{/if}
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -174,11 +343,53 @@
 			{@render tabBody(active, leaf.id)}
 		{:else}
 			<div class="wb-empty">
-				<p class="wb-empty-title">{t.pane.empty}</p>
-				{#if emptyActions}
+				<div class="wb-empty-head">
+					<span class="wb-empty-glyph" aria-hidden="true">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"></rect>
+							<line x1="12" y1="8.5" x2="12" y2="15.5"></line>
+							<line x1="8.5" y1="12" x2="15.5" y2="12"></line>
+						</svg>
+					</span>
+					<p class="wb-empty-title">{t.pane.empty}</p>
+					<p class="wb-empty-hint">{menuActions || emptyActions ? t.pane.emptyPick : t.pane.emptyHint}</p>
+				</div>
+				{#if menuActions}
+					<!-- The + menu's own list and filter, set down in the pane: one look for one offer. -->
+					<div
+						class="wb-empty-card"
+						role="menu"
+						tabindex="-1"
+						aria-label={t.pane.newTab}
+						bind:this={emptyList}
+						onkeydown={(event) => onMenuKey(event, emptyList, emptyQuery)}
+					>
+						<label class="wb-new-query">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+								<circle cx="11" cy="11" r="7"></circle>
+								<line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+							</svg>
+							<input
+								bind:this={emptyQuery}
+								type="search"
+								placeholder={t.pane.findOpen}
+								aria-label={t.pane.findOpen}
+								bind:value={emptyFilter}
+								onkeydown={(event) => {
+									if (event.key === 'ArrowDown') {
+										event.preventDefault();
+										event.stopPropagation();
+										focusMenuItem(0, emptyList);
+									}
+								}}
+							/>
+						</label>
+						<div class="wb-new-scroll">
+							{@render menuActions(leaf.id, emptyFilter)}
+						</div>
+					</div>
+				{:else if emptyActions}
 					<div class="wb-empty-actions">{@render emptyActions(leaf.id)}</div>
-				{:else}
-					<p class="wb-empty-hint">{t.pane.emptyHint}</p>
 				{/if}
 			</div>
 		{/if}
@@ -212,9 +423,19 @@
 	.wb-leaf.is-focused .wb-tab.is-active {
 		box-shadow: inset 0 2px 0 0 var(--accent);
 	}
-	.wb-leaf.is-focused {
-		outline: 1px solid var(--accent-border);
-		outline-offset: -1px;
+	/*
+	 * Drawn as a layer over the content, not as the pane's own outline or border: the strip and
+	 * the chat header both paint a background right up to the pane's edge, and an outline on the
+	 * pane sits under them. Over the pane's own layers (its settings scrim is 30) and under the
+	 * floating panes (40 and up), which draw their own.
+	 */
+	.wb-leaf.is-framed::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 35;
+		box-shadow: inset 0 0 0 1px var(--accent);
+		pointer-events: none;
 	}
 	/*
 	 * The strip reads the way a browser's does: it sits a shade below the content, and the active
@@ -232,6 +453,16 @@
 		flex: 0 0 auto;
 		position: relative;
 		z-index: 1;
+	}
+	/*
+	 * The strip is a stacking context of its own, so the menu's z-index only counts inside it, and
+	 * the pane body beneath shares the layer the strip sits in: the conversation's header (z 2), a
+	 * composer popup, the flow board's switcher all painted over the open menu. While the menu is
+	 * open the strip goes above the panes' content and the floating panes, and still below the
+	 * window-wide context menus and dialogs (1000).
+	 */
+	.wb-strip.is-menu-open {
+		z-index: 200;
 	}
 	.wb-tabs {
 		display: flex;
@@ -371,20 +602,155 @@
 		background: var(--row-hover);
 		color: var(--ink);
 	}
+	/*
+	 * A menu, not a wrap of chips. Width is fixed so a dozen shells cannot stretch it; the list
+	 * scrolls inside. It is portaled to the body: a pane clips overflow, and above the floating
+	 * panes (z 40 and up) while staying under the window menus (1000).
+	 */
 	.wb-new-menu {
-		position: absolute;
-		top: 30px;
-		left: 8px;
-		z-index: 30;
+		position: fixed;
+		z-index: 500;
 		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		padding: 8px;
-		border-radius: var(--radius-md);
+		flex-direction: column;
+		width: 280px;
+		max-width: calc(100vw - 16px);
+		max-height: min(420px, calc(100vh - 48px));
+		padding: 6px;
+		border-radius: 12px;
 		background: var(--pane);
+		color: var(--ink);
 		box-shadow:
-			0 12px 30px -4px rgb(0 0 0 / 0.22),
+			0 16px 40px -8px rgb(0 0 0 / 0.28),
+			0 2px 8px rgb(0 0 0 / 0.08),
 			inset 0 0 0 1px var(--line);
+		overflow: hidden;
+	}
+	.wb-new-query {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex: 0 0 auto;
+		margin: 0 0 4px;
+		padding: 0 8px;
+		height: 30px;
+		border-radius: 8px;
+		background: var(--bg);
+		color: var(--muted);
+		box-shadow: inset 0 0 0 1px var(--line);
+	}
+	.wb-new-query svg {
+		flex: 0 0 auto;
+	}
+	.wb-new-query input {
+		flex: 1;
+		min-width: 0;
+		height: 100%;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--ink);
+		font-size: 12px;
+		outline: none;
+	}
+	.wb-new-query input::placeholder {
+		color: var(--muted);
+	}
+	.wb-new-query input::-webkit-search-cancel-button {
+		appearance: none;
+	}
+	.wb-new-query:focus-within {
+		box-shadow: inset 0 0 0 1px var(--accent-border);
+		color: var(--accent);
+	}
+	/* The field's own ring would stack on the bar's. The bar is what shows focus. */
+	.wb-new-query input:focus-visible {
+		box-shadow: none;
+		border-color: transparent !important;
+	}
+	.wb-new-scroll {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow: auto;
+		overscroll-behavior: contain;
+	}
+	/* Rows the host paints into the menu. An empty pane uses `.pane-open` and ignores these. */
+	.wb-new-scroll :global(.wb-menu-section) {
+		padding: 8px 8px 2px;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: var(--muted);
+	}
+	.wb-new-scroll :global(.wb-menu-section:not(:first-child)) {
+		margin-top: 4px;
+		border-top: 1px solid var(--line);
+		padding-top: 8px;
+	}
+	.wb-new-scroll :global(.wb-menu-row) {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		min-height: 32px;
+		padding: 5px 8px;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--ink);
+		text-align: left;
+		cursor: pointer;
+	}
+	.wb-new-scroll :global(.wb-menu-row:hover:not(:disabled)) {
+		background: var(--row-hover);
+	}
+	.wb-new-scroll :global(.wb-menu-row:focus-visible) {
+		background: var(--row-hover);
+		outline: none;
+		box-shadow: inset 0 0 0 1px var(--accent-border);
+		border-color: transparent;
+	}
+	.wb-new-scroll :global(.wb-menu-row:disabled) {
+		color: var(--muted);
+		cursor: default;
+	}
+	.wb-new-scroll :global(.wb-menu-mark) {
+		flex: 0 0 auto;
+		width: 22px;
+		height: 22px;
+		display: grid;
+		place-items: center;
+		border-radius: 6px;
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+	.wb-new-scroll :global(.wb-menu-mark.is-quiet) {
+		background: var(--bg);
+		color: var(--muted);
+	}
+	.wb-new-scroll :global(.wb-menu-copy) {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		flex: 1;
+	}
+	.wb-new-scroll :global(.wb-menu-name) {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: 12.5px;
+		line-height: 1.3;
+	}
+	.wb-new-scroll :global(.wb-menu-meta) {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: 11px;
+		line-height: 1.3;
+		color: var(--muted);
+	}
+	.wb-new-scroll :global(.wb-menu-empty) {
+		padding: 10px 8px 8px;
+		font-size: 12px;
+		color: var(--muted);
 	}
 	.wb-body {
 		flex: 1;
@@ -398,17 +764,58 @@
 		align-items: center;
 		justify-content: center;
 		height: 100%;
-		gap: 6px;
-		padding: 24px;
+		gap: 16px;
+		padding: 24px 16px;
 		text-align: center;
 	}
+	.wb-empty-head {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		flex: 0 0 auto;
+	}
+	.wb-empty-glyph {
+		display: grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
+		margin-bottom: 6px;
+		border-radius: 10px;
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
 	.wb-empty-title {
+		margin: 0;
 		color: var(--ink);
 		font-size: 14px;
+		font-weight: 600;
 	}
 	.wb-empty-hint {
+		margin: 0;
 		color: var(--muted);
 		font-size: 12px;
+	}
+	/*
+	 * The + menu's card, resting in the pane instead of floating over it: the same padding,
+	 * radius and hairline, a lighter shadow. In a short pane it gives up height before the
+	 * heading does, and the rows scroll inside it.
+	 */
+	.wb-empty-card {
+		display: flex;
+		flex-direction: column;
+		flex: 0 1 auto;
+		width: min(300px, 100%);
+		max-height: 360px;
+		min-height: 0;
+		padding: 6px;
+		border-radius: 12px;
+		background: var(--pane);
+		color: var(--ink);
+		text-align: left;
+		box-shadow:
+			0 12px 32px -16px rgb(0 0 0 / 0.35),
+			inset 0 0 0 1px var(--line);
 	}
 	.wb-empty-actions {
 		display: flex;

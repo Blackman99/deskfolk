@@ -2,7 +2,16 @@ import { expect, test } from "bun:test";
 import type { WorkbenchLayout } from "./layout-types.ts";
 import { assertInvariants, leafById, makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 import { tabFor } from "./pane-content.ts";
-import { activeSessionId, dropDuplicateBoundTabs, existingTarget, findContent, openContent } from "./pane-open.ts";
+import {
+  activeSessionId,
+  closeChatSide,
+  dropDuplicateBoundTabs,
+  existingTarget,
+  findContent,
+  openContent,
+  settingsSide,
+  toggleChatSide,
+} from "./pane-open.ts";
 
 let seq = 0;
 const ids = { id: () => `t${++seq}` };
@@ -74,20 +83,85 @@ test("the focused pane says which conversation the app is pointed at", () => {
   expect(activeSessionId(layoutOf(makeLeaf("a", [])))).toBeNull();
 });
 
-test("kinds there can only be one of move rather than multiply", () => {
-  // The settings panels read one copy of the shell's unsaved draft and armed confirms, so a
-  // second pane would be showing the first one's edits.
+const settings = (botId: string | null = null) => ({ kind: "settings", botId }) as const;
+const tabsOf = (layout: WorkbenchLayout) =>
+  [...tiledLeaves(layout.root)].map((leaf) => leaf.tabs.map((tab) => [tab.kind, tab.params]));
+
+test("settings open beside the conversation, in its own tab, not as a tab of their own", () => {
   const layout = layoutOf(makeBranch("r", "row", [
-    makeLeaf("a", [tabFor({ kind: "session-settings", sessionId: "s1", botId: null }, "t-a")]),
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor({ kind: "terminal", terminalId: "x" }, "t-b")]),
+  ]), "b");
+  const next = openContent(layout, { ...chat("s1"), side: settings() }, ids);
+  expect(tabsOf(next)).toEqual([
+    [["chat", { sessionId: "s1", side: "settings" }]],
+    [["terminal", { terminalId: "x" }]],
+  ]);
+  // The conversation comes forward, since that is where they are.
+  expect(next.focus.leafId).toBe("a");
+  assertInvariants(next);
+});
+
+test("a conversation that is not open yet comes with its sidebar already open", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor({ kind: "terminal", terminalId: "x" }, "t-a")]));
+  const next = openContent(layout, { ...chat("s1"), side: settings() }, ids);
+  expect(tabsOf(next)).toEqual([[
+    ["terminal", { terminalId: "x" }],
+    ["chat", { sessionId: "s1", side: "settings" }],
+  ]]);
+});
+
+test("going back to a conversation leaves its sidebar open", () => {
+  // Clicking the row in the roster is "go there", not "close its settings".
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor({ ...chat("s1"), side: settings("bot-1") }, "t-a")]),
     makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
   ]), "b");
+  const next = openContent(layout, chat("s1"), ids);
+  expect(leafById(next, "a")!.tabs[0]!.params).toEqual({ sessionId: "s1", side: "settings", botId: "bot-1" });
+  expect(next.focus.leafId).toBe("a");
+});
 
-  const again = openContent(layout, { kind: "session-settings", sessionId: "s2", botId: "bot-9" }, ids);
-  // The one that exists was pointed at the new conversation, in place.
-  expect(tiledLeaves(again.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
-  expect(leafById(again, "a")!.tabs[0]!.params).toEqual({ sessionId: "s2", botId: "bot-9" });
-  expect(again.focus.leafId).toBe("a");
-  assertInvariants(again);
+test("settings are beside one conversation at a time", () => {
+  // The settings panels read one copy of the shell's unsaved draft and armed confirms, so a
+  // second conversation showing them would be showing the first one's edits.
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor({ ...chat("s1"), side: settings() }, "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+  const next = openContent(layout, { ...chat("s2"), side: settings("bot-9") }, ids);
+  expect(tabsOf(next)).toEqual([
+    [["chat", { sessionId: "s1" }]],
+    [["chat", { sessionId: "s2", side: "settings", botId: "bot-9" }]],
+  ]);
+  expect(settingsSide(next)).toEqual({ sessionId: "s2", botId: "bot-9" });
+  assertInvariants(next);
+});
+
+test("the header button closes the sidebar it opened, and nothing else moves", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+  const opened = toggleChatSide(layout, "s2", settings(), ids);
+  expect(leafById(opened, "b")!.tabs[0]!.params).toEqual({ sessionId: "s2", side: "settings" });
+  // A member Bot's settings are not the group's: the group's button turns to the group first.
+  const onProfile = openContent(opened, { ...chat("s2"), side: settings("bot-1") }, ids);
+  const toGroup = toggleChatSide(onProfile, "s2", settings(), ids);
+  expect(leafById(toGroup, "b")!.tabs[0]!.params).toEqual({ sessionId: "s2", side: "settings" });
+  const closed = toggleChatSide(toGroup, "s2", settings(), ids);
+  expect(leafById(closed, "b")!.tabs[0]!.params).toEqual({ sessionId: "s2" });
+  expect(tiledLeaves(closed.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(closed.focus.leafId).toBe("b");
+  assertInvariants(closed);
+});
+
+test("closing a sidebar that is not open is no change at all", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
+  expect(closeChatSide(layout, "s1")).toBe(layout);
+  expect(closeChatSide(layout, "gone")).toBe(layout);
+  const open = layoutOf(makeLeaf("a", [tabFor({ ...chat("s1"), side: settings("bot-1") }, "t-a")]));
+  expect(leafById(closeChatSide(open, "s1"), "a")!.tabs[0]!.params).toEqual({ sessionId: "s1" });
 });
 
 test("the calendar is single-instance too", () => {
@@ -153,6 +227,36 @@ test("the board turns to another job of the same conversation", () => {
   expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
   expect(leafById(next, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-2" });
   expect(next.focus.leafId).toBe("b");
+});
+
+test("asking for a message's card turns the board and keeps the request", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
+  ]), "a");
+  const next = openContent(layout, {
+    kind: "trace",
+    sessionId: "s1",
+    taskId: "job-1",
+    focus: { messageId: "m9", turnId: "turn-9" },
+    focusNonce: 3,
+  }, ids);
+  expect(leafById(next, "b")!.tabs[0]!.params).toEqual({
+    sessionId: "s1",
+    taskId: "job-1",
+    focusMessageId: "m9",
+    focusTurnId: "turn-9",
+    focusNonce: "3",
+  });
+  // The same job, asked for again from another message, is still a move.
+  const again = openContent(next, {
+    kind: "trace",
+    sessionId: "s1",
+    taskId: "job-1",
+    focus: { messageId: "m9", turnId: "turn-9" },
+    focusNonce: 4,
+  }, ids);
+  expect(leafById(again, "b")!.tabs[0]!.params.focusNonce).toBe("4");
 });
 
 test("asking for the board with no job in mind shows it on the job it has", () => {

@@ -483,7 +483,8 @@ test("unsent in-memory drafts require confirm after reconnect and are not sent a
   Socket.current.close();
   // A dropped socket is not yet "unreachable": the page says it is reconnecting.
   await until(() => runtime.connection !== "connected");
-  expect(runtime.draftReconnect).toEqual({ draft: "keep this", confirm: false });
+  // Kept with the conversation it was typed in, so it goes back there and nowhere else.
+  expect(runtime.draftReconnect).toEqual({ sessionId: "direct-1", draft: "keep this", confirm: false });
   runtime.confirmDraftReconnect();
   expect(runtime.draftReconnect?.confirm).toBe(true);
   runtime.discardDraftReconnect();
@@ -926,51 +927,24 @@ test("terminal bytes on the event socket do not drop the connection", async () =
   expect(runtime.activity.forTurn("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toHaveLength(1);
 });
 
-test("loading one session's model choices keeps another session's reviews", async () => {
-  // Two panes will each hold a session. `routes` was already spliced by session, but the reviews
-  // and learnings beside it were replaced wholesale, so opening the log for B erased A's.
+test("a board shown in a pane reloads on its own job's turns and messages, and nobody else's", async () => {
+  // A workbench board is a pane, not the overlay whose flags used to decide this, so it never
+  // reloaded: a model choice finished on screen and its card kept saying the turn was live.
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");
-
-  const aRoute = (sessionId: string, turnId: string): RouteRecord => ({
-    turn_id: turnId, session_id: sessionId, bot_id: "bot-1", trigger_message_id: "m-1",
-    provider_id: null, model: "gpt-x", thinking_level: null, signature: "general",
-    outcome: null, fail_kind: null, reason: null, chain_id: null,
-    created_at: "2026-01-01T00:00:00Z", finished_at: null, hops: null, tool_calls: null,
-    tool_errors: null, repeated_failures: null, files_written: null, feedback: [],
-  });
-  const aReview = (sessionId: string, chainId: string): RouteReview => ({
-    chain_id: chainId, turn_id: `turn-${chainId}`, session_id: sessionId, bot_id: "bot-1",
-    signature: "general", model: "gpt-x", thinking_level: null, fault: "model",
-    direction: "stronger", rounds: 2, confidence: 0.9, reason: "why",
-    created_at: "2026-01-01T00:00:00Z", outcome: null,
-  });
-  const aLearning = (sessionId: string, chainId: string): RouteLearning => ({
-    chain_id: chainId, bot_id: "bot-1", session_id: sessionId, kind: "memory",
-    label: "a lesson", created_at: "2026-01-01T00:00:00Z", outcome: null,
-  });
-
-  const bySession: Record<string, unknown> = {
-    "sess-a": { items: [aRoute("sess-a", "turn-a")], next: null, reviews: [aReview("sess-a", "chain-a")], learnings: [aLearning("sess-a", "chain-a")] },
-    "sess-b": { items: [aRoute("sess-b", "turn-b")], next: null, reviews: [aReview("sess-b", "chain-b")], learnings: [aLearning("sess-b", "chain-b")] },
-  };
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    const hit = Object.keys(bySession).find((id) => path.includes(`/v1/sessions/${id}/routes`));
-    if (hit) return Response.json(bySession[hit]);
-    return Response.json({ items: [] });
-  }) as typeof fetch;
-
-  await runtime.refreshRoutes("sess-a");
-  await runtime.refreshRoutes("sess-b");
-
-  expect(runtime.snapshot.routes.map((r) => r.turn_id).sort()).toEqual(["turn-a", "turn-b"]);
-  expect(runtime.snapshot.routeReviews.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
-  expect(runtime.snapshot.routeLearnings.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
-
-  // Reloading one session replaces only its own rows rather than appending duplicates.
-  await runtime.refreshRoutes("sess-a");
-  expect(runtime.snapshot.routeReviews.map((r) => r.chain_id).sort()).toEqual(["chain-a", "chain-b"]);
+  const turn = (id: string, taskId: string, seq: number) =>
+    Socket.current.frame({ type: "event", event_instance_id: instance, seq, payload: { ...aTurn({ id, task_id: taskId }), event: "turn.upsert", occurred_at: "now" } });
+  const stop = runtime.watchTrace("task-1");
+  const before = runtime.traceReload;
+  turn("turn-1", "task-1", 1);
+  expect(runtime.traceReload).toBe(before + 1);
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 2, payload: { ...aMessage({ id: "m-2", task_id: "task-1" }), event: "message.created", occurred_at: "now" } });
+  expect(runtime.traceReload).toBe(before + 2);
+  turn("turn-2", "task-2", 3);
+  expect(runtime.traceReload).toBe(before + 2);
+  stop();
+  turn("turn-1", "task-1", 4);
+  expect(runtime.traceReload).toBe(before + 2);
 });
 
 test("each conversation keeps its own read on record", async () => {
@@ -1104,4 +1078,87 @@ test("a dead socket invalidates every conversation's read at once", async () => 
 
   // The conversation's own counter is untouched; the connection's moved.
   expect(a.loadSeq).toBe(seqBefore);
+});
+
+/** A session read the runtime accepts, so selecting or reconnecting does not look like a dropped link. */
+function sessionRead(path: string) {
+  const id = path.match(/\/v1\/sessions\/([^/]+)\/snapshot/)?.[1] ?? "direct-1";
+  return Response.json({ ...cursor, session: { ...aDirect({ id }), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+}
+
+test("a send from one conversation goes to it and holds up only it, whichever is selected", async () => {
+  // Two panes, one keyboard: the selected conversation is whichever pane was clicked last, so
+  // sending by "the selected one" sent the other pane's draft, and one flag held up both.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const posted: string[] = [];
+  const pending = deferred<Response>();
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (init?.method === "POST" && path.includes("/messages")) {
+      posted.push(path.slice(path.indexOf("/v1/")));
+      return pending.promise;
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  runtime.selectedId = "direct-1";
+  runtime.sessionView("direct-1").draft = "to the direct";
+  runtime.sessionView("group-1").draft = "to the group";
+  const sending = runtime.send({ sessionId: "group-1" });
+  expect(runtime.sessionView("group-1").sending).toBe(true);
+  expect(runtime.sessionView("direct-1").sending).toBe(false);
+  expect(runtime.busy).toBe(false);
+  await until(() => posted.length === 1);
+  expect(posted).toEqual(["/v1/sessions/group-1/messages"]);
+  pending.resolve(Response.json(aMessage({ id: "sent-1", session_id: "group-1" })));
+  await sending;
+  expect(runtime.sessionView("group-1").draft).toBe("");
+  expect(runtime.sessionView("direct-1").draft).toBe("to the direct");
+});
+
+test("clicking into a conversation keeps the reply aimed there and its chips", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.endsWith("/snapshot")) return sessionRead(path);
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const view = runtime.sessionView("direct-1");
+  view.replyingToId = "m-quoted";
+  view.composerSuggestions = [{ id: "s-1", label: "继续", prompt: "继续" }];
+  await runtime.selectSession("direct-1", { preservePage: true });
+  expect(runtime.connection).toBe("connected");
+  expect(view.replyingToId).toBe("m-quoted");
+  expect(view.composerSuggestions.map((row) => row.id)).toEqual(["s-1"]);
+});
+
+test("a new message in a conversation not in front drops the chips drafted for what came before", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "direct-1";
+  const front = runtime.sessionView("direct-1");
+  const behind = runtime.sessionView("group-1");
+  front.composerSuggestions = [{ id: "s-front", label: "a", prompt: "a" }];
+  behind.composerSuggestions = [{ id: "s-behind", label: "b", prompt: "b" }];
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aMessage({ id: "m-new", session_id: "group-1" }), event: "message.created", occurred_at: "now" } });
+  expect(behind.composerSuggestions).toEqual([]);
+  expect(front.composerSuggestions.map((row) => row.id)).toEqual(["s-front"]);
+});
+
+test("a draft kept across a dropped link goes back to the conversation it was typed in", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "direct-1";
+  runtime.draft = "keep this";
+  Socket.current.close();
+  await until(() => runtime.connection !== "connected");
+  runtime.sessionView("direct-1").draft = "";
+  // The keyboard moved to another conversation while the link was down.
+  runtime.selectedId = "group-1";
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  expect(runtime.sessionView("direct-1").draft).toBe("keep this");
+  expect(runtime.sessionView("group-1").draft).toBe("");
+  runtime.discardDraftReconnect();
+  expect(runtime.sessionView("direct-1").draft).toBe("");
 });

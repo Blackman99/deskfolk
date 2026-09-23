@@ -3,8 +3,8 @@
  *
  * A drag is prepared once, on pointer down, and then every move is arithmetic against that
  * prepared value. Nothing here reads the DOM, so a move costs the same whether there are two
- * panes or twenty, and the expensive part of a resize — telling xterm and Monaco to re-measure —
- * is left to the moment the pointer is released.
+ * panes or twenty. The workbench paints every pane on the branch to its new share while the
+ * pointer is down; xterm, Monaco and the transcript's own measuring run once it is released.
  *
  * The important thing this module says: **a junction drag is two independent sash resizes, one
  * per axis.** Moving a vertical bar changes widths; the horizontal dividers that end on it are

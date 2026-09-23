@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { flushSync, type Snippet } from 'svelte';
 	import { WB_SASH_PX, type MinSizeLookup, type Rect, type WorkbenchLayout, type WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
-	import { computeGeometry, type LayoutGeometry } from './layout-geometry.ts';
+	import { canSplit, computeGeometry, type Direction, type LayoutGeometry } from './layout-geometry.ts';
 	import {
 		beginJunctionDrag,
 		beginSashDrag,
@@ -12,7 +12,7 @@
 		type JunctionDrag,
 		type SashDrag
 	} from './layout-resize.ts';
-	import { findPath, focusLeaf, nodeAt, setFloatFrame, tiledLeaves } from './layout-tree.ts';
+	import { findPath, focusLeaf, nodeAt, setFloatFrame, splitLeaf, tiledLeaves } from './layout-tree.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
 	import { dropIndicatorRect, dropZoneAt, type DropZone } from './drop-zones.ts';
 	import {
@@ -24,10 +24,13 @@
 		type PaneDrag
 	} from './tab-drag.ts';
 	import { WB_FALLBACK_MIN } from './pane-mins.ts';
+	import { SPLIT_TOWARDS, applyCommand, isTypingTarget } from './workbench-commands.ts';
 	import type { FloatFrame } from './layout-types.ts';
 	import WorkbenchBranch from './WorkbenchBranch.svelte';
 	import WorkbenchFloat from './WorkbenchFloat.svelte';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
+	import PaneContextMenu from './PaneContextMenu.svelte';
+	import { paneEditAt, type PaneEdit } from './pane-edit.ts';
 
 	type Props = {
 		layout: WorkbenchLayout;
@@ -44,6 +47,8 @@
 		onCloseTab?: (leafId: string, tabId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
+		/** The strip's + menu. A second argument is the text typed into its filter. */
+		menuActions?: Snippet<[string, string]>;
 	};
 
 	let {
@@ -58,7 +63,8 @@
 		onActivate,
 		onCloseTab,
 		onMenu,
-		emptyActions
+		emptyActions,
+		menuActions
 	}: Props = $props();
 
 	let host = $state<HTMLDivElement>();
@@ -79,6 +85,17 @@
 	const indicator = $derived(
 		geometry && paneDrag?.started ? dropIndicatorRect(geometry, dropZone, WB_FALLBACK_MIN) : null
 	);
+	/*
+	 * The floating panes in a fixed document order; `z` alone says which is on top. Drawing them
+	 * in z-order moved a pane's element when a press raised it, in the middle of that press: the
+	 * browser then aims the rest of it somewhere else and the click never arrives, so the first
+	 * click on anything in a pane underneath was lost.
+	 */
+	const floatingInPlace = $derived(
+		[...layout.floating].sort((a, b) => (a.leaf.id < b.leaf.id ? -1 : a.leaf.id > b.leaf.id ? 1 : 0))
+	);
+	/** A floating pane always has the tiled tree beside it, so either one means two or more. */
+	const divided = $derived(layout.root.type === 'branch' || layout.floating.length > 0);
 	const soloLeaf = $derived(
 		tiledLeaves(layout.root).find((leaf) => leaf.id === layout.focus.leafId) ??
 			layout.floating.find((pane) => pane.leaf.id === layout.focus.leafId)?.leaf ??
@@ -109,8 +126,8 @@
 	/**
 	 * Paint a drag straight onto the affected grids rather than through state.
 	 *
-	 * Only the branches this drag touches are written to, so the cost per frame is set by the
-	 * junction's arity and not by how many panes exist.
+	 * Only the branches this drag touches are written to. Every pane on that branch takes its new
+	 * share immediately; what waits until release is the measuring those panes do from a resize.
 	 */
 	function paint(drag: SashDrag, delta: number): void {
 		const element = trackElement(drag.branchId);
@@ -168,9 +185,15 @@
 			clearPaint([drag.branchId]);
 			dragging = false;
 			draggingSash = null;
-			dragGate.end();
-			const delta = drag.axis === 'row' ? endEvent.clientX - originX : endEvent.clientY - originY;
-			if (delta !== 0) onLayout(resizeSash(layout, drag, delta));
+			try {
+				const delta = drag.axis === 'row' ? endEvent.clientX - originX : endEvent.clientY - originY;
+				if (delta !== 0) {
+					onLayout(resizeSash(layout, drag, delta));
+					flushSync();
+				}
+			} finally {
+				dragGate.end();
+			}
 		};
 		target.addEventListener('pointermove', move);
 		target.addEventListener('pointerup', finish);
@@ -207,9 +230,15 @@
 			target.removeEventListener('pointercancel', finish);
 			clearPaint(touched);
 			dragging = false;
-			dragGate.end();
-			const delta = deltaOf(endEvent);
-			if (delta.across !== 0 || delta.along !== 0) onLayout(resizeJunction(layout, drag, delta));
+			try {
+				const delta = deltaOf(endEvent);
+				if (delta.across !== 0 || delta.along !== 0) {
+					onLayout(resizeJunction(layout, drag, delta));
+					flushSync();
+				}
+			} finally {
+				dragGate.end();
+			}
 		};
 		target.addEventListener('pointermove', move);
 		target.addEventListener('pointerup', finish);
@@ -302,6 +331,88 @@
 		const next = focusLeaf(layout, leafId);
 		if (next !== layout) onLayout(next);
 	}
+
+	/** Make the pane an event happened in the current one. */
+	function focusFrom(target: EventTarget | null): void {
+		const leaf = (target as HTMLElement | null)?.closest<HTMLElement>('[data-leaf]');
+		if (leaf?.dataset.leaf) focus(leaf.dataset.leaf);
+	}
+
+	/*
+	 * Scrolling a pane makes it the current one, the way a press in it does. A listener of its
+	 * own rather than an `onwheel` attribute: Svelte leaves wheel listeners active, and an active
+	 * one here would make the browser wait on it before every scroll step in every pane. Once
+	 * the pane is current, `focusLeaf` hands back the same layout, so a long scroll writes once.
+	 */
+	$effect(() => {
+		const element = host;
+		if (!element) return;
+		const onWheel = (event: WheelEvent) => focusFrom(event.target);
+		element.addEventListener('wheel', onWheel, { capture: true, passive: true });
+		return () => element.removeEventListener('wheel', onWheel, { capture: true });
+	});
+
+	/**
+	 * A right-click anywhere in a pane opens its menu, unless something inside has already
+	 * answered it. The message menu and the editor's say so by cancelling the event, and they run
+	 * first because they sit deeper. A text field answers by being one: its own menu is where
+	 * paste is. The terminal's field does not count — it is xterm's hidden textarea, moved under
+	 * the pointer — so a terminal pane splits like any other.
+	 */
+	const OWN_MENU = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+	let paneMenu = $state<{ leafId: string; x: number; y: number; seq: number; edit: PaneEdit | null; canCopy: boolean } | null>(null);
+	let paneMenuSeq = 0;
+	const paneMenuFloating = $derived(
+		paneMenu ? layout.floating.some((pane) => pane.leaf.id === paneMenu!.leafId) : false
+	);
+
+	function openPaneMenu(event: MouseEvent): void {
+		// ⌥ asks for the webview's own menu: Inspect Element, and copy where there is a selection.
+		// A rendered picture has its own menu (copy image); it cancels the event before this runs.
+		if (!wide || event.defaultPrevented || event.altKey) return;
+		const target = event.target as HTMLElement | null;
+		if (!target || (target.closest(OWN_MENU) && !target.closest('.xterm'))) return;
+		const leafId =
+			target.closest<HTMLElement>('[data-leaf]')?.dataset.leaf ??
+			target.closest<HTMLElement>('[data-float]')?.dataset.float;
+		if (!leafId) return;
+		event.preventDefault();
+		let { clientX: x, clientY: y } = event;
+		// From the keyboard there is no pointer: hang it off whatever had focus instead.
+		if (x === 0 && y === 0) {
+			const box = (event.target as HTMLElement).getBoundingClientRect();
+			x = box.left;
+			y = box.bottom;
+		}
+		const edit = paneEditAt(target);
+		paneMenu = { leafId, x, y, seq: ++paneMenuSeq, edit, canCopy: edit?.canCopy() ?? false };
+	}
+
+	function fitsFor(leafId: string): { row: boolean; column: boolean } {
+		const room = (axis: 'row' | 'column') => canSplit(layout, leafId, axis, viewport, mins, WB_FALLBACK_MIN);
+		return { row: room('row'), column: room('column') };
+	}
+
+	/** The same split ⌘\ makes, aimed at the pane that was right-clicked and in any direction. */
+	function splitTowards(leafId: string, dir: Direction): void {
+		const next = applyCommand(
+			focusLeaf(layout, leafId),
+			{ kind: 'split', ...SPLIT_TOWARDS[dir] },
+			{ viewport, mins, ids: freshId, newPaneMin: WB_FALLBACK_MIN },
+			(current, id, axis, side) => splitLeaf(current, id, axis, side, [], { leaf: freshId(), branch: freshId() })
+		);
+		if (next !== layout) onLayout(next);
+	}
+
+	/** A pane that goes away — closed, docked, healed — takes its menu with it. */
+	$effect(() => {
+		const open = paneMenu;
+		if (!open) return;
+		const exists =
+			tiledLeaves(layout.root).some((leaf) => leaf.id === open.leafId) ||
+			layout.floating.some((pane) => pane.leaf.id === open.leafId);
+		if (!exists || !wide) paneMenu = null;
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -310,13 +421,14 @@
 	class:is-dragging={dragging}
 	class:is-solo={!wide}
 	bind:this={host}
-	onpointerdowncapture={(event) => {
-		const leaf = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-leaf]');
-		if (leaf?.dataset.leaf) focus(leaf.dataset.leaf);
-	}}
-	onfocusincapture={(event) => {
-		const leaf = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-leaf]');
-		if (leaf?.dataset.leaf) focus(leaf.dataset.leaf);
+	onpointerdowncapture={(event) => focusFrom(event.target)}
+	onfocusincapture={(event) => focusFrom(event.target)}
+	oncontextmenu={openPaneMenu}
+	onkeydowncapture={(event) => {
+		// Scrolling another pane leaves the caret where it was. Typing there again is the keyboard
+		// saying where it is, so the current pane goes back with it. Only for typing: ⌘⌥ arrows
+		// move the current pane without moving focus, and must not be pulled back to it.
+		if (isTypingTarget(event.target)) focusFrom(event.target);
 	}}
 >
 	{#if !wide}
@@ -334,12 +446,14 @@
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 				{onMenu}
 				{emptyActions}
+				{menuActions}
 			/>
 		{/if}
 	{:else}
 		<WorkbenchBranch
 			node={layout.root}
 			focusId={layout.focus.leafId}
+			{divided}
 			{mins}
 			{t}
 			{tabBody}
@@ -352,18 +466,19 @@
 			onTabPointerDown={(event, leafId, tabId) =>
 				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
-				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu')) return;
+				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu, .wb-new-tab, .wb-new-menu')) return;
 				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), nameOf(leafId, null));
 			}}
 			{onMenu}
 			{emptyActions}
+			{menuActions}
 		/>
 
-		{#each layout.floating as pane, index (pane.leaf.id)}
+		{#each floatingInPlace as pane (pane.leaf.id)}
 			<WorkbenchFloat
 				leaf={pane.leaf}
 				frame={pane.frame}
-				z={index}
+				z={layout.floating.indexOf(pane)}
 				focused={pane.leaf.id === layout.focus.leafId}
 				min={WB_FALLBACK_MIN}
 				{viewport}
@@ -379,6 +494,7 @@
 				{onDock}
 				{onMenu}
 				{emptyActions}
+				{menuActions}
 			/>
 		{/each}
 
@@ -412,6 +528,23 @@
 					</div>
 				{/if}
 			</div>
+		{/if}
+
+		{#if paneMenu}
+			{@const open = paneMenu}
+			{#key open.seq}
+				<PaneContextMenu
+					x={open.x}
+					y={open.y}
+					{t}
+					fits={fitsFor(open.leafId)}
+					floating={paneMenuFloating}
+					edit={open.edit ? { canCopy: open.canCopy, onCopy: open.edit.copy, onPaste: open.edit.paste } : null}
+					onSplit={(dir) => splitTowards(open.leafId, dir)}
+					onDock={() => onDock(open.leafId)}
+					onClose={() => (paneMenu = null)}
+				/>
+			{/key}
 		{/if}
 	{/if}
 </div>

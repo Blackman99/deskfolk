@@ -208,5 +208,5 @@
 	.index-preview-meta strong { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 	.index-preview-meta span:last-child { margin-left: auto; white-space: nowrap; }
 	@media (prefers-reduced-motion: reduce) { .message-index-mark { transition: none; } }
-	@media (max-width: 680px) { .message-index { display: none; } }
+	@container conversation (max-width: 680px) { .message-index { display: none; } }
 </style>

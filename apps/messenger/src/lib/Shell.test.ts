@@ -657,6 +657,45 @@ test('a snapshot that changes nothing leaves the workspace listing alone', async
   expect(rows()).toEqual(listed);
 });
 
+/** The workspace in a pane is that tab's: a file picked in its tree is what the tab shows next. */
+test('a file picked in a workspace pane opens in that pane and survives a restart', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-ws', kind: 'workspace', params: {} }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }));
+  const reads: string[] = [];
+  runtime.client = {
+    kind: 'local',
+    workspaceTree: async (path = '') => ({ path, truncated: false, items: [
+      { name: 'docs', path: 'docs', kind: 'dir' },
+      { name: 'plan.md', path: 'plan.md', kind: 'file' },
+    ] }),
+    getWorkspaceFileBlob: async (path: string) => {
+      reads.push(path);
+      return new Blob(['# plan'], { type: 'text/markdown' });
+    },
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  await settle();
+  const row = [...host.querySelectorAll<HTMLElement>('.artifact-tree-row')]
+    .find((el) => el.textContent?.trim() === 'plan.md');
+  expect(row).toBeDefined();
+  click(row!);
+  await settle();
+  await settle();
+  expect(reads).toContain('plan.md');
+  expect(storedTabs().find((tab) => tab.kind === 'workspace')?.params).toEqual({ selected: 'plan.md' });
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
 /**
  * The job's record is what the Mac noticed; a message can hand over more than that with `附件：`
  * lines, and messages stored before it read those lines always do. The bubble's entry counts them,
@@ -740,7 +779,443 @@ test('opening message attachments in a workbench pane keeps its tree and selects
   click(rows().find((row) => row.title === 'work/notes.md'));
   await settle();
   expect(host.querySelector('.artifact-tree-row.is-selected')?.getAttribute('title')).toBe('work/notes.md');
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain('notes.md');
+  // The preview tab is named for the conversation, and picking another file does not retitle it.
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Researcher's artifacts");
   expect(host.querySelectorAll('[role="tab"]').length).toBe(tabs);
   expect(rows().map((row) => row.title)).toContain('work/plan.md');
+});
+
+test('on the workbench, Bot settings slide over the conversation with a scrim, not as a tab, and the model log has no entry', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const session = aDirect();
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: session.id }));
+  const t = copyFor('en');
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  // The workbench's own tabs; the Bot's profile has a tab row of its own.
+  const tabs = () => host.querySelectorAll('.wb-tab-button').length;
+  const pane = () => host.querySelector('.pane-chat')!;
+  const scrim = () => pane().querySelector<HTMLElement>('.pane-side-scrim');
+  const action = (title: string) =>
+    [...pane().querySelectorAll<HTMLButtonElement>('.top-actions .btn-top-action')].find((b) => b.title === title)!;
+  const dispatch = (el: Element | null | undefined, type: string) =>
+    el?.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+  expect(tabs()).toBe(1);
+
+  click(action(t.top.botSettings));
+  await settle();
+  expect(tabs()).toBe(1);
+  expect(scrim()?.querySelector('.pane-side .profile-pane')).not.toBeNull();
+  expect(action(t.top.botSettings).getAttribute('aria-expanded')).toBe('true');
+  // Not the narrow drawer over the window: the flags it runs on stay down.
+  expect(host.querySelector('.profile-backdrop')).toBeNull();
+  expect(runtime.sessionSettingsOpen).toBe(false);
+
+  // A text selection dragged out of the sidebar onto the scrim is not a click on the scrim.
+  dispatch(pane().querySelector('.pane-side .profile-pane'), 'mousedown');
+  dispatch(scrim(), 'click');
+  await settle();
+  expect(scrim()).not.toBeNull();
+  // A real click on the scrim closes it.
+  dispatch(scrim(), 'mousedown');
+  dispatch(scrim(), 'click');
+  await settle();
+  expect(scrim()).toBeNull();
+  expect(tabs()).toBe(1);
+
+  // The sidebar's own ✕ closes it too.
+  click(action(t.top.botSettings));
+  await settle();
+  click(pane().querySelector('.pane-side .sheet-close'));
+  await settle();
+  expect(scrim()).toBeNull();
+  expect(tabs()).toBe(1);
+  // Model choices are read on the flow board's cards; the header has no log of its own.
+  expect([...pane().querySelectorAll<HTMLButtonElement>('.top-actions .btn-top-action')].map((b) => b.title))
+    .not.toContain('Model choice log');
+});
+
+test('group settings beside one pane keep their own draft when the keyboard moves to another', async () => {
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  const direct = aDirect({ id: 'd1' });
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeBranch('r', 'row', [
+      makeLeaf('a', [{ id: 't-a', kind: 'chat', params: { sessionId: 'g1', side: 'settings' } }]),
+      makeLeaf('b', [{ id: 't-b', kind: 'chat', params: { sessionId: 'd1' } }]),
+    ]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'b' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [group, direct],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'd1' }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const name = host.querySelector<HTMLInputElement>('[data-leaf="a"] .pane-side #detail-group-name');
+  expect(name?.value).toBe('Alpha group');
+  expect(host.querySelector('[data-leaf="b"] .pane-side')).toBeNull();
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
+test('a Bot picked in a group opens straight to its settings, with no way back to the group\'s', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [group],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'g1' }));
+  const t = copyFor('en');
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  const side = () => host.querySelector('.pane-chat .pane-side');
+  const groupSettings = () => [...host.querySelectorAll<HTMLButtonElement>('.pane-chat .top-actions .btn-top-action')]
+    .find((b) => b.title === t.top.groupSettings)!;
+  click(groupSettings());
+  await settle();
+  expect(side()?.querySelector<HTMLInputElement>('.sheet-head #detail-group-name')?.value).toBe('Alpha group');
+  click(side()?.querySelector('.member-name-btn'));
+  await settle();
+  expect(side()?.querySelector('.profile-pane')).not.toBeNull();
+  expect(side()?.querySelector('.sheet-head h2')?.textContent).toBe(t.detail.titleBot);
+  expect(side()?.querySelector('.sheet-back')).toBeNull();
+  expect(side()?.getAttribute('aria-label')).toBe(t.top.botSettings);
+  // The group's own settings button is not lit by a member's settings.
+  expect(groupSettings().getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelectorAll('.wb-tab-button')).toHaveLength(1);
+});
+
+test('a direct conversation\'s Bot, opened from the transcript, is that conversation\'s own settings', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const session = aDirect();
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: session.id }));
+  const t = copyFor('en');
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  // What clicking the Bot's avatar asks for.
+  runtime.paneOpener?.({ kind: 'chat', sessionId: session.id, side: { kind: 'settings', botId: 'bot-1' } });
+  await settle();
+  const settings = [...host.querySelectorAll<HTMLButtonElement>('.pane-chat .top-actions .btn-top-action')]
+    .find((b) => b.title === t.top.botSettings)!;
+  expect(host.querySelector('.pane-chat .pane-side .profile-pane')).not.toBeNull();
+  expect(settings.getAttribute('aria-expanded')).toBe('true');
+  expect(JSON.parse(localStorage.getItem('real-bot-workbench-layout')!).root.tabs[0].params)
+    .toEqual({ sessionId: session.id, side: 'settings' });
+});
+
+test('a conversation’s flow board and artifact preview are named after the conversation', async () => {
+  const group = aGroup({ id: 'g1', name: '视频组' });
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [
+      { id: 't-chat', kind: 'chat', params: { sessionId: 'direct-1' } },
+      { id: 't-trace', kind: 'trace', params: { sessionId: 'direct-1', taskId: 'task-7' } },
+      { id: 't-preview', kind: 'preview', params: { sessionId: 'direct-1', relpath: 'work/notes.md' } },
+      { id: 't-group', kind: 'trace', params: { sessionId: 'g1', taskId: 'task-9' } },
+    ]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' })], sessions: [aDirect(), group],
+    settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const labels = [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
+  const t = copyFor('zh');
+  expect(labels).toEqual([
+    'Researcher',
+    t.pane.flowOf('Researcher'),
+    t.pane.artifactsOf('Researcher'),
+    t.pane.flowOf('视频组'),
+  ]);
+  // Switching the file the preview shows does not rename its tab.
+  const titles = () => [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
+  const before = titles();
+  runtime.paneOpener?.({
+    kind: 'preview',
+    sessionId: 'direct-1',
+    relpath: 'work/other.pdf',
+    attachmentId: null,
+  });
+  await settle();
+  expect(titles()).toEqual(before);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
+test('a flow board in a pane keeps itself current by watching its job', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-a', kind: 'trace', params: { sessionId: 'direct-1', taskId: 'task-7' } }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  expect(runtime.calls.filter((call) => call.name === 'watchTrace').map((call) => call.args)).toEqual([['task-7']]);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
+function aTerminal(id: string, created_at: string) {
+  return { id, title: 'real-bot', cwd: '/fixture', rows: 24, cols: 80, created_at, status: 'live' as const, exit_code: null, stream_end: 0 };
+}
+
+function storedTabs() {
+  const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
+  const leaves = [saved.root, ...saved.floating.map((pane: { leaf: unknown }) => pane.leaf)];
+  return leaves.flatMap((leaf: { tabs?: Array<{ kind: string; params: Record<string, string> }> }) => leaf.tabs ?? []);
+}
+
+test('a new terminal tab starts its own shell and is that terminal from the start', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  let started = 0;
+  runtime.startTerminal = async () => {
+    started += 1;
+    const row = aTerminal(`term-${started}`, `2026-09-23T0${started}:00:00.000Z`);
+    runtime.terminals = [...runtime.terminals, row];
+    return row;
+  };
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  for (let i = 0; i < 2; i += 1) {
+    click(host.querySelector('.wb-new-tab'));
+    // The menu is portaled to the body, so it is not inside the shell's host.
+    click(buttonByText(document.body, 'New terminal'));
+    await settle();
+  }
+  // Two tabs, two shells: never the same terminal twice.
+  expect(storedTabs().filter((tab) => tab.kind === 'terminal').map((tab) => tab.params.terminalId)).toEqual(['term-1', 'term-2']);
+  const labels = [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
+  expect(labels).toContain('real-bot');
+  expect(labels).toContain('real-bot 2');
+  // No strip of sessions inside a tab.
+  expect(host.querySelector('.terminal-tabs')).toBeNull();
+});
+
+test('a shell no tab shows can be reattached from where you open things', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.terminals = [aTerminal('term-kept', '2026-09-23T01:00:00.000Z')];
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  click(host.querySelector('.wb-new-tab'));
+  click(menuRow('real-bot'));
+  await settle();
+  expect(storedTabs().filter((tab) => tab.kind === 'terminal').map((tab) => tab.params.terminalId)).toEqual(['term-kept']);
+  // Once a tab shows it, it is not offered again.
+  click(host.querySelector('.wb-new-tab'));
+  expect(menuNames()).not.toContain('real-bot');
+  expect(runtime.calls.filter((call) => call.name === 'startTerminal')).toHaveLength(0);
+});
+
+test('the new-tab menu stays a list when many shells are still running, and a query narrows them', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.terminals = Array.from({ length: 12 }, (_, index) => ({
+    ...aTerminal(`term-${index}`, `2026-09-23T01:${String(index).padStart(2, '0')}:00.000Z`),
+    cwd: index === 3 ? '/fixture/kept' : `/fixture/other-${index}`,
+    title: index === 3 ? 'kept' : 'real-bot',
+  }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  click(host.querySelector('.wb-new-tab'));
+  const menu = document.querySelector<HTMLElement>('.wb-new-menu');
+  expect(menu?.parentElement).toBe(document.body);
+  // A dozen shells used to widen a wrapping row of chips. The width is the menu's own, and the
+  // list scrolls; happy-dom does not resolve that width, so it is read off the rule.
+  const menuRule = ruleText('.wb-new-menu');
+  expect(menuRule).toContain('width: 280px');
+  expect(menuRule).toContain('flex-direction: column');
+  expect(ruleText('.wb-new-scroll')).toContain('overflow: auto');
+  expect(menuNames().filter((name) => name.startsWith('real-bot'))).toHaveLength(11);
+  fill(menu!.querySelector('input'), 'kept');
+  expect(menuNames()).toContain('kept');
+  expect(menuNames().some((name) => name.startsWith('real-bot'))).toBe(false);
+  // The three ways to open something stay put while the list is filtered.
+  expect(menuNames()).toEqual(expect.arrayContaining(['New terminal', 'Workspace', 'Routines']));
+});
+
+/** A row of the portaled new-tab menu, by the name it shows. */
+function menuRow(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll<HTMLButtonElement>('.wb-new-menu .wb-menu-row')].find(
+    (row) => row.querySelector('.wb-menu-name')?.textContent?.trim() === name,
+  );
+  if (!found) throw new Error(`no menu row labelled ${name}`);
+  return found;
+}
+
+function menuNames(): string[] {
+  return [...document.querySelectorAll('.wb-new-menu .wb-menu-name')].map((node) => node.textContent?.trim() ?? '');
+}
+
+/** The injected rule for a class. happy-dom lays nothing out, so a size lives in the rule. */
+function ruleText(className: string): string {
+  for (const sheet of document.styleSheets) {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    for (const rule of rules) {
+      if (rule instanceof CSSStyleRule && rule.selectorText.split(',').some((part) => part.trim().startsWith(className))) {
+        return rule.cssText;
+      }
+    }
+  }
+  return '';
+}
+
+test('the sidebar terminal button brings back the terminal tab you have rather than a new shell', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    // The conversation is in front; the terminal tab sits behind it.
+    root: {
+      ...makeLeaf('a', [
+        { id: 't-term', kind: 'terminal', params: { terminalId: 'term-kept' } },
+        { id: 't-chat', kind: 'chat', params: { sessionId: 'direct-1' } },
+      ]),
+      activeTabId: 't-chat',
+    },
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.terminals = [aTerminal('term-kept', '2026-09-23T01:00:00.000Z')];
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  expect(host.querySelector('.wb-tab-button[aria-selected="true"]')?.textContent?.trim()).not.toBe('real-bot');
+  runtime.paneOpener?.({ kind: 'terminal', terminalId: null });
+  await settle();
+  expect(host.querySelector('.wb-tab-button[aria-selected="true"]')?.textContent?.trim()).toBe('real-bot');
+  expect(runtime.calls.filter((call) => call.name === 'startTerminal')).toHaveLength(0);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
+test('a terminal tab remembers which directory its shell was opened in', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.startTerminal = async () => {
+    const row = { ...aTerminal('term-1', '2026-09-23T01:00:00.000Z'), cwd: '/fixture/work' };
+    runtime.terminals = [...runtime.terminals, row];
+    return row;
+  };
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  click(host.querySelector('.wb-new-tab'));
+  click(buttonByText(document.body, 'New terminal'));
+  await settle();
+  // The directory travels with the tab, which is where a restart opens the shell again.
+  expect(storedTabs().filter((tab) => tab.kind === 'terminal').map((tab) => tab.params)).toEqual([
+    { terminalId: 'term-1', cwd: '/fixture/work' },
+  ]);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
+test('terminal tabs survive a restart: the list is read on connect, and nothing is dropped before it is', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-term', kind: 'terminal', params: { terminalId: 'term-kept' } }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.terminalsLoaded = false;
+  const { close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  expect(storedTabs().map((tab) => tab.params.terminalId)).toEqual(['term-kept']);
+  expect(runtime.calls.filter((call) => call.name === 'refreshTerminals').length).toBeGreaterThan(0);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
+test('two conversations side by side each keep their own draft, reply and send', async () => {
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  const direct = aDirect({ id: 'd1' });
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeBranch('r', 'row', [
+      makeLeaf('a', [{ id: 't-a', kind: 'chat', params: { sessionId: 'g1' } }]),
+      makeLeaf('b', [{ id: 't-b', kind: 'chat', params: { sessionId: 'd1' } }]),
+    ]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'b' },
+  }));
+  const reply = aMessage({ id: 'g-msg', session_id: 'g1', kind: 'bot', author: 'bot-1', body: 'hello from the group' });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [group, direct], messages: [reply],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'd1' }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const editorIn = (leaf: string) => host.querySelector<HTMLElement>(`[data-leaf="${leaf}"] .composer-input`)!;
+  const type = (leaf: string, text: string) => {
+    const editor = editorIn(leaf);
+    editor.textContent = text;
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+  };
+
+  // Typing in the pane that does not have the keyboard lands in its own conversation only.
+  type('a', 'for the group');
+  expect(runtime.sessionView('g1').draft).toBe('for the group');
+  expect(runtime.sessionView('d1').draft).toBe('');
+  expect(editorIn('b').textContent).toBe('');
+  type('b', 'for the direct');
+  expect(editorIn('a').textContent).toBe('for the group');
+  expect(runtime.sessionView('g1').draft).toBe('for the group');
+
+  // A reply aimed in one conversation is that conversation's, and survives the keyboard moving.
+  runtime.sessionView('g1').replyingToId = 'g-msg';
+  await settle();
+  expect(host.querySelector('[data-leaf="a"] .composer-quote-bar')).not.toBeNull();
+  expect(host.querySelector('[data-leaf="b"] .composer-quote-bar')).toBeNull();
+
+  // Sending from a pane sends that pane's conversation, whichever one is selected.
+  editorIn('a').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await settle();
+  const sends = runtime.calls.filter((call) => call.name === 'send');
+  expect(sends).toHaveLength(1);
+  expect((sends[0]!.args[0] as { sessionId?: string }).sessionId).toBe('g1');
+  localStorage.removeItem('real-bot-workbench-layout');
 });

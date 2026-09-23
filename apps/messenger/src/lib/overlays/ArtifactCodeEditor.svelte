@@ -14,6 +14,7 @@
 		shouldHighlightMonaco,
 	} from './artifact-monaco.ts';
 	import { themeManager, type ResolvedTheme } from '../theme.ts';
+	import { onPaneResize } from '../workbench/pane-resize.svelte.ts';
 
 	interface Props {
 		code: string;
@@ -87,9 +88,20 @@
 		let created: Monaco.editor.IStandaloneCodeEditor | null = null;
 		let sub: Monaco.IDisposable | null = null;
 		let themeUnsub: (() => void) | null = null;
+		// `automaticLayout` remeasures on every resize observation. A divider drag used to do
+		// that for every visible editor, every frame. One layout when the drag ends.
+		const stopResize = onPaneResize(el, () => created?.layout());
 		void (async () => {
 			try {
-				const monaco = await ensureMonaco();
+				// The editor and its stylesheet arrive together: nothing here reads the CSS
+				// import's value, but it must resolve before `monaco.editor.create` paints below,
+				// or the editor mounts unstyled for a frame.
+				const [monaco] = await Promise.all([
+					ensureMonaco(),
+					import('monaco-editor-css'),
+					import('monaco-editor/esm/vs/platform/hover/browser/hover.css'),
+					import('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css'),
+				]);
 				if (cancelled || !el.isConnected) return;
 				const lang = monacoLanguageFromPath(file);
 				created = monaco.editor.create(el, {
@@ -102,12 +114,12 @@
 					scrollBeyondLastLine: false,
 					fontSize: 12,
 					fontFamily: 'var(--mono)',
-					automaticLayout: true,
 					renderLineHighlight: 'line',
 					tabSize: 2,
 					padding: { top: 8 },
 					contextmenu: true,
 					...MONACO_EDITOR_BASE_OPTIONS,
+					automaticLayout: false,
 				});
 				editor = created;
 				saved = doc;
@@ -137,6 +149,7 @@
 		})();
 		return () => {
 			cancelled = true;
+			stopResize();
 			sub?.dispose();
 			themeUnsub?.();
 			created?.dispose();
@@ -202,8 +215,12 @@
 		z-index: 10;
 	}
 
+	/*
+	 * Monaco sizes the widget to one row (or two once replace is open) and clips the rest.
+	 * `overflow: visible` lets a mis-measured row paint over the source. A pane narrower than
+	 * the widget's 419px default collapses it and hides the match buttons; keep them.
+	 */
 	.artifact-cm :global(.monaco-editor) :global(.find-widget) {
-		overflow: visible;
 		max-width: min(419px, calc(100% - 16px)) !important;
 	}
 
@@ -223,7 +240,12 @@
 		display: flex;
 	}
 
-	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button),
+	/*
+	 * The replace chevron and the close button are absolutely placed on the widget. A blanket
+	 * `position: relative` on every button pulled them into the row, so the replace line and
+	 * its actions spilled onto the source.
+	 */
+	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.button:not(.toggle):not(.codicon-widget-close)),
 
 	.artifact-cm :global(.monaco-editor) :global(.find-widget) :global(.monaco-custom-toggle) {
 		position: relative;

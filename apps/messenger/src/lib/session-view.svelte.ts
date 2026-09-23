@@ -1,5 +1,15 @@
 import type { ComposerSuggestion } from "@real-bot/protocol";
 
+/** A file picked or pasted into the composer, waiting for the next send. */
+export type StagedAttachment = {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  isImage: boolean;
+  previewUrl: string | null;
+};
+
 /**
  * One open conversation's own state.
  *
@@ -10,7 +20,9 @@ import type { ComposerSuggestion } from "@real-bot/protocol";
  *
  * Everything here used to be a single slot on `MessengerRuntime`, which is why only one
  * conversation could be open at a time. The runtime still exposes each field under its old name,
- * forwarding to whichever view is active, so nothing outside had to change when this appeared.
+ * forwarding to whichever view is selected — but a conversation on screen reads its own view,
+ * never those forwards: on the workbench several are on screen and only one is selected, so a
+ * forward read from a second pane is the first pane's draft.
  */
 export class SessionView {
   readonly sessionId: string;
@@ -27,6 +39,14 @@ export class SessionView {
   searchHighlightToken = $state(0);
   /** Drafted next steps offered above the composer; empty when none apply or the call failed. */
   composerSuggestions = $state<ComposerSuggestion[]>([]);
+  /** Files waiting to go out with the next message here. */
+  stagedAttachments = $state<StagedAttachment[]>([]);
+  /** A send, an answer, an approval or a continue from here is in flight. Other conversations are not held up by it. */
+  sending = $state(false);
+  /** The message just sent from here, until the turn it wakes is known and can be followed. */
+  pendingFocusTrigger: string | null = null;
+  /** Clears this conversation's highlight a few seconds after a jump. */
+  highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** The first page is in flight: the stage waits rather than looking empty. */
   historyLoading = $state(false);

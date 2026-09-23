@@ -659,4 +659,18 @@
 			overflow-wrap: anywhere;
 		}
 	}
+
+	/* The same inside a conversation that narrow in a wide window. Both, because a body also
+	   renders where there is no conversation around it (a preview, a note). */
+	@container conversation (max-width: 680px) {
+		.md-body :global(ul),
+		.md-body :global(ol) {
+			padding-left: 1.05em;
+		}
+
+		.md-body :global(code),
+		.md-body :global(a) {
+			overflow-wrap: anywhere;
+		}
+	}
 </style>

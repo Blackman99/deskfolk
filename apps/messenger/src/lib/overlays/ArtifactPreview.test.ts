@@ -146,3 +146,238 @@ test("without a total the bar sweeps instead of claiming a percent", async () =>
   await pending.promise;
   close();
 });
+
+test("an image preview enlarges over the app from the bytes it already has", async () => {
+  let fetches = 0;
+  const { host, close } = open({
+    getAttachmentBlob: async () => {
+      fetches += 1;
+      return new Blob([PNG], { type: "image/png" });
+    },
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  flushSync();
+  const shown = host.querySelector<HTMLImageElement>(".artifact-img")!;
+  const button = host.querySelector<HTMLButtonElement>("button.artifact-img-open")!;
+  expect(button.contains(shown)).toBe(true);
+  expect(button.getAttribute("aria-label")).toBe(`${t.stream.artifactEnlarge} cover.png`);
+
+  button.click();
+  flushSync();
+  const full = document.querySelector<HTMLImageElement>(".msg-image-lightbox .msg-image-full");
+  expect(full).not.toBeNull();
+  expect(full!.getAttribute("src")).toBe(shown.getAttribute("src"));
+  // Nothing downloaded twice: on a remote host that would be the whole picture again.
+  expect(fetches).toBe(1);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(document.querySelector(".msg-image-lightbox")).toBeNull();
+  // The preview's own picture stays usable after the enlargement is gone.
+  expect(host.querySelector(".artifact-img")?.getAttribute("src")).toBe(shown.getAttribute("src"));
+  close();
+});
+
+test("the desktop preview has no toolbar, and the phone keeps a back bar", () => {
+  const viewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM;
+  const mount = () => {
+    let closed = 0;
+    const attachment = anAttachment({
+      original_filename: "cover.png",
+      workspace_relpath: "shots/cover.png",
+      mime: "image/png",
+    });
+    const view = render(ArtifactPreview, {
+      attachment,
+      relpath: "shots/cover.png",
+      siblings: [attachment],
+      api: { kind: "remote", getAttachmentBlob: async () => new Blob([PNG], { type: "image/png" }) } as never,
+      workspacePath: null,
+      t,
+      onClose: () => {
+        closed += 1;
+      },
+      onSelect: () => {},
+      mode: "cited",
+    });
+    return { ...view, closed: () => closed };
+  };
+  viewport.setViewport({ width: 1280, height: 800 });
+  const wide = mount();
+  const wideHead = wide.host.querySelector<HTMLElement>(".artifact-pane-head")!;
+  expect(getComputedStyle(wideHead).display).toBe("none");
+  expect(wide.host.querySelector(".artifact-tool-btn")).toBeNull();
+  expect(wide.host.querySelector(".modal-close")).toBeNull();
+  expect(wide.host.textContent).not.toContain(t.stream.artifactFind);
+  expect(wide.host.textContent).not.toContain(t.stream.artifactOpenSystem);
+  wide.close();
+
+  viewport.setViewport({ width: 390, height: 844 });
+  const phone = mount();
+  const head = phone.host.querySelector<HTMLElement>(".artifact-pane-head")!;
+  expect(getComputedStyle(head).display).toBe("flex");
+  const title = head.querySelector("h2")!;
+  expect(title.textContent).toBe("cover.png");
+  // The name sits in the middle of the bar. A heading that starts at the top of a stretched row
+  // draws through the back chevron, which is centered in that same row.
+  expect(getComputedStyle(title).alignSelf).toBe("center");
+  expect(getComputedStyle(title).whiteSpace).toBe("nowrap");
+  const back = phone.host.querySelector<HTMLButtonElement>(".artifact-back")!;
+  expect(back.getAttribute("aria-label")).toBe(t.common.back);
+  expect(getComputedStyle(back).alignItems).toBe("center");
+  back.click();
+  flushSync();
+  expect(phone.closed()).toBe(1);
+  phone.close();
+  viewport.setViewport({ width: 1280, height: 800 });
+});
+
+test("markdown source is a floating toggle, and a tree row opens Finder from its menu", async () => {
+  const note = anAttachment({
+    original_filename: "brief.md",
+    workspace_relpath: "docs/brief.md",
+    mime: "text/markdown",
+  });
+  const calls: { path: string; reveal: boolean }[] = [];
+  const holder = globalThis as { __TAURI_INTERNALS__?: unknown };
+  const previous = holder.__TAURI_INTERNALS__;
+  holder.__TAURI_INTERNALS__ = {
+    invoke: async (cmd: string, args: { path: string; reveal: boolean }) => {
+      if (cmd === "open_workspace_path") calls.push({ path: args.path, reveal: args.reveal });
+    },
+  };
+  const { host, close } = render(ArtifactPreview, {
+    attachment: note,
+    relpath: "docs/brief.md",
+    siblings: [note],
+    api: {
+      kind: "local",
+      getAttachmentBlob: async () => new Blob(["# 简报\n"], { type: "text/markdown" }),
+    } as never,
+    workspacePath: "/Users/you/work",
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    flushSync();
+    const toggle = host.querySelector<HTMLButtonElement>(".artifact-source-toggle");
+    expect(toggle?.textContent?.trim()).toBe(t.stream.artifactSource);
+    expect(toggle?.querySelector("svg")).not.toBeNull();
+    expect(host.querySelector(".artifact-tool-btn")).toBeNull();
+    toggle?.click();
+    flushSync();
+    expect(host.querySelector(".artifact-source-toggle")?.textContent?.trim()).toBe(t.stream.artifactRendered);
+    expect(host.querySelector(".artifact-source-toggle")?.getAttribute("aria-pressed")).toBe("true");
+
+    const row = [...host.querySelectorAll<HTMLButtonElement>(".artifact-tree-row")].find((button) =>
+      button.textContent?.includes("brief.md"),
+    )!;
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    flushSync();
+    const menu = document.querySelector("[data-testid='artifact-tree-menu']");
+    expect(menu?.textContent).toContain("在 Finder 中打开");
+    expect(menu?.textContent).toContain("用系统默认应用打开");
+    (menu?.querySelector("[data-reveal]") as HTMLButtonElement).click();
+    flushSync();
+    await Promise.resolve();
+    expect(calls).toEqual([{ path: "/Users/you/work/docs/brief.md", reveal: true }]);
+    expect(document.querySelector("[data-testid='artifact-tree-menu']")).toBeNull();
+  } finally {
+    holder.__TAURI_INTERNALS__ = previous;
+    close();
+  }
+});
+
+/** A preview closed before its file lands stops the read, so the next file is not queued behind it. */
+test("closing the preview stops the read still on the way", () => {
+  const signals: Array<AbortSignal | undefined> = [];
+  const { close } = open({
+    getAttachmentBlob: (_id: string, _progress?: FileProgressHandler, options?: FileLoadOptions) => {
+      signals.push(options?.signal);
+      return new Promise<Blob>(() => {});
+    },
+  });
+  flushSync();
+  expect(signals).toHaveLength(1);
+  expect(signals[0]?.aborted).toBe(false);
+  close();
+  expect(signals[0]?.aborted).toBe(true);
+});
+
+/**
+ * A keyframe is several MB of PNG. On a phone the pane shows the Mac's 1600 px copy first and
+ * offers the original, which then replaces the copy in place.
+ */
+test("a remote picture opens as the Mac's copy and offers the original", async () => {
+  const asked: Array<FileLoadOptions | undefined> = [];
+  const original = deferredBlob();
+  let report: FileProgressHandler | undefined;
+  const copy = new Blob([PNG], { type: "image/jpeg" });
+  rememberBlobOriginalSize(copy, 3_727_854);
+  const { host, close } = open({
+    size: 3_727_854,
+    getAttachmentBlob: (_id, onProgress, options) => {
+      asked.push(options);
+      if (options?.size) return Promise.resolve(copy);
+      report = onProgress;
+      return original.promise;
+    },
+  });
+  try {
+    await Promise.resolve();
+    flushSync();
+    expect(asked[0]?.size).toBe("preview");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+    const offer = host.querySelector<HTMLButtonElement>(".artifact-original-toggle");
+    expect(offer?.textContent).toContain("查看原图（3.6 MB）");
+    const copyUrl = host.querySelector<HTMLImageElement>(".artifact-img")?.src;
+    offer!.click();
+    flushSync();
+    expect(asked[1]?.size).toBeUndefined();
+    report?.({ loaded: 1_048_576, total: 3_727_854 });
+    flushSync();
+    expect(host.querySelector(".artifact-original-toggle")?.textContent).toContain("正在载入原图 1.0 MB / 3.6 MB");
+    // The copy stays up while the original arrives.
+    expect(host.querySelector<HTMLImageElement>(".artifact-img")?.src).toBe(copyUrl);
+    original.resolve(new Blob([PNG], { type: "image/png" }));
+    await original.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+    expect(host.querySelector(".artifact-original-toggle")).toBeNull();
+    expect(host.querySelector<HTMLImageElement>(".artifact-img")?.src).not.toBe(copyUrl);
+  } finally {
+    close();
+  }
+});
+
+/** Until the Mac answers, nobody knows what the copy weighs; the original's size would be a lie. */
+test("a remote picture's bar does not claim the original's size for its copy", async () => {
+  const pending = deferredBlob();
+  const { host, close } = open({ size: 4096, getAttachmentBlob: () => pending.promise });
+  await Promise.resolve();
+  flushSync();
+  expect(host.querySelector(".artifact-loading-fill")?.classList.contains("is-indeterminate")).toBe(true);
+  expect(host.textContent).not.toContain("4.0 KB");
+  pending.resolve(new Blob([PNG], { type: "image/png" }));
+  await pending.promise;
+  close();
+});
+
+/** A picture already within the size comes back as itself, and there is nothing to offer. */
+test("a remote picture that is its own original offers nothing", async () => {
+  const { host, close } = open({ getAttachmentBlob: async () => new Blob([PNG], { type: "image/png" }) });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+    expect(host.querySelector(".artifact-img")).not.toBeNull();
+    expect(host.querySelector(".artifact-original-toggle")).toBeNull();
+  } finally {
+    close();
+  }
+});

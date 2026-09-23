@@ -16,6 +16,7 @@ import type {
 import { USER_MEMBER } from "@real-bot/protocol";
 import { emptySnapshot, type Snapshot } from "./snapshot.ts";
 import type { MessengerRuntime } from "./runtime.svelte.ts";
+import { SessionView } from "./session-view.svelte.ts";
 
 export function aBot(over: Partial<Bot> = {}): Bot {
   return {
@@ -273,9 +274,6 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     pairingBusy: false,
     hostPairing: null,
     hostPairingBusy: false,
-    historyLoading: false,
-    olderLoading: false,
-    hasOlderMessages: false,
     loadOlderMessages: record("loadOlderMessages"),
     hostDevices: [],
     hostDevicesBusy: false,
@@ -354,13 +352,8 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     revokeRemoteDevice: record("revokeRemoteDevice"),
     otherRemoteDevices: () => [],
     profileBotId: null,
-    draft: "",
-    busy: false,
-    composerSuggestions: [],
     searchHits: [],
     searchQuery: "",
-    focusedTurnId: null,
-    replyingToId: null,
     createBot: record("createBot"),
     createGroup: record("createGroup"),
     patchBot: record("patchBot"),
@@ -409,8 +402,6 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     closeProfile: record("closeProfile"),
     openCreateBot: record("openCreateBot"),
     openCreateGroup: record("openCreateGroup"),
-    toggleRouteLog: record("toggleRouteLog"),
-    closeRouteLog: record("closeRouteLog"),
     startTerminal: async (...args: unknown[]) => {
       calls.push({ name: "startTerminal", args });
       return null;
@@ -437,7 +428,6 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     sessionSettingsOpen: false,
     createBotOpen: false,
     createGroupOpen: false,
-    routeLogOpen: false,
     // The real runtime always has one; a stub without it would hide a broken wiring rather than
     // fail on it, and the transcript reads `runtime.activity` while a turn is live.
     activity: new CommandActivity(),
@@ -452,9 +442,6 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     workspaceOpen: false,
     workspaceSelected: "",
     threadOpen: false,
-    routesLoading: false,
-    highlightedMessageId: null,
-    searchHighlightToken: null,
     workspacePath: "/Users/you/real-bot-workspace",
     endpointUrl: "",
     endpointKey: "",
@@ -462,5 +449,53 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     endpointDefaultModel: "",
     client: null,
   };
-  return Object.assign(runtime, base, stubs, { calls });
+  // Each conversation's own state, the way the real runtime keeps it: a pane reads its view, and
+  // the old field names forward to whichever conversation is selected.
+  const views = new Map<string, SessionView>();
+  const sessionView = (id: string): SessionView => {
+    let view = views.get(id);
+    if (!view) {
+      view = new SessionView(id);
+      views.set(id, view);
+    }
+    return view;
+  };
+  const selectedView = (self: { selectedId: string | null }) => (self.selectedId ? sessionView(self.selectedId) : null);
+  const forward = <K extends keyof SessionView>(name: string, field: K, empty: SessionView[K]) => {
+    Object.defineProperty(runtime, name, {
+      configurable: true,
+      enumerable: true,
+      get(this: { selectedId: string | null }) {
+        return selectedView(this)?.[field] ?? empty;
+      },
+      set(this: { selectedId: string | null }, value: SessionView[K]) {
+        const view = selectedView(this);
+        if (view) view[field] = value;
+      },
+    });
+  };
+  forward("draft", "draft", "");
+  forward("replyingToId", "replyingToId", null);
+  forward("focusedTurnId", "focusedTurnId", null);
+  forward("highlightedMessageId", "highlightedMessageId", null);
+  forward("searchHighlightToken", "searchHighlightToken", 0);
+  forward("composerSuggestions", "composerSuggestions", []);
+  forward("historyLoading", "historyLoading", false);
+  forward("olderLoading", "olderLoading", false);
+  forward("busy", "sending", false);
+  Object.defineProperty(runtime, "hasOlderMessages", {
+    configurable: true,
+    enumerable: true,
+    get(this: { selectedId: string | null }) {
+      return selectedView(this)?.hasOlderMessages ?? false;
+    },
+    set(this: { selectedId: string | null }, value: boolean) {
+      const view = selectedView(this);
+      if (view) view.messageNext = value ? (view.messageNext ?? "fixture-cursor") : null;
+    },
+  });
+  Object.assign(runtime, base, { sessionView, calls });
+  // The selection first, so a stub's draft or busy lands on the conversation it is for.
+  if ("selectedId" in stubs) runtime.selectedId = stubs.selectedId as string | null;
+  return Object.assign(runtime, stubs, { calls });
 }

@@ -17,6 +17,11 @@
 		pinnedSessionIds: string[];
 		onTogglePin: (sessionId: string) => void;
 		onToggleSessionSettings: () => void;
+		/**
+		 * Whether the conversation's settings are open. Left out, the runtime's flag answers for the
+		 * narrow shell's drawer; a workbench pane says its own, because its sidebar is in its tab.
+		 */
+		settingsOpen?: boolean;
 		onCreateBot: () => void;
 		onShowOnboarding: () => void;
 	};
@@ -28,14 +33,17 @@
 		pinnedSessionIds,
 		onTogglePin,
 		onToggleSessionSettings,
+		settingsOpen: paneSettingsOpen,
 		onCreateBot,
 		onShowOnboarding
 	}: Props = $props();
 
+	const settingsOpen = $derived(paneSettingsOpen ?? runtime.sessionSettingsOpen);
+
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -116,12 +124,28 @@
 			>
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
+			{#if fileDrop}
+				<div class="top-file-identity">
+					<span class="top-avatar file-drop-mark" aria-hidden="true">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+							<polyline points="14 2 14 8 20 8"></polyline>
+						</svg>
+					</span>
+					<span class="top-titles flex flex-col min-w-0 gap-1">
+						<span class="top-title-text" role="heading" aria-level="1">{t.sidebar.fileDrop}</span>
+						<span class="top-subline flex items-center gap-3 text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
+							<span class="meta">{t.sidebar.fileDropHint}</span>
+						</span>
+					</span>
+				</div>
+			{:else}
 			<button
 				type="button"
 				class="top-identity-btn"
-				class:is-active={runtime.sessionSettingsOpen}
+				class:is-active={settingsOpen}
 				title={sessionSettingsLabel}
-				aria-expanded={runtime.sessionSettingsOpen}
+				aria-expanded={settingsOpen}
 				onclick={onToggleSessionSettings}
 			>
 				{#if selectedKind === 'you-bot' && selectedPeerBot}
@@ -178,8 +202,10 @@
 					</span>
 				</span>
 			</button>
+			{/if}
 		</div>
 
+		{#if !fileDrop}
 		<div class="top-actions flex items-center gap-4 shrink-0">
 			<button
 				type="button"
@@ -213,25 +239,9 @@
 			<button
 				type="button"
 				class="btn-top-action"
-				class:is-active={runtime.routeLogOpen}
-				title={t.routes.title}
-				onclick={() => runtime.toggleRouteLog()}
-			>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<line x1="8" y1="6" x2="21" y2="6"></line>
-					<line x1="8" y1="12" x2="21" y2="12"></line>
-					<line x1="8" y1="18" x2="21" y2="18"></line>
-					<line x1="3" y1="6" x2="3.01" y2="6"></line>
-					<line x1="3" y1="12" x2="3.01" y2="12"></line>
-					<line x1="3" y1="18" x2="3.01" y2="18"></line>
-				</svg>
-				<span>{t.routes.topAction}</span>
-			</button>
-			<button
-				type="button"
-				class="btn-top-action"
-				class:is-active={runtime.sessionSettingsOpen}
+				class:is-active={settingsOpen}
 				title={sessionSettingsLabel}
+				aria-expanded={settingsOpen}
 				onclick={onToggleSessionSettings}
 			>
 				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -241,12 +251,14 @@
 				<span>{sessionSettingsLabel}</span>
 			</button>
 		</div>
+		{/if}
 
+		{#if !fileDrop}
 		<div class="mobile-actions">
 			<button
 				type="button"
 				class="btn-mobile-actions"
-				class:is-active={mobileActionsOpen || runtime.routeLogOpen || runtime.traceOpen || runtime.sessionSettingsOpen || isSessionPinned(pinnedSessionIds, selected.id)}
+				class:is-active={mobileActionsOpen || runtime.traceOpen || settingsOpen || isSessionPinned(pinnedSessionIds, selected.id)}
 				title={t.top.moreActions}
 				aria-label={t.top.moreActions}
 				aria-expanded={mobileActionsOpen}
@@ -281,18 +293,7 @@
 						</svg>
 						<span>{t.trace.topAction}</span>
 					</button>
-					<button type="button" class:is-active={runtime.routeLogOpen} onclick={() => runMobileAction(() => runtime.toggleRouteLog())}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="8" y1="6" x2="21" y2="6"></line>
-							<line x1="8" y1="12" x2="21" y2="12"></line>
-							<line x1="8" y1="18" x2="21" y2="18"></line>
-							<line x1="3" y1="6" x2="3.01" y2="6"></line>
-							<line x1="3" y1="12" x2="3.01" y2="12"></line>
-							<line x1="3" y1="18" x2="3.01" y2="18"></line>
-						</svg>
-						<span>{t.routes.topAction}</span>
-					</button>
-					<button type="button" class:is-active={runtime.sessionSettingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
+					<button type="button" class:is-active={settingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<circle cx="12" cy="12" r="3"></circle>
 							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09A1.65 1.65 0 0 0 19.4 15z"></path>
@@ -302,6 +303,7 @@
 				</div>
 			{/if}
 		</div>
+		{/if}
 	{:else}
 		<h1>{t.top.pickSession}</h1>
 		{#if !snapshot.settings.wizard_complete}
@@ -567,11 +569,6 @@
 		color: var(--accent);
 	}
 
-	@media (max-width: 680px) {
-	.btn-mobile-back {
-	display: inline-flex;
-	}
-	}
 
 	.empty-roster {
 		border: 0;
@@ -625,9 +622,13 @@
 		transition: color 0.15s ease;
 	}
 
-	@media (max-width: 680px) {
+	/*
+	 * The phone header, whenever the conversation is that narrow: a workbench pane in a wide window
+	 * gets it too. The actions fold into the ⋯ menu, and without Back the name keeps a margin.
+	 */
+	@container conversation (max-width: 680px) {
 		.top.has-session {
-			padding: 0;
+			padding: 0 0 0 10px;
 			gap: 0;
 			min-height: 64px;
 			align-items: stretch;
@@ -748,6 +749,17 @@
 			overflow: hidden;
 			text-overflow: ellipsis;
 			font-size: 12px;
+		}
+	}
+
+	/* Back is the phone's way out to the roster; a pane has its tab strip for that. */
+	@media (max-width: 680px) {
+		.btn-mobile-back {
+			display: inline-flex;
+		}
+
+		.top.has-session {
+			padding-left: 0;
 		}
 	}
 

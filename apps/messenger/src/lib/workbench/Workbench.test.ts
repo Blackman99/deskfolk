@@ -132,6 +132,58 @@ test("the focused pane is marked by more than colour", () => {
   }
 });
 
+test("the current pane is framed only while there is another pane to tell it from", () => {
+  const framed = (host: HTMLElement) =>
+    [...host.querySelectorAll(".wb-leaf.is-framed")].map((leaf) => leaf.getAttribute("data-leaf"));
+
+  const alone = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1")])));
+  try {
+    expect(framed(alone.host)).toEqual([]);
+  } finally {
+    alone.close();
+  }
+
+  const split = mountWorkbench(layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
+  ]), "b"));
+  try {
+    expect(framed(split.host)).toEqual(["b"]);
+  } finally {
+    split.close();
+  }
+
+  // One tiled pane with a floating one over it is still two panes. The floating pane frames
+  // itself, rounded corners and all, so the leaf inside it never does.
+  const withFloat = (focus: WorkbenchLayout["focus"]): WorkbenchLayout => ({
+    version: 1,
+    root: makeLeaf("a", [aTab("t1")]),
+    floating: [{ leaf: makeLeaf("f", [aTab("t2")]), frame: { x: 20, y: 20, width: 300, height: 200 } }],
+    focus,
+  });
+  const tiledCurrent = mountWorkbench(withFloat({ zone: "tiled", leafId: "a" }));
+  try {
+    expect(framed(tiledCurrent.host)).toEqual(["a"]);
+    expect(tiledCurrent.host.querySelector(".wb-float.is-focused")).toBeNull();
+  } finally {
+    tiledCurrent.close();
+  }
+  const floatCurrent = mountWorkbench(withFloat({ zone: "floating", leafId: "f" }));
+  try {
+    expect(framed(floatCurrent.host)).toEqual([]);
+    expect(floatCurrent.host.querySelector(".wb-float.is-focused")).not.toBeNull();
+  } finally {
+    floatCurrent.close();
+  }
+
+  // Too narrow to divide: one pane on screen, however many the tree holds.
+  const narrow = mountWorkbench(split.state.layout, false);
+  try {
+    expect(framed(narrow.host)).toEqual([]);
+  } finally {
+    narrow.close();
+  }
+});
+
 test("clicking inside a pane moves focus to it", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
@@ -142,6 +194,73 @@ test("clicking inside a pane moves focus to it", () => {
     target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     flushSync();
     expect(state.seen.at(-1)!.focus.leafId).toBe("b");
+  } finally {
+    close();
+  }
+});
+
+test("scrolling inside a pane makes it the current one, and a long scroll writes once", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
+  ]), "a");
+  const { host, close, state } = mountWorkbench(layout);
+  try {
+    const target = host.querySelector('[data-body="t2"]') as HTMLElement;
+    for (let step = 0; step < 5; step++) {
+      target.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 40 }));
+      flushSync();
+    }
+    expect(state.seen.map((seen) => seen.focus.leafId)).toEqual(["b"]);
+  } finally {
+    close();
+  }
+});
+
+test("typing where the caret was takes the current pane back from a scroll, pane keys do not", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
+  ]), "b");
+  const { host, close, state } = mountWorkbench(layout);
+  try {
+    // A ⌘⌥ arrow lands on whatever holds focus, which the command does not move.
+    const notTyping = host.querySelector('[data-body="t1"]') as HTMLElement;
+    notTyping.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight", metaKey: true, altKey: true }));
+    flushSync();
+    expect(state.seen).toHaveLength(0);
+
+    const field = document.createElement("textarea");
+    notTyping.append(field);
+    field.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "x" }));
+    flushSync();
+    expect(state.seen.at(-1)!.focus.leafId).toBe("a");
+  } finally {
+    close();
+  }
+});
+
+test("raising a floating pane restacks it without moving its element", () => {
+  // Moving the element in the middle of the press that raised it loses that press's click.
+  const layout: WorkbenchLayout = {
+    version: 1,
+    root: makeLeaf("a", [aTab("t1")]),
+    floating: [
+      { leaf: makeLeaf("f1", [aTab("t2")]), frame: { x: 20, y: 20, width: 300, height: 200 } },
+      { leaf: makeLeaf("f2", [aTab("t3")]), frame: { x: 60, y: 60, width: 300, height: 200 } },
+    ],
+    focus: { zone: "floating", leafId: "f2" },
+  };
+  const { host, close, state } = mountWorkbench(layout);
+  try {
+    const before = [...host.querySelectorAll<HTMLElement>(".wb-float")];
+    const lower = host.querySelector<HTMLElement>('[data-float="f1"]')!;
+    const upper = host.querySelector<HTMLElement>('[data-float="f2"]')!;
+    expect(Number(lower.style.zIndex)).toBeLessThan(Number(upper.style.zIndex));
+
+    host.querySelector('[data-body="t2"]')!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    flushSync();
+    expect(state.layout.floating.map((pane) => pane.leaf.id)).toEqual(["f2", "f1"]);
+    expect([...host.querySelectorAll<HTMLElement>(".wb-float")]).toEqual(before);
+    expect(Number(lower.style.zIndex)).toBeGreaterThan(Number(upper.style.zIndex));
   } finally {
     close();
   }
@@ -202,6 +321,52 @@ test("a pane is not a containing block, so menus land where they were opened", (
   expect(declarations).toEqual([]);
 });
 
+function box(width: number, height: number): DOMRect {
+  return {
+    x: 0, y: 0, width, height, top: 0, left: 0, right: width, bottom: height,
+    toJSON() { return {}; },
+  } as DOMRect;
+}
+
+test("a divider drag resizes every pane on the branch and commits when the pointer is released", () => {
+  // happy-dom has no layout, so the viewport is handed its box. The content is not pinned to the
+  // size it had: that min-width keeps the grid from giving the other panes their new share, and
+  // the drag then looks like one panel sliding over the rest.
+  const { host, close, state } = mountWorkbench(layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
+  ])));
+  try {
+    const root = host.querySelector(".wb-root") as HTMLElement;
+    root.getBoundingClientRect = () => box(800, 600);
+    window.dispatchEvent(new Event("resize"));
+    flushSync();
+    const contents = [...host.querySelectorAll<HTMLElement>(".wb-body > *")];
+    expect(contents.length).toBeGreaterThan(0);
+    const sash = host.querySelector(".wb-sash") as HTMLElement;
+    const pointer = { bubbles: true, pointerId: 1, clientY: 20 };
+    sash.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, clientX: 400 }));
+    flushSync();
+    expect(state.seen).toHaveLength(0);
+    const branch = host.querySelector("[data-branch]") as HTMLElement;
+    sash.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 460 }));
+    flushSync();
+    expect(state.seen).toHaveLength(0);
+    const tracks = branch.style.gridTemplateColumns.split(" ").filter((part) => part.endsWith("px") && part !== "8px");
+    expect(tracks).toHaveLength(2);
+    expect(tracks[0]).not.toBe(tracks[1]);
+    for (const content of contents) expect(content.style.width).toBe("");
+    sash.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 460 }));
+    flushSync();
+    expect(state.seen).toHaveLength(1);
+    expect(branch.style.gridTemplateColumns).toBe("");
+    const committed = state.seen[0]!.root;
+    expect(committed.type).toBe("branch");
+    if (committed.type === "branch") expect(committed.weights[0]).not.toBeCloseTo(0.5);
+  } finally {
+    close();
+  }
+});
+
 test("a drag does not write the variable the branch already owns", () => {
   // `WorkbenchBranch` sets `--wb-tracks` declaratively. A drag that also wrote it gave one inline
   // property two owners: clearing it when the drag ended took away the value Svelte believed was
@@ -243,4 +408,39 @@ test("activating or focusing a tab never changes the size of its box", () => {
     }
   }
   expect(offending).toEqual([]);
+});
+
+test("the + menu is lifted above the pane under it while it is open", () => {
+  // The strip is a stacking context of its own, so the menu's z-index counted only inside it and
+  // a conversation's header (z 2) painted straight over the open menu.
+  const emptyActions = createRawSnippet(() => ({ render: () => `<div><button type="button">new</button></div>` }));
+  const { host, close } = render(Workbench as never, {
+    layout: layoutOf(makeLeaf("a", [aTab("t1")])),
+    mins: flatMins,
+    t,
+    wide: true,
+    tabBody,
+    tabLabel,
+    emptyActions,
+    onLayout: () => {},
+    onActivate: () => {},
+    onCloseTab: () => {},
+  } as never);
+  try {
+    const strip = host.querySelector<HTMLElement>(".wb-strip")!;
+    expect(Number(getComputedStyle(strip).zIndex)).toBe(1);
+    click(host.querySelector(".wb-new-tab"));
+    flushSync();
+    // Portaled out of the pane: a pane clips overflow, and a floating pane's transform would
+    // make a `fixed` menu resolve against the pane.
+    const menu = document.querySelector<HTMLElement>(".wb-new-menu");
+    expect(menu?.parentElement).toBe(document.body);
+    expect(host.querySelector(".wb-new-menu")).toBeNull();
+    // Above the floating panes (40 and up) and under the window menus (1000).
+    expect(Number(getComputedStyle(menu!).zIndex)).toBeGreaterThan(100);
+    expect(Number(getComputedStyle(menu!).zIndex)).toBeLessThan(1000);
+    expect(Number(getComputedStyle(strip).zIndex)).toBeGreaterThan(100);
+  } finally {
+    close();
+  }
 });

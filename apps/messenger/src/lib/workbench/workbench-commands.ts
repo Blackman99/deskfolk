@@ -36,6 +36,17 @@ export const MENU_COMMANDS: Readonly<Record<string, WorkbenchCommand>> = {
   "pane-close-tab": { kind: "close-tab" },
 };
 
+/**
+ * The side of a pane a split puts the new one on, in the axis and order the tree speaks. The
+ * pane's right-click menu offers all four; ⌘\ and the native menu only right and down.
+ */
+export const SPLIT_TOWARDS: Readonly<Record<Direction, { axis: Axis; side: "before" | "after" }>> = {
+  up: { axis: "column", side: "before" },
+  down: { axis: "column", side: "after" },
+  left: { axis: "row", side: "before" },
+  right: { axis: "row", side: "after" },
+};
+
 export type WorkbenchCommand =
   | { kind: "split"; axis: Axis; side: "before" | "after" }
   | { kind: "close-tab" }

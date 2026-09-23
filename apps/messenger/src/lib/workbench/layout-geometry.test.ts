@@ -102,7 +102,17 @@ test("one pane fills the viewport and has no dividers", () => {
 
 test("the track template carries both the minimum and the share", () => {
   const branch = makeBranch("r", "row", [makeLeaf("a"), makeLeaf("b")], [0.25, 0.75]);
-  expect(trackTemplate(branch, [360, 600])).toBe("minmax(360px, 0.250000fr) 8px minmax(600px, 0.750000fr)");
+  expect(trackTemplate(branch, [360, 600])).toBe("minmax(360px, 250.000fr) 8px minmax(600px, 750.000fr)");
+});
+
+test("the tracks still fill the branch once one of them sits at its minimum", () => {
+  // Shares of 0.5 and 0.5 with the second pane held at its floor left the first a factor of 0.5
+  // on its own, and the browser gives a lone factor under 1 only that fraction of what is left.
+  const branch = makeBranch("r", "row", [makeLeaf("a"), makeLeaf("b")], [0.5, 0.5]);
+  const factors = [...trackTemplate(branch, [360, 600]).matchAll(/([\d.]+)fr/g)].map((m) => Number(m[1]));
+  expect(factors).toHaveLength(2);
+  for (const factor of factors) expect(factor).toBeGreaterThanOrEqual(1);
+  expect(factors[0]! / factors[1]!).toBeCloseTo(1);
 });
 
 // ------------------------------------------------------------------ junctions

@@ -3,6 +3,10 @@
 //! Position is not stored: a saved origin can land off-screen after a display
 //! change. Maximized is stored so a full-screen session comes back full-screen.
 //! The file lives in the window process's app data, not the daemon data dir.
+//!
+//! While the user is dragging an edge, the remembered maximized flag stays as
+//! it was. Asking AppKit whether the window is zoomed from inside a live
+//! resize moves the window, so that question waits until the drag ends.
 
 use std::fs;
 use std::path::{Path, PathBuf};

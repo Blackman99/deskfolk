@@ -15,14 +15,10 @@ import {
   type Message,
   type Provider,
   type PendingJudgement,
-  type RouteLearning,
-  type RouteRecord,
-  type RouteReview,
   type SearchHit,
   type SessionSummary,
   type Settings,
   type Skill,
-  type Spend,
   type Turn,
 } from "@real-bot/protocol";
 
@@ -41,12 +37,6 @@ export type Snapshot = {
   turns: Turn[];
   judgements: Judgement[];
   pendingJudgements: PendingJudgement[];
-  /** Per-turn model choices, for every session currently open; fetched, not pushed. */
-  routes: RouteRecord[];
-  /** What the review made of each closed correction chain here. */
-  routeReviews: RouteReview[];
-  /** What a learning hop wrote for a chain, for every session currently open. */
-  routeLearnings: RouteLearning[];
   approvals: Approval[];
   searchHits: SearchHit[];
 };
@@ -79,9 +69,6 @@ export function emptySnapshot(): Snapshot {
     turns: [],
     judgements: [],
     pendingJudgements: [],
-    routes: [],
-    routeReviews: [],
-    routeLearnings: [],
     approvals: [],
     searchHits: [],
   };
@@ -155,9 +142,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
-        routes: snapshot.routes.filter((r) => r.session_id !== event.id),
-        routeReviews: snapshot.routeReviews.filter((r) => r.session_id !== event.id),
-        routeLearnings: snapshot.routeLearnings.filter((r) => r.session_id !== event.id),
       };
     }
     case "session.cleared": {
@@ -170,9 +154,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
-        routes: snapshot.routes.filter((r) => r.session_id !== event.id),
-        routeReviews: snapshot.routeReviews.filter((r) => r.session_id !== event.id),
-        routeLearnings: snapshot.routeLearnings.filter((r) => r.session_id !== event.id),
       };
     }
     case "message.upsert": {

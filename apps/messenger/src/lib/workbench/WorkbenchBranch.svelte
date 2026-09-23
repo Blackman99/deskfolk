@@ -9,6 +9,8 @@
 	type Props = {
 		node: LayoutNode;
 		focusId: string;
+		/** More than one pane is showing, so the current one is framed. */
+		divided: boolean;
 		mins: MinSizeLookup;
 		t: Copy;
 		tabBody: Snippet<[WorkbenchTab, string]>;
@@ -23,9 +25,10 @@
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
+		menuActions?: Snippet<[string, string]>;
 	};
 
-	let { node, focusId, mins, t, tabBody, tabLabel, ...rest }: Props = $props();
+	let { node, focusId, divided, mins, t, tabBody, tabLabel, ...rest }: Props = $props();
 
 	const row = $derived(node.type === 'branch' && node.axis === 'row');
 	const tracks = $derived(
@@ -45,6 +48,7 @@
 	<WorkbenchLeaf
 		leaf={node}
 		focused={node.id === focusId}
+		framed={divided && node.id === focusId}
 		{t}
 		{tabBody}
 		{tabLabel}
@@ -55,6 +59,7 @@
 		onStripPointerDown={rest.onStripPointerDown}
 		onMenu={rest.onMenu}
 		emptyActions={rest.emptyActions}
+		menuActions={rest.menuActions}
 	/>
 {:else}
 	<!--
@@ -85,6 +90,7 @@
 			<Self
 				node={child}
 				{focusId}
+				{divided}
 				{mins}
 				{t}
 				{tabBody}
@@ -98,6 +104,7 @@
 				onStripPointerDown={rest.onStripPointerDown}
 				onMenu={rest.onMenu}
 				emptyActions={rest.emptyActions}
+				menuActions={rest.menuActions}
 			/>
 		{/each}
 	</div>

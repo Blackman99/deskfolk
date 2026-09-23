@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import ArtifactPreview from './ArtifactPreview.svelte';
+	// ArtifactPreview.svelte is loaded lazily below: this file is a thin, eagerly-loaded wrapper
+	// around it (a pane on the desktop, a slide-over page on a narrow window), so the heavy
+	// component itself must not ride along with every one of its static importers.
 
 	/**
 	 * The workspace itself, with no chrome around it: it fills whatever it is put in. Two hosts
@@ -52,19 +54,21 @@
 		<button type="button" onclick={onClose}>{t.common.close}</button>
 	</section>
 {:else}
-	<ArtifactPreview
-		bind:this={pane}
-		attachment={null}
-		relpath={selected}
-		siblings={[]}
-		{api}
-		{workspacePath}
-		mode="workspace"
-		{t}
-		{onClose}
-		onSelect={() => {}}
-		onSelectWorkspacePath={onSelect}
-	/>
+	{#await import('./ArtifactPreview.svelte') then { default: ArtifactPreview }}
+		<ArtifactPreview
+			bind:this={pane}
+			attachment={null}
+			relpath={selected}
+			siblings={[]}
+			{api}
+			{workspacePath}
+			mode="workspace"
+			{t}
+			{onClose}
+			onSelect={() => {}}
+			onSelectWorkspacePath={onSelect}
+		/>
+	{/await}
 {/if}
 
 <style>
