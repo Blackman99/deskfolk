@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { MinSizeLookup, Rect, WorkbenchLayout, WorkbenchTab } from './layout-types.ts';
+	import { WB_SASH_PX, type MinSizeLookup, type Rect, type WorkbenchLayout, type WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { computeGeometry, type LayoutGeometry } from './layout-geometry.ts';
 	import {
@@ -117,20 +117,29 @@
 		const branch = nodeAt(layout.root, path);
 		if (!branch || branch.type !== 'branch') return;
 		const weights = weightsAfterSash(drag, delta);
-		const row = branch.axis === 'row';
 		const tracks = branch.children
-			.map((child, i) => {
-				const size = Math.max(0, weights[i]! * drag.extent);
-				void child;
-				return `${size.toFixed(2)}px`;
-			})
-			.join(' 8px ');
-		void row;
-		element.style.setProperty('--wb-tracks', tracks);
+			.map((_, i) => `${Math.max(0, weights[i]! * drag.extent).toFixed(2)}px`)
+			.join(` ${WB_SASH_PX}px `);
+		// The grid property itself, not `--wb-tracks`. That variable is set declaratively by the
+		// branch, so writing it here means two owners for one inline property: clearing it at the
+		// end of a drag took away the value Svelte thought it had already applied, and a drag that
+		// ended where it began — no change to commit, so no re-render — left the branch with no
+		// track list at all. Every pane in it then collapsed into one column.
+		element.style.setProperty(
+			branch.axis === 'row' ? 'grid-template-columns' : 'grid-template-rows',
+			tracks
+		);
 	}
 
 	function clearPaint(ids: readonly string[]): void {
-		for (const id of ids) trackElement(id)?.style.removeProperty('--wb-tracks');
+		for (const id of ids) {
+			const element = trackElement(id);
+			if (!element) continue;
+			// Back to the stylesheet's `var(--wb-tracks)`, which the branch has been keeping
+			// correct the whole time.
+			element.style.removeProperty('grid-template-columns');
+			element.style.removeProperty('grid-template-rows');
+		}
 	}
 
 	function startSash(event: PointerEvent, sashId: string): void {

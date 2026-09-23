@@ -201,3 +201,17 @@ test("a pane is not a containing block, so menus land where they were opened", (
     .filter((line) => /^\s*contain\s*:/.test(line));
   expect(declarations).toEqual([]);
 });
+
+test("a drag does not write the variable the branch already owns", () => {
+  // `WorkbenchBranch` sets `--wb-tracks` declaratively. A drag that also wrote it gave one inline
+  // property two owners: clearing it when the drag ended took away the value Svelte believed was
+  // already applied, so a drag that finished where it started — nothing to commit, therefore no
+  // re-render — left the branch with no track list and every pane in it collapsed into one
+  // column. The drag paints the grid property instead and clears that, falling back to the
+  // variable. happy-dom has no layout to drive a real drag through, so the rule is read here.
+  const source = readFileSync(new URL("./Workbench.svelte", import.meta.url).pathname, "utf8");
+  const paintBody = source.slice(source.indexOf("function paint("), source.indexOf("function startSash("));
+  expect(paintBody).not.toContain("'--wb-tracks'");
+  expect(paintBody).toContain("grid-template-columns");
+  expect(paintBody).toContain("grid-template-rows");
+});
