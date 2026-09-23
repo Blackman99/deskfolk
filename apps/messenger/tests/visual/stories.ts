@@ -728,6 +728,32 @@ const defs: Record<StoryName, Story> = {
 	'workbench-solo': {
 		component: Workbench as never,
 		props: workbenchProps(crossLayout, false)
+	},
+	'workbench-float': {
+		component: Workbench as never,
+		props: workbenchProps({
+			version: 1,
+			root: makeBranch(
+				'root',
+				'row',
+				[
+					makeLeaf('p1', [storyTab('ft1', 'chat', '视频全流程制作组')]),
+					makeLeaf('p2', [storyTab('ft2', 'workspace', '工作区')])
+				],
+				[0.6, 0.4]
+			),
+			floating: [
+				{
+					leaf: makeLeaf('f1', [storyTab('ft3', 'terminal', 'real-bot')]),
+					frame: { x: 90, y: 110, width: 420, height: 300 }
+				},
+				{
+					leaf: makeLeaf('f2', [storyTab('ft4', 'trace', '经过')]),
+					frame: { x: 320, y: 260, width: 440, height: 320 }
+				}
+			],
+			focus: { zone: 'floating', leafId: 'f2' }
+		})
 	}
 };
 

@@ -45,7 +45,9 @@ export const STORY_SIZES = {
 	'workbench-tabs': { width: 520, height: 320 },
 	'workbench-empty': { width: 520, height: 320 },
 	// Below the breakpoint the tree is kept but only the focused pane is drawn.
-	'workbench-solo': { width: 600, height: 820 }
+	'workbench-solo': { width: 600, height: 820 },
+	// Two panes lifted out of the tree, overlapping, so the z-order and the shadow are visible.
+	'workbench-float': { width: 1000, height: 700 }
 } as const;
 
 export type StoryName = keyof typeof STORY_SIZES;

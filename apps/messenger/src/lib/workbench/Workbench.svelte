@@ -12,9 +12,21 @@
 		type JunctionDrag,
 		type SashDrag
 	} from './layout-resize.ts';
-	import { findPath, focusLeaf, nodeAt, tiledLeaves } from './layout-tree.ts';
+	import { findPath, focusLeaf, nodeAt, setFloatFrame, tiledLeaves } from './layout-tree.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
+	import { dropIndicatorRect, dropZoneAt, type DropZone } from './drop-zones.ts';
+	import {
+		applyDrop,
+		beginLeafDrag,
+		beginTabDrag,
+		dockFloating,
+		passedThreshold,
+		type PaneDrag
+	} from './tab-drag.ts';
+	import { WB_FALLBACK_MIN } from './pane-mins.ts';
+	import type { FloatFrame } from './layout-types.ts';
 	import WorkbenchBranch from './WorkbenchBranch.svelte';
+	import WorkbenchFloat from './WorkbenchFloat.svelte';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
 
 	type Props = {
@@ -37,9 +49,18 @@
 	let host = $state<HTMLDivElement>();
 	let viewport = $state<Rect>({ x: 0, y: 0, width: 0, height: 0 });
 	let dragging = $state(false);
+	let paneDrag = $state<PaneDrag | null>(null);
+	let dropZone = $state<DropZone>({ kind: 'none' });
+	let ghost = $state<{ x: number; y: number; label: string } | null>(null);
+	let nextId = 0;
+	const freshId = () => `wb-${Date.now().toString(36)}-${++nextId}`;
+
 
 	const geometry = $derived<LayoutGeometry | null>(
 		viewport.width > 0 && viewport.height > 0 ? computeGeometry(layout, viewport, mins) : null
+	);
+	const indicator = $derived(
+		geometry && paneDrag?.started ? dropIndicatorRect(geometry, dropZone, WB_FALLBACK_MIN) : null
 	);
 	const soloLeaf = $derived(
 		tiledLeaves(layout.root).find((leaf) => leaf.id === layout.focus.leafId) ??
@@ -167,6 +188,77 @@
 		target.addEventListener('pointercancel', finish);
 	}
 
+	/**
+	 * Dragging a tab, or a whole group by its strip. Pointer events throughout: HTML5 drag and
+	 * drop has no pointer capture and gives coarse coordinates in this webview.
+	 */
+	function startPaneDrag(event: PointerEvent, drag: PaneDrag, label: string): void {
+		if (event.button !== 0) return;
+		const target = event.currentTarget as HTMLElement;
+		const pointerId = event.pointerId;
+		let current = drag;
+
+		const move = (moveEvent: PointerEvent) => {
+			const point = pointFrom(moveEvent);
+			if (!current.started) {
+				if (!passedThreshold(current, point)) return;
+				current = { ...current, started: true };
+				paneDrag = current;
+				dragging = true;
+				dragGate.begin();
+				target.setPointerCapture(pointerId);
+			}
+			// Alt turns any position into a float: there is one window, so "drop outside it" is
+			// not available the way it is in an editor with several.
+			dropZone = geometry ? dropZoneAt(geometry, point, { float: moveEvent.altKey }) : { kind: 'none' };
+			ghost = { x: point.x, y: point.y, label };
+		};
+		const finish = (endEvent: PointerEvent) => {
+			target.removeEventListener('pointermove', move);
+			target.removeEventListener('pointerup', finish);
+			target.removeEventListener('pointercancel', finish);
+			if (!current.started) return;
+			const zone = endEvent.type === 'pointercancel' ? ({ kind: 'none' } as DropZone) : dropZone;
+			const sourceRect = geometry?.leaves.get(current.leafId);
+			paneDrag = null;
+			dropZone = { kind: 'none' };
+			ghost = null;
+			dragging = false;
+			dragGate.end();
+			const next = applyDrop(layout, current, zone, {
+				node: freshId,
+				viewport,
+				floatMin: WB_FALLBACK_MIN,
+				sourceRect
+			});
+			if (next !== layout) onLayout(next);
+		};
+		target.addEventListener('pointermove', move);
+		target.addEventListener('pointerup', finish);
+		target.addEventListener('pointercancel', finish);
+	}
+
+	function pointFrom(event: PointerEvent): { x: number; y: number } {
+		const box = host?.getBoundingClientRect();
+		return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
+	}
+
+	function onFloatFrame(leafId: string, frame: FloatFrame): void {
+		const next = setFloatFrame(layout, leafId, frame);
+		if (next !== layout) onLayout(next);
+	}
+
+	function onDock(leafId: string): void {
+		const centre = { x: viewport.width / 2, y: viewport.height / 2 };
+		const zone = geometry ? dropZoneAt(geometry, centre) : ({ kind: 'none' } as DropZone);
+		const next = dockFloating(layout, leafId, zone, {
+			node: freshId,
+			viewport,
+			floatMin: WB_FALLBACK_MIN
+		});
+		if (next !== layout) onLayout(next);
+	}
+
 	function focus(leafId: string): void {
 		const next = focusLeaf(layout, leafId);
 		if (next !== layout) onLayout(next);
@@ -216,8 +308,36 @@
 			onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 			onSashPointerDown={startSash}
+			onTabPointerDown={(event, leafId, tabId) =>
+				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), tabId)}
+			onStripPointerDown={(event, leafId) => {
+				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu')) return;
+				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), leafId);
+			}}
 			{onMenu}
 		/>
+
+		{#each layout.floating as pane, index (pane.leaf.id)}
+			<WorkbenchFloat
+				leaf={pane.leaf}
+				frame={pane.frame}
+				z={index}
+				focused={pane.leaf.id === layout.focus.leafId}
+				min={WB_FALLBACK_MIN}
+				{viewport}
+				{t}
+				{tabBody}
+				{tabLabel}
+				onFrame={onFloatFrame}
+				onFocus={focus}
+				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
+				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+				onTabPointerDown={(event, leafId, tabId) =>
+					startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), tabId)}
+				{onDock}
+				{onMenu}
+			/>
+		{/each}
 
 		{#if geometry}
 			<!-- Handles and indicators live in one layer above the panes. Anchoring each handle to
@@ -234,6 +354,20 @@
 						onpointerdown={(event) => startJunction(event, junction.id)}
 					></button>
 				{/each}
+				{#if indicator}
+					<div
+						class="wb-drop"
+						style:left={`${indicator.x}px`}
+						style:top={`${indicator.y}px`}
+						style:width={`${indicator.width}px`}
+						style:height={`${indicator.height}px`}
+					></div>
+				{/if}
+				{#if ghost}
+					<div class="wb-ghost" style:transform={`translate3d(${ghost.x + 12}px, ${ghost.y + 12}px, 0)`}>
+						{ghost.label}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	{/if}
@@ -288,6 +422,27 @@
 	.wb-junction:focus-visible::before {
 		opacity: 1;
 		background: var(--accent);
+	}
+	.wb-drop {
+		position: absolute;
+		background: var(--accent-tint);
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
+		border-radius: 6px;
+		pointer-events: none;
+	}
+	.wb-ghost {
+		position: absolute;
+		left: 0;
+		top: 0;
+		padding: 2px 8px;
+		border-radius: 6px;
+		font-size: 12px;
+		color: var(--text);
+		background: var(--pane);
+		box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+		pointer-events: none;
+		white-space: nowrap;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.wb-junction::before {
