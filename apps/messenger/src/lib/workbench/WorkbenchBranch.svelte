@@ -1,0 +1,144 @@
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+	import type { LayoutNode, MinSizeLookup, WorkbenchTab } from './layout-types.ts';
+	import type { Copy } from '../copy.ts';
+	import { minSize, trackTemplate } from './layout-geometry.ts';
+	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
+	import Self from './WorkbenchBranch.svelte';
+
+	type Props = {
+		node: LayoutNode;
+		focusId: string;
+		mins: MinSizeLookup;
+		t: Copy;
+		tabBody: Snippet<[WorkbenchTab, string]>;
+		tabLabel: Snippet<[WorkbenchTab]>;
+		onFocus: (leafId: string) => void;
+		onActivate: (leafId: string, tabId: string) => void;
+		onCloseTab: (leafId: string, tabId: string) => void;
+		onSashPointerDown: (event: PointerEvent, sashId: string) => void;
+		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
+		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
+		onMenu?: (event: MouseEvent, leafId: string) => void;
+	};
+
+	let { node, focusId, mins, t, tabBody, tabLabel, ...rest }: Props = $props();
+
+	const row = $derived(node.type === 'branch' && node.axis === 'row');
+	const tracks = $derived(
+		node.type === 'branch'
+			? trackTemplate(
+					node,
+					node.children.map((child) => {
+						const min = minSize(child, mins);
+						return node.axis === 'row' ? min.width : min.height;
+					})
+				)
+			: ''
+	);
+</script>
+
+{#if node.type === 'leaf'}
+	<WorkbenchLeaf
+		leaf={node}
+		focused={node.id === focusId}
+		{t}
+		{tabBody}
+		{tabLabel}
+		onFocus={rest.onFocus}
+		onActivate={rest.onActivate}
+		onCloseTab={rest.onCloseTab}
+		onTabPointerDown={rest.onTabPointerDown}
+		onStripPointerDown={rest.onStripPointerDown}
+		onMenu={rest.onMenu}
+	/>
+{:else}
+	<!--
+		One grid per division. `minmax(<min>px, <w>fr)` is the fractional model with a floor, and
+		the browser's own "find the size of an fr" loop is exactly the water-filling that
+		`allocate()` reproduces for the handles. The dividers are real tracks, not an overlay, so
+		they can never sit on top of content.
+	-->
+	<div
+		class="wb-branch"
+		class:is-row={row}
+		class:is-col={!row}
+		data-branch={node.id}
+		style:--wb-tracks={tracks}
+	>
+		{#each node.children as child, index (child.id)}
+			{#if index > 0}
+				<button
+					type="button"
+					class="wb-sash"
+					class:is-vertical={row}
+					data-sash={`${node.id}#${index}`}
+					aria-label={t.pane.resize}
+					onpointerdown={(event) => rest.onSashPointerDown(event, `${node.id}#${index}`)}
+				></button>
+			{/if}
+			<Self
+				node={child}
+				{focusId}
+				{mins}
+				{t}
+				{tabBody}
+				{tabLabel}
+				onFocus={rest.onFocus}
+				onActivate={rest.onActivate}
+				onCloseTab={rest.onCloseTab}
+				onSashPointerDown={rest.onSashPointerDown}
+				onTabPointerDown={rest.onTabPointerDown}
+				onStripPointerDown={rest.onStripPointerDown}
+				onMenu={rest.onMenu}
+			/>
+		{/each}
+	</div>
+{/if}
+
+<style>
+	.wb-branch {
+		display: grid;
+		min-width: 0;
+		min-height: 0;
+		overflow: hidden;
+	}
+	/* No transition on the tracks, ever: a drag has to follow the pointer exactly, and the
+	   three-column shell already has to defeat its own transition to manage that. */
+	.wb-branch.is-row {
+		grid-template-columns: var(--wb-tracks);
+		grid-template-rows: minmax(0, 1fr);
+	}
+	.wb-branch.is-col {
+		grid-template-rows: var(--wb-tracks);
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.wb-sash {
+		position: relative;
+		background: none;
+		padding: 0;
+		cursor: row-resize;
+	}
+	.wb-sash.is-vertical {
+		cursor: col-resize;
+	}
+	.wb-sash::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		margin: auto;
+		width: 1px;
+		background: var(--hairline);
+	}
+	.wb-sash.is-vertical::before {
+		height: 100%;
+	}
+	.wb-sash:not(.is-vertical)::before {
+		width: 100%;
+		height: 1px;
+	}
+	.wb-sash:hover::before,
+	.wb-sash:focus-visible::before {
+		background: var(--accent);
+	}
+</style>
