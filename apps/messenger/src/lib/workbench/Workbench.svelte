@@ -245,6 +245,11 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: minmax(0, 1fr);
+		/* Fills whatever it is put in. Without this it is a block-level grid sized by its
+		   content, which leaves a band of background under the panes in any host that does not
+		   stretch its children. */
+		width: 100%;
+		height: 100%;
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;

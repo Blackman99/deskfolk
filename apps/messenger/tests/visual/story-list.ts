@@ -37,7 +37,15 @@ export const STORY_SIZES = {
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },
-	'settings-about': { width: 1000, height: 720 }
+	'settings-about': { width: 1000, height: 720 },
+	// A four-pane arrangement with a real four-way cross in it: the junction handle, the tab
+	// strips and the focused-pane marking are all only visible here.
+	workbench: { width: 1280, height: 820 },
+	// A strip with more tabs than fit: the overflow scrolls and the pane menu holds its place.
+	'workbench-tabs': { width: 520, height: 320 },
+	'workbench-empty': { width: 520, height: 320 },
+	// Below the breakpoint the tree is kept but only the focused pane is drawn.
+	'workbench-solo': { width: 600, height: 820 }
 } as const;
 
 export type StoryName = keyof typeof STORY_SIZES;

@@ -39,6 +39,11 @@ import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
 import { updateChecker } from '../../src/lib/update-checker.svelte.ts';
 import ArtifactPreview from '../../src/lib/overlays/ArtifactPreview.svelte';
 import ArtifactCodeEditor from '../../src/lib/overlays/ArtifactCodeEditor.svelte';
+import Workbench from '../../src/lib/workbench/Workbench.svelte';
+import { makeBranch, makeLeaf } from '../../src/lib/workbench/layout-tree.ts';
+import { paneMin } from '../../src/lib/workbench/pane-mins.ts';
+import type { WorkbenchLayout, WorkbenchTab } from '../../src/lib/workbench/layout-types.ts';
+import { createRawSnippet } from 'svelte';
 
 const t = copyFor('zh');
 
@@ -268,6 +273,89 @@ const settingsProps = (over: Record<string, unknown> = {}) => ({
 
 /** The shared world's Bots all carry an image; this one adds the letter fallback to the shot. */
 const pickerBots = [...bots, aBot({ id: 'bot-4', name: '配音', duties: '配音与混音', avatar: null })];
+
+
+/**
+ * A pane's content in the shots. The workbench never imports a content component itself — the
+ * host passes one in — so the stories stand one in rather than pulling the real panes into the
+ * layout module's graph.
+ */
+const storyTab = (id: string, kind: string, label: string): WorkbenchTab => ({
+	id,
+	kind,
+	params: { label }
+});
+
+const storyBody = createRawSnippet((tab: () => WorkbenchTab) => ({
+	render: () =>
+		`<div style="padding:14px;color:var(--muted);font-size:13px">${tab().params.label ?? tab().kind}</div>`
+}));
+const storyLabel = createRawSnippet((tab: () => WorkbenchTab) => ({
+	render: () => `<span>${tab().params.label ?? tab().kind}</span>`
+}));
+
+function workbenchProps(layout: WorkbenchLayout, wide = true) {
+	return {
+		layout,
+		mins: paneMin,
+		t,
+		wide,
+		tabBody: storyBody,
+		tabLabel: storyLabel,
+		onLayout: () => {}
+	};
+}
+
+/** Two columns divided at the same height, which is what makes a genuine four-way cross. */
+const crossLayout: WorkbenchLayout = {
+	version: 1,
+	root: makeBranch(
+		'root',
+		'row',
+		[
+			makeBranch(
+				'left',
+				'column',
+				[
+					makeLeaf('p1', [
+						storyTab('wt1', 'chat', '视频全流程制作组'),
+						storyTab('wt6', 'route-log', '模型选择记录')
+					]),
+					makeLeaf('p2', [storyTab('wt3', 'terminal', 'real-bot')])
+				],
+				[0.55, 0.45]
+			),
+			makeBranch(
+				'right',
+				'column',
+				[
+					makeLeaf('p3', [storyTab('wt4', 'preview', 'storyboard.md')]),
+					makeLeaf('p4', [storyTab('wt5', 'trace', '经过')])
+				],
+				// The same division as the left column, which is what puts a real four-way cross
+				// in the shot rather than two separate T-junctions.
+				[0.55, 0.45]
+			)
+		],
+		[0.56, 0.44]
+	),
+	floating: [],
+	focus: { zone: 'tiled', leafId: 'p1' }
+};
+
+const manyTabs: WorkbenchLayout = {
+	version: 1,
+	root: makeLeaf('p1', [
+		storyTab('wt1', 'chat', '视频全流程制作组'),
+		storyTab('wt2', 'trace', '经过'),
+		storyTab('wt3', 'route-log', '模型选择记录'),
+		storyTab('wt4', 'preview', 'storyboard.md'),
+		storyTab('wt5', 'terminal', 'real-bot'),
+		storyTab('wt6', 'workspace', '工作区')
+	]),
+	floating: [],
+	focus: { zone: 'tiled', leafId: 'p1' }
+};
 
 const defs: Record<StoryName, Story> = {
 	shell: {
@@ -619,6 +707,27 @@ const defs: Record<StoryName, Story> = {
 			};
 			flushSync();
 		}
+	},
+	workbench: {
+		component: Workbench as never,
+		props: workbenchProps(crossLayout)
+	},
+	'workbench-tabs': {
+		component: Workbench as never,
+		props: workbenchProps(manyTabs)
+	},
+	'workbench-empty': {
+		component: Workbench as never,
+		props: workbenchProps({
+			version: 1,
+			root: makeLeaf('p1', []),
+			floating: [],
+			focus: { zone: 'tiled', leafId: 'p1' }
+		})
+	},
+	'workbench-solo': {
+		component: Workbench as never,
+		props: workbenchProps(crossLayout, false)
 	}
 };
 
