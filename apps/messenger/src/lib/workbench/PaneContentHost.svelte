@@ -9,6 +9,10 @@
 	import RoutineCalendar from '../calendar/RoutineCalendar.svelte';
 	import TerminalView from '../overlays/TerminalView.svelte';
 	import WorkspaceView from '../overlays/WorkspaceView.svelte';
+	import RouteLogView from '../overlays/RouteLogView.svelte';
+	import TraceView from '../overlays/TraceView.svelte';
+	import ArtifactPreview from '../overlays/ArtifactPreview.svelte';
+	import { routeLogRows } from '../overlays/route-log.ts';
 
 	/**
 	 * Turns a tab into the thing it stands for.
@@ -30,6 +34,10 @@
 		onSelectWorkspacePath: (path: string) => void;
 		/** A terminal pane remembers which session it settled on. */
 		onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
+		/** Jump the conversation to a message, from the board or the model-choice log. */
+		onJump: (sessionId: string, messageId: string) => void;
+		/** What to call a tab. The shell names conversations; this only shows the name. */
+		paneTitle: (tab: WorkbenchTab) => string;
 	}
 
 	let {
@@ -44,7 +52,9 @@
 		onCreateBot,
 		onRemoveTab,
 		onSelectWorkspacePath,
-		onBindTerminal
+		onBindTerminal,
+		onJump,
+		paneTitle
 	}: Props = $props();
 
 	const content = $derived(contentOfTab(tab));
@@ -58,6 +68,35 @@
 	 * A pane bound to a session shows that one. A pane opened without one lists every session the
 	 * daemon holds so you can pick or start one, and binds to whatever you land on.
 	 */
+	const routeRows = $derived(
+		content?.kind === 'route-log' && session
+			? routeLogRows(
+					snapshot.routes.filter((route) => route.session_id === content.sessionId),
+					{
+						bots: snapshot.bots,
+						providers: snapshot.providers,
+						reviews: snapshot.routeReviews,
+						learnings: snapshot.routeLearnings,
+						labels: {
+							outcome: t.routes.outcome,
+							fault: t.routes.fault,
+							direction: t.routes.direction,
+							signature: t.routes.signature,
+							failReason: t.routes.failReason,
+							thinking: t.routes.thinking,
+							unknownBot: t.top.deleted
+						}
+					}
+				)
+			: []
+	);
+
+	/** The log is fetched, not pushed, so a pane showing it asks once when it appears. */
+	$effect(() => {
+		if (content?.kind !== 'route-log') return;
+		void runtime.refreshRoutes(content.sessionId);
+	});
+
 	const terminalIds = $derived(
 		content?.kind === 'terminal' && content.terminalId
 			? ([content.terminalId] as readonly string[])
@@ -109,8 +148,51 @@
 		onClose={() => onRemoveTab(leafId, tab.id)}
 		onSelect={onSelectWorkspacePath}
 	/>
+{:else if content.kind === 'route-log'}
+	{#if session}
+		<RouteLogView
+			rows={routeRows}
+			sessionTitle={paneTitle(tab)}
+			loading={runtime.routesLoading}
+			showEndpoint={snapshot.providers.length > 1}
+			{t}
+			onJump={(messageId) => onJump(content.sessionId, messageId)}
+		/>
+	{:else}
+		<p class="pane-gone">{t.top.deleted}</p>
+	{/if}
+{:else if content.kind === 'trace'}
+	<TraceView
+		api={runtime.client}
+		taskId={content.taskId}
+		sessionId={content.sessionId}
+		activeSessionId={runtime.selectedId ?? content.sessionId}
+		sessions={snapshot.sessions}
+		bots={snapshot.bots}
+		youLabel={t.common.you}
+		deletedLabel={t.top.deleted}
+		workspacePath={snapshot.settings.workspace_path}
+		{t}
+		reloadToken={runtime.traceReload}
+		{onJump}
+	/>
+{:else if content.kind === 'preview'}
+	{#if content.relpath}
+		<ArtifactPreview
+			attachment={null}
+			relpath={content.relpath}
+			siblings={[]}
+			api={runtime.client}
+			workspacePath={snapshot.settings.workspace_path}
+			{t}
+			onClose={() => onRemoveTab(leafId, tab.id)}
+			onSelect={() => {}}
+			onSelectWorkspacePath={onSelectWorkspacePath}
+		/>
+	{:else}
+		<p class="pane-gone">{t.pane.emptyHint}</p>
+	{/if}
 {:else}
-	<!-- The remaining kinds land as their own panes in the steps that split them out. -->
 	<p class="pane-gone">{t.pane.emptyHint}</p>
 {/if}
 

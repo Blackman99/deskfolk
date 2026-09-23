@@ -178,8 +178,7 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   expect(view.host.querySelector(".trace-card.is-running .trace-summary")?.textContent).toBe("正在画第一格");
   expect(view.host.querySelector(".trace-card.is-completed")).not.toBeNull();
   expect(view.host.querySelector(".trace-card.is-running")).not.toBeNull();
-  // The window floats over the chat: no dimmed page behind it, and the node on screen is marked.
-  expect(view.host.querySelector(".trace-overlay")?.getAttribute("aria-modal")).toBe("false");
+  // The node that lives in the conversation on screen is marked as the one you are on.
   expect(view.host.querySelectorAll(".trace-card.is-here")).toHaveLength(2);
   expect(view.host.querySelector(".trace-place")?.textContent).toContain("群 · 制作组");
   expect(view.host.querySelector(".trace-output")).toBeNull();
@@ -198,55 +197,7 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   view.close();
 });
 
-test("any corner resizes the window, and the corner across from it stays put", async () => {
-  localStorage.setItem("real-bot-trace-window", JSON.stringify({ x: 300, y: 200, width: 440, height: 480 }));
-  const view = open();
-  try {
-    await until(view.host, ".trace-slot");
-    const grips = [...view.host.querySelectorAll(".trace-resize")];
-    const corner = (grip: Element) =>
-      [...grip.classList].find((name) => name.startsWith("trace-resize-"));
-    expect(grips.map(corner)).toEqual([
-      "trace-resize-nw",
-      "trace-resize-ne",
-      "trace-resize-sw",
-      "trace-resize-se",
-    ]);
-    // Nothing is drawn on the corner; only the cursor says a corner is a corner.
-    expect(grips.every((grip) => grip.textContent === "")).toBe(true);
-
-    drag(grips[0]!, { x: -60, y: -40 });
-    const pane = view.host.querySelector(".trace-pane") as HTMLElement;
-    // The top-left went out by the drag; the bottom-right is where it was: 740, 680.
-    expect([pane.style.left, pane.style.top, pane.style.width, pane.style.height]).toEqual([
-      "240px",
-      "160px",
-      "500px",
-      "520px",
-    ]);
-    expect(JSON.parse(localStorage.getItem("real-bot-trace-window") ?? "null")).toEqual({
-      x: 240,
-      y: 160,
-      width: 500,
-      height: 520,
-    });
-
-    drag(grips[3]!, { x: -100, y: -100 });
-    // Pulling the bottom-right in leaves the top-left alone.
-    expect([pane.style.left, pane.style.top, pane.style.width, pane.style.height]).toEqual([
-      "240px",
-      "160px",
-      "400px",
-      "420px",
-    ]);
-  } finally {
-    view.close();
-    localStorage.removeItem("real-bot-trace-window");
-  }
-});
-
-test("a phone shows the flow as a page, with nothing to drag or resize", async () => {
-  localStorage.setItem("real-bot-trace-window", JSON.stringify({ x: 40, y: 50, width: 500, height: 420 }));
+test("a phone shows the flow as a page that fills the screen", async () => {
   const previous = window.matchMedia;
   let view: ReturnType<typeof open> | undefined;
   window.matchMedia = ((query: string) => ({
@@ -263,17 +214,17 @@ test("a phone shows the flow as a page, with nothing to drag or resize", async (
   try {
     view = open();
     await until(view.host, ".trace-slot");
-    const overlay = view.host.querySelector(".trace-overlay");
-    expect(overlay?.classList.contains("is-page")).toBe(true);
-    expect(overlay?.getAttribute("aria-modal")).toBe("true");
-    expect(view.host.querySelector(".trace-resize")).toBeNull();
+    const page = view.host.querySelector(".trace-page");
+    expect(page).not.toBeNull();
+    expect(page?.getAttribute("aria-modal")).toBe("true");
+    // Nothing places the board itself any more: on a phone it is a page, and on a wide window a
+    // pane, whose size is the workbench's business rather than this component's.
     const pane = view.host.querySelector(".trace-pane") as HTMLElement;
     expect(pane.style.left).toBe("");
     expect(pane.style.width).toBe("");
   } finally {
     try { view?.close(); } catch { /* the page slide has nothing to animate here */ }
     window.matchMedia = previous;
-    localStorage.removeItem("real-bot-trace-window");
   }
 });
 

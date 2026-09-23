@@ -7,14 +7,50 @@
  * untouched — a tab is added or replaced, never a pane opened or closed.
  */
 import type { NodeId, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
-import { activateTab, addTab, closeTab, focusLeaf, leafById, tiledLeaves } from "./layout-tree.ts";
-import { contentOfTab, contentsEqual, tabFor, type PaneContent } from "./pane-content.ts";
+import {
+  activateTab,
+  addTab,
+  closeTab,
+  focusLeaf,
+  leafById,
+  replaceTabParams,
+  tiledLeaves,
+} from "./layout-tree.ts";
+import {
+  contentOfTab,
+  contentToParams,
+  contentsEqual,
+  tabFor,
+  type PaneContent,
+} from "./pane-content.ts";
 
 export type Located = { leafId: NodeId; tab: WorkbenchTab };
 
+function leavesOf(layout: WorkbenchLayout) {
+  return [...tiledLeaves(layout.root), ...layout.floating.map((pane) => pane.leaf)];
+}
+
+/** The pane showing this kind of thing, whatever it is pointed at. */
+export function findKind(layout: WorkbenchLayout, kind: PaneContent["kind"]): Located | null {
+  for (const leaf of leavesOf(layout)) {
+    const tab = leaf.tabs.find((candidate) => candidate.kind === kind);
+    if (tab) return { leafId: leaf.id, tab };
+  }
+  return null;
+}
+
+function replaceTabContent(
+  layout: WorkbenchLayout,
+  leafId: NodeId,
+  tabId: string,
+  content: PaneContent,
+): WorkbenchLayout {
+  return replaceTabParams(layout, leafId, tabId, contentToParams(content));
+}
+
 /** Where this content is already open, preferring the focused pane when it is in more than one. */
 export function findContent(layout: WorkbenchLayout, content: PaneContent): Located | null {
-  const leaves = [...tiledLeaves(layout.root), ...layout.floating.map((pane) => pane.leaf)];
+  const leaves = leavesOf(layout);
   const ordered = [
     ...leaves.filter((leaf) => leaf.id === layout.focus.leafId),
     ...leaves.filter((leaf) => leaf.id !== layout.focus.leafId),
@@ -42,11 +78,28 @@ export type OpenOptions = {
  * Show this content. Focuses it where it already is, or puts it in the pane the keyboard is in.
  * Returns the layout it was given when nothing has to change.
  */
+/**
+ * Kinds there can only be one of at a time.
+ *
+ * The settings panels are driven by state the shell holds one copy of — the unsaved draft, which
+ * danger confirm is armed, which screen a narrow window is on — so a second one would be showing
+ * the first one's edits. Asking for it again moves the single pane rather than making a rival.
+ */
+const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["session-settings", "routines"]);
+
 export function openContent(
   layout: WorkbenchLayout,
   content: PaneContent,
   opts: OpenOptions,
 ): WorkbenchLayout {
+  if (SINGLE_INSTANCE.has(content.kind)) {
+    const existing = findKind(layout, content.kind);
+    if (existing) {
+      const retargeted = replaceTabContent(layout, existing.leafId, existing.tab.id, content);
+      const focused = focusLeaf(retargeted, existing.leafId);
+      return activateTab(focused, existing.leafId, existing.tab.id);
+    }
+  }
   const found = findContent(layout, content);
   if (found) {
     const focused = focusLeaf(layout, found.leafId);

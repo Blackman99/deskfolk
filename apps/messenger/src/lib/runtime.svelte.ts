@@ -34,6 +34,7 @@ import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
 import { EventSync } from "./event-sync.ts";
 import { SessionView } from "./session-view.svelte.ts";
+import type { PaneContent } from "./workbench/pane-content.ts";
 import { SvelteMap } from "svelte/reactivity";
 import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
@@ -438,6 +439,7 @@ export class MessengerRuntime {
   }
 
   openSessionSettings(): void {
+    if (this.selectedId && this.toPane({ kind: "session-settings", sessionId: this.selectedId, botId: null })) return;
     this.profileNavigation++;
     this.profileRoutineId = null;
     this.settingsOpen = false;
@@ -451,7 +453,24 @@ export class MessengerRuntime {
   }
 
   /** The model choice log is its own overlay, not a card inside the session panel. */
+  /**
+   * Where an "open this" goes.
+   *
+   * The desktop shell sets this while the workbench is on, and every opener below asks it first.
+   * One branch point rather than a condition inside each of them: with a dozen call sites the
+   * rule "the desktop never sets those flags" has to be enforceable, not merely intended.
+   */
+  paneOpener: ((content: PaneContent) => void) | null = null;
+
+  private toPane(content: PaneContent): boolean {
+    const open = this.paneOpener;
+    if (!open) return false;
+    open(content);
+    return true;
+  }
+
   toggleRouteLog(): void {
+    if (this.selectedId && this.toPane({ kind: "route-log", sessionId: this.selectedId })) return;
     if (this.routeLogOpen) {
       this.routeLogOpen = false;
       return;
@@ -468,6 +487,8 @@ export class MessengerRuntime {
   terminalOpen = $state(false);
 
   openTerminal(): void {
+    void this.refreshTerminals();
+    if (this.toPane({ kind: "terminal", terminalId: null })) return;
     this.closeSheets();
     void this.refreshTerminals();
     this.threadOpen = false;
@@ -498,6 +519,7 @@ export class MessengerRuntime {
   /** `taskId` null opens whatever job this session touched most recently. */
   openTrace(taskId: string | null = null): void {
     if (!this.selectedId) return;
+    if (this.toPane({ kind: "trace", sessionId: this.selectedId, taskId })) return;
     this.closeSheets();
     this.threadOpen = false;
     this.routinesOpen = false;
@@ -536,6 +558,7 @@ export class MessengerRuntime {
   }
 
   openProfile(botId: string): void {
+    if (this.selectedId && this.toPane({ kind: "session-settings", sessionId: this.selectedId, botId })) return;
     this.profileNavigation++;
     this.profileRoutineId = null;
     this.settingsOpen = false;
@@ -572,6 +595,7 @@ export class MessengerRuntime {
   }
 
   openWorkspace(selected?: string | null): void {
+    if (this.toPane({ kind: "workspace", selected: selected ?? null })) return;
     this.settingsOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
@@ -589,6 +613,7 @@ export class MessengerRuntime {
    * A preview open beside the chat would cover the grid, so it goes too.
    */
   openRoutines(): void {
+    if (this.toPane({ kind: "routines" })) return;
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;

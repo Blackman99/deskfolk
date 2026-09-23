@@ -1173,7 +1173,10 @@
 			top: 0;
 			z-index: 5;
 			display: none;
-			max-height: min(52%, 320px);
+			/* The list is worth more than the sliver of file behind it: it runs as far as the
+			   bottom of the sheet, and only stops early when it has nothing more to show. */
+			max-height: 100%;
+			overscroll-behavior: contain;
 			width: auto;
 			max-width: none;
 			border-right: 0;

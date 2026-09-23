@@ -73,3 +73,29 @@ test("the focused pane says which conversation the app is pointed at", () => {
   expect(activeSessionId({ ...layout, focus: { zone: "tiled", leafId: "b" } })).toBeNull();
   expect(activeSessionId(layoutOf(makeLeaf("a", [])))).toBeNull();
 });
+
+test("kinds there can only be one of move rather than multiply", () => {
+  // The settings panels read one copy of the shell's unsaved draft and armed confirms, so a
+  // second pane would be showing the first one's edits.
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor({ kind: "session-settings", sessionId: "s1", botId: null }, "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+
+  const again = openContent(layout, { kind: "session-settings", sessionId: "s2", botId: "bot-9" }, ids);
+  // The one that exists was pointed at the new conversation, in place.
+  expect(tiledLeaves(again.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(leafById(again, "a")!.tabs[0]!.params).toEqual({ sessionId: "s2", botId: "bot-9" });
+  expect(again.focus.leafId).toBe("a");
+  assertInvariants(again);
+});
+
+test("the calendar is single-instance too", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor({ kind: "routines" }, "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+  const again = openContent(layout, { kind: "routines" }, ids);
+  expect(tiledLeaves(again.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(again.focus.leafId).toBe("a");
+});

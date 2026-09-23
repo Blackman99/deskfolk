@@ -421,6 +421,23 @@
 		}
 	}
 
+	/**
+	 * While the workbench is on, every "open this" in the app lands in a pane rather than in a
+	 * full-screen layer. Cleared below the breakpoint, where those layers are still the app.
+	 */
+	$effect(() => {
+		if (!wide) {
+			runtime.paneOpener = null;
+			return;
+		}
+		runtime.paneOpener = (content) => {
+			untrack(() => commitLayout(openContent(layout, content, { id: freshPaneId })));
+		};
+		return () => {
+			runtime.paneOpener = null;
+		};
+	});
+
 	/** Fill a pane from its own empty state: whatever you pick lands in that pane, not elsewhere. */
 	function openInPane(leafId: string, content: PaneContent): void {
 		const focused = focusLeaf(layout, leafId);
@@ -1301,6 +1318,52 @@
 				onCloseTab={onPaneCloseTab}
 			>
 				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}
+					{@const paneContent = contentOfTab(tab)}
+					{#if paneContent?.kind === 'session-settings'}
+						<!--
+							Rendered here rather than in the pane host because these panels are driven by
+							state this file holds one copy of — the unsaved draft, which danger confirm is
+							armed, which screen a narrow window is on. That is also why there is only ever
+							one of them: a second would be showing the first one's edits.
+						-->
+						{@const paneSession = snapshot.sessions.find((row) => row.id === paneContent.sessionId)}
+						{@const paneBot = paneContent.botId
+							? snapshot.bots.find((row) => row.id === paneContent.botId)
+							: undefined}
+						<div class="pane-settings">
+							{#if paneBot}
+								{#key paneBot.id}
+									<ProfilePane
+										{runtime}
+										bot={paneBot}
+										{t}
+										modelOptions={availableModelOptions}
+										{selectedKind}
+										bind:profileFailed
+										bind:mobileDetail={paneMobileDetail}
+										openDangerConfirm={(kind, run) =>
+											(dangerConfirm = { kind, run, source: 'drawer' })}
+										{clearDanger}
+										onDeleteBot={() => openDeleteBotConfirm()}
+										onClearHistory={() => openClearHistoryConfirm()}
+									/>
+								{/key}
+							{:else if paneSession}
+								<GroupPane
+									{runtime}
+									selected={paneSession}
+									{t}
+									bind:detail={groupDetail}
+									bind:mobileDetail={paneMobileDetail}
+									onOpenProfile={openProfile}
+									onDeleteGroup={() => openDeleteGroupConfirm()}
+									onClearHistory={() => openClearHistoryConfirm()}
+								/>
+							{:else}
+								<p class="pane-settings-gone">{t.top.deleted}</p>
+							{/if}
+						</div>
+					{:else}
 					<PaneContentHost
 						{tab}
 						{leafId}
@@ -1314,7 +1377,10 @@
 						onRemoveTab={onPaneCloseTab}
 						onSelectWorkspacePath={openWorkspaceFile}
 						onBindTerminal={bindTerminalTab}
+						onJump={jumpToTrace}
+						{paneTitle}
 					/>
+					{/if}
 				{/snippet}
 				{#snippet tabLabel(tab: WorkbenchTab)}
 					<span>{paneTitle(tab)}</span>
@@ -1645,6 +1711,20 @@
 	@media (max-width: 680px) {
 		.shell.has-mobile-navigation > :global(.side) { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
 
+	}
+
+	.pane-settings {
+		height: 100%;
+		min-height: 0;
+		overflow-y: auto;
+	}
+	.pane-settings-gone {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		color: var(--muted);
+		font-size: 13px;
 	}
 
 	.pane-open {

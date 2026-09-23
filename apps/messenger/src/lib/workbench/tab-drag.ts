@@ -1,9 +1,8 @@
 /**
  * Dragging a tab, or a whole tab group, somewhere else.
  *
- * The reducer is pure and separate from the pointer plumbing, the way `trace-window.ts` kept the
- * frame arithmetic out of the component: happy-dom has no layout, so the geometry cannot be
- * asserted through a mounted component, but every decision a drag makes can be.
+ * The reducer is pure and separate from the pointer plumbing: happy-dom has no layout, so the
+ * geometry cannot be asserted through a mounted component, but every decision a drag makes can.
  *
  * Pointer events throughout, never HTML5 drag and drop — that has no pointer capture, an
  * uncontrollable drag image, and coarse coordinates in the webview this app ships in.

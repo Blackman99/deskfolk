@@ -15,7 +15,7 @@ export const PANE_MINS = {
   chat: { width: 360, height: 240 },
   /** Matches `PREVIEW_MIN` in overlays/preview-width.ts — the same panel, a different host. */
   preview: { width: 280, height: 240 },
-  /** Matches `TRACE_WINDOW_MIN_WIDTH` / `_HEIGHT` in overlays/trace-window.ts. */
+  /** What the board needs before its cards stop making sense. */
   trace: { width: 300, height: 280 },
   /**
    * Eighty columns of 12px `ui-monospace` is about 576px, plus the host's padding and a
