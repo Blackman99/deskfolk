@@ -9,6 +9,8 @@ import {
 import https from "node:https";
 import dns from "node:dns";
 import net from "node:net";
+import { HttpsProxyAgent, type HttpsProxyAgentOptions } from "https-proxy-agent";
+import { getProxyForUrl } from "proxy-from-env";
 import {
   WEB_PUSH_PAYLOAD,
   type ClientEvent,
@@ -342,45 +344,92 @@ export function isPrivateOrForbiddenIp(ip: string): boolean {
   return true;
 }
 
-export function createSafePushFetch(): PushFetch {
-  const agent = new https.Agent({
-    keepAlive: false,
-    lookup(hostname, options, callback) {
-      dns.lookup(hostname, { all: true }, (err, addresses) => {
-        if (err) return callback(err, "" as never, 4);
-        if (!addresses || addresses.length === 0) {
-          return callback(new Error("anti_ssrf_dns_empty"), "" as never, 4);
-        }
-        for (const item of addresses) {
-          if (isPrivateOrForbiddenIp(item.address)) {
-            return callback(new Error(`anti_ssrf_forbidden_ip: ${item.address}`), "" as never, 4);
-          }
-        }
-        const first = addresses[0]!;
-        if (options.all) {
-          (callback as (err: NodeJS.ErrnoException | null, addresses: dns.LookupAddress[]) => void)(null, [first]);
-        } else {
-          callback(null, first.address, first.family);
-        }
-      });
-    },
+type LookupOptions = { all?: boolean };
+
+function assertPublicAddresses(addresses: readonly dns.LookupAddress[]): dns.LookupAddress {
+  if (addresses.length === 0) throw new Error("anti_ssrf_dns_empty");
+  for (const item of addresses) {
+    if (isPrivateOrForbiddenIp(item.address)) throw new Error(`anti_ssrf_forbidden_ip: ${item.address}`);
+  }
+  return addresses[0]!;
+}
+
+/** Resolve every address, reject any forbidden one, and pin the first public address. */
+function lookupPinned(
+  hostname: string,
+  options: LookupOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void,
+): void {
+  dns.lookup(hostname, { all: true }, (err, addresses) => {
+    if (err) return callback(err, "", 4);
+    try {
+      const first = assertPublicAddresses(addresses ?? []);
+      if (options.all) callback(null, [first]);
+      else callback(null, first.address, first.family);
+    } catch (error) {
+      callback(error as NodeJS.ErrnoException, "", 4);
+    }
   });
+}
+
+/** CONNECT to the pinned IP. TLS SNI and the Host header stay the endpoint hostname. */
+class PinnedHttpsProxyAgent<Uri extends string> extends HttpsProxyAgent<Uri> {
+  constructor(proxy: Uri, opts?: HttpsProxyAgentOptions<Uri>) {
+    super(proxy, opts);
+  }
+
+  override connect(req: import("node:http").ClientRequest, opts: Parameters<HttpsProxyAgent<Uri>["connect"]>[1]) {
+    const named = "servername" in opts ? opts.servername : undefined;
+    const hostname = named ?? (net.isIP(opts.host ?? "") ? undefined : opts.host);
+    if (!hostname || net.isIP(hostname) || !isAllowedPushHost(hostname)) {
+      return Promise.reject(new Error("anti_ssrf_forbidden_host"));
+    }
+    return new Promise<Awaited<ReturnType<HttpsProxyAgent<Uri>["connect"]>>>((resolve, reject) => {
+      lookupPinned(hostname, {}, (err, address) => {
+        if (err || typeof address !== "string") return reject(err ?? new Error("anti_ssrf_dns_empty"));
+        if (!opts.secureEndpoint) return reject(new Error("anti_ssrf_forbidden_host"));
+        resolve(super.connect(req, { ...opts, host: address, servername: hostname }));
+      });
+    });
+  }
+}
+
+export function createSafePushFetch(): PushFetch {
+  const direct = new https.Agent({ keepAlive: false, lookup: lookupPinned });
+  const proxyAgents = new Map<string, HttpsProxyAgent<string>>();
 
   return (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     return new Promise((resolve, reject) => {
       const urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : input.url);
       const url = parsePushEndpoint(urlStr);
+      const proxy = getProxyForUrl(url.href);
+      let agent: https.Agent = direct;
+      if (proxy) {
+        let pinned = proxyAgents.get(proxy);
+        if (!pinned) {
+          pinned = new PinnedHttpsProxyAgent(proxy, { keepAlive: false });
+          proxyAgents.set(proxy, pinned);
+        }
+        agent = pinned;
+      }
 
+      let settled = false;
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
       const req = https.request(url, {
         method: init?.method ?? "POST",
         headers: init?.headers as Record<string, string>,
         agent,
+        servername: url.hostname,
         signal: init?.signal as AbortSignal | undefined,
       }, (res) => {
         const status = res.statusCode ?? 500;
         if (status >= 300 && status < 400) {
           res.resume();
-          return reject(new HttpError(422, "redirect_forbidden", "redirects are not permitted"));
+          return fail(new HttpError(422, "redirect_forbidden", "redirects are not permitted"));
         }
         let received = 0;
         const chunks: Buffer[] = [];
@@ -394,6 +443,8 @@ export function createSafePushFetch(): PushFetch {
           chunks.push(buf);
         });
         res.on("end", () => {
+          if (settled) return;
+          settled = true;
           const body = Buffer.concat(chunks);
           const headers = new Headers();
           for (const [k, v] of Object.entries(res.headers)) {
@@ -401,10 +452,25 @@ export function createSafePushFetch(): PushFetch {
           }
           resolve(new Response(body, { status, statusText: res.statusMessage, headers }));
         });
-        res.on("error", reject);
+        res.on("error", fail);
       });
 
-      req.on("error", reject);
+      req.on("error", fail);
+      const signal = init?.signal;
+      const onAbort = () => {
+        fail(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }));
+        req.destroy();
+      };
+      if (signal) {
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+        req.once("close", () => signal.removeEventListener("abort", onAbort));
+      }
+      req.on("proxyConnect", (connect: { statusCode?: number }) => {
+        if (connect.statusCode !== 200) {
+          req.destroy(new Error(`proxy_connect_failed: ${connect.statusCode ?? 0}`));
+        }
+      });
 
       if (init?.body) {
         if (init.body instanceof Uint8Array || Buffer.isBuffer(init.body)) {
@@ -892,7 +958,7 @@ export class PushService {
     this.abortDevice(deviceId);
   }
 
-  async test(deviceId: string): Promise<{ ok: boolean; status: string }> {
+  async test(deviceId: string): Promise<{ ok: boolean; status: string; error_code?: string | null }> {
     const now = this.now();
     const devRow = this.options.store.getNotificationDeviceRow(deviceId);
     if (!devRow || !devRow.enabled) {
@@ -940,11 +1006,11 @@ export class PushService {
 
     await this.deliverPending(deviceId);
     const row = this.options.store.db
-      .query<{ state: string }, [string]>("SELECT state FROM notification_deliveries WHERE delivery_id = ?")
+      .query<{ state: string; error_code: string | null }, [string]>("SELECT state, error_code FROM notification_deliveries WHERE delivery_id = ?")
       .get(deliveryId);
     if (row?.state === "accepted") return { ok: true, status: "accepted" };
     if (row?.state === "retry_wait" || row?.state === "claimed" || row?.state === "pending") {
-      return { ok: true, status: "queued" };
+      return { ok: true, status: "queued", error_code: row.error_code };
     }
     throw new HttpError(503, "failed", row?.state ?? "push test was not accepted");
   }

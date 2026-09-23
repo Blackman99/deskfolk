@@ -100,7 +100,9 @@
 		})
 	);
 
-	async function handleDeviceToggle(): Promise<void> {
+	async function handleDeviceToggle(event?: Event): Promise<void> {
+		const input = event?.currentTarget as HTMLInputElement | undefined;
+		if (input) input.checked = device?.enabled ?? false;
 		disableFeedback = null;
 		if (runtime.isDesktopShell) {
 			if (device?.enabled) {
@@ -111,17 +113,35 @@
 			return;
 		}
 
-		if (device?.enabled) {
-			const outcome = await runtime.disableDeviceNotifications();
-			if (typeof outcome === 'object') {
-				const key = closeCopyKey(outcome);
-				if (key === 'local_only') disableFeedback = t.notifications.localOnlyClose;
-				else if (key === 'host_only') disableFeedback = t.notifications.hostOnlyClose;
-				else if (key === 'unconfirmed') disableFeedback = t.notifications.unconfirmedClose;
-				else disableFeedback = null;
+		deviceLoading = true;
+		try {
+			if (device?.enabled) {
+				const outcome = await runtime.disableDeviceNotifications();
+				if (typeof outcome === 'object') {
+					const key = closeCopyKey(outcome);
+					if (key === 'local_only') disableFeedback = t.notifications.localOnlyClose;
+					else if (key === 'host_only') disableFeedback = t.notifications.hostOnlyClose;
+					else if (key === 'unconfirmed') disableFeedback = t.notifications.unconfirmedClose;
+					else disableFeedback = null;
+				}
+			} else {
+				await runtime.enableDeviceNotifications();
 			}
-		} else {
+			if (typeof runtime.loadNotificationDevice === 'function') {
+				await runtime.loadNotificationDevice();
+			}
+		} finally {
+			deviceLoading = false;
+		}
+	}
+
+	async function handleRepair(): Promise<void> {
+		deviceLoading = true;
+		try {
 			await runtime.enableDeviceNotifications();
+			await runtime.loadNotificationDevice();
+		} finally {
+			deviceLoading = false;
 		}
 	}
 
@@ -154,11 +174,12 @@
 		testFeedback = null;
 		try {
 			const result = await runtime.sendTestNotification();
-			if (result.status === 'accepted') testFeedback = t.notifications.testSent;
-			else if (result.status === 'queued' || result.status === 'waiting_send_slot' || result.status === 'submitted') {
-				testFeedback = t.notifications.testQueued;
+			if (!usesNativeTestGate && result.error_code === 'timeout') {
+				testFeedback = t.notifications.testRemoteTimeout;
+			} else if (result.status === 'accepted') {
+				testFeedback = usesNativeTestGate ? t.notifications.testSent : t.notifications.testRemoteAccepted;
 			} else {
-				testFeedback = t.notifications.testQueued;
+				testFeedback = usesNativeTestGate ? t.notifications.testQueued : t.notifications.testRemoteQueued;
 			}
 		} catch (err) {
 			testFeedback = err instanceof Error ? err.message : t.disconnected.host;
@@ -478,7 +499,7 @@
 									type="checkbox"
 									checked={device?.enabled ?? false}
 									disabled={deviceLoading}
-									onchange={() => void handleDeviceToggle()}
+									onchange={(event) => void handleDeviceToggle(event)}
 								/>
 								<span class="switch-track" aria-hidden="true">
 									<span class="switch-thumb"></span>
@@ -545,7 +566,8 @@
 						<button
 							type="button"
 							class="btn-repair"
-							onclick={() => void runtime.enableDeviceNotifications()}
+							disabled={deviceLoading || runtime.pushBusy}
+							onclick={() => void handleRepair()}
 						>
 							{t.notifications.repairButton}
 						</button>
@@ -567,7 +589,7 @@
 										type="checkbox"
 										checked={device?.enabled ?? false}
 										disabled={deviceLoading}
-										onchange={() => void handleDeviceToggle()}
+										onchange={(event) => void handleDeviceToggle(event)}
 									/>
 									<span class="switch-track" aria-hidden="true">
 										<span class="switch-thumb"></span>
@@ -576,6 +598,13 @@
 							</div>
 						</label>
 					</div>
+				{/if}
+
+				{#if runtime.pushError === 'failed'}
+					<p class="health-notice is-danger" role="alert">
+						{t.remote.pushFailed}
+						{#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}
+					</p>
 				{/if}
 
 				{#if disableFeedback}

@@ -1081,7 +1081,12 @@
 													checked={runtime.pushEnabled}
 													disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
 													onchange={(ev) =>
-														void runtime.setPushEnabled((ev.currentTarget as HTMLInputElement).checked)}
+														{
+const input = ev.currentTarget as HTMLInputElement;
+const enabled = input.checked;
+input.checked = runtime.pushEnabled;
+void runtime.setPushEnabled(enabled);
+}}
 												/>
 												<span class="switch-track" aria-hidden="true">
 													<span class="switch-thumb"></span>
@@ -1096,7 +1101,7 @@
 										<p class="muted">{t.remote.pushUnsupported}</p>
 									{/if}
 									{#if runtime.pushError === 'failed'}
-										<p class="field-error">{t.remote.pushFailed}</p>
+										<p class="field-error" role="alert">{t.remote.pushFailed} {#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}</p>
 									{/if}
 								{/if}
 							</div>

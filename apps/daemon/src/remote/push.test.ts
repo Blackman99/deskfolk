@@ -887,9 +887,186 @@ describe("anti-SSRF and IP validation", () => {
       dns.lookup = originalLookup;
     }
   });
+
+  test("createSafePushFetch tunnels the pinned IP through HTTP_PROXY and keeps the endpoint name for TLS", async () => {
+    const net = await import("node:net");
+    const dns = (await import("node:dns")).default;
+    const connects: string[] = [];
+    const upstreamProxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+    if (!upstreamProxy) throw new Error("test needs the ambient HTTPS proxy to reach the pinned address");
+    const upstreamUrl = new URL(upstreamProxy);
+    const proxy = net.createServer((socket) => {
+      let buf = Buffer.alloc(0);
+      const onData = (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        const split = buf.indexOf("\r\n\r\n");
+        if (split < 0) return;
+        socket.off("data", onData);
+        const target = /^CONNECT (\S+) HTTP\/1\.[01]/i.exec(buf.subarray(0, split).toString("latin1"))?.[1] ?? "";
+        connects.push(target);
+        if (target !== "1.1.1.1:443") {
+          socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+          return;
+        }
+        const upstream = net.connect(Number(upstreamUrl.port || 80), upstreamUrl.hostname, () => {
+          upstream.write(buf);
+          socket.pipe(upstream);
+          upstream.pipe(socket);
+        });
+        upstream.on("error", () => socket.destroy());
+      };
+      socket.on("data", onData);
+      socket.on("error", () => undefined);
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("proxy did not bind");
+    const proxyUrl = `http://127.0.0.1:${address.port}`;
+    const previous = {
+      HTTP_PROXY: process.env.HTTP_PROXY,
+      HTTPS_PROXY: process.env.HTTPS_PROXY,
+      ALL_PROXY: process.env.ALL_PROXY,
+      NO_PROXY: process.env.NO_PROXY,
+      http_proxy: process.env.http_proxy,
+      https_proxy: process.env.https_proxy,
+      all_proxy: process.env.all_proxy,
+      no_proxy: process.env.no_proxy,
+    };
+    const originalLookup = dns.lookup.bind(dns);
+    dns.lookup = ((hostname: string, options: unknown, callback?: unknown) => {
+      const cb = typeof options === "function" ? options : callback;
+      if (typeof cb !== "function") return originalLookup(hostname as never, options as never, callback as never);
+      if (hostname === "fcm.googleapis.com") {
+        const pinned = [{ address: "1.1.1.1", family: 4 }];
+        if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+          (cb as (err: null, addresses: typeof pinned) => void)(null, pinned);
+        } else {
+          (cb as (err: null, address: string, family: number) => void)(null, "1.1.1.1", 4);
+        }
+        return;
+      }
+      if (hostname === "web.push.apple.com") {
+        const pinned = [{ address: "127.0.0.1", family: 4 }];
+        if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+          (cb as (err: null, addresses: typeof pinned) => void)(null, pinned);
+        } else {
+          (cb as (err: null, address: string, family: number) => void)(null, "127.0.0.1", 4);
+        }
+        return;
+      }
+      return originalLookup(hostname as never, options as never, callback as never);
+    }) as typeof dns.lookup;
+    for (const key of Object.keys(previous) as Array<keyof typeof previous>) delete process.env[key];
+    process.env.HTTPS_PROXY = proxyUrl;
+    process.env.NO_PROXY = "localhost,127.0.0.1";
+    try {
+      const fetchFn = createSafePushFetch();
+      await expect(fetchFn("https://fcm.googleapis.com/", { method: "GET", redirect: "error" })).rejects.toThrow(/fcm\.googleapis\.com/);
+      expect(connects).toEqual(["1.1.1.1:443"]);
+      await expect(fetchFn("https://web.push.apple.com/v1/push/fixture", { method: "POST", redirect: "error" })).rejects.toThrow(/anti_ssrf/);
+      expect(connects).toEqual(["1.1.1.1:443"]);
+    } finally {
+      dns.lookup = originalLookup;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      proxy.close();
+    }
+  });
+
+  test("createSafePushFetch skips the proxy for NO_PROXY and fails a rejected CONNECT", async () => {
+    const net = await import("node:net");
+    const dns = (await import("node:dns")).default;
+    let connections = 0;
+    const proxy = net.createServer((socket) => {
+      connections += 1;
+      socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("proxy did not bind");
+    const previous = {
+      HTTP_PROXY: process.env.HTTP_PROXY,
+      HTTPS_PROXY: process.env.HTTPS_PROXY,
+      ALL_PROXY: process.env.ALL_PROXY,
+      NO_PROXY: process.env.NO_PROXY,
+      http_proxy: process.env.http_proxy,
+      https_proxy: process.env.https_proxy,
+      all_proxy: process.env.all_proxy,
+      no_proxy: process.env.no_proxy,
+    };
+    const originalLookup = dns.lookup.bind(dns);
+    dns.lookup = ((hostname: string, options: unknown, callback?: unknown) => {
+      const cb = typeof options === "function" ? options : callback;
+      if (hostname === "fcm.googleapis.com" && typeof cb === "function") {
+        if (process.env.NO_PROXY === "fcm.googleapis.com") {
+          const err = Object.assign(new Error("getaddrinfo ENOTFOUND fcm.googleapis.com"), { code: "ENOTFOUND" });
+          if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+            (cb as (err: Error, addresses: []) => void)(err, []);
+          } else {
+            (cb as (err: Error, address: string, family: number) => void)(err, "", 4);
+          }
+          return;
+        }
+        const pinned = [{ address: "1.1.1.1", family: 4 }];
+        if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+          (cb as (err: null, addresses: typeof pinned) => void)(null, pinned);
+        } else {
+          (cb as (err: null, address: string, family: number) => void)(null, "1.1.1.1", 4);
+        }
+        return;
+      }
+      return originalLookup(hostname as never, options as never, callback as never);
+    }) as typeof dns.lookup;
+    for (const key of Object.keys(previous) as Array<keyof typeof previous>) delete process.env[key];
+    process.env.HTTPS_PROXY = `http://127.0.0.1:${address.port}`;
+    process.env.NO_PROXY = "fcm.googleapis.com";
+    try {
+      const fetchFn = createSafePushFetch();
+      await expect(fetchFn("https://fcm.googleapis.com/", { method: "GET" })).rejects.toThrow(/ENOTFOUND/);
+      expect(connections).toBe(0);
+      delete process.env.NO_PROXY;
+      await expect(fetchFn("https://fcm.googleapis.com/", { method: "GET" })).rejects.toThrow(/proxy_connect_failed: 403/);
+      expect(connections).toBe(1);
+      const held = net.createServer((socket) => {
+        socket.on("error", () => undefined);
+      });
+      await new Promise<void>((resolve) => held.listen(0, "127.0.0.1", resolve));
+      const heldAddress = held.address();
+      if (!heldAddress || typeof heldAddress === "string") throw new Error("held proxy did not bind");
+      process.env.HTTPS_PROXY = `http://127.0.0.1:${heldAddress.port}`;
+      const controller = new AbortController();
+      const pending = fetchFn("https://fcm.googleapis.com/", { method: "GET", signal: controller.signal });
+      controller.abort();
+      await expect(pending).rejects.toThrow(/abort/i);
+      held.close();
+    } finally {
+      dns.lookup = originalLookup;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      proxy.close();
+    }
+  });
 });
 
 describe("rate limit and 120s deadline", () => {
+  test("test reports the timeout that caused a queued retry", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      pausedUpgrade: false,
+      fetch: async () => { throw Object.assign(new Error("timeout"), { name: "AbortError" }); },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    expect(await service.test(device)).toEqual({ ok: true, status: "queued", error_code: "timeout" });
+  });
   test("service.test(deviceId) obeys 60s per-device rate limit", async () => {
     const s = store();
     const device = ulid();

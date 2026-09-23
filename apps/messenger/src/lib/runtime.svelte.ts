@@ -293,6 +293,7 @@ export class MessengerRuntime {
   pushEnabled = $state(false);
   pushBusy = $state(false);
   pushError = $state<string | null>(null);
+  pushErrorCode = $state<string | null>(null);
   pushPermission = $state<PushPermission>("unsupported");
 
   notificationSummary = $state<NotificationSummary>(EMPTY_NOTIFICATION_SUMMARY);
@@ -1759,7 +1760,7 @@ export class MessengerRuntime {
     }
   }
 
-  async sendTestNotification(): Promise<{ ok: boolean; status: string }> {
+  async sendTestNotification(): Promise<{ ok: boolean; status: string; error_code?: string | null }> {
     const api = this.api;
     const copy = copyFor(this.snapshot.settings.locale).notifications;
     if (!api) {
@@ -2486,12 +2487,14 @@ export class MessengerRuntime {
     if (!(api instanceof RemoteApi) || this.pushBusy) return false;
     this.pushBusy = true;
     this.pushError = null;
+    this.pushErrorCode = null;
     this.pushPermission = pushPermission();
     try {
       if (enabled) {
         await enablePush(api, "enable");
         this.pushEnabled = true;
         this.pushSubscribed = true;
+        this.pushRecovery = "none";
         this.pushPermission = pushPermission();
         await this.loadNotificationDevice();
         return true;
@@ -2505,6 +2508,8 @@ export class MessengerRuntime {
       }
     } catch (error) {
       this.pushPermission = pushPermission();
+      this.pushErrorCode = error instanceof ApiError ? error.code
+        : error instanceof Error && error.name !== "Error" ? error.name : null;
       this.pushError = error instanceof Error && error.message === "denied" ? "denied"
         : error instanceof Error && error.message === "unsupported" ? "unsupported"
         : "failed";

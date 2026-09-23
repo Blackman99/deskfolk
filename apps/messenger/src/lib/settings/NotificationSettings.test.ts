@@ -2,8 +2,11 @@ import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import { click, render } from "../test-render.ts";
 import { fakeRuntime } from "../test-fixtures.ts";
+import { MessengerRuntime } from "../runtime.svelte.ts";
 import NotificationSettings from "./NotificationSettings.svelte";
 import type { NotificationPolicy } from "../notifications/types.ts";
+
+import { reactive } from "../test-reactive.svelte.ts";
 
 const t = copyFor("zh");
 
@@ -16,7 +19,7 @@ function mountSettings(overrides: {
   nativeDelivery?: boolean;
   remote?: boolean;
 } = {}) {
-  const runtime = fakeRuntime();
+  const runtime = reactive(fakeRuntime());
   runtime.connection = "connected";
   runtime.pushPermission = overrides.pushPermission ?? "granted";
   if (overrides.remoteGated !== undefined) runtime.remoteGated = overrides.remoteGated;
@@ -85,11 +88,13 @@ test("toggling quiet hours calls patchNotificationPolicy", () => {
   close();
 });
 
-test("device toggle calls enableDeviceNotifications or disableDeviceNotifications", () => {
+test("device toggle calls enableDeviceNotifications and refreshes notification device", async () => {
   const { host, runtime, close } = mountSettings({ deviceEnabled: false });
   const deviceToggle = host.querySelector(".device-body input[type='checkbox']") as HTMLInputElement;
   click(deviceToggle);
+  await new Promise((r) => setTimeout(r, 10));
   expect(runtime.calls.some((c) => c.name === "enableDeviceNotifications")).toBe(true);
+  expect(runtime.calls.some((c) => c.name === "loadNotificationDevice")).toBe(true);
   close();
 });
 
@@ -120,7 +125,43 @@ test("send test button dispatches sendTestNotification when remote device is ena
   click(testBtn);
   await new Promise((r) => setTimeout(r, 10));
   expect(runtime.calls.some((c) => c.name === "sendTestNotification")).toBe(true);
-  expect(host.textContent).toContain(t.notifications.testSent);
+  expect(host.textContent).toContain(t.notifications.testRemoteAccepted);
+  close();
+});
+
+test("remote queued tests describe Web Push delivery", async () => {
+  const { host, runtime, close } = mountSettings({ deviceEnabled: true, remote: true });
+  runtime.sendTestNotification = async () => ({ ok: true, status: "queued" });
+  click(host.querySelector(".test-row button"));
+  await new Promise((r) => setTimeout(r, 10));
+  expect(host.textContent).toContain("等待执行 Mac 向推送服务投递");
+  expect(host.textContent).not.toContain("等待本机投递槽");
+  close();
+});
+
+test("remote timeout explains the host network failure and pending retry", async () => {
+  const { host, runtime, close } = mountSettings({ deviceEnabled: true, remote: true });
+  runtime.sendTestNotification = async () => ({ ok: true, status: "queued", error_code: "timeout" });
+  click(host.querySelector(".test-row button"));
+  await new Promise((r) => setTimeout(r, 10));
+  expect(host.textContent).toContain("执行 Mac 连接推送服务超时");
+  close();
+});
+
+test("failed enable is visible and restores the unchecked device switch", async () => {
+  const { host, runtime, close } = mountSettings({ deviceEnabled: false, remote: true });
+  runtime.loadNotificationDevice = async () => {};
+  runtime.enableDeviceNotifications = async () => {
+    runtime.pushError = "failed";
+    runtime.pushErrorCode = "revision_conflict";
+    return false;
+  };
+  const toggle = host.querySelector<HTMLInputElement>(".device-master-row input")!;
+  click(toggle);
+  await new Promise((r) => setTimeout(r, 10));
+  expect(host.textContent).toContain(t.remote.pushFailed);
+  expect(toggle.checked).toBe(false);
+  expect(host.querySelector<HTMLButtonElement>(".btn-send-test")!.disabled).toBe(true);
   close();
 });
 

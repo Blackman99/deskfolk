@@ -93,20 +93,16 @@ export async function enablePush(api: RemoteApi, mode: PushSubscribeMode = "enab
   if (permission !== "granted") throw new Error("denied");
   const registration = await navigator.serviceWorker.ready;
   if ("getPushStateV2" in api && typeof api.getPushStateV2 === "function") {
-    try {
-      const state = prefetchedState ?? await api.getPushStateV2();
-      const applicationServerKey = Uint8Array.from(applicationServerKeyBytes(state.applicationServerKey));
-      let existing = await registration.pushManager.getSubscription();
-      if (existing && state.recovery !== "none") {
-        await existing.unsubscribe();
-        existing = null;
-      }
-      const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-      await postSubscribeV2(api, state, "enable", subscription);
-      return;
-    } catch (e) {
-      if (e instanceof Error && (e.message === "denied" || e.message === "unsupported")) throw e;
+    const state = prefetchedState ?? await api.getPushStateV2();
+    const applicationServerKey = Uint8Array.from(applicationServerKeyBytes(state.applicationServerKey));
+    let existing = await registration.pushManager.getSubscription();
+    if (existing && (state.recovery !== "none" || !sameApplicationServerKey(boundApplicationServerKey(existing), applicationServerKey))) {
+      await existing.unsubscribe();
+      existing = null;
     }
+    const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+    await postSubscribeV2(api, state, "enable", subscription);
+    return;
   }
   const state = await api.pushState();
   const applicationServerKey = Uint8Array.from(applicationServerKeyBytes(state.applicationServerKey));
