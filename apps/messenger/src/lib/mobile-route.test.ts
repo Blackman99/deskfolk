@@ -93,7 +93,6 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     settingsOpen: false,
     sessionSettingsOpen: false,
     toolsMenuOpen: false,
-    routeLogOpen: false,
     traceOpen: false,
     routinesOpen: false,
     threadOpen: false,

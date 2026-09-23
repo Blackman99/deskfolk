@@ -3642,6 +3642,18 @@ describe("per-message model and thinking-level routing", () => {
       feedback: [{ body: task }],
     });
     expect(routes.items.every((row) => typeof row.provider_id === "string")).toBe(true);
+    // The flow board carries the same record on the card of the turn it ran on.
+    const taskId = h.store.taskOfTurn(String(running.id))!;
+    const traceRes = await fetch(`${h.origin}/v1/tasks/${taskId}/trace`, { headers: auth(h) });
+    expect(traceRes.status).toBe(200);
+    const trace = (await traceRes.json()) as { nodes: Array<{ turn_id: string; actor: string; route: Record<string, unknown> | null }> };
+    expect(trace.nodes.find((node) => node.turn_id === running.id)!.route).toMatchObject({
+      record: { model: "code-pro", thinking_level: "medium", feedback: [{ body: "这里有 bug，选的模型不对" }] },
+      review: null,
+      learning: null,
+    });
+    // Your own card ran on no model.
+    expect(trace.nodes.find((node) => node.actor === "user")!.route).toBeNull();
     sub.close();
   });
 });

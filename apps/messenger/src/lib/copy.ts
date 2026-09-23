@@ -705,6 +705,8 @@ const zh = {
     facetModel: "模型",
     facetKind: "类别",
     facetEndpoint: "端点",
+    cardTitle: "模型选择",
+    cardToggle: "看这一轮怎么选的模型",
     filterFeedback: "有反馈",
     filterBlamed: "归咎模型",
     filterRetired: "已退出",
@@ -739,7 +741,6 @@ const zh = {
       cheaper: "该更便宜",
       same: "不用动"
     },
-    feedbackTitle: "模型反馈",
     feedbackCount: (count: number) => `${count} 条模型反馈`,
     outcome: {
       live: "进行中",
@@ -1647,6 +1648,8 @@ const en: CopyShape<typeof zh> = {
     facetModel: "Model",
     facetKind: "Kind",
     facetEndpoint: "Endpoint",
+    cardTitle: "Model choice",
+    cardToggle: "How this turn's model was chosen",
     filterFeedback: "Feedback",
     filterBlamed: "Model blamed",
     filterRetired: "Retired",
@@ -1682,7 +1685,6 @@ const en: CopyShape<typeof zh> = {
       cheaper: "go cheaper",
       same: "leave it"
     },
-    feedbackTitle: "Model feedback",
     feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
     outcome: {
       live: "Still running",

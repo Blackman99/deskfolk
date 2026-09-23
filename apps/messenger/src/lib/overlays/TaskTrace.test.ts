@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
-import { USER_MEMBER, type SessionTaskSummary, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type RouteRecord, type SessionTaskSummary, type TaskTrace } from "@real-bot/protocol";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
@@ -108,7 +108,15 @@ function drag(el: Element, by: { x: number; y: number }): void {
   flushSync();
 }
 
-function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string; writeBack?: boolean } = {}) {
+function open(opts: {
+  taskId?: string | null;
+  fail?: boolean;
+  sessionId?: string;
+  writeBack?: boolean;
+  trace?: TaskTrace;
+  focus?: { messageId: string; turnId: string | null } | null;
+  focusToken?: number;
+} = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
   let closed = 0;
@@ -122,13 +130,15 @@ function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string
     },
     taskTrace: async (id: string) =>
       id === "task-1"
-        ? picture()
+        ? (opts.trace ?? picture())
         : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] },
     getWorkspaceFileBlob: async () => new Blob(["# 分镜"]),
   };
   const props = reactive({
     api: api as never,
     taskId: opts.taskId === undefined ? "task-1" : opts.taskId,
+    focus: opts.focus ?? null,
+    focusToken: opts.focusToken ?? 0,
     sessionId: opts.sessionId ?? "group-1",
     activeSessionId: "group-1",
     sessions: [group, direct],
@@ -158,6 +168,142 @@ async function until(host: HTMLElement, selector: string): Promise<Element> {
   }
   throw new Error(`never saw ${selector}`);
 }
+
+function aRecord(over: Partial<RouteRecord> = {}): RouteRecord {
+  return {
+    turn_id: "t-writer",
+    session_id: "group-1",
+    bot_id: "bot-1",
+    trigger_message_id: "m1",
+    provider_id: null,
+    model: "grok-4.7",
+    thinking_level: "high",
+    signature: "coding",
+    outcome: "completed",
+    fail_kind: null,
+    reason: "要改很多文件，用最强的",
+    chain_id: "t-writer",
+    created_at: "2026-09-22T00:00:01.000Z",
+    finished_at: "2026-09-22T00:04:38.000Z",
+    hops: 16,
+    tool_calls: 20,
+    tool_errors: 0,
+    repeated_failures: 0,
+    files_written: 3,
+    feedback: [],
+    ...over,
+  };
+}
+
+/** The same job, with the model each Bot turn ran on and what came of it riding on its card. */
+function routedPicture(): TaskTrace {
+  const base = picture();
+  const [you, writerTurn, artistTurn] = base.nodes;
+  return {
+    ...base,
+    nodes: [
+      { ...you!, route: null },
+      {
+        ...writerTurn!,
+        route: {
+          record: aRecord({ feedback: [{ message_id: "m-note", body: "又漏了镜头", created_at: "2026-09-22T00:05:00.000Z" }] }),
+          review: {
+            chain_id: "t-writer",
+            turn_id: "t-writer",
+            session_id: "group-1",
+            bot_id: "bot-1",
+            signature: "coding",
+            model: "grok-4.7",
+            thinking_level: "high",
+            fault: "model",
+            direction: "stronger",
+            rounds: 2,
+            confidence: 0.9,
+            reason: "两次都漏了镜头",
+            created_at: "2026-09-22T00:06:00.000Z",
+            retired_at: null,
+            effect: null,
+          },
+          learning: { chain_id: "t-writer", bot_id: "bot-1", session_id: "group-1", kind: "memory", label: "分镜质检标准", created_at: "2026-09-22T00:07:00.000Z", outcome: null },
+        },
+      },
+      {
+        ...artistTurn!,
+        route: {
+          record: aRecord({ turn_id: "t-artist", session_id: "direct-1", bot_id: "bot-2", model: "gemini-3.8", thinking_level: "medium", signature: "writing", outcome: null, finished_at: null, reason: null, chain_id: "t-artist", hops: null, tool_calls: null, tool_errors: null }),
+          review: null,
+          learning: null,
+        },
+      },
+    ],
+  };
+}
+
+test("each Bot card says which model its turn ran on, and unfolds what came of it in place", async () => {
+  const view = open({ trace: routedPicture() });
+  await until(view.host, ".trace-slot");
+  const cardOf = (who: string) =>
+    [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((card) => card.querySelector(".trace-card-who")?.textContent?.trim() === who)!;
+  // Your own card ran on no model.
+  expect(cardOf("你").querySelector(".trace-route-btn")).toBeNull();
+  const line = cardOf("制片").querySelector<HTMLButtonElement>(".trace-route-btn")!;
+  expect(line.querySelector(".trace-route-model")?.textContent).toBe("grok-4.7");
+  expect(line.querySelector(".trace-route-meta")?.textContent).toBe("思考 高 · 写代码");
+  expect(line.querySelector(".trace-route-flag.is-blamed")).not.toBeNull();
+  expect(line.querySelector(".trace-route-flag.is-feedback")?.textContent?.trim()).toBe("1");
+  expect(cardOf("分镜师").querySelector(".trace-route-flag")).toBeNull();
+  expect(view.host.querySelector(".trace-route")).toBeNull();
+
+  click(line);
+  flushSync();
+  const detail = view.host.querySelector<HTMLElement>(".trace-slot .trace-route")!;
+  expect(line.getAttribute("aria-expanded")).toBe("true");
+  expect(detail.querySelector(".trace-route-outcome")?.textContent).toBe("完成");
+  expect(detail.querySelector(".trace-route-why")?.textContent).toContain("要改很多文件，用最强的");
+  expect(detail.querySelector(".trace-route-stats")?.textContent).toContain("16 跳 · 0 次工具错误");
+  expect(detail.querySelector(".trace-route-review")?.classList.contains("is-model")).toBe(true);
+  expect(detail.querySelector(".trace-route-review")?.textContent).toContain("该更强");
+  expect(detail.querySelector(".trace-route-learning")?.textContent).toBe("记下了：分镜质检标准");
+  // A note of yours about the model jumps back to where you said it.
+  click(detail.querySelector(".trace-route-note"));
+  expect(view.jumps).toEqual([["group-1", "m-note"]]);
+  // It unfolds under its own card, and only one at a time.
+  click(cardOf("分镜师").querySelector(".trace-route-btn"));
+  flushSync();
+  expect(view.host.querySelectorAll(".trace-route")).toHaveLength(1);
+  expect(view.host.querySelector(".trace-route-outcome")?.textContent).toBe("进行中");
+  click(view.host.querySelector(".trace-route-close"));
+  flushSync();
+  expect(view.host.querySelector(".trace-route")).toBeNull();
+  view.close();
+});
+
+test("the toolbar lights the cards you pushed back on, or whose review blamed the model, and dims the rest", async () => {
+  const view = open({ trace: routedPicture() });
+  await until(view.host, ".trace-slot");
+  const chip = (label: string) =>
+    [...view.host.querySelectorAll<HTMLButtonElement>(".trace-highlight")].find((b) => b.textContent?.includes(label))!;
+  expect(chip("有反馈").textContent).toContain("1");
+  expect(chip("归咎模型").textContent).toContain("1");
+  click(chip("归咎模型"));
+  flushSync();
+  expect(chip("归咎模型").getAttribute("aria-pressed")).toBe("true");
+  // The whole job stays on the board; only what matches is lit.
+  expect(view.host.querySelectorAll(".trace-card")).toHaveLength(3);
+  expect(view.host.querySelectorAll(".trace-card.is-lit")).toHaveLength(1);
+  expect(view.host.querySelectorAll(".trace-card.is-dim")).toHaveLength(2);
+  click(chip("归咎模型"));
+  flushSync();
+  expect(view.host.querySelectorAll(".trace-card.is-lit, .trace-card.is-dim")).toHaveLength(0);
+  view.close();
+});
+
+test("a job with no model trouble offers no highlight to look for it", async () => {
+  const view = open();
+  await until(view.host, ".trace-slot");
+  expect(view.host.querySelector(".trace-highlight")).toBeNull();
+  view.close();
+});
 
 test("the flow runs top to bottom, a card jumps to its turn, and a file opens under its turn", async () => {
   const view = open();
@@ -376,6 +522,91 @@ function withMeasuredCards(run: () => Promise<void>): Promise<void> {
 // passes with the fix removed. What actually pins the behaviour is the overlap test in
 // task-trace.test.ts, plus the two guards in the pane — measurements are kept across a reload of
 // the same job, and every card is read back after each layout.
+test("opening from a message centres that message's card", async () => {
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    await withMeasuredCards(async () => {
+      const view = open({ focus: { messageId: "m3", turnId: "t-artist" }, focusToken: 1 });
+      await until(view.host, ".trace-slot");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      const flow = view.host.querySelector<HTMLElement>(".trace-flow")!;
+      const card = [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((row) =>
+        row.textContent?.includes("分镜师"),
+      )!;
+      expect(card.classList.contains("is-focus")).toBe(true);
+      const slot = card.parentElement as HTMLElement;
+      const moved = /translate\(([-\d.]+)px,\s*([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(flow.style.transform);
+      expect(moved).not.toBeNull();
+      const [tx, ty, scale] = moved!.slice(1).map(Number);
+      const cx = Number.parseInt(slot.style.left, 10) + 124;
+      const cy = Number.parseInt(slot.style.top, 10) + slot.offsetHeight / 2;
+      expect(tx + cx * scale!).toBeCloseTo(400, 0);
+      expect(ty + cy * scale!).toBeCloseTo(300, 0);
+      // The same job fetched again is not another request to move.
+      (view.props as { reloadToken: number }).reloadToken = 1;
+      flushSync();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      expect(flow.style.transform).toBe(`translate(${tx}px, ${ty}px) scale(${scale})`);
+
+      // The board is already open, so another message slides there instead of cutting.
+      const timers = new Map<number, () => void>();
+      let nextTimer = 1;
+      const setTimer = globalThis.setTimeout;
+      const clearTimer = globalThis.clearTimeout;
+      globalThis.setTimeout = ((fn: () => void) => {
+        const id = nextTimer++;
+        timers.set(id, fn);
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout;
+      globalThis.clearTimeout = ((id: number) => {
+        timers.delete(id);
+      }) as typeof clearTimeout;
+      const realNow = performance.now.bind(performance);
+      let clock = realNow();
+      performance.now = () => clock;
+      try {
+        view.props.focus = { messageId: "m1", turnId: null };
+        view.props.focusToken = 2;
+        flushSync();
+        const started = flow.style.transform;
+        expect(started).toBe(`translate(${tx}px, ${ty}px) scale(${scale})`);
+        for (let i = 0; i < 40 && timers.size > 0; i += 1) {
+          clock += 20;
+          const pending = [...timers.entries()];
+          timers.clear();
+          for (const [, fn] of pending) fn();
+          flushSync();
+        }
+        const you = [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((row) =>
+          row.querySelector(".trace-card-who")?.textContent?.trim() === "你",
+        )!;
+        expect(you.classList.contains("is-focus")).toBe(true);
+        const landed = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(flow.style.transform)!;
+        const slot = you.parentElement as HTMLElement;
+        const x = Number.parseInt(slot.style.left, 10) + 124;
+        const y = Number.parseInt(slot.style.top, 10) + slot.offsetHeight / 2;
+        expect(Math.abs(Number(landed[1]) + x - 400)).toBeLessThanOrEqual(1);
+        expect(Math.abs(Number(landed[2]) + y - 300)).toBeLessThanOrEqual(1);
+        expect(flow.style.transform).not.toBe(started);
+      } finally {
+        performance.now = realNow;
+        globalThis.setTimeout = setTimer;
+        globalThis.clearTimeout = clearTimer;
+      }
+    });
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
+});
+
 test("the board still lays out after the job is fetched again", async () => {
   // What the screenshot showed: a turn was still running, the trace refetched every few seconds,
   // and the cards ended up drawn on top of one another. The measured heights were being thrown

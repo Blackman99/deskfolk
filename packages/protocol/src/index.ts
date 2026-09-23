@@ -284,6 +284,20 @@ export type TaskTraceNode = {
   approval: { message_id: string | null; summary: string } | null;
   /** Bots who watched the trigger instead of joining. Only the card that opened them carries it. */
   passed: number;
+  /**
+   * The model choice this turn ran on and what came of it. Null on your own card and on a turn
+   * older than model choices; absent altogether from a daemon that predates it.
+   */
+  route?: TaskTraceRoute | null;
+};
+
+/** One card's model choice: the record, and the review and learning of the chain it started. */
+export type TaskTraceRoute = {
+  record: RouteRecord;
+  /** Set on the turn that started a correction chain, once that chain has been reviewed. */
+  review: RouteReview | null;
+  /** What the learning hop kept for that chain, on the same turn. */
+  learning: RouteLearning | null;
 };
 
 /** A job as one picture: the turns that share its work dir, across sessions. */

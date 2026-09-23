@@ -789,6 +789,32 @@ function occurred(): string {
   return new Date().toISOString();
 }
 
+/** A verdict as clients read it: the row, and what the next same-kind choice made of it. */
+function reviewOut(store: Store, row: RouteReviewRow) {
+  return {
+    chain_id: row.chain_id,
+    turn_id: row.turn_id,
+    session_id: row.session_id,
+    bot_id: row.bot_id,
+    signature: row.signature,
+    model: row.model,
+    thinking_level: row.thinking_level,
+    fault: row.fault,
+    direction: row.direction,
+    rounds: row.rounds,
+    confidence: row.confidence,
+    reason: row.reason,
+    created_at: row.created_at,
+    retired_at: row.retired_at,
+    effect: store.reviewEffect(row),
+  };
+}
+
+/** A learning note as clients read it: the row, and whether later same-kind chains got shorter. */
+function learningOut(store: Store, row: RouteLearningRow) {
+  return { ...row, outcome: store.learningOutcome({ botId: row.bot_id, chainId: row.chain_id }) };
+}
+
 /** The command line out of a `shell` call's arguments, so a finished row can name itself. */
 function shellCommandOf(name: string | undefined, args: string | undefined): string | undefined {
   if (name !== "shell" || !args) return undefined;
@@ -1223,14 +1249,30 @@ function dispatch(
   params = matchPath(path, "/v1/tasks/:id/trace");
   if (params && method === "GET") {
     const trace = store.taskTrace(params.id!);
-    // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
+    // Each card carries the model choice its turn ran on, so the board is where it is read.
+    const records = new Map(store.listTaskRoutes(params.id!).map((record) => [record.turn_id, record]));
+    const reviews = new Map(store.listTaskReviews(params.id!).map((row) => [row.turn_id, reviewOut(store, row)]));
+    const learnings = new Map(store.listTaskLearnings(params.id!).map((row) => [row.chain_id, learningOut(store, row)]));
     return jsonResponse(
       {
         ...trace,
         nodes: trace.nodes.map((node) => {
-          if (node.status !== "running") return node;
+          const record = records.get(node.turn_id);
+          const routed = {
+            ...node,
+            route: record
+              ? {
+                  record,
+                  review: reviews.get(node.turn_id) ?? null,
+                  // A chain is named after the turn that started it; its note belongs there.
+                  learning: record.chain_id === record.turn_id ? (learnings.get(record.chain_id) ?? null) : null,
+                }
+              : null,
+          };
+          // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
+          if (node.status !== "running") return routed;
           const live = engine.partialText(node.turn_id)?.replace(/\s+/g, " ").trim();
-          return live ? { ...node, summary: [...live].slice(0, 80).join("") } : node;
+          return live ? { ...routed, summary: [...live].slice(0, 80).join("") } : routed;
         }),
       },
       200,
@@ -1255,27 +1297,8 @@ function dispatch(
     return jsonResponse(
       {
         items: store.listSessionRoutes(params.id!),
-        reviews: store.listSessionReviews(params.id!).map((row) => ({
-          chain_id: row.chain_id,
-          turn_id: row.turn_id,
-          session_id: row.session_id,
-          bot_id: row.bot_id,
-          signature: row.signature,
-          model: row.model,
-          thinking_level: row.thinking_level,
-          fault: row.fault,
-          direction: row.direction,
-          rounds: row.rounds,
-          confidence: row.confidence,
-          reason: row.reason,
-          created_at: row.created_at,
-          retired_at: row.retired_at,
-          effect: store.reviewEffect(row),
-        })),
-        learnings: store.listSessionLearnings(params.id!).map((row) => ({
-          ...row,
-          outcome: store.learningOutcome({ botId: row.bot_id, chainId: row.chain_id }),
-        })),
+        reviews: store.listSessionReviews(params.id!).map((row) => reviewOut(store, row)),
+        learnings: store.listSessionLearnings(params.id!).map((row) => learningOut(store, row)),
       },
       200,
       null,

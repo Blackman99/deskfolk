@@ -1,8 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
 import type {
-  RouteLearning,
-  RouteRecord,
-  RouteReview,
   RuntimeSnapshot,
   SessionSnapshot,
   SyncFrame,

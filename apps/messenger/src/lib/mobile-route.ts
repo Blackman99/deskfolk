@@ -119,7 +119,6 @@ export type BackLayer =
   | "settings"
   | "session-settings"
   | "terminal"
-  | "route-log"
   | "trace"
   | "routines"
   | "thread"
@@ -139,7 +138,6 @@ export type LayerState = {
   settingsOpen: boolean;
   sessionSettingsOpen: boolean;
   terminalOpen: boolean;
-  routeLogOpen: boolean;
   traceOpen: boolean;
   routinesOpen: boolean;
   threadOpen: boolean;
@@ -165,7 +163,6 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["session-settings", "sessionSettingsOpen"],
   // Yours, not a place in a conversation: the app closes it, Back never navigates to it.
   ["terminal", "terminalOpen"],
-  ["route-log", "routeLogOpen"],
   ["trace", "traceOpen"],
   ["routines", "routinesOpen"],
   ["thread", "threadOpen"],

@@ -248,6 +248,36 @@ export function listSessionRoutes(ctx: StoreContext, sessionId: string): RouteRe
        ORDER BY f.created_at ASC, f.id ASC`,
     )
     .all(sessionId);
+  return withFeedback(rows, feedback);
+}
+
+/**
+ * Every decision a job's turns ran on, oldest first, each with the critiques it drew. A job spans
+ * sessions — a handoff into a Bot↔Bot direct is still the same job — so this goes by the turns'
+ * job, not by any one session.
+ */
+export function listTaskRoutes(ctx: StoreContext, taskId: string): RouteRecord[] {
+  const rows = ctx.db
+    .query<DecisionRow, [string]>(
+      `SELECT d.* FROM turn_route_decisions d
+       JOIN turns t ON t.id = d.turn_id
+       WHERE t.task_id = ?
+       ORDER BY d.created_at ASC, d.turn_id ASC`,
+    )
+    .all(taskId);
+  if (rows.length === 0) return [];
+  const feedback = ctx.db
+    .query<FeedbackRow, [string]>(
+      `SELECT f.* FROM route_feedback f
+       JOIN turns t ON t.id = f.turn_id
+       WHERE t.task_id = ?
+       ORDER BY f.created_at ASC, f.id ASC`,
+    )
+    .all(taskId);
+  return withFeedback(rows, feedback);
+}
+
+function withFeedback(rows: DecisionRow[], feedback: FeedbackRow[]): RouteRecord[] {
   const byTurn = new Map<string, FeedbackRow[]>();
   for (const item of feedback) {
     const list = byTurn.get(item.turn_id) ?? [];
@@ -306,6 +336,18 @@ export function listSessionReviews(ctx: StoreContext, sessionId: string): RouteR
       `SELECT * FROM route_reviews WHERE session_id = ? ORDER BY created_at ASC, id ASC`,
     )
     .all(sessionId);
+}
+
+/** Every verdict on a chain one of this job's turns started, for the flow board. Nothing filtered. */
+export function listTaskReviews(ctx: StoreContext, taskId: string): RouteReviewRow[] {
+  return ctx.db
+    .query<RouteReviewRow, [string]>(
+      `SELECT r.* FROM route_reviews r
+       JOIN turns t ON t.id = r.turn_id
+       WHERE t.task_id = ?
+       ORDER BY r.created_at ASC, r.id ASC`,
+    )
+    .all(taskId);
 }
 
 /** Which Bot a follow-up was filed against, so the engine knows whose chain to keep alive. */
@@ -631,13 +673,25 @@ export function learningOutcome(
   };
 }
 
-/** Every learning note in a session, oldest first, for the model-choice log. */
+/** Every learning note in a session, oldest first. */
 export function listSessionLearnings(ctx: StoreContext, sessionId: string): RouteLearningRow[] {
   return ctx.db
     .query<RouteLearningRow, [string]>(
       `SELECT * FROM route_learnings WHERE session_id = ? ORDER BY created_at ASC, chain_id ASC`,
     )
     .all(sessionId);
+}
+
+/** Every learning note for a chain one of this job's turns started. A chain's id is that turn's. */
+export function listTaskLearnings(ctx: StoreContext, taskId: string): RouteLearningRow[] {
+  return ctx.db
+    .query<RouteLearningRow, [string]>(
+      `SELECT l.* FROM route_learnings l
+       JOIN turns t ON t.id = l.chain_id
+       WHERE t.task_id = ?
+       ORDER BY l.created_at ASC, l.chain_id ASC`,
+    )
+    .all(taskId);
 }
 
 /**

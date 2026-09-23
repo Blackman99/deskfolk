@@ -5,7 +5,6 @@
 import { flushSync, type Component } from 'svelte';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
-import type { RouteLogRow } from '../../src/lib/overlays/route-log.ts';
 import {
 	aBot,
 	aBotDirect,
@@ -28,7 +27,6 @@ import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
 import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
 import RoutineCard from '../../src/lib/panels/RoutineCard.svelte';
-import RouteLog from '../../src/lib/overlays/RouteLog.svelte';
 import CreateGroupSheet from '../../src/lib/sidebar/CreateGroupSheet.svelte';
 import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
 import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
@@ -153,80 +151,6 @@ const botDirects = ['01', '02', '03', '04', '05', '06', '07'].map((n, i) =>
 );
 const botDmWorld = { ...world, sessions: [...sessions, ...botDirects] };
 
-/** Shaped like `RouteLogRow`, not like the daemon's row: the pane is handed labels, not codes. */
-const routeRows: RouteLogRow[] = [
-	{
-		turnId: 'turn-1',
-		botId: 'bot-1',
-		botName: 'Researcher',
-		botKnown: true,
-		triggerMessageId: 'msg-1',
-		model: 'grok-4.6',
-		providerName: null,
-		thinkingLevel: 'high',
-		thinkingLabel: '高',
-		signature: 'reasoning',
-		signatureLabel: '推理',
-		outcome: 'completed',
-		outcomeLabel: '完成',
-		failReason: null,
-		toolErrors: 0,
-		hops: 2,
-		feedback: [],
-		reason: '这条要查证，挑了推理强的。',
-		review: {
-			faultLabel: '不怪模型',
-			directionLabel: null,
-			rounds: 1,
-			reason: '一次就答对了。',
-			blamedModel: false,
-			effect: null,
-			cleaner: false,
-			retired: false
-		},
-		learning: null,
-		createdAt: '2026-09-19T02:00:00.000Z',
-		finishedAt: '2026-09-19T02:00:04.200Z',
-		durationMs: 4200
-	},
-	{
-		turnId: 'turn-2',
-		botId: 'bot-2',
-		botName: '选题策划',
-		botKnown: true,
-		triggerMessageId: 'msg-2',
-		model: 'gemini-3.8-flash',
-		providerName: 'Default',
-		thinkingLevel: 'none',
-		thinkingLabel: '不思考',
-		signature: 'simple',
-		signatureLabel: '闲聊',
-		outcome: 'failed',
-		outcomeLabel: '补全失败',
-		failReason: '连不上端点',
-		toolErrors: 1,
-		hops: 3,
-		feedback: [
-			{ message_id: 'msg-4', body: '这里不对，换个强一点的。', created_at: '2026-09-19T02:01:00.000Z' }
-		],
-		reason: '短问题，挑了快的。',
-		review: {
-			faultLabel: '模型不行',
-			directionLabel: '换更强的',
-			rounds: 3,
-			reason: '同一件事来回三轮才对。',
-			blamedModel: true,
-			effect: 'followed',
-			cleaner: false,
-			retired: true
-		},
-		learning: { kind: 'memory', label: '先读再改' },
-		createdAt: '2026-09-19T02:00:06.000Z',
-		finishedAt: '2026-09-19T02:00:06.900Z',
-		durationMs: 900
-	}
-];
-
 /**
  * The preview reads bytes through the local API. A tiny PNG keeps the shot off Monaco, which
  * loads asynchronously and would race the camera; the editor's own rules stay in the global sheet
@@ -334,7 +258,9 @@ const crossLayout: WorkbenchLayout = {
 				[
 					makeLeaf('p1', [
 						storyTab('wt1', 'chat', '视频全流程制作组'),
-						storyTab('wt6', 'route-log', '模型选择记录')
+						// A conversation's settings and model-choice log are a sidebar in its own
+						// tab, not tabs of their own, so the second tab here is another conversation.
+						storyTab('wt6', 'chat', '剪辑师')
 					]),
 					makeLeaf('p2', [storyTab('wt3', 'terminal', 'real-bot')])
 				],
@@ -363,7 +289,7 @@ const manyTabs: WorkbenchLayout = {
 	root: makeLeaf('p1', [
 		storyTab('wt1', 'chat', '视频全流程制作组'),
 		storyTab('wt2', 'trace', '经过'),
-		storyTab('wt3', 'route-log', '模型选择记录'),
+		storyTab('wt3', 'chat', '剪辑师'),
 		storyTab('wt4', 'preview', 'storyboard.md'),
 		storyTab('wt5', 'terminal', 'real-bot'),
 		storyTab('wt6', 'workspace', '工作区')
@@ -523,18 +449,6 @@ const defs: Record<StoryName, Story> = {
 			t,
 			onDismiss: () => {},
 			onConfirm: () => {}
-		}
-	},
-	'route-log': {
-		component: RouteLog as never,
-		props: {
-			rows: routeRows,
-			sessionTitle: '视频全流程制作组',
-			loading: false,
-			showEndpoint: true,
-			t,
-			onClose: () => {},
-			onJump: () => {}
 		}
 	},
 	'create-group-sheet': {

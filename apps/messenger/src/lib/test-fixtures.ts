@@ -411,11 +411,20 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openCreateGroup: record("openCreateGroup"),
     toggleRouteLog: record("toggleRouteLog"),
     closeRouteLog: record("closeRouteLog"),
+    startTerminal: async (...args: unknown[]) => {
+      calls.push({ name: "startTerminal", args });
+      return null;
+    },
+    watchTrace: (...args: unknown[]) => {
+      calls.push({ name: "watchTrace", args });
+      return () => {};
+    },
     openTrace: record("openTrace"),
     closeTrace: record("closeTrace"),
     openTerminal: record("openTerminal"),
     closeTerminal: record("closeTerminal"),
     refreshTerminals: record("refreshTerminals"),
+    terminalsLoaded: true,
     openRoutines: () => {
       calls.push({ name: "openRoutines", args: [] });
       runtime.routinesOpen = true;

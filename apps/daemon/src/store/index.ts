@@ -321,6 +321,7 @@ export class Store {
   readonly finishTurnRoute = this.bind(routing.finishTurnRoute);
   readonly getTurnRoute = this.bind(routing.getTurnRoute);
   readonly listSessionRoutes = this.bind(routing.listSessionRoutes);
+  readonly listTaskRoutes = this.bind(routing.listTaskRoutes);
   readonly listRouteFeedback = this.bind(routing.listRouteFeedback);
   readonly collectRouteFeedback = this.bind(routing.collectRouteFeedback);
   readonly forgetBotRoutes = this.bind(routing.forgetBotRoutes);
@@ -332,8 +333,10 @@ export class Store {
   readonly reviewEffect = this.bind(routing.reviewEffect);
   readonly cleanCompletions = this.bind(routing.cleanCompletions);
   readonly listSessionReviews = this.bind(routing.listSessionReviews);
+  readonly listTaskReviews = this.bind(routing.listTaskReviews);
   readonly recordRouteLearning = this.bind(routing.recordRouteLearning);
   readonly listSessionLearnings = this.bind(routing.listSessionLearnings);
+  readonly listTaskLearnings = this.bind(routing.listTaskLearnings);
   readonly learningOutcome = this.bind(routing.learningOutcome);
   readonly memoryWithLearning = this.bind(memories.withLearning);
   readonly skillWithLearning = this.bind(skills.withLearning);

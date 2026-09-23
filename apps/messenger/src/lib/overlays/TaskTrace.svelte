@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Attachment, Bot, SessionSummary } from '@real-bot/protocol';
+	import type { Attachment, Bot, Provider, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
@@ -16,10 +16,13 @@
 	interface Props {
 		api: MessengerApi | null;
 		taskId: string | null;
+		focus?: import('./task-trace.ts').TraceFocus | null;
+		focusToken?: number;
 		sessionId: string;
 		activeSessionId: string;
 		sessions: readonly SessionSummary[];
 		bots: readonly Bot[];
+		providers?: readonly Provider[];
 		youLabel: string;
 		deletedLabel: string;
 		workspacePath: string | null;
@@ -41,10 +44,13 @@
 	let {
 		api,
 		taskId,
+		focus = null,
+		focusToken = 0,
 		sessionId,
 		activeSessionId,
 		sessions,
 		bots,
+		providers = [],
 		youLabel,
 		deletedLabel,
 		workspacePath,
@@ -76,10 +82,13 @@
 		bind:this={view}
 		{api}
 		{taskId}
+		{focus}
+		{focusToken}
 		{sessionId}
 		{activeSessionId}
 		{sessions}
 		{bots}
+		{providers}
 		{youLabel}
 		{deletedLabel}
 		{workspacePath}

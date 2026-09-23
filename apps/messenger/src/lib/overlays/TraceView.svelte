@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { USER_MEMBER, type Attachment, type Bot, type SessionSummary, type SessionTaskSummary, type TaskTrace, type TaskTraceNode } from '@real-bot/protocol';
+	import { USER_MEMBER, type Attachment, type Bot, type Provider, type SessionSummary, type SessionTaskSummary, type TaskTrace, type TaskTraceNode } from '@real-bot/protocol';
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -8,12 +8,25 @@
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import TraceOutput from './TraceOutput.svelte';
+	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
+	import { routeCardRow, type RouteLogRow } from './route-log.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
 	import { isOutside } from '../click-outside.ts';
+	import { prefersReducedMotion } from '../reduced-motion.ts';
 	import {
 		clampZoom,
 		filterTrace,
+		centerOnNode,
 		fitView,
+		focusMoveDue,
+		focusNode,
+		boardViewAge,
+		glideView,
+		rememberBoardView,
+		rememberedBoardView,
+		TRACE_GLIDE_MS,
+		highlightOf,
+		routeHighlightCounts,
 		pinchSpan,
 		traceFileName,
 		traceFlow,
@@ -22,7 +35,9 @@
 		TRACE_CARD_WIDTH,
 		TRACE_ZOOM_MAX,
 		TRACE_ZOOM_MIN,
+		type RouteHighlight,
 		type TraceBox,
+		type TraceFocus,
 		type TraceView
 	} from './task-trace.ts';
 
@@ -35,11 +50,16 @@
 		api: MessengerApi | null;
 		/** The job to open on. Null asks the session for its most recent one. */
 		taskId: string | null;
+		/** The message whose card to centre. A new `focusToken` is a new request to move. */
+		focus?: TraceFocus | null;
+		focusToken?: number;
 		sessionId: string;
 		/** The conversation on screen, so the node that lives there reads as the one you are on. */
 		activeSessionId: string;
 		sessions: readonly SessionSummary[];
 		bots: readonly Bot[];
+		/** Names the endpoint a turn ran on, once there is more than one to tell apart. */
+		providers?: readonly Provider[];
 		youLabel: string;
 		deletedLabel: string;
 		workspacePath: string | null;
@@ -63,10 +83,13 @@
 	let {
 		api,
 		taskId,
+		focus = null,
+		focusToken = 0,
 		sessionId,
 		activeSessionId,
 		sessions,
 		bots,
+		providers = [],
 		youLabel,
 		deletedLabel,
 		workspacePath,
@@ -97,6 +120,10 @@
 	 * a preview asking to cover the board would have been given the canvas instead.
 	 */
 	let outputFull = $state(false);
+	/** The card whose model choice is unfolded under it. One at a time, like the file. */
+	let openRoute = $state<string | null>(null);
+	/** Which kind of model trouble the board is lighting up, if any. */
+	let highlight = $state<RouteHighlight | null>(null);
 	let loadSeq = 0;
 
 	const shown = $derived(trace ? filterTrace(trace, notableOnly) : null);
@@ -120,9 +147,26 @@
 	 * stolen; it does mean the gesture has to be taken properly, which is why the listeners below
 	 * are bound non-passively.
 	 */
-	let view = $state<TraceView>({ scale: 1, x: 0, y: 0 });
+	/**
+	 * The last place this job's board was left, so bringing its tab forward can slide from there.
+	 * A tab that is not the one showing is unmounted, and without this the board would open on
+	 * the card in a jump.
+	 */
+	const remembered = rememberedBoardView(sessionId, taskId);
+	let view = $state<TraceView>(remembered ?? { scale: 1, x: 0, y: 0 });
+	/**
+	 * This board was already open a moment ago, just not the tab in front, so the first move
+	 * slides. A layout restored tomorrow starts where it was without sliding across the window.
+	 */
+	let glideFromMemory = (boardViewAge(sessionId, taskId) ?? Infinity) < 10_000;
 	let viewportEl = $state<HTMLElement | null>(null);
 	let fitted: string | null = null;
+	/** Which focus request has already moved the board. A reload of the same one does not. */
+	let placedFocus = $state<number | null>(null);
+	/** Where that card was when we centred it, so a later measurement can follow it once. */
+	let anchored = $state<{ token: number; turn: string; x: number; y: number; width: number; height: number } | null>(null);
+	/** A pan or a zoom is the view being yours; a measurement must not pull it back. */
+	let userMoved = false;
 	/** Live pointers, so two of them can be read as a pinch and one as a drag. */
 	const pointers = new Map<number, { x: number; y: number }>();
 	// Read in the markup (the cursor, and whether a card is a target), so they are state.
@@ -147,6 +191,7 @@
 	}
 
 	function fitBoard(): void {
+		stopGlide();
 		if (!flow?.width || !viewportEl) return;
 		// The bottom tools float over the canvas, so fitting aims at what is actually clear.
 		const body = viewportEl.parentElement;
@@ -157,7 +202,122 @@
 		view = { ...fitted, y: fitted.y + 12 };
 	}
 
+	/**
+	 * Put the asked-for card in the middle, at a size a card can be read at.
+	 * False when the viewport has no size yet, or this job has no such card — the caller fits.
+	 */
+	function focusBoard(): boolean {
+		if (!focus || !flow || !viewportEl) return false;
+		const box = viewportBox();
+		if (!box.width || !box.height) return false;
+		const node = focusNode(flow.placements.map((placement) => placement.node), focus);
+		const placement = node ? flow.placements.find((row) => row.node.turn_id === node.turn_id) : null;
+		placedFocus = focusToken;
+		if (!placement) return false;
+		const next = centerOnNode(placement, box);
+		if (glideThis) glideTo(next);
+		else view = next;
+		anchored = {
+			token: focusToken,
+			turn: placement.node.turn_id,
+			x: placement.x,
+			y: placement.y,
+			width: placement.width,
+			height: placement.height
+		};
+		return true;
+	}
+
+	/** The card moved after we centred it — the first measurement, usually. */
+	function focusDrifted(): boolean {
+		const here = anchored;
+		if (!here || here.token !== focusToken || !flow) return false;
+		const placement = flow.placements.find((row) => row.node.turn_id === here.turn);
+		if (!placement) return false;
+		return (
+			placement.x !== here.x ||
+			placement.y !== here.y ||
+			placement.width !== here.width ||
+			placement.height !== here.height
+		);
+	}
+
+	/**
+	 * A new message's request starts from a view that is not yours yet.
+	 *
+	 * Read when the token changes, not while the board is being centred: writing `userMoved`
+	 * there would re-run the effect that just wrote it. A board that was already showing this
+	 * job slides; one that is opening lands on the card at once.
+	 */
+	let seenFocus = untrack(() => focusToken);
+	let glideThis = false;
+	let glideFrame: ReturnType<typeof setTimeout> | 0 = 0;
+	/** Where the slide in progress is going, so an unmount keeps the end and not the halfway. */
+	let glideTarget: TraceView | null = null;
+	$effect(() => {
+		const token = focusToken;
+		if (token === seenFocus) return;
+		seenFocus = token;
+		untrack(() => {
+			userMoved = false;
+			glideThis = glideFromMemory || (fitted === currentId && currentId !== null);
+			glideFromMemory = false;
+		});
+	});
+
+	function stopGlide(): void {
+		if (!glideFrame) return;
+		clearTimeout(glideFrame);
+		glideFrame = 0;
+		glideTarget = null;
+	}
+
+	/**
+	 * Slide the board that is already on screen. A fresh one has nothing to slide from.
+	 *
+	 * The clock is `setTimeout`, not an animation frame: the board lives in its own tab, and a
+	 * frame never fires while that tab is in the background, which would leave the slide halfway.
+	 */
+	function glideTo(next: TraceView): void {
+		stopGlide();
+		if (prefersReducedMotion()) {
+			view = next;
+			return;
+		}
+		const from = view;
+		const started = performance.now();
+		glideTarget = next;
+		const step = () => {
+			const t = (performance.now() - started) / TRACE_GLIDE_MS;
+			if (t >= 1) {
+				view = next;
+				glideFrame = 0;
+				glideTarget = null;
+				return;
+			}
+			view = glideView(from, next, t);
+			glideFrame = setTimeout(step, 16);
+		};
+		glideFrame = setTimeout(step, 16);
+	}
+
+	$effect(() => () => {
+		if (glideTarget && currentId) rememberBoardView(sessionId, currentId, glideTarget);
+		stopGlide();
+	});
+
+	$effect(() => {
+		const id = currentId;
+		const here = view;
+		if (!id) return;
+		untrack(() => {
+			if (glideFrame) return;
+			rememberBoardView(sessionId, id, here);
+		});
+	});
+
 	function zoomBy(factor: number, at?: { x: number; y: number }): void {
+		stopGlide();
 		const box = viewportBox();
 		settle(zoomAt(view, view.scale * factor, at ?? { x: box.width / 2, y: box.height / 2 }));
 	}
@@ -169,9 +329,13 @@
 		// usual escape hatch for nudging sideways, and a trackpad pinch arrives as ctrl+wheel,
 		// which lands here too.
 		if (event.shiftKey) {
+			userMoved = true;
+			stopGlide();
 			settle({ ...view, x: view.x - (event.deltaX || event.deltaY), y: view.y });
 			return;
 		}
+		userMoved = true;
+		stopGlide();
 		const step = Math.exp(-event.deltaY / 400);
 		settle(zoomAt(view, view.scale * step, localPoint(event)));
 	}
@@ -209,6 +373,8 @@
 			if (!span || !pinch.span) return;
 			settle(zoomAt(pinch.view, pinch.view.scale * (span / pinch.span), pinch.at));
 			dragged = true;
+			userMoved = true;
+			stopGlide();
 			return;
 		}
 		if (!drag) return;
@@ -217,6 +383,8 @@
 		if (!dragged && Math.abs(dx) <= 3 && Math.abs(dy) <= 3) return;
 		if (!dragged) {
 			dragged = true;
+			userMoved = true;
+			stopGlide();
 			// Now it is a drag, so the pointer belongs to the canvas until it is let go.
 			try {
 				viewportEl?.setPointerCapture(event.pointerId);
@@ -271,13 +439,41 @@
 	}
 
 	$effect(() => {
-		// A board opens showing all of itself; after that the view is yours.
+		// A board opens showing all of itself; a message opens on its card. After that the view
+		// is yours, until another message asks. The card's first real measurement still counts
+		// as that opening, so the move lands on the card you see, not the guess that preceded it.
 		const width = flow?.width ?? 0;
 		const id = currentId;
-		if (!width || !id || fitted === id || !viewportEl) return;
+		const token = focusToken;
+		const asked = focus;
+		const drift = focusDrifted();
+		if (!width || !id || !viewportEl) return;
+		// The board keeps the previous job on screen until the one this message belongs to
+		// arrives. Moving before that would spend the request on the wrong picture.
+		if (asked && taskId && trace?.id !== taskId && focusMoveDue(token, placedFocus)) return;
+		if (asked && (focusMoveDue(token, placedFocus) || (drift && !untrack(() => userMoved)))) {
+			const centred = untrack(() => focusBoard());
+			if (placedFocus !== token) return;
+			if (!centred) {
+				fitted = id;
+				fitBoard();
+				return;
+			}
+		}
+		if (fitted === id) return;
 		fitted = id;
-		fitBoard();
+		if (!(asked && placedFocus === token)) fitBoard();
 	});
+
+	/** A pane is often zero-sized for the first frame; the move waits until it has a box. */
+	function watchViewport(node: HTMLElement) {
+		if (typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(() => {
+			if (focus && focusMoveDue(focusToken, placedFocus)) focusBoard();
+		});
+		observer.observe(node);
+		return { destroy: () => observer.disconnect() };
+	}
 
 	/** Every card on screen, so any of them can be re-read without waiting for a resize. */
 	const slots = new Map<string, HTMLElement>();
@@ -319,6 +515,10 @@
 		return () => cancelAnimationFrame(frame);
 	});
 	const byId = $derived(new Map((shown?.nodes ?? []).map((node) => [node.turn_id, node])));
+	/** The card this opening was asked to land on, while that request is the one on screen. */
+	const focusedTurn = $derived(
+		focus && placedFocus === focusToken && shown ? focusNode(shown.nodes, focus)?.turn_id ?? null : null
+	);
 	/**
 	 * Measurements survive a reload of the same job.
 	 *
@@ -337,6 +537,32 @@
 	});
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot])));
 	const sessionsById = $derived(new Map(sessions.map((session) => [session.id, session])));
+
+	/** How many cards each highlight would light. A chip with nothing to show is not offered. */
+	const highlightCounts = $derived(
+		trace ? routeHighlightCounts(trace.nodes) : { feedback: 0, blamed: 0 }
+	);
+	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
+	const routeInput = $derived({
+		bots,
+		providers,
+		labels: {
+			outcome: t.routes.outcome,
+			fault: t.routes.fault,
+			direction: t.routes.direction,
+			signature: t.routes.signature,
+			failReason: t.routes.failReason,
+			thinking: t.routes.thinking,
+			unknownBot: deletedLabel
+		}
+	});
+	function routeOf(node: TaskTraceNode): RouteLogRow | null {
+		return node.route ? routeCardRow(node.route, routeInput) : null;
+	}
+
+	function toggleRoute(node: TaskTraceNode): void {
+		openRoute = openRoute === node.turn_id ? null : node.turn_id;
+	}
 
 	function nameOf(actor: string): string {
 		if (actor === USER_MEMBER) return youLabel;
@@ -377,7 +603,10 @@
 			jobs = listed;
 			const next = id && listed.some((job) => job.id === id) ? id : (listed[0]?.id ?? null);
 			// A refresh of the same job keeps the file you have open; switching jobs does not.
-			if (next !== currentId) openFile = null;
+			if (next !== currentId) {
+				openFile = null;
+				openRoute = null;
+			}
 			currentId = next;
 			if (next) onTask?.(next);
 			trace = next ? await api.taskTrace(next) : null;
@@ -465,6 +694,12 @@
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				outputFull = false;
+				return;
+			}
+			if (openRoute && !openFile) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				openRoute = null;
 				return;
 			}
 			if (!openFile) return;
@@ -600,7 +835,16 @@
 			? null
 			: wokenByName(node, byId, nameOf)}
 	{@const face = avatarOf(node.actor)}
-	<article class="trace-card is-{node.status}" class:is-here={node.session_id === activeSessionId}>
+	{@const route = routeOf(node)}
+	{@const lit = highlightOf(node, lighting)}
+	<article
+		class="trace-card is-{node.status}"
+		class:is-here={node.session_id === activeSessionId}
+		class:is-focus={focusedTurn === node.turn_id}
+		class:is-lit={lit === 'lit'}
+		class:is-lit-blamed={lit === 'lit' && lighting === 'blamed'}
+		class:is-dim={lit === 'dim'}
+	>
 		<button type="button" class="trace-card-main" onclick={() => openCard(node)} title={t.trace.jump}>
 			<span class="trace-card-line">
 				<span
@@ -637,6 +881,41 @@
 			{/if}
 			<span class="trace-place">{placeOf(node)}</span>
 		</button>
+		{#if route}
+			<!-- How this turn ran: the model it was given, and the trouble that came of it. -->
+			<div class="trace-route-line">
+				<button
+					type="button"
+					class="trace-route-btn"
+					class:is-open={openRoute === node.turn_id}
+					aria-expanded={openRoute === node.turn_id}
+					title={t.routes.cardToggle}
+					onclick={() => toggleRoute(node)}
+				>
+					<span class="trace-route-model mono">{route.model}</span>
+					<span class="trace-route-meta">{t.routes.thinkingPrefix} {route.thinkingLabel} · {route.signatureLabel}</span>
+					<span class="trace-route-flags">
+						{#if route.review?.blamedModel}
+							<span class="trace-route-flag is-blamed" title={t.routes.filterBlamed}>
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+							</span>
+						{/if}
+						{#if route.feedback.length > 0}
+							<span class="trace-route-flag is-feedback" title={t.routes.feedbackCount(route.feedback.length)}>
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+								<span class="mono">{route.feedback.length}</span>
+							</span>
+						{/if}
+						{#if route.failReason}
+							<span class="trace-route-flag is-failed" title={route.failReason}>
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+							</span>
+						{/if}
+					</span>
+					<svg class="trace-route-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+				</button>
+			</div>
+		{/if}
 		{#if node.artifacts.length > 0}
 			{@const isBundle = node.artifacts.length > 1}
 			{@const info = isBundle ? nodeBundleInfo(node) : null}
@@ -675,6 +954,91 @@
 			</div>
 		{/if}
 	</article>
+{/snippet}
+
+{#snippet routeDetail(node: TaskTraceNode, route: RouteLogRow)}
+	<!-- Unfolded under its own card, the way a file is: what was picked, why, and what came of it. -->
+	<section class="trace-route" aria-label={t.routes.cardTitle}>
+		<header class="trace-route-head">
+			<span class="trace-route-title">{t.routes.cardTitle}</span>
+			<span class="trace-route-outcome is-{route.outcome}">{route.outcomeLabel}</span>
+			<button type="button" class="trace-route-close" title={t.trace.outputClose} aria-label={t.trace.outputClose} onclick={() => (openRoute = null)}>
+				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+			</button>
+		</header>
+		<div class="trace-route-chips">
+			<span class="trace-route-chip is-model mono" title={route.model}>{route.model}</span>
+			<span class="trace-route-chip">{t.routes.thinkingPrefix} {route.thinkingLabel}</span>
+			<span class="trace-route-chip" title={t.routes.kindLabel}>{route.signatureLabel}</span>
+			{#if providers.length > 1 && route.providerName}
+				<span class="trace-route-chip" title={t.routes.endpoint}>{route.providerName}</span>
+			{/if}
+		</div>
+		{#if route.durationMs !== null || (route.hops !== null && route.toolErrors !== null)}
+			<p class="trace-route-stats mono">
+				{#if route.durationMs !== null}{formatDurationMs(route.durationMs)}{/if}{#if route.durationMs !== null && route.hops !== null && route.toolErrors !== null}{' · '}{/if}{#if route.hops !== null && route.toolErrors !== null}{t.routes.execution(route.hops, route.toolErrors)}{/if}
+			</p>
+		{/if}
+		{#if route.failReason}
+			<p class="trace-route-fail">{route.failReason}</p>
+		{/if}
+		{#if route.reason}
+			<p class="trace-route-why"><span class="trace-route-label">{t.routes.pickReason}</span>{route.reason}</p>
+		{/if}
+		{#if route.feedback.length > 0}
+			<div class="trace-route-block">
+				<span class="trace-route-label">{t.routes.feedbackCount(route.feedback.length)}</span>
+				<ul class="trace-route-feedback">
+					{#each route.feedback as note (note.message_id)}
+						<li>
+							<button
+								type="button"
+								class="trace-route-note"
+								title={t.routes.jump}
+								onclick={() => onJump(node.session_id, note.message_id)}
+							>
+								<span class="trace-route-note-body">{note.body}</span>
+								<span class="trace-route-note-time mono" title={formatFullTimestamp(note.created_at)}>{formatMessageTime(note.created_at)}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
+		{#if route.review}
+			<div class="trace-route-block trace-route-review" class:is-model={route.review.blamedModel}>
+				<span class="trace-route-review-head">
+					<span class="trace-route-label">{t.routes.reviewTitle}</span>
+					<span class="trace-route-fault">{route.review.faultLabel}</span>
+					{#if route.review.directionLabel}
+						<span class="trace-route-direction">{route.review.directionLabel}</span>
+					{/if}
+					{#if route.review.rounds > 0}
+						<span class="trace-route-rounds">{t.routes.reviewRounds(route.review.rounds)}</span>
+					{/if}
+				</span>
+				{#if route.review.reason}
+					<span class="trace-route-review-reason">{route.review.reason}</span>
+				{/if}
+				{#if route.review.retired}
+					<span class="trace-route-effect">{t.routes.effectRetired}</span>
+				{:else if route.review.effect === 'unknown'}
+					<span class="trace-route-effect">{t.routes.effectUnused}</span>
+				{:else if route.review.effect === 'followed'}
+					<span class="trace-route-effect">{t.routes.effectFollowed}{route.review.cleaner ? ` · ${t.routes.effectCleaner}` : ''}</span>
+				{/if}
+			</div>
+		{/if}
+		{#if route.learning}
+			<p class="trace-route-learning">
+				{route.learning.kind === 'memory'
+					? t.routes.learnedMemory(route.learning.label)
+					: route.learning.kind === 'skill'
+						? t.routes.learnedSkill(route.learning.label)
+						: t.routes.learnedNone}
+			</p>
+		{/if}
+	</section>
 {/snippet}
 
 {#snippet output(full = false)}
@@ -782,10 +1146,36 @@
 		<div class="trace-body">
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
-				<label class="trace-filter">
-					<input type="checkbox" bind:checked={notableOnly} />
-					<span>{t.trace.filter}</span>
-				</label>
+				<div class="trace-tools-start">
+					<label class="trace-filter">
+						<input type="checkbox" bind:checked={notableOnly} />
+						<span>{t.trace.filter}</span>
+					</label>
+					{#if highlightCounts.feedback > 0}
+						<button
+							type="button"
+							class="trace-highlight is-feedback"
+							aria-pressed={lighting === 'feedback'}
+							onclick={() => (highlight = lighting === 'feedback' ? null : 'feedback')}
+						>
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+							<span>{t.routes.filterFeedback}</span>
+							<span class="mono">{highlightCounts.feedback}</span>
+						</button>
+					{/if}
+					{#if highlightCounts.blamed > 0}
+						<button
+							type="button"
+							class="trace-highlight is-blamed"
+							aria-pressed={lighting === 'blamed'}
+							onclick={() => (highlight = lighting === 'blamed' ? null : 'blamed')}
+						>
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+							<span>{t.routes.filterBlamed}</span>
+							<span class="mono">{highlightCounts.blamed}</span>
+						</button>
+					{/if}
+				</div>
 				<div class="trace-zoom">
 					<button
 						type="button"
@@ -816,6 +1206,7 @@
 			aria-label={t.trace.title}
 			bind:this={viewportEl}
 			use:gestures
+			use:watchViewport
 		>
 				{#if loading && !trace}
 					<p class="trace-empty">{t.trace.loading}</p>
@@ -851,6 +1242,12 @@
 								use:measured={placement.node.turn_id}
 							>
 								{@render card(placement.node)}
+								{#if openRoute === placement.node.turn_id}
+									{@const route = routeOf(placement.node)}
+									{#if route}
+										{@render routeDetail(placement.node, route)}
+									{/if}
+								{/if}
 								{#if !outputFull && placement.node.artifacts.some((file) => file.attachment_id === openFile?.attachmentId)}
 									{@render output()}
 								{/if}
@@ -1071,9 +1468,48 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 10px 16px 0;
+		padding: 0 6px;
 		font-size: 12px;
 		color: var(--ink-secondary);
+	}
+
+	.trace-tools-start {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	/* Light the cards a kind of model trouble landed on; the rest of the job stays in place, dim. */
+	.trace-highlight {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 9px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: var(--chip);
+		color: var(--ink-secondary);
+		font-size: 11.5px;
+		cursor: pointer;
+	}
+
+	.trace-highlight:hover {
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	.trace-highlight.is-feedback[aria-pressed='true'] {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.trace-highlight.is-blamed[aria-pressed='true'] {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
 	}
 
 	/*
@@ -1264,6 +1700,26 @@
 		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 
+	.trace-card.is-focus {
+		box-shadow: 0 0 0 2px var(--accent);
+	}
+
+	.trace-card {
+		transition: opacity 0.15s ease;
+	}
+
+	.trace-card.is-dim {
+		opacity: 0.32;
+	}
+
+	.trace-card.is-lit {
+		box-shadow: 0 0 0 2px var(--accent);
+	}
+
+	.trace-card.is-lit.is-lit-blamed {
+		box-shadow: 0 0 0 2px var(--warn);
+	}
+
 	.trace-card-main {
 		display: flex;
 		flex-direction: column;
@@ -1359,6 +1815,301 @@
 
 	.trace-files {
 		padding: 0 10px 9px;
+	}
+
+	/* How the turn ran, as one line under what it did: model, thinking level, kind, and trouble. */
+	.trace-route-line {
+		padding: 0 10px 9px;
+	}
+
+	.trace-route-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		padding: 4px 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+		color: var(--ink-secondary);
+		font-size: 11px;
+		line-height: 1.3;
+		text-align: left;
+		cursor: pointer;
+		box-sizing: border-box;
+		transition: border-color 0.15s ease, background 0.15s ease;
+	}
+
+	.trace-route-btn:hover,
+	.trace-route-btn.is-open {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+	}
+
+	.trace-route-model {
+		flex: 0 1 auto;
+		max-width: 50%;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 10.5px;
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	.trace-route-meta {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--muted);
+	}
+
+	.trace-route-flags {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		flex: none;
+	}
+
+	.trace-route-flag {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		font-size: 10px;
+	}
+
+	.trace-route-flag.is-blamed { color: var(--warn-text); }
+	.trace-route-flag.is-feedback { color: var(--accent); }
+	.trace-route-flag.is-failed { color: var(--danger-text); }
+
+	.trace-route-caret {
+		flex: none;
+		color: var(--muted);
+		transition: transform 0.15s ease;
+	}
+
+	.trace-route-btn.is-open .trace-route-caret {
+		transform: rotate(180deg);
+	}
+
+	.trace-route {
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
+		padding: 8px 10px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		box-shadow: var(--shadow-xs);
+		font-size: 11.5px;
+		color: var(--ink-secondary);
+	}
+
+	.trace-route-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.trace-route-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	.trace-route-outcome {
+		font-size: 10.5px;
+		font-weight: 600;
+		padding: 1px 6px;
+		border-radius: 9999px;
+		border: 1px solid var(--line);
+		background: var(--chip);
+		color: var(--muted);
+		white-space: nowrap;
+	}
+
+	.trace-route-outcome.is-completed {
+		background: var(--ok-bg);
+		color: var(--ok-text);
+		border-color: var(--ok-line);
+	}
+
+	.trace-route-outcome.is-failed {
+		background: var(--danger-bg);
+		color: var(--danger-text);
+		border-color: var(--danger-line);
+	}
+
+	.trace-route-outcome.is-interrupted {
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		border-color: var(--warn-line);
+	}
+
+	.trace-route-outcome.is-live,
+	.trace-route-outcome.is-redirected {
+		background: var(--accent-tint);
+		color: var(--accent);
+		border-color: var(--accent-border);
+	}
+
+	.trace-route-close {
+		margin-left: auto;
+		width: 20px;
+		height: 20px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.trace-route-close:hover {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
+	.trace-route-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.trace-route-chip {
+		max-width: 100%;
+		padding: 1px 7px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: var(--chip);
+		font-size: 10.5px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.trace-route-chip.is-model {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.trace-route-stats,
+	.trace-route-fail,
+	.trace-route-why,
+	.trace-route-learning {
+		margin: 0;
+		line-height: 1.45;
+		overflow-wrap: anywhere;
+	}
+
+	.trace-route-stats {
+		font-size: 10.5px;
+		color: var(--muted);
+	}
+
+	.trace-route-fail {
+		color: var(--danger-text);
+	}
+
+	.trace-route-learning {
+		color: var(--ok-text);
+	}
+
+	.trace-route-label {
+		margin-right: 6px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+
+	.trace-route-block {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.trace-route-feedback {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.trace-route-note {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		width: 100%;
+		padding: 5px 7px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+		color: var(--ink);
+		font-size: 11.5px;
+		text-align: left;
+		cursor: pointer;
+		box-sizing: border-box;
+	}
+
+	.trace-route-note:hover {
+		border-color: var(--accent-border);
+	}
+
+	.trace-route-note-body {
+		flex: 1;
+		min-width: 0;
+		line-height: 1.4;
+		overflow-wrap: anywhere;
+	}
+
+	.trace-route-note-time {
+		flex: none;
+		padding-top: 1px;
+		font-size: 10px;
+		color: var(--muted-light);
+	}
+
+	.trace-route-review {
+		padding: 6px 8px;
+		border: 1px solid transparent;
+		border-radius: var(--radius-sm);
+		background: var(--line-subtle);
+	}
+
+	.trace-route-review.is-model {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+	}
+
+	.trace-route-review-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.trace-route-fault {
+		font-weight: 600;
+		color: var(--ink-secondary);
+	}
+
+	.trace-route-direction,
+	.trace-route-rounds,
+	.trace-route-effect {
+		font-size: 10.5px;
+		color: var(--muted);
+	}
+
+	.trace-route-review-reason {
+		line-height: 1.45;
+		overflow-wrap: anywhere;
 	}
 
 	.trace-file-btn {

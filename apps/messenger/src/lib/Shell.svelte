@@ -234,7 +234,6 @@
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
-			routeLogOpen: runtime.routeLogOpen,
 			traceOpen: runtime.traceOpen,
 			routinesOpen: runtime.routinesOpen,
 			threadOpen: runtime.threadOpen,
@@ -281,9 +280,6 @@
 				return false;
 			case 'terminal':
 				runtime.closeTerminal();
-				return true;
-			case 'route-log':
-				runtime.closeRouteLog();
 				return true;
 			case 'trace':
 				// Full screen over the flow is a page; the flow itself is an entry in history.

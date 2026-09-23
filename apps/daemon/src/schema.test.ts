@@ -622,6 +622,53 @@ describe("schema", () => {
     return { decision, chosen, trigger, turn };
   }
 
+  test("a job's model choices, verdicts and learning notes come back by job, across its sessions", async () => {
+    const store = await storeWithCodingCatalog();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const { turn } = decidedTurn(store, writer.direct_session.id, writer.bot.id);
+    const taskId = store.taskOfTurn(turn.id)!;
+    // A handoff into another session is the same job: its trigger was written by the first turn.
+    const handoff = store.insertMessage({
+      sessionId: reviewer.direct_session.id,
+      turnId: turn.id,
+      kind: "bot",
+      author: writer.bot.id,
+      body: "@Reviewer 看一下",
+    });
+    const handed = store.createTurn({ sessionId: reviewer.direct_session.id, botId: reviewer.bot.id, triggerMessageId: handoff.id });
+    expect(store.taskOfTurn(handed.id)).toBe(taskId);
+    const picked = store.decideTurnRoute({
+      botId: reviewer.bot.id,
+      text: handoff.body,
+      botModel: null,
+      botProviderId: null,
+      botThinkingLevel: null,
+    })!;
+    store.recordTurnRoute({ turnId: handed.id, decision: picked });
+    // Another job entirely stays off this board.
+    const other = store.createBot({ name: "Other", duties: "other", boundaries: "stay" });
+    const elsewhere = decidedTurn(store, other.direct_session.id, other.bot.id).turn;
+    store.recordRouteReview({
+      botId: writer.bot.id,
+      chainId: turn.id,
+      turnId: turn.id,
+      sessionId: writer.direct_session.id,
+      signature: "coding",
+      model: "code-pro",
+      thinkingLevel: "medium",
+      verdict: { fault: "model", direction: "stronger", rounds: 2, confidence: 0.9, reason: "两次都漏了边界" },
+    });
+    store.recordRouteLearning({ chainId: turn.id, botId: writer.bot.id, sessionId: writer.direct_session.id, kind: "memory", label: "边界" });
+    store.recordRouteLearning({ chainId: elsewhere.id, botId: other.bot.id, sessionId: other.direct_session.id, kind: "none", label: "" });
+
+    expect(store.listTaskRoutes(taskId).map((record) => record.turn_id)).toEqual([turn.id, handed.id]);
+    expect(store.listTaskRoutes(taskId)[0]!.chain_id).toBe(turn.id);
+    expect(store.listTaskReviews(taskId).map((row) => [row.turn_id, row.fault])).toEqual([[turn.id, "model"]]);
+    expect(store.listTaskLearnings(taskId).map((row) => [row.chain_id, row.label])).toEqual([[turn.id, "边界"]]);
+    store.close();
+  });
+
   test("decisions, follow-ups and review conclusions survive a store reopen", async () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-route-"));
     const filename = join(dir, "state.sqlite");
