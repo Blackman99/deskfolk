@@ -1342,6 +1342,7 @@
 				mins={paneMin}
 				{t}
 				wide={true}
+				tabName={paneTitle}
 				onLayout={commitLayout}
 				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
 				onCloseTab={onPaneCloseTab}

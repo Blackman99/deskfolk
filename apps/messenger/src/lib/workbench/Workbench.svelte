@@ -37,6 +37,8 @@
 		wide: boolean;
 		tabBody: Snippet<[WorkbenchTab, string]>;
 		tabLabel: Snippet<[WorkbenchTab]>;
+		/** What to call a tab in plain text, for the chip that follows the pointer during a drag. */
+		tabName?: (tab: WorkbenchTab) => string;
 		onLayout: (next: WorkbenchLayout) => void;
 		onActivate?: (leafId: string, tabId: string) => void;
 		onCloseTab?: (leafId: string, tabId: string) => void;
@@ -51,6 +53,7 @@
 		wide,
 		tabBody,
 		tabLabel,
+		tabName,
 		onLayout,
 		onActivate,
 		onCloseTab,
@@ -271,6 +274,17 @@
 		if (next !== layout) onLayout(next);
 	}
 
+	/** What the chip that follows the pointer says. An id would tell nobody anything. */
+	function nameOf(leafId: string, tabId: string | null): string {
+		const leaf = tiledLeaves(layout.root).find((candidate) => candidate.id === leafId) ??
+			layout.floating.find((pane) => pane.leaf.id === leafId)?.leaf;
+		const tab = tabId
+			? leaf?.tabs.find((candidate) => candidate.id === tabId)
+			: leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
+		if (!tab) return t.pane.title;
+		return tabName?.(tab) ?? tab.kind;
+	}
+
 	function focus(leafId: string): void {
 		const next = focusLeaf(layout, leafId);
 		if (next !== layout) onLayout(next);
@@ -322,10 +336,10 @@
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 			onSashPointerDown={startSash}
 			onTabPointerDown={(event, leafId, tabId) =>
-				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), tabId)}
+				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
 				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu')) return;
-				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), leafId);
+				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), nameOf(leafId, null));
 			}}
 			{onMenu}
 			{emptyActions}
@@ -347,7 +361,7 @@
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 				onTabPointerDown={(event, leafId, tabId) =>
-					startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), tabId)}
+					startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 				{onDock}
 				{onMenu}
 				{emptyActions}
