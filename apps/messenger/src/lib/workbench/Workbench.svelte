@@ -41,10 +41,22 @@
 		onActivate?: (leafId: string, tabId: string) => void;
 		onCloseTab?: (leafId: string, tabId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
+		emptyActions?: Snippet<[string]>;
 	};
 
-	let { layout, mins, t, wide, tabBody, tabLabel, onLayout, onActivate, onCloseTab, onMenu }: Props =
-		$props();
+	let {
+		layout,
+		mins,
+		t,
+		wide,
+		tabBody,
+		tabLabel,
+		onLayout,
+		onActivate,
+		onCloseTab,
+		onMenu,
+		emptyActions
+	}: Props = $props();
 
 	let host = $state<HTMLDivElement>();
 	let viewport = $state<Rect>({ x: 0, y: 0, width: 0, height: 0 });
@@ -294,6 +306,7 @@
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 				{onMenu}
+				{emptyActions}
 			/>
 		{/if}
 	{:else}
@@ -315,6 +328,7 @@
 				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), leafId);
 			}}
 			{onMenu}
+			{emptyActions}
 		/>
 
 		{#each layout.floating as pane, index (pane.leaf.id)}
@@ -336,6 +350,7 @@
 					startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), tabId)}
 				{onDock}
 				{onMenu}
+				{emptyActions}
 			/>
 		{/each}
 

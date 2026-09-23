@@ -24,6 +24,7 @@
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onDock?: (leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
+		emptyActions?: Snippet<[string]>;
 	};
 
 	let {
@@ -43,7 +44,8 @@
 		onTabPointerDown,
 		onStripPointerDown,
 		onDock,
-		onMenu
+		onMenu,
+		emptyActions
 	}: Props = $props();
 
 	const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se'];
@@ -110,6 +112,7 @@
 		{onTabPointerDown}
 		{onStripPointerDown}
 		{onMenu}
+		{emptyActions}
 	/>
 	{#each CORNERS as corner (corner)}
 		<button

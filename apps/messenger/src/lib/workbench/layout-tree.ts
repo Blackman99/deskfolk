@@ -394,3 +394,24 @@ export function assertInvariants(layout: WorkbenchLayout): void {
   const zone = isFloating(layout, layout.focus.leafId) ? "floating" : "tiled";
   if (zone !== layout.focus.zone) throw new LayoutInvariantError(`focus says ${layout.focus.zone} but the pane is ${zone}`);
 }
+
+/** Change what a tab points at without moving it. Used when a pane settles on what it is showing. */
+export function replaceTabParams(
+  layout: WorkbenchLayout,
+  leafId: NodeId,
+  tabId: TabId,
+  params: Readonly<Record<string, string>>,
+): WorkbenchLayout {
+  return mapLeaf(layout, leafId, (leaf) => {
+    const index = leaf.tabs.findIndex((tab) => tab.id === tabId);
+    if (index < 0) return leaf;
+    const current = leaf.tabs[index]!;
+    const same =
+      Object.keys(params).length === Object.keys(current.params).length &&
+      Object.entries(params).every(([key, value]) => current.params[key] === value);
+    if (same) return leaf;
+    const tabs = [...leaf.tabs];
+    tabs[index] = { ...current, params };
+    return { ...leaf, tabs };
+  });
+}

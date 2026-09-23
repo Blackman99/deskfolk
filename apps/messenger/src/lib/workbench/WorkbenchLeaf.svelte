@@ -16,6 +16,8 @@
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
+		/** What an empty pane offers to fill itself with. */
+		emptyActions?: Snippet<[string]>;
 	};
 
 	let {
@@ -29,7 +31,8 @@
 		onCloseTab,
 		onTabPointerDown,
 		onStripPointerDown,
-		onMenu
+		onMenu,
+		emptyActions
 	}: Props = $props();
 
 	const active = $derived(leaf.tabs.find((tab) => tab.id === leaf.activeTabId) ?? null);
@@ -131,7 +134,11 @@
 		{:else}
 			<div class="wb-empty">
 				<p class="wb-empty-title">{t.pane.empty}</p>
-				<p class="wb-empty-hint">{t.pane.emptyHint}</p>
+				{#if emptyActions}
+					<div class="wb-empty-actions">{@render emptyActions(leaf.id)}</div>
+				{:else}
+					<p class="wb-empty-hint">{t.pane.emptyHint}</p>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -261,5 +268,11 @@
 	.wb-empty-hint {
 		color: var(--muted);
 		font-size: 12px;
+	}
+	.wb-empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		justify-content: center;
 	}
 </style>

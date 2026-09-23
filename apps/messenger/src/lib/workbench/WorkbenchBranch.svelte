@@ -20,6 +20,7 @@
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
+		emptyActions?: Snippet<[string]>;
 	};
 
 	let { node, focusId, mins, t, tabBody, tabLabel, ...rest }: Props = $props();
@@ -51,6 +52,7 @@
 		onTabPointerDown={rest.onTabPointerDown}
 		onStripPointerDown={rest.onStripPointerDown}
 		onMenu={rest.onMenu}
+		emptyActions={rest.emptyActions}
 	/>
 {:else}
 	<!--
@@ -91,6 +93,7 @@
 				onTabPointerDown={rest.onTabPointerDown}
 				onStripPointerDown={rest.onStripPointerDown}
 				onMenu={rest.onMenu}
+				emptyActions={rest.emptyActions}
 			/>
 		{/each}
 	</div>

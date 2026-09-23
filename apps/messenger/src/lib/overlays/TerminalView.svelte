@@ -35,6 +35,12 @@
 		tabIds?: readonly string[] | 'all';
 		/** Take a session out of this container without touching the process. Panes only. */
 		onRemoveTab?: (id: string) => void;
+		/**
+		 * Which session this container settled on. A pane that was opened without one uses this to
+		 * remember what it is showing, so the arrangement survives a restart pointing at the same
+		 * session rather than at "a terminal, some terminal".
+		 */
+		onBind?: (id: string | null) => void;
 	}
 
 	let {
@@ -46,7 +52,8 @@
 		onChanged,
 		onClose,
 		tabIds = 'all',
-		onRemoveTab
+		onRemoveTab,
+		onBind
 	}: Props = $props();
 
 	/** The session an "end this" is waiting on confirmation for. Ending one stops what it runs. */
@@ -159,6 +166,7 @@
 	async function activate(id: string | null): Promise<void> {
 		detach();
 		activeId = id;
+		onBind?.(id);
 		input = id && api
 			? new InputQueue((bytes) => api.terminalInput(id, encodeBase64(bytes)), report)
 			: null;

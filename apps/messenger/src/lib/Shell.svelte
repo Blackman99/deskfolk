@@ -72,14 +72,25 @@
 	import PaneContentHost from './workbench/PaneContentHost.svelte';
 	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
 	import { paneMin } from './workbench/pane-mins.ts';
-	import { contentOfTab, tabFor } from './workbench/pane-content.ts';
-	import { closeTab as closeWorkbenchTab, activateTab, emptyLayout, leafById } from './workbench/layout-tree.ts';
+	import { contentOfTab } from './workbench/pane-content.ts';
+	import { activeSessionId, openContent } from './workbench/pane-open.ts';
+	import type { PaneContent } from './workbench/pane-content.ts';
 	import {
-		healLayout,
-		loadWorkbenchLayout,
-		saveWorkbenchLayout,
-		defaultLayout
-	} from './workbench/workbench-layout.ts';
+		applyCommand,
+		isTypingTarget,
+		matchWorkbenchKey,
+		type CommandContext
+	} from './workbench/workbench-commands.ts';
+	import {
+		closeTab as closeWorkbenchTab,
+		activateTab,
+		emptyLayout,
+		focusLeaf,
+		leafById,
+		replaceTabParams,
+		splitLeaf
+	} from './workbench/layout-tree.ts';
+	import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from './workbench/workbench-layout.ts';
 	import { PANE_KIND_SET } from './workbench/pane-content.ts';
 	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
 	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
@@ -349,17 +360,22 @@
 		saveWorkbenchLayout(next);
 	}
 
-	/** Seed the arrangement from whatever the app was already showing, so nobody's world changes. */
+	/**
+	 * The two directions the conversation and the arrangement follow each other.
+	 *
+	 * Each tracks only its own side. Tracking both makes them fight — the same shape of bug the
+	 * URL effects in `+page.svelte` carry a comment about — and each is a no-op once the two
+	 * already agree, so they settle rather than ping-pong.
+	 */
 	$effect(() => {
 		if (!wide) return;
+		const id = runtime.selectedId;
+		if (!id) return;
 		untrack(() => {
-			const leaf = leafById(layout, layout.focus.leafId);
-			if (leaf && leaf.tabs.length > 0) return;
-			const id = runtime.selectedId;
-			if (!id) return;
-			commitLayout(defaultLayout(layout.focus.leafId, [
-				tabFor({ kind: 'chat', sessionId: id }, freshPaneId())
-			]));
+			if (activeSessionId(layout) === id) return;
+			commitLayout(
+				openContent(layout, { kind: 'chat', sessionId: id }, { id: freshPaneId, replaceActive: true })
+			);
 		});
 	});
 
@@ -405,6 +421,31 @@
 		}
 	}
 
+	/** Fill a pane from its own empty state: whatever you pick lands in that pane, not elsewhere. */
+	function openInPane(leafId: string, content: PaneContent): void {
+		const focused = focusLeaf(layout, leafId);
+		commitLayout(openContent(focused, content, { id: freshPaneId, replaceActive: true }));
+	}
+
+	/** Write the session a terminal pane settled on back into its tab, so a restart comes back to it. */
+	function bindTerminalTab(leafId: string, tabId: string, terminalId: string | null): void {
+		const leaf = leafById(layout, leafId);
+		const tab = leaf?.tabs.find((candidate) => candidate.id === tabId);
+		if (!tab || tab.kind !== 'terminal') return;
+		if ((tab.params.terminalId ?? null) === terminalId) return;
+		const params: Record<string, string> = terminalId ? { terminalId } : {};
+		commitLayout(replaceTabParams(layout, leafId, tabId, params));
+	}
+
+	function workbenchCommandContext(): CommandContext {
+		return {
+			viewport: { x: 0, y: 0, width: shellWidth, height: shellEl?.clientHeight || 800 },
+			mins: paneMin,
+			ids: freshPaneId,
+			newPaneMin: WB_FALLBACK_MIN
+		};
+	}
+
 	function onPaneCloseTab(leafId: string, tabId: string): void {
 		commitLayout(closeWorkbenchTab(layout, leafId, tabId, freshPaneId()));
 	}
@@ -412,10 +453,7 @@
 	/** Following the active pane keeps Stop, the composer and the URL pointing at one conversation. */
 	$effect(() => {
 		if (!wide) return;
-		const leaf = leafById(layout, layout.focus.leafId);
-		const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
-		const content = tab ? contentOfTab(tab) : null;
-		const id = content && 'sessionId' in content ? content.sessionId : null;
+		const id = activeSessionId(layout);
 		untrack(() => {
 			if (id && runtime.selectedId !== id) void runtime.selectSession(id, { preservePage: true });
 		});
@@ -1187,12 +1225,23 @@
 		}
 		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
 			const target = e.target as HTMLElement | null;
-			if (target && (target.closest('input, textarea, [contenteditable="true"], .monaco-editor, .editor-widget.find-widget, .composer-input'))) {
-				return;
-			}
+			if (isTypingTarget(target)) return;
 			if (!snapshot.settings.workspace_path) return;
 			e.preventDefault();
 			toggleWorkspaceExplorer();
+			return;
+		}
+		// After the Escape chain and ⌘O, so neither can be taken out from under them.
+		if (wide) {
+			const command = matchWorkbenchKey(e);
+			if (command) {
+				e.preventDefault();
+				commitLayout(
+					applyCommand(layout, command, workbenchCommandContext(), (current, leafId, axis, side) =>
+						splitLeaf(current, leafId, axis, side, [], { leaf: freshPaneId(), branch: freshPaneId() })
+					)
+				);
+			}
 		}
 	}}
 />
@@ -1264,10 +1313,27 @@
 						onCreateBot={openCreateBot}
 						onRemoveTab={onPaneCloseTab}
 						onSelectWorkspacePath={openWorkspaceFile}
+						onBindTerminal={bindTerminalTab}
 					/>
 				{/snippet}
 				{#snippet tabLabel(tab: WorkbenchTab)}
 					<span>{paneTitle(tab)}</span>
+				{/snippet}
+				{#snippet emptyActions(leafId: string)}
+					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: null })}>
+						{t.terminal.title}
+					</button>
+					<button
+						type="button"
+						class="pane-open"
+						disabled={!snapshot.settings.workspace_path}
+						onclick={() => openInPane(leafId, { kind: 'workspace', selected: null })}
+					>
+						{t.sidebar.workspace}
+					</button>
+					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'routines' })}>
+						{t.routines.title}
+					</button>
 				{/snippet}
 			</Workbench>
 		{:else if runtime.routinesOpen}
@@ -1579,6 +1645,23 @@
 	@media (max-width: 680px) {
 		.shell.has-mobile-navigation > :global(.side) { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
 
+	}
+
+	.pane-open {
+		min-height: 32px;
+		padding: 6px 14px;
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--line);
+		cursor: pointer;
+	}
+	.pane-open:disabled {
+		color: var(--muted);
+		cursor: default;
+	}
+	.pane-open:not(:disabled):hover {
+		background: var(--row-hover);
 	}
 
 	.preview-split {

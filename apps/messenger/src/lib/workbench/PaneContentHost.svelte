@@ -28,6 +28,8 @@
 		onCreateBot: () => void;
 		onRemoveTab: (leafId: string, tabId: string) => void;
 		onSelectWorkspacePath: (path: string) => void;
+		/** A terminal pane remembers which session it settled on. */
+		onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
 	}
 
 	let {
@@ -41,7 +43,8 @@
 		onOpenArtifact,
 		onCreateBot,
 		onRemoveTab,
-		onSelectWorkspacePath
+		onSelectWorkspacePath,
+		onBindTerminal
 	}: Props = $props();
 
 	const content = $derived(contentOfTab(tab));
@@ -51,8 +54,14 @@
 			? (snapshot.sessions.find((row) => row.id === content.sessionId) ?? null)
 			: null
 	);
+	/**
+	 * A pane bound to a session shows that one. A pane opened without one lists every session the
+	 * daemon holds so you can pick or start one, and binds to whatever you land on.
+	 */
 	const terminalIds = $derived(
-		content?.kind === 'terminal' && content.terminalId ? [content.terminalId] : []
+		content?.kind === 'terminal' && content.terminalId
+			? ([content.terminalId] as readonly string[])
+			: ('all' as const)
 	);
 </script>
 
@@ -89,6 +98,7 @@
 		onChanged={() => runtime.refreshTerminals()}
 		onClose={() => onRemoveTab(leafId, tab.id)}
 		onRemoveTab={() => onRemoveTab(leafId, tab.id)}
+		onBind={(id) => onBindTerminal(leafId, tab.id, id)}
 	/>
 {:else if content.kind === 'workspace'}
 	<WorkspaceView
