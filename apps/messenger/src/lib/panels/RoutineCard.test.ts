@@ -41,7 +41,7 @@ test("weekly editing requires a weekday and preserves the revision and exact civ
   click(host.querySelector('.routine-open'));
   click(host.querySelector('input[value=weekly]')); submit(host);
   expect(host.textContent).toContain(t.routines.daysRequired);
-  click(host.querySelector('input[value=mon]')); click(host.querySelector('input[value=fri]'));
+  click(buttonByText(host, t.routines.daysShort.mon)); click(buttonByText(host, t.routines.daysShort.fri));
   fill(host.querySelector('#routine-time'), '23:59'); submit(host); await settle();
   expect(runtime.calls[0]!.args).toEqual(['routine-1', { title: 'Morning brief', instruction: "Summarize today's work", enabled: true, schedule: { kind: 'weekly', time: '23:59', weekdays: ['mon', 'fri'] }, if_revision: aRoutine().updated_at }]);
   close();
@@ -94,6 +94,59 @@ test("clean editor follows live updates and a removed routine cannot be saved", 
   flushSync(() => { runtime.snapshot.routines = []; });
   expect(host.textContent).toContain(t.routines.missing);
   expect(buttonByText(host, t.routines.save).disabled).toBe(true); close();
+});
+
+test("a phone opens the editor as its own page and Back returns to the list", async () => {
+  const previous = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(max-width: 680px)" || query === "(prefers-reduced-motion: reduce)",
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const { host, app, close } = open();
+    expect(host.querySelector(".routine-page")).toBeNull();
+    expect(host.querySelector(".routine-actions-wide")).not.toBeNull();
+    click(host.querySelector(".routine-open"));
+    expect(host.querySelector(".routine-page")).not.toBeNull();
+    expect(host.querySelector(".routine-editor")).toBeNull();
+    // No keyboard on arrival: the page's heading takes focus, not the title field.
+    await settle();
+    expect(document.activeElement).toBe(host.querySelector(".routine-page-head h3"));
+    expect(document.activeElement).not.toBe(host.querySelector("#routine-title"));
+    expect((app as { backFromEditor: () => boolean }).backFromEditor()).toBe(true);
+    flushSync();
+    expect(host.querySelector(".routine-page")).toBeNull();
+    close();
+  } finally {
+    window.matchMedia = previous;
+  }
+});
+
+test("quick preset selects workdays and weekend in weekly editor", async () => {
+  const { host, runtime, close } = open();
+  click(host.querySelector('.routine-open'));
+  click(host.querySelector('input[value=weekly]'));
+  click(buttonByText(host, t.routines.workdays));
+  submit(host); await settle();
+  expect((runtime.calls[0]!.args[1] as { schedule: { weekdays: string[] } }).schedule.weekdays).toEqual(['mon', 'tue', 'wed', 'thu', 'fri']);
+  close();
+});
+
+test("mobile toggle switches routine enabled without opening editor", async () => {
+  const { host, runtime, close } = open();
+  const toggle = host.querySelector('.routine-mobile-toggle input[type=checkbox]') as HTMLInputElement;
+  expect(toggle).not.toBeNull();
+  expect(toggle.checked).toBe(true);
+  click(toggle); await settle();
+  expect(runtime.calls[0]!.args).toEqual(['routine-1', { enabled: false, if_revision: aRoutine().updated_at }]);
+  expect(host.querySelector('.routine-page')).toBeNull();
+  close();
 });
 
 test("search target opens and highlights only its owning routine", () => {

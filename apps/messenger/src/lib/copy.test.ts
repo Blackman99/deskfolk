@@ -272,6 +272,14 @@ test("the routine calendar is named in both locales and says the phone cannot dr
   expect(COPY.en.calendar.detail).toBe("Routine");
   expect(COPY.zh.calendar.phoneReadOnly).toContain("桌面");
   expect(COPY.en.calendar.phoneReadOnly).toContain("desktop");
+  expect(COPY.zh.calendar.filter).toBe("名册");
+  expect(COPY.en.calendar.filter).toBe("Roster");
+  expect(COPY.zh.calendar.filterSearch).toBe("搜索名字或职责");
+  expect(COPY.en.calendar.filterSearch).toBe("Search name or duties");
+  expect(COPY.zh.calendar.filterNoMatch).toBe("没有匹配的 Bot。");
+  expect(COPY.en.calendar.filterNoMatch).toBe("No matching Bots.");
+  expect(COPY.zh.calendar.agendaEmpty).toBe("这一段没有日程。");
+  expect(COPY.en.calendar.agendaEmpty).toBe("Nothing in this range.");
 });
 
 test("sidebar search chrome names sessions and messages in both locales", () => {

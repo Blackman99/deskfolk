@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { Calendar, type CalendarEvent, type CalendarSource, type EventInstance } from './calendar-entry.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
@@ -16,7 +17,11 @@
 	let rangeEnd = $state(endOfWeek(new Date()));
 	let hidden = $state<ReadonlySet<string>>(new Set());
 	let showInfo = $state(false);
-let showSources = $state(false);
+	let filterOpen = $state(false);
+	let filterQuery = $state('');
+	let filterHighlight = $state(0);
+	let filterRoot = $state<HTMLDivElement | null>(null);
+	let filterSearchEl = $state<HTMLInputElement | null>(null);
 
 	const locale = $derived(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh-CN');
 	const theme = $derived(themeManager.resolved);
@@ -35,6 +40,39 @@ let showSources = $state(false);
 	);
 	const events = $derived<CalendarEvent[]>(projected.events);
 	const botsById = $derived(new Map(runtime.snapshot.bots.map((bot) => [bot.id, bot])));
+	const visibleCount = $derived(sources.filter((source) => source.visible).length);
+	const filterSummary = $derived(
+		visibleCount === sources.length ? t.calendar.filterAll : `${visibleCount}/${sources.length}`
+	);
+	const listedSources = $derived.by(() => {
+		const needle = filterQuery.trim().toLowerCase();
+		if (!needle) return sources;
+		return sources.filter((source) => {
+			const duties = botsById.get(source.id)?.duties ?? '';
+			return source.name.toLowerCase().includes(needle) || duties.toLowerCase().includes(needle);
+		});
+	});
+	const filterActiveIndex = $derived(
+		listedSources.length === 0 ? -1 : Math.min(Math.max(filterHighlight, 0), listedSources.length - 1)
+	);
+	const filterActiveId = $derived(
+		filterActiveIndex >= 0 ? listedSources[filterActiveIndex]?.id ?? null : null
+	);
+	const shownEvents = $derived(events.filter((event) => !hidden.has(event.calendarId ?? '')));
+	const agendaGroups = $derived.by(() => {
+		const groups = new Map<string, { key: string; day: Date; items: CalendarEvent[] }>();
+		const sorted = [...shownEvents].sort(
+			(a, b) => a.start.getTime() - b.start.getTime() || a.title.localeCompare(b.title)
+		);
+		for (const event of sorted) {
+			const day = new Date(event.start.getFullYear(), event.start.getMonth(), event.start.getDate());
+			const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+			const group = groups.get(key);
+			if (group) group.items.push(event);
+			else groups.set(key, { key, day, items: [event] });
+		}
+		return [...groups.values()];
+	});
 	let openRoutineId = $state<string | null>(null);
 	let openWasDue = $state(false);
 	const openRoutine = $derived(runtime.snapshot.routines.find((row) => row.id === openRoutineId) ?? null);
@@ -52,6 +90,35 @@ let showSources = $state(false);
 		openRoutineId = id;
 	}
 
+	function openEvent(event: CalendarEvent): void {
+		const id = event.meta?.routineId;
+		if (typeof id !== 'string') return;
+		openWasDue = event.meta?.lastFired === true;
+		openRoutineId = id;
+	}
+
+	function openAgendaDay(day: Date): void {
+		date = day;
+		view = 'day';
+	}
+
+	function botOfEvent(event: CalendarEvent) {
+		const id = typeof event.meta?.botId === 'string' ? event.meta.botId : event.calendarId;
+		return id ? botsById.get(id) : undefined;
+	}
+
+	function agendaDayLabel(day: Date): string {
+		return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', weekday: 'short' }).format(day);
+	}
+
+	function agendaClock(day: Date): string {
+		return new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', hour12: false }).format(day);
+	}
+
+	function isSameCivilDay(a: Date, b: Date): boolean {
+		return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+	}
+
 	function toggleSource(id: string): void {
 		const next = new Set(hidden);
 		if (next.has(id)) next.delete(id);
@@ -62,6 +129,59 @@ let showSources = $state(false);
 	function showAllSources(): void {
 		hidden = new Set();
 	}
+
+	function closeFilter(): void {
+		filterOpen = false;
+		filterQuery = '';
+		filterHighlight = 0;
+	}
+
+	function toggleFilter(): void {
+		if (filterOpen) {
+			closeFilter();
+			return;
+		}
+		filterOpen = true;
+		filterQuery = '';
+		filterHighlight = 0;
+		void tick().then(() => filterSearchEl?.focus());
+	}
+
+	function onFilterKeydown(event: KeyboardEvent): void {
+		if (event.isComposing || event.key === 'Process' || event.keyCode === 229) return;
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter') return;
+		if (event.key === 'Enter') {
+			const source = listedSources[filterActiveIndex];
+			if (!source) return;
+			event.preventDefault();
+			toggleSource(source.id);
+			return;
+		}
+		event.preventDefault();
+		if (listedSources.length === 0) return;
+		const direction = event.key === 'ArrowDown' ? 1 : -1;
+		const start = filterActiveIndex < 0 ? (direction === 1 ? -1 : 0) : filterActiveIndex;
+		const next = (start + direction + listedSources.length) % listedSources.length;
+		filterHighlight = next;
+		const id = listedSources[next]?.id;
+		void tick().then(() => {
+			if (id) document.getElementById(`roster-filter-opt-${id}`)?.scrollIntoView({ block: 'nearest' });
+		});
+	}
+
+	$effect(() => {
+		if (sources.length === 0 && filterOpen) closeFilter();
+	});
+
+	$effect(() => {
+		if (!filterOpen) return;
+		function onPointerDown(event: PointerEvent): void {
+			if (filterRoot?.contains(event.target as Node)) return;
+			closeFilter();
+		}
+		document.addEventListener('pointerdown', onPointerDown);
+		return () => document.removeEventListener('pointerdown', onPointerDown);
+	});
 
 	function startOfWeek(day: Date): Date {
 		const start = new Date(day.getFullYear(), day.getMonth(), day.getDate());
@@ -80,9 +200,16 @@ let showSources = $state(false);
 
 <svelte:window
 	onkeydowncapture={(event) => {
-		if (event.key !== 'Escape' || !openRoutineId) return;
-		event.stopPropagation();
-		openRoutineId = null;
+		if (event.key !== 'Escape') return;
+		if (openRoutineId) {
+			event.stopPropagation();
+			openRoutineId = null;
+			return;
+		}
+		if (filterOpen) {
+			event.stopPropagation();
+			closeFilter();
+		}
 	}}
 />
 
@@ -175,51 +302,98 @@ let showSources = $state(false);
 	{/if}
 
 	{#if sources.length > 0}
-		<div class="calendar-filter-bar" class:is-expanded={showSources}>
-		<button type="button" class="filter-toggle" aria-expanded={showSources} onclick={() => (showSources = !showSources)}>
-			<span>{locale === 'en' ? 'Bots' : 'Bot 筛选'}</span>
-			<span>{sources.filter((source) => source.visible).length}/{sources.length}</span>
-			<span aria-hidden="true">{showSources ? '⌃' : '⌄'}</span>
-		</button>
-			<div class="filter-label">
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-				</svg>
-				<span>{locale === 'en' ? 'Filter' : '名册'}</span>
-			</div>
-			<ul class="calendar-sources">
-				{#each sources as source (source.id)}
-					{@const bot = botsById.get(source.id)}
-					<li>
-						<button
-							type="button"
-							class="source-chip"
-							class:is-off={!source.visible}
-							style:--source-color={source.color}
-							aria-pressed={source.visible}
-							title={source.visible ? (locale === 'en' ? `Hide ${source.name}` : `隐藏 ${source.name}`) : (locale === 'en' ? `Show ${source.name}` : `显示 ${source.name}`)}
-							onclick={() => toggleSource(source.id)}
-						>
-							{#if bot}
-								<span class="bot-face" style:background={botAvatarColor(bot.id).bg} style:color={botAvatarColor(bot.id).text}>
-									{#if avatarSrc(bot.avatar)}
-										<img src={avatarSrc(bot.avatar)} alt="" />
-									{:else}
-										{rosterLetter(bot.name)}
-									{/if}
-								</span>
-							{/if}
-							<span class="source-name">{source.name}</span>
-							<span class="source-indicator" style:background={source.color} aria-hidden="true"></span>
-						</button>
-					</li>
-				{/each}
-			</ul>
-			{#if hidden.size > 0}
-				<button type="button" class="filter-reset-btn" onclick={showAllSources}>
-					{locale === 'en' ? 'Show all' : '重置'}
+		<div class="calendar-filter-bar">
+			<div class="roster-filter" bind:this={filterRoot}>
+				<button
+					type="button"
+					class="roster-filter-trigger"
+					class:is-narrowed={hidden.size > 0}
+					aria-haspopup="listbox"
+					aria-expanded={filterOpen}
+					aria-controls="roster-filter-list"
+					onclick={toggleFilter}
+				>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+					</svg>
+					<span>{t.calendar.filter}</span>
+					<span class="roster-filter-count">{filterSummary}</span>
+					<svg class="roster-filter-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<polyline points="6 9 12 15 18 9"></polyline>
+					</svg>
 				</button>
-			{/if}
+				{#if hidden.size > 0}
+					<button type="button" class="filter-reset-btn" onclick={showAllSources}>
+						{t.calendar.filterReset}
+					</button>
+				{/if}
+				{#if filterOpen}
+					<div class="roster-filter-menu">
+						<input
+							bind:this={filterSearchEl}
+							bind:value={filterQuery}
+							class="roster-filter-search"
+							type="search"
+							placeholder={t.calendar.filterSearch}
+							aria-label={t.calendar.filterSearch}
+							aria-autocomplete="list"
+							aria-controls="roster-filter-list"
+							aria-activedescendant={filterActiveId ? `roster-filter-opt-${filterActiveId}` : undefined}
+							autocomplete="off"
+							spellcheck="false"
+							oninput={() => (filterHighlight = 0)}
+							onkeydown={onFilterKeydown}
+						/>
+						<ul id="roster-filter-list" class="roster-filter-list" role="listbox" aria-multiselectable="true" aria-label={t.calendar.filter}>
+							{#if listedSources.length === 0}
+								<li class="roster-filter-empty" role="presentation">{t.calendar.filterNoMatch}</li>
+							{:else}
+								{#each listedSources as source, idx (source.id)}
+									{@const bot = botsById.get(source.id)}
+									<li>
+										<button
+											type="button"
+											id={`roster-filter-opt-${source.id}`}
+											class="roster-filter-option"
+											class:is-selected={source.visible}
+											class:is-highlighted={idx === filterActiveIndex}
+											role="option"
+											aria-selected={source.visible}
+											title={source.visible ? `${t.calendar.filterHide} ${source.name}` : `${t.calendar.filterShow} ${source.name}`}
+											tabindex={-1}
+											onmousedown={(event) => event.preventDefault()}
+											onclick={() => toggleSource(source.id)}
+											onmouseenter={() => (filterHighlight = idx)}
+										>
+											<span class="roster-filter-box" aria-hidden="true">
+												{#if source.visible}
+													<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+														<polyline points="20 6 9 17 4 12"></polyline>
+													</svg>
+												{/if}
+											</span>
+											{#if bot}
+												<span class="bot-face" style:background={botAvatarColor(bot.id).bg} style:color={botAvatarColor(bot.id).text}>
+													{#if avatarSrc(bot.avatar)}
+														<img src={avatarSrc(bot.avatar)} alt="" />
+													{:else}
+														{rosterLetter(bot.name)}
+													{/if}
+												</span>
+											{/if}
+											<span class="roster-filter-name">{source.name}</span>
+											{#if bot?.duties?.trim()}
+												<span class="roster-filter-hint">{bot.duties}</span>
+											{/if}
+											<span class="roster-filter-swatch" style:background={source.color} aria-hidden="true"></span>
+										</button>
+									</li>
+								{/each}
+							{/if}
+						</ul>
+					</div>
+				{/if}
+			</div>
 		</div>
 	{:else}
 		<div class="calendar-empty-bar">
@@ -227,7 +401,7 @@ let showSources = $state(false);
 		</div>
 	{/if}
 
-	<div class="calendar-stage">
+	<div class="calendar-stage" class:is-agenda={view === 'agenda'}>
 		<Calendar
 			{events}
 			{sources}
@@ -276,6 +450,57 @@ let showSources = $state(false);
 				</span>
 			{/snippet}
 		</Calendar>
+		{#if view === 'agenda'}
+			<div class="routine-agenda">
+				{#if agendaGroups.length === 0}
+					<p class="routine-agenda-empty">{t.calendar.agendaEmpty}</p>
+				{:else}
+					{#each agendaGroups as group (group.key)}
+						<div class="routine-agenda-day">
+							<button
+								type="button"
+								class="routine-agenda-date"
+								class:is-today={isSameCivilDay(group.day, new Date())}
+								onclick={() => openAgendaDay(group.day)}
+							>
+								<span class="routine-agenda-daynum">{group.day.getDate()}</span>
+								<span class="routine-agenda-wd">{agendaDayLabel(group.day)}</span>
+							</button>
+							<div class="routine-agenda-items">
+								{#each group.items as event (event.id)}
+									{@const bot = botOfEvent(event)}
+									<button
+										type="button"
+										class="routine-agenda-item"
+										class:is-paused={event.meta?.paused === true}
+										onclick={() => openEvent(event)}
+									>
+										<span class="routine-agenda-dot" style:background={event.color} aria-hidden="true"></span>
+										<span class="routine-agenda-time">{agendaClock(event.start)} – {agendaClock(event.end)}</span>
+										{#if bot}
+											<span class="routine-agenda-who">
+												<span class="bot-face is-event" style:background={botAvatarColor(bot.id).bg} style:color={botAvatarColor(bot.id).text}>
+													{#if avatarSrc(bot.avatar)}
+														<img src={avatarSrc(bot.avatar)} alt="" />
+													{:else}
+														{rosterLetter(bot.name)}
+													{/if}
+												</span>
+												<span class="routine-agenda-name">{bot.name}</span>
+											</span>
+										{/if}
+										<span class="routine-agenda-title">{event.title}</span>
+										{#if event.meta?.paused === true}
+											<span class="event-paused-badge">{locale === 'en' ? 'Paused' : '暂停'}</span>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if openRoutineId}
@@ -359,9 +584,15 @@ let showSources = $state(false);
 	.routine-calendar {
 		display: flex;
 		flex-direction: column;
-		flex: 1;
+		/* The pane body is not a flex container, so flex alone leaves this as tall as the
+		   24-hour grid and the pane clips it. height 100% is what makes a window or divider
+		   resize change the grid instead of cropping a fixed sheet. */
+		flex: 1 1 auto;
+		width: 100%;
+		height: 100%;
 		min-width: 0;
 		min-height: 0;
+		overflow: hidden;
 		background: var(--pane);
 		color: var(--ink);
 	}
@@ -575,102 +806,199 @@ let showSources = $state(false);
 		border-width: 0;
 	}
 
-	/* Filter bar */
+	/* Roster filter: one closed control. The list opens over the grid. */
 	.calendar-filter-bar {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 8px;
 		padding: 8px 16px;
 		border-bottom: 1px solid var(--line-subtle);
 		background: var(--pane);
 		flex-shrink: 0;
-		overflow: hidden;
+		position: relative;
+		z-index: 4;
+		overflow: visible;
 	}
 
-	.filter-toggle {
-	display: none;
-}
-
-.filter-label {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11.5px;
-		font-weight: 600;
-		color: var(--muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		flex-shrink: 0;
-	}
-
-	.calendar-sources {
+	.roster-filter {
+		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		margin: 0;
-		padding: 2px 0;
-		overflow-x: auto;
-		list-style: none;
-		scrollbar-width: none;
-		-ms-overflow-style: none;
-		flex: 1;
+		gap: 8px;
 		min-width: 0;
+		max-width: 100%;
 	}
 
-	.calendar-sources::-webkit-scrollbar {
-		display: none;
-	}
-
-	.calendar-sources li {
-		flex-shrink: 0;
-	}
-
-	.source-chip {
+	.roster-filter-trigger {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		min-height: 28px;
-		padding: 2px 10px 2px 4px;
-		border: 1.5px solid var(--source-color, var(--line));
-		border-radius: 9999px;
-		background: color-mix(in srgb, var(--source-color, var(--accent)) 10%, var(--pane));
+		max-width: 100%;
+		min-height: 32px;
+		padding: 4px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--btn-secondary-bg);
 		color: var(--ink);
-		font-size: 12px;
+		font-size: 12.5px;
 		font-weight: 550;
 		cursor: pointer;
-		white-space: nowrap;
-		transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-		box-shadow: 0 1px 2px color-mix(in srgb, var(--source-color, var(--accent)) 15%, transparent);
 	}
 
-	.source-chip:hover {
-		transform: translateY(-0.5px);
-		box-shadow: 0 2px 5px color-mix(in srgb, var(--source-color, var(--accent)) 25%, transparent);
-	}
-
-	.source-chip.is-off {
-		border-color: var(--line);
-		background: transparent;
-		color: var(--muted);
-		opacity: 0.5;
-		filter: grayscale(0.5);
-		box-shadow: none;
-	}
-
-	.source-chip.is-off:hover {
-		opacity: 0.8;
+	.roster-filter-trigger:hover {
+		background: var(--line-subtle);
 		border-color: var(--line-hover);
 	}
 
-	.source-indicator {
+	.roster-filter-trigger[aria-expanded='true'] {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 3px var(--accent-glow);
+	}
+
+	.roster-filter-count {
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.roster-filter-trigger.is-narrowed .roster-filter-count {
+		color: var(--accent);
+		font-weight: 650;
+	}
+
+	.roster-filter-chevron {
+		color: var(--muted);
+		transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.roster-filter-trigger[aria-expanded='true'] .roster-filter-chevron {
+		transform: rotate(180deg);
+		color: var(--accent);
+	}
+
+	.roster-filter-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 30;
+		width: min(280px, calc(100vw - 32px));
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		box-shadow: var(--shadow-lg);
+		overflow: hidden;
+	}
+
+	.roster-filter-search {
+		display: block;
+		width: 100%;
+		box-sizing: border-box;
+		margin: 0;
+		padding: 8px 10px;
+		border: 0;
+		border-bottom: 1px solid var(--line);
+		border-radius: 0;
+		background: transparent;
+		color: var(--ink);
+		font: inherit;
+		font-size: 13px;
+		outline: none;
+	}
+
+	.roster-filter-search::placeholder {
+		color: var(--muted);
+	}
+
+	.roster-filter-search:focus,
+	.roster-filter-search:focus-visible {
+		outline: none;
+		box-shadow: inset 0 -2px 0 var(--accent);
+		border-color: transparent !important;
+	}
+
+	.roster-filter-list {
+		max-height: 240px;
+		margin: 0;
+		padding: 4px;
+		overflow-y: auto;
+		list-style: none;
+		scrollbar-width: thin;
+		scrollbar-color: var(--muted-light) transparent;
+	}
+
+	.roster-filter-empty {
+		padding: 10px 12px;
+		font-size: 12.5px;
+		color: var(--muted);
+		text-align: center;
+	}
+
+	.roster-filter-option {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		min-height: 36px;
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		color: var(--ink);
+		font-size: 13px;
+		font-weight: 500;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.roster-filter-option.is-highlighted {
+		background: var(--line-subtle);
+	}
+
+	.roster-filter-option.is-selected {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.roster-filter-box {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 15px;
+		height: 15px;
+		flex-shrink: 0;
+		border: 1px solid var(--line-hover);
+		border-radius: 4px;
+		background: var(--input-bg);
+		color: #ffffff;
+	}
+
+	.roster-filter-option.is-selected .roster-filter-box {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.roster-filter-name {
+		flex: 0 0 auto;
+		max-width: 70%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.roster-filter-hint {
+		flex: 1 1 0;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		text-align: right;
+		font-size: 11px;
+		font-weight: 400;
+		color: var(--muted);
+	}
+
+	.roster-filter-swatch {
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
 		flex-shrink: 0;
-	}
-
-	.source-chip.is-off .source-indicator {
-		background: var(--muted-light) !important;
 	}
 
 	.filter-reset-btn {
@@ -739,15 +1067,21 @@ let showSources = $state(false);
 
 	/* Calendar Stage */
 	.calendar-stage {
-		flex: 1;
+		flex: 1 1 auto;
+		min-width: 0;
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
 	/* Customize s5c elements */
 	.calendar-stage :global(.s5c) {
+		flex: 1 1 auto;
+		width: 100%;
 		height: 100%;
+		min-width: 0;
+		min-height: 0;
 		--s5c-bg: var(--pane);
 		--s5c-text: var(--ink);
 		--s5c-accent: var(--accent);
@@ -759,6 +1093,139 @@ let showSources = $state(false);
 		--s5c-radius: var(--radius-sm);
 		--s5c-today-num-bg: var(--accent);
 		--s5c-now-color: var(--danger);
+	}
+
+	/* The library agenda only prints the title. Ours names the Bot and replaces it. */
+	.calendar-stage.is-agenda :global(.s5c) {
+		flex: 0 0 auto;
+		height: auto;
+	}
+
+	.calendar-stage.is-agenda :global(.s5c-agenda) {
+		display: none;
+	}
+
+	.routine-agenda {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.routine-agenda-empty {
+		margin: 0;
+		padding: 48px 16px;
+		text-align: center;
+		color: var(--muted);
+		font-size: 13px;
+	}
+
+	.routine-agenda-day {
+		display: flex;
+		gap: 12px;
+		padding: 10px 16px;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.routine-agenda-date {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		flex: 0 0 auto;
+		width: 120px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.routine-agenda-daynum {
+		font-size: 24px;
+		font-weight: 500;
+		line-height: 1.1;
+	}
+
+	.routine-agenda-date.is-today .routine-agenda-daynum {
+		color: var(--accent);
+	}
+
+	.routine-agenda-wd {
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.routine-agenda-items {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.routine-agenda-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		min-width: 0;
+		padding: 6px 8px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.routine-agenda-item:hover {
+		background: var(--line-subtle);
+	}
+
+	.routine-agenda-item.is-paused {
+		opacity: 0.6;
+	}
+
+	.routine-agenda-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex: 0 0 auto;
+	}
+
+	.routine-agenda-time {
+		flex: 0 0 auto;
+		width: 7.5em;
+		color: var(--muted);
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.routine-agenda-who {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex: 0 0 auto;
+		max-width: 46%;
+		min-width: 0;
+	}
+
+	.routine-agenda-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 12.5px;
+		font-weight: 650;
+	}
+
+	.routine-agenda-title {
+		flex: 1 1 0;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: 550;
 	}
 
 	.calendar-stage :global(.s5c-toolbar) {
@@ -1205,53 +1672,20 @@ let showSources = $state(false);
 			font-size: 16px;
 		}
 		.calendar-filter-bar {
-			flex-wrap: wrap;
-			gap: 0 8px;
-			padding: 0 12px;
+			padding: 8px 12px;
 		}
-		.filter-label {
-			display: none;
-		}
-		.filter-toggle {
-			display: inline-flex;
-			align-items: center;
-			gap: 8px;
+		.roster-filter-trigger,
+		.filter-reset-btn,
+		.roster-filter-option,
+		.routine-agenda-item,
+		.routine-agenda-date {
 			min-height: 44px;
-			padding: 0;
-			border: 0;
-			background: transparent;
-			color: var(--muted);
-			font: inherit;
-			font-size: 12px;
-			cursor: pointer;
 		}
-		.filter-reset-btn {
-			margin-left: auto;
-			min-height: 36px;
+		.routine-agenda-date {
+			width: 72px;
 		}
-		.calendar-sources {
-			display: none;
-		}
-		.calendar-filter-bar.is-expanded .calendar-sources {
-			display: flex;
-			order: 1;
-			flex: 0 0 100%;
-			flex-wrap: wrap;
-			max-height: 160px;
-			overflow-y: auto;
-			padding: 0 0 8px;
-		}
-		.source-chip {
-			min-height: 36px;
-			max-width: 100%;
-		}
-		.calendar-sources li {
-			max-width: 100%;
-		}
-		.source-name {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
+		.routine-agenda-time {
+			width: auto;
 		}
 		.calendar-stage :global(.s5c-toolbar) {
 			display: grid;

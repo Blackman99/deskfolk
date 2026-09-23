@@ -90,13 +90,47 @@ test("a paused routine stays on the grid and an archived Bot is named but not ed
   expect(events[0]?.editable).toBe(false);
 });
 
-test("a routine whose Bot is gone does not become a block", () => {
+test("a routine whose Bot is gone does not become a block or a source", () => {
   const { sources, events } = project({
     bots: [aBot()],
     routines: [aRoutine({ bot_id: "deleted-bot" })],
   });
-  expect(sources).toHaveLength(1);
+  expect(sources).toEqual([]);
   expect(events).toEqual([]);
+});
+
+test("a Bot with no routine is left off the chart, and sources follow roster order", () => {
+  const writer = aBot({ id: "bot-2", name: "Writer" });
+  const idle = aBot({ id: "bot-3", name: "Idle" });
+  const { sources, events } = project({
+    bots: [writer, aBot(), idle],
+    routines: [
+      aRoutine(),
+      aRoutine({ id: "routine-2", bot_id: "bot-2", title: "Draft" }),
+    ],
+  });
+  expect(sources.map((source) => source.name)).toEqual(["Writer", "Researcher"]);
+  expect(events.every((event) => event.calendarId !== "bot-3")).toBe(true);
+});
+
+test("a routine outside the visible range still keeps its Bot", () => {
+  const tuesday = new Date(2026, 8, 22, 0, 0, 0, 0);
+  const { sources, events } = project({
+    bots: [aBot({ id: "bot-2", name: "Writer" })],
+    routines: [aRoutine({ bot_id: "bot-2", schedule: { kind: "weekly", time: "09:00", weekdays: ["mon"] } })],
+    rangeStart: tuesday,
+    rangeEnd: new Date(2026, 8, 22, 23, 59, 59, 999),
+  });
+  expect(sources.map((source) => source.id)).toEqual(["bot-2"]);
+  expect(events).toEqual([]);
+});
+
+test("two routines on one Bot are one source", () => {
+  const { sources } = project({
+    routines: [aRoutine(), aRoutine({ id: "routine-2", title: "Evening" })],
+  });
+  expect(sources).toHaveLength(1);
+  expect(sources[0]?.id).toBe("bot-1");
 });
 
 test("occurrence ids stay stable for one routine and one civil day", () => {

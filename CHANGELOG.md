@@ -8,9 +8,17 @@ All notable changes to Real Bot are documented in this file. The project is curr
 
 - Fixed the app icon badge in the Dock that never went away. An interrupted or unfinished turn only counted as handled once you pressed Continue, so it kept the badge up after you had seen it, and with no notifications page there was nowhere else to dismiss it. If you didn't mean to continue that turn, the number stayed; sending another message there cleared the row's "Interrupted" but not the badge. The badge now counts what you haven't seen plus approvals and questions still waiting on you. A seen interruption or failure no longer counts; the session row still shows it and Continue still works. Notification Center pulls a session's banners under the same rule.
 
+- Editing a Bot's routine on a phone is now its own page. Tapping a routine opens the editor: the time is the system time picker, the weekdays are a row of taps, and enabled is a switch. Delete sits at the bottom of the page. Back returns to the routine list first. A wide window still edits in the card. The routine count and **Add routine** sit in the list page's header, and the hint and routine rows line up with the page edge. The editor's header matches the list's, and opening it no longer focuses a field, so the keyboard does not pop up on arrival. The selected half of the **Daily / Weekly** switch fills its frame instead of leaving a taller gap above and below, and the enabled switch is centred in its row.
+
 - Model endpoints in Settings are split apart. On each endpoint, every enabled model is its own row: click the row and that name becomes the endpoint's default model. Connection (name, URL, key) and the model list (which names are enabled, plus price, thinking levels and strengths) each open on their own page. The old default-model menu sat at the bottom of one long form and could not be reached.
 
 - Group settings put the group's name in the panel header, beside its portrait. The name is edited there and saved when you leave the field or press Enter. The profile card, the separate name field and the Save button are gone.
+
+- Each row of the agenda names the Bot, with the same portrait and name as on the week grid.
+
+- The routine calendar fills its pane. Resizing the window or a divider changes the week grid; the hours scroll inside the pane instead of being a fixed sheet cut off at the pane’s edge.
+
+- The routine calendar’s roster filter is a searchable dropdown instead of a row of Bot chips. Search matches a name or duties, and choosing a row hides or shows that Bot’s blocks. A Bot’s name stays fully visible; a long duties line ellipsizes beside it. A Bot with no routines is left out of the filter and off the chart.
 
 - On the desktop workbench, each conversation now has exactly one artifact preview and one flow board. Opening another file from the conversation — an attachment, a file link, the preview's own file tree, or a file on a flow-board card — turns that conversation's preview to it instead of adding another preview tab, and asking for another of its jobs turns its flow board. Opening the flow board without naming a job just brings it forward on the job it shows. If the preview has unsaved edits, it asks to save or discard first. Layouts saved with several previews or boards for one conversation keep only the one nearest the keyboard.
 

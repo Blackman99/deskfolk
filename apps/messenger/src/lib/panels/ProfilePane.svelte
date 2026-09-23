@@ -375,11 +375,18 @@
 		activeTab = tab;
 	}
 
-	/** The skill sheet is a modal over this pane, so Back closes it before the section. */
+	/**
+	 * A skill sheet or a routine page sits on top of this section. Back closes that before it
+	 * leaves the section. A save in flight stays put.
+	 */
+	let routineCard = $state<{ backFromEditor: () => boolean; addRoutine: () => void; canAdd: () => boolean } | undefined>();
+	const routineCount = $derived(runtime.snapshot.routines.filter((row) => row.bot_id === bot.id).length);
 	export function backFromEditor(): boolean {
-		if (!skillEditor || skillBusy) return Boolean(skillEditor);
-		closeSkillEditor();
-		return true;
+		if (skillEditor) {
+			if (!skillBusy) closeSkillEditor();
+			return true;
+		}
+		return routineCard?.backFromEditor() ?? false;
 	}
 
 	/** The shell's Back button and the browser's both come through here first. */
@@ -516,6 +523,18 @@
 			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 		</button>
 		<h3 class="bot-detail-title">{tabLabel(activeTab)}</h3>
+		{#if activeTab === 'routines'}
+			<span class="panel-counter-badge bot-detail-count">{routineCount}</span>
+			<button
+				type="button"
+				class="bot-detail-action"
+				disabled={!routineCard?.canAdd()}
+				onclick={() => routineCard?.addRoutine()}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<span>{t.routines.add}</span>
+			</button>
+		{/if}
 	</div>
 
 <div class="panel-scroll-content profile-pane-scroll flex-1 overflow-y-auto pt-8 px-9 pb-12 flex flex-col gap-8">
@@ -744,7 +763,7 @@
 	</div>
 </div>
 {:else if activeTab === 'routines'}
-<RoutineCard {runtime} {bot} {t} />
+<RoutineCard bind:this={routineCard} {runtime} {bot} {t} />
 {:else if activeTab === 'memory'}
 <MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
 {:else if activeTab === 'actions'}
@@ -1613,13 +1632,14 @@
 			transition-delay: 0s;
 		}
 
+		/* It stands in for the drawer's own header, so it keeps that header's safe-area inset. */
 		.bot-detail-head {
 			display: flex;
 			align-items: center;
 			gap: 4px;
 			flex-shrink: 0;
-			min-height: 56px;
-			padding: 0 12px 0 4px;
+			min-height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 12px 0 4px;
 			background: var(--pane);
 			border-bottom: 1px solid var(--line);
 		}
@@ -1647,6 +1667,37 @@
 			font-size: 16px;
 			font-weight: 650;
 			color: var(--ink);
+		}
+
+		.bot-detail-count {
+			margin-left: 4px;
+			flex-shrink: 0;
+		}
+
+		.bot-detail-action {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			flex-shrink: 0;
+			height: 40px;
+			margin-left: auto;
+			padding: 0 10px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			font-size: 14.5px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.bot-detail-action:active {
+			background: var(--row-hover);
+		}
+
+		.bot-detail-action:disabled {
+			opacity: 0.45;
+			cursor: default;
 		}
 
 		.profile-pane-scroll {

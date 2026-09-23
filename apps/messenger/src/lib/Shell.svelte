@@ -1311,12 +1311,12 @@
 				closeSettings();
 			} else if (runtime.sessionSettingsOpen && nestedProfile) {
 				closeNestedProfile();
+			} else if (runtime.sessionSettingsOpen && profilePane?.backFromEditor()) {
+				// The routine page (or a skill sheet) closes before the drawer does.
 			} else if (runtime.sessionSettingsOpen) {
 				runtime.closeSessionSettings();
 			} else if (runtime.terminalOpen) {
 				runtime.closeTerminal();
-			} else if (runtime.routeLogOpen) {
-				runtime.closeRouteLog();
 			} else if (runtime.traceOpen) {
 				runtime.closeTrace();
 			} else if (runtime.routinesOpen) {

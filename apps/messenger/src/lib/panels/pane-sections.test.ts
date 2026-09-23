@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aGroup, aSkill, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aGroup, aRoutine, aSkill, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import GroupPane from "./GroupPane.svelte";
@@ -9,11 +9,14 @@ import ProfilePane from "./ProfilePane.svelte";
 
 const t = copyFor("en");
 
-/** The panes read the same 680px breakpoint the stylesheet does; happy-dom answers no by default. */
-function withPhone(run: () => void): void {
+/**
+ * The panes read the same 680px breakpoint the stylesheet does; happy-dom answers no by default.
+ * A page that slides in also asks for reduced motion, so happy-dom has no animation to cancel.
+ */
+function withPhone(run: () => void, reducedMotion = false): void {
   const previous = window.matchMedia;
   window.matchMedia = ((query: string) => ({
-    matches: query === "(max-width: 680px)",
+    matches: query === "(max-width: 680px)" || (reducedMotion && query === "(prefers-reduced-motion: reduce)"),
     media: query,
     onchange: null,
     addListener: () => {},
@@ -29,9 +32,9 @@ function withPhone(run: () => void): void {
   }
 }
 
-function openProfile() {
+function openProfile(routines: ReturnType<typeof aRoutine>[] = []) {
   const bot = aBot({ id: "bot-1", name: "Researcher" });
-  const runtime = reactive(fakeRuntime({ bots: [bot], skills: [aSkill()] }, { profileBotId: "bot-1" }));
+  const runtime = reactive(fakeRuntime({ bots: [bot], skills: [aSkill()], routines }, { profileBotId: "bot-1" }));
   const rendered = render(ProfilePane, {
     runtime,
     bot,
@@ -136,6 +139,24 @@ test("the row of the section already shown still opens it", () => {
     expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabBasics);
     close();
   });
+});
+
+test("on a phone the routines header carries the count and opens a new routine", () => {
+  withPhone(() => {
+    const { host, runtime, close } = openProfile([aRoutine(), aRoutine({ id: "routine-2" }), aRoutine({ id: "elsewhere", bot_id: "bot-2" })]);
+    expect(host.querySelector(".bot-detail-action")).toBeNull();
+    click([...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][2]);
+    expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabRoutines);
+    expect(host.querySelector(".bot-detail-count")?.textContent).toBe("2");
+    const add = host.querySelector<HTMLButtonElement>(".bot-detail-action")!;
+    expect(add.textContent?.trim()).toBe(t.routines.add);
+    click(add);
+    flushSync();
+    expect(host.querySelector(".routine-page h3")?.textContent).toBe(t.routines.add);
+    flushSync(() => { runtime.connection = "disconnected"; });
+    expect(host.querySelector<HTMLButtonElement>(".bot-detail-action")!.disabled).toBe(true);
+    close();
+  }, true);
 });
 
 test("a group's sections are a list, and only the open one is rendered", () => {
