@@ -8,7 +8,9 @@ import {
   type Annotation,
   type AnnotationLocale,
   type AnnotationStatus,
+  type ImageRegionAnchor,
   type Message,
+  type PdfRegionAnchor,
   type SessionSummary,
   type TextRangeAnchor,
 } from "@real-bot/protocol";
@@ -166,6 +168,26 @@ export function staleLabel(t: Copy, row: Annotation, locale: AnnotationLocale): 
 
 export function positionLabel(row: Annotation, locale: AnnotationLocale): string {
   return describeAnchor(row.anchor_kind, row.anchor, locale);
+}
+
+/**
+ * A concise location label for cards: omits heavy pixel resolution strings from image regions
+ * and keeps essential coordinates and page numbers.
+ */
+export function compactPositionLabel(row: Annotation, locale: AnnotationLocale = "zh"): string {
+  if (row.anchor_kind === "image_region") {
+    const a = row.anchor as ImageRegionAnchor;
+    const pct = (n: number) => `${Math.round(n * 100)}%`;
+    const range = `x ${pct(a.x)}–${pct(a.x + a.w)}，y ${pct(a.y)}–${pct(a.y + a.h)}`;
+    return locale === "zh" ? range : range.replace("，", ", ");
+  }
+  if (row.anchor_kind === "pdf_region") {
+    const a = row.anchor as PdfRegionAnchor;
+    const pct = (n: number) => `${Math.round(n * 100)}%`;
+    const range = `x ${pct(a.x)}–${pct(a.x + a.w)}，y ${pct(a.y)}–${pct(a.y + a.h)}`;
+    return locale === "zh" ? `第 ${a.page} 页 · ${range}` : `page ${a.page} · ${range.replace("，", ", ")}`;
+  }
+  return positionLabel(row, locale);
 }
 
 /** Who resolved it, as a name: you, a Bot, or a Bot that is gone. */

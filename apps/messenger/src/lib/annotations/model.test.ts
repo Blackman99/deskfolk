@@ -7,6 +7,7 @@ import {
   annotationsByMessage,
   annotationsForFile,
   canonicalRelpath,
+  compactPositionLabel,
   contentShaFromEtag,
   deliveryFor,
   destinationLabel,
@@ -104,6 +105,12 @@ test("labels: status, stale, position, resolver, and the destination line", () =
   expect(staleLabel(t, row({ stale: { kind: "changed" } }), "zh")).toBe("原文已变");
   expect(staleLabel(t, row({ stale: { kind: "moved", start_line: 5, start_col: 1, end_line: 6, end_col: 2 } }), "zh")).toBe("原文已变，现在在第 5–6 行");
   expect(positionLabel(row(), "en")).toBe("line 3");
+  const imgRow = row({
+    anchor_kind: "image_region",
+    anchor: { x: 0.12, y: 0.36, w: 0.75, h: 0.46, natural_width: 1024, natural_height: 1024 },
+  });
+  expect(compactPositionLabel(imgRow, "zh")).toBe("x 12%–87%，y 36%–82%");
+  expect(compactPositionLabel(imgRow, "en")).toBe("x 12%–87%, y 36%–82%");
   const bots = new Map([["bot-1", { name: "Writer" }]]);
   expect(resolverName(row(), bots, t)).toBeNull();
   expect(resolverName(row({ resolved_by: "user" }), bots, t)).toBe("你");

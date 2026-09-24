@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Redesigned the artifact preview annotation panel and toolbar: annotation cards feature numbered mark badges corresponding directly to visual on-file marks, streamlined coordinate labels with full resolution parameters preserved in hover tooltips, refined status chips, and compact action buttons (resolve, reopen, edit, delete); the filter bar uses a segmented control style; and top bar controls (show resolved toggle, annotate mode) have unified styling.
+
 - Completed Bot reply durations now use regular-weight muted text beside the timestamp, with no colored background or outline.
 
 - A resolved annotation comes off the file the moment it is resolved. When a Bot marks one resolved mid-task, or you press "Mark resolved" in the list, its box on the picture, its dot in the code margin, its mark in the Markdown, its box on the PDF page, its number on the HTML page and its point on the audio or video timeline disappear at once, so what is still drawn on the file is what is still to do. The annotation list keeps them, and the "Resolved" filter still finds them. The preview's bar gains a "Show resolved" checkbox, shown only when the file has resolved annotations, which draws them again for that preview. Going to a resolved one from the list draws that one while it has focus, and clicking the selected row again deselects it and takes it back off; clicking its card in the conversation opens the list on it and leaves it off the file.

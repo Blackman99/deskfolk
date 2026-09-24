@@ -1686,7 +1686,7 @@
 		position: relative;
 	}
 	.artifact-annot-col {
-		width: min(300px, 45%);
+		width: min(320px, 45%);
 		flex-shrink: 0;
 		min-height: 0;
 		display: flex;
@@ -1720,8 +1720,8 @@
 	.artifact-annot-bar {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		min-height: 36px;
+		gap: 8px;
+		min-height: 38px;
 		padding: 4px 12px;
 		border-bottom: 1px solid var(--line);
 		background: var(--pane);
@@ -1742,6 +1742,7 @@
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
+		gap: 5px;
 		height: 26px;
 		padding: 0 10px;
 		border: 1px solid var(--line);
@@ -1749,16 +1750,54 @@
 		background: var(--btn-secondary-bg);
 		color: var(--ink-secondary);
 		font-size: 12px;
-		font-weight: 600;
+		font-weight: 500;
 		line-height: 1;
 		white-space: nowrap;
 		cursor: pointer;
+		transition: all 0.15s ease;
 	}
-	.artifact-annot-btn:hover,
+	.artifact-annot-btn[data-annotation-mode]::before {
+		content: "";
+		display: inline-block;
+		width: 12px;
+		height: 12px;
+		background-color: currentColor;
+		-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='22' y1='12' x2='18' y2='12'/%3E%3Cline x1='6' y1='12' x2='2' y2='12'/%3E%3Cline x1='12' y1='6' x2='12' y2='2'/%3E%3Cline x1='12' y1='22' x2='12' y2='18'/%3E%3C/svg%3E") no-repeat center / contain;
+		mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='22' y1='12' x2='18' y2='12'/%3E%3Cline x1='6' y1='12' x2='2' y2='12'/%3E%3Cline x1='12' y1='6' x2='12' y2='2'/%3E%3Cline x1='12' y1='22' x2='12' y2='18'/%3E%3C/svg%3E") no-repeat center / contain;
+	}
+	.artifact-annot-btn[data-annotation-toggle]::before {
+		content: "";
+		display: inline-block;
+		width: 12px;
+		height: 12px;
+		background-color: currentColor;
+		-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E") no-repeat center / contain;
+		mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E") no-repeat center / contain;
+	}
+	.artifact-annot-btn:hover:not(:disabled) {
+		color: var(--ink);
+		border-color: var(--line-hover);
+		background: var(--btn-secondary-hover);
+	}
 	.artifact-annot-btn.is-on {
+		color: #ffffff;
+		border-color: var(--accent);
+		background: var(--accent);
+	}
+	.artifact-annot-btn.is-on:hover:not(:disabled) {
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
+		color: #ffffff;
+	}
+	.artifact-annot-btn.artifact-annot-toggle.is-on {
 		color: var(--accent);
 		border-color: var(--accent-border);
 		background: var(--accent-tint);
+	}
+	.artifact-annot-btn.artifact-annot-toggle.is-on:hover:not(:disabled) {
+		background: var(--accent-tint);
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 	.artifact-annot-btn:disabled {
 		cursor: progress;
@@ -1768,27 +1807,41 @@
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
 	}
-	/* Resolved rows back on the file: a plain checkbox, not a third pill — it is a view setting, not an action. */
+	/* Resolved rows back on the file: a polished capsule toggle setting. */
 	.artifact-annot-check {
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
-		gap: 5px;
+		gap: 6px;
 		height: 26px;
-		padding: 0 6px;
-		font-size: 12px;
+		padding: 0 8px;
+		border-radius: 999px;
+		font-size: 11.5px;
+		font-weight: 500;
 		color: var(--ink-secondary);
+		background: var(--btn-secondary-bg);
+		border: 1px solid var(--line);
 		white-space: nowrap;
 		cursor: pointer;
 		user-select: none;
+		transition: all 0.15s ease;
+	}
+	.artifact-annot-check:hover {
+		background: var(--btn-secondary-hover);
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+	.artifact-annot-check:has(input:checked) {
+		background: var(--accent-tint);
+		border-color: var(--accent-border);
+		color: var(--accent);
 	}
 	.artifact-annot-check input {
 		margin: 0;
+		width: 13px;
+		height: 13px;
 		accent-color: var(--accent);
 		cursor: pointer;
-	}
-	.artifact-annot-check:hover {
-		color: var(--ink);
 	}
 
 	.artifact-pane-body.is-editor {
