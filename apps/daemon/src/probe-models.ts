@@ -28,11 +28,22 @@ export function extractProbedModels(data: unknown): ProbeResult {
   return { models: catalog.map((row) => row.name), catalog };
 }
 
+/** How long one try at `/models` gets, headers and body together. */
+export const PROBE_TIMEOUT_MS = 12_000;
+
+export type ProbeOptions = {
+  /** Per-try limit; tests shorten it. */
+  timeoutMs?: number;
+  /** Runs immediately before every outbound fetch, the retry's included; throwing stops the probe. */
+  guard?: () => void;
+};
+
 export async function probeEndpointModels(
   baseUrl: string,
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
+  options: ProbeOptions = {},
 ): Promise<ProbeResult> {
   const cleanBase = baseUrl.replace(/\/+$/, "");
   const url = `${cleanBase}/models`;
@@ -42,16 +53,46 @@ export async function probeEndpointModels(
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
+  const timeoutMs = options.timeoutMs ?? PROBE_TIMEOUT_MS;
 
+  // A relay that has to ask upstream for its list with a valid key can stall one request and
+  // answer the next, so a try that runs out of time gets one more. Nothing else is retried: a
+  // refused connection or an HTTP error answers the same way twice.
+  let tries = 0;
+  for (;;) {
+    tries += 1;
+    options.guard?.();
+    const probed = await probeOnce(url, headers, fetchImpl, signal, timeoutMs);
+    if (probed !== "timed_out") return probed;
+    if (tries >= 2) {
+      throw new HttpError(
+        422,
+        "probe_failed",
+        `${url} did not answer within ${timeoutMs / 1000}s (tried ${tries} times)`,
+      );
+    }
+  }
+}
+
+/** One GET of `/models`; `"timed_out"` only when this try's own clock ran out, not the caller's. */
+async function probeOnce(
+  url: string,
+  headers: Record<string, string>,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): Promise<ProbeResult | "timed_out"> {
+  const timeout = AbortSignal.timeout(timeoutMs);
   let res: Response;
   try {
     res = await fetchImpl(url, {
       method: "GET",
       headers,
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       redirect: "error",
     });
   } catch (err: unknown) {
+    if (timeout.aborted && !signal?.aborted) return "timed_out";
     const msg = err instanceof Error ? err.message : String(err);
     throw new HttpError(422, "probe_failed", `Failed to connect to ${url}: ${msg}`);
   }
@@ -66,6 +107,8 @@ export async function probeEndpointModels(
   }
 
   const json = await res.json().catch(() => null);
+  // The same clock covers the body: one still unread when it runs out is a stall, not an empty list.
+  if (json === null && timeout.aborted && !signal?.aborted) return "timed_out";
   const probed = extractProbedModels(json);
   if (probed.models.length === 0) {
     throw new HttpError(422, "no_models", "No models found in endpoint response");

@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FILE_DROP_SESSION_ID, LOCAL_API_NAME } from "@real-bot/protocol";
+import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
 import { noisePng } from "./test-images";
@@ -1053,6 +1054,44 @@ describe("empty roster and settings", () => {
       });
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("POST /v1/models/probe hands the scope's guard to the probe, so a revoke during key hydration sends nothing", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    const api = createLocalApi({ store, token: "test-token", schedule: false });
+    await store.patchSettings({ endpoint_base_url: "https://api.example.com/v1", endpoint_api_key: "fixture-only" });
+    let revoked = false;
+    const original = store.endpointKey.bind(store);
+    const hydrate = spyOn(store, "endpointKey").mockImplementation(async (...args) => {
+      const key = await original(...args);
+      revoked = true;
+      return key;
+    });
+    let outbound = 0;
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => {
+        outbound++;
+        return Response.json({ data: [{ id: "never" }] });
+      }) as unknown as typeof fetch;
+      const probe = api.dispatchBusiness(
+        new Request("http://fixture/v1/models/probe", { method: "POST", body: "{}" }),
+        {
+          deviceId: "paired-device",
+          requestId: ulid(),
+          guard: () => {
+            if (revoked) throw new Error("revoked");
+          },
+        },
+      );
+      await expect(probe).rejects.toThrow("revoked");
+      expect(outbound).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      hydrate.mockRestore();
+      await api.engine.close();
+      store.close();
     }
   });
 
