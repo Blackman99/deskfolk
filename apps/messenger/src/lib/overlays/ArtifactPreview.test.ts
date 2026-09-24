@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
@@ -348,6 +349,51 @@ test("a stand-in for a file nothing attached is read from the workspace", async 
   flushSync();
   expect(workspaceReads).toEqual(["shots/cover.png"]);
   expect(attachmentReads).toEqual([]);
+  expect(host.textContent).not.toContain(t.stream.artifactMissing);
+  close();
+});
+
+/**
+ * The kind follows the new file at once; its bytes come later. A `<video>` given the picture that
+ * was on screen cannot play it, and its error left the video reading "file is gone" for good.
+ */
+test("going from a picture to a video never hands the picture's bytes to the video", async () => {
+  const shown = new SvelteMap([["relpath", "shots/cover.png"]]);
+  const video = deferredBlob();
+  const { host, close } = render(ArtifactPreview, {
+    attachment: null,
+    get relpath() { return shown.get("relpath")!; },
+    siblings: [],
+    api: {
+      kind: "remote",
+      getWorkspaceFileBlob: (path: string) =>
+        path.endsWith(".mp4") ? video.promise : Promise.resolve(new Blob([PNG], { type: "image/png" })),
+      getAttachmentBlob: async () => new Blob(),
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    flushSync();
+  };
+  await settle();
+  const picture = host.querySelector<HTMLImageElement>("img.artifact-img")?.src;
+  expect(picture).toBeTruthy();
+
+  shown.set("relpath", "shots/clip.mp4");
+  flushSync();
+  expect(host.querySelector("video")).toBeNull();
+  expect(host.querySelector(".artifact-loading")).not.toBeNull();
+
+  video.resolve(new Blob([new Uint8Array(8)], { type: "video/mp4" }));
+  await settle();
+  const player = host.querySelector<HTMLVideoElement>("video");
+  expect(player?.src).toBeTruthy();
+  expect(player?.src).not.toBe(picture);
   expect(host.textContent).not.toContain(t.stream.artifactMissing);
   close();
 });

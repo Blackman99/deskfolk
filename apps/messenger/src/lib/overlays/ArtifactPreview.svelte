@@ -80,6 +80,13 @@
 
 	let blobUrl = $state<string | null>(null);
 	/**
+	 * Which file `blobUrl` holds. Picking another file changes `kind` at once while its bytes are
+	 * still on the way, so a `<video>` was handed the picture before it, failed to play it, and
+	 * left the video reading "file is gone".
+	 */
+	let blobPath = $state<string | null>(null);
+	const shownBlob = $derived(blobPath === relpath ? blobUrl : null);
+	/**
 	 * A picture enlarged over the whole app, the way one in a message is: this file when it is an
 	 * image (`own`, shown from the bytes already here), or an image in this Markdown. Only while
 	 * the preview still shows the file it was opened from, so it never outlives what it borrows.
@@ -335,6 +342,7 @@
 		liveBlob = null;
 		liveHtml = null;
 		blobUrl = null;
+		blobPath = null;
 		htmlSrc = null;
 	}
 
@@ -427,6 +435,7 @@
 					revoke();
 					mediaSource = stream;
 					blobUrl = stream.url;
+					blobPath = path;
 					text = null;
 					return;
 				}
@@ -447,6 +456,7 @@
 					if (liveBlob) URL.revokeObjectURL(liveBlob);
 					liveBlob = next;
 					blobUrl = next;
+					blobPath = path;
 					text = null;
 				} else {
 					text = raw;
@@ -464,6 +474,7 @@
 			if (liveBlob) URL.revokeObjectURL(liveBlob);
 			liveBlob = next;
 			blobUrl = next;
+			blobPath = path;
 			text = null;
 		} catch {
 			if (gen !== loadGen) return;
@@ -501,6 +512,7 @@
 			if (liveBlob) URL.revokeObjectURL(liveBlob);
 			liveBlob = next;
 			blobUrl = next;
+			blobPath = path;
 			reducedFrom = null;
 		} catch {
 			// The copy stays on screen, and so does the offer.
@@ -810,7 +822,7 @@
 					{/if}
 				</button>
 			{/if}
-			{#if kind === 'image' && blobUrl && !loading && reducedFrom !== null}
+			{#if kind === 'image' && shownBlob && !loading && reducedFrom !== null}
 				<button
 					type="button"
 					class="artifact-source-toggle artifact-original-toggle"
@@ -870,23 +882,23 @@
 					/>
 				{/if}
 			{:else if kind === "image" || kind === "svg"}
-				{#if blobUrl}
+				{#if shownBlob}
 					<button
 						type="button"
 						class="artifact-img-open"
 						aria-label={`${t.stream.artifactEnlarge} ${relpath.split('/').pop() ?? relpath}`}
 						onclick={(ev) => enlarge(relpath, true, ev.currentTarget.querySelector('img'))}
 					>
-						<img src={blobUrl} alt={relpath} class="artifact-img max-w-full max-h-full block my-0 mx-auto" data-copy-image />
+						<img src={shownBlob} alt={relpath} class="artifact-img max-w-full max-h-full block my-0 mx-auto" data-copy-image />
 					</button>
 				{/if}
-			{:else if kind === "audio" && blobUrl}
-				<audio controls preload="metadata" src={blobUrl} onerror={() => { missing = true; loadAbort?.abort(); }}></audio>
-			{:else if kind === "video" && blobUrl}
+			{:else if kind === "audio" && shownBlob}
+				<audio controls preload="metadata" src={shownBlob} onerror={() => { missing = true; loadAbort?.abort(); }}></audio>
+			{:else if kind === "video" && shownBlob}
 				<!-- svelte-ignore a11y_media_has_caption -->
-				<video controls playsinline preload="metadata" src={blobUrl} onerror={() => { missing = true; loadAbort?.abort(); }}></video>
-			{:else if kind === "pdf" && blobUrl}
-				<iframe title={relpath} class="artifact-frame" src={blobUrl}></iframe>
+				<video controls playsinline preload="metadata" src={shownBlob} onerror={() => { missing = true; loadAbort?.abort(); }}></video>
+			{:else if kind === "pdf" && shownBlob}
+				<iframe title={relpath} class="artifact-frame" src={shownBlob}></iframe>
 			{:else if kind === "html" && htmlSrc}
 				<iframe
 					title={relpath}
@@ -934,7 +946,7 @@
 	<MessageImageLightbox
 		attachment={shownEnlarged.own ? attachment : null}
 		relpath={shownEnlarged.relpath}
-		src={shownEnlarged.own ? blobUrl : null}
+		src={shownEnlarged.own ? shownBlob : null}
 		srcOriginalSize={shownEnlarged.own ? reducedFrom : null}
 		placeholder={shownEnlarged.placeholder}
 		origin={shownEnlarged.origin}
