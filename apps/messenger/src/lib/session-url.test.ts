@@ -285,6 +285,35 @@ test("the routine calendar outranks workspace and trace, and does not carry a pr
   expect(overlayFromUrl(at("?s=abc&o=trace&k=task-1")).kind).toBe("trace");
 });
 
+test("the phone terminal page outranks the calendar and does not carry a preview", () => {
+  expect(sessionUrl(at("?s=abc&p=notes/a.md"), view({ selectedId: "abc", previewRelpath: "notes/a.md", overlay: { kind: "terminal" } }))).toBe(
+    "/?s=abc&o=terminal",
+  );
+  expect(overlayFromUrl(at("?o=terminal"))).toEqual({ kind: "terminal" });
+  expect(overlayFromFlags({
+    settingsOpen: false,
+    sessionSettingsOpen: false,
+    profileBotId: null,
+    workspaceOpen: false,
+    workspaceSelected: null,
+    routinesOpen: true,
+    terminalOpen: true,
+  })).toEqual({ kind: "terminal" });
+  expect(overlayFromFlags({
+    settingsOpen: false,
+    sessionSettingsOpen: false,
+    profileBotId: null,
+    workspaceOpen: false,
+    workspaceSelected: null,
+    terminalOpen: true,
+    spendOpen: true,
+  })).toEqual({ kind: "spend" });
+  expect(overlayApply({ kind: "terminal" }, { kind: "none" }, { ...ready, selectedId: null, snapshotReady: false })).toEqual({
+    action: "set",
+    overlay: { kind: "terminal" },
+  });
+});
+
 test("the spend ledger outranks the calendar and does not carry a preview", () => {
   expect(sessionUrl(at("?s=abc&p=notes/a.md"), view({ selectedId: "abc", previewRelpath: "notes/a.md", overlay: { kind: "spend" } }))).toBe(
     "/?s=abc&o=spend",

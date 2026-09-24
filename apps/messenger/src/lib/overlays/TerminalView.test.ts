@@ -372,6 +372,34 @@ test("tapping 结束会话 in ⋯ keeps the menu open on its confirm, even once 
   }
 });
 
+test("the page's back closes an open ⋯ menu and the find bar before it leaves", async () => {
+  const closed: string[] = [];
+  const { api } = fakeApi([older]);
+  const pane = render((await import("./TerminalPane.svelte")).default, {
+    api: api as never, workspacePath: "/work/real-bot", rows: [older], t,
+    onStream: () => () => {}, onChanged: () => {}, onClose: () => closed.push("page"),
+  });
+  await settle();
+  const back = () => pane.host.querySelector<HTMLButtonElement>(".terminal-back");
+  click(pane.host.querySelector(".terminal-more > .terminal-icon"));
+  expect(pane.host.querySelector(".terminal-menu")).not.toBeNull();
+  click(back());
+  expect(pane.host.querySelector(".terminal-menu")).toBeNull();
+  expect(closed).toEqual([]);
+
+  click(pane.host.querySelector(".terminal-more > .terminal-icon"));
+  click([...pane.host.querySelectorAll(".terminal-menu button")].find((button) => button.textContent?.trim() === t.terminal.find));
+  await settle();
+  expect(pane.host.querySelector(".terminal-find")).not.toBeNull();
+  click(back());
+  expect(pane.host.querySelector(".terminal-find")).toBeNull();
+  expect(closed).toEqual([]);
+
+  click(back());
+  expect(closed).toEqual(["page"]);
+  pane.close();
+});
+
 test("a tap outside the menu closes it", async () => {
   const { view } = mountPhone();
   await settle();

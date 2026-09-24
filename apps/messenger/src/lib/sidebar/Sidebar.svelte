@@ -627,7 +627,7 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen}
+{#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen}
 	<div class="fab-wrap" bind:this={fabEl}>
 		{#if createMenuOpen}
 			<div class="fab-menu" role="menu">
@@ -1574,7 +1574,8 @@
 	 * that page walks back out to the right. The calendar is a page of its own and takes the
 	 * column, so the roster steps aside for that one.
 	 */
-	:global(.shell.has-routines) .side {
+	:global(.shell.has-routines) .side,
+	:global(.shell.has-terminal) .side {
 	display: none;
 	}
 	}

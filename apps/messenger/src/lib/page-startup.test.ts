@@ -190,6 +190,8 @@ for (const query of [
   "?o=routines",
   "?o=spend",
   "?s=direct-1&o=spend",
+  "?o=terminal",
+  "?s=direct-1&o=terminal",
 ]) test(`real page preserves ${query} while initial snapshot is delayed`, async () => {
   page.url = new URL(query, "http://localhost/");
   const wanted = overlayFromUrl(page.url);
@@ -228,9 +230,9 @@ for (const query of [
   expect(navigations).toEqual([]);
 });
 
-for (const kind of ['routines', 'spend'] as const) for (const selectedId of [null, 'direct-1', 'direct-2']) test(`selecting a conversation leaves ${kind} opened over ${selectedId ?? 'the roster'}`, async () => {
+for (const kind of ['routines', 'spend', 'terminal'] as const) for (const selectedId of [null, 'direct-1', 'direct-2']) test(`selecting a conversation leaves ${kind} opened over ${selectedId ?? 'the roster'}`, async () => {
   const query = selectedId ? `?s=${selectedId}&o=${kind}` : `?o=${kind}`;
-  const isOpen = (runtime: MessengerRuntime) => kind === 'spend' ? runtime.spendOpen : runtime.routinesOpen;
+  const isOpen = (runtime: MessengerRuntime) => kind === 'spend' ? runtime.spendOpen : kind === 'terminal' ? runtime.terminalOpen : runtime.routinesOpen;
   page.url = new URL(query, 'http://localhost/');
   entries[0] = `/${query}`;
   const sessions = [aDirect(), aDirect({ id: 'direct-2' })];

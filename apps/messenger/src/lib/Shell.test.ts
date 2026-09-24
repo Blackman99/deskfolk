@@ -1717,6 +1717,44 @@ test('a Spend pane keeps its own floor instead of the unknown-kind fallback', ()
   });
 });
 
+test('mounted Shell mobile terminal page is a history entry, and Back and Escape leave the chat underneath', async () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null, addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  cleanups.push(() => {
+    setViewport({ width: 1024, height: 768 });
+    window.matchMedia = previousMatchMedia;
+  });
+  const runtime = spendRuntime();
+  runtime.openTerminal();
+  const { host, app, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  expect(host.querySelector('.terminal-page')).not.toBeNull();
+  expect(host.querySelector('.mobile-navigation')).toBeNull();
+  expect(getComputedStyle(host.querySelector('.side')!).display).toBe('none');
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1&o=terminal');
+  // Back is the browser's. The page's own button is what closes it.
+  expect((app as { backMobileLayer: () => boolean }).backMobileLayer()).toBe(false);
+  expect(runtime.terminalOpen).toBe(true);
+  click(host.querySelector('.terminal-back'));
+  expect(runtime.terminalOpen).toBe(false);
+  expect(runtime.selectedId).toBe('direct-1');
+  runtime.openTerminal();
+  await settle();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  flushSync();
+  expect(runtime.terminalOpen).toBe(false);
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1');
+});
+
 test('mounted Shell mobile Spend Back and Escape leave the underlying chat and history intact', async () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({

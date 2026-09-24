@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- On a phone, the terminal page is a place in the address, `?o=terminal`, the way the routine calendar and Spend already are. Opening it adds a step, and Back, the page's own Back and Escape return to the conversation or the list you opened it from. Refresh, forward and a link to that address open the terminal page again. Shells keep running when the page closes. A wide window still opens a terminal tab, and that tab stays out of the address.
+
 - On a phone, Back on a Bot opened from a group's settings steps out one screen at a time again. From a skill, routine or memory editor it returns to the section, then to the Bot's list of sections, and only then to the conversation. It used to jump straight to the conversation.
 
 - Pinning the Files conversation now moves it into the pinned row instead of also keeping it in its own section of the session list. The pinned tile and the folded rail keep its file icon, and unpinning puts the section back.

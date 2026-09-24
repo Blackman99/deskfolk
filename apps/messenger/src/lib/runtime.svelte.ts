@@ -489,6 +489,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.createBotOpen = true;
   }
 
@@ -499,6 +500,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.createGroupOpen = true;
   }
 
@@ -513,6 +515,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
   }
@@ -539,12 +542,27 @@ export class MessengerRuntime {
   terminalsLoaded = $state(false);
   terminalOpen = $state(false);
 
+  /**
+   * The phone's terminal page. A wide window still opens a pane; below the breakpoint this is a
+   * page in the URL, the way the calendar is.
+   */
   openTerminal(): void {
     void this.refreshTerminals();
     if (this.toPane({ kind: "terminal", terminalId: null })) return;
-    this.closeSheets();
-    void this.refreshTerminals();
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createGroupOpen = false;
+    this.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.routinesOpen = false;
+    this.spendOpen = false;
+    this.clearTrace();
     this.threadOpen = false;
+    this.previewRelpath = null;
+    this.previewAttachmentId = null;
+    this.previewTaskId = null;
+    this.previewSiblings = null;
+    void this.refreshTerminals();
     this.terminalOpen = true;
   }
 
@@ -626,6 +644,7 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.traceSessionId = this.selectedId;
     this.traceTaskId = taskId ?? "";
     this.traceFocus = focus;
@@ -678,6 +697,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
   }
@@ -703,6 +723,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.settingsOpen = !this.settingsOpen;
   }
 
@@ -713,6 +734,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.workspaceOpen = true;
     if (selected) this.workspaceSelected = selected;
   }
@@ -733,6 +755,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -754,6 +777,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.terminalOpen = false;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -778,6 +802,7 @@ export class MessengerRuntime {
       this.workspaceOpen = false;
       this.routinesOpen = false;
       this.spendOpen = false;
+      this.terminalOpen = false;
       this.settingsOpen = true;
       return;
     }
@@ -789,6 +814,7 @@ export class MessengerRuntime {
       this.workspaceOpen = false;
       this.routinesOpen = false;
       this.spendOpen = false;
+      this.terminalOpen = false;
       this.profileBotId = null;
       this.sessionSettingsOpen = true;
       return;
@@ -801,6 +827,7 @@ export class MessengerRuntime {
       this.workspaceOpen = false;
       this.routinesOpen = false;
       this.spendOpen = false;
+      this.terminalOpen = false;
       this.profileBotId = overlay.botId;
       this.sessionSettingsOpen = true;
       return;
@@ -812,6 +839,7 @@ export class MessengerRuntime {
       this.clearTrace();
       this.routinesOpen = false;
       this.spendOpen = false;
+      this.terminalOpen = false;
       this.workspaceOpen = true;
       this.workspaceSelected = overlay.selected ?? "";
       return;
@@ -825,6 +853,7 @@ export class MessengerRuntime {
       this.workspaceOpen = false;
       this.routinesOpen = false;
       this.spendOpen = false;
+      this.terminalOpen = false;
       this.traceSessionId = this.traceSessionId ?? this.selectedId;
       this.traceTaskId = overlay.taskId ?? "";
       return;
@@ -836,6 +865,7 @@ export class MessengerRuntime {
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.spendOpen = false;
+      this.terminalOpen = false;
       this.clearTrace();
         this.threadOpen = false;
       this.previewRelpath = null;
@@ -852,6 +882,7 @@ export class MessengerRuntime {
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.routinesOpen = false;
+      this.terminalOpen = false;
       this.clearTrace();
       this.threadOpen = false;
       this.previewRelpath = null;
@@ -861,12 +892,30 @@ export class MessengerRuntime {
       this.spendOpen = true;
       return;
     }
+    if (overlay.kind === "terminal") {
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.closeSessionSettings();
+      this.workspaceOpen = false;
+      this.routinesOpen = false;
+      this.spendOpen = false;
+      this.clearTrace();
+      this.threadOpen = false;
+      this.previewRelpath = null;
+      this.previewAttachmentId = null;
+      this.previewTaskId = null;
+      this.previewSiblings = null;
+      this.terminalOpen = true;
+      return;
+    }
     this.settingsOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.clearTrace();
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
   }
 
   closeSheets(): void {
@@ -878,6 +927,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
+    this.terminalOpen = false;
   }
 
   /** A ledger or search link can outlive the conversation it names. */
@@ -889,9 +939,11 @@ export class MessengerRuntime {
   async selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> {
     const previousId = this.selectedId;
     const previousSpend = this.spendOpen;
+    const previousTerminal = this.terminalOpen;
     if (!opts?.preservePage) {
       this.closeRoutines();
       this.closeSpend();
+      this.closeTerminal();
       // Selecting the conversation already underneath a pane must still bring it forward.
       if (this.selectedId === id) this.toPane({ kind: "chat", sessionId: id });
     }
@@ -989,6 +1041,7 @@ export class MessengerRuntime {
             this.selectedId = previousId && previousId !== id && this.snapshot.sessions.some((session) => session.id === previousId)
               ? previousId : null;
             if (previousSpend) this.openSpend();
+            if (previousTerminal) this.openTerminal();
           }
           return;
         }

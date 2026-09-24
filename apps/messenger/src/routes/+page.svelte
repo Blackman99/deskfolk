@@ -66,7 +66,7 @@ const runtime = new MessengerRuntime();
 	const fromUrl = viewFromUrl(page.url, HOSTED_MESSENGER);
 	if (fromUrl.selectedId) runtime.selectedId = fromUrl.selectedId;
 	// The calendar drops a file preview: seeding one and then clearing it would flash the pane.
-	if (fromUrl.overlay.kind !== 'routines' && fromUrl.overlay.kind !== 'spend') {
+	if (fromUrl.overlay.kind !== 'routines' && fromUrl.overlay.kind !== 'spend' && fromUrl.overlay.kind !== 'terminal') {
 		if (fromUrl.previewRelpath) runtime.previewRelpath = fromUrl.previewRelpath;
 		if (fromUrl.previewAttachmentId) runtime.previewAttachmentId = fromUrl.previewAttachmentId;
 	}
@@ -104,7 +104,7 @@ const runtime = new MessengerRuntime();
 		if (HOSTED_MESSENGER) return;
 		const wanted = previewFromUrl(page.url);
 		const overlayKind = overlayFromUrl(page.url).kind;
-		const calendar = overlayKind === 'routines' || overlayKind === 'spend' || runtime.routinesOpen || runtime.spendOpen;
+		const calendar = overlayKind === 'routines' || overlayKind === 'spend' || overlayKind === 'terminal' || runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen;
 		untrack(() => {
 			const next = calendar ? null : wanted;
 			if (next !== runtime.previewRelpath) runtime.previewRelpath = next;
@@ -122,7 +122,7 @@ const runtime = new MessengerRuntime();
 	$effect(() => {
 		const wanted = overlayFromUrl(page.url, HOSTED_MESSENGER);
 		// These states need no snapshot validation; a late detail must not undo pane navigation.
-		if (wanted.kind === 'none' || wanted.kind === 'routines' || wanted.kind === 'spend') {
+		if (wanted.kind === 'none' || wanted.kind === 'routines' || wanted.kind === 'spend' || wanted.kind === 'terminal') {
 			untrack(() => {
 				if (overlayFromFlags(runtime).kind !== wanted.kind) runtime.applyOverlay(wanted);
 			});
@@ -156,7 +156,8 @@ const runtime = new MessengerRuntime();
 				traceOpen: runtime.traceOpen,
 				traceTaskId: runtime.traceTaskId,
 				routinesOpen: runtime.routinesOpen,
-				spendOpen: runtime.spendOpen
+				spendOpen: runtime.spendOpen,
+				terminalOpen: runtime.terminalOpen
 			});
 			const next = overlayApply(wanted, current, {
 				selectedId,
@@ -204,7 +205,8 @@ const runtime = new MessengerRuntime();
 			traceOpen: runtime.traceOpen,
 			traceTaskId: runtime.traceTaskId,
 			routinesOpen: runtime.routinesOpen,
-			spendOpen: runtime.spendOpen
+			spendOpen: runtime.spendOpen,
+			terminalOpen: runtime.terminalOpen
 		});
 		untrack(() => {
 			const wanted = { selectedId: id, previewRelpath, previewAttachmentId, overlay };

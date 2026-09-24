@@ -21,6 +21,7 @@ export const OVERLAY_WORKSPACE = "workspace";
 export const OVERLAY_TRACE = "trace";
 export const OVERLAY_ROUTINES = "routines";
 export const OVERLAY_SPEND = "spend";
+export const OVERLAY_TERMINAL = "terminal";
 
 export type UrlOverlay =
   | { kind: "none" }
@@ -30,7 +31,8 @@ export type UrlOverlay =
   | { kind: "workspace"; selected: string | null }
   | { kind: "trace"; taskId: string | null }
   | { kind: "routines" }
-  | { kind: "spend" };
+  | { kind: "spend" }
+  | { kind: "terminal" };
 
 export type UrlView = {
   selectedId: string | null;
@@ -67,6 +69,7 @@ export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   if (raw === OVERLAY_TRACE) return { kind: "trace", taskId: sanitizeBotId(url.searchParams.get(TRACE_PARAM)) };
   if (raw === OVERLAY_ROUTINES) return { kind: "routines" };
   if (raw === OVERLAY_SPEND) return { kind: "spend" };
+  if (raw === OVERLAY_TERMINAL) return { kind: "terminal" };
   return { kind: "none" };
 }
 
@@ -91,6 +94,8 @@ export function overlayFromFlags(flags: {
   routinesOpen?: boolean;
   /** Optional for the same reason. Absent means the spend ledger is closed. */
   spendOpen?: boolean;
+  /** Optional for the same reason. Absent means the phone's terminal page is closed. */
+  terminalOpen?: boolean;
 }): UrlOverlay {
   if (flags.settingsOpen) return { kind: "settings" };
   if (flags.sessionSettingsOpen) {
@@ -98,6 +103,7 @@ export function overlayFromFlags(flags: {
     return botId ? { kind: "bot", botId } : { kind: "session" };
   }
   if (flags.spendOpen) return { kind: "spend" };
+  if (flags.terminalOpen) return { kind: "terminal" };
   if (flags.routinesOpen) return { kind: "routines" };
   if (flags.workspaceOpen) {
     return { kind: "workspace", selected: sanitizePreviewPath(flags.workspaceSelected) };
@@ -151,9 +157,9 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
   if (view.selectedId) next.searchParams.set(SESSION_PARAM, view.selectedId);
   else next.searchParams.delete(SESSION_PARAM);
 
-  // The calendar replaces the main column. A preview beside it, or over it on a phone,
-  // would cover the grid, so the roster view does not carry a file.
-  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend";
+  // The calendar, the ledger and the phone's terminal each replace the main column. A
+  // preview beside one, or over it on a phone, would cover that page, so it does not carry a file.
+  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend" || view.overlay.kind === "terminal";
   if (remote) {
     next.searchParams.delete(PREVIEW_PARAM);
     next.searchParams.delete(WORKSPACE_FILE_PARAM);
@@ -220,6 +226,9 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
   if (overlay.kind === "spend") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_SPEND);
   }
+  if (overlay.kind === "terminal") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_TERMINAL);
+  }
 }
 
 function sameSearch(a: URL, b: URL): boolean {
@@ -278,7 +287,7 @@ export function overlayApply(
 }
 
 function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "wait" {
-  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend") return wanted;
+  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend" || wanted.kind === "terminal") return wanted;
   if (wanted.kind === "workspace") {
     if (!ctx.snapshotReady) return "wait";
     if (!ctx.hasWorkspacePath) return { kind: "none" };

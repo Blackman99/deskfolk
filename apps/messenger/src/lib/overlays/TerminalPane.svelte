@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Terminal as TerminalRow, StreamFrame } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
-	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import TerminalView from './TerminalView.svelte';
@@ -26,6 +25,9 @@
 
 	let { api, workspacePath, rows, t, onStream, onChanged, onClose }: Props = $props();
 	const terminalBackdrop = backdropClick();
+
+	/** The page's own find bar and menus close before the page does. */
+	let view = $state<{ closeFindBar: () => boolean; closeMenus: () => boolean } | null>(null);
 
 	/** The part of the screen a software keyboard leaves, while one is up; see `keyboardViewport`. */
 	let above = $state<{ top: number; height: number } | null>(null);
@@ -60,8 +62,22 @@
 		if (terminalBackdrop.isOutside(e)) onClose();
 	}}
 >
-	<div class="terminal-overlay-pane" transition:pageSlide>
-		<TerminalView {api} {workspacePath} {rows} {t} {onStream} {onChanged} {onClose} tabIds="all" />
+	<div class="terminal-overlay-pane">
+		<TerminalView
+			bind:this={view}
+			{api}
+			{workspacePath}
+			{rows}
+			{t}
+			{onStream}
+			{onChanged}
+			onClose={() => {
+				if (view?.closeFindBar()) return;
+				if (view?.closeMenus()) return;
+				onClose();
+			}}
+			tabIds="all"
+		/>
 	</div>
 </div>
 

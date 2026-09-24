@@ -113,6 +113,18 @@ function layers(over: Partial<LayerState> = {}): LayerState {
   };
 }
 
+test("the phone terminal page is a screen of its own, and Back leaves it to history", () => {
+  const terminal: UrlView = { ...roster, overlay: { kind: "terminal" } };
+  expect(routeLayers(terminal)).toEqual(["terminal"]);
+  expect(routeStep(roster, terminal)).toBe("deeper");
+  expect(routeStep(terminal, roster)).toBe("shallower");
+  expect(planUrlNavigation({ target: "?o=terminal", stack: [""], step: "deeper" })).toBe("push");
+  expect(planUrlNavigation({ target: "", stack: ["", "?o=terminal"], step: "shallower" })).toBe("back");
+  // A menu over the page still closes before Back walks off the page.
+  expect(topLayer(layers({ terminalOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
+  expect(topLayer(layers({ terminalOpen: true, routinesOpen: true }))).toBe("terminal");
+});
+
 test("the spend ledger is a screen of its own, beside the calendar", () => {
   const spend: UrlView = { ...roster, overlay: { kind: "spend" } };
   expect(routeLayers(spend)).toEqual(["spend"]);

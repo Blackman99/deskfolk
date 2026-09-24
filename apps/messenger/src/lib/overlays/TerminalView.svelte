@@ -386,6 +386,21 @@
 		if (!touchFirst()) term?.focus();
 	}
 
+	/** The page's Back and Escape close the bar first. True when there was one to close. */
+	export function closeFindBar(): boolean {
+		if (!findOpen) return false;
+		closeFind();
+		return true;
+	}
+
+	/** The session list and ⋯ close before the page does. True when one was open. */
+	export function closeMenus(): boolean {
+		if (!switcherOpen && !moreOpen) return false;
+		switcherOpen = false;
+		closeMore();
+		return true;
+	}
+
 	/**
 	 * Whether what just happened was a finger. Handing the shell the focus then raises the
 	 * software keyboard over half the screen, so after a tap only a tap on the terminal itself, or
@@ -514,6 +529,9 @@
 	function onWindowClick(event: MouseEvent): void {
 		if (!switcherOpen && !moreOpen) return;
 		const target = event.target instanceof Element ? event.target : null;
+		// Back closes these itself, and only then the page. Closing them here would make one
+		// tap do both, because this listener runs before the button's own.
+		if (target?.closest('.terminal-back')) return;
 		if (switcherOpen && !target?.closest('.terminal-switch')) switcherOpen = false;
 		if (moreOpen && !target?.closest('.terminal-more')) closeMore();
 	}

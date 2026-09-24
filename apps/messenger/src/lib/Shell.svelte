@@ -356,8 +356,9 @@
 				}
 				return false;
 			case 'terminal':
-				runtime.closeTerminal();
-				return true;
+				// A history entry, like the calendar: the page's button closes it, and Back walks
+				// the URL. Answering true here would pop nothing and leave the page open.
+				return false;
 			case 'trace':
 				// Full screen over the flow is a page; the flow itself is an entry in history.
 				return tracePane?.backFromFullOutput() ?? false;
@@ -579,7 +580,15 @@
 	/**
 	 * While the workbench is on, every "open this" in the app lands in a pane rather than in a
 	 * full-screen layer. Cleared below the breakpoint, where those layers are still the app.
+	 *
+	 * The terminal page is a phone screen. A wide window opens a terminal tab instead, and a tab
+	 * stays out of the address, so a page left open while the window grows leaves the address too.
 	 */
+	$effect(() => {
+		if (!wide || !runtime.terminalOpen) return;
+		untrack(() => runtime.closeTerminal());
+	});
+
 	$effect(() => {
 		if (!wide) {
 			runtime.paneOpener = null;
@@ -1839,6 +1848,7 @@
 	class:has-session={Boolean(selected)}
 	class:has-routines={runtime.routinesOpen}
 	class:has-spend={runtime.spendOpen}
+	class:has-terminal={runtime.terminalOpen}
 	class:is-preview={Boolean(artifactPreview)}
 	class:is-preview-dragging={previewDragging}
 	class:is-sidebar-dragging={sidebarDragging}
@@ -2069,6 +2079,25 @@
 			{#await import('./spend/SpendOverlay.svelte') then { default: SpendOverlay }}
 				<SpendOverlay {runtime} backLabel={t.common.back} />
 			{/await}
+		{:else if runtime.terminalOpen}
+			<!--
+				Keyed so the page that is walking out is a different block from the one that
+				arrives. Without it, Svelte reuses the leaving page, its outro never finishes,
+				and the terminal stays on screen after Back.
+			-->
+			{#key runtime.terminalOpen}
+			<div class="terminal-page" transition:pageSlide>
+				<TerminalPane
+					api={runtime.client}
+					workspacePath={snapshot.settings.workspace_path}
+					rows={runtime.terminals}
+					{t}
+					onStream={(id, sink) => runtime.onStream(id, sink)}
+					onChanged={() => runtime.refreshTerminals()}
+					onClose={() => runtime.closeTerminal()}
+				/>
+			</div>
+			{/key}
 		{:else if selected}
 		<!--
 			On a phone this is a page over the roster: it arrives from the right and Back walks
@@ -2199,17 +2228,6 @@
 				}}
 			/>
 		{/await}
-	{/if}
-	{#if runtime.terminalOpen}
-		<TerminalPane
-			api={runtime.client}
-			workspacePath={snapshot.settings.workspace_path}
-			rows={runtime.terminals}
-			{t}
-			onStream={(id, sink) => runtime.onStream(id, sink)}
-			onChanged={() => runtime.refreshTerminals()}
-			onClose={() => runtime.closeTerminal()}
-		/>
 	{/if}
 	{#if runtime.workspaceOpen}
 		<WorkspaceExplorer
@@ -2809,8 +2827,10 @@
 		 * the conversation is open.
 		 */
 		.shell:has(.conversation) .main,
+		.shell:has(.terminal-page) .main,
 		.shell.has-routines .main,
-		.shell.has-spend .main {
+		.shell.has-spend .main,
+		.shell.has-terminal .main {
 			position: fixed;
 			inset: 0;
 			z-index: 30;
@@ -2846,13 +2866,26 @@
 		}
 
 		/* Over the tab bar (z 105) for the walk out, fixed to the viewport so it stays full screen. */
-		.shell:not(.has-session) .conversation {
+		.shell:not(.has-session) .conversation,
+		.shell:not(.has-terminal) .terminal-page {
 			position: fixed;
 			z-index: 106;
 		}
 
 		.shell.has-routines .main,
-		.shell.has-spend .main {
+		.shell.has-spend .main,
+		.shell.has-terminal .main {
+			background: var(--pane);
+		}
+
+		.terminal-page {
+			position: absolute;
+			inset: 0;
+			z-index: 2;
+			display: flex;
+			flex-direction: column;
+			min-width: 0;
+			min-height: 0;
 			background: var(--pane);
 		}
 

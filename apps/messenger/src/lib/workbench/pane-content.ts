@@ -181,8 +181,9 @@ export function overlayFromContent(content: PaneContent | null): UrlOverlay {
     case "spend":
       return { kind: "spend" };
     default:
-      // A preview or a terminal is not an overlay: the first is the conversation's own and the
-      // second was never in the URL to begin with.
+      // A desktop terminal tab is one shell and stays in the layout. The phone's page is the
+      // only terminal the URL carries, and a tab is not that page. A preview is the
+      // conversation's own, and was never an overlay of its own.
       return { kind: "none" };
   }
 }
@@ -205,6 +206,7 @@ export function contentFromOverlay(overlay: UrlOverlay, sessionId: string | null
     case "spend":
       return { kind: "spend" };
     default:
+      // The phone's terminal page is not a desktop tab. A link to it opens that page.
       return null;
   }
 }

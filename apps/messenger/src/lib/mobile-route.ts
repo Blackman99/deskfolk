@@ -170,7 +170,7 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["search", "searchOpen"],
   ["settings", "settingsOpen"],
   ["session-settings", "sessionSettingsOpen"],
-  // Yours, not a place in a conversation: the app closes it, Back never navigates to it.
+  // A history entry, like the calendar. The page's button closes it, and Back walks the URL.
   ["terminal", "terminalOpen"],
   ["trace", "traceOpen"],
   ["routines", "routinesOpen"],

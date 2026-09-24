@@ -87,8 +87,9 @@ test("a pane says which conversation it belongs to, so closing it can release th
 });
 
 /**
- * The device that keeps the two surfaces from drifting: for every overlay kind, what a pane says
- * and what the flags say have to agree. Add a seventh overlay to one side only and this fails.
+ * The device that keeps the two surfaces from drifting: for every overlay a pane can show, what
+ * the pane says and what the flags say have to agree. The phone's terminal page is not one of
+ * those panes, so it stays out of this table.
  */
 test("a pane and the old flags describe the same overlay", () => {
   const cases: Array<{ content: PaneContent; flags: Parameters<typeof overlayFromFlags>[0] }> = [
@@ -124,6 +125,7 @@ test("a pane and the old flags describe the same overlay", () => {
 
 test("what was never in the URL stays out of it", () => {
   expect(overlayFromContent({ kind: "chat", sessionId: "s1" })).toEqual({ kind: "none" });
+  // A desktop tab is one shell. The phone's page is the only terminal the URL carries.
   expect(overlayFromContent({ kind: "terminal", terminalId: "t" })).toEqual({ kind: "none" });
   expect(overlayFromContent(null)).toEqual({ kind: "none" });
 });
@@ -140,6 +142,8 @@ test("a deep link becomes the pane it asks for", () => {
     [{ kind: "workspace", selected: null }, null, { kind: "workspace", selected: null }],
     [{ kind: "routines" }, null, { kind: "routines" }],
     [{ kind: "spend" }, null, { kind: "spend" }],
+    // The phone's terminal page is not a desktop tab, so a link to it names no pane.
+    [{ kind: "terminal" }, null, null],
     // Settings stays a modal on the desktop, so it is not a pane at all.
     [{ kind: "settings" }, "s1", null],
     [{ kind: "none" }, "s1", null],
