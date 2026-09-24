@@ -805,7 +805,7 @@ test("a failed send keeps the summary that was typed", async () => {
 
 const WEEKLY = ["# 周报", "", "本周完成了 **登录改版**，见 [设计稿](https://example.com/d)。", "", "- 下周：接入支付", "- 风险：人手不足"].join("\n");
 
-test("定位 on the row that already has focus, or a card asking for it again, scrolls the rendered view back to it", async () => {
+test("a card asking again for the row that has focus scrolls the rendered view back to it; the list's click on it deselects", async () => {
   const scrolled: string[] = [];
   const proto = Element.prototype as { scrollIntoView?: (arg?: unknown) => void };
   const original = proto.scrollIntoView;
@@ -830,18 +830,25 @@ test("定位 on the row that already has focus, or a card asking for it again, s
   flushSync();
   expect(scrolled).toHaveLength(1);
   const goTo = (id: string) => host.querySelector(`.annot-item[data-annotation-id="${id}"] .annot-item-main`);
+  const focused = () => host.querySelector(".annot-item.is-focus")?.getAttribute("data-annotation-id") ?? null;
+  // The card's row is selected in the list: a click there lets go of it, the next one goes back.
   click(goTo("a1"));
   await settle();
+  expect(focused()).toBeNull();
+  expect(scrolled).toHaveLength(1);
+  click(goTo("a1"));
+  await settle();
+  expect(focused()).toBe("a1");
   expect(scrolled).toHaveLength(2);
   expect(scrolled[1]).toContain("登录改版");
   click(goTo("a2"));
   await settle();
-  click(goTo("a2"));
-  await settle();
-  expect(scrolled).toHaveLength(4);
-  // A transcript card for a1 while a1 is what the shell last asked for: the shell lets go, then asks.
+  expect(scrolled).toHaveLength(3);
   click(goTo("a1"));
   await settle();
+  expect(scrolled).toHaveLength(4);
+  // A transcript card for a1 while a1 is what the shell last asked for: the shell lets go, then
+  // asks, and a card only ever goes there.
   const before = scrolled.length;
   focus.id = null;
   flushSync();
@@ -849,9 +856,10 @@ test("定位 on the row that already has focus, or a card asking for it again, s
   flushSync();
   await settle();
   expect(scrolled).toHaveLength(before + 1);
+  expect(focused()).toBe("a1");
 });
 
-test("in the source view each 定位 reveals once, the focused row included", async () => {
+test("in the source view each 定位 reveals once; clicking the selected row lets go of it without one", async () => {
   const { editors, loadMonaco } = fakeMonaco();
   const { host } = open({
     relpath: "notes/plan.txt",
@@ -867,9 +875,10 @@ test("in the source view each 定位 reveals once, the focused row included", as
   const goTo = host.querySelector('.annot-item[data-annotation-id="t1"] .annot-item-main');
   click(goTo);
   await settle();
+  expect(reveals).toHaveLength(1);
   click(goTo);
   await settle();
-  expect(reveals).toHaveLength(3);
+  expect(reveals).toHaveLength(2);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1214,6 +1223,70 @@ test("going to a resolved row from the list draws that one row while it has focu
   expect(drawnOnPicture(host)).toEqual(["o", "r"]);
   // Focus moving to an open row lets go of it.
   click(goToRow(host, "o"));
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+});
+
+test("a second click on the selected row in the list deselects it: a resolved one comes back off the picture", async () => {
+  const { host } = open({
+    relpath: "shots/cover.png",
+    body: PNG,
+    type: "image/png",
+    annotations: [imageRow({ id: "o" }), imageRow({ id: "r", status: "resolved" })],
+  });
+  await settle();
+  click(host.querySelector("[data-annotation-toggle]"));
+  const pressed = (id: string) => goToRow(host, id)?.getAttribute("aria-pressed");
+  click(goToRow(host, "r"));
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o", "r"]);
+  expect(pressed("r")).toBe("true");
+  expect(goToRow(host, "r")?.getAttribute("title")).toBe(t.stream.annotationDeselect);
+  click(goToRow(host, "r"));
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+  expect(host.querySelector(".annot-item.is-focus")).toBeNull();
+  expect(pressed("r")).toBe("false");
+  expect(goToRow(host, "r")?.getAttribute("title")).toBe(t.stream.annotationGoTo);
+  // An open row is on the file either way; deselecting only lets go of the focus.
+  click(goToRow(host, "o"));
+  await settle();
+  expect(pressed("o")).toBe("true");
+  click(goToRow(host, "o"));
+  await settle();
+  expect(pressed("o")).toBe("false");
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+});
+
+test("a card in the transcript going to a resolved row opens the list on it and leaves it off the picture", async () => {
+  const focus = reactive({ id: null as string | null });
+  const { host } = open({
+    relpath: "shots/cover.png",
+    body: PNG,
+    type: "image/png",
+    annotations: [imageRow({ id: "o" }), imageRow({ id: "r", status: "resolved" })],
+    annotationFocusId: () => focus.id,
+  });
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+  focus.id = "r";
+  flushSync();
+  await settle();
+  expect(host.querySelector('.annot-item.is-focus')?.getAttribute("data-annotation-id")).toBe("r");
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+  // Selected in the list, so a click there lets go of it; the next one asks for it on the file.
+  click(goToRow(host, "r"));
+  await settle();
+  expect(host.querySelector(".annot-item.is-focus")).toBeNull();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+  click(goToRow(host, "r"));
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o", "r"]);
+  // The card asking again takes it back off.
+  focus.id = null;
+  flushSync();
+  focus.id = "r";
+  flushSync();
   await settle();
   expect(drawnOnPicture(host)).toEqual(["o"]);
 });

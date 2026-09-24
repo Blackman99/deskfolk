@@ -719,6 +719,7 @@ const zh = {
     annotationFileChanged: "选好位置之后文件改过了（或有没保存的修改），这个位置可能已经对不上；取消后重新选一处。",
     annotationSendCapped: (max: number) => `一次最多发 ${max} 条，这次先发最早的 ${max} 条`,
     annotationGoTo: "定位",
+    annotationDeselect: "取消选中",
     annotationMode: "批注模式",
     annotationModeExit: "退出批注",
     annotImage: {
@@ -1813,6 +1814,7 @@ const en: CopyShape<typeof zh> = {
     annotationFileChanged: "The file changed after you picked this spot (or has unsaved edits), so it may no longer match; cancel and pick it again.",
     annotationSendCapped: (max: number) => `At most ${max} per batch — sending the oldest ${max} now`,
     annotationGoTo: "Go to",
+    annotationDeselect: "Deselect",
     annotationMode: "Annotate",
     annotationModeExit: "Stop annotating",
     annotImage: {

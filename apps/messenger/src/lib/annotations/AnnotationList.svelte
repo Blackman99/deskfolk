@@ -85,7 +85,7 @@
 			{@const stale = staleLabel(t, row, locale)}
 			{@const resolver = resolverName(row, bots, t)}
 			<li class="annot-item" class:is-focus={focusId === row.id} class:is-resolved={row.status === 'resolved'} data-annotation-id={row.id}>
-				<button type="button" class="annot-item-main text-left min-w-0" onclick={() => onReveal(row)} title={t.stream.annotationGoTo}>
+				<button type="button" class="annot-item-main text-left min-w-0" onclick={() => onReveal(row)} aria-pressed={focusId === row.id} title={focusId === row.id ? t.stream.annotationDeselect : t.stream.annotationGoTo}>
 					<span class="annot-item-pos mono text-11 truncate">{positionLabel(row, locale)}</span>
 					{#if editingId !== row.id}
 						<span class="annot-item-body text-12">{row.body}</span>

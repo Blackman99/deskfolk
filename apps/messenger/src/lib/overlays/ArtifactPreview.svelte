@@ -203,9 +203,10 @@
 	 */
 	let annotShowResolved = $state(false);
 	/**
-	 * A resolved row the person went to while resolved ones were off the file: it is drawn while it
-	 * has focus, so the 定位 lands somewhere. A Bot resolving the row that has focus is not this — that
-	 * one comes off like any other.
+	 * A resolved row the person went to from this pane while resolved ones were off the file: it is
+	 * drawn while it has focus, so the 定位 lands somewhere. A card in the transcript is not this — it
+	 * opens the list on the row and leaves the file as it was; nor is a Bot resolving the row that
+	 * has focus — that one comes off like any other.
 	 */
 	let annotRevealedResolved = $state<string | null>(null);
 	/**
@@ -269,7 +270,7 @@
 		const id = annotationFocusId;
 		if (!id) return;
 		untrack(() => {
-			focusAnnotation(id);
+			focusAnnotation(id, false);
 			annotOpen = true;
 		});
 	});
@@ -290,11 +291,15 @@
 		});
 	});
 
-	/** Go to an annotation: a request, so the one already focused is revealed and flashed again. */
-	function focusAnnotation(id: string): void {
+	/**
+	 * Go to an annotation: a request, so the one already focused is revealed and flashed again.
+	 * `drawResolved` is false for a card in the transcript: a resolved row stays off the file.
+	 */
+	function focusAnnotation(id: string, drawResolved = true): void {
 		annotFocus = id;
 		annotFocusSeq += 1;
-		annotRevealedResolved = fileAnnotations.find((row) => row.id === id)?.status === 'resolved' ? id : null;
+		annotRevealedResolved =
+			drawResolved && fileAnnotations.find((row) => row.id === id)?.status === 'resolved' ? id : null;
 	}
 
 	function offerAnnotation(range: EditorRange, value: string): void {
@@ -404,7 +409,16 @@
 		annotError = failed ? t.stream.annotationSaveFailed : null;
 	}
 
+	/**
+	 * A click on a row in the list goes to it; a click on the row already selected lets go of it, and
+	 * a resolved one drawn for it comes back off the file.
+	 */
 	function revealAnnotation(row: Annotation): void {
+		if (annotFocus === row.id) {
+			annotFocus = null;
+			annotRevealedResolved = null;
+			return;
+		}
 		focusAnnotation(row.id);
 	}
 
