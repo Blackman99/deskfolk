@@ -2075,7 +2075,11 @@
 			onCreateBot={openCreateBot}
 		/>
 		</div>
-		{:else}
+		{:else if wide}
+		<!--
+			The empty column is the desktop's "pick a session". A phone's home screen is the
+			roster, and mounting this beside the page that is walking out flashes it through.
+		-->
 		<ChatHeader
 			{runtime}
 			{t}
@@ -2777,7 +2781,8 @@
 		/*
 		 * `:has(.conversation)` rather than `.has-session`, because the two part ways for the
 		 * 220ms the page spends walking back out: the session is already gone, and hiding the
-		 * column then would cancel that walk before it painted.
+		 * column then would cancel that walk before it painted. Below the tab bar (z 105) while
+		 * the conversation is open.
 		 */
 		.shell:has(.conversation) .main,
 		.shell.has-routines .main,
@@ -2789,15 +2794,37 @@
 			min-width: 0;
 		}
 
+		/*
+		 * Leaving: the page is position:fixed, so it no longer needs this column. Keeping the
+		 * column would leave an empty layer over the list. `contents` drops that layer; the
+		 * page below paints on its own, over the tab bar only where it still is.
+		 */
+		.shell:not(.has-session):has(.conversation) .main {
+			display: contents;
+		}
+
+		/*
+		 * The page fills the column. `inset` would pin it to the column it was measured in, and
+		 * a percentage translate then slides a box that is shorter than the screen.
+		 */
 		.conversation {
 			position: absolute;
-			inset: 0;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
 			z-index: 1;
 			display: flex;
 			flex-direction: column;
 			min-width: 0;
 			min-height: 0;
 			background: var(--pane);
+		}
+
+		/* Over the tab bar (z 105) for the walk out, fixed to the viewport so it stays full screen. */
+		.shell:not(.has-session) .conversation {
+			position: fixed;
+			z-index: 106;
 		}
 
 		.shell.has-routines .main,

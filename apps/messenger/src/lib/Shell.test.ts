@@ -277,6 +277,9 @@ test("on a phone a conversation covers the list, and Back walks that page back o
   click(host.querySelector(".btn-mobile-back"));
   flushSync();
   expect(runtime.selectedId).toBeNull();
+  // The page that is leaving is the conversation, not the desktop's "pick a session" column
+  // flashing through it.
+  expect(host.textContent).not.toContain("选择一个会话");
   expect(host.querySelector(".conversation")).toBeNull();
   expect(host.querySelector(".side")).not.toBeNull();
   expect(shell.classList.contains("has-session")).toBe(false);
