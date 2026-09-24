@@ -75,6 +75,8 @@
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
+	/** Bulk model change needs a Bot to change and the local API: a remote link has no bulk route. */
+	const canBulkModel = $derived(snapshot.bots.length > 0 && !runtime.remote);
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
@@ -778,7 +780,21 @@
 			{/each}
 			<div class="ghead">
 				<span>{t.sidebar.youBot}</span>
-				<button type="button" class="add" title={t.sidebar.addBot} onclick={onCreateBot}>+</button>
+				<span class="ghead-acts">
+					{#if canBulkModel}
+						<!-- Every Bot on the roster, archived ones included, but none ticked yet. -->
+						<button
+							type="button"
+							class="ghead-bulk-model"
+							title={t.bulkModel.openTitle}
+							aria-label={t.bulkModel.open}
+							onclick={() => runtime.openBulkModel()}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+						</button>
+					{/if}
+					<button type="button" class="add" title={t.sidebar.addBot} onclick={onCreateBot}>+</button>
+				</span>
 			</div>
 			{#each grouped.youBot as session (session.id)}
 				{@const status = statusOf(session)}
@@ -973,6 +989,21 @@
 				</svg>
 				<span>{phone ? t.terminal.title : t.terminal.newTab}</span>
 			</button>
+			{#if canBulkModel}
+				<!-- The 你 ↔ Bot header's ⇄ too, which a phone hides along with its +: here on both. -->
+				<button
+					type="button"
+					class="tools-menu-item tools-menu-bulk-model"
+					role="menuitem"
+					onclick={() => {
+						closeToolsMenu();
+						runtime.openBulkModel();
+					}}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+					<span>{t.bulkModel.open}</span>
+				</button>
+			{/if}
 			<div class="tools-menu-divider" role="separator"></div>
 			<button
 				type="button"
@@ -1718,7 +1749,8 @@
 		padding-top: 6px;
 	}
 
-	.ghead :global(.add) {
+	.ghead :global(.add),
+	.ghead-bulk-model {
 		width: 22px;
 		height: 22px;
 		border-radius: var(--radius-sm);
@@ -1732,9 +1764,16 @@
 		transition: all 0.15s ease;
 	}
 
-	.ghead :global(.add:hover) {
+	.ghead :global(.add:hover),
+	.ghead-bulk-model:hover {
 		background: var(--line-subtle);
 		color: var(--accent);
+	}
+
+	.ghead-acts {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
 	}
 
 	/* Only the Bot↔Bot rows stack: a row plus the source line under it. */
@@ -2424,8 +2463,9 @@
 			font-size: 10.5px;
 		}
 
-		/* Creating is the floating + now, so the headers are labels. */
-		.ghead :global(.add) {
+		/* Creating is the floating + now, so the headers are labels; 批量换模型 is still in the tools menu. */
+		.ghead :global(.add),
+		.ghead-bulk-model {
 			display: none;
 		}
 

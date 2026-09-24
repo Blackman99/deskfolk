@@ -117,6 +117,7 @@ export type BackLayer =
   | "tools-menu"
   | "create-menu"
   | "danger"
+  | "bulk-model"
   | "create-bot"
   | "create-group"
   | "provider-editor"
@@ -136,6 +137,7 @@ export type LayerState = {
   toolsMenuOpen: boolean;
   createMenuOpen: boolean;
   dangerConfirm: boolean;
+  bulkModelOpen: boolean;
   createBotOpen: boolean;
   createGroupOpen: boolean;
   providerEditor: boolean;
@@ -158,6 +160,8 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   // The phone's + menu, like any other menu: over everything, gone at the first Back.
   ["create-menu", "createMenuOpen"],
   ["danger", "dangerConfirm"],
+  // The bulk model dialog can sit on the session drawer, so it goes before the drawer does.
+  ["bulk-model", "bulkModelOpen"],
   ["create-bot", "createBotOpen"],
   ["create-group", "createGroupOpen"],
   ["provider-editor", "providerEditor"],

@@ -84,6 +84,14 @@
 	const groupCandidates = $derived(
 		selected.kind === 'group' ? pullInCandidates(visibleBots, selected) : []
 	);
+	/**
+	 * The present Bots still on the roster: what 批量换模型 opens with ticked. None over a remote
+	 * link, which has no bulk route.
+	 */
+	const bulkModelTargets = $derived(
+		runtime.remote ? [] : groupPresent.filter((id) => botsById.has(id))
+	);
+
 	function memberLabel(id: string): string {
 		if (id === USER_MEMBER) return t.common.you;
 		const bot = botsById.get(id);
@@ -109,6 +117,20 @@
 		if (error) detail.failed = true;
 	}
 </script>
+
+{#snippet bulkModelButton()}
+	{#if bulkModelTargets.length > 0}
+		<button
+			type="button"
+			class="btn-bulk-model"
+			title={t.bulkModel.openTitle}
+			onclick={() => runtime.openBulkModel(bulkModelTargets)}
+		>
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+			<span>{t.bulkModel.open}</span>
+		</button>
+	{/if}
+{/snippet}
 
 <div class="group-pane" class:is-mobile-detail={mobileDetail}>
 	<!-- Phone only: the sections as a list. Wider windows show them all at once, as before. -->
@@ -160,7 +182,10 @@
 	<div class="panel-card group-members-card">
 		<div class="panel-card-head">
 			<span class="panel-card-title">{t.detail.members}</span>
-			<span class="panel-counter-badge">{groupPresent.length + 1}</span>
+			<span class="flex items-center gap-4">
+				{@render bulkModelButton()}
+				<span class="panel-counter-badge">{groupPresent.length + 1}</span>
+			</span>
 		</div>
 		<div class="panel-card-body">
 			<div class="members">
@@ -275,7 +300,10 @@
 	<div class="panel-card group-members-card">
 		<div class="panel-card-head">
 			<span class="panel-card-title">{t.detail.members}</span>
-			<span class="panel-counter-badge">{groupPresent.length}</span>
+			<span class="flex items-center gap-4">
+				{@render bulkModelButton()}
+				<span class="panel-counter-badge">{groupPresent.length}</span>
+			</span>
 		</div>
 		<div class="panel-card-body">
 			<div class="members">
@@ -541,6 +569,34 @@
 		font-size: 12px;
 		color: var(--muted);
 		font-style: italic;
+	}
+
+	.btn-bulk-model {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		border: 1px solid var(--line);
+		background: var(--btn-secondary-bg);
+		color: var(--ink-secondary);
+		font-size: 11px;
+		font-weight: 600;
+		padding: 2px 8px;
+		border-radius: 999px;
+		cursor: pointer;
+		white-space: nowrap;
+		box-shadow: none;
+		transition: all 0.15s ease;
+	}
+
+	.btn-bulk-model:hover {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.btn-bulk-model:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
 	}
 
 	.btn-remove-member {

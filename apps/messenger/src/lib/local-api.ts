@@ -28,6 +28,8 @@ import type {
   McpServer,
   Memory,
   Message,
+  PatchBotsModelRequest,
+  PatchBotsModelResponse,
   PatchMemoryRequest,
   PatchProviderRequest,
   PatchSkillRequest,
@@ -269,6 +271,11 @@ export class LocalApi {
     },
   ): Promise<Bot> {
     return this.patch<Bot>(`/v1/bots/${id}`, body);
+  }
+
+  /** One model for several Bots in one request: the daemon writes every Bot or none of them. */
+  async patchBotsModel(body: PatchBotsModelRequest): Promise<PatchBotsModelResponse> {
+    return this.post<PatchBotsModelResponse>("/v1/bots/model", body);
   }
 
   async archiveBot(id: string): Promise<Bot> {

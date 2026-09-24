@@ -1891,3 +1891,220 @@ test("media file GETs serve ranges through workspace and attachment paths", asyn
     expect(await audio.text()).toBe("hij");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+describe("POST /v1/bots/model", () => {
+  type BotRow = {
+    id: string;
+    name: string;
+    model: string | null;
+    provider_id: string | null;
+    thinking_level: string | null;
+    archived_at: string | null;
+    updated_at: string;
+  };
+
+  /** Three Bots pinned to grk-4.6 on the default endpoint, a second endpoint serving code-pro. */
+  async function grokRoster(h: Harness) {
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        endpoint_base_url: "https://api.openai.com/v1",
+        endpoint_models: [
+          { name: "grk-4.6", thinking_levels: ["low", "high"] },
+          { name: "cheap-chat", thinking_levels: ["none", "low"] },
+        ],
+        endpoint_default_model: "grk-4.6",
+      }),
+    });
+    const provider = await fetch(`${h.origin}/v1/providers`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        name: "Other",
+        base_url: "https://api.deepseek.com/v1",
+        api_key: "sk-other",
+        models: [{ name: "code-pro", thinking_levels: ["medium", "high"] }],
+      }),
+    });
+    expect(provider.status).toBe(201);
+    const other = (await provider.json()) as { id: string };
+    const bots: BotRow[] = [];
+    for (const [name, level] of [
+      ["Ada", "high"],
+      ["Bea", "low"],
+      ["Cy", "low"],
+    ] as const) {
+      const created = await fetch(`${h.origin}/v1/bots`, {
+        method: "POST",
+        headers: auth(h, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ name, duties: "x", boundaries: "y", model: "grk-4.6", thinking_level: level }),
+      });
+      expect(created.status).toBe(201);
+      bots.push(((await created.json()) as { bot: BotRow }).bot);
+    }
+    return { other, bots, ids: bots.map((bot) => bot.id) };
+  }
+
+  function batch(h: Harness, body: unknown): Promise<Response> {
+    return fetch(`${h.origin}/v1/bots/model`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function roster(h: Harness): Promise<BotRow[]> {
+    const res = await fetch(`${h.origin}/v1/bots`, { headers: auth(h) });
+    return ((await res.json()) as { items: BotRow[] }).items;
+  }
+
+  async function listen(h: Harness) {
+    const ws = new WebSocket(`${h.origin.replace("http", "ws")}/v1/events`);
+    await new Promise<void>((resolve) => ws.addEventListener("open", () => resolve()));
+    const events: Array<Record<string, unknown>> = [];
+    ws.addEventListener("message", (ev) => {
+      events.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
+    });
+    ws.send(JSON.stringify({ type: "auth", token: h.token }));
+    await Bun.sleep(20);
+    return { events, close: () => ws.close() };
+  }
+
+  test("moves every listed Bot to another endpoint's model and level, one bot.upsert each", async () => {
+    const h = await start();
+    const { other, ids } = await grokRoster(h);
+    const outsider = h.store.createBot({ name: "Dee", duties: "x", boundaries: "y" }).bot;
+    const socket = await listen(h);
+    const res = await batch(h, { bot_ids: ids, model: "code-pro", provider_id: other.id, thinking_level: "medium" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bots: BotRow[] };
+    expect(body.bots.map((bot) => bot.id)).toEqual(ids);
+    for (const bot of body.bots) {
+      expect(bot).toMatchObject({ model: "code-pro", provider_id: other.id, thinking_level: "medium" });
+    }
+    await Bun.sleep(20);
+    const upserts = socket.events.filter((e) => e.event === "bot.upsert");
+    expect(upserts.map((e) => e.id).sort()).toEqual([...ids].sort());
+    for (const event of upserts) {
+      expect(event).toMatchObject({ model: "code-pro", thinking_level: "medium", deleted_at: null });
+    }
+    expect(upserts.some((e) => e.id === outsider.id)).toBe(false);
+    socket.close();
+    const after = await roster(h);
+    expect(after.find((bot) => bot.id === outsider.id)).toMatchObject({ model: null, thinking_level: null });
+  });
+
+  test("model null sets them all back to automatic", async () => {
+    const h = await start();
+    const { ids } = await grokRoster(h);
+    const res = await batch(h, { bot_ids: ids, model: null });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bots: BotRow[] };
+    for (const bot of body.bots) {
+      expect(bot).toMatchObject({ model: null, provider_id: null, thinking_level: null });
+    }
+  });
+
+  test("without thinking_level each Bot keeps a level the new model offers, else its default", async () => {
+    const h = await start();
+    const { other, ids } = await grokRoster(h);
+    const res = await batch(h, { bot_ids: ids, model: "code-pro" });
+    expect(res.status).toBe(200);
+    const [ada, bea, cy] = ((await res.json()) as { bots: BotRow[] }).bots;
+    expect(ada).toMatchObject({ model: "code-pro", provider_id: other.id, thinking_level: "high" });
+    // low is not a code-pro level, so both land on the same default the model offers.
+    expect(["medium", "high"]).toContain(bea!.thinking_level!);
+    expect(cy!.thinking_level).toBe(bea!.thinking_level);
+  });
+
+  test("a refused model, level or id changes nothing and publishes nothing", async () => {
+    const h = await start();
+    const { other, ids } = await grokRoster(h);
+    const before = await roster(h);
+    const socket = await listen(h);
+    const cases: Array<{ body: unknown; status: number; message: string }> = [
+      { body: { bot_ids: ids, model: "nope" }, status: 422, message: "model must be one of endpoint_models" },
+      {
+        body: { bot_ids: ids, model: "grk-4.6", provider_id: other.id },
+        status: 422,
+        message: "model must be one of the provider models",
+      },
+      {
+        body: { bot_ids: ids, model: "code-pro", thinking_level: "low" },
+        status: 422,
+        message: "thinking_level must be one the pinned model supports",
+      },
+      {
+        body: { bot_ids: ids, model: null, thinking_level: "high" },
+        status: 422,
+        message: "thinking_level needs a pinned model",
+      },
+      {
+        body: { bot_ids: [...ids, "missing"], model: "code-pro", provider_id: other.id },
+        status: 404,
+        message: "bot not found: missing",
+      },
+      { body: { bot_ids: [], model: null }, status: 422, message: "bot_ids must name at least one Bot" },
+      {
+        body: { bot_ids: [ids[0], ids[1], ids[0]], model: null },
+        status: 422,
+        message: `bot_ids names ${ids[0]} more than once`,
+      },
+      { body: { bot_ids: ids[0], model: null }, status: 422, message: "bot_ids must be an array of strings" },
+      { body: { bot_ids: ids }, status: 422, message: "model is required (null for automatic)" },
+      // Every mutation's body is read as an object before any route sees it.
+      { body: null, status: 422, message: "body must be an object" },
+    ];
+    for (const row of cases) {
+      const res = await batch(h, row.body);
+      expect(res.status).toBe(row.status);
+      expect(((await res.json()) as { error: { message: string } }).error.message).toBe(row.message);
+    }
+    await Bun.sleep(20);
+    expect(socket.events.filter((e) => e.event === "bot.upsert")).toEqual([]);
+    socket.close();
+    expect(await roster(h)).toEqual(before);
+  });
+
+  test("an archived Bot is changed along with the rest", async () => {
+    const h = await start();
+    const { other, ids } = await grokRoster(h);
+    const archived = await fetch(`${h.origin}/v1/bots/${ids[0]}/archive`, { method: "POST", headers: auth(h) });
+    expect(archived.status).toBe(200);
+    const res = await batch(h, { bot_ids: ids, model: "code-pro", provider_id: other.id, thinking_level: "high" });
+    expect(res.status).toBe(200);
+    const [first] = ((await res.json()) as { bots: BotRow[] }).bots;
+    expect(first).toMatchObject({ id: ids[0], model: "code-pro", thinking_level: "high" });
+    expect(first!.archived_at).not.toBeNull();
+  });
+
+  /** Like every other Bot response: up to 200 Bots at once must not carry their stored originals. */
+  test.skipIf(process.platform !== "darwin")("answers with the 128 px shown portraits, not the stored ones", async () => {
+    const h = await start();
+    const original = `data:image/png;base64,${noisePng(256, 256).toString("base64")}`;
+    const painters = ["Painter", "Sketcher"].map(
+      (name) => h.store.createBot({ name, duties: "d", boundaries: "b", avatar: original }).bot,
+    );
+    await warmDisplayAvatar(original);
+    const res = await batch(h, { bot_ids: painters.map((bot) => bot.id), model: null });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bots: Array<{ id: string; avatar: string }> };
+    expect(body.bots.map((bot) => bot.id)).toEqual(painters.map((bot) => bot.id));
+    for (const bot of body.bots) {
+      expect(bot.avatar).toMatch(/;rb-display=/);
+      expect(bot.avatar.length).toBeLessThan(original.length / 4);
+      expect(h.store.getBot(bot.id).avatar).toBe(original);
+    }
+  });
+
+  test("the single-Bot routes still own /v1/bots/:id", async () => {
+    const h = await start();
+    const { ids } = await grokRoster(h);
+    const got = await fetch(`${h.origin}/v1/bots/${ids[0]}`, { headers: auth(h) });
+    expect(got.status).toBe(200);
+    // `model` is not a Bot id: reading it is an ordinary missing Bot.
+    const notABot = await fetch(`${h.origin}/v1/bots/model`, { headers: auth(h) });
+    expect(notABot.status).toBe(404);
+  });
+});

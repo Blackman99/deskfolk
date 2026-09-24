@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
-import { aBot, aGroup, fakeRuntime } from "../test-fixtures.ts";
+import type { Snapshot } from "../snapshot.ts";
+import { aBot, aBotDirect, aGroup, fakeRuntime } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import GroupPane from "./GroupPane.svelte";
 import type { GroupDetailDraft } from "./group-edit.ts";
@@ -12,10 +13,11 @@ function aDraft(over: Partial<GroupDetailDraft> = {}): GroupDetailDraft {
   return reactive({ sessionId: "sess-1", name: "视频组", nameError: undefined, failed: false, pullPick: "", ...over }) as GroupDetailDraft;
 }
 
-function open(detail: GroupDetailDraft, selected = aGroup()) {
+function open(detail: GroupDetailDraft, selected = aGroup(), over: Partial<Snapshot> = {}) {
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "甲" }), aBot({ id: "bot-2", name: "乙" }), aBot({ id: "bot-3", name: "丙" })],
     sessions: [selected],
+    ...over,
   });
   const view = render(GroupPane, {
     runtime,
@@ -71,4 +73,54 @@ test("a two-Bot group offers no way to remove either of them", () => {
   const removes = [...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === t.detail.remove);
   expect(removes.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   close();
+});
+
+test("批量换模型 on the members card opens the dialog with this group's Bots ticked", () => {
+  const { host, runtime, close } = open(aDraft(), aThreeBotGroup());
+  const button = host.querySelector(".group-members-card .panel-card-head .btn-bulk-model");
+  expect(button?.textContent?.trim()).toBe(t.bulkModel.open);
+  click(button);
+  expect(runtime.calls.find((c) => c.name === "openBulkModel")?.args).toEqual([["bot-1", "bot-2", "bot-3"]]);
+  close();
+});
+
+/** A deleted Bot has nothing to change; it is left out rather than handed to the dialog. */
+test("a deleted member is not handed to the bulk model dialog", () => {
+  const { host, runtime, close } = open(aDraft(), aGroup(), { bots: [aBot({ id: "bot-1", name: "甲" })] });
+  click(host.querySelector(".btn-bulk-model"));
+  expect(runtime.calls.find((c) => c.name === "openBulkModel")?.args).toEqual([["bot-1"]]);
+  close();
+});
+
+test("a Bot↔Bot direct offers 批量换模型 for its two Bots too", () => {
+  const { host, runtime, close } = open(aDraft({ sessionId: "botbot-1" }), aBotDirect());
+  click(host.querySelector(".group-members-card .btn-bulk-model"));
+  expect(runtime.calls.find((c) => c.name === "openBulkModel")?.args).toEqual([["bot-1", "bot-2"]]);
+  close();
+});
+
+test("with no member left on the roster there is no 批量换模型", () => {
+  const { host, close } = open(aDraft(), aGroup(), { bots: [] });
+  expect(host.querySelector(".btn-bulk-model")).toBeNull();
+  close();
+});
+
+/** Remote writes carry each Bot's own revision and there is no bulk route over the link. */
+test("a remote link offers no 批量换模型", () => {
+  const runtime = fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "甲" }), aBot({ id: "bot-2", name: "乙" })],
+    sessions: [aGroup()],
+  });
+  runtime.remote = true;
+  const view = render(GroupPane, {
+    runtime,
+    selected: aGroup(),
+    t,
+    detail: aDraft(),
+    onOpenProfile: () => {},
+    onDeleteGroup: () => {},
+    onClearHistory: () => {},
+  });
+  expect(view.host.querySelector(".btn-bulk-model")).toBeNull();
+  view.close();
 });

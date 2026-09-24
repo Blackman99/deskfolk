@@ -1520,6 +1520,80 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  test("moving Bots to another model mid-turn keeps that turn on its model; the next turn takes the new one", async () => {
+    const seen: string[] = [];
+    let reachFirstHop!: () => void;
+    const firstHopReached = new Promise<void>((resolve) => {
+      reachFirstHop = resolve;
+    });
+    let releaseFirstHop!: () => void;
+    const firstHopHeld = new Promise<void>((resolve) => {
+      releaseFirstHop = resolve;
+    });
+    const fixture = await startFixture(async ({ body }) => {
+      seen.push(String(body.model));
+      if (seen.length === 1) {
+        reachFirstHop();
+        await firstHopHeld;
+        return sse(toolCallChunks("call_1", "read_skill", '{"name":"nothing-here"}'));
+      }
+      return sse(textChunks("ok"));
+    });
+    const h = await startApi();
+    mkdirSync("/tmp/real-bot-ws", { recursive: true });
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h),
+      body: JSON.stringify({
+        workspace_path: "/tmp/real-bot-ws",
+        endpoint_base_url: fixture.origin,
+        endpoint_api_key: "sk-test",
+        endpoint_models: ["grk-4.6", "grk-5"],
+        endpoint_default_model: "grk-4.6",
+      }),
+    });
+    const ids: string[] = [];
+    let sessionId = "";
+    for (const name of ["Writer", "Reader"]) {
+      const created = await fetch(`${h.origin}/v1/bots`, {
+        method: "POST",
+        headers: auth(h),
+        body: JSON.stringify({ name, duties: "write", boundaries: "stay", model: "grk-4.6" }),
+      });
+      const body = (await created.json()) as { bot: { id: string }; direct_session: { id: string } };
+      ids.push(body.bot.id);
+      sessionId ||= body.direct_session.id;
+    }
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "go" }),
+    });
+    await firstHopReached;
+    const moved = await fetch(`${h.origin}/v1/bots/model`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ bot_ids: ids, model: "grk-5" }),
+    });
+    expect(moved.status).toBe(200);
+    releaseFirstHop();
+    const first = await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    // The turn picked its model when it started; the hop after the switch stays on it.
+    expect(seen).toEqual(["grk-4.6", "grk-4.6"]);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "again" }),
+    });
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.status === "completed" && e.id !== first.id,
+    );
+    expect(seen).toEqual(["grk-4.6", "grk-4.6", "grk-5"]);
+    sub.close();
+  });
+
   test("no configured model inserts the no_model system line and completes", async () => {
     const fixture = await startFixture(() => sse(textChunks("should not run")));
     const h = await startApi();

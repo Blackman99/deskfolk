@@ -93,6 +93,7 @@ function layers(over: Partial<LayerState> = {}): LayerState {
   return {
     createMenuOpen: false,
     dangerConfirm: false,
+    bulkModelOpen: false,
     createBotOpen: false,
     createGroupOpen: false,
     providerEditor: false,
@@ -146,6 +147,11 @@ test("Back closes the innermost thing on top", () => {
   expect(topLayer(layers({ searchPageOpen: true, threadOpen: true }))).toBe("search-page");
   expect(topLayer(layers({ searchPageOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ createMenuOpen: true, settingsOpen: true }))).toBe("create-menu");
+});
+
+test("the bulk model dialog goes at Back before the session drawer it can sit on", () => {
+  expect(topLayer(layers({ bulkModelOpen: true, sessionSettingsOpen: true }))).toBe("bulk-model");
+  expect(topLayer(layers({ bulkModelOpen: true, dangerConfirm: true }))).toBe("danger");
 });
 
 test("the phone's tools menu is a menu: it goes before anything Back would navigate to", () => {

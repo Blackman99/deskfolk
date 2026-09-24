@@ -4,8 +4,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MEMORY_AGE_MAX, MEMORY_DIGEST_LIMIT, memoryEntryCost } from "./context";
+import { HttpError } from "./errors";
 import { SCHEMA_SQL } from "./schema";
 import { Store } from "./store";
+import { BOTS_MODEL_BATCH_MAX } from "./store/bots";
 import {
   MEMORY_BODY_MAX,
   MEMORY_MAX_PER_BOT,
@@ -1358,5 +1360,201 @@ describe("memory", () => {
     expect(index?.name).toBe("memories_bot_subject");
     second.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("several Bots moved to one model at once", () => {
+  /** Two endpoints: the default one serving grk-4.6, and another serving code-pro. */
+  async function rosterOnGrok() {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const home = await store.createProvider({
+      name: "Home",
+      base_url: "https://api.openai.com/v1",
+      api_key: "sk-home",
+      models: [
+        { name: "grk-4.6", thinking_levels: ["low", "high"] },
+        { name: "cheap-chat", thinking_levels: ["none", "low"] },
+      ],
+      default_model: "grk-4.6",
+    });
+    const other = await store.createProvider({
+      name: "Other",
+      base_url: "https://api.deepseek.com/v1",
+      api_key: "sk-other",
+      models: [{ name: "code-pro", thinking_levels: ["medium", "high"] }],
+    });
+    const pinned = (name: string, thinking_level: string) =>
+      store.createBot({ name, duties: "x", boundaries: "y", model: "grk-4.6", thinking_level }).bot;
+    const a = pinned("Ada", "high");
+    const b = pinned("Bea", "low");
+    const c = pinned("Cy", "low");
+    const bystander = store.createBot({ name: "Dee", duties: "x", boundaries: "y" }).bot;
+    return { store, home, other, a, b, c, bystander };
+  }
+
+  function refusal(run: () => unknown): { status: number; message: string } {
+    try {
+      run();
+    } catch (error) {
+      if (error instanceof HttpError) return { status: error.status, message: error.message };
+      throw error;
+    }
+    throw new Error("expected the batch to be refused");
+  }
+
+  function revisionCount(store: Store, botId: string): number {
+    return store.listProfileRevisions(botId).length;
+  }
+
+  test("every listed Bot lands on another endpoint's model and level, in the order given", async () => {
+    const { store, home, other, a, b, c, bystander } = await rosterOnGrok();
+    expect(a.provider_id).toBe(home.id);
+    const before = revisionCount(store, a.id);
+    const moved = store.patchBotsModel([c.id, a.id, b.id], {
+      model: "code-pro",
+      provider_id: other.id,
+      thinking_level: "medium",
+    });
+    expect(moved.map((bot) => bot.id)).toEqual([c.id, a.id, b.id]);
+    for (const bot of [a, b, c]) {
+      expect(store.getBot(bot.id)).toMatchObject({
+        model: "code-pro",
+        provider_id: other.id,
+        thinking_level: "medium",
+        name: bot.name,
+        duties: bot.duties,
+        avatar: bot.avatar,
+      });
+    }
+    expect(store.getBot(bystander.id)).toEqual(bystander);
+    // Same as a single model-only PATCH: each Bot gets one revision row for the change.
+    expect(revisionCount(store, a.id)).toBe(before + 1);
+    store.close();
+  });
+
+  test("model null puts them all back on automatic, endpoint and level with it", async () => {
+    const { store, home, a, b, c } = await rosterOnGrok();
+    store.patchBotsModel([a.id, b.id, c.id], { model: null });
+    for (const bot of [a, b, c]) {
+      expect(store.getBot(bot.id)).toMatchObject({ model: null, provider_id: null, thinking_level: null });
+    }
+    // Automatic clears the endpoint even when one came with it.
+    store.patchBotsModel([a.id], { model: "grk-4.6", provider_id: home.id, thinking_level: "high" });
+    store.patchBotsModel([a.id], { model: null, provider_id: home.id });
+    expect(store.getBot(a.id)).toMatchObject({ model: null, provider_id: null, thinking_level: null });
+    store.close();
+  });
+
+  test("without a level each Bot keeps one the new model offers, else that model's default", async () => {
+    const { store, other, a, b } = await rosterOnGrok();
+    // The rule a single PATCH follows, for comparison.
+    const single = store.createBot({
+      name: "Solo",
+      duties: "x",
+      boundaries: "y",
+      model: "grk-4.6",
+      thinking_level: "low",
+    }).bot;
+    const fallback = store.patchBot(single.id, { model: "code-pro", provider_id: other.id }).thinking_level;
+    expect(["medium", "high"]).toContain(fallback!);
+    // No endpoint given: it comes from the model, the way creating a Bot finds it.
+    store.patchBotsModel([a.id, b.id], { model: "code-pro" });
+    expect(store.getBot(a.id)).toMatchObject({ model: "code-pro", provider_id: other.id, thinking_level: "high" });
+    expect(store.getBot(b.id)).toMatchObject({ model: "code-pro", provider_id: other.id, thinking_level: fallback });
+    store.close();
+  });
+
+  test("a model or level the checks refuse changes none of them", async () => {
+    const { store, home, other, a, b, c } = await rosterOnGrok();
+    const ids = [a.id, b.id, c.id];
+    const snapshot = () => ids.map((id) => store.getBot(id));
+    const revisions = () => ids.map((id) => revisionCount(store, id));
+    const before = snapshot();
+    const beforeRevisions = revisions();
+    expect(refusal(() => store.patchBotsModel(ids, { model: "nope" }))).toEqual({
+      status: 422,
+      message: "model must be one of endpoint_models",
+    });
+    expect(refusal(() => store.patchBotsModel(ids, { model: "grk-4.6", provider_id: other.id }))).toEqual({
+      status: 422,
+      message: "model must be one of the provider models",
+    });
+    expect(
+      refusal(() => store.patchBotsModel(ids, { model: "cheap-chat", provider_id: home.id, thinking_level: "high" })),
+    ).toEqual({ status: 422, message: "thinking_level must be one the pinned model supports" });
+    expect(refusal(() => store.patchBotsModel(ids, { model: null, thinking_level: "high" }))).toEqual({
+      status: 422,
+      message: "thinking_level needs a pinned model",
+    });
+    expect(snapshot()).toEqual(before);
+    expect(revisions()).toEqual(beforeRevisions);
+    store.close();
+  });
+
+  test("an unknown or deleted Bot rolls back the ones already written", async () => {
+    const { store, other, a, b, bystander } = await rosterOnGrok();
+    const before = [store.getBot(a.id), store.getBot(b.id)];
+    const beforeRevisions = [revisionCount(store, a.id), revisionCount(store, b.id)];
+    // a and b are written inside the transaction before the missing id is reached.
+    expect(
+      refusal(() => store.patchBotsModel([a.id, b.id, "missing"], { model: "code-pro", provider_id: other.id })),
+    ).toEqual({ status: 404, message: "bot not found: missing" });
+    store.deleteBot(bystander.id);
+    expect(refusal(() => store.patchBotsModel([a.id, bystander.id], { model: null }))).toEqual({
+      status: 404,
+      message: `bot not found: ${bystander.id}`,
+    });
+    expect([store.getBot(a.id), store.getBot(b.id)]).toEqual(before);
+    expect([revisionCount(store, a.id), revisionCount(store, b.id)]).toEqual(beforeRevisions);
+    store.close();
+  });
+
+  test("an empty, repeated, malformed or oversized list is refused, and so is a missing model", async () => {
+    const { store, a, b } = await rosterOnGrok();
+    const before = store.getBot(a.id);
+    expect(refusal(() => store.patchBotsModel([], { model: null }))).toEqual({
+      status: 422,
+      message: "bot_ids must name at least one Bot",
+    });
+    expect(refusal(() => store.patchBotsModel([a.id, b.id, a.id], { model: null }))).toEqual({
+      status: 422,
+      message: `bot_ids names ${a.id} more than once`,
+    });
+    expect(
+      refusal(() => store.patchBotsModel([a.id, 7] as unknown as string[], { model: null })),
+    ).toEqual({ status: 422, message: "bot_ids must be an array of strings" });
+    expect(
+      refusal(() => store.patchBotsModel(undefined as unknown as string[], { model: null })),
+    ).toEqual({ status: 422, message: "bot_ids must be an array of strings" });
+    const tooMany = Array.from({ length: BOTS_MODEL_BATCH_MAX + 1 }, (_, i) => `bot-${i}`);
+    expect(refusal(() => store.patchBotsModel(tooMany, { model: null }))).toEqual({
+      status: 422,
+      message: `bot_ids can name at most ${BOTS_MODEL_BATCH_MAX} Bots`,
+    });
+    // Leaving the model out is not "automatic": that has to be asked for with null.
+    expect(
+      refusal(() => store.patchBotsModel([a.id], {} as unknown as { model: string | null })),
+    ).toEqual({ status: 422, message: "model is required (null for automatic)" });
+    expect(store.getBot(a.id)).toEqual(before);
+    store.close();
+  });
+
+  test("an archived Bot is changed too and keeps the pin once restored", async () => {
+    const { store, other, a, b } = await rosterOnGrok();
+    store.archiveBot(a.id);
+    const moved = store.patchBotsModel([a.id, b.id], {
+      model: "code-pro",
+      provider_id: other.id,
+      thinking_level: "high",
+    });
+    expect(moved[0]).toMatchObject({ id: a.id, model: "code-pro", thinking_level: "high" });
+    expect(moved[0]!.archived_at).not.toBeNull();
+    expect(store.restoreBot(a.id)).toMatchObject({
+      model: "code-pro",
+      provider_id: other.id,
+      thinking_level: "high",
+      archived_at: null,
+    });
+    store.close();
   });
 });

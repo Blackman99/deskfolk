@@ -153,6 +153,65 @@ export function patchBot(
   return getBot(ctx, id);
 }
 
+/** Most Bots one batch model change may name; past this it is a mistake, not a roster. */
+export const BOTS_MODEL_BATCH_MAX = 200;
+
+/**
+ * One model for several Bots at once: each Bot goes through `patchBot` with only the pin fields, so
+ * the rules (and the profile revision a single PATCH writes) are the same, and the whole list shares
+ * one transaction so any failure — an unknown id, a model or level the checks refuse — changes none.
+ *
+ * The batch names one target, so a missing `provider_id` means none rather than each Bot's own: the
+ * endpoint comes from the model the way it does when a Bot is created, and `model: null` puts every
+ * Bot back on automatic with no endpoint. A missing `thinking_level` keeps each Bot's level where the
+ * new model offers it and otherwise lands on that model's default.
+ */
+export function patchBotsModel(
+  ctx: StoreContext,
+  botIds: readonly string[],
+  patch: { model: string | null; provider_id?: string | null; thinking_level?: ThinkingLevel | null },
+  actor: string = USER_MEMBER,
+): Bot[] {
+  const ids = requireBotIds(botIds);
+  if (patch.model === undefined) {
+    throw new HttpError(422, "invalid_args", "model is required (null for automatic)");
+  }
+  // Automatic is automatic everywhere: no model means no endpoint either, whatever came with it.
+  const automatic = patch.model === null || (typeof patch.model === "string" && patch.model.trim() === "");
+  const pin: { model: string | null; provider_id: string | null; thinking_level?: ThinkingLevel | null } = {
+    model: patch.model,
+    provider_id: automatic ? null : (patch.provider_id ?? null),
+  };
+  if (patch.thinking_level !== undefined) pin.thinking_level = patch.thinking_level;
+  return ctx.db.transaction(() =>
+    ids.map((id) => {
+      const row = ctx.db
+        .query<{ id: string }, [string]>(`SELECT id FROM bots WHERE id = ? AND deleted_at IS NULL`)
+        .get(id);
+      if (!row) throw new HttpError(404, "not_found", `bot not found: ${id}`);
+      return patchBot(ctx, id, pin, actor);
+    }),
+  )();
+}
+
+function requireBotIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((id) => typeof id !== "string")) {
+    throw new HttpError(422, "invalid_args", "bot_ids must be an array of strings");
+  }
+  if (value.length === 0) {
+    throw new HttpError(422, "invalid_args", "bot_ids must name at least one Bot");
+  }
+  if (value.length > BOTS_MODEL_BATCH_MAX) {
+    throw new HttpError(422, "invalid_args", `bot_ids can name at most ${BOTS_MODEL_BATCH_MAX} Bots`);
+  }
+  const seen = new Set<string>();
+  for (const id of value as string[]) {
+    if (seen.has(id)) throw new HttpError(422, "invalid_args", `bot_ids names ${id} more than once`);
+    seen.add(id);
+  }
+  return value as string[];
+}
+
 export function archiveBot(ctx: StoreContext, id: string): Bot {
   const row = aliveBot(ctx, id);
   if (row.archived_at) return toBot(row);

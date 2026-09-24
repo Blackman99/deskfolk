@@ -407,7 +407,7 @@ test('desktop footer exposes three labelled entries and dispatches each tool', (
     click(footer[1]);
     const items = [...host.querySelectorAll('.tools-menu-item')];
     expect(items.map((item) => item.textContent?.trim())).toEqual([
-      t.routines.title, spendCopyFor('zh').open, t.terminal.newTab, t.sidebar.archivedSessions,
+      t.routines.title, spendCopyFor('zh').open, t.terminal.newTab, t.bulkModel.open, t.sidebar.archivedSessions,
     ]);
     expect(host.querySelector('[role="separator"]')).not.toBeNull();
     click(items[index]);
@@ -426,12 +426,12 @@ test('desktop tools support arrows, Home, End, Escape, Tab and outside dismissal
   const items = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')];
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'ArrowUp');
-  expect(document.activeElement).toBe(items[3]);
-  press(items[3], 'ArrowDown');
+  expect(document.activeElement).toBe(items[4]);
+  press(items[4], 'ArrowDown');
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'End');
-  expect(document.activeElement).toBe(items[3]);
-  press(items[3], 'Home');
+  expect(document.activeElement).toBe(items[4]);
+  press(items[4], 'Home');
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'Escape');
   expect(host.querySelector('.tools-menu')).toBeNull();
@@ -551,13 +551,102 @@ test("on a phone the calendar and the terminal live behind one button", () => {
     expect(items.indexOf(t.calendar.open)).toBe(0);
     expect(items.indexOf(spendCopyFor("zh").open)).toBe(1);
     expect(items.indexOf(t.terminal.title)).toBe(2);
-    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(3);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(4);
 
     const terminalItem = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')].find((item) => item.textContent?.includes(t.terminal.title));
     click(terminalItem);
     expect(runtime.calls.some((call) => call.name === 'openTerminal')).toBe(true);
     // Picking one closes the menu rather than leaving it hanging over the list.
     expect(host.querySelector('.tools-menu')).toBeNull();
+    close();
+  });
+});
+
+/** The roster-wide entry: every Bot is listed in the dialog, none of them ticked for you. */
+test("the Bot section's 批量换模型 opens the dialog with nothing ticked", () => {
+  const { host, runtime, close } = open([]);
+  const button = host.querySelector(".ghead-bulk-model") as HTMLButtonElement;
+  expect(button.getAttribute("aria-label")).toBe(t.bulkModel.open);
+  click(button);
+  expect(runtime.calls.find((c) => c.name === "openBulkModel")?.args).toEqual([]);
+  close();
+});
+
+test("an empty roster offers no 批量换模型, in the header or the tools menu", () => {
+  const runtime = fakeRuntime({ bots: [], sessions: [] });
+  const view = render(Sidebar, {
+    runtime,
+    t,
+    selected: null,
+    pinnedSessionIds: [],
+    workspaceOpen: false,
+    contextMenuSessionId: null,
+    onOpenContextMenu: () => {},
+    onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
+    onOpenSpend: () => {},
+    onNewTerminal: () => {},
+    onOpenSettings: () => {},
+    onCreateBot: () => {},
+    onCreateGroup: () => {},
+    onOpenArtifact: () => {},
+  });
+  expect(view.host.querySelector(".ghead-bulk-model")).toBeNull();
+  click(view.host.querySelector(".tools-entry"));
+  expect(view.host.querySelector(".tools-menu")).not.toBeNull();
+  expect(view.host.querySelector(".tools-menu-bulk-model")).toBeNull();
+  view.close();
+});
+
+test("a remote link offers no 批量换模型: it has no bulk route", () => {
+  const { host, runtime, close } = open([], null, true);
+  flushSync(() => {
+    runtime.remote = true;
+  });
+  expect(host.querySelector(".ghead-bulk-model")).toBeNull();
+  click(host.querySelector(".tools-entry"));
+  expect(host.querySelector(".tools-menu")).not.toBeNull();
+  expect(host.querySelector(".tools-menu-bulk-model")).toBeNull();
+  close();
+});
+
+test("a wider window's + list is still the two +s: 批量换模型 sits beside them, not among them", () => {
+  const { host, close } = open([]);
+  const adds = [...host.querySelectorAll<HTMLButtonElement>(".ghead .add")];
+  expect(adds.map((b) => b.title)).toEqual([t.sidebar.addGroup, t.sidebar.addBot]);
+  expect(host.querySelector(".ghead-bulk-model")).not.toBeNull();
+  close();
+});
+
+test("the desktop footer's tools menu has 批量换模型 too, after the tools and before the archive", () => {
+  const { host, runtime, close } = open([], null, true);
+  const toggle = host.querySelector<HTMLButtonElement>(".foot .tools-entry")!;
+  click(toggle);
+  const items = [...host.querySelectorAll(".tools-menu-item")].map((el) => el.textContent?.trim());
+  expect(items.indexOf(t.bulkModel.open)).toBe(items.indexOf(t.terminal.newTab) + 1);
+  expect(items.indexOf(t.sidebar.archivedSessions)).toBe(items.length - 1);
+  click(host.querySelector(".tools-menu-bulk-model"));
+  expect(runtime.calls.find((c) => c.name === "openBulkModel")?.args).toEqual([]);
+  // Like the other tools, picking it closes the menu and hands focus back to the toggle.
+  expect(host.querySelector(".tools-menu")).toBeNull();
+  expect(document.activeElement).toBe(toggle);
+  close();
+});
+
+test("on a phone 批量换模型 is in the tools menu, not the floating +", () => {
+  withPhone(() => {
+    const { host, runtime, close } = open([], null, true);
+    click(host.querySelector(".tools-entry"));
+    const items = [...host.querySelectorAll(".tools-menu-item")].map((el) => el.textContent?.trim());
+    expect(items.indexOf(t.bulkModel.open)).toBe(items.indexOf(t.terminal.title) + 1);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(items.length - 1);
+    click(host.querySelector(".tools-menu-bulk-model"));
+    expect(runtime.calls.find((c) => c.name === "openBulkModel")?.args).toEqual([]);
+    expect(host.querySelector(".tools-menu")).toBeNull();
+    // The floating + is for creating, so it is not asked a third question.
+    click(host.querySelector(".fab"));
+    const fabItems = [...host.querySelectorAll(".fab-menu-item")].map((b) => b.textContent?.trim());
+    expect(fabItems).toEqual([t.sidebar.addBot, t.sidebar.addGroup]);
     close();
   });
 });

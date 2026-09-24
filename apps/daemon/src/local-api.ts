@@ -12,6 +12,8 @@ import {
   type PatchRoutineRequest,
   type CreateBotRequest,
   type PatchBotRequest,
+  type PatchBotsModelRequest,
+  type PatchBotsModelResponse,
   type RuntimeResponse,
   type WsAuthMessage,
   type RuntimeSnapshot,
@@ -1076,6 +1078,22 @@ function dispatch(
       ...sessionUpsertFields(created.direct_session),
     });
     return jsonResponse({ ...created, bot: displayBot(created.bot) }, 201, null);
+  }
+
+  // Before the `/v1/bots/:id` routes, so `model` is never read as a Bot id.
+  if (method === "POST" && path === "/v1/bots/model") {
+    const body = (input.body) as PatchBotsModelRequest;
+    const bots = store.patchBotsModel(body.bot_ids, {
+      model: body.model,
+      provider_id: body.provider_id,
+      thinking_level: body.thinking_level,
+    });
+    const at = occurred();
+    for (const bot of bots) {
+      publish({ event: "bot.upsert", occurred_at: at, ...bot, deleted_at: null });
+    }
+    const response: PatchBotsModelResponse = { bots: bots.map(displayBot) };
+    return jsonResponse(response, 200, null);
   }
 
   params = matchPath(path, "/v1/bots/:id/archive");

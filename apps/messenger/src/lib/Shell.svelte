@@ -69,6 +69,7 @@
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
+	import BulkModelDialog from './panels/BulkModelDialog.svelte';
 	import GroupIdentity from './panels/GroupIdentity.svelte';
 	import GroupPane from './panels/GroupPane.svelte';
 	import type { GroupDetailDraft } from './panels/group-edit.ts';
@@ -242,6 +243,7 @@
 			toolsMenuOpen,
 			createMenuOpen,
 			dangerConfirm: dangerConfirm !== null,
+			bulkModelOpen: runtime.bulkModel !== null,
 			createBotOpen: runtime.createBotOpen,
 			createGroupOpen: runtime.createGroupOpen,
 			providerEditor: providerEditor !== null,
@@ -266,6 +268,9 @@
 			case 'danger':
 				// A running action is not dismissible; swallowing Back is the point.
 				if (escapeDismissesDanger) dismissDangerConfirm();
+				return true;
+			case 'bulk-model':
+				runtime.closeBulkModel();
 				return true;
 			case 'create-bot':
 				runtime.createBotOpen = false;
@@ -1511,7 +1516,7 @@
 		!runtime.spendOpen &&
 		// The terminal is a full screen here, and the bar would sit on top of its key row.
 		!runtime.terminalOpen &&
-		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
+		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.bulkModel && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !dangerConfirm &&
 		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
 	);
@@ -1538,6 +1543,9 @@
 				createMenuOpen = false;
 			} else if (escapeDismissesDanger) {
 				dismissDangerConfirm();
+			} else if (runtime.bulkModel) {
+				// It can sit on the session drawer, so it goes before the drawer does.
+				runtime.closeBulkModel();
 			} else if (runtime.createBotOpen) {
 				runtime.createBotOpen = false;
 			} else if (runtime.createGroupOpen) {
@@ -2236,6 +2244,15 @@
 			bots={visibleBots}
 			{t}
 			onClose={() => (runtime.createGroupOpen = false)}
+		/>
+	{/if}
+	{#if runtime.bulkModel}
+		<BulkModelDialog
+			{runtime}
+			{t}
+			modelOptions={availableModelOptions}
+			preselect={runtime.bulkModel.preselect}
+			onClose={() => runtime.closeBulkModel()}
 		/>
 	{/if}
 

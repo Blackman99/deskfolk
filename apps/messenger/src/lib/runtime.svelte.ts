@@ -9,6 +9,7 @@ import {
   type SequencedEvent,
   type CreateBotRequest,
   type CreateGroupRequest,
+  type PatchBotsModelRequest,
   type PatchMemoryRequest,
   type CreateProviderRequest,
   type PatchProviderRequest,
@@ -276,6 +277,8 @@ export class MessengerRuntime {
   settingsOpen = $state(false);
   createBotOpen = $state(false);
   createGroupOpen = $state(false);
+  /** The bulk model dialog, with the Bots it opens ticked; null while it is closed. */
+  bulkModel = $state<{ preselect: string[] } | null>(null);
   sessionSettingsOpen = $state(false);
   /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
   traceTaskId = $state<string | null>(null);
@@ -482,6 +485,7 @@ export class MessengerRuntime {
   openCreateBot(): void {
     this.settingsOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -492,6 +496,7 @@ export class MessengerRuntime {
   openCreateGroup(): void {
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -506,6 +511,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.threadOpen = false;
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -671,6 +677,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.threadOpen = false;
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -696,6 +703,7 @@ export class MessengerRuntime {
   openSettings(): void {
     this.createBotOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -707,6 +715,7 @@ export class MessengerRuntime {
     if (this.toPane({ kind: "workspace", selected: selected ?? null })) return;
     this.settingsOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.routinesOpen = false;
     this.spendOpen = false;
@@ -727,6 +736,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.spendOpen = false;
@@ -748,6 +758,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -765,12 +776,28 @@ export class MessengerRuntime {
     this.spendOpen = false;
   }
 
+  /**
+   * Opens over whatever is up, the session drawer included, so a group's panel is still there when
+   * the dialog closes. The other sheets go, as they do for each other.
+   */
+  openBulkModel(preselect: readonly string[] = []): void {
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createGroupOpen = false;
+    this.bulkModel = { preselect: [...preselect] };
+  }
+
+  closeBulkModel(): void {
+    this.bulkModel = null;
+  }
+
   /** Restore settings, the session drawer, or the workspace overlay from the URL. */
   applyOverlay(overlay: UrlOverlay): void {
     this.profileNavigation++;
     if (overlay.kind === "settings") {
       this.createBotOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.routinesOpen = false;
@@ -782,6 +809,7 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createBotOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.threadOpen = false;
       this.workspaceOpen = false;
       this.routinesOpen = false;
@@ -794,6 +822,7 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createBotOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.threadOpen = false;
       this.workspaceOpen = false;
       this.routinesOpen = false;
@@ -805,6 +834,7 @@ export class MessengerRuntime {
     if (overlay.kind === "workspace") {
       this.settingsOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.closeSessionSettings();
       this.clearTrace();
       this.routinesOpen = false;
@@ -817,6 +847,7 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createBotOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.threadOpen = false;
       this.closeSessionSettings();
       this.workspaceOpen = false;
@@ -830,6 +861,7 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createBotOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.spendOpen = false;
@@ -846,6 +878,7 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createBotOpen = false;
       this.createGroupOpen = false;
+      this.bulkModel = null;
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.routinesOpen = false;
@@ -870,6 +903,7 @@ export class MessengerRuntime {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
+    this.bulkModel = null;
     this.closeSessionSettings();
     this.clearTrace();
     this.workspaceOpen = false;
@@ -1361,6 +1395,27 @@ export class MessengerRuntime {
     if (!api) return null;
     try {
       await api.patchBot(id, body);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  /**
+   * Several Bots onto one model at once. The daemon writes all of them or none, so a refusal leaves
+   * the snapshot as it was and the caller keeps what you picked; the changed Bots come back as
+   * `bot.upsert` events like any other edit.
+   *
+   * Local only: a remote link has no bulk route (each remote Bot write carries its own revision), so
+   * the entry points are hidden there. Should one be reached anyway, this refuses rather than sends
+   * nothing and reads as done.
+   */
+  async patchBotsModel(body: PatchBotsModelRequest): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api) return null;
+    if (api.kind !== "local") return new ApiError(0, "capability_unavailable", "Not available over a remote link");
+    try {
+      await api.patchBotsModel(body);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);

@@ -431,6 +431,23 @@ export type PatchBotRequest = {
   thinking_level?: ThinkingLevel | null;
 };
 
+/**
+ * One model for several Bots at once (`POST /v1/bots/model`): the same model, endpoint and thinking
+ * level as a single Bot's patch, applied to every id or to none. `model: null` sets them all back to
+ * automatic, which clears the endpoint and level too. Omitting `thinking_level` keeps each Bot's level
+ * where the new model offers it and otherwise lands on that model's default.
+ */
+export type PatchBotsModelRequest = {
+  bot_ids: string[];
+  model: string | null;
+  provider_id?: string | null;
+  thinking_level?: ThinkingLevel | null;
+};
+
+export type PatchBotsModelResponse = {
+  bots: Bot[];
+};
+
 export type CreateBotResponse = {
   bot: Bot;
   direct_session: SessionDetail;

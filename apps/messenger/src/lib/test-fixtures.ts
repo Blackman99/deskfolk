@@ -364,6 +364,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     createBot: record("createBot"),
     createGroup: record("createGroup"),
     patchBot: record("patchBot"),
+    patchBotsModel: record("patchBotsModel"),
     patchSession: record("patchSession"),
     addMember: record("addMember"),
     removeMember: record("removeMember"),
@@ -411,6 +412,8 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     closeProfile: record("closeProfile"),
     openCreateBot: record("openCreateBot"),
     openCreateGroup: record("openCreateGroup"),
+    openBulkModel: record("openBulkModel"),
+    closeBulkModel: record("closeBulkModel"),
     startTerminal: async (...args: unknown[]) => {
       calls.push({ name: "startTerminal", args });
       return null;
@@ -445,6 +448,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     sessionSettingsOpen: false,
     createBotOpen: false,
     createGroupOpen: false,
+    bulkModel: null,
     // The real runtime always has one; a stub without it would hide a broken wiring rather than
     // fail on it, and the transcript reads `runtime.activity` while a turn is live.
     activity: new CommandActivity(),

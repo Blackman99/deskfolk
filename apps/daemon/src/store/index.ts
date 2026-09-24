@@ -201,6 +201,7 @@ export class Store {
   readonly getBot = this.bind(bots.getBot);
   readonly createBot = this.bind(bots.createBot);
   readonly patchBot = this.bind(bots.patchBot);
+  readonly patchBotsModel = this.bind(bots.patchBotsModel);
   readonly archiveBot = this.bind(bots.archiveBot);
   readonly restoreBot = this.bind(bots.restoreBot);
   readonly deleteBot = this.bind(bots.deleteBot);
