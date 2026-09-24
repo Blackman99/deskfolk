@@ -824,6 +824,114 @@ test('the file tree lists what the message handed over, not just what the job re
   expect(files).toEqual(['plan.md', 'C01_END.png', 'C01_START.png']);
 });
 
+/**
+ * The tree keeps the message the preview was opened from while you walk to other files. A file
+ * that message never handed over hangs on whichever Bot message did — and on none, when no Bot did.
+ */
+test('a file walked to in the tree hangs on the message that handed it over, not the one the pane was opened from', async () => {
+  const session = aGroup({ id: 'g1', name: 'Team' });
+  const byA = aMessage({ id: 'm-a', session_id: session.id, kind: 'bot', author: 'bot-a', task_id: 'task-1', created_at: '2026-09-23T00:00:00.000Z', body: '初稿\n附件：work/draft.txt' });
+  const upload = aMessage({ id: 'm-me', session_id: session.id, task_id: 'task-1', created_at: '2026-09-23T00:01:00.000Z', attachments: [anAttachment({ id: 'att-csv', message_id: 'm-me', workspace_relpath: 'work/notes.txt', original_filename: 'notes.txt', mime: 'text/plain' })] });
+  const byB = aMessage({ id: 'm-b', session_id: session.id, kind: 'bot', author: 'bot-b', task_id: 'task-1', created_at: '2026-09-23T00:02:00.000Z', attachments: [anAttachment({ id: 'att-review', message_id: 'm-b', workspace_relpath: 'work/review.txt', original_filename: 'review.txt', mime: 'text/plain' })] });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: 'bot-a', name: 'Alpha' }), aBot({ id: 'bot-b', name: 'Beta' })], sessions: [session], messages: [byA, upload, byB],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id, previewRelpath: 'work/review.txt', previewMessageId: 'm-b' }));
+  runtime.client = {
+    kind: 'local',
+    taskArtifacts: async () => ({ id: 'task-1', dir: 'work', title: 'review', closed_at: null, items: [] }),
+    getWorkspaceFileBlob: async () => new Blob(['text'], { type: 'text/plain' }),
+    getAttachmentBlob: async () => new Blob(['text'], { type: 'text/plain' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  const hint = () => host.querySelector('[data-annotation-hint]')?.getAttribute('data-annotation-hint');
+  await settle();
+  await settle();
+  expect(hint()).toBe('');
+  // Your own upload, opened from the same tree: no Bot handed it over.
+  runtime.previewRelpath = 'work/notes.txt';
+  await settle();
+  await settle();
+  expect(runtime.previewMessageId).toBe('m-b');
+  expect(hint()).toBe('no-target');
+  // Alpha's file can be annotated: it goes to Alpha's message.
+  runtime.previewRelpath = 'work/draft.txt';
+  await settle();
+  await settle();
+  expect(hint()).toBe('');
+});
+
+/**
+ * On the workbench the conversation's preview is a pane, and it annotates like the narrow one: what
+ * a Bot handed over hangs on that Bot's message, your own upload on nothing, and a card in this
+ * conversation asking for an annotation opens the list on it.
+ */
+test('a preview in a workbench pane annotates the way the narrow one does', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const session = aDirect();
+  const delivery = aMessage({ id: 'm-bot', session_id: session.id, kind: 'bot', author: 'bot-1', task_id: 'task-1', body: '写好了\n附件：work/draft.txt' });
+  const upload = aMessage({ id: 'm-me', session_id: session.id, attachments: [anAttachment({ id: 'att-notes', message_id: 'm-me', workspace_relpath: 'work/notes.txt', original_filename: 'notes.txt', mime: 'text/plain' })] });
+  const annotation = {
+    id: 'ann-1', status: 'open', relpath: 'work/draft.txt', anchor_kind: 'text_range',
+    anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 5, quote: 'text', prefix: '', suffix: '' },
+    content_sha256: '0'.repeat(64), target_message_id: 'm-bot', target_session_id: session.id, target_turn_id: null,
+    bot_id: 'bot-1', session_id: session.id, message_id: 'm-batch', body: '换个词', crop_mime: null,
+    resolved_by: null, resolved_note: null, resolved_at: null, created_at: 'now', updated_at: 'now', stale: null,
+  } as const;
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [delivery, upload], annotations: [annotation as never],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id }));
+  runtime.client = {
+    kind: 'local',
+    taskArtifacts: async () => ({ id: 'task-1', dir: 'work', title: 'draft', closed_at: null, items: [] }),
+    getWorkspaceFileBlob: async () => new Blob(['text'], { type: 'text/plain' }),
+    getAttachmentBlob: async () => new Blob(['text'], { type: 'text/plain' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const pane = () => host.querySelector('.artifact-pane');
+  const hint = () => pane()?.querySelector('[data-annotation-hint]')?.getAttribute('data-annotation-hint');
+  const list = () => pane()?.querySelector('[data-annotation-list]') ?? null;
+  runtime.paneOpener?.({ kind: 'preview', sessionId: session.id, relpath: 'work/draft.txt', attachmentId: null, messageId: 'm-bot' });
+  await settle();
+  await settle();
+  // The pane is the preview; the narrow layer stays shut.
+  expect(runtime.previewRelpath).toBeNull();
+  expect(host.querySelectorAll('.artifact-pane')).toHaveLength(1);
+  expect(hint()).toBe('');
+  expect(runtime.calls.some((call) => call.name === 'loadAnnotations' && (call.args[0] as { relpath: string }).relpath === 'work/draft.txt')).toBe(true);
+  expect(list()).toBeNull();
+
+  // A card in this conversation asks for its annotation: the pane takes the request and opens its list.
+  runtime.annotationFocusId = 'ann-1';
+  await settle();
+  await settle();
+  expect(list()?.querySelector('[data-annotation-id="ann-1"]')).not.toBeNull();
+  expect(runtime.annotationFocusId).toBeNull();
+
+  runtime.paneOpener?.({ kind: 'preview', sessionId: session.id, relpath: 'work/notes.txt', attachmentId: 'att-notes', messageId: 'm-me' });
+  await settle();
+  await settle();
+  expect(hint()).toBe('no-target');
+
+  // A card for draft.txt while the pane shows notes.txt (an unsaved-changes question may be holding
+  // the switch): the request waits for its file instead of focusing a row this file does not have.
+  runtime.annotationFocusId = 'ann-1';
+  await settle();
+  await settle();
+  expect(runtime.annotationFocusId).toBe('ann-1');
+  expect(list()?.querySelector('[data-annotation-id="ann-1"]') ?? null).toBeNull();
+  runtime.paneOpener?.({ kind: 'preview', sessionId: session.id, relpath: 'work/draft.txt', attachmentId: null, messageId: 'm-bot' });
+  await settle();
+  await settle();
+  expect(runtime.annotationFocusId).toBeNull();
+  expect(list()?.querySelector('[data-annotation-id="ann-1"]')).not.toBeNull();
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
 test('opening message attachments in a workbench pane keeps its tree and selects files in place', async () => {
   localStorage.removeItem('real-bot-workbench-layout');
   const session = aDirect();

@@ -132,7 +132,17 @@ function readFile(
     } catch {
       return fail("not_text", "file is not UTF-8 text");
     }
-    return ok({ path: replyPath(classified), content });
+    const reply = replyPath(classified);
+    const pending = classified.zone === "inside" ? ctx.store.openAnnotationCount(classified.rel) : 0;
+    if (pending > 0) {
+      return ok({
+        path: reply,
+        content,
+        pending_annotations: pending,
+        hint: `这个文件有 ${pending} 条待处理批注，用 list_annotations 查看。 / This file has ${pending} pending annotation(s); list_annotations shows them.`,
+      });
+    }
+    return ok({ path: reply, content });
   } catch (error) {
     if (isNotFound(error)) return fail("not_found", "file not found");
     return fail("failed", "read failed");

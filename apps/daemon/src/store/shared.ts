@@ -178,6 +178,8 @@ export type MessageRow = {
   body: string;
   source_turn_id: string | null;
   task_id: string | null;
+  /** Set on an annotation batch routed into your direct: the Bot↔Bot message it points back at. */
+  annotation_source_message_id?: string | null;
   message_seq?: number;
   created_at: string;
 };

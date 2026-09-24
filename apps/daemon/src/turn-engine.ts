@@ -1208,6 +1208,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     // `shell` now reports the files it left in the work dir; everything else among the workspace
     // tools only reads, and read paths are not artifacts.
     if (isWorkspaceTool(toolName) && toolName !== "write_file" && toolName !== "shell") return;
+    // Reading or resolving an annotation names a file; it does not write one.
+    if (toolName === "list_annotations" || toolName === "resolve_annotation") return;
     const root = store.workspacePath();
     if (!root) return;
     for (const raw of writtenPathFromToolData(result.data)) {

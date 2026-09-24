@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER, generateBoringAvatar } from "@real-bot/protocol";
 import { runCollabTool, staleMcpToolNames, type ToolCtx } from "./collab-tools";
+import { runWorkspaceTool } from "./workspace-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 
@@ -975,5 +976,204 @@ describe("memory tools", () => {
     expect(refused.ok).toBe(false);
     expect(refused.error?.message).toContain("事实 0");
     store.close();
+  });
+});
+
+describe("annotations tools", () => {
+  const REPORT = "# Title\n\nfirst paragraph\n\nsecond paragraph\n";
+  function annotated() {
+    const root = mkdtempSync(join(tmpdir(), "real-bot-annotation-tools-"));
+    dirs.push(root);
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    store.patchSettingsSync({ workspace_path: root });
+    writeFileSync(join(root, "report.md"), REPORT);
+    mkdirSync(join(root, "work", "job"), { recursive: true });
+    writeFileSync(join(root, "work", "job", "notes.md"), "notes\n");
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const editor = store.createBot({ name: "Editor", duties: "edit", boundaries: "stay" });
+    const direct = writer.direct_session.id;
+    const trigger = store.postMessage(direct, { body: "写个报告" });
+    const turn = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: trigger.id });
+    const delivery = store.insertMessage({ sessionId: direct, turnId: turn.id, kind: "bot", author: writer.bot.id, body: "写好了 report.md", paths: ["report.md"] });
+    store.setTurnStatus(turn.id, "completed");
+    const make = (relpath: string, body: string) => store.createAnnotation({
+      target_message_id: delivery.id,
+      relpath,
+      anchor_kind: "text_range",
+      anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 6, quote: relpath === "report.md" ? "# Tit" : "notes", prefix: "", suffix: "" },
+      content_sha256: "0".repeat(64),
+      body,
+    });
+    const a = make("report.md", "太长");
+    const b = make("work/job/notes.md", "补一句");
+    const c = make("report.md", "还是草稿");
+    store.sendAnnotations({ session_id: direct, body: "看看", annotation_ids: [a.id, b.id] });
+    const woken = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: store.listMainMessages(direct, 1)[0]!.id });
+    const ctx: ToolCtx = { store, botId: writer.bot.id, sessionId: direct, turnId: woken.id, parentId: null, workDir: "work/job" };
+    return { store, root, writer, editor, direct, a, b, c, ctx };
+  }
+  const ids = (result: { data?: Record<string, unknown> }) => (result.data!.annotations as Array<{ id: string }>).map((i) => i.id);
+
+  test("list_annotations lists this job's pending ones by default, one file with path, and never drafts", async () => {
+    const w = annotated();
+    // The Bot edited the report since: the quoted heading moved down two lines.
+    writeFileSync(join(w.root, "report.md"), `intro\n\n${REPORT}`);
+    const all = await runCollabTool(w.ctx, "list_annotations", {});
+    expect(all.ok).toBe(true);
+    const items = all.data!.annotations as Array<{ id: string; path: string; position: string; quote: string; note: string; status: string; stale: string | null }>;
+    expect(items.map((i) => i.id).sort()).toEqual([w.a.id, w.b.id].sort());
+    // The stored hash is not the file's, and the quote is still there: moved, with the new lines.
+    expect(items.find((i) => i.id === w.a.id)).toMatchObject({ for_bot: "Writer", path: "report.md", position: "第 1 行", quote: "# Tit", note: "太长", status: "open", stale: "moved", moved_to: { start_line: 3, end_line: 3 } });
+    const one = await runCollabTool(w.ctx, "list_annotations", { path: "report.md" });
+    expect((one.data!.annotations as Array<{ id: string }>).map((i) => i.id)).toEqual([w.a.id]);
+    // A path the Bot writes from its work dir's point of view still resolves.
+    const relative = await runCollabTool(w.ctx, "list_annotations", { path: "notes.md" });
+    expect((relative.data!.annotations as Array<{ id: string }>).map((i) => i.id)).toEqual([w.b.id]);
+    expect((await runCollabTool(w.ctx, "list_annotations", { status: "weird" })).ok).toBe(false);
+    expect((await runCollabTool(w.ctx, "list_annotations", { status: "resolved" })).data!.annotations).toEqual([]);
+    w.store.close();
+  });
+
+  test("resolve_annotation needs a note, marks once, and records which Bot did it", async () => {
+    const w = annotated();
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.a.id, note: "" })).error?.code).toBe("invalid_args");
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", note: "x" })).error?.code).toBe("not_found");
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.c.id, note: "x" })).error?.code).toBe("invalid_args");
+    const done = await runCollabTool({ ...w.ctx, botId: w.editor.bot.id }, "resolve_annotation", { id: w.a.id, note: "缩成一句" });
+    expect(done.ok).toBe(true);
+    expect(done.data).toMatchObject({ id: w.a.id, relpath: "report.md", status: "resolved", resolved_note: "缩成一句" });
+    expect(done.data?.path).toBeUndefined();
+    expect(w.store.getAnnotation(w.a.id).resolved_by).toBe(w.editor.bot.id);
+    expect((await runCollabTool(w.ctx, "resolve_annotation", { id: w.a.id, note: "再来" })).error?.code).toBe("conflict");
+    const resolved = await runCollabTool(w.ctx, "list_annotations", { status: "resolved" });
+    expect((resolved.data!.annotations as Array<{ id: string; resolved_by: string }>).map((i) => [i.id, i.resolved_by])).toEqual([[w.a.id, "Editor"]]);
+    w.store.close();
+  });
+
+  test("list_annotations reads path the way read_file does, and says so when it is outside the workspace", async () => {
+    const w = annotated();
+    const abs = join(w.root, "report.md");
+    // read_file on the host absolute path counts the pending one, so list_annotations must find it there too.
+    const read = await runWorkspaceTool({ store: w.store, signal: new AbortController().signal, workDir: "work/job" }, "read_file", { path: abs });
+    expect(read.data?.pending_annotations).toBe(1);
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: abs }))).toEqual([w.a.id]);
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: join(realpathSync(w.root), "work", "job", "notes.md") }))).toEqual([w.b.id]);
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: "./work/job/../../report.md" }))).toEqual([w.a.id]);
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: "work/job/notes.md" }))).toEqual([w.b.id]);
+    // From the work dir: `..` climbs out of it, not out of the workspace.
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: "../job/notes.md" }))).toEqual([w.b.id]);
+    // A file inside with nothing on it is an honest empty list; a path outside is an error, not an empty list.
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: "work/job/other.md" }))).toEqual([]);
+    for (const outside of ["/etc/hosts", "../../../../elsewhere.md"]) {
+      const refused = await runCollabTool(w.ctx, "list_annotations", { path: outside });
+      expect(refused.ok).toBe(false);
+      expect(refused.error?.code).toBe("invalid_args");
+      expect(refused.error?.message).toContain("outside the workspace");
+    }
+    w.store.close();
+  });
+
+  test("an annotation made through a symlinked folder is found by the Bot's tools on the file it resolves to", async () => {
+    const w = annotated();
+    symlinkSync(join(w.root, "work"), join(w.root, "linked"));
+    const delivery = w.store.insertMessage({ sessionId: w.direct, kind: "bot", author: w.writer.bot.id, body: "附件：linked/job/notes.md", paths: ["linked/job/notes.md"] });
+    const viaLink = w.store.createAnnotation({
+      target_message_id: delivery.id,
+      relpath: "linked/job/notes.md",
+      anchor_kind: "text_range",
+      anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 6, quote: "notes", prefix: "", suffix: "" },
+      content_sha256: "0".repeat(64),
+      body: "经链接批的",
+    });
+    // Stored as cited, so the preview of that citation finds it by the same spelling.
+    expect(viaLink.relpath).toBe("linked/job/notes.md");
+    w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [viaLink.id] });
+    // read_file and list_annotations resolve the path first; both land on the same file.
+    for (const path of ["work/job/notes.md", "linked/job/notes.md", join(w.root, "linked", "job", "notes.md")]) {
+      const read = await runWorkspaceTool({ store: w.store, signal: new AbortController().signal, workDir: "work/job" }, "read_file", { path });
+      expect(read.data?.pending_annotations).toBe(2);
+      expect(ids(await runCollabTool(w.ctx, "list_annotations", { path })).sort()).toEqual([w.b.id, viaLink.id].sort());
+    }
+    w.store.close();
+  });
+
+  test("with no path, a file in this turn's work dir counts however its delivery cited it", async () => {
+    const w = annotated();
+    const abs = join(w.root, "work", "job", "notes.md");
+    const delivery = w.store.insertMessage({ sessionId: w.direct, kind: "bot", author: w.writer.bot.id, body: `附件：${abs}`, paths: [abs] });
+    const byAbs = w.store.createAnnotation({
+      target_message_id: delivery.id,
+      relpath: abs,
+      anchor_kind: "text_range",
+      anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 6, quote: "notes", prefix: "", suffix: "" },
+      content_sha256: "0".repeat(64),
+      body: "按绝对路径批的",
+    });
+    expect(byAbs.relpath).toBe(abs);
+    w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [byAbs.id] });
+    // Another session's turn in another job, working in the same folder: only the folder links them.
+    const editorDirect = w.editor.direct_session.id;
+    const elsewhere = w.store.createTurn({ sessionId: editorDirect, botId: w.editor.bot.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "看看" }).id, newTask: true });
+    const ctx: ToolCtx = { store: w.store, botId: w.editor.bot.id, sessionId: editorDirect, turnId: elsewhere.id, parentId: null, workDir: "work/job" };
+    expect(ids(await runCollabTool(ctx, "list_annotations", {})).sort()).toEqual([w.b.id, byAbs.id].sort());
+    w.store.close();
+  });
+
+  test("with no path, a work dir reached through a symlink still counts its files, however they were cited", async () => {
+    const w = annotated();
+    mkdirSync(join(w.root, "archive", "job2"), { recursive: true });
+    writeFileSync(join(w.root, "archive", "job2", "draft.md"), "draft\n");
+    symlinkSync(join(w.root, "archive"), join(w.root, "shelf"));
+    const make = (relpath: string, body: string) => {
+      const delivery = w.store.insertMessage({ sessionId: w.direct, kind: "bot", author: w.writer.bot.id, body: `附件：${relpath}`, paths: [relpath] });
+      const row = w.store.createAnnotation({
+        target_message_id: delivery.id,
+        relpath,
+        anchor_kind: "text_range",
+        anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 6, quote: "draft", prefix: "", suffix: "" },
+        content_sha256: "0".repeat(64),
+        body,
+      });
+      w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [row.id] });
+      return row;
+    };
+    const viaLink = make("shelf/job2/draft.md", "经链接");
+    const resolved = make("archive/job2/draft.md", "按真实路径");
+    const editorDirect = w.editor.direct_session.id;
+    const elsewhere = w.store.createTurn({ sessionId: editorDirect, botId: w.editor.bot.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "看看" }).id, newTask: true });
+    const ctx: ToolCtx = { store: w.store, botId: w.editor.bot.id, sessionId: editorDirect, turnId: elsewhere.id, parentId: null, workDir: "shelf/job2" };
+    expect(ids(await runCollabTool(ctx, "list_annotations", {})).sort()).toEqual([viaLink.id, resolved.id].sort());
+    w.store.close();
+  });
+
+  test("list_annotations asks the store by status, so drafts are never read, and all merges oldest first", async () => {
+    const w = annotated();
+    const read: string[] = [];
+    const original = w.store.listAnnotations;
+    (w.store as { listAnnotations: typeof original }).listAnnotations = (filter) => {
+      const rows = original(filter);
+      read.push(...rows.map((row) => row.status));
+      return rows;
+    };
+    await runCollabTool(w.ctx, "list_annotations", {});
+    await runCollabTool(w.ctx, "list_annotations", { path: "report.md" });
+    await runCollabTool(w.ctx, "resolve_annotation", { id: w.a.id, note: "缩成一句" });
+    const all = await runCollabTool(w.ctx, "list_annotations", { status: "all" });
+    expect(ids(all)).toEqual([w.a.id, w.b.id]);
+    expect((all.data!.annotations as Array<{ status: string }>).map((i) => i.status)).toEqual(["resolved", "open"]);
+    expect(ids(await runCollabTool(w.ctx, "list_annotations", { path: "report.md", status: "all" }))).toEqual([w.a.id]);
+    expect(read.length).toBeGreaterThan(0);
+    expect(read).not.toContain("draft");
+    w.store.close();
+  });
+
+  test("list_annotations names the Bot each one was handed to, and a deleted one as such", async () => {
+    const w = annotated();
+    const listed = await runCollabTool({ ...w.ctx, botId: w.editor.bot.id }, "list_annotations", {});
+    expect((listed.data!.annotations as Array<{ for_bot: string }>).map((i) => i.for_bot)).toEqual(["Writer", "Writer"]);
+    w.store.deleteBot(w.writer.bot.id);
+    const gone = await runCollabTool({ ...w.ctx, botId: w.editor.bot.id }, "list_annotations", { path: "report.md" });
+    expect((gone.data!.annotations as Array<{ for_bot: string }>).map((i) => i.for_bot)).toEqual(["已删除的 Bot"]);
+    w.store.close();
   });
 });

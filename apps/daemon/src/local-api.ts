@@ -22,6 +22,10 @@ import {
   type SpendKind,
   type StreamFrame,
   type ToolFrame,
+  type AnnotationFilter,
+  type CreateAnnotationRequest,
+  type PatchAnnotationRequest,
+  type SendAnnotationsRequest,
   isNonReceiptPath,
 } from "@real-bot/protocol";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -1649,6 +1653,54 @@ function dispatch(
     return jsonResponse(att, 200, null);
   }
 
+  // Annotations: drafts you keep on an artifact, sent as one quoted reply that wakes the Bot.
+  if (method === "GET" && path === "/v1/annotations") {
+    const q = url.searchParams;
+    const filter: AnnotationFilter = {};
+    for (const key of ["relpath", "session_id", "target_session_id", "message_id", "target_message_id", "status"] as const) {
+      const value = q.get(key);
+      if (value !== null) (filter as Record<string, string>)[key] = value;
+    }
+    return jsonResponse({ items: store.listAnnotations(filter) }, 200, null);
+  }
+  if (method === "POST" && path === "/v1/annotations") {
+    return jsonResponse(store.createAnnotation(input.body as CreateAnnotationRequest), 201, null);
+  }
+  if (method === "POST" && path === "/v1/annotations/send") {
+    // The batch wakes the Bot the way your own message would: same admission, same door.
+    options.admission?.assertNew();
+    const sent = store.sendAnnotations(input.body as SendAnnotationsRequest);
+    publish({ event: "message.created", occurred_at: occurred(), ...sent.message });
+    store.afterCommit(() => { void engine.handleInboundMessage(sent.message, { fromUser: true }); });
+    return jsonResponse(sent, 201, null);
+  }
+  params = matchPath(path, "/v1/annotations/:id/crop");
+  if (params && method === "GET") {
+    const crop = store.annotationCrop(params.id!);
+    if (!crop) throw new HttpError(404, "not_found", "this annotation has no crop");
+    const bytes = Buffer.from(crop.bytes);
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        "ETag": fileEtag(bytes),
+        "Content-Type": crop.mime,
+        "Content-Length": String(bytes.byteLength),
+        "Content-Disposition": `inline; filename="annotation-${params.id!}.${crop.mime === "image/png" ? "png" : "jpg"}"`,
+      },
+    });
+  }
+  params = matchPath(path, "/v1/annotations/:id");
+  if (params && method === "GET") {
+    return jsonResponse(store.getAnnotation(params.id!), 200, null);
+  }
+  if (params && method === "PATCH") {
+    return jsonResponse(store.patchAnnotation(params.id!, input.body as PatchAnnotationRequest), 200, null);
+  }
+  if (params && method === "DELETE") {
+    store.deleteAnnotation(params.id!);
+    return emptyResponse(204, null);
+  }
+
   if (method === "GET" && path === "/v1/approvals") {
     return jsonResponse({ items: store.listApprovals(url.searchParams.get("status") ?? undefined) }, 200, null);
   }
@@ -1987,7 +2039,7 @@ function checkRevision(store: Store, request: Request, url: URL, body: Record<st
     if (!Number.isInteger(revision) || revision !== store.settingsCached().settings_rev) throw new HttpError(409, "conflict", "settings revision changed");
   } else {
     const parts = url.pathname.split("/");
-    const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions" };
+    const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions", annotations: "annotations" };
     const table = parts[2] === "allow-rules" && destructive ? "allow_rules" : tables[parts[2] ?? ""];
     if (!table || !parts[3]) return;
     const revisionColumn = table === "allow_rules" ? "created_at" : "updated_at";

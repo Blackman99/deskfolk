@@ -37,7 +37,9 @@ describe("builtinTools order", () => {
       "list_mcp_servers",
       "add_mcp_server",
       "update_mcp_server",
-      "delete_mcp_server"
+      "delete_mcp_server",
+      "list_annotations",
+      "resolve_annotation",
     ]);
   });
 });

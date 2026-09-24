@@ -15,6 +15,7 @@ import {
 } from "./tools/collab";
 import { UPDATE_PROFILE, LIST_SKILLS, READ_SKILL, CREATE_SKILL, UPDATE_SKILL, DELETE_SKILL } from "./tools/profile";
 import { REMEMBER, FORGET } from "./tools/memory";
+import { LIST_ANNOTATIONS, RESOLVE_ANNOTATION } from "./tools/annotations";
 import { LIST_ROUTINES, CREATE_ROUTINE, UPDATE_ROUTINE, DELETE_ROUTINE } from "./tools/routines";
 import {
   LIST_ENDPOINTS,
@@ -62,6 +63,8 @@ export const TOOLS: ToolDef[] = [
   ADD_MCP_SERVER,
   UPDATE_MCP_SERVER,
   DELETE_MCP_SERVER,
+  LIST_ANNOTATIONS,
+  RESOLVE_ANNOTATION,
 ];
 
 export function builtinTools(locale: Locale): ChatTool[] {

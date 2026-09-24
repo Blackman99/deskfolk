@@ -287,3 +287,30 @@ describe("workspace tools", () => {
     close();
   });
 });
+
+describe("read_file and annotations", () => {
+  test("names the pending annotations on a file, and nothing when there are none", async () => {
+    const root = mkdtempSync(join(tmpdir(), "real-bot-read-annotations-"));
+    dirs.push(root);
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    store.patchSettingsSync({ workspace_path: root });
+    writeFileSync(join(root, "report.md"), "# Title\n");
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const delivery = store.insertMessage({ sessionId: writer.direct_session.id, kind: "bot", author: writer.bot.id, body: "report.md", paths: ["report.md"] });
+    const signal = new AbortController().signal;
+    const quiet = await runWorkspaceTool({ store, signal }, "read_file", { path: "report.md" });
+    expect(quiet.data).toEqual({ path: "report.md", content: "# Title\n" });
+    const a = store.createAnnotation({
+      target_message_id: delivery.id, relpath: "report.md", anchor_kind: "text_range",
+      anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 3, quote: "# ", prefix: "", suffix: "" },
+      content_sha256: "0".repeat(64), body: "标题",
+    });
+    // A draft is not pending yet.
+    expect((await runWorkspaceTool({ store, signal }, "read_file", { path: "report.md" })).data?.hint).toBeUndefined();
+    store.sendAnnotations({ session_id: writer.direct_session.id, body: "", annotation_ids: [a.id] });
+    const flagged = await runWorkspaceTool({ store, signal }, "read_file", { path: "./report.md" });
+    expect(flagged.data?.pending_annotations).toBe(1);
+    expect(String(flagged.data?.hint)).toContain("这个文件有 1 条待处理批注，用 list_annotations 查看");
+    store.close();
+  });
+});

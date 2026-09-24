@@ -1,4 +1,4 @@
-import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { REMOTE_FILE_LIMIT, type RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 
@@ -40,6 +40,8 @@ get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });
 get("bots/:id/profile-revisions"); get("attachments/:id/content", { size: one("thumb", "preview"), range: string });
 get("tasks/:id/artifacts");
+get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, session_id: id, target_session_id: id, message_id: id, target_message_id: id, status: one("draft", "open", "resolved") });
+get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/trace");
 get("sessions/:id/tasks");
 get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
@@ -91,6 +93,17 @@ add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "sc
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
 add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= REMOTE_FILE_LIMIT, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])) }, ["body"]);
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);
+const num: Check = v => typeof v === "number" && Number.isFinite(v);
+// The union of every anchor kind's fields; the daemon checks the shape per kind, this only shuts out strangers.
+const anchor: Check = object({ start_line: num, start_col: num, end_line: num, end_col: num, quote: string, prefix: string, suffix: string, view: one("rendered"), span_length: num, span_hash: string,
+  x: num, y: num, w: num, h: num, natural_width: num, natural_height: num, page: num, selector: string, tag: string, text: string, outer_html: string,
+  rect: object({ x: num, y: num, w: num, h: num }, ["x", "y", "w", "h"]), start_ms: num, end_ms: num, duration_ms: num });
+// The whole request is one logical message (≤ MAX_LOGICAL_MESSAGE), so a crop cannot be promised the 1 MB a local save takes.
+const crop = nullable(object({ mime: one("image/png", "image/jpeg"), base64: v => typeof v === "string" && v.length <= ANNOTATION_REMOTE_CROP_BASE64_MAX && /^[A-Za-z0-9+/=]+$/.test(v) }, ["mime", "base64"]));
+add("POST", "annotations", { target_message_id: id, relpath: string, anchor_kind: one("text_range", "image_region", "pdf_region", "html_element", "media_time"), anchor, content_sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v), body: string, crop }, ["target_message_id", "relpath", "anchor_kind", "anchor", "content_sha256", "body"]);
+add("POST", "annotations/send", { session_id: id, body: string, annotation_ids: list(id) }, ["session_id", "annotation_ids"]);
+add("PATCH", "annotations/:id", { body: string, anchor, crop, content_sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v), status: one("open", "resolved"), ...revision }, [], true);
+add("DELETE", "annotations/:id", revision);
 add("POST", "sessions/:id/read", { through_message_id: id });
 add("POST", "sessions/:id/(archive|restore|clear)", revision); add("POST", "bots/:id/(archive|restore)", revision);
 add("POST", "approvals/:id/resolve", { action: one("allow_once", "deny", "always_allow"), scope: string, api_key: string }, ["action"]);

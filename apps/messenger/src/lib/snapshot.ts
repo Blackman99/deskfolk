@@ -2,6 +2,7 @@ import {
   INTERRUPT_NOTE_BODY,
   USER_MEMBER,
   isHiddenTranscriptKind,
+  type Annotation,
   type Approval,
   type AllowRule,
   type Routine,
@@ -39,6 +40,8 @@ export type Snapshot = {
   pendingJudgements: PendingJudgement[];
   approvals: Approval[];
   searchHits: SearchHit[];
+  /** Annotations pulled for each conversation opened and each file previewed, then followed by events. */
+  annotations: Annotation[];
 };
 
 export function emptySnapshot(): Snapshot {
@@ -71,6 +74,7 @@ export function emptySnapshot(): Snapshot {
     pendingJudgements: [],
     approvals: [],
     searchHits: [],
+    annotations: [],
   };
 }
 
@@ -138,6 +142,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       return {
         ...snapshot,
         sessions: snapshot.sessions.filter((s) => s.id !== event.id),
+        annotations: snapshot.annotations.filter((a) => a.session_id !== event.id && a.target_session_id !== event.id),
         messages: snapshot.messages.filter((m) => m.session_id !== event.id),
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
@@ -150,6 +155,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         sessions: snapshot.sessions.map((s) =>
           s.id === event.id ? { ...s, last_message: null, live_turns: [], unread_count: 0 } : s,
         ),
+        annotations: snapshot.annotations.filter((a) => a.session_id !== event.id && a.target_session_id !== event.id),
         messages: snapshot.messages.filter((m) => m.session_id !== event.id),
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
@@ -246,6 +252,12 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     }
     case "approval.removed":
       return { ...snapshot, approvals: snapshot.approvals.filter((row) => row.id !== event.id) };
+    case "annotation.removed":
+      return { ...snapshot, annotations: snapshot.annotations.filter((a) => a.id !== event.id) };
+    case "annotation.upsert": {
+      const { event: _e, occurred_at: _at, ...row } = event;
+      return { ...snapshot, annotations: upsert(snapshot.annotations, row) };
+    }
     case "approval.upsert": {
       const { event: _e, occurred_at: _at, ...row } = event;
       return {

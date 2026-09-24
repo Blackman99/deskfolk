@@ -35,6 +35,12 @@ export const STORY_SIZES = {
 	'context-menu': { width: 340, height: 420 },
 	'artifact-preview': { width: 900, height: 640 },
 	'artifact-code': { width: 700, height: 420 },
+	// Annotations: the preview with its list column, a draft waiting in the send bar, and marks drawn
+	// on the image; the narrow shot stacks the list under the file.
+	'artifact-annotations': { width: 1000, height: 640 },
+	'artifact-annotations-narrow': { width: 390, height: 844 },
+	// A batch in the transcript: the quoted delivery, the summary, and one card per annotation.
+	'chat-stage-annotations': { width: 900, height: 820 },
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },

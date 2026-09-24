@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary,
+		type Annotation,
+	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
@@ -8,6 +10,8 @@
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
+	import AnnotationCards from '../annotations/AnnotationCards.svelte';
+	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import {
@@ -110,6 +114,55 @@
 		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
 	);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
+	// Keyed by the message that carries them; a separate collection, so a batch's cards never
+	// touch the memoized message wrappers.
+	const annotationIndex = $derived(annotationsByMessage(snapshot.annotations));
+
+	/** Why a card's status change failed, by the message that carries the batch. */
+	let cardErrors = $state<Record<string, string>>({});
+
+	async function toggleAnnotation(messageId: string, row: Annotation, status: 'open' | 'resolved'): Promise<void> {
+		const failed = await runtime.patchAnnotation(row.id, { status });
+		const { [messageId]: _dropped, ...rest } = cardErrors;
+		cardErrors = failed ? { ...rest, [messageId]: t.stream.annotationSaveFailed } : rest;
+	}
+
+	function openAnnotation(row: Annotation): void {
+		// Through null, so opening the card that already has focus goes to it again.
+		runtime.annotationFocusId = null;
+		runtime.annotationFocusId = row.id;
+		onOpenArtifact(row.relpath, undefined, row.target_message_id);
+	}
+
+	/**
+	 * Where a routed batch came from: the session of the delivery it quotes. A batch can mix drafts
+	 * from several sessions, so it is read off the row written on that delivery (or the delivery
+	 * itself when the snapshot holds it), not off whichever row is oldest. Null when neither says —
+	 * no link rather than one to the wrong conversation.
+	 */
+	function annotationSourceSessionId(message: Message): string | null {
+		const sourceId = message.annotation_source_message_id;
+		if (!sourceId) return null;
+		const rows = annotationIndex.get(message.id) ?? [];
+		return rows.find((row) => row.target_message_id === sourceId)?.target_session_id
+			?? messageLookup.byId.get(sourceId)?.session_id
+			?? null;
+	}
+
+	/** A batch routed into your direct names the Bot↔Bot session its artifact came from. */
+	function annotationSourceLabel(message: Message): string | null {
+		const sessionId = annotationSourceSessionId(message);
+		if (!sessionId) return null;
+		const sourceSession = snapshot.sessions.find((s) => s.id === sessionId);
+		return t.chat.annotationSource(sourceSession ? titleOf(sourceSession) : t.top.deleted);
+	}
+
+	function openAnnotationSource(message: Message): void {
+		const sourceId = message.annotation_source_message_id;
+		const sessionId = annotationSourceSessionId(message);
+		if (!sourceId || !sessionId) return;
+		void runtime.selectSession(sessionId, { messageId: sourceId });
+	}
 
 	let composer = $state<{ focus: () => void } | null>(null);
 	/** A picture opened from this transcript, enlarged over the whole app. */
@@ -1363,6 +1416,19 @@
 													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
 											{/if}
+											{#if annotationIndex.get(item.message.id)}
+												<AnnotationCards
+													annotations={annotationIndex.get(item.message.id) ?? []}
+													{t}
+													{locale}
+													bots={botsById}
+													onOpen={openAnnotation}
+													onToggleStatus={lockedComposer ? undefined : (row, status) => void toggleAnnotation(item.message.id, row, status)}
+													error={cardErrors[item.message.id] ?? null}
+													sourceLabel={annotationSourceLabel(item.message)}
+													onOpenSource={() => openAnnotationSource(item.message)}
+												/>
+											{/if}
 										</article>
 										{#if rxGroups.length > 0}
 											<div class="rx-row is-right flex flex-wrap gap-2 mt-2">
@@ -1666,6 +1732,19 @@
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
+												/>
+											{/if}
+											{#if annotationIndex.get(item.message.id)}
+												<AnnotationCards
+													annotations={annotationIndex.get(item.message.id) ?? []}
+													{t}
+													{locale}
+													bots={botsById}
+													onOpen={openAnnotation}
+													onToggleStatus={lockedComposer ? undefined : (row, status) => void toggleAnnotation(item.message.id, row, status)}
+													error={cardErrors[item.message.id] ?? null}
+													sourceLabel={annotationSourceLabel(item.message)}
+													onOpenSource={() => openAnnotationSource(item.message)}
 												/>
 											{/if}
 										</article>
