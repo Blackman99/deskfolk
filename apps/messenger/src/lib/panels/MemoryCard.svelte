@@ -4,6 +4,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import SettingsSubject from './SettingsSubject.svelte';
 	import {
 		draftFromMemory,
 		mapMemoryError,
@@ -298,7 +299,11 @@
 				>
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
-				<h2 id="memory-modal-title">{t.sidebar.memoryEdit}</h2>
+				<div class="modal-head-titles">
+					<h2 id="memory-modal-title">{t.sidebar.memoryEdit}</h2>
+					<!-- On a phone this page covers the Bot's settings, so it says whose memory this is. -->
+					<span class="modal-head-subject"><SettingsSubject variant="line" {bot} {t} /></span>
+				</div>
 				<button
 					type="button"
 					class="modal-close"

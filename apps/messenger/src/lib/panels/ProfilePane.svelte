@@ -1,6 +1,7 @@
 <script lang="ts">
 	import MemoryCard from './MemoryCard.svelte';
 	import RoutineCard from './RoutineCard.svelte';
+	import SettingsSubject from './SettingsSubject.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import { untrack } from 'svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
@@ -526,9 +527,20 @@
 		>
 			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 		</button>
-		<h3 class="bot-detail-title">{tabLabel(activeTab)}</h3>
+		<div class="bot-detail-heading">
+			<div class="bot-detail-title-row">
+				<h3 class="bot-detail-title">{tabLabel(activeTab)}</h3>
+				{#if activeTab === 'skills'}
+					<span class="panel-counter-badge bot-detail-count">{profileSkills.length}</span>
+				{:else if activeTab === 'routines'}
+					<span class="panel-counter-badge bot-detail-count">{routineCount}</span>
+				{:else if activeTab === 'memory'}
+					<span class="panel-counter-badge bot-detail-count">{profileMemories.length}</span>
+				{/if}
+			</div>
+			<SettingsSubject variant="line" {bot} {t} />
+		</div>
 		{#if activeTab === 'skills'}
-			<span class="panel-counter-badge bot-detail-count">{profileSkills.length}</span>
 			<button
 				type="button"
 				class="bot-detail-action"
@@ -538,7 +550,6 @@
 				<span>{t.sidebar.skillAdd}</span>
 			</button>
 		{:else if activeTab === 'routines'}
-			<span class="panel-counter-badge bot-detail-count">{routineCount}</span>
 			<button
 				type="button"
 				class="bot-detail-action"
@@ -548,8 +559,6 @@
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 				<span>{t.routines.add}</span>
 			</button>
-		{:else if activeTab === 'memory'}
-			<span class="panel-counter-badge bot-detail-count">{profileMemories.length}</span>
 		{/if}
 	</div>
 
@@ -920,9 +929,13 @@
 				>
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
-				<h2 id="skill-modal-title">
-					{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
-				</h2>
+				<div class="modal-head-titles">
+					<h2 id="skill-modal-title">
+						{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
+					</h2>
+					<!-- On a phone this page covers the Bot's settings, so it says whose skill this is. -->
+					<span class="modal-head-subject"><SettingsSubject variant="line" {bot} {t} /></span>
+				</div>
 				<button
 					type="button"
 					class="modal-close"
@@ -1851,6 +1864,21 @@
 
 		.bot-detail-back:active {
 			background: var(--row-hover);
+		}
+
+		/* The section is the heading; whose settings they are is the line under it. */
+		.bot-detail-heading {
+			display: flex;
+			flex: 1 1 auto;
+			flex-direction: column;
+			gap: 1px;
+			min-width: 0;
+		}
+
+		.bot-detail-title-row {
+			display: flex;
+			align-items: center;
+			min-width: 0;
 		}
 
 		.bot-detail-title {

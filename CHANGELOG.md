@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- On a phone, every Bot and group settings screen now says whose settings it is. The settings page's header shows the avatar and name (both Bots for a Bot-to-Bot conversation), including a Bot opened from a group, which used to show only a back arrow. Each section (Basics, Skills, Routines, Memory, Actions; a group's Members, Actions and Danger Zone) and the skill, routine and memory editors carry the name under their own title. Wider windows are unchanged.
+
 - On a phone, End session in the terminal's ⋯ menu works again. Tapping it used to close the menu before its confirm could show, so the session kept running. It now asks first as intended, and confirming ends the session.
 
 - On a phone, going back from a conversation to the chat list now slides the conversation off the whole screen. The "Pick a session" page no longer flashes through while it leaves.

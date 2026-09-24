@@ -50,8 +50,8 @@ function openProfile(routines: ReturnType<typeof aRoutine>[] = [], memories: Ret
   return { ...rendered, runtime };
 }
 
-function openGroup(session = aGroup({ id: "sess-1" })) {
-  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" }), aBot({ id: "bot-2" })], sessions: [session] }));
+function openGroup(session = aGroup({ id: "sess-1" }), bots = [aBot({ id: "bot-1" }), aBot({ id: "bot-2" })]) {
+  const runtime = reactive(fakeRuntime({ bots, sessions: [session] }));
   const detail = reactive({ sessionId: session.id, name: "Video", nameError: undefined, failed: false, pullPick: "" });
   const rendered = render(GroupPane, {
     runtime,
@@ -186,6 +186,79 @@ test("on a phone the memory header carries the count and tab row shows count", (
     expect(host.querySelector(".bot-detail-count")?.textContent).toBe("2");
     close();
   }, true);
+});
+
+/** Whose settings a phone screen says it is showing, from the line under that screen's title. */
+function subjectIn(host: HTMLElement, scope: string): string | undefined {
+  return host.querySelector(`${scope} .settings-subject-name`)?.textContent?.trim();
+}
+
+test("on a phone every section of a Bot's settings names the Bot", () => {
+  withPhone(() => {
+    const { host, close } = openProfile();
+    const rows = () => [...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")];
+    for (let i = 0; i < rows().length; i += 1) {
+      click(rows()[i]);
+      // The section title stays the heading; the Bot is the line under it.
+      expect(host.querySelector(".bot-detail-title")?.textContent).toBe([
+        t.detail.botTabBasics, t.detail.botTabSkills, t.detail.botTabRoutines, t.detail.botTabMemory, t.detail.botTabActions,
+      ][i]);
+      expect(subjectIn(host, ".bot-detail-head")).toBe("Researcher");
+      click(host.querySelector(".bot-detail-back"));
+    }
+    close();
+  });
+});
+
+test("on a phone the skill, routine and memory pages name the Bot they belong to", () => {
+  withPhone(() => {
+    const { host, close } = openProfile([aRoutine()], [aMemory({ id: "mem-1", bot_id: "bot-1" })]);
+    const rows = () => [...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")];
+    click(rows()[1]);
+    click(host.querySelector(".bot-detail-action"));
+    flushSync();
+    expect(subjectIn(host, ".skill-modal-head")).toBe("Researcher");
+    click(host.querySelector(".skill-modal .modal-back"));
+    flushSync();
+    click(host.querySelector(".bot-detail-back"));
+    click(rows()[2]);
+    click(host.querySelector(".bot-detail-action"));
+    flushSync();
+    expect(subjectIn(host, ".routine-page-head")).toBe("Researcher");
+    click(host.querySelector(".routine-page-back"));
+    flushSync();
+    click(host.querySelector(".bot-detail-back"));
+    click(rows()[3]);
+    click(host.querySelector(".memory-icon-btn"));
+    flushSync();
+    expect(subjectIn(host, ".memory-modal-head")).toBe("Researcher");
+    close();
+  }, true);
+});
+
+test("on a phone every section of a group's settings names the group", () => {
+  withPhone(() => {
+    const { host, close } = openGroup(aGroup({ id: "sess-1", name: "Video crew" }));
+    const rows = () => [...host.querySelectorAll<HTMLButtonElement>(".group-section-btn")];
+    for (let i = 0; i < rows().length; i += 1) {
+      click(rows()[i]);
+      flushSync();
+      expect(subjectIn(host, ".group-detail-head")).toBe("Video crew");
+      click(host.querySelector(".group-detail-back"));
+      flushSync();
+    }
+    close();
+  });
+});
+
+test("on a phone a Bot-to-Bot session's sections name both Bots", () => {
+  withPhone(() => {
+    const { host, close } = openGroup(aBotDirect({ id: "botbot-1" }), [aBot({ id: "bot-1", name: "Director" }), aBot({ id: "bot-2", name: "Reviewer" })]);
+    click(host.querySelector(".group-section-btn"));
+    flushSync();
+    expect(subjectIn(host, ".group-detail-head")).toBe("Director ↔ Reviewer");
+    close();
+  });
 });
 
 test("a group's sections are a list, and only the open one is rendered", () => {

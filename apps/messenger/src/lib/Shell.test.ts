@@ -29,7 +29,7 @@ mock.module('@xterm/xterm/css/xterm.css', () => ({}));
 const { default: Shell } = await import('./Shell.svelte');
 import { ApiError } from './api.ts';
 import { applyEvent, emptySnapshot } from './snapshot.ts';
-import { aBot, aDirect, aGroup, aMessage, anAttachment, aProvider, aRoutine, fakeRuntime } from './test-fixtures.ts';
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAttachment, aProvider, aRoutine, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, fill, render } from './test-render.ts';
 import { copyFor } from './copy.ts';
@@ -380,6 +380,50 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
   expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('会话');
 });
 
+test('on a phone the settings page is headed with the Bot or the Bots it belongs to', () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const t = copyFor('zh');
+    const direct = aDirect({ id: 'd1' });
+    const botBot = aBotDirect({ id: 'bb1' });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: 'bot-1', name: 'Alpha' }), aBot({ id: 'bot-2', name: 'Beta' })],
+      sessions: [direct, botBot],
+      settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: '/fixture' },
+    }, { selectedId: 'd1', sessionSettingsOpen: true, profileBotId: null }));
+    const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+    const head = () => host.querySelector('.profile-backdrop .sheet-head');
+    expect(head()?.querySelector('h2')?.textContent?.trim()).toBe('Alpha');
+    expect(head()?.querySelector('.settings-subject-caption')?.textContent?.trim()).toBe(t.detail.titleBot);
+    flushSync(() => { runtime.selectedId = 'bb1'; });
+    expect(head()?.querySelector('h2')?.textContent?.trim()).toBe('Alpha ↔ Beta');
+  } finally {
+    window.matchMedia = previousMatchMedia;
+    setViewport({ width: 1024, height: 768 });
+  }
+});
+
+test('a wider window keeps the plain Bot settings title', () => {
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: 'bot-1', name: 'Alpha' })],
+    sessions: [aDirect({ id: 'd1' })],
+    settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'd1', sessionSettingsOpen: true, profileBotId: null }));
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  expect(host.querySelector('.sheet-head h2')?.textContent?.trim()).toBe(copyFor('zh').detail.titleBot);
+  expect(host.querySelector('.sheet-head .settings-subject')).toBeNull();
+});
+
 test('on a phone, a Bot opened from a group is that Bot\'s settings, and Back leaves for the conversation', () => {
   const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
     (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
@@ -412,7 +456,9 @@ test('on a phone, a Bot opened from a group is that Bot\'s settings, and Back le
     click(host.querySelectorAll('.group-section-btn')[0]);
     click(host.querySelector('.member-name-btn'));
     const sheet = host.querySelector('.profile-backdrop .sheet');
-    expect(sheet?.querySelector('h2')).toBeNull();
+    // No way back to the group's settings, so the head names the Bot instead of the group.
+    expect(sheet?.querySelector('.sheet-head h2')?.textContent?.trim()).toBe('Alpha');
+    expect(sheet?.querySelector('.sheet-head .settings-subject-caption')?.textContent?.trim()).toBe(t.detail.titleBot);
     expect(sheet?.querySelector('.profile-pane')).not.toBeNull();
     const back = sheet?.querySelector('.sheet-back');
     expect(back).not.toBeNull();

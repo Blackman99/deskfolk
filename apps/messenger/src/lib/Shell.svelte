@@ -71,6 +71,7 @@
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
 	import GroupIdentity from './panels/GroupIdentity.svelte';
+	import SettingsSubject from './panels/SettingsSubject.svelte';
 	import GroupPane from './panels/GroupPane.svelte';
 	import type { GroupDetailDraft } from './panels/group-edit.ts';
 	import ProfilePane from './panels/ProfilePane.svelte';
@@ -1710,8 +1711,10 @@
 	The head of a conversation's settings, in the narrow drawer and beside a workbench pane alike.
 	`nested` is a Bot opened from a group's settings. On a phone that page's way out is the
 	conversation; a wider window still steps back to the group's settings.
+	On a phone the page fills the screen, so the head says whose settings these are: the Bot, or
+	for a Bot↔Bot direct both of them. A group's head already does, with its editable name.
 -->
-{#snippet settingsHead(group: boolean, nested: boolean, onBack: () => void, onClose: () => void, groupSession: SessionSummary | null = null)}
+{#snippet settingsHead(group: boolean, nested: boolean, onBack: () => void, onClose: () => void, groupSession: SessionSummary | null = null, subjectBot: Bot | null = null, subjectSession: SessionSummary | null = null)}
 	<div class="sheet-head">
 		{#if nested}
 			<button
@@ -1723,8 +1726,20 @@
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				<span class="sheet-back-label">{group ? t.detail.backToGroup : t.detail.backToBot}</span>
 			</button>
+			{#if narrow && subjectBot}
+				<SettingsSubject variant="head" bot={subjectBot} {t} caption={t.detail.titleBot} />
+			{/if}
 		{:else if group && groupSession}
 			<GroupIdentity {runtime} session={groupSession} bind:detail={groupDetail} {t} />
+		{:else if narrow && (subjectBot || subjectSession)}
+			<SettingsSubject
+				variant="head"
+				bot={subjectBot}
+				session={subjectBot ? null : subjectSession}
+				bots={botsById}
+				{t}
+				caption={t.detail.titleBot}
+			/>
 		{:else}
 			<div class="panel-header-title-wrap flex items-center gap-5">
 				<div class="panel-header-icon" aria-hidden="true">
@@ -2240,7 +2255,9 @@
 					nestedProfile,
 					() => (narrow ? runtime.closeSessionSettings() : closeNestedProfile()),
 					closeCurrentDrawerScreen,
-					selectedKind === 'group' && !nestedProfile && selected ? selected : null
+					selectedKind === 'group' && !nestedProfile && selected ? selected : null,
+					profileBot,
+					selected
 				)}
 
 				{#if profileBot}
@@ -2621,8 +2638,10 @@
 			display: none;
 		}
 
+		/* The same inset and gap as a section's own head, so what follows Back lines up with its title. */
 		.sheet.session-settings:has(.sheet-back) :global(.sheet-head) {
 			padding-left: 4px;
+			gap: 4px;
 		}
 	}
 

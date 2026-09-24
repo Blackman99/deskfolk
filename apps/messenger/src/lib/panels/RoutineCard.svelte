@@ -6,6 +6,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import DangerDialog from '../overlays/DangerDialog.svelte';
+	import SettingsSubject from './SettingsSubject.svelte';
 	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineRepeatLabel } from './routine-form.ts';
 
 	let { runtime, bot, t }: { runtime: MessengerRuntime; bot: Bot; t: Copy } = $props();
@@ -306,7 +307,11 @@
 			<button type="button" class="routine-page-back" aria-label={t.common.back} disabled={busy} onclick={close}>
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
-			<h3 tabindex="-1">{baseline ? t.routines.edit : t.routines.add}</h3>
+			<div class="routine-page-titles">
+				<h3 tabindex="-1">{baseline ? t.routines.edit : t.routines.add}</h3>
+				<!-- This page covers the Bot's settings, so it says whose routine this is. -->
+				<SettingsSubject variant="line" {bot} {t} />
+			</div>
 		</div>
 		<div class="routine-page-body">
 			{@render editorFields()}
@@ -663,6 +668,8 @@
 			cursor: pointer;
 		}
 		.routine-page-back:active { background: var(--row-hover); }
+		/* The page's title, and whose routine it is under it. */
+		.routine-page-titles { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
 		.routine-page-head h3 {
 			min-width: 0;
 			margin: 0;

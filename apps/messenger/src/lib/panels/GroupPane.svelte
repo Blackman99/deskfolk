@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { USER_MEMBER, type SessionSummary } from '@real-bot/protocol';
 	import Select from '../Select.svelte';
+	import SettingsSubject from './SettingsSubject.svelte';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -143,7 +144,10 @@
 			>
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
-			<h3 class="group-detail-title">{sectionLabel(activeSection)}</h3>
+			<div class="group-detail-heading">
+				<h3 class="group-detail-title">{sectionLabel(activeSection)}</h3>
+				<SettingsSubject variant="line" session={selected} bots={botsById} {t} />
+			</div>
 		</div>
 
 		<div class="panel-scroll-content group-pane-scroll flex-1 overflow-y-auto pt-9 px-9 pb-12 flex flex-col gap-8">
@@ -759,6 +763,15 @@
 
 		.group-detail-back:active {
 			background: var(--row-hover);
+		}
+
+		/* The section is the heading; whose settings they are is the line under it. */
+		.group-detail-heading {
+			display: flex;
+			flex: 1 1 auto;
+			flex-direction: column;
+			gap: 1px;
+			min-width: 0;
 		}
 
 		.group-detail-title {
