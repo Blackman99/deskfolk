@@ -4387,6 +4387,48 @@ describe("spend ledger for routing and composer calls", () => {
     await h.engine.drain();
     expect(ledger(h.store).some((row) => row.kind === "composer_suggest")).toBe(false);
   });
+
+  /**
+   * Suggestions are drafted when someone presses ✨ and waits for them. The 8s they had as a silent
+   * background fetch timed out on a thinking "flash" model (3-8s measured), and a press came back empty.
+   */
+  test("a composer suggestion waits long enough for a thinking model to answer", async () => {
+    let timeoutMs: number | undefined;
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi(undefined, {
+      completions: {
+        complete: () => Promise.reject(new Error("unused")),
+        async judge(request: { timeoutMs?: number }) {
+          timeoutMs = request.timeoutMs;
+          return { content: SUGGEST, toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
+        },
+      },
+    });
+    await catalog(h, fixture.origin);
+    const writer = (await (
+      await fetch(`${h.origin}/v1/bots`, {
+        method: "POST",
+        headers: auth(h),
+        body: JSON.stringify({ name: "Writer", duties: "write", boundaries: "stay" }),
+      })
+    ).json()) as { bot: { id: string } };
+    const reviewer = (await (
+      await fetch(`${h.origin}/v1/bots`, {
+        method: "POST",
+        headers: auth(h),
+        body: JSON.stringify({ name: "Reviewer", duties: "review", boundaries: "stay" }),
+      })
+    ).json()) as { bot: { id: string } };
+    const groupId = ((await (
+      await fetch(`${h.origin}/v1/sessions`, {
+        method: "POST",
+        headers: auth(h),
+        body: JSON.stringify({ name: "Brief", members: [writer.bot.id, reviewer.bot.id] }),
+      })
+    ).json()) as { id: string }).id;
+    await h.engine.suggestComposer(groupId);
+    expect(timeoutMs).toBeGreaterThanOrEqual(20_000);
+  });
 });
 
 for (const end of ["stop", "delete"] as const) {

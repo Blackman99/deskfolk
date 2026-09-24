@@ -1116,11 +1116,13 @@ test("a send from one conversation goes to it and holds up only it, whichever is
   expect(runtime.sessionView("direct-1").draft).toBe("to the direct");
 });
 
-test("clicking into a conversation keeps the reply aimed there and its chips", async () => {
+test("clicking into a conversation keeps the reply aimed there and its chips, and drafts nothing", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");
+  const drafted: string[] = [];
   globalThis.fetch = (async (url: string | URL | Request) => {
     const path = String(url);
+    if (path.includes("/composer-suggestions")) drafted.push(path);
     if (path.endsWith("/snapshot")) return sessionRead(path);
     return Response.json({ items: [] });
   }) as typeof fetch;
@@ -1128,12 +1130,74 @@ test("clicking into a conversation keeps the reply aimed there and its chips", a
   view.replyingToId = "m-quoted";
   view.composerSuggestions = [{ id: "s-1", label: "继续", prompt: "继续" }];
   await runtime.selectSession("direct-1", { preservePage: true });
+  // Opening a conversation used to draft for it 400ms later, paid for whether you looked or not.
+  await new Promise((resolve) => setTimeout(resolve, 450));
   expect(runtime.connection).toBe("connected");
   expect(view.replyingToId).toBe("m-quoted");
   expect(view.composerSuggestions.map((row) => row.id)).toEqual(["s-1"]);
+  expect(drafted).toEqual([]);
 });
 
-test("a new message in a conversation not in front drops the chips drafted for what came before", async () => {
+test("suggestions are drafted once per press of ✨, and never because a message came in", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const drafted: string[] = [];
+  let answer: Array<{ id: string; label: string; prompt: string }> = [{ id: "0-x", label: "看看进度", prompt: "现在做到哪一步了？" }];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.includes("/composer-suggestions")) {
+      drafted.push(path.slice(path.indexOf("/v1/")));
+      return Response.json({ items: answer });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  runtime.selectedId = "direct-1";
+  const view = runtime.sessionView("direct-1");
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aMessage({ id: "m-1", session_id: "direct-1" }), event: "message.created", occurred_at: "now" } });
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  expect(drafted).toEqual([]);
+
+  const asking = runtime.suggestComposer("direct-1");
+  expect(view.suggestionsLoading).toBe(true);
+  await asking;
+  expect(drafted).toEqual(["/v1/sessions/direct-1/composer-suggestions"]);
+  expect(view.suggestionsLoading).toBe(false);
+  expect(view.composerSuggestions.map((row) => row.prompt)).toEqual(["现在做到哪一步了？"]);
+  expect(view.suggestionsEmpty).toBe(false);
+
+  answer = [];
+  await runtime.suggestComposer("direct-1");
+  expect(drafted).toHaveLength(2);
+  expect(view.composerSuggestions).toEqual([]);
+  // Pressing and getting nothing says so, rather than looking like the press did not land.
+  expect(view.suggestionsEmpty).toBe(true);
+});
+
+test("putting suggestions away stops the drafts on the way, and a late answer is not shown", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const pending = deferred<Response>();
+  let signal: AbortSignal | null = null;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).includes("/composer-suggestions")) {
+      signal = init?.signal ?? null;
+      return pending.promise;
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const view = runtime.sessionView("direct-1");
+  const asking = runtime.suggestComposer("direct-1");
+  await until(() => signal !== null);
+  runtime.dismissComposerSuggestions("direct-1");
+  expect(signal!.aborted).toBe(true);
+  expect(view.suggestionsLoading).toBe(false);
+  pending.resolve(Response.json({ items: [{ id: "late", label: "迟到", prompt: "迟到" }] }));
+  await asking;
+  expect(view.composerSuggestions).toEqual([]);
+  expect(view.suggestionsEmpty).toBe(false);
+});
+
+test("a new message drops the chips drafted for what came before, in front or not; an upsert does not", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");
   runtime.selectedId = "direct-1";
@@ -1141,9 +1205,14 @@ test("a new message in a conversation not in front drops the chips drafted for w
   const behind = runtime.sessionView("group-1");
   front.composerSuggestions = [{ id: "s-front", label: "a", prompt: "a" }];
   behind.composerSuggestions = [{ id: "s-behind", label: "b", prompt: "b" }];
-  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aMessage({ id: "m-new", session_id: "group-1" }), event: "message.created", occurred_at: "now" } });
+  // A reaction or an edit to a row already there: the conversation has not moved on.
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aMessage({ id: "m-old", session_id: "direct-1" }), event: "message.upsert", occurred_at: "now" } });
+  expect(front.composerSuggestions.map((row) => row.id)).toEqual(["s-front"]);
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 2, payload: { ...aMessage({ id: "m-new", session_id: "group-1" }), event: "message.created", occurred_at: "now" } });
   expect(behind.composerSuggestions).toEqual([]);
   expect(front.composerSuggestions.map((row) => row.id)).toEqual(["s-front"]);
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 3, payload: { ...aMessage({ id: "m-here", session_id: "direct-1" }), event: "message.created", occurred_at: "now" } });
+  expect(front.composerSuggestions).toEqual([]);
 });
 
 test("a draft kept across a dropped link goes back to the conversation it was typed in", async () => {

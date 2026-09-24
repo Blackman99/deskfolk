@@ -155,6 +155,43 @@
 		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
 	}));
 
+	/** Somewhere to send what ✨ drafts: not a locked composer, and no Bot reads the file conversation. */
+	const canSuggest = $derived(Boolean(selected) && !lockedComposer && !fileDrop);
+	const suggestionsShown = $derived(
+		(view?.composerSuggestions.length ?? 0) > 0 || Boolean(view?.suggestionsEmpty)
+	);
+	/** Drafted while a reply is still coming, they would be about the past the moment it landed. */
+	const suggestWaiting = $derived(Boolean(liveTurn) || pendingHere.length > 0);
+	const suggestTitle = $derived(
+		view?.suggestionsLoading
+			? t.composer.suggestStop
+			: suggestionsShown
+				? t.composer.suggestHide
+				: suggestWaiting
+					? t.composer.suggestWait
+					: t.composer.suggest
+	);
+
+	/** One press drafts once; pressing again while drafts are out or on the way puts them away. */
+	function toggleSuggestions(): void {
+		if (!selected || !view) return;
+		if (view.suggestionsLoading || suggestionsShown) {
+			runtime.dismissComposerSuggestions(selected.id);
+			return;
+		}
+		void runtime.suggestComposer(selected.id);
+	}
+
+	/** "Nothing to suggest" answers the press; it is not worth keeping on screen. */
+	$effect(() => {
+		const current = view;
+		if (!current?.suggestionsEmpty) return;
+		const timer = setTimeout(() => {
+			current.suggestionsEmpty = false;
+		}, 4000);
+		return () => clearTimeout(timer);
+	});
+
 	const mentionCandidates = $derived.by<MentionCandidate[]>(() => {
 		if (!showMentionPopup) return [];
 		const q = mentionQuery.toLowerCase();
@@ -644,8 +681,8 @@
 {/if}
 
 <div class="composer-dock">
-{#if selected && !lockedComposer && view && view.composerSuggestions.length > 0}
-	<div class="composer-frost-shell composer-suggest-bar" aria-label={t.chat.suggestNext}>
+{#if canSuggest && view && suggestionsShown}
+	<div class="composer-frost-shell composer-suggest-bar" role="group" aria-label={t.chat.suggestNext}>
 		{#each view.composerSuggestions as suggestion (suggestion.id)}
 			<button
 				type="button"
@@ -655,6 +692,8 @@
 			>
 				{suggestion.label}
 			</button>
+		{:else}
+			<span class="suggest-note" role="status">{t.composer.suggestNone}</span>
 		{/each}
 	</div>
 {/if}
@@ -778,6 +817,25 @@
 			<span class="composer-inline-limit">{t.composer.attachLimit}</span>
 		{/if}
 		</div>
+		{#if canSuggest}
+			<button
+				type="button"
+				class="suggest-btn"
+				class:is-active={suggestionsShown}
+				title={suggestTitle}
+				aria-label={suggestTitle}
+				aria-pressed={suggestionsShown}
+				aria-busy={view?.suggestionsLoading ? true : undefined}
+				disabled={!view?.suggestionsLoading && !suggestionsShown && (!connected || suggestWaiting || view?.sending)}
+				onclick={toggleSuggestions}
+			>
+				{#if view?.suggestionsLoading}
+					<svg class="suggest-spinner" aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>
+				{:else}
+					<svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path></svg>
+				{/if}
+			</button>
+		{/if}
 		<button
 			type="button"
 			class="composer-action"
@@ -891,6 +949,14 @@
 
 	.composer-suggest-bar::-webkit-scrollbar {
 		display: none;
+	}
+
+	.suggest-note {
+		padding: 4px 6px;
+		font-size: 12px;
+		line-height: 1.3;
+		color: var(--muted);
+		white-space: nowrap;
 	}
 
 	/* Stop the chip row before the jump button. Padding inside a full-width bar would still cover it. */
@@ -1106,7 +1172,8 @@
 		color: var(--danger);
 	}
 
-	.attach-btn {
+	.attach-btn,
+	.suggest-btn {
 		background: transparent;
 		border: none;
 		color: var(--muted);
@@ -1123,18 +1190,43 @@
 		transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 	}
 
-	.attach-btn:hover:not(:disabled) {
+	.attach-btn:hover:not(:disabled),
+	.suggest-btn:hover:not(:disabled) {
 		background: var(--line-subtle);
 		color: var(--ink);
 	}
 
-	.attach-btn:active:not(:disabled) {
+	.attach-btn:active:not(:disabled),
+	.suggest-btn:active:not(:disabled) {
 		transform: scale(0.96);
 	}
 
-	.attach-btn:disabled {
+	.attach-btn:disabled,
+	.suggest-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	/* Out, or on the way: the same press puts them away. */
+	.suggest-btn.is-active,
+	.suggest-btn[aria-busy="true"],
+	.suggest-btn.is-active:hover:not(:disabled) {
+		color: var(--accent);
+	}
+
+	.suggest-btn.is-active,
+	.suggest-btn.is-active:hover:not(:disabled) {
+		background: var(--accent-tint);
+	}
+
+	.suggest-spinner {
+		animation: suggestSpin 0.9s linear infinite;
+	}
+
+	@keyframes suggestSpin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.composer-action {
@@ -1180,7 +1272,8 @@
 	}
 
 	.composer-action:focus-visible,
-	.composer .attach-btn:focus-visible {
+	.composer .attach-btn:focus-visible,
+	.composer .suggest-btn:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
 	}

@@ -37,8 +37,17 @@ export class SessionView {
   highlightedMessageId = $state<string | null>(null);
   /** Bumped so a repeat jump to the same message flashes again. */
   searchHighlightToken = $state(0);
-  /** Drafted next steps offered above the composer; empty when none apply or the call failed. */
+  /**
+   * Drafted next steps offered above the composer. Each draft is a model call you pay for, so
+   * they come only when you press ✨, and go once a new message makes them about the past.
+   */
   composerSuggestions = $state<ComposerSuggestion[]>([]);
+  /** The ✨ was pressed and its drafts are still on the way. */
+  suggestionsLoading = $state(false);
+  /** The last ✨ came back with nothing to suggest, or failed; the composer says so briefly. */
+  suggestionsEmpty = $state(false);
+  /** Stops the drafts on the way when you put them away or the conversation moves on. */
+  suggestAbort: AbortController | null = null;
   /** Files waiting to go out with the next message here. */
   stagedAttachments = $state<StagedAttachment[]>([]);
   /** A send, an answer, an approval or a continue from here is in flight. Other conversations are not held up by it. */

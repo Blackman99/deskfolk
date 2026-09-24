@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID, USER_MEMBER } from "@real-bot/protocol";
 import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aDirect, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import Composer from "./Composer.svelte";
@@ -221,6 +221,86 @@ test("showing the jump-to-bottom control slides it out of the card and keeps it 
   view.close();
 });
 
+/**
+ * Each draft is a model call on the spend ledger. They used to be fetched on opening a
+ * conversation and after every message; now only the ✨ beside the attachment button asks.
+ */
+test("✨ drafts suggestions only when pressed, for its own conversation", () => {
+  const { host, runtime, close } = open("");
+  const button = host.querySelector(".suggest-btn") as HTMLButtonElement;
+  expect(button.disabled).toBe(false);
+  expect(button.getAttribute("aria-pressed")).toBe("false");
+  expect(button.title).toBe(t.composer.suggest);
+  expect(host.querySelector(".composer-suggest-bar")).toBeNull();
+  button.click();
+  flushSync();
+  // Read only now: the render itself asked for nothing.
+  const asks = runtime.calls.filter((call) => call.name.toLowerCase().includes("suggest"));
+  expect(asks).toEqual([{ name: "suggestComposer", args: [runtime.selectedId] }]);
+  close();
+});
+
+/**
+ * On a phone ✨ right beside the attachment button was two small targets under one thumb. It sits
+ * by send instead, and steps aside once there is something to send: an empty input has room the
+ * placeholder does not use, and send is then never beside a button you meant.
+ */
+test("pressing ✨ again while drafts are on the way or out puts them away", () => {
+  const { host, runtime, close } = open("");
+  const view = runtime.sessionView(runtime.selectedId!);
+  const button = host.querySelector(".suggest-btn") as HTMLButtonElement;
+  view.suggestionsLoading = true;
+  flushSync();
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  expect(button.querySelector(".suggest-spinner")).not.toBeNull();
+  expect(button.title).toBe(t.composer.suggestStop);
+  button.click();
+  view.suggestionsLoading = false;
+  view.composerSuggestions = [{ id: "1", label: "下一步", prompt: "下一步做什么" }];
+  flushSync();
+  expect(button.getAttribute("aria-busy")).toBeNull();
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  expect(button.classList.contains("is-active")).toBe(true);
+  expect(button.title).toBe(t.composer.suggestHide);
+  button.click();
+  flushSync();
+  const asks = runtime.calls.filter((call) => call.name.toLowerCase().includes("suggest"));
+  expect(asks.map((call) => call.name)).toEqual(["dismissComposerSuggestions", "dismissComposerSuggestions"]);
+  close();
+});
+
+test("a press that finds nothing to suggest says so where the chips would be", () => {
+  const { host, runtime, close } = open("");
+  runtime.sessionView(runtime.selectedId!).suggestionsEmpty = true;
+  flushSync();
+  const note = host.querySelector(".composer-suggest-bar .suggest-note");
+  expect(note?.textContent).toBe(t.composer.suggestNone);
+  expect(note?.getAttribute("role")).toBe("status");
+  expect((host.querySelector(".suggest-btn") as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+  close();
+});
+
+test("✨ waits while a reply is still coming, since drafts made now would be stale when it lands", () => {
+  const selected = aDirect();
+  const runtime = reactive(
+    fakeRuntime({
+      bots: [aBot({ id: "bot-1" })],
+      sessions: [selected],
+      turns: [aTurn({ session_id: selected.id, status: "running" })],
+    }),
+  );
+  runtime.selectedId = selected.id;
+  const view = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+  const button = view.host.querySelector(".suggest-btn") as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(button.title).toBe(t.composer.suggestWait);
+  // Chips already out can still be put away.
+  runtime.sessionView(selected.id).composerSuggestions = [{ id: "1", label: "下一步", prompt: "下一步做什么" }];
+  flushSync();
+  expect(button.disabled).toBe(false);
+  view.close();
+});
+
 test("the remote attachment limit sits inside an empty composer", () => {
   const { host, runtime, close } = open("", true);
   expect(host.querySelector(".composer-inline-limit")?.textContent).toContain(t.composer.attachLimit);
@@ -271,6 +351,8 @@ test("the file conversation takes text as well as files, with no Bot to mention"
   // Nothing here wakes a Bot, so offering one to mention would promise an answer that never comes.
   typeAt(editor);
   expect(view.host.querySelector(".mention-autocomplete-popup")).toBeNull();
+  // Nor anything for ✨ to draft: what you send here is a note to yourself.
+  expect(view.host.querySelector(".suggest-btn")).toBeNull();
   view.close();
 
   const direct = open("");

@@ -1957,7 +1957,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           { role: "user", content: user },
         ],
         signal,
-        timeoutMs: 8_000,
+        // Someone pressed ✨ and is watching it spin. 8s suited the silent fetch this used to
+        // be; a thinking "flash" model takes 3-8s, so a press often came back empty.
+        timeoutMs: 20_000,
       });
     } catch {
       return [];

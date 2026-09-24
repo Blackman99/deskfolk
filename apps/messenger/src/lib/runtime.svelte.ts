@@ -383,9 +383,6 @@ export class MessengerRuntime {
   private ticking = false;
   private stopped = false;
   private searchSeq = 0;
-  private suggestAbort: AbortController | null = null;
-  private suggestTimer: ReturnType<typeof setTimeout> | null = null;
-  private suggestSeq = 0;
   private sync: EventSync | null = null;
   /**
    * Where the page was when its last remote link went: the event cursor it had applied and each
@@ -450,7 +447,6 @@ export class MessengerRuntime {
     this.markDisconnected();
     if (this.timer) clearTimeout(this.timer);
     for (const view of this.views.values()) this.clearHighlightTimer(view);
-    this.cancelComposerSuggestions();
   }
 
   get client(): MessengerApi | null {
@@ -900,8 +896,7 @@ export class MessengerRuntime {
     this.sessionDetailId = null;
     this.sessionMessageNext = null;
     // The reply you were aiming and the chips offered stay with the conversation, like its draft:
-    // clicking into another pane is not leaving this one. Fresh chips replace these when they come.
-    this.scheduleComposerSuggestions(id);
+    // clicking into another pane is not leaving this one. Opening one drafts nothing: that is ✨.
     if (this.focusedTurnId) {
       const focused = this.snapshot.turns.find((turn) => turn.id === this.focusedTurnId);
       if (!focused || focused.session_id !== id) this.focusedTurnId = null;
@@ -3110,7 +3105,7 @@ export class MessengerRuntime {
         gone.focusedTurnId = null;
         gone.pendingFocusTrigger = null;
         gone.replyingToId = null;
-        gone.composerSuggestions = [];
+        this.dropComposerSuggestions(gone);
         this.clearHighlight(gone);
       }
     }
@@ -3153,17 +3148,11 @@ export class MessengerRuntime {
     if ((event.event === "message.created" || event.event === "message.upsert") && this.boardShows(event.task_id)) {
       this.traceReload += 1;
     }
-    if (
-      (event.event === "message.created" || event.event === "message.upsert" || event.event === "session.cleared") &&
-      this.selectedId &&
-      (event.event === "session.cleared" ? event.id : event.session_id) === this.selectedId
-    ) {
-      this.scheduleComposerSuggestions(this.selectedId);
-    }
-    if ((event.event === "message.created" || event.event === "message.upsert") && event.session_id !== this.selectedId) {
-      // Drafted for what was there before. A conversation not in front gets new ones when it is.
+    if (event.event === "message.created") {
+      // Drafted for what was there before, in front or not; ✨ drafts again for what is there now.
+      // An upsert is a reaction, an edit or an answer to a row already there: the talk has not moved.
       const view = this.views.get(event.session_id);
-      if (view && view.composerSuggestions.length > 0) view.composerSuggestions = [];
+      if (view) this.dropComposerSuggestions(view);
     }
   }
 
@@ -3286,10 +3275,9 @@ export class MessengerRuntime {
     this.resetConnection();
     this.closeSheets();
     this.searchHits = [];
-    this.cancelComposerSuggestions();
     // Every conversation on screen, not only the one in front: each holds its own.
     for (const view of this.views.values()) {
-      view.composerSuggestions = [];
+      this.dropComposerSuggestions(view);
       view.focusedTurnId = null;
       view.pendingFocusTrigger = null;
       view.messageNext = null;
@@ -3297,55 +3285,50 @@ export class MessengerRuntime {
     }
   }
 
-  private cancelComposerSuggestions(): void {
-    if (this.suggestTimer) {
-      clearTimeout(this.suggestTimer);
-      this.suggestTimer = null;
-    }
-    this.suggestAbort?.abort();
-    this.suggestAbort = null;
-  }
-
   /**
-   * Composer chips follow the transcript, not a live stream. Debounce so a burst of Bot messages
-   * only pays for one short call, and abort the in-flight one when the user switches sessions.
+   * Draft next steps for a conversation's composer, when you press ✨ there. Each draft is one
+   * short model call on the spend ledger, so nothing asks for them on its own any more: they used
+   * to be fetched on opening a conversation and after every message, whether you looked or not.
    */
-  private scheduleComposerSuggestions(sessionId: string): void {
-    this.cancelComposerSuggestions();
-    if (!this.api || this.selectedId !== sessionId) {
-      this.composerSuggestions = [];
-      return;
-    }
-    // These draft what you would send. A Bot↔Bot direct has no composer to put them in.
+  async suggestComposer(sessionId: string): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    // These draft what you would send. A Bot↔Bot direct and the file conversation have no one to send to.
     const session = this.snapshot.sessions.find((s) => s.id === sessionId);
-    if (session && (classifySession(session) === "bot-bot" || isFileDropSession(session))) {
-      this.composerSuggestions = [];
-      return;
+    if (!session || classifySession(session) === "bot-bot" || isFileDropSession(session)) return;
+    const view = this.sessionView(sessionId);
+    this.dropComposerSuggestions(view);
+    const abort = new AbortController();
+    view.suggestAbort = abort;
+    view.suggestionsLoading = true;
+    try {
+      const items = await api.composerSuggestions(sessionId, abort.signal);
+      if (view.suggestAbort !== abort) return;
+      view.composerSuggestions = items;
+      view.suggestionsEmpty = items.length === 0;
+    } catch {
+      if (view.suggestAbort !== abort) return;
+      view.suggestionsEmpty = true;
+    } finally {
+      if (view.suggestAbort === abort) {
+        view.suggestAbort = null;
+        view.suggestionsLoading = false;
+      }
     }
-    this.suggestTimer = setTimeout(() => {
-      this.suggestTimer = null;
-      void this.refreshComposerSuggestions(sessionId);
-    }, 400);
   }
 
-  private async refreshComposerSuggestions(sessionId: string): Promise<void> {
-    if (!this.api || this.selectedId !== sessionId) return;
-    this.suggestAbort?.abort();
-    const abort = new AbortController();
-    this.suggestAbort = abort;
-    const seq = ++this.suggestSeq;
-    try {
-      const items = await this.api.composerSuggestions(sessionId, abort.signal);
-      if (seq !== this.suggestSeq || this.selectedId !== sessionId) return;
-      this.composerSuggestions = items;
-    } catch (error) {
-      if (abort.signal.aborted) return;
-      if (seq !== this.suggestSeq || this.selectedId !== sessionId) return;
-      this.composerSuggestions = [];
-      void error;
-    } finally {
-      if (this.suggestAbort === abort) this.suggestAbort = null;
-    }
+  /** Put a conversation's chips away, and stop drafts still on the way. */
+  dismissComposerSuggestions(sessionId: string): void {
+    const view = this.views.get(sessionId);
+    if (view) this.dropComposerSuggestions(view);
+  }
+
+  private dropComposerSuggestions(view: SessionView): void {
+    view.suggestAbort?.abort();
+    view.suggestAbort = null;
+    view.suggestionsLoading = false;
+    view.suggestionsEmpty = false;
+    if (view.composerSuggestions.length > 0) view.composerSuggestions = [];
   }
 
   /** Flash a message in a conversation — the one named, or the selected one. */
