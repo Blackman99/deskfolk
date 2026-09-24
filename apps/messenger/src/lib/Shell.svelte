@@ -346,9 +346,9 @@
 				// Only its inner pages are ours to unwind; settings itself is an entry in history.
 				return settingsModal?.backWithinSettings() ?? false;
 			case 'session-settings':
-				// The skill sheet and the section list are not in the URL. A Bot opened from a
-				// group is its own settings page, so Back leaves for the conversation.
-				if (nestedProfile) return false;
+				// The skill sheet and the section list are not in the URL, so they close here one
+				// at a time — on a Bot opened from a group too. What is left is history's: the
+				// drawer, or that Bot's page, which Back leaves for the conversation.
 				if (profilePane?.backFromEditor()) return true;
 				if (paneMobileDetail) {
 					paneMobileDetail = false;

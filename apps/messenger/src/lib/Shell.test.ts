@@ -466,8 +466,20 @@ test('on a phone, a Bot opened from a group is that Bot\'s settings, and Back le
     expect(back?.querySelector('svg')).not.toBeNull();
     const label = back?.querySelector('.sheet-back-label');
     expect(getComputedStyle(label!).display).toBe('none');
-    // The group's section is not this page's business: Back is the conversation's history.
     const leave = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
+    // Inside the Bot's page, Back steps out one screen at a time: the skill sheet, then the section.
+    click(sheet?.querySelectorAll('.bot-tab-btn')[1]);
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(true);
+    click(sheet?.querySelector('.skill-empty-add-btn'));
+    expect(host.querySelector('.skill-modal-backdrop')).not.toBeNull();
+    expect(leave()).toBe(true);
+    flushSync();
+    expect(host.querySelector('.skill-modal-backdrop')).toBeNull();
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(true);
+    expect(leave()).toBe(true);
+    flushSync();
+    expect(sheet?.classList.contains('is-mobile-detail')).toBe(false);
+    // The group's section is not this page's business: Back is the conversation's history.
     expect(leave()).toBe(false);
     expect(runtime.sessionSettingsOpen).toBe(true);
     click(back);

@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- On a phone, Back on a Bot opened from a group's settings steps out one screen at a time again. From a skill, routine or memory editor it returns to the section, then to the Bot's list of sections, and only then to the conversation. It used to jump straight to the conversation.
+
 - Pinning the Files conversation now moves it into the pinned row instead of also keeping it in its own section of the session list. The pinned tile and the folded rail keep its file icon, and unpinning puts the section back.
 
 - On a phone, Back now closes a full-screen picture instead of leaving the page under it. A picture enlarged from a conversation or a file preview shrinks back into place, the way ✕ does, and the next Back navigates as before.
