@@ -85,6 +85,25 @@ describe("tool result recovery", () => {
     expect([...malformed].length).toBeLessThanOrEqual(8000);
   });
 
+  test("a result too long to stringify keeps its status and a preview instead of throwing", () => {
+    const root = workspace();
+    // JSON.stringify throws on a BigInt the way it does on a gigabyte of stdout, without the
+    // gigabyte; nesting it past the preview's depth keeps the preview itself printable.
+    const payload = { ok: true, data: { exit_code: 0, stdout: "镜头".repeat(5000), stderr: "",
+      deep: { a: { b: { c: { d: { size: 1n } } } } } } };
+    const raw = serializeToolResult(payload, root, "work/job");
+    const result = JSON.parse(raw);
+    expect([...raw].length).toBeLessThanOrEqual(8000);
+    expect(result.ok).toBe(true);
+    expect(result.data.exit_code).toBe(0);
+    expect(result.data.stdout).toStartWith("镜头镜头");
+    expect(result.truncated).toBe(true);
+    expect(result.full_result_saved).toBe(false);
+    expect(result.save_error).toBe("result is too large to save");
+    expect(result.recovery_hint).toContain("tool-results/");
+    expect(readdirSync(root)).toEqual([]);
+  });
+
   test("wide arrays and escaped Unicode stay within the limit", () => {
     const payload = { ok: true, data: { entries: Array.from({ length: 5000 }, (_, i) => ({ path: `${i}-😀`, content: '\\"\n'.repeat(200) })) } };
     const raw = serializeToolResult(payload, workspace());

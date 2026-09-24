@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { ulid } from "./ids";
-import { takeCodePoints } from "./text";
+import { codePointCount, takeCodePoints } from "./text";
 import { classifyPath } from "./workspace-paths";
 
 const LIMIT = 8000;
@@ -25,8 +25,20 @@ export function serializeToolResult(
   workspace: string | null,
   workDir?: string | null,
 ): string {
-  const raw = JSON.stringify(payload);
-  if (codePoints(raw) <= LIMIT) return raw;
+  let raw: string;
+  try {
+    raw = JSON.stringify(payload);
+  } catch {
+    // Longer than the engine will hold as one string (a shell that printed most of a gigabyte).
+    // Nothing can be saved, but the model still hears the status and a preview.
+    return boundedResult(null, payload, {
+      full_result_saved: false,
+      save_error: "result is too large to save",
+      recovery_hint: "The result was too large to keep. Narrow the command so it prints less (count or head the output, search one file, leave tool-results/ out of searches), or write output to a file and read parts of it. Do not assume the original action failed or blindly repeat side effects.",
+    });
+  }
+  const chars = codePointCount(raw);
+  if (chars <= LIMIT) return raw;
   let recovery: Recovery;
   try {
     if (!workspace) throw new Error("workspace is not set");
@@ -40,7 +52,7 @@ export function serializeToolResult(
     recovery = {
       full_result_saved: true,
       full_result_path: file.rel,
-      recovery_hint: "Full tool-result JSON is saved in the workspace. Use shell to parse full_result_path, extract only needed fields or URLs, or decode base64 to a file. full_result_path is relative to the workspace root, while a shell without cwd runs in this turn's work dir: pass cwd \".\" when a command or script resolves that path. Do not print the whole payload or repeat the original action just because this preview is truncated.",
+      recovery_hint: "Full tool-result JSON is saved in the workspace. Use shell to parse full_result_path, extract only needed fields or URLs, or decode base64 to a file. full_result_path is relative to the workspace root, while a shell without cwd runs in this turn's work dir: pass cwd \".\" when a command or script resolves that path. Do not print the whole payload or repeat the original action just because this preview is truncated. Leave tool-results/ out of workspace searches: each file there is one JSON line, so a single match prints all of it.",
     };
   } catch (error) {
     recovery = {
@@ -49,7 +61,7 @@ export function serializeToolResult(
       recovery_hint: "Full result could not be saved. Check existing artifacts or use supported pagination, smaller queries, or file/URL output. Do not assume the original action failed or blindly repeat side effects.",
     };
   }
-  return boundedResult(raw, payload, recovery);
+  return boundedResult(chars, payload, recovery);
 }
 
 /**
@@ -73,23 +85,24 @@ export function dropToolResults(workspace: string, dirs: readonly string[]): num
 }
 
 export function trimToolContent(raw: string): string {
-  if (codePoints(raw) <= LIMIT) return raw;
+  const chars = codePointCount(raw);
+  if (chars <= LIMIT) return raw;
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { parsed = { preview: raw }; }
-  return boundedResult(raw, parsed);
+  return boundedResult(chars, parsed);
 }
 
-function boundedResult(raw: string, payload: unknown, recovery?: Recovery): string {
+function boundedResult(originalChars: number | null, payload: unknown, recovery?: Recovery): string {
   const metadata = {
     truncated: true,
-    original_chars: codePoints(raw),
+    ...(originalChars === null ? {} : { original_chars: originalChars }),
     ...recovery,
   };
   for (const budget of [600, 200, 60, 0]) {
     const preview = compact(payload, budget, 0, { nodes: 120 });
     const result = { ...asRecord(preview), ...metadata };
     const out = JSON.stringify(result);
-    if (codePoints(out) <= LIMIT) return out;
+    if (codePointCount(out) <= LIMIT) return out;
   }
   const source = asRecord(payload);
   return JSON.stringify({
@@ -128,10 +141,4 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : { preview: value };
-}
-
-function codePoints(value: string): number {
-  let length = 0;
-  for (const _ of value) length++;
-  return length;
 }

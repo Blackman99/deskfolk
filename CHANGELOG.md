@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- A Bot no longer ends a turn with "The runtime errored" when a shell command prints an enormous amount of text. A search across the workspace that ran into `tool-results/` could print hundreds of megabytes, and past about 270 million characters the result's preview, or the result itself, could no longer be built, so the turn stopped. The Bot now gets its exit status and a short preview, with a note to narrow the command. A result too large to save says so instead of pointing at a file. The note for saved results also tells Bots to leave `tool-results/` out of workspace searches.
+
 - On a phone, swiping in the terminal now scrolls back through the history of a full-screen program such as Claude Code, vim or less. Before, a swipe did nothing there. Each row your finger travels is one wheel step, as a Mac's wheel or trackpad sends. A plain shell's scrollback scrolls under your finger as before.
 
 - A picture a message names by its workspace path now shows as a thumbnail right in the text, as attachments and pictures in Markdown previews already do. Tap it to enlarge. The chip shows the file name, with the full path on hover. Pictures load once they are scrolled near, using the small copy, behind anything you open yourself. A path whose file is gone stays a plain link. It works in Bot replies and in your own messages; a reply still streaming shows links until it finishes.
