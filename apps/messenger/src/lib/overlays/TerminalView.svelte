@@ -102,6 +102,16 @@
 	 * emulator alive for every tab in every pane, which is unbounded.
 	 */
 	let term: import('@xterm/xterm').Terminal | null = null;
+
+	/**
+	 * xterm's public class keeps the viewport on a private core, created during `open`. A macOS
+	 * scrollbar that measures as nothing is still given 15px; zero that before fit, or the
+	 * columns stop short of the pane.
+	 */
+	function claimNoScrollbar(opened: import('@xterm/xterm').Terminal): void {
+		const core = (opened as unknown as { _core?: { viewport?: { scrollBarWidth: number } } })._core;
+		if (core?.viewport) core.viewport.scrollBarWidth = 0;
+	}
 	let fit: import('@xterm/addon-fit').FitAddon | null = null;
 	let search: import('@xterm/addon-search').SearchAddon | null = null;
 	let stopFit: (() => void) | null = null;
@@ -211,6 +221,7 @@
 		const quiet = silenceRequests(term.parser, () => replaying || daemonAnswers);
 		stopQuiet = () => quiet.dispose();
 		term.open(host);
+		claimNoScrollbar(term);
 		loadGpuRenderer(term, WebglAddon);
 		fit.fit();
 		term.onData((data) => {
@@ -1091,6 +1102,19 @@
 		/* Margin, not padding. Fit reads the host's height as the cell grid and ignores the
 		   parent's padding, so padding here just lets the last row paint over the gap. */
 		margin: 10px 12px 16px;
+	}
+
+	/* xterm keeps a classic scrollbar (`overflow-y: scroll`). On macOS that is a white bar down
+	   the dark pane. The wheel still scrolls the viewport; only the bar is gone. */
+	.terminal-host :global(.xterm-viewport) {
+		overflow-y: hidden;
+		scrollbar-width: none;
+	}
+
+	.terminal-host :global(.xterm-viewport)::-webkit-scrollbar {
+		width: 0;
+		height: 0;
+		display: none;
 	}
 
 	.terminal-find {

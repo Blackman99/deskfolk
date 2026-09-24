@@ -11,8 +11,11 @@ mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', 
 mock.module('@xterm/xterm', () => ({
   Terminal: class {
     rows = 24; cols = 80; options = {}; unicode = { activeVersion: '6' };
+    _core: { viewport?: { scrollBarWidth: number } } = {};
     parser = { registerCsiHandler: () => ({ dispose() {} }), registerDcsHandler: () => ({ dispose() {} }), registerOscHandler: () => ({ dispose() {} }) };
-    loadAddon() {} open() {} onData() {} attachCustomKeyEventHandler() {} reset() {} clear() {} resize() {} focus() {} dispose() {}
+    loadAddon() {}
+    open() { this._core.viewport = { scrollBarWidth: 15 }; }
+    onData() {} attachCustomKeyEventHandler() {} reset() {} clear() {} resize() {} focus() {} dispose() {}
     write(_data: unknown, done?: () => void) { done?.(); }
     hasSelection() { return false; } getSelection() { return ''; } paste() {}
   },

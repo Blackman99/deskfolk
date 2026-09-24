@@ -35,12 +35,17 @@ class FakeTerminal {
     registerOscHandler: () => ({ dispose() {} }),
   };
   private dataSink: ((data: string) => void) | null = null;
+  /**
+   * The public Terminal hides its viewport on `_core`, and that viewport exists only after
+   * `open`. macOS measures no scrollbar and xterm keeps 15 anyway.
+   */
+  _core: { viewport?: { scrollBarWidth: number } } = {};
   constructor(options: Record<string, unknown>) {
     this.options = { ...options };
     made.push(this);
   }
   loadAddon(addon: { activate?: (term: FakeTerminal) => void }) { addon.activate?.(this); }
-  open() {}
+  open() { this._core.viewport = { scrollBarWidth: 15 }; }
   onData(sink: (data: string) => void) { this.dataSink = sink; }
   attachCustomKeyEventHandler(handler: KeyHandler) { this.keyHandler = handler; }
   reset() {}
@@ -362,6 +367,13 @@ function mountTab(items: Terminal[] = [older]) {
   });
   return { view, typed, resized, term: () => made.at(-1)! };
 }
+
+test("opening the terminal claims no scrollbar, so the columns reach the pane edge", async () => {
+  const { view, term } = mountTab();
+  await settle();
+  expect(term()._core.viewport?.scrollBarWidth).toBe(0);
+  view.close();
+});
 
 test("the ⌘ keys a Mac terminal gives meaning to reach the shell as its editing bytes", async () => {
   const { view, typed, term } = mountTab();
