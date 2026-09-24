@@ -2149,18 +2149,17 @@
 		align-items: center;
 		gap: 3px;
 		font-size: 11px;
-		font-weight: 600;
-		padding: 1px 6px;
-		border-radius: 9999px;
-		background: var(--ok-bg);
-		border: 1px solid var(--ok-line);
-		color: var(--ok);
+		font-weight: 400;
+		color: var(--muted-light);
 		letter-spacing: -0.01em;
 	}
 
 	.duration-badge.live {
+		font-weight: 600;
+		padding: 1px 6px;
+		border-radius: 9999px;
+		border: 1px solid var(--accent-border);
 		background: var(--accent-tint);
-		border-color: var(--accent-border);
 		color: var(--accent);
 		animation: pulse 1.2s infinite;
 	}
