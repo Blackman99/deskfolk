@@ -5,10 +5,11 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import { recentBotDms } from './bot-dm-source.ts';
-	import { groupSessions } from './session-groups.ts';
+	import { groupSessions, isSessionArchived } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
+	import ToolsMenu from './ToolsMenu.svelte';
 
 	/**
 	 * The session list put away: every conversation it shows, as its avatar alone, in the same
@@ -20,13 +21,36 @@
 		pinnedSessionIds: string[];
 		/** Marks the avatar the context menu belongs to. */
 		contextMenuSessionId: string | null;
+		/** Escape closes the tools menu before anything else, so the shell holds it. */
+		toolsMenuOpen?: boolean;
+		workspaceOpen: boolean;
 		onOpenContextMenu: (e: MouseEvent, session: SessionSummary) => void;
 		onExpand: () => void;
+		onToggleWorkspace: () => void;
+		onOpenRoutines: () => void;
+		onOpenSpend: () => void;
+		onNewTerminal: () => void;
+		/** The archived list is a view of the full list; this opens the list already on it. */
+		onOpenArchived: () => void;
 		onOpenSettings: () => void;
 	};
 
-	let { runtime, t, pinnedSessionIds, contextMenuSessionId, onOpenContextMenu, onExpand, onOpenSettings }: Props =
-		$props();
+	let {
+		runtime,
+		t,
+		pinnedSessionIds,
+		contextMenuSessionId,
+		toolsMenuOpen = $bindable(false),
+		workspaceOpen,
+		onOpenContextMenu,
+		onExpand,
+		onToggleWorkspace,
+		onOpenRoutines,
+		onOpenSpend,
+		onNewTerminal,
+		onOpenArchived,
+		onOpenSettings
+	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
@@ -67,6 +91,22 @@
 
 	function botStatusOf(botId: string) {
 		return botWorkStatus(botId, snapshot.turns, snapshot.approvals, statusLabels, snapshot.pendingJudgements);
+	}
+
+	/*
+	 * The list's footer, as icons: workspace, tools and settings in the same order, the names in
+	 * the tooltips like everything else here. The tools menu is the list's own, flown out beside the
+	 * rail so it covers none of these.
+	 */
+	const archivedCount = $derived(snapshot.sessions.filter((session) => isSessionArchived(session, botsById)).length);
+	let toolsBtnEl = $state<HTMLButtonElement | null>(null);
+	let toolsFocusLast = $state(false);
+
+	function onToolsKeyDown(e: KeyboardEvent): void {
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+		e.preventDefault();
+		toolsFocusLast = e.key === 'ArrowUp';
+		toolsMenuOpen = true;
 	}
 </script>
 
@@ -130,23 +170,74 @@
 			{/each}
 		{/each}
 	</div>
-	<button
-		type="button"
-		class="rail-action rail-settings"
-		class:is-active={runtime.settingsOpen}
-		title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
-		aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
-		onclick={onOpenSettings}
-	>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="3"></circle>
-			<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-		</svg>
-		{#if updateChecker.updateVisible}
-			<span class="rail-update-dot" aria-hidden="true"></span>
-		{/if}
-	</button>
+	<div class="rail-foot">
+		<button
+			type="button"
+			class="rail-action rail-workspace"
+			class:is-active={workspaceOpen}
+			title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (⌘O)` : t.sidebar.workspaceUnset}
+			aria-label={t.sidebar.workspace}
+			aria-expanded={workspaceOpen}
+			disabled={!snapshot.settings.workspace_path}
+			onclick={onToggleWorkspace}
+		>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+			</svg>
+		</button>
+		<button
+			bind:this={toolsBtnEl}
+			type="button"
+			class="rail-action rail-tools"
+			class:is-active={toolsMenuOpen}
+			title={t.sidebar.tools}
+			aria-label={t.sidebar.tools}
+			aria-haspopup="menu"
+			aria-expanded={toolsMenuOpen}
+			aria-controls={toolsMenuOpen ? 'sidebar-tools-menu' : undefined}
+			onkeydown={onToolsKeyDown}
+			onclick={() => (toolsMenuOpen = !toolsMenuOpen)}
+		>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+				<rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+				<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+				<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+			</svg>
+		</button>
+		<button
+			type="button"
+			class="rail-action rail-settings"
+			class:is-active={runtime.settingsOpen}
+			title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
+			aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
+			onclick={onOpenSettings}
+		>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<circle cx="12" cy="12" r="3"></circle>
+				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+			</svg>
+			{#if updateChecker.updateVisible}
+				<span class="rail-update-dot" aria-hidden="true"></span>
+			{/if}
+		</button>
+	</div>
 </nav>
+
+<ToolsMenu
+	{t}
+	locale={snapshot.settings.locale === 'en' ? 'en' : 'zh'}
+	phone={false}
+	anchor={toolsBtnEl}
+	bind:open={toolsMenuOpen}
+	bind:focusLast={toolsFocusLast}
+	placement="flyout"
+	{archivedCount}
+	{onOpenRoutines}
+	{onOpenSpend}
+	onOpenTerminal={onNewTerminal}
+	{onOpenArchived}
+/>
 
 <style>
 	/*
@@ -205,9 +296,29 @@
 		margin-bottom: 4px;
 	}
 
-	.rail-settings {
-		margin-top: 6px;
-		margin-bottom: 8px;
+	.rail-foot {
+		flex: 0 0 auto;
+		width: 64px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		padding: 6px 0 8px;
+		border-top: 1px solid var(--line);
+	}
+
+	.rail-foot .rail-action {
+		margin: 0;
+	}
+
+	.rail-action:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+
+	.rail-action:disabled:hover {
+		border-color: transparent;
+		color: var(--muted);
 	}
 
 	.rail-action:hover {

@@ -1714,6 +1714,30 @@ test('the session list folds to a rail of avatars from its own button or ⌘B, a
   expect(mounted.host.querySelector('.rail-item[data-session="sess-2"] .rail-badge')?.textContent).toBe('3');
   expect(localStorage.getItem('real-bot-sidebar-collapsed')).toBe('1');
 
+  // The list's footer follows it down as icons, in the same order.
+  const railFoot = () => [...mounted.host.querySelectorAll<HTMLButtonElement>('.rail-foot button')];
+  expect(railFoot().map((button) => button.getAttribute('aria-label'))).toEqual(['Workspace', 'Tools', 'Settings']);
+  expect(railFoot()[0].disabled).toBe(false);
+  click(railFoot()[1]);
+  await settle();
+  expect(mounted.host.querySelector('.tools-menu')).not.toBeNull();
+  // Escape is the shell's: it closes the menu first and leaves the list folded.
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  flushSync();
+  expect(mounted.host.querySelector('.tools-menu')).toBeNull();
+  expect(shell().classList.contains('is-sidebar-collapsed')).toBe(true);
+  // Archived sessions are a view of the full list: asking for them from the rail opens the list on it.
+  click(railFoot()[1]);
+  await settle();
+  click(mounted.host.querySelector('.tools-menu-archived'));
+  await settle();
+  expect(mounted.host.querySelector('.rail')).toBeNull();
+  expect(mounted.host.querySelector('.side .archived-empty-hint')).not.toBeNull();
+  click(mounted.host.querySelector('.btn-back-sessions'));
+  click(collapse());
+  await settle();
+  expect(mounted.host.querySelector('.rail')).not.toBeNull();
+
   // The rail still switches conversations.
   click(mounted.host.querySelector('.rail-item[data-session="sess-2"]'));
   expect(runtime.calls.filter((call) => call.name === 'selectSession').map((call) => call.args[0])).toContain('sess-2');

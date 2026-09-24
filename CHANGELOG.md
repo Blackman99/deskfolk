@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- The session list's footer follows it into the folded rail. Instead of settings alone, the rail's bottom now holds the same "Workspace / Tools / Settings" as three icons in the same order, names in the tooltips. Workspace is greyed with the same explanation when none is configured. The tools menu is the list's own (Routines, Spend, New terminal, then Archived sessions with its count after a line), flown out beside the rail with its bottom on the button, or to the left when the right has no room; ↑ ↓ open it on the first or last item, Escape closes it and hands focus back, and so does a click elsewhere. Archived sessions exist only in the full list, so choosing them from the rail unfolds the list straight onto that page.
+
 - Redesigned the artifact preview annotation panel and toolbar: annotation cards feature numbered mark badges corresponding directly to visual on-file marks, streamlined coordinate labels with full resolution parameters preserved in hover tooltips, refined status chips, and compact action buttons (resolve, reopen, edit, delete); the filter bar uses a segmented control style; and top bar controls (show resolved toggle, annotate mode) have unified styling.
 
 - Completed Bot reply durations now use regular-weight muted text beside the timestamp, with no colored background or outline.

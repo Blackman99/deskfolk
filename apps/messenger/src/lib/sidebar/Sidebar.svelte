@@ -19,7 +19,7 @@
 	import { formatListTime, listTimeSource } from './list-time.ts';
 	import { plainPreview } from './preview-text.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
-	import { spendCopyFor } from '../spend/spend-copy.ts';
+	import ToolsMenu from './ToolsMenu.svelte';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -71,7 +71,6 @@
 	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
-	const spendCopy = $derived(spendCopyFor(snapshot.settings.locale === 'en' ? 'en' : 'zh'));
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
@@ -152,56 +151,13 @@
 
 	let fabEl = $state<HTMLElement | null>(null);
 
-	let toolsMenuEl = $state<HTMLElement | null>(null);
 	let toolsToggleBtnEl = $state<HTMLButtonElement | null>(null);
-	let toolsFocusLast = false;
+	let toolsFocusLast = $state(false);
 
 	$effect(() => {
 		void runtime.searchHits;
 		searchHighlightIndex = -1;
 	});
-
-	function placeToolsMenu(): void {
-		if (!toolsMenuOpen || !toolsMenuEl || !toolsToggleBtnEl) return;
-		const anchor = toolsToggleBtnEl.getBoundingClientRect();
-		const menu = toolsMenuEl.getBoundingClientRect();
-		const margin = 8;
-		const above = anchor.top - menu.height - 6;
-		const below = anchor.bottom + 6;
-		const preferred = phone ? below : above;
-		const fallback = phone ? above : below;
-		const top = preferred >= margin && preferred + menu.height <= window.innerHeight - margin
-			? preferred : fallback;
-		toolsMenuEl.style.left = `${Math.max(margin, Math.min(anchor.left, window.innerWidth - menu.width - margin))}px`;
-		toolsMenuEl.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - menu.height - margin))}px`;
-	}
-
-	$effect(() => {
-		if (toolsMenuOpen && toolsMenuEl) {
-			placeToolsMenu();
-			const items = toolsItems();
-			items[toolsFocusLast ? items.length - 1 : 0]?.focus();
-			toolsFocusLast = false;
-		}
-	});
-
-	$effect(() => {
-		if (!toolsMenuOpen || !toolsToggleBtnEl || !toolsMenuEl) return;
-		const observer = new ResizeObserver(placeToolsMenu);
-		observer.observe(toolsToggleBtnEl);
-		observer.observe(toolsMenuEl);
-		if (toolsToggleBtnEl.parentElement) observer.observe(toolsToggleBtnEl.parentElement);
-		return () => observer.disconnect();
-	});
-
-	function toolsItems(): HTMLButtonElement[] {
-		return Array.from(toolsMenuEl?.querySelectorAll<HTMLButtonElement>('.tools-menu-item:not(:disabled)') ?? []);
-	}
-
-	function closeToolsMenu(): void {
-		toolsMenuOpen = false;
-		toolsToggleBtnEl?.focus();
-	}
 
 	function onToolsToggleKeyDown(e: KeyboardEvent): void {
 		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -210,29 +166,9 @@
 		toolsMenuOpen = true;
 	}
 
-	function onToolsMenuKeyDown(e: KeyboardEvent): void {
-		if (e.key === 'Escape' || e.key === 'Tab') {
-			if (e.key === 'Escape') e.preventDefault();
-			e.stopPropagation();
-			closeToolsMenu();
-			return;
-		}
-		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
-		e.preventDefault();
-		const items = toolsItems();
-		if (!items.length) return;
-		const index = items.indexOf(document.activeElement as HTMLButtonElement);
-		const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
-			: e.key === 'ArrowDown' ? index + 1 : index - 1;
-		items[(next + items.length) % items.length]?.focus();
-	}
-
 	/** Popups that close on a click elsewhere. Escape order is the shell's; this is not. */
 	function onWindowClick(e: MouseEvent): void {
 		const target = e.target as Node | null;
-		if (toolsMenuOpen && isOutside(target, toolsMenuEl, toolsToggleBtnEl)) {
-			toolsMenuOpen = false;
-		}
 		if (searchFocused && isOutside(target, searchWrapEl)) {
 			searchFocused = false;
 		}
@@ -314,6 +250,11 @@
 		searchHighlightIndex = -1;
 		runtime.closeSearch();
 		return true;
+	}
+
+	/** The archived list, asked for from the rail's menu: the list opens already on it. */
+	export function showArchived(): void {
+		viewingArchived = true;
 	}
 
 	function onSearchInput(ev: Event): void {
@@ -414,7 +355,7 @@
 	}
 </script>
 
-<svelte:window onclick={onWindowClick} onresize={placeToolsMenu} />
+<svelte:window onclick={onWindowClick} />
 
 {#snippet searchGlyph()}
 	<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
@@ -912,90 +853,25 @@
 			</button>
 		</div>
 	{/if}
-	{#if toolsMenuOpen}
-		<div
-			bind:this={toolsMenuEl}
-			id="sidebar-tools-menu"
-			class="tools-menu"
-			aria-label={t.sidebar.tools}
-			role="menu"
-			tabindex="-1"
-			onkeydown={onToolsMenuKeyDown}
-		>
-			<button
-				type="button"
-				class="tools-menu-item"
-				role="menuitem"
-				aria-current={phone && runtime.routinesOpen ? 'true' : undefined}
-				onclick={() => {
-					closeToolsMenu();
-					onOpenRoutines();
-				}}
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="3" y="4" width="18" height="17" rx="2"></rect>
-					<line x1="3" y1="9" x2="21" y2="9"></line>
-					<line x1="8" y1="2" x2="8" y2="6"></line>
-					<line x1="16" y1="2" x2="16" y2="6"></line>
-				</svg>
-				<span>{phone ? t.calendar.open : t.routines.title}</span>
-			</button>
-			<button
-				type="button"
-				class="tools-menu-item"
-				role="menuitem"
-				aria-current={phone && runtime.spendOpen ? 'true' : undefined}
-				onclick={() => {
-					closeToolsMenu();
-					onOpenSpend();
-				}}
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<line x1="12" y1="1" x2="12" y2="23"></line>
-					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-				</svg>
-				<span>{spendCopy.open}</span>
-			</button>
-			<button
-				type="button"
-				class="tools-menu-item"
-				role="menuitem"
-				aria-current={phone && runtime.terminalOpen ? 'true' : undefined}
-				onclick={() => {
-					closeToolsMenu();
-					if (phone) runtime.openTerminal();
-					else onNewTerminal();
-				}}
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="4 17 10 11 4 5"></polyline>
-					<line x1="12" y1="19" x2="20" y2="19"></line>
-				</svg>
-				<span>{phone ? t.terminal.title : t.terminal.newTab}</span>
-			</button>
-			<div class="tools-menu-divider" role="separator"></div>
-			<button
-				type="button"
-				class="tools-menu-item tools-menu-archived"
-				role="menuitem"
-				aria-current={viewingArchived ? 'true' : undefined}
-				onclick={() => {
-					closeToolsMenu();
-					viewingArchived = true;
-				}}
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="21 8 21 21 3 21 3 8"></polyline>
-					<rect x="1" y="3" width="22" height="5"></rect>
-					<line x1="10" y1="12" x2="14" y2="12"></line>
-				</svg>
-				<span>{t.sidebar.archivedSessions}</span>
-				{#if archivedSessions.length > 0}
-					<span class="tools-menu-badge">{archivedSessions.length}</span>
-				{/if}
-			</button>
-		</div>
-	{/if}
+	<ToolsMenu
+		{t}
+		locale={snapshot.settings.locale === 'en' ? 'en' : 'zh'}
+		{phone}
+		anchor={toolsToggleBtnEl}
+		bind:open={toolsMenuOpen}
+		bind:focusLast={toolsFocusLast}
+		archivedCount={archivedSessions.length}
+		current={{
+			routines: phone && runtime.routinesOpen,
+			spend: phone && runtime.spendOpen,
+			terminal: phone && runtime.terminalOpen,
+			archived: viewingArchived
+		}}
+		{onOpenRoutines}
+		{onOpenSpend}
+		onOpenTerminal={() => (phone ? runtime.openTerminal() : onNewTerminal())}
+		onOpenArchived={() => (viewingArchived = true)}
+	/>
 </aside>
 
 {#snippet toolsToggle()}
@@ -2192,67 +2068,6 @@
 		background: var(--danger);
 	}
 
-	.tools-menu {
-		position: fixed;
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		width: 208px;
-		max-width: calc(100vw - 16px);
-		max-height: calc(100dvh - 16px);
-		overflow-y: auto;
-		padding: 5px;
-		box-sizing: border-box;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-		box-shadow: var(--shadow-lg);
-	}
-
-	.tools-menu-item {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-height: 38px;
-		flex-shrink: 0;
-		padding: 0 10px;
-		border: 0;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--ink);
-		font: 500 13px/1.2 var(--font);
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.tools-menu-item:hover,
-	.tools-menu-item:focus-visible {
-		background: var(--line-subtle);
-		outline: none;
-	}
-
-	.tools-menu-item svg {
-		flex-shrink: 0;
-		color: var(--muted);
-	}
-
-	.tools-menu-divider {
-		height: 1px;
-		margin: 5px;
-		background: var(--line);
-		flex-shrink: 0;
-	}
-
-	.tools-menu-badge {
-		margin-left: auto;
-		padding: 1px 7px;
-		border-radius: 999px;
-		background: var(--line-subtle);
-		color: var(--muted);
-		font-size: 11.5px;
-		font-weight: 600;
-	}
-
 	/* Kept global: `.row` is the sidebar session row, but the context menu is what opens it. */
 	.row.is-context-open {
 		background: var(--line-subtle);
@@ -2506,11 +2321,6 @@
 			background: var(--row-hover);
 			color: var(--ink);
 			border-color: var(--line-active, var(--line));
-		}
-
-		.tools-menu-item {
-			min-height: 44px;
-			font-size: 14px;
 		}
 
 		.search-trigger-wrap {

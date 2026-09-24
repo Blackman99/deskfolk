@@ -32,6 +32,7 @@ import CreateGroupSheet from '../../src/lib/sidebar/CreateGroupSheet.svelte';
 import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
 import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
 import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
+import SidebarRail from '../../src/lib/sidebar/SidebarRail.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
 import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
@@ -459,6 +460,31 @@ const defs: Record<StoryName, Story> = {
 			onCreateGroup: () => {},
 			onOpenArtifact: () => {},
 			onNewTerminal: () => {}
+		}
+	},
+	'sidebar-rail': {
+		component: SidebarRail as never,
+		props: {
+			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
+			t,
+			pinnedSessionIds: ['direct-1'],
+			contextMenuSessionId: null,
+			workspaceOpen: false,
+			onOpenContextMenu: () => {},
+			onExpand: () => {},
+			onToggleWorkspace: () => {},
+			onOpenRoutines: () => {},
+			onOpenSpend: () => {},
+			onNewTerminal: () => {},
+			onOpenArchived: () => {},
+			onOpenSettings: () => {}
+		},
+		// The tools menu open, so the shot has the flyout beside the rail as well as the footer icons.
+		// Settle first: the button's `bind:this` lands in an effect, and the menu hangs off it.
+		afterMount: (host) => {
+			flushSync();
+			host.querySelector<HTMLButtonElement>('.rail-tools')?.click();
+			flushSync();
 		}
 	},
 	'sidebar-context': {

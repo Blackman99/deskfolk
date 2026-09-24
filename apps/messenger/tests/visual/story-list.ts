@@ -27,6 +27,9 @@ export const STORY_SIZES = {
 	// Bot↔Bot directs: capped list with a source line under each row, and the entry point the
 	// transcript hangs under the message that set them off. Neither appears in any other shot.
 	'sidebar-botdm': { width: 300, height: 820 },
+	// The list folded to its rail, with the footer's tools menu flown out beside it: the only shot
+	// of the rail's icon footer and of a menu placed to the side of its button.
+	'sidebar-rail': { width: 300, height: 820 },
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
 	'chat-stage-botdm': { width: 900, height: 820 },

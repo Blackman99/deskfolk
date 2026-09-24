@@ -404,10 +404,18 @@
 	 * The list and the rail each carry the button to become the other. Focus that was on either
 	 * follows to the button that replaces it, rather than falling to the page.
 	 */
+	/** The rail's menu asked for the archived list, which only the full list has: open the list on it. */
+	function openArchivedFromRail(): void {
+		if (!sidebarCollapsed) return;
+		toggleSidebar();
+		void tick().then(() => sidebar?.showArchived());
+	}
+
 	function toggleSidebar(): void {
 		const next = !sidebarCollapsed;
 		const refocus = Boolean(shellEl?.querySelector(':scope > .side, :scope > .rail')?.contains(document.activeElement));
-		if (next) toolsMenuOpen = false;
+		// Either side's tools menu hangs off a button that is about to go.
+		toolsMenuOpen = false;
 		sidebarCollapsed = next;
 		saveSidebarCollapsed(next);
 		if (refocus) {
@@ -1763,9 +1771,16 @@
 			{runtime}
 			{t}
 			{pinnedSessionIds}
+			bind:toolsMenuOpen
+			workspaceOpen={runtime.workspaceOpen}
 			contextMenuSessionId={contextMenu?.session.id ?? null}
 			onOpenContextMenu={openContextMenu}
 			onExpand={toggleSidebar}
+			onToggleWorkspace={toggleWorkspaceExplorer}
+			onOpenRoutines={openRoutinesFromUi}
+			onOpenSpend={openSpendFromUi}
+			onNewTerminal={() => void openNewTerminal(null)}
+			onOpenArchived={openArchivedFromRail}
 			onOpenSettings={() => runtime.openSettings()}
 		/>
 	{:else}
