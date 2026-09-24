@@ -8,6 +8,8 @@ export type StepCopy = {
   title: string;
   body: string;
   callout: string;
+  /** A docs page that takes the step further. */
+  link?: { label: string; page: DocsPageKey };
 };
 
 export type BoundaryRow = {
@@ -24,6 +26,7 @@ export type Dict = {
     quickstart: string;
     manifesto: string;
     roadmap: string;
+    remote: string;
     github: string;
     switchLang: string;
     wip: string;
@@ -141,6 +144,10 @@ export type Dict = {
     emptyNoReattach: string;
     terminalStop: string;
     terminalEnd: string;
+    phoneChats: string;
+    phoneSearch: string;
+    fileDrop: string;
+    fileDropHint: string;
   };
   bots: Record<BotId, { name: string; duties: string; boundaries: string }>;
   script: {
@@ -171,6 +178,10 @@ export type Dict = {
     terminalFolder: string;
     terminalCommand: string;
     terminalOutput: string[];
+    /** The relay's address, as the phone's browser shows it. */
+    relayHost: string;
+    /** What you ask for from the phone. */
+    phoneReply: string;
   };
   boundaries: {
     heading: string;
@@ -193,6 +204,7 @@ export type Dict = {
     linkDocs: string;
     linkManifesto: string;
     linkRoadmap: string;
+    linkRemote: string;
   };
   footer: {
     tagline: string;
@@ -214,6 +226,8 @@ export type Dict = {
     manifestoIndexLead: string;
     roadmapTag: string;
     roadmapIntro: string;
+    remoteTag: string;
+    remoteIntro: string;
     pagerPrev: string;
     pagerNext: string;
     navGroup: Record<DocsNavGroupId, string>;
@@ -228,6 +242,7 @@ const zh: Dict = {
     quickstart: '从源码启动',
     manifesto: '设计理念',
     roadmap: '路线图',
+    remote: '远程访问',
     github: 'GitHub',
     switchLang: 'English',
     wip: 'Alpha',
@@ -317,6 +332,13 @@ const zh: Dict = {
         body:
           '窗口藏进托盘，进行中的轮次和终端里的 pnpm dev 都接着跑。Coordinator 复核完，macOS 横幅点开就是这条会话；Dock 角标只数你没看过的和还在等你的。私聊里的 Stop 立即停掉眼前这一轮；Cmd+Q 或托盘「退出」才结束窗口和守护进程。',
         callout: '关窗是隐藏，不是退出。'
+      },
+      {
+        title: '不在 Mac 旁，用手机接着管',
+        body:
+          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上让 @Writer 补一节，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上批准。这是默认关闭的实验功能，发布包暂时还不能配对。',
+        callout: '页面由你自己的中继提供，消息端到端加密。',
+        link: { label: '接入步骤', page: 'remote' }
       }
     ]
   },
@@ -404,7 +426,11 @@ const zh: Dict = {
     emptyReattach: '可接回',
     emptyNoReattach: '没有可接回的终端',
     terminalStop: '停止',
-    terminalEnd: '结束会话'
+    terminalEnd: '结束会话',
+    phoneChats: '会话',
+    phoneSearch: '搜索',
+    fileDrop: '文件',
+    fileDropHint: '发到这里的文件进工作区 inbox/，不叫醒 Bot。'
   },
   bots: {
     coordinator: {
@@ -501,7 +527,9 @@ const zh: Dict = {
       '  VITE v7.1.3  ready in 412 ms',
       '',
       '  ➜  Local:   http://localhost:5173/'
-    ]
+    ],
+    relayHost: 'relay.example.com',
+    phoneReply: '@Writer 结尾补一节「方法」，写清数字是怎么核对的。'
   },
   boundaries: {
     heading: '哪些已经接入，哪些还在建，哪些不做',
@@ -548,7 +576,7 @@ const zh: Dict = {
       },
       {
         dim: '远程访问',
-        live: '默认关闭的实验原型：自托管中继、Noise 加密链路与手机 PWA，可做隔离集成测试',
+        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端，源码态可做集成测试',
         wip: '独立安全复核，真机主屏幕 WebAuthn 与 Web Push 验收；在这之前公网配对保持关闭',
         avoid: '项目方运营的云端中继、把实验原型当成可用的远控'
       }
@@ -575,7 +603,8 @@ const zh: Dict = {
     },
     linkDocs: '开发说明',
     linkManifesto: '设计理念',
-    linkRoadmap: '路线图'
+    linkRoadmap: '路线图',
+    linkRemote: '远程访问'
   },
   footer: {
     tagline: '本机 macOS 上的单人 agent 协作应用。',
@@ -599,10 +628,13 @@ const zh: Dict = {
     manifestoIndexLead: '每个主题一页。点开后左侧是整份文档导航，右侧是本页术语。',
     roadmapTag: 'ROADMAP.md',
     roadmapIntro: 'Deskfolk 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
+    remoteTag: '实验性',
+    remoteIntro: '从手机或另一台电脑连到你 Mac 上的 Deskfolk：自己部署中继、让 Mac 连上它、配对设备。默认关闭，页面在构建时由仓库里的 docs/remote-access.zh.md 生成。',
     pagerPrev: '上一页',
     pagerNext: '下一页',
     navGroup: {
       language: '领域语言',
+      guides: '指南',
       direction: '方向'
     },
     pages: {
@@ -614,6 +646,7 @@ const zh: Dict = {
       runtime: { title: '运行时', blurb: '窗与窗格、守护进程、托盘、终端、本机接口。' },
       models: { title: '模型与工具', blurb: '端点、MCP、日程、技能、上下文与花费。' },
       safety: { title: '批准与边界', blurb: '危险动作、壳、Always allow。' },
+      remote: { title: '远程访问', blurb: '自托管中继、配对手机、Web Push。' },
       roadmap: { title: '路线图', blurb: '建设方向，不是交付时间表。' }
     }
   }
@@ -626,6 +659,7 @@ const en: Dict = {
     quickstart: 'Run from source',
     manifesto: 'Manifesto',
     roadmap: 'Roadmap',
+    remote: 'Remote access',
     github: 'GitHub',
     switchLang: '中文',
     wip: 'Alpha',
@@ -715,6 +749,13 @@ const en: Dict = {
         body:
           'The window hides in the tray, and running turns and the pnpm dev in the terminal carry on. When Coordinator finishes its check, a macOS banner opens straight to that conversation, and the Dock badge counts only what you have not seen plus what is still waiting on you. Stop in a direct chat ends the current turn immediately; only Cmd+Q or Quit in the tray ends the window and the daemon.',
         callout: 'Closing hides. It does not quit.'
+      },
+      {
+        title: 'Away from the Mac, carry on from your phone',
+        body:
+          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for one more section from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac. It is an experimental feature, off by default, and a release build cannot pair yet.',
+        callout: 'Your own relay serves the page; messages are end-to-end encrypted.',
+        link: { label: 'Set it up', page: 'remote' }
       }
     ]
   },
@@ -802,7 +843,11 @@ const en: Dict = {
     emptyReattach: 'Reattach',
     emptyNoReattach: 'No terminal to reattach',
     terminalStop: 'Stop',
-    terminalEnd: 'End session'
+    terminalEnd: 'End session',
+    phoneChats: 'Chats',
+    phoneSearch: 'Search',
+    fileDrop: 'Files',
+    fileDropHint: 'Files sent here land in the workspace inbox/. No Bot wakes.'
   },
   bots: {
     coordinator: {
@@ -900,7 +945,9 @@ const en: Dict = {
       '  VITE v7.1.3  ready in 412 ms',
       '',
       '  ➜  Local:   http://localhost:5173/'
-    ]
+    ],
+    relayHost: 'relay.example.com',
+    phoneReply: '@Writer add a Method section at the end: how the figures were checked.'
   },
   boundaries: {
     heading: 'What is live, what is being built, what we will not do',
@@ -947,7 +994,7 @@ const en: Dict = {
       },
       {
         dim: 'Remote access',
-        live: 'A default-off experimental prototype: a self-hosted relay, a Noise-encrypted link and a phone PWA, for isolated integration testing',
+        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; integration testing runs from source',
         wip: 'Independent security review, and real-device home-screen WebAuthn and Web Push; public pairing stays off until then',
         avoid: 'A project-run cloud relay, passing a prototype off as working remote access'
       }
@@ -974,7 +1021,8 @@ const en: Dict = {
     },
     linkDocs: 'Development guide',
     linkManifesto: 'Manifesto',
-    linkRoadmap: 'Roadmap'
+    linkRoadmap: 'Roadmap',
+    linkRemote: 'Remote access'
   },
   footer: {
     tagline: 'A single-user agent collaboration app for your Mac.',
@@ -998,10 +1046,13 @@ const en: Dict = {
     manifestoIndexLead: 'One page per topic. The left rail is the whole docs tree; the right rail is this page.',
     roadmapTag: 'ROADMAP.md',
     roadmapIntro: 'Where Deskfolk is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
+    remoteTag: 'Experimental',
+    remoteIntro: 'Reach the Deskfolk on your Mac from a phone or another computer: deploy your own relay, point the Mac at it, pair a device. Off by default. Generated at build time from docs/remote-access.md in the repository.',
     pagerPrev: 'Previous',
     pagerNext: 'Next',
     navGroup: {
       language: 'Language',
+      guides: 'Guides',
       direction: 'Direction'
     },
     pages: {
@@ -1013,6 +1064,7 @@ const en: Dict = {
       runtime: { title: 'Runtime', blurb: 'Window and panes, daemon, tray, terminal, local API.' },
       models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, skills, context, spend.' },
       safety: { title: 'Approval and bounds', blurb: 'Dangerous actions, shells, Always allow.' },
+      remote: { title: 'Remote access', blurb: 'Self-hosted relay, pairing a phone, Web Push.' },
       roadmap: { title: 'Roadmap', blurb: 'Direction, not a delivery schedule.' }
     }
   }

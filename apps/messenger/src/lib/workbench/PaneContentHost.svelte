@@ -16,6 +16,7 @@
 	import TerminalView from '../overlays/TerminalView.svelte';
 	import WorkspaceView from '../overlays/WorkspaceView.svelte';
 	import { previewContext, type PreviewHandle } from './preview-context.ts';
+	import { isPlaceholderAttachment } from '../overlays/artifacts.ts';
 	import { classifySession } from '../sidebar/session-groups.ts';
 	import { sanitizePreviewPath } from '../session-url.ts';
 	import { backdropClick } from '../click-outside.ts';
@@ -95,15 +96,19 @@
 	const content = $derived(contentOfTab(tab));
 	const snapshot = $derived(runtime.snapshot);
 	const preview = $derived(content?.kind === 'preview' ? previewContext(content, snapshot.messages) : null);
+	/**
+	 * Only which file is on screen changes; the tab keeps what its source handed over. Writing the
+	 * whole derived list back also saved the on-screen stand-in, one more file per click.
+	 */
 	function selectPreview(att: Attachment): void {
 		if (content?.kind !== 'preview' || !preview) return;
 		onUpdateContent?.({
 			...content,
 			relpath: att.workspace_relpath,
-			attachmentId: att.id ?? null,
+			attachmentId: isPlaceholderAttachment(att) ? null : (att.id ?? null),
 			messageId: preview.messageId,
 			taskId: preview.taskId,
-			siblings: preview.siblings
+			siblings: preview.handedOver
 		});
 	}
 

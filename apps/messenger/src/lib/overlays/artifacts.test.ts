@@ -67,6 +67,18 @@ test("artifact href round-trips CJK paths and undoes marked double-encoding", ()
   expect(parseArtifactHref(doubleEncoded)).toBe(path);
 });
 
+test("artifactByteSource never reads a made-up attachment id through the attachment endpoint", () => {
+  for (const id of ["virtual-preview-shots/k_06.jpg", "virtual-m-1-shots/k_06.jpg"]) {
+    expect(
+      artifactByteSource({
+        mode: "cited",
+        relpath: "shots/k_06.jpg",
+        attachment: { id, message_id: "m-1", workspace_relpath: "shots/k_06.jpg", original_filename: "k_06.jpg", created_at: "" },
+      }),
+    ).toBe("workspace");
+  }
+});
+
 test("artifactByteSource loads uncited chat links from the workspace", () => {
   expect(
     artifactByteSource({

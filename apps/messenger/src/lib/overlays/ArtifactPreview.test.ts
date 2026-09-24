@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
@@ -307,6 +308,126 @@ test("closing the preview stops the read still on the way", () => {
   expect(signals[0]?.aborted).toBe(false);
   close();
   expect(signals[0]?.aborted).toBe(true);
+});
+
+/**
+ * The workbench stands a file with no attachment row in with a made-up `virtual-…` id. Asking the
+ * attachment endpoint for that id is a 404, which read as "file is gone" for a file on disk.
+ */
+test("a stand-in for a file nothing attached is read from the workspace", async () => {
+  const workspaceReads: string[] = [];
+  const attachmentReads: string[] = [];
+  const standIn = {
+    id: "virtual-preview-shots/cover.png",
+    message_id: "",
+    workspace_relpath: "shots/cover.png",
+    original_filename: "cover.png",
+    created_at: "",
+  };
+  const { host, close } = render(ArtifactPreview, {
+    attachment: standIn,
+    relpath: "shots/cover.png",
+    siblings: [standIn],
+    api: {
+      kind: "remote",
+      getWorkspaceFileBlob: async (path: string) => {
+        workspaceReads.push(path);
+        return new Blob([PNG], { type: "image/png" });
+      },
+      getAttachmentBlob: async (id: string) => {
+        attachmentReads.push(id);
+        throw new Error("404");
+      },
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  flushSync();
+  expect(workspaceReads).toEqual(["shots/cover.png"]);
+  expect(attachmentReads).toEqual([]);
+  expect(host.textContent).not.toContain(t.stream.artifactMissing);
+  close();
+});
+
+/**
+ * The kind follows the new file at once; its bytes come later. A `<video>` given the picture that
+ * was on screen cannot play it, and its error left the video reading "file is gone" for good.
+ */
+test("going from a picture to a video never hands the picture's bytes to the video", async () => {
+  const shown = new SvelteMap([["relpath", "shots/cover.png"]]);
+  const video = deferredBlob();
+  const { host, close } = render(ArtifactPreview, {
+    attachment: null,
+    get relpath() { return shown.get("relpath")!; },
+    siblings: [],
+    api: {
+      kind: "remote",
+      getWorkspaceFileBlob: (path: string) =>
+        path.endsWith(".mp4") ? video.promise : Promise.resolve(new Blob([PNG], { type: "image/png" })),
+      getAttachmentBlob: async () => new Blob(),
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    flushSync();
+  };
+  await settle();
+  const picture = host.querySelector<HTMLImageElement>("img.artifact-img")?.src;
+  expect(picture).toBeTruthy();
+
+  shown.set("relpath", "shots/clip.mp4");
+  flushSync();
+  expect(host.querySelector("video")).toBeNull();
+  expect(host.querySelector(".artifact-loading")).not.toBeNull();
+
+  video.resolve(new Blob([new Uint8Array(8)], { type: "video/mp4" }));
+  await settle();
+  const player = host.querySelector<HTMLVideoElement>("video");
+  expect(player?.src).toBeTruthy();
+  expect(player?.src).not.toBe(picture);
+  expect(host.textContent).not.toContain(t.stream.artifactMissing);
+  close();
+});
+
+test("a file this entry handed over that the Mac knows is deleted is not in the job's tree", async () => {
+  const kept = anAttachment({ id: "a-kept", workspace_relpath: "work/job/kept.png", original_filename: "kept.png" });
+  const deleted = anAttachment({ id: "a-gone", workspace_relpath: "work/job/deleted.png", original_filename: "deleted.png", exists: false });
+  const { host, close } = render(ArtifactPreview, {
+    attachment: kept,
+    relpath: kept.workspace_relpath,
+    siblings: [kept, deleted],
+    taskId: "job",
+    api: {
+      kind: "remote",
+      getAttachmentBlob: async () => new Blob([PNG], { type: "image/png" }),
+      getWorkspaceFileBlob: async () => new Blob([PNG], { type: "image/png" }),
+      // The daemon already leaves the deleted one out; the entry's own list must not add it back.
+      taskArtifacts: async () => ({
+        id: "job", dir: "work/job", title: "", closed_at: null,
+        items: [{ path: kept.workspace_relpath, last_cited_at: "2026-09-24T00:00:00.000Z", turn_id: null }],
+      }),
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  flushSync();
+  const rows = [...host.querySelectorAll(".artifact-tree-row")].map((row) => row.textContent?.trim());
+  expect(rows).toContain("kept.png");
+  expect(rows).not.toContain("deleted.png");
+  close();
 });
 
 /**

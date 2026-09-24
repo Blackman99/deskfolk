@@ -102,8 +102,9 @@ test('HTTPS allows session/overlay/attachment ids and still forbids file-path qu
   for (const search of ['?p=out/a.html', '?w=inbox/a.md', '?s=abc&p=secret.txt', '?secret=review-canary-private-material']) {
     const response = await request(`/${search}`);
     expect(response.status).toBe(400);
-    expect(await response.text()).not.toContain('secret');
-    expect(await response.text()).not.toContain('inbox');
+    const body = await response.text();
+    expect(body).not.toContain('secret');
+    expect(body).not.toContain('inbox');
   }
   const httpDeepLink = await request('/?s=01ARZ3NDEKTSV4RRFFQ69G5FAV', false);
   expect(httpDeepLink.status).toBe(400);

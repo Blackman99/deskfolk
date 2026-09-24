@@ -63,8 +63,36 @@ export function releaseBody(
   const en = changelogSection(changelogEn, version);
   if (!en) return "";
   const zh = changelogZh ? changelogSection(changelogZh, version) : "";
-  const parts = [`${langMarker("en")}\n\n${en}`];
-  if (zh) parts.push(`${langMarker("zh")}\n\n${zh}`);
+  const sections: Section[] = [{ lang: "en", text: en, dropped: 0 }];
+  if (zh) sections.push({ lang: "zh", text: zh, dropped: 0 });
+  let body = assemble(sections);
+  // A long cycle can outgrow what GitHub accepts. Give up the oldest entries — the bottom of a
+  // section — of whichever language is longest, and say how many are only in the changelog.
+  while (body.length > RELEASE_BODY_LIMIT) {
+    const longest = sections.reduce((a, b) => (b.text.length > a.text.length ? b : a));
+    const cut = longest.text.lastIndexOf("\n- ");
+    if (cut <= 0) break;
+    longest.text = longest.text.slice(0, cut).trimEnd();
+    longest.dropped += 1;
+    body = assemble(sections);
+  }
+  return body;
+}
+
+/** GitHub refuses a release whose body is longer than this. */
+export const RELEASE_BODY_LIMIT = 125_000;
+
+type Section = { lang: "en" | "zh"; text: string; dropped: number };
+
+const MORE: Record<Section["lang"], (count: number) => string> = {
+  en: (count) => `- …and ${count} more, in CHANGELOG.md.`,
+  zh: (count) => `- ……另有 ${count} 条，见 CHANGELOG.zh.md。`,
+};
+
+function assemble(sections: Section[]): string {
+  const parts = sections.map(({ lang, text, dropped }) =>
+    `${langMarker(lang)}\n\n${text}${dropped ? `\n\n${MORE[lang](dropped)}` : ""}`,
+  );
   parts.push(`${langMarker("common")}\n\n${UNSIGNED_NOTE}`);
   return `${parts.join("\n\n")}\n`;
 }

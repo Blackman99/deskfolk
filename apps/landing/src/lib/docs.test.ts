@@ -64,12 +64,14 @@ test('docs paths and pager walk the sidebar order', () => {
   expect(docsPath('manifesto')).toBe('/manifesto');
   expect(docsPath('people')).toBe('/manifesto/people');
   expect(docsPath('roadmap')).toBe('/roadmap');
+  expect(docsPath('remote')).toBe('/remote');
 
   const flat = DOCS_NAV.flatMap((g) => g.pages);
   expect(flat[0]).toBe('manifesto');
   expect(flat[flat.length - 1]).toBe('roadmap');
   expect(docsNeighbors('manifesto')).toEqual({ next: 'people' });
-  expect(docsNeighbors('roadmap')).toEqual({ prev: 'safety' });
+  expect(docsNeighbors('roadmap')).toEqual({ prev: 'remote' });
+  expect(docsNeighbors('remote')).toEqual({ prev: 'safety', next: 'roadmap' });
   expect(docsNeighbors('conversations')).toEqual({ prev: 'people', next: 'collaboration' });
 });
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
+  import { docsPath } from '$lib/docs';
   import type { Dict, Lang } from '$lib/i18n';
   import { LATEST_RELEASE_URL } from '$lib/site';
   import CopyButton from '$lib/CopyButton.svelte';
@@ -23,7 +24,8 @@
     'pv-edit:left',
     'route-line:left',
     'term-output:left',
-    'tray-status:right'
+    'tray-status:right',
+    'phone-url:left'
   ];
 
   /**
@@ -41,11 +43,15 @@
     { x: 380, y: 30, w: 520, h: 550 },
     { x: 380, y: 30, w: 520, h: 550 },
     { x: 380, y: 30, w: 520, h: 550 },
+    null,
     null
   ];
 
-  /** Scenes a narrow stage shows whole: the desktop with its banner and Dock does not survive a crop. */
-  const WHOLE_WINDOW = new Set([10]);
+  /**
+   * Scenes a narrow stage shows whole: the desktop with its banner and Dock does not survive a crop,
+   * and the phone is taller than any crop the landscape stage can make.
+   */
+  const WHOLE_WINDOW = new Set([10, 11]);
 
   let scene = $state(0);
   let skipToEnd = $state(false);
@@ -235,6 +241,9 @@
             <h3 class="serif">{step.title}</h3>
           </button>
           <p>{step.body}</p>
+          {#if step.link}
+            <a class="text-link step-more" href="{base}/{lang}{docsPath(step.link.page)}">{step.link.label} →</a>
+          {/if}
           <p class="sr-only">{step.callout}</p>
         </article>
       {/each}
@@ -543,6 +552,11 @@
     color: var(--ink);
     text-wrap: balance;
     transition: color 160ms ease;
+  }
+
+  .step-more {
+    align-self: flex-start;
+    font-size: 15px;
   }
 
   .step p {

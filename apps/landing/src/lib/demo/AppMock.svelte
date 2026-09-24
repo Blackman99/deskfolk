@@ -68,11 +68,12 @@
   }
 
   /* ---- Cursor ---- */
-  let cursor = $state<{ x: number; y: number; visible: boolean; clicking: boolean }>({
+  let cursor = $state<{ x: number; y: number; visible: boolean; clicking: boolean; touch: boolean }>({
     x: 450,
     y: 300,
     visible: false,
-    clicking: false
+    clicking: false,
+    touch: false
   });
 
   $effect(() => {
@@ -88,7 +89,7 @@
       }
       const r = measure(c.target);
       if (!r) return;
-      cursor = { x: r.x + r.w / 2, y: r.y + r.h / 2, visible: true, clicking: false };
+      cursor = { x: r.x + r.w / 2, y: r.y + r.h / 2, visible: true, clicking: false, touch: !!c.touch };
       if (c.click && !instant) {
         t1 = setTimeout(() => {
           cursor = { ...cursor, clicking: true };
@@ -191,6 +192,13 @@
     return out;
   });
 
+  /** The phone opens the group at its latest turns: Writer's report onward. */
+  const phoneItems: TranscriptItem[] = $derived.by(() => {
+    const items = mock.transcripts.research;
+    const from = items.findIndex((i) => i.id === 'g4');
+    return from >= 0 ? items.slice(from) : items.slice(-3);
+  });
+
   const commandSummary = $derived(`${t.script.command} · exit 0 · ${t.script.commandTook}`);
   const noteParts = $derived(t.script.researcherNotePath.split('/'));
 </script>
@@ -225,6 +233,14 @@
 
 {#snippet groupGlyph(size: number)}
   <svg viewBox="0 0 16 16" width={size} height={size}><circle cx="5.5" cy="6" r="2.4" fill="currentColor"/><circle cx="10.8" cy="6" r="2.4" fill="currentColor" opacity=".7"/><path d="M1.5 13c.5-2.4 2.2-3.6 4-3.6s3.5 1.2 4 3.6" fill="currentColor"/><path d="M8.6 13c.4-2 1.6-3.2 3.2-3.2 1.4 0 2.4 1 2.7 3.2" fill="currentColor" opacity=".7"/></svg>
+{/snippet}
+
+{#snippet lockIcon(size: number)}
+  <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"/></svg>
+{/snippet}
+
+{#snippet fileDropIcon(size: number)}
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
 {/snippet}
 
 {#snippet commandRow()}
@@ -806,7 +822,7 @@
           </div>
         </div>
       {/if}
-      <div class="desk-status" data-hit="tray-status" in:fly={{ y: 8, duration: dur, delay: instant ? 0 : 200 }}>
+      <div class="desk-status" class:aside={!!mock.phone} data-hit="tray-status" in:fly={{ y: 8, duration: dur, delay: instant ? 0 : 200 }}>
         <p class="ds-title">{t.mock.trayHidden}</p>
         <div class="ds-turns">
           {#each runningTurns as b}
@@ -823,10 +839,118 @@
         <span class="dk-app c"></span>
         <span class="dk-app rb">
           <Logo size={34} />
-          {#if mock.tray.banner}<span class="dk-badge" in:scale={{ duration: dur, start: 0.3 }}>1</span>{/if}
+          {#if mock.tray.badge}<span class="dk-badge" in:scale={{ duration: dur, start: 0.3 }} out:scale={{ duration: dur, start: 0.3 }}>1</span>{/if}
           <i class="dk-dot"></i>
         </span>
       </div>
+
+      <!-- A paired phone, reaching this Mac through your own relay -->
+      {#if mock.phone}
+        <div class="phone" in:fly={{ x: 90, duration: instant ? 0 : 460 }}>
+          <div class="ph-screen">
+            <div class="ph-status">
+              <span class="ph-clock">14:41</span>
+              <span class="ph-island"></span>
+              <span class="ph-bars"><i></i><i></i><i></i><i></i></span>
+            </div>
+            <div class="ph-url" data-hit="phone-url">{@render lockIcon(10)}<span>{t.script.relayHost}</span></div>
+
+            {#if mock.phone.view === 'list'}
+              <div class="ph-list">
+                <div class="ph-search">
+                  <svg viewBox="0 0 16 16" width="10" height="10"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                  <span>{t.mock.phoneSearch}</span>
+                </div>
+                <div class="ph-head">{t.mock.fileDrop}</div>
+                <div class="ph-row">
+                  <span class="ph-av file">{@render fileDropIcon(13)}</span>
+                  <span class="ph-t">{t.mock.fileDrop}</span>
+                  <span class="ph-s">{t.mock.fileDropHint}</span>
+                </div>
+                <div class="ph-head">{t.mock.groups}</div>
+                <div class="ph-row unread" data-hit="phone-row-research">
+                  <span class="ph-av grp">{@render groupGlyph(14)}</span>
+                  <span class="ph-t">{t.script.groupName}</span>
+                  <span class="ph-time">14:36</span>
+                  <span class="ph-s">{botName('coordinator')}: {t.script.coordinatorClose}</span>
+                  <span class="ph-badge">1</span>
+                </div>
+                <div class="ph-head">{t.mock.youBot}</div>
+                {#each mock.roster as bot (bot)}
+                  <div class="ph-row">
+                    <span class="ph-av"><Avatar name={botName(bot)} size={26} /></span>
+                    <span class="ph-t">{botName(bot)}</span>
+                    <span class="ph-s">{t.bots[bot].duties}</span>
+                  </div>
+                {/each}
+              </div>
+              <nav class="ph-nav">
+                <span class="on">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2v-10a9 9 0 0 1 18 0Z"/><path d="M7 10h8M7 14h5"/></svg>
+                  {t.mock.phoneChats}
+                </span>
+                <span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M8 12h8M8 16h5"/></svg>
+                  {t.mock.workspace}
+                </span>
+                <span>{@render gearIcon(15)}{t.mock.settings}</span>
+              </nav>
+            {:else}
+              <div class="ph-chat" in:fly={{ x: 40, duration: dur }}>
+                <header class="ph-top">
+                  <svg class="ph-back" viewBox="0 0 16 16" width="13" height="13"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="ph-av grp small">{@render groupGlyph(12)}</span>
+                  <span class="ph-top-text">
+                    <span class="ph-top-name">{t.script.groupName}</span>
+                    <span class="ph-top-sub">{t.mock.members(4)}</span>
+                  </span>
+                </header>
+                <div class="ph-items">
+                  {#each phoneItems as item (item.id)}
+                    {#if item.kind === 'user'}
+                      <div class="ph-msg you" in:fly={{ y: 8, duration: dur }}>
+                        <div class="ph-bubble you">{item.text}</div>
+                      </div>
+                    {:else if item.kind === 'bot'}
+                      <div class="ph-msg bot">
+                        <Avatar name={botName(item.bot)} size={18} />
+                        <div class="ph-col">
+                          <span class="ph-meta"><b>{botName(item.bot)}</b> {item.time}</span>
+                          <div class="ph-bubble bot">{item.parts.map((p) => (p.type === 'text' ? p.text : '')).join('')}</div>
+                          {#if item.artifacts}
+                            {#each item.artifacts as path}
+                              <span class="ph-file">{@render fileIcon(10)}<span class="mono">{path}</span></span>
+                            {/each}
+                          {/if}
+                        </div>
+                      </div>
+                    {:else if item.kind === 'replying'}
+                      <div class="ph-replying" in:fade={{ duration: dur }}>
+                        {#each item.bots as b}
+                          <Avatar name={botName(b)} size={14} /><span>{botName(b)}</span><span class="rep-label">{t.mock.replying}</span><span class="dots"><i></i><i></i><i></i></span>
+                        {/each}
+                      </div>
+                    {/if}
+                  {/each}
+                </div>
+                <footer class="ph-composer">
+                  <span class="ph-input" class:placeholder={!mock.phone.composer}>
+                    {#if mock.phone.composer}
+                      <Typewriter text={mock.phone.composer} duration={1300} {instant} caret />
+                    {:else}
+                      {t.mock.composerPlaceholder}
+                    {/if}
+                  </span>
+                  <span class="ph-send" class:ready={!!mock.phone.composer} data-hit="phone-send">
+                    <svg viewBox="0 0 16 16" width="10" height="10"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </span>
+                </footer>
+              </div>
+            {/if}
+            <span class="ph-home"></span>
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -842,9 +966,11 @@
     class="cursor"
     class:visible={cursor.visible}
     class:clicking={cursor.clicking}
+    class:touch={cursor.touch}
     style:transform="translate({cursor.x}px, {cursor.y}px)"
   >
     <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 3l14 8.5-6.2 1.6L9.5 20z" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <span class="fingertip"></span>
     <span class="ripple"></span>
   </div>
 </div>
@@ -1439,6 +1565,81 @@
   }
   .dk-dot { position: absolute; bottom: -6px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ink-2); }
 
+  /* Phone: the hosted messenger, opened from your own relay */
+  .desk-status { transition: left 420ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .desk-status.aside { left: 33%; }
+  .phone {
+    position: absolute; right: 36px; top: 34px; z-index: 3;
+    width: 226px; height: 506px; padding: 7px; border-radius: 34px;
+    background: #16181d; box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.14) inset;
+  }
+  .ph-screen {
+    position: relative; height: 100%; border-radius: 27px; overflow: hidden;
+    background: var(--pane); display: flex; flex-direction: column; font-size: 10.5px;
+  }
+  .ph-status { height: 26px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px 0 20px; font-size: 10px; font-weight: 600; color: var(--ink); }
+  .ph-island { position: absolute; left: 50%; top: 6px; width: 64px; height: 17px; margin-left: -32px; border-radius: 10px; background: #16181d; }
+  .ph-bars { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 8px; }
+  .ph-bars i { width: 2.5px; border-radius: 1px; background: var(--ink); }
+  .ph-bars i:nth-child(1) { height: 3px; } .ph-bars i:nth-child(2) { height: 4.5px; } .ph-bars i:nth-child(3) { height: 6px; } .ph-bars i:nth-child(4) { height: 8px; }
+  .ph-url {
+    flex: none; margin: 0 12px 6px; height: 20px; border-radius: 7px; background: var(--sidebar);
+    display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 9.5px; color: var(--ink-2);
+  }
+  .ph-url :global(svg) { color: var(--ok-text); }
+
+  .ph-list { flex: 1; min-height: 0; overflow: hidden; padding: 0 10px; }
+  .ph-search { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 8px; background: var(--sidebar); color: var(--muted); font-size: 10px; margin: 2px 0 4px; }
+  .ph-head { font-size: 9px; font-weight: 600; color: var(--muted); padding: 7px 2px 3px; }
+  .ph-row {
+    position: relative; display: grid; grid-template-columns: 30px 1fr auto; grid-template-rows: auto auto;
+    column-gap: 7px; row-gap: 1px; align-items: center; padding: 5px 4px; border-radius: 8px;
+  }
+  .ph-av { grid-row: 1 / span 2; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+  .ph-av.file { background: var(--accent-tint); color: var(--accent); border-radius: 8px; }
+  .ph-av.grp { background: var(--sidebar); color: var(--ink-2); border: 1px solid var(--line); }
+  .ph-av.small { width: 22px; height: 22px; }
+  .ph-t { font-weight: 600; font-size: 10.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ph-time { font-size: 9px; color: var(--muted); }
+  .ph-s { grid-column: 2 / span 2; font-size: 9.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 18px; }
+  .ph-row.unread .ph-s { color: var(--ink-2); }
+  .ph-badge {
+    position: absolute; right: 4px; bottom: 6px; min-width: 14px; height: 14px; padding: 0 4px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 8.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .ph-nav {
+    flex: none; display: grid; grid-template-columns: repeat(3, 1fr); padding: 5px 8px 16px;
+    border-top: 1px solid var(--line); background: var(--pane);
+  }
+  .ph-nav span { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 8.5px; color: var(--muted); }
+  .ph-nav span.on { color: var(--accent); }
+
+  .ph-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .ph-top { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px 7px; border-bottom: 1px solid var(--line); }
+  .ph-back { color: var(--accent); flex: none; }
+  .ph-top-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .ph-top-name { font-weight: 600; font-size: 11px; color: var(--ink); }
+  .ph-top-sub { font-size: 9px; color: var(--muted); }
+  .ph-items { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 8px 9px; }
+  .ph-msg { display: flex; gap: 5px; align-items: flex-start; }
+  .ph-msg.you { justify-content: flex-end; }
+  .ph-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 164px; }
+  .ph-meta { font-size: 8.5px; color: var(--muted); }
+  .ph-meta b { color: var(--ink-2); font-weight: 600; margin-right: 3px; }
+  .ph-bubble { padding: 5px 8px; border-radius: 10px; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+  .ph-bubble.bot { background: var(--bot-bubble); color: var(--ink); border-top-left-radius: 4px; }
+  .ph-bubble.you { background: var(--accent); color: #fff; border-top-right-radius: 4px; max-width: 160px; }
+  .ph-file { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 3px 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--pane); font-size: 9px; color: var(--ink-2); }
+  .ph-file :global(svg) { color: var(--muted); }
+  .ph-replying { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: var(--ink-2); }
+  .ph-replying .rep-label { color: var(--muted); }
+  .ph-composer { flex: none; display: flex; align-items: center; gap: 6px; margin: 0 8px 18px; padding: 5px 5px 5px 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--pane); }
+  .ph-input { flex: 1; min-width: 0; font-size: 10px; line-height: 1.4; color: var(--ink); max-height: 42px; overflow: hidden; }
+  .ph-input.placeholder { color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
+  .ph-send { flex: none; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--line); color: var(--muted); transition: background-color 200ms ease, color 200ms ease; }
+  .ph-send.ready { background: var(--accent); color: #fff; }
+  .ph-home { position: absolute; left: 50%; bottom: 6px; width: 70px; height: 3.5px; margin-left: -35px; border-radius: 3px; background: var(--ink); opacity: 0.55; }
+
   /* Callout */
   .callout {
     position: absolute; z-index: 7;
@@ -1471,6 +1672,12 @@
     border: 2px solid var(--teal); opacity: 0; transform: scale(0.4);
   }
   .cursor.clicking .ripple { animation: ripple 320ms ease-out; }
+  .fingertip {
+    display: none; position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%;
+    background: color-mix(in srgb, var(--ink) 22%, transparent); border: 1.5px solid color-mix(in srgb, var(--pane) 80%, transparent);
+  }
+  .cursor.touch svg { display: none; }
+  .cursor.touch .fingertip { display: block; }
   @keyframes ripple { 0% { opacity: 0.9; transform: scale(0.4); } 100% { opacity: 0; transform: scale(1.6); } }
 
   @media (max-width: 1023px) {
@@ -1478,7 +1685,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .frame, .callout, .cursor, .approval, .send, .fl-board, .cmd-caret { transition: none; }
+    .frame, .callout, .cursor, .approval, .send, .fl-board, .cmd-caret, .desk-status, .ph-send { transition: none; }
     .dots i, .cmd-pulse { animation: none; }
   }
 </style>
