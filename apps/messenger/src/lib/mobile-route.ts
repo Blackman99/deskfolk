@@ -121,7 +121,7 @@ export type BackLayer =
   | "create-group"
   | "provider-editor"
   | "independent-confirm"
-  | "search-page"
+  | "search"
   | "settings"
   | "session-settings"
   | "terminal"
@@ -140,7 +140,7 @@ export type LayerState = {
   createGroupOpen: boolean;
   providerEditor: boolean;
   confirmingIndependent: boolean;
-  searchPageOpen: boolean;
+  searchOpen: boolean;
   settingsOpen: boolean;
   sessionSettingsOpen: boolean;
   terminalOpen: boolean;
@@ -162,9 +162,8 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["create-group", "createGroupOpen"],
   ["provider-editor", "providerEditor"],
   ["independent-confirm", "confirmingIndependent"],
-  // The phone's search page is the sidebar's, not the URL's — it comes before the destinations
-  // for the same reason the create sheets do: the app closes it itself, Back never navigates.
-  ["search-page", "searchPageOpen"],
+  // Global search is an app-owned modal; Back closes it before navigating the page underneath.
+  ["search", "searchOpen"],
   ["settings", "settingsOpen"],
   ["session-settings", "sessionSettingsOpen"],
   // Yours, not a place in a conversation: the app closes it, Back never navigates to it.

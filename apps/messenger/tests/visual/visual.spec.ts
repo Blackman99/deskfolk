@@ -33,6 +33,7 @@ for (const [name, size] of Object.entries(STORY_SIZES)) {
 				if (name === 'routine-editor') await expect(page.locator('#routine-title')).toHaveValue('Weekly review');
 				await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 			}
+			if (name.startsWith('search-dialog')) await expect(page.locator('.search-result')).toHaveCount(6);
 			await expect(page).toHaveScreenshot(`${name}-${theme}.png`);
 			expect(errors).toEqual([]);
 		});

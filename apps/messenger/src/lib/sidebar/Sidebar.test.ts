@@ -53,31 +53,10 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     onOpenSettings: () => created.push("settings"),
     onCreateBot: () => created.push("bot"),
     onCreateGroup: () => created.push("group"),
-    onOpenArtifact: () => {},
+    onOpenSearch: () => created.push("search"),
   });
   return { ...view, runtime, created };
 }
-
-for (const selected of [null, 'sess-1']) for (const deletedAfterResult of [false, true]) test(`retained routine with unavailable owner is explained and inert (${selected}, ${deletedAfterResult})`, () => {
-  const { host, runtime, close } = open([], selected, true);
-  flushSync(() => {
-    runtime.snapshot.routines = [aRoutine()];
-    runtime.searchQuery = 'Morning';
-    runtime.searchHits = [{ kind: 'routine', id: 'routine-1', snippet: 'Morning brief' }];
-    if (!deletedAfterResult) runtime.snapshot.bots = [];
-  });
-  const input = host.querySelector('input.search') as HTMLInputElement;
-  input.focus(); flushSync();
-  if (deletedAfterResult) flushSync(() => { runtime.snapshot.bots = []; });
-  const result = host.querySelector('[role=option]')!;
-  expect(result.getAttribute('aria-disabled')).toBe('true');
-  expect(result.textContent).toContain(t.sidebar.routineUnavailable);
-  click(result); press(input, 'Enter');
-  expect(runtime.calls.some((call) => ['openRoutine', 'closeSearch'].includes(call.name))).toBe(false);
-  expect(runtime.snapshot.routines).toHaveLength(1);
-  expect(host.querySelector('[role=listbox]')).not.toBeNull();
-  close();
-});
 
 test("the file drop is listed above the groups, on the desktop as well as a remote connection", () => {
   const drop = aDirect({
@@ -240,92 +219,16 @@ test('mobile archive entry opens an empty archive and returns to active sessions
   });
 });
 
-function hits(runtime: ReturnType<typeof open>["runtime"], query = '视频') {
-  flushSync(() => {
-    runtime.searchQuery = query;
-    runtime.searchHits = [{ kind: 'session', id: 'sess-1', snippet: '视频组' }];
-  });
-}
-
-test("on a phone the search field is a way in, not a place to type", () => {
-  withPhone(() => {
-    const { host, app, close } = open([], null, true);
-    // Nothing to type into on the list: a dropdown under a field this narrow is a desktop idea.
-    expect(host.querySelector('input.search')).toBeNull();
-    const trigger = host.querySelector('.search-trigger');
-    expect(trigger?.textContent?.trim()).toBe(t.sidebar.searchShort);
-    expect(host.querySelector('.search-page')).toBeNull();
-
-    click(trigger);
-    const field = host.querySelector<HTMLInputElement>('.search-page input.search');
-    expect(field).not.toBeNull();
-    // The page exists to be typed into, so the caret is already there.
-    expect(document.activeElement).toBe(field);
-    expect(field?.placeholder).toBe(t.sidebar.search);
-    // Nothing typed yet, so no list of hits and no empty-search verdict.
-    expect(host.querySelector('.search-drop.is-page')).toBeNull();
-    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(true);
+test("both widths open global search from a button", async () => {
+  const check = () => {
+    const { host, created, close } = open([], null, true);
+    expect(host.querySelector('input.search, .search-drop, .search-page')).toBeNull();
+    click(host.querySelector('.search-trigger'));
+    expect(created).toContain('search');
     close();
-  });
-});
-
-test("the hits fill the page, and picking one ends the search", async () => {
-  await withPhone(async () => {
-    const { host, runtime, app, close } = open([], null, true);
-    click(host.querySelector('.search-trigger'));
-    hits(runtime);
-    const hit = host.querySelector('.search-drop.is-page [role=option]');
-    expect(hit?.textContent).toContain('视频组');
-    click(hit);
-    expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(true);
-    // The field is cleared straight away. The page stays until the conversation it opened is
-    // the one covering the list, which the stub's resolved selectSession has already done.
-    expect(runtime.calls.some((call) => call.name === 'closeSearch')).toBe(true);
-    await Promise.resolve();
-    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(false);
-    close();
-  });
-});
-
-test("Enter on the page opens the first hit, the way it does in the dropdown", () => {
-  withPhone(() => {
-    const { host, runtime, close } = open([], null, true);
-    click(host.querySelector('.search-trigger'));
-    hits(runtime);
-    press(host.querySelector('.search-page input.search'), 'Enter');
-    expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(true);
-    close();
-  });
-});
-
-test("leaving the page clears what was typed, and Escape leaves it too", () => {
-  withPhone(() => {
-    const { host, runtime, app, close } = open([], null, true);
-    const page = app as { closeSearchPage(): boolean };
-    click(host.querySelector('.search-trigger'));
-    hits(runtime);
-    click(host.querySelector('.search-page-back'));
-    expect(runtime.calls.some((call) => call.name === 'closeSearch')).toBe(true);
-    expect(page.closeSearchPage()).toBe(false);
-
-    click(host.querySelector('.search-trigger'));
-    press(host.querySelector('.search-page input.search'), 'Escape');
-    expect(page.closeSearchPage()).toBe(false);
-    close();
-  });
-});
-
-test("a window that grew back has the dropdown again, so the page goes", () => {
-  withPhone((grow) => {
-    const { host, app, close } = open([], null, true);
-    click(host.querySelector('.search-trigger'));
-    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(true);
-    click(host.querySelector('.search-trigger'));
-    grow();
-    expect((app as { closeSearchPage(): boolean }).closeSearchPage()).toBe(false);
-    expect(host.querySelector('input.search')).not.toBeNull();
-    close();
-  });
+  };
+  check();
+  await withPhone(check);
 });
 
 test("creating on a phone is one floating button, asking which once", () => {
@@ -354,7 +257,7 @@ test("creating on a phone is one floating button, asking which once", () => {
   });
 });
 
-test("the button belongs to the list of chats: not the archive, not the search page", () => {
+test("the create button leaves the archived list", () => {
   withPhone(() => {
     const { host, close } = open([], null, true);
     click(host.querySelector('.tools-entry'));
@@ -362,8 +265,6 @@ test("the button belongs to the list of chats: not the archive, not the search p
     expect(host.querySelector('.fab')).toBeNull();
     click(host.querySelector('.mobile-archived-back'));
     expect(host.querySelector('.fab')).not.toBeNull();
-    click(host.querySelector('.search-trigger'));
-    expect(host.querySelector('.fab')).toBeNull();
     close();
   });
 });

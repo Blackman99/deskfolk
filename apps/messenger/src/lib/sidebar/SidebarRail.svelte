@@ -3,8 +3,10 @@
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import { recentBotDms } from './bot-dm-source.ts';
+	import RailTooltip from './RailTooltip.svelte';
 	import { groupSessions, isSessionArchived } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
@@ -33,6 +35,8 @@
 		/** The archived list is a view of the full list; this opens the list already on it. */
 		onOpenArchived: () => void;
 		onOpenSettings: () => void;
+		/** The folded list has no search field; this opens the same search the field does. */
+		onOpenSearch: () => void;
 	};
 
 	let {
@@ -49,7 +53,8 @@
 		onOpenSpend,
 		onNewTerminal,
 		onOpenArchived,
-		onOpenSettings
+		onOpenSettings,
+		onOpenSearch
 	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
@@ -99,8 +104,14 @@
 	 * rail so it covers none of these.
 	 */
 	const archivedCount = $derived(snapshot.sessions.filter((session) => isSessionArchived(session, botsById)).length);
+	let toolsTip = $state<RailTooltip | null>(null);
 	let toolsBtnEl = $state<HTMLButtonElement | null>(null);
 	let toolsFocusLast = $state(false);
+
+	// `bind:this` on the tip lands in an effect; the button inside it is there on the next one.
+	$effect(() => {
+		toolsBtnEl = toolsTip?.anchor() ?? null;
+	});
 
 	function onToolsKeyDown(e: KeyboardEvent): void {
 		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -108,14 +119,39 @@
 		toolsFocusLast = e.key === 'ArrowUp';
 		toolsMenuOpen = true;
 	}
+
+	/** A control's tip: what it does, then the shortcut. The accessible name stays the function. */
+	function shortcutTip(label: string, shortcut: string): string[] {
+		return [label, shortcut];
+	}
+
+	/**
+	 * The full title, then a short line of whatever the avatar already shows: what is waiting, or
+	 * how many are unread. Idle and a clean badge say nothing more.
+	 */
+	function sessionTip(title: string, status: ReturnType<typeof statusOf>, unread: number): string[] {
+		const lines = [title];
+		if (status.kind === 'waiting_approval' && status.count) {
+			lines.push(`${status.label} ${status.count}`);
+		} else if (status.kind !== 'idle') {
+			lines.push(status.label);
+		}
+		if (unread > 0) lines.push(`${t.sidebar.unread} ${unread}`);
+		return lines;
+	}
+
+	const searchShortcut = $derived(searchShortcutLabel());
+	const workspaceSet = $derived(Boolean(snapshot.settings.workspace_path));
+	const settingsTip = $derived(
+		updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings
+	);
 </script>
 
 <nav class="rail" aria-label={t.sidebar.sessions}>
-	<button
-		type="button"
+	<RailTooltip
 		class="rail-action rail-expand"
-		title="{t.sidebar.show} (⌘B)"
-		aria-label={t.sidebar.show}
+		label={shortcutTip(t.sidebar.show, '⌘B')}
+		describedBy="rail-tip-expand"
 		aria-expanded="false"
 		onclick={onExpand}
 	>
@@ -124,7 +160,18 @@
 			<path d="M9 3v18"></path>
 			<path d="m14 9 3 3-3 3"></path>
 		</svg>
-	</button>
+	</RailTooltip>
+	<RailTooltip
+		class="rail-action rail-search"
+		label={shortcutTip(t.sidebar.searchShort, searchShortcut)}
+		describedBy="rail-tip-search"
+		onclick={onOpenSearch}
+	>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<circle cx="11" cy="11" r="8"></circle>
+			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+		</svg>
+	</RailTooltip>
 	<div class="rail-list">
 		{#each sections as section, index (index)}
 			{#if index > 0}
@@ -134,14 +181,12 @@
 				{@const title = sessionTitle(session, botsById, rosterLabels)}
 				{@const status = statusOf(session)}
 				{@const unread = sessionUnreadCount(session)}
-				<button
-					type="button"
-					class="rail-item"
-					class:is-on={runtime.selectedId === session.id}
-					class:is-context-open={contextMenuSessionId === session.id}
+				<RailTooltip
+					class="rail-item {runtime.selectedId === session.id ? 'is-on' : ''} {contextMenuSessionId === session.id ? 'is-context-open' : ''}"
+					label={sessionTip(title, status, unread)}
+					name={unread > 0 ? `${title} · ${t.sidebar.unread} ${unread}` : title}
+					describedBy="rail-tip-{session.id}"
 					data-session={session.id}
-					{title}
-					aria-label={unread > 0 ? `${title} · ${t.sidebar.unread} ${unread}` : title}
 					aria-current={runtime.selectedId === session.id ? 'true' : undefined}
 					onclick={() => void runtime.selectSession(session.id)}
 					oncontextmenu={(e) => onOpenContextMenu(e, session)}
@@ -166,32 +211,29 @@
 					{:else if unread > 0}
 						<span class="rail-badge" aria-hidden="true">{unreadBadge(unread)}</span>
 					{/if}
-				</button>
+				</RailTooltip>
 			{/each}
 		{/each}
 	</div>
 	<div class="rail-foot">
-		<button
-			type="button"
-			class="rail-action rail-workspace"
-			class:is-active={workspaceOpen}
-			title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (⌘O)` : t.sidebar.workspaceUnset}
-			aria-label={t.sidebar.workspace}
+		<RailTooltip
+			class="rail-action rail-workspace {workspaceOpen ? 'is-active' : ''}"
+			label={workspaceSet ? shortcutTip(t.sidebar.workspace, '⌘O') : [t.sidebar.workspace, t.sidebar.workspaceUnset]}
+			name={t.sidebar.workspace}
+			describedBy="rail-tip-workspace"
+			enabled={workspaceSet}
 			aria-expanded={workspaceOpen}
-			disabled={!snapshot.settings.workspace_path}
 			onclick={onToggleWorkspace}
 		>
 			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
 			</svg>
-		</button>
-		<button
-			bind:this={toolsBtnEl}
-			type="button"
-			class="rail-action rail-tools"
-			class:is-active={toolsMenuOpen}
-			title={t.sidebar.tools}
-			aria-label={t.sidebar.tools}
+		</RailTooltip>
+		<RailTooltip
+			bind:this={toolsTip}
+			class="rail-action rail-tools {toolsMenuOpen ? 'is-active' : ''}"
+			label={[t.sidebar.tools]}
+			describedBy="rail-tip-tools"
 			aria-haspopup="menu"
 			aria-expanded={toolsMenuOpen}
 			aria-controls={toolsMenuOpen ? 'sidebar-tools-menu' : undefined}
@@ -204,13 +246,11 @@
 				<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
 				<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
 			</svg>
-		</button>
-		<button
-			type="button"
-			class="rail-action rail-settings"
-			class:is-active={runtime.settingsOpen}
-			title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
-			aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
+		</RailTooltip>
+		<RailTooltip
+			class="rail-action rail-settings {runtime.settingsOpen ? 'is-active' : ''}"
+			label={[settingsTip]}
+			describedBy="rail-tip-settings"
 			onclick={onOpenSettings}
 		>
 			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -220,7 +260,7 @@
 			{#if updateChecker.updateVisible}
 				<span class="rail-update-dot" aria-hidden="true"></span>
 			{/if}
-		</button>
+		</RailTooltip>
 	</div>
 </nav>
 
@@ -273,7 +313,7 @@
 		display: none;
 	}
 
-	.rail-action {
+	.rail :global(.rail-action) {
 		position: relative;
 		flex: 0 0 auto;
 		display: inline-flex;
@@ -291,7 +331,7 @@
 		transition: background 0.15s ease, color 0.15s ease;
 	}
 
-	.rail-expand {
+	.rail :global(.rail-expand) {
 		margin-top: 10px;
 		margin-bottom: 4px;
 	}
@@ -307,26 +347,21 @@
 		border-top: 1px solid var(--line);
 	}
 
-	.rail-foot .rail-action {
+	.rail-foot :global(.rail-action) {
 		margin: 0;
 	}
 
-	.rail-action:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-
-	.rail-action:disabled:hover {
+	.rail :global(.rail-action[aria-disabled='true']:hover) {
 		border-color: transparent;
 		color: var(--muted);
 	}
 
-	.rail-action:hover {
+	.rail :global(.rail-action:hover) {
 		border-color: var(--line);
 		color: var(--ink);
 	}
 
-	.rail-action.is-active {
+	.rail :global(.rail-action.is-active) {
 		background: var(--accent-tint);
 		border-color: var(--accent-border);
 		color: var(--accent);
@@ -350,7 +385,7 @@
 		background: var(--line);
 	}
 
-	.rail-item {
+	.rail :global(.rail-item) {
 		position: relative;
 		flex: 0 0 auto;
 		display: flex;
@@ -366,26 +401,26 @@
 		transition: background 0.12s ease;
 	}
 
-	.rail-item :global(.row-avatar) {
+	.rail :global(.rail-item .row-avatar) {
 		--avatar-ring: var(--sidebar-bg);
 	}
 
-	.rail-item:hover {
+	.rail :global(.rail-item:hover) {
 		background: var(--row-hover);
 	}
 
-	.rail-item:hover :global(.row-avatar) {
+	.rail :global(.rail-item:hover .row-avatar) {
 		--avatar-ring: var(--row-hover);
 	}
 
-	.rail-item.is-on,
-	.rail-item.is-context-open {
+	.rail :global(.rail-item.is-on),
+	.rail :global(.rail-item.is-context-open) {
 		background: var(--accent-tint);
 		border-color: var(--accent-border);
 	}
 
-	.rail-item.is-on :global(.row-avatar),
-	.rail-item.is-context-open :global(.row-avatar) {
+	.rail :global(.rail-item.is-on .row-avatar),
+	.rail :global(.rail-item.is-context-open .row-avatar) {
 		--avatar-ring: var(--accent-tint);
 	}
 

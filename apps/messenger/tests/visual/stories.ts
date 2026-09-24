@@ -22,6 +22,7 @@ import {
 	fakeRuntime
 } from '../../src/lib/test-fixtures.ts';
 import { reactive } from '../../src/lib/test-reactive.svelte.ts';
+import { searchStoryRuntime } from './search-story.ts';
 import Shell from '../../src/lib/Shell.svelte';
 import Onboarding from '../../src/lib/Onboarding.svelte';
 import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
@@ -33,6 +34,7 @@ import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
 import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
 import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
 import SidebarRail from '../../src/lib/sidebar/SidebarRail.svelte';
+import GlobalSearch from '../../src/lib/search/GlobalSearch.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
 import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
@@ -445,6 +447,7 @@ const defs: Record<StoryName, Story> = {
 	sidebar: {
 		component: Sidebar as never,
 		props: {
+			onOpenSearch: () => {},
 			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
 			t,
 			selected: group,
@@ -462,9 +465,20 @@ const defs: Record<StoryName, Story> = {
 			onNewTerminal: () => {}
 		}
 	},
+	'search-dialog': {
+		component: GlobalSearch as never,
+		props: { runtime: searchStoryRuntime(), t, opener: null, onClose: () => {}, onSelect: () => {} },
+		afterMount(host) { const field = host.querySelector<HTMLInputElement>('.global-search-input')!; field.value = '周报'; field.dispatchEvent(new Event('input', { bubbles: true })); }
+	},
+	'search-dialog-narrow': {
+		component: GlobalSearch as never,
+		props: { runtime: searchStoryRuntime(), t, opener: null, onClose: () => {}, onSelect: () => {} },
+		afterMount(host) { const field = host.querySelector<HTMLInputElement>('.global-search-input')!; field.value = '周报'; field.dispatchEvent(new Event('input', { bubbles: true })); }
+	},
 	'sidebar-rail': {
 		component: SidebarRail as never,
 		props: {
+			onOpenSearch: () => {},
 			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
 			t,
 			pinnedSessionIds: ['direct-1'],
@@ -490,6 +504,7 @@ const defs: Record<StoryName, Story> = {
 	'sidebar-context': {
 		component: Sidebar as never,
 		props: {
+			onOpenSearch: () => {},
 			runtime: fakeRuntime(world, { selectedId: 'sess-1' }),
 			t,
 			selected: group,
@@ -510,6 +525,7 @@ const defs: Record<StoryName, Story> = {
 	'sidebar-botdm': {
 		component: Sidebar as never,
 		props: {
+			onOpenSearch: () => {},
 			runtime: fakeRuntime(botDmWorld, { selectedId: 'botbot-06' }),
 			t,
 			selected: botDirects[5],
@@ -910,6 +926,13 @@ const maintenanceRuntime = (over: Record<string, unknown> = {}) =>
 	});
 
 export const rc11Stories = {
+	'global-search': {
+		component: Shell as never,
+		props: { runtime: searchStoryRuntime() },
+		width: 1280,
+		height: 820,
+		afterMount(host: HTMLElement) { document.body.style.width = '100vw'; document.body.style.height = '100dvh'; host.style.width = '100vw'; host.style.height = '100dvh'; }
+	},
 	'sidebar-tools': {
 		...defs.sidebar,
 		props: {

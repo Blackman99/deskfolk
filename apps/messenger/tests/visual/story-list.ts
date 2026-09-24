@@ -33,6 +33,8 @@ export const STORY_SIZES = {
 	// The list folded to its rail, with the footer's tools menu flown out beside it: the only shot
 	// of the rail's icon footer and of a menu placed to the side of its button.
 	'sidebar-rail': { width: 300, height: 820 },
+	'search-dialog': { width: 1280, height: 820 },
+	'search-dialog-narrow': { width: 390, height: 844 },
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
 	'chat-stage-botdm': { width: 900, height: 820 },

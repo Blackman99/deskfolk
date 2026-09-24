@@ -4,6 +4,7 @@
 		type Attachment,
 		type Bot,
 		type SessionSummary,
+		type SearchHit,
 		type Terminal
 	} from '@real-bot/protocol';
 	import { onMount, tick, untrack } from 'svelte';
@@ -75,6 +76,9 @@
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import SidebarRail from './sidebar/SidebarRail.svelte';
+	import GlobalSearch from './search/GlobalSearch.svelte';
+	import { matchesSearchShortcut } from './search/shortcuts.ts';
+	import { searchJump } from './sidebar/search-jump.ts';
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
@@ -178,12 +182,64 @@
 
 	/** Escape and Back close the sidebar tools menu first. */
 	let toolsMenuOpen = $state(false);
-	/**
-	 * Searching on a phone is a screen, not a dropdown. The sidebar renders it; the flag lives
-	 * here because Back and Escape have to close it, and because the bar at the bottom steps out
-	 * of the way while it is up.
-	 */
-	let searchPageOpen = $state(false);
+	let searchOpen = $state(false);
+	let searchDialog = $state<GlobalSearch>();
+	let searchOpener = $state<HTMLElement | null>(null);
+
+	function searchBlocked(): boolean {
+		return Boolean(showOnboarding || dangerConfirm || runtime.createBotOpen || runtime.createGroupOpen || providerEditor || confirmingIndependent || document.querySelector('dialog[open], .skill-modal-backdrop, .memory-modal-backdrop'));
+	}
+
+	function openGlobalSearch(): void {
+		if (searchOpen) { searchDialog?.focusQuery(); return; }
+		if (searchBlocked()) return;
+		searchOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		toolsMenuOpen = false;
+		createMenuOpen = false;
+		contextMenu = null;
+		runtime.closeSearch();
+		searchOpen = true;
+	}
+
+	function closeGlobalSearch(): boolean {
+		if (!searchOpen) return false;
+		searchOpen = false;
+		runtime.closeSearch();
+		return true;
+	}
+
+	function selectSearchHit(hit: SearchHit): void {
+		const jump = searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots);
+		const path = hit.kind === 'file' ? hit.path : null;
+		if (!path && !jump) return;
+		closeGlobalSearch();
+		const open = () => {
+			closeSettings();
+			if (!wide) { runtime.closeSessionSettings(); runtime.closeTerminal(); runtime.closeTrace(); runtime.threadOpen = false; }
+			if (path) openArtifactPath(path);
+			else if (jump && 'routineId' in jump) void runtime.openRoutine(jump.botId, jump.routineId);
+			else if (jump) void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
+			void tick().then(() => {
+				if (searchOpen || document.querySelector('dialog[open]')) return;
+				const target = shellEl?.querySelector<HTMLElement>('.wb-leaf.is-focused .wb-body, .wb-float.is-focused .wb-body') ?? shellEl?.querySelector<HTMLElement>('.main');
+				if (target) { target.setAttribute('tabindex', '-1'); target.focus({ preventScroll: true }); }
+			});
+		};
+		if (wide) open();
+		else guardNotificationNavigation(open);
+	}
+
+	onMount(() => {
+		const searchKey = (event: KeyboardEvent) => {
+			if (!matchesSearchShortcut(event)) return;
+			if (!searchOpen && searchBlocked()) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			openGlobalSearch();
+		};
+		window.addEventListener('keydown', searchKey, true);
+		return () => window.removeEventListener('keydown', searchKey, true);
+	});
 	/** The phone's floating + menu, held here for the same reasons. */
 	let createMenuOpen = $state(false);
 	let sidebar = $state<Sidebar>();
@@ -246,7 +302,7 @@
 			createGroupOpen: runtime.createGroupOpen,
 			providerEditor: providerEditor !== null,
 			confirmingIndependent,
-			searchPageOpen,
+			searchOpen,
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
@@ -278,8 +334,8 @@
 				return true;
 			case 'independent-confirm':
 				return true;
-			case 'search-page':
-				return sidebar?.closeSearchPage() ?? false;
+			case 'search':
+				return closeGlobalSearch();
 			case 'settings':
 				// Only its inner pages are ours to unwind; settings itself is an entry in history.
 				return settingsModal?.backWithinSettings() ?? false;
@@ -346,7 +402,7 @@
 		const navigate = () => {
 			toolsMenuOpen = false;
 			createMenuOpen = false;
-			sidebar?.closeSearchPage();
+			closeGlobalSearch();
 			if (destination === 'settings') {
 				runtime.openSettings();
 			} else if (destination === 'workspace') {
@@ -1514,7 +1570,7 @@
 	}
 
 	const mobileNavigationVisible = $derived(
-		!searchPageOpen &&
+		!searchOpen &&
 		!runtime.routinesOpen &&
 		!runtime.spendOpen &&
 		// The terminal is a full screen here, and the bar would sit on top of its key row.
@@ -1539,6 +1595,10 @@
 
 <svelte:window
 	onkeydown={(e) => {
+		if (searchOpen) {
+			if (e.key === 'Escape' && !e.isComposing) closeGlobalSearch();
+			return;
+		}
 		if (e.key === 'Escape') {
 			if (toolsMenuOpen) {
 				toolsMenuOpen = false;
@@ -1555,8 +1615,7 @@
 				settingsModal?.backFromProviderEditor();
 			} else if (confirmingIndependent) {
 				e.stopPropagation();
-			} else if (searchPageOpen) {
-				sidebar?.closeSearchPage();
+
 			} else if (runtime.settingsOpen) {
 				closeSettings();
 			} else if (runtime.sessionSettingsOpen && nestedProfile) {
@@ -1750,6 +1809,9 @@
 	<Onboarding {runtime} onDismiss={() => (dismissedOnboarding = true)} />
 {:else}
 <ImageCopy {t} />
+{#if searchOpen}
+	<GlobalSearch bind:this={searchDialog} {runtime} {t} opener={searchOpener} onClose={closeGlobalSearch} onSelect={selectSearchHit} />
+{/if}
 <div
 	class="shell"
 	class:has-mobile-navigation={mobileNavigationVisible}
@@ -1776,6 +1838,7 @@
 			contextMenuSessionId={contextMenu?.session.id ?? null}
 			onOpenContextMenu={openContextMenu}
 			onExpand={toggleSidebar}
+			onOpenSearch={openGlobalSearch}
 			onToggleWorkspace={toggleWorkspaceExplorer}
 			onOpenRoutines={openRoutinesFromUi}
 			onOpenSpend={openSpendFromUi}
@@ -1791,7 +1854,8 @@
 			{selected}
 			{pinnedSessionIds}
 			bind:toolsMenuOpen
-			bind:searchPageOpen
+			{searchOpen}
+			onOpenSearch={openGlobalSearch}
 			bind:createMenuOpen
 			workspaceOpen={runtime.workspaceOpen}
 			contextMenuSessionId={contextMenu?.session.id ?? null}
@@ -1803,7 +1867,6 @@
 			onOpenSettings={() => runtime.openSettings()}
 			onCreateBot={openCreateBot}
 			onCreateGroup={openCreateGroup}
-			onOpenArtifact={openArtifactPath}
 			onCollapse={wide ? toggleSidebar : undefined}
 		/>
 	{/if}

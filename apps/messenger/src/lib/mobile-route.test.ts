@@ -97,7 +97,7 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     createGroupOpen: false,
     providerEditor: false,
     confirmingIndependent: false,
-    searchPageOpen: false,
+    searchOpen: false,
     settingsOpen: false,
     sessionSettingsOpen: false,
     toolsMenuOpen: false,
@@ -142,9 +142,9 @@ test("Back closes the innermost thing on top", () => {
   // The phone's search page is a screen over the chat list: Back leaves search before it leaves
   // the list. Switching destination closes it, so it never has settings or the workspace on top
   // of it; a menu can still open over anything.
-  expect(topLayer(layers({ searchPageOpen: true }))).toBe("search-page");
-  expect(topLayer(layers({ searchPageOpen: true, threadOpen: true }))).toBe("search-page");
-  expect(topLayer(layers({ searchPageOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
+  expect(topLayer(layers({ searchOpen: true }))).toBe("search");
+  expect(topLayer(layers({ searchOpen: true, threadOpen: true }))).toBe("search");
+  expect(topLayer(layers({ searchOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ createMenuOpen: true, settingsOpen: true }))).toBe("create-menu");
 });
 

@@ -1,33 +1,28 @@
 <script lang="ts">
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
-	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
-	import { isSessionPinned } from './pinned-sessions.ts';
-	import { rosterLetter } from './roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { scrollTopToRevealRect } from '../chat/mention-popup.ts';
-	import { searchHitView, searchJump } from './search-jump.ts';
 	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { latestPreview } from '../chat/transcript.ts';
-	import { pageSlide } from '../mobile-page-slide.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import { formatListTime, listTimeSource } from './list-time.ts';
 	import { plainPreview } from './preview-text.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
+	import { searchShortcutLabel } from '../search/shortcuts.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
 		t: Copy;
 		selected: SessionSummary | null;
 		pinnedSessionIds: string[];
-		/** Searching on a phone is a screen of its own; the shell's Back has to close it. */
-		searchPageOpen?: boolean;
+		searchOpen?: boolean;
+		onOpenSearch: () => void;
 		/** What the phone's + button opens. A menu, so Back and Escape close it first. */
 		createMenuOpen?: boolean;
 		/** Back and Escape close the tools menu before navigating. */
@@ -43,7 +38,6 @@
 		onOpenSettings: () => void;
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
-		onOpenArtifact: (path: string) => void;
 		/** Puts the list away. Only where it can be: the desktop workbench, which has a way back. */
 		onCollapse?: () => void;
 	};
@@ -53,7 +47,8 @@
 		t,
 		selected,
 		pinnedSessionIds,
-		searchPageOpen = $bindable(false),
+		searchOpen = false,
+		onOpenSearch,
 		createMenuOpen = $bindable(false),
 		toolsMenuOpen = $bindable(false),
 		workspaceOpen,
@@ -66,7 +61,6 @@
 		onOpenSettings,
 		onCreateBot,
 		onCreateGroup,
-		onOpenArtifact,
 		onCollapse
 	}: Props = $props();
 
@@ -83,13 +77,6 @@
 		failed: t.sidebar.statusFailed,
 		interrupted: t.sidebar.statusInterrupted,
 		idle: t.sidebar.statusIdle
-	});
-	const searchKindLabels = $derived({
-		bot: t.sidebar.searchKindBot,
-		session: t.sidebar.searchKindSession,
-		message: t.sidebar.searchKindMessage,
-		routine: t.sidebar.searchKindRoutine,
-		file: t.sidebar.searchKindFile
 	});
 
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
@@ -113,19 +100,6 @@
 	let pinnedExpanded = $state(false);
 	let viewingArchived = $state(false);
 
-	let searchFocused = $state(false);
-	let searchHighlightIndex = $state(-1);
-	let searchWrapEl = $state<HTMLElement | null>(null);
-	let searchInputEl = $state<HTMLInputElement | null>(null);
-	let searchDropEl = $state<HTMLElement | null>(null);
-	let searchPageInputEl = $state<HTMLInputElement | null>(null);
-
-	/**
-	 * A phone searches on a page of its own. A dropdown hanging under a field this narrow is a
-	 * desktop idea: the keyboard covers the hits, two lines of snippet do not fit, and the list
-	 * underneath stays half visible as if it were still the thing you were looking at. The width
-	 * test matches the stylesheet's breakpoint.
-	 */
 	let phone = $state(false);
 	$effect(() => {
 		if (typeof window.matchMedia !== 'function') return;
@@ -133,20 +107,10 @@
 		const apply = () => {
 			if (phone !== query.matches) toolsMenuOpen = false;
 			phone = query.matches;
-			// A window that grew back has the dropdown again, so the page has nothing left to be.
-			if (!query.matches) searchPageOpen = false;
 		};
 		apply();
 		query.addEventListener('change', apply);
 		return () => query.removeEventListener('change', apply);
-	});
-
-	/** Both ways of searching drive the same hits, so they share the keyboard handling. */
-	const searchActive = $derived(searchFocused || searchPageOpen);
-
-	$effect(() => {
-		// The page exists to be typed into, so it opens with the caret already in the field.
-		if (searchPageOpen && searchPageInputEl) searchPageInputEl.focus();
 	});
 
 	let fabEl = $state<HTMLElement | null>(null);
@@ -154,10 +118,6 @@
 	let toolsToggleBtnEl = $state<HTMLButtonElement | null>(null);
 	let toolsFocusLast = $state(false);
 
-	$effect(() => {
-		void runtime.searchHits;
-		searchHighlightIndex = -1;
-	});
 
 	function onToolsToggleKeyDown(e: KeyboardEvent): void {
 		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -169,9 +129,6 @@
 	/** Popups that close on a click elsewhere. Escape order is the shell's; this is not. */
 	function onWindowClick(e: MouseEvent): void {
 		const target = e.target as Node | null;
-		if (searchFocused && isOutside(target, searchWrapEl)) {
-			searchFocused = false;
-		}
 		if (createMenuOpen && isOutside(target, fabEl)) {
 			createMenuOpen = false;
 		}
@@ -232,127 +189,11 @@
 		return botsById.get(peer)?.archived_at ? ` · ${t.top.archived}` : '';
 	}
 
-	function openSearchPage(): void {
-		searchHighlightIndex = -1;
-		searchPageOpen = true;
-	}
-
-	/**
-	 * Leaving the page clears the field. A page is somewhere you go and come back from, and a
-	 * search you have walked out of is over — keeping the words would mean the next tap on the
-	 * field reopens someone else's question. Answers whether there was a page to leave, so the
-	 * shell's Back knows it was handled here.
-	 */
-	export function closeSearchPage(): boolean {
-		if (!searchPageOpen) return false;
-		searchPageOpen = false;
-		searchFocused = false;
-		searchHighlightIndex = -1;
-		runtime.closeSearch();
-		return true;
-	}
-
 	/** The archived list, asked for from the rail's menu: the list opens already on it. */
 	export function showArchived(): void {
 		viewingArchived = true;
 	}
 
-	function onSearchInput(ev: Event): void {
-		searchHighlightIndex = -1;
-		void runtime.runSearch((ev.currentTarget as HTMLInputElement).value);
-	}
-
-	function scrollSearchHighlightIntoView(index = searchHighlightIndex): void {
-		const drop = searchDropEl;
-		if (!drop) return;
-		const item = drop.querySelectorAll<HTMLElement>('.search-hit')[index];
-		if (!item) return;
-		const dropRect = drop.getBoundingClientRect();
-		const itemRect = item.getBoundingClientRect();
-		drop.scrollTop = scrollTopToRevealRect(
-			drop.scrollTop,
-			dropRect.top,
-			dropRect.bottom,
-			itemRect.top,
-			itemRect.bottom
-		);
-	}
-
-	function onSearchKeyDown(e: KeyboardEvent): void {
-		if (e.isComposing) return;
-		if (e.key === 'Escape') {
-			if (closeSearchPage()) return;
-			searchFocused = false;
-			searchHighlightIndex = -1;
-			searchInputEl?.blur();
-			return;
-		}
-		if (!searchActive || !runtime.searchQuery.trim() || runtime.searchHits.length === 0) {
-			return;
-		}
-		if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			const count = runtime.searchHits.length;
-			searchHighlightIndex = searchHighlightIndex < count - 1 ? searchHighlightIndex + 1 : 0;
-			scrollSearchHighlightIntoView(searchHighlightIndex);
-			return;
-		}
-		if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			const count = runtime.searchHits.length;
-			searchHighlightIndex = searchHighlightIndex > 0 ? searchHighlightIndex - 1 : count - 1;
-			scrollSearchHighlightIntoView(searchHighlightIndex);
-			return;
-		}
-		if (e.key === 'Enter') {
-			const targetIndex = searchHighlightIndex >= 0 ? searchHighlightIndex : 0;
-			const hit = runtime.searchHits[targetIndex];
-			if (hit) {
-				e.preventDefault();
-				onHit(hit);
-			}
-			return;
-		}
-	}
-
-	function onHit(hit: (typeof runtime.searchHits)[number]): void {
-		// Where this hit leads is read before anything is cleared: closing the search empties the
-		// list, and the row this came from is gone with it.
-		const jump = searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots);
-		const filePath = hit.kind === 'file' ? hit.path : null;
-		if (hit.kind === 'routine' && !jump) {
-			searchFocused = true;
-			searchInputEl?.focus();
-			return;
-		}
-		searchFocused = false;
-		searchHighlightIndex = -1;
-		searchInputEl?.blur();
-		if (filePath) {
-			// A hit ends the search whichever way it was made: the page goes with it.
-			closeSearchPage();
-			runtime.closeSearch();
-			onOpenArtifact(filePath);
-			return;
-		}
-		if (!jump) {
-			searchFocused = true;
-			searchInputEl?.focus();
-			return;
-		}
-		runtime.closeSearch();
-		if ('routineId' in jump) {
-			closeSearchPage();
-			runtime.openRoutine(jump.botId, jump.routineId);
-			return;
-		}
-		// A conversation opened from here covers the roster, and the search page is what sits on
-		// top of that roster. Take the page away once the conversation is the one covering it, or
-		// the search walks out to the right and the list flashes through underneath.
-		void runtime.selectSession(jump.sessionId, { messageId: jump.messageId }).then(() => {
-			closeSearchPage();
-		});
-	}
 </script>
 
 <svelte:window onclick={onWindowClick} />
@@ -364,79 +205,6 @@
 			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
 		</svg>
 	</span>
-{/snippet}
-
-{#snippet hitList()}
-		{#if runtime.searchHits.length === 0}
-			<p class="muted">{t.sidebar.emptySearch}</p>
-		{:else}
-			{#each runtime.searchHits as hit, i (hit.id ?? hit.path ?? i)}
-				{@const view = searchHitView(hit, searchKindLabels)}
-				{@const unavailable = hit.kind === 'routine' && !searchJump(hit, snapshot.sessions, snapshot.routines, snapshot.bots)}
-				<button
-					type="button"
-					id={`search-hit-${i}`}
-					class="search-hit"
-					class:is-highlighted={searchHighlightIndex === i}
-					class:is-selected={searchHighlightIndex === i}
-					role="option"
-					aria-selected={searchHighlightIndex === i}
-					aria-disabled={unavailable}
-					title={view.sessionTitle ? `${view.kindLabel} · ${view.sessionTitle}` : view.kindLabel}
-					onmouseenter={() => {
-						searchHighlightIndex = i;
-					}}
-					onclick={() => onHit(hit)}
-				>
-					{#if hit.kind === 'bot'}
-						{@const bot = hit.id ? botsById.get(hit.id) : null}
-						{@const botName = bot?.name ?? hit.snippet ?? ''}
-						{@const pal = botAvatarColor(hit.id ?? botName)}
-						{@const src = avatarSrc(bot?.avatar ?? hit.avatar)}
-						<span class="row-avatar size-sm search-hit-avatar" aria-hidden="true">
-							<span
-								class="row-avatar-bot"
-								style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-								title={botName}
-							>
-								{#if src}
-									<img src={src} alt={botName} class="avatar-img" />
-								{:else}
-									{botName ? rosterLetter(botName) : '?'}
-								{/if}
-							</span>
-						</span>
-					{:else if hit.kind === 'session'}
-						{@const session = hit.id ? sessionsById.get(hit.id) : null}
-						{#if session}
-							<SessionAvatar {session} bots={botsById} size="sm" class="search-hit-avatar" />
-						{:else}
-							<span class="row-avatar size-sm is-group layout-empty search-hit-avatar" aria-hidden="true">
-								<span class="row-avatar-bot is-empty">
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-										<circle cx="9" cy="7" r="4" />
-										<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-									</svg>
-								</span>
-							</span>
-						{/if}
-					{/if}
-					<span class="search-hit-body flex flex-col items-stretch gap-[3px] min-w-0 flex-1">
-						<span class="search-hit-meta flex items-center gap-3 min-w-0">
-							<span class="search-hit-kind shrink-0 text-10 font-bold tracking-[0.04em] text-muted">{view.kindLabel}</span>
-							{#if view.sessionTitle}
-								<span class="search-hit-session">{view.sessionTitle}</span>
-							{/if}
-						</span>
-						{#if unavailable}<span class="search-unavailable">{t.sidebar.routineUnavailable}</span>{/if}
-						{#if view.snippet && view.snippet !== view.sessionTitle}
-							<span class="search-hit-snippet">{view.snippet}</span>
-						{/if}
-					</span>
-				</button>
-			{/each}
-		{/if}
 {/snippet}
 
 <aside class="side">
@@ -518,75 +286,15 @@
 			<div class="mobile-archived-spacer" aria-hidden="true"></div>
 		</div>
 	{:else}
-		<div class="search-wrap relative mt-5 mx-6 mb-3" bind:this={searchWrapEl}>
-			{#if phone}
-				<div class="tools-entry-wrap">
-					{@render toolsToggle()}
-				</div>
-			{/if}
-			{#if phone}
-				<div class="search-trigger-wrap relative flex-1 min-w-0 flex items-center">
-					{@render searchGlyph()}
-					<!-- Looks like the field it replaces, so the list still reads as having a search box. -->
-					<button type="button" class="search search-trigger w-full" onclick={openSearchPage}>
-						{t.sidebar.searchShort}
-					</button>
-				</div>
-			{:else}
+		<div class="search-wrap">
+			{#if phone}<div class="tools-entry-wrap">{@render toolsToggle()}</div>{/if}
+			<div class="search-trigger-wrap">
 				{@render searchGlyph()}
-				<input
-					bind:this={searchInputEl}
-					class="search"
-					placeholder={t.sidebar.search}
-					value={runtime.searchQuery}
-					role="combobox"
-					aria-expanded={searchFocused && Boolean(runtime.searchQuery.trim())}
-					aria-controls="search-dropdown-list"
-					aria-activedescendant={searchHighlightIndex >= 0 ? `search-hit-${searchHighlightIndex}` : undefined}
-					oninput={onSearchInput}
-					onfocus={() => {
-						searchFocused = true;
-					}}
-					onblur={(e) => {
-						const next = e.relatedTarget as Node | null;
-						if (searchWrapEl && next && searchWrapEl.contains(next)) {
-							return;
-						}
-						searchFocused = false;
-						searchHighlightIndex = -1;
-					}}
-					onkeydown={onSearchKeyDown}
-				/>
-				{#if runtime.searchQuery.trim()}
-					<button
-						type="button"
-						class="search-clear"
-						title={t.sidebar.searchClear}
-						aria-label={t.sidebar.searchClear}
-						onmousedown={(e) => e.preventDefault()}
-						onclick={() => {
-							void runtime.runSearch('');
-							searchFocused = true;
-							searchHighlightIndex = -1;
-							searchInputEl?.focus();
-						}}
-					>✕</button>
-				{/if}
-				{#if searchFocused && runtime.searchQuery.trim()}
-					<div
-						bind:this={searchDropEl}
-						id="search-dropdown-list"
-						class="search-drop"
-						role="listbox"
-						tabindex="-1"
-						onmousedown={(e) => {
-							e.preventDefault();
-						}}
-					>
-						{@render hitList()}
-					</div>
-				{/if}
-				{#if onCollapse}
+				<button type="button" class="search search-trigger" aria-label={t.sidebar.globalSearch} aria-haspopup="dialog" onclick={onOpenSearch}>
+					<span>{t.sidebar.searchShort}</span><kbd>{searchShortcutLabel()}</kbd>
+				</button>
+			</div>
+				{#if !phone && onCollapse}
 					<button
 						type="button"
 						class="side-collapse"
@@ -602,7 +310,6 @@
 						</svg>
 					</button>
 				{/if}
-			{/if}
 		</div>
 	{/if}
 	<div class="groups">
@@ -907,7 +614,7 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchPageOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen}
+{#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen}
 	<div class="fab-wrap" bind:this={fabEl}>
 		{#if createMenuOpen}
 			<div class="fab-menu" role="menu">
@@ -962,65 +669,6 @@
 	</div>
 {/if}
 
-<!--
-	Search as a screen: the field in the header, the hits filling the rest, and the way back where
-	every other phone page keeps it. It arrives and leaves by the same slide as the other pages.
--->
-{#if searchPageOpen}
-	<div class="search-page" transition:pageSlide>
-		<div class="search-page-head">
-			<button
-				type="button"
-				class="search-page-back"
-				aria-label={t.sidebar.backToSessions}
-				onclick={() => closeSearchPage()}
-			>
-				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-			</button>
-			<div class="search-page-field">
-				{@render searchGlyph()}
-				<input
-					bind:this={searchPageInputEl}
-					class="search"
-					placeholder={t.sidebar.search}
-					aria-label={t.sidebar.searchShort}
-					value={runtime.searchQuery}
-					enterkeyhint="search"
-					autocapitalize="off"
-					autocomplete="off"
-					spellcheck="false"
-					oninput={onSearchInput}
-					onkeydown={onSearchKeyDown}
-				/>
-				{#if runtime.searchQuery.trim()}
-					<button
-						type="button"
-						class="search-clear"
-						title={t.sidebar.searchClear}
-						aria-label={t.sidebar.searchClear}
-						onclick={() => {
-							void runtime.runSearch('');
-							searchHighlightIndex = -1;
-							searchPageInputEl?.focus();
-						}}
-					>✕</button>
-				{/if}
-			</div>
-		</div>
-		{#if runtime.searchQuery.trim()}
-			<div
-				bind:this={searchDropEl}
-				class="search-drop is-page"
-				role="listbox"
-				aria-label={t.sidebar.searchShort}
-				tabindex="-1"
-			>
-				{@render hitList()}
-			</div>
-		{/if}
-	</div>
-{/if}
-
 <style>
 	.mobile-archived-head { display: none; }
 	@media (max-width: 680px) {
@@ -1045,25 +693,6 @@
 		display: none;
 	}
 
-	.search-clear {
-		position: absolute;
-		right: 8px;
-		background: transparent;
-		border: 0;
-		color: var(--muted-light);
-		font-size: 13px;
-		padding: 2px 6px;
-		border-radius: 4px;
-		cursor: pointer;
-		line-height: 1;
-	}
-
-	.search-clear:hover {
-		color: var(--ink);
-		background: var(--line-subtle);
-	}
-
-	/* Beside the field, so the ✕ inside it moves over by the button and the gap. */
 	.side-collapse {
 		flex: 0 0 auto;
 		display: inline-flex;
@@ -1084,102 +713,12 @@
 		color: var(--ink);
 	}
 
-	.search-wrap:has(.side-collapse) .search {
-		min-width: 0;
-	}
-
-	.search-wrap:has(.side-collapse) .search-clear {
-		right: 46px;
-	}
-
-	/* Not a field, but it has to look like one — it stands where the field stands. */
-	.search-trigger {
-		text-align: left;
-		color: var(--muted-light);
-		cursor: pointer;
-	}
-
-	/*
-	 * The phone's search screen. Fixed over everything, including the bar at the bottom: while
-	 * you are searching, the destinations are not where you are going, and the keyboard needs
-	 * the room. The shell drops the bar for the same reason.
-	 */
-	.search-page {
-		position: fixed;
-		inset: 0;
-		z-index: 120;
-		display: flex;
-		flex-direction: column;
-		background: var(--pane);
-		padding-top: env(safe-area-inset-top);
-	}
-
-	.search-page-head {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding: 8px 12px 8px 4px;
-		border-bottom: 1px solid var(--line-subtle);
-		background: var(--sidebar-bg);
-	}
-
-	.search-page-back {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 38px;
-		height: 38px;
-		flex-shrink: 0;
-		border: 0;
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: var(--ink-secondary);
-		cursor: pointer;
-	}
-
-	.search-page-back:active {
-		background: var(--line-subtle);
-	}
-
-	.search-page-field {
-		position: relative;
-		display: flex;
-		align-items: center;
-		flex: 1;
-		min-width: 0;
-	}
-
-	/* Thumb-sized, and big enough that iOS does not zoom the page when the caret lands. */
-	.search-page-field .search {
-		padding: 9px 30px 9px 30px;
-		font-size: 16px;
-	}
-
-	/* The same hits, filling a page instead of hanging under a field. */
-	.search-drop.is-page {
-		position: static;
-		flex: 1;
-		min-height: 0;
-		max-height: none;
-		border: 0;
-		border-radius: 0;
-		box-shadow: none;
-		background: transparent;
-		padding: 4px 6px calc(12px + env(safe-area-inset-bottom));
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
-	}
-
-	.search-drop.is-page button.search-hit {
-		gap: 11px;
-		padding: 11px 10px;
-		font-size: 13.5px;
-	}
-
-	.search-drop.is-page :global(p) {
-		padding: 20px 12px;
-		text-align: center;
-	}
+	.search-trigger-wrap { position: relative; flex: 1; min-width: 0; }
+	.search-trigger { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer; }
+	.search-trigger span { color: var(--muted); }
+	.search-trigger kbd { flex-shrink: 0; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font: 10px var(--font); }
+	.search-trigger:hover { border-color: var(--line-hover); background: var(--row-hover); }
+	@media (max-width: 680px) { .search-trigger kbd { display: none; } }
 
 	/*
 	 * Above the list, under everything that covers the list: a drawer, a sheet or the settings
@@ -1269,17 +808,6 @@
 		flex-shrink: 0;
 		color: var(--muted);
 	}
-
-	/* A page has the room to say which conversation a hit came from properly. */
-	.search-drop.is-page .search-hit-kind {
-		font-size: 11px;
-	}
-
-	.search-drop.is-page .search-hit-session {
-		font-size: 12.5px;
-	}
-
-
 
 	.pinned-session-btn :global(img) {
 		width: 100%;
@@ -1475,100 +1003,6 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-	}
-
-	.search-drop {
-		position: absolute;
-		top: calc(100% + 4px);
-		left: 0;
-		right: 0;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-		box-shadow: var(--shadow-lg);
-		max-height: 320px;
-		overflow-y: auto;
-		z-index: 10;
-		padding: 4px;
-	}
-
-	.search-drop :global(button),
-	.search-drop :global(p) {
-		display: block;
-		width: 100%;
-		text-align: left;
-		border-radius: var(--radius-sm);
-		padding: 8px 10px;
-		font-size: 12.5px;
-		color: var(--ink);
-	}
-
-	.search-drop :global(p) {
-		color: var(--muted);
-	}
-
-	.search-drop button.search-hit {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 10px;
-		padding: 8px 10px;
-	}
-
-	.search-drop button.search-hit .search-hit-avatar {
-		flex-shrink: 0;
-		--avatar-ring: var(--pane);
-	}
-
-	.search-drop button.search-hit:hover .search-hit-avatar,
-	.search-drop button.search-hit.is-highlighted .search-hit-avatar,
-	.search-drop button.search-hit.is-selected .search-hit-avatar {
-		--avatar-ring: var(--line-subtle);
-	}
-
-	.search-drop :global(button:hover),
-	.search-drop button.search-hit.is-highlighted,
-	.search-drop button.search-hit.is-selected {
-		background: var(--line-subtle);
-		color: var(--accent);
-	}
-
-	.search-drop button.search-hit:hover,
-	.search-drop button.search-hit.is-highlighted,
-	.search-drop button.search-hit.is-selected {
-		color: var(--ink);
-	}
-
-	.search-hit-session {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 11.5px;
-		font-weight: 650;
-		color: var(--accent);
-	}
-
-	.search-unavailable { color: var(--muted); font-size: 11px; white-space: normal; }
-	.search-hit[aria-disabled='true'] { cursor: default; }
-
-	.search-hit-snippet {
-		display: -webkit-box;
-		overflow: hidden;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		color: var(--ink-secondary);
-		line-height: 1.35;
-	}
-
-	.search-drop button.search-hit:hover .search-hit-kind,
-	.search-drop button.search-hit.is-highlighted .search-hit-kind,
-	.search-drop button.search-hit.is-selected .search-hit-kind,
-	.search-drop button.search-hit:hover .search-hit-session,
-	.search-drop button.search-hit.is-highlighted .search-hit-session,
-	.search-drop button.search-hit.is-selected .search-hit-session {
-		color: var(--accent-hover);
 	}
 
 	/* Groups and Session Rows */
@@ -2103,9 +1537,6 @@
 		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
-	.search::placeholder {
-		color: var(--muted-light);
-	}
 
 	@keyframes sidebarMenuIn {
 		from {

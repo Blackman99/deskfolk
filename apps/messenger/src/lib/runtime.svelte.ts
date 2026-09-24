@@ -307,6 +307,8 @@ export class MessengerRuntime {
   threadOpen = $state(false);
   searchQuery = $state("");
   searchHits = $state<SearchHit[]>([]);
+  searchLoading = $state(false);
+  searchError = $state(false);
   pendingMutation = $state<{ id: string; code: string } | null>(null);
   workspacePath = $state("");
   endpointUrl = $state("");
@@ -449,6 +451,7 @@ export class MessengerRuntime {
 
   destroy(): void {
     this.stopped = true;
+    this.closeSearch();
     if (this.presenceTimer) {
       clearInterval(this.presenceTimer);
       this.presenceTimer = null;
@@ -2484,26 +2487,38 @@ export class MessengerRuntime {
   closeSearch(): void {
     this.searchQuery = "";
     this.searchHits = [];
+    this.searchLoading = false;
+    this.searchError = false;
     this.searchSeq++;
   }
 
+  /** Clearing a query invalidates in-flight replies too; results belong to one connection. */
   async runSearch(q: string): Promise<void> {
     this.searchQuery = q;
-    if (!this.api) {
-      this.searchHits = [];
-      return;
-    }
-    const trimmed = q.trim();
-    if (!trimmed) {
-      this.searchHits = [];
-      return;
-    }
+    this.searchHits = [];
+    this.searchError = false;
     const seq = ++this.searchSeq;
+    const api = this.api;
+    const connection = this.connectionSeq;
+    const trimmed = q.trim();
+    if (!api || this.connection !== "connected" || !trimmed) {
+      this.searchLoading = false;
+      return;
+    }
+    this.searchLoading = true;
+    const current = () =>
+      seq === this.searchSeq && this.api === api && this.connectionSeq === connection;
     try {
-      const hits = await this.api.search(trimmed);
-      if (seq === this.searchSeq) this.searchHits = hits;
+      const hits = await api.search(trimmed);
+      if (!current()) return;
+      this.searchHits = hits;
+      this.searchError = false;
     } catch {
-      if (seq === this.searchSeq) this.searchHits = [];
+      if (!current()) return;
+      this.searchHits = [];
+      this.searchError = true;
+    } finally {
+      if (current()) this.searchLoading = false;
     }
   }
 
@@ -3368,6 +3383,10 @@ export class MessengerRuntime {
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();
+    this.searchSeq++;
+    this.searchHits = [];
+    this.searchLoading = false;
+    this.searchError = false;
     // Every open conversation reads its history again from the next connection, not only the selected one.
     for (const view of this.views.values()) {
       view.detailLoaded = false;
@@ -3451,7 +3470,6 @@ export class MessengerRuntime {
   private markDisconnected(): void {
     this.resetConnection();
     this.closeSheets();
-    this.searchHits = [];
     // Every conversation on screen, not only the one in front: each holds its own.
     for (const view of this.views.values()) {
       this.dropComposerSuggestions(view);

@@ -584,7 +584,7 @@ test('mounted Shell: searching is a screen, and Back leaves it before it leaves 
     expect(host.querySelector('.fab-menu')).toBeNull();
 
     click(host.querySelector('.search-trigger'));
-    expect(host.querySelector('.search-page input.search')).not.toBeNull();
+    expect(host.querySelector('.global-search-input')).not.toBeNull();
     // Nowhere to go while you are searching, and the keyboard wants the room.
     expect(host.querySelector('.mobile-navigation')).toBeNull();
 
@@ -1767,4 +1767,61 @@ test('the session list folds to a rail of avatars from its own button or ⌘B, a
   expect(shell().style.getPropertyValue('--sidebar-split')).toBe('');
   expect(localStorage.getItem('real-bot-sidebar-collapsed')).toBeNull();
   expect(localStorage.getItem('real-bot-sidebar-width')).toBe('320');
+});
+
+for (const collapsed of [false, true]) test(`global search is reachable from the ${collapsed ? 'rail' : 'list'} and keyboard without changing the layout`, async () => {
+  if (collapsed) localStorage.setItem('real-bot-sidebar-collapsed', '1');
+  else localStorage.removeItem('real-bot-sidebar-collapsed');
+  cleanups.push(() => localStorage.removeItem('real-bot-sidebar-collapsed'));
+  const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [aDirect()], settings: { ...emptySnapshot().settings, wizard_complete: true, workspace_path: '/fixture', locale: 'en' } }));
+  runtime.closeSearch = () => { runtime.searchQuery = ''; runtime.searchHits = []; };
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  await settle();
+  const trigger = host.querySelector<HTMLButtonElement>(collapsed ? '.rail-search' : '.search-trigger')!;
+  trigger.focus(); click(trigger);
+  expect(host.querySelector('dialog[open] .global-search-input')).not.toBeNull();
+  const before = localStorage.getItem('real-bot-workbench-layout');
+  host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: '\\', metaKey: true }));
+  flushSync();
+  expect(localStorage.getItem('real-bot-workbench-layout')).toBe(before);
+  host.querySelector('.global-search-input')!.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
+  flushSync();
+  expect(host.querySelector('dialog[open]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true })); flushSync();
+  const input = host.querySelector<HTMLInputElement>('.global-search-input')!;
+  expect(input).not.toBeNull();
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', metaKey: true, bubbles: true, cancelable: true })); flushSync();
+  expect(Boolean(host.querySelector('.rail'))).toBe(collapsed);
+  click(host.querySelector('.search-cancel'));
+  const editor = document.createElement('div'); editor.className = 'monaco-editor'; const field = document.createElement('textarea'); editor.append(field); host.append(editor);
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })); flushSync();
+  expect(host.querySelector('dialog[open]')).toBeNull();
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', metaKey: true, shiftKey: true, bubbles: true, cancelable: true })); flushSync();
+  expect(host.querySelector('dialog[open]')).not.toBeNull();
+  click(host.querySelector('.search-cancel'));
+  const editorModal = document.createElement('div'); editorModal.className = 'skill-modal-backdrop'; host.append(editorModal);
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', metaKey: true, shiftKey: true, bubbles: true, cancelable: true })); flushSync();
+  expect(host.querySelector('dialog[open]')).toBeNull();
+});
+
+test('search result selection clears its modal and routes messages, files and routines through the shell', async () => {
+  const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [aDirect()], routines: [aRoutine()], settings: { ...emptySnapshot().settings, wizard_complete: true, workspace_path: '/fixture', locale: 'en' } }));
+  runtime.closeSearch = () => { runtime.searchQuery = ''; runtime.searchHits = []; };
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  for (const hit of [
+    { kind: 'message' as const, id: 'old-msg', session_id: 'direct-1', snippet: 'older message' },
+    { kind: 'routine' as const, id: 'routine-1', snippet: 'routine' },
+    { kind: 'file' as const, path: 'report.md', snippet: 'file' },
+  ]) {
+    click(host.querySelector('.search-trigger'));
+    flushSync(() => { runtime.searchQuery = 'find'; runtime.searchHits = [hit]; });
+    click(host.querySelector('.search-result'));
+    await settle();
+    expect(host.querySelector('dialog[open]')).toBeNull();
+  }
+  expect(runtime.calls.find((call) => call.name === 'selectSession')?.args).toEqual(['direct-1', { messageId: 'old-msg' }]);
+  expect(runtime.calls.find((call) => call.name === 'openRoutine')?.args).toEqual(['bot-1', 'routine-1']);
+  expect(storedTabs().some((tab) => tab.kind === 'preview' && tab.params.relpath === 'report.md')).toBe(true);
+  localStorage.removeItem('real-bot-workbench-layout');
 });
