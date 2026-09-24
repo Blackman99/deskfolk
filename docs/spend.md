@@ -2,7 +2,7 @@
 
 [简体中文](spend.zh.md)
 
-Open **Spend** from the sidebar or the desktop **View** menu. Desktop windows use a single pane tab; phones use a full-screen overlay. The pane header keeps the date range, refresh, active filters and **Overview / Call details** controls available as the content scrolls. Choose today, the last 7 or 30 days, all time, or a custom range. Switching views preserves filters and loaded calls.
+Open **Spend** from desktop **Tools** (second item), the tools menu beside search on a phone, or the desktop **View** menu. Opening it again focuses the tab already showing it. Desktop windows use a single pane tab; phones use a full-screen overlay. The pane header keeps the date range, refresh, active filters and **Overview / Call details** controls available as the content scrolls. Choose today, the last 7 or 30 days, all time, or a custom range. Switching views preserves filters and loaded calls.
 
 **Overview** puts total tokens and call count alongside separate reported and estimated amounts. Token components and an expandable usage explanation provide detail. Daily trends and call categories share the same filters. Tap or focus a bar to inspect its date and values; arrow keys move between bars. Long ranges are grouped into at most 28 labeled intervals. Reported and estimated plots share a scale and remain separate.
 

@@ -13,7 +13,6 @@
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
-	import { themeManager } from '../theme.ts';
 	import { latestPreview } from '../chat/transcript.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
@@ -27,17 +26,11 @@
 		t: Copy;
 		selected: SessionSummary | null;
 		pinnedSessionIds: string[];
-		/** The shell's Escape cascade closes this before anything else. */
-		themeMenuOpen: boolean;
 		/** Searching on a phone is a screen of its own; the shell's Back has to close it. */
 		searchPageOpen?: boolean;
 		/** What the phone's + button opens. A menu, so Back and Escape close it first. */
 		createMenuOpen?: boolean;
-		/**
-		 * The phone's tools menu beside the search field — the calendar and the terminal, which
-		 * on a desktop live in the footer the phone does not show. A menu, so the shell's Back
-		 * and Escape close it first.
-		 */
+		/** Back and Escape close the tools menu before navigating. */
 		toolsMenuOpen?: boolean;
 		workspaceOpen: boolean;
 		/** Marks the row the context menu belongs to. */
@@ -46,11 +39,13 @@
 		onToggleWorkspace: () => void;
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
+		onNewTerminal: () => void;
 		onOpenSettings: () => void;
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
 		onOpenArtifact: (path: string) => void;
-		onPatchTheme: (theme: 'system' | 'light' | 'dark') => Promise<boolean>;
+		/** Puts the list away. Only where it can be: the desktop workbench, which has a way back. */
+		onCollapse?: () => void;
 	};
 
 	let {
@@ -58,7 +53,6 @@
 		t,
 		selected,
 		pinnedSessionIds,
-		themeMenuOpen = $bindable(false),
 		searchPageOpen = $bindable(false),
 		createMenuOpen = $bindable(false),
 		toolsMenuOpen = $bindable(false),
@@ -68,11 +62,12 @@
 		onToggleWorkspace,
 		onOpenRoutines,
 		onOpenSpend,
+		onNewTerminal,
 		onOpenSettings,
 		onCreateBot,
 		onCreateGroup,
 		onOpenArtifact,
-		onPatchTheme
+		onCollapse
 	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
@@ -137,6 +132,7 @@
 		if (typeof window.matchMedia !== 'function') return;
 		const query = window.matchMedia('(max-width: 680px)');
 		const apply = () => {
+			if (phone !== query.matches) toolsMenuOpen = false;
 			phone = query.matches;
 			// A window that grew back has the dropdown again, so the page has nothing left to be.
 			if (!query.matches) searchPageOpen = false;
@@ -156,59 +152,84 @@
 
 	let fabEl = $state<HTMLElement | null>(null);
 
-	let themeMenuEl = $state<HTMLElement | null>(null);
-	let themeToggleBtnEl = $state<HTMLButtonElement | null>(null);
 	let toolsMenuEl = $state<HTMLElement | null>(null);
 	let toolsToggleBtnEl = $state<HTMLButtonElement | null>(null);
-	let themePreference = $state(themeManager.preference);
-	const currentTheme = $derived(snapshot.settings.theme || themePreference);
+	let toolsFocusLast = false;
 
 	$effect(() => {
 		void runtime.searchHits;
 		searchHighlightIndex = -1;
 	});
 
-	$effect(() => themeManager.subscribe(() => (themePreference = themeManager.preference)));
-
-	$effect(() => {
-		if (toolsMenuOpen && toolsMenuEl) {
-			toolsMenuEl.querySelector<HTMLButtonElement>('.tools-menu-item')?.focus();
-		}
-	});
-
-	/** Arrow keys and Escape inside the tools menu, the same way the theme menu behaves. */
-	function onToolsMenuKeyDown(e: KeyboardEvent): void {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			e.stopPropagation();
-			toolsMenuOpen = false;
-			toolsToggleBtnEl?.focus();
-			return;
-		}
-		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-		e.preventDefault();
-		if (!toolsMenuEl) return;
-		const items = Array.from(toolsMenuEl.querySelectorAll<HTMLButtonElement>('.tools-menu-item'));
-		const index = items.indexOf(document.activeElement as HTMLButtonElement);
-		const next = e.key === 'ArrowDown' ? index + 1 : index - 1;
-		items[(next + items.length) % items.length]?.focus();
+	function placeToolsMenu(): void {
+		if (!toolsMenuOpen || !toolsMenuEl || !toolsToggleBtnEl) return;
+		const anchor = toolsToggleBtnEl.getBoundingClientRect();
+		const menu = toolsMenuEl.getBoundingClientRect();
+		const margin = 8;
+		const above = anchor.top - menu.height - 6;
+		const below = anchor.bottom + 6;
+		const preferred = phone ? below : above;
+		const fallback = phone ? above : below;
+		const top = preferred >= margin && preferred + menu.height <= window.innerHeight - margin
+			? preferred : fallback;
+		toolsMenuEl.style.left = `${Math.max(margin, Math.min(anchor.left, window.innerWidth - menu.width - margin))}px`;
+		toolsMenuEl.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - menu.height - margin))}px`;
 	}
 
 	$effect(() => {
-		if (themeMenuOpen && themeMenuEl) {
-			const activeItem =
-				themeMenuEl.querySelector<HTMLButtonElement>('.theme-menu-item.is-selected') ??
-				themeMenuEl.querySelector<HTMLButtonElement>('.theme-menu-item');
-			activeItem?.focus();
+		if (toolsMenuOpen && toolsMenuEl) {
+			placeToolsMenu();
+			const items = toolsItems();
+			items[toolsFocusLast ? items.length - 1 : 0]?.focus();
+			toolsFocusLast = false;
 		}
 	});
+
+	$effect(() => {
+		if (!toolsMenuOpen || !toolsToggleBtnEl || !toolsMenuEl) return;
+		const observer = new ResizeObserver(placeToolsMenu);
+		observer.observe(toolsToggleBtnEl);
+		observer.observe(toolsMenuEl);
+		if (toolsToggleBtnEl.parentElement) observer.observe(toolsToggleBtnEl.parentElement);
+		return () => observer.disconnect();
+	});
+
+	function toolsItems(): HTMLButtonElement[] {
+		return Array.from(toolsMenuEl?.querySelectorAll<HTMLButtonElement>('.tools-menu-item:not(:disabled)') ?? []);
+	}
+
+	function closeToolsMenu(): void {
+		toolsMenuOpen = false;
+		toolsToggleBtnEl?.focus();
+	}
+
+	function onToolsToggleKeyDown(e: KeyboardEvent): void {
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+		e.preventDefault();
+		toolsFocusLast = e.key === 'ArrowUp';
+		toolsMenuOpen = true;
+	}
+
+	function onToolsMenuKeyDown(e: KeyboardEvent): void {
+		if (e.key === 'Escape' || e.key === 'Tab') {
+			if (e.key === 'Escape') e.preventDefault();
+			e.stopPropagation();
+			closeToolsMenu();
+			return;
+		}
+		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+		e.preventDefault();
+		const items = toolsItems();
+		if (!items.length) return;
+		const index = items.indexOf(document.activeElement as HTMLButtonElement);
+		const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+			: e.key === 'ArrowDown' ? index + 1 : index - 1;
+		items[(next + items.length) % items.length]?.focus();
+	}
 
 	/** Popups that close on a click elsewhere. Escape order is the shell's; this is not. */
 	function onWindowClick(e: MouseEvent): void {
 		const target = e.target as Node | null;
-		if (themeMenuOpen && isOutside(target, themeMenuEl, themeToggleBtnEl)) {
-			themeMenuOpen = false;
-		}
 		if (toolsMenuOpen && isOutside(target, toolsMenuEl, toolsToggleBtnEl)) {
 			toolsMenuOpen = false;
 		}
@@ -217,42 +238,6 @@
 		}
 		if (createMenuOpen && isOutside(target, fabEl)) {
 			createMenuOpen = false;
-		}
-	}
-
-	/**
-	 * The theme is applied at once so the menu feels immediate, but the failure flag it sets lives
-	 * in the settings modal. If the save does not land, put the applied theme back rather than
-	 * leave the sidebar showing something the daemon never accepted.
-	 */
-	async function selectTheme(theme: 'system' | 'light' | 'dark'): Promise<void> {
-		const previous = snapshot.settings.theme || themeManager.preference;
-		themeManager.setTheme(theme);
-		themeMenuOpen = false;
-		const ok = await onPatchTheme(theme);
-		if (!ok) themeManager.setTheme(previous);
-	}
-
-	function onThemeMenuKeyDown(e: KeyboardEvent): void {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			e.stopPropagation();
-			themeMenuOpen = false;
-			themeToggleBtnEl?.focus();
-			return;
-		}
-		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-			e.preventDefault();
-			if (!themeMenuEl) return;
-			const items = Array.from(themeMenuEl.querySelectorAll<HTMLButtonElement>('.theme-menu-item'));
-			const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-			let nextIndex = 0;
-			if (e.key === 'ArrowDown') {
-				nextIndex = currentIndex >= 0 ? (currentIndex + 1) % items.length : 0;
-			} else {
-				nextIndex = currentIndex >= 0 ? (currentIndex - 1 + items.length) % items.length : items.length - 1;
-			}
-			items[nextIndex]?.focus();
 		}
 	}
 
@@ -429,7 +414,7 @@
 	}
 </script>
 
-<svelte:window onclick={onWindowClick} />
+<svelte:window onclick={onWindowClick} onresize={placeToolsMenu} />
 
 {#snippet searchGlyph()}
 	<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
@@ -594,113 +579,8 @@
 	{:else}
 		<div class="search-wrap relative mt-5 mx-6 mb-3" bind:this={searchWrapEl}>
 			{#if phone}
-				<!--
-					The footer that carries these on a desktop is not on screen here, and one icon per
-					tool would crowd the line the search field already shares with the archive. One
-					button, opened on demand.
-				-->
 				<div class="tools-entry-wrap">
-					<button
-						bind:this={toolsToggleBtnEl}
-						type="button"
-						class="tools-entry"
-						class:is-active={toolsMenuOpen}
-						title={t.sidebar.tools}
-						aria-label={t.sidebar.tools}
-						aria-haspopup="menu"
-						aria-expanded={toolsMenuOpen}
-						onclick={() => (toolsMenuOpen = !toolsMenuOpen)}
-					>
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-							<rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-							<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-							<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-						</svg>
-						{#if archivedSessions.length > 0}
-							<span class="tools-entry-dot" aria-hidden="true"></span>
-						{/if}
-					</button>
-					{#if toolsMenuOpen}
-						<div
-							bind:this={toolsMenuEl}
-							class="tools-menu"
-							role="menu"
-							tabindex="-1"
-							onkeydown={onToolsMenuKeyDown}
-						>
-							<button
-								type="button"
-								class="tools-menu-item"
-								role="menuitem"
-								aria-current={runtime.routinesOpen ? 'true' : undefined}
-								onclick={() => {
-									toolsMenuOpen = false;
-									onOpenRoutines();
-								}}
-							>
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<rect x="3" y="4" width="18" height="17" rx="2"></rect>
-									<line x1="3" y1="9" x2="21" y2="9"></line>
-									<line x1="8" y1="2" x2="8" y2="6"></line>
-									<line x1="16" y1="2" x2="16" y2="6"></line>
-								</svg>
-								<span>{t.calendar.open}</span>
-							</button>
-							<button
-								type="button"
-								class="tools-menu-item"
-								role="menuitem"
-								aria-current={runtime.spendOpen ? 'true' : undefined}
-								onclick={() => {
-									toolsMenuOpen = false;
-									onOpenSpend();
-								}}
-							>
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<line x1="12" y1="1" x2="12" y2="23"></line>
-									<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-								</svg>
-								<span>{spendCopy.open}</span>
-							</button>
-							<button
-								type="button"
-								class="tools-menu-item"
-								role="menuitem"
-								aria-current={runtime.terminalOpen ? 'true' : undefined}
-								onclick={() => {
-									toolsMenuOpen = false;
-									runtime.openTerminal();
-								}}
-							>
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="4 17 10 11 4 5"></polyline>
-									<line x1="12" y1="19" x2="20" y2="19"></line>
-								</svg>
-								<span>{t.terminal.title}</span>
-							</button>
-							<button
-								type="button"
-								class="tools-menu-item tools-menu-archived"
-								role="menuitem"
-								aria-current={viewingArchived ? 'true' : undefined}
-								onclick={() => {
-									toolsMenuOpen = false;
-									viewingArchived = true;
-								}}
-							>
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="21 8 21 21 3 21 3 8"></polyline>
-									<rect x="1" y="3" width="22" height="5"></rect>
-									<line x1="10" y1="12" x2="14" y2="12"></line>
-								</svg>
-								<span>{t.sidebar.archivedSessions}</span>
-								{#if archivedSessions.length > 0}
-									<span class="tools-menu-badge">{archivedSessions.length}</span>
-								{/if}
-							</button>
-						</div>
-					{/if}
+					{@render toolsToggle()}
 				</div>
 			{/if}
 			{#if phone}
@@ -764,6 +644,22 @@
 					>
 						{@render hitList()}
 					</div>
+				{/if}
+				{#if onCollapse}
+					<button
+						type="button"
+						class="side-collapse"
+						title="{t.sidebar.hide} (⌘B)"
+						aria-label={t.sidebar.hide}
+						aria-expanded="true"
+						onclick={onCollapse}
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<rect x="3" y="3" width="18" height="18" rx="2"></rect>
+							<path d="M9 3v18"></path>
+							<path d="m16 15-3-3 3-3"></path>
+						</svg>
+					</button>
 				{/if}
 			{/if}
 		</div>
@@ -979,11 +875,11 @@
 		{/if}
 	</div>
 	</div>
-	<div class="foot">
-		<div class="foot-left">
+	{#if !phone}
+		<div class="foot">
 			<button
 				type="button"
-				class="foot-icon-btn"
+				class="foot-action"
 				class:is-active={workspaceOpen}
 				title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (⌘O)` : t.sidebar.workspaceUnset}
 				aria-label={t.sidebar.workspace}
@@ -994,183 +890,12 @@
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
 				</svg>
+				<span>{t.sidebar.workspace}</span>
 			</button>
+			{@render toolsToggle()}
 			<button
 				type="button"
-				class="foot-icon-btn"
-				class:is-active={runtime.routinesOpen}
-				title={t.calendar.open}
-				aria-label={t.calendar.open}
-				aria-pressed={runtime.routinesOpen}
-				onclick={() => onOpenRoutines()}
-			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="3" y="4" width="18" height="17" rx="2"></rect>
-					<line x1="3" y1="9" x2="21" y2="9"></line>
-					<line x1="8" y1="2" x2="8" y2="6"></line>
-					<line x1="16" y1="2" x2="16" y2="6"></line>
-				</svg>
-			</button>
-			<button
-				type="button"
-				class="foot-icon-btn"
-				class:is-active={runtime.spendOpen}
-				title={spendCopy.open}
-				aria-label={spendCopy.open}
-				aria-pressed={runtime.spendOpen}
-				onclick={() => onOpenSpend()}
-			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<line x1="12" y1="1" x2="12" y2="23"></line>
-					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-				</svg>
-			</button>
-			<button
-				type="button"
-				class="foot-icon-btn"
-				class:is-active={viewingArchived}
-				title={t.sidebar.archivedSessions}
-				aria-label={t.sidebar.archivedSessions}
-				onclick={() => (viewingArchived = !viewingArchived)}
-			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="21 8 21 21 3 21 3 8"></polyline>
-					<rect x="1" y="3" width="22" height="5"></rect>
-					<line x1="10" y1="12" x2="14" y2="12"></line>
-				</svg>
-				{#if archivedSessions.length > 0}
-					<span class="foot-badge">{archivedSessions.length}</span>
-				{/if}
-			</button>
-		</div>
-		<div class="foot-right">
-			<div class="theme-menu-wrap relative inline-flex">
-			<button
-				bind:this={themeToggleBtnEl}
-				type="button"
-				class="foot-icon-btn theme-toggle-btn"
-				class:is-active={themeMenuOpen}
-				title="{t.settings.theme}: {currentTheme === 'system' ? t.settings.themeSystem : (currentTheme === 'dark' ? t.settings.themeDark : t.settings.themeLight)}"
-				aria-label={t.settings.theme}
-				aria-haspopup="menu"
-				aria-expanded={themeMenuOpen}
-				onclick={() => {
-					themeMenuOpen = !themeMenuOpen;
-				}}
-			>
-				{#if currentTheme === 'system'}
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-						<line x1="8" y1="21" x2="16" y2="21"></line>
-						<line x1="12" y1="17" x2="12" y2="21"></line>
-					</svg>
-				{:else if currentTheme === 'dark'}
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-					</svg>
-				{:else}
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="5"></circle>
-						<line x1="12" y1="1" x2="12" y2="3"></line>
-						<line x1="12" y1="21" x2="12" y2="23"></line>
-						<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-						<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-						<line x1="1" y1="12" x2="3" y2="12"></line>
-						<line x1="21" y1="12" x2="23" y2="12"></line>
-						<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-						<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-					</svg>
-				{/if}
-			</button>
-			{#if themeMenuOpen}
-				<div
-					bind:this={themeMenuEl}
-					class="theme-menu"
-					role="menu"
-					aria-label={t.settings.theme}
-					tabindex="-1"
-					onkeydown={onThemeMenuKeyDown}
-				>
-					<button
-						type="button"
-						class="theme-menu-item"
-						class:is-selected={currentTheme === 'system'}
-						role="menuitem"
-						onclick={() => void selectTheme('system')}
-					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-							<line x1="8" y1="21" x2="16" y2="21"></line>
-							<line x1="12" y1="17" x2="12" y2="21"></line>
-						</svg>
-						<span class="theme-menu-label">{t.settings.themeSystem}</span>
-						{#if currentTheme === 'system'}
-							<svg class="theme-menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<polyline points="20 6 9 17 4 12"></polyline>
-							</svg>
-						{/if}
-					</button>
-					<button
-						type="button"
-						class="theme-menu-item"
-						class:is-selected={currentTheme === 'light'}
-						role="menuitem"
-						onclick={() => void selectTheme('light')}
-					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="5"></circle>
-							<line x1="12" y1="1" x2="12" y2="3"></line>
-							<line x1="12" y1="21" x2="12" y2="23"></line>
-							<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-							<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-							<line x1="1" y1="12" x2="3" y2="12"></line>
-							<line x1="21" y1="12" x2="23" y2="12"></line>
-							<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-							<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-						</svg>
-						<span class="theme-menu-label">{t.settings.themeLight}</span>
-						{#if currentTheme === 'light'}
-							<svg class="theme-menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<polyline points="20 6 9 17 4 12"></polyline>
-							</svg>
-						{/if}
-					</button>
-					<button
-						type="button"
-						class="theme-menu-item"
-						class:is-selected={currentTheme === 'dark'}
-						role="menuitem"
-						onclick={() => void selectTheme('dark')}
-					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-						</svg>
-						<span class="theme-menu-label">{t.settings.themeDark}</span>
-						{#if currentTheme === 'dark'}
-							<svg class="theme-menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<polyline points="20 6 9 17 4 12"></polyline>
-							</svg>
-						{/if}
-					</button>
-				</div>
-			{/if}
-		</div>
-			<button
-				type="button"
-				class="foot-icon-btn"
-				class:is-active={runtime.terminalOpen}
-				title={t.terminal.open}
-				aria-label={t.terminal.open}
-				onclick={() => runtime.openTerminal()}
-			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="4 17 10 11 4 5"></polyline>
-					<line x1="12" y1="19" x2="20" y2="19"></line>
-				</svg>
-			</button>
-			<button
-				type="button"
-				class="foot-icon-btn"
+				class="foot-action foot-settings"
 				class:is-active={runtime.settingsOpen}
 				title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
 				aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
@@ -1180,13 +905,126 @@
 					<circle cx="12" cy="12" r="3"></circle>
 					<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 				</svg>
+				<span>{t.sidebar.settings}</span>
 				{#if updateChecker.updateVisible}
 					<span class="foot-badge is-dot" aria-hidden="true"></span>
 				{/if}
 			</button>
 		</div>
-	</div>
+	{/if}
+	{#if toolsMenuOpen}
+		<div
+			bind:this={toolsMenuEl}
+			id="sidebar-tools-menu"
+			class="tools-menu"
+			aria-label={t.sidebar.tools}
+			role="menu"
+			tabindex="-1"
+			onkeydown={onToolsMenuKeyDown}
+		>
+			<button
+				type="button"
+				class="tools-menu-item"
+				role="menuitem"
+				aria-current={phone && runtime.routinesOpen ? 'true' : undefined}
+				onclick={() => {
+					closeToolsMenu();
+					onOpenRoutines();
+				}}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<rect x="3" y="4" width="18" height="17" rx="2"></rect>
+					<line x1="3" y1="9" x2="21" y2="9"></line>
+					<line x1="8" y1="2" x2="8" y2="6"></line>
+					<line x1="16" y1="2" x2="16" y2="6"></line>
+				</svg>
+				<span>{phone ? t.calendar.open : t.routines.title}</span>
+			</button>
+			<button
+				type="button"
+				class="tools-menu-item"
+				role="menuitem"
+				aria-current={phone && runtime.spendOpen ? 'true' : undefined}
+				onclick={() => {
+					closeToolsMenu();
+					onOpenSpend();
+				}}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<line x1="12" y1="1" x2="12" y2="23"></line>
+					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+				</svg>
+				<span>{spendCopy.open}</span>
+			</button>
+			<button
+				type="button"
+				class="tools-menu-item"
+				role="menuitem"
+				aria-current={phone && runtime.terminalOpen ? 'true' : undefined}
+				onclick={() => {
+					closeToolsMenu();
+					if (phone) runtime.openTerminal();
+					else onNewTerminal();
+				}}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polyline points="4 17 10 11 4 5"></polyline>
+					<line x1="12" y1="19" x2="20" y2="19"></line>
+				</svg>
+				<span>{phone ? t.terminal.title : t.terminal.newTab}</span>
+			</button>
+			<div class="tools-menu-divider" role="separator"></div>
+			<button
+				type="button"
+				class="tools-menu-item tools-menu-archived"
+				role="menuitem"
+				aria-current={viewingArchived ? 'true' : undefined}
+				onclick={() => {
+					closeToolsMenu();
+					viewingArchived = true;
+				}}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<polyline points="21 8 21 21 3 21 3 8"></polyline>
+					<rect x="1" y="3" width="22" height="5"></rect>
+					<line x1="10" y1="12" x2="14" y2="12"></line>
+				</svg>
+				<span>{t.sidebar.archivedSessions}</span>
+				{#if archivedSessions.length > 0}
+					<span class="tools-menu-badge">{archivedSessions.length}</span>
+				{/if}
+			</button>
+		</div>
+	{/if}
 </aside>
+
+{#snippet toolsToggle()}
+	<button
+		bind:this={toolsToggleBtnEl}
+		type="button"
+		class="tools-entry"
+		class:foot-action={!phone}
+		class:is-active={toolsMenuOpen}
+		title={t.sidebar.tools}
+		aria-label={t.sidebar.tools}
+		aria-haspopup="menu"
+		aria-expanded={toolsMenuOpen}
+		aria-controls={toolsMenuOpen ? 'sidebar-tools-menu' : undefined}
+		onkeydown={onToolsToggleKeyDown}
+		onclick={() => (toolsMenuOpen = !toolsMenuOpen)}
+	>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+			<rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+			<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+			<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+		</svg>
+		{#if !phone}
+			<span>{t.sidebar.tools}</span>
+			<svg class="tools-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>
+		{/if}
+	</button>
+{/snippet}
 
 <!--
 	Creating on a phone: one button that floats over the list rather than a + in each group header.
@@ -1349,6 +1187,35 @@
 		background: var(--line-subtle);
 	}
 
+	/* Beside the field, so the ✕ inside it moves over by the button and the gap. */
+	.side-collapse {
+		flex: 0 0 auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.side-collapse:hover {
+		background: var(--row-hover);
+		color: var(--ink);
+	}
+
+	.search-wrap:has(.side-collapse) .search {
+		min-width: 0;
+	}
+
+	.search-wrap:has(.side-collapse) .search-clear {
+		right: 46px;
+	}
+
 	/* Not a field, but it has to look like one — it stands where the field stands. */
 	.search-trigger {
 		text-align: left;
@@ -1498,7 +1365,7 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-lg);
-		animation: themeMenuIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: sidebarMenuIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 		transform-origin: bottom right;
 	}
 
@@ -1552,7 +1419,7 @@
 		border-color: transparent;
 	}
 
-	/* Roster row, search, session groups, footer, theme menu. */
+	/* Roster row, search, session groups and footer. */
 	/* Sidebar */
 	.side {
 		background: var(--sidebar-bg);
@@ -2215,10 +2082,11 @@
 	/* Sidebar Footer */
 	.foot {
 		border-top: 1px solid var(--line);
-		padding: 6px 10px;
+		padding: 6px 8px;
 		display: flex;
-		justify-content: space-between;
+		gap: 4px;
 		align-items: center;
+		container: sidebar-footer / inline-size;
 		background: var(--glass-footer);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
@@ -2226,17 +2094,12 @@
 		z-index: 20;
 	}
 
-	.foot-left,
-	.foot-right {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.foot-icon-btn {
-		width: 30px;
-		height: 30px;
-		padding: 0;
+	.foot-action {
+		height: 36px;
+		padding: 0 7px;
+		gap: 6px;
+		font: 500 12px/1 var(--font);
+		white-space: nowrap;
 		border: 1px solid transparent;
 		background: transparent;
 		border-radius: var(--radius-sm);
@@ -2244,32 +2107,57 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.15s ease;
+		transition: background 0.15s ease, color 0.15s ease;
 		position: relative;
 		cursor: pointer;
 		flex-shrink: 0;
 	}
 
-	.foot-icon-btn:hover {
+	.foot-settings {
+		margin-left: auto;
+	}
+
+	.tools-chevron {
+		opacity: 0.65;
+	}
+
+	@container sidebar-footer (max-width: 270px) {
+		.foot-action {
+			padding-inline: 4px;
+			gap: 4px;
+		}
+
+		.tools-chevron {
+			display: none;
+		}
+	}
+
+	@container sidebar-footer (max-width: 230px) {
+		.foot-action svg {
+			display: none;
+		}
+	}
+
+	.foot-action:hover:not(:disabled) {
 		border-color: var(--line);
 		color: var(--ink);
 		background: var(--btn-secondary-hover);
 		box-shadow: var(--shadow-xs);
 	}
 
-	.foot-icon-btn.is-active {
+	.foot-action.is-active {
 		border-color: var(--accent-border);
 		color: var(--accent);
 		background: var(--accent-tint);
 	}
 
-	.foot-icon-btn:focus-visible {
+	.foot-action:focus-visible {
 		outline: none;
 		border-color: var(--accent);
 		box-shadow: 0 0 0 2px var(--accent-glow);
 	}
 
-	.foot-icon-btn:disabled {
+	.foot-action:disabled {
 		opacity: 0.35;
 		cursor: default;
 	}
@@ -2304,88 +2192,65 @@
 		background: var(--danger);
 	}
 
-	.foot :global(.mono) {
-		font-size: 11.5px;
-		padding: 3px 8px;
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-		border: 1px solid var(--chip-line);
-	}
-
-	.theme-menu {
-		position: absolute;
-		bottom: calc(100% + 8px);
-		right: 0;
-		min-width: 140px;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-lg);
-		padding: 4px;
+	.tools-menu {
+		position: fixed;
+		z-index: 100;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
-		z-index: 100;
-		user-select: none;
-		animation: themeMenuIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+		width: 208px;
+		max-width: calc(100vw - 16px);
+		max-height: calc(100dvh - 16px);
+		overflow-y: auto;
+		padding: 5px;
+		box-sizing: border-box;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		box-shadow: var(--shadow-lg);
 	}
 
-	.theme-menu-item {
+	.tools-menu-item {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		width: 100%;
-		box-sizing: border-box;
-		padding: 7px 10px;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ink);
-		background: transparent;
-		border: none;
+		gap: 10px;
+		min-height: 38px;
+		flex-shrink: 0;
+		padding: 0 10px;
+		border: 0;
 		border-radius: var(--radius-sm);
-		cursor: pointer;
+		background: transparent;
+		color: var(--ink);
+		font: 500 13px/1.2 var(--font);
 		text-align: left;
-		transition: background 0.12s ease, color 0.12s ease;
+		cursor: pointer;
 	}
 
-	.theme-menu-item:hover,
-	.theme-menu-item:focus-visible {
+	.tools-menu-item:hover,
+	.tools-menu-item:focus-visible {
 		background: var(--line-subtle);
-		color: var(--accent);
 		outline: none;
 	}
 
-	.theme-menu-item.is-selected {
-		background: var(--accent-tint);
-		color: var(--accent);
+	.tools-menu-item svg {
+		flex-shrink: 0;
+		color: var(--muted);
+	}
+
+	.tools-menu-divider {
+		height: 1px;
+		margin: 5px;
+		background: var(--line);
+		flex-shrink: 0;
+	}
+
+	.tools-menu-badge {
+		margin-left: auto;
+		padding: 1px 7px;
+		border-radius: 999px;
+		background: var(--line-subtle);
+		color: var(--muted);
+		font-size: 11.5px;
 		font-weight: 600;
-	}
-
-	.theme-menu-item :global(svg) {
-		flex-shrink: 0;
-		opacity: 0.75;
-	}
-
-	.theme-menu-item:hover :global(svg),
-	.theme-menu-item:focus-visible :global(svg) {
-		opacity: 1;
-		stroke: var(--accent);
-	}
-
-	.theme-menu-item.is-selected :global(svg) {
-		opacity: 1;
-		stroke: var(--accent);
-	}
-
-	.theme-menu-label {
-		flex: 1;
-		white-space: nowrap;
-	}
-
-	.theme-menu-check {
-		margin-left: 4px;
-		stroke: var(--accent);
-		flex-shrink: 0;
 	}
 
 	/* Kept global: `.row` is the sidebar session row, but the context menu is what opens it. */
@@ -2427,7 +2292,7 @@
 		color: var(--muted-light);
 	}
 
-	@keyframes themeMenuIn {
+	@keyframes sidebarMenuIn {
 		from {
 		opacity: 0;
 		transform: scale(0.96) translateY(4px);
@@ -2453,30 +2318,6 @@
 	:global(.shell.has-routines) .side {
 	display: none;
 	}
-	}
-
-	@media (max-width: 680px) {
-		/* 30px icons in the corners are neither hittable nor reachable one-handed. */
-		.foot {
-			padding: 6px 8px max(6px, env(safe-area-inset-bottom));
-		}
-
-		.foot-left,
-		.foot-right {
-			flex: 1;
-			justify-content: space-evenly;
-			gap: 0;
-		}
-
-		.foot-icon-btn {
-			width: 44px;
-			height: 44px;
-		}
-
-		.foot-icon-btn :global(svg) {
-			width: 20px;
-			height: 20px;
-		}
 	}
 
 	@media (max-width: 680px) {
@@ -2667,63 +2508,9 @@
 			border-color: var(--line-active, var(--line));
 		}
 
-		.tools-entry-dot {
-			position: absolute;
-			top: 5px;
-			right: 5px;
-			width: 6px;
-			height: 6px;
-			border-radius: 50%;
-			background: var(--accent);
-		}
-
-		.tools-menu {
-			position: absolute;
-			top: calc(var(--tools-entry-size) + 6px);
-			left: 0;
-			z-index: 30;
-			display: flex;
-			flex-direction: column;
-			min-width: 180px;
-			padding: 5px;
-			border: 1px solid var(--line);
-			border-radius: var(--radius-md);
-			background: var(--pane);
-			box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
-			backdrop-filter: blur(12px);
-			-webkit-backdrop-filter: blur(12px);
-		}
-
 		.tools-menu-item {
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			min-height: 42px;
-			padding: 0 12px;
-			border: 0;
-			border-radius: var(--radius-sm);
-			background: transparent;
-			color: var(--ink);
-			font: 500 14px/1.2 var(--font);
-			text-align: left;
-			cursor: pointer;
-			transition: background 0.12s ease;
-		}
-
-		.tools-menu-item:hover,
-		.tools-menu-item:focus-visible {
-			background: var(--line-subtle);
-			outline: none;
-		}
-
-		.tools-menu-badge {
-			margin-left: auto;
-			padding: 1px 7px;
-			border-radius: 9999px;
-			background: var(--line-subtle);
-			color: var(--muted);
-			font-size: 11.5px;
-			font-weight: 600;
+			min-height: 44px;
+			font-size: 14px;
 		}
 
 		.search-trigger-wrap {

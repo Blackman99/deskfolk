@@ -6,6 +6,7 @@ import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, fakeRuntime } fr
 import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
 import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
+import { updateChecker } from "../update-checker.svelte.ts";
 
 import { flushSync } from 'svelte';
 import { reactive } from '../test-reactive.svelte.ts';
@@ -42,18 +43,17 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     t,
     selected: null,
     pinnedSessionIds: [],
-    themeMenuOpen: false,
     workspaceOpen: false,
     contextMenuSessionId: null,
     onOpenContextMenu: () => {},
-    onToggleWorkspace: () => {},
-    onOpenRoutines: () => {},
-    onOpenSpend: () => {},
-    onOpenSettings: () => {},
+    onToggleWorkspace: () => created.push("workspace"),
+    onOpenRoutines: () => created.push("routines"),
+    onOpenSpend: () => created.push("spend"),
+    onNewTerminal: () => created.push("terminal"),
+    onOpenSettings: () => created.push("settings"),
     onCreateBot: () => created.push("bot"),
     onCreateGroup: () => created.push("group"),
     onOpenArtifact: () => {},
-    onPatchTheme: async () => true,
   });
   return { ...view, runtime, created };
 }
@@ -390,6 +390,148 @@ test("the group headers keep their own + on a wider window, and there is no floa
   click(adds[1]);
   expect(created).toEqual(['group', 'bot']);
   close();
+});
+
+test('desktop footer exposes three labelled entries and dispatches each tool', () => {
+  const { host, runtime, created, close } = open([], null, true);
+  flushSync(() => { runtime.snapshot.settings.workspace_path = '/fixture'; });
+  const footer = [...host.querySelectorAll<HTMLButtonElement>('.foot button')];
+  expect(footer.map((button) => button.textContent?.trim())).toEqual([
+    t.sidebar.workspace, t.sidebar.tools, t.sidebar.settings,
+  ]);
+  expect(host.querySelector('.theme-toggle-btn')).toBeNull();
+  expect(footer[0].title).toContain('⌘O');
+  click(footer[0]); click(footer[2]);
+  expect(created).toEqual(['workspace', 'settings']);
+  for (const [index, name] of ['routines', 'spend', 'terminal'].entries()) {
+    click(footer[1]);
+    const items = [...host.querySelectorAll('.tools-menu-item')];
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      t.routines.title, spendCopyFor('zh').open, t.terminal.newTab, t.sidebar.archivedSessions,
+    ]);
+    expect(host.querySelector('[role="separator"]')).not.toBeNull();
+    click(items[index]);
+    expect(created.at(-1)).toBe(name);
+    expect(host.querySelector('.tools-menu')).toBeNull();
+    expect(footer[1].getAttribute('aria-expanded')).toBe('false');
+  }
+  expect(runtime.calls.some((call) => call.name === 'openTerminal')).toBe(false);
+  close();
+});
+
+test('desktop tools support arrows, Home, End, Escape, Tab and outside dismissal', () => {
+  const { host, close } = open([]);
+  const toggle = host.querySelector<HTMLButtonElement>('.tools-entry')!;
+  click(toggle);
+  const items = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')];
+  expect(document.activeElement).toBe(items[0]);
+  press(items[0], 'ArrowUp');
+  expect(document.activeElement).toBe(items[3]);
+  press(items[3], 'ArrowDown');
+  expect(document.activeElement).toBe(items[0]);
+  press(items[0], 'End');
+  expect(document.activeElement).toBe(items[3]);
+  press(items[3], 'Home');
+  expect(document.activeElement).toBe(items[0]);
+  press(items[0], 'Escape');
+  expect(host.querySelector('.tools-menu')).toBeNull();
+  expect(document.activeElement).toBe(toggle);
+  press(toggle, 'ArrowUp');
+  expect(document.activeElement).toBe(host.querySelector('.tools-menu-archived'));
+  press(document.activeElement, 'Tab');
+  expect(host.querySelector('.tools-menu')).toBeNull();
+  click(toggle);
+  click(host.querySelector('.groups'));
+  expect(host.querySelector('.tools-menu')).toBeNull();
+  close();
+});
+
+for (const hasArchive of [false, true]) test(`desktop archive is a list destination with a return path (${hasArchive})`, () => {
+  const { host, runtime, close } = open([], null, true);
+  if (hasArchive) flushSync(() => {
+    runtime.snapshot.sessions.push(aGroup({ id: 'archived-1', name: 'Old group', archived_at: 'now' }));
+  });
+  expect(host.querySelector('.tools-entry-dot')).toBeNull();
+  click(host.querySelector('.tools-entry'));
+  expect(host.querySelector('.tools-menu-badge')?.textContent).toBe(hasArchive ? '1' : undefined);
+  click(host.querySelector('.tools-menu-archived'));
+  if (hasArchive) {
+    expect(host.querySelector('.is-archived-row')?.textContent).toContain('Old group');
+    click(host.querySelector('.is-archived-row'));
+    expect(runtime.calls.at(-1)?.args).toEqual(['archived-1']);
+  } else expect(host.querySelector('.archived-empty-hint')).not.toBeNull();
+  click(host.querySelector('.btn-back-sessions'));
+  expect(host.querySelector('.archived-empty-hint')).toBeNull();
+  expect(host.querySelector('.groups')?.textContent).toContain('视频组');
+  close();
+});
+
+test('an open tools menu follows sidebar width changes', () => {
+  const OriginalObserver = globalThis.ResizeObserver;
+  let onResize: ResizeObserverCallback | null = null;
+  let disconnected = false;
+  const observed: Element[] = [];
+  globalThis.ResizeObserver = class {
+    constructor(callback: ResizeObserverCallback) { onResize = callback; }
+    observe(element: Element) { observed.push(element); }
+    unobserve() {}
+    disconnect() { disconnected = true; }
+  } as unknown as typeof ResizeObserver;
+  try {
+    const { host, close } = open([]);
+    const toggle = host.querySelector<HTMLButtonElement>('.tools-entry')!;
+    let left = 85;
+    toggle.getBoundingClientRect = () => ({ left, top: 500, bottom: 536, width: 72, height: 36 } as DOMRect);
+    click(toggle);
+    expect(observed).toContain(toggle.parentElement!);
+    const menu = host.querySelector<HTMLElement>('.tools-menu')!;
+    expect(menu.style.left).toBe('85px');
+    left = 68;
+    (onResize as unknown as () => void)();
+    expect(menu.style.left).toBe('68px');
+    press(menu, 'Escape');
+    expect(disconnected).toBe(true);
+    close();
+  } finally {
+    globalThis.ResizeObserver = OriginalObserver;
+  }
+});
+
+test('unconfigured workspace stays labelled and settings retains the update indicator', () => {
+  const { host, runtime, close } = open([], null, true);
+  const previous = updateChecker.result;
+  const ignored = updateChecker.ignoredVersion;
+  try {
+    flushSync(() => {
+      runtime.snapshot.settings.workspace_path = '';
+      updateChecker.result = { current: '0.1.0', latest: '0.2.0', updateAvailable: true, releaseUrl: 'https://github.com/Blackman99/deskfolk/releases', downloadUrl: null, publishedAt: null, notes: null };
+      updateChecker.ignoredVersion = null;
+    });
+    const workspace = host.querySelector<HTMLButtonElement>('.foot-action')!;
+    expect(workspace.disabled).toBe(true);
+    expect(workspace.title).toBe(t.sidebar.workspaceUnset);
+    expect(host.querySelector('.foot-settings .foot-badge')).not.toBeNull();
+    expect(host.querySelector('.foot-settings')?.getAttribute('aria-label')).toContain(t.sidebar.updateAvailable);
+    expect(host.querySelector('.tools-entry .foot-badge')).toBeNull();
+  } finally {
+    flushSync(() => { updateChecker.result = previous; updateChecker.ignoredVersion = ignored; });
+    close();
+  }
+});
+
+test('resizing a phone closes its menu before moving the trigger to the desktop footer', () => {
+  withPhone((grow) => {
+    const { host, close } = open([], null, true);
+    expect(host.querySelector('.foot')).toBeNull();
+    click(host.querySelector('.tools-entry'));
+    grow();
+    expect(host.querySelector('.tools-menu')).toBeNull();
+    expect(host.querySelectorAll('.foot button')).toHaveLength(3);
+    click(host.querySelector('.tools-entry'));
+    press(host.querySelector('.tools-menu-item'), 'Escape');
+    expect(document.activeElement).toBe(host.querySelector('.foot .tools-entry'));
+    close();
+  });
 });
 
 test("on a phone the calendar and the terminal live behind one button", () => {

@@ -1056,7 +1056,7 @@ function storedTabs() {
   return leaves.flatMap((leaf: { tabs?: Array<{ kind: string; params: Record<string, string> }> }) => leaf.tabs ?? []);
 }
 
-test('a new terminal tab starts its own shell and is that terminal from the start', async () => {
+for (const entry of ['pane', 'sidebar'] as const) test(`a new terminal from ${entry} starts its own shell and binds its tab`, async () => {
   localStorage.removeItem('real-bot-workbench-layout');
   const runtime = reactive(fakeRuntime({
     bots: [aBot()], sessions: [aDirect()],
@@ -1073,8 +1073,7 @@ test('a new terminal tab starts its own shell and is that terminal from the star
   cleanups.push(close);
   await settle();
   for (let i = 0; i < 2; i += 1) {
-    click(host.querySelector('.wb-new-tab'));
-    // The menu is portaled to the body, so it is not inside the shell's host.
+    click(host.querySelector(entry === 'pane' ? '.wb-new-tab' : '.foot .tools-entry'));
     click(buttonByText(document.body, 'New terminal'));
     await settle();
   }
@@ -1327,6 +1326,23 @@ function navigationUrl(runtime: MessengerRuntime): string | null {
   });
 }
 
+test('sidebar tools reopen the existing calendar and spend tabs', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const runtime = spendRuntime();
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  await settle();
+  for (const title of ['Routines', 'Spend', 'Routines', 'Spend']) {
+    click(host.querySelector('.foot .tools-entry'));
+    click(buttonByText(host.querySelector('.tools-menu') as HTMLElement, title));
+    await settle();
+    expect(host.querySelector('.wb-tab-button[aria-selected="true"]')?.textContent?.trim()).toBe(title);
+    expect(host.querySelector('.tools-menu')).toBeNull();
+    expect(host.querySelector('.foot .tools-entry')?.getAttribute('aria-expanded')).toBe('false');
+  }
+  expect(storedTabs().filter((tab) => tab.kind === 'routines')).toHaveLength(1);
+  expect(storedTabs().filter((tab) => tab.kind === 'spend')).toHaveLength(1);
+});
+
 test('mounted Shell restores Spend in front of its selected conversation and mirrors its URL', async () => {
   restoreSpendLayout();
   const runtime = spendRuntime();
@@ -1442,4 +1458,71 @@ test('mounted Shell mobile Spend Back and Escape leave the underlying chat and h
   runtime.openSpend(); runtime.openWorkspace(); flushSync();
   expect(runtime.spendOpen).toBe(false);
   expect(runtime.workspaceOpen).toBe(true);
+});
+test('the session list folds to a rail of avatars from its own button or ⌘B, and is remembered', async () => {
+  localStorage.setItem('real-bot-sidebar-width', '320');
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('only', [{ id: 'chat-tab', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+    floating: [], focus: { zone: 'tiled', leafId: 'only' },
+  }));
+  cleanups.push(() => {
+    for (const key of ['real-bot-sidebar-width', 'real-bot-sidebar-collapsed', 'real-bot-workbench-layout']) localStorage.removeItem(key);
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [aDirect(), aGroup({ id: 'sess-2', name: 'Crew', unread_count: 3 })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  let mounted = render(Shell, { runtime });
+  cleanups.push(() => mounted.close());
+  await settle();
+  const shell = () => mounted.host.querySelector('.shell') as HTMLElement;
+  const collapse = () => mounted.host.querySelector('.side .search-wrap .side-collapse') as HTMLButtonElement | null;
+  const expand = () => mounted.host.querySelector('.rail .rail-expand') as HTMLButtonElement | null;
+
+  expect(collapse()?.getAttribute('aria-label')).toBe('Hide the session list');
+  expect(mounted.host.querySelector('.rail')).toBeNull();
+
+  collapse()!.focus();
+  click(collapse());
+  await settle();
+  expect(shell().classList.contains('is-sidebar-collapsed')).toBe(true);
+  expect(mounted.host.querySelector('.side')).toBeNull();
+  expect(shell().style.getPropertyValue('--sidebar-width')).toBe('64px');
+  expect(shell().style.getPropertyValue('--sidebar-split')).toBe('0px');
+  expect(document.activeElement).toBe(expand());
+  expect([...mounted.host.querySelectorAll<HTMLElement>('.rail-item')].map((el) => el.dataset.session)).toEqual(['sess-2', 'direct-1']);
+  expect(mounted.host.querySelector('.rail-item[data-session="sess-2"] .rail-badge')?.textContent).toBe('3');
+  expect(localStorage.getItem('real-bot-sidebar-collapsed')).toBe('1');
+
+  // The rail still switches conversations.
+  click(mounted.host.querySelector('.rail-item[data-session="sess-2"]'));
+  expect(runtime.calls.filter((call) => call.name === 'selectSession').map((call) => call.args[0])).toContain('sess-2');
+
+  click(expand());
+  await settle();
+  expect(shell().classList.contains('is-sidebar-collapsed')).toBe(false);
+  expect(mounted.host.querySelector('.rail')).toBeNull();
+  expect(shell().style.getPropertyValue('--sidebar-width')).toBe('320px');
+  expect(document.activeElement).toBe(collapse());
+
+  // Folded once more; a restart comes back folded.
+  click(collapse());
+  mounted.close();
+  mounted = render(Shell, { runtime });
+  await settle();
+  expect(mounted.host.querySelector('.rail')).not.toBeNull();
+
+  // ⌘B works while typing in the composer, and swallows the composer's own bold.
+  const composer = mounted.host.querySelector('.composer-input') as HTMLElement;
+  const press = new KeyboardEvent('keydown', { key: 'b', metaKey: true, bubbles: true, cancelable: true });
+  composer.dispatchEvent(press);
+  flushSync();
+  expect(press.defaultPrevented).toBe(true);
+  expect(shell().classList.contains('is-sidebar-collapsed')).toBe(false);
+  expect(mounted.host.querySelector('.side')).not.toBeNull();
+  expect(shell().style.getPropertyValue('--sidebar-split')).toBe('');
+  expect(localStorage.getItem('real-bot-sidebar-collapsed')).toBeNull();
+  expect(localStorage.getItem('real-bot-sidebar-width')).toBe('320');
 });

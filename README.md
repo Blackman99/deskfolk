@@ -28,7 +28,7 @@
 - **Everything on your Mac.** Window, daemon, sessions and the shared workspace stay local. Bring any OpenAI-compatible endpoint and MCP servers.
 - **Every job is a flow.** A card per turn, drawn by who woke whom, with the files each turn handed over.
 - **Model choice that says why.** An agent picks each turn's model and thinking level and leaves a reason; only reviews that blame the model become the Bot's experience.
-- **A split-pane workbench.** Divide the desktop window into panes of conversations, terminals, the routine calendar, workspace and Spend.
+- **A split-pane workbench.** Divide the desktop window into panes of conversations, terminals, the routine calendar, workspace and Spend. Fold the session list to a rail of avatars with the button beside its search field or ⌘B.
 - **Your own terminal.** Shells held by the daemon keep running when the window closes; a Bot's commands scroll under its message while they run.
 - **Spend by model, conversation and Bot.** Track turn, decision and feedback calls; reported amounts and estimates stay separate — [spend and billing rates](docs/spend.md).
 - **Routines.** Bots start work daily or weekly on the Mac's clock — [how routines work](docs/routines.md).
@@ -40,7 +40,7 @@
 macOS 13 (Ventura) or later, Apple silicon or Intel.
 
 - **Download** the latest unsigned `.dmg` from [Releases](https://github.com/Blackman99/deskfolk/releases/latest); nothing else to install. If Gatekeeper blocks the first launch, right-click → Open, or run `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"` ([Gatekeeper FAQ](docs/gatekeeper.md)).
-- **Updates** show as a dot on the settings gear; Settings → General → About downloads and installs them.
+- **Updates** show as a dot on the labeled **Settings** entry at the bottom of the desktop sidebar; Settings → About downloads and installs them. Appearance is in Settings → Preferences → Appearance.
 - **From source** (Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
 
 ```bash

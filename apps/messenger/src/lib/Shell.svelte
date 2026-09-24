@@ -6,7 +6,7 @@
 		type SessionSummary,
 		type Terminal
 	} from '@real-bot/protocol';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
 	import ImageCopy from './ImageCopy.svelte';
@@ -59,8 +59,11 @@
 	} from './overlays/preview-width.ts';
 	import {
 		clampSidebarWidth,
+		loadSidebarCollapsed,
 		loadSidebarWidth,
-		saveSidebarWidth
+		saveSidebarCollapsed,
+		saveSidebarWidth,
+		SIDEBAR_RAIL
 	} from './sidebar/sidebar-width.ts';
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
@@ -70,6 +73,7 @@
 	import type { GroupDetailDraft } from './panels/group-edit.ts';
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
+	import SidebarRail from './sidebar/SidebarRail.svelte';
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
@@ -168,9 +172,7 @@
 		return () => runtime.setNotificationIntentHandler(null);
 	});
 
-	/** Owned here because Escape closes it before anything else; the sidebar renders it. */
-	let themeMenuOpen = $state(false);
-	/** The phone's tools menu beside the search field; Escape and Back close it first. */
+	/** Escape and Back close the sidebar tools menu first. */
 	let toolsMenuOpen = $state(false);
 	/**
 	 * Searching on a phone is a screen, not a dropdown. The sidebar renders it; the flag lives
@@ -233,7 +235,6 @@
 
 	export function backMobileLayer(): boolean {
 		switch (topLayer({
-			themeMenuOpen,
 			toolsMenuOpen,
 			createMenuOpen,
 			dangerConfirm: dangerConfirm !== null,
@@ -252,9 +253,6 @@
 			workspaceOpen: runtime.workspaceOpen,
 			artifactPreview: artifactPreview !== null
 		})) {
-			case 'theme-menu':
-				themeMenuOpen = false;
-				return true;
 			case 'tools-menu':
 				toolsMenuOpen = false;
 				return true;
@@ -342,7 +340,6 @@
 		// The three tab-bar pages replace one another. No slide: selecting a destination is not
 		// pushing a page.
 		const navigate = () => {
-			themeMenuOpen = false;
 			toolsMenuOpen = false;
 			createMenuOpen = false;
 			sidebar?.closeSearchPage();
@@ -392,6 +389,27 @@
 	let narrow = $state(false);
 	$effect(() => watchNarrow((value) => (narrow = value)));
 	const wide = $derived(isWorkbenchSurface(narrow));
+	/**
+	 * The session list folded down to a rail of avatars. Only the workbench does it: a phone's
+	 * list is a screen of its own.
+	 */
+	let sidebarCollapsed = $state(loadSidebarCollapsed());
+	const sidebarHidden = $derived(wide && sidebarCollapsed);
+
+	/**
+	 * The list and the rail each carry the button to become the other. Focus that was on either
+	 * follows to the button that replaces it, rather than falling to the page.
+	 */
+	function toggleSidebar(): void {
+		const next = !sidebarCollapsed;
+		const refocus = Boolean(shellEl?.querySelector(':scope > .side, :scope > .rail')?.contains(document.activeElement));
+		if (next) toolsMenuOpen = false;
+		sidebarCollapsed = next;
+		saveSidebarCollapsed(next);
+		if (refocus) {
+			void tick().then(() => shellEl?.querySelector<HTMLElement>(next ? '.rail-expand' : '.side-collapse')?.focus());
+		}
+	}
 	let layout = $state<WorkbenchLayout>(loadWorkbenchLayout() ?? emptyLayout('wb-root'));
 	let paneSeq = 0;
 	const freshPaneId = () => `wb-${Date.now().toString(36)}-${++paneSeq}`;
@@ -565,7 +583,7 @@
 		else commitLayout(openContent(layout, content, { id: freshPaneId }));
 	}
 
-	/** The sidebar's terminal button: the terminal tab you have, nearest first, or a new one. */
+	/** Reopen the nearest terminal tab, creating a shell when none is open. */
 	async function showTerminal(): Promise<void> {
 		const open = findKind(layout, 'terminal');
 		if (open) {
@@ -1438,9 +1456,7 @@
 <svelte:window
 	onkeydown={(e) => {
 		if (e.key === 'Escape') {
-			if (themeMenuOpen) {
-				themeMenuOpen = false;
-			} else if (toolsMenuOpen) {
+			if (toolsMenuOpen) {
 				toolsMenuOpen = false;
 			} else if (createMenuOpen) {
 				createMenuOpen = false;
@@ -1499,6 +1515,12 @@
 			if (!snapshot.settings.workspace_path) return;
 			e.preventDefault();
 			toggleWorkspaceExplorer();
+			return;
+		}
+		// From anywhere, typing included: the composer is plain text, so its own ⌘B (bold) is not missed.
+		if (wide && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+			e.preventDefault();
+			toggleSidebar();
 			return;
 		}
 		// After the Escape chain and ⌘O, so neither can be taken out from under them.
@@ -1625,32 +1647,46 @@
 	class:is-preview={Boolean(artifactPreview)}
 	class:is-preview-dragging={previewDragging}
 	class:is-sidebar-dragging={sidebarDragging}
+	class:is-sidebar-collapsed={sidebarHidden}
 	bind:this={shellEl}
 	style:--preview-width="{previewWidth}px"
-	style:--sidebar-width="{sidebarWidth}px"
+	style:--sidebar-width="{sidebarHidden ? SIDEBAR_RAIL : sidebarWidth}px"
+	style:--sidebar-split={sidebarHidden ? '0px' : undefined}
 >
-	<Sidebar
-		bind:this={sidebar}
-		{runtime}
-		{t}
-		{selected}
-		{pinnedSessionIds}
-		bind:themeMenuOpen
-		bind:toolsMenuOpen
-		bind:searchPageOpen
-		bind:createMenuOpen
-		workspaceOpen={runtime.workspaceOpen}
-		contextMenuSessionId={contextMenu?.session.id ?? null}
-		onOpenContextMenu={openContextMenu}
-		onToggleWorkspace={toggleWorkspaceExplorer}
-		onOpenRoutines={openRoutinesFromUi}
-		onOpenSpend={openSpendFromUi}
-		onOpenSettings={() => runtime.openSettings()}
-		onCreateBot={openCreateBot}
-		onCreateGroup={openCreateGroup}
-		onOpenArtifact={openArtifactPath}
-		onPatchTheme={(theme) => patchImmediate({ theme })}
-	/>
+	{#if sidebarHidden}
+		<SidebarRail
+			{runtime}
+			{t}
+			{pinnedSessionIds}
+			contextMenuSessionId={contextMenu?.session.id ?? null}
+			onOpenContextMenu={openContextMenu}
+			onExpand={toggleSidebar}
+			onOpenSettings={() => runtime.openSettings()}
+		/>
+	{:else}
+		<Sidebar
+			bind:this={sidebar}
+			{runtime}
+			{t}
+			{selected}
+			{pinnedSessionIds}
+			bind:toolsMenuOpen
+			bind:searchPageOpen
+			bind:createMenuOpen
+			workspaceOpen={runtime.workspaceOpen}
+			contextMenuSessionId={contextMenu?.session.id ?? null}
+			onOpenContextMenu={openContextMenu}
+			onToggleWorkspace={toggleWorkspaceExplorer}
+			onOpenRoutines={openRoutinesFromUi}
+			onOpenSpend={openSpendFromUi}
+			onNewTerminal={() => void openNewTerminal(null)}
+			onOpenSettings={() => runtime.openSettings()}
+			onCreateBot={openCreateBot}
+			onCreateGroup={openCreateGroup}
+			onOpenArtifact={openArtifactPath}
+			onCollapse={wide ? toggleSidebar : undefined}
+		/>
+	{/if}
 	<button
 		type="button"
 		class="sidebar-split"
@@ -2196,6 +2232,12 @@
 		inset: 0 2px;
 	}
 
+	/* The rail has its own edge and nothing to drag. */
+	.shell.is-sidebar-collapsed .sidebar-split {
+		visibility: hidden;
+		pointer-events: none;
+	}
+
 	/* Form Groups & Inputs in Panel */
 	.sheet.session-settings :global(.form-group) {
 		margin-bottom: 14px;
@@ -2451,7 +2493,7 @@
 	.shell {
 		height: 100%;
 		display: grid;
-		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 0fr;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 0fr;
 		background: var(--bg);
 		color: var(--ink);
 		position: relative;
@@ -2459,15 +2501,15 @@
 	}
 
 	.shell.is-thread {
-		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 320px;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 320px;
 	}
 
 	.shell.is-preview {
-		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 8px var(--preview-width, 420px) 0fr;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 8px var(--preview-width, 420px) 0fr;
 	}
 
 	.shell.is-preview.is-thread {
-		grid-template-columns: var(--sidebar-width, 260px) 8px minmax(0, 1fr) 8px var(--preview-width, 420px) 320px;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 8px var(--preview-width, 420px) 320px;
 	}
 
 	.shell.is-preview-dragging,

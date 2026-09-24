@@ -366,7 +366,6 @@ const defs: Record<StoryName, Story> = {
 			t,
 			selected: group,
 			pinnedSessionIds: ['direct-1'],
-			themeMenuOpen: false,
 			workspaceOpen: false,
 			contextMenuSessionId: null,
 			onOpenContextMenu: () => {},
@@ -377,7 +376,7 @@ const defs: Record<StoryName, Story> = {
 			onCreateBot: () => {},
 			onCreateGroup: () => {},
 			onOpenArtifact: () => {},
-			onPatchTheme: async () => true
+			onNewTerminal: () => {}
 		}
 	},
 	'sidebar-context': {
@@ -387,7 +386,6 @@ const defs: Record<StoryName, Story> = {
 			t,
 			selected: group,
 			pinnedSessionIds: ['direct-1'],
-			themeMenuOpen: false,
 			workspaceOpen: false,
 			contextMenuSessionId: 'sess-2',
 			onOpenContextMenu: () => {},
@@ -398,7 +396,7 @@ const defs: Record<StoryName, Story> = {
 			onCreateBot: () => {},
 			onCreateGroup: () => {},
 			onOpenArtifact: () => {},
-			onPatchTheme: async () => true
+			onNewTerminal: () => {}
 		}
 	},
 	'sidebar-botdm': {
@@ -408,7 +406,6 @@ const defs: Record<StoryName, Story> = {
 			t,
 			selected: botDirects[5],
 			pinnedSessionIds: [],
-			themeMenuOpen: false,
 			workspaceOpen: false,
 			contextMenuSessionId: null,
 			onOpenContextMenu: () => {},
@@ -419,7 +416,7 @@ const defs: Record<StoryName, Story> = {
 			onCreateBot: () => {},
 			onCreateGroup: () => {},
 			onOpenArtifact: () => {},
-			onPatchTheme: async () => true
+			onNewTerminal: () => {}
 		}
 	},
 	'chat-header': {
@@ -774,6 +771,16 @@ const maintenanceRuntime = (over: Record<string, unknown> = {}) =>
 	});
 
 export const rc11Stories = {
+	'sidebar-tools': {
+		...defs.sidebar,
+		props: {
+			...defs.sidebar.props,
+			t: copyFor('en'),
+			runtime: fakeRuntime({ ...world, settings: { ...world.settings, locale: 'en' } })
+		},
+		width: 300,
+		height: 820
+	},
 	'settings-maintenance': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: maintenanceRuntime() }),

@@ -56,7 +56,7 @@
 		mobileSettingsDetail?: boolean;
 		runtime: MessengerRuntime;
 		t: Copy;
-		/** The shell owns this: the sidebar's theme menu writes it through the same patch helper. */
+		/** Shared with the shell's immediate settings patch helper. */
 		saveFailed: boolean;
 		/** The shell owns this too, so its Escape cascade can see the flyout stacked on the modal. */
 		providerEditor: ProviderEditorState | null;

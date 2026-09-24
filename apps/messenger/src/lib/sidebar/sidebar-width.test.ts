@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import {
   clampSidebarWidth,
+  loadSidebarCollapsed,
   loadSidebarWidth,
+  saveSidebarCollapsed,
   saveSidebarWidth,
   SIDEBAR_DEFAULT,
   SIDEBAR_MAX,
@@ -25,4 +27,19 @@ test("loadSidebarWidth restores a saved width instead of shrinking to a default 
   expect(loadSidebarWidth()).toBe(400);
   window.localStorage.removeItem("real-bot-sidebar-width");
   expect(loadSidebarWidth()).toBe(SIDEBAR_DEFAULT);
+});
+
+test("the collapsed list is remembered on its own, and a width saved before it survives", () => {
+  if (typeof window === "undefined" || !window.localStorage) {
+    expect(loadSidebarCollapsed()).toBe(false);
+    return;
+  }
+  saveSidebarWidth(320);
+  saveSidebarCollapsed(true);
+  expect(loadSidebarCollapsed()).toBe(true);
+  expect(loadSidebarWidth()).toBe(320);
+  saveSidebarCollapsed(false);
+  expect(loadSidebarCollapsed()).toBe(false);
+  expect(window.localStorage.getItem("real-bot-sidebar-collapsed")).toBeNull();
+  window.localStorage.removeItem("real-bot-sidebar-width");
 });

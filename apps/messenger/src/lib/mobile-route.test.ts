@@ -91,7 +91,6 @@ test("the stack follows the URL: back pops, a replacement rewrites the top, anyt
 
 function layers(over: Partial<LayerState> = {}): LayerState {
   return {
-    themeMenuOpen: false,
     createMenuOpen: false,
     dangerConfirm: false,
     createBotOpen: false,
@@ -102,6 +101,7 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     settingsOpen: false,
     sessionSettingsOpen: false,
     toolsMenuOpen: false,
+    terminalOpen: false,
     traceOpen: false,
     routinesOpen: false,
     spendOpen: false,
@@ -135,7 +135,7 @@ test("Back closes the innermost thing on top", () => {
   expect(topLayer(layers({ settingsOpen: true }))).toBe("settings");
   // A confirmation on top of settings goes first; so does a menu on top of everything.
   expect(topLayer(layers({ settingsOpen: true, dangerConfirm: true }))).toBe("danger");
-  expect(topLayer(layers({ settingsOpen: true, dangerConfirm: true, themeMenuOpen: true }))).toBe("theme-menu");
+  expect(topLayer(layers({ settingsOpen: true, dangerConfirm: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ sessionSettingsOpen: true, artifactPreview: true }))).toBe("session-settings");
   expect(topLayer(layers({ workspaceOpen: true, artifactPreview: true }))).toBe("workspace");
   expect(topLayer(layers({ threadOpen: true, artifactPreview: true }))).toBe("thread");
@@ -144,15 +144,13 @@ test("Back closes the innermost thing on top", () => {
   // of it; a menu can still open over anything.
   expect(topLayer(layers({ searchPageOpen: true }))).toBe("search-page");
   expect(topLayer(layers({ searchPageOpen: true, threadOpen: true }))).toBe("search-page");
-  expect(topLayer(layers({ searchPageOpen: true, themeMenuOpen: true }))).toBe("theme-menu");
+  expect(topLayer(layers({ searchPageOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ createMenuOpen: true, settingsOpen: true }))).toBe("create-menu");
 });
 
 test("the phone's tools menu is a menu: it goes before anything Back would navigate to", () => {
-  // It holds the calendar and the terminal, which on a desktop live in a footer the phone does
-  // not show. Like every other menu, one Back closes it and nothing navigates.
+  // One Back closes the menu before leaving the current screen.
   expect(topLayer(layers({ toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ toolsMenuOpen: true, settingsOpen: true, workspaceOpen: true }))).toBe("tools-menu");
-  // The theme menu still wins: it is the one opened from on top of everything else.
-  expect(topLayer(layers({ toolsMenuOpen: true, themeMenuOpen: true }))).toBe("theme-menu");
+  expect(topLayer(layers({ toolsMenuOpen: true, createMenuOpen: true }))).toBe("tools-menu");
 });
