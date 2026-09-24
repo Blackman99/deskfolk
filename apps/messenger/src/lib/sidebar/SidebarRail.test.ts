@@ -10,7 +10,7 @@ import SidebarRail from "./SidebarRail.svelte";
 
 const t = copyFor("en");
 
-function open(selectedId: string | null = null, workspacePath: string | null = null) {
+function open(selectedId: string | null = null, workspacePath: string | null = null, pinnedSessionIds = ["direct-pin"]) {
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [
@@ -42,7 +42,7 @@ function open(selectedId: string | null = null, workspacePath: string | null = n
   const view = render(SidebarRail, {
     runtime,
     t,
-    pinnedSessionIds: ["direct-pin"],
+    pinnedSessionIds,
     contextMenuSessionId: null,
     workspaceOpen: false,
     onOpenContextMenu: (_e: MouseEvent, session: SessionSummary) => menus.push(session.id),
@@ -71,6 +71,16 @@ test("the rail keeps the list's order and sections, avatars only, and leaves out
   expect(item(view.host, "sess-1")?.querySelector(".row-avatar")).not.toBeNull();
   expect(item(view.host, "direct-1")?.getAttribute("aria-current")).toBe("true");
   expect(item(view.host, "direct-1")?.classList.contains("is-on")).toBe(true);
+  view.close();
+});
+
+test("a pinned file drop sits with the pins, still drawn as the file drop", () => {
+  const view = open(null, null, ["direct-pin", FILE_DROP_SESSION_ID]);
+  const ids = [...view.host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session);
+  expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1", "botbot-1"]);
+  // Pins, groups, you↔Bot, Bot↔Bot: the file drop's own section is gone.
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(3);
+  expect(item(view.host, FILE_DROP_SESSION_ID)?.querySelector(".rail-file-drop")).not.toBeNull();
   view.close();
 });
 

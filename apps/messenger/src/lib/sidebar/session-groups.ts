@@ -57,7 +57,9 @@ export function groupSessions(
 
   for (const session of sessions) {
     if (isFileDropSession(session)) {
-      fileDrop = session;
+      // Pinned, it moves up with the rest of the pins instead of also keeping its own section.
+      if (pinSet.has(session.id)) pinned.push(session);
+      else fileDrop = session;
       continue;
     }
     if (aliveBotIds) {

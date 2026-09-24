@@ -79,6 +79,15 @@ test("the file drop stays out of the chat groups and is named on its own", () =>
   expect(grouped.botBot).toEqual([]);
 });
 
+test("a pinned file drop moves up with the pins and leaves its own section", () => {
+  const drop = session(FILE_DROP_SESSION_ID, "direct", [{ member: "user" }]);
+  const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);
+  const grouped = groupSessions([drop, you], [FILE_DROP_SESSION_ID]);
+  expect(grouped.pinned).toEqual([drop]);
+  expect(grouped.fileDrop).toBeNull();
+  expect(grouped.youBot).toEqual([you]);
+});
+
 test("groupSessions filters out sessions with deleted bots when aliveBotIds is provided", () => {
   const g = session("g", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]);
   const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);

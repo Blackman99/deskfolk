@@ -23,7 +23,7 @@ function botDms(count: number) {
   });
 }
 
-function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = []) {
+function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = [], pinnedSessionIds: string[] = []) {
   const stub = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions],
@@ -42,7 +42,7 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     runtime,
     t,
     selected: null,
-    pinnedSessionIds: [],
+    pinnedSessionIds,
     workspaceOpen: false,
     contextMenuSessionId: null,
     onOpenContextMenu: () => {},
@@ -68,6 +68,22 @@ test("the file drop is listed above the groups, on the desktop as well as a remo
   const row = [...view.host.querySelectorAll(".row")].find((el) => el.textContent?.includes(t.sidebar.fileDrop));
   expect(row).toBeTruthy();
   expect(view.host.querySelector(".ghead")?.textContent).toContain(t.sidebar.fileDrop);
+  view.close();
+});
+
+test("a pinned file drop is listed with the pins only, under its own mark", () => {
+  const drop = aDirect({
+    id: FILE_DROP_SESSION_ID,
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+    last_message: aMessage({ body: "shot.png", session_id: FILE_DROP_SESSION_ID }),
+  });
+  const view = open([aBotDirect(), drop], null, false, [], [FILE_DROP_SESSION_ID]);
+  const pin = view.host.querySelector(".pinned-session-btn");
+  expect(pin?.textContent).toContain(t.sidebar.fileDrop);
+  expect(pin?.querySelector(".file-drop-mark")).not.toBeNull();
+  // Its section goes with it: no heading, no second row.
+  expect([...view.host.querySelectorAll(".ghead")].some((el) => el.textContent?.includes(t.sidebar.fileDrop))).toBe(false);
+  expect([...view.host.querySelectorAll(".row")].some((el) => el.textContent?.includes(t.sidebar.fileDrop))).toBe(false);
   view.close();
 });
 

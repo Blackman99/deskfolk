@@ -7,7 +7,7 @@
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import { recentBotDms } from './bot-dm-source.ts';
 	import RailTooltip from './RailTooltip.svelte';
-	import { groupSessions, isSessionArchived } from './session-groups.ts';
+	import { groupSessions, isFileDropSession, isSessionArchived } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
@@ -191,7 +191,7 @@
 					onclick={() => void runtime.selectSession(session.id)}
 					oncontextmenu={(e) => onOpenContextMenu(e, session)}
 				>
-					{#if session === grouped.fileDrop}
+					{#if isFileDropSession(session)}
 						<span class="row-avatar size-md" aria-hidden="true">
 							<span class="row-avatar-bot rail-file-drop">
 								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
