@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { flushSync, type Snippet } from 'svelte';
-	import type { FloatFrame, LeafNode, PaneMin, Rect, WorkbenchTab } from './layout-types.ts';
+	import type { FloatFrame, LeafNode, PaneMin, Rect, TabAction, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { moveFrame, resizeFrame, type Corner } from './float-frame.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
@@ -26,6 +26,7 @@
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
 		menuActions?: Snippet<[string, string]>;
+		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
 
 	let {
@@ -47,7 +48,8 @@
 		onDock,
 		onMenu,
 		emptyActions,
-		menuActions
+		menuActions,
+		tabActions
 	}: Props = $props();
 
 	const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se'];
@@ -154,6 +156,7 @@
 		{onMenu}
 		{emptyActions}
 		{menuActions}
+		{tabActions}
 	/>
 	{#each CORNERS as corner (corner)}
 		<button

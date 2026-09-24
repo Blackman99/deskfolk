@@ -7,6 +7,8 @@
  * keeps Monaco and xterm out of this module graph entirely.
  */
 
+import type { Snippet } from "svelte";
+
 /** "row" lays children out side by side, so the dividers between them are vertical. */
 export type Axis = "row" | "column";
 
@@ -21,6 +23,21 @@ export type WorkbenchTab = {
   id: TabId;
   kind: string;
   params: Readonly<Record<string, string>>;
+};
+
+/**
+ * Something a tab offers to do for what it shows: a conversation's settings, its flow board.
+ * The host says what; the workbench only lists them, under the tab's ⋯ and at the top of a
+ * right-click on the tab.
+ */
+export type TabAction = {
+  id: string;
+  label: string;
+  /** Drawn at the start of the row. The host's picture: the workbench owns no icons. */
+  icon?: Snippet;
+  /** Already on — pinned, settings open. */
+  active?: boolean;
+  run: () => void;
 };
 
 /** A pane: one tab strip and whichever tab is active under it. */

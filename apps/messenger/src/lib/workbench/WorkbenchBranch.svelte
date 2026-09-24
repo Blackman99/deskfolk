@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { LayoutNode, MinSizeLookup, WorkbenchTab } from './layout-types.ts';
+	import type { LayoutNode, MinSizeLookup, TabAction, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { minSize, trackTemplate } from './layout-geometry.ts';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
@@ -26,6 +26,7 @@
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
 		menuActions?: Snippet<[string, string]>;
+		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
 
 	let { node, focusId, divided, mins, t, tabBody, tabLabel, ...rest }: Props = $props();
@@ -60,6 +61,7 @@
 		onMenu={rest.onMenu}
 		emptyActions={rest.emptyActions}
 		menuActions={rest.menuActions}
+		tabActions={rest.tabActions}
 	/>
 {:else}
 	<!--
@@ -105,6 +107,7 @@
 				onMenu={rest.onMenu}
 				emptyActions={rest.emptyActions}
 				menuActions={rest.menuActions}
+				tabActions={rest.tabActions}
 			/>
 		{/each}
 	</div>

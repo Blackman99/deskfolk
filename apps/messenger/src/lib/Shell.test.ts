@@ -32,6 +32,7 @@ import { buttonByText, click, fill, render } from './test-render.ts';
 import { copyFor } from './copy.ts';
 import { makeBranch, makeLeaf } from './workbench/layout-tree.ts';
 import { paneMin, WB_FALLBACK_MIN, WB_STRIP_PX } from './workbench/pane-mins.ts';
+import { PINNED_STORAGE_KEY } from './sidebar/pinned-sessions.ts';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });
@@ -984,6 +985,76 @@ test('a direct conversation\'s Bot, opened from the transcript, is that conversa
   expect(settings.getAttribute('aria-expanded')).toBe('true');
   expect(JSON.parse(localStorage.getItem('real-bot-workbench-layout')!).root.tabs[0].params)
     .toEqual({ sessionId: session.id, side: 'settings' });
+});
+
+test('a conversation tab offers its header\'s actions, each on that tab\'s own conversation', async () => {
+  localStorage.removeItem(PINNED_STORAGE_KEY);
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  const direct = aDirect({ id: 'd1' });
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: { ...makeLeaf('a', [
+      { id: 't-g', kind: 'chat', params: { sessionId: 'g1' } },
+      { id: 't-d', kind: 'chat', params: { sessionId: 'd1' } },
+      { id: 't-term', kind: 'terminal', params: {} },
+    ]), activeTabId: 't-d' },
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [group, direct],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'd1' }));
+  const t = copyFor('en');
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const menu = () => document.querySelector<HTMLElement>('[data-testid="wb-context-menu"]');
+  const actions = () => [...(menu()?.querySelectorAll<HTMLElement>('[data-action]') ?? [])]
+    .map((row) => row.querySelector('.wb-context-label')?.textContent);
+  const rightClick = (el: Element | null) => {
+    el?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 12 }));
+    flushSync();
+  };
+
+  // A terminal tab has nothing of a conversation's to offer: no ⋯, and a plain right-click.
+  expect(host.querySelector('[data-tab="t-term"] .wb-tab-more')).toBeNull();
+  rightClick(host.querySelector('[data-tab="t-term"] [role="tab"]'));
+  expect(actions()).toEqual([]);
+  click(document.body);
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  flushSync();
+
+  // The group's tab is not the one in front; its settings bring it forward and open over it.
+  click(host.querySelector('[data-tab="t-g"] .wb-tab-more'));
+  expect(actions()).toEqual([t.top.pin, t.trace.topAction, t.top.groupSettings]);
+  click(menu()!.querySelector('[data-action="settings"]'));
+  await settle();
+  expect(host.querySelector('[data-tab="t-g"] [role="tab"]')?.getAttribute('aria-selected')).toBe('true');
+  expect(host.querySelector<HTMLInputElement>('.pane-side #detail-group-name')?.value).toBe('Alpha group');
+  click(host.querySelector('[data-tab="t-g"] .wb-tab-more'));
+  expect(menu()!.querySelector('[data-action="settings"]')?.classList.contains('is-active')).toBe(true);
+  click(menu()!.querySelector('[data-action="settings"]'));
+  await settle();
+  expect(host.querySelector('.pane-side')).toBeNull();
+
+  // Pinning from a right-click on the direct tab pins that conversation, and the menu then says so.
+  rightClick(host.querySelector('[data-tab="t-d"] [role="tab"]'));
+  expect(actions()).toEqual([t.top.pin, t.trace.topAction, t.top.botSettings]);
+  expect(menu()!.querySelector('[data-split]')).not.toBeNull();
+  click(menu()!.querySelector('[data-action="pin"]'));
+  expect(JSON.parse(localStorage.getItem(PINNED_STORAGE_KEY) ?? '[]')).toEqual(['d1']);
+  rightClick(host.querySelector('[data-tab="t-d"] [role="tab"]'));
+  expect(actions()[0]).toBe(t.top.unpin);
+  expect(menu()!.querySelector('[data-action="pin"]')?.classList.contains('is-active')).toBe(true);
+
+  // The flow board is the tab's conversation's, whichever one the keyboard was in.
+  click(menu()!.querySelector('[data-action="trace"]'));
+  await settle();
+  const labels = [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
+  expect(labels).toContain(t.pane.flowOf('Researcher'));
+  localStorage.removeItem('real-bot-workbench-layout');
+  localStorage.removeItem(PINNED_STORAGE_KEY);
 });
 
 test('a conversation’s flow board and artifact preview are named after the conversation', async () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Axis } from './layout-types.ts';
+	import type { Axis, TabAction } from './layout-types.ts';
 	import type { Direction } from './layout-geometry.ts';
 	import type { Copy } from '../copy.ts';
 	import { computeContextMenuPosition } from '../sidebar/session-context-menu.ts';
@@ -10,21 +10,45 @@
 		x: number;
 		y: number;
 		t: Copy;
+		/** What the menu is called. The pane's name unless it only holds a tab's actions. */
+		label?: string;
+		/** What the tab under the pointer offers, above everything else. */
+		actions?: TabAction[];
 		/** Whether the window has room for one more pane across (`row`) and down (`column`). */
-		fits: Record<Axis, boolean>;
+		fits?: Record<Axis, boolean>;
 		/** A floating pane is not split in place: it is docked first, which this menu offers. */
-		floating: boolean;
+		floating?: boolean;
 		/**
 		 * Copy and Paste, when what was right-clicked keeps its own selection and takes its own
 		 * paste — a terminal. `canCopy` is read once, at the right-click.
 		 */
 		edit?: { canCopy: boolean; onCopy: () => void; onPaste: () => void } | null;
-		onSplit: (dir: Direction) => void;
-		onDock: () => void;
+		/** Left out, the menu offers no splits: a tab's ⋯ holds only what the tab offers. */
+		onSplit?: (dir: Direction) => void;
+		onDock?: () => void;
+		/**
+		 * The button that opened the menu. A press on it is left to the button, which closes the
+		 * menu itself; closing on the press as well would have the click open it straight again.
+		 * Escape hands the keyboard back to it.
+		 */
+		anchor?: Element | null;
 		onClose: () => void;
 	};
 
-	let { x, y, t, fits, floating, edit = null, onSplit, onDock, onClose }: Props = $props();
+	let {
+		x,
+		y,
+		t,
+		label,
+		actions = [],
+		fits = { row: false, column: false },
+		floating = false,
+		edit = null,
+		onSplit,
+		onDock,
+		anchor = null,
+		onClose
+	}: Props = $props();
 
 	/* Reading order of the request: up, down, left, right. The two with a key say which. */
 	const items = $derived<{ dir: Direction; label: string; keys?: string }[]>([
@@ -67,7 +91,8 @@
 		if (!menu) return;
 		queueMicrotask(() => enabledItems()[0]?.focus({ preventScroll: true }));
 		const onDown = (event: PointerEvent) => {
-			if (!menu.contains(event.target as Node)) onClose();
+			const target = event.target as Node;
+			if (!menu.contains(target) && !anchor?.contains(target)) onClose();
 		};
 		const onScroll = (event: Event) => {
 			if (!menu.contains(event.target as Node)) onClose();
@@ -99,8 +124,12 @@
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			event.stopPropagation();
+			// Back to the button it hangs from, when it has one: clicking a button does not focus
+			// it in WebKit, so what had focus at the click is often nothing at all. Read before
+			// closing, which drops the host's record of that button.
+			const back = anchor instanceof HTMLElement ? anchor : returnTo;
 			onClose();
-			if (returnTo?.isConnected) returnTo.focus({ preventScroll: true });
+			if (back?.isConnected) back.focus({ preventScroll: true });
 		} else if (event.key === 'Tab') {
 			onClose();
 		} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -130,7 +159,7 @@
 	style:top={`${pos.y}px`}
 	role="menu"
 	tabindex="-1"
-	aria-label={t.pane.title}
+	aria-label={label ?? t.pane.title}
 	data-testid="wb-context-menu"
 	use:portal
 	onkeydown={onKey}
@@ -139,15 +168,31 @@
 		event.stopPropagation();
 	}}
 >
+	{#each actions as action (action.id)}
+		<button
+			type="button"
+			class="wb-context-item"
+			class:is-active={action.active}
+			role="menuitem"
+			data-action={action.id}
+			onclick={() => pick(action.run)}
+		>
+			<span class="wb-context-icon" aria-hidden="true">{#if action.icon}{@render action.icon()}{/if}</span>
+			<span class="wb-context-label">{action.label}</span>
+		</button>
+	{/each}
+	{#if actions.length > 0 && (edit || onSplit)}
+		<div class="wb-context-divider" role="separator"></div>
+	{/if}
 	{#if edit}
-		{@const actions = edit}
+		{@const editing = edit}
 		<button
 			type="button"
 			class="wb-context-item"
 			role="menuitem"
 			data-edit="copy"
-			disabled={!actions.canCopy}
-			onclick={() => pick(actions.onCopy)}
+			disabled={!editing.canCopy}
+			onclick={() => pick(editing.onCopy)}
 		>
 			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect>
@@ -156,7 +201,7 @@
 			<span class="wb-context-label">{t.pane.copy}</span>
 			<span class="wb-context-keys" aria-hidden="true">⌘C</span>
 		</button>
-		<button type="button" class="wb-context-item" role="menuitem" data-edit="paste" onclick={() => pick(actions.onPaste)}>
+		<button type="button" class="wb-context-item" role="menuitem" data-edit="paste" onclick={() => pick(editing.onPaste)}>
 			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="5.5" y="5.5" width="13" height="15" rx="2"></rect>
 				<path d="M9.5 5.5V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"></path>
@@ -164,40 +209,46 @@
 			<span class="wb-context-label">{t.pane.paste}</span>
 			<span class="wb-context-keys" aria-hidden="true">⌘V</span>
 		</button>
-		<div class="wb-context-divider" role="separator"></div>
+		{#if onSplit}
+			<div class="wb-context-divider" role="separator"></div>
+		{/if}
 	{/if}
-	{#each items as item (item.dir)}
-		{@const reason = disabledReason(item.dir)}
-		<button
-			type="button"
-			class="wb-context-item"
-			role="menuitem"
-			data-split={item.dir}
-			disabled={reason !== null}
-			title={reason ?? undefined}
-			onclick={() => pick(() => onSplit(item.dir))}
-		>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-				<rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
-				{#if item.dir === 'up'}
-					<path d="M5 6h14v5.5H5z" fill="currentColor" opacity="0.45"></path>
-				{:else if item.dir === 'down'}
-					<path d="M5 12.5h14V18H5z" fill="currentColor" opacity="0.45"></path>
-				{:else if item.dir === 'left'}
-					<path d="M5 6h6.25v12H5z" fill="currentColor" opacity="0.45"></path>
-				{:else}
-					<path d="M12.75 6H19v12h-6.25z" fill="currentColor" opacity="0.45"></path>
+	{#if onSplit}
+		{@const split = onSplit}
+		{#each items as item (item.dir)}
+			{@const reason = disabledReason(item.dir)}
+			<button
+				type="button"
+				class="wb-context-item"
+				role="menuitem"
+				data-split={item.dir}
+				disabled={reason !== null}
+				title={reason ?? undefined}
+				onclick={() => pick(() => split(item.dir))}
+			>
+				<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+					<rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+					{#if item.dir === 'up'}
+						<path d="M5 6h14v5.5H5z" fill="currentColor" opacity="0.45"></path>
+					{:else if item.dir === 'down'}
+						<path d="M5 12.5h14V18H5z" fill="currentColor" opacity="0.45"></path>
+					{:else if item.dir === 'left'}
+						<path d="M5 6h6.25v12H5z" fill="currentColor" opacity="0.45"></path>
+					{:else}
+						<path d="M12.75 6H19v12h-6.25z" fill="currentColor" opacity="0.45"></path>
+					{/if}
+				</svg>
+				<span class="wb-context-label">{item.label}</span>
+				{#if item.keys}
+					<span class="wb-context-keys" aria-hidden="true">{item.keys}</span>
 				{/if}
-			</svg>
-			<span class="wb-context-label">{item.label}</span>
-			{#if item.keys}
-				<span class="wb-context-keys" aria-hidden="true">{item.keys}</span>
-			{/if}
-		</button>
-	{/each}
-	{#if floating}
+			</button>
+		{/each}
+	{/if}
+	{#if floating && onDock}
+		{@const dock = onDock}
 		<div class="wb-context-divider" role="separator"></div>
-		<button type="button" class="wb-context-item" role="menuitem" data-dock onclick={() => pick(onDock)}>
+		<button type="button" class="wb-context-item" role="menuitem" data-dock onclick={() => pick(dock)}>
 			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
 				<path d="M12 8v6m-3-3 3 3 3-3"></path>
@@ -248,6 +299,17 @@
 	.wb-context-icon {
 		flex-shrink: 0;
 		opacity: 0.75;
+	}
+	/* A tab's action brings its own picture; the box keeps the labels in line with the splits'. */
+	span.wb-context-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+	}
+	.wb-context-item.is-active {
+		color: var(--accent);
 	}
 	.wb-context-label {
 		flex: 1;

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { LeafNode, WorkbenchTab } from './layout-types.ts';
+	import type { LeafNode, TabAction, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
+	import PaneContextMenu from './PaneContextMenu.svelte';
 
 	type Props = {
 		leaf: LeafNode;
@@ -28,6 +29,11 @@
 		 * row of chips, so a long history of shells does not stretch it across the window.
 		 */
 		menuActions?: Snippet<[string, string]>;
+		/**
+		 * What a tab offers to do for what it shows. A tab with any gets a ⋯ once the pane is
+		 * narrow, which is when a conversation's header folds into its tab.
+		 */
+		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
 
 	let {
@@ -44,7 +50,8 @@
 		onStripPointerDown,
 		onMenu,
 		emptyActions,
-		menuActions
+		menuActions,
+		tabActions
 	}: Props = $props();
 
 	const active = $derived(leaf.tabs.find((tab) => tab.id === leaf.activeTabId) ?? null);
@@ -60,6 +67,19 @@
 	let emptyFilter = $state('');
 	/** The + is there when the pane has something to offer, whether or not the menu is shaped. */
 	const canOpen = $derived(Boolean(menuActions ?? emptyActions));
+	/** The tab whose ⋯ is open, and the ⋯ it hangs from. */
+	let more = $state<{ tabId: string; anchor: HTMLElement } | null>(null);
+	const moreTab = $derived(more ? (leaf.tabs.find((tab) => tab.id === more!.tabId) ?? null) : null);
+
+	function toggleMore(tabId: string, anchor: HTMLElement): void {
+		more = more?.tabId === tabId ? null : { tabId, anchor };
+	}
+
+	/** Under the ⋯, from its left edge, the way the + menu hangs from the +. */
+	function moreAt(anchor: HTMLElement): { x: number; y: number } {
+		const box = anchor.getBoundingClientRect();
+		return { x: box.left, y: box.bottom + 4 };
+	}
 
 	/**
 	 * The menu is moved to `document.body`. A pane clips overflow, and a floating pane's
@@ -173,6 +193,7 @@
 		void leaf.tabs.length;
 		newTabOpen = false;
 		emptyFilter = '';
+		more = null;
 	});
 
 	$effect(() => {
@@ -227,9 +248,15 @@
 	>
 		<div class="wb-tabs">
 			{#each leaf.tabs as tab, index (tab.id)}
+				{@const actions = tabActions?.(leaf.id, tab) ?? []}
 				<!-- The close control is a sibling of the tab, never nested inside it: a button
 				     inside a button is invalid and svelte-check's a11y pass says so. -->
-				<div class="wb-tab" role="presentation" class:is-active={tab.id === leaf.activeTabId}>
+				<div
+					class="wb-tab"
+					role="presentation"
+					class:is-active={tab.id === leaf.activeTabId}
+					data-tab={tab.id}
+				>
 					{#if tab.id === leaf.activeTabId}
 						<span class="wb-tab-flare is-left" aria-hidden="true"></span>
 						<span class="wb-tab-flare is-right" aria-hidden="true"></span>
@@ -254,6 +281,31 @@
 					>
 						{@render tabLabel(tab)}
 					</button>
+					{#if actions.length > 0}
+						<!-- Out of the tab order like the close control: from the keyboard the tab's
+						     own context menu key opens the same actions. -->
+						<button
+							type="button"
+							class="wb-tab-more"
+							class:is-open={more?.tabId === tab.id}
+							tabindex="-1"
+							aria-label={t.pane.tabActions}
+							title={t.pane.tabActions}
+							aria-haspopup="menu"
+							aria-expanded={more?.tabId === tab.id}
+							onclick={(event) => {
+								event.stopPropagation();
+								onFocus(leaf.id);
+								toggleMore(tab.id, event.currentTarget);
+							}}
+						>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								<circle cx="5" cy="12" r="2"></circle>
+								<circle cx="12" cy="12" r="2"></circle>
+								<circle cx="19" cy="12" r="2"></circle>
+							</svg>
+						</button>
+					{/if}
 					<button
 						type="button"
 						class="wb-tab-close"
@@ -332,6 +384,19 @@
 			</div>
 		{/if}
 	</div>
+	{#if more && moreTab && tabActions}
+		{@const open = more}
+		{@const at = moreAt(open.anchor)}
+		<PaneContextMenu
+			x={at.x}
+			y={at.y}
+			{t}
+			label={t.pane.tabActions}
+			actions={tabActions(leaf.id, moreTab)}
+			anchor={open.anchor}
+			onClose={() => (more = null)}
+		/>
+	{/if}
 	<div
 		class="wb-body"
 		role="tabpanel"
@@ -442,17 +507,28 @@
 	 * tab is the same colour as the content with its bottom corners flaring outward, so the two
 	 * are one surface. The tabs that are not active stay on the strip, recessed.
 	 */
+	/*
+	 * The strip is also what a tab asks how wide its pane is. It is the pane's full width with no
+	 * padding of its own — the 4px sides are the end children's margins — so it crosses 680px
+	 * exactly when the conversation under it does, and the header folds into the tab at the moment
+	 * the tab takes it. A container is a containing block for `fixed` descendants, which is why the
+	 * pane itself is not one; nothing fixed lives in the strip, and its menus are portaled.
+	 */
 	.wb-strip {
 		--wb-tab-flare: 8px;
+		container: wb-strip / inline-size;
 		display: flex;
 		align-items: flex-end;
 		gap: 0;
 		height: 32px;
-		padding: 0 4px;
+		padding: 0;
 		background: var(--bg);
 		flex: 0 0 auto;
 		position: relative;
 		z-index: 1;
+	}
+	.wb-strip > :last-child {
+		margin-right: 4px;
 	}
 	/*
 	 * The strip is a stacking context of its own, so the menu's z-index only counts inside it, and
@@ -468,6 +544,7 @@
 		display: flex;
 		align-items: flex-end;
 		min-width: 0;
+		margin-left: 4px;
 		overflow-x: auto;
 		overflow-y: hidden;
 		scrollbar-width: none;
@@ -476,6 +553,8 @@
 		display: none;
 	}
 	.wb-tab {
+		/* What the tab is painted, for a label that rings its picture in the same colour. */
+		--wb-tab-surface: var(--bg);
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -513,6 +592,7 @@
 	 * colour say which tab is active; nothing about its size should.
 	 */
 	.wb-tab.is-active {
+		--wb-tab-surface: var(--pane);
 		background: var(--pane);
 	}
 	/*
@@ -578,6 +658,45 @@
 	.wb-tab-close:hover {
 		background: var(--row-hover);
 		color: var(--ink);
+	}
+	/*
+	 * A tab's picture and its ⋯ are for a narrow pane, where they stand in for the header the
+	 * conversation no longer shows. A wide pane keeps the header, and the tab its plain name.
+	 */
+	.wb-tab-button :global(.wb-tab-icon),
+	.wb-tab-more {
+		display: none;
+	}
+	.wb-tab-more {
+		place-items: center;
+		width: 18px;
+		height: 18px;
+		flex: 0 0 auto;
+		padding: 0;
+		border-radius: 50%;
+		color: var(--muted);
+		background: none;
+		opacity: 0;
+	}
+	.wb-tab-more:hover,
+	.wb-tab-more.is-open {
+		background: var(--row-hover);
+		color: var(--ink);
+	}
+	/* The strip's own width, which is the pane's: see `.wb-strip`. */
+	@container wb-strip (max-width: 680px) {
+		.wb-tab-button :global(.wb-tab-icon) {
+			display: inline-flex;
+		}
+		.wb-tab-more {
+			display: grid;
+		}
+		/* It keeps its room while it is hidden, so hovering a tab never moves the strip. */
+		.wb-tab:hover .wb-tab-more,
+		.wb-tab:focus-within .wb-tab-more,
+		.wb-tab-more.is-open {
+			opacity: 1;
+		}
 	}
 	.wb-new-tab,
 	.wb-pane-menu {

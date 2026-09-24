@@ -83,6 +83,7 @@
 	// `runtime.routinesOpen` is true.
 	import Workbench from './workbench/Workbench.svelte';
 	import PaneContentHost from './workbench/PaneContentHost.svelte';
+	import PaneTabLabel from './workbench/PaneTabLabel.svelte';
 	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
 	import { paneMin } from './workbench/pane-mins.ts';
 	import { contentOfTab } from './workbench/pane-content.ts';
@@ -120,8 +121,9 @@
 	import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from './workbench/workbench-layout.ts';
 	import { contentsEqual, contentToParams, PANE_KIND_SET } from './workbench/pane-content.ts';
 	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
-	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
+	import type { TabAction, WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
+	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	// SettingsModal.svelte (~3.5k lines, plus its provider/MCP/notification sub-panels) is
 	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
@@ -1304,6 +1306,47 @@
 		commitLayout(closeChatSide(layout, sessionId));
 	}
 
+	/**
+	 * What a conversation's tab offers: its header's actions, under the tab's ⋯ once the pane is
+	 * narrow and the header has folded into the tab, and first in a right-click on the tab in any
+	 * pane. Each acts on that tab's own conversation, which need not be the one in front: settings
+	 * bring the tab forward first, since they slide over its transcript.
+	 */
+	function chatTabActions(leafId: string, tab: WorkbenchTab): TabAction[] {
+		const content = contentOfTab(tab);
+		if (content?.kind !== 'chat') return [];
+		const session = sessionsById.get(content.sessionId);
+		if (!session || isFileDropSession(session)) return [];
+		const pinned = isSessionPinned(pinnedSessionIds, session.id);
+		return [
+			{
+				id: 'pin',
+				label: pinned ? t.top.unpin : t.top.pin,
+				icon: pinned ? pinnedIcon : pinIcon,
+				active: pinned,
+				run: () => togglePin(session.id)
+			},
+			{
+				id: 'trace',
+				label: t.trace.topAction,
+				icon: traceIcon,
+				run: () =>
+					openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, focus: null, focusNonce: null })
+			},
+			{
+				id: 'settings',
+				label: classifySession(session) === 'group' ? t.top.groupSettings : t.top.botSettings,
+				icon: settingsIcon,
+				// A Bot opened from a group's member list is not the group's own settings.
+				active: Boolean(content.side && !content.side.botId),
+				run: () => {
+					commitLayout(activateTab(focusLeaf(layout, leafId), leafId, tab.id));
+					togglePaneSettings(session.id);
+				}
+			}
+		];
+	}
+
 
 	function toggleSessionSettings(): void {
 		if (runtime.sessionSettingsOpen) {
@@ -1534,6 +1577,35 @@
 	}}
 />
 
+<!-- The pictures of a conversation tab's actions, the same ones its header draws. -->
+{#snippet pinIcon()}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<line x1="12" y1="17" x2="12" y2="22"></line>
+		<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
+	</svg>
+{/snippet}
+{#snippet pinnedIcon()}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<line x1="12" y1="17" x2="12" y2="22"></line>
+		<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
+	</svg>
+{/snippet}
+{#snippet traceIcon()}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
+		<path d="M12 8v3"></path>
+		<path d="M5.5 14v-3h13v3"></path>
+		<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
+		<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
+	</svg>
+{/snippet}
+{#snippet settingsIcon()}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<circle cx="12" cy="12" r="3"></circle>
+		<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+	</svg>
+{/snippet}
+
 <!--
 	The head of a conversation's settings, in the narrow drawer and beside a workbench pane alike.
 	`nested` is a Bot opened from a group's settings. On a phone that page's way out is the
@@ -1701,6 +1773,7 @@
 				{t}
 				wide={true}
 				tabName={paneTitle}
+				tabActions={chatTabActions}
 				onLayout={commitLayout}
 				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
 				onCloseTab={onPaneCloseTab}
@@ -1728,7 +1801,13 @@
 					/>
 				{/snippet}
 				{#snippet tabLabel(tab: WorkbenchTab)}
-					<span>{paneTitle(tab)}</span>
+					{@const tabContent = contentOfTab(tab)}
+					{@const tabSession = tabContent?.kind === 'chat' ? sessionsById.get(tabContent.sessionId) : undefined}
+					{#if tabSession}
+						<ChatTabLabel {runtime} {t} session={tabSession} title={paneTitle(tab)} />
+					{:else}
+						<PaneTabLabel kind={tabContent?.kind ?? null} title={paneTitle(tab)} />
+					{/if}
 				{/snippet}
 				{#snippet emptyActions(leafId: string)}
 					<button type="button" class="pane-open" onclick={() => void openNewTerminal(leafId)}>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { flushSync, type Snippet } from 'svelte';
-	import { WB_SASH_PX, type MinSizeLookup, type Rect, type WorkbenchLayout, type WorkbenchTab } from './layout-types.ts';
+	import { WB_SASH_PX, type MinSizeLookup, type Rect, type TabAction, type WorkbenchLayout, type WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { canSplit, computeGeometry, type Direction, type LayoutGeometry } from './layout-geometry.ts';
 	import {
@@ -49,6 +49,8 @@
 		emptyActions?: Snippet<[string]>;
 		/** The strip's + menu. A second argument is the text typed into its filter. */
 		menuActions?: Snippet<[string, string]>;
+		/** What a tab offers for what it shows: under its ⋯, and first in a right-click on it. */
+		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
 
 	let {
@@ -64,7 +66,8 @@
 		onCloseTab,
 		onMenu,
 		emptyActions,
-		menuActions
+		menuActions,
+		tabActions
 	}: Props = $props();
 
 	let host = $state<HTMLDivElement>();
@@ -360,7 +363,16 @@
 	 * the pointer — so a terminal pane splits like any other.
 	 */
 	const OWN_MENU = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
-	let paneMenu = $state<{ leafId: string; x: number; y: number; seq: number; edit: PaneEdit | null; canCopy: boolean } | null>(null);
+	let paneMenu = $state<{
+		leafId: string;
+		/** The tab right-clicked, when it was one: what it offers comes first. */
+		tabId: string | null;
+		x: number;
+		y: number;
+		seq: number;
+		edit: PaneEdit | null;
+		canCopy: boolean;
+	} | null>(null);
 	let paneMenuSeq = 0;
 	const paneMenuFloating = $derived(
 		paneMenu ? layout.floating.some((pane) => pane.leaf.id === paneMenu!.leafId) : false
@@ -385,7 +397,17 @@
 			y = box.bottom;
 		}
 		const edit = paneEditAt(target);
-		paneMenu = { leafId, x, y, seq: ++paneMenuSeq, edit, canCopy: edit?.canCopy() ?? false };
+		const tabId = target.closest<HTMLElement>('[data-tab]')?.dataset.tab ?? null;
+		paneMenu = { leafId, tabId, x, y, seq: ++paneMenuSeq, edit, canCopy: edit?.canCopy() ?? false };
+	}
+
+	/** Read while the menu is open, so a pin toggled elsewhere is not shown the old way round. */
+	function actionsOf(leafId: string, tabId: string | null): TabAction[] {
+		if (!tabId || !tabActions) return [];
+		const leaf = tiledLeaves(layout.root).find((candidate) => candidate.id === leafId) ??
+			layout.floating.find((pane) => pane.leaf.id === leafId)?.leaf;
+		const tab = leaf?.tabs.find((candidate) => candidate.id === tabId);
+		return tab ? tabActions(leafId, tab) : [];
 	}
 
 	function fitsFor(leafId: string): { row: boolean; column: boolean } {
@@ -447,6 +469,7 @@
 				{onMenu}
 				{emptyActions}
 				{menuActions}
+				{tabActions}
 			/>
 		{/if}
 	{:else}
@@ -472,6 +495,7 @@
 			{onMenu}
 			{emptyActions}
 			{menuActions}
+			{tabActions}
 		/>
 
 		{#each floatingInPlace as pane (pane.leaf.id)}
@@ -495,6 +519,7 @@
 				{onMenu}
 				{emptyActions}
 				{menuActions}
+				{tabActions}
 			/>
 		{/each}
 
@@ -537,6 +562,7 @@
 					x={open.x}
 					y={open.y}
 					{t}
+					actions={actionsOf(open.leafId, open.tabId)}
 					fits={fitsFor(open.leafId)}
 					floating={paneMenuFloating}
 					edit={open.edit ? { canCopy: open.canCopy, onCopy: open.edit.copy, onPaste: open.edit.paste } : null}

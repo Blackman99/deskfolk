@@ -4,7 +4,7 @@ import Workbench from "./Workbench.svelte";
 import { copyFor } from "../copy.ts";
 import { click, press, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import type { LayoutNode, MinSizeLookup, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
+import type { LayoutNode, MinSizeLookup, TabAction, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import { makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 import { registerPaneEdit } from "./pane-edit.ts";
 
@@ -31,7 +31,12 @@ function box(width: number, height: number): DOMRect {
 }
 
 /** happy-dom has no layout, so the workbench is handed the size a split is judged against. */
-function mountSized(layout: WorkbenchLayout, size = { width: 1200, height: 800 }, body = tabBody) {
+function mountSized(
+  layout: WorkbenchLayout,
+  size = { width: 1200, height: 800 },
+  body = tabBody,
+  tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[],
+) {
   const state = reactive({ layout, seen: [] as WorkbenchLayout[] });
   const mounted = render(Workbench as never, {
     get layout() { return state.layout; },
@@ -40,6 +45,7 @@ function mountSized(layout: WorkbenchLayout, size = { width: 1200, height: 800 }
     wide: true,
     tabBody: body,
     tabLabel,
+    tabActions,
     onLayout: (next: WorkbenchLayout) => {
       state.seen.push(next);
       state.layout = next;
@@ -370,6 +376,81 @@ test("arrow keys walk the directions that can be picked", async () => {
     expect(document.activeElement).toBe(item("down"));
     press(item("down"), "ArrowDown");
     expect(document.activeElement).toBe(item("up"));
+  } finally {
+    close();
+  }
+});
+
+/** What a host hands the workbench for a tab: here, one action on the first tab only. */
+function offering(ran: string[]) {
+  return (leafId: string, tab: WorkbenchTab): TabAction[] =>
+    tab.id === "t1" ? [{ id: "settings", label: "设置", active: true, run: () => ran.push(`${leafId}/${tab.id}`) }] : [];
+}
+
+test("right-clicking a tab puts what it offers above the splits", () => {
+  const ran: string[] = [];
+  const { host, close } = mountSized(
+    layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2")])), undefined, undefined, offering(ran));
+  try {
+    rightClick(host.querySelector('[data-tab="t1"] [role="tab"]'));
+    const rows = [...menu()!.querySelectorAll('[role="menuitem"]')];
+    expect(rows.map((row) => row.querySelector(".wb-context-label")?.textContent))
+      .toEqual(["设置", t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight]);
+    expect(rows[0]!.classList.contains("is-active")).toBe(true);
+    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(1);
+    click(menu()!.querySelector('[data-action="settings"]'));
+    expect(ran).toEqual(["a/t1"]);
+    expect(menu()).toBeNull();
+
+    // A tab with nothing to offer, and the strip beside the tabs, keep the plain menu.
+    rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
+    expect(menu()!.querySelector("[data-action]")).toBeNull();
+    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(4);
+    press(item("up"), "Escape");
+    rightClick(host.querySelector('[data-body="t1"]'));
+    expect(menu()!.querySelector("[data-action]")).toBeNull();
+    press(item("up"), "Escape");
+  } finally {
+    close();
+  }
+});
+
+test("a tab's ⋯ holds only what the tab offers, and a second press on it closes it", async () => {
+  const ran: string[] = [];
+  const { host, close } = mountSized(
+    layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2")])), undefined, undefined, offering(ran));
+  try {
+    // Beside the tab, never inside it: a button inside a button is invalid.
+    const more = host.querySelector<HTMLButtonElement>('[data-tab="t1"] > .wb-tab-more');
+    expect(more).not.toBeNull();
+    expect(host.querySelector('[role="tab"] .wb-tab-more')).toBeNull();
+    expect(host.querySelector('[data-tab="t2"] .wb-tab-more')).toBeNull();
+    expect(more!.getAttribute("aria-label")).toBe(t.pane.tabActions);
+
+    click(more);
+    expect(more!.getAttribute("aria-expanded")).toBe("true");
+    expect(menu()?.parentElement).toBe(document.body);
+    expect(menu()!.getAttribute("aria-label")).toBe(t.pane.tabActions);
+    expect([...menu()!.querySelectorAll('[role="menuitem"]')].map((row) => row.getAttribute("data-action")))
+      .toEqual(["settings"]);
+    expect(menu()!.querySelector('[role="separator"]')).toBeNull();
+
+    // The press that lands on the ⋯ is the ⋯'s: it closes, rather than closing and reopening.
+    more!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    click(more);
+    expect(menu()).toBeNull();
+    expect(more!.getAttribute("aria-expanded")).toBe("false");
+
+    click(more);
+    await Promise.resolve();
+    press(document.activeElement, "Escape");
+    expect(menu()).toBeNull();
+    expect(document.activeElement).toBe(more);
+
+    click(more);
+    click(menu()!.querySelector('[data-action="settings"]'));
+    expect(ran).toEqual(["a/t1"]);
+    expect(menu()).toBeNull();
   } finally {
     close();
   }

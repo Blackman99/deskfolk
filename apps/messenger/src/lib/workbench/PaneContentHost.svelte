@@ -175,6 +175,7 @@
 					{onTogglePin}
 					// A Bot opened from a group's member list is not the group's own settings.
 					settingsOpen={side !== null && !side.botId}
+					foldsIntoTab
 					onToggleSessionSettings={() => onToggleSettings(content.sessionId)}
 					{onCreateBot}
 					onShowOnboarding={() => {}}

@@ -543,6 +543,8 @@ const zh = {
     dockToSplit: "浮动的窗格先停靠回布局，才能分割。",
     close: "关闭窗格",
     closeTab: "关闭标签页",
+    /** The ⋯ on a tab, and the menu it opens: what the tab offers for what it shows. */
+    tabActions: "更多操作",
     float: "浮动这个窗格",
     dock: "停靠回布局",
     equalise: "平分",
@@ -1523,6 +1525,7 @@ const en: CopyShape<typeof zh> = {
     dockToSplit: "Dock a floating pane back into the layout to split it.",
     close: "Close pane",
     closeTab: "Close tab",
+    tabActions: "More actions",
     float: "Float this pane",
     dock: "Dock back into the layout",
     equalise: "Even out",

@@ -14,7 +14,7 @@
 	}: {
 		session: SessionSummary;
 		bots: ReadonlyMap<string, Bot>;
-		size?: 'sm' | 'md' | 'top' | 'hero';
+		size?: 'tab' | 'sm' | 'md' | 'top' | 'hero';
 		class?: string;
 		botStatus?: (botId: string) => SessionStatusResult | undefined;
 	} = $props();
@@ -93,6 +93,17 @@
 </span>
 
 <style>
+	/* A conversation's tab in a narrow pane: small enough to sit in a 28px tab. */
+	.row-avatar.size-tab {
+		--avatar-size: 20px;
+	}
+
+	.row-avatar.size-tab :global(.avatar-status-dot) {
+		width: 7px;
+		height: 7px;
+		border-width: 1.5px;
+	}
+
 	.row-avatar.size-top :global(.avatar-status-dot) {
 		width: 9px;
 		height: 9px;
