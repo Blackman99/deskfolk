@@ -673,6 +673,70 @@ test("a pane attaches to the daemon's screen: drawn at its size, then live bytes
   }
 });
 
+test("a pane reads the screen first and watches from where it ends, so the daemon sends no backlog", async () => {
+  // Watching from 0 had the daemon send its whole ring again, only for the pane to cut all of it:
+  // over a phone's link, the first second of every attach.
+  const { api } = screenApi({ offset: 5000, text: "screen", rows: 24, cols: 80 });
+  const calls: string[] = [];
+  const { view } = await attach({
+    ...api,
+    terminalScreen: async (id: string) => { calls.push(`screen ${id}`); return api.terminalScreen(); },
+    watchTerminal: async (id: string, from: number) => { calls.push(`watch ${id} ${from}`); },
+  });
+  try {
+    expect(calls).toEqual(["screen term-old", "watch term-old 5000"]);
+  } finally {
+    view.close();
+  }
+});
+
+test("switching away while an attach is still reading leaves the new one to finish on its own", async () => {
+  // The overtaken attach used to clear the new one's state as it gave up, which let the new
+  // session's live bytes in ahead of its screen, as "output outran the reader" the size of the
+  // whole stream.
+  const { api } = fakeApi([older, newer]);
+  const sinks = new Map<string, (frame: { offset: number; data: string }) => void>();
+  const watched: string[] = [];
+  const release = new Map<string, () => void>();
+  const reads = new Map(["term-new", "term-old"].map((id) => [id, new Promise<void>((resolve) => release.set(id, resolve))]));
+  const view = render(TerminalView, {
+    api: {
+      ...api,
+      terminalScreen: async (id: string) => {
+        await reads.get(id);
+        return { offset: id === "term-new" ? 100 : 7000, data: btoa(`${id} screen`), rows: 24, cols: 80 };
+      },
+      watchTerminal: async (id: string) => { watched.push(id); },
+    } as never,
+    workspacePath: "/work/real-bot", rows: [older, newer], t,
+    onStream: (id: string, sink: (frame: { offset: number; data: string }) => void) => { sinks.set(id, sink); return () => {}; },
+    onChanged: () => {}, onClose: () => {}, tabIds: "all",
+  });
+  try {
+    await settle();
+    // It opened on the newest; switch to the other while both screens are still on their way.
+    click(view.host.querySelector(".terminal-title"));
+    click(view.host.querySelector(".terminal-sessions .terminal-tab"));
+    await settle();
+    // The one given up on lands first, then a live frame arrives before the current screen does.
+    release.get("term-new")!();
+    await settle();
+    sinks.get("term-old")!({ offset: 7000, data: btoa("LIVE") });
+    release.get("term-old")!();
+    await settle();
+    const term = made.at(-1)!;
+    const text = term.written.map((w) => w.text).join("");
+    expect(text).toContain("term-old screen");
+    expect(text).not.toContain("term-new screen");
+    expect(term.written.at(-1)!.text).toBe("LIVE");
+    expect(text).not.toContain(t.terminal.dropped.split("{bytes}")[0]!);
+    // The one given up on is never watched, so its bytes do not travel for nobody.
+    expect(watched).toEqual(["term-old"]);
+  } finally {
+    view.close();
+  }
+});
+
 test("once the daemon answers, the pane answers nothing, live or replayed", async () => {
   // Two panes on one shell would each have answered, and the second answer arrived as typing.
   const { api } = screenApi({ offset: 0, text: "", rows: 24, cols: 80 });

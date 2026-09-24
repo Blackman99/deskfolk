@@ -139,7 +139,9 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     fetch: ((input: string | URL | Request, init?: RequestInit) => fetch(String(input).replace(ORIGIN, localOrigin), init)) as typeof fetch,
     pushFetch: async () => { throw new Error("isolated tests must not send web push"); },
   });
-  cleanup.push(async () => { controller.stop(); api.quiesce.close(); await api.engine.close(); await relay.stop(); store.close(); rmSync(root, { recursive: true, force: true }); });
+  // Terminals first: a live one's pty outlives the test otherwise, and its coalesced screen write
+  // lands a second later in a store that has closed, as a failure of whichever test runs then.
+  cleanup.push(async () => { api.terminals.shutdown(); controller.stop(); api.quiesce.close(); await api.engine.close(); await relay.stop(); store.close(); rmSync(root, { recursive: true, force: true }); });
   await controller.initialize({ origin: ORIGIN, relayId: "fixture", hostId: HOST }, bootstrap);
   expect(controller.status().state).toBe("online");
   const post = (value: unknown) => fetch(`${localOrigin}/v1/pair/mailbox`, { method: "POST", headers: { "Content-Type": "application/json" }, body: canonicalize(value) });
@@ -1511,6 +1513,40 @@ test("a watched terminal streams to the device that asked, and stops when it sto
 
   // Keystrokes are not receipted: nothing to replay, nothing stored.
   expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n).toBe(0);
+});
+
+test("a burst of terminal output past one frame reaches the device whole and in order", async () => {
+  // A full-screen program redraws in bursts like this. Each window used to send its last 8 KiB
+  // and drop the rest, so the phone printed "output outran the reader" into the program's screen.
+  const helper = (() => { try { return ptyHelperPath(); } catch { return null; } })();
+  if (!helper) return;
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const opened = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/terminals", body: { cwd: f.root, rows: 24, cols: 80 } });
+  const id = opened.body.id as string;
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/terminals/${id}/watch`, body: { from: 0 } })).status).toBe(200);
+  // 40 000 bytes at once, five frames' worth; the marker is computed, so the echoed command is not it.
+  await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/terminals/${id}/input`,
+    body: { data: Buffer.from("head -c 40000 /dev/zero | tr '\\0' x; echo; echo BURST_$((6*7))\n").toString("base64") } });
+
+  type Frame = { type: string; id: string; offset: number; data: string; skipped?: number };
+  const frames = () => c.events.filter((event): event is Frame =>
+    !!event && typeof event === "object" && (event as Frame).type === "stream" && (event as Frame).id === id);
+  const text = () => frames().map((frame) => Buffer.from(frame.data, "base64").toString("latin1")).join("");
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !text().includes("BURST_42")) {
+    await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/terminals/${id}` });
+    await Bun.sleep(50);
+  }
+  expect(text()).toContain("x".repeat(40000));
+  expect(text()).toContain("BURST_42");
+  expect(frames().some((frame) => frame.skipped)).toBe(false);
+  // Each frame starts where the one before it ended.
+  let next = frames()[0]!.offset;
+  for (const frame of frames()) {
+    expect(frame.offset).toBe(next);
+    next += Buffer.from(frame.data, "base64").length;
+  }
+  expect((await c.rpc({ v: 1, id: ulid(), method: "DELETE", path: `/v1/terminals/${id}` })).status).toBe(204);
 });
 
 test("encrypted media ranges carry 206 metadata and only the selected bytes", async () => {

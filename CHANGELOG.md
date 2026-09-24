@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- On a phone, the terminal no longer keeps printing "Output outran the reader; N bytes dropped". Whenever more than 8 KiB arrived within 50 ms, the rest used to be thrown away. A full-screen program such as Claude Code does that every few redraws and on every swipe, and the dropped bytes also left its screen garbled. Output now waits its turn and arrives whole, a little later. Bytes are dropped only when output outruns the connection for well over a second. Opening or switching terminals no longer resends the whole history before live output. Switching quickly between sessions no longer shows a notice the size of the whole stream.
+
 - A Bot no longer ends a turn with "The runtime errored" when a shell command prints an enormous amount of text. A search across the workspace that ran into `tool-results/` could print hundreds of megabytes, and past about 270 million characters the result's preview, or the result itself, could no longer be built, so the turn stopped. The Bot now gets its exit status and a short preview, with a note to narrow the command. A result too large to save says so instead of pointing at a file. The note for saved results also tells Bots to leave `tool-results/` out of workspace searches.
 
 - On a phone, swiping in the terminal now scrolls back through the history of a full-screen program such as Claude Code, vim or less. Before, a swipe did nothing there. Each row your finger travels is one wheel step, as a Mac's wheel or trackpad sends. A plain shell's scrollback scrolls under your finger as before.

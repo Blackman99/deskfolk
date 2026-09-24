@@ -172,9 +172,11 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const streamListeners = new Set<(id: string, read: StreamRead, watchers: readonly string[]) => void>();
   const toolListeners = new Set<(frame: ToolFrame) => void>();
 
-  function emitStream(id: string, read: StreamRead): void {
+  /** To everyone watching `id`, or only to `to`: a backlog is for the watcher who asked for it. */
+  function emitStream(id: string, read: StreamRead, to?: string): void {
     const watching = streamWatchers.get(id);
     if (!watching?.size) return;
+    const targets = to === undefined ? watching : new Set([to]);
     const frame: StreamFrame = {
       type: "stream",
       id,
@@ -183,12 +185,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       ...(read.skipped ? { skipped: read.skipped } : {}),
       ...(read.closed ? { closed: true } : {}),
     };
-    if (watching.has(LOCAL_WATCHER)) {
+    if (targets.has(LOCAL_WATCHER)) {
       const payload = JSON.stringify(frame);
       for (const ws of sockets) if (ws.data.authed && ws.data.sync) send(ws, payload);
     }
     if (!streamListeners.size) return;
-    const list = [...watching];
+    const list = [...targets];
     // Raw bytes for anyone else: the remote link coalesces before it encodes, and re-decoding
     // base64 per chunk just to batch it would be silly.
     for (const listener of streamListeners) listener(id, read, list);
@@ -203,9 +205,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       streamSubscriptions.set(id, streams.subscribe(id, from, (read) => emitStream(id, read)));
       return;
     }
-    // Already live for someone else: this watcher still needs its own backlog.
+    // Already live for someone else: this watcher still needs its own backlog, and only this one.
+    // Handed to everyone, it reached a phone already past those bytes as if they were new.
     const backlog = streams.read(id, from);
-    if (backlog.bytes.length || backlog.skipped) emitStream(id, backlog);
+    if (backlog.bytes.length || backlog.skipped) emitStream(id, backlog, watcher);
   }
 
   const terminals = new Terminals({

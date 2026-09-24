@@ -145,6 +145,8 @@
 	 */
 	let daemonAnswers = false;
 	let replaySeq = 0;
+	/** Which attach is the current one. One a later switch overtook must leave the page alone. */
+	let attachSeq = 0;
 	/** The size this pane last asked the pty for, until the session reports it back. */
 	let told: { id: string; rows: number; cols: number } | null = null;
 
@@ -584,6 +586,8 @@
 	}
 
 	async function activate(id: string | null): Promise<void> {
+		const attempt = ++attachSeq;
+		const current = () => attempt === attachSeq;
 		detach();
 		activeId = id;
 		input = id && api
@@ -591,11 +595,11 @@
 			: null;
 		cursor = startCursor();
 		pending = [];
+		filling = false;
 		term?.reset();
 		if (!id || !api) return;
 		filling = true;
 		attached = id;
-		// Watch first, read second: the other order leaves a hole between the two.
 		unwatch = onStream(id, (frame) => {
 			const bytes = decodeBase64(frame.data);
 			if (filling) {
@@ -605,10 +609,16 @@
 			write(frame.offset, bytes);
 		});
 		try {
-			await api.watchTerminal(id, 0);
+			// Read first, then watch from where the read ends. The daemon's ring still holds every
+			// byte since, so none fall between the two. Watching from 0 had it send the whole ring
+			// again, only for all of it to be cut here: over a phone's link, the first second or
+			// so of every attach.
 			const screen = await readScreen(id);
 			const history = screen ? null : await api.terminalScrollback(id, 0);
-			if (activeId !== id) return;
+			if (!current()) return;
+			const historyBytes = history ? decodeBase64(history.data) : new Uint8Array(0);
+			await api.watchTerminal(id, screen ? screen.offset : (history?.offset ?? 0) + historyBytes.length);
+			if (!current()) return;
 			daemonAnswers = screen !== null;
 			// History goes in with its requests unanswered; see `silenceRequests`. xterm parses
 			// writes in order and runs a write's callback once it is through, so the empty write
@@ -622,7 +632,7 @@
 				term?.resize(screen.cols, screen.rows);
 				term?.write(decodeBase64(screen.data));
 			} else if (history) {
-				write(history.offset, decodeBase64(history.data));
+				write(history.offset, historyBytes);
 			}
 			term?.write('', () => {
 				if (replay === replaySeq) replaying = false;
@@ -632,9 +642,13 @@
 		} catch (cause) {
 			report(cause);
 		} finally {
-			pending = [];
-			filling = false;
-			resizeToFit();
+			// A switch that overtook this attach owns the page now. Clearing its state from here let
+			// its live frames in ahead of its screen, as a gap the size of the whole stream.
+			if (current()) {
+				pending = [];
+				filling = false;
+				resizeToFit();
+			}
 		}
 	}
 

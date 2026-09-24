@@ -18,6 +18,7 @@ import { remoteError, responseError } from "./errors";
 import { LocalTrustActions, validateRelay, type TrustChange } from "./local-actions";
 import type { MaintenanceControl } from "./maint";
 import { PushService, type PushFetch } from "./push";
+import { StreamOutbox } from "./stream-outbox";
 
 export type RemoteStatus = { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
 export type RemoteNativeProvider = Pick<RemoteNativeClient, "capability" | "read" | "highwater" | "advanceHighwater" | "prepare" | "consume" | "reset">;
@@ -34,6 +35,8 @@ type Link = { close(): void };
 /** One window's worth of output per frame, and a ceiling on how much of it travels. */
 const REMOTE_STREAM_WINDOW_MS = 50;
 const REMOTE_STREAM_MAX_BYTES = 8 * 1024;
+/** What waits for the windows after, per stream, before the oldest of it is dropped. */
+const REMOTE_STREAM_BACKLOG_BYTES = 128 * 1024;
 
 export class RemoteController {
   readonly trust: RemoteTrust;
@@ -395,7 +398,7 @@ export class RemoteController {
     const close = () => {
       if (!alive) return; alive = false; abort.abort();
       clearInterval(timer); clearTimeout(handshakeTimer); session.close(); assembler.clear(); unsubscribe?.();
-      unsubscribeStreams?.(); unsubscribeTools?.(); clearTimeout(streamTimer); streamBuffers.clear();
+      unsubscribeStreams?.(); unsubscribeTools?.(); clearTimeout(streamTimer); outboxes.clear();
       if (principal) {
         this.dispatcher.uv.clearSession(principal.sessionId);
         if (this.principals.get(deviceId) === principal) this.principals.delete(deviceId);
@@ -438,36 +441,33 @@ export class RemoteController {
     };
     /**
      * Terminal and command bytes, coalesced before they leave the machine. A Noise frame tops out
-     * at 32 KiB and this is a phone on a radio, so a window's worth of output goes out as one
-     * frame, capped: past the cap the oldest bytes are dropped and counted, exactly as the ring
-     * does. Dropping beats {@link enqueue}'s backpressure here — losing scrollback is a scrolled
-     * past line, and closing the link would cost the session.
+     * at 32 KiB and this is a phone on a radio, so each window sends at most one capped frame per
+     * stream. That pace is the ceiling, not a filter: what comes faster waits in the stream's
+     * {@link StreamOutbox} for the windows after, and only output that outruns it for the whole
+     * backlog loses its oldest bytes. Dropping those beats {@link enqueue}'s backpressure — losing
+     * scrollback is a scrolled past line, and closing the link would cost the session. Dropping
+     * every burst past 8 KiB did too: a full-screen program redraws in bursts like that, and each
+     * one printed "output outran the reader" into the middle of its screen.
      */
-    const streamBuffers = new Map<string, { offset: number; chunks: Uint8Array[]; total: number; skipped: number; closed: boolean }>();
+    const outboxes = new Map<string, StreamOutbox>();
     let streamTimer: ReturnType<typeof setTimeout> | undefined;
     const flushStreams = () => {
       streamTimer = undefined;
-      for (const [id, buffer] of streamBuffers) {
-        let bytes = new Uint8Array(buffer.total);
-        let filled = 0;
-        for (const chunk of buffer.chunks) { bytes.set(chunk, filled); filled += chunk.length; }
-        let offset = buffer.offset;
-        let skipped = buffer.skipped;
-        if (bytes.length > REMOTE_STREAM_MAX_BYTES) {
-          const dropped = bytes.length - REMOTE_STREAM_MAX_BYTES;
-          bytes = bytes.subarray(dropped);
-          offset += dropped;
-          skipped += dropped;
+      let more = false;
+      for (const [id, outbox] of outboxes) {
+        const frame = outbox.take(REMOTE_STREAM_MAX_BYTES);
+        if (frame) {
+          sendJson(3, {
+            type: "stream", id, offset: frame.offset,
+            data: Buffer.from(frame.bytes).toString("base64"),
+            ...(frame.skipped ? { skipped: frame.skipped } : {}),
+            ...(frame.closed ? { closed: true } : {}),
+          });
         }
-        if (!bytes.length && !skipped && !buffer.closed) continue;
-        sendJson(3, {
-          type: "stream", id, offset,
-          data: Buffer.from(bytes).toString("base64"),
-          ...(skipped ? { skipped } : {}),
-          ...(buffer.closed ? { closed: true } : {}),
-        });
+        if (outbox.done) outboxes.delete(id);
+        else if (outbox.pending) more = true;
       }
-      streamBuffers.clear();
+      if (more && alive) streamTimer = setTimeout(flushStreams, REMOTE_STREAM_WINDOW_MS);
     };
     const claimedFiles = (request: RemoteRequest): Array<{ filename: string; size: number; sha256: string }> => {
       if (request.method !== "POST" || !new RegExp(`^/v1/sessions/(?:[0-9A-HJKMNP-TV-Z]{26}|${FILE_DROP_SESSION_ID})/messages$`).test(request.path)) return [];
@@ -647,13 +647,10 @@ export class RemoteController {
             // business waking someone's radio.
             if (!watchers.includes(deviceId)) return;
             try {
-              const buffer = streamBuffers.get(id)
-                ?? { offset: read.offset, chunks: [], total: 0, skipped: 0, closed: false };
-              if (!streamBuffers.has(id)) streamBuffers.set(id, buffer);
-              buffer.skipped += read.skipped;
-              if (read.bytes.length) { buffer.chunks.push(read.bytes); buffer.total += read.bytes.length; }
-              if (read.closed) buffer.closed = true;
-              if (!streamTimer) streamTimer = setTimeout(flushStreams, REMOTE_STREAM_WINDOW_MS);
+              let outbox = outboxes.get(id);
+              if (!outbox) outboxes.set(id, (outbox = new StreamOutbox(REMOTE_STREAM_BACKLOG_BYTES)));
+              outbox.push(read);
+              if (!streamTimer && outbox.pending) streamTimer = setTimeout(flushStreams, REMOTE_STREAM_WINDOW_MS);
             } catch { close(); }
           });
           return;
