@@ -203,7 +203,10 @@
 			});
 	});
 
-	let ownPaths = $derived(siblings.map((row) => row.workspace_relpath));
+	/** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
+	let ownPaths = $derived(
+		siblings.filter((row) => row.exists !== false).map((row) => row.workspace_relpath)
+	);
 	/**
 	 * The job's files, anchored at its work dir, with this message's own marked — relevance is
 	 * "somebody cited it", so a file an earlier turn produced is still one click away. Falls back

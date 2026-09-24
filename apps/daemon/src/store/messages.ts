@@ -394,6 +394,21 @@ export function insertPathAttachments(
   }
 }
 
+/** A file commit that has not landed yet: the path is taken, its bytes still sit at `temp_rel`. */
+function stagedCommit(ctx: StoreContext, relpath: string): { temp_rel: string; root: string } | null {
+  const root = workspacePath(ctx) || ctx.inboxRoot;
+  return ctx.db
+    .query<{ temp_rel: string; root: string }, [string, string]>("SELECT temp_rel, root FROM file_commits WHERE root = ? AND final_rel = ?")
+    .get(root, relpath) ?? null;
+}
+
+/** The same answer an attachment's `exists` gives, for a path that is only known as cited. */
+export function citedPathExists(ctx: StoreContext, relpath: string): boolean {
+  const located = resolveAttachmentLocation(ctx, relpath);
+  if (located && existsSync(located.abs)) return true;
+  return stagedCommit(ctx, relpath) !== null;
+}
+
 export function hydrateAttachment(ctx: StoreContext, row: AttachmentRow): Attachment {
   const located = resolveAttachmentLocation(ctx, row.workspace_relpath);
   let exists = false;
@@ -409,8 +424,7 @@ export function hydrateAttachment(ctx: StoreContext, row: AttachmentRow): Attach
       exists = false;
     }
   }
-  const root = workspacePath(ctx) || ctx.inboxRoot;
-  const staged = ctx.db.query<{ temp_rel: string; root: string }, [string, string]>("SELECT temp_rel, root FROM file_commits WHERE root = ? AND final_rel = ?").get(root, row.workspace_relpath);
+  const staged = stagedCommit(ctx, row.workspace_relpath);
   if (staged && !exists) {
     size = statSync(join(staged.root, staged.temp_rel)).size;
     exists = true;

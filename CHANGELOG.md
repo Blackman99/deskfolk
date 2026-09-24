@@ -8,6 +8,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The website shows and documents remote access. The walkthrough gains an eleventh step: with the Mac's window hidden, a paired phone opens the group from the relay's page, sends `@Writer` a follow-up, and Writer starts on the Mac while the phone watches; reading it on the phone clears the Mac's Dock badge. The docs gain a Guides section with a Remote access page — what a paired device can do, deploying the relay, pointing a source-run Mac at it, pairing a phone, Web Push, and what the error states mean — built from the new `docs/remote-access.md` and `docs/remote-access.zh.md`. Both READMEs have a Remote access section, and the roadmap now says pairing uses a one-time code rather than a QR scan. Remote access is still experimental and off by default; a release build cannot pair yet.
 
+- Fixed the workbench's file preview saying "File is gone" for files that are there. A file you had clicked in the file tree was saved into the tab as if its source message had attached it, under a made-up attachment id, and opening it again asked for that attachment, which does not exist. Such files are now always read from the workspace, and clicking a file only changes which one is on screen, so the blue dot marks just what the source message handed over instead of spreading to every file you opened. Tabs saved before this are cleaned up when they open. The file tree also no longer lists files that were cited but have since been deleted from disk — in a job's list, in the list a flow-board card opens, and in a message's own files.
+
 ## 0.1.0-rc.6 — 2026-09-24
 
 Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.

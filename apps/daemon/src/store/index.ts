@@ -283,6 +283,7 @@ export class Store {
   readonly getAttachment = this.bind(messages.getAttachment);
   readonly resolveAttachmentLocation = this.bind(messages.resolveAttachmentLocation);
   readonly getAttachmentFilePath = this.bind(messages.getAttachmentFilePath);
+  readonly citedPathExists = this.bind(messages.citedPathExists);
 
   // Turns, approvals, interrupts -----------------------------------------------------------
   readonly createTurn = this.bind(turns.createTurn);

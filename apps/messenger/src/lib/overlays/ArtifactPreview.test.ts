@@ -310,6 +310,81 @@ test("closing the preview stops the read still on the way", () => {
 });
 
 /**
+ * The workbench stands a file with no attachment row in with a made-up `virtual-…` id. Asking the
+ * attachment endpoint for that id is a 404, which read as "file is gone" for a file on disk.
+ */
+test("a stand-in for a file nothing attached is read from the workspace", async () => {
+  const workspaceReads: string[] = [];
+  const attachmentReads: string[] = [];
+  const standIn = {
+    id: "virtual-preview-shots/cover.png",
+    message_id: "",
+    workspace_relpath: "shots/cover.png",
+    original_filename: "cover.png",
+    created_at: "",
+  };
+  const { host, close } = render(ArtifactPreview, {
+    attachment: standIn,
+    relpath: "shots/cover.png",
+    siblings: [standIn],
+    api: {
+      kind: "remote",
+      getWorkspaceFileBlob: async (path: string) => {
+        workspaceReads.push(path);
+        return new Blob([PNG], { type: "image/png" });
+      },
+      getAttachmentBlob: async (id: string) => {
+        attachmentReads.push(id);
+        throw new Error("404");
+      },
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  flushSync();
+  expect(workspaceReads).toEqual(["shots/cover.png"]);
+  expect(attachmentReads).toEqual([]);
+  expect(host.textContent).not.toContain(t.stream.artifactMissing);
+  close();
+});
+
+test("a file this entry handed over that the Mac knows is deleted is not in the job's tree", async () => {
+  const kept = anAttachment({ id: "a-kept", workspace_relpath: "work/job/kept.png", original_filename: "kept.png" });
+  const deleted = anAttachment({ id: "a-gone", workspace_relpath: "work/job/deleted.png", original_filename: "deleted.png", exists: false });
+  const { host, close } = render(ArtifactPreview, {
+    attachment: kept,
+    relpath: kept.workspace_relpath,
+    siblings: [kept, deleted],
+    taskId: "job",
+    api: {
+      kind: "remote",
+      getAttachmentBlob: async () => new Blob([PNG], { type: "image/png" }),
+      getWorkspaceFileBlob: async () => new Blob([PNG], { type: "image/png" }),
+      // The daemon already leaves the deleted one out; the entry's own list must not add it back.
+      taskArtifacts: async () => ({
+        id: "job", dir: "work/job", title: "", closed_at: null,
+        items: [{ path: kept.workspace_relpath, last_cited_at: "2026-09-24T00:00:00.000Z", turn_id: null }],
+      }),
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  flushSync();
+  const rows = [...host.querySelectorAll(".artifact-tree-row")].map((row) => row.textContent?.trim());
+  expect(rows).toContain("kept.png");
+  expect(rows).not.toContain("deleted.png");
+  close();
+});
+
+/**
  * A keyframe is several MB of PNG. On a phone the pane shows the Mac's 1600 px copy first and
  * offers the original, which then replaces the copy in place.
  */
