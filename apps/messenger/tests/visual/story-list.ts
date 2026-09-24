@@ -16,7 +16,10 @@ export const STORY_SIZES = {
 	'group-pane-section': { width: 420, height: 900 },
 	'profile-pane': { width: 420, height: 1100 },
 	'profile-pane-section': { width: 420, height: 1100 },
-	'routine-card': { width: 520, height: 800 },
+	// Past the 680px breakpoint, so the list and its inline editor get the drawer layout; the
+	// story holds the list itself to 520, the width the seven day buttons are checked at.
+	'routine-card': { width: 700, height: 420 },
+	'routine-editor': { width: 700, height: 1000 },
 	'routine-editor-narrow': { width: 390, height: 1100 },
 	'routine-empty': { width: 390, height: 440 },
 	onboarding: { width: 900, height: 720 },

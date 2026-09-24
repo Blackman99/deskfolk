@@ -6,7 +6,7 @@ import { aBot, aRoutine, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
 import RoutineCard from "./RoutineCard.svelte";
-import { planRoutine, routineDraft, routineError } from "./routine-form.ts";
+import { planRoutine, routineDraft, routineError, routineRepeatLabel } from "./routine-form.ts";
 
 const t = copyFor("en");
 const settle = async () => { await new Promise((r) => setTimeout(r, 0)); flushSync(); };
@@ -49,19 +49,27 @@ test("weekly editing requires a weekday and preserves the revision and exact civ
 
 test("pause and resume use the live row revision without optimistic snapshot writes", async () => {
   const { host, runtime, close } = open();
-  click(buttonByText(host, t.routines.pause)); await settle();
+  const toggle = () => host.querySelector('.routine-toggle input') as HTMLInputElement;
+  expect(toggle().getAttribute('aria-label')).toBe(`${t.routines.pause}: Morning brief`);
+  click(toggle()); await settle();
   expect(runtime.calls[0]!.args).toEqual(['routine-1', { enabled: false, if_revision: aRoutine().updated_at }]);
   expect(runtime.snapshot.routines[0]!.enabled).toBe(true);
+  // The switch follows the snapshot, not the click.
+  expect(toggle().checked).toBe(true);
   flushSync(() => { runtime.snapshot.routines = [aRoutine({ enabled: false, updated_at: 'next' })]; });
-  click(buttonByText(host, t.routines.resume)); await settle();
+  expect(toggle().checked).toBe(false);
+  expect(toggle().getAttribute('aria-label')).toBe(`${t.routines.resume}: Morning brief`);
+  click(toggle()); await settle();
   expect(runtime.calls[1]!.args).toEqual(['routine-1', { enabled: true, if_revision: 'next' }]); close();
 });
 
 test("delete cancellation is inert and confirmation pins the revision at prompt time", async () => {
   const { host, runtime, close } = open();
-  click(buttonByText(host, t.routines.remove)); click(buttonByText(host, t.routines.cancel));
+  const remove = host.querySelector('.routine-remove') as HTMLButtonElement;
+  expect(remove.getAttribute('aria-label')).toBe(`${t.routines.remove}: Morning brief`);
+  click(remove); click(buttonByText(host, t.routines.cancel));
   expect(runtime.calls).toHaveLength(0);
-  click(buttonByText(host, t.routines.remove));
+  click(remove);
   flushSync(() => { runtime.snapshot.routines = [aRoutine({ updated_at: 'newer' })]; });
   click(buttonByText(host, t.routines.confirm)); await settle();
   expect(runtime.calls[0]!.args).toEqual(['routine-1', aRoutine().updated_at]); close();
@@ -111,7 +119,7 @@ test("a phone opens the editor as its own page and Back returns to the list", as
   try {
     const { host, app, close } = open();
     expect(host.querySelector(".routine-page")).toBeNull();
-    expect(host.querySelector(".routine-actions-wide")).not.toBeNull();
+    expect(host.querySelector(".routine-row")).not.toBeNull();
     click(host.querySelector(".routine-open"));
     expect(host.querySelector(".routine-page")).not.toBeNull();
     expect(host.querySelector(".routine-editor")).toBeNull();
@@ -138,14 +146,43 @@ test("quick preset selects workdays and weekend in weekly editor", async () => {
   close();
 });
 
-test("mobile toggle switches routine enabled without opening editor", async () => {
+test("the row's switch pauses a routine without opening the editor", async () => {
   const { host, runtime, close } = open();
-  const toggle = host.querySelector('.routine-mobile-toggle input[type=checkbox]') as HTMLInputElement;
+  const toggle = host.querySelector('.routine-toggle input[type=checkbox]') as HTMLInputElement;
   expect(toggle).not.toBeNull();
   expect(toggle.checked).toBe(true);
   click(toggle); await settle();
   expect(runtime.calls[0]!.args).toEqual(['routine-1', { enabled: false, if_revision: aRoutine().updated_at }]);
   expect(host.querySelector('.routine-page')).toBeNull();
+  close();
+});
+
+test("an edit opens under its own row and a new routine takes the add row's place", () => {
+  const { host, close } = open([aRoutine(), aRoutine({ id: 'routine-2', title: 'Evening wrap' })]);
+  const rows = () => [...host.querySelectorAll('.routine-list > li')].map((li) => li.getAttribute('data-routine-id') ?? li.className.split(' ')[0]);
+  expect(rows()).toEqual(['routine-1', 'routine-2']);
+  click(host.querySelector('.routine-open'));
+  expect(rows()).toEqual(['routine-1', 'routine-editor-slot', 'routine-2']);
+  expect(host.querySelector('.routine-editor-slot form h3')).toBeNull();
+  expect(buttonByText(host, t.routines.add)).toBeTruthy();
+  click(buttonByText(host, t.routines.cancel));
+  click(buttonByText(host, t.routines.add));
+  expect(rows()).toEqual(['routine-1', 'routine-2']);
+  expect(host.querySelector('.routine-list + form h3')?.textContent).toBe(t.routines.add);
+  expect([...host.querySelectorAll('button')].some((b) => b.textContent?.trim() === t.routines.add)).toBe(false);
+  close();
+});
+
+test("a row names its repeat without repeating the clock", () => {
+  const weekly = (weekdays: string[]) => aRoutine({ schedule: { kind: 'weekly', time: '17:30', weekdays } });
+  expect(routineRepeatLabel(aRoutine().schedule, t)).toBe(t.routines.daily);
+  expect(routineRepeatLabel(weekly(['mon', 'tue', 'wed', 'thu', 'fri']).schedule, t)).toBe(t.routines.workdays);
+  expect(routineRepeatLabel(weekly(['sat', 'sun']).schedule, t)).toBe(t.routines.weekend);
+  expect(routineRepeatLabel(weekly(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']).schedule, t)).toBe(t.routines.daily);
+  expect(routineRepeatLabel(weekly(['mon', 'wed', 'fri']).schedule, t)).toBe('Mon, Wed, Fri');
+  expect(routineRepeatLabel(weekly(['mon', 'wed', 'fri']).schedule, copyFor('zh'))).toBe('周一、周三、周五');
+  const { host, close } = open([weekly(['sat', 'sun'])]);
+  expect(host.querySelector('.routine-copy-sub')?.textContent?.trim()).toBe(t.routines.weekend);
   close();
 });
 
@@ -160,7 +197,7 @@ test("search target opens and highlights only its owning routine", () => {
 test("in-flight delete disables duplicate confirm and dismissal", async () => {
   let done!: (value: null) => void;
   const { host, close } = open([aRoutine()], { deleteRoutine: () => new Promise((r) => { done = r; }) });
-  click(buttonByText(host, t.routines.remove)); click(buttonByText(host, t.routines.confirm));
+  click(host.querySelector('.routine-remove')); click(buttonByText(host, t.routines.confirm));
   expect(buttonByText(host, t.routines.confirm).disabled).toBe(true);
   expect(buttonByText(host, t.routines.cancel).disabled).toBe(true);
   done(null); await settle(); expect(host.querySelector('[role=dialog]')).toBeNull(); close();

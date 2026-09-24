@@ -27,8 +27,10 @@ for (const [name, size] of Object.entries(STORY_SIZES)) {
 			}
 			if (name.startsWith('routine-')) {
 				await expect(page.getByRole('region', { name: '日程' })).toBeVisible();
-				await expect(page.getByRole('button', { name: '新建日程', exact: true })).toBeVisible();
+				// A phone's add button lives in the Bot pane's header, which the lone card does not draw.
+				if (name !== 'routine-editor-narrow') await expect(page.getByRole('button', { name: '新建日程', exact: true })).toBeVisible();
 				if (name === 'routine-editor-narrow') await expect(page.locator('#routine-title')).toHaveValue('Morning brief');
+				if (name === 'routine-editor') await expect(page.locator('#routine-title')).toHaveValue('Weekly review');
 				await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 			}
 			await expect(page).toHaveScreenshot(`${name}-${theme}.png`);

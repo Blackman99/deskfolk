@@ -51,3 +51,14 @@ export function routineScheduleLabel(schedule: RoutineSchedule, t: Copy): string
   const days = schedule.kind === "daily" ? t.routines.daily : WEEKDAYS.filter((day) => schedule.weekdays.includes(day)).map((day) => t.routines.days[day]).join(", ");
   return `${days} · ${schedule.time}`;
 }
+
+/** The repeat alone, for a row that already shows the clock. The day sets the editor offers as presets read as their names. */
+export function routineRepeatLabel(schedule: RoutineSchedule, t: Copy): string {
+  if (schedule.kind === "daily") return t.routines.daily;
+  const days = WEEKDAYS.filter((day) => schedule.weekdays.includes(day));
+  const set = days.join(",");
+  if (set === WEEKDAYS.join(",")) return t.routines.daily;
+  if (set === "mon,tue,wed,thu,fri") return t.routines.workdays;
+  if (set === "sat,sun") return t.routines.weekend;
+  return days.map((day) => t.routines.days[day]).join(t.routines.daySeparator);
+}

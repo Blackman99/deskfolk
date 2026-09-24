@@ -472,6 +472,9 @@
 				<line x1="3" y1="10" x2="21" y2="10"></line>
 			</svg>
 			<span class="tab-name">{t.detail.botTabRoutines}</span>
+			{#if routineCount > 0}
+				<span class="tab-count">{routineCount}</span>
+			{/if}
 			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 

@@ -106,7 +106,7 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 日程搜索同时检查快照日程与当前 Bot 名册。软删除 Bot 保留历史日程，结果标为不可用而不是静默关闭。资料导航序号覆盖后来日程/资料、会话设置、关闭和 URL 浮层变化，较早详情返回不能重开旧编辑器或丢弃新草稿。
 
-Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现有每天/每周与 `HH:MM` 字段，归属固定为当前 Bot。时间按执行 Mac 的本地日历解释，不提供浏览器时区转换或新 cron 语法；使用步骤见 [日程说明](routines.zh.md)。680px 及以下，编辑是盖在资料上的整页（`.routine-page`，`pageSlide`），列表只留钟点和标题；返回由 `RoutineCard.backFromEditor` 经 `ProfilePane.backFromEditor` 交给 Shell 的 Back / Escape，先于关闭资料。保存中这一页不关闭。宽屏仍把表单展开在卡片里。
+Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现有每天/每周与 `HH:MM` 字段，归属固定为当前 Bot。时间按执行 Mac 的本地日历解释，不提供浏览器时区转换或新 cron 语法；使用步骤见 [日程说明](routines.zh.md)。680px 及以下，编辑是盖在资料上的整页（`.routine-page`，`pageSlide`），列表只留钟点、标题和启停开关；返回由 `RoutineCard.backFromEditor` 经 `ProfilePane.backFromEditor` 交给 Shell 的 Back / Escape，先于关闭资料。保存中这一页不关闭。宽屏不套卡片：条数在 `ProfilePane` 的标签上，表单展开在所编辑的那一行下面（`.routine-editor-slot`）；新建的、或编辑中被别处删掉的日程没有行可挂，表单落在列表末尾。
 
 名册日程图（`?o=routines`，`calendar/RoutineCalendar.svelte`）把同一份快照投影到 `svelte5plus-calendar@0.5.5` 的周视图上，只读。在桌面窗格里它用 `height: 100%` 铺满窗格（窗格主体不是 flex 容器，只写 `flex: 1` 会让 24 小时格子按内容撑高、被窗格裁掉），时间轴在窗格内滚动，窗口和分隔条改变尺寸时格子跟着变。议程不走库自带的那一列（它不渲染 `eventContent`），由 `RoutineCalendar` 自己列出头像和名字。格子由 `project-routines.ts` 按库回调的闭区间展开，不设 `recurrence`，也不 `bind:events`。名册筛选是可搜索下拉（名字或职责），只列出至少有一条日程的 Bot；没有日程的不进这张图，当前范围内没有格子的 Bot 仍留在下拉里。窄屏用 `has-routines` 显示主栏；打开时清掉 `?p=`。组件测试经 `calendar-entry.ts` 用相对路径引进库，因为包的导出只有 `svelte` 条件，bun 解析不到。
 

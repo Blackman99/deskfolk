@@ -6,7 +6,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import DangerDialog from '../overlays/DangerDialog.svelte';
-	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineScheduleLabel } from './routine-form.ts';
+	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineRepeatLabel } from './routine-form.ts';
 
 	let { runtime, bot, t }: { runtime: MessengerRuntime; bot: Bot; t: Copy } = $props();
 	const routines = $derived(runtime.snapshot.routines.filter((row) => row.bot_id === bot.id));
@@ -26,6 +26,8 @@
 	const live = $derived(routines.find((row) => row.id === editing));
 	const conflict = $derived(!!baseline && !!live && baseline.updated_at !== live.updated_at);
 	const missing = $derived(!!baseline && !live);
+	/** A new routine, or one deleted while open, has no row to hang its editor under. */
+	const standalone = $derived(editing === 'add' || (!!editing && missing));
 	const disabled = $derived(busy || runtime.connection !== 'connected');
 	const PHONE_QUERY = '(max-width: 680px)';
 
@@ -184,43 +186,34 @@
 	}
 </script>
 
-<section class="panel-card routine-card" aria-label={t.routines.title}>
-	<div class="panel-card-head">
-		<span class="panel-card-title">{t.routines.title}</span>
-		<span class="panel-counter-badge">{routines.length}</span>
-		<button type="button" class="btn-secondary routine-add" disabled={disabled} onclick={() => open()}>
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-			<span>{t.routines.add}</span>
-		</button>
-	</div>
-	<div class="panel-card-body routine-body">
-		<p class="routine-hint routine-hint-wide">{t.routines.zone}</p>
-		<p class="routine-hint routine-hint-wide">{t.routines.availability}</p>
+<!-- The tab carries the title and the count, so the list sits straight in the pane. -->
+<section class="routine-section" aria-label={t.routines.title}>
+	{#if routines.length > 0}
+		<div class="routine-mobile-zone-hint">
+			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+			<span>{t.routines.zone}</span>
+		</div>
+	{/if}
 
-		{#if routines.length > 0}
-			<div class="routine-mobile-zone-hint">
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-				<span>{t.routines.zone}</span>
+	{#if routines.length === 0 && !(standalone && !onPhone())}
+		<div class="routine-empty-card">
+			<div class="routine-empty-icon" aria-hidden="true">
+				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="3" y="4" width="18" height="18" rx="2"></rect>
+					<line x1="16" y1="2" x2="16" y2="6"></line>
+					<line x1="8" y1="2" x2="8" y2="6"></line>
+					<line x1="3" y1="10" x2="21" y2="10"></line>
+				</svg>
 			</div>
-		{/if}
+			<p class="routine-empty">{t.routines.empty}</p>
+			<button type="button" class="btn-primary routine-empty-btn" disabled={disabled} onclick={() => open()}>
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<span>{t.routines.add}</span>
+			</button>
+		</div>
+	{/if}
 
-		{#if routines.length === 0}
-			<div class="routine-empty-card">
-				<div class="routine-empty-icon" aria-hidden="true">
-					<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="3" y="4" width="18" height="18" rx="2"></rect>
-						<line x1="16" y1="2" x2="16" y2="6"></line>
-						<line x1="8" y1="2" x2="8" y2="6"></line>
-						<line x1="3" y1="10" x2="21" y2="10"></line>
-					</svg>
-				</div>
-				<p class="routine-empty">{t.routines.empty}</p>
-				<button type="button" class="btn-primary routine-empty-btn" disabled={disabled} onclick={() => open()}>
-					{t.routines.add}
-				</button>
-			</div>
-		{/if}
-
+	{#if routines.length > 0}
 		<ul class="routine-list">
 			{#each routines as row (row.id)}
 				<li class="routine-row" class:is-open={editing === row.id} class:is-paused={!row.enabled} data-routine-id={row.id}>
@@ -228,58 +221,77 @@
 						<span class="routine-clock" aria-hidden="true">{row.schedule.time}</span>
 						<span class="routine-copy">
 							<span class="routine-copy-main">
-								<strong>{row.title}</strong>
+								<strong title={row.title}>{row.title}</strong>
 								{#if !row.enabled}
 									<span class="routine-badge-paused">{t.routines.paused}</span>
 								{/if}
 							</span>
 							<span class="routine-copy-sub">
-								<svg class="routine-sub-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-								<span>{routineScheduleLabel(row.schedule, t)}</span>
+								<svg class="routine-sub-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+								<span>{routineRepeatLabel(row.schedule, t)}</span>
 							</span>
 						</span>
-						<span class="routine-state">{row.enabled ? t.routines.active : t.routines.paused}</span>
-						<span class="routine-chevron" aria-hidden="true"></span>
 					</button>
-					<div class="routine-actions routine-actions-wide">
-						<button type="button" class="btn-secondary" disabled={disabled} aria-label={`${row.enabled ? t.routines.pause : t.routines.resume}: ${row.title}`} onclick={() => void mutate(() => runtime.patchRoutine(row.id, { enabled: !row.enabled, if_revision: row.updated_at }), () => {})}>{row.enabled ? t.routines.pause : t.routines.resume}</button>
-						<button type="button" class="btn-secondary routine-remove" disabled={disabled} aria-label={`${t.routines.remove}: ${row.title}`} onclick={() => { deleting = row; failure = ''; }}>{t.routines.remove}</button>
-					</div>
-					<div class="routine-mobile-toggle">
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-						<label class="switch-toggle" class:is-disabled={disabled} title={row.enabled ? t.routines.pause : t.routines.resume} onclick={(e) => e.stopPropagation()}>
-							<input
-								type="checkbox"
-								checked={row.enabled}
-								disabled={disabled}
-								aria-label={`${row.enabled ? t.routines.pause : t.routines.resume}: ${row.title}`}
-								onchange={() => void mutate(() => runtime.patchRoutine(row.id, { enabled: !row.enabled, if_revision: row.updated_at }), () => {})}
-							/>
-							<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-						</label>
-					</div>
+					<label class="switch-toggle routine-toggle" class:is-disabled={disabled} title={row.enabled ? t.routines.pause : t.routines.resume}>
+						<input
+							type="checkbox"
+							checked={row.enabled}
+							disabled={disabled}
+							aria-label={`${row.enabled ? t.routines.pause : t.routines.resume}: ${row.title}`}
+							onchange={(event) => {
+								// The snapshot flips the switch once the daemon has it, not the click.
+								event.currentTarget.checked = row.enabled;
+								void mutate(() => runtime.patchRoutine(row.id, { enabled: !row.enabled, if_revision: row.updated_at }), () => {});
+							}}
+						/>
+						<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+					</label>
+					<button type="button" class="routine-remove" disabled={disabled} title={t.routines.remove} aria-label={`${t.routines.remove}: ${row.title}`} onclick={() => { deleting = row; failure = ''; }}>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+					</button>
 				</li>
+				{#if editing === row.id && !onPhone()}
+					<li class="routine-editor-slot">{@render inlineEditor()}</li>
+				{/if}
 			{/each}
 		</ul>
-		{#if failure && !editing}<p class="field-error" role="alert">{failure}</p>{/if}
-		{#if retryable && !editing}
-			<p class="routine-hint" role="status">{t.routines.retryHint}</p>
-			<button type="button" class="btn-secondary" disabled={disabled} onclick={() => void retry()}>{t.routines.retry}</button>
-		{/if}
-		{#if notice && !editing}<p class="routine-hint" role="status">{notice}</p>{/if}
-		{#if editing && !onPhone()}
-			<form class="routine-editor" bind:this={editorEl} aria-label={baseline ? t.routines.edit : t.routines.add} onsubmit={(event) => { event.preventDefault(); void save(); }} novalidate>
-				<h3>{baseline ? t.routines.edit : t.routines.add}</h3>
-				{@render editorFields()}
-				<div class="routine-actions">
-					<button type="button" class="btn-secondary" disabled={busy} onclick={close}>{t.routines.cancel}</button>
-					<button type="submit" class="btn-primary" disabled={disabled || conflict || missing || retiredDraft}>{busy ? t.routines.busy : t.routines.save}</button>
-				</div>
-			</form>
-		{/if}
+	{/if}
+	{#if standalone && !onPhone()}
+		{@render inlineEditor()}
+	{:else if routines.length > 0}
+		<button type="button" class="routine-add" disabled={disabled} onclick={() => open()}>
+			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+			<span>{t.routines.add}</span>
+		</button>
+	{/if}
+
+	{#if failure && !editing}<p class="field-error" role="alert">{failure}</p>{/if}
+	{#if retryable && !editing}
+		<p class="routine-hint" role="status">{t.routines.retryHint}</p>
+		<button type="button" class="btn-secondary" disabled={disabled} onclick={() => void retry()}>{t.routines.retry}</button>
+	{/if}
+	{#if notice && !editing}<p class="routine-hint" role="status">{notice}</p>{/if}
+
+	<div class="routine-notes">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+		<div>
+			<p>{t.routines.zone}</p>
+			<p>{t.routines.availability}</p>
+		</div>
 	</div>
 </section>
+
+{#snippet inlineEditor()}
+	<form class="routine-editor" class:is-standalone={standalone} bind:this={editorEl} aria-label={baseline ? t.routines.edit : t.routines.add} onsubmit={(event) => { event.preventDefault(); void save(); }} novalidate>
+		<!-- An edit opens under its own row, which already names it. -->
+		{#if standalone}<h3>{baseline ? t.routines.edit : t.routines.add}</h3>{/if}
+		{@render editorFields()}
+		<div class="routine-actions">
+			<button type="button" class="btn-secondary" disabled={busy} onclick={close}>{t.routines.cancel}</button>
+			<button type="submit" class="btn-primary" disabled={disabled || conflict || missing || retiredDraft}>{busy ? t.routines.busy : t.routines.save}</button>
+		</div>
+	</form>
+{/snippet}
 
 {#if editing && onPhone()}
 	<form
@@ -476,31 +488,53 @@
 {/if}
 
 <style>
-	.routine-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-	.routine-add { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+	.routine-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 	.routine-hint, .routine-empty { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 	.routine-mobile-zone-hint { display: none; }
-	.routine-empty-card { display: none; }
+
+	.routine-empty-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px 16px; border: 1px dashed var(--line); border-radius: var(--radius-lg); background: var(--pane); text-align: center; }
+	.routine-empty-icon { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; background: var(--sidebar-bg); color: var(--muted); }
+	.routine-empty { font-size: 13px; }
+	.routine-empty-btn { display: inline-flex; align-items: center; gap: 6px; }
+
 	.routine-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
-	.routine-row { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--pane); transition: border-color 0.15s, background-color 0.15s; }
+	.routine-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 10px 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); box-shadow: var(--shadow-xs); transition: border-color 0.15s, background-color 0.15s; }
+	.routine-row:hover { border-color: var(--line-hover); }
 	.routine-row.is-open { border-color: var(--accent); background: var(--accent-tint); }
 	.routine-row.is-paused .routine-clock,
 	.routine-row.is-paused strong { color: var(--muted); }
-	.routine-open { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; background: none; border: 0; text-align: left; color: var(--ink); cursor: pointer; }
-	.routine-clock { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; }
-	.routine-copy { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+	.routine-open { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; min-height: 40px; padding: 0; background: none; border: 0; text-align: left; color: var(--ink); cursor: pointer; }
+	.routine-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-md); }
+	.routine-clock { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; }
+	.routine-copy { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 	.routine-copy-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
-	.routine-copy-main strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.routine-badge-paused { font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 999px; background: var(--sidebar-bg); border: 1px solid var(--line); color: var(--muted); line-height: 1.3; }
-	.routine-copy-sub { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+	.routine-copy-main strong { min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.routine-badge-paused { flex-shrink: 0; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 999px; background: var(--sidebar-bg); border: 1px solid var(--line); color: var(--muted); line-height: 1.3; }
+	.routine-copy-sub { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
+	.routine-copy-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.routine-sub-icon { opacity: 0.7; flex-shrink: 0; }
-	.routine-state { flex: 0 0 auto; color: var(--muted); font-size: 12px; margin-left: 8px; }
-	.routine-chevron { display: none; }
-	.routine-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: 8px; }
-	.routine-mobile-toggle { display: none; }
+	.routine-toggle { flex-shrink: 0; }
+	.routine-remove { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); cursor: pointer; transition: color 0.15s, background-color 0.15s; }
+	.routine-remove:hover:not(:disabled) { color: var(--danger-text); background: var(--danger-bg); }
+	.routine-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-	.routine-editor { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding-top: 16px; border-top: 1px solid var(--line); scroll-margin: 16px; }
+	.routine-add { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; padding: 0 14px; border: 1px dashed var(--line); border-radius: var(--radius-lg); background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: color 0.15s, border-color 0.15s, background-color 0.15s; }
+	.routine-add:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+	.routine-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+	.routine-notes { display: flex; align-items: flex-start; gap: 8px; padding: 2px 4px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+	.routine-notes svg { flex-shrink: 0; margin-top: 3px; opacity: 0.8; }
+	.routine-notes p { margin: 0; }
+
+	/* An edit hangs off its row, so the two read as one open card. */
+	.routine-row.is-open:has(+ .routine-editor-slot) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+	.routine-editor-slot { margin-top: -8px; padding: 16px; border: 1px solid var(--accent); border-top: 0; border-radius: 0 0 var(--radius-lg) var(--radius-lg); background: var(--pane); }
+	.routine-editor { display: flex; flex-direction: column; gap: 14px; min-width: 0; scroll-margin: 16px; }
+	.routine-editor.is-standalone { padding: 16px; border: 1px solid var(--accent); border-radius: var(--radius-lg); background: var(--pane); }
 	.routine-editor h3, .routine-page-head h3 { margin: 0; font-size: 16px; font-weight: 650; }
+	/* The row keeps its own delete, and the notes stay under the list. */
+	.routine-editor .routine-danger-card, .routine-editor .routine-notice-card { display: none; }
+	.routine-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 
 	/* Form Grouping & Cards */
 	.routine-form-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--pane); }
@@ -559,12 +593,13 @@
 	.routine-page-delete { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-md); background: rgba(239, 68, 68, 0.05); color: var(--danger-text, var(--danger, #ef4444)); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; }
 	.routine-page-delete:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.4); }
 
-	.routine-card button { min-height: 40px; }
-	.routine-card .btn-secondary, .routine-card .btn-primary, .routine-page .btn-primary { padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--btn-secondary-bg); font-size: 13px; font-weight: 600; transition: all 0.15s ease; }
-	.routine-card .btn-primary, .routine-page .btn-primary { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2); }
-	.routine-card .btn-primary:hover:not(:disabled), .routine-page .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-	.routine-card button:disabled, .routine-page button:disabled { opacity: 0.55; cursor: default; }
-	.routine-card button:not(:disabled):hover { border-color: var(--accent); }
+	/* The inline editor's controls keep the 40px floor they had inside the old card. */
+	.routine-editor button, .routine-section .btn-secondary, .routine-section .btn-primary { min-height: 40px; }
+	.routine-section .btn-secondary, .routine-section .btn-primary, .routine-page .btn-primary { padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--btn-secondary-bg); font-size: 13px; font-weight: 600; transition: all 0.15s ease; }
+	.routine-section .btn-primary, .routine-page .btn-primary { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2); }
+	.routine-section .btn-primary:hover:not(:disabled), .routine-page .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+	.routine-section button:disabled, .routine-page button:disabled { opacity: 0.55; cursor: default; }
+	.routine-section .btn-secondary:not(:disabled):hover { border-color: var(--accent); }
 
 	.routine-form-card .form-group { display: flex; flex-direction: column; gap: 6px; }
 	.routine-form-card input:not([type='checkbox']):not([type='radio']),
@@ -576,25 +611,20 @@
 	.routine-page { display: none; }
 
 	@media (max-width: 680px) {
-		.routine-hint-wide, .routine-actions-wide, .routine-state { display: none; }
-		/* The section header carries the count and the add button; the rows share the pane's gutter. */
-		.routine-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-		.routine-card .panel-card-head { display: none; }
-		.routine-body { gap: 10px; padding: 0; }
+		/* The section header carries the add button and the editor page keeps the notes, so the rows start at the top. */
+		.routine-notes, .routine-add, .routine-remove { display: none; }
+		.routine-section { gap: 10px; }
 		.routine-mobile-zone-hint { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--radius-md); background: var(--pane); border: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
-		.routine-list { gap: 8px; border-radius: 0; background: transparent; }
-		.routine-row { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-lg, 12px); background: var(--pane); box-shadow: var(--shadow-xs); }
-		.routine-row + .routine-row { border-top: 1px solid var(--line); }
-		.routine-row.is-open { background: var(--accent-tint); border-color: var(--accent); }
-		.routine-open { min-height: 52px; padding: 0; }
+		.routine-row { padding: 12px 14px; }
+		.routine-row:hover { border-color: var(--line); }
+		.routine-row.is-open { border-color: var(--accent); }
+		.routine-open { min-height: 52px; }
 		.routine-open:active { opacity: 0.85; }
 		.routine-clock { font-size: 24px; width: 68px; }
-		.routine-chevron { display: none; }
-		.routine-mobile-toggle { display: flex; align-items: center; margin-left: 12px; flex-shrink: 0; }
 
-		.routine-empty-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 36px 16px; border-radius: var(--radius-lg, 12px); background: var(--pane); border: 1px dashed var(--line); text-align: center; }
-		.routine-empty-icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--sidebar-bg); color: var(--muted); }
-		.routine-empty { font-size: 14px; color: var(--muted); margin: 0; }
+		.routine-empty-card { padding: 36px 16px; }
+		.routine-empty-icon { width: 56px; height: 56px; }
+		.routine-empty { font-size: 14px; }
 		.routine-empty-btn { min-height: 42px; padding: 0 20px; font-size: 14px; }
 
 		/* Mobile Page Slide-over */

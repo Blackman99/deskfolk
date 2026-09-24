@@ -689,7 +689,17 @@ const defs: Record<StoryName, Story> = {
 	},
 	'routine-card': {
 		component: RoutineCard as never,
-		props: { runtime: fakeRuntime({ routines: [aRoutine(), aRoutine({ id: 'weekly', title: 'Weekly review', enabled: false, schedule: { kind: 'weekly', time: '17:30', weekdays: ['mon', 'fri'] } })] }), bot: bots[0], t }
+		props: { runtime: fakeRuntime({ routines: [aRoutine(), aRoutine({ id: 'weekly', title: 'Weekly review', enabled: false, schedule: { kind: 'weekly', time: '17:30', weekdays: ['mon', 'fri'] } })] }), bot: bots[0], t },
+		afterMount(host) { host.style.width = '520px'; }
+	},
+	'routine-editor': {
+		component: RoutineCard as never,
+		props: { runtime: fakeRuntime({ routines: [aRoutine(), aRoutine({ id: 'weekly', title: 'Weekly review', schedule: { kind: 'weekly', time: '17:30', weekdays: ['mon', 'fri'] } })] }), bot: bots[0], t },
+		afterMount(host) {
+			host.style.width = '520px';
+			(host.querySelectorAll('.routine-open')[1] as HTMLButtonElement).click();
+			flushSync();
+		}
 	},
 	'routine-editor-narrow': {
 		component: RoutineCard as never,

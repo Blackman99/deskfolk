@@ -145,6 +145,8 @@ test("on a phone the routines header carries the count and opens a new routine",
   withPhone(() => {
     const { host, runtime, close } = openProfile([aRoutine(), aRoutine({ id: "routine-2" }), aRoutine({ id: "elsewhere", bot_id: "bot-2" })]);
     expect(host.querySelector(".bot-detail-action")).toBeNull();
+    // The section row counts only this Bot's routines, the way skills and memory count theirs.
+    expect([...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][2].textContent?.replace(/\s+/g, " ").trim()).toBe(`${t.detail.botTabRoutines} 2`);
     click([...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][2]);
     expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabRoutines);
     expect(host.querySelector(".bot-detail-count")?.textContent).toBe("2");
