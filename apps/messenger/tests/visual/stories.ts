@@ -317,6 +317,28 @@ const manyTabs: WorkbenchLayout = {
 	focus: { zone: 'tiled', leafId: 'p1' }
 };
 
+/**
+ * The group at a phone's width with its replies done, so ✨ is free to press: it answers at once
+ * with more chips than one row holds, for the docked composer's spec to scroll through.
+ */
+const dockedRuntime: ReturnType<typeof fakeRuntime> = fakeRuntime(
+	{ ...world, turns: turns.filter((turn) => turn.status !== 'running') },
+	{
+		selectedId: 'sess-1',
+		suggestComposer: async (sessionId: string) => {
+			dockedRuntime.sessionView(sessionId).composerSuggestions = [
+				{ id: 's0', label: '让审片员复审第三场', prompt: '@审片员 请复审第三场的字幕与配音。' },
+				{ id: 's1', label: '汇总今天的进度', prompt: '汇总一下今天每个人的进度。' },
+				{ id: 's2', label: '细看分镜里的转场节奏', prompt: '细看分镜里的转场节奏，哪里拖了？' },
+				{ id: 's3', label: '提炼三条剪辑要点', prompt: '把这轮讨论提炼成三条剪辑要点。' }
+			];
+		},
+		dismissComposerSuggestions: (sessionId: string) => {
+			dockedRuntime.sessionView(sessionId).composerSuggestions = [];
+		}
+	}
+);
+
 const defs: Record<StoryName, Story> = {
 	shell: {
 		component: Shell as never,
@@ -433,6 +455,23 @@ const defs: Record<StoryName, Story> = {
 			onOpenProfile: () => {},
 			onOpenArtifact: () => {},
 			onCreateBot: () => {}
+		}
+	},
+	'chat-stage-narrow': {
+		component: ChatStage as never,
+		props: {
+			runtime: dockedRuntime,
+			t,
+			selected: group,
+			onOpenProfile: () => {},
+			onOpenArtifact: () => {},
+			onCreateBot: () => {}
+		},
+		// The shell names the column a `conversation` container; on its own the stage has none.
+		afterMount: (host) => {
+			host.style.display = 'flex';
+			host.style.flexDirection = 'column';
+			host.style.container = 'conversation / inline-size';
 		}
 	},
 	'context-menu': {

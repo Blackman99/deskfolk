@@ -144,6 +144,9 @@
 				: t.composer.send
 	);
 
+	/** Something to send: text, or files staged without any. */
+	const hasContent = $derived(Boolean(view?.draft.trim()) || pendingAttachments.length > 0);
+
 	const primaryAction = $derived(composerAction({
 		connected,
 		hasSession: Boolean(selected),
@@ -151,7 +154,7 @@
 		hasLiveTurn: Boolean(liveTurn),
 		pendingJudgement: pendingHere.length > 0,
 		busy: view?.sending ?? false,
-		hasContent: Boolean(view?.draft.trim()) || pendingAttachments.length > 0,
+		hasContent,
 		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
 	}));
 
@@ -190,6 +193,41 @@
 			current.suggestionsEmpty = false;
 		}, 4000);
 		return () => clearTimeout(timer);
+	});
+
+	let suggestScrollEl = $state<HTMLDivElement | null>(null);
+	let suggestMoreStart = $state(false);
+	let suggestMoreEnd = $state(false);
+
+	/**
+	 * The chips stay one row and scroll sideways. A mouse wheel only scrolls down, which in a
+	 * narrow pane left the chips past the edge out of reach, so it is turned sideways here; the
+	 * edges fade while there is more that way, rather than a chip ending in a hard cut.
+	 */
+	$effect(() => {
+		const row = suggestScrollEl;
+		void view?.composerSuggestions;
+		if (!row) return;
+		const edges = () => {
+			const max = row.scrollWidth - row.clientWidth;
+			suggestMoreStart = row.scrollLeft > 1;
+			suggestMoreEnd = row.scrollLeft < max - 1;
+		};
+		const onWheel = (e: WheelEvent) => {
+			if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || row.scrollWidth <= row.clientWidth) return;
+			e.preventDefault();
+			row.scrollLeft += e.deltaY;
+		};
+		edges();
+		row.addEventListener('scroll', edges, { passive: true });
+		row.addEventListener('wheel', onWheel, { passive: false });
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(edges);
+		observer?.observe(row);
+		return () => {
+			row.removeEventListener('scroll', edges);
+			row.removeEventListener('wheel', onWheel);
+			observer?.disconnect();
+		};
 	});
 
 	const mentionCandidates = $derived.by<MentionCandidate[]>(() => {
@@ -683,18 +721,25 @@
 <div class="composer-dock">
 {#if canSuggest && view && suggestionsShown}
 	<div class="composer-frost-shell composer-suggest-bar" role="group" aria-label={t.chat.suggestNext}>
-		{#each view.composerSuggestions as suggestion (suggestion.id)}
-			<button
-				type="button"
-				class="suggest-chip"
-				title={suggestion.prompt}
-				onclick={() => onPickPrompt(suggestion.prompt)}
-			>
-				{suggestion.label}
-			</button>
-		{:else}
-			<span class="suggest-note" role="status">{t.composer.suggestNone}</span>
-		{/each}
+		<div
+			bind:this={suggestScrollEl}
+			class="suggest-scroll"
+			class:has-more-start={suggestMoreStart}
+			class:has-more-end={suggestMoreEnd}
+		>
+			{#each view.composerSuggestions as suggestion (suggestion.id)}
+				<button
+					type="button"
+					class="suggest-chip"
+					title={suggestion.prompt}
+					onclick={() => onPickPrompt(suggestion.prompt)}
+				>
+					{suggestion.label}
+				</button>
+			{:else}
+				<span class="suggest-note" role="status">{t.composer.suggestNone}</span>
+			{/each}
+		</div>
 	</div>
 {/if}
 
@@ -817,11 +862,13 @@
 			<span class="composer-inline-limit">{t.composer.attachLimit}</span>
 		{/if}
 		</div>
+		<!-- Beside send rather than the attachment button, so a thumb has one of them on each side. -->
 		{#if canSuggest}
 			<button
 				type="button"
 				class="suggest-btn"
 				class:is-active={suggestionsShown}
+				class:steps-aside={hasContent}
 				title={suggestTitle}
 				aria-label={suggestTitle}
 				aria-pressed={suggestionsShown}
@@ -934,21 +981,45 @@
 		width: max-content;
 		max-width: 100%;
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-wrap: nowrap;
-		padding: 4px 8px 10px 4px;
+		min-width: 0;
 		margin: 0 0 -8px;
 		border-radius: 22px 22px 8px 8px;
 		pointer-events: auto;
+	}
+
+	/* The scroller is inside the frost, so fading its edges does not cut the frost's halo off. */
+	.suggest-scroll {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: nowrap;
+		min-width: 0;
+		padding: 4px 8px 10px 4px;
 		overflow-x: auto;
 		overflow-y: hidden;
 		overscroll-behavior-x: contain;
 		scrollbar-width: none;
 	}
 
-	.composer-suggest-bar::-webkit-scrollbar {
+	.suggest-scroll::-webkit-scrollbar {
 		display: none;
+	}
+
+	.suggest-scroll.has-more-end {
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+		mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+	}
+
+	.suggest-scroll.has-more-start {
+		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+		mask-image: linear-gradient(to right, transparent, #000 28px);
+	}
+
+	.suggest-scroll.has-more-start.has-more-end {
+		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+		mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
 	}
 
 	.suggest-note {
@@ -1603,90 +1674,187 @@
 		color: var(--text);
 	}
 
-	/* Compact as on a phone whenever the conversation is that narrow, a workbench pane included.
-	   The keyboard inset and the safe area are zero outside a phone. */
+	/*
+	 * A conversation as narrow as a phone — a phone, a small window, a workbench pane — docks the
+	 * composer: a bar across the bottom that the transcript ends above, rather than a card floating
+	 * over it. Floating cost a margin on every side of a column that has none to spare, and the
+	 * transcript showed through the gaps around the card and the chips. The bar is in the stage's
+	 * flow, so the stream shrinks to fit it; the stage's resize follow keeps it stuck to the bottom.
+	 * The keyboard inset and the safe area are zero outside a phone. With the keyboard up the home
+	 * indicator is under it, so the bar does not keep its inset above the keys.
+	 */
 	@container conversation (max-width: 680px) {
 		.composer {
-			bottom: var(--keyboard-inset, 0px);
-			padding: 8px 10px max(12px, env(safe-area-inset-bottom));
-			gap: 4px;
+			position: relative;
+			bottom: auto;
+			flex: none;
+			margin-bottom: var(--keyboard-inset, 0px);
+			padding: 0 0 max(0px, calc(env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px)));
+			gap: 0;
+			background: var(--input-bg);
+			border-top: 1px solid var(--line);
+			pointer-events: auto;
+			transition: border-color 0.15s ease;
+		}
+
+		.composer:focus-within {
+			border-top-color: var(--accent-border);
+		}
+
+		.composer-dock {
+			max-width: none;
+		}
+
+		/* Nothing floats, so there is nothing for the frost to lift off the transcript. */
+		.composer-frost-shell::before {
+			display: none;
 		}
 
 		.composer-suggest-bar {
 			align-self: stretch;
-			width: 100%;
-			padding: 2px 2px 8px;
-			margin: 0 0 -6px;
-			flex-wrap: nowrap;
+			width: auto;
+			max-width: none;
+			margin: 0;
+			border-radius: 0;
 		}
 
-		.composer-suggest-bar::before {
-			inset: -6px -6px 2px;
+		.suggest-scroll {
+			flex: 1;
+			padding: 8px 10px 2px;
 		}
 
 		.suggest-chip {
 			min-height: 30px;
 			max-width: 85%;
-			padding: 4px 9px;
-			font-size: 11.5px;
+			padding: 4px 10px;
+			font-size: 12px;
 		}
 
-		.composer-card-shell::before {
-			inset: -6px;
-			border-radius: 28px;
+		.composer-card-shell,
+		.composer-card,
+		.composer-card.is-locked {
+			border-radius: 0;
 		}
-	}
-	@container conversation (max-width: 680px) {
-	.composer-card {
-	padding: 4px 5px 4px 6px;
-	border-radius: 22px;
-	max-width: 100%;
-	}
-	}
-	@container conversation (max-width: 680px) {
-	.composer .composer-input {
-	font-size: 15px;
-	max-height: min(120px, 25dvh);
-	padding: 6px 4px;
-	}
 
-	.composer-inline-limit {
-		margin: -2px 4px 3px;
-		font-size: 10px;
-	}
-	}
-	@container conversation (max-width: 680px) {
-	.composer .composer-input.is-empty::before {
-	left: 4px;
-	right: 4px;
-	top: 6px;
-	}
-	}
-	@container conversation (max-width: 680px) {
-	.composer .composer-action,
-	.composer .attach-btn {
-	width: 34px;
-	height: 34px;
-	flex-basis: 34px;
-	}
-	}
-	@container conversation (max-width: 680px) {
-	.composer-hint {
-	display: none;
-	}
-	}
-	@container conversation (max-width: 680px) {
-	.mention-autocomplete-popup {
-	left: 10px;
-	width: calc(100% - 20px);
-	}
+		.composer-card {
+			border: 0;
+			box-shadow: none;
+			padding: 6px 8px;
+			max-width: 100%;
+		}
+
+		.composer-card:focus-within {
+			box-shadow: none;
+		}
+
+		.composer-card.is-locked {
+			padding: 12px 14px;
+		}
+
+		.composer .composer-input {
+			font-size: 15px;
+			max-height: min(120px, 25dvh);
+			padding: 6px 4px;
+		}
+
+		.composer-inline-limit {
+			margin: -2px 4px 3px;
+			font-size: 10px;
+		}
+
+		.composer .composer-input.is-empty::before {
+			left: 4px;
+			right: 4px;
+			top: 6px;
+		}
+
+		.composer .composer-action,
+		.composer .attach-btn,
+		.composer .suggest-btn {
+			width: 34px;
+			height: 34px;
+			flex-basis: 34px;
+		}
+
+		.composer-hint {
+			display: none;
+		}
+
+		/* Clear of the bar's top edge, which it used to overlap by the card's rounding. */
+		.mention-autocomplete-popup {
+			bottom: calc(100% + 6px);
+			left: 10px;
+			width: calc(100% - 20px);
+		}
+
+		/*
+		 * With an empty input ✨ sits in room the placeholder does not use; once there is something
+		 * to send it gives that room to the text, and send is never next to a button you meant.
+		 */
+		.suggest-btn.steps-aside {
+			display: none;
+		}
+
+		/*
+		 * A thumb, on a screen whose edges may curve away: a quad-curved phone reports no safe area
+		 * for its curves, so the bar keeps its own margin from all three edges, and the buttons are
+		 * big enough to hit with ✨ held apart from send.
+		 */
+		@media (pointer: coarse) {
+			.composer-card {
+				padding: 6px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+			}
+
+			.suggest-scroll {
+				padding-left: max(16px, env(safe-area-inset-left, 0px));
+				padding-right: max(16px, env(safe-area-inset-right, 0px));
+			}
+
+			.composer .composer-action,
+			.composer .attach-btn,
+			.composer .suggest-btn {
+				width: 40px;
+				height: 40px;
+				flex-basis: 40px;
+			}
+
+			.composer .suggest-btn {
+				margin-right: 4px;
+			}
+
+			.composer .composer-input {
+				min-height: 40px;
+				padding-top: 9px;
+				padding-bottom: 9px;
+			}
+
+			.composer .composer-input.is-empty::before {
+				top: 9px;
+			}
+
+			/* Centred over send, and off the curve with it. */
+			.scroll-bottom-slot {
+				right: max(20px, calc(env(safe-area-inset-right, 0px) + 4px));
+			}
+
+			.mention-autocomplete-popup {
+				left: 16px;
+				width: calc(100% - 32px);
+			}
+		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-	.composer-card,
-	.composer-action,
-	.composer .attach-btn,
-	.scroll-bottom-btn {
-	transition: none;
-	}
+		.composer,
+		.composer-card,
+		.composer-action,
+		.composer .attach-btn,
+		.composer .suggest-btn,
+		.scroll-bottom-btn {
+			transition: none;
+		}
+
+		.suggest-spinner {
+			animation: none;
+		}
 	}
 </style>

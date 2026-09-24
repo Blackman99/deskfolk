@@ -59,7 +59,7 @@ test("single-line text is vertically centered within the action button height", 
   }
 });
 
-test("phone suggestions stay in one scrollable row and insert the complete prompt", () => {
+test("suggestions stay in one sideways-scrolling row and insert the complete prompt", () => {
   const viewport = (window as unknown as {
     happyDOM: { setViewport: (size: { width: number; height: number }) => void };
   }).happyDOM;
@@ -75,12 +75,13 @@ test("phone suggestions stay in one scrollable row and insert the complete promp
         }));
         flushSync();
         const bar = host.querySelector(".composer-suggest-bar")!;
-        const style = getComputedStyle(bar);
+        expect(getComputedStyle(bar).pointerEvents).toBe("auto");
+        const row = bar.querySelector(".suggest-scroll")!;
+        const style = getComputedStyle(row);
         expect(style.flexWrap).toBe("nowrap");
         expect(style.overflowX).toBe("auto");
         expect(style.overflowY).toBe("hidden");
-        expect(style.pointerEvents).toBe("auto");
-        const chip = bar.querySelector("button")!;
+        const chip = row.querySelector("button")!;
         expect(getComputedStyle(chip).whiteSpace).toBe("nowrap");
         expect(getComputedStyle(chip).textOverflow).toBe("ellipsis");
         chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -245,6 +246,30 @@ test("✨ drafts suggestions only when pressed, for its own conversation", () =>
  * by send instead, and steps aside once there is something to send: an empty input has room the
  * placeholder does not use, and send is then never beside a button you meant.
  */
+test("✨ sits beside send, and steps aside once there is text or a file to send", () => {
+  const { host, runtime, close } = open("");
+  const row = host.querySelector(".composer-row")!;
+  const order = [...row.children]
+    .filter((el) => el.tagName !== "INPUT")
+    .map((el) => el.classList[0]);
+  expect(order).toEqual(["attach-btn", "composer-editor-wrap", "suggest-btn", "composer-action"]);
+  const button = host.querySelector(".suggest-btn")!;
+  expect(button.classList.contains("steps-aside")).toBe(false);
+  runtime.draft = "已经开始输入";
+  flushSync();
+  expect(button.classList.contains("steps-aside")).toBe(true);
+  runtime.draft = "   ";
+  flushSync();
+  expect(button.classList.contains("steps-aside")).toBe(false);
+  const view = runtime.sessionView(runtime.selectedId!);
+  view.stagedAttachments = [
+    { id: "a", file: new File(["x"], "a.txt"), name: "a.txt", size: 1, isImage: false, previewUrl: null },
+  ];
+  flushSync();
+  expect(button.classList.contains("steps-aside")).toBe(true);
+  close();
+});
+
 test("pressing ✨ again while drafts are on the way or out puts them away", () => {
   const { host, runtime, close } = open("");
   const view = runtime.sessionView(runtime.selectedId!);

@@ -30,6 +30,8 @@ export const STORY_SIZES = {
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
 	'chat-stage-botdm': { width: 900, height: 820 },
+	// A conversation as narrow as a phone docks its composer across the bottom instead of floating it.
+	'chat-stage-narrow': { width: 390, height: 844 },
 	'context-menu': { width: 340, height: 420 },
 	'artifact-preview': { width: 900, height: 640 },
 	'artifact-code': { width: 700, height: 420 },

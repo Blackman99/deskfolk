@@ -2796,9 +2796,11 @@
 			max-width: 100%;
 		}
 
+		/* The composer docks below the stream here instead of floating over it (see Composer), so
+		   the transcript needs no room kept for it. */
 		.stream-inner,
 		.has-message-index .stream-inner {
-			padding: 14px 12px 120px;
+			padding: 14px 12px 16px;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
