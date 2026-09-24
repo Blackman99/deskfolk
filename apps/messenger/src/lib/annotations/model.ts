@@ -30,6 +30,18 @@ export function filterAnnotations(rows: readonly Annotation[], filter: Annotatio
   return rows.filter((row) => row.status === filter);
 }
 
+/**
+ * The rows drawn on the file itself — the boxes on a picture, the marks in a margin, the points
+ * on a timeline. A resolved one comes off the moment it is resolved: a Bot fixing it mid-task takes
+ * its box away, so what is still drawn is what is still to do. Two things put a resolved row back:
+ * the person asking for resolved ones (`showResolved`, the bar's checkbox), or going to that very
+ * row from the list (`revealedId`) — a 定位 has to land somewhere. The list itself keeps every row.
+ */
+export function drawnAnnotations(rows: readonly Annotation[], view: { showResolved: boolean; revealedId: string | null }): Annotation[] {
+  if (view.showResolved) return [...rows];
+  return rows.filter((row) => row.status !== "resolved" || row.id === view.revealedId);
+}
+
 /** Where a text range sits now: the relocated lines when the file moved it, else the stored ones. */
 export function effectiveLines(row: Annotation): { start_line: number; end_line: number } | null {
   if (row.anchor_kind !== "text_range") return null;

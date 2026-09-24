@@ -21,6 +21,7 @@
 		contentShaFromEtag,
 		destinationLabel,
 		draftsForView,
+		drawnAnnotations,
 		groupByDestination,
 		type AnnotationTarget,
 	} from '../annotations/model.ts';
@@ -197,6 +198,17 @@
 	 */
 	let annotFocusSeq = $state(0);
 	/**
+	 * Resolved rows come off the file itself the moment they are resolved — what is drawn is what is
+	 * still to do. The bar's checkbox puts them back, for this pane, until it is unchecked.
+	 */
+	let annotShowResolved = $state(false);
+	/**
+	 * A resolved row the person went to while resolved ones were off the file: it is drawn while it
+	 * has focus, so the 定位 lands somewhere. A Bot resolving the row that has focus is not this — that
+	 * one comes off like any other.
+	 */
+	let annotRevealedResolved = $state<string | null>(null);
+	/**
 	 * The spot chosen and waiting for its remark: which kind, the anchor, and — for a region or a
 	 * frame — how to cut the crop when the draft is saved. The file's path and hash and the message
 	 * it hangs on are taken when the spot is picked: the anchor was read off that file.
@@ -274,6 +286,7 @@
 			pendingDraft = null;
 			annotMode = false;
 			annotError = null;
+			annotRevealedResolved = null;
 		});
 	});
 
@@ -281,6 +294,7 @@
 	function focusAnnotation(id: string): void {
 		annotFocus = id;
 		annotFocusSeq += 1;
+		annotRevealedResolved = fileAnnotations.find((row) => row.id === id)?.status === 'resolved' ? id : null;
 	}
 
 	function offerAnnotation(range: EditorRange, value: string): void {
@@ -574,9 +588,13 @@
 	const gate = $derived(annotateGate({ target: mode === 'workspace' ? null : target, kind, sourceMode, dirty }));
 	/** The adapter drawing this view's annotations, whether or not new ones can be made here. */
 	const viewAdapter = $derived(adapterFor(kind, sourceMode));
-	/** This view's rows of the kind its adapter draws; the list still shows every kind. */
+	/** The rows drawn on the file: resolved ones stay off it unless asked back or being gone to. */
+	const drawnRows = $derived(drawnAnnotations(fileAnnotations, { showResolved: annotShowResolved, revealedId: annotRevealedResolved }));
+	/** Whether the bar offers the resolved ones back: only when this file has any. */
+	const hasResolved = $derived(fileAnnotations.some((row) => row.status === 'resolved'));
+	/** This view's rows of the kind its adapter draws; the list still shows every kind and every status. */
 	const viewAnnotations = $derived(
-		viewAdapter ? fileAnnotations.filter((row) => row.anchor_kind === ADAPTER_ANCHOR_KIND[viewAdapter]) : []
+		viewAdapter ? drawnRows.filter((row) => row.anchor_kind === ADAPTER_ANCHOR_KIND[viewAdapter]) : []
 	);
 	/** Box and element kinds draw in a mode; text is selected, media has its own buttons. */
 	const needsMode = $derived(viewAdapter === 'image' || viewAdapter === 'pdf' || viewAdapter === 'html');
@@ -1123,6 +1141,12 @@
 			{:else}
 				<span class="artifact-annot-spacer"></span>
 			{/if}
+			{#if hasResolved && mode !== 'workspace'}
+				<label class="artifact-annot-check" title={t.stream.annotationShowResolvedHint}>
+					<input type="checkbox" bind:checked={annotShowResolved} data-annotation-show-resolved />
+					<span>{t.stream.annotationShowResolved}</span>
+				</label>
+			{/if}
 			{#if showAnnotMode}
 				<button
 					type="button"
@@ -1291,7 +1315,7 @@
 								path={relpath}
 								{wrap}
 								onDirty={(next) => (editorDirty = next)}
-								annotations={fileAnnotations}
+								annotations={drawnRows}
 								focusAnnotationId={annotFocus}
 								focusAnnotationSeq={annotFocusSeq}
 								annotateEnabled={gate.ok && gate.adapter === 'text' && !pendingDraft}
@@ -1730,6 +1754,28 @@
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
 	}
+	/* Resolved rows back on the file: a plain checkbox, not a third pill — it is a view setting, not an action. */
+	.artifact-annot-check {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 26px;
+		padding: 0 6px;
+		font-size: 12px;
+		color: var(--ink-secondary);
+		white-space: nowrap;
+		cursor: pointer;
+		user-select: none;
+	}
+	.artifact-annot-check input {
+		margin: 0;
+		accent-color: var(--accent);
+		cursor: pointer;
+	}
+	.artifact-annot-check:hover {
+		color: var(--ink);
+	}
 
 	.artifact-pane-body.is-editor {
 		display: flex;
@@ -2008,6 +2054,9 @@
 		.artifact-annot-btn {
 			height: 32px;
 			padding: 0 12px;
+		}
+		.artifact-annot-check {
+			height: 32px;
 		}
 	}
 </style>

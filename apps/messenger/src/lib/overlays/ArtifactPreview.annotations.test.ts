@@ -1110,3 +1110,132 @@ test("a chosen HTML element stays movable while its remark is written: 外层 / 
   expect(created).toHaveLength(1);
   expect(created[0]!.anchor).toMatchObject({ selector: "body > main", tag: "main" });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Resolved rows come off the file; the checkbox and a 定位 put one back
+// ---------------------------------------------------------------------------------------------
+
+const BOX = { x: 0.1, y: 0.1, w: 0.3, h: 0.3, natural_width: 1, natural_height: 1 };
+const imageRow = (over: Partial<Annotation>): Annotation => row({ relpath: "shots/cover.png", anchor_kind: "image_region", anchor: BOX, ...over });
+const drawnOnPicture = (host: HTMLElement) => [...host.querySelectorAll(".img-annot-mark")].map((el) => el.getAttribute("data-annotation-id"));
+const listed = (host: HTMLElement) => [...host.querySelectorAll("[data-annotation-list] [data-annotation-id]")].map((el) => el.getAttribute("data-annotation-id"));
+const showResolved = (host: HTMLElement) => host.querySelector<HTMLInputElement>("[data-annotation-show-resolved]");
+const goToRow = (host: HTMLElement, id: string) => host.querySelector(`.annot-item[data-annotation-id="${id}"] .annot-item-main`);
+
+test("a resolved row is off the picture until 显示已处理 asks it back; the list keeps every row", async () => {
+  const { host } = open({
+    relpath: "shots/cover.png",
+    body: PNG,
+    type: "image/png",
+    annotations: [
+      imageRow({ id: "o" }),
+      imageRow({ id: "d", status: "draft", message_id: null }),
+      imageRow({ id: "r", status: "resolved", resolved_by: "bot-1", resolved_note: "压暗了" }),
+    ],
+  });
+  await settle();
+  // Same moment, so the file lists them by id.
+  expect(drawnOnPicture(host)).toEqual(["d", "o"]);
+  click(host.querySelector("[data-annotation-toggle]"));
+  expect(listed(host)).toEqual(["d", "o", "r"]);
+  expect(host.querySelector("[data-annotation-toggle]")?.textContent).toBe(`${t.stream.annotationsTitle} (3)`);
+  const box = showResolved(host)!;
+  expect(box.checked).toBe(false);
+  click(box);
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["d", "o", "r"]);
+  click(box);
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["d", "o"]);
+});
+
+test("a file with nothing resolved offers no checkbox", async () => {
+  const { host } = open({ relpath: "shots/cover.png", body: PNG, type: "image/png", annotations: [imageRow({ id: "o" })] });
+  await settle();
+  expect(showResolved(host)).toBeNull();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+});
+
+test("the Bot resolving a row mid-task takes its box off the picture, the focused one included", async () => {
+  const world = reactive({ rows: [imageRow({ id: "o" }), imageRow({ id: "p" })] });
+  const props = {
+    attachment: null,
+    relpath: "shots/cover.png",
+    siblings: [],
+    api: { kind: "local", getWorkspaceFileBlob: async () => blobOf(PNG, "image/png"), taskArtifacts: async () => ({ dir: "", items: [] }) } as never,
+    workspacePath: "/w",
+    t,
+    onClose() {},
+    onSelect() {},
+    mode: "cited" as const,
+    target: TARGET,
+    get annotations() {
+      return world.rows;
+    },
+    viewedSessionId: "s1",
+    onLoadAnnotations() {},
+    onPatchAnnotation: async () => null,
+  };
+  const view = render(ArtifactPreview as never, props as never);
+  cleanups.push(view.close);
+  await settle();
+  const { host } = view;
+  expect(drawnOnPicture(host)).toEqual(["o", "p"]);
+  expect(showResolved(host)).toBeNull();
+  // The person is looking at p when the Bot marks it resolved.
+  click(host.querySelector("[data-annotation-toggle]"));
+  click(goToRow(host, "p"));
+  await settle();
+  world.rows = world.rows.map((r) => (r.id === "p" ? { ...r, status: "resolved", resolved_by: "bot-1", resolved_note: "改了", updated_at: "2026-09-23T00:01:00.000Z" } : r));
+  flushSync();
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+  expect(listed(host)).toEqual(["o", "p"]);
+  // The checkbox turns up now that the file has one to ask back.
+  expect(showResolved(host)).not.toBeNull();
+  // Reopened, it is drawn again with no asking.
+  world.rows = world.rows.map((r) => (r.id === "p" ? { ...r, status: "open", resolved_by: null, resolved_note: null, updated_at: "2026-09-23T00:02:00.000Z" } : r));
+  flushSync();
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o", "p"]);
+});
+
+test("going to a resolved row from the list draws that one row while it has focus", async () => {
+  const { host } = open({
+    relpath: "shots/cover.png",
+    body: PNG,
+    type: "image/png",
+    annotations: [imageRow({ id: "o" }), imageRow({ id: "r", status: "resolved" }), imageRow({ id: "r2", status: "resolved" })],
+  });
+  await settle();
+  click(host.querySelector("[data-annotation-toggle]"));
+  click(goToRow(host, "r"));
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o", "r"]);
+  // Focus moving to an open row lets go of it.
+  click(goToRow(host, "o"));
+  await settle();
+  expect(drawnOnPicture(host)).toEqual(["o"]);
+});
+
+test("in the source view a resolved row's margin mark comes off too, and back with the checkbox", async () => {
+  const { editors, loadMonaco } = fakeMonaco();
+  const { host } = open({
+    relpath: "notes/plan.txt",
+    body: TEXT,
+    type: "text/plain",
+    loadMonaco,
+    annotations: [
+      row({ id: "t1", relpath: "notes/plan.txt", anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 9, quote: "line one", prefix: "", suffix: "" } }),
+      row({ id: "t2", relpath: "notes/plan.txt", status: "resolved", anchor: { start_line: 2, start_col: 1, end_line: 2, end_col: 9, quote: "line two", prefix: "", suffix: "" } }),
+    ],
+  });
+  await settle();
+  // Two decorations per drawn row: its range and its margin glyph.
+  const marks = editors[0]!.collections[0]!;
+  expect(marks.items).toHaveLength(2);
+  expect(marks.items[0]!.range.startLineNumber).toBe(1);
+  click(showResolved(host));
+  await settle();
+  expect(marks.items).toHaveLength(4);
+});

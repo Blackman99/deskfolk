@@ -11,6 +11,7 @@ import {
   deliveryFor,
   destinationLabel,
   draftsForView,
+  drawnAnnotations,
   filterAnnotations,
   groupByDestination,
   mergeAnnotationRows,
@@ -61,6 +62,17 @@ test("filters by status, and lists a file's rows in reading order", () => {
   expect(filterAnnotations(rows, "open").map((r) => r.id)).toEqual(["later", "moved", "other"]);
   expect(filterAnnotations(rows, "all")).toHaveLength(4);
   expect(annotationsForFile(rows, "report.md").map((r) => r.id)).toEqual(["draft", "moved", "later"]);
+});
+
+test("the file draws open rows and drafts; a resolved one only when asked back or being gone to", () => {
+  const rows = [row({ id: "open" }), row({ id: "draft", status: "draft" }), row({ id: "done", status: "resolved" }), row({ id: "done-2", status: "resolved" })];
+  const ids = (list: Annotation[]) => list.map((r) => r.id);
+  expect(ids(drawnAnnotations(rows, { showResolved: false, revealedId: null }))).toEqual(["open", "draft"]);
+  // Going to a resolved row from the list draws that one row, not its neighbours.
+  expect(ids(drawnAnnotations(rows, { showResolved: false, revealedId: "done" }))).toEqual(["open", "draft", "done"]);
+  // Going to an open row changes nothing.
+  expect(ids(drawnAnnotations(rows, { showResolved: false, revealedId: "open" }))).toEqual(["open", "draft"]);
+  expect(ids(drawnAnnotations(rows, { showResolved: true, revealedId: null }))).toEqual(["open", "draft", "done", "done-2"]);
 });
 
 test("cards index by the message that carries them, drafts stay out", () => {

@@ -232,9 +232,13 @@ const annotationPreviewProps = {
 	onSendAnnotations: async () => null
 };
 
-/** The list column opens on the pane's own button, the way a person opens it. */
+/**
+ * The list column opens on the pane's own button, the way a person opens it. The resolved box is
+ * off the picture by default; the shot asks it back so it covers the checked box and the grey mark.
+ */
 const openAnnotationList = (host: HTMLElement) => {
 	host.querySelector<HTMLButtonElement>('[data-annotation-toggle]')?.click();
+	host.querySelector<HTMLInputElement>('[data-annotation-show-resolved]')?.click();
 	flushSync();
 };
 
