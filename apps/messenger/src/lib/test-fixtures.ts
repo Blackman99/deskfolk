@@ -424,6 +424,14 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
       calls.push({ name: "closeRoutines", args: [] });
       runtime.routinesOpen = false;
     },
+    openSpend: () => {
+      calls.push({ name: "openSpend", args: [] });
+      runtime.spendOpen = true;
+    },
+    closeSpend: () => {
+      calls.push({ name: "closeSpend", args: [] });
+      runtime.spendOpen = false;
+    },
     settingsOpen: false,
     sessionSettingsOpen: false,
     createBotOpen: false,
@@ -436,6 +444,8 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     traceTaskId: null,
     traceSessionId: null,
     routinesOpen: false,
+    spendOpen: false,
+    spendRevision: 0,
     terminalOpen: false,
     terminals: [],
     traceReload: 0,

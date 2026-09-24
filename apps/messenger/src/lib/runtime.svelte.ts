@@ -282,6 +282,13 @@ export class MessengerRuntime {
   workspaceOpen = $state(false);
   /** The roster calendar. It replaces the main column; it is not a fourth phone destination. */
   routinesOpen = $state(false);
+  /** The spend ledger, same shape as the calendar: one pane on the desktop, a page below 680. */
+  spendOpen = $state(false);
+  /**
+   * Climbs on `spend.created`. The rows themselves are not kept: a view that is open debounces
+   * a reload of the summary off this, and one that is closed reads it when it next opens.
+   */
+  spendRevision = $state(0);
   workspaceSelected = $state("");
   threadOpen = $state(false);
   searchQuery = $state("");
@@ -460,6 +467,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.createBotOpen = true;
   }
 
@@ -469,6 +477,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.createGroupOpen = true;
   }
 
@@ -482,6 +491,7 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
   }
@@ -490,9 +500,8 @@ export class MessengerRuntime {
   /**
    * Where an "open this" goes.
    *
-   * The desktop shell sets this while the workbench is on, and every opener below asks it first.
-   * One branch point rather than a condition inside each of them: with a dozen call sites the
-   * rule "the desktop never sets those flags" has to be enforceable, not merely intended.
+   * The desktop shell sets this while the workbench is on. Openers use panes rather than narrow
+   * overlays; Spend also mirrors its active pane into the URL so history can restore it.
    */
   paneOpener: ((content: PaneContent) => void) | null = null;
 
@@ -595,6 +604,7 @@ export class MessengerRuntime {
     this.closeSheets();
     this.threadOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.traceSessionId = this.selectedId;
     this.traceTaskId = taskId ?? "";
     this.traceFocus = focus;
@@ -646,6 +656,7 @@ export class MessengerRuntime {
     this.threadOpen = false;
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
   }
@@ -670,6 +681,7 @@ export class MessengerRuntime {
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.settingsOpen = !this.settingsOpen;
   }
 
@@ -679,6 +691,7 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.routinesOpen = false;
+    this.spendOpen = false;
     this.workspaceOpen = true;
     if (selected) this.workspaceSelected = selected;
   }
@@ -698,6 +711,7 @@ export class MessengerRuntime {
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
+    this.spendOpen = false;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -711,6 +725,28 @@ export class MessengerRuntime {
     this.routinesOpen = false;
   }
 
+  /** The spend ledger. One pane, like the calendar; below the breakpoint it is a page. */
+  openSpend(): void {
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createGroupOpen = false;
+    this.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.routinesOpen = false;
+    this.clearTrace();
+    this.threadOpen = false;
+    this.previewRelpath = null;
+    this.previewAttachmentId = null;
+    this.previewTaskId = null;
+    this.previewSiblings = null;
+    this.spendOpen = true;
+    this.toPane({ kind: "spend" });
+  }
+
+  closeSpend(): void {
+    this.spendOpen = false;
+  }
+
   /** Restore settings, the session drawer, or the workspace overlay from the URL. */
   applyOverlay(overlay: UrlOverlay): void {
     this.profileNavigation++;
@@ -720,6 +756,7 @@ export class MessengerRuntime {
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.routinesOpen = false;
+      this.spendOpen = false;
       this.settingsOpen = true;
       return;
     }
@@ -730,6 +767,7 @@ export class MessengerRuntime {
       this.threadOpen = false;
       this.workspaceOpen = false;
       this.routinesOpen = false;
+      this.spendOpen = false;
       this.profileBotId = null;
       this.sessionSettingsOpen = true;
       return;
@@ -741,6 +779,7 @@ export class MessengerRuntime {
       this.threadOpen = false;
       this.workspaceOpen = false;
       this.routinesOpen = false;
+      this.spendOpen = false;
       this.profileBotId = overlay.botId;
       this.sessionSettingsOpen = true;
       return;
@@ -751,6 +790,7 @@ export class MessengerRuntime {
       this.closeSessionSettings();
       this.clearTrace();
       this.routinesOpen = false;
+      this.spendOpen = false;
       this.workspaceOpen = true;
       this.workspaceSelected = overlay.selected ?? "";
       return;
@@ -763,6 +803,7 @@ export class MessengerRuntime {
       this.closeSessionSettings();
       this.workspaceOpen = false;
       this.routinesOpen = false;
+      this.spendOpen = false;
       this.traceSessionId = this.traceSessionId ?? this.selectedId;
       this.traceTaskId = overlay.taskId ?? "";
       return;
@@ -773,6 +814,7 @@ export class MessengerRuntime {
       this.createGroupOpen = false;
       this.closeSessionSettings();
       this.workspaceOpen = false;
+      this.spendOpen = false;
       this.clearTrace();
         this.threadOpen = false;
       this.previewRelpath = null;
@@ -782,11 +824,28 @@ export class MessengerRuntime {
       this.routinesOpen = true;
       return;
     }
+    if (overlay.kind === "spend") {
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createGroupOpen = false;
+      this.closeSessionSettings();
+      this.workspaceOpen = false;
+      this.routinesOpen = false;
+      this.clearTrace();
+      this.threadOpen = false;
+      this.previewRelpath = null;
+      this.previewAttachmentId = null;
+      this.previewTaskId = null;
+      this.previewSiblings = null;
+      this.spendOpen = true;
+      return;
+    }
     this.settingsOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
     this.clearTrace();
     this.routinesOpen = false;
+    this.spendOpen = false;
   }
 
   closeSheets(): void {
@@ -797,10 +856,24 @@ export class MessengerRuntime {
     this.clearTrace();
     this.workspaceOpen = false;
     this.routinesOpen = false;
+    this.spendOpen = false;
+  }
+
+  /** A ledger or search link can outlive the conversation it names. */
+  async openChat(id: string, opts?: { messageId?: string }): Promise<void> {
+    if (!this.snapshot.sessions.some((session) => session.id === id)) return;
+    await this.selectSession(id, opts);
   }
 
   async selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> {
-    if (!opts?.preservePage) this.closeRoutines();
+    const previousId = this.selectedId;
+    const previousSpend = this.spendOpen;
+    if (!opts?.preservePage) {
+      this.closeRoutines();
+      this.closeSpend();
+      // Selecting the conversation already underneath a pane must still bring it forward.
+      if (this.selectedId === id) this.toPane({ kind: "chat", sessionId: id });
+    }
     const api = this.api;
     const sync = this.sync;
     const view = this.sessionView(id);
@@ -847,8 +920,10 @@ export class MessengerRuntime {
       if (selection !== view.loadSeq || this.connectionSeq !== connection ||
         this.api !== api || this.sync !== sync) return;
       sync.pause();
+      let readingDetail = true;
       try {
         const detail = await api.sessionSnapshot(id);
+        readingDetail = false;
         if (this.api !== api || this.sync !== sync) return;
         const ready = await sync.waitThrough(detail);
         if (this.api !== api || this.sync !== sync) return;
@@ -875,8 +950,22 @@ export class MessengerRuntime {
         if (!this.notificationCapabilities.bounded_read_v1) {
           await this.markSessionRead(id);
         }
-      } catch {
-        if (this.api === api) this.markDisconnected();
+      } catch (error) {
+        if (this.api !== api || this.sync !== sync) return;
+        if (readingDetail && error instanceof ApiError && error.status === 404 && error.code === "not_found") {
+          // Resume the event stream even when a stale ledger link has no detail to install.
+          const frames = sync.install();
+          if (!frames) { this.markDisconnected(); return; }
+          const stillSelected = this.selectedId === id;
+          for (const frame of frames) this.ingest(frame.payload, frame);
+          if (stillSelected && selection === view.loadSeq) {
+            this.selectedId = previousId && previousId !== id && this.snapshot.sessions.some((session) => session.id === previousId)
+              ? previousId : null;
+            if (previousSpend) this.openSpend();
+          }
+          return;
+        }
+        this.markDisconnected();
       } finally {
         // Only the newest read of this conversation owns its flag; an older one must not clear it.
         if (selection === view.loadSeq && this.connectionSeq === connection) view.historyLoading = false;
@@ -3056,6 +3145,7 @@ export class MessengerRuntime {
     if (event.event === "settings.changed") {
       this.syncSettingsDraft(event);
     }
+    if (event.event === "spend.created") this.spendRevision += 1;
     if (event.event === "turn.upsert") {
       this.claimFocus(event.session_id, event.trigger_message_id, event.id);
       if (this.boardShows(event.task_id)) this.traceReload += 1;

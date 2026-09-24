@@ -164,6 +164,16 @@ test("closing a sidebar that is not open is no change at all", () => {
   expect(leafById(closeChatSide(open, "s1"), "a")!.tabs[0]!.params).toEqual({ sessionId: "s1" });
 });
 
+test("the spend ledger is single-instance too", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor({ kind: "spend" }, "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+  const again = openContent(layout, { kind: "spend" }, ids);
+  expect(tiledLeaves(again.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(again.focus.leafId).toBe("a");
+});
+
 test("the calendar is single-instance too", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor({ kind: "routines" }, "t-a")]),

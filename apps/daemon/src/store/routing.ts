@@ -778,7 +778,7 @@ export function chainForReview(ctx: StoreContext, chainId: string): ChainForRevi
     .all(...turnIds);
   const spend = ctx.db
     .query<{ cost: number | null }, string[]>(
-      `SELECT SUM(cost_usd_ticks) AS cost FROM spend WHERE turn_id IN (${placeholders}) AND judgement_id IS NULL`,
+      `SELECT SUM(cost_usd_ticks) AS cost FROM spend WHERE turn_id IN (${placeholders}) AND kind = 'turn'`,
     )
     .get(...turnIds);
   return {

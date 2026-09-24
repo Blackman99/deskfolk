@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
+import { spendCopyFor } from "../spend/spend-copy.ts";
 import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, fakeRuntime } from "../test-fixtures.ts";
 import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
@@ -47,6 +48,7 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     onOpenContextMenu: () => {},
     onToggleWorkspace: () => {},
     onOpenRoutines: () => {},
+    onOpenSpend: () => {},
     onOpenSettings: () => {},
     onCreateBot: () => created.push("bot"),
     onCreateGroup: () => created.push("group"),
@@ -405,10 +407,11 @@ test("on a phone the calendar and the terminal live behind one button", () => {
     // Tools live here; the menu is free to grow, so this checks membership and order, not the list.
     const items = Array.from(host.querySelectorAll('.tools-menu-item')).map((el) => el.textContent?.trim());
     expect(items.indexOf(t.calendar.open)).toBe(0);
-    expect(items.indexOf(t.terminal.title)).toBe(1);
-    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(2);
+    expect(items.indexOf(spendCopyFor("zh").open)).toBe(1);
+    expect(items.indexOf(t.terminal.title)).toBe(2);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(3);
 
-    const terminalItem = host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')[1];
+    const terminalItem = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')].find((item) => item.textContent?.includes(t.terminal.title));
     click(terminalItem);
     expect(runtime.calls.some((call) => call.name === 'openTerminal')).toBe(true);
     // Picking one closes the menu rather than leaving it hanging over the list.

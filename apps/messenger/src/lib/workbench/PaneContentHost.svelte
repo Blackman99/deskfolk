@@ -212,6 +212,16 @@
 	{#await import('../calendar/RoutineCalendar.svelte') then { default: RoutineCalendar }}
 		<RoutineCalendar {runtime} {t} />
 	{/await}
+{:else if content.kind === 'spend'}
+	{#await import('../spend/SpendView.svelte') then { default: SpendView }}
+		<SpendView
+			api={runtime.client}
+			revision={runtime.spendRevision}
+			locale={runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh'}
+			onOpenSession={(sessionId) => void runtime.openChat(sessionId)}
+			onOpenTrigger={(sessionId, messageId) => void runtime.openChat(sessionId, { messageId })}
+		/>
+	{/await}
 {:else if content.kind === 'terminal'}
 	<TerminalView
 		api={runtime.client}

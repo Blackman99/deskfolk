@@ -86,7 +86,7 @@ export type OpenOptions = {
  * Kinds there can only be one of at a time. Asking for it again moves the single pane rather than
  * making a rival. (The settings sidebar has the same rule for the same reason; see `openChat`.)
  */
-const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines"]);
+const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines", "spend"]);
 
 /**
  * Kinds a conversation has exactly one of.

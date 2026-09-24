@@ -36,7 +36,9 @@ export type PaneContent =
    */
   | { kind: "terminal"; terminalId: string | null; cwd?: string | null }
   | { kind: "workspace"; selected: string | null }
-  | { kind: "routines" };
+  | { kind: "routines" }
+  /** One ledger. Like the calendar, asking for it again focuses the pane that already has it. */
+  | { kind: "spend" };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -49,6 +51,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "terminal",
   "workspace",
   "routines",
+  "spend",
 ];
 
 export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
@@ -92,6 +95,7 @@ export function contentToParams(content: PaneContent): Record<string, string> {
     case "workspace":
       return content.selected ? { selected: content.selected } : {};
     case "routines":
+    case "spend":
       return {};
   }
 }
@@ -121,6 +125,8 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
       return { kind: "workspace", selected: p.selected ?? null };
     case "routines":
       return { kind: "routines" };
+    case "spend":
+      return { kind: "spend" };
     default:
       return null;
   }
@@ -172,6 +178,8 @@ export function overlayFromContent(content: PaneContent | null): UrlOverlay {
       return { kind: "workspace", selected: content.selected };
     case "routines":
       return { kind: "routines" };
+    case "spend":
+      return { kind: "spend" };
     default:
       // A preview or a terminal is not an overlay: the first is the conversation's own and the
       // second was never in the URL to begin with.
@@ -194,6 +202,8 @@ export function contentFromOverlay(overlay: UrlOverlay, sessionId: string | null
       return { kind: "workspace", selected: overlay.selected };
     case "routines":
       return { kind: "routines" };
+    case "spend":
+      return { kind: "spend" };
     default:
       return null;
   }

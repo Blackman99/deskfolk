@@ -1162,3 +1162,55 @@ test("a draft kept across a dropped link goes back to the conversation it was ty
   runtime.discardDraftReconnect();
   expect(runtime.sessionView("direct-1").draft).toBe("");
 });
+
+for (const removed of [false, true]) test(`Spend chat navigation ignores ${removed ? 'deleted' : 'unknown'} sessions without disturbing the live connection`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === 'connected');
+  runtime.selectedId = 'direct-1';
+  runtime.openSpend();
+  if (removed) Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { event: 'session.removed', id: 'direct-1', occurred_at: 'now' } });
+  const selected = runtime.selectedId;
+  const api = runtime.client;
+  let reads = 0;
+  globalThis.fetch = (async () => { reads++; throw new Error('must not request a missing session'); }) as typeof fetch;
+  await runtime.openChat(removed ? 'direct-1' : 'missing', { messageId: 'stale-trigger' });
+  expect(reads).toBe(0);
+  expect(runtime.selectedId).toBe(selected);
+  expect(runtime.spendOpen).toBe(true);
+  expect(runtime.client).toBe(api);
+  expect(runtime.connection).toBe('connected');
+});
+
+for (const removedDuringRead of [false, true]) test(`missing session detail resumes buffered events rather than disconnecting (${removedDuringRead ? 'deleted during read' : 'stale id'})`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === 'connected');
+  runtime.selectedId = 'direct-1';
+  runtime.openSpend();
+  const api = runtime.client;
+  const missing = removedDuringRead ? 'direct-1' : 'missing';
+  globalThis.fetch = (async () => {
+    Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 1, payload: { ...aBot({ name: 'Buffered change' }), event: 'bot.upsert', deleted_at: null, occurred_at: 'now' } });
+    if (removedDuringRead) Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 2, payload: { event: 'session.removed', id: missing, occurred_at: 'now' } });
+    return Response.json({ error: { code: 'not_found', message: 'session not found' } }, { status: 404 });
+  }) as typeof fetch;
+  await runtime.selectSession(missing);
+  expect(runtime.client).toBe(api);
+  expect(runtime.connection).toBe('connected');
+  expect(runtime.snapshot.bots[0]!.name).toBe('Buffered change');
+  expect(runtime.selectedId).toBe(removedDuringRead ? null : 'direct-1');
+  expect(runtime.spendOpen).toBe(true);
+  Socket.current.frame({ type: 'event', event_instance_id: instance, seq: removedDuringRead ? 3 : 2, payload: { ...aBot({ name: 'Still streaming' }), event: 'bot.upsert', deleted_at: null, occurred_at: 'now' } });
+  expect(runtime.snapshot.bots[0]!.name).toBe('Still streaming');
+});
+
+for (const failure of ['network', 'server', 'gap'] as const) test(`session detail ${failure} still triggers connection recovery`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === 'connected');
+  globalThis.fetch = (async () => {
+    if (failure === 'network') throw new Error('connection lost');
+    if (failure === 'gap') Socket.current.frame({ type: 'event', event_instance_id: instance, seq: 2, payload: { event: 'session.removed', id: 'direct-1', occurred_at: 'now' } });
+    return Response.json({ error: { code: failure === 'gap' ? 'not_found' : 'internal', message: 'fixture' } }, { status: failure === 'gap' ? 404 : 500 });
+  }) as typeof fetch;
+  await runtime.selectSession('direct-1');
+  expect(runtime.connection).not.toBe('connected');
+});

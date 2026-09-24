@@ -313,6 +313,8 @@ export class Store {
   // Spend & judgements ---------------------------------------------------------------------
   readonly insertSpend = this.bind(spend.insertSpend);
   readonly listSpend = this.bind(spend.listSpend);
+  readonly spendSummary = this.bind(spend.spendSummary);
+  readonly spendPage = this.bind(spend.spendPage);
   readonly insertJudgement = this.bind(judgements.insertJudgement);
   readonly listJudgements = this.bind(judgements.listJudgements);
 

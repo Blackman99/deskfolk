@@ -294,7 +294,7 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM session_notification_preferences WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
-    ctx.db.run(`DELETE FROM spend WHERE session_id = ?`, [id]);
+    // Spend is a ledger. Deleting the session leaves the rows, with the names they were written with.
     // Work dirs opened here: the ones only this session's turns belonged to go with it. A dir a
     // handoff carried into another session outlives it and just loses the session link, the way
     // an origin does — the folder on disk is the user's either way.

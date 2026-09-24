@@ -32,6 +32,7 @@ const samples: PaneContent[] = [
   { kind: "workspace", selected: "work/a.md" },
   { kind: "workspace", selected: null },
   { kind: "routines" },
+  { kind: "spend" },
 ];
 
 test("every kind round trips through a tab", () => {
@@ -111,6 +112,10 @@ test("a pane and the old flags describe the same overlay", () => {
       content: { kind: "routines" },
       flags: { settingsOpen: false, sessionSettingsOpen: false, profileBotId: null, workspaceOpen: false, workspaceSelected: null, routinesOpen: true },
     },
+    {
+      content: { kind: "spend" },
+      flags: { settingsOpen: false, sessionSettingsOpen: false, profileBotId: null, workspaceOpen: false, workspaceSelected: null, spendOpen: true },
+    },
   ];
   for (const { content, flags } of cases) {
     expect(overlaysEqual(overlayFromContent(content), overlayFromFlags(flags))).toBe(true);
@@ -134,6 +139,7 @@ test("a deep link becomes the pane it asks for", () => {
     ],
     [{ kind: "workspace", selected: null }, null, { kind: "workspace", selected: null }],
     [{ kind: "routines" }, null, { kind: "routines" }],
+    [{ kind: "spend" }, null, { kind: "spend" }],
     // Settings stays a modal on the desktop, so it is not a pane at all.
     [{ kind: "settings" }, "s1", null],
     [{ kind: "none" }, "s1", null],
@@ -152,6 +158,7 @@ test("round tripping an overlay through a pane keeps what the URL carried", () =
     { kind: "trace", taskId: "task-1" },
     { kind: "workspace", selected: "work/a.md" },
     { kind: "routines" },
+    { kind: "spend" },
   ];
   for (const overlay of overlays) {
     const content = contentFromOverlay(overlay, "s1")!;

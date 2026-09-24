@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Added a dedicated Spend view with time ranges, category totals, daily trends, sortable model/session/Bot tables, combined filters and paginated call details. Desktop opens a single pane tab; phones open an overlay. Totals refresh as calls arrive and reported amounts stay separate from estimates.
+- Spend now retains six call kinds, actual model/endpoint attribution and name snapshots across conversation clearing, conversation deletion and Bot deletion. Existing records migrate in place, preserving missing model attribution. Local and encrypted remote clients use daemon-side summaries and paginated details; snapshots omit the growing ledger.
+- Model attributes accept optional input, output and cached-input billing rates in USD per million tokens, alongside the routing reference price. Settings auto-save them and Bot tools can update them. Calls without reported amounts estimate from available token usage and the rates at insertion; later rate changes preserve recorded estimates.
+
 - Fixed files sent into a Bot-to-Bot chat being written out before the post was refused. That chat is yours to read, not to join, but a post with files staged them in the workspace (or the app's inbox folder when no workspace was set) before checking, and failed with an internal error where that folder did not exist. The post is now refused first, with nothing written.
 
 - In a Bot-to-Bot chat, an interrupted turn and a turn that did not finish — the endpoint unreachable, a refusal, a runtime error, a stall — can be continued. That chat has no composer, so Continue used to be hidden with it, and of the "this turn did not finish" notes only an unreachable endpoint could be resumed. A group and a chat between you and a Bot can resume those unfinished turns the same way.

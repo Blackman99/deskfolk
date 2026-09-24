@@ -20,6 +20,7 @@
 	import { formatListTime, listTimeSource } from './list-time.ts';
 	import { plainPreview } from './preview-text.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
+	import { spendCopyFor } from '../spend/spend-copy.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -44,6 +45,7 @@
 		onOpenContextMenu: (e: MouseEvent, session: SessionSummary) => void;
 		onToggleWorkspace: () => void;
 		onOpenRoutines: () => void;
+		onOpenSpend: () => void;
 		onOpenSettings: () => void;
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
@@ -65,6 +67,7 @@
 		onOpenContextMenu,
 		onToggleWorkspace,
 		onOpenRoutines,
+		onOpenSpend,
 		onOpenSettings,
 		onCreateBot,
 		onCreateGroup,
@@ -73,6 +76,7 @@
 	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
+	const spendCopy = $derived(spendCopyFor(snapshot.settings.locale === 'en' ? 'en' : 'zh'));
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
@@ -647,6 +651,22 @@
 								type="button"
 								class="tools-menu-item"
 								role="menuitem"
+								aria-current={runtime.spendOpen ? 'true' : undefined}
+								onclick={() => {
+									toolsMenuOpen = false;
+									onOpenSpend();
+								}}
+							>
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<line x1="12" y1="1" x2="12" y2="23"></line>
+									<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+								</svg>
+								<span>{spendCopy.open}</span>
+							</button>
+							<button
+								type="button"
+								class="tools-menu-item"
+								role="menuitem"
 								aria-current={runtime.terminalOpen ? 'true' : undefined}
 								onclick={() => {
 									toolsMenuOpen = false;
@@ -994,6 +1014,20 @@
 			<button
 				type="button"
 				class="foot-icon-btn"
+				class:is-active={runtime.spendOpen}
+				title={spendCopy.open}
+				aria-label={spendCopy.open}
+				aria-pressed={runtime.spendOpen}
+				onclick={() => onOpenSpend()}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<line x1="12" y1="1" x2="12" y2="23"></line>
+					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+				</svg>
+			</button>
+			<button
+				type="button"
+				class="foot-icon-btn"
 				class:is-active={viewingArchived}
 				title={t.sidebar.archivedSessions}
 				aria-label={t.sidebar.archivedSessions}
@@ -1159,7 +1193,7 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchPageOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen}
+{#if phone && !selected && !searchPageOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen}
 	<div class="fab-wrap" bind:this={fabEl}>
 		{#if createMenuOpen}
 			<div class="fab-menu" role="menu">

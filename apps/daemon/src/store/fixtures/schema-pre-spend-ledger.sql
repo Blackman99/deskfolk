@@ -1,4 +1,4 @@
-export const SCHEMA_SQL = `
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -413,42 +413,25 @@ CREATE TABLE IF NOT EXISTS route_learnings (
   created_at TEXT NOT NULL
 );
 
--- Ledger. Rows outlive the session, bot, turn and judgement they name: no foreign keys.
--- Indexes live in migrate.ts so an older database does not index columns it does not have yet.
 CREATE TABLE IF NOT EXISTS spend (
   id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
-  session_name TEXT,
-  bot_id TEXT,
-  bot_name TEXT,
+  session_id TEXT NOT NULL REFERENCES sessions (id),
+  bot_id TEXT NOT NULL REFERENCES bots (id),
   turn_id TEXT,
   judgement_id TEXT,
-  kind TEXT NOT NULL CHECK (
-    kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest')
-  ),
-  chain_id TEXT,
-  provider_id TEXT,
-  provider_name TEXT,
-  model TEXT,
-  thinking_level TEXT,
   input_tokens INTEGER,
   output_tokens INTEGER,
   total_tokens INTEGER,
   cached_tokens INTEGER,
   reasoning_tokens INTEGER,
   cost_usd_ticks INTEGER,
-  estimated_cost_usd_ticks INTEGER,
   missing_reason TEXT CHECK (
     missing_reason IS NULL OR missing_reason IN ('stream_interrupted', 'endpoint_omitted')
   ),
   created_at TEXT NOT NULL,
   CHECK (
-    (kind = 'turn' AND turn_id IS NOT NULL)
-    OR (kind = 'judgement' AND judgement_id IS NOT NULL)
-    OR (kind = 'route_pick' AND turn_id IS NOT NULL)
-    OR (kind = 'route_review' AND chain_id IS NOT NULL AND turn_id IS NOT NULL)
-    OR (kind = 'route_learn' AND chain_id IS NOT NULL)
-    OR kind = 'composer_suggest'
+    (turn_id IS NOT NULL AND judgement_id IS NULL)
+    OR (turn_id IS NULL AND judgement_id IS NOT NULL)
   )
 );
 
@@ -568,4 +551,3 @@ CREATE TABLE IF NOT EXISTS notification_delivery_items (
   notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   PRIMARY KEY (delivery_id, notification_id)
 );
-`;

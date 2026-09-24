@@ -3,6 +3,7 @@ import {
   isThinkingLevel,
   sortThinkingLevels,
   type EndpointModel,
+  type ModelPricing,
   type ThinkingLevel,
 } from "@real-bot/protocol";
 import { HttpError } from "./errors";
@@ -235,8 +236,10 @@ function parseCatalogItemStrict(item: unknown): EndpointModel {
   if (name.length === 0) {
     throw new HttpError(422, "invalid_args", "endpoint_models cannot include empty names");
   }
+  const pricing = normalizePricing(rec.pricing);
   return {
     name,
+    ...(pricing ? { pricing } : {}),
     price: normalizePrice(rec.price),
     thinking_levels: normalizeThinkingLevels(rec.thinking_levels),
     strengths: normalizeStrengths(rec.strengths),
@@ -256,8 +259,28 @@ function serializeItem(row: EndpointModel): Record<string, unknown> {
   return {
     name: row.name,
     price: row.price,
+    ...(row.pricing ? { pricing: row.pricing } : {}),
     thinking_levels: row.thinking_levels,
     strengths: row.strengths,
+  };
+}
+
+function normalizePricing(value: unknown): ModelPricing | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new HttpError(422, "invalid_args", "model pricing must contain input and output rates in USD per million tokens");
+  }
+  const rates = value as Record<string, unknown>;
+  for (const key of ["input", "output", ...(rates.cached_input !== undefined ? ["cached_input"] : [])]) {
+    const rate = rates[key];
+    if (typeof rate !== "number" || !Number.isFinite(rate) || rate < 0) {
+      throw new HttpError(422, "invalid_args", `model pricing.${key} must be a finite non-negative number`);
+    }
+  }
+  return {
+    input: rates.input as number,
+    output: rates.output as number,
+    ...(rates.cached_input !== undefined ? { cached_input: rates.cached_input as number } : {}),
   };
 }
 

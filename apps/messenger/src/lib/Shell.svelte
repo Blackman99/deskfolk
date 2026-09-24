@@ -74,6 +74,7 @@
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
+	import { spendCopyFor } from './spend/spend-copy.ts';
 	// RoutineCalendar.svelte pulls in svelte5plus-calendar; it is loaded lazily below, only once
 	// `runtime.routinesOpen` is true.
 	import Workbench from './workbench/Workbench.svelte';
@@ -246,6 +247,7 @@
 			terminalOpen: runtime.terminalOpen,
 			traceOpen: runtime.traceOpen,
 			routinesOpen: runtime.routinesOpen,
+			spendOpen: runtime.spendOpen,
 			threadOpen: runtime.threadOpen,
 			workspaceOpen: runtime.workspaceOpen,
 			artifactPreview: artifactPreview !== null
@@ -296,6 +298,10 @@
 				// Full screen over the flow is a page; the flow itself is an entry in history.
 				return tracePane?.backFromFullOutput() ?? false;
 			case 'routines':
+				return false;
+			case 'spend':
+				// A history entry, like the calendar: the page's button closes it, and Back walks
+				// the URL. Answering true here would pop nothing and leave the page open.
 				return false;
 			case 'thread':
 				runtime.threadOpen = false;
@@ -403,11 +409,18 @@
 	 * URL effects in `+page.svelte` carry a comment about — and each is a no-op once the two
 	 * already agree, so they settle rather than ping-pong.
 	 */
+	let selectionInitialized = false;
 	$effect(() => {
 		if (!wide) return;
 		const id = runtime.selectedId;
+		const restoring = !selectionInitialized;
+		selectionInitialized = true;
 		if (!id) return;
 		untrack(() => {
+			const leaf = leafById(layout, layout.focus.leafId);
+			const active = leaf?.tabs.find((tab) => tab.id === leaf.activeTabId);
+			// A remembered tool tab is in front of the URL's underlying conversation.
+			if (restoring && active && active.kind !== 'chat') return;
 			if (activeSessionId(layout) === id) return;
 			commitLayout(
 				openContent(layout, { kind: 'chat', sessionId: id }, { id: freshPaneId, replaceActive: true })
@@ -456,6 +469,8 @@
 				return content.selected ? (content.selected.split('/').pop() ?? t.sidebar.workspace) : t.sidebar.workspace;
 			case 'routines':
 				return t.routines.title;
+			case 'spend':
+				return spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title;
 			case 'trace':
 				return t.pane.flowOf(sessionName(content.sessionId));
 			case 'preview':
@@ -615,6 +630,10 @@
 				commitLayout(freshLayout(freshPaneId()));
 				return;
 			}
+			if (id === 'view-spend') {
+				runtime.openSpend();
+				return;
+			}
 			if (id === 'pane-close-tab' && allLeaves(layout).every((leaf) => leaf.tabs.length === 0)) {
 				void hideDesktopWindow();
 				return;
@@ -637,11 +656,36 @@
 		commitLayout(closeWorkbenchTab(layout, leafId, tabId, freshPaneId()));
 	}
 
+	/** URL restores and browser Back use the same singleton tab as the sidebar. */
+	let spendInitialized = false;
+	$effect(() => {
+		if (!wide) return;
+		const spend = runtime.spendOpen;
+		const restoring = !spendInitialized;
+		spendInitialized = true;
+		untrack(() => {
+			if (spend) {
+				openGuarded({ kind: 'spend' });
+				return;
+			}
+			if (restoring) return;
+			const leaf = leafById(layout, layout.focus.leafId);
+			const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
+			if (leaf && tab?.kind === 'spend') {
+				if (runtime.selectedId) openGuarded({ kind: 'chat', sessionId: runtime.selectedId });
+				else onPaneCloseTab(leaf.id, tab.id);
+			}
+		});
+	});
+
 	/** Following the active pane keeps Stop, the composer and the URL pointing at one conversation. */
 	$effect(() => {
 		if (!wide) return;
 		const id = activeSessionId(layout);
+		const leaf = leafById(layout, layout.focus.leafId);
+		const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
 		untrack(() => {
+			runtime.spendOpen = tab?.kind === 'spend';
 			if (id && runtime.selectedId !== id) void runtime.selectSession(id, { preservePage: true });
 		});
 	});
@@ -1370,6 +1414,7 @@
 	const mobileNavigationVisible = $derived(
 		!searchPageOpen &&
 		!runtime.routinesOpen &&
+		!runtime.spendOpen &&
 		// The terminal is a full screen here, and the bar would sit on top of its key row.
 		!runtime.terminalOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
@@ -1379,6 +1424,12 @@
 
 	function openRoutinesFromUi(): void {
 		const open = () => runtime.openRoutines();
+		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
+		else open();
+	}
+
+	function openSpendFromUi(): void {
+		const open = () => runtime.openSpend();
 		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
 		else open();
 	}
@@ -1420,6 +1471,8 @@
 				runtime.closeTrace();
 			} else if (runtime.routinesOpen) {
 				runtime.closeRoutines();
+			} else if (runtime.spendOpen) {
+				runtime.closeSpend();
 			} else if (runtime.workspaceOpen) {
 				if (workspacePane?.closeFind()) {
 					e.preventDefault();
@@ -1568,6 +1621,7 @@
 	class:is-thread={runtime.threadOpen}
 	class:has-session={Boolean(selected)}
 	class:has-routines={runtime.routinesOpen}
+	class:has-spend={runtime.spendOpen}
 	class:is-preview={Boolean(artifactPreview)}
 	class:is-preview-dragging={previewDragging}
 	class:is-sidebar-dragging={sidebarDragging}
@@ -1590,6 +1644,7 @@
 		onOpenContextMenu={openContextMenu}
 		onToggleWorkspace={toggleWorkspaceExplorer}
 		onOpenRoutines={openRoutinesFromUi}
+		onOpenSpend={openSpendFromUi}
 		onOpenSettings={() => runtime.openSettings()}
 		onCreateBot={openCreateBot}
 		onCreateGroup={openCreateGroup}
@@ -1664,6 +1719,9 @@
 					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'routines' })}>
 						{t.routines.title}
 					</button>
+					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'spend' })}>
+						{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}
+					</button>
 				{/snippet}
 				{#snippet menuActions(leafId: string, query: string)}
 					{@const needle = query.trim().toLowerCase()}
@@ -1717,6 +1775,20 @@
 						</span>
 						<span class="wb-menu-name">{t.routines.title}</span>
 					</button>
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						onclick={() => openInPane(leafId, { kind: 'spend' })}
+					>
+						<span class="wb-menu-mark is-quiet" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<line x1="12" y1="1" x2="12" y2="23"></line>
+								<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}</span>
+					</button>
 					<div class="wb-menu-section" role="presentation">{t.pane.runningTerminals}</div>
 					{#each listed as row (row.id)}
 						<button
@@ -1745,6 +1817,10 @@
 		{:else if runtime.routinesOpen}
 			{#await import('./calendar/RoutineCalendar.svelte') then { default: RoutineCalendar }}
 				<RoutineCalendar {runtime} {t} />
+			{/await}
+		{:else if runtime.spendOpen}
+			{#await import('./spend/SpendOverlay.svelte') then { default: SpendOverlay }}
+				<SpendOverlay {runtime} backLabel={t.common.back} />
 			{/await}
 		{:else if selected}
 		<!--
@@ -2458,7 +2534,8 @@
 		 * column then would cancel that walk before it painted.
 		 */
 		.shell:has(.conversation) .main,
-		.shell.has-routines .main {
+		.shell.has-routines .main,
+		.shell.has-spend .main {
 			position: fixed;
 			inset: 0;
 			z-index: 30;
@@ -2477,9 +2554,11 @@
 			background: var(--pane);
 		}
 
-		.shell.has-routines .main {
+		.shell.has-routines .main,
+		.shell.has-spend .main {
 			background: var(--pane);
 		}
+
 
 		/* The thread drawer would otherwise stack under the conversation as a second row. */
 		.shell.is-thread .thread {

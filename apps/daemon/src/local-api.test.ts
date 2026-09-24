@@ -1775,6 +1775,62 @@ test("a conversation snapshot pages its first history by limit", async () => {
   expect((await snap("?limit=0")).status).toBe(422);
 });
 
+test("spend summary and detail pages filter, page, and stay out of the snapshot", async () => {
+  const h = await start();
+  const created = h.store.createBot({ name: "Writer", duties: "d", boundaries: "b" });
+  const provider = h.store.createProviderSync({
+    name: "Priced",
+    base_url: "https://priced.invalid",
+    models: [{ name: "fast", price: 1, pricing: { input: 1, output: 1 } }],
+  });
+  h.store.insertSpend({
+    kind: "turn",
+    sessionId: created.direct_session.id,
+    botId: created.bot.id,
+    turnId: created.bot.id,
+    providerId: provider.id,
+    model: "fast",
+    inputTokens: 10,
+    outputTokens: 2,
+    costUsdTicks: 4,
+  });
+  h.store.insertSpend({
+    kind: "composer_suggest",
+    sessionId: created.direct_session.id,
+    botId: null,
+    providerId: provider.id,
+    model: "fast",
+    inputTokens: 3,
+    outputTokens: 1,
+  });
+  const get = (path: string) => fetch(`${h.origin}${path}`, { headers: auth(h) });
+  const summary = await get("/v1/spend/summary?group_by=kind&tz=UTC&kind=turn,composer_suggest");
+  expect(summary.status).toBe(200);
+  const body = await summary.json() as { totals: { calls: number; reported_usd_ticks: number | null; estimated_usd_ticks: number | null }; groups: Array<{ id: string }> };
+  expect(body.totals.calls).toBe(2);
+  expect(body.totals.reported_usd_ticks).toBe(4);
+  expect(body.totals.estimated_usd_ticks).toBe(40_000);
+  expect(body.groups.map((row) => row.id).sort()).toEqual(["composer_suggest", "turn"]);
+  const unassigned = await get("/v1/spend/summary?bot_id=&group_by=bot");
+  expect((await unassigned.json() as { totals: { calls: number } }).totals.calls).toBe(1);
+  const page = await get("/v1/spend?limit=1&kind=turn&kind=composer_suggest");
+  const first = await page.json() as { items: Array<{ kind: string }>; next: string | null };
+  expect(first.items).toHaveLength(1);
+  expect(first.next).toBeString();
+  const rest = await get(`/v1/spend?limit=1&cursor=${encodeURIComponent(first.next!)}`);
+  expect((await rest.json() as { items: unknown[]; next: string | null }).items).toHaveLength(1);
+  expect((await get("/v1/spend?from=yesterday")).status).toBe(422);
+  expect((await get("/v1/spend?from=2026-02-31T00:00:00.000Z")).status).toBe(422);
+  expect((await get("/v1/spend?to=2026-04-31T00:00:00Z")).status).toBe(422);
+  const noMillis = await get("/v1/spend?from=2026-01-01T00:00:00Z&to=2026-01-01T00:00:00.001Z");
+  expect(noMillis.status).toBe(200);
+  expect((await noMillis.json() as { items: unknown[] }).items).toHaveLength(0);
+  expect((await get("/v1/spend/summary?tz=Not/AZone")).status).toBe(422);
+  expect((await get("/v1/spend?limit=0")).status).toBe(422);
+  const snapshot = await (await get("/v1/snapshot")).json() as Record<string, unknown>;
+  expect("spend" in snapshot).toBe(false);
+});
+
 test("media file GETs serve ranges through workspace and attachment paths", async () => {
   const h = await start();
   const dir = mkdtempSync(join(tmpdir(), "rb-media-api-"));

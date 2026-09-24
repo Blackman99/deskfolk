@@ -310,6 +310,9 @@ test("a pending group join is discarded during drain before persisting its judge
   expect(h.store.listLiveTurns()).toEqual([]);
   expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM judgements").get()!.n).toBe(0);
   expect(h.engine.pendingJudgements()).toEqual([]);
+  const billed = h.store.listSpend({ session_id: group.id });
+  expect(billed).toHaveLength(2);
+  expect(billed.every((row) => row.kind === "judgement" && row.judgement_id && row.missing_reason === "endpoint_omitted")).toBe(true);
   expect(h.requests).toHaveLength(0);
 });
 

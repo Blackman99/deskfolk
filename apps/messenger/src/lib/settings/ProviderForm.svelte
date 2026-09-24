@@ -10,6 +10,7 @@
 		addDraftModel,
 		emptyModelAttr,
 		hasCustomAttrs,
+		invalidBilling,
 		pickerModels,
 		thinkingChipOptions,
 		probeSignature,
@@ -203,7 +204,27 @@
 					patchAttr(name, { ...attr, price: (ev.currentTarget as HTMLInputElement).value })}
 			/>
 		</div>
-		<div class="attr-field">
+		<fieldset class="attr-billing">
+			<legend>{t.settings.modelBilling} <span>{t.settings.modelBillingUnit}</span></legend>
+			<div class="billing-fields">
+				{#each [
+					{ key: 'billingInput' as const, label: t.settings.modelBillingInput },
+					{ key: 'billingOutput' as const, label: t.settings.modelBillingOutput },
+					{ key: 'billingCachedInput' as const, label: t.settings.modelBillingCached }
+				] as field (field.key)}
+					<div class="attr-field">
+						<label for={`${fieldPrefix}-${field.key}-${name}`}>{field.label}</label>
+						<input id={`${fieldPrefix}-${field.key}-${name}`} class="attr-price-input billing-input" type="number" inputmode="decimal" min="0" step="any" placeholder={t.settings.modelBillingOptional} value={attr[field.key] ?? ''} aria-invalid={invalidBilling(attr)} oninput={(ev) => patchAttr(name, { ...attr, [field.key]: ev.currentTarget.value })} />
+					</div>
+				{/each}
+			</div>
+			<p class="billing-hint">{t.settings.modelBillingHint}</p>
+			{#if invalidBilling(attr)}<p class="field-error" role="status">{t.settings.modelBillingInvalid}</p>{/if}
+			{#if attr.billingInput || attr.billingOutput || attr.billingCachedInput}
+				<button type="button" class="btn-text-action billing-clear" onclick={() => patchAttr(name, { ...attr, billingInput: '', billingOutput: '', billingCachedInput: '' })}>{t.settings.modelBillingClear}</button>
+			{/if}
+		</fieldset>
+		<div class="attr-field attr-field-thinking">
 			<span class="attr-field-label">{t.settings.modelThinking}</span>
 			<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelThinking}>
 				{#each thinkingChipOptions(attr, draft.advertisedThinking[name]) as level (level)}
@@ -819,6 +840,15 @@
 		gap: 4px;
 		min-width: 0;
 	}
+
+	.attr-billing { min-width: 0; margin: 0; padding: 0; border: 0; }
+	.attr-billing legend { padding: 0; margin-bottom: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink-secondary); }
+	.attr-billing legend span { font-weight: 400; color: var(--muted); }
+	.billing-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+	.billing-input { width: 100%; min-width: 0; }
+	.billing-hint { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+	.billing-clear { min-height: 44px; }
+	.attr-field-thinking { grid-column: 1 / -1; }
 
 	.attr-field-strengths {
 		grid-column: 1 / -1;

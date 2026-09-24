@@ -10,6 +10,7 @@ import {
   type PendingJudgement,
   type RouteOutcome,
   type Spend,
+  type SpendKind,
   type ThinkingLevel,
   type Turn,
 } from "@real-bot/protocol";
@@ -204,6 +205,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     defaultProviderId: string | null;
     providers: Array<{
       id: string;
+      name: string;
       baseUrl: string;
       apiKey: string;
       models: string[];
@@ -214,9 +216,27 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   type ResolvedTarget = {
     baseUrl: string;
     apiKey: string;
+    providerId: string;
+    providerName: string;
     model: string;
     thinkingLevel: ThinkingLevel;
     locale: Locale;
+  };
+
+  /** What one billed call actually ran on. Frozen before the call so a later delete cannot move it. */
+  type CallTarget = {
+    providerId: string;
+    providerName: string;
+    model: string;
+    thinkingLevel: ThinkingLevel | null;
+  };
+
+  /** Session and Bot as they are before the call. Names are snapshotted here; a delete during the call cannot rewrite them. */
+  type SpendOwner = {
+    sessionId: string;
+    sessionName: string | null;
+    botId: string | null;
+    botName: string | null;
   };
 
   async function credentials(): Promise<Creds | null> {
@@ -229,6 +249,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (!apiKey) continue;
       ready.push({
         id: provider.id,
+        name: provider.name,
         baseUrl: provider.base_url,
         apiKey,
         models: provider.models,
@@ -294,6 +315,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return;
     }
+    const owned = spendOwner(chain.sessionId, chain.botId);
     const payload = routeReviewPayload({
       bot: { name: bot.name, duties: bot.duties },
       message: chain.triggerMessage,
@@ -327,6 +349,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return;
     }
+    recordResponseSpend({
+      kind: "route_review",
+      owner: owned,
+      turnId: chain.turnId,
+      chainId,
+      target: routing,
+      usage: result.usage,
+      responded: result.failKind === null || result.failKind === "incomplete",
+    });
     if (options.admission?.draining || (result.failKind && result.failKind !== "incomplete")) return;
     const verdict = parseRouteReview(result.content ?? "");
     // An unreadable verdict leaves the chain open: better a late review than a wrong conclusion.
@@ -361,7 +392,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    */
   async function learnFromChain(
     chain: NonNullable<ReturnType<Store["chainForReview"]>>,
-    routing: { baseUrl: string; apiKey: string; model: string },
+    routing: CallTarget & { baseUrl: string; apiKey: string },
     verdict: { fault: string; direction: string; reason: string },
   ): Promise<void> {
     const written: { kind: "memory" | "skill"; label: string }[] = [];
@@ -376,6 +407,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       skills = [];
     }
+    const owned = spendOwner(chain.sessionId, chain.botId);
     const messages: ChatMessage[] = [
       { role: "system", content: ROUTE_LEARN_SYSTEM },
       {
@@ -418,6 +450,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } catch {
         return;
       }
+      recordResponseSpend({
+        kind: "route_learn",
+        owner: owned,
+        chainId: chain.chainId,
+        target: routing,
+        usage: result.usage,
+        responded: result.failKind === null || result.failKind === "incomplete",
+      });
       if (result.failKind && result.failKind !== "incomplete") break;
       const calls = result.toolCalls.filter((call) => allowed.has(call.name));
       if (calls.length === 0) break;
@@ -584,12 +624,19 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    * The routing agent cannot route itself, so it always runs on the default endpoint's default
    * model. That is the one job the roster-wide default model still has.
    */
-  function routingTarget(creds: Creds): { baseUrl: string; apiKey: string; model: string } | null {
+  function routingTarget(creds: Creds): (CallTarget & { baseUrl: string; apiKey: string }) | null {
     const provider =
       creds.providers.find((row) => row.id === creds.defaultProviderId) ?? creds.providers[0];
     const model = provider?.defaultModel ?? provider?.models[0] ?? null;
     if (!provider || !model) return null;
-    return { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model };
+    return {
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+      providerId: provider.id,
+      providerName: provider.name,
+      model,
+      thinkingLevel: null,
+    };
   }
 
   /** The message a reviewed turn was opened by, trimmed to what the picker needs to recognise it. */
@@ -609,6 +656,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    * The user is waiting; nothing here retries.
    */
   async function agentRoute(
+    turnId: string,
     botId: string,
     creds: Creds,
     text: string,
@@ -657,6 +705,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return null;
     }
 
+    let owned: SpendOwner;
+    try {
+      owned = spendOwner(store.getTurn(turnId).session_id, botId);
+    } catch {
+      owned = { sessionId: "", sessionName: null, botId, botName: null };
+    }
     let result;
     try {
       result = await completions.judge({
@@ -672,6 +726,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return null;
     }
+    recordResponseSpend({
+      kind: "route_pick",
+      owner: owned,
+      turnId,
+      target: routing,
+      usage: result.usage,
+      responded: result.failKind === null || result.failKind === "incomplete",
+    });
     if (result.failKind && result.failKind !== "incomplete") return null;
     const pick = parseRoutePick(result.content ?? "", candidates);
     if (!pick) return null;
@@ -683,6 +745,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         target: {
           baseUrl: provider.baseUrl,
           apiKey: provider.apiKey,
+          providerId: provider.id,
+          providerName: provider.name,
           model: pick.model,
           thinkingLevel: pick.thinkingLevel,
           locale: creds.locale,
@@ -724,6 +788,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           target: {
             baseUrl: provider.baseUrl,
             apiKey: provider.apiKey,
+            providerId: provider.id,
+            providerName: provider.name,
             model: routed.model,
             thinkingLevel: routed.thinkingLevel,
             locale: creds.locale,
@@ -753,6 +819,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       target: {
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
+        providerId: provider.id,
+        providerName: provider.name,
         model: resolved.model,
         thinkingLevel,
         locale: creds.locale,
@@ -907,7 +975,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       triggerBody = "";
     }
-    const agent = await agentRoute(botId, creds, triggerBody, live.abort.signal);
+    const agent = await agentRoute(turnId, botId, creds, triggerBody, live.abort.signal);
     if (!active(turnId, live)) return;
     const routed = agent?.routed ?? targetFor(botId, creds, triggerBody);
     if (!routed) {
@@ -921,6 +989,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       sessionId = null;
     }
+    const turnOwner = spendOwner(sessionId ?? "", botId);
     // A turn the agent did not tie to the one before it starts a new chain, so the old one is done.
     if (sessionId && !agent?.pick.continuesPrevious) closeChain(sessionId, botId);
     try {
@@ -1036,6 +1105,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         }
         throw error;
       }
+      recordSpend("turn", current.id, result.usage, result.missingReason, callOf(target), turnOwner);
       if (live.abort.signal.aborted) {
         drop();
         return;
@@ -1054,7 +1124,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         live.burned = true;
         store.clearInterruptPending(current.bot_id);
       }
-      recordSpend(current, result.usage, result.missingReason, null);
 
       if (!result.ok) {
         failTurn(turnId, result.failKind);
@@ -1576,13 +1645,54 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
-  function recordSpend(
-    turn: Turn,
-    usage: MappedUsage | null,
-    missing: Spend["missing_reason"],
-    judgementId: string | null,
-  ): void {
-    const hasDigits = Boolean(
+  function callOf(target: CallTarget): CallTarget {
+    return {
+      providerId: target.providerId,
+      providerName: target.providerName,
+      model: target.model,
+      thinkingLevel: target.thinkingLevel,
+    };
+  }
+
+  /**
+   * The title the messenger shows: a group's name, the other side of a you↔Bot direct, or
+   * `A ↔ B` for a Bot↔Bot direct. Frozen with the Bot's name before the call leaves.
+   */
+  function spendOwner(sessionId: string, botId: string | null): SpendOwner {
+    let sessionName: string | null = null;
+    try {
+      const session = store.getSession(sessionId);
+      if (session.kind === "group") {
+        sessionName = session.name;
+      } else {
+        const names = store
+          .presentBotIds(sessionId)
+          .map((id) => {
+            try {
+              return store.getBot(id).name;
+            } catch {
+              return null;
+            }
+          })
+          .filter((name): name is string => Boolean(name));
+        sessionName = names.length <= 1 ? (names[0] ?? null) : names.join(" ↔ ");
+      }
+    } catch {
+      sessionName = null;
+    }
+    let botName: string | null = null;
+    if (botId) {
+      try {
+        botName = store.getBot(botId).name;
+      } catch {
+        botName = null;
+      }
+    }
+    return { sessionId, sessionName, botId, botName };
+  }
+
+  function usageHasDigits(usage: MappedUsage | null): boolean {
+    return Boolean(
       usage &&
         (usage.input_tokens != null ||
           usage.output_tokens != null ||
@@ -1591,19 +1701,88 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           usage.reasoning_tokens != null ||
           usage.cost_usd_ticks != null),
     );
+  }
+
+  /**
+   * A short call that returned a body. Success and `incomplete` with no usage are `endpoint_omitted`;
+   * an endpoint error is recorded only when it brought usage. A throw never reaches here.
+   */
+  function recordResponseSpend(input: {
+    kind: SpendKind;
+    owner: SpendOwner;
+    turnId?: string | null;
+    judgementId?: string | null;
+    chainId?: string | null;
+    target: CallTarget;
+    usage: MappedUsage | null;
+    responded: boolean;
+  }): void {
+    const hasDigits = usageHasDigits(input.usage);
+    if (!hasDigits && !input.responded) return;
+    writeSpend({
+      kind: input.kind,
+      owner: input.owner,
+      turnId: input.turnId ?? null,
+      judgementId: input.judgementId ?? null,
+      chainId: input.chainId ?? null,
+      target: input.target,
+      usage: hasDigits ? input.usage : null,
+      missing: hasDigits ? null : "endpoint_omitted",
+    });
+  }
+
+  function recordSpend(
+    kind: "turn",
+    turnId: string,
+    usage: MappedUsage | null,
+    missing: Spend["missing_reason"],
+    target: CallTarget,
+    owner: SpendOwner,
+  ): void {
+    const hasDigits = usageHasDigits(usage);
     if (!hasDigits && !missing) return;
+    writeSpend({
+      kind,
+      owner,
+      turnId,
+      judgementId: null,
+      chainId: null,
+      target,
+      usage: hasDigits ? usage : null,
+      missing: hasDigits ? null : missing,
+    });
+  }
+
+  function writeSpend(input: {
+    kind: SpendKind;
+    owner: SpendOwner;
+    turnId: string | null;
+    judgementId: string | null;
+    chainId: string | null;
+    target: CallTarget;
+    usage: MappedUsage | null;
+    missing: Spend["missing_reason"];
+  }): void {
     const row = store.insertSpend({
-      sessionId: turn.session_id,
-      botId: turn.bot_id,
-      turnId: judgementId ? null : turn.id,
-      judgementId,
-      inputTokens: usage?.input_tokens ?? null,
-      outputTokens: usage?.output_tokens ?? null,
-      totalTokens: usage?.total_tokens ?? null,
-      cachedTokens: usage?.cached_tokens ?? null,
-      reasoningTokens: usage?.reasoning_tokens ?? null,
-      costUsdTicks: usage?.cost_usd_ticks ?? null,
-      missingReason: hasDigits ? null : missing,
+      kind: input.kind,
+      sessionId: input.owner.sessionId,
+      sessionName: input.owner.sessionName,
+      botId: input.owner.botId,
+      botName: input.owner.botName,
+      turnId: input.turnId,
+      judgementId: input.judgementId,
+      chainId: input.chainId,
+      providerId: input.target.providerId,
+      providerName: input.target.providerName,
+      model: input.target.model,
+      thinkingLevel: input.target.thinkingLevel,
+      inputTokens: input.usage?.input_tokens ?? null,
+      outputTokens: input.usage?.output_tokens ?? null,
+      totalTokens: input.usage?.total_tokens ?? null,
+      cachedTokens: input.usage?.cached_tokens ?? null,
+      reasoningTokens: input.usage?.reasoning_tokens ?? null,
+      costUsdTicks: input.usage?.cost_usd_ticks ?? null,
+      missingReason: input.missing,
     });
     publishSpend(row);
   }
@@ -1754,6 +1933,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (!provider) return [];
     const lightModel =
       provider.models.find((name) => /flash|mini|lite|fast/i.test(name)) ?? resolved.model;
+    const target: CallTarget = {
+      providerId: provider.id,
+      providerName: provider.name,
+      model: lightModel,
+      thinkingLevel: null,
+    };
+    const owned = spendOwner(sessionId, null);
     let user: string;
     try {
       user = assembleComposerSuggestUser(store, sessionId);
@@ -1776,6 +1962,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return [];
     }
+    // Typing again aborts the request, but a body that already came back was paid for.
+    recordResponseSpend({
+      kind: "composer_suggest",
+      owner: owned,
+      target,
+      usage: result.usage,
+      responded: result.failKind === null || result.failKind === "incomplete",
+    });
     if (signal.aborted) return [];
     if (result.failKind || result.hadToolCalls || !result.content) return [];
     const roster = store
@@ -1811,16 +2005,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         return;
       }
       if (options.admission?.draining) return;
-      const turnStub: Turn = {
-        id: "",
-        session_id: message.session_id,
-        bot_id: botId,
-        status: "running",
-        trigger_message_id: message.id,
-        last_activity_at: message.created_at,
-        created_at: message.created_at,
-        updated_at: message.created_at,
-      };
       const target = creds ? (targetFor(botId, creds, message.body)?.target ?? null) : null;
       if (!creds || !target) {
         try {
@@ -1850,6 +2034,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       } catch {
         return;
       }
+      const billed = { ...callOf(target), thinkingLevel: null };
+      const owned = spendOwner(message.session_id, botId);
       const result = await completions.judge({
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
@@ -1860,7 +2046,17 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         ],
         signal: new AbortController().signal,
       });
-      if (options.admission?.draining) return;
+      if (options.admission?.draining) {
+        recordResponseSpend({
+          kind: "judgement",
+          owner: owned,
+          judgementId: pending.id,
+          target: billed,
+          usage: result.usage,
+          responded: result.failKind === null || result.failKind === "incomplete",
+        });
+        return;
+      }
       let decision: "join" | "pass" = "pass";
       let reason: string | null = null;
       let error: "timeout" | "invalid_output" | "endpoint_error" | null = null;
@@ -1888,16 +2084,27 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           error,
         });
       } catch {
+        recordResponseSpend({
+          kind: "judgement",
+          owner: owned,
+          judgementId: pending.id,
+          target: billed,
+          usage: result.usage,
+          responded: result.failKind === null || result.failKind === "incomplete",
+        });
         return;
       }
+      recordResponseSpend({
+        kind: "judgement",
+        owner: owned,
+        judgementId: row.id,
+        target: billed,
+        usage: result.usage,
+        responded: result.failKind === null || result.failKind === "incomplete",
+      });
       if (decision === "join") startTurn(message.session_id, botId, message, "redirect");
       finish(row);
       publish({ event: "judgement.created", occurred_at: occurred(), ...row });
-      if (result.usage) {
-        recordSpend(turnStub, result.usage, null, row.id);
-      } else if (result.failKind === null || result.failKind === "incomplete") {
-        recordSpend(turnStub, null, "endpoint_omitted", row.id);
-      }
     } finally {
       if (!settled) finish();
     }

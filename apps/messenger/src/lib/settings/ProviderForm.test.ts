@@ -226,3 +226,19 @@ test("an empty list explains itself and a fetch error stays on the page", () => 
   expect(fetching.host.querySelector(".model-picker-empty")?.textContent).toContain(t.settings.modelsFetchingHint);
   fetching.close();
 });
+
+test("phone billing attributes accept both rates, retain the draft and clear together", async () => {
+  const { host, state, close, component } = open(listed());
+  click(host.querySelector(".model-row-attrs"));
+  const input = host.querySelector<HTMLInputElement>('[id*="-billingInput-"]');
+  expect(input).toBeTruthy();
+  fill(input, "2.5");
+  expect(host.textContent).toContain(t.settings.modelBillingInvalid);
+  fill(host.querySelector('[id*="-billingOutput-"]'), "8");
+  fill(host.querySelector('[id*="-billingCachedInput-"]'), "0.25");
+  expect(state.draft.modelAttrs["grok-4.6"]).toMatchObject({ billingInput: "2.5", billingOutput: "8", billingCachedInput: "0.25" });
+  expect(host.textContent).not.toContain(t.settings.modelBillingInvalid);
+  click(buttonByText(host, t.settings.modelBillingClear));
+  expect(state.draft.modelAttrs["grok-4.6"]).toMatchObject({ billingInput: "", billingOutput: "", billingCachedInput: "" });
+  close();
+});

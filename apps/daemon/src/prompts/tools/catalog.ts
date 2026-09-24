@@ -31,6 +31,15 @@ export const ADD_ENDPOINT: ToolDef = {
             properties: {
               name: { type: "string" },
               price: { type: "number" },
+              pricing: {
+                type: "object",
+                properties: {
+                  input: { type: "number", minimum: 0 },
+                  output: { type: "number", minimum: 0 },
+                  cached_input: { type: "number", minimum: 0 },
+                },
+                required: ["input", "output"],
+              },
               thinking_levels: {
                 type: "array",
                 items: { type: "string" },
@@ -42,8 +51,8 @@ export const ADD_ENDPOINT: ToolDef = {
         ],
       },
       description: {
-        zh: "整份模型名单。每项是名字字符串，或 { name, price?, thinking_levels?, strengths? }。省略则为空名单。",
-        en: "The full model list. Each item is a name string or { name, price?, thinking_levels?, strengths? }. Omit for an empty list.",
+        zh: "整份模型名单。每项是名字字符串，或 { name, price?, pricing?: { input, output, cached_input? }, thinking_levels?, strengths? }。price 是选路参考价；pricing 是 USD / 百万 token 计费单价。省略则为空名单。",
+        en: "The full model list. Each item is a name string or { name, price?, pricing?: { input, output, cached_input? }, thinking_levels?, strengths? }. price is a routing reference; pricing is USD per million tokens. Omit for an empty list.",
       },
     },
     default_model: {
@@ -80,6 +89,15 @@ export const UPDATE_ENDPOINT: ToolDef = {
             properties: {
               name: { type: "string" },
               price: { type: "number" },
+              pricing: {
+                type: "object",
+                properties: {
+                  input: { type: "number", minimum: 0 },
+                  output: { type: "number", minimum: 0 },
+                  cached_input: { type: "number", minimum: 0 },
+                },
+                required: ["input", "output"],
+              },
               thinking_levels: {
                 type: "array",
                 items: { type: "string" },
@@ -91,8 +109,8 @@ export const UPDATE_ENDPOINT: ToolDef = {
         ],
       },
       description: {
-        zh: "整份新名单。省略则不改名单。",
-        en: "The full new list. Omit to leave the list unchanged.",
+        zh: "整份新名单。pricing 的 input / output / cached_input 是 USD / 百万 token 计费单价；省略 pricing 清空单价。省略 models 则不改名单。",
+        en: "The full new list. pricing input / output / cached_input rates are USD per million tokens; omit pricing to clear rates. Omit models to leave the list unchanged.",
       },
     },
     default_model: {

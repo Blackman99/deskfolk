@@ -42,6 +42,11 @@ import type {
   SettingsPatch,
   Skill,
   Spend,
+  SpendDetail,
+  SpendFilter,
+  SpendPage,
+  SpendSummary,
+  SpendSummaryQuery,
   ThinkingLevel,
   Turn,
   TaskArtifacts,
@@ -50,6 +55,7 @@ import type {
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import { isNonReceiptPath } from "@real-bot/protocol";
+import { spendSearchParams } from "./spend/spend-query.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "./api.ts";
@@ -330,8 +336,18 @@ export class LocalApi {
   }
 
   async spend(): Promise<Spend[]> {
-    const page = await this.get<ListPage<Spend>>("/v1/spend");
+    const page = await this.spendPage({});
     return page.items;
+  }
+
+  /** Aggregates. The view asks for these instead of summing the ledger itself. */
+  async spendSummary(query: SpendSummaryQuery = {}): Promise<SpendSummary> {
+    return this.get<SpendSummary>(`/v1/spend/summary${spendSearchParams(query)}`);
+  }
+
+  /** One page of the ledger. `next` is the cursor for the following page. */
+  async spendPage(filter: SpendFilter & { limit?: number; cursor?: string | null } = {}): Promise<SpendPage> {
+    return this.get<SpendPage>(`/v1/spend${spendSearchParams({ ...filter, cursor: filter.cursor ?? undefined })}`);
   }
 
   async judgements(sessionId: string): Promise<Judgement[]> {

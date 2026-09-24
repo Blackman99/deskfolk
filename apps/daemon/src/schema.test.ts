@@ -444,6 +444,53 @@ describe("schema", () => {
     store.close();
   });
 
+  test("spend kinds reject a row that is missing the id that kind requires", () => {
+    const store = new Store();
+    const bot = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const cases: Array<{ kind: "turn" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer_suggest"; turnId?: string; judgementId?: string; chainId?: string }> = [
+      { kind: "turn" },
+      { kind: "route_pick" },
+      { kind: "judgement" },
+      { kind: "route_review", chainId: "chain" },
+      { kind: "route_review", turnId: "turn" },
+      { kind: "route_learn" },
+    ];
+    for (const row of cases) {
+      expect(() => store.insertSpend({
+        kind: row.kind,
+        sessionId: bot.direct_session.id,
+        botId: row.kind === "composer_suggest" ? null : bot.bot.id,
+        turnId: row.turnId ?? null,
+        judgementId: row.judgementId ?? null,
+        chainId: row.chainId ?? null,
+      })).toThrow();
+    }
+    const kept = store.insertSpend({
+      kind: "composer_suggest",
+      sessionId: bot.direct_session.id,
+      botId: null,
+    });
+    expect(kept.kind).toBe("composer_suggest");
+    expect(kept.bot_id).toBeNull();
+    expect(store.insertSpend({
+      kind: "route_review",
+      sessionId: bot.direct_session.id,
+      botId: bot.bot.id,
+      turnId: "turn",
+      chainId: "chain",
+    }).kind).toBe("route_review");
+    expect(store.insertSpend({
+      kind: "route_learn",
+      sessionId: bot.direct_session.id,
+      botId: bot.bot.id,
+      chainId: "chain",
+    }).chain_id).toBe("chain");
+    const sql = store.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE name = 'spend'").get()!.sql;
+    expect(sql).not.toContain("REFERENCES");
+    expect(sql).not.toContain("turn_id IS NOT NULL AND judgement_id IS NULL");
+    store.close();
+  });
+
   test("deleteSession deletes group and rejects direct session", () => {
     const store = new Store();
     const b1 = store.createBot({ name: "BotAlpha", duties: "alpha", boundaries: "none" });

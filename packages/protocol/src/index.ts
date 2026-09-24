@@ -202,10 +202,14 @@ export function sortThinkingLevels(levels: readonly string[]): ThinkingLevel[] {
   return out;
 }
 
-/** One configured completion name plus routing attributes. Price is routing input only. */
+/** USD per million tokens, captured when a spend row is written. */
+export type ModelPricing = { input: number; output: number; cached_input?: number };
+
+/** A completion name with independent routing reference price and optional billing rates. */
 export type EndpointModel = {
   name: string;
   price: number | null;
+  pricing?: ModelPricing;
   thinking_levels: ThinkingLevel[];
   strengths: string[];
 };
@@ -213,6 +217,7 @@ export type EndpointModel = {
 export type EndpointModelInput = string | {
   name: string;
   price?: number | null;
+  pricing?: ModelPricing;
   thinking_levels?: ThinkingLevel[];
   strengths?: string[];
 };
@@ -732,20 +737,137 @@ export type PatchMemoryRequest = {
   enabled?: boolean;
 };
 
+/** One endpoint call the ledger records. */
+export type SpendKind =
+  | "turn"
+  | "judgement"
+  | "route_pick"
+  | "route_review"
+  | "route_learn"
+  | "composer_suggest";
+
+/**
+ * How the view groups kinds. Decision is the pick before a turn; feedback is the review plus
+ * the learning hop; a composer suggestion belongs to neither and is "other".
+ */
+export type SpendCategory = "turn" | "judgement" | "decision" | "feedback" | "other";
+
+export const SPEND_CATEGORY_OF: Record<SpendKind, SpendCategory> = {
+  turn: "turn",
+  judgement: "judgement",
+  route_pick: "decision",
+  route_review: "feedback",
+  route_learn: "feedback",
+  composer_suggest: "other",
+};
+
+/**
+ * Filters for the ledger. An absent field means "any". `bot_id` and `model` use `null` for the
+ * unassigned / unrecorded group. `to` is exclusive.
+ */
+export type SpendFilter = {
+  from?: string;
+  to?: string;
+  kind?: SpendKind[];
+  bot_id?: string | null;
+  session_id?: string;
+  model?: string | null;
+  provider_id?: string;
+  turn_id?: string;
+};
+
+export type SpendSummaryQuery = SpendFilter & {
+  group_by?: "model" | "session" | "bot" | "kind" | "day";
+  /** IANA zone. Day buckets are cut in this zone, not SQLite's. */
+  tz?: string;
+};
+
+/**
+ * Sums ignore null. A field that no row reported stays null — it is not zero. An empty set is
+ * all null. `missing_calls` had neither a reported nor an estimated amount; `missing_usage_calls`
+ * had no usage token fields.
+ */
+export type SpendTotals = {
+  calls: number;
+  input_tokens: number | null;
+  cached_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_tokens: number | null;
+  total_tokens: number | null;
+  reported_usd_ticks: number | null;
+  estimated_usd_ticks: number | null;
+  reported_calls: number;
+  estimated_calls: number;
+  missing_calls: number;
+  missing_usage_calls: number;
+};
+
+export type SpendKindSummary = SpendTotals & { kind: SpendKind };
+
+export type SpendCategorySummary = SpendTotals & {
+  category: SpendCategory;
+  kinds: SpendKindSummary[];
+};
+
+/**
+ * One bucket of a summary. `id` is opaque for a model (provider + model), the session or bot id,
+ * the kind string, or `YYYY-MM-DD` for a day. A null model is one group. A null bot is
+ * unassigned, not deleted. Day groups carry category totals so a trend can stack them; reported
+ * and estimated amounts stay separate.
+ */
+export type SpendGroup = SpendTotals & {
+  id: string | null;
+  name: string | null;
+  deleted: boolean;
+  provider_id: string | null;
+  provider_name: string | null;
+  model: string | null;
+  categories: SpendCategorySummary[];
+};
+
+export type SpendSummary = {
+  totals: SpendTotals;
+  groups: SpendGroup[];
+  categories: SpendCategorySummary[];
+};
+
 export type Spend = {
   id: string;
   session_id: string;
-  bot_id: string;
+  /** Snapshot of the session name at insertion. */
+  session_name: string | null;
+  bot_id: string | null;
+  /** Snapshot of the bot name at insertion. Null when the call was not a bot's. */
+  bot_name: string | null;
   turn_id: string | null;
   judgement_id: string | null;
+  kind: SpendKind;
+  chain_id: string | null;
+  provider_id: string | null;
+  provider_name: string | null;
+  model: string | null;
+  thinking_level: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
   cached_tokens: number | null;
   reasoning_tokens: number | null;
   cost_usd_ticks: number | null;
+  estimated_cost_usd_ticks: number | null;
   missing_reason: "stream_interrupted" | "endpoint_omitted" | null;
   created_at: string;
+};
+
+/** A ledger row plus whether the session or bot it names is gone, and the message that woke it. */
+export type SpendDetail = Spend & {
+  trigger_message_id: string | null;
+  session_deleted: boolean;
+  bot_deleted: boolean;
+};
+
+export type SpendPage = {
+  items: SpendDetail[];
+  next: string | null;
 };
 
 export type Judgement = {

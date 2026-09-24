@@ -43,6 +43,10 @@ import type {
   SettingsPatch,
   Skill,
   Spend,
+  SpendFilter,
+  SpendPage,
+  SpendSummary,
+  SpendSummaryQuery,
   SyncFrame,
   ThinkingLevel,
   Turn,
@@ -52,6 +56,7 @@ import type {
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import { isNonReceiptPath } from "@real-bot/protocol";
+import { spendSearchParams } from "../spend/spend-query.ts";
 import {
   fromBase64url,
   REMOTE_FILE_LIMIT,
@@ -452,7 +457,15 @@ export class RemoteApi {
     return this.get<ListPage<Message>>(`/v1/sessions/${sessionId}/messages${query ? `?${query}` : ""}`);
   }
   async spend(): Promise<Spend[]> {
-    return (await this.get<ListPage<Spend>>("/v1/spend")).items;
+    return (await this.spendPage({})).items;
+  }
+
+  async spendSummary(query: SpendSummaryQuery = {}): Promise<SpendSummary> {
+    return this.get<SpendSummary>(`/v1/spend/summary${spendSearchParams(query, true)}`);
+  }
+
+  async spendPage(filter: SpendFilter & { limit?: number; cursor?: string | null } = {}): Promise<SpendPage> {
+    return this.get<SpendPage>(`/v1/spend${spendSearchParams({ ...filter, cursor: filter.cursor ?? undefined }, true)}`);
   }
   async judgements(sessionId: string): Promise<Judgement[]> {
     return (await this.get<ListPage<Judgement>>(`/v1/sessions/${sessionId}/judgements`)).items;

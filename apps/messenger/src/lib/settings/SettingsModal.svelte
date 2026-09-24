@@ -289,6 +289,7 @@
 					providerEditor.errors.endpoint ||
 					providerEditor.errors.endpointKey ||
 					providerEditor.errors.models ||
+					providerEditor.errors.pricing ||
 					providerEditor.errors.defaultModel)
 		)
 	);

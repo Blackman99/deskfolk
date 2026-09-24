@@ -18,6 +18,7 @@ const entries: string[] = ["/"];
 let beforeNavigation: (navigation: { type: string; delta?: number; cancel: () => void }) => void;
 let settingsBackHandled = false;
 let settingsBackCalls = 0;
+let mountRealShell = false;
 mock.module("$app/state", () => ({ page }));
 mock.module("$app/navigation", () => ({
   beforeNavigate(callback: typeof beforeNavigation) { beforeNavigation = callback; },
@@ -36,7 +37,7 @@ const { default: RealShell } = await import("$lib/Shell.svelte");
 afterAll(() => {
   mock.module("$lib/Shell.svelte", () => ({ default: RealShell }));
 });
-mock.module("$lib/Shell.svelte", () => ({ default: () => ({
+mock.module("$lib/Shell.svelte", () => ({ default: (...args: Parameters<typeof RealShell>) => mountRealShell ? RealShell(...args) : ({
   backMobileLayer() { settingsBackCalls++; return settingsBackHandled; },
 }) }));
 const { default: Page } = await import("../routes/+page.svelte");
@@ -75,6 +76,7 @@ afterEach(() => {
   entries.push("/");
   settingsBackHandled = false;
   settingsBackCalls = 0;
+  mountRealShell = false;
 });
 
 test('page cancels browser Back only when a layer above the URL consumes the step', async () => {
@@ -186,6 +188,8 @@ for (const query of [
   "?o=workspace&w=notes.txt",
   "?s=direct-1&o=trace&k=task-1",
   "?o=routines",
+  "?o=spend",
+  "?s=direct-1&o=spend",
 ]) test(`real page preserves ${query} while initial snapshot is delayed`, async () => {
   page.url = new URL(query, "http://localhost/");
   const wanted = overlayFromUrl(page.url);
@@ -224,8 +228,9 @@ for (const query of [
   expect(navigations).toEqual([]);
 });
 
-for (const selectedId of [null, 'direct-1', 'direct-2']) test(`selecting a conversation leaves the calendar opened over ${selectedId ?? 'the roster'}`, async () => {
-  const query = selectedId ? `?s=${selectedId}&o=routines` : '?o=routines';
+for (const kind of ['routines', 'spend'] as const) for (const selectedId of [null, 'direct-1', 'direct-2']) test(`selecting a conversation leaves ${kind} opened over ${selectedId ?? 'the roster'}`, async () => {
+  const query = selectedId ? `?s=${selectedId}&o=${kind}` : `?o=${kind}`;
+  const isOpen = (runtime: MessengerRuntime) => kind === 'spend' ? runtime.spendOpen : runtime.routinesOpen;
   page.url = new URL(query, 'http://localhost/');
   entries[0] = `/${query}`;
   const sessions = [aDirect(), aDirect({ id: 'direct-2' })];
@@ -244,17 +249,17 @@ for (const selectedId of [null, 'direct-1', 'direct-2']) test(`selecting a conve
   close = render(Page, {}).close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => runtime.connection === 'connected');
-  expect(runtime.routinesOpen).toBe(true);
+  expect(isOpen(runtime)).toBe(true);
   await runtime.selectSession('direct-1');
   await until(() => page.url.search === '?s=direct-1');
-  expect(runtime.routinesOpen).toBe(false);
+  expect(isOpen(runtime)).toBe(false);
   expect(runtime.selectedId).toBe('direct-1');
 
-  // Restoring the calendar through history must still work after switching conversations.
+  // History restores the page even after switching conversations.
   page.url = new URL(query, page.url);
-  await until(() => runtime.routinesOpen && runtime.selectedId === selectedId);
+  await until(() => isOpen(runtime) && runtime.selectedId === selectedId);
   page.url = new URL('?s=direct-1', page.url);
-  await until(() => !runtime.routinesOpen && runtime.selectedId === 'direct-1');
+  await until(() => !isOpen(runtime) && runtime.selectedId === 'direct-1');
 });
 
 test('opening a screen pushes, closing it walks back, and a deep link rewrites its own entry', async () => {
@@ -400,5 +405,55 @@ test('a back step this page asked for is not mistaken for a Back press', async (
     expect(cancelled).toBe(1);
   } finally {
     window.history.back = previousBack;
+  }
+});
+
+for (const restored of [false, true]) test(`real page and Shell keep desktop Spend and URL aligned (${restored ? 'saved tab' : 'deep link'})`, async () => {
+  mountRealShell = true;
+  localStorage.removeItem('real-bot-workbench-layout');
+  if (restored) localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1, root: { type: 'leaf', id: 'root', tabs: [
+      { id: 'chat', kind: 'chat', params: { sessionId: 'direct-1' } },
+      { id: 'spend', kind: 'spend', params: {} },
+    ], activeTabId: 'spend' }, floating: [], focus: { zone: 'tiled', leafId: 'root' },
+  }));
+  page.url = new URL(`http://localhost/?s=direct-1${restored ? '' : '&o=spend'}`);
+  entries[0] = `${page.url.pathname}${page.url.search}`;
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor,
+      settings: { ...emptySnapshot().settings, wizard_complete: true, locale: 'en' }, bots: [aBot()], sessions: [aDirect()] });
+    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const previousBack = window.history.back;
+  window.history.back = () => {
+    beforeNavigation({ type: 'popstate', delta: -1, cancel() {} });
+    entries.pop(); page.url = new URL(entries.at(-1)!, page.url);
+  };
+  try {
+    const rendered = render(Page, {}); close = rendered.close;
+    const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+    await until(() => runtime.connection === 'connected' && !!rendered.host.querySelector('[data-spend-view]'));
+    expect(page.url.search).toBe('?s=direct-1&o=spend');
+    expect(runtime.spendOpen).toBe(true);
+    runtime.openSpend(); runtime.openSpend(); flushSync();
+    expect(rendered.host.querySelectorAll('.wb-tab-button')).toHaveLength(2);
+    await runtime.openChat('direct-1');
+    await until(() => page.url.search === '?s=direct-1' && !!rendered.host.querySelector('.pane-conversation'));
+    runtime.openSpend();
+    await until(() => page.url.searchParams.get('o') === 'spend');
+    let cancelled = false;
+    beforeNavigation({ type: 'popstate', delta: -1, cancel() { cancelled = true; } });
+    expect(cancelled).toBe(false);
+    entries.pop(); page.url = new URL(entries.at(-1)!, page.url);
+    await until(() => !runtime.spendOpen && !!rendered.host.querySelector('.pane-conversation'));
+    expect(page.url.search).toBe('?s=direct-1');
+  } finally {
+    window.history.back = previousBack;
+    localStorage.removeItem('real-bot-workbench-layout');
   }
 });

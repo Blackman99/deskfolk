@@ -1,6 +1,8 @@
 import { afterEach, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
-import type { ClientEvent } from '@real-bot/protocol';
+import type { ClientEvent, SpendDetail, SpendSummary } from '@real-bot/protocol';
+import { MessengerRuntime } from './runtime.svelte.ts';
+import { overlayFromFlags, sessionUrl, viewFromUrl } from './session-url.ts';
 // Monaco's Vite-only stylesheet alias is unrelated to the mounted confirmation surfaces.
 mock.module('monaco-editor-css', () => ({}));
 mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
@@ -1290,4 +1292,134 @@ test('two conversations side by side each keep their own draft, reply and send',
   expect(sends).toHaveLength(1);
   expect((sends[0]!.args[0] as { sessionId?: string }).sessionId).toBe('g1');
   localStorage.removeItem('real-bot-workbench-layout');
+});
+
+function spendRuntime(): MessengerRuntime {
+  const runtime = new MessengerRuntime();
+  runtime.snapshot = {
+    ...emptySnapshot(), bots: [aBot()], sessions: [aDirect()],
+    messages: [aMessage({ id: 'spend-trigger', session_id: 'direct-1', body: 'Ledger trigger' })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  };
+  runtime.connection = 'connected';
+  runtime.selectedId = 'direct-1';
+  cleanups.push(() => runtime.destroy());
+  return runtime;
+}
+
+function restoreSpendLayout(): void {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: { ...makeLeaf('spend-leaf', [
+      { id: 'chat-tab', kind: 'chat', params: { sessionId: 'direct-1' } },
+      { id: 'spend-tab', kind: 'spend', params: {} },
+    ]), activeTabId: 'spend-tab' },
+    floating: [], focus: { zone: 'tiled', leafId: 'spend-leaf' },
+  }));
+  cleanups.push(() => localStorage.removeItem('real-bot-workbench-layout'));
+}
+
+function navigationUrl(runtime: MessengerRuntime): string | null {
+  return sessionUrl(new URL('http://localhost/'), {
+    selectedId: runtime.selectedId, previewRelpath: runtime.previewRelpath,
+    previewAttachmentId: runtime.previewAttachmentId, overlay: overlayFromFlags(runtime),
+  });
+}
+
+test('mounted Shell restores Spend in front of its selected conversation and mirrors its URL', async () => {
+  restoreSpendLayout();
+  const runtime = spendRuntime();
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  await settle();
+  expect(host.querySelector('.wb-tab-button[aria-selected="true"]')?.textContent?.trim()).toBe('Spend');
+  expect(host.querySelector('[data-spend-view]')).not.toBeNull();
+  expect(runtime.selectedId).toBe('direct-1');
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1&o=spend');
+  expect(JSON.parse(localStorage.getItem('real-bot-workbench-layout')!).root.activeTabId).toBe('spend-tab');
+});
+
+test('mounted Shell translates a desktop Spend URL, reuses its singleton and follows browser Back', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const runtime = spendRuntime();
+  const wanted = viewFromUrl(new URL('http://localhost/?s=direct-1&o=spend'));
+  runtime.applyOverlay(wanted.overlay);
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  await settle();
+  expect(host.querySelector('[data-spend-view]')).not.toBeNull();
+  runtime.openSpend(); runtime.openSpend(); flushSync();
+  expect(storedTabs().filter((tab) => tab.kind === 'spend')).toHaveLength(1);
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1&o=spend');
+  runtime.applyOverlay({ kind: 'none' }); flushSync();
+  expect(host.querySelector('.pane-conversation')).not.toBeNull();
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1');
+  runtime.applyOverlay(wanted.overlay); await settle();
+  expect(host.querySelector('[data-spend-view]')).not.toBeNull();
+  expect(storedTabs().filter((tab) => tab.kind === 'spend')).toHaveLength(1);
+  click([...host.querySelectorAll('.wb-tab-button')].find((tab) => tab.textContent?.trim() === 'Researcher'));
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1');
+});
+
+test('mounted Shell Spend detail opens the already selected chat and retains its trigger highlight', async () => {
+  restoreSpendLayout();
+  const runtime = spendRuntime();
+  const totals: SpendSummary['totals'] = {
+    calls: 1, input_tokens: 10, cached_tokens: null, output_tokens: 5, reasoning_tokens: null,
+    total_tokens: 15, reported_usd_ticks: null, estimated_usd_ticks: null,
+    reported_calls: 0, estimated_calls: 0, missing_calls: 1, missing_usage_calls: 0,
+  };
+  const detail: SpendDetail = {
+    id: 'spend-row', session_id: 'direct-1', session_name: 'Researcher', session_deleted: false,
+    bot_id: 'bot-1', bot_name: 'Researcher', bot_deleted: false,
+    turn_id: null, judgement_id: null, kind: 'turn', chain_id: null,
+    provider_id: null, provider_name: null, model: null, thinking_level: null,
+    input_tokens: 10, output_tokens: 5, total_tokens: 15, cached_tokens: null, reasoning_tokens: null,
+    cost_usd_ticks: null, estimated_cost_usd_ticks: null, missing_reason: null,
+    created_at: '2026-09-24T01:00:00.000Z', trigger_message_id: 'spend-trigger',
+  };
+  Object.defineProperty(runtime, 'client', { value: {
+    kind: 'local', spendSummary: async () => ({ totals, groups: [], categories: [] }),
+    spendPage: async () => ({ items: [detail], next: null }),
+  } });
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  for (let i = 0; i < 100 && !host.textContent?.includes(detail.created_at); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10)); flushSync();
+  }
+  expect(host.textContent).toContain(detail.created_at);
+  click(buttonByText(host, detail.created_at));
+  await settle();
+  expect(host.querySelector('.pane-conversation')).not.toBeNull();
+  expect(host.querySelector('[data-spend-view]')).toBeNull();
+  expect(runtime.selectedId).toBe('direct-1');
+  expect(runtime.highlightedMessageId).toBe('spend-trigger');
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1');
+  expect(storedTabs().filter((tab) => tab.kind === 'chat')).toHaveLength(1);
+});
+
+test('mounted Shell mobile Spend Back and Escape leave the underlying chat and history intact', async () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null, addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  cleanups.push(() => { window.matchMedia = previousMatchMedia; });
+  const runtime = spendRuntime(); runtime.openSpend();
+  const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+  await settle();
+  expect(host.querySelector('.spend-page [data-spend-view]')).not.toBeNull();
+  expect((app as { backMobileLayer: () => boolean }).backMobileLayer()).toBe(false);
+  expect(runtime.spendOpen).toBe(true);
+  click(host.querySelector('.spend-page button[aria-label="Back"]'));
+  expect(runtime.spendOpen).toBe(false);
+  expect(runtime.selectedId).toBe('direct-1');
+  runtime.openSpend(); await settle();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); flushSync();
+  expect(runtime.spendOpen).toBe(false);
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1');
+  runtime.openRoutines(); flushSync();
+  expect(runtime.spendOpen).toBe(false);
+  expect(runtime.routinesOpen).toBe(true);
+  runtime.openSpend(); runtime.openWorkspace(); flushSync();
+  expect(runtime.spendOpen).toBe(false);
+  expect(runtime.workspaceOpen).toBe(true);
 });

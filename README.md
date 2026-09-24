@@ -63,9 +63,17 @@ On phone-width screens, the messenger has **Chats / Workspace / Settings** navig
 
 On a desktop window, a conversation's left edge carries a compact message index: hover a tick for the sender and text, click it to jump there, step through with the arrow keys, and load earlier history from its top. A conversation pane narrower than a phone lays out like a phone. A picture the app rendered — in a message, enlarged, in a preview, on the flow or in the composer — copies from its right-click menu, and a picture in a file preview enlarges when clicked, the way one in a message does.
 
-On a phone, **Settings → Models** shows endpoint cards with a system picker for the default model. Open **Models** on a card to search and enable model names; **Attributes** opens a separate page for price, thinking levels and strengths. Changes save automatically, the footer shows their status, and Back returns one level at a time.
+On a phone, **Settings → Models** shows endpoint cards with a system picker for the default model. Open **Models** on a card to search and enable model names; **Attributes** opens a separate page for routing reference price, billing rates, thinking levels and strengths. Changes save automatically, the footer shows their status, and Back returns one level at a time.
 
 Experimental remote audio and video previews play while loading in message attachments, the workspace and flow outputs, and seeking loads the requested part. This requires a browser with Service Worker support and a host with byte-range support; other environments keep whole-file previews. The existing 50 MiB remote file limit and browser codec support still apply.
+
+## Spend
+
+Open **Spend** from the sidebar or the desktop **View** menu. Desktop windows use a single pane tab; phones use a full-screen overlay. Choose today, the last 7 or 30 days, all time, or a custom range. Totals, call categories and daily trends follow the same filters. Switch the dimension table between models, sessions and Bots, sort its columns, and click rows to combine filters. Session links and paginated call details return to the original conversation or trigger message. New calls update the open view automatically.
+
+Tokens come from endpoint usage. **Reported** amounts use the provider's `cost_in_usd_ticks`; **Estimated** amounts use optional model billing rates in USD per million tokens. In **Settings → Models → Models → Attributes**, set both input and output rates and optionally a cached-input rate. Leaving cached input blank uses the input rate. Rates save automatically and can be cleared together. The separate routing reference price continues to guide model choice. Estimates are stored with each new call, so later price changes preserve history. Missing usage or unconfigured rates remain visible as missing values.
+
+The ledger includes turn completions, judgements, route picks, route reviews, learning hops and composer suggestions. Deleting a conversation or Bot, or clearing history, retains its recorded spend and name snapshots. Conversation headers, rows and settings keep their existing presentation. Spend adds no budget limits or automatic stops, and cannot measure fees charged separately by MCP tools.
 
 ## Daily and weekly routines
 

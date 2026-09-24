@@ -12,7 +12,9 @@ const list = (check: Check): Check => v => Array.isArray(v) && v.length <= 1000 
 const one = (...values: unknown[]): Check => v => values.includes(v);
 const object = (fields: Fields, required: string[] = []): Check => v => !!v && typeof v === "object" && !Array.isArray(v) &&
   Object.entries(v).every(([k, value]) => Object.hasOwn(fields, k) && fields[k](value)) && required.every(k => Object.hasOwn(v, k));
-const models = list(v => string(v) || object({ name: string, price: nullable(v => typeof v === "number" && Number.isFinite(v)), thinking_levels: list(string), strengths: list(string) }, ["name"])(v));
+const rate: Check = v => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const pricing = object({ input: rate, output: rate, cached_input: rate }, ["input", "output"]);
+const models = list(v => string(v) || object({ name: string, price: nullable(v => typeof v === "number" && Number.isFinite(v)), pricing, thinking_levels: list(string), strengths: list(string) }, ["name"])(v));
 const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind", "time"])(v) ||
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
 const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string) };
@@ -44,7 +46,36 @@ get("workspace/tree", { path: string }); get("workspace/file", { path: string, s
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
-get("spend", { session_id: id, bot_id: id, turn_id: id }); get("search", { q: string }, ["q"]);
+const spendKind: Check = one("turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest");
+// Remote query values are strings. Repeated local `kind` params arrive here as one comma-separated value.
+const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= 6;
+const isoTime: Check = (value) => {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
+  if (!match) return false;
+  const instant = Date.parse(value);
+  if (Number.isNaN(instant)) return false;
+  const millis = (match[7] ?? "").padEnd(3, "0");
+  return new Date(instant).toISOString() === `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.${millis}Z`;
+};
+const iana: Check = (value) => {
+  if (typeof value !== "string" || value.length > 80) return false;
+  try { new Intl.DateTimeFormat("en-CA", { timeZone: value }); return true; } catch { return false; }
+};
+const spendCursor: Check = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(value);
+const spendQuery = {
+  from: isoTime,
+  to: isoTime,
+  kind: spendKinds,
+  bot_id: (value: unknown) => value === "" || id(value),
+  session_id: id,
+  model: string,
+  provider_id: id,
+  turn_id: id,
+};
+get("spend/summary", { ...spendQuery, group_by: one("model", "session", "bot", "kind", "day"), tz: iana });
+get("spend", { ...spendQuery, limit: pageLimit, cursor: spendCursor });
+get("search", { q: string }, ["q"]);
 get("notifications", { filter: one("actionable", "unread", "all"), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 100, cursor: v => typeof v === "string" && v.length <= 256 });
 get("notifications/:id");
 get("notification-policy");

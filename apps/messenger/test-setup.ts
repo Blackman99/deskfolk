@@ -8,7 +8,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { compile, compileModule } from "svelte/compiler";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 
 const require = createRequire(import.meta.url);
 const calendarRoot = dirname(require.resolve("svelte5plus-calendar/package.json"));
@@ -68,7 +68,16 @@ plugin({
         css: "injected",
         dev: false,
       });
-      return { contents: js.code, loader: "js" };
+      let code = js.code;
+      // Bun caches this compiled output by source bytes. Another checkout of the same file can
+      // therefore replay its absolute imports. Pin them beside the file just read.
+      if (args.path.includes(`${sep}svelte5plus-calendar${sep}`)) {
+        const dir = dirname(args.path);
+        code = code.replace(/from (['"])(\.[^'"]+)\1/g, (_match, quote: string, spec: string) => {
+          return `from ${quote}${join(dir, spec)}${quote}`;
+        });
+      }
+      return { contents: code, loader: "js" };
     });
   },
 });

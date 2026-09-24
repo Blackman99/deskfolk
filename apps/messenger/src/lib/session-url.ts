@@ -20,6 +20,7 @@ export const OVERLAY_BOT = "bot";
 export const OVERLAY_WORKSPACE = "workspace";
 export const OVERLAY_TRACE = "trace";
 export const OVERLAY_ROUTINES = "routines";
+export const OVERLAY_SPEND = "spend";
 
 export type UrlOverlay =
   | { kind: "none" }
@@ -28,7 +29,8 @@ export type UrlOverlay =
   | { kind: "bot"; botId: string }
   | { kind: "workspace"; selected: string | null }
   | { kind: "trace"; taskId: string | null }
-  | { kind: "routines" };
+  | { kind: "routines" }
+  | { kind: "spend" };
 
 export type UrlView = {
   selectedId: string | null;
@@ -64,6 +66,7 @@ export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   }
   if (raw === OVERLAY_TRACE) return { kind: "trace", taskId: sanitizeBotId(url.searchParams.get(TRACE_PARAM)) };
   if (raw === OVERLAY_ROUTINES) return { kind: "routines" };
+  if (raw === OVERLAY_SPEND) return { kind: "spend" };
   return { kind: "none" };
 }
 
@@ -86,12 +89,15 @@ export function overlayFromFlags(flags: {
   traceTaskId?: string | null;
   /** Optional so older flag objects keep compiling. Absent means the calendar is closed. */
   routinesOpen?: boolean;
+  /** Optional for the same reason. Absent means the spend ledger is closed. */
+  spendOpen?: boolean;
 }): UrlOverlay {
   if (flags.settingsOpen) return { kind: "settings" };
   if (flags.sessionSettingsOpen) {
     const botId = sanitizeBotId(flags.profileBotId);
     return botId ? { kind: "bot", botId } : { kind: "session" };
   }
+  if (flags.spendOpen) return { kind: "spend" };
   if (flags.routinesOpen) return { kind: "routines" };
   if (flags.workspaceOpen) {
     return { kind: "workspace", selected: sanitizePreviewPath(flags.workspaceSelected) };
@@ -147,7 +153,7 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
 
   // The calendar replaces the main column. A preview beside it, or over it on a phone,
   // would cover the grid, so the roster view does not carry a file.
-  const roster = view.overlay.kind === "routines";
+  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend";
   if (remote) {
     next.searchParams.delete(PREVIEW_PARAM);
     next.searchParams.delete(WORKSPACE_FILE_PARAM);
@@ -211,6 +217,9 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
   if (overlay.kind === "routines") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_ROUTINES);
   }
+  if (overlay.kind === "spend") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_SPEND);
+  }
 }
 
 function sameSearch(a: URL, b: URL): boolean {
@@ -269,7 +278,7 @@ export function overlayApply(
 }
 
 function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "wait" {
-  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines") return wanted;
+  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend") return wanted;
   if (wanted.kind === "workspace") {
     if (!ctx.snapshotReady) return "wait";
     if (!ctx.hasWorkspacePath) return { kind: "none" };

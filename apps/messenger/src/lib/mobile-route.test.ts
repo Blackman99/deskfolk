@@ -104,12 +104,22 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     toolsMenuOpen: false,
     traceOpen: false,
     routinesOpen: false,
+    spendOpen: false,
     threadOpen: false,
     workspaceOpen: false,
     artifactPreview: false,
     ...over,
   };
 }
+
+test("the spend ledger is a screen of its own, beside the calendar", () => {
+  const spend: UrlView = { ...roster, overlay: { kind: "spend" } };
+  expect(routeLayers(spend)).toEqual(["spend"]);
+  expect(routeStep(roster, spend)).toBe("deeper");
+  expect(routeStep(spend, roster)).toBe("shallower");
+  expect(topLayer(layers({ spendOpen: true, routinesOpen: true }))).toBe("routines");
+  expect(topLayer(layers({ spendOpen: true, workspaceOpen: true }))).toBe("spend");
+});
 
 test("the routine calendar is a screen of its own, between the trace and the thread", () => {
   const routines: UrlView = { ...roster, overlay: { kind: "routines" } };

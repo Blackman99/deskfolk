@@ -5,6 +5,7 @@ import {
   type CreateProviderRequest,
   type EndpointModel,
   type EndpointModelInput,
+  type ModelPricing,
   type PatchProviderRequest,
   type ProbedModel,
   type ThinkingLevel,
@@ -13,6 +14,9 @@ import {
 export type ModelAttrDraft = {
   /** Raw text of the price field; empty means unset. */
   price: string;
+  billingInput?: string;
+  billingOutput?: string;
+  billingCachedInput?: string;
   /** Levels this name supports; never empty in a draft the form produced. */
   thinkingLevels: ThinkingLevel[];
   strengths: string[];
@@ -37,6 +41,7 @@ export type ProviderFieldErrors = {
   endpoint?: "empty" | "invalid";
   endpointKey?: "empty";
   models?: "empty";
+  pricing?: "invalid";
   defaultModel?: "empty" | "invalid";
 };
 
@@ -215,6 +220,7 @@ export function hasCustomAttrs(attr: ModelAttrDraft, advertised?: readonly strin
   const baseline = advertised && advertised.length > 0 ? advertised : THINKING_LEVELS;
   return (
     attr.price.trim().length > 0 ||
+    billingValues(attr).some((value) => value.length > 0) ||
     !sameList(attr.thinkingLevels, baseline) ||
     attr.strengths.length > 0
   );
@@ -243,6 +249,7 @@ export function draftFromProvider(input: {
   for (const row of catalog) {
     modelAttrs[row.name] = {
       price: row.price == null ? "" : String(row.price),
+      ...billingDraft(row.pricing),
       thinkingLevels: [...row.thinking_levels],
       strengths: [...row.strengths],
     };
@@ -356,7 +363,8 @@ function parseProviderDraft(
   if (defaultModel.length === 0) {
     if (!options.allowEmptyModels) errors.defaultModel = "empty";
   } else if (!names.includes(defaultModel)) errors.defaultModel = "invalid";
-  if (errors.name || errors.endpoint || errors.endpointKey || errors.models || errors.defaultModel) {
+  if (names.some((name) => invalidBilling(draft.modelAttrs[name]))) errors.pricing = "invalid";
+  if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
   const models = names.map((modelName) => catalogFromAttr(modelName, draft.modelAttrs[modelName]));
@@ -379,9 +387,33 @@ function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): Endpoi
   return {
     name,
     price: price != null && Number.isFinite(price) && price >= 0 ? price : null,
+    ...billingCatalog(source),
     thinking_levels: levels.length > 0 ? levels : [...THINKING_LEVELS],
     strengths: uniqueTags(source.strengths),
   };
+}
+
+function billingValues(attr: ModelAttrDraft | undefined): string[] {
+  return [attr?.billingInput ?? "", attr?.billingOutput ?? "", attr?.billingCachedInput ?? ""].map((value) => value.trim());
+}
+
+export function invalidBilling(attr: ModelAttrDraft | undefined): boolean {
+  const values = billingValues(attr);
+  if (values.every((value) => !value)) return false;
+  if (!values[0] || !values[1]) return true;
+  return values.some((value) => value.length > 0 && (!Number.isFinite(Number(value)) || Number(value) < 0));
+}
+
+function billingCatalog(attr: ModelAttrDraft): { pricing?: ModelPricing } {
+  const [input, output, cached] = billingValues(attr);
+  if (!input || !output || invalidBilling(attr)) return {};
+  return { pricing: { input: Number(input), output: Number(output), ...(cached ? { cached_input: Number(cached) } : {}) } };
+}
+
+function billingDraft(pricing: ModelPricing | undefined): Partial<ModelAttrDraft> {
+  if (!pricing) return {};
+  return { billingInput: String(pricing.input), billingOutput: String(pricing.output),
+    billingCachedInput: pricing.cached_input == null ? "" : String(pricing.cached_input) };
 }
 
 function uniqueNames(names: readonly string[]): string[] {
@@ -475,6 +507,7 @@ function catalogItemFromInput(item: EndpointModelInput): EndpointModel {
   if (typeof item === "string") return defaultCatalogItem(item);
   return catalogFromAttr(item.name, {
     price: item.price == null ? "" : String(item.price),
+    ...billingDraft(item.pricing),
     thinkingLevels: [...(item.thinking_levels ?? THINKING_LEVELS)],
     strengths: [...(item.strengths ?? [])],
   });
@@ -488,6 +521,9 @@ function sameCatalog(a: readonly EndpointModelInput[], b: readonly EndpointModel
     return (
       left.name === right.name &&
       left.price === right.price &&
+      left.pricing?.input === right.pricing?.input &&
+      left.pricing?.output === right.pricing?.output &&
+      left.pricing?.cached_input === right.pricing?.cached_input &&
       sameList(left.thinking_levels, right.thinking_levels) &&
       sameList(left.strengths, right.strengths)
     );

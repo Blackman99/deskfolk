@@ -60,8 +60,8 @@ test("wizard field errors are the locked 32 sentences", () => {
   expect(COPY.en.settings.models).toBe("Available models");
   expect(COPY.zh.settings.defaultModel).toBe("默认模型");
   expect(COPY.en.settings.defaultModel).toBe("Default model");
-  expect(COPY.zh.settings.modelPrice).toBe("价格");
-  expect(COPY.en.settings.modelPrice).toBe("Price");
+  expect(COPY.zh.settings.modelPrice).toBe("选路参考价");
+  expect(COPY.en.settings.modelPrice).toBe("Routing reference price");
   expect(COPY.zh.settings.modelThinking).toBe("思考等级");
   expect(COPY.en.settings.modelThinking).toBe("Thinking levels");
   expect(COPY.zh.settings.modelStrengths).toBe("擅长领域");

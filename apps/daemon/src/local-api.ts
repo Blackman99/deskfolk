@@ -18,6 +18,8 @@ import {
   type SessionSnapshot,
   type SessionSummary,
   type NotificationFilter,
+  type SpendFilter,
+  type SpendKind,
   type StreamFrame,
   type ToolFrame,
   isNonReceiptPath,
@@ -1800,15 +1802,28 @@ function dispatch(
     return emptyResponse(204, null);
   }
 
-  if (method === "GET" && path === "/v1/spend") {
-    return jsonResponse(
-      {
-        items: store.listSpend({
-          session_id: url.searchParams.get("session_id") ?? undefined,
-          bot_id: url.searchParams.get("bot_id") ?? undefined,
-          turn_id: url.searchParams.get("turn_id") ?? undefined,
+  if (method === "GET" && (path === "/v1/spend" || path === "/v1/spend/summary")) {
+    const filter = spendFilterFrom(url);
+    if (path === "/v1/spend/summary") {
+      const groupBy = url.searchParams.get("group_by");
+      const tz = url.searchParams.get("tz");
+      return jsonResponse(
+        store.spendSummary({
+          ...filter,
+          ...(groupBy ? { group_by: groupBy as "model" | "session" | "bot" | "kind" | "day" } : {}),
+          ...(tz ? { tz } : {}),
         }),
-      },
+        200,
+        null,
+      );
+    }
+    const limitText = url.searchParams.get("limit");
+    const limit = limitText ? Number(limitText) : undefined;
+    if (limitText && (!Number.isInteger(limit) || limit! < 1 || limit! > 200)) {
+      throw new HttpError(422, "invalid_args", "limit must be an integer between 1 and 200");
+    }
+    return jsonResponse(
+      store.spendPage({ ...filter, ...(limit ? { limit } : {}), cursor: url.searchParams.get("cursor") }),
       200,
       null,
     );
@@ -1820,6 +1835,80 @@ function dispatch(
   }
 
   return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404, null);
+}
+
+const SPEND_KINDS = new Set<SpendKind>(["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest"]);
+const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+/** Shared by the summary and the detail page. An empty `bot_id` or `model` means the null group. */
+function spendFilterFrom(url: URL): SpendFilter {
+  const filter: SpendFilter = {};
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  if (from) filter.from = canonicalIso(from, "from");
+  if (to) filter.to = canonicalIso(to, "to");
+  const unique = [...new Set(
+    url.searchParams.getAll("kind").flatMap((kind) => kind.split(",")).map((kind) => kind.trim()).filter((kind) => kind.length > 0),
+  )];
+  if (unique.length > 0) {
+    if (unique.some((kind) => !SPEND_KINDS.has(kind as SpendKind))) {
+      throw new HttpError(422, "invalid_args", "kind is not a spend kind");
+    }
+    filter.kind = unique as SpendKind[];
+  }
+  if (url.searchParams.has("bot_id")) {
+    const botId = url.searchParams.get("bot_id") ?? "";
+    if (botId === "") filter.bot_id = null;
+    else if (!ULID.test(botId)) throw new HttpError(422, "invalid_args", "bot_id must be empty or an id");
+    else filter.bot_id = botId;
+  }
+  const sessionId = url.searchParams.get("session_id");
+  if (sessionId) {
+    if (!ULID.test(sessionId)) throw new HttpError(422, "invalid_args", "session_id must be an id");
+    filter.session_id = sessionId;
+  }
+  if (url.searchParams.has("model")) {
+    const model = url.searchParams.get("model") ?? "";
+    filter.model = model === "" ? null : model;
+  }
+  const providerId = url.searchParams.get("provider_id");
+  if (providerId) {
+    if (!ULID.test(providerId)) throw new HttpError(422, "invalid_args", "provider_id must be an id");
+    filter.provider_id = providerId;
+  }
+  const turnId = url.searchParams.get("turn_id");
+  if (turnId) {
+    if (!ULID.test(turnId)) throw new HttpError(422, "invalid_args", "turn_id must be an id");
+    filter.turn_id = turnId;
+  }
+  const tz = url.searchParams.get("tz");
+  if (tz) {
+    try {
+      new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+    } catch {
+      throw new HttpError(422, "invalid_args", "tz must be an IANA time zone");
+    }
+  }
+  return filter;
+}
+
+/**
+ * Ledger rows are `YYYY-MM-DDTHH:mm:ss.sssZ`. A shorter instant would sort ahead of the same
+ * millisecond, so the bound is stored in that form. A month or day that does not exist is rejected
+ * rather than rolled into the next month.
+ */
+function canonicalIso(value: string, name: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
+  if (!match) throw new HttpError(422, "invalid_args", `${name} must be an ISO timestamp`);
+  const [, year, month, day, hour, minute, second, fraction] = match;
+  const instant = Date.parse(value);
+  if (Number.isNaN(instant)) throw new HttpError(422, "invalid_args", `${name} must be an ISO timestamp`);
+  const canonical = new Date(instant).toISOString();
+  const millis = (fraction ?? "").padEnd(3, "0");
+  if (canonical !== `${year}-${month}-${day}T${hour}:${minute}:${second}.${millis}Z`) {
+    throw new HttpError(422, "invalid_args", `${name} must be an ISO timestamp`);
+  }
+  return canonical;
 }
 
 function publishBotModelChanges(

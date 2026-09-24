@@ -147,6 +147,14 @@ File GETs reuse real local byte responses, permissions/realpath and ETags. `size
 
 One host-wide FIFO transmission budget paces all link/control ciphertext at1,500,000 B/s plus64-byte/frame reservation, below relay's2,500,000 B/s/256KiB burst, leaving1,000,000 B/s for inbound requests/control replies. Control commands are spaced≥75ms (<14/s), queue≤16; transfer queues remain bounded and abort clears pending waits. This is adapter cooperation, not weakened relay limits. Device08 senders must likewise pace aggregate incoming traffic rather than burst arbitrary uploads; hostile over-budget senders still cause relay fail-close. Revoked tombstones retain rollback evidence but only `relay_pending=1` rows reconcile; acknowledgement durably clears that flag, so >70 lifetime tombstones complete and later reconnect does not replay history.
 
+### Spend ledger reads
+
+`GET /v1/spend/summary` returns `{totals, groups, categories}` from daemon aggregation. Metrics include call count, five token fields, separate `reported_usd_ticks` and `estimated_usd_ticks`, their coverage counts and missing-usage count. Each group carries its display name and deletion flag, using current names for live entities and recorded names after deletion. Six kinds map to five categories: turn, judgement, decision routing (`route_pick`), feedback routing (`route_review`, `route_learn`), and other (`composer_suggest`). Null numeric values remain unknown. Days use the requested IANA timezone; `to` is exclusive. The encrypted query dictionary uses comma-separated kinds.
+
+`GET /v1/spend` returns bounded descending pages. Rows include frozen attribution, nullable Bot for composer suggestions, separate reported/estimated amounts, trigger message id when still available, and deletion flags. Snapshot responses omit `spend`; clients treat legacy absent fields as empty and refresh open summaries on `spend.created` without retaining event rows. Clearing/deleting chats and deleting Bots retains the ledger. No `spend.removed` is emitted.
+
+Provider model entries accept optional `pricing: {input:number, output:number, cached_input?:number}` in USD per million tokens. Values are finite non-negative numbers; both input and output are required. Omitting pricing from a replacement catalog clears it. `price` remains an independent routing reference. An estimate is frozen on insertion only when reported amount is absent and token inputs are sufficient; paired clients use existing configuration permissions.
+
 ### Exact business property table
 
 All routes reject unknown body/query fields and wrong types **before** effects/receipts. All entity IDs below are canonical ULIDs. Missing revision is left to the shared precondition checker (409), not silently ignored. PATCH requires at least one recognized non-revision field. Nullable fields only where explicitly listed; booleans are actual booleans, not strings. Nested schedules/models/headers reject extra fields too. Methods not listed are404; encrypted path/query is not a relay URL.
@@ -160,7 +168,9 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 | workspace/tree; workspace/file | GET | query path string (required for file); file also optional size `thumb`\|`preview` or range string |
 | host/tree | GET | query path string (absolute host directory; remote-only) |
 | events/catchup | GET | required event_instance_id32hex and after_seq nonnegative safe decimal |
-| approvals; spend; search | GET | status=`pending`; session_id/bot_id/turn_id ULIDs; required q string, respectively |
+| approvals; search | GET | status=`pending`; required q string, respectively |
+| spend/summary | GET | from/to ISO timestamps, group_by model/session/bot/kind/day, tz IANA zone, comma-separated kind, bot_id/session_id/provider_id/turn_id ULIDs, model string; empty bot_id/model selects null |
+| spend | GET | same filters, limit decimal 1..200 (default 50), cursor from previous next token (`ISO-UTC-millisecond\|ULID`); returns `{items,next}` |
 | bots | POST/PATCH `/:id` | name/duties/boundaries strings (all required create); nullable avatar/model/provider_id/thinking_level; PATCH if_revision string |
 | providers | POST/PATCH `/:id` | name/base_url strings (required create), api_key, models, available_models string[], nullable default_model; PATCH if_revision |
 | mcp-servers | POST/PATCH `/:id` | name(required create), transport stdio/http, command, args string[], url, headers exact{name,value}[], auth, enabled bool, nullable usage_note; PATCH if_revision |

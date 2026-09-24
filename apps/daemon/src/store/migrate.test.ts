@@ -24,8 +24,65 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Store } from ".";
+import { ulid } from "../ids";
+import { migrateSchema } from "./migrate";
 
 const FIXTURES = join(dirname(import.meta.path), "fixtures");
+
+/**
+ * One turn row whose route decision still exists, and one judgement row whose model was never
+ * stored. The ledger migration has to keep both and fill only what the old tables can answer.
+ */
+function seedLegacySpend(db: Database): void {
+  const now = "2026-01-01T00:00:00.000Z";
+  const botId = ulid();
+  const sessionId = ulid();
+  const messageId = ulid();
+  const turnId = ulid();
+  const judgementId = ulid();
+  const providerId = ulid();
+  db.run(
+    `INSERT INTO providers (id, name, base_url, models, default_model, created_at, updated_at) VALUES (?, 'Legacy', 'https://legacy.invalid', '[]', NULL, ?, ?)`,
+    [providerId, now, now],
+  );
+  db.run(
+    `INSERT INTO bots (id, name, duties, boundaries, created_at, updated_at) VALUES (?, 'Ledger', 'write', 'none', ?, ?)`,
+    [botId, now, now],
+  );
+  db.run(
+    `INSERT INTO sessions (id, kind, name, created_at, updated_at) VALUES (?, 'direct', NULL, ?, ?)`,
+    [sessionId, now, now],
+  );
+  db.run(
+    `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, 'user', ?, NULL), (?, ?, ?, NULL)`,
+    [sessionId, now, sessionId, botId, now],
+  );
+  db.run(
+    `INSERT INTO messages (id, session_id, kind, author, body, created_at) VALUES (?, ?, 'user', 'user', 'hello', ?)`,
+    [messageId, sessionId, now],
+  );
+  db.run(
+    `INSERT INTO turns (id, session_id, bot_id, status, trigger_message_id, last_activity_at, created_at, updated_at) VALUES (?, ?, ?, 'stopped', ?, ?, ?, ?)`,
+    [turnId, sessionId, botId, messageId, now, now, now],
+  );
+  db.run(
+    `INSERT INTO turn_route_decisions (turn_id, session_id, trigger_message_id, model, thinking_level, signature, created_at) VALUES (?, ?, ?, 'legacy-model', 'low', 'general', ?)`,
+    [turnId, sessionId, messageId, now],
+  );
+  db.run(`UPDATE turn_route_decisions SET provider_id = ? WHERE turn_id = ?`, [providerId, turnId]);
+  db.run(
+    `INSERT INTO judgements (id, session_id, message_id, bot_id, decision, created_at) VALUES (?, ?, ?, ?, 'pass', ?)`,
+    [judgementId, sessionId, messageId, botId, now],
+  );
+  db.run(
+    `INSERT INTO spend (id, session_id, bot_id, turn_id, judgement_id, input_tokens, output_tokens, total_tokens, created_at) VALUES (?, ?, ?, ?, NULL, 3, 1, 4, ?)`,
+    [ulid(), sessionId, botId, turnId, now],
+  );
+  db.run(
+    `INSERT INTO spend (id, session_id, bot_id, turn_id, judgement_id, created_at) VALUES (?, ?, ?, NULL, ?, ?)`,
+    [ulid(), sessionId, botId, judgementId, now],
+  );
+}
 
 function fixtureNames(): string[] {
   return readdirSync(FIXTURES)
@@ -46,6 +103,7 @@ describe("a database an earlier build created", () => {
       try {
         const old = new Database(file, { create: true, strict: true });
         old.exec(readFileSync(join(FIXTURES, name), "utf8"));
+        seedLegacySpend(old);
         old.close();
 
         // The failure this guards against is the constructor throwing, which is what stops the
@@ -65,10 +123,68 @@ describe("a database an earlier build created", () => {
         store.close();
         const reopened = new Store({ filename: file });
         expect(reopened.getTurn(turn.id).task_id).toBe(turn.task_id!);
+        const ledger = reopened.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE name = 'spend'").get()!.sql;
+        expect(ledger).toContain("kind TEXT NOT NULL");
+        expect(ledger).not.toContain("REFERENCES");
+        const kept = reopened.listSpend({});
+        expect(kept).toHaveLength(2);
+        const turnRow = kept.find((row) => row.turn_id !== null)!;
+        const judgementRow = kept.find((row) => row.judgement_id !== null)!;
+        expect(turnRow.kind).toBe("turn");
+        expect(turnRow.model).toBe("legacy-model");
+        expect(turnRow.thinking_level).toBe("low");
+        expect(turnRow.provider_id).toBeTruthy();
+        expect(turnRow.session_name).toBe("Ledger");
+        expect(turnRow.bot_name).toBe("Ledger");
+        expect(judgementRow.kind).toBe("judgement");
+        expect(judgementRow.model).toBeNull();
+        expect(judgementRow.provider_id).toBeNull();
         reopened.close();
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     });
   }
+
+  test("a failed spend rebuild rolls back and the next open still copies the old rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const old = new Database(file, { create: true, strict: true });
+      old.exec(readFileSync(join(FIXTURES, "schema-pre-spend-ledger.sql"), "utf8"));
+      seedLegacySpend(old);
+      const before = old.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM spend").get()!.n;
+      expect(before).toBe(2);
+      const renamed = old.run.bind(old);
+      let dropped = false;
+      old.run = ((sql: string, ...bindings: Parameters<Database["run"]> extends [string, ...infer R] ? R : never) => {
+        if (sql.startsWith("DROP TABLE spend")) {
+          dropped = true;
+          throw new Error("interrupted after the copy");
+        }
+        return renamed(sql, ...bindings);
+      }) as Database["run"];
+      expect(() => migrateSchema(old)).toThrow("interrupted after the copy");
+      expect(dropped).toBe(true);
+      const stranded = old
+        .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('spend', 'spend_ledger')")
+        .all()
+        .map((row) => row.name);
+      expect(stranded).toEqual(["spend"]);
+      expect(old.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM spend").get()!.n).toBe(before);
+      old.close();
+
+      const reopened = new Store({ filename: file });
+      expect(reopened.listSpend({})).toHaveLength(before);
+      const tables = reopened.db
+        .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('spend', 'spend_ledger')")
+        .all()
+        .map((row) => row.name);
+      expect(tables).toEqual(["spend"]);
+      expect(reopened.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE name = 'spend'").get()!.sql).toContain("kind TEXT NOT NULL");
+      reopened.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

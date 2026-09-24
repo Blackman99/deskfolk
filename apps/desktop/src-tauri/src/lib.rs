@@ -556,7 +556,7 @@ pub fn run() {
             "stop" => request_stop(app),
             // The pane commands belong to the messenger: it holds the arrangement, so it is the
             // only thing that can say what "close this" means right now.
-            id if id.starts_with("pane-") => send_pane_command(app, id),
+            id if id.starts_with("pane-") || id == "view-spend" => send_pane_command(app, id),
             _ => {}
         })
         .build(app_context())
@@ -628,6 +628,8 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
         "视图",
         true,
         &[
+            &MenuItem::with_id(app, "view-spend", "花费", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "pane-split-right", "向右分割", true, Some("CmdOrCtrl+\\"))?,
             &MenuItem::with_id(app, "pane-split-down", "向下分割", true, Some("CmdOrCtrl+Shift+\\"))?,
             &PredefinedMenuItem::separator(app)?,

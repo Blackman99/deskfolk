@@ -128,6 +128,7 @@ export type BackLayer =
   | "terminal"
   | "trace"
   | "routines"
+  | "spend"
   | "thread"
   | "workspace"
   | "preview";
@@ -147,6 +148,7 @@ export type LayerState = {
   terminalOpen: boolean;
   traceOpen: boolean;
   routinesOpen: boolean;
+  spendOpen: boolean;
   threadOpen: boolean;
   workspaceOpen: boolean;
   artifactPreview: boolean;
@@ -172,6 +174,7 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["terminal", "terminalOpen"],
   ["trace", "traceOpen"],
   ["routines", "routinesOpen"],
+  ["spend", "spendOpen"],
   ["thread", "threadOpen"],
   ["workspace", "workspaceOpen"],
   ["preview", "artifactPreview"],

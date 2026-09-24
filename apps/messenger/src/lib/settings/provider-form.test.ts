@@ -471,3 +471,28 @@ test("maps daemon messages onto provider fields", () => {
   });
   expect(mapProviderError("locale must be zh or en")).toEqual({ top: true });
 });
+
+test("billing rates persist separately from routing price, and clear as a whole", () => {
+  const current = { name: "Billing", base_url: "https://fixture.invalid", models: ["model"], default_model: "model",
+    model_catalog: [{ name: "model", price: 7, thinking_levels: ["low"], strengths: [], pricing: { input: 2, output: 8, cached_input: 0.5 } }] };
+  const original = draftFromProvider(current);
+  expect(planPatchProvider(current, original)).toEqual({ ok: true, patch: {} });
+  expect(original.modelAttrs.model).toMatchObject({ price: "7", billingInput: "2", billingOutput: "8", billingCachedInput: "0.5" });
+  const changed = { ...original, modelAttrs: { model: { ...original.modelAttrs.model!, billingInput: "3" } } };
+  const plan = planPatchProvider(current, changed);
+  expect(plan.ok && plan.patch.models?.[0]).toMatchObject({ price: 7, pricing: { input: 3, output: 8, cached_input: 0.5 } });
+  const cleared = { ...original, modelAttrs: { model: { ...original.modelAttrs.model!, billingInput: "", billingOutput: "", billingCachedInput: "" } } };
+  const clearPlan = planPatchProvider(current, cleared);
+  expect(clearPlan.ok && clearPlan.patch.models?.[0]).not.toHaveProperty("pricing");
+  const probed = applyProbedModels(changed, ["model", "other"]);
+  expect(probed.modelAttrs.model?.billingInput).toBe("3");
+});
+
+test("partial billing drafts cannot silently clear saved rates during auto-save", () => {
+  const current = { name: "Billing", base_url: "https://fixture.invalid", models: ["model"], default_model: "model" };
+  for (const patch of [{ billingInput: "2" }, { billingOutput: "2" }, { billingInput: "-1", billingOutput: "2" }, { billingInput: "NaN", billingOutput: "2" }]) {
+    const draft = draftFromProvider(current);
+    draft.modelAttrs.model = { ...emptyModelAttr(), ...patch };
+    expect(planPatchProvider(current, draft)).toEqual({ ok: false, errors: { pricing: "invalid" } });
+  }
+});

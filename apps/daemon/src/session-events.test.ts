@@ -317,17 +317,19 @@ describe("commit / subscribe / snapshot barrier", () => {
     const message = h.store.postMessage(group.id, { body: "fixture" });
     const turn = h.store.createTurn({ sessionId: group.id, botId: a.id, triggerMessageId: message.id });
     const approval = h.store.insertApproval({ turnId: turn.id, messageId: message.id, kind_key: "outside-read", summary: "fixture", target: "/fixture" });
-    const spend = h.store.insertSpend({ sessionId: group.id, botId: a.id, turnId: turn.id });
+    const spend = h.store.insertSpend({ kind: "turn", sessionId: group.id, botId: a.id, turnId: turn.id });
     const memory = h.store.rememberMemory({ bot_id: a.id, subject: "fixture", body: "remember", source_session_id: group.id, source_message_id: message.id });
     const before = await h.get<RuntimeSnapshot>("/v1/snapshot");
     h.store.deleteSession(group.id);
     const caught = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${before.event_instance_id}&after_seq=${before.watermark_seq}`);
     expect(caught.events.some((e) => e.payload.event === "approval.removed" && e.payload.id === approval.id)).toBe(true);
-    expect(caught.events.some((e) => e.payload.event === "spend.removed" && e.payload.id === spend.id)).toBe(true);
+    // Spend is a ledger: deleting the session does not remove the row or publish spend.removed.
+    expect(caught.events.some((e) => e.payload.event === "spend.removed")).toBe(false);
     expect(caught.events.some((e) => e.payload.event === "memory.upsert" && e.payload.id === memory.id && e.payload.source_session_id === null)).toBe(true);
     const after = await h.get<RuntimeSnapshot>("/v1/snapshot");
     expect(after.approvals).toEqual([]);
-    expect(h.store.listSpend({})).toEqual([]);
+    expect(h.store.listSpend({}).map((row) => row.id)).toEqual([spend.id]);
+    expect("spend" in after).toBe(false);
     expect(after.sessions.some((s) => s.id === group.id)).toBe(false);
   });
 

@@ -306,6 +306,99 @@ test("size names a picture variant on the file GETs and nothing else", () => {
   expect(get("/v1/workspace/tree", { path: "", size: "thumb" })).toThrow();
 });
 
+test("a paired device can ask for a spend summary and a filtered page", () => {
+  const get = (path: string, query: Record<string, string>) => () => validateBusiness({ v: 1, id: ulid(), method: "GET", path, query });
+  const id = ulid();
+  expect(get("/v1/spend/summary", { group_by: "day", tz: "America/New_York", kind: "turn,route_review", from: "2026-03-01T00:00:00.000Z", to: "2026-03-02T00:00:00.000Z", bot_id: "", session_id: id, model: "fast", provider_id: id, turn_id: id })).not.toThrow();
+  expect(get("/v1/spend/summary", { from: "2026-02-31T00:00:00.000Z" })).toThrow();
+  expect(get("/v1/spend", { from: "2026-01-01T00:00:00Z" })).not.toThrow();
+  expect(get("/v1/spend", { limit: "50", cursor: "2026-03-01T00:00:00.000Z|" + id, model: "", session_id: id })).not.toThrow();
+  expect(get("/v1/spend/summary", { group_by: "hour" })).toThrow();
+  expect(get("/v1/spend/summary", { tz: "Not/AZone" })).toThrow();
+  expect(get("/v1/spend", { kind: "nope" })).toThrow();
+  expect(get("/v1/spend", { limit: "201" })).toThrow();
+});
+
+test("an encrypted spend summary returns the daemon aggregate, not the ledger", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Writer", duties: "", boundaries: "" });
+  const provider = f.store.createProviderSync({
+    name: "Priced",
+    base_url: "https://priced.invalid",
+    models: [{ name: "fast", price: 1, pricing: { input: 1, output: 1 } }],
+  });
+  const turn = f.store.insertSpend({
+    kind: "turn",
+    sessionId: bot.direct_session.id,
+    botId: bot.bot.id,
+    turnId: ulid(),
+    providerId: provider.id,
+    model: "fast",
+    inputTokens: 10,
+    outputTokens: 2,
+    costUsdTicks: 4,
+  });
+  f.store.db.run(`UPDATE spend SET created_at = ? WHERE id = ?`, ["2026-03-01T00:00:00.900Z", turn.id]);
+  f.store.insertSpend({
+    kind: "composer_suggest",
+    sessionId: bot.direct_session.id,
+    botId: null,
+    providerId: provider.id,
+    model: null,
+    inputTokens: 3,
+    outputTokens: 1,
+  });
+  const summary = await c.rpc({
+    v: 1,
+    id: ulid(),
+    method: "GET",
+    path: "/v1/spend/summary",
+    query: { group_by: "model", tz: "UTC", kind: "turn,composer_suggest" },
+  });
+  expect(summary.status).toBe(200);
+  expect(summary.body.totals).toMatchObject({ calls: 2, reported_usd_ticks: 4, estimated_usd_ticks: null, input_tokens: 13 });
+  expect(summary.body.groups).toHaveLength(2);
+  expect(summary.body.groups.find((row: { model: string | null }) => row.model === null)).toMatchObject({
+    id: null,
+    provider_id: null,
+    calls: 1,
+  });
+  expect(summary.body.items).toBeUndefined();
+  const page = await c.rpc({
+    v: 1,
+    id: ulid(),
+    method: "GET",
+    path: "/v1/spend",
+    query: { limit: "1", kind: "turn", model: "fast" },
+  });
+  expect(page.status).toBe(200);
+  expect(page.body.items).toHaveLength(1);
+  expect(page.body.items[0].kind).toBe("turn");
+  expect(page.body.next).toBeNull();
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/spend/summary", query: { tz: "Not/AZone" } })).status).toBe(422);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/spend", query: { from: "yesterday" } })).status).toBe(422);
+  const stacked = await c.rpc({
+    v: 1,
+    id: ulid(),
+    method: "GET",
+    path: "/v1/spend/summary",
+    query: {
+      from: "2026-01-01T00:00:00Z",
+      to: "2099-01-01T00:00:00.000Z",
+      kind: "turn,composer_suggest",
+      bot_id: bot.bot.id,
+      session_id: bot.direct_session.id,
+      provider_id: provider.id,
+      model: "fast",
+      group_by: "day",
+      tz: "UTC",
+    },
+  });
+  expect(stacked.status).toBe(200);
+  expect(stacked.body.totals.calls).toBe(1);
+  expect(stacked.body.groups.map((row: { id: string }) => row.id)).toEqual(["2026-03-01"]);
+});
+
 test("a conversation snapshot takes a page limit and nothing else", () => {
   const get = (query: Record<string, string>) => () => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${ulid()}/snapshot`, query });
   expect(get({ limit: "20" })).not.toThrow();
