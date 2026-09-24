@@ -1422,7 +1422,8 @@ function botPinEmits(
   return out;
 }
 
-function pathExists(store: Store, relpath: string): boolean {
+/** Whether a workspace-relative path names something on disk inside the workspace. */
+export function pathExists(store: Store, relpath: string): boolean {
   const root = store.workspacePath();
   if (!root) return false;
   const classified = classifyPath(root, relpath);

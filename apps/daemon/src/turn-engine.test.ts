@@ -2307,6 +2307,35 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
+  test("a final reply that names a file from its shell's cwd links the path that resolves", async () => {
+    let hop = 0;
+    const fixture = await startFixture(() => {
+      hop += 1;
+      if (hop === 1) {
+        return sse(toolCallChunks("call_sh", "shell", '{"command":"printf png > poster.png"}'));
+      }
+      return sse(textChunks("海报：[poster.png](poster.png)"));
+    });
+    const h = await startApi();
+    const { botId, sessionId, workspace } = await createWriterIn(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "make the poster" }),
+    });
+    const botMsg = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
+    );
+    const workDir = h.store.turnWorkDir(String(botMsg.turn_id));
+    expect(workDir).toBeTruthy();
+    expect(readFileSync(join(workspace, `${workDir}/poster.png`), "utf8")).toBe("png");
+    expect(botMsg.body).toBe(`海报：[${workDir}/poster.png](${workDir}/poster.png)`);
+    expect(botMsg.attachments).toEqual([expect.objectContaining({ workspace_relpath: `${workDir}/poster.png` })]);
+    sub.close();
+  });
+
   test("write_file outside the workspace parks waiting_approval and does not write the file", async () => {
     const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-out-")));
     workspaces.push(outsideDir);

@@ -14,7 +14,7 @@ import {
   type ThinkingLevel,
   type Turn,
 } from "@real-bot/protocol";
-import { runCollabTool, type ToolResult } from "./collab-tools";
+import { pathExists, runCollabTool, type ToolResult } from "./collab-tools";
 import {
   createCompletionsClient,
   type ChatMessage,
@@ -59,7 +59,12 @@ import type { TurnAdmission } from "./quiesce";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
 import { isReservedTaskPath, type Store } from "./store";
-import { linkifyWorkspacePaths, mergeCitedPaths, writtenPathFromToolData } from "./artifact-paths";
+import {
+  linkifyWorkspacePaths,
+  mergeCitedPaths,
+  resolveBodyPathsToWorkDir,
+  writtenPathFromToolData,
+} from "./artifact-paths";
 import { classifyPath } from "./workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "./workspace-tools";
 
@@ -1186,7 +1191,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     publishTurn(completed, null);
   }
 
-  function publishCitedBotMessage(turn: Turn, live: Live, turnId: string, body: string): Message | null {
+  function publishCitedBotMessage(turn: Turn, live: Live, turnId: string, rawBody: string): Message | null {
+    // Same correction `send_message` makes: a file named from the shell's cwd is linked where it is.
+    const body = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
     const linked = linkifyWorkspacePaths(body, live.writtenPaths);
     if (!linked.trim() && live.writtenPaths.length === 0) return null;
     const message = store.insertMessage({

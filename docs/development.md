@@ -273,7 +273,7 @@ pnpm --filter @real-bot/messenger dev
 
 **两个基准，一句话记住**：`shell` 不传 `cwd` 就在本轮工作目录里跑，而 `read_file` / `write_file` / `delete_file` / `list_dir` 的路径永远相对工作区根。这是[中间产物的工作目录](../.scratch/v1/issues/55-work-dir-and-artifact-entry.md)的 D2 明知故犯：堵住下载、转换、脚本产物这个最大的泄漏口不需要模型配合，而改文件工具的路径基准会让 `read_file("x")` 和 `write_file("x")` 指向两处。代价是「写个脚本再跑」这类流程要么把脚本写进工作目录（用局面块给的完整前缀），要么给 `shell` 传 `cwd: "."`；`full_result_path` 也是工作区相对的，轮次指令和 `recovery_hint` 都写明了这一点。
 
-Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后它自然就叫 `sales.csv`）时，`resolveBodyPathsToWorkDir` 会把只在工作目录里存在、在工作区根上不存在的那种裸路径改写成能解析的那条——否则挂出来的是一个根本不存在的根路径，转录里的链接也是死的。根上确实存在的、以及两处都不存在的（Bot 在说还没做的文件）都原样不动。
+Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后它自然就叫 `sales.csv`）时，`resolveBodyPathsToWorkDir` 会把只在工作目录里存在、在工作区根上不存在的那种裸路径改写成能解析的那条——否则挂出来的是一个根本不存在的根路径，转录里的链接也是死的。根上确实存在的、以及两处都不存在的（Bot 在说还没做的文件）都原样不动。`send_message` 发出的消息和一轮的最终回复（`turn-engine.ts` 的 `publishCitedBotMessage`）都走这一步。在最终回复也纠正之前存下的消息没有这一步，信使显示时补上（`chat/message-body.ts`）：正文里的路径不是这条消息的附件、却恰好是其中**唯一一个**附件路径的尾段时，按那个附件显示；对上零个或多个、以及代码围栏里的，都原样不动。
 
 交付物不进工作目录：用户点名了路径就照他说的写，没点名的落工作目录根。局面块每轮带一行 `本轮工作目录：<路径>/`，私聊也有（私聊的局面块只有这一行）。
 
