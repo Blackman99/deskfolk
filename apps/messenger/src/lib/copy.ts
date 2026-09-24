@@ -675,6 +675,10 @@ const zh = {
     idle: "没有进行中的轮。",
     fork: "另开一轮",
     send: "发送",
+    /** The send button while the message is on its way; remotely that can take a while. */
+    sending: "发送中…",
+    /** Beside a staged file's size while it uploads. */
+    uploaded: (percent: number) => `已传 ${percent}%`,
     stop: "Stop",
     stopGeneration: "停止回复",
     waitingHint: "回复结束后可发送 · Shift+Enter 换行",
@@ -1647,6 +1651,8 @@ const en: CopyShape<typeof zh> = {
     idle: "No live turn.",
     fork: "Fork a turn",
     send: "Send",
+    sending: "Sending…",
+    uploaded: (percent: number) => `${percent}% sent`,
     stop: "Stop",
     stopGeneration: "Stop reply",
     waitingHint: "Send after the reply ends · Shift+Enter for newline",

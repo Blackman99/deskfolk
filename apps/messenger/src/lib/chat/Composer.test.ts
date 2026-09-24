@@ -23,6 +23,7 @@ function open(draft = "写点什么", remote = false) {
     onSend: async (files: File[]) => {
       sent.push(files);
       runtime.draft = "";
+      return true;
     },
     onPickPrompt: (prompt: string) => { runtime.draft = prompt; },
   });
@@ -185,7 +186,7 @@ test("showing the jump-to-bottom control slides it out of the card and keeps it 
     selected,
     showScrollBottom: true,
     onScrollToBottom: () => { jumps += 1; },
-    onSend: async () => {},
+    onSend: async () => true,
     onPickPrompt: () => {},
   });
   const slot = view.host.querySelector(".scroll-bottom-slot") as HTMLElement;
@@ -363,6 +364,7 @@ test("the file conversation takes text as well as files, with no Bot to mention"
     onSend: async (files: File[]) => {
       sent.push(files);
       runtime.draft = "";
+      return true;
     },
     onPickPrompt: () => {},
   });
@@ -400,7 +402,7 @@ test("a Bot to Bot direct shows the read-only notice and no way in", () => {
     runtime,
     t,
     selected,
-    onSend: async () => {},
+    onSend: async () => true,
     onPickPrompt: () => {},
   });
   expect(view.host.querySelector(".composer-locked-message")?.textContent).toContain(
@@ -423,7 +425,7 @@ test("files staged in one conversation wait there while the composer shows anoth
     runtime,
     t,
     selected: first,
-    onSend: async () => {},
+    onSend: async () => true,
     onPickPrompt: () => {},
   });
   const view = render(Composer, props);
@@ -439,5 +441,108 @@ test("files staged in one conversation wait there while the composer shows anoth
   props.selected = first;
   flushSync();
   expect(view.host.querySelectorAll(".composer-attachment-item")).toHaveLength(1);
+  view.close();
+});
+
+/**
+ * A phone whose link dropped mid-upload lost the files and the words with it: the composer
+ * cleared both before the send, and they had to be picked and typed again.
+ */
+test("a send that does not land keeps the files and the words where they were", async () => {
+  const selected = aDirect();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  runtime.draft = "这两个文件";
+  let lands = false;
+  const sent: File[][] = [];
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    onSend: async (files: File[]) => {
+      sent.push(files);
+      if (lands) runtime.draft = "";
+      return lands;
+    },
+    onPickPrompt: () => {},
+  });
+  const staged = runtime.sessionView(selected.id);
+  const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
+  staged.stagedAttachments = [{ id: "att-1", file, name: "clip.mp4", size: 1, isImage: false, previewUrl: null }];
+  flushSync();
+  const settle = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+  };
+  const action = view.host.querySelector(".composer-action") as HTMLButtonElement;
+  const editor = view.host.querySelector(".composer-input") as HTMLElement;
+  action.click();
+  await settle();
+  expect(sent).toEqual([[file]]);
+  expect(view.host.querySelectorAll(".composer-attachment-item")).toHaveLength(1);
+  expect(editor.textContent).toContain("这两个文件");
+
+  // On its way, a staged file cannot be taken back.
+  staged.sending = true;
+  flushSync();
+  expect((view.host.querySelector(".attachment-delete-btn") as HTMLButtonElement).disabled).toBe(true);
+  staged.sending = false;
+  flushSync();
+
+  lands = true;
+  action.click();
+  await settle();
+  expect(sent).toEqual([[file], [file]]);
+  expect(view.host.querySelectorAll(".composer-attachment-item")).toHaveLength(0);
+  expect(editor.textContent).toBe("");
+  view.close();
+});
+
+/**
+ * Over the relay a send can take a while, and the button only greyed out — the same look as a
+ * composer with nothing to send. A send that lands at once still shows nothing.
+ */
+test("a send still on its way shows on the button, and an upload shows how far it has gone", async () => {
+  const selected = aDirect();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  const view = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+  const state = runtime.sessionView(selected.id);
+  const first = new File([new Uint8Array(300)], "a.mp4");
+  const second = new File([new Uint8Array(100)], "b.mp4");
+  state.stagedAttachments = [
+    { id: "a", file: first, name: "a.mp4", size: 300, isImage: false, previewUrl: null },
+    { id: "b", file: second, name: "b.mp4", size: 100, isImage: false, previewUrl: null },
+  ];
+  const action = () => view.host.querySelector(".composer-action") as HTMLButtonElement;
+  const sizes = () => [...view.host.querySelectorAll(".attachment-size")].map((el) => el.textContent);
+
+  state.sending = true;
+  flushSync();
+  expect(action().getAttribute("aria-busy")).toBeNull();
+  expect(action().querySelector(".send-spinner")).toBeNull();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  flushSync();
+  expect(action().classList.contains("is-sending")).toBe(true);
+  expect(action().getAttribute("aria-busy")).toBe("true");
+  expect(action().getAttribute("aria-label")).toBe(t.composer.sending);
+  expect(action().querySelector(".send-spinner")).not.toBeNull();
+
+  // Three quarters of the first file, none of the second: they go out in order.
+  state.upload = { files: [first, second], loaded: 225 };
+  flushSync();
+  expect(action().querySelector(".send-spinner")).toBeNull();
+  const fill = action().querySelector(".send-progress-fill")!;
+  const length = Number(fill.getAttribute("stroke-dasharray"));
+  expect(Number(fill.getAttribute("stroke-dashoffset"))).toBeCloseTo(length * (1 - 225 / 400));
+  expect(sizes()[0]).toContain(t.composer.uploaded(75));
+  expect(sizes()[1]).toContain(t.composer.uploaded(0));
+
+  state.sending = false;
+  state.upload = null;
+  flushSync();
+  expect(action().classList.contains("is-sending")).toBe(false);
+  expect(action().getAttribute("aria-label")).toBe(t.composer.send);
+  expect(sizes()[0]).not.toContain("%");
   view.close();
 });

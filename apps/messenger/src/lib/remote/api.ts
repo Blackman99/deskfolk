@@ -478,6 +478,8 @@ export class RemoteApi {
   }
   async postMessage(sessionId: string, body: string, opts: {
     fork?: boolean; askId?: string | null; attachments?: File[]; parentId?: string | null; requestId?: string;
+    /** The attachments' bytes as they leave, all files together. */
+    onUploadProgress?: FileProgressHandler;
   } = {}): Promise<Message> {
     const files = opts.attachments?.length ? await attachmentManifest(opts.attachments) : [];
     return this.request<Message>("POST", `/v1/sessions/${sessionId}/messages`, {
@@ -486,7 +488,7 @@ export class RemoteApi {
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
       ...(files.length ? { files: files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 })) } : {}),
-    }, undefined, {}, false, null, opts.requestId, files);
+    }, undefined, {}, false, null, opts.requestId, files, opts.onUploadProgress);
   }
   /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
   async taskArtifacts(taskId: string): Promise<TaskArtifacts> {
@@ -820,6 +822,7 @@ export class RemoteApi {
     supersedes?: string | null,
     id?: string,
     uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
+    onProgress?: FileProgressHandler,
   ): Promise<T> {
     void signal;
     const splitPath = split(path);
@@ -850,15 +853,19 @@ export class RemoteApi {
       };
       this.pending.set(slot, row);
     }
-    return this.send(row, uploads) as Promise<T>;
+    return this.send(row, uploads, onProgress) as Promise<T>;
   }
 
-  private async send(row: PendingRemote, uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>): Promise<unknown> {
+  private async send(
+    row: PendingRemote,
+    uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
+    onProgress?: FileProgressHandler,
+  ): Promise<unknown> {
     try {
       const response = await this.dispatch({
         v: 1, id: row.id, method: row.method, path: row.path, query: row.query,
         body: row.method === "GET" ? undefined : row.body, ifMatch: row.ifMatch,
-      }, uploads);
+      }, uploads, onProgress);
       return this.applyResponse(row, response);
     } catch (error) {
       if (!(error instanceof ApiError) || (error.status === 503 && error.code === "request_unknown")) {

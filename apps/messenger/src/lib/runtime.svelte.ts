@@ -28,6 +28,7 @@ import {
   type ToolFrame,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
+import type { FileProgress } from "./file-progress.ts";
 import { copyFor } from "./copy.ts";
 import { CommandActivity } from "./chat/command-activity.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
@@ -1452,37 +1453,46 @@ export class MessengerRuntime {
   /**
    * Send what is drafted in a conversation — the one named, or the selected one. On the workbench
    * a pane always names its own: the selected conversation is whichever pane has the keyboard.
+   * True once the Mac has the message; the composer keeps what it staged until then.
    */
-  async send(opts?: { attachments?: File[]; sessionId?: string }): Promise<void> {
+  async send(opts?: { attachments?: File[]; sessionId?: string }): Promise<boolean> {
     const api = this.api;
     const id = opts?.sessionId ?? this.selectedId;
     const view = this.viewFor(id);
-    if (!view) return;
+    if (!view) return false;
     const body = view.draft.trim();
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
-    if (!api || !id || (!body && !hasAttachments) || view.sending) return;
+    if (!api || !id || (!body && !hasAttachments) || view.sending) return false;
     const kept = this.draftReconnect;
-    if (kept && !kept.confirm && kept.sessionId === id) return;
+    if (kept && !kept.confirm && kept.sessionId === id) return false;
     const parentId = view.replyingToId;
     view.sending = true;
+    view.upload = null;
+    const files = opts?.attachments ?? [];
     try {
       const message = await api.postMessage(id, body, {
         attachments: opts?.attachments,
         parentId,
+        ...(hasAttachments ? { onUploadProgress: (progress: FileProgress) => { view.upload = { files, loaded: progress.loaded }; } } : {}),
       });
       if (this.draftReconnect?.confirm && this.draftReconnect.sessionId === id) this.draftReconnect = null;
-      if (this.api !== api) return;
+      if (this.api !== api) return true;
       view.draft = "";
       view.replyingToId = null;
       view.pendingFocusTrigger = message.id;
       this.claimFocus(id, message.id);
+      return true;
     } catch (error) {
-      if (this.api !== api) return;
-      if (error instanceof ApiError && error.status === 422) return;
+      if (this.api !== api) return false;
+      if (error instanceof ApiError && error.status === 422) return false;
       this.keepUnknownRequest(error, api);
       this.markDisconnected();
+      return false;
     } finally {
-      if (this.api === api) view.sending = false;
+      if (this.api === api) {
+        view.sending = false;
+        view.upload = null;
+      }
     }
   }
 
@@ -3200,7 +3210,10 @@ export class MessengerRuntime {
       view.messageNext = null;
     }
     this.connectionSeq++;
-    for (const view of this.views.values()) view.sending = false;
+    for (const view of this.views.values()) {
+      view.sending = false;
+      view.upload = null;
+    }
   }
 
   /**

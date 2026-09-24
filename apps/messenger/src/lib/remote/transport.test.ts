@@ -99,6 +99,129 @@ test("bytes still leaving the send buffer are not silence", async () => {
   expect(dropped).toBe(true);
 });
 
+const uploadId = "01ARZ3NDEKTSV4RRFFQ69G5FB0";
+
+/** A file of `size` bytes, the POST that declares it, and the Mac's answer opening its stream. */
+function upload(size: number) {
+  const bytes = new Uint8Array(size).map((_, i) => i % 251);
+  const file = { filename: "clip.mp4", size, sha256: sha256Hex(bytes), bytes };
+  const declared = { filename: file.filename, size, sha256: file.sha256 };
+  const request = {
+    v: 1, id: uploadId, method: "POST", path: "/v1/sessions/filedrop/messages", body: { body: "", files: [declared] },
+  } as const;
+  const opened = { v: 1, id: uploadId, status: 202, body: { state: "upload_open" }, upload: { files: [{ ...declared, streamId: 1 }] } };
+  return { file, request, opened };
+}
+
+/** A transport on a clock the test owns: an upload's waits move it rather than taking real time. */
+function pacedTransport(relay: ReturnType<typeof fakeHost>, clock: { now: number }, onSleep?: () => void) {
+  return new RemoteTransport(enrollment, deviceKeys, {
+    socketFactory: () => relay.socket as unknown as WebSocket,
+    now: () => clock.now,
+    sleep: async (ms) => {
+      clock.now += ms;
+      onSleep?.();
+      await Bun.sleep(0);
+    },
+  });
+}
+
+async function until(check: () => boolean): Promise<void> {
+  for (let i = 0; i < 20_000 && !check(); i++) await Bun.sleep(0);
+}
+
+/**
+ * The regression behind a phone that reconnected the moment it sent a file: the whole file went
+ * into the socket at once, the relay's meter ran past its 256 KiB burst, and the relay closed the
+ * route mid-upload. The Mac takes 1.5 of the relay's 2.5 MB/s; the device keeps inside the rest.
+ */
+test("an upload leaves no faster than the device's share of the relay's meter", async () => {
+  const clock = { now: 1_000_000 };
+  const size = 2 * 1024 * 1024;
+  const { file, request, opened } = upload(size);
+  const relay = fakeHost({ clock: () => clock.now, answer: (asked) => (asked.id === uploadId ? opened : null) });
+  const transport = pacedTransport(relay, clock);
+  await transport.connect();
+  const start = clock.now;
+  const progress: Array<{ loaded: number; total: number | null }> = [];
+  const answer = transport.rpc(request, [file], (seen) => progress.push({ ...seen }));
+  await until(() => relay.chunks.at(-1)?.eof === true);
+
+  expect(relay.chunks.reduce((n, chunk) => n + chunk.size, 0)).toBe(size);
+  // What the composer draws its ring from: from nothing to all of it, never backwards.
+  expect(progress[0]).toEqual({ loaded: 0, total: size });
+  expect(progress.at(-1)).toEqual({ loaded: size, total: size });
+  expect(progress.every((row, i) => i === 0 || row.loaded > progress[i - 1]!.loaded)).toBe(true);
+  // The relay's meter, as the device sees it: a full burst to start with, refilled at what the
+  // Mac leaves over. Each chunk costs its bytes plus the frame around them.
+  let tokens = 256 * 1024;
+  let last = start;
+  for (const chunk of relay.chunks) {
+    tokens = Math.min(256 * 1024, tokens + (chunk.at - last) * 1000);
+    last = chunk.at;
+    tokens -= chunk.size + 54;
+    expect(tokens).toBeGreaterThanOrEqual(0);
+  }
+  // And not slower than it needs to be.
+  expect(clock.now - start).toBeLessThan(size / 850);
+
+  relay.respond({ v: 1, id: uploadId, status: 201, body: { id: "msg" } });
+  expect(await answer).toMatchObject({ status: 201, body: { id: "msg" } });
+});
+
+/** A paced 30 MB upload outlasts the stall window with nothing coming back from the Mac. */
+test("an upload still being paced out is not silence", async () => {
+  const clock = { now: 1_000_000 };
+  const { file, request, opened } = upload(30 * 1024 * 1024);
+  const relay = fakeHost({ answer: (asked) => (asked.id === uploadId ? opened : null) });
+  let dropped = false;
+  let checked = clock.now;
+  const transport = pacedTransport(relay, clock, () => {
+    // The page's own interval, on the test's clock. The buffer drains between chunks, so it
+    // reads 0 at every look, as it does on a radio faster than the pace.
+    if (clock.now - checked < 5000) return;
+    checked = clock.now;
+    (transport as unknown as { checkStall(): void }).checkStall();
+  });
+  await transport.connect();
+  transport.ondrop = () => { dropped = true; };
+  void transport.rpc(request, [file]).catch(() => undefined);
+  await until(() => dropped || relay.chunks.at(-1)?.eof === true);
+  expect(clock.now - 1_000_000).toBeGreaterThan(30_000);
+  expect(dropped).toBe(false);
+  expect(relay.chunks.at(-1)?.eof).toBe(true);
+});
+
+test("an upload waits for the browser to hand on what it already holds", async () => {
+  const clock = { now: 1_000_000 };
+  const { file, request, opened } = upload(256 * 1024);
+  const relay = fakeHost({ answer: (asked) => (asked.id === uploadId ? opened : null) });
+  const transport = pacedTransport(relay, clock);
+  await transport.connect();
+  relay.socket.bufferedAmount = 300 * 1024;
+  void transport.rpc(request, [file]).catch(() => undefined);
+  await until(() => clock.now > 1_000_000 + 1000);
+  expect(relay.chunks).toHaveLength(0);
+  relay.socket.bufferedAmount = 0;
+  await until(() => relay.chunks.at(-1)?.eof === true);
+  expect(relay.chunks.at(-1)?.eof).toBe(true);
+});
+
+test("a link that drops mid-upload stops sending and leaves the result unknown", async () => {
+  const clock = { now: 1_000_000 };
+  const { file, request, opened } = upload(1024 * 1024);
+  const relay = fakeHost({ answer: (asked) => (asked.id === uploadId ? opened : null) });
+  const transport = pacedTransport(relay, clock);
+  await transport.connect();
+  const answer = transport.rpc(request, [file]);
+  await until(() => relay.chunks.length >= 3);
+  relay.socket.drop();
+  const sent = relay.chunks.length;
+  await expect(answer).rejects.toMatchObject({ code: "request_unknown", requestId: uploadId });
+  for (let i = 0; i < 50; i++) await Bun.sleep(0);
+  expect(relay.chunks.length).toBe(sent);
+});
+
 /**
  * The relay gives one device one route and refuses a second while the first is there. A handshake
  * that gives up holding its socket open would refuse every retry after it — the page would look

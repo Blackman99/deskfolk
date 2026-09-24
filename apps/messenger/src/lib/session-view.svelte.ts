@@ -52,6 +52,11 @@ export class SessionView {
   stagedAttachments = $state<StagedAttachment[]>([]);
   /** A send, an answer, an approval or a continue from here is in flight. Other conversations are not held up by it. */
   sending = $state(false);
+  /**
+   * The files of the send in flight, and how many of their bytes have gone out — set once a remote
+   * link reports it. They leave one after the other, in this order.
+   */
+  upload = $state<{ files: File[]; loaded: number } | null>(null);
   /** The message just sent from here, until the turn it wakes is known and can be followed. */
   pendingFocusTrigger: string | null = null;
   /** Clears this conversation's highlight a few seconds after a jump. */

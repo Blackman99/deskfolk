@@ -46,7 +46,7 @@
 		t: Copy;
 		selected: SessionSummary | null;
 		/** The stage owns scrolling, so sending goes back through it. */
-		onSend: (files: File[]) => Promise<void>;
+		onSend: (files: File[]) => Promise<boolean>;
 		/** A starter chip or a suggestion fills the draft; the mirror effect puts it in the editor. */
 		onPickPrompt: (prompt: string) => void;
 		/** The stage owns stick-to-bottom; this only draws the jump control on the card. */
@@ -157,6 +157,42 @@
 		hasContent,
 		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
 	}));
+
+	/**
+	 * A send the Mac next door answers at once shows nothing. One still on its way after this long —
+	 * over the relay, behind a picture already downloading, a file uploading — says so on the
+	 * button, where a greyed-out one looked exactly like a composer with nothing to send.
+	 */
+	const SENDING_SHOW_MS = 250;
+	let sendingShown = $state(false);
+	$effect(() => {
+		if (!view?.sending) {
+			sendingShown = false;
+			return;
+		}
+		const timer = setTimeout(() => {
+			sendingShown = true;
+		}, SENDING_SHOW_MS);
+		return () => clearTimeout(timer);
+	});
+	/** 0–1 across every file of the send in flight, once the link reports it. */
+	const uploadFraction = $derived.by(() => {
+		const upload = view?.upload;
+		if (!upload) return null;
+		const total = upload.files.reduce((n, file) => n + file.size, 0);
+		return total > 0 ? Math.min(1, upload.loaded / total) : null;
+	});
+	/** A staged file's own share: the files go out one after the other, in the order they were sent. */
+	function uploadedPercent(file: File): number | null {
+		const upload = view?.upload;
+		const at = upload ? upload.files.indexOf(file) : -1;
+		if (!upload || at < 0 || file.size === 0) return null;
+		const before = upload.files.slice(0, at).reduce((n, row) => n + row.size, 0);
+		return Math.floor(Math.max(0, Math.min(1, (upload.loaded - before) / file.size)) * 100);
+	}
+	/** The ring drawn on the send button while files upload. */
+	const RING_RADIUS = 8;
+	const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
 	/** Somewhere to send what ✨ drafts: not a locked composer, and no Bot reads the file conversation. */
 	const canSuggest = $derived(Boolean(selected) && !lockedComposer && !fileDrop);
@@ -632,16 +668,23 @@
 		}
 	});
 
+	/**
+	 * What was staged stays staged until the Mac has it. Clearing it up front meant a send that
+	 * failed — a phone's link dropping mid-upload — took the files and the words with it, and they
+	 * had to be picked and typed again.
+	 */
 	async function send(): Promise<void> {
 		if (editorEl) syncDraftFromEditor();
-		if (primaryAction.kind !== 'send' || primaryAction.disabled) return;
-		const files = pendingAttachments.map((a) => a.file);
-		for (const a of pendingAttachments) {
+		if (primaryAction.kind !== 'send' || primaryAction.disabled || !view) return;
+		const target = view;
+		const staged = [...pendingAttachments];
+		if (!(await onSend(staged.map((a) => a.file)))) return;
+		for (const a of staged) {
 			if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
 		}
-		stageAttachments([]);
-		await onSend(files);
-		if (editorEl) editorEl.innerHTML = '';
+		const sent = new Set(staged.map((a) => a.id));
+		target.stagedAttachments = target.stagedAttachments.filter((a) => !sent.has(a.id));
+		if (editorEl && view === target) editorEl.innerHTML = '';
 	}
 	let composerEl = $state<HTMLElement | null>(null);
 
@@ -786,6 +829,7 @@
 	{#if pendingAttachments.length > 0}
 		<div class="composer-attachments-bar">
 			{#each pendingAttachments as att (att.id)}
+				{@const uploaded = uploadedPercent(att.file)}
 				<div class="composer-attachment-item" class:is-img={att.isImage}>
 					{#if att.isImage && att.previewUrl}
 						<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
@@ -796,13 +840,14 @@
 					{/if}
 					<div class="attachment-meta flex flex-col min-w-0 flex-1">
 						<span class="attachment-name text-12 font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={att.name}>{att.name}</span>
-						<span class="attachment-size mono text-10 text-muted">{formatFileSize(att.size)}</span>
+						<span class="attachment-size mono text-10 text-muted">{formatFileSize(att.size)}{uploaded === null ? '' : ` · ${t.composer.uploaded(uploaded)}`}</span>
 					</div>
 					<button
 						type="button"
 						class="attachment-delete-btn"
 						title={t.composer.removeAttachment}
 						aria-label="Remove attachment {att.name}"
+						disabled={view?.sending}
 						onclick={() => removePendingAttachment(att.id)}
 					>
 						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -888,13 +933,31 @@
 			class="composer-action"
 			class:send={primaryAction.kind === 'send'}
 			class:stop={primaryAction.kind === 'stop'}
+			class:is-sending={primaryAction.kind === 'send' && sendingShown}
 			disabled={primaryAction.disabled}
-			aria-label={primaryAction.kind === 'stop' ? t.composer.stopGeneration : t.composer.send}
-			title={primaryAction.kind === 'stop' ? t.composer.stopGeneration : t.chat.sendHintShortcut}
+			aria-busy={primaryAction.kind === 'send' && sendingShown ? 'true' : undefined}
+			aria-label={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.composer.send}
+			title={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.chat.sendHintShortcut}
 			onclick={() => primaryAction.kind === 'stop' ? void runtime.stopTurn(selected?.id) : void send()}
 		>
 			{#if primaryAction.kind === 'stop'}
 				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+			{:else if sendingShown && uploadFraction !== null}
+				<svg class="send-progress" aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none">
+					<circle class="send-progress-track" cx="10" cy="10" r={RING_RADIUS} stroke-width="2.2"></circle>
+					<circle
+						class="send-progress-fill"
+						cx="10"
+						cy="10"
+						r={RING_RADIUS}
+						stroke-width="2.2"
+						stroke-linecap="round"
+						stroke-dasharray={RING_LENGTH}
+						stroke-dashoffset={RING_LENGTH * (1 - uploadFraction)}
+					></circle>
+				</svg>
+			{:else if sendingShown}
+				<svg class="send-spinner" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>
 			{:else}
 				<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"></path></svg>
 			{/if}
@@ -1342,6 +1405,32 @@
 		cursor: not-allowed;
 	}
 
+	/* On its way: still the send button, not a composer with nothing to send. */
+	.composer-action.is-sending:disabled {
+		background: var(--accent);
+		color: #ffffff;
+		cursor: progress;
+	}
+
+	.send-spinner {
+		animation: suggestSpin 0.9s linear infinite;
+	}
+
+	/* Filled clockwise from twelve o'clock. */
+	.send-progress {
+		transform: rotate(-90deg);
+	}
+
+	.send-progress-track {
+		stroke: currentColor;
+		opacity: 0.35;
+	}
+
+	.send-progress-fill {
+		stroke: currentColor;
+		transition: stroke-dashoffset 0.2s linear;
+	}
+
 	.composer-action:focus-visible,
 	.composer .attach-btn:focus-visible,
 	.composer .suggest-btn:focus-visible {
@@ -1602,9 +1691,15 @@
 		transition: all 0.12s ease;
 	}
 
-	.attachment-delete-btn:hover {
+	.attachment-delete-btn:hover:not(:disabled) {
 		background: var(--danger);
 		color: #ffffff;
+	}
+
+	/* On its way to the Mac: the chip stays as the sign of it, and cannot be taken back. */
+	.attachment-delete-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 
 	@keyframes chipIn {
@@ -1853,8 +1948,13 @@
 			transition: none;
 		}
 
-		.suggest-spinner {
+		.suggest-spinner,
+		.send-spinner {
 			animation: none;
+		}
+
+		.send-progress-fill {
+			transition: none;
 		}
 	}
 </style>

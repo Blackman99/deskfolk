@@ -2,6 +2,7 @@ import {
   HostSession,
   base64url,
   canonicalBytes,
+  decodeFileChunk,
   encodeFileChunk,
   generateIdentity,
   identityPublic,
@@ -98,6 +99,8 @@ export function fakeHost(options: {
   answer?: (request: RemoteRequest) => RemoteResponse | null;
   /** The event cursor the ready frame reports; a Mac that restarted has another instance. */
   ready?: { event_instance_id?: string; watermark_seq?: number };
+  /** The test's clock, stamped on each upload chunk. */
+  clock?: () => number;
 } = {}) {
   const host = new HostSession({
     binding,
@@ -111,6 +114,8 @@ export function fakeHost(options: {
   /** What the page asked for, in the order the host heard it; and which streams it stopped. */
   const requests: RemoteRequest[] = [];
   const cancels: number[] = [];
+  /** Upload chunks as they arrived, each with what `options.clock` read then. */
+  const chunks: Array<{ streamId: number; offset: number; eof: boolean; size: number; at: number }> = [];
   const socket = new FakeSocket((data, sock) => {
     if (typeof data === "string") {
       const message = JSON.parse(data) as { type: string; nonce_c?: string };
@@ -139,6 +144,11 @@ export function fakeHost(options: {
       cancels.push(new DataView(frame.body.buffer, frame.body.byteOffset, 4).getUint32(0));
       return;
     }
+    if (frame.type === 5) {
+      const chunk = decodeFileChunk(frame.body);
+      chunks.push({ streamId: chunk.streamId, offset: Number(chunk.offset), eof: chunk.eof, size: chunk.chunk.length, at: options.clock?.() ?? 0 });
+      return;
+    }
     const request = parseRemoteRequest(frame.body);
     // Every link opens by asking what the Mac can compress. Unless a test answers it, this Mac is
     // an older one that does not know the route, and the ask stays out of `requests`.
@@ -163,6 +173,7 @@ export function fakeHost(options: {
     host,
     requests,
     cancels,
+    chunks,
     event: (payload: unknown) => socket.deliver(host.send(3, canonicalBytes(payload))),
     /** An answer the test sends when it chooses, rather than the moment the request lands. */
     respond: (response: RemoteResponse) => socket.deliver(host.send(2, canonicalBytes(response))),

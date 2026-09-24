@@ -22,6 +22,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - Fixed a conversation's file preview jumping back to line 1 when you scrolled or clicked in another pane. Moving to a pane with a different conversation, or a new message arriving, rebuilt the code editor for the same file, which also threw away an edit you had not saved yet. The editor is now only rebuilt when you open a different file.
 
+- Fixed a paired phone dropping its link the moment it sent a file. The phone handed the whole file to the connection at once, the relay's rate limit (2.5 MB/s shared by the Mac and every device, with a 256 KiB burst) closed the route mid-upload, and the phone reconnected with the upload cancelled on the Mac. It now paces uploads at 900 KB/s, inside the share the Mac leaves for devices, and lets at most 256 KiB wait in the browser's send buffer, so a 20 MB video takes about 23 seconds instead of never arriving. A send that does not go through also keeps its files and text in the composer, where they used to be cleared before the send and had to be picked and typed again; while a send is on its way its files can no longer be removed.
+
+- The send button now shows a send that is still on its way. It used to only grey out — the same look as a composer with nothing to send — so a message going over the relay, or waiting behind a picture already downloading, looked frozen. After a quarter of a second it keeps its colour and turns into a spinner, and while files upload from a paired phone it fills a ring instead, with each staged file showing how much of it has gone ("12.0 MB · 75% sent"). A send that lands at once shows nothing.
+
 ## 0.1.0-rc.6 — 2026-09-24
 
 Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.

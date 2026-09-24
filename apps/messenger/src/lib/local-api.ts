@@ -377,6 +377,8 @@ export class LocalApi {
       attachments?: File[];
       parentId?: string | null;
       requestId?: string;
+      /** Not heard here: fetch reports no upload progress, and loopback takes a file at once. */
+      onUploadProgress?: FileProgressHandler;
     } = {},
   ): Promise<Message> {
     const parentId = opts.parentId ?? null;

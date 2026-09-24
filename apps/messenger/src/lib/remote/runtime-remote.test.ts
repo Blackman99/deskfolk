@@ -6,7 +6,7 @@ import { MessengerRuntime, nextRemoteRetry } from "../runtime.svelte.ts";
 import { emptySnapshot } from "../snapshot.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
 import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
-import { enrollment as liveEnrollment, serveRemote } from "./test-host.ts";
+import { enrollment as liveEnrollment, fakeHost, serveRemote } from "./test-host.ts";
 import { aBot } from "../test-fixtures.ts";
 
 const keys = generateIdentity();
@@ -333,4 +333,45 @@ test("a Mac that restarted is read again from its snapshot", async () => {
   expect(second).not.toContain("/v1/events/catchup");
   // The restarted Mac's snapshot is the truth now, not what the page held before.
   expect(runtime.snapshot.bots).toEqual([]);
+});
+
+/**
+ * A file to the file drop takes seconds over the relay, and the composer had nothing to show for
+ * them. The conversation now carries how far its files have gone, from the link's own count.
+ */
+test("a remote send carries its upload's progress on the conversation until it lands", async () => {
+  const bytes = new Uint8Array(96 * 1024).fill(7);
+  const file = new File([bytes], "clip.mp4", { type: "video/mp4" });
+  const relay = fakeHost({
+    answer: (request) => {
+      const declared = (request.body?.files as Array<{ filename: string; size: number; sha256: string }> | undefined)?.[0];
+      if (!request.path.endsWith("/messages") || !declared) return null;
+      return { v: 1, id: request.id, status: 202, body: { state: "upload_open" }, upload: { files: [{ ...declared, streamId: 1 }] } };
+    },
+  });
+  const api = new RemoteApi(liveEnrollment, { socketFactory: () => relay.socket as unknown as WebSocket });
+  await api.connect(() => undefined);
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  (runtime as unknown as { api: RemoteApi | null }).api = api;
+  const view = runtime.sessionView("filedrop");
+
+  const sending = runtime.send({ sessionId: "filedrop", attachments: [file] });
+  const seen: number[] = [];
+  for (let i = 0; i < 2000 && relay.chunks.at(-1)?.eof !== true; i++) {
+    if (view.upload) seen.push(view.upload.loaded);
+    await Bun.sleep(1);
+  }
+  expect(view.sending).toBe(true);
+  expect(view.upload?.files).toEqual([file]);
+  expect(view.upload?.loaded).toBe(bytes.length);
+  // Seen part of the way along, not only at the end.
+  expect(seen.some((loaded) => loaded > 0 && loaded < bytes.length)).toBe(true);
+
+  const [posted] = relay.requests.filter((request) => request.path.endsWith("/messages"));
+  relay.respond({ v: 1, id: posted!.id, status: 201, body: { id: "msg-1", session_id: "filedrop", body: "" } });
+  expect(await sending).toBe(true);
+  expect(view.sending).toBe(false);
+  expect(view.upload).toBeNull();
+  api.close();
 });

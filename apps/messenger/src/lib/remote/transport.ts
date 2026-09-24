@@ -32,6 +32,8 @@ export type TransportHooks = {
   socketFactory?: (url: string) => WebSocket;
   httpOrigin?: string;
   now?: () => number;
+  /** How an upload waits its turn; a test moves its own clock instead. */
+  sleep?: (ms: number) => Promise<void>;
 };
 
 /**
@@ -101,6 +103,27 @@ function unpackAnswer(bytes: Uint8Array): Uint8Array {
 const STALL_MS = 30_000;
 const STALL_CHECK_MS = 5000;
 
+/**
+ * How fast an upload leaves, in bytes per millisecond. The relay meters everything it is handed —
+ * both directions, every link — at 2.5 MB/s with a 256 KiB burst, and closes the route of the
+ * socket that goes over. The Mac paces itself at 1.5 MB/s and leaves the other megabyte to the
+ * device (docs/remote-protocol.md). A file handed over as fast as the radio took it went past the
+ * burst in a fraction of a second: the link dropped the moment it was sent, and the message with it.
+ */
+const UPLOAD_BYTES_PER_MS = 900;
+/** Framing the relay counts on top of each chunk: header, tag. The Mac reserves the same. */
+const FRAME_RESERVE = 64;
+/**
+ * What an upload lets wait in the browser's own send buffer. A radio slower than the pace would
+ * pile the file up there, and hand it to the relay in one rush once it caught up.
+ */
+const SEND_BUFFER_HIGH = 256 * 1024;
+const SEND_BUFFER_POLL_MS = 20;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class RemoteTransport {
   private socket: WebSocket | null = null;
   private session: DeviceSession | null = null;
@@ -120,6 +143,11 @@ export class RemoteTransport {
   /** When the outstanding answer was asked for. A link idle all morning is not a late answer. */
   private waitingSince = 0;
   private lastBuffered = 0;
+  /** Upload bytes handed to the socket, and what that count was at the last stall check. */
+  private uploaded = 0;
+  private lastUploaded = 0;
+  /** When the next upload chunk may leave, on {@link now}'s clock. */
+  private uploadAt = 0;
   private stallTimer: ReturnType<typeof setInterval> | null = null;
   readyFrame: RemoteReady | null = null;
   constructor(
@@ -274,13 +302,16 @@ export class RemoteTransport {
   /**
    * Is this link still carrying anything? An answer is outstanding and nothing has come back for
    * {@link STALL_MS}; bytes still leaving the send buffer count as the link being alive, so a
-   * slow upload is not mistaken for a dead radio.
+   * slow upload is not mistaken for a dead radio. So does a paced upload handing the socket more:
+   * it only does while the buffer is draining (see {@link SEND_BUFFER_HIGH}), and a buffer that
+   * drains between chunks looks exactly as still as a dead one.
    */
   private checkStall(): void {
     if (this.closed || !this.waiter) return;
     const buffered = this.socket?.bufferedAmount ?? 0;
-    if (buffered !== this.lastBuffered) {
+    if (buffered !== this.lastBuffered || this.uploaded !== this.lastUploaded) {
       this.lastBuffered = buffered;
+      this.lastUploaded = this.uploaded;
       this.lastFrameAt = this.now();
       return;
     }
@@ -315,11 +346,14 @@ export class RemoteTransport {
             entry.fail(new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", request.id));
             return;
           }
-          this.waiter = { id: request.id, resolve: settled(resolve), reject: entry.fail, entry, onProgress };
+          this.waiter = {
+            id: request.id, resolve: settled(resolve), reject: entry.fail, entry, onProgress,
+            // Before the request leaves: the Mac's answer opening the streams can be the next frame.
+            ...(uploads?.length ? { uploads: uploads.map((file) => ({ ...file, streamId: 0 })) } : {}),
+          };
           this.waitingSince = this.now();
           try {
             this.socket.send(new Uint8Array(this.session.send(1, canonicalBytes(request))));
-            if (uploads?.length) this.waiter.uploads = uploads.map((file) => ({ ...file, streamId: 0 }));
           } catch (error) {
             this.waiter = null;
             entry.fail(error);
@@ -541,21 +575,45 @@ export class RemoteTransport {
           return;
         }
         local.streamId = declared.streamId;
-        if (local.size > 0) this.sendUpload(local);
       }
+      // An empty file has no chunks: the Mac closes its stream on its own.
+      void this.sendUploads(waiter, pending.filter((file) => file.size > 0));
       return;
     }
     this.finish(response);
   }
 
-  private sendUpload(file: { streamId: number; bytes: Uint8Array }): void {
-    if (!this.session || !this.socket || this.closed) return;
-    for (let offset = 0; offset < file.bytes.length || file.bytes.length === 0; offset += MAX_FILE_CHUNK) {
-      const chunk = file.bytes.subarray(offset, offset + MAX_FILE_CHUNK);
-      this.socket.send(new Uint8Array(this.session.send(5, encodeFileChunk({
-        streamId: file.streamId, offset: BigInt(offset), eof: offset + chunk.length === file.bytes.length, chunk,
-      }))));
-      if (!file.bytes.length) break;
+  /**
+   * The files the Mac opened streams for, one after the other, at {@link UPLOAD_BYTES_PER_MS}.
+   * Stops when the link does, or when the Mac has already answered the request they belong to.
+   * The request's progress handler hears the bytes handed on so far, across all its files.
+   */
+  private async sendUploads(owner: Waiter, files: Array<{ streamId: number; bytes: Uint8Array }>): Promise<void> {
+    const sleep = this.hooks.sleep ?? wait;
+    const sending = () => !this.closed && this.waiter === owner && Boolean(this.session && this.socket);
+    const total = files.reduce((n, file) => n + file.bytes.length, 0);
+    let loaded = 0;
+    owner.onProgress?.({ loaded, total });
+    try {
+      for (const file of files) {
+        for (let offset = 0; offset < file.bytes.length; offset += MAX_FILE_CHUNK) {
+          const chunk = file.bytes.subarray(offset, offset + MAX_FILE_CHUNK);
+          while (sending() && this.socket!.bufferedAmount > SEND_BUFFER_HIGH) await sleep(SEND_BUFFER_POLL_MS);
+          const now = this.now();
+          const at = Math.max(now, this.uploadAt);
+          this.uploadAt = at + (chunk.length + FRAME_RESERVE) / UPLOAD_BYTES_PER_MS;
+          if (at > now) await sleep(at - now);
+          if (!sending()) return;
+          this.socket!.send(new Uint8Array(this.session!.send(5, encodeFileChunk({
+            streamId: file.streamId, offset: BigInt(offset), eof: offset + chunk.length === file.bytes.length, chunk,
+          }))));
+          this.uploaded += chunk.length;
+          loaded += chunk.length;
+          owner.onProgress?.({ loaded, total });
+        }
+      }
+    } catch {
+      this.fail();
     }
   }
 }
