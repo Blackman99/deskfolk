@@ -102,7 +102,28 @@ test("one pane fills the viewport and has no dividers", () => {
 
 test("the track template carries both the minimum and the share", () => {
   const branch = makeBranch("r", "row", [makeLeaf("a"), makeLeaf("b")], [0.25, 0.75]);
-  expect(trackTemplate(branch, [360, 600])).toBe("minmax(360px, 250.000fr) 8px minmax(600px, 750.000fr)");
+  expect(trackTemplate(branch, [360, 600])).toBe(
+    "minmax(min(360px, max(0px, calc(37.500000% - 3.000000px))), 250.000fr) 8px " +
+    "minmax(min(600px, max(0px, calc(62.500000% - 5.000000px))), 750.000fr)",
+  );
+});
+
+test("track minimums shrink proportionally within the available space on either axis", () => {
+  for (const axis of ["row", "column"] as const) {
+    const branch = makeBranch("r", axis, [makeLeaf("a"), makeLeaf("b"), makeLeaf("c")], [0.1, 0.3, 0.6]);
+    const mins = [360, 240, 300];
+    const template = trackTemplate(branch, mins);
+    const terms = [...template.matchAll(/calc\(([\d.]+)% - ([\d.]+)px\)/g)];
+    expect(terms).toHaveLength(3);
+    for (const extent of [500, 1200]) {
+      const effective = terms.map((match, i) => Math.min(mins[i]!, Math.max(0, extent * Number(match[1]) / 100 - Number(match[2]))));
+      if (extent === 500) {
+        const expected = allocate(extent - 2 * WB_SASH_PX, branch.weights, mins);
+        effective.forEach((floor, i) => expect(Math.abs(floor - expected[i]!)).toBeLessThan(1));
+      } else expect(effective).toEqual(mins);
+    }
+    expect(trackTemplate(branch, [0, 0, 0])).not.toMatch(/NaN|Infinity/);
+  }
 });
 
 test("the tracks still fill the branch once one of them sits at its minimum", () => {

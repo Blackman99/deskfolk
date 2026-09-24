@@ -111,6 +111,7 @@
 	import { allLeaves, emptyLayout as freshLayout } from './workbench/layout-tree.ts';
 	import {
 		closeTab as closeWorkbenchTab,
+		closeLeaf as closeWorkbenchPane,
 		activateTab,
 		emptyLayout,
 		focusLeaf,
@@ -631,6 +632,10 @@
 	}
 
 	function runWorkbenchCommand(command: WorkbenchCommand): void {
+		if (command.kind === 'close-pane') {
+			onPaneClose(layout.focus.leafId);
+			return;
+		}
 		commitLayout(
 			applyCommand(layout, command, workbenchCommandContext(), (current, leafId, axis, side) =>
 				splitLeaf(current, leafId, axis, side, [], { leaf: freshPaneId(), branch: freshPaneId() })
@@ -670,6 +675,19 @@
 			ids: freshPaneId,
 			newPaneMin: WB_FALLBACK_MIN
 		};
+	}
+
+	function onPaneClose(leafId: string): void {
+		const leaf = leafById(layout, leafId);
+		if (!leaf) return;
+		const blocked = leaf.tabs.find((tab) => previewPanes.get(tab.id)?.blocksClose());
+		if (blocked) {
+			const pane = previewPanes.get(blocked.id)!;
+			commitLayout(activateTab(focusLeaf(layout, leafId), leafId, blocked.id));
+			pane.requestLeaveFromParent(() => onPaneClose(leafId));
+			return;
+		}
+		commitLayout(closeWorkbenchPane(layout, leafId, freshPaneId()));
 	}
 
 	function onPaneCloseTab(leafId: string, tabId: string): void {
@@ -1777,6 +1795,7 @@
 				onLayout={commitLayout}
 				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
 				onCloseTab={onPaneCloseTab}
+				onClosePane={onPaneClose}
 			>
 				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}
 					<PaneContentHost

@@ -24,6 +24,7 @@
 
 	let pane = $state<{
 		requestCloseFromParent: (afterClose?: () => void) => void;
+		requestLeaveFromParent: (after: () => void) => void;
 		closeFind: () => boolean;
 		blocksClose: () => boolean;
 	} | null>(null);
@@ -35,6 +36,11 @@
 			onClose();
 			afterClose?.();
 		}
+	}
+
+	export function requestLeaveFromParent(after: () => void): void {
+		if (pane) pane.requestLeaveFromParent(after);
+		else after();
 	}
 
 	export function closeFind(): boolean {

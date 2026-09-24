@@ -19,6 +19,7 @@
 		onFocus: (leafId: string) => void;
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
+		onClosePane?: (leafId: string) => void;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
@@ -46,6 +47,7 @@
 		onFocus,
 		onActivate,
 		onCloseTab,
+		onClosePane,
 		onTabPointerDown,
 		onStripPointerDown,
 		onMenu,
@@ -340,6 +342,18 @@
 				aria-haspopup="menu"
 				aria-label={t.pane.title}
 				onclick={(event) => onMenu(event, leaf.id)}>⋯</button
+			>
+		{/if}
+		{#if leaf.tabs.length === 0 && onClosePane}
+			<button
+				type="button"
+				class="wb-pane-close"
+				aria-label={t.pane.close}
+				title={t.pane.close}
+				onclick={(event) => {
+					event.stopPropagation();
+					onClosePane?.(leaf.id);
+				}}>×</button
 			>
 		{/if}
 		{#if newTabOpen && canOpen}
@@ -699,7 +713,8 @@
 		}
 	}
 	.wb-new-tab,
-	.wb-pane-menu {
+	.wb-pane-menu,
+	.wb-pane-close {
 		flex: 0 0 auto;
 		width: 24px;
 		height: 24px;
@@ -713,11 +728,13 @@
 	.wb-new-tab {
 		margin-left: 4px;
 	}
-	.wb-pane-menu {
+	.wb-pane-menu,
+	.wb-pane-close {
 		margin-left: auto;
 	}
 	.wb-new-tab:hover,
-	.wb-pane-menu:hover {
+	.wb-pane-menu:hover,
+	.wb-pane-close:hover {
 		background: var(--row-hover);
 		color: var(--ink);
 	}

@@ -28,7 +28,7 @@
 - **Everything on your Mac.** Window, daemon, sessions and the shared workspace stay local. Bring any OpenAI-compatible endpoint and MCP servers.
 - **Every job is a flow.** A card per turn, drawn by who woke whom, with the files each turn handed over.
 - **Model choice that says why.** An agent picks each turn's model and thinking level and leaves a reason; only reviews that blame the model become the Bot's experience.
-- **A split-pane workbench.** Divide the desktop window into panes of conversations, terminals, the routine calendar, workspace and Spend. Fold the session list to a rail of avatars with the button beside its search field or ⌘B.
+- **A split-pane workbench.** Divide the desktop window into panes of conversations, terminals, the routine calendar, workspace and Spend. Close an empty pane with its top-right ×, or choose **Close pane** from a pane’s context menu. Fold the session list to a rail of avatars with the button beside its search field or ⌘B.
 - **Your own terminal.** Shells held by the daemon keep running when the window closes; a Bot's commands scroll under its message while they run.
 - **Spend by model, conversation and Bot.** Track turn, decision and feedback calls; reported amounts and estimates stay separate — [spend and billing rates](docs/spend.md).
 - **Routines.** Bots start work daily or weekly on the Mac's clock — [how routines work](docs/routines.md).

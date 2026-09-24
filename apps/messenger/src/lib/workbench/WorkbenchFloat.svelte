@@ -20,6 +20,7 @@
 		onFocus: (leafId: string) => void;
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
+		onClosePane?: (leafId: string) => void;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onDock?: (leafId: string) => void;
@@ -43,6 +44,7 @@
 		onFocus,
 		onActivate,
 		onCloseTab,
+		onClosePane,
 		onTabPointerDown,
 		onStripPointerDown,
 		onDock,
@@ -151,6 +153,7 @@
 		{onFocus}
 		{onActivate}
 		{onCloseTab}
+		{onClosePane}
 		{onTabPointerDown}
 		{onStripPointerDown}
 		{onMenu}

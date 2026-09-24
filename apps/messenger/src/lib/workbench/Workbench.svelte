@@ -12,7 +12,7 @@
 		type JunctionDrag,
 		type SashDrag
 	} from './layout-resize.ts';
-	import { findPath, focusLeaf, nodeAt, setFloatFrame, splitLeaf, tiledLeaves } from './layout-tree.ts';
+	import { closeLeaf, findPath, focusLeaf, nodeAt, setFloatFrame, splitLeaf, tiledLeaves } from './layout-tree.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
 	import { dropIndicatorRect, dropZoneAt, type DropZone } from './drop-zones.ts';
 	import {
@@ -45,6 +45,7 @@
 		onLayout: (next: WorkbenchLayout) => void;
 		onActivate?: (leafId: string, tabId: string) => void;
 		onCloseTab?: (leafId: string, tabId: string) => void;
+		onClosePane?: (leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
 		/** The strip's + menu. A second argument is the text typed into its filter. */
@@ -64,6 +65,7 @@
 		onLayout,
 		onActivate,
 		onCloseTab,
+		onClosePane,
 		onMenu,
 		emptyActions,
 		menuActions,
@@ -426,6 +428,11 @@
 		if (next !== layout) onLayout(next);
 	}
 
+	function closePane(leafId: string): void {
+		if (onClosePane) onClosePane(leafId);
+		else onLayout(closeLeaf(layout, leafId, freshId()));
+	}
+
 	/** A pane that goes away — closed, docked, healed — takes its menu with it. */
 	$effect(() => {
 		const open = paneMenu;
@@ -466,6 +473,7 @@
 				onFocus={focus}
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+				onClosePane={closePane}
 				{onMenu}
 				{emptyActions}
 				{menuActions}
@@ -484,12 +492,13 @@
 			onFocus={focus}
 			onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+			onClosePane={closePane}
 			onSashPointerDown={startSash}
 			{draggingSash}
 			onTabPointerDown={(event, leafId, tabId) =>
 				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
-				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu, .wb-new-tab, .wb-new-menu')) return;
+				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu, .wb-pane-close, .wb-new-tab, .wb-new-menu')) return;
 				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), nameOf(leafId, null));
 			}}
 			{onMenu}
@@ -513,6 +522,7 @@
 				onFocus={focus}
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+				onClosePane={closePane}
 				onTabPointerDown={(event, leafId, tabId) =>
 					startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 				{onDock}
@@ -568,6 +578,7 @@
 					edit={open.edit ? { canCopy: open.canCopy, onCopy: open.edit.copy, onPaste: open.edit.paste } : null}
 					onSplit={(dir) => splitTowards(open.leafId, dir)}
 					onDock={() => onDock(open.leafId)}
+					onClosePane={() => closePane(open.leafId)}
 					onClose={() => (paneMenu = null)}
 				/>
 			{/key}

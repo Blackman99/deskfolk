@@ -26,6 +26,7 @@
 		/** Left out, the menu offers no splits: a tab's ⋯ holds only what the tab offers. */
 		onSplit?: (dir: Direction) => void;
 		onDock?: () => void;
+		onClosePane?: () => void;
 		/**
 		 * The button that opened the menu. A press on it is left to the button, which closes the
 		 * menu itself; closing on the press as well would have the click open it straight again.
@@ -46,6 +47,7 @@
 		edit = null,
 		onSplit,
 		onDock,
+		onClosePane,
 		anchor = null,
 		onClose
 	}: Props = $props();
@@ -254,6 +256,18 @@
 				<path d="M12 8v6m-3-3 3 3 3-3"></path>
 			</svg>
 			<span class="wb-context-label">{t.pane.dock}</span>
+		</button>
+	{/if}
+	{#if onClosePane}
+		{@const closePane = onClosePane}
+		{#if actions.length > 0 || edit || onSplit || (floating && onDock)}
+			<div class="wb-context-divider" role="separator"></div>
+		{/if}
+		<button type="button" class="wb-context-item" role="menuitem" data-close-pane onclick={() => pick(closePane)}>
+			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+				<path d="m6 6 12 12M6 18 18 6"></path>
+			</svg>
+			<span class="wb-context-label">{t.pane.close}</span>
 		</button>
 	{/if}
 </div>

@@ -141,9 +141,17 @@ const FR_SCALE = 1000;
 /** The `grid-template-*` value for one branch: tracks with sashes between them. */
 export function trackTemplate(branch: BranchNode, childMins: readonly number[]): string {
   const share = renormalise(branch.weights);
-  const tracks = branch.children.map(
-    (_, i) => `minmax(${Math.round(childMins[i] ?? 0)}px, ${(share[i]! * FR_SCALE).toFixed(3)}fr)`,
-  );
+  const floors = branch.children.map((_, i) => Math.max(0, Math.round(childMins[i] ?? 0)));
+  const total = floors.reduce((sum, floor) => sum + floor, 0);
+  const gaps = WB_SASH_PX * (branch.children.length - 1);
+  const tracks = floors.map((floor, i) => {
+    // Match allocate's proportional shrink when the window is smaller than the minimums.
+    const ratio = total > 0 ? floor / total : 0;
+    const min = floor > 0
+      ? `min(${floor}px, max(0px, calc(${(ratio * 100).toFixed(6)}% - ${(ratio * gaps).toFixed(6)}px)))`
+      : "0px";
+    return `minmax(${min}, ${(share[i]! * FR_SCALE).toFixed(3)}fr)`;
+  });
   return tracks.join(` ${WB_SASH_PX}px `);
 }
 

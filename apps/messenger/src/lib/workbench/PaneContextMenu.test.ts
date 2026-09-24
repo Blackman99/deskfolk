@@ -81,7 +81,7 @@ test("right-clicking anywhere in a pane offers a split in each of the four direc
     expect(menu()?.parentElement).toBe(document.body);
     const labels = [...menu()!.querySelectorAll('[role="menuitem"]')].map((row) =>
       row.querySelector(".wb-context-label")?.textContent);
-    expect(labels).toEqual([t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight]);
+    expect(labels).toEqual([t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.close]);
     for (const dir of ["up", "down", "left", "right"]) expect(item(dir)?.disabled).toBe(false);
     expect(menu()!.style.left).toBe("120px");
     expect(menu()!.style.top).toBe("40px");
@@ -241,7 +241,7 @@ test("inside a terminal, Copy and Paste lead the menu and act on that terminal",
     rightClick(host.querySelector(".xterm-screen"));
     const labels = [...menu()!.querySelectorAll('[role="menuitem"]')].map((row) =>
       row.querySelector(".wb-context-label")?.textContent);
-    expect(labels).toEqual([t.pane.copy, t.pane.paste, t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight]);
+    expect(labels).toEqual([t.pane.copy, t.pane.paste, t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.close]);
     // Nothing selected: Copy is there but off, and the keyboard lands on Paste.
     const copy = () => menu()!.querySelector<HTMLButtonElement>('[data-edit="copy"]')!;
     const paste = () => menu()!.querySelector<HTMLButtonElement>('[data-edit="paste"]')!;
@@ -256,7 +256,7 @@ test("inside a terminal, Copy and Paste lead the menu and act on that terminal",
     click(copy());
     expect(edit.calls).toEqual(["paste", "copy"]);
 
-    // Outside the terminal the pane's menu is only the splits.
+    // Outside the terminal the menu offers pane actions.
     rightClick(host.querySelector(".elsewhere"));
     expect(menu()!.querySelector("[data-edit]")).toBeNull();
   } finally {
@@ -370,11 +370,14 @@ test("arrow keys walk the directions that can be picked", async () => {
   try {
     rightClick(host.querySelector(".wb-strip"));
     await Promise.resolve();
-    // Left and right have no room, so the keyboard only lands on up and down.
+    // Disabled splits are skipped; closing stays available.
     expect(document.activeElement).toBe(item("up"));
     press(item("up"), "ArrowDown");
     expect(document.activeElement).toBe(item("down"));
     press(item("down"), "ArrowDown");
+    const closePane = menu()!.querySelector("[data-close-pane]");
+    expect(document.activeElement).toBe(closePane);
+    press(closePane, "ArrowDown");
     expect(document.activeElement).toBe(item("up"));
   } finally {
     close();
@@ -395,9 +398,9 @@ test("right-clicking a tab puts what it offers above the splits", () => {
     rightClick(host.querySelector('[data-tab="t1"] [role="tab"]'));
     const rows = [...menu()!.querySelectorAll('[role="menuitem"]')];
     expect(rows.map((row) => row.querySelector(".wb-context-label")?.textContent))
-      .toEqual(["设置", t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight]);
+      .toEqual(["设置", t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.close]);
     expect(rows[0]!.classList.contains("is-active")).toBe(true);
-    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(1);
+    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(2);
     click(menu()!.querySelector('[data-action="settings"]'));
     expect(ran).toEqual(["a/t1"]);
     expect(menu()).toBeNull();
@@ -405,7 +408,7 @@ test("right-clicking a tab puts what it offers above the splits", () => {
     // A tab with nothing to offer, and the strip beside the tabs, keep the plain menu.
     rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
     expect(menu()!.querySelector("[data-action]")).toBeNull();
-    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(4);
+    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(5);
     press(item("up"), "Escape");
     rightClick(host.querySelector('[data-body="t1"]'));
     expect(menu()!.querySelector("[data-action]")).toBeNull();

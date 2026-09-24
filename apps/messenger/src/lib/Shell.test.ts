@@ -1530,6 +1530,45 @@ test('mounted Shell mobile Spend Back and Escape leave the underlying chat and h
   expect(runtime.spendOpen).toBe(false);
   expect(runtime.workspaceOpen).toBe(true);
 });
+
+
+test('closing a pane from its context menu persists the layout and keeps its terminal available to reattach', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeBranch('root', 'row', [
+      makeLeaf('kept', [{ id: 'chat-tab', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+      makeLeaf('closed', [
+        { id: 'terminal-tab', kind: 'terminal', params: { terminalId: 'term-kept', cwd: '/fixture' } },
+        { id: 'workspace-tab', kind: 'workspace', params: {} },
+      ]),
+    ]),
+    floating: [], focus: { zone: 'tiled', leafId: 'kept' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.terminals = [aTerminal('term-kept', '2026-09-23T01:00:00.000Z')];
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(() => { close(); localStorage.removeItem('real-bot-workbench-layout'); });
+  await settle();
+  host.querySelector('[data-leaf="closed"] .wb-strip')!.dispatchEvent(new MouseEvent('contextmenu', {
+    bubbles: true, cancelable: true, button: 2, clientX: 50, clientY: 50,
+  }));
+  flushSync();
+  click(document.querySelector('[data-close-pane]'));
+  await settle();
+  expect(host.querySelectorAll('.wb-leaf')).toHaveLength(1);
+  expect(host.querySelector('[data-leaf="kept"]')).not.toBeNull();
+  expect(storedTabs().map((tab) => tab.kind)).toEqual(['chat']);
+  expect(runtime.terminals.map((row) => row.id)).toEqual(['term-kept']);
+  click(host.querySelector('.wb-new-tab'));
+  click(menuRow('real-bot'));
+  await settle();
+  expect(storedTabs().filter((tab) => tab.kind === 'terminal').map((tab) => tab.params.terminalId)).toEqual(['term-kept']);
+  expect(runtime.calls.filter((call) => call.name === 'startTerminal')).toHaveLength(0);
+});
+
 test('the session list folds to a rail of avatars from its own button or ⌘B, and is remembered', async () => {
   localStorage.setItem('real-bot-sidebar-width', '320');
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({

@@ -242,6 +242,7 @@
 	/>
 {:else if content.kind === 'workspace'}
 	<WorkspaceView
+		bind:this={previewPane}
 		api={runtime.client}
 		workspacePath={snapshot.settings.workspace_path}
 		selected={content.selected ?? ''}

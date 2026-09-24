@@ -99,6 +99,8 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 共用 `DangerDialog.svelte` 用原生 `dialog.showModal()` 隔离背景（含已有资料/技能/端点浮层），在组件内处理 Tab/Shift+Tab 和 Escape，不加全局键盘或 inert DOM 补丁。取消/卸载后归还仍存在的触发控件；busy 时焦点停在对话框，拒绝取消与重复确认。Shell 每个确认对象拥有自己的 running 状态，重复提交只拦截同一对象；事件先移除旧确认时，新确认可独立执行。所有异步完成后的清理/错误反馈校验确切确认身份；技能/记忆回调使用 `isCurrent`，不能按种类清除替代确认。触摸按钮至少 44×44px。
 
+空窗格右上角的 × 与窗格右键菜单的「关闭窗格」共用 `Workbench.onClosePane`，由 `Shell.onPaneClose` 检查当前窗格的工作区和产物预览是否有未保存编辑，确认后调用 `closeLeaf` 并持久化布局。原生菜单的关闭窗格命令也经过同一入口。关闭会移走整块窗格及其标签，终端仍由守护进程持有；最后一块平铺窗格关闭后保留一个空窗格。`trackTemplate` 的最小轨道使用 CSS `min` / `calc`，窗口小于内容最小尺寸之和时按最小尺寸比例收缩，与 `allocate` 一致，保持边缘关闭按钮可见。回归见 `workbench/pane-close.test.ts` 与 `layout-geometry.test.ts`。
+
 ## 日程编辑与版本
 
 日程搜索同时检查快照日程与当前 Bot 名册。软删除 Bot 保留历史日程，结果标为不可用而不是静默关闭。资料导航序号覆盖后来日程/资料、会话设置、关闭和 URL 浮层变化，较早详情返回不能重开旧编辑器或丢弃新草稿。
