@@ -12,6 +12,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - Fixed the file preview saying "File is gone" when you went from a picture (or a PDF) to a video or audio file. For a moment the new file's bytes were still on the way while the player already had the previous picture's, failed to play them, and kept the error. Players, pictures and PDFs now only use the bytes of the file on screen.
 
+- Fixed a conversation's file preview jumping back to line 1 when you scrolled or clicked in another pane. Moving to a pane with a different conversation, or a new message arriving, rebuilt the code editor for the same file, which also threw away an edit you had not saved yet. The editor is now only rebuilt when you open a different file.
+
 ## 0.1.0-rc.6 — 2026-09-24
 
 Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
