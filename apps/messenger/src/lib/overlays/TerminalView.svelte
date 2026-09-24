@@ -24,6 +24,7 @@
 	} from './terminal-theme.ts';
 	import { terminalFontSize } from './terminal-font.svelte.ts';
 	import { silenceRequests } from './terminal-requests.ts';
+	import { swipeAsWheel } from './terminal-touch.ts';
 	import {
 		accept,
 		decodeBase64,
@@ -118,6 +119,7 @@
 	let stopTheme: (() => void) | null = null;
 	let stopEdit: (() => void) | null = null;
 	let stopQuiet: (() => void) | null = null;
+	let stopSwipe: (() => void) | null = null;
 	/**
 	 * What pressed last anywhere in the pane: a link's activation arrives as a plain mouse event
 	 * either way, and a finger is what must not be handed a keyboard it did not ask for.
@@ -222,6 +224,8 @@
 		stopQuiet = () => quiet.dispose();
 		term.open(host);
 		claimNoScrollbar(term);
+		// A finger has no wheel, and a full-screen program's history only moves by one.
+		stopSwipe = swipeAsWheel(host, term);
 		loadGpuRenderer(term, WebglAddon);
 		fit.fit();
 		term.onData((data) => {
@@ -269,6 +273,8 @@
 		stopEdit = null;
 		stopQuiet?.();
 		stopQuiet = null;
+		stopSwipe?.();
+		stopSwipe = null;
 		detach();
 		search = null;
 		term?.dispose();

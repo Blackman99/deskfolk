@@ -19,7 +19,10 @@ class FakeTerminal {
   /** How many times the shell was handed the focus, which on a phone raises the keyboard. */
   focused = 0;
   blurred = 0;
-  modes = { applicationCursorKeysMode: false };
+  modes = { applicationCursorKeysMode: false, mouseTrackingMode: "none" };
+  buffer = { active: { type: "normal" } };
+  /** xterm's own element, made by `open`, with a screen of 16px rows. */
+  element: HTMLElement | undefined;
   selection = "";
   pasted: string[] = [];
   /** Registered request handlers; a DA1 in what is written is put to them the way xterm would. */
@@ -45,7 +48,15 @@ class FakeTerminal {
     made.push(this);
   }
   loadAddon(addon: { activate?: (term: FakeTerminal) => void }) { addon.activate?.(this); }
-  open() { this._core.viewport = { scrollBarWidth: 15 }; }
+  open(parent: HTMLElement) {
+    this._core.viewport = { scrollBarWidth: 15 };
+    this.element = document.createElement("div");
+    const screen = document.createElement("div");
+    screen.className = "xterm-screen";
+    screen.getBoundingClientRect = () => ({ height: this.rows * 16 }) as DOMRect;
+    this.element.append(screen);
+    parent.append(this.element);
+  }
   onData(sink: (data: string) => void) { this.dataSink = sink; }
   attachCustomKeyEventHandler(handler: KeyHandler) { this.keyHandler = handler; }
   reset() {}
@@ -423,6 +434,30 @@ test("opening the terminal claims no scrollbar, so the columns reach the pane ed
   const { view, term } = mountTab();
   await settle();
   expect(term()._core.viewport?.scrollBarWidth).toBe(0);
+  view.close();
+});
+
+test("on the phone, a swipe over a program holding the mouse reaches it as the wheel", async () => {
+  // Claude Code and the like: xterm leaves their history to them and does nothing with a touch.
+  const { view, term } = mountPhone();
+  await settle();
+  const xterm = term();
+  xterm.modes.mouseTrackingMode = "any";
+  xterm.buffer.active.type = "alternate";
+  const wheels: number[] = [];
+  xterm.element!.addEventListener("wheel", (event) => wheels.push((event as WheelEvent).deltaY));
+  const screen = xterm.element!.querySelector(".xterm-screen")!;
+  const touch = (type: string, y: number) =>
+    screen.dispatchEvent(
+      new TouchEvent(type, {
+        touches: [new Touch({ identifier: 0, target: screen, clientX: 50, clientY: y })],
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  touch("touchstart", 100);
+  touch("touchmove", 148);
+  expect(wheels).toEqual([-1, -1, -1]);
   view.close();
 });
 
