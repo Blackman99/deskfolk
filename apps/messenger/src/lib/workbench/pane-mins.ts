@@ -1,7 +1,7 @@
 /**
  * The smallest each kind of content stays usable at.
  *
- * Pixels, not fractions: "eighty columns" and "the composer plus one bubble" are real sizes that
+ * Pixels, not fractions: a terminal column and the composer plus one bubble are real sizes that
  * do not scale with the window. Where a number matches one the app already uses, it is that
  * number rather than a second opinion about the same thing.
  */
@@ -21,12 +21,8 @@ export const PANE_MINS = {
   preview: { width: 280, height: 240 },
   /** What the board needs before its cards stop making sense. */
   trace: { width: 300, height: 280 },
-  /**
-   * Eighty columns of 12px `ui-monospace` is about 576px, plus the host's padding and a
-   * scrollbar. Arithmetic, not a measurement — settle it with `FitAddon` in a real window and
-   * write the measured number here.
-   */
-  terminal: { width: 600, height: 200 },
+  /** Narrow enough to sit in a split column; the shell follows the pane via FitAddon. */
+  terminal: { width: 200, height: 200 },
   workspace: { width: 260, height: 200 },
   /** Seven day columns; the `routine-card` story is shot at 520 wide for the same reason. */
   routines: { width: 520, height: 420 },
@@ -41,8 +37,8 @@ export const WB_FALLBACK_MIN: PaneMin = { width: 240, height: 160 };
 /**
  * A pane's minimum is its **active** tab's, not the largest of its tabs'.
  *
- * Taking the largest would mean adding a terminal tab to a 360px chat pane shoves every other
- * pane sideways, which is astonishing. Taking the active one means clicking a tab can leave it
+ * Taking the largest would mean adding a routines tab to a chat pane shoves every other pane
+ * sideways, which is astonishing. Taking the active one means clicking a tab can leave it
  * cramped, which is merely annoying and explains itself.
  */
 export const paneMin: MinSizeLookup = (tab: WorkbenchTab | null): PaneMin => {

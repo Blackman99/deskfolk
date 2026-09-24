@@ -87,7 +87,7 @@ export type WorkbenchLayout = {
 /** Where a node sits, as indices from the root. No parent pointers, so a layout stays plain JSON. */
 export type NodePath = readonly number[];
 
-/** The smallest a kind of content stays usable at. Pixels, because "80 columns" is a real width. */
+/** The smallest a kind of content stays usable at. Pixels, because a column of text is a real width. */
 export type PaneMin = { width: number; height: number };
 export type MinSizeLookup = (tab: WorkbenchTab | null) => PaneMin;
 
