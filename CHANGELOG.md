@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Clicking a conversation in the desktop sidebar no longer replaces what a pane was showing once the window is split. With one pane it still takes the place of the conversation that pane is on. With several, the pane already showing that conversation comes forward, and when none is, it opens as a new tab in the focused pane, beside what you had arranged there. A floating pane counts as a split.
+
 - Redesigned Spend with a persistent pane header, Overview and Call details views, a clearer token/amount hierarchy, fit-width interactive trends and expandable usage information. Small split/floating panes and phones use vertical records, native date/sort pickers and explicit message links; resizing preserves filters, selection and loaded pages.
 
 - Next-step suggestions are now drafted only when you press ✨ beside the send button. Each draft is a model call on the spend ledger, and they used to be fetched on their own every time you opened a conversation and after every new message, whether you looked at them or not. Press ✨ again to stop a draft on its way or to put the chips away; a new message in the conversation retires them. ✨ waits while a reply is still coming, since drafts made then would be stale when it lands, and a press that comes back empty says so for a few seconds instead of doing nothing. The daemon also gives a draft 20 seconds instead of 8: a thinking "flash" model often needed more than 8, so a press came back empty.

@@ -43,6 +43,37 @@ test("a conversation gives way to another conversation in the same pane", () => 
   assertInvariants(next);
 });
 
+test("with the window split, a conversation no pane shows is a new tab in the focused pane", () => {
+  // Each pane's tabs were arranged on purpose once there is more than one, so the focused pane
+  // keeps the conversation it was showing and the new one sits beside it.
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+  const next = openContent(layout, chat("s3"), { ...ids, replaceActive: true });
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.params.sessionId))).toEqual([
+    ["s1"],
+    ["s2", "s3"],
+  ]);
+  expect(next.focus.leafId).toBe("b");
+  expect(leafById(next, "b")!.activeTabId).toBe(leafById(next, "b")!.tabs[1]!.id);
+  assertInvariants(next);
+});
+
+test("a floating pane beside the tiled one counts as a split window too", () => {
+  const tiled = makeLeaf("a", [tabFor(chat("s1"), "t-a")]);
+  const layout: WorkbenchLayout = {
+    version: 1,
+    root: tiled,
+    floating: [{ leaf: makeLeaf("f", [tabFor(chat("s2"), "t-f")]), frame: { x: 40, y: 40, width: 400, height: 300 } }],
+    focus: { zone: "tiled", leafId: "a" },
+  };
+  const next = openContent(layout, chat("s3"), { ...ids, replaceActive: true });
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s1", "s3"]);
+  expect(leafById(next, "f")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s2"]);
+  assertInvariants(next);
+});
+
 test("a conversation does not evict a terminal you put there on purpose", () => {
   const layout = layoutOf(makeLeaf("a", [tabFor({ kind: "terminal", terminalId: "term-1" }, "t-a")]));
   const next = openContent(layout, chat("s1"), { ...ids, replaceActive: true });

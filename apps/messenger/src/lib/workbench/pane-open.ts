@@ -78,9 +78,18 @@ export type OpenOptions = {
   /**
    * Replace the active pane's current tab rather than sitting beside it. What clicking a
    * conversation in the roster does: you asked to go there, not to collect tabs.
+   *
+   * Only while the window is one pane. Once it is split, each pane's tabs were arranged on
+   * purpose, so a conversation no pane shows is added as a tab of the focused pane instead of
+   * taking over the one it was showing.
    */
   replaceActive?: boolean;
 };
+
+/** Whether the window is a single pane, tiled or floating, with nothing beside it. */
+function isSinglePane(layout: WorkbenchLayout): boolean {
+  return leavesOf(layout).length === 1;
+}
 
 /**
  * Kinds there can only be one of at a time. Asking for it again moves the single pane rather than
@@ -170,7 +179,7 @@ function placeInActivePane(
   if (!leaf) return layout;
 
   const tab = tabFor(content, opts.id());
-  if (opts.replaceActive && leaf.activeTabId) {
+  if (opts.replaceActive && leaf.activeTabId && isSinglePane(layout)) {
     const current = leaf.tabs.find((candidate) => candidate.id === leaf.activeTabId);
     const currentContent = current ? contentOfTab(current) : null;
     // Only a conversation gives way to another conversation. A terminal or the workspace in this
