@@ -15,6 +15,7 @@ import * as credentials from "./credentials";
 import * as files from "./files";
 import { Database } from "bun:sqlite";
 import { SCHEMA_SQL } from "../schema";
+import * as annotations from "./annotations";
 import * as approvals from "./approvals";
 import * as bots from "./bots";
 import * as judgements from "./judgements";
@@ -264,6 +265,18 @@ export class Store {
   readonly createDirect = this.bind(sessions.createDirect);
   readonly createBotDirect = this.bind(sessions.createBotDirect);
   readonly unreadCount = this.bind(sessions.unreadCount);
+
+  // Annotations ----------------------------------------------------------------------------
+  readonly listAnnotations = this.bind(annotations.listAnnotations);
+  readonly getAnnotation = (id: string) => annotations.getAnnotation(this.ctx, id);
+  readonly annotationCrop = this.bind(annotations.annotationCrop);
+  readonly annotationsOfMessage = this.bind(annotations.annotationsOfMessage);
+  readonly openAnnotationCount = this.bind(annotations.openAnnotationCount);
+  readonly createAnnotation = this.bind(annotations.createAnnotation);
+  readonly patchAnnotation = this.bind(annotations.patchAnnotation);
+  readonly deleteAnnotation = this.bind(annotations.deleteAnnotation);
+  readonly resolveAnnotationByBot = this.bind(annotations.resolveAnnotationByBot);
+  readonly sendAnnotations = (...args: Parameters<Bound<typeof annotations.sendAnnotations>>) => annotations.sendAnnotations(this.ctx, ...args);
 
   // Terminals you opened. The process dies with the daemon; the row is what the next one starts. --
   readonly listKeptTerminals = this.bind(terminals.listKeptTerminals);

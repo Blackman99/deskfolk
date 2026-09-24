@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
+import { annotationContext } from "./annotation-context";
 import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
@@ -270,9 +271,22 @@ function transcriptWindow(
     seen.add(m.id);
     unique.push(m);
   }
-  const images = windowImages(store, unique, input.selfBotId, input.triggerMessageId);
+  // A batch of annotations is spelled out under the user's message that carries it, crops as pixels.
+  const locale = store.settingsCached().locale;
+  const annotated = new Map<string, ReturnType<typeof annotationContext>>();
+  for (const m of unique) {
+    if (m.kind === "user") annotated.set(m.id, annotationContext(store, m.id, locale));
+  }
+  const { images, cropsSent } = windowImages(store, unique, input.selfBotId, input.triggerMessageId, annotated);
   return unique.map((m) =>
-    serializeTranscript(store, m, input.selfBotId, input.triggerMessageId, images.get(m.id) ?? []),
+    serializeTranscript(
+      store,
+      m,
+      input.selfBotId,
+      input.triggerMessageId,
+      annotated.get(m.id)?.textFor(cropsSent.get(m.id) ?? 0) ?? "",
+      images.get(m.id) ?? [],
+    ),
   );
 }
 
@@ -284,7 +298,8 @@ const VISION_BYTES_MAX = 10_000_000;
  * endpoint never answered, and the turn read as "couldn't reach the endpoint" however often it
  * was continued. Spent newest first with the trigger ahead of everything, and the first picture
  * that does not fit closes it, so what drops out is always the oldest. Those keep their path line.
- * Bytes are counted as sent, after `visionImage` has shrunk them.
+ * Bytes are counted as sent, after `visionImage` has shrunk them. An annotation batch's crops
+ * (up to 50, a megabyte each) spend the same budget, after the attachments of their message.
  */
 export const VISION_WINDOW_IMAGES = 20;
 export const VISION_WINDOW_BYTES = 20_000_000;
@@ -296,19 +311,24 @@ function windowImages(
   messages: Message[],
   selfBotId: string,
   triggerMessageId: string,
-): Map<string, ChatContentPart[]> {
+  annotated: Map<string, { images: ChatContentPart[] }>,
+): { images: Map<string, ChatContentPart[]>; cropsSent: Map<string, number> } {
   const budget: VisionBudget = { images: VISION_WINDOW_IMAGES, bytes: VISION_WINDOW_BYTES, closed: false };
   const trigger = messages.find((m) => m.id === triggerMessageId);
   const newestFirst = [...(trigger ? [trigger] : []), ...messages.filter((m) => m !== trigger).reverse()];
   const out = new Map<string, ChatContentPart[]>();
+  const cropsSent = new Map<string, number>();
   for (const message of newestFirst) {
     if (budget.closed) break;
     // The Bot's own lines go out as assistant text, which carries no pictures.
     if (message.kind === "bot" && message.author === selfBotId) continue;
-    const parts = visionImageParts(store, message.attachments, budget);
+    const attached = visionImageParts(store, message.attachments, budget);
+    const crops = cropParts(annotated.get(message.id)?.images ?? [], budget);
+    cropsSent.set(message.id, crops.length);
+    const parts = [...attached, ...crops];
     if (parts.length > 0) out.set(message.id, parts);
   }
-  return out;
+  return { images: out, cropsSent };
 }
 
 function serializeTranscript(
@@ -316,6 +336,7 @@ function serializeTranscript(
   message: Message,
   selfBotId: string,
   triggerMessageId: string,
+  annotationText: string,
   images: ChatContentPart[],
 ): ChatMessage {
   const clipped = takeCodePoints(message.body, BODY_LIMIT);
@@ -324,6 +345,7 @@ function serializeTranscript(
   for (const att of message.attachments) {
     body += `\n附件：${att.workspace_relpath}`;
   }
+  body += annotationText;
   const triggerLine = message.id === triggerMessageId ? `${TRIGGER_FLAG}\n` : "";
   if (message.kind === "bot" && message.author === selfBotId) {
     return { role: "assistant", content: `${triggerLine}${body}` };
@@ -381,6 +403,28 @@ function visionImageParts(store: Store, attachments: Attachment[], budget: Visio
     } catch {
       // Missing or unreadable files stay as the path line only.
     }
+  }
+  return parts;
+}
+
+/**
+ * An annotation batch's crops under the window budget. They are already small (1 MB at most, see
+ * `ANNOTATION_CROP_MAX_BYTES`), so nothing is shrunk; a dropped crop leaves the annotation's text.
+ */
+function cropParts(crops: ChatContentPart[], budget: VisionBudget): ChatContentPart[] {
+  const parts: ChatContentPart[] = [];
+  for (const crop of crops) {
+    if (budget.closed) break;
+    if (crop.type !== "image_url") continue;
+    const { url } = crop.image_url;
+    const bytes = Buffer.byteLength(url.slice(url.indexOf(",") + 1), "base64");
+    if (budget.images === 0 || bytes > budget.bytes) {
+      budget.closed = true;
+      break;
+    }
+    budget.images -= 1;
+    budget.bytes -= bytes;
+    parts.push(crop);
   }
   return parts;
 }

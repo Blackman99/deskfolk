@@ -4,6 +4,7 @@ import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
 import { listMemories, withLearning as memoryWithLearning } from "./memories";
 import { getMessage } from "./messages";
+import { FileProbe, getAnnotation, hasAnnotation } from "./annotations";
 import { getNotification, getNotificationPolicy, getNotificationSummary } from "./notifications";
 import { providersCached } from "./providers";
 import { listRoutines } from "./routines";
@@ -18,12 +19,12 @@ type Change = { entity: string; id: string; op: string; session_id: string | nul
 /** TEMP triggers follow nested domain writes and roll back with the business transaction. */
 export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TABLE event_changes (entity TEXT, id TEXT, op TEXT, session_id TEXT)`);
-  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications"];
+  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       const row = op === "DELETE" ? "OLD" : "NEW";
       const id = table === "settings" ? "'settings'" : `${row}.id`;
-      const session = ["messages", "turns", "spend", "judgements", "notifications"].includes(table) ? `${row}.session_id` : "NULL";
+      const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations"].includes(table) ? `${row}.session_id` : "NULL";
       ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
         BEGIN INSERT INTO event_changes VALUES ('${table}', ${id}, '${op}', ${session}); END`);
     }
@@ -74,6 +75,8 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   const cleared = new Set(changes.filter((c) => c.entity === "messages" && c.op === "DELETE").map((c) => c.session_id!));
   for (const id of cleared) out.push({ event: "session.cleared", occurred_at, id });
   const sessions = listSessions(ctx);
+  // One look at each annotated file per pass, however many of its annotations changed.
+  let probe: FileProbe | undefined;
   for (const { entity, id } of unique.values()) {
     switch (entity) {
       case "settings": break;
@@ -141,6 +144,10 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       case "judgements": {
         const row = ctx.db.query<Judgement, [string]>("SELECT * FROM judgements WHERE id = ?").get(id);
         if (row) out.push({ event: "judgement.created", occurred_at, ...row });
+        break;
+      }
+      case "annotations": {
+        out.push(hasAnnotation(ctx, id) ? { event: "annotation.upsert", occurred_at, ...getAnnotation(ctx, id, (probe ??= new FileProbe(ctx))) } : { event: "annotation.removed", occurred_at, id });
         break;
       }
       case "notifications": {

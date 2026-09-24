@@ -16,6 +16,7 @@ import {
 } from "./notifications";
 import { finishTurnRoute, type TurnExecution } from "./routing";
 import { isPresent } from "./sessions";
+import { annotationTaskOfMessage } from "./annotations";
 import { resolveTurnTask, taskOfTurn } from "./tasks";
 import {
   aliveBot,
@@ -51,6 +52,8 @@ export function createTurn(
     sessionId: input.sessionId,
     trigger,
     newTask: input.newTask,
+    // A batch of annotations continues the job that delivered this Bot's artifact.
+    taskId: annotationTaskOfMessage(ctx, trigger.id, input.botId),
   });
   ctx.db.transaction(() => {
     ctx.db.run(

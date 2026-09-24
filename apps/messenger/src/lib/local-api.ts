@@ -49,7 +49,15 @@ import type {
   SessionTaskSummary,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
-import { isNonReceiptPath } from "@real-bot/protocol";
+import {
+  isNonReceiptPath,
+  type Annotation,
+  type AnnotationFilter,
+  type CreateAnnotationRequest,
+  type PatchAnnotationRequest,
+  type SendAnnotationsRequest,
+} from "@real-bot/protocol";
+import { createAnnotation, listAnnotations, patchAnnotation, sendAnnotations, type SendAnnotationsResult } from "./annotations/client.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "./api.ts";
@@ -574,6 +582,30 @@ export class LocalApi {
 
   async deleteMemory(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/memories/${id}`);
+  }
+
+  // Annotations ----------------------------------------------------------------------------
+  listAnnotations(filter: AnnotationFilter & { target_session_id?: string } = {}, signal?: AbortSignal): Promise<Annotation[]> {
+    return listAnnotations(this, filter, signal);
+  }
+  createAnnotation(body: CreateAnnotationRequest): Promise<Annotation> {
+    return createAnnotation(this, body);
+  }
+  patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<Annotation> {
+    return patchAnnotation(this, id, patch);
+  }
+  async deleteAnnotation(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/annotations/${encodeURIComponent(id)}`);
+  }
+  sendAnnotations(body: SendAnnotationsRequest): Promise<SendAnnotationsResult> {
+    return sendAnnotations(this, body);
+  }
+  async getAnnotationCropBlob(id: string): Promise<Blob> {
+    const res = await fetch(`${this.endpoint.origin}/v1/annotations/${encodeURIComponent(id)}/crop`, {
+      headers: { Authorization: `Bearer ${this.endpoint.token}` },
+    });
+    if (!res.ok) throw new ApiError(res.status, "failed", "failed to fetch crop");
+    return res.blob();
   }
 
   async createMcpServer(body: {

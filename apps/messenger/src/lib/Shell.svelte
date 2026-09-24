@@ -51,6 +51,7 @@
 	import { handedOverPaths } from './overlays/artifacts.ts';
 	// ArtifactPreview.svelte is lazy-loaded below (see the artifactPreview block): it only
 	// mounts once a file is actually opened.
+	import { targetFor } from './annotations/model.ts';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
 		clampPreviewWidth,
@@ -1022,12 +1023,18 @@
 			if (!id) return null;
 			const attachment = findAttachmentById(id) ?? runtime.previewSiblings?.find((s) => s.id === id);
 			if (!attachment) return null;
+			const owner = snapshot.messages.find((message) => message.id === attachment.message_id);
 			return {
 				relpath: attachment.workspace_relpath,
 				attachment,
 				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
 				forceTree: runtime.forceArtifactTree,
 				taskId: runtime.previewTaskId ?? null,
+				// 挂到谁, the same way as below: the job this preview lists is where a delivery is looked for first.
+				target: targetFor(snapshot.messages, attachment.workspace_relpath, owner, {
+					sessionId: runtime.selectedId,
+					taskId: runtime.previewTaskId ?? owner?.task_id ?? null
+				})
 			};
 		}
 		const relpath = runtime.previewRelpath;
@@ -1042,7 +1049,14 @@
 			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
 			forceTree: runtime.forceArtifactTree,
 			// The entry opens the job's tree, not just this message's; older messages have none.
-			taskId: runtime.previewTaskId ?? owner?.task_id ?? null
+			taskId: runtime.previewTaskId ?? owner?.task_id ?? null,
+			// 挂到谁：the message this was opened from when it handed this very path over — the tree
+			// keeps that message while you walk to other files — else the latest Bot message in this
+			// conversation that did, in this job first.
+			target: targetFor(snapshot.messages, relpath, owner, {
+				sessionId: runtime.selectedId,
+				taskId: runtime.previewTaskId ?? owner?.task_id ?? null
+			})
 		};
 	});
 
@@ -1096,6 +1110,7 @@
 		runtime.forceArtifactTree = false;
 		runtime.previewTaskId = null;
 		runtime.previewSiblings = null;
+		runtime.annotationFocusId = null;
 	}
 
 	function toggleWorkspaceExplorer(): void {
@@ -1810,6 +1825,19 @@
 				workspacePath={snapshot.settings.workspace_path}
 				forceTree={artifactPreview.forceTree}
 				taskId={artifactPreview.taskId}
+				target={artifactPreview.target}
+				annotations={snapshot.annotations}
+				annotationFocusId={runtime.annotationFocusId}
+				annotationFileKey={runtime.annotationFileKeys[artifactPreview.relpath] ?? null}
+				bots={botsById}
+				{locale}
+				sessions={snapshot.sessions}
+				viewedSessionId={runtime.selectedId}
+				onLoadAnnotations={(path) => void runtime.loadAnnotations({ relpath: path })}
+				onCreateAnnotation={(input) => runtime.createAnnotation(input)}
+				onPatchAnnotation={(id, patch) => runtime.patchAnnotation(id, patch)}
+				onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
+				onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
 				{t}
 				onClose={closeArtifactPreview}
 				onSelect={(att) =>

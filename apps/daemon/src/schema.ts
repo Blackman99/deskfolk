@@ -221,6 +221,35 @@ CREATE TABLE IF NOT EXISTS attachments (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS annotations (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('draft', 'open', 'resolved')),
+  relpath TEXT NOT NULL,
+  file_key TEXT,
+  anchor_kind TEXT NOT NULL CHECK (anchor_kind IN ('text_range', 'image_region', 'pdf_region', 'html_element', 'media_time')),
+  anchor TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL,
+  target_message_id TEXT NOT NULL REFERENCES messages (id),
+  target_session_id TEXT NOT NULL REFERENCES sessions (id),
+  target_turn_id TEXT,
+  bot_id TEXT NOT NULL REFERENCES bots (id),
+  session_id TEXT NOT NULL REFERENCES sessions (id),
+  message_id TEXT REFERENCES messages (id),
+  body TEXT NOT NULL,
+  crop_mime TEXT,
+  crop BLOB,
+  resolved_by TEXT,
+  resolved_note TEXT,
+  resolved_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS annotations_relpath ON annotations (relpath, status);
+CREATE INDEX IF NOT EXISTS annotations_session ON annotations (session_id, status);
+CREATE INDEX IF NOT EXISTS annotations_message ON annotations (message_id);
+CREATE INDEX IF NOT EXISTS annotations_target ON annotations (target_message_id);
+
 CREATE TABLE IF NOT EXISTS reactions (
   message_id TEXT NOT NULL REFERENCES messages (id),
   actor TEXT NOT NULL,

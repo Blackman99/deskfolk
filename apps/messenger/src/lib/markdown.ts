@@ -1,4 +1,4 @@
-import { Marked } from "marked";
+import { Marked, Renderer, type Tokens } from "marked";
 import remend, { isWithinCodeBlock } from "remend";
 import createDOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import {
@@ -16,6 +16,15 @@ import {
   parseMentionHref,
   type MentionableBot,
 } from "./chat/mention-chips.ts";
+import {
+  SRC_END_ATTR,
+  SRC_START_ATTR,
+  lexWithSourceLines,
+  normalizeSource,
+  sourceLinesOf,
+  splitFrontMatter,
+  type SourceLines,
+} from "./annotations/markdown-lines.ts";
 
 const marked = new Marked({ gfm: true, breaks: true });
 
@@ -67,8 +76,23 @@ const TAG_ATTRIBUTES: Record<string, readonly string[]> = {
   td: ["align"],
 };
 
-/** Union of every attribute name any tag above is allowed to keep. */
-const GLOBAL_ALLOWED_ATTR = Array.from(new Set(Object.values(TAG_ATTRIBUTES).flat()));
+/**
+ * One allowlist the sanitizer enforces. Chat bubbles render under {@link CHAT_POLICY}; the
+ * artifact preview's `sourceLines` rendering under `LINES_POLICY`, which also keeps the lines each
+ * block came from and the `div` that wraps a raw HTML block.
+ */
+type SanitizePolicy = {
+  tags: ReadonlySet<string>;
+  /** Per-tag attribute allowlist. A tag missing here keeps no attributes at all. */
+  attributes: Readonly<Record<string, readonly string[]>>;
+  /**
+   * For a tag named here, the only classes its `class` may keep (dropped when none is left). A
+   * tag not named keeps whatever classes it has, as `code` keeps `language-*`.
+   */
+  classes: Readonly<Record<string, readonly string[]>>;
+};
+
+const CHAT_POLICY: SanitizePolicy = { tags: ALLOWED_TAGS, attributes: TAG_ATTRIBUTES, classes: {} };
 
 /**
  * sanitize-html's default `nonTextTags`: disallowed tags normally keep their (sanitized) text
@@ -96,20 +120,20 @@ function tagNameOf(node: Node): string {
  * disallow/keep-content branch, since a valid link needs its attributes rewritten, not just
  * kept, and an invalid one needs unwrapping despite `a` otherwise being an allowed tag.
  */
-function enforceTagPolicy(root: Element): void {
+function enforceTagPolicy(root: Element, policy: SanitizePolicy): void {
   for (const child of Array.from(root.childNodes)) {
     if (child.nodeType !== 1) continue;
     const el = child as Element;
     const tag = el.tagName.toLowerCase();
     if (tag === "a") {
-      handleAnchor(el);
+      handleAnchor(el, policy);
       continue;
     }
-    if (!ALLOWED_TAGS.has(tag)) {
+    if (!policy.tags.has(tag)) {
       if (CONTENT_DISCARDING_TAGS.has(tag)) {
         el.remove();
       } else {
-        enforceTagPolicy(el);
+        enforceTagPolicy(el, policy);
         const parent = el.parentNode;
         if (parent) {
           while (el.firstChild) parent.insertBefore(el.firstChild, el);
@@ -118,8 +142,19 @@ function enforceTagPolicy(root: Element): void {
       }
       continue;
     }
-    enforceTagPolicy(el);
+    const classes = policy.classes[tag];
+    if (classes) keepClasses(el, classes);
+    enforceTagPolicy(el, policy);
   }
+}
+
+/** What sanitize-html's `allowedClasses` did: only the listed classes stay, and an empty `class` goes. */
+function keepClasses(el: Element, allowed: readonly string[]): void {
+  const value = el.getAttribute("class");
+  if (value === null) return;
+  const kept = value.split(/\s+/).filter((name) => allowed.includes(name));
+  if (kept.length > 0) el.setAttribute("class", kept.join(" "));
+  else el.removeAttribute("class");
 }
 
 /**
@@ -129,12 +164,12 @@ function enforceTagPolicy(root: Element): void {
  * from the original tag. `title` is only set when non-empty — sanitize-html's default
  * `allowedEmptyAttributes` (just `alt`) drops an empty `title` rather than rendering `title=""`.
  */
-function handleAnchor(el: Element): void {
+function handleAnchor(el: Element, policy: SanitizePolicy): void {
   const originalTitle = el.getAttribute("title");
   const href = safeHref(el.getAttribute("href") ?? undefined);
   for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name);
   if (!href) {
-    enforceTagPolicy(el);
+    enforceTagPolicy(el, policy);
     const parent = el.parentNode;
     if (parent) {
       while (el.firstChild) parent.insertBefore(el.firstChild, el);
@@ -160,40 +195,49 @@ function handleAnchor(el: Element): void {
     el.setAttribute("rel", "noopener noreferrer");
     setTitle(originalTitle ?? href);
   }
-  enforceTagPolicy(el);
+  enforceTagPolicy(el, policy);
 }
 
-function createSanitizer() {
+/** A DOMPurify instance whose attribute hook enforces one policy, and the config it runs with. */
+type Sanitizer = {
+  policy: SanitizePolicy;
+  purifier: ReturnType<typeof createDOMPurify>;
+  config: DOMPurifyConfig;
+};
+
+function createSanitizer(policy: SanitizePolicy): Sanitizer {
   const purifier = createDOMPurify(window);
 
   purifier.addHook("uponSanitizeAttribute", (node, data) => {
-    const allowed = TAG_ATTRIBUTES[tagNameOf(node)];
+    const allowed = policy.attributes[tagNameOf(node)];
     data.keepAttr = allowed !== undefined && allowed.includes(data.attrName);
   });
 
-  return purifier;
+  /** Union of every attribute name any tag in the policy is allowed to keep. */
+  const globalAllowedAttr = Array.from(new Set(Object.values(policy.attributes).flat()));
+  const config: DOMPurifyConfig = {
+    // In a browser DOMPurify reads real tag names and enforces this allowlist itself, with its own
+    // namespace and mutation-XSS hardening; enforceTagPolicy then checks the same list again. Under
+    // happy-dom (`bun test`) its tag-name reads come back "" — the "" entry waves every element
+    // through there, so its walk never detaches a node, and enforceTagPolicy is what decides. An
+    // earlier version listed only "": in a real browser that matched no tag at all and stripped
+    // every message to plain text. Attribute *values* — the href scheme above all — are
+    // re-validated from scratch by `safeHref` in the second pass.
+    ALLOWED_TAGS: [...policy.tags, ""],
+    ALLOWED_ATTR: globalAllowedAttr,
+    ADD_URI_SAFE_ATTR: globalAllowedAttr,
+  };
+
+  return { policy, purifier, config };
 }
 
-const purifier = createSanitizer();
+const CHAT_SANITIZER = createSanitizer(CHAT_POLICY);
 
-const ATTRIBUTE_PASS_CONFIG: DOMPurifyConfig = {
-  // In a browser DOMPurify reads real tag names and enforces this allowlist itself, with its own
-  // namespace and mutation-XSS hardening; enforceTagPolicy then checks the same list again. Under
-  // happy-dom (`bun test`) its tag-name reads come back "" — the "" entry waves every element
-  // through there, so its walk never detaches a node, and enforceTagPolicy is what decides. An
-  // earlier version listed only "": in a real browser that matched no tag at all and stripped
-  // every message to plain text. Attribute *values* — the href scheme above all — are
-  // re-validated from scratch by `safeHref` in the second pass.
-  ALLOWED_TAGS: [...ALLOWED_TAGS, ""],
-  ALLOWED_ATTR: GLOBAL_ALLOWED_ATTR,
-  ADD_URI_SAFE_ATTR: GLOBAL_ALLOWED_ATTR,
-};
-
-function sanitizeHtmlDom(html: string): string {
-  const attributesSanitized = purifier.sanitize(html, ATTRIBUTE_PASS_CONFIG);
+function sanitizeHtmlDom(html: string, sanitizer: Sanitizer = CHAT_SANITIZER): string {
+  const attributesSanitized = sanitizer.purifier.sanitize(html, sanitizer.config);
   const wrapper = document.createElement("div");
   wrapper.innerHTML = attributesSanitized;
-  enforceTagPolicy(wrapper);
+  enforceTagPolicy(wrapper, sanitizer.policy);
   return wrapper.innerHTML;
 }
 
@@ -205,6 +249,12 @@ export type RenderMarkdownOptions = {
   mentionMembers?: readonly MentionableBot[];
   /** Title attribute for an unresolved @token marker. */
   unresolvedMentionTitle?: string;
+  /**
+   * Mark every block with the source lines it came from (`data-src-start` / `data-src-end`), for the
+   * artifact preview's annotations to map a selection back to lines. Leading YAML front matter shows
+   * as a yaml block. Chat bubbles leave it off and render exactly as before.
+   */
+  sourceLines?: boolean;
 };
 
 /**
@@ -232,6 +282,7 @@ function optionsSignature(options: RenderMarkdownOptions): string {
     rosterSignature(options.mentionBots),
     rosterSignature(options.mentionMembers),
     options.unresolvedMentionTitle ?? "",
+    options.sourceLines ? "lines" : "",
   ].join("\u0001");
   optionSignatures.set(options, signature);
   return signature;
@@ -273,18 +324,145 @@ export function decorateExternalLinks(html: string): string {
 }
 
 function renderUncached(source: string, options: RenderMarkdownOptions): string {
-  const linked = linkifyWorkspacePaths(source, options.extraPaths ?? []);
+  const lines = options.sourceLines === true;
+  // Front matter is split off before the path and mention passes, so it shows as it was written.
+  const text = lines ? normalizeSource(source) : source;
+  const front = lines ? frontMatterOf(text) : "";
+  const linked = linkifyWorkspacePaths(text.slice(front.length), options.extraPaths ?? []);
   const prepared = options.streaming ? healStreaming(linked) : linked;
   const mentioned = linkifyRosterMentions(prepared, options.mentionBots ?? [], {
     members: options.mentionMembers,
   });
-  const html = marked.parse(mentioned, { async: false });
-  const sanitized = sanitizeHtmlDom(html);
+  const html = lines
+    ? lineMarked.parser(lexWithSourceLines(front + mentioned, (src) => lineMarked.lexer(src)))
+    : marked.parse(mentioned, { async: false });
+  const sanitized = sanitizeHtmlDom(html, lines ? LINES_SANITIZER : CHAT_SANITIZER);
   const withMentions = decorateMentionChips(sanitized, options.mentionBots ?? [], {
     unresolvedTitle: options.unresolvedMentionTitle,
   });
   return decorateExternalLinks(withMentions);
 }
+
+function frontMatterOf(text: string): string {
+  return splitFrontMatter(text)?.raw ?? "";
+}
+
+/*
+ * The `sourceLines` renderer: marked's own output, with each block's opening tag carrying the
+ * lines `assignSourceLines` gave its token. Table rows get their own line, so a selection inside
+ * one cell maps to that row. Raw HTML loses any `data-src-*` it brought along — only the
+ * renderer may say where a block is. The name is defused wherever it could be an attribute,
+ * whatever comes before it: an HTML parser also reads `title="x"data-src-start=…` (no space
+ * after the quote) as an attribute.
+ *
+ * A raw HTML block that opens and closes everything it opens is wrapped in a `div` so it has
+ * lines too. One that does not — `<div align="center">` here, `</div>` three blocks later — is
+ * left unwrapped: a wrapper would take the other's closing tag and swallow what follows. Raw
+ * `div`s are renamed to a tag the sanitizer drops (keeping their text, as chat bubbles do), so
+ * the wrapper is the only `div` there is.
+ */
+const LINE_ATTR_RE = /data-src-(start|end)(?=[\s/>=]|$)/gi;
+const RAW_DIV_RE = /<(\/?)div(?=[\s/>]|$)/gi;
+
+function defuseLineAttrs(html: string): string {
+  return html.replace(LINE_ATTR_RE, "data-src_$1").replace(RAW_DIV_RE, "<$1rb-raw-div");
+}
+
+const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+const HTML_TAG_RE = /<!--[\s\S]*?-->|<(\/?)([A-Za-z][A-Za-z0-9-]*)(?:\s[^>]*?)?(\/?)>/g;
+
+/** Whether raw HTML closes, in order, every tag it opens and nothing it did not. */
+function selfContainedHtml(html: string): boolean {
+  const open: string[] = [];
+  for (const match of html.matchAll(HTML_TAG_RE)) {
+    const name = match[2]?.toLowerCase();
+    if (!name) continue;
+    if (match[1]) {
+      if (open.pop() !== name) return false;
+    } else if (!match[3] && !VOID_TAGS.has(name)) {
+      open.push(name);
+    }
+  }
+  return open.length === 0;
+}
+
+function lineAttrs(lines: SourceLines | undefined): string {
+  return lines ? ` ${SRC_START_ATTR}="${lines.start}" ${SRC_END_ATTR}="${lines.end}"` : "";
+}
+
+function withLines(html: string, lines: SourceLines | undefined): string {
+  if (!lines) return html;
+  return html.replace(/^<([a-z][a-z0-9]*)/i, (open) => `${open}${lineAttrs(lines)}`);
+}
+
+const lineMarked = new Marked({
+  gfm: true,
+  breaks: true,
+  renderer: {
+    paragraph(token) {
+      return withLines(Renderer.prototype.paragraph.call(this, token), sourceLinesOf(token));
+    },
+    heading(token) {
+      return withLines(Renderer.prototype.heading.call(this, token), sourceLinesOf(token));
+    },
+    blockquote(token) {
+      return withLines(Renderer.prototype.blockquote.call(this, token), sourceLinesOf(token));
+    },
+    list(token) {
+      return withLines(Renderer.prototype.list.call(this, token), sourceLinesOf(token));
+    },
+    listitem(token) {
+      return withLines(Renderer.prototype.listitem.call(this, token), sourceLinesOf(token));
+    },
+    code(token) {
+      return withLines(Renderer.prototype.code.call(this, token), sourceLinesOf(token));
+    },
+    hr(token) {
+      return withLines(Renderer.prototype.hr.call(this, token), sourceLinesOf(token));
+    },
+    html(token) {
+      const text = defuseLineAttrs(token.text);
+      const lines = token.block && selfContainedHtml(text) ? sourceLinesOf(token) : undefined;
+      return lines ? `<div class="md-html-block"${lineAttrs(lines)}>${text}</div>\n` : text;
+    },
+    table(token) {
+      const lines = sourceLinesOf(token);
+      const row = (cells: Tokens.TableCell[], line: number | null): string =>
+        withLines(
+          this.tablerow({ text: cells.map((cell) => this.tablecell(cell)).join("") }),
+          line === null ? undefined : { start: line, end: line },
+        );
+      const head = row(token.header, lines ? lines.start : null);
+      const rows = token.rows.map((cells, r) => row(cells, lines ? lines.start + 2 + r : null)).join("");
+      const body = rows ? `<tbody>${rows}</tbody>` : "";
+      return withLines(`<table>\n<thead>\n${head}</thead>\n${body}</table>\n`, lines);
+    },
+  },
+});
+
+const LINE_TAGS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "table", "tr", "hr", "div"];
+
+/** The chat allowlist, plus the raw-HTML wrapper `div` and every block's source lines. */
+const LINES_POLICY: SanitizePolicy = {
+  tags: new Set([...ALLOWED_TAGS, "div"]),
+  attributes: {
+    ...TAG_ATTRIBUTES,
+    ...Object.fromEntries(
+      LINE_TAGS.map((tag) => [
+        tag,
+        [
+          ...(TAG_ATTRIBUTES[tag] ?? []),
+          ...(tag === "div" ? ["class"] : []),
+          SRC_START_ATTR,
+          SRC_END_ATTR,
+        ],
+      ]),
+    ),
+  },
+  classes: { div: ["md-html-block"] },
+};
+
+const LINES_SANITIZER = createSanitizer(LINES_POLICY);
 
 function healStreaming(source: string): string {
   const healed = remend(source, {

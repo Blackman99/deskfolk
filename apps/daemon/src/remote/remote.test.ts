@@ -543,6 +543,9 @@ test("route contracts reject unknown fields and wrong types across every mutatio
     ["POST", `/v1/terminals/${id}/resize`, { rows: 24, cols: 80 }], ["POST", `/v1/terminals/${id}/signal`, { signal: "SIGINT" }],
     ["POST", `/v1/terminals/${id}/watch`, { from: 0 }], ["POST", `/v1/terminals/${id}/clear`, {}],
     ["POST", `/v1/terminals/${id}/colors`, { foreground: "#000000", background: "#ffffff", cursor: "#000000", palette: ["#000000"] }],
+    ["POST", "/v1/annotations", { target_message_id: id, relpath: "report.md", anchor_kind: "text_range", anchor: { start_line: 1 }, content_sha256: "a".repeat(64), body: "b" }],
+    ["PATCH", `/v1/annotations/${id}`, { body: "b", if_revision: "r" }], ["DELETE", `/v1/annotations/${id}`, { if_revision: "r" }],
+    ["POST", "/v1/annotations/send", { session_id: id, body: "b", annotation_ids: [id] }],
   ];
   for (const [method, path, body] of cases) {
     expect((await c.rpc({ v: 1, id: ulid(), method, path, body: { ...body, unknown_property: true } })).status).toBe(422);
@@ -550,7 +553,7 @@ test("route contracts reject unknown fields and wrong types across every mutatio
       expect(() => validateBusiness({ v: 1, id: ulid(), method, path, body: { ...body, [key]: { wrong: true } } })).toThrow();
     }
   }
-  for (const path of ["/v1/bots", "/v1/search", "/v1/workspace/file", `/v1/sessions/${id}/messages`]) {
+  for (const path of ["/v1/bots", "/v1/search", "/v1/workspace/file", `/v1/sessions/${id}/messages`, "/v1/annotations"]) {
     expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path, query: { unknown: "true" } })).status).toBe(422);
   }
   expect(f.store.listBots()).toHaveLength(0);

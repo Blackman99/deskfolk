@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Attachment } from '@real-bot/protocol';
@@ -16,6 +16,7 @@
 	import TerminalView from '../overlays/TerminalView.svelte';
 	import WorkspaceView from '../overlays/WorkspaceView.svelte';
 	import { previewContext, type PreviewHandle } from './preview-context.ts';
+	import { annotationsForFile, targetFor } from '../annotations/model.ts';
 	import { isPlaceholderAttachment } from '../overlays/artifacts.ts';
 	import { classifySession } from '../sidebar/session-groups.ts';
 	import { sanitizePreviewPath } from '../session-url.ts';
@@ -96,6 +97,63 @@
 	const content = $derived(contentOfTab(tab));
 	const snapshot = $derived(runtime.snapshot);
 	const preview = $derived(content?.kind === 'preview' ? previewContext(content, snapshot.messages) : null);
+	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
+	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
+	/** The conversation this preview belongs to; the one on screen when the tab names none. */
+	const previewSessionId = $derived(
+		content?.kind === 'preview' ? (content.sessionId ?? runtime.selectedId ?? null) : null
+	);
+	/**
+	 * 挂到谁：the message the preview was opened from when it handed this very path over — the tree
+	 * keeps that message while you walk to other files — else the latest Bot message in this
+	 * preview's conversation that did, in the job it lists first. Looked up among every loaded
+	 * message: an annotation card opens its delivery, which can sit in another conversation.
+	 */
+	const annotationTarget = $derived.by(() => {
+		if (!preview?.relpath) return null;
+		const owner = preview.messageId
+			? snapshot.messages.find((message) => message.id === preview.messageId)
+			: undefined;
+		return targetFor(snapshot.messages, preview.relpath, owner, {
+			sessionId: previewSessionId,
+			taskId: preview.taskId ?? owner?.task_id ?? null
+		});
+	});
+
+	/**
+	 * The annotation a card asked to go to. The runtime holds one request for the whole app; this
+	 * preview takes it when the card is in its conversation, so a preview beside it for another
+	 * conversation neither jumps nor opens its list. Taken into state rather than derived: a card asks
+	 * again for the one already in focus by writing null and then the same id, which a derived
+	 * would swallow. Taking it also clears it, and another tab here drops it, so a preview shown
+	 * again later does not replay an old request.
+	 */
+	let annotationFocus = $state<string | null>(null);
+	let annotationFocusTab: string | null = null;
+	$effect(() => {
+		const id = runtime.annotationFocusId;
+		const tabId = tab.id;
+		// The file on screen: a card's request waits here until the pane shows its file — an
+		// unsaved-changes question may hold the switch, and Cancel keeps the old file.
+		const relpath = preview?.relpath ?? null;
+		untrack(() => {
+			if (tabId !== annotationFocusTab) {
+				annotationFocusTab = tabId;
+				annotationFocus = null;
+			}
+			if (!id || content?.kind !== 'preview') return;
+			const row = snapshot.annotations.find((candidate) => candidate.id === id);
+			if (content.sessionId && row && row.session_id !== content.sessionId) return;
+			if (row && relpath !== null) {
+				const key = runtime.annotationFileKeys[relpath] ?? null;
+				if (annotationsForFile([row], relpath, snapshot.settings.workspace_path, key).length === 0) return;
+			}
+			annotationFocus = null;
+			annotationFocus = id;
+			runtime.annotationFocusId = null;
+		});
+	});
+
 	/**
 	 * Only which file is on screen changes; the tab keeps what its source handed over. Writing the
 	 * whole derived list back also saved the on-screen stand-in, one more file per click.
@@ -273,6 +331,19 @@
 				forceTree={content.forceTree}
 				api={runtime.client}
 				workspacePath={snapshot.settings.workspace_path}
+				target={annotationTarget}
+				annotations={snapshot.annotations}
+				annotationFocusId={annotationFocus}
+				annotationFileKey={runtime.annotationFileKeys[preview.relpath] ?? null}
+				bots={botsById}
+				{locale}
+				sessions={snapshot.sessions}
+				viewedSessionId={previewSessionId}
+				onLoadAnnotations={(path) => void runtime.loadAnnotations({ relpath: path })}
+				onCreateAnnotation={(input) => runtime.createAnnotation(input)}
+				onPatchAnnotation={(id, patch) => runtime.patchAnnotation(id, patch)}
+				onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
+				onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
 				{t}
 				onClose={() => onRemoveTab(leafId, tab.id)}
 				onSelect={selectPreview}

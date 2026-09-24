@@ -927,6 +927,190 @@ test("terminal bytes on the event socket do not drop the connection", async () =
   expect(runtime.activity.forTurn("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toHaveLength(1);
 });
 
+test("annotations: opening the file drop asks for none — nothing there has a Bot to hand anything over", async () => {
+  const { FILE_DROP_SESSION_ID } = await import("@real-bot/protocol");
+  const h = await credentialFixture("/v1/annotations");
+  h.drain();
+  await h.runtime.selectSession(FILE_DROP_SESSION_ID);
+  h.drain();
+  expect(h.requests.filter((r) => r.path === "/v1/annotations" && r.method === "GET")).toEqual([]);
+});
+
+test("annotations: a draft made through the runtime, sent as one quoted reply, follows the events", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createHash } = await import("node:crypto");
+  const h = await credentialFixture("/v1/annotations");
+  const root = mkdtempSync(join(tmpdir(), "rb-annot-runtime-"));
+  fixtureCloses.push(async () => rmSync(root, { recursive: true, force: true }));
+  const text = "export const x = 1;\nexport const y = 2;\n";
+  writeFileSync(join(root, "pick.ts"), text);
+  h.store.patchSettingsSync({ workspace_path: root });
+  const { bot, direct_session } = h.store.createBot({ name: "Writer", duties: "", boundaries: "" });
+  const trigger = h.store.postMessage(direct_session.id, { body: "写个文件" });
+  const turn = h.store.createTurn({ sessionId: direct_session.id, botId: bot.id, triggerMessageId: trigger.id });
+  const delivery = h.store.insertMessage({ sessionId: direct_session.id, turnId: turn.id, kind: "bot", author: bot.id, body: "写好了", paths: ["pick.ts"] });
+  h.store.setTurnStatus(turn.id, "completed");
+  h.drain();
+  await h.runtime.selectSession(direct_session.id);
+  h.drain();
+
+  const sha = createHash("sha256").update(text).digest("hex");
+  const anchor = { start_line: 1, start_col: 14, end_line: 1, end_col: 15, quote: "x", prefix: "export const ", suffix: " = 1;" };
+  expect(await h.runtime.createAnnotation({ target_message_id: delivery.id, relpath: "pick.ts", anchor_kind: "text_range", anchor, content_sha256: sha, body: "换个名字" })).toBeNull();
+  expect(await h.runtime.createAnnotation({ target_message_id: delivery.id, relpath: "pick.ts", anchor_kind: "text_range", anchor: { ...anchor, start_line: 2, end_line: 2, quote: "y", prefix: "export const ", suffix: " = 2;" }, content_sha256: sha, body: "这个也换" })).toBeNull();
+  const upserts = h.drain().filter((frame) => frame.type === "event" && frame.payload.event === "annotation.upsert");
+  expect(upserts).toHaveLength(2);
+  const drafts = h.runtime.snapshot.annotations.filter((row) => row.status === "draft");
+  expect(drafts).toHaveLength(2);
+
+  // A reconnect-free reload of the file's annotations replaces, it does not duplicate.
+  await h.runtime.loadAnnotations({ relpath: "pick.ts" });
+  expect(h.runtime.snapshot.annotations).toHaveLength(2);
+  // However the preview spelled the path: the daemon folds it, and so does the runtime's scope.
+  for (const spelling of ["./pick.ts", "sub/../pick.ts", join(root, "pick.ts"), "pick.ts"]) {
+    await h.runtime.loadAnnotations({ relpath: spelling });
+    expect(h.runtime.snapshot.annotations.map((row) => row.id).sort()).toEqual(drafts.map((row) => row.id).sort());
+  }
+
+  expect(await h.runtime.sendAnnotations(direct_session.id, "两处请改", drafts.map((row) => row.id))).toBeNull();
+  const frames = h.drain();
+  const created = frames.find((frame) => frame.type === "event" && frame.payload.event === "message.created");
+  expect(created).toBeDefined();
+  const message = (created as { payload: { id: string; parent_id: string | null; body: string } }).payload;
+  expect(message.parent_id).toBe(delivery.id);
+  expect(message.body).toBe("@Writer 两处请改");
+  // It landed where it was sent from: that conversation's own view flashes the reply.
+  expect(h.runtime.sessionView(direct_session.id).highlightedMessageId).toBe(message.id);
+  const opened = h.runtime.snapshot.annotations;
+  expect(opened.every((row) => row.status === "open" && row.message_id === message.id)).toBe(true);
+  expect(h.requests.filter((r) => r.path === "/v1/annotations/send" && r.method === "POST")).toHaveLength(1);
+
+  // The user resolves one from the card; the event lands in the snapshot.
+  expect(await h.runtime.patchAnnotation(opened[0]!.id, { status: "resolved" })).toBeNull();
+  h.drain();
+  expect(h.runtime.snapshot.annotations.find((row) => row.id === opened[0]!.id)?.status).toBe("resolved");
+
+  // Clearing the conversation takes its annotations along.
+  h.store.clearSessionMessages(direct_session.id);
+  h.drain();
+  expect(h.runtime.snapshot.annotations).toEqual([]);
+});
+
+test("annotations: a Bot that resolves the batch before the send returns keeps them resolved", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createHash } = await import("node:crypto");
+  const h = await credentialFixture("/v1/annotations/send");
+  const root = mkdtempSync(join(tmpdir(), "rb-annot-race-"));
+  fixtureCloses.push(async () => rmSync(root, { recursive: true, force: true }));
+  const text = "export const x = 1;\n";
+  writeFileSync(join(root, "pick.ts"), text);
+  h.store.patchSettingsSync({ workspace_path: root });
+  const { bot, direct_session } = h.store.createBot({ name: "Writer", duties: "", boundaries: "" });
+  const trigger = h.store.postMessage(direct_session.id, { body: "写个文件" });
+  const turn = h.store.createTurn({ sessionId: direct_session.id, botId: bot.id, triggerMessageId: trigger.id });
+  const delivery = h.store.insertMessage({ sessionId: direct_session.id, turnId: turn.id, kind: "bot", author: bot.id, body: "写好了", paths: ["pick.ts"] });
+  h.store.setTurnStatus(turn.id, "completed");
+  h.drain();
+  await h.runtime.selectSession(direct_session.id);
+  h.drain();
+  const sha = createHash("sha256").update(text).digest("hex");
+  const anchor = { start_line: 1, start_col: 14, end_line: 1, end_col: 15, quote: "x", prefix: "export const ", suffix: " = 1;" };
+  expect(await h.runtime.createAnnotation({ target_message_id: delivery.id, relpath: "pick.ts", anchor_kind: "text_range", anchor, content_sha256: sha, body: "换个名字" })).toBeNull();
+  h.drain();
+  const [draft] = h.runtime.snapshot.annotations;
+
+  // The send's reply (the row as `open`) is held until the Bot has resolved it and that event has
+  // reached the runtime — what a fast model does to a real messenger.
+  h.holdResponse(async (response) => {
+    h.store.resolveAnnotationByBot(draft!.id, bot.id, "改成 count 了");
+    h.drain();
+    expect(h.runtime.snapshot.annotations[0]!.status).toBe("resolved");
+    return response;
+  });
+  expect(await h.runtime.sendAnnotations(direct_session.id, "", [draft!.id])).toBeNull();
+  h.holdResponse(null);
+  h.drain();
+  const row = h.runtime.snapshot.annotations.find((a) => a.id === draft!.id);
+  expect(row?.status).toBe("resolved");
+  expect(row?.resolved_note).toBe("改成 count 了");
+
+  // A late reply to an edit is older than the events too; a fresh read still refreshes the row.
+  await h.runtime.loadAnnotations({ relpath: "pick.ts" });
+  expect(h.runtime.snapshot.annotations.find((a) => a.id === draft!.id)?.status).toBe("resolved");
+});
+
+test("annotations: a list read before a create or a delete does not undo it when it lands after", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createHash } = await import("node:crypto");
+  const h = await credentialFixture("/v1/annotations");
+  const root = mkdtempSync(join(tmpdir(), "rb-annot-list-race-"));
+  fixtureCloses.push(async () => rmSync(root, { recursive: true, force: true }));
+  const text = "export const x = 1;\nexport const y = 2;\n";
+  writeFileSync(join(root, "pick.ts"), text);
+  h.store.patchSettingsSync({ workspace_path: root });
+  const { bot, direct_session } = h.store.createBot({ name: "Writer", duties: "", boundaries: "" });
+  const trigger = h.store.postMessage(direct_session.id, { body: "写个文件" });
+  const turn = h.store.createTurn({ sessionId: direct_session.id, botId: bot.id, triggerMessageId: trigger.id });
+  const delivery = h.store.insertMessage({ sessionId: direct_session.id, turnId: turn.id, kind: "bot", author: bot.id, body: "写好了", paths: ["pick.ts"] });
+  h.store.setTurnStatus(turn.id, "completed");
+  h.drain();
+  await h.runtime.selectSession(direct_session.id);
+  h.drain();
+
+  const sha = createHash("sha256").update(text).digest("hex");
+  const anchor = { start_line: 1, start_col: 14, end_line: 1, end_col: 15, quote: "x", prefix: "export const ", suffix: " = 1;" };
+  const draft = (body: string) => ({ target_message_id: delivery.id, relpath: "pick.ts", anchor_kind: "text_range" as const, anchor, content_sha256: sha, body });
+  expect(await h.runtime.createAnnotation(draft("早就在"))).toBeNull();
+  expect(await h.runtime.createAnnotation(draft("马上删"))).toBeNull();
+  h.drain();
+  const [before, doomed] = h.runtime.snapshot.annotations;
+  // A draft deleted on another device whose event this tab missed: the list still takes it away.
+  const ghost = { ...before!, id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", body: "别处删了" };
+  h.runtime.snapshot = { ...h.runtime.snapshot, annotations: [...h.runtime.snapshot.annotations, ghost] };
+
+  // The daemon has answered the file's list; the reply is held on its way back.
+  const fixtureFetch = globalThis.fetch;
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const response = await fixtureFetch(input, init);
+    const url = new URL(String(input), "http://127.0.0.1");
+    if ((init?.method ?? "GET") === "GET" && url.pathname === "/v1/annotations" && url.searchParams.get("relpath") === "pick.ts") {
+      entered.resolve();
+      await release.promise;
+    }
+    return response;
+  }) as typeof fetch;
+  const load = h.runtime.loadAnnotations({ relpath: "pick.ts" });
+  await entered.promise;
+
+  // Meanwhile: a draft saved here (its reply lands first), one saved on another device (only its
+  // event arrives), and one deleted here.
+  expect(await h.runtime.createAnnotation(draft("刚写的"))).toBeNull();
+  const fromElsewhere = await h.second.createAnnotation(draft("另一台写的"));
+  expect(await h.runtime.deleteAnnotation(doomed!.id)).toBeNull();
+  h.drain();
+  const created = h.runtime.snapshot.annotations.find((row) => row.body === "刚写的");
+  expect(created).toBeDefined();
+  expect(h.runtime.snapshot.annotations.some((row) => row.id === fromElsewhere.id)).toBe(true);
+
+  release.resolve();
+  await load;
+  const ids = h.runtime.snapshot.annotations.map((row) => row.id).sort();
+  expect(ids).toEqual([before!.id, created!.id, fromElsewhere.id].sort());
+
+  // With nothing in flight the next list is the whole truth again.
+  globalThis.fetch = fixtureFetch;
+  await h.runtime.loadAnnotations({ relpath: "pick.ts" });
+  expect(h.runtime.snapshot.annotations.map((row) => row.id).sort()).toEqual(ids);
+});
+
 test("a board shown in a pane reloads on its own job's turns and messages, and nobody else's", async () => {
   // A workbench board is a pane, not the overlay whose flags used to decide this, so it never
   // reloaded: a model choice finished on screen and its card kept saying the turn was live.
@@ -1161,4 +1345,39 @@ test("a draft kept across a dropped link goes back to the conversation it was ty
   expect(runtime.sessionView("group-1").draft).toBe("");
   runtime.discardDraftReconnect();
   expect(runtime.sessionView("direct-1").draft).toBe("");
+});
+
+test("annotations: a batch that lands in another conversation takes you there, and that conversation follows it", async () => {
+  // A batch on a Bot↔Bot delivery is a reply in your direct with the Bot, not in the conversation
+  // the preview belongs to. What to follow and what to flash belong to where it landed.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "group-1";
+  const sent = aMessage({ id: "m-batch", session_id: "direct-1" });
+  const posted: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (init?.method === "POST" && path.endsWith("/v1/annotations/send")) {
+      posted.push(JSON.parse(String(init.body)).session_id);
+      return Response.json({ message: sent, annotations: [] });
+    }
+    if (path.includes("/v1/sessions/") && path.includes("/snapshot")) return sessionRead(path);
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  expect(await runtime.sendAnnotations("group-1", "", ["01ARZ3NDEKTSV4RRFFQ69G5FC2"])).toBeNull();
+  expect(posted).toEqual(["group-1"]);
+  await until(() => runtime.selectedId === "direct-1");
+  const landed = runtime.sessionView("direct-1");
+  await until(() => landed.detailLoaded && !landed.historyLoading);
+  expect(runtime.connection).toBe("connected");
+  expect(landed.pendingFocusTrigger).toBe("m-batch");
+  expect(landed.highlightedMessageId).toBe("m-batch");
+  expect(runtime.sessionView("group-1").pendingFocusTrigger).toBeNull();
+  // The turn it wakes is followed in that conversation once it shows up.
+  Socket.current.frame({
+    type: "event", event_instance_id: instance, seq: 1,
+    payload: { ...aTurn({ id: "turn-batch", session_id: "direct-1", trigger_message_id: "m-batch" }), event: "turn.upsert", occurred_at: "now" },
+  });
+  expect(landed.focusedTurnId).toBe("turn-batch");
+  expect(landed.pendingFocusTrigger).toBeNull();
 });

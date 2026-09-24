@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Annotation } from "@real-bot/protocol";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAttachment, aTurn, fakeRuntime } from "../test-fixtures.ts";
@@ -400,6 +401,82 @@ test("left clicking a message does not add is-selected class, right clicking sel
   expect(host.querySelector(".msg-context-menu")).toBeNull();
 
   close();
+});
+
+function annotationRow(over: Partial<Annotation> = {}): Annotation {
+  return {
+    id: "a1",
+    status: "open",
+    relpath: "src/pick.ts",
+    anchor_kind: "text_range",
+    anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 5, quote: "const", prefix: "", suffix: "" },
+    content_sha256: "0".repeat(64),
+    target_message_id: "delivery-d",
+    target_session_id: "direct-1",
+    target_turn_id: null,
+    bot_id: "bot-1",
+    session_id: "direct-1",
+    message_id: "batch-1",
+    body: "换个名字",
+    crop_mime: null,
+    resolved_by: null,
+    resolved_note: null,
+    resolved_at: null,
+    created_at: "2026-09-23T00:00:00.000Z",
+    updated_at: "2026-09-23T00:00:00.000Z",
+    stale: null,
+    ...over,
+  };
+}
+
+test("a routed batch links back to the session of the delivery it quotes, not its oldest row's", () => {
+  // Your direct with Writer holds one draft on Writer's delivery here and a newer one on Writer's
+  // delivery in the Writer ↔ Critic direct; the daemon quoted the newer one.
+  const direct = aDirect({ id: "direct-1" });
+  const botDirect = aBotDirect({ id: "botbot-1" });
+  const bots = [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Critic" })];
+  const messages = [
+    aMessage({ id: "delivery-d", session_id: direct.id, kind: "bot", author: "bot-1", body: "写好了", created_at: "2026-09-23T00:00:00.000Z" }),
+    aMessage({ id: "batch-1", session_id: direct.id, body: "两处请改", annotation_source_message_id: "delivery-b", created_at: "2026-09-23T00:01:00.000Z" }),
+    // Quotes a delivery that the snapshot holds but no row of the batch sits on.
+    aMessage({ id: "batch-2", session_id: direct.id, body: "再看一下", annotation_source_message_id: "delivery-b2", created_at: "2026-09-23T00:02:00.000Z" }),
+    aMessage({ id: "delivery-b2", session_id: botDirect.id, kind: "bot", author: "bot-1", body: "又改了", created_at: "2026-09-23T00:00:30.000Z" }),
+    // Quotes a delivery nothing here can place.
+    aMessage({ id: "batch-3", session_id: direct.id, body: "还有这个", annotation_source_message_id: "delivery-gone", created_at: "2026-09-23T00:03:00.000Z" }),
+  ];
+  const annotations = [
+    annotationRow({ id: "old-here", created_at: "2026-09-23T00:00:10.000Z" }),
+    annotationRow({ id: "new-there", target_message_id: "delivery-b", target_session_id: botDirect.id, created_at: "2026-09-23T00:00:20.000Z" }),
+    annotationRow({ id: "here-2", message_id: "batch-2" }),
+    annotationRow({ id: "here-3", message_id: "batch-3" }),
+  ];
+  const opened: unknown[][] = [];
+  const runtime = reactive(fakeRuntime({ bots, sessions: [direct, botDirect], messages, turns: [], annotations }, {
+    selectedId: direct.id,
+    selectSession: (...args: unknown[]) => { opened.push(args); return Promise.resolve(); },
+  }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: direct,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  const sourceOf = (id: string) =>
+    host.querySelector(`[data-message-id="${id}"]`)?.querySelector<HTMLButtonElement>(".annot-source") ?? null;
+  try {
+    const mixed = sourceOf("batch-1");
+    expect(mixed?.textContent).toBe(t.chat.annotationSource("Writer ↔ Critic"));
+    mixed!.click();
+    expect(opened).toEqual([["botbot-1", { messageId: "delivery-b" }]]);
+
+    const fromMessage = sourceOf("batch-2");
+    expect(fromMessage?.textContent).toBe(t.chat.annotationSource("Writer ↔ Critic"));
+    fromMessage!.click();
+    expect(opened.at(-1)).toEqual(["botbot-1", { messageId: "delivery-b2" }]);
+
+    expect(host.querySelector('[data-message-id="batch-3"]')).not.toBeNull();
+    expect(sourceOf("batch-3")).toBeNull();
+  } finally {
+    close();
+  }
 });
 
 test("a slow picture waits in its thumbnail's box, with the bytes received shown, and grows once", async () => {

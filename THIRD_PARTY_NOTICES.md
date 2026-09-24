@@ -143,6 +143,26 @@ DEALINGS IN THE SOFTWARE.
 
 Only JSON formatting/filtering was changed; vector values are unmodified. Their private keys are published test material, not application credentials. The independent Rust harness links `snow` 0.10.0 (Apache-2.0 OR MIT) and `ed25519-dalek` 2.2.0 (BSD-3-Clause); its exact transitive versions are locked in `packages/remote/test/snow/Cargo.lock`. Runtime Noble dependencies retain their MIT licenses; cborg 4.3.2 is Apache-2.0. Dependency audit history is not an audit of this integration; see [the security prototype contract](docs/remote-protocol.md).
 
+## PDF.js
+
+The PDF preview in `apps/messenger` renders with [pdfjs-dist](https://github.com/mozilla/pdf.js) 6.3.289 (the library and its bundled worker, loaded only when a PDF opens), released under the Apache License 2.0:
+
+```text
+Copyright 2024 Mozilla Foundation
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
 ## Package dependencies
 
 JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and `apps/desktop/src-tauri/Cargo.lock`. Their licenses remain applicable independently of Deskfolk's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.

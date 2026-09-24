@@ -1,9 +1,20 @@
 import { expect, test } from "bun:test";
+import type { Annotation, CreateAnnotationRequest } from "@real-bot/protocol";
 import { ApiError, originalSizeForBlob } from "../api.ts";
-import { RemoteApi } from "./api.ts";
+import type { CropCodec } from "../annotations/region-box.ts";
+import type { Snapshot } from "../snapshot.ts";
+import { ANNOTATION_REQUEST_BUDGET, RemoteApi } from "./api.ts";
 import type { StoredEnrollment } from "./idb.ts";
 import { enrollment as hostEnrollment, fakeHost } from "./test-host.ts";
-import { base64url, generateIdentity, identityPublic, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
+import {
+  base64url,
+  canonicalBytes,
+  encodeFrame,
+  generateIdentity,
+  identityPublic,
+  type RemoteRequest,
+  type RemoteResponse,
+} from "@real-bot/remote";
 
 const keys = generateIdentity();
 const pub = identityPublic(keys);
@@ -441,4 +452,205 @@ test("connecting asks the Mac to compress, and carries on if it cannot", async (
     file: { streamId: 0, size: 2, bytes: base64url(new TextEncoder().encode("ok")) } });
   expect(await (await note).text()).toBe("ok");
   plain.close();
+});
+
+// Annotations -------------------------------------------------------------------------------
+
+const deliverySession = "01ARZ3NDEKTSV4RRFFQ69G5FC0";
+const deliveryMessage = "01ARZ3NDEKTSV4RRFFQ69G5FC1";
+const annotationA = "01ARZ3NDEKTSV4RRFFQ69G5FC2";
+const annotationB = "01ARZ3NDEKTSV4RRFFQ69G5FC3";
+
+function annotationRow(id: string, updated_at: string, status: Annotation["status"] = "draft"): Annotation {
+  return {
+    id, status, relpath: "shot.png", anchor_kind: "image_region",
+    anchor: { x: 0.1, y: 0.1, w: 0.2, h: 0.2, natural_width: 1000, natural_height: 500 },
+    content_sha256: "a".repeat(64), target_message_id: deliveryMessage, target_session_id: deliverySession, target_turn_id: null,
+    bot_id: "01ARZ3NDEKTSV4RRFFQ69G5FC4", session_id: deliverySession, message_id: status === "draft" ? null : "01ARZ3NDEKTSV4RRFFQ69G5FC5",
+    body: "tighten this", crop_mime: null, resolved_by: null, resolved_note: null, resolved_at: null,
+    created_at: "2026-09-24T08:00:00.000Z", updated_at,
+  };
+}
+
+/**
+ * A Mac for annotations: lists `rows`, creates and edits with a fresh `updated_at` each time,
+ * and keeps every request it was sent. Like the daemon it holds no revision check of its own —
+ * the tests read the `if_revision` on the wire.
+ */
+function annotationMac(rows: Annotation[]) {
+  const sent: RemoteRequest[] = [];
+  const held = new Map(rows.map((row) => [row.id, row]));
+  let tick = 0;
+  const stamp = () => `2026-09-24T09:00:${String(++tick).padStart(2, "0")}.000Z`;
+  const rpc = async (request: RemoteRequest): Promise<RemoteResponse> => {
+    sent.push(request);
+    const ok = (status: number, body?: unknown): RemoteResponse => ({ v: 1, id: request.id, status, body });
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (request.method === "GET" && request.path === "/v1/annotations") return ok(200, { items: [...held.values()] });
+    if (request.method === "POST" && request.path === "/v1/annotations") {
+      const row = { ...annotationRow(annotationB, stamp()), crop_mime: (body.crop as { mime?: string } | undefined)?.mime ?? null };
+      held.set(row.id, row);
+      return ok(201, row);
+    }
+    if (request.method === "POST" && request.path === "/v1/annotations/send") {
+      const sentRows = (body.annotation_ids as string[]).map((id) => ({ ...held.get(id)!, status: "open" as const, updated_at: stamp() }));
+      for (const row of sentRows) held.set(row.id, row);
+      return ok(200, { message: { id: "01ARZ3NDEKTSV4RRFFQ69G5FC5", session_id: deliverySession }, annotations: sentRows });
+    }
+    const id = request.path.split("/").pop()!;
+    if (request.method === "PATCH") {
+      const { if_revision: _revision, ...patch } = body;
+      const row = { ...held.get(id)!, ...(patch as Partial<Annotation>), updated_at: stamp() };
+      held.set(id, row);
+      return ok(200, row);
+    }
+    if (request.method === "DELETE") {
+      held.delete(id);
+      return ok(204);
+    }
+    return ok(404, { error: { code: "not_found", message: "no route" } });
+  };
+  return { sent, rpc, held };
+}
+
+test("rows the phone only listed are resolved, reopened and deleted with the revision they came with", async () => {
+  // A quiet session: no sync event ever carried these rows, the list is all the phone has seen.
+  const open = annotationRow(annotationA, "2026-09-24T08:30:00.000Z", "open");
+  const draft = annotationRow(annotationB, "2026-09-24T08:31:00.000Z");
+  const mac = annotationMac([open, draft]);
+  const api = new RemoteApi(enrollment, { rpc: mac.rpc });
+  await api.listAnnotations({ session_id: deliverySession });
+  const resolved = await api.patchAnnotation(annotationA, { status: "resolved" });
+  await api.patchAnnotation(annotationA, { status: "open" });
+  await api.deleteAnnotation(annotationB);
+  const patches = mac.sent.filter((request) => request.method === "PATCH");
+  expect(patches.map((request) => request.body)).toEqual([
+    { status: "resolved", if_revision: open.updated_at },
+    // The reply to the first edit is what the second one builds on.
+    { status: "open", if_revision: resolved.updated_at },
+  ]);
+  expect(mac.sent.find((request) => request.method === "DELETE")?.body).toEqual({ if_revision: draft.updated_at });
+});
+
+test("a draft just created, and annotations just sent, are edited with the revision their reply carried", async () => {
+  const mac = annotationMac([]);
+  const api = new RemoteApi(enrollment, { rpc: mac.rpc });
+  const created = await api.createAnnotation({
+    target_message_id: deliveryMessage, relpath: "shot.png", anchor_kind: "image_region",
+    anchor: { x: 0.1, y: 0.1, w: 0.2, h: 0.2, natural_width: 1000, natural_height: 500 }, content_sha256: "a".repeat(64), body: "tighten this",
+  });
+  const edited = await api.patchAnnotation(created.id, { body: "tighten this more" });
+  const sent = await api.sendAnnotations({ session_id: deliverySession, body: "", annotation_ids: [created.id] });
+  await api.patchAnnotation(created.id, { status: "resolved" });
+  const patches = mac.sent.filter((request) => request.method === "PATCH").map((request) => request.body?.if_revision);
+  expect(patches).toEqual([created.updated_at, sent.annotations[0]!.updated_at]);
+  expect(edited.updated_at < sent.annotations[0]!.updated_at).toBe(true);
+});
+
+test("a list that was on its way does not take a row back past the revision an event already brought", async () => {
+  const stale = annotationRow(annotationA, "2026-09-24T08:30:00.000Z", "open");
+  const fresh = { ...stale, status: "resolved" as const, updated_at: "2026-09-24T08:45:00.000Z" };
+  const mac = annotationMac([stale]);
+  let answerList = (): void => {};
+  const api = new RemoteApi(enrollment, {
+    rpc: (request) => request.method === "GET"
+      ? new Promise((resolve) => { answerList = () => void mac.rpc(request).then(resolve); })
+      : mac.rpc(request),
+  });
+  const listing = api.listAnnotations({ session_id: deliverySession });
+  // The event lands first: the runtime hands its snapshot over as it does after every ingest.
+  api.observeSnapshot({
+    settings: { settings_rev: 1 }, bots: [], sessions: [], providers: [], mcpServers: [], skills: [], memories: [],
+    routines: [], allowRules: [], annotations: [fresh],
+  } as unknown as Snapshot);
+  answerList();
+  await listing;
+  await api.patchAnnotation(annotationA, { status: "open" });
+  expect(mac.sent.find((request) => request.method === "PATCH")?.body).toEqual({ status: "open", if_revision: fresh.updated_at });
+});
+
+/** A crop of `bytes` bytes, base64 as it travels. */
+const cropOf = (bytes: number) => ({ mime: "image/png" as const, base64: btoa(String.fromCharCode(...new Uint8Array(bytes).fill(7))) });
+
+/** Canvas stand-in: output shrinks with the area and the JPEG quality, `perPixel` bytes a pixel at full quality. */
+function codecOf(perPixel: number): { codec: CropCodec<string>; decoded: () => number } {
+  let decoded = 0;
+  return {
+    decoded: () => decoded,
+    codec: {
+      decode: async () => ((decoded += 1), { image: "decoded", width: 1024, height: 768 }),
+      encode: async (_image, size, type, quality) =>
+        new Blob([new Uint8Array(Math.round(size.width * size.height * perPixel * (type === "image/png" ? 1 : quality!)))]),
+    },
+  };
+}
+
+const imageDraft = (crop: CreateAnnotationRequest["crop"]): CreateAnnotationRequest => ({
+  target_message_id: deliveryMessage, relpath: "shot.png", anchor_kind: "image_region",
+  anchor: { x: 0.1, y: 0.1, w: 0.2, h: 0.2, natural_width: 1000, natural_height: 500 }, content_sha256: "a".repeat(64),
+  body: "这里的对比度太低", crop,
+});
+
+/** What the transport does with a request: one type-1 frame of its canonical bytes. */
+const frameOf = (request: RemoteRequest) => encodeFrame({ sessionId: new Uint8Array(16), seq: 0n, type: 1, body: canonicalBytes(request) });
+
+test("a crop too big for one frame is re-encoded until the whole request fits, on create and on edit", async () => {
+  const mac = annotationMac([]);
+  const { codec } = codecOf(0.2);
+  const api = new RemoteApi(enrollment, { rpc: mac.rpc, cropCodec: codec });
+  // 150 KB of PNG: the request it rides in is far past the 32 KiB frame the transport sends.
+  const big = cropOf(150_000);
+  const created = await api.createAnnotation(imageDraft(big));
+  await api.patchAnnotation(created.id, { anchor: { x: 0.2, y: 0.2, w: 0.3, h: 0.3, natural_width: 1000, natural_height: 500 }, crop: big });
+  const post = mac.sent.find((request) => request.method === "POST")!;
+  const patch = mac.sent.find((request) => request.method === "PATCH")!;
+  expect(() => frameOf({ ...post, body: { ...post.body, crop: big } })).toThrow("32 KiB");
+  for (const request of [post, patch]) {
+    const crop = request.body?.crop as { mime: string; base64: string };
+    expect(crop.mime).toBe("image/jpeg");
+    expect(crop.base64.length).toBeGreaterThan(0);
+    expect(canonicalBytes(request).length).toBeLessThanOrEqual(ANNOTATION_REQUEST_BUDGET);
+    expect(() => frameOf(request)).not.toThrow();
+  }
+  // The edit keeps its revision through the re-encode.
+  expect(patch.body?.if_revision).toBe(created.updated_at);
+  expect(created.crop_mime).toBe("image/jpeg");
+});
+
+test("a crop that already fits a frame goes out untouched, never decoded", async () => {
+  const mac = annotationMac([]);
+  const { codec, decoded } = codecOf(0.2);
+  const api = new RemoteApi(enrollment, { rpc: mac.rpc, cropCodec: codec });
+  const small = cropOf(12_000);
+  await api.createAnnotation(imageDraft(small));
+  expect(mac.sent[0]!.body?.crop).toEqual(small);
+  expect(decoded()).toBe(0);
+});
+
+test("a crop nothing can squeeze into a frame is left behind: a new draft saves without one, an edit clears the old", async () => {
+  const mac = annotationMac([annotationRow(annotationA, "2026-09-24T08:30:00.000Z")]);
+  // So dense that even the smallest step is over: the annotation goes without its picture.
+  const { codec } = codecOf(50);
+  const api = new RemoteApi(enrollment, { rpc: mac.rpc, cropCodec: codec });
+  const big = cropOf(150_000);
+  await api.listAnnotations({});
+  await api.createAnnotation(imageDraft(big));
+  const anchor = { x: 0.2, y: 0.2, w: 0.3, h: 0.3, natural_width: 1000, natural_height: 500 };
+  await api.patchAnnotation(annotationA, { anchor, crop: big });
+  const post = mac.sent.find((request) => request.method === "POST")!;
+  const patch = mac.sent.find((request) => request.method === "PATCH")!;
+  expect("crop" in (post.body ?? {})).toBe(false);
+  expect(post.body?.body).toBe("这里的对比度太低");
+  // A new box with the old box's picture would mislead, so the edit clears it.
+  expect(patch.body).toEqual({ anchor, crop: null, if_revision: "2026-09-24T08:30:00.000Z" });
+  for (const request of [post, patch]) expect(() => frameOf(request)).not.toThrow();
+});
+
+test("with no canvas to re-encode on, an oversized crop is dropped rather than closing the link", async () => {
+  const mac = annotationMac([]);
+  // No codec handed in: the browser one, which happy-dom cannot draw with.
+  const api = new RemoteApi(enrollment, { rpc: mac.rpc });
+  await api.createAnnotation(imageDraft(cropOf(150_000)));
+  expect("crop" in (mac.sent[0]!.body ?? {})).toBe(false);
+  expect(() => frameOf(mac.sent[0]!)).not.toThrow();
 });
