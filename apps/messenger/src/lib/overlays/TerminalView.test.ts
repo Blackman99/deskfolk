@@ -96,6 +96,7 @@ if (!("ResizeObserver" in globalThis)) {
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class { observe() {} disconnect() {} };
 }
 const { default: TerminalView } = await import("./TerminalView.svelte");
+import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { click, fill, press, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
@@ -347,6 +348,28 @@ test("⋯ holds stop, find and clear, and ending the session asks first", async 
   await settle();
   expect(closedIds).toEqual(["term-old"]);
   view.close();
+});
+
+test("tapping 结束会话 in ⋯ keeps the menu open on its confirm, even once the button is gone", async () => {
+  // A browser runs microtasks between listeners, so by the time a real tap reaches the window the
+  // menu has already swapped 结束会话 for its confirm and the tapped button is off the page. The
+  // `click` helper flushes only after every listener; this flushes where the browser does.
+  const flushBetween = () => flushSync();
+  document.addEventListener("click", flushBetween);
+  const closedIds: string[] = [];
+  const { view } = mountPhone([older], { closeTerminal: async (id: string) => { closedIds.push(id); } });
+  try {
+    await settle();
+    click(view.host.querySelector(".terminal-more > .terminal-icon"));
+    click(view.host.querySelector(".terminal-menu .terminal-end"));
+    expect(view.host.querySelector(".terminal-menu .terminal-confirm")?.textContent).toBe(t.terminal.endConfirm);
+    click(view.host.querySelector(".terminal-menu-confirm .is-armed"));
+    await settle();
+    expect(closedIds).toEqual(["term-old"]);
+  } finally {
+    document.removeEventListener("click", flushBetween);
+    view.close();
+  }
 });
 
 test("a tap outside the menu closes it", async () => {

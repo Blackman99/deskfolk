@@ -5,6 +5,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 [简体中文 (Chinese version)](CHANGELOG.zh.md)
 
 ## Unreleased
+
+- On a phone, End session in the terminal's ⋯ menu works again. Tapping it used to close the menu before its confirm could show, so the session kept running. It now asks first as intended, and confirming ends the session.
+
 - On a phone, going back from a conversation to the chat list now slides the conversation off the whole screen. The "Pick a session" page no longer flashes through while it leaves.
 
 - Search now opens in one global dialog from the expanded sidebar, the folded rail, or ⌘K / Ctrl+K. Filter by Bot, conversation, message, file or routine; use arrow keys and Enter to open a result. Phones get a full-screen search view with Cancel, safe-area spacing and space for the software keyboard. ⌘⇧K / Ctrl+Shift+K also opens search from the editor or terminal, whose usual K bindings stay available. Loading, failure with retry, offline and empty results have distinct states, and cleared or closed searches ignore late replies. Every folded-rail avatar and action now has a styled hover/focus tooltip, including shortcuts, unread or waiting counts, updates and unavailable-workspace explanations.

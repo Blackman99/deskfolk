@@ -506,7 +506,11 @@
 		pressKey(key);
 	}
 
-	/** Anything but the bar and the menus closes the menus, the terminal included. */
+	/**
+	 * Anything but the bar and the menus closes the menus, the terminal included. Read on the way
+	 * down: by the time a tap bubbles to the window, 结束会话 has already swapped itself for its
+	 * confirm, and a button that is off the page is inside nothing — the menu closed on every tap.
+	 */
 	function onWindowClick(event: MouseEvent): void {
 		if (!switcherOpen && !moreOpen) return;
 		const target = event.target instanceof Element ? event.target : null;
@@ -711,7 +715,7 @@
 	});
 </script>
 
-<svelte:window onclick={onWindowClick} />
+<svelte:window onclickcapture={onWindowClick} />
 
 <div
 	class="terminal-pane"
