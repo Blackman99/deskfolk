@@ -110,4 +110,122 @@ describe("probeEndpointModels", () => {
       probeEndpointModels("https://example.com/v1", "bad-key", mockFetch as unknown as typeof fetch),
     ).rejects.toMatchObject({ status: 401 });
   });
+
+  test("a try that runs out of time gets one more, and the second answer counts", async () => {
+    let calls = 0;
+    const mockFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      if (calls === 1) return hangUntilAborted(init?.signal);
+      return Response.json({ data: [{ id: "model-a" }] });
+    };
+    const probed = await probeEndpointModels(
+      "https://example.com/v1",
+      "key",
+      mockFetch as unknown as typeof fetch,
+      undefined,
+      { timeoutMs: 20 },
+    );
+    expect(probed.models).toEqual(["model-a"]);
+    expect(calls).toBe(2);
+  });
+
+  test("two silent tries say it did not answer in time, not that it could not connect", async () => {
+    let calls = 0;
+    const mockFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      return hangUntilAborted(init?.signal);
+    };
+    const failed = probeEndpointModels(
+      "https://example.com/v1",
+      "key",
+      mockFetch as unknown as typeof fetch,
+      undefined,
+      { timeoutMs: 20 },
+    );
+    await expect(failed).rejects.toMatchObject({
+      status: 422,
+      code: "probe_failed",
+      message: "https://example.com/v1/models did not answer within 0.02s (tried 2 times)",
+    });
+    expect(calls).toBe(2);
+  });
+
+  test("a body that stalls after the headers is a timeout too, not an empty list", async () => {
+    let calls = 0;
+    const mockFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      const signal = init?.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"data":['));
+          signal?.addEventListener("abort", () => controller.error(signal.reason), { once: true });
+        },
+      });
+      return new Response(body, { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    await expect(
+      probeEndpointModels("https://example.com/v1", "key", mockFetch as unknown as typeof fetch, undefined, {
+        timeoutMs: 20,
+      }),
+    ).rejects.toMatchObject({ code: "probe_failed", message: expect.stringContaining("did not answer within") });
+    expect(calls).toBe(2);
+  });
+
+  test("a refused connection is reported once, without a retry", async () => {
+    let calls = 0;
+    const mockFetch = async () => {
+      calls++;
+      throw new TypeError("Unable to connect. Is the computer able to access the url?");
+    };
+    await expect(
+      probeEndpointModels("https://example.com/v1", "key", mockFetch as unknown as typeof fetch, undefined, {
+        timeoutMs: 20,
+      }),
+    ).rejects.toMatchObject({ code: "probe_failed", message: expect.stringMatching(/^Failed to connect to /) });
+    expect(calls).toBe(1);
+  });
+
+  test("the caller hanging up is not retried or called a timeout", async () => {
+    let calls = 0;
+    const caller = new AbortController();
+    const mockFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      queueMicrotask(() => caller.abort());
+      return hangUntilAborted(init?.signal);
+    };
+    await expect(
+      probeEndpointModels("https://example.com/v1", "key", mockFetch as unknown as typeof fetch, caller.signal, {
+        timeoutMs: 1000,
+      }),
+    ).rejects.toMatchObject({ code: "probe_failed", message: expect.stringMatching(/^Failed to connect to /) });
+    expect(calls).toBe(1);
+  });
+
+  test("the guard runs before every fetch, the retry's included, and a throw stops the probe", async () => {
+    const order: string[] = [];
+    let allow = true;
+    const mockFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      order.push("fetch");
+      allow = false;
+      return hangUntilAborted(init?.signal);
+    };
+    const guard = () => {
+      order.push("guard");
+      if (!allow) throw new Error("revoked");
+    };
+    await expect(
+      probeEndpointModels("https://example.com/v1", "key", mockFetch as unknown as typeof fetch, undefined, {
+        timeoutMs: 20,
+        guard,
+      }),
+    ).rejects.toThrow("revoked");
+    expect(order).toEqual(["guard", "fetch", "guard"]);
+  });
 });
+
+/** A fetch that never answers: it rejects only when its signal aborts, as a real one does. */
+function hangUntilAborted(signal: AbortSignal | null | undefined): Promise<Response> {
+  return new Promise<Response>((_, reject) => {
+    signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}

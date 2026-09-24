@@ -1011,9 +1011,8 @@ function dispatch(
       if (!baseUrl) {
         throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
       }
-      scope?.guard?.();
       request.signal.throwIfAborted();
-      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal);
+      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal, { guard: scope?.guard });
       scope?.guard?.();
       return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
     })();

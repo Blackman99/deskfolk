@@ -97,8 +97,9 @@ function unpackAnswer(bytes: Uint8Array): Uint8Array {
  * A phone that changes network, or sleeps with the screen off, can be left holding a socket the
  * browser still calls open: no close, no error, just a link that carries nothing. Silence is the
  * only evidence there is, so it counts only against an answer that is actually outstanding, and
- * only while nothing is moving in either direction. The host caps a model probe at twelve
- * seconds and streams a turn's events as they happen, so half a minute of nothing is the link.
+ * only while nothing is moving in either direction. The host gives a model probe twelve seconds
+ * a try and retries only a timeout, about twenty-four seconds at worst, and streams a turn's
+ * events as they happen, so half a minute of nothing is the link.
  */
 const STALL_MS = 30_000;
 const STALL_CHECK_MS = 5000;
