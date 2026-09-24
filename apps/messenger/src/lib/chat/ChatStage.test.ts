@@ -643,6 +643,51 @@ test("a markdown image link opens over the messages and a text link still opens 
   }
 });
 
+test("a picture a Bot names by its path is a thumbnail in the text, and it enlarges from there", async () => {
+  const session = aDirect();
+  const message = aMessage({
+    id: "msg-named",
+    session_id: session.id,
+    kind: "bot",
+    author: "bot-1",
+    body: "C09 终镜：[work/preview_v9/pair_c09.jpg](work/preview_v9/pair_c09.jpg)",
+  });
+  const asked: Array<{ path: string; size?: string; background?: boolean }> = [];
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, {
+    selectedId: session.id,
+    client: {
+      getWorkspaceFileBlob: async (path: string, _progress?: unknown, options?: { size?: string; background?: boolean }) => {
+        asked.push({ path, size: options?.size, background: options?.background });
+        return new Blob([new Uint8Array([1, 2, 3])], { type: "image/jpeg" });
+      },
+    },
+  }));
+  const opened: string[] = [];
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: (path: string) => opened.push(path),
+    onCreateBot: () => {},
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+    const chip = host.querySelector('[data-message-id="msg-named"] a.md-artifact-image');
+    expect(chip?.getAttribute("data-artifact-image")).toBe("ready");
+    expect(chip?.querySelector("img.md-artifact-thumb")).not.toBeNull();
+    expect(chip?.textContent).toBe("pair_c09.jpg");
+    // The small copy, queued behind whatever is opened on purpose — as an attachment's chip is.
+    expect(asked[0]).toEqual({ path: "work/preview_v9/pair_c09.jpg", size: "thumb", background: true });
+    click(chip);
+    expect(host.querySelector(".msg-image-lightbox")).not.toBeNull();
+    expect(opened).toEqual([]);
+  } finally {
+    close();
+  }
+});
+
 for (const session of [aDirect(), aGroup(), aBotDirect()]) {
   test(`${session.kind} keeps a complete attachment entry without repeating its inventory`, () => {
     const paths = ["work/check/a.txt", "work/check/b.txt"];

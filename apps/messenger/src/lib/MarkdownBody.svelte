@@ -18,7 +18,8 @@
 		onOpenArtifact?: (relpath: string) => void;
 		/** A picture stays in the app. `from` is the link the picture grows out of. */
 		onOpenImage?: (relpath: string, from?: HTMLElement) => void;
-		loadArtifactImage?: (relpath: string) => Promise<Blob>;
+		/** Bytes for a picture's chip. `signal` aborts once this text is gone. */
+		loadArtifactImage?: (relpath: string, signal: AbortSignal) => Promise<Blob>;
 		hideStandaloneArtifactLinks?: string[];
 		onOpenProfile?: (botId: string) => void;
 		children?: Snippet;
@@ -100,10 +101,39 @@
 		}
 	}
 
+	/**
+	 * A link written as its own path names the picture by that path, which is mostly folders: the
+	 * chip keeps the file's name, as an attachment's does, and the whole path is in the tooltip.
+	 * From the start, so the chip does not change size when the picture lands.
+	 */
+	function nameThePicture(anchor: HTMLAnchorElement, path: string): void {
+		if (anchor.textContent?.trim() !== path) return;
+		const name = path.split('/').pop() || path;
+		if (name === path) return;
+		for (const child of [...anchor.childNodes]) if (child.nodeType === Node.TEXT_NODE) child.remove();
+		const label = document.createElement('span');
+		label.className = 'md-artifact-name';
+		label.textContent = name;
+		anchor.append(label);
+		if (!anchor.title) {
+			anchor.title = path;
+			anchor.dataset.artifactTitled = '';
+		}
+	}
+
+	/** No picture after all: the link reads as it was written. */
+	function unnameThePicture(anchor: HTMLAnchorElement, path: string): void {
+		anchor.querySelector(':scope > .md-artifact-name')?.replaceWith(document.createTextNode(path));
+		if (anchor.dataset.artifactTitled === undefined) return;
+		anchor.removeAttribute('title');
+		delete anchor.dataset.artifactTitled;
+	}
+
 	function enhanceArtifactImages(
 		node: HTMLElement,
 		urls: Map<HTMLAnchorElement, string>,
 		watching: Map<HTMLAnchorElement, { destroy(): void }>,
+		signal: AbortSignal,
 	): void {
 		for (const [anchor, url] of urls) {
 			if (anchor.isConnected && node.contains(anchor)) continue;
@@ -122,6 +152,7 @@
 			if (!path || !['image', 'svg'].includes(artifactKind(path))) continue;
 			anchor.dataset.artifactImage = 'loading';
 			anchor.classList.add('md-artifact-image');
+			nameThePicture(anchor, path);
 			const pending = document.createElement('span');
 			pending.className = 'md-artifact-pending';
 			pending.setAttribute('aria-hidden', 'true');
@@ -132,7 +163,7 @@
 			const watch = whenVisible(anchor, () => {
 				seen = true;
 				watching.delete(anchor);
-				void load(path)
+				void load(path, signal)
 					.then(async (blob) => {
 						if (!anchor.isConnected || !node.contains(anchor)) return;
 						const display = artifactKind(path) === 'svg' ? await svgDisplayBlob(blob) : blob;
@@ -150,6 +181,7 @@
 					})
 					.catch(() => {
 						anchor.querySelector(':scope > .md-artifact-pending')?.remove();
+						unnameThePicture(anchor, path);
 						anchor.dataset.artifactImage = 'failed';
 						anchor.classList.remove('md-artifact-image');
 					});
@@ -162,10 +194,12 @@
 		const code = markdownCode(node, labels);
 		const imageUrls = new Map<HTMLAnchorElement, string>();
 		const imageWatches = new Map<HTMLAnchorElement, { destroy(): void }>();
+		// A chat scrolled past or left behind stops asking for its pictures.
+		const imageLoads = new AbortController();
 		const enhanceContent = () => {
 			hideDuplicateArtifactLinks(node);
 			wrapTables(node);
-			enhanceArtifactImages(node, imageUrls, imageWatches);
+			enhanceArtifactImages(node, imageUrls, imageWatches, imageLoads.signal);
 		};
 		enhanceContent();
 		const content = new MutationObserver(enhanceContent);
@@ -177,6 +211,7 @@
 			},
 			destroy() {
 				content.disconnect();
+				imageLoads.abort();
 				for (const watch of imageWatches.values()) watch.destroy();
 				for (const url of imageUrls.values()) URL.revokeObjectURL(url);
 				node.removeEventListener('click', onClick);
@@ -401,6 +436,13 @@
 	}
 
 	.md-body :global(a.md-artifact-image[data-artifact-image='ready']) {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.md-body :global(.md-artifact-name) {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

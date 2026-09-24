@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- A picture a message names by its workspace path now shows as a thumbnail right in the text, as attachments and pictures in Markdown previews already do. Tap it to enlarge. The chip shows the file name, with the full path on hover. Pictures load once they are scrolled near, using the small copy, behind anything you open yourself. A path whose file is gone stays a plain link. It works in Bot replies and in your own messages; a reply still streaming shows links until it finishes.
+
 - On a phone, the terminal page is a place in the address, `?o=terminal`, the way the routine calendar and Spend already are. Opening it adds a step, and Back, the page's own Back and Escape return to the conversation or the list you opened it from. Refresh, forward and a link to that address open the terminal page again. Shells keep running when the page closes. A wide window still opens a terminal tab, and that tab stays out of the address.
 
 - On a phone, Back on a Bot opened from a group's settings steps out one screen at a time again. From a skill, routine or memory editor it returns to the section, then to the Bot's list of sections, and only then to the conversation. It used to jump straight to the conversation.

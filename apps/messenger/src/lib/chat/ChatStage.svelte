@@ -207,6 +207,16 @@
 		closeMessageContextMenu();
 	}
 
+	/**
+	 * A picture a message names by its path is drawn in the text as a chip, the way an attachment
+	 * is: the Mac's 256 px copy, waiting behind anything opened on purpose.
+	 */
+	async function loadBodyImage(relpath: string, signal: AbortSignal): Promise<Blob> {
+		const client = runtime.client;
+		if (!client) throw new Error('API unavailable');
+		return client.getWorkspaceFileBlob(relpath, undefined, { background: true, signal, size: 'thumb' });
+	}
+
 	function openBodyImage(message: Message, path: string, from?: HTMLElement | null): void {
 		const attachment =
 			message.attachments.find((row) => row.workspace_relpath === path && !row.is_dir) ?? null;
@@ -1404,6 +1414,7 @@
 												inverted
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
+												loadArtifactImage={loadBodyImage}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if messageShowsAttachments(item.message)}
@@ -1722,6 +1733,7 @@
 												copiedLabel={t.chat.copied}
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
 												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
+												loadArtifactImage={loadBodyImage}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if messageShowsAttachments(item.message)}

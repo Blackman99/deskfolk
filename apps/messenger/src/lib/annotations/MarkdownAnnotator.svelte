@@ -77,7 +77,7 @@
 		onOpenArtifact?: (relpath: string) => void;
 		/** A picture in the note enlarges in the app; `from` is what it grows out of. */
 		onOpenImage?: (relpath: string, from?: HTMLElement) => void;
-		loadArtifactImage?: (relpath: string) => Promise<Blob>;
+		loadArtifactImage?: (relpath: string, signal: AbortSignal) => Promise<Blob>;
 	}
 
 	let {

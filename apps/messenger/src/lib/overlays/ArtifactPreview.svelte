@@ -1436,11 +1436,11 @@
 							copiedLabel={t.chat.copied}
 							onOpenArtifact={openMarkdownPath}
 							onOpenImage={(path, from) => enlarge(path, false, from?.querySelector('img, .md-artifact-pending') ?? from)}
-							loadArtifactImage={(path) => {
+							loadArtifactImage={(path, signal) => {
 								if (!api) return Promise.reject(new Error('API unavailable'));
 								// A picture inside a note is a 72 px chip: the 256 px copy is plenty, and tapping it
 								// enlarges to the 1600 px copy with the original on offer.
-								return api.getWorkspaceFileBlob(path, undefined, { size: 'thumb' });
+								return api.getWorkspaceFileBlob(path, undefined, { size: 'thumb', signal });
 							}}
 						/>
 					{:else}

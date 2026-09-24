@@ -215,6 +215,42 @@ test("markdown SVG thumbs strip active content before the blob URL", async () =>
   }
 });
 
+test("a picture linked by its own path is named by its file, with the path in the tooltip", async () => {
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: "C09：[work/preview_v9/pair_c09.jpg](work/preview_v9/pair_c09.jpg) 和 [终镜](work/preview_v9/end.jpg)",
+    loadArtifactImage: async () => new Blob(["image"], { type: "image/jpeg" }),
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const [bare, named] = [...host.querySelectorAll("a.md-artifact-image")];
+    expect(bare?.getAttribute("data-artifact-image")).toBe("ready");
+    expect(bare?.textContent).toBe("pair_c09.jpg");
+    expect(bare?.getAttribute("title")).toBe("work/preview_v9/pair_c09.jpg");
+    // Words the author chose stay as written.
+    expect(named?.textContent).toBe("终镜");
+    expect(named?.hasAttribute("title")).toBe(false);
+  } finally {
+    close();
+  }
+});
+
+test("pictures still on the way are called off when the text goes", async () => {
+  const signals: AbortSignal[] = [];
+  const { close } = render(MarkdownBody, {
+    ...labels,
+    source: "[shot.png](inbox/shot.png)",
+    loadArtifactImage: (_path: string, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<Blob>(() => {});
+    },
+  });
+  expect(signals).toHaveLength(1);
+  expect(signals[0]!.aborted).toBe(false);
+  close();
+  expect(signals[0]!.aborted).toBe(true);
+});
+
 test("a failed artifact thumbnail keeps the original link", async () => {
   const { host, close } = render(MarkdownBody, {
     ...labels,
@@ -226,6 +262,27 @@ test("a failed artifact thumbnail keeps the original link", async () => {
   expect(anchor?.classList.contains("md-artifact-image")).toBe(false);
   expect(anchor?.textContent).toBe("missing.png");
   close();
+});
+
+test("a picture named by its file while loading reads as its path again when it cannot load", async () => {
+  let fail!: () => void;
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: "[work/shots/missing.png](work/shots/missing.png)",
+    loadArtifactImage: () => new Promise<Blob>((_resolve, reject) => { fail = () => reject(new Error("missing")); }),
+  });
+  try {
+    const anchor = host.querySelector("a");
+    expect(anchor?.textContent).toBe("missing.png");
+    expect(anchor?.getAttribute("title")).toBe("work/shots/missing.png");
+    fail();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(anchor?.classList.contains("md-artifact-image")).toBe(false);
+    expect(anchor?.textContent).toBe("work/shots/missing.png");
+    expect(anchor?.hasAttribute("title")).toBe(false);
+  } finally {
+    close();
+  }
 });
 
 test("a bot mention chip calls onOpenProfile", () => {
