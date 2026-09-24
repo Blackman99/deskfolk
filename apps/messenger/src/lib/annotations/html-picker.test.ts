@@ -892,6 +892,15 @@ const labels: HtmlAnnotatorLabels = {
   stale: "原文已变",
   notFound: "页面里找不到这个元素了",
   blocked: "这个页面的脚本在这里跑不了，没法点选元素；切到「源码」可以按行批注",
+  viewport: {
+    group: "预览设备",
+    desktop: "电脑",
+    tablet: "平板",
+    phone: "手机",
+    zoomed: (width) => `这个页面按 ${width} 像素宽排版，再像手机浏览器那样缩小到屏幕宽`,
+    enlarge: "全屏预览",
+    shrink: "退出全屏（Esc）",
+  },
 };
 
 const blobs = new Map<string, Blob>();

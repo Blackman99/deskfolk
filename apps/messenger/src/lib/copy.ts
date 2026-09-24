@@ -770,6 +770,15 @@ const zh = {
       stale: "原文已变",
       notFound: "页面里找不到这个元素了",
       blocked: "这个页面的脚本在这里跑不了，没法点选元素；切到「源码」可以按行批注",
+      viewport: {
+        group: "预览设备",
+        desktop: "电脑",
+        tablet: "平板",
+        phone: "手机",
+        zoomed: (width: number) => `这个页面按 ${width} 像素宽排版，再像手机浏览器那样缩小到屏幕宽`,
+        enlarge: "全屏预览",
+        shrink: "退出全屏（Esc）",
+      },
     },
     annotMarkdown: {
       annotate: "批注",
@@ -1865,6 +1874,15 @@ const en: CopyShape<typeof zh> = {
       stale: "Text changed",
       notFound: "This element is no longer on the page",
       blocked: "This page's scripts can't run here, so elements can't be picked. Switch to Source to annotate by line",
+      viewport: {
+        group: "Preview device",
+        desktop: "Desktop",
+        tablet: "Tablet",
+        phone: "Phone",
+        zoomed: (width: number) => `This page is laid out ${width} pixels wide, then zoomed out to the screen the way a mobile browser does`,
+        enlarge: "Full screen",
+        shrink: "Exit full screen (Esc)",
+      },
     },
     annotMarkdown: {
       annotate: "Annotate",

@@ -3,8 +3,15 @@
 	最前面注入选取器（html-picker.ts）并重新加载，退出时再加载一次不带脚本的；页面上的描边和编号都由选取器画，
 	普通视图不注入，批注只在列表里。批注模式下 iframe 上方一条细栏：编号（悬停看意见，点一下在列表里定位）、
 	提示、「外层 / 内层」（手机上没有方向键）。没有裁图：跨源页面的像素读不到。
+	页面装在一台缩小的设备里：电脑、平板、手机，整台设备等比缩进窗格（不放大过真实尺寸）。平板和手机按移动浏览器
+	排版：页面声明的视口宽度，没声明就是 980（内容更宽就按内容宽），再缩到屏幕宽。换设备重新加载，页面按新尺寸
+	从头初始化；页面前面总有一个小助手（html-viewport.ts）报内容宽度、在锁了滚动的长页面上放开纵向滚动。
+	「全屏」让整块预览（批注条和设备）铺满窗口，设备可以放大过真实尺寸：用 Popover API 提到顶层，节点不挪，页面
+	不重新加载。Esc 退出，焦点在页面里时由小助手把 Esc 转出来；全屏时选中一个元素也会退出，好写批注。
 -->
 <script lang="ts" module>
+	import type { ViewportDevice } from '../overlays/html-viewport.ts';
+
 	/** Every string this annotator shows; the preview hands them in from its copy. */
 	export type HtmlAnnotatorLabels = {
 		/** The bar's hint while choosing an element. */
@@ -27,6 +34,15 @@
 		notFound: string;
 		/** The bar's hint when the picker never answered: the page's scripts are blocked here. */
 		blocked: string;
+		/** The device switcher under the page: its accessible name and each device's name. */
+		viewport: {
+			group: string;
+			/** The size's tooltip when a phone or tablet zooms out on a page laid out wider than it. */
+			zoomed: (width: number) => string;
+			/** The full-screen button, before and while the preview fills the window. */
+			enlarge: string;
+			shrink: string;
+		} & Record<ViewportDevice, string>;
 	};
 </script>
 
@@ -34,6 +50,17 @@
 	import { onDestroy, tick, untrack } from 'svelte';
 	import type { Annotation, HtmlElementAnchor } from '@real-bot/protocol';
 	import { HTML_PREVIEW_SANDBOX, htmlPreviewBlob, pageCspNonce } from '../overlays/artifacts.ts';
+	import {
+		VIEWPORT_DEVICES,
+		fitViewport,
+		loadViewportDevice,
+		pageLayoutWidth,
+		saveViewportDevice,
+		viewportMeta,
+		viewportMessage,
+		viewportHelperMarkup,
+		ENLARGED_MAX_SCALE,
+	} from '../overlays/html-viewport.ts';
 	import type { EncodedCrop } from './region-box.ts';
 	import {
 		annotatorSource,
@@ -133,6 +160,23 @@
 	let blocked = $state(false);
 	let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
+	let device = $state<ViewportDevice>(loadViewportDevice());
+	/** The room the device may take, measured off the stage. */
+	let roomWidth = $state(0);
+	let roomHeight = $state(0);
+	const meta = $derived(viewportMeta(html));
+	/** How wide the page said its content is, once this build of it has loaded. */
+	let contentWidth = $state<number | null>(null);
+	/** This build's channel for the helper's report. */
+	let viewportChannel: string | null = null;
+	const pageWidth = $derived(pageLayoutWidth(device, meta, contentWidth));
+	/** The preview fills the window. */
+	let enlarged = $state(false);
+	let rootEl = $state<HTMLElement | null>(null);
+	const layout = $derived(
+		fitViewport(device, { width: roomWidth, height: roomHeight }, pageWidth, enlarged ? ENLARGED_MAX_SCALE : 1),
+	);
+
 	const injecting = $derived(active || pending != null);
 	const picking = $derived(active && enabled);
 	const marks = $derived(pickerMarks(annotations));
@@ -146,10 +190,14 @@
 		const raw = html;
 		const sch = scheme;
 		const on = injecting;
+		// A new device is a fresh load, so a page that sizes itself in script starts at the new size.
+		const touch = device !== 'desktop';
 		void reloads;
 		const ch = on ? newChannel() : null;
+		const vch = newChannel();
 		const cspNonce = nonce === undefined ? pageCspNonce() : nonce;
-		const url = URL.createObjectURL(htmlPreviewBlob(annotatorSource(raw, { scheme: sch, nonce: cspNonce, channel: ch })));
+		const viewport = viewportHelperMarkup({ channel: vch, touch, nonce: cspNonce });
+		const url = URL.createObjectURL(htmlPreviewBlob(annotatorSource(raw, { scheme: sch, nonce: cspNonce, channel: ch, viewport })));
 		// Only entering annotate mode (or the picker's own restart) hands the page the keyboard; a
 		// reload because the file or the theme changed must not take focus from wherever it is.
 		focusOnLoad = on && (!wasInjecting || reloadFocus);
@@ -160,6 +208,8 @@
 			clearReadyWait();
 			blocked = false;
 			channel = ch;
+			viewportChannel = vch;
+			contentWidth = null;
 			src = url;
 		});
 		return () => URL.revokeObjectURL(url);
@@ -189,6 +239,30 @@
 			const kept = [...notFound].filter((id) => checked.has(id));
 			if (kept.length !== notFound.size) reportMissing(kept);
 		});
+	});
+
+	// Into the top layer, where no pane's containment or clipping reaches it. Moving the node to the
+	// body instead would reload the iframe; this leaves it where it is.
+	$effect(() => {
+		const el = rootEl;
+		const on = enlarged;
+		if (!el || typeof el.showPopover !== 'function') return;
+		if (on) {
+			el.setAttribute('popover', 'manual');
+			try {
+				el.showPopover();
+			} catch {
+				// Already showing.
+			}
+			return () => {
+				try {
+					el.hidePopover();
+				} catch {
+					// Gone with the preview.
+				}
+				el.removeAttribute('popover');
+			};
+		}
 	});
 
 	onDestroy(() => {
@@ -255,6 +329,16 @@
 	}
 
 	function onWindowMessage(ev: MessageEvent): void {
+		const said = viewportMessage(ev, frame?.contentWindow ?? null, viewportChannel);
+		if (said?.type === 'content') {
+			// Only the first: widening the layout can widen a page sized off the viewport, and so on.
+			if (contentWidth === null) contentWidth = said.width;
+			return;
+		}
+		if (said?.type === 'escape') {
+			enlarged = false;
+			return;
+		}
 		const reply = validatePickerMessage(ev, frame?.contentWindow ?? null, channel);
 		if (!reply) return;
 		switch (reply.type) {
@@ -282,6 +366,8 @@
 
 	function chosen(anchor: HtmlElementAnchor): void {
 		if (!enabled || (!active && !pending)) return;
+		// The remark is written in the pane, under the full-screen preview.
+		enlarged = false;
 		if (pending && onPendingChange) onPendingChange(anchor);
 		else onDraft({ anchor });
 	}
@@ -308,6 +394,12 @@
 		// Inner surfaces (the composer, the file list, find) stop Escape first; what is left here
 		// would close the pane, so while choosing it only leaves annotate mode.
 		if (ev.key !== 'Escape' || ev.defaultPrevented || ev.isComposing) return;
+		if (enlarged) {
+			ev.preventDefault();
+			ev.stopPropagation();
+			enlarged = false;
+			return;
+		}
 		if (!onCancel || (!active && !pending)) return;
 		ev.preventDefault();
 		ev.stopPropagation();
@@ -342,6 +434,12 @@
 		if (port && channel) post(port, navMessage(channel, dir));
 	}
 
+	function pickDevice(next: ViewportDevice): void {
+		if (next === device) return;
+		device = next;
+		saveViewportDevice(next);
+	}
+
 	function chipTitle(row: Annotation, n: number): string {
 		const lines = [`${n}. ${row.body}`];
 		if (notFound.has(row.id)) lines.push(labels.notFound);
@@ -353,7 +451,7 @@
 <svelte:window onmessage={onWindowMessage} />
 <svelte:document onkeydown={onDocumentKey} />
 
-<div class="html-annot min-w-0" data-html-annotator>
+<div class="html-annot min-w-0" class:is-enlarged={enlarged} data-html-annotator bind:this={rootEl}>
 	{#if injecting}
 		<div class="html-annot-bar flex items-center gap-6 min-w-0 px-6 py-4" data-html-annot-bar data-annotator-bar>
 			{#if drawn.length > 0}
@@ -388,19 +486,100 @@
 			{/if}
 		</div>
 	{/if}
-	{#if src}
-		<iframe
-			bind:this={frame}
-			{title}
-			class="artifact-frame"
-			class:is-picking={picking}
-			{src}
-			sandbox={HTML_PREVIEW_SANDBOX}
-			referrerpolicy="no-referrer"
-			style:color-scheme={scheme}
-			onload={onFrameLoad}
-		></iframe>
-	{/if}
+	<div class="html-stage" class:is-dark={scheme === 'dark'} class:is-annotating={active} data-html-stage>
+		<div class="html-stage-room" bind:clientWidth={roomWidth} bind:clientHeight={roomHeight}>
+			<div
+				class="html-device is-{device}"
+				data-device={device}
+				style:width="{layout.frame.width}px"
+				style:height="{layout.frame.height}px"
+				style:--screen-w="{layout.screen.width}px"
+				style:--screen-h="{layout.screen.height}px"
+				style:--bezel-side="{layout.bezel.side}px"
+				style:--bezel-top="{layout.bezel.top}px"
+				style:--bezel-bottom="{layout.bezel.bottom}px"
+				style:--device-radius="{layout.radius}px"
+				style:--device-base="{layout.base}px"
+			>
+				<div class="html-device-body">
+					<div class="html-device-screen" class:is-picking={picking}>
+						{#if src}
+							<iframe
+								bind:this={frame}
+								{title}
+								class="artifact-frame"
+								{src}
+								sandbox={HTML_PREVIEW_SANDBOX}
+								referrerpolicy="no-referrer"
+								style:color-scheme={scheme}
+								style:width="{layout.page.width}px"
+								style:height="{layout.page.height}px"
+								style:transform="scale({layout.page.scale})"
+								onload={onFrameLoad}
+							></iframe>
+						{/if}
+					</div>
+				</div>
+				{#if device === 'desktop'}
+					<div class="html-device-base" aria-hidden="true"></div>
+				{/if}
+			</div>
+		</div>
+		<div class="html-viewport-bar" role="group" aria-label={labels.viewport.group} data-html-viewport-bar>
+			{#each VIEWPORT_DEVICES as option (option)}
+				<button
+					type="button"
+					class="html-viewport-option"
+					aria-pressed={device === option}
+					title={labels.viewport[option]}
+					data-viewport-device={option}
+					onclick={() => pickDevice(option)}
+				>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						{#if option === 'desktop'}
+							<rect x="4" y="4" width="16" height="11" rx="1.5"></rect>
+							<path d="M2 19h20"></path>
+						{:else if option === 'tablet'}
+							<rect x="5" y="2" width="14" height="20" rx="2"></rect>
+							<path d="M11 18h2"></path>
+						{:else}
+							<rect x="7" y="2" width="10" height="20" rx="2.5"></rect>
+							<path d="M11 5h2"></path>
+						{/if}
+					</svg>
+					<span class="html-viewport-name">{labels.viewport[option]}</span>
+				</button>
+			{/each}
+			<span
+				class="html-viewport-size"
+				data-html-viewport-size
+				title={layout.page.width !== layout.width ? labels.viewport.zoomed(Math.round(layout.page.width)) : undefined}
+			>{layout.width} × {layout.height} · {Math.round(layout.scale * 100)}%</span>
+			<button
+				type="button"
+				class="html-viewport-option html-viewport-enlarge"
+				aria-pressed={enlarged}
+				aria-label={enlarged ? labels.viewport.shrink : labels.viewport.enlarge}
+				title={enlarged ? labels.viewport.shrink : labels.viewport.enlarge}
+				data-html-enlarge
+				onclick={() => (enlarged = !enlarged)}
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					{#if enlarged}
+						<path d="M9 4v5H4"></path>
+						<path d="M15 4v5h5"></path>
+						<path d="M9 20v-5H4"></path>
+						<path d="M15 20v-5h5"></path>
+					{:else}
+						<path d="M4 9V4h5"></path>
+						<path d="M20 9V4h-5"></path>
+						<path d="M4 15v5h5"></path>
+						<path d="M20 15v5h-5"></path>
+					{/if}
+				</svg>
+			</button>
+		</div>
+	</div>
 </div>
 
 <style>
@@ -411,6 +590,26 @@
 		width: 100%;
 		height: 100%;
 		min-height: 0;
+	}
+	/* Filling the window. As a popover it is in the top layer; this also undoes the UA's popover box. */
+	.html-annot.is-enlarged {
+		position: fixed;
+		inset: 0;
+		z-index: 1000;
+		width: auto;
+		height: auto;
+		max-width: none;
+		max-height: none;
+		margin: 0;
+		padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+			max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+		border: 0;
+		overflow: hidden;
+		color: var(--ink);
+		background: var(--bg);
+	}
+	.html-annot.is-enlarged .html-stage {
+		border-radius: var(--radius-lg);
 	}
 	.html-annot-bar {
 		flex: none;
@@ -500,17 +699,234 @@
 		opacity: 0.5;
 		cursor: default;
 	}
-	.artifact-frame {
+	/*
+	 * The desk the device sits on. Its room is inset from the top by the preview's floating
+	 * 「源码」 pill (hidden while elements are being picked) and from the bottom by the device bar.
+	 */
+	.html-stage {
+		--bar-h: 30px;
+		--device-body: #1c1e23;
+		--device-rim: rgba(255, 255, 255, 0.07);
+		--device-edge: rgba(15, 23, 42, 0.22);
+		--device-shadow: 0 24px 48px -20px rgba(15, 23, 42, 0.45), 0 8px 16px -8px rgba(15, 23, 42, 0.22);
+		--device-lens: #2c3038;
+		--device-metal-hi: #e6e8ec;
+		--device-metal-lo: #b1b5bd;
+		position: relative;
 		flex: 1 1 auto;
-		width: 100%;
-		height: 100%;
 		min-height: 280px;
+		overflow: hidden;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
+		background:
+			radial-gradient(110% 80% at 50% 0%, color-mix(in srgb, var(--pane) 75%, transparent), transparent 72%),
+			var(--bg);
+		container: html-stage / inline-size;
+	}
+	.html-stage.is-dark {
+		--device-body: #0a0c10;
+		--device-rim: rgba(255, 255, 255, 0.1);
+		--device-edge: rgba(255, 255, 255, 0.12);
+		--device-shadow: 0 24px 48px -20px rgba(0, 0, 0, 0.8), 0 8px 16px -8px rgba(0, 0, 0, 0.5);
+		--device-lens: #1f232b;
+		--device-metal-hi: #6c717a;
+		--device-metal-lo: #3a3e46;
+	}
+	.html-stage-room {
+		position: absolute;
+		inset: 44px 16px calc(var(--bar-h) + 20px);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.html-stage.is-annotating .html-stage-room,
+	.html-annot.is-enlarged .html-stage-room {
+		top: 16px;
+	}
+
+	.html-device {
+		position: relative;
+		flex: none;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+	.html-device-body {
+		position: relative;
+		padding: var(--bezel-top) var(--bezel-side) var(--bezel-bottom);
+		border-radius: var(--device-radius);
+		background: var(--device-body);
+		box-shadow:
+			inset 0 0 0 1px var(--device-rim),
+			0 0 0 1px var(--device-edge),
+			var(--device-shadow);
+	}
+	/* The camera, centred in the top bezel; a phone's is the earpiece slot. */
+	.html-device-body::before {
+		content: '';
+		position: absolute;
+		top: calc(var(--bezel-top) / 2);
+		left: 50%;
+		width: max(3px, calc(var(--bezel-top) * 0.26));
+		height: max(3px, calc(var(--bezel-top) * 0.26));
+		border-radius: 999px;
+		transform: translate(-50%, -50%);
+		background: var(--device-lens);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+	}
+	.html-device.is-phone .html-device-body::before {
+		width: calc(var(--screen-w) * 0.2);
+		height: max(2px, calc(var(--bezel-top) * 0.3));
+	}
+	.html-device-screen {
+		position: relative;
+		width: var(--screen-w);
+		height: var(--screen-h);
+		overflow: hidden;
+		border-radius: max(2px, calc(var(--device-radius) - var(--bezel-side)));
 		background: var(--pane);
 	}
-	.artifact-frame.is-picking {
-		border-color: var(--accent);
+	.html-device-screen.is-picking {
+		box-shadow: 0 0 0 2px var(--accent);
+	}
+	.artifact-frame {
+		display: block;
+		border: 0;
+		transform-origin: 0 0;
+		background: var(--pane);
+	}
+
+	/* A laptop: the lid is squarer at the hinge, and sits on a metal base a little wider than it. */
+	.html-device.is-desktop .html-device-body {
+		border-radius: var(--device-radius) var(--device-radius) calc(var(--device-radius) * 0.3) calc(var(--device-radius) * 0.3);
+	}
+	.html-device.is-desktop .html-device-screen {
+		border-radius: max(1px, calc(var(--device-radius) * 0.25));
+	}
+	.html-device-base {
+		position: relative;
+		width: 100%;
+		height: var(--device-base);
+		border-radius: 1px 1px calc(var(--device-base) * 2) calc(var(--device-base) * 2) / 1px 1px var(--device-base) var(--device-base);
+		background: linear-gradient(to bottom, var(--device-metal-hi), var(--device-metal-lo));
+		box-shadow: 0 0 0 1px var(--device-edge), var(--device-shadow);
+	}
+	/* The notch you open it by. */
+	.html-device-base::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 50%;
+		width: 15%;
+		height: 42%;
+		transform: translateX(-50%);
+		border-radius: 0 0 999px 999px;
+		background: var(--device-metal-lo);
+		box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.18);
+	}
+
+	/* A phone's side buttons: power on the right, volume on the left. */
+	.html-device.is-phone {
+		--button-w: max(2px, calc(var(--screen-w) * 0.008));
+	}
+	.html-device.is-phone::before,
+	.html-device.is-phone::after {
+		content: '';
+		position: absolute;
+		width: var(--button-w);
+		background: var(--device-body);
+		box-shadow: 0 0 0 1px var(--device-edge);
+	}
+	.html-device.is-phone::before {
+		right: calc(var(--button-w) * -1);
+		top: 26%;
+		height: 11%;
+		border-radius: 0 2px 2px 0;
+	}
+	.html-device.is-phone::after {
+		left: calc(var(--button-w) * -1);
+		top: 21%;
+		height: 15%;
+		border-radius: 2px 0 0 2px;
+	}
+
+	.html-viewport-bar {
+		position: absolute;
+		left: 50%;
+		bottom: 10px;
+		z-index: 2;
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		max-width: calc(100% - 24px);
+		height: var(--bar-h);
+		padding: 0 3px;
+		transform: translateX(-50%);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--pane) 88%, transparent);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		box-shadow: var(--shadow-xs);
+		white-space: nowrap;
+	}
+	.html-viewport-option {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		height: calc(var(--bar-h) - 6px);
+		padding: 0 9px 0 8px;
+		border: 0;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--ink-secondary);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.html-viewport-option svg {
+		flex: none;
+	}
+	.html-viewport-option:hover {
+		color: var(--accent);
+	}
+	.html-viewport-option[aria-pressed='true'] {
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+	.html-viewport-option:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+	.html-viewport-size {
+		margin-left: 6px;
+		padding: 0 6px 0 9px;
+		border-left: 1px solid var(--line);
+		color: var(--muted);
+		font-size: 11px;
+		line-height: 14px;
+		font-variant-numeric: tabular-nums;
+	}
+	@container html-stage (max-width: 440px) {
+		.html-viewport-name {
+			display: none;
+		}
+		.html-viewport-option {
+			padding: 0 8px;
+		}
+	}
+	.html-viewport-enlarge {
+		padding: 0 7px;
+		border-left: 1px solid var(--line);
+		border-radius: 0 999px 999px 0;
+	}
+	@container html-stage (max-width: 300px) {
+		.html-viewport-size {
+			display: none;
+		}
 	}
 	@media (max-width: 680px) {
 		.html-annot-bar {
@@ -529,6 +945,12 @@
 		}
 		.html-annot-chip {
 			line-height: 38px;
+		}
+		.html-stage {
+			--bar-h: 44px;
+		}
+		.html-viewport-option {
+			min-width: 40px;
 		}
 	}
 </style>

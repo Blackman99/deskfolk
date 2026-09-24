@@ -833,25 +833,42 @@ function scanHead(html: string): HeadScan {
  * tag carries the CSP nonce like the page's own scripts do.
  */
 export function injectPicker(html: string, opts: { channel: string; nonce?: string | null; settleMs?: number }): string {
-  const token = opts.nonce?.trim();
-  const attr = token && !/["'<>]/.test(token) ? ` nonce="${token}"` : "";
-  const tag = `<script${attr}>${pickerScriptSource(opts.channel, { settleMs: opts.settleMs })}</script>`;
+  return injectAtHeadStart(html, `<script${nonceAttr(opts.nonce)}>${pickerScriptSource(opts.channel, { settleMs: opts.settleMs })}</script>`);
+}
+
+/** ` nonce="…"` for a tag the preview adds, or nothing when there is no usable nonce. */
+export function nonceAttr(nonce: string | null | undefined): string {
+  const token = nonce?.trim();
+  return token && !/["'<>]/.test(token) ? ` nonce="${token}"` : "";
+}
+
+/** `markup` in front of everything the page runs, placed as {@link injectPicker} describes. */
+export function injectAtHeadStart(html: string, markup: string): string {
   const at = scanHead(html);
   const splice = (index: number, text: string): string => html.slice(0, index) + text + html.slice(index);
-  if (at.headEnd >= 0) return splice(at.headEnd, tag);
-  if (at.htmlEnd >= 0) return splice(at.htmlEnd, `<head>${tag}</head>`);
-  return splice(Math.max(at.doctypeEnd, 0), `<head>${tag}</head>`);
+  if (at.headEnd >= 0) return splice(at.headEnd, markup);
+  if (at.htmlEnd >= 0) return splice(at.htmlEnd, `<head>${markup}</head>`);
+  return splice(Math.max(at.doctypeEnd, 0), `<head>${markup}</head>`);
 }
 
 /**
  * The preview's HTML, built the way the pane builds it (colour scheme, then the CSP nonce on the
- * page's own scripts and styles), plus the picker when there is a channel — only in annotate mode.
+ * page's own scripts and styles), plus the device helper when there is one (html-viewport.ts) and
+ * the picker when there is a channel — only in annotate mode. The picker still runs first.
  */
 export function annotatorSource(
   raw: string,
-  opts: { scheme: "light" | "dark"; nonce: string | null | undefined; channel: string | null; settleMs?: number },
+  opts: {
+    scheme: "light" | "dark";
+    nonce: string | null | undefined;
+    channel: string | null;
+    settleMs?: number;
+    /** Markup from `viewportHelperMarkup`, already carrying the nonce. */
+    viewport?: string;
+  },
 ): string {
-  const page = injectHtmlPreviewNonce(injectHtmlPreviewColorScheme(raw, opts.scheme), opts.nonce);
+  const colored = injectHtmlPreviewNonce(injectHtmlPreviewColorScheme(raw, opts.scheme), opts.nonce);
+  const page = opts.viewport ? injectAtHeadStart(colored, opts.viewport) : colored;
   return opts.channel ? injectPicker(page, { channel: opts.channel, nonce: opts.nonce, settleMs: opts.settleMs }) : page;
 }
 
