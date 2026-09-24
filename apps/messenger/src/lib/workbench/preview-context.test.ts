@@ -34,6 +34,28 @@ test('legacy path tabs and attachment-only tabs recover their source', () => {
   expect(previewContext({ ...content, relpath: null }, [message]).relpath).toBe('work/a.md');
 });
 
+test('an on-screen stand-in saved by an older build is dropped and never picked as the attachment', () => {
+  // What older builds wrote back after a click: the file on screen, under a made-up id.
+  const standIn = { id: 'virtual-preview-work/c.md', message_id: 'm', workspace_relpath: 'work/c.md', original_filename: 'c.md', created_at: '' };
+  const context = previewContext({ ...content, relpath: 'work/c.md', attachmentId: standIn.id, siblings: [attachment, standIn] }, []);
+  expect(context.attachment).toBeNull();
+  expect(context.siblings.map((a) => a.workspace_relpath)).toEqual(['work/a.md']);
+  expect(context.handedOver).toEqual([attachment]);
+});
+
+test('what a tab keeps never includes the stand-in for the file on screen', () => {
+  const context = previewContext({ ...content, taskId: null, relpath: 'work/c.md', attachmentId: null }, []);
+  expect(context.siblings.map((a) => a.workspace_relpath)).toContain('work/c.md');
+  expect(context.handedOver.map((a) => a.workspace_relpath)).toEqual(['work/a.md']);
+});
+
+test('in a job the file on screen is not stood in as one this message handed over', () => {
+  const context = previewContext({ ...content, relpath: 'work/c.md', attachmentId: null }, []);
+  expect(context.siblings.map((a) => a.workspace_relpath)).toEqual(['work/a.md']);
+  expect(previewContext({ ...content, taskId: null, relpath: 'work/c.md', attachmentId: null }, []).siblings.map((a) => a.workspace_relpath))
+    .toEqual(['work/a.md', 'work/c.md']);
+});
+
 test('malformed stored sibling data is ignored and an unlisted selection remains in the tree', () => {
   const restored = contentOfTab({ id: 't', kind: 'preview', params: { relpath: 'work/missing.md', siblings: '{' } });
   if (restored?.kind !== 'preview') throw new Error('preview expected');

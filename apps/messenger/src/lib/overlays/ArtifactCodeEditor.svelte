@@ -61,6 +61,13 @@
 		onPickAnnotation,
 		loadMonaco = ensureMonaco,
 	}: Props = $props();
+	/**
+	 * The file, compared by value. A conversation's preview hands `path` down as a field of the
+	 * object the pane derives from the transcript, so reading the prop depends on that object, and
+	 * every new message or switch of conversation remade it: the editor below was thrown away and
+	 * built again for the same file, back at line 1, and an unsaved edit went with it.
+	 */
+	const file = $derived(path);
 	let host = $state<HTMLDivElement | undefined>(undefined);
 	let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
 	/** Set once the editor exists, so decoration effects re-run for it. */
@@ -197,7 +204,7 @@
 	$effect(() => {
 		const el = host;
 		if (!el) return;
-		const file = path;
+		const opened = file;
 		const doc = untrack(() => code);
 		const wrapOn = untrack(() => wrap);
 		let cancelled = false;
@@ -220,7 +227,7 @@
 					import('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css'),
 				]);
 				if (cancelled || !el.isConnected) return;
-				const lang = monacoLanguageFromPath(file);
+				const lang = monacoLanguageFromPath(opened);
 				created = monaco.editor.create(el, {
 					value: doc,
 					language: 'plaintext',

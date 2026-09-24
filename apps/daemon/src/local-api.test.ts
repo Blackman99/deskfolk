@@ -200,6 +200,40 @@ describe("local api auth", () => {
   });
 });
 
+describe("a job's files", () => {
+  test("a cited file deleted since is gone from the list, and the trace says so", async () => {
+    const h = await start();
+    const ws = mkdtempSync(join(tmpdir(), "real-bot-ws-job-"));
+    await h.store.patchSettings({ workspace_path: ws });
+    const { bot, direct_session: session } = h.store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const trigger = h.store.postMessage(session.id, { body: "出图" });
+    const turn = h.store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: trigger.id });
+    mkdirSync(join(ws, "out"));
+    writeFileSync(join(ws, "out", "kept.png"), noisePng(4, 4));
+    h.store.insertMessage({
+      sessionId: session.id,
+      turnId: turn.id,
+      kind: "bot",
+      author: bot.id,
+      body: "两张",
+      paths: ["out/kept.png", "out/deleted.png"],
+    });
+
+    const listed = await fetch(`${h.origin}/v1/tasks/${turn.task_id}/artifacts`, { headers: auth(h) });
+    expect(listed.status).toBe(200);
+    expect(((await listed.json()) as { items: Array<{ path: string }> }).items.map((row) => row.path)).toEqual(["out/kept.png"]);
+
+    const traced = await fetch(`${h.origin}/v1/tasks/${turn.task_id}/trace`, { headers: auth(h) });
+    const trace = (await traced.json()) as { nodes: Array<{ artifacts: Array<{ path: string; exists?: boolean }> }> };
+    const files = trace.nodes.flatMap((node) => node.artifacts);
+    expect(Object.fromEntries(files.map(({ path, exists }) => [path, exists]))).toEqual({
+      "out/kept.png": true,
+      "out/deleted.png": false,
+    });
+    rmSync(ws, { recursive: true, force: true });
+  });
+});
+
 describe("empty roster and settings", () => {
   test("GET bots is an empty items list", async () => {
     const h = await start();

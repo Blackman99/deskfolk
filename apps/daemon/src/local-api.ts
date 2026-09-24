@@ -1246,7 +1246,7 @@ function dispatch(
         dir: task.dir,
         title: task.title,
         closed_at: task.closed_at,
-        items: store.taskArtifacts(task.id),
+        items: store.taskArtifacts(task.id, store.citedPathExists),
       },
       200,
       null,
@@ -1260,6 +1260,9 @@ function dispatch(
     const records = new Map(store.listTaskRoutes(params.id!).map((record) => [record.turn_id, record]));
     const reviews = new Map(store.listTaskReviews(params.id!).map((row) => [row.turn_id, reviewOut(store, row)]));
     const learnings = new Map(store.listTaskLearnings(params.id!).map((row) => [row.chain_id, learningOut(store, row)]));
+    // A card's files open the preview as its tree; one deleted since must not come back there.
+    const cited = new Set(trace.nodes.flatMap((node) => node.artifacts.map((file) => file.path)));
+    const gone = store.transaction(() => new Set([...cited].filter((file) => !store.citedPathExists(file))));
     return jsonResponse(
       {
         ...trace,
@@ -1267,6 +1270,7 @@ function dispatch(
           const record = records.get(node.turn_id);
           const routed = {
             ...node,
+            artifacts: node.artifacts.map((file) => ({ ...file, exists: !gone.has(file.path) })),
             route: record
               ? {
                   record,

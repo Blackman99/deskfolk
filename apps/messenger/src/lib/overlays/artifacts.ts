@@ -224,17 +224,26 @@ export function previewLoadKey(opts: {
   return opts.attachmentId ? `${opts.kind}|att:${opts.attachmentId}` : null;
 }
 
+/**
+ * Stand-ins shaped like an attachment for a file no attachment row backs — one a message names
+ * without attaching, or the file on screen that nothing listed. Their ids are made up, so asking
+ * the attachment endpoint for one is a 404 that reads as "file is gone" for a file that is there.
+ */
+export function isPlaceholderAttachment(att: { id?: string } | null | undefined): boolean {
+  return typeof att?.id === "string" && att.id.startsWith("virtual-");
+}
+
 /** Where the preview pane should fetch bytes. Chat links that never became attachments still live in the workspace. */
 export function artifactByteSource(opts: {
   mode: "cited" | "workspace";
   relpath: string;
-  attachment?: { exists?: boolean; is_dir?: boolean } | null;
+  attachment?: { id?: string; exists?: boolean; is_dir?: boolean } | null;
 }): ArtifactByteSource | null {
   const path = opts.relpath.trim();
   if (!path) return null;
   if (opts.attachment?.is_dir) return null;
   if (opts.mode === "workspace") return "workspace";
-  if (opts.attachment && opts.attachment.exists !== false) return "attachment";
+  if (opts.attachment && opts.attachment.exists !== false && !isPlaceholderAttachment(opts.attachment)) return "attachment";
   return "workspace";
 }
 

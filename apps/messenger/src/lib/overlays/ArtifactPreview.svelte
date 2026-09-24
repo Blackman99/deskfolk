@@ -129,6 +129,13 @@
 
 	let blobUrl = $state<string | null>(null);
 	/**
+	 * Which file `blobUrl` holds. Picking another file changes `kind` at once while its bytes are
+	 * still on the way, so a `<video>` was handed the picture before it, failed to play it, and
+	 * left the video reading "file is gone".
+	 */
+	let blobPath = $state<string | null>(null);
+	const shownBlob = $derived(blobPath === relpath ? blobUrl : null);
+	/**
 	 * A picture enlarged over the whole app, the way one in a message is: this file when it is an
 	 * image (`own`, shown from the bytes already here), or an image in this Markdown. Only while
 	 * the preview still shows the file it was opened from, so it never outlives what it borrows.
@@ -437,6 +444,8 @@
 	let hashFresh = $state(false);
 	/** The PDF's bytes, for the pdf.js viewer. */
 	let pdfBlob = $state<Blob | null>(null);
+	/** The PDF's bytes only while they are the file on screen's, like `shownBlob`. */
+	const shownPdf = $derived(blobPath === relpath ? pdfBlob : null);
 	let pdfViewer = $state<{ openFind: () => void; closeFind: () => boolean } | null>(null);
 	/** An SVG's source, kept so an image annotation can size a drawing that declares no size. */
 	let svgRaw = $state<string | null>(null);
@@ -512,7 +521,10 @@
 			});
 	});
 
-	let ownPaths = $derived(siblings.map((row) => row.workspace_relpath));
+	/** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
+	let ownPaths = $derived(
+		siblings.filter((row) => row.exists !== false).map((row) => row.workspace_relpath)
+	);
 	/**
 	 * The job's files, anchored at its work dir, with this message's own marked — relevance is
 	 * "somebody cited it", so a file an earlier turn produced is still one click away. Falls back
@@ -668,6 +680,7 @@
 		liveBlob = null;
 		blobUrl = null;
 		pdfBlob = null;
+		blobPath = null;
 	}
 
 	async function loadWorkspaceDir(dirPath: string): Promise<void> {
@@ -765,6 +778,7 @@
 					mediaSource = stream;
 					streamed = true;
 					blobUrl = stream.url;
+					blobPath = path;
 					text = null;
 					diskText = null;
 					return;
@@ -788,6 +802,7 @@
 					if (liveBlob) URL.revokeObjectURL(liveBlob);
 					liveBlob = next;
 					blobUrl = next;
+					blobPath = path;
 					text = null;
 					diskText = null;
 				} else {
@@ -810,6 +825,7 @@
 			blobUrl = next;
 			// pdf.js reads the bytes, not a URL.
 			pdfBlob = previewKind === 'pdf' ? blob : null;
+			blobPath = path;
 			text = null;
 			diskText = null;
 		} catch {
@@ -851,6 +867,7 @@
 			// The copy's hash was the copy's; an annotation names the file's.
 			loadedEtag = etagForBlob(blob);
 			hashFresh = true;
+			blobPath = path;
 			reducedFrom = null;
 		} catch {
 			// The copy stays on screen, and so does the offer.
@@ -1216,7 +1233,7 @@
 						{/if}
 					</button>
 				{/if}
-				{#if kind === 'image' && blobUrl && !loading && reducedFrom !== null}
+				{#if kind === 'image' && shownBlob && !loading && reducedFrom !== null}
 					<button
 						type="button"
 						class="artifact-source-toggle artifact-original-toggle"
@@ -1285,13 +1302,13 @@
 							/>
 						{/if}
 					{:else if kind === "image" || kind === "svg"}
-						{#if blobUrl}
+						{#if shownBlob}
 							<!--
 								A box is drawn on the picture itself: a remote copy has neither the original's size nor
 								its hash, so it takes no new box (annotate mode fetches the original first).
 							-->
 							<ImageAnnotator
-								src={blobUrl}
+								src={shownBlob}
 								alt={relpath}
 								isSvg={kind === 'svg'}
 								svgText={svgRaw}
@@ -1310,10 +1327,10 @@
 								onOpen={(img) => enlarge(relpath, true, img)}
 							/>
 						{/if}
-					{:else if (kind === "audio" || kind === "video") && blobUrl}
+					{:else if (kind === "audio" || kind === "video") && shownBlob}
 						<!-- Streamed remotely the clip has no whole-file hash to hang a new point on. -->
 						<MediaAnnotator
-							src={blobUrl}
+							src={shownBlob}
 							kind={kind}
 							annotations={viewAnnotations}
 							focusId={annotFocus}
@@ -1330,10 +1347,10 @@
 								loadAbort?.abort();
 							}}
 						/>
-					{:else if kind === "pdf" && pdfBlob}
+					{:else if kind === "pdf" && shownPdf}
 						<PdfViewer
 							bind:this={pdfViewer}
-							data={pdfBlob}
+							data={shownPdf}
 							theme={resolvedTheme}
 							labels={t.stream.annotPdf}
 							annotations={viewAnnotations}
@@ -1457,7 +1474,7 @@
 	<MessageImageLightbox
 		attachment={shownEnlarged.own ? attachment : null}
 		relpath={shownEnlarged.relpath}
-		src={shownEnlarged.own ? blobUrl : null}
+		src={shownEnlarged.own ? shownBlob : null}
 		srcOriginalSize={shownEnlarged.own ? reducedFrom : null}
 		placeholder={shownEnlarged.placeholder}
 		origin={shownEnlarged.origin}

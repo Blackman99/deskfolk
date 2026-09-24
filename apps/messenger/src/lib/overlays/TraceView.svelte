@@ -814,6 +814,7 @@
 			workspace_relpath: file.path,
 			original_filename: file.path.split('/').pop() || file.path,
 			created_at: node.created_at,
+			...(file.exists === undefined ? {} : { exists: file.exists }),
 		}));
 		const target = firstPreviewable(siblings);
 		if (onOpenArtifact) {

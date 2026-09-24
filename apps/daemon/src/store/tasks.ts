@@ -116,11 +116,20 @@ export type TaskArtifact = {
  * Listing the folder would hand back the daemon's spill and every throwaway; listing one turn
  * would drop whatever the Bot before the handoff produced. The union of what this job's messages
  * cited is the set a reader actually wants, and it is already recorded.
+ *
+ * A cited file that has since been deleted is left out (`present` says which are still there):
+ * the list is for opening files, and a row that can only answer "file is gone" is not one. The
+ * cap counts what survives, so deleted files never crowd live ones out of it.
  */
-export function taskArtifacts(ctx: StoreContext, taskId: string, limit = 200): TaskArtifact[] {
+export function taskArtifacts(
+  ctx: StoreContext,
+  taskId: string,
+  present: (path: string) => boolean,
+  limit = 200,
+): TaskArtifact[] {
   getTask(ctx, taskId);
-  return ctx.db
-    .query<TaskArtifact, [string, number]>(
+  const cited = ctx.db
+    .query<TaskArtifact, [string]>(
       `SELECT a.workspace_relpath AS path,
               MAX(m.created_at) AS last_cited_at,
               MAX(m.turn_id) AS turn_id
@@ -128,10 +137,15 @@ export function taskArtifacts(ctx: StoreContext, taskId: string, limit = 200): T
        JOIN messages m ON m.id = a.message_id
        WHERE m.task_id = ?
        GROUP BY a.workspace_relpath
-       ORDER BY last_cited_at DESC, path ASC
-       LIMIT ?`,
+       ORDER BY last_cited_at DESC, path ASC`,
     )
-    .all(taskId, limit);
+    .all(taskId);
+  const out: TaskArtifact[] = [];
+  for (const row of cited) {
+    if (out.length >= limit) break;
+    if (present(row.path)) out.push(row);
+  }
+  return out;
 }
 
 export function openTask(

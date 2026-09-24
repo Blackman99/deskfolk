@@ -249,7 +249,7 @@ export type WorkspaceTreeEntry = {
   kind: "file" | "dir";
 };
 
-/** What a work dir's entry lists: every path this job's messages cited, newest citation first. */
+/** What a work dir's entry lists: every path this job's messages cited that is still there, newest citation first. */
 export type TaskArtifacts = {
   id: string;
   dir: string;
@@ -281,7 +281,8 @@ export type TaskTraceNode = {
   /** One line, already clipped. */
   summary: string;
   created_at: string;
-  artifacts: Array<{ path: string; message_id: string; attachment_id: string }>;
+  /** `exists` is set by the trace endpoint; absent from a daemon that predates it. */
+  artifacts: Array<{ path: string; message_id: string; attachment_id: string; exists?: boolean }>;
   /** Set only while the turn is still waiting on you. */
   ask: { message_id: string; question: string } | null;
   approval: { message_id: string | null; summary: string } | null;

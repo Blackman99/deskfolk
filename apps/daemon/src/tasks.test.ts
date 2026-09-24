@@ -3,6 +3,9 @@ import { INTERRUPT_NOTE_BODY } from "@real-bot/protocol";
 import { Store } from "./store";
 import { isReservedTaskPath, TASK_QUIET_MS, taskDirName } from "./store/tasks";
 
+/** The listing tests are about which job a file belongs to; whether it is still on disk is its own test. */
+const everything = () => true;
+
 function fixture() {
   const store = new Store();
   const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
@@ -301,7 +304,7 @@ describe("what a work dir's entry lists", () => {
       paths: [`${dir}/charts/q3.png`],
     });
 
-    const listed = store.taskArtifacts(first.task_id!);
+    const listed = store.taskArtifacts(first.task_id!, everything);
     // One row per path however many messages cited it, and the work dir is not the filter:
     // `report.md` lives outside it and still belongs to this job.
     expect(listed.map((row) => row.path).sort()).toEqual(
@@ -339,8 +342,28 @@ describe("what a work dir's entry lists", () => {
       paths: ["b.md"],
     });
 
-    expect(store.taskArtifacts(one.task_id!).map((r) => r.path)).toEqual(["a.md"]);
-    expect(store.taskArtifacts(two.task_id!).map((r) => r.path)).toEqual(["b.md"]);
+    expect(store.taskArtifacts(one.task_id!, everything).map((r) => r.path)).toEqual(["a.md"]);
+    expect(store.taskArtifacts(two.task_id!, everything).map((r) => r.path)).toEqual(["b.md"]);
+    store.close();
+  });
+
+  test("a file deleted since it was cited is left out, and does not use up the cap", () => {
+    const { store, bot, session } = fixture();
+    const trigger = store.postMessage(session.id, { body: "出图" });
+    const turn = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: trigger.id });
+    store.insertMessage({
+      sessionId: session.id,
+      turnId: turn.id,
+      kind: "bot",
+      author: bot.id,
+      body: "三张",
+      paths: ["0-gone.png", "a.png", "b.png"],
+    });
+    const present = (path: string) => path !== "0-gone.png";
+
+    expect(store.taskArtifacts(turn.task_id!, present).map((r) => r.path)).toEqual(["a.png", "b.png"]);
+    // Same citation time, so the deleted one sorts first: a cap taken before the filter keeps one.
+    expect(store.taskArtifacts(turn.task_id!, present, 2).map((r) => r.path)).toEqual(["a.png", "b.png"]);
     store.close();
   });
 });
