@@ -1,5 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import type { RuntimeSnapshot, SessionSnapshot, SyncFrame } from "@real-bot/protocol";
+import type {
+  RuntimeSnapshot,
+  SessionSnapshot,
+  SyncFrame,
+} from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { LocalApi } from "./local-api.ts";
 import { emptySnapshot } from "./snapshot.ts";
@@ -473,11 +477,14 @@ for (const operation of ['create', 'patch', 'delete'] as const) for (const rejec
 test("unsent in-memory drafts require confirm after reconnect and are not sent automatically", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");
+  // A draft belongs to a conversation, so there has to be one open to have typed into.
+  runtime.selectedId = "direct-1";
   runtime.draft = "keep this";
   Socket.current.close();
   // A dropped socket is not yet "unreachable": the page says it is reconnecting.
   await until(() => runtime.connection !== "connected");
-  expect(runtime.draftReconnect).toEqual({ draft: "keep this", confirm: false });
+  // Kept with the conversation it was typed in, so it goes back there and nowhere else.
+  expect(runtime.draftReconnect).toEqual({ sessionId: "direct-1", draft: "keep this", confirm: false });
   runtime.confirmDraftReconnect();
   expect(runtime.draftReconnect?.confirm).toBe(true);
   runtime.discardDraftReconnect();
@@ -920,6 +927,15 @@ test("terminal bytes on the event socket do not drop the connection", async () =
   expect(runtime.activity.forTurn("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toHaveLength(1);
 });
 
+test("annotations: opening the file drop asks for none — nothing there has a Bot to hand anything over", async () => {
+  const { FILE_DROP_SESSION_ID } = await import("@real-bot/protocol");
+  const h = await credentialFixture("/v1/annotations");
+  h.drain();
+  await h.runtime.selectSession(FILE_DROP_SESSION_ID);
+  h.drain();
+  expect(h.requests.filter((r) => r.path === "/v1/annotations" && r.method === "GET")).toEqual([]);
+});
+
 test("annotations: a draft made through the runtime, sent as one quoted reply, follows the events", async () => {
   const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
@@ -965,6 +981,8 @@ test("annotations: a draft made through the runtime, sent as one quoted reply, f
   const message = (created as { payload: { id: string; parent_id: string | null; body: string } }).payload;
   expect(message.parent_id).toBe(delivery.id);
   expect(message.body).toBe("@Writer 两处请改");
+  // It landed where it was sent from: that conversation's own view flashes the reply.
+  expect(h.runtime.sessionView(direct_session.id).highlightedMessageId).toBe(message.id);
   const opened = h.runtime.snapshot.annotations;
   expect(opened.every((row) => row.status === "open" && row.message_id === message.id)).toBe(true);
   expect(h.requests.filter((r) => r.path === "/v1/annotations/send" && r.method === "POST")).toHaveLength(1);
@@ -1091,4 +1109,275 @@ test("annotations: a list read before a create or a delete does not undo it when
   globalThis.fetch = fixtureFetch;
   await h.runtime.loadAnnotations({ relpath: "pick.ts" });
   expect(h.runtime.snapshot.annotations.map((row) => row.id).sort()).toEqual(ids);
+});
+
+test("a board shown in a pane reloads on its own job's turns and messages, and nobody else's", async () => {
+  // A workbench board is a pane, not the overlay whose flags used to decide this, so it never
+  // reloaded: a model choice finished on screen and its card kept saying the turn was live.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const turn = (id: string, taskId: string, seq: number) =>
+    Socket.current.frame({ type: "event", event_instance_id: instance, seq, payload: { ...aTurn({ id, task_id: taskId }), event: "turn.upsert", occurred_at: "now" } });
+  const stop = runtime.watchTrace("task-1");
+  const before = runtime.traceReload;
+  turn("turn-1", "task-1", 1);
+  expect(runtime.traceReload).toBe(before + 1);
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 2, payload: { ...aMessage({ id: "m-2", task_id: "task-1" }), event: "message.created", occurred_at: "now" } });
+  expect(runtime.traceReload).toBe(before + 2);
+  turn("turn-2", "task-2", 3);
+  expect(runtime.traceReload).toBe(before + 2);
+  stop();
+  turn("turn-1", "task-1", 4);
+  expect(runtime.traceReload).toBe(before + 2);
+});
+
+test("each conversation keeps its own read on record", async () => {
+  // One slot for the whole app meant the second conversation's read overwrote the first's, so
+  // coming back to the first re-sent a read the daemon already had — the loop 938d714 removed,
+  // reintroduced by switching. Two panes will make this constant rather than occasional.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const reads: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("/read") && init?.method === "POST") {
+      reads.push(path.slice(path.indexOf("/v1/")));
+      return Response.json({ unread_count: 0, last_read_at: "2026-01-01T00:00:00Z" });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+
+  runtime.selectedId = "sess-a";
+  await runtime.submitBoundedRead("sess-a", "m-1");
+  runtime.selectedId = "sess-b";
+  await runtime.submitBoundedRead("sess-b", "m-1");
+  expect(reads).toHaveLength(2);
+
+  // Back where we were: the same message is already on record for this conversation.
+  runtime.selectedId = "sess-a";
+  await runtime.submitBoundedRead("sess-a", "m-1");
+  expect(reads).toHaveLength(2);
+
+  // A message that really is newer still goes.
+  await runtime.submitBoundedRead("sess-a", "m-2");
+  expect(reads).toHaveLength(3);
+});
+
+test("two readers of one stream both get the bytes", async () => {
+  // One sink per stream id meant the second reader replaced the first without a word. Two panes
+  // showing the same terminal, or two session panes watching the same command, need both.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const first: string[] = [];
+  const second: string[] = [];
+  const dropFirst = runtime.onStream("term-1", (frame) => first.push(frame.data));
+  const dropSecond = runtime.onStream("term-1", (frame) => second.push(frame.data));
+
+  const send = (data: string, offset: number) =>
+    Socket.current.dispatchEvent(new MessageEvent("message", {
+      data: JSON.stringify({ type: "stream", id: "term-1", offset, data }),
+    }));
+
+  send("aGk=", 0);
+  expect(first).toEqual(["aGk="]);
+  expect(second).toEqual(["aGk="]);
+
+  // Letting one go leaves the other listening rather than tearing the id down.
+  dropFirst();
+  send("dGhlcmU=", 2);
+  expect(first).toEqual(["aGk="]);
+  expect(second).toEqual(["aGk=", "dGhlcmU="]);
+
+  dropSecond();
+  send("Z29uZQ==", 7);
+  expect(second).toHaveLength(2);
+});
+
+test("each conversation keeps its own draft and reply target", async () => {
+  // Draft, reply-to and the rest used to be one slot on the runtime, which is what made a second
+  // open conversation impossible. They live on the conversation now; the old names still work.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  runtime.selectedId = "sess-a";
+  runtime.draft = "for A";
+  runtime.replyingToId = "m-a";
+
+  runtime.selectedId = "sess-b";
+  expect(runtime.draft).toBe("");
+  expect(runtime.replyingToId).toBeNull();
+  runtime.draft = "for B";
+
+  runtime.selectedId = "sess-a";
+  expect(runtime.draft).toBe("for A");
+  expect(runtime.replyingToId).toBe("m-a");
+
+  runtime.selectedId = "sess-b";
+  expect(runtime.draft).toBe("for B");
+
+  // And the view is reachable directly, which is how a pane will read it.
+  expect(runtime.sessionView("sess-a").draft).toBe("for A");
+  expect(runtime.sessionView("sess-b").draft).toBe("for B");
+
+  // Nothing is selected: a write has nowhere to land rather than landing somewhere arbitrary.
+  runtime.selectedId = null;
+  expect(runtime.draft).toBe("");
+  runtime.draft = "nowhere";
+  expect(runtime.sessionView("sess-a").draft).toBe("for A");
+});
+
+test("clearing one conversation's history does not invalidate another's read", async () => {
+  // The revision counter was global: any session.cleared threw away a page that was in flight for
+  // a different conversation. Per conversation now, so two panes cannot spoil each other's reads.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+
+  const a = runtime.sessionView("sess-a");
+  const b = runtime.sessionView("sess-b");
+  const before = b.revision;
+
+  Socket.current.frame({
+    type: "event", event_instance_id: instance, seq: 1,
+    payload: { event: "session.cleared", id: "sess-a", occurred_at: "now" },
+  });
+  await until(() => a.revision > 0);
+
+  expect(a.revision).toBe(1);
+  expect(b.revision).toBe(before);
+});
+
+test("a dead socket invalidates every conversation's read at once", async () => {
+  // What the one global counter used to do for connection loss is now its own counter, so it
+  // still cancels everything in flight without also cancelling unrelated conversations.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "sess-a";
+  const a = runtime.sessionView("sess-a");
+  const seqBefore = a.loadSeq;
+
+  Socket.current.close();
+  await until(() => runtime.connection !== "connected");
+
+  // The conversation's own counter is untouched; the connection's moved.
+  expect(a.loadSeq).toBe(seqBefore);
+});
+
+/** A session read the runtime accepts, so selecting or reconnecting does not look like a dropped link. */
+function sessionRead(path: string) {
+  const id = path.match(/\/v1\/sessions\/([^/]+)\/snapshot/)?.[1] ?? "direct-1";
+  return Response.json({ ...cursor, session: { ...aDirect({ id }), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+}
+
+test("a send from one conversation goes to it and holds up only it, whichever is selected", async () => {
+  // Two panes, one keyboard: the selected conversation is whichever pane was clicked last, so
+  // sending by "the selected one" sent the other pane's draft, and one flag held up both.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const posted: string[] = [];
+  const pending = deferred<Response>();
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (init?.method === "POST" && path.includes("/messages")) {
+      posted.push(path.slice(path.indexOf("/v1/")));
+      return pending.promise;
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  runtime.selectedId = "direct-1";
+  runtime.sessionView("direct-1").draft = "to the direct";
+  runtime.sessionView("group-1").draft = "to the group";
+  const sending = runtime.send({ sessionId: "group-1" });
+  expect(runtime.sessionView("group-1").sending).toBe(true);
+  expect(runtime.sessionView("direct-1").sending).toBe(false);
+  expect(runtime.busy).toBe(false);
+  await until(() => posted.length === 1);
+  expect(posted).toEqual(["/v1/sessions/group-1/messages"]);
+  pending.resolve(Response.json(aMessage({ id: "sent-1", session_id: "group-1" })));
+  await sending;
+  expect(runtime.sessionView("group-1").draft).toBe("");
+  expect(runtime.sessionView("direct-1").draft).toBe("to the direct");
+});
+
+test("clicking into a conversation keeps the reply aimed there and its chips", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.endsWith("/snapshot")) return sessionRead(path);
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  const view = runtime.sessionView("direct-1");
+  view.replyingToId = "m-quoted";
+  view.composerSuggestions = [{ id: "s-1", label: "继续", prompt: "继续" }];
+  await runtime.selectSession("direct-1", { preservePage: true });
+  expect(runtime.connection).toBe("connected");
+  expect(view.replyingToId).toBe("m-quoted");
+  expect(view.composerSuggestions.map((row) => row.id)).toEqual(["s-1"]);
+});
+
+test("a new message in a conversation not in front drops the chips drafted for what came before", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "direct-1";
+  const front = runtime.sessionView("direct-1");
+  const behind = runtime.sessionView("group-1");
+  front.composerSuggestions = [{ id: "s-front", label: "a", prompt: "a" }];
+  behind.composerSuggestions = [{ id: "s-behind", label: "b", prompt: "b" }];
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aMessage({ id: "m-new", session_id: "group-1" }), event: "message.created", occurred_at: "now" } });
+  expect(behind.composerSuggestions).toEqual([]);
+  expect(front.composerSuggestions.map((row) => row.id)).toEqual(["s-front"]);
+});
+
+test("a draft kept across a dropped link goes back to the conversation it was typed in", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "direct-1";
+  runtime.draft = "keep this";
+  Socket.current.close();
+  await until(() => runtime.connection !== "connected");
+  runtime.sessionView("direct-1").draft = "";
+  // The keyboard moved to another conversation while the link was down.
+  runtime.selectedId = "group-1";
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  expect(runtime.sessionView("direct-1").draft).toBe("keep this");
+  expect(runtime.sessionView("group-1").draft).toBe("");
+  runtime.discardDraftReconnect();
+  expect(runtime.sessionView("direct-1").draft).toBe("");
+});
+
+test("annotations: a batch that lands in another conversation takes you there, and that conversation follows it", async () => {
+  // A batch on a Bot↔Bot delivery is a reply in your direct with the Bot, not in the conversation
+  // the preview belongs to. What to follow and what to flash belong to where it landed.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.selectedId = "group-1";
+  const sent = aMessage({ id: "m-batch", session_id: "direct-1" });
+  const posted: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (init?.method === "POST" && path.endsWith("/v1/annotations/send")) {
+      posted.push(JSON.parse(String(init.body)).session_id);
+      return Response.json({ message: sent, annotations: [] });
+    }
+    if (path.includes("/v1/sessions/") && path.includes("/snapshot")) return sessionRead(path);
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  expect(await runtime.sendAnnotations("group-1", "", ["01ARZ3NDEKTSV4RRFFQ69G5FC2"])).toBeNull();
+  expect(posted).toEqual(["group-1"]);
+  await until(() => runtime.selectedId === "direct-1");
+  const landed = runtime.sessionView("direct-1");
+  await until(() => landed.detailLoaded && !landed.historyLoading);
+  expect(runtime.connection).toBe("connected");
+  expect(landed.pendingFocusTrigger).toBe("m-batch");
+  expect(landed.highlightedMessageId).toBe("m-batch");
+  expect(runtime.sessionView("group-1").pendingFocusTrigger).toBeNull();
+  // The turn it wakes is followed in that conversation once it shows up.
+  Socket.current.frame({
+    type: "event", event_instance_id: instance, seq: 1,
+    payload: { ...aTurn({ id: "turn-batch", session_id: "direct-1", trigger_message_id: "m-batch" }), event: "turn.upsert", occurred_at: "now" },
+  });
+  expect(landed.focusedTurnId).toBe("turn-batch");
+  expect(landed.pendingFocusTrigger).toBeNull();
 });

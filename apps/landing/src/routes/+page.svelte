@@ -15,7 +15,7 @@
 
 <div class="redirect">
   <Logo size={28} />
-  <span>Real Bot</span>
+  <span>Deskfolk</span>
   <span class="spinner" aria-hidden="true"></span>
 </div>
 

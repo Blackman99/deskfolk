@@ -6,9 +6,9 @@ labels: ""
 assignees: ""
 ---
 
-Real Bot is WIP. Check existing issues first. Remove credentials and personal data from logs and screenshots. Report vulnerabilities privately using SECURITY.md, not this form.
+Deskfolk is WIP. Check existing issues first. Remove credentials and personal data from logs and screenshots. Report vulnerabilities privately using SECURITY.md, not this form.
 
-Real Bot 仍在开发中。请先搜索重复问题；日志、截图和对话必须脱敏。漏洞请按 SECURITY.md 私密报告，不使用本模板。
+Deskfolk 仍在开发中。请先搜索重复问题；日志、截图和对话必须脱敏。漏洞请按 SECURITY.md 私密报告，不使用本模板。
 
 ## Problem / 问题描述
 

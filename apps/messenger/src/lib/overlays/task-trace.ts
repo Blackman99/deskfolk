@@ -11,7 +11,7 @@
  * measured boxes and returns coordinates, nothing more.
  */
 import dagre from "@dagrejs/dagre";
-import type { TaskTrace, TaskTraceNode, TurnStatus } from "@real-bot/protocol";
+import { USER_MEMBER, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
 
 /** Stages past this stop drawing connectors and say who woke them in words. */
 export const TRACE_EDGE_LIMIT = 40;
@@ -120,7 +120,8 @@ function estimateHeight(node: TaskTraceNode): number {
     lines * 20 +
     waiting * 20 +
     (node.passed > 0 ? 18 : 0) +
-    node.artifacts.length * 28
+    (node.route ? 32 : 0) +
+    (node.artifacts.length > 0 ? 38 : 0)
   );
 }
 
@@ -188,6 +189,9 @@ export function clampZoom(scale: number): number {
 /** Where the board sits inside its viewport, and how big it is drawn. */
 export type TraceView = { scale: number; x: number; y: number };
 
+/** A view kept so a remounted board can slide from it. `at` is when it was left. */
+type KeptView = TraceView & { at: number };
+
 /**
  * Zooming keeps the point under the cursor — or under the middle of a pinch — where it is.
  * Scaling around the corner instead makes the board run away from whatever you were reading.
@@ -221,6 +225,120 @@ export function fitView(
   };
 }
 
+/** The message a context-menu "show this job" was opened from. */
+export type TraceFocus = { messageId: string; turnId: string | null };
+
+/**
+ * How well a card is the one that message belongs to. Zero is not it.
+ *
+ * Your own line is the `user:<id>` card. A Bot's line is that turn's card, including an earlier
+ * bubble of the same turn, the 中断 note, and the ask or approval still waiting. Matching the
+ * trigger alone is last, so a line you sent does not land on the Bot it woke.
+ */
+export function focusRank(node: TaskTraceNode, focus: TraceFocus): number {
+  const id = focus.messageId;
+  if (node.focus_message_id === id || node.ask?.message_id === id || node.approval?.message_id === id) {
+    return 5;
+  }
+  if (focus.turnId && node.actor !== USER_MEMBER && node.turn_id === focus.turnId) return 4;
+  if (node.turn_id === `user:${id}`) return 4;
+  if (node.artifacts.some((file) => file.message_id === id)) return 3;
+  if (node.route?.record.feedback.some((note) => note.message_id === id)) return 3;
+  if (node.woken_elsewhere?.message_id === id) return 2;
+  if (node.trigger_message_id === id) return 1;
+  return 0;
+}
+
+/** The card that message is, or null when this job has no such card. */
+export function focusNode(nodes: readonly TaskTraceNode[], focus: TraceFocus): TaskTraceNode | null {
+  let best: TaskTraceNode | null = null;
+  let rank = 0;
+  for (const node of nodes) {
+    const score = focusRank(node, focus);
+    if (score > rank) {
+      best = node;
+      rank = score;
+    }
+  }
+  return best;
+}
+
+/**
+ * The view that puts one card in the middle of the viewport, at a size you can read.
+ *
+ * Fitting the whole board is how a job opens from the header. A message asks for its own card,
+ * and a board zoomed out to fit is a card you cannot read.
+ */
+export function centerOnNode(
+  node: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number },
+  scale = 1,
+): TraceView {
+  const zoom = clampZoom(scale);
+  return {
+    scale: zoom,
+    x: Math.round(viewport.width / 2 - (node.x + node.width / 2) * zoom),
+    y: Math.round(viewport.height / 2 - (node.y + node.height / 2) * zoom),
+  };
+}
+
+/**
+ * A focus that arrived while the board was fitted is done once the card has been centred.
+ *
+ * A token that changes is a new request, including the same message asked for again. A token
+ * that stays put is not: a reload of the same job must not yank the board back to the card.
+ */
+export function focusMoveDue(token: number, placed: number | null): boolean {
+  return token > 0 && token !== placed;
+}
+
+/** How long an already-open board takes to slide to the card a message asked for. */
+export const TRACE_GLIDE_MS = 320;
+
+/**
+ * Where each job's board was last left, so a tab that was unmounted can slide back from there.
+ *
+ * One per window: a board is one tab of a conversation, and bringing it forward mounts a new
+ * copy. The key is the conversation and the job.
+ */
+const boardViews = new Map<string, KeptView>();
+
+export function boardViewKey(sessionId: string, taskId: string): string {
+  return `${sessionId}:${taskId}`;
+}
+
+export function rememberedBoardView(sessionId: string, taskId: string | null): TraceView | undefined {
+  if (!taskId) return undefined;
+  return boardViews.get(boardViewKey(sessionId, taskId));
+}
+
+/** How long ago this job's board was left, or null when it has not been. */
+export function boardViewAge(sessionId: string, taskId: string | null, now = Date.now()): number | null {
+  if (!taskId) return null;
+  const kept = boardViews.get(boardViewKey(sessionId, taskId));
+  return kept ? now - kept.at : null;
+}
+
+export function rememberBoardView(sessionId: string, taskId: string, view: TraceView, now = Date.now()): void {
+  boardViews.set(boardViewKey(sessionId, taskId), { scale: view.scale, x: view.x, y: view.y, at: now });
+}
+
+/** Slow at both ends, so a slide reads as a move rather than a cut. */
+export function glideEase(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x < 0.5 ? 2 * x * x : 1 - ((-2 * x + 2) ** 2) / 2;
+}
+
+/** Where the board is along a slide from one view to another. `t` is 0 to 1. */
+export function glideView(from: TraceView, to: TraceView, t: number): TraceView {
+  const k = glideEase(t);
+  return {
+    scale: from.scale + (to.scale - from.scale) * k,
+    x: from.x + (to.x - from.x) * k,
+    y: from.y + (to.y - from.y) * k,
+  };
+}
+
 /** The distance between two fingers, which is all a pinch is. */
 export function pinchSpan(touches: ReadonlyArray<{ clientX: number; clientY: number }>): number {
   if (touches.length < 2) return 0;
@@ -241,6 +359,35 @@ export function filterTrace(trace: TaskTrace, notableOnly: boolean): TaskTrace {
   if (!notableOnly) return trace;
   const kept = new Set(notableNodes(trace.nodes).map((node) => node.turn_id));
   return { ...trace, nodes: trace.nodes.filter((node) => kept.has(node.turn_id)) };
+}
+
+/**
+ * The two things worth finding in a job's model choices: turns you pushed back on, and turns whose
+ * review put it down to the model. Lighting them rather than filtering the rest away keeps the
+ * board's shape, so you still see where in the job each one sits and what it led to.
+ */
+export type RouteHighlight = "feedback" | "blamed";
+
+export function drewFeedback(node: TaskTraceNode): boolean {
+  return (node.route?.record.feedback.length ?? 0) > 0;
+}
+
+export function blamedTheModel(node: TaskTraceNode): boolean {
+  return node.route?.review?.fault === "model";
+}
+
+export function routeHighlightCounts(nodes: readonly TaskTraceNode[]): Record<RouteHighlight, number> {
+  return {
+    feedback: nodes.filter(drewFeedback).length,
+    blamed: nodes.filter(blamedTheModel).length,
+  };
+}
+
+/** Whether a card is lit, dimmed, or neither because nothing is being looked for. */
+export function highlightOf(node: TaskTraceNode, highlight: RouteHighlight | null): "lit" | "dim" | null {
+  if (!highlight) return null;
+  const hit = highlight === "feedback" ? drewFeedback(node) : blamedTheModel(node);
+  return hit ? "lit" : "dim";
 }
 
 /** Who a card says woke it, once the connectors are gone. */

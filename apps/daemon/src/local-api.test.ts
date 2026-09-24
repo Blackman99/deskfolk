@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LOCAL_API_NAME } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, LOCAL_API_NAME } from "@real-bot/protocol";
 import { createLocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
+import { noisePng } from "./test-images";
+import { warmDisplayAvatar } from "./avatar-display";
 import { Store } from "./store";
 
 type Harness = {
@@ -204,6 +206,55 @@ describe("empty roster and settings", () => {
     const res = await fetch(`${h.origin}/v1/bots`, { headers: auth(h) });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ items: [] });
+  });
+
+  test("a file posted to the file drop lands in inbox and wakes nobody", async () => {
+    const h = await start();
+    const ws = mkdtempSync(join(tmpdir(), "real-bot-file-drop-"));
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ workspace_path: ws }),
+    });
+    const bot = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const form = new FormData();
+    form.append("body", "");
+    form.append("files", new File([new Uint8Array([9, 8, 7])], "from-phone.txt", { type: "text/plain" }));
+    const posted = await fetch(`${h.origin}/v1/sessions/${FILE_DROP_SESSION_ID}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: form,
+    });
+    expect(posted.status).toBe(201);
+    const message = (await posted.json()) as { attachments: Array<{ workspace_relpath: string; original_filename: string }> };
+    expect(message.attachments[0]?.original_filename).toBe("from-phone.txt");
+    expect(message.attachments[0]?.workspace_relpath).toStartWith("inbox/");
+    expect(readFileSync(join(ws, message.attachments[0]!.workspace_relpath))).toEqual(Buffer.from([9, 8, 7]));
+    await Bun.sleep(20);
+    expect(h.store.listLiveTurns()).toEqual([]);
+    expect(h.store.listLiveTurns({ sessionId: bot.direct_session.id })).toEqual([]);
+    const again = h.store.ensureFileDropSession();
+    expect(again.id).toBe(FILE_DROP_SESSION_ID);
+    expect(h.store.listSessions().filter((row) => row.id === FILE_DROP_SESSION_ID)).toHaveLength(1);
+    expect((await fetch(`${h.origin}/v1/sessions/${FILE_DROP_SESSION_ID}/archive`, { method: "POST", headers: auth(h) })).status).toBe(422);
+    expect((await fetch(`${h.origin}/v1/sessions/${FILE_DROP_SESSION_ID}`, { method: "DELETE", headers: auth(h) })).status).toBe(422);
+  });
+
+  test("text posted to the file drop stays there and wakes nobody", async () => {
+    const h = await start();
+    const bot = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const posted = await fetch(`${h.origin}/v1/sessions/${FILE_DROP_SESSION_ID}/messages`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ body: "@Writer 回家路上想到的" }),
+    });
+    expect(posted.status).toBe(201);
+    const message = (await posted.json()) as { body: string; attachments: unknown[] };
+    expect(message.body).toBe("@Writer 回家路上想到的");
+    expect(message.attachments).toEqual([]);
+    await Bun.sleep(20);
+    expect(h.store.listLiveTurns()).toEqual([]);
+    expect(h.store.listLiveTurns({ sessionId: bot.direct_session.id })).toEqual([]);
   });
 
   test("unconfigured settings: endpoint_key_set is false, locale zh, wizard incomplete", async () => {
@@ -1595,4 +1646,158 @@ describe("a Bot↔Bot direct is view-only", () => {
     expect(listed?.origin_session_id).toBe(group.id);
     expect(listed?.origin_message_id).toBe(trigger.id);
   });
+});
+
+describe("picture variants", () => {
+  const etagOf = (bytes: Uint8Array) =>
+    `"${(require("node:crypto") as typeof import("node:crypto")).createHash("sha256").update(bytes).digest("hex")}"`;
+
+  test.skipIf(process.platform !== "darwin")("size asks for a scaled copy and says what the original weighs", async () => {
+    const h = await start();
+    const ws = mkdtempSync(join(tmpdir(), "real-bot-variant-ws-"));
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ workspace_path: ws }),
+    });
+    const picture = noisePng(1200, 800);
+    writeFileSync(join(ws, "frame.png"), picture);
+    writeFileSync(join(ws, "notes.md"), "# notes\n");
+    const file = (query: string) => fetch(`${h.origin}/v1/workspace/file?${query}`, { headers: auth(h) });
+
+    const thumb = await file("path=frame.png&size=thumb");
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(thumb.headers.get("X-Original-Size")).toBe(String(picture.byteLength));
+    const bytes = new Uint8Array(await thumb.arrayBuffer());
+    expect(bytes.byteLength).toBeLessThan(picture.byteLength / 10);
+    // The ETag is the bytes sent, which is what a remote client checks them against.
+    expect(thumb.headers.get("ETag")).toBe(etagOf(bytes));
+
+    const original = await file("path=frame.png");
+    expect(original.headers.get("X-Original-Size")).toBeNull();
+    expect((await original.arrayBuffer()).byteLength).toBe(picture.byteLength);
+    // Not a picture: the original, and nothing says otherwise.
+    const note = await file("path=notes.md&size=preview");
+    expect(note.headers.get("X-Original-Size")).toBeNull();
+    expect(await note.text()).toBe("# notes\n");
+    expect((await file("path=frame.png&size=full")).status).toBe(422);
+
+    const botRes = await fetch(`${h.origin}/v1/bots`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ name: "PicBot", duties: "d", boundaries: "b" }),
+    });
+    const { direct_session } = (await botRes.json()) as { direct_session: { id: string } };
+    const form = new FormData();
+    form.append("body", "a keyframe");
+    form.append("files", new File([picture], "frame.png", { type: "image/png" }));
+    const posted = (await (await fetch(`${h.origin}/v1/sessions/${direct_session.id}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: form,
+    })).json()) as { attachments: Array<{ id: string }> };
+    const content = (size: string) => fetch(`${h.origin}/v1/attachments/${posted.attachments[0]!.id}/content?size=${size}`, { headers: auth(h) });
+    const chip = await content("thumb");
+    expect(chip.status).toBe(200);
+    expect(chip.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(chip.headers.get("X-Original-Size")).toBe(String(picture.byteLength));
+    // 1200 px is already within an enlargement's 1600: the original goes, unmarked.
+    const enlarged = await content("preview");
+    expect(enlarged.headers.get("Content-Type")).toBe("image/png");
+    expect(enlarged.headers.get("X-Original-Size")).toBeNull();
+    expect((await enlarged.arrayBuffer()).byteLength).toBe(picture.byteLength);
+    expect((await fetch(`${h.origin}/v1/attachments/${posted.attachments[0]!.id}/content?size=full`, { headers: auth(h) })).status).toBe(422);
+    rmSync(ws, { recursive: true, force: true });
+  });
+});
+
+/** A phone opening a conversation used to get the whole transcript back from marking it read. */
+test("marking a conversation read answers with its read state, not its transcript", async () => {
+  const h = await start();
+  const created = h.store.createBot({ name: "Reader", duties: "d", boundaries: "b" });
+  const message = h.store.postMessage(created.direct_session.id, { body: "hello" });
+  const res = await fetch(`${h.origin}/v1/sessions/${created.direct_session.id}/read`, {
+    method: "POST",
+    headers: auth(h, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ through_message_id: message.id }),
+  });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as Record<string, unknown>;
+  expect(body.id).toBe(created.direct_session.id);
+  expect(body.unread_count).toBe(0);
+  expect(body.last_read_at).toBeString();
+  expect(body).not.toHaveProperty("messages");
+  expect(body).not.toHaveProperty("turns");
+});
+
+/**
+ * A profile save sends back the portrait it was shown with every other edit. That is the small
+ * copy clients are sent; saving it would have replaced the original with a thumbnail.
+ */
+test.skipIf(process.platform !== "darwin")("a profile save that sends back the shown portrait keeps the original", async () => {
+  const h = await start();
+  const original = `data:image/png;base64,${noisePng(256, 256).toString("base64")}`;
+  const { bot } = h.store.createBot({ name: "Painter", duties: "d", boundaries: "b", avatar: original });
+  await warmDisplayAvatar(original);
+  const snapshot = await (await fetch(`${h.origin}/v1/snapshot`, { headers: auth(h) })).json() as { bots: Array<{ id: string; avatar: string }> };
+  const shown = snapshot.bots.find((row) => row.id === bot.id)!.avatar;
+  expect(shown).toMatch(/;rb-display=/);
+  expect(shown.length).toBeLessThan(original.length / 4);
+
+  const patch = (body: Record<string, unknown>) => fetch(`${h.origin}/v1/bots/${bot.id}`, {
+    method: "PATCH",
+    headers: auth(h, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  const saved = await patch({ duties: "paints", avatar: shown });
+  expect(saved.status).toBe(200);
+  expect(h.store.getBot(bot.id).avatar).toBe(original);
+  expect(h.store.getBot(bot.id).duties).toBe("paints");
+  // A picture chosen in the editor is a new portrait and is stored.
+  const chosen = "data:image/svg+xml;base64,PHN2Zy8+";
+  expect((await patch({ avatar: chosen })).status).toBe(200);
+  expect(h.store.getBot(bot.id).avatar).toBe(chosen);
+});
+
+/** A phone asks for the screenful it shows; older history comes a page at a time as it scrolls. */
+test("a conversation snapshot pages its first history by limit", async () => {
+  const h = await start();
+  const created = h.store.createBot({ name: "Pager", duties: "d", boundaries: "b" });
+  for (let i = 0; i < 25; i++) h.store.postMessage(created.direct_session.id, { body: `m${i}` });
+  const snap = (query: string) => fetch(`${h.origin}/v1/sessions/${created.direct_session.id}/snapshot${query}`, { headers: auth(h) })
+    .then(async (res) => ({ status: res.status, body: await res.json() as { session: { messages: { items: unknown[]; next: string | null } } } }));
+  const paged = await snap("?limit=20");
+  expect(paged.status).toBe(200);
+  expect(paged.body.session.messages.items).toHaveLength(20);
+  expect(paged.body.session.messages.next).toBeString();
+  expect((await snap("")).body.session.messages.items).toHaveLength(25);
+  expect((await snap("?limit=0")).status).toBe(422);
+});
+
+test("media file GETs serve ranges through workspace and attachment paths", async () => {
+  const h = await start();
+  const dir = mkdtempSync(join(tmpdir(), "rb-media-api-"));
+  try {
+    await h.store.patchSettings({ workspace_path: dir });
+    writeFileSync(join(dir, "clip.mp4"), "0123456789");
+    const ask = (query: string, range?: string) => fetch(`${h.origin}/v1/workspace/file?path=clip.mp4${query}`, { headers: auth(h, range ? { Range: range } : {}) });
+    for (const response of [await ask("", "bytes=2-5"), await ask("&range=bytes%3D2-5")]) {
+      expect(response.status).toBe(206);
+      expect(response.headers.get("Content-Range")).toBe("bytes 2-5/10");
+      expect(await response.text()).toBe("2345");
+    }
+    expect((await ask("&size=preview&range=bytes%3D0-1")).status).toBe(422);
+    expect((await ask("", "bytes=100-")).status).toBe(416);
+    expect((await fetch(`${h.origin}/v1/workspace/file?path=..%2Foutside.mp4&range=bytes%3D0-1`, { headers: auth(h) })).status).toBe(422);
+    expect((await fetch(`${h.origin}/v1/workspace/file?path=.&range=bytes%3D0-1`, { headers: auth(h) })).status).toBe(422);
+    const form = new FormData();
+    form.append("files", new File(["abcdefghij"], "audio.mp3", { type: "audio/mpeg" }));
+    const uploaded = await fetch(`${h.origin}/v1/sessions/${FILE_DROP_SESSION_ID}/messages`, { method: "POST", headers: auth(h), body: form });
+    expect(uploaded.status).toBe(201);
+    const message = await uploaded.json() as { attachments: Array<{ id: string }> };
+    const audio = await fetch(`${h.origin}/v1/attachments/${message.attachments[0]!.id}/content?range=bytes%3D-3`, { headers: auth(h) });
+    expect(audio.status).toBe(206);
+    expect(await audio.text()).toBe("hij");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

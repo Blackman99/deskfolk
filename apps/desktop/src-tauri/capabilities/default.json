@@ -2,9 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "remote": {
-    "urls": ["http://localhost:5173"]
+    "urls": [
+      "http://localhost:5173"
+    ]
   },
   "permissions": [
     "core:default",
@@ -14,8 +18,10 @@
     "allow-set-launch-at-login",
     "allow-independent-runtime-status",
     "allow-app-version",
+    "allow-hide-main-window",
     "allow-check-for-update",
     "allow-open-external-url",
+    "allow-read-clipboard-text",
     "allow-notification-permission-state",
     "allow-request-notification-permission",
     "allow-take-notification-intent",

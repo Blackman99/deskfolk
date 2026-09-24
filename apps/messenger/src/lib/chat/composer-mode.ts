@@ -1,5 +1,5 @@
 import type { Bot, SessionKind, SessionSummary } from "@real-bot/protocol";
-import { classifySession, youBotPeer } from "../sidebar/session-groups.ts";
+import { classifySession, isFileDropSession, youBotPeer } from "../sidebar/session-groups.ts";
 
 export type ComposerMode = "idle" | "redirect" | "fork";
 
@@ -18,9 +18,15 @@ export function composerAction(state: {
   pendingJudgement: boolean;
   busy: boolean;
   hasContent: boolean;
-  sessionKind?: SessionKind | null;
+  sessionKind?: SessionKind | "file-drop" | null;
 }): ComposerAction {
   const group = state.sessionKind === "group";
+  if (state.sessionKind === "file-drop") {
+    return {
+      kind: "send",
+      disabled: !state.connected || !state.hasSession || state.busy || !state.hasContent,
+    };
+  }
   if (state.hasSession && state.hasLiveTurn && !group) {
     return { kind: "stop", disabled: !state.connected };
   }
@@ -39,6 +45,7 @@ export function lockedReason(
   bots: ReadonlyMap<string, Bot>,
 ): LockedReason | null {
   if (!session) return null;
+  if (isFileDropSession(session)) return null;
   if (Boolean(session.archived_at)) return "archived";
   // A Bot↔Bot direct is yours to read. You are not a participant, so there is nowhere to type.
   if (classifySession(session) === "bot-bot") return "bot-bot";

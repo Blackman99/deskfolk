@@ -29,7 +29,7 @@ export function corsHeaders(origin: string): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Request-Id, If-Match",
-    "Access-Control-Expose-Headers": "ETag, X-Request-Id",
+    "Access-Control-Expose-Headers": "ETag, X-Request-Id, X-Original-Size",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
     // Chrome treats some loopback-to-loopback fetches as local-network access.
     "Access-Control-Allow-Private-Network": "true",

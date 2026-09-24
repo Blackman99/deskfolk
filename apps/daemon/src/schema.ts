@@ -168,6 +168,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TEXT NOT NULL
 );
 
+-- A shell you opened. The process dies with the daemon; the row is what the next one
+-- starts again, in the same place, so a split layout can put it back where it was.
+CREATE TABLE IF NOT EXISTS terminals (
+  id TEXT PRIMARY KEY,
+  cwd TEXT NOT NULL,
+  rows INTEGER NOT NULL,
+  cols INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  scrollback BLOB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS session_participants (
   session_id TEXT NOT NULL REFERENCES sessions (id),
   member TEXT NOT NULL,

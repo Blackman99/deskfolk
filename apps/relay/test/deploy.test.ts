@@ -34,7 +34,7 @@ test('deployment has two default-off gates, no direct relay port, and private se
 test('Caddy forwards exact relay routes, hides discovery/dev/API and uses hash-only script CSP', () => {
   const config = read('deploy/remote/Caddyfile');
   expect(config).toContain('@relay path /v1/relay/host /v1/relay/device /v1/relay/bootstrap /v1/pair/mailbox');
-  expect(config).toContain("@illegal_query expression `{http.request.uri.query} != \"\" && !({http.request.uri.query} matches '^(?:(?:s|o|b|a)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a)=[0-9A-Za-z._-]+)*$')`");
+  expect(config).toContain("@illegal_query expression `{http.request.uri.query} != \"\" && !({http.request.uri.query}.matches('^(?:(?:s|o|b|a)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a)=[0-9A-Za-z._-]+)*$'))`");
   expect(config).toContain('@private path /v1/* /__local-api /__local-api/* /@vite/* /src/* /healthz');
   expect(config).toContain('header_up X-Real-IP {remote_host}');
   expect(config).toContain('output discard');

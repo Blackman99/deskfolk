@@ -83,6 +83,24 @@ describe("store notifications", () => {
     }
   });
 
+  it("stops counting a seen interruption or failure towards the badge, but not a pending approval or ask", () => {
+    const store = new Store();
+    try {
+      const ids = (["interrupted", "failure", "approval", "ask"] as const).map((kind) =>
+        store.createNotification({ semantic_key: `${kind}:turn_1`, kind }).id,
+      );
+      expect(store.getNotificationSummary().attention_count).toBe(4);
+
+      store.markNotificationsReadBatch({ ids });
+      const summary = store.getNotificationSummary();
+      expect(summary.unread_count).toBe(0);
+      expect(summary.open_count).toBe(4);
+      expect(summary.attention_count).toBe(2);
+    } finally {
+      store.close();
+    }
+  });
+
   it("paginates notifications with cursor", () => {
     const store = new Store();
     try {

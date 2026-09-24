@@ -1,6 +1,6 @@
 {
-  "name": "Real Bot",
-  "short_name": "Real Bot",
+  "name": "Deskfolk",
+  "short_name": "Deskfolk",
   "description": "A single-user agent collaboration app for your Mac.",
   "start_url": "./",
   "display": "browser",

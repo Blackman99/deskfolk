@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aGroup, aSkill, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aGroup, aMemory, aRoutine, aSkill, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import GroupPane from "./GroupPane.svelte";
@@ -9,11 +9,14 @@ import ProfilePane from "./ProfilePane.svelte";
 
 const t = copyFor("en");
 
-/** The panes read the same 680px breakpoint the stylesheet does; happy-dom answers no by default. */
-function withPhone(run: () => void): void {
+/**
+ * The panes read the same 680px breakpoint the stylesheet does; happy-dom answers no by default.
+ * A page that slides in also asks for reduced motion, so happy-dom has no animation to cancel.
+ */
+function withPhone(run: () => void, reducedMotion = false): void {
   const previous = window.matchMedia;
   window.matchMedia = ((query: string) => ({
-    matches: query === "(max-width: 680px)",
+    matches: query === "(max-width: 680px)" || (reducedMotion && query === "(prefers-reduced-motion: reduce)"),
     media: query,
     onchange: null,
     addListener: () => {},
@@ -29,9 +32,9 @@ function withPhone(run: () => void): void {
   }
 }
 
-function openProfile() {
+function openProfile(routines: ReturnType<typeof aRoutine>[] = [], memories: ReturnType<typeof aMemory>[] = []) {
   const bot = aBot({ id: "bot-1", name: "Researcher" });
-  const runtime = reactive(fakeRuntime({ bots: [bot], skills: [aSkill()] }, { profileBotId: "bot-1" }));
+  const runtime = reactive(fakeRuntime({ bots: [bot], skills: [aSkill()], routines, memories }, { profileBotId: "bot-1" }));
   const rendered = render(ProfilePane, {
     runtime,
     bot,
@@ -138,23 +141,66 @@ test("the row of the section already shown still opens it", () => {
   });
 });
 
+test("on a phone the routines header carries the count and opens a new routine", () => {
+  withPhone(() => {
+    const { host, runtime, close } = openProfile([aRoutine(), aRoutine({ id: "routine-2" }), aRoutine({ id: "elsewhere", bot_id: "bot-2" })]);
+    expect(host.querySelector(".bot-detail-action")).toBeNull();
+    click([...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][2]);
+    expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabRoutines);
+    expect(host.querySelector(".bot-detail-count")?.textContent).toBe("2");
+    const add = host.querySelector<HTMLButtonElement>(".bot-detail-action")!;
+    expect(add.textContent?.trim()).toBe(t.routines.add);
+    click(add);
+    flushSync();
+    expect(host.querySelector(".routine-page h3")?.textContent).toBe(t.routines.add);
+    flushSync(() => { runtime.connection = "disconnected"; });
+    expect(host.querySelector<HTMLButtonElement>(".bot-detail-action")!.disabled).toBe(true);
+    close();
+  }, true);
+});
+
+test("on a phone the skills header carries the count and opens a new skill", () => {
+  withPhone(() => {
+    const { host, close } = openProfile();
+    click([...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][1]);
+    expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabSkills);
+    expect(host.querySelector(".bot-detail-count")?.textContent).toBe("1");
+    const add = host.querySelector<HTMLButtonElement>(".bot-detail-action")!;
+    expect(add.textContent?.trim()).toBe(t.sidebar.skillAdd);
+    click(add);
+    flushSync();
+    expect(host.querySelector("#skill-modal-title")?.textContent?.trim()).toBe(t.sidebar.skillAdd);
+    close();
+  }, true);
+});
+
+test("on a phone the memory header carries the count and tab row shows count", () => {
+  withPhone(() => {
+    const { host, close } = openProfile([], [aMemory({ id: "mem-1", bot_id: "bot-1" }), aMemory({ id: "mem-2", bot_id: "bot-1" })]);
+    const memoryTab = [...host.querySelectorAll<HTMLButtonElement>(".bot-tab-btn")][3]!;
+    expect(memoryTab.querySelector(".tab-count")?.textContent).toBe("2");
+    click(memoryTab);
+    expect(host.querySelector(".bot-detail-title")?.textContent).toBe(t.detail.botTabMemory);
+    expect(host.querySelector(".bot-detail-count")?.textContent).toBe("2");
+    close();
+  }, true);
+});
+
 test("a group's sections are a list, and only the open one is rendered", () => {
   withPhone(() => {
     const { host, close } = openGroup();
     const rows = [...host.querySelectorAll<HTMLButtonElement>(".group-section-btn")];
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, " ").trim())).toEqual([
-      t.detail.groupProfile,
       `${t.detail.members} 3`,
       t.detail.sessionActions,
       t.detail.dangerZone,
     ]);
     // The list screen alone: none of the cards are mounted behind it.
-    expect(host.querySelector(".group-hero-card")).toBeNull();
-    click(rows[1]);
+    expect(host.querySelector(".group-members-card")).toBeNull();
+    click(rows[0]);
     flushSync();
     expect(host.querySelector(".group-detail-title")?.textContent).toBe(t.detail.members);
     expect(host.querySelector(".group-members-card")).not.toBeNull();
-    expect(host.querySelector(".group-hero-card")).toBeNull();
     expect(host.querySelector(".danger-zone-card")).toBeNull();
     click(host.querySelector(".group-detail-back"));
     flushSync();
@@ -177,7 +223,6 @@ test("a Bot-to-Bot session lists only the sections it has", () => {
 
 test("wider windows keep one scrolling column with every card and no section list", () => {
   const { host, close } = openGroup();
-  expect(host.querySelector(".group-hero-card")).not.toBeNull();
   expect(host.querySelector(".group-members-card")).not.toBeNull();
   expect(host.querySelector(".danger-zone-card")).not.toBeNull();
   // The list and the section header exist in the markup but are the phone layout's business.

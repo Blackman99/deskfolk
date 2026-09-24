@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { SessionSummary } from "@real-bot/protocol";
-import { classifySession, groupSessions, presentBotIds, youBotPeer, youBotSession } from "./session-groups.ts";
+import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
+import { classifySession, groupSessions, isFileDropSession, presentBotIds, youBotPeer, youBotSession } from "./session-groups.ts";
 
 function session(
   id: string,
@@ -55,13 +56,27 @@ test("groupSessions keeps groups first in its buckets, and extracts pinned", () 
   const g = session("g", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]);
   const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);
   const them = session("bb", "direct", [{ member: "writer" }, { member: "researcher" }]);
-  expect(groupSessions([them, you, g])).toEqual({ pinned: [], groups: [g], youBot: [you], botBot: [them] });
+  expect(groupSessions([them, you, g])).toEqual({ pinned: [], groups: [g], youBot: [you], botBot: [them], fileDrop: null });
   expect(groupSessions([them, you, g], ["d"])).toEqual({
     pinned: [you],
     groups: [g],
     youBot: [],
     botBot: [them],
+    fileDrop: null,
   });
+});
+
+test("the file drop stays out of the chat groups and is named on its own", () => {
+  const drop = session(FILE_DROP_SESSION_ID, "direct", [{ member: "user" }]);
+  const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);
+  expect(isFileDropSession(drop)).toBe(true);
+  expect(classifySession(drop)).toBe("file-drop");
+  expect(presentBotIds(drop)).toEqual([]);
+  const grouped = groupSessions([drop, you]);
+  expect(grouped.fileDrop?.id).toBe(FILE_DROP_SESSION_ID);
+  expect(grouped.youBot).toEqual([you]);
+  expect(grouped.groups).toEqual([]);
+  expect(grouped.botBot).toEqual([]);
 });
 
 test("groupSessions filters out sessions with deleted bots when aliveBotIds is provided", () => {
@@ -74,6 +89,7 @@ test("groupSessions filters out sessions with deleted bots when aliveBotIds is p
     groups: [g],
     youBot: [you],
     botBot: [],
+    fileDrop: null,
   });
 });
 

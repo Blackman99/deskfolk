@@ -110,6 +110,36 @@ test("attachment links remain visible without a bundle entry", () => {
   close();
 });
 
+test("an artifact image shows a spinner in its box while the bytes are on the way", async () => {
+  let resolveBlob!: (blob: Blob) => void;
+  const pending = new Promise<Blob>((resolve) => {
+    resolveBlob = resolve;
+  });
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: "[shot.png](inbox/shot.png)",
+    loadArtifactImage: () => pending,
+  });
+  try {
+    const anchor = host.querySelector("a.md-artifact-image");
+    expect(anchor?.getAttribute("data-artifact-image")).toBe("loading");
+    const spinner = anchor?.querySelector(".md-artifact-pending");
+    expect(spinner).not.toBeNull();
+    const box = window.getComputedStyle(spinner!);
+    expect(box.display).toBe("block");
+    expect(box.width).toBe("72px");
+    expect(box.height).toBe("54px");
+    expect(anchor?.querySelector("img")).toBeNull();
+    resolveBlob(new Blob(["image"], { type: "image/png" }));
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(anchor?.querySelector(".md-artifact-pending")).toBeNull();
+    expect(anchor?.querySelector("img.md-artifact-thumb")).not.toBeNull();
+  } finally {
+    close();
+  }
+});
+
 test("an artifact image link becomes a thumbnail and opens the preview", async () => {
   const opened: string[] = [];
   const created: string[] = [];
@@ -142,6 +172,23 @@ test("an artifact image link becomes a thumbnail and opens the preview", async (
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
   }
+});
+
+test("an artifact image link stays in the message area when an image opener is set", () => {
+  const opened: string[] = [];
+  const images: string[] = [];
+  const { host, close } = render(MarkdownBody, {
+    ...labels,
+    source: "看 [shot.png](inbox/shot.png) 和 [notes.md](inbox/notes.md)",
+    onOpenArtifact: (path: string) => opened.push(path),
+    onOpenImage: (path: string) => images.push(path),
+  });
+  const links = [...host.querySelectorAll("a")];
+  click(links.find((link) => link.textContent?.includes("shot.png")));
+  click(links.find((link) => link.textContent?.includes("notes.md")));
+  expect(images).toEqual(["inbox/shot.png"]);
+  expect(opened).toEqual(["inbox/notes.md"]);
+  close();
 });
 
 test("markdown SVG thumbs strip active content before the blob URL", async () => {

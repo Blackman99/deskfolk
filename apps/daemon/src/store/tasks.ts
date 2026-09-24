@@ -11,7 +11,7 @@
  * The trace is that same tree read back: one card per turn, edges from who woke whom, files from
  * the attachments those turns already cited. Nothing is inferred and nothing is written.
  */
-import { USER_MEMBER, type SessionTaskSummary, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, USER_MEMBER, type SessionTaskSummary, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
@@ -239,16 +239,20 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
   const spoken = ctx.db
     .query<TraceMessageRow, [string]>(
       `SELECT id, turn_id, kind, body, created_at FROM messages
-       WHERE task_id = ? AND turn_id IS NOT NULL AND kind IN ('bot', 'ask')
+       WHERE task_id = ? AND turn_id IS NOT NULL AND kind IN ('bot', 'ask', 'system')
        ORDER BY created_at ASC, id ASC`,
     )
     .all(taskId);
   const lastWord = new Map<string, TraceMessageRow>();
   const askByTurn = new Map<string, TraceMessageRow>();
+  // The 中断 line is what a cut turn leaves behind. It is written after the last word, so a
+  // card that still points at that word lands one row above the note it is about.
+  const interruptByTurn = new Map<string, TraceMessageRow>();
   for (const row of spoken) {
     if (!turnIds.has(row.turn_id)) continue;
     if (row.kind === "bot") lastWord.set(row.turn_id, row);
-    else askByTurn.set(row.turn_id, row);
+    else if (row.kind === "ask") askByTurn.set(row.turn_id, row);
+    else if (row.body === INTERRUPT_NOTE_BODY) interruptByTurn.set(row.turn_id, row);
   }
 
   const attachments = ctx.db
@@ -349,6 +353,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
     const word = lastWord.get(turn.id);
     const ask = turn.status === "waiting_ask" ? askByTurn.get(turn.id) : undefined;
     const pending = turn.status === "waiting_approval" ? approvalByTurn.get(turn.id) : undefined;
+    const cut = turn.status === "interrupted" ? interruptByTurn.get(turn.id) : undefined;
     // Only a turn still writing shows its partial. Waiting on you already has a sentence to show.
     const summary = turn.status === "running" && turn.partial_text?.trim()
       ? oneLine(turn.partial_text)
@@ -363,7 +368,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       woken_by_turn_id: wokenBy,
       woken_elsewhere: elsewhere,
       trigger_message_id: turn.trigger_message_id,
-      focus_message_id: ask?.id ?? word?.id ?? turn.trigger_message_id,
+      focus_message_id: cut?.id ?? ask?.id ?? word?.id ?? turn.trigger_message_id,
       summary,
       created_at: turn.created_at,
       artifacts: filesByTurn.get(turn.id) ?? [],

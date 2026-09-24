@@ -115,6 +115,8 @@ export type NotificationPermissionStateDto = {
   permission: string;
   nativeReadingV1: boolean;
   nativeDeliveryV1: boolean;
+  /** Cold-start click from a signed installed package. Posting does not wait on this. */
+  coldClickQualified?: boolean;
   operational: boolean;
   gatedReason?: string | null;
   attentionCount: number;

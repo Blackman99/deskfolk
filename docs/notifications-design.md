@@ -1,8 +1,8 @@
 # 通知设计：桌面端与远程 PWA
 
 - 日期：2026-09-21
-- 状态：系统通知与远程推送已接入；应用内不再有通知铃铛或通知页，待处理状态标在会话列表上。生产 `push_transport` 为 `policy_v2`，出站发送、订阅与测试仍受远控激活门约束，解绑可用于清理。macOS 系统横幅物理门仍关闭（`NATIVE_DELIVERY_QUALIFIED` 为 false）；桌面与本机浏览器测试通知仅在 `native_delivery_v1` 成立时可用，入队为 queued，不是系统已展示。托管远程测试走远控门、联系人与订阅。下文 §5.1 / §5.2 描述的铃铛与收件箱页面已被这次产品决定取代。
-- 范围：单人、本机优先的 Real Bot；macOS 桌面与已配对远程浏览器 / PWA。
+- 状态：系统通知与远程推送已接入；应用内不再有通知铃铛或通知页，待处理状态标在会话列表上。生产 `push_transport` 为 `policy_v2`，出站发送、订阅与测试仍受远控激活门约束，解绑可用于清理。冷启动点击与签名安装包仍未验收（`NATIVE_DELIVERY_QUALIFIED` 为 false），这道门不再决定能不能发横幅。`native_delivery_v1` 表示进程带应用标识，桌面与本机浏览器测试通知在它、系统许可与设备开启同时成立时可用，入队为 queued，不是系统已展示。 托管远程测试走远控门、联系人与订阅。下文 §5.1 / §5.2 描述的铃铛与收件箱页面已被这次产品决定取代。
+- 范围：单人、本机优先的 Deskfolk；macOS 桌面与已配对远程浏览器 / PWA。
 - 交付性质：产品与技术设计。本文中的新增接口、表、组件和默认值均为提案；“现状”仅表示已核对源码，不表示本轮运行或真机验收通过。
 
 ## 1. 概览
@@ -117,7 +117,7 @@
 - 打开收件箱不把全部项目标读。某行在可见区持续 1 秒且页面有效前台时才标该行已读；快捷“全部标为已读”只覆盖点击时列表的服务端上界。
 - 看过批准卡后仍显示“已读 · 等你批准”；系统通知被滑掉只关闭 OS 展示，不改变业务和已读。
 - 通知行不内嵌危险动作按钮。进入原转录后使用当前批准卡和当前权限；已过期卡显示失效说明。
-- 共享角标定义为 **未读项与 open 项的去重并集**。一项“未读且待批准”只算一次；铃铛同时给出“待处理 2”辅助文字，避免全部标读后仍有数字却无法解释。
+- 共享角标定义为 **未读项与 open 批准 / 提问的去重并集**。一项“未读且待批准”只算一次。失败 / 中断看过就不再计入：它们仍是 open，会话行照样标「中断」「未完成」、「继续」照样可点，但信使没有收件箱也没有铃铛，“我知道了”无处可点，若一直计入，看过之后角标就只剩一个无法解释也清不掉的数字。
 - 会话角标继续表示消息未读数，待批准 / 待回复继续使用现有工作状态标记。两种数字允许不同，界面明确命名。
 
 ## 5. 用户体验
@@ -143,7 +143,7 @@
 
 默认打开“待处理”（存在 open 时），否则打开“未读”。已处理项在“全部”中保留最近历史。行内最多两行摘要，正文经纯文本清理；批准的命令、区外路径、密钥输入只在原卡片展开，通知摘要不复制它们。
 
-macOS 通用预览示例为“Real Bot 有待处理事项 / 打开查看”。用户显式开启本机详细预览后，可显示 Bot / 会话名与普通回复前 80 个码点；提问、批准和失败仍用分类通用文案，防止问题或异常带出凭据。详细预览会写入 macOS 通知中心，此后不能承诺应用删除能清除所有系统副本。
+macOS 通用预览示例为“Deskfolk 有待处理事项 / 打开查看”。用户显式开启本机详细预览后，可显示 Bot / 会话名与普通回复前 80 个码点；提问、批准和失败仍用分类通用文案，防止问题或异常带出凭据。详细预览会写入 macOS 通知中心，此后不能承诺应用删除能清除所有系统副本。
 
 ### 5.2 手机 / PWA 入口
 
@@ -391,7 +391,7 @@ presence 是认证连接上的短期界面事实：实例随机 ID、可见 / �
 - 安装并长期持有 `UNUserNotificationCenterDelegate`，处理前台展示与 `didReceive response`。Delegate 在应用完成启动前接上；仅在 Tauri setup 阶段注册是否足够必须用安装包实测，必要时通过原生初始化钩子提前安装。
 - 点击调用 `show_main`，缓冲一条点击意图到 native 内存；前端通过受限 `take_notification_intent` 握手取走后再用 API 查目标。前端未就绪、重新载入和单实例唤醒均可处理。用户点击只是导航，不能隐式标读。
 - `notification_permission_state`、`request_notification_permission`、`take_notification_intent` 与 `report_notification_view` 仅授权 main WebView 的匹配来源 / capability；hosted 内容、iframe 和远程设备没有 Tauri IPC。分开开发态 allowlist 与 bundled 生产来源校验，不复制高权限凭据接口给通知使用。
-- Dock badge 使用 AppKit，只在本机开关启用时设置去重 attention_count（99+）；托盘图标和菜单保持现状，不增加托盘角标。系统权限和 Dock badge 能力分开判断。
+- Dock badge 使用 AppKit，只在本机开关启用时设置 attention_count（99+，口径同上）；本机 reconcile 撤下某会话已展示横幅用同一口径；托盘图标和菜单保持现状，不增加托盘角标。系统权限和 Dock badge 能力分开判断。
 
 原生 worker 自己读 `local-api.json`，token 只在内存 / Authorization；daemon 重启后重新发现。所有网络等待放后台线程，主线程仅执行 AppKit / notification 调用；不跨网络持有 `AppState` 锁。
 
@@ -684,7 +684,7 @@ sequenceDiagram
 | PR 2 | inbox_v1、bounded_read_v1、pending_ask_v1 API 与客户端方法 | policy_v1=false；新策略 / 设备策略 mutation 返回 409 capability_unavailable，不写一个不会生效的设置；旧 Push 仍 legacy | 能力缺失与新旧协议组合。 |
 | PR 3 | 收件箱、精确 ask UI、浏览器自动阅读与桌面显式标读 | native_reading_v1 缺失时桌面两处自动标读皆关闭；不展示未生效的策略 | 旧桌面桥 fixture 不调用自动 read；旧问题不显示输入框。 |
 | PR 4 | policy_v1、设置 / 调度 / fake adapter | 在启动接线阶段停用旧 notify/flush/deliver，关定时器并中止旧请求；真实 remote sender 为 paused_upgrade，订阅和 opt-in 保留。新开订阅 / 测试接口返回 409 capability_unavailable，旧空 unsubscribe 同事务 disabled、提升 device revision / push_generation、删除订阅并取消批次；界面显示升级中与关闭 / 清理入口，不能显示投递正常。 | 预装旧订阅后开启免打扰 / 关分类 / 关设备，fake fetch 的出站次数为零；包括直接 flush、重启及读旧库。 |
-| PR 5 | native_reading_v1；原生门通过后 native_delivery_v1 与真实桌面设置 | 真机门未过则 native_delivery_v1=false，系统通知按钮禁用；remote 仍 paused_upgrade | 安装包矩阵；默认 / independent 的 latch 分别验收。 |
+| PR 5 | native_reading_v1；进程带应用标识时 native_delivery_v1 与真实桌面设置 | 冷启动点击未验收只记在 `NATIVE_DELIVERY_QUALIFIED`，不把 native_delivery_v1 打成 false，也不禁用测试；remote 仍 paused_upgrade | 安装包矩阵；默认 / independent 的 latch 分别验收。 |
 | PR 6 | push_settings_v2 原子状态机、policy_v2 唯一 sender、限流与修复 | 发前仍受全部远控门 / 系统许可 / 配置约束；旧 direct sender 永远不再启动；旧 subscribe 明确升级错误 | v1→v2 切换、旧客户端、CAS/ABA、限流及订阅 fixture。 |
 | PR 7 | 通用点击收件箱、SW 与单设备多页协调、后台 badge 降级 | 真正手机展示 / 冷点击仍待 G-push；PR 6 上线到此之前旧 SW 只提供原点击重连，不宣传完整新导航 | worker 更新与旧 inbox message 兼容。 |
 | PR 8 | 通过验证的支持矩阵、汇总文档 | 既有 G-pack / UV / S-rev 等门未过仍关闭生产远控 | 只记录实际证据，不用文档变更冒充开放。 |

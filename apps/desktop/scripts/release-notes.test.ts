@@ -5,6 +5,7 @@ import {
   changelogSection,
   configuredVersion,
   langMarker,
+  RELEASE_BODY_LIMIT,
   releaseBody,
   repoRoot,
 } from "./release-notes.ts";
@@ -103,6 +104,21 @@ test("a version missing from the english changelog comes back empty even when tr
   expect(releaseBody("# Changelog\n", CHANGELOG_ZH, "0.2.0")).toBe("");
 });
 
+/** GitHub turns a longer body away, so a long cycle gives up its oldest entries instead. */
+test("a body over GitHub's limit drops the oldest entries of the longer language and counts them", () => {
+  const entry = (n: number) => `- entry ${n} ${"x".repeat(990)}`;
+  const long = `# Changelog\n\n## 0.2.0 — 2026-10-01\n\nUnsigned macOS rc.\n\n${Array.from({ length: 140 }, (_, i) => entry(i)).join("\n\n")}\n`;
+  const body = releaseBody(long, CHANGELOG_ZH, "0.2.0");
+  expect(body.length).toBeLessThanOrEqual(RELEASE_BODY_LIMIT);
+  expect(body).toContain("- entry 0 ");
+  expect(body).not.toContain("- entry 139 ");
+  const kept = body.match(/- entry \d+ /g)!.length;
+  expect(body).toContain(`- …and ${140 - kept} more, in CHANGELOG.md.`);
+  expect(body).toContain("- 新的一条。");
+  expect(body).not.toContain("另有");
+  expect(body).toContain("Unsigned macOS snapshot");
+});
+
 /**
  * The release would go out with an empty card if these two ever drifted, and the workflow only
  * finds out at tag time — so the repo's own changelog and version are checked here.
@@ -112,4 +128,6 @@ test("this repo's changelog has a section for the version being shipped", () => 
   const version = configuredVersion(root);
   const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8");
   expect(changelogSection(changelog, version)).not.toBe("");
+  const body = releaseBody(changelog, readFileSync(join(root, "CHANGELOG.zh.md"), "utf8"), version);
+  expect(body.length).toBeLessThanOrEqual(RELEASE_BODY_LIMIT);
 });

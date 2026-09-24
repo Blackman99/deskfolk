@@ -1,6 +1,6 @@
 # Apple notarization / Developer ID path
 
-Tracking: [issue #10](https://github.com/Blackman99/real-bot/issues/10).  
+Tracking: [issue #10](https://github.com/Blackman99/deskfolk/issues/10).  
 Until this lands, installs follow the [Gatekeeper FAQ](gatekeeper.md).
 
 ## Goal
@@ -20,7 +20,7 @@ Ship macOS `.dmg` builds signed with **Developer ID Application** and **notarize
 - [ ] Configure Tauri / cargo-bundle signing env (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_SPECIFIC_PASSWORD` — exact names follow current Tauri docs).
 - [ ] Sign the `.app` before packaging the `.dmg`.
 - [ ] Submit with `xcrun notarytool submit … --wait`.
-- [ ] Staple: `xcrun stapler staple "Real Bot.app"` (or the `.dmg` as appropriate).
+- [ ] Staple: `xcrun stapler staple "Deskfolk.app"` (or the `.dmg` as appropriate).
 - [ ] Verify on a clean Mac: double-click opens without Gatekeeper bypass.
 - [ ] Update [Gatekeeper FAQ](gatekeeper.md) when signed builds ship (remove “unsigned alpha” framing for those builds).
 - [ ] Release notes must say **signed + notarized** only after staple succeeds — never a fake badge.

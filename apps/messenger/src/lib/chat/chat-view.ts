@@ -1,6 +1,10 @@
 import {
   INTERRUPT_NOTE_BODY,
+  UNREACHABLE_NOTE_BODIES,
   USER_MEMBER,
+  isContinuableNote,
+  isInterruptNote,
+  isUnreachableNote,
   type Message,
   type Reaction,
   type Turn,
@@ -8,21 +12,24 @@ import {
 import { isLiveStatus } from "./transcript.ts";
 import type { TranscriptItem } from "./transcript.ts";
 
-export function isInterruptNote(message: Pick<Message, "kind" | "body">): boolean {
-  return message.kind === "system" && message.body === INTERRUPT_NOTE_BODY;
-}
+export { isContinuableNote, isInterruptNote, isUnreachableNote };
 
 export function canContinueInterrupt(
   message: Pick<Message, "id" | "kind" | "body" | "author" | "turn_id" | "source_turn_id">,
   turns: readonly Turn[],
-  opts: { locked?: boolean; hasLiveTurnForBot?: boolean } = {},
+  opts: { locked?: boolean; readOnly?: boolean; hasLiveTurnForBot?: boolean } = {},
 ): boolean {
-  if (!isInterruptNote(message) || !message.turn_id) return false;
+  if (!isContinuableNote(message) || !message.turn_id) return false;
   if (message.source_turn_id) return false;
-  if (opts.locked) return false;
+  // A Bot↔Bot chat has no composer, so Continue is how that chat picks up. Anywhere else a
+  // locked composer means there is nobody to hand the next turn to.
+  if (opts.locked && !opts.readOnly) return false;
   if (opts.hasLiveTurnForBot) return false;
   const own = turns.find((turn) => turn.id === message.turn_id);
-  if (own && own.status !== "interrupted") return false;
+  if (own) {
+    if (isInterruptNote(message) && own.status !== "interrupted") return false;
+    if (!isInterruptNote(message) && own.status !== "completed" && own.status !== "interrupted") return false;
+  }
   return !turns.some(
     (turn) => turn.trigger_message_id === message.id && isLiveStatus(turn.status),
   );

@@ -11,10 +11,12 @@ function open(over: {
   bot?: ReturnType<typeof aBot>;
   skills?: ReturnType<typeof aSkill>[];
   initialTab?: "basics" | "skills" | "memory" | "actions";
+  /** The workbench opens a conversation's settings beside it and leaves the drawer's `profileBotId` unset. */
+  onWorkbench?: boolean;
 } = {}) {
   const bot = over.bot ?? aBot();
   const runtime = fakeRuntime({ bots: [bot], skills: over.skills ?? [] });
-  runtime.profileBotId = bot.id;
+  if (!over.onWorkbench) runtime.profileBotId = bot.id;
   const view = render(ProfilePane, {
     runtime,
     bot,
@@ -61,6 +63,52 @@ test("closing the pane before the debounce still sends the edit", async () => {
   const saves = runtime.calls.filter((c) => c.name === "patchBot");
   expect(saves).toHaveLength(1);
   expect((saves[0]!.args[1] as { name: string }).name).toBe("只打了一半");
+});
+
+test("on the workbench, where the drawer's profileBotId stays unset, picking a model still saves it", async () => {
+  const bot = aBot();
+  const runtime = fakeRuntime({ bots: [bot] });
+  const { host, close } = render(ProfilePane, {
+    runtime,
+    bot,
+    t,
+    modelOptions: [{ value: "gpt-6-astra", label: "gpt-6-astra" }],
+    selectedKind: "you-bot",
+    profileFailed: false,
+    initialTab: "basics",
+    openDangerConfirm: () => {},
+    clearDanger: () => {},
+    onDeleteBot: () => {},
+    onClearHistory: () => {},
+  });
+  click(host.querySelector("#profile-model"));
+  click([...host.querySelectorAll("#profile-model-listbox [role=option]")].find((li) => li.textContent?.includes("gpt-6-astra")) ?? null);
+  await sleep(200);
+  const saves = runtime.calls.filter((c) => c.name === "patchBot");
+  expect(saves).toHaveLength(1);
+  expect(saves[0]!.args[0]).toBe(bot.id);
+  expect((saves[0]!.args[1] as { model: string | null }).model).toBe("gpt-6-astra");
+  close();
+});
+
+test("on the workbench, adding a skill and archiving act on the Bot the pane shows", async () => {
+  const skills = open({ initialTab: "skills", onWorkbench: true });
+  click(skills.host.querySelector(".skill-head-add-btn"));
+  fill(skills.host.querySelector("#skill-name"), "查证");
+  fill(skills.host.querySelector("#skill-description"), "核对出处");
+  fill(skills.host.querySelector("#skill-body"), "先找原文");
+  click(buttonByText(skills.host, t.sidebar.skillSave));
+  await sleep(10);
+  const created = skills.runtime.calls.filter((c) => c.name === "createSkill");
+  expect(created).toHaveLength(1);
+  expect((created[0]!.args[0] as { bot_id: string }).bot_id).toBe(skills.bot.id);
+  skills.close();
+
+  const actions = open({ initialTab: "actions", onWorkbench: true });
+  click(buttonByText(actions.host, t.sidebar.archive));
+  await sleep(10);
+  expect(actions.runtime.calls.filter((c) => c.name === "archiveBot").map((c) => c.args[0])).toEqual([actions.bot.id]);
+  actions.close();
 });
 
 test("an unchanged draft sends nothing", async () => {
@@ -331,5 +379,53 @@ test("skills tab shows count badge matching skills count", () => {
   const countBadge = tabs[1]!.querySelector(".tab-count");
   expect(countBadge).not.toBeNull();
   expect(countBadge?.textContent?.trim()).toBe("2");
+  close();
+});
+
+test("mobile toggle switches skill enabled without opening editor", () => {
+  const skill = aSkill({ id: "s1", name: "Skill 1", enabled: true });
+  const { host, runtime, close } = open({ skills: [skill], initialTab: "skills" });
+  const box = host.querySelector(".skill-mobile-toggle input") as HTMLInputElement;
+  expect(box).not.toBeNull();
+  expect(box.checked).toBe(true);
+
+  box.checked = false;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+
+  const patch = runtime.calls.find((c) => c.name === "patchSkill");
+  expect(patch?.args).toEqual(["s1", { enabled: false }]);
+  expect(host.querySelector(".skill-modal")).toBeNull();
+  close();
+});
+
+test("mobile skill delete button inside editor invokes danger confirm", async () => {
+  const skill = aSkill({ id: "s1", name: "Skill 1" });
+  const bot = aBot();
+  const runtime = fakeRuntime({ bots: [bot], skills: [skill] });
+  runtime.profileBotId = bot.id;
+  let asked: { kind: string; run: (isCurrent: () => boolean) => Promise<void> } | null = null;
+  const { host, close } = render(ProfilePane, {
+    runtime,
+    bot,
+    t,
+    modelOptions: [],
+    selectedKind: "you-bot",
+    profileFailed: false,
+    initialTab: "skills",
+    openDangerConfirm: (kind: "skill", run: (isCurrent: () => boolean) => Promise<void>) => (asked = { kind, run }),
+    clearDanger: () => {},
+    onDeleteBot: () => {},
+    onClearHistory: () => {},
+  });
+
+  click(host.querySelector(".skill-open"));
+  expect(host.querySelector(".skill-modal")).not.toBeNull();
+  const deleteBtn = host.querySelector<HTMLButtonElement>(".skill-page-delete");
+  expect(deleteBtn).not.toBeNull();
+  click(deleteBtn);
+  expect(asked).not.toBeNull();
+  expect(asked!.kind).toBe("skill");
+  await asked!.run(() => true);
+  expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["s1"]);
   close();
 });

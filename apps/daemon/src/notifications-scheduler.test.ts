@@ -239,7 +239,7 @@ describe("notifications scheduler and presence (PR4)", () => {
       });
       expect(claimRes.status).toBe(200);
       const claim = (await claimRes.json()) as DesktopClaimResponse;
-      expect(claim.title).toBe("Real Bot");
+      expect(claim.title).toBe("Deskfolk");
       expect(claim.body).toBe("这是一条测试通知");
       expect(claim.identifier).toBe("test");
 
@@ -331,7 +331,7 @@ describe("notifications scheduler and presence (PR4)", () => {
       });
       expect(claimRes.status).toBe(200);
       const claim = (await claimRes.json()) as DesktopClaimResponse;
-      expect(claim.title).toBe("Real Bot");
+      expect(claim.title).toBe("Deskfolk");
       expect(claim.body).toBe("有待批准事项，打开查看");
     } finally {
       api.scheduler?.stop();
@@ -772,7 +772,7 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
       const first = scheduler.claimDesktop(GRANT, t0);
       expect(first).toBeTruthy();
       expect(first!.identifier).toBe("test");
-      expect(first!.title).toBe("Real Bot");
+      expect(first!.title).toBe("Deskfolk");
       expect(first!.body).toBe("这是一条测试通知");
       expect(attachedOrdinals(store, first!.delivery_id)).toEqual([]);
       expect(
@@ -807,7 +807,7 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
       expect(reclaimed).toBeTruthy();
       expect(reclaimed!.delivery_id).toBe(first!.delivery_id);
       expect(reclaimed!.identifier).toBe("test");
-      expect(reclaimed!.title).toBe("Real Bot");
+      expect(reclaimed!.title).toBe("Deskfolk");
       expect(reclaimed!.body).toBe("这是一条测试通知");
       expect(reclaimed!.identifier).not.toBe("host:all");
       expect(reclaimed!.body).not.toBe("有待处理事项，打开查看");
@@ -864,6 +864,35 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
         .get();
       expect(pending?.state).toBe("pending");
       expect(pending?.permit).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+
+  it("clears a session's banner and the badge once its only open item is a seen interruption", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
+      const cut = store.createNotification({
+        semantic_key: "interrupted:turn_1",
+        kind: "interrupted",
+        session_id: writer.direct_session.id,
+      });
+      const waiting = store.createNotification({
+        semantic_key: "approval:app_1",
+        kind: "approval",
+        session_id: reviewer.direct_session.id,
+      });
+      store.markNotificationsReadBatch({ ids: [cut.id, waiting.id] });
+
+      const scheduler = new NotificationDeliveryScheduler(store, new PresenceManager());
+      expect(scheduler.getState().attention_count).toBe(1);
+      expect(
+        scheduler.reconcile({
+          identifiers: [`session:${writer.direct_session.id}`, `session:${reviewer.direct_session.id}`],
+        }).remove_identifiers,
+      ).toEqual([`session:${writer.direct_session.id}`]);
     } finally {
       store.close();
     }

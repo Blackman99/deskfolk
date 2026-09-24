@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Annotation, CreateAnnotationRequest } from "@real-bot/protocol";
-import { ApiError } from "../api.ts";
+import { ApiError, originalSizeForBlob } from "../api.ts";
 import type { CropCodec } from "../annotations/region-box.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { ANNOTATION_REQUEST_BUDGET, RemoteApi } from "./api.ts";
 import type { StoredEnrollment } from "./idb.ts";
+import { enrollment as hostEnrollment, fakeHost } from "./test-host.ts";
 import {
   base64url,
   canonicalBytes,
@@ -32,6 +33,17 @@ const enrollment: StoredEnrollment = {
   name: "Fixture",
 };
 const challenge = "A".repeat(43);
+
+test("remote push test keeps queued retry diagnostics through the client", async () => {
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      expect(request.path).toBe("/remote/push/test");
+      expect(request.body).toEqual({});
+      return { v: 1, id: request.id, status: 200, body: { ok: true, status: "queued", error_code: "timeout" } };
+    },
+  });
+  expect(await api.testRemotePush()).toEqual({ ok: true, status: "queued", error_code: "timeout" });
+});
 
 test("unknown remote results look up the same request id instead of minting a new one", async () => {
   const calls: RemoteRequest[] = [];
@@ -104,6 +116,65 @@ test("remote file GET reports start then the completed blob size", async () => {
     { loaded: 0, total: null },
     { loaded: 5, total: 5 },
   ]);
+});
+
+/**
+ * The same link, end to end: a chat's picture is a background read, and the note tapped while it
+ * streams stops it, is answered, and lets the picture start over.
+ */
+test("a chat picture yields to the file someone opens", async () => {
+  const relay = fakeHost({ answer: () => null });
+  const api = new RemoteApi(hostEnrollment, { socketFactory: () => relay.socket as unknown as WebSocket });
+  await api.connect(() => undefined);
+  const picture = api.getAttachmentBlob("pic", undefined, { background: true });
+  const [asked] = relay.requests;
+  relay.respond({ v: 1, id: asked!.id, status: 200, body: null, file: { streamId: 3, size: 10 } });
+  const note = api.getWorkspaceFileBlob("notes/a.md");
+  expect(relay.cancels).toEqual([3]);
+  relay.streamEnded(3);
+  const opened = relay.requests[1]!;
+  expect(opened.query).toEqual({ path: "notes/a.md" });
+  relay.respond({ v: 1, id: opened.id, status: 200, body: null,
+    file: { streamId: 0, size: 2, bytes: base64url(new TextEncoder().encode("hi")) } });
+  expect(await (await note).text()).toBe("hi");
+  expect(relay.requests[2]!.id).toBe(asked!.id);
+  relay.respond({ v: 1, id: asked!.id, status: 200, body: null,
+    file: { streamId: 0, size: 3, bytes: base64url(new TextEncoder().encode("png")) } });
+  expect(await (await picture).text()).toBe("png");
+  api.close();
+});
+
+/** The Mac answers `size` with a scaled copy and says what the original weighs. */
+test("a scaled picture remembers the original's size", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      return { v: 1, id: request.id, status: 200, body: new Blob(["jpg"]), headers: { contentType: "image/jpeg", originalSize: 3_727_854 } };
+    },
+  });
+  const blob = await api.getAttachmentBlob("pic", undefined, { size: "thumb" });
+  expect(calls[0]!.query).toEqual({ size: "thumb" });
+  expect(originalSizeForBlob(blob)).toBe(3_727_854);
+  const note = await api.getWorkspaceFileBlob("notes/a.md", undefined, { size: "preview" });
+  expect(calls[1]!.query).toEqual({ path: "notes/a.md", size: "preview" });
+  expect(originalSizeForBlob(note)).toBe(3_727_854);
+});
+
+/** A Mac from before scaled pictures refuses the parameter; the picture still opens, as the original. */
+test("a Mac that refuses size is asked again for the original", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      if (request.query?.size) return { v: 1, id: request.id, status: 422, body: { error: { code: "invalid_args", message: "invalid remote properties" } } };
+      return { v: 1, id: request.id, status: 200, body: new Blob(["png"]) };
+    },
+  });
+  const blob = await api.getAttachmentBlob("pic", undefined, { size: "thumb" });
+  expect(await blob.text()).toBe("png");
+  expect(calls.map((row) => row.query)).toEqual([{ size: "thumb" }, undefined]);
+  expect(originalSizeForBlob(blob)).toBeNull();
 });
 
 test("remote attachments above 50 MiB are refused before RPC", async () => {
@@ -335,6 +406,52 @@ test("a create whose receipt exists is never replaced by an edited payload", asy
   await expect(api.createBot({ name: "Edited", duties: "d", boundaries: "b" })).rejects.toMatchObject({ code: "request_pending" });
   expect(posts).toHaveLength(1);
   expect(api.pendingRequests()).toHaveLength(1);
+});
+
+/** A phone reads the screenful it shows; a Mac from before paged snapshots still opens the chat. */
+test("a conversation opens on a page of twenty, or whatever an older Mac sends", async () => {
+  const calls: RemoteRequest[] = [];
+  let paged = true;
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      if (request.query?.limit && !paged) return { v: 1, id: request.id, status: 422, body: { error: { code: "invalid_args", message: "invalid remote properties" } } };
+      return { v: 1, id: request.id, status: 200, body: { session: { id: "s" }, judgements: [], event_instance_id: "a".repeat(32), watermark_seq: 0 } };
+    },
+  });
+  await api.sessionSnapshot("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+  expect(calls[0]!.query).toEqual({ limit: "20" });
+  paged = false;
+  await api.sessionSnapshot("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+  expect(calls.slice(1).map((row) => row.query)).toEqual([{ limit: "20" }, undefined]);
+  paged = true;
+  await api.messages("01ARZ3NDEKTSV4RRFFQ69G5FAV", { cursor: "2026-09-21T02:49:19.476Z|01M30XWCBK3BBWAV09ERKDD7VS" });
+  expect(calls.at(-1)!.query).toEqual({ cursor: "2026-09-21T02:49:19.476Z|01M30XWCBK3BBWAV09ERKDD7VS", limit: "20" });
+});
+
+/** Every link opens by asking the Mac to deflate its answers; an older Mac's 404 changes nothing. */
+test("connecting asks the Mac to compress, and carries on if it cannot", async () => {
+  const asked: RemoteRequest[] = [];
+  const relay = fakeHost({
+    answer: (request) => {
+      if (request.path !== "/remote/features") return null;
+      asked.push(request);
+      return { v: 1, id: request.id, status: 200, body: { compress: "deflate-raw" } };
+    },
+  });
+  const api = new RemoteApi(hostEnrollment, { socketFactory: () => relay.socket as unknown as WebSocket });
+  await api.connect(() => undefined);
+  expect(asked.map((row) => [row.method, row.body])).toEqual([["POST", { compress: ["deflate-raw"] }]]);
+  api.close();
+
+  const older = fakeHost({ answer: () => null });
+  const plain = new RemoteApi(hostEnrollment, { socketFactory: () => older.socket as unknown as WebSocket });
+  await plain.connect(() => undefined);
+  const note = plain.getWorkspaceFileBlob("a.md");
+  older.respond({ v: 1, id: older.requests[0]!.id, status: 200, body: null,
+    file: { streamId: 0, size: 2, bytes: base64url(new TextEncoder().encode("ok")) } });
+  expect(await (await note).text()).toBe("ok");
+  plain.close();
 });
 
 // Annotations -------------------------------------------------------------------------------

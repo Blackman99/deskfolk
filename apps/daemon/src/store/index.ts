@@ -41,6 +41,7 @@ import {
 import * as skills from "./skills";
 import * as spend from "./spend";
 import * as tasks from "./tasks";
+import * as terminals from "./terminals";
 import * as turns from "./turns";
 
 export { HttpError } from "../errors";
@@ -88,6 +89,7 @@ export class Store {
     this.receipts = new Receipts(this.db, this.ctx.tx, this.ctx.keys, () => files.recoverFiles(this.ctx));
     files.recoverFiles(this.ctx);
     settings.ensureLegacyProviderRow(this.ctx);
+    sessions.ensureFileDropSession(this.ctx);
     installChangeJournal(this.ctx);
     this.journalReady = true;
   }
@@ -171,7 +173,7 @@ export class Store {
     return {
       credentialOperations: credentials.listCredentialOperations(this.ctx),
       settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
-      spend: this.listSpend({}), approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
+      approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
       providers: providers.providersCached(this.ctx),
       skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),
       memories: memories.listMemories(this.ctx).map((memory) => memories.withLearning(this.ctx, memory)),
@@ -243,6 +245,7 @@ export class Store {
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
 
   // Sessions -------------------------------------------------------------------------------
+  readonly ensureFileDropSession = this.bind(sessions.ensureFileDropSession);
   readonly listSessions = this.bind(sessions.listSessions);
   readonly getSession = this.bind(sessions.getSession);
   readonly markSessionRead = this.bind(sessions.markSessionRead);
@@ -275,9 +278,15 @@ export class Store {
   readonly resolveAnnotationByBot = this.bind(annotations.resolveAnnotationByBot);
   readonly sendAnnotations = (...args: Parameters<Bound<typeof annotations.sendAnnotations>>) => annotations.sendAnnotations(this.ctx, ...args);
 
+  // Terminals you opened. The process dies with the daemon; the row is what the next one starts. --
+  readonly listKeptTerminals = this.bind(terminals.listKeptTerminals);
+  readonly rememberTerminal = this.bind(terminals.rememberTerminal);
+  readonly forgetTerminal = this.bind(terminals.forgetTerminal);
+
   // Transcript -----------------------------------------------------------------------------
   readonly listMessages = this.bind(messages.listMessages);
   readonly postMessage = (...args: Parameters<Bound<typeof messages.postMessage>>) => messages.postMessage(this.ctx, ...args);
+  readonly assertUserMayPost = this.bind(messages.assertUserMayPost);
   readonly insertMessage = this.bind(messages.insertMessage);
   readonly getMessage = this.bind(messages.getMessage);
   readonly listMainMessages = this.bind(messages.listMainMessages);
@@ -326,6 +335,7 @@ export class Store {
   readonly finishTurnRoute = this.bind(routing.finishTurnRoute);
   readonly getTurnRoute = this.bind(routing.getTurnRoute);
   readonly listSessionRoutes = this.bind(routing.listSessionRoutes);
+  readonly listTaskRoutes = this.bind(routing.listTaskRoutes);
   readonly listRouteFeedback = this.bind(routing.listRouteFeedback);
   readonly collectRouteFeedback = this.bind(routing.collectRouteFeedback);
   readonly forgetBotRoutes = this.bind(routing.forgetBotRoutes);
@@ -337,8 +347,10 @@ export class Store {
   readonly reviewEffect = this.bind(routing.reviewEffect);
   readonly cleanCompletions = this.bind(routing.cleanCompletions);
   readonly listSessionReviews = this.bind(routing.listSessionReviews);
+  readonly listTaskReviews = this.bind(routing.listTaskReviews);
   readonly recordRouteLearning = this.bind(routing.recordRouteLearning);
   readonly listSessionLearnings = this.bind(routing.listSessionLearnings);
+  readonly listTaskLearnings = this.bind(routing.listTaskLearnings);
   readonly learningOutcome = this.bind(routing.learningOutcome);
   readonly memoryWithLearning = this.bind(memories.withLearning);
   readonly skillWithLearning = this.bind(skills.withLearning);

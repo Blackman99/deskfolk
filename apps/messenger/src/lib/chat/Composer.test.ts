@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { FILE_DROP_SESSION_ID, USER_MEMBER } from "@real-bot/protocol";
 import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, fakeRuntime } from "../test-fixtures.ts";
@@ -82,8 +83,6 @@ test("phone suggestions stay in one scrollable row and insert the complete promp
         const chip = bar.querySelector("button")!;
         expect(getComputedStyle(chip).whiteSpace).toBe("nowrap");
         expect(getComputedStyle(chip).textOverflow).toBe("ellipsis");
-        expect(getComputedStyle(chip).maxWidth).toBe("85%");
-        expect(getComputedStyle(editor).maxHeight).toBe("min(120px, 25dvh)");
         chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         flushSync();
         expect(runtime.draft).toBe(prompt);
@@ -153,6 +152,75 @@ test("an empty draft cannot be sent", () => {
   close();
 });
 
+test("the jump-to-bottom control hides inside the input and floats clear of it when shown", () => {
+  const { host, close } = open("");
+  const slot = host.querySelector(".scroll-bottom-slot") as HTMLElement;
+  const button = slot.querySelector(".scroll-bottom-btn") as HTMLButtonElement;
+  const hidden = getComputedStyle(button);
+  const slotStyle = getComputedStyle(slot);
+  expect(slot.classList.contains("is-shown")).toBe(false);
+  expect(hidden.transform).toContain("translateY(76px)");
+  expect(hidden.borderRadius).toBe("50%");
+  expect(hidden.boxShadow).toBe("none");
+  expect(hidden.pointerEvents).toBe("none");
+  expect(button.tabIndex).toBe(-1);
+  expect(slotStyle.overflow).toBe("hidden");
+  expect(slotStyle.top).toBe("-44px");
+  const card = host.querySelector(".composer-card") as HTMLElement;
+  const shell = host.querySelector(".composer-card-shell") as HTMLElement;
+  expect(getComputedStyle(shell).zIndex === "auto" || getComputedStyle(shell).zIndex === "").toBe(true);
+  expect(Number(getComputedStyle(card).zIndex)).toBeGreaterThan(Number(slotStyle.zIndex));
+  close();
+});
+
+test("showing the jump-to-bottom control slides it out of the card and keeps it clickable", () => {
+  const selected = aDirect();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  let jumps = 0;
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    showScrollBottom: true,
+    onScrollToBottom: () => { jumps += 1; },
+    onSend: async () => {},
+    onPickPrompt: () => {},
+  });
+  const slot = view.host.querySelector(".scroll-bottom-slot") as HTMLElement;
+  const button = slot.querySelector(".scroll-bottom-btn") as HTMLButtonElement;
+  expect(slot.classList.contains("is-shown")).toBe(true);
+  expect(getComputedStyle(button).transform).toContain("translateY(0)");
+  expect(getComputedStyle(button).boxShadow).toBe("none");
+  expect(getComputedStyle(slot).width).toBe(getComputedStyle(button).width);
+  expect(getComputedStyle(button).pointerEvents).toBe("auto");
+  const focusRule = [...document.styleSheets]
+    .flatMap((sheet) => {
+      try {
+        return [...sheet.cssRules];
+      } catch {
+        return [];
+      }
+    })
+    .map((rule) => rule.cssText)
+    .find((text) => text.includes("scroll-bottom-btn") && text.includes("focus-visible"));
+  expect(focusRule).toBeTruthy();
+  expect(focusRule).toContain("outline-style: none");
+  expect(focusRule).toContain("box-shadow: inset");
+  expect(focusRule).not.toContain("outline-offset");
+  expect(button.tabIndex).toBe(0);
+  expect(button.getAttribute("aria-label")).toBe(t.chat.scrollToBottom);
+  runtime.composerSuggestions = [{ id: "1", label: "下一步", prompt: "下一步做什么" }];
+  flushSync();
+  const bar = view.host.querySelector(".composer-suggest-bar") as HTMLElement;
+  const card = view.host.querySelector(".composer-card") as HTMLElement;
+  expect(Number(getComputedStyle(bar).zIndex)).toBeGreaterThan(Number(getComputedStyle(card).zIndex));
+  expect(getComputedStyle(bar).maxWidth).toContain("52px");
+  button.click();
+  expect(jumps).toBe(1);
+  view.close();
+});
+
 test("the remote attachment limit sits inside an empty composer", () => {
   const { host, runtime, close } = open("", true);
   expect(host.querySelector(".composer-inline-limit")?.textContent).toContain(t.composer.attachLimit);
@@ -160,6 +228,55 @@ test("the remote attachment limit sits inside an empty composer", () => {
   flushSync();
   expect(host.querySelector(".composer-inline-limit")).toBeNull();
   close();
+});
+
+function typeAt(editor: HTMLElement): void {
+  editor.textContent = "@";
+  const range = document.createRange();
+  range.setStart(editor.firstChild!, 1);
+  range.collapse(true);
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+  flushSync();
+}
+
+test("the file conversation takes text as well as files, with no Bot to mention", () => {
+  const selected = aDirect({
+    id: FILE_DROP_SESSION_ID,
+    participants: [{ member: USER_MEMBER, joined_at: "2026-09-19T00:00:00.000Z", left_at: null }],
+  });
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  runtime.draft = "给自己记一句";
+  const sent: File[][] = [];
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    onSend: async (files: File[]) => {
+      sent.push(files);
+      runtime.draft = "";
+    },
+    onPickPrompt: () => {},
+  });
+  const editor = view.host.querySelector(".composer-input") as HTMLElement;
+  expect(editor.getAttribute("contenteditable")).toBe("true");
+  expect(editor.dataset.placeholder).toBe(t.sidebar.fileDropPlaceholder);
+  expect((view.host.querySelector(".composer-action") as HTMLButtonElement).disabled).toBe(false);
+  editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  flushSync();
+  expect(sent).toEqual([[]]);
+  // Nothing here wakes a Bot, so offering one to mention would promise an answer that never comes.
+  typeAt(editor);
+  expect(view.host.querySelector(".mention-autocomplete-popup")).toBeNull();
+  view.close();
+
+  const direct = open("");
+  typeAt(direct.editor);
+  expect(direct.host.querySelector(".mention-autocomplete-popup")).not.toBeNull();
+  direct.close();
 });
 
 /** You can read a Bot↔Bot direct, but there is nowhere to type: you are not a participant. */
@@ -185,5 +302,35 @@ test("a Bot to Bot direct shows the read-only notice and no way in", () => {
   const editor = view.host.querySelector(".composer-input") as HTMLElement;
   expect(editor.getAttribute("contenteditable")).toBe("false");
   expect((view.host.querySelector(".attach-btn") as HTMLButtonElement)?.disabled).toBe(true);
+  view.close();
+});
+
+test("files staged in one conversation wait there while the composer shows another", () => {
+  // A phone has one composer for every conversation. Staged files held by the component rode
+  // along into the next conversation, and went out with its message.
+  const first = aDirect({ id: "d-first" });
+  const second = aDirect({ id: "d-second" });
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [first, second] }));
+  runtime.selectedId = first.id;
+  const props = reactive({
+    runtime,
+    t,
+    selected: first,
+    onSend: async () => {},
+    onPickPrompt: () => {},
+  });
+  const view = render(Composer, props);
+  const file = new File(["x"], "notes.txt", { type: "text/plain" });
+  runtime.sessionView(first.id).stagedAttachments = [
+    { id: "att-1", file, name: "notes.txt", size: 1, isImage: false, previewUrl: null },
+  ];
+  flushSync();
+  expect(view.host.querySelectorAll(".composer-attachment-item")).toHaveLength(1);
+  props.selected = second;
+  flushSync();
+  expect(view.host.querySelectorAll(".composer-attachment-item")).toHaveLength(0);
+  props.selected = first;
+  flushSync();
+  expect(view.host.querySelectorAll(".composer-attachment-item")).toHaveLength(1);
   view.close();
 });

@@ -9,7 +9,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { scrollTopToRevealRect } from '../chat/mention-popup.ts';
 	import { searchHitView, searchJump } from './search-jump.ts';
-	import { groupSessions, isSessionArchived, youBotPeer } from './session-groups.ts';
+	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
@@ -76,7 +76,7 @@
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -95,6 +95,7 @@
 	});
 
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
+	const fileDrop = $derived(grouped.fileDrop);
 	let botBotExpanded = $state(false);
 	const botBotVisible = $derived(
 		recentBotDms(grouped.botBot, {
@@ -299,6 +300,7 @@
 	}
 
 	function archivedSuffix(session: SessionSummary): string {
+		if (isFileDropSession(session)) return '';
 		if (session.archived_at) return ` · ${t.top.archived}`;
 		const peer = youBotPeer(session);
 		if (!peer) return '';
@@ -787,6 +789,43 @@
 				{/each}
 			{/if}
 		{:else}
+			{#if fileDrop}
+				<div class="ghead">
+					<span>{t.sidebar.fileDrop}</span>
+				</div>
+				{@const dropStatus = statusOf(fileDrop)}
+				{@const dropUnread = unreadOf(fileDrop)}
+				<button
+					type="button"
+					class="row"
+					class:is-on={runtime.selectedId === fileDrop.id}
+					class:is-context-open={contextMenuSessionId === fileDrop.id}
+					class:is-unread={dropUnread > 0}
+					onclick={() => void runtime.selectSession(fileDrop.id)}
+					oncontextmenu={(e) => onOpenContextMenu(e, fileDrop)}
+				>
+					<span class="row-avatar size-md" aria-hidden="true">
+						<span class="row-avatar-bot file-drop-mark">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+								<polyline points="14 2 14 8 20 8"></polyline>
+								<line x1="12" y1="18" x2="12" y2="12"></line>
+								<polyline points="9 15 12 18 15 15"></polyline>
+							</svg>
+						</span>
+					</span>
+					<span class="t">{t.sidebar.fileDrop}</span>
+					<span class="row-time">{timeOf(fileDrop)}</span>
+					<span class="row-status is-{dropStatus.kind}">
+						<span class="row-status-dot" class:is-busy={dropStatus.isBusy}></span>
+						<span class="row-status-text">{dropStatus.label}</span>
+					</span>
+					<span class="s">{previewOf(fileDrop) || t.sidebar.fileDropHint}</span>
+					{#if dropUnread > 0}
+						<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(dropUnread)}</span>
+					{/if}
+				</button>
+			{/if}
 			<div class="ghead">
 				<span>{t.sidebar.groups}</span>
 				<button type="button" class="add" title={t.sidebar.addGroup} onclick={onCreateGroup}
@@ -1471,6 +1510,12 @@
 		object-fit: cover;
 		border-radius: inherit;
 		display: block;
+	}
+
+	.file-drop-mark {
+		background: var(--accent-tint);
+		color: var(--accent);
+		border-color: transparent;
 	}
 
 	/* Roster row, search, session groups, footer, theme menu. */

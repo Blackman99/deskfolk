@@ -8,6 +8,8 @@ export type StepCopy = {
   title: string;
   body: string;
   callout: string;
+  /** A docs page that takes the step further. */
+  link?: { label: string; page: DocsPageKey };
 };
 
 export type BoundaryRow = {
@@ -24,6 +26,7 @@ export type Dict = {
     quickstart: string;
     manifesto: string;
     roadmap: string;
+    remote: string;
     github: string;
     switchLang: string;
     wip: string;
@@ -86,6 +89,7 @@ export type Dict = {
     keyHint: string;
     modelsLabel: string;
     modelCols: { strengths: string; thinking: string; price: string };
+    defaultModel: string;
     save: string;
     newBot: string;
     fieldName: string;
@@ -103,20 +107,47 @@ export type Dict = {
     allowOnce: string;
     deny: string;
     allowed: string;
-    previewTitle: string;
     previewRendered: string;
     previewSource: string;
-    previewSave: string;
-    previewUnsaved: string;
     previewSaved: string;
     trayHidden: string;
     trayTurns: string;
     trayShow: string;
     trayStop: string;
     trayQuit: string;
+    trayTerminal: (command: string) => string;
+    bannerNow: string;
     judgementJoin: string;
     judgementPass: string;
     judgementLabel: string;
+    trace: string;
+    pin: string;
+    more: string;
+    artifactsOf: (name: string) => string;
+    flowOf: (name: string) => string;
+    flowFeedback: string;
+    flowBlamed: string;
+    flowWatched: (n: number) => string;
+    flowDone: string;
+    flowRunning: string;
+    flowWhy: string;
+    thinking: string;
+    you: string;
+    /** Up, down, left, right. */
+    split: [string, string, string, string];
+    emptyTitle: string;
+    emptyHint: string;
+    emptyFilter: string;
+    /** New terminal, workspace, routines. */
+    emptyItems: [string, string, string];
+    emptyReattach: string;
+    emptyNoReattach: string;
+    terminalStop: string;
+    terminalEnd: string;
+    phoneChats: string;
+    phoneSearch: string;
+    fileDrop: string;
+    fileDropHint: string;
   };
   bots: Record<BotId, { name: string; duties: string; boundaries: string }>;
   script: {
@@ -136,6 +167,21 @@ export type Dict = {
     coordinatorClose: string;
     reportLines: string[];
     reportEditLine: string;
+    briefPath: string;
+    /** The job's title, as the flow board's switcher shows it. */
+    jobTitle: string;
+    /** What the model picker chose for each Bot's turn, and why. */
+    routes: Record<BotId, { model: string; thinking: string; kind: string; reason: string; exec: string }>;
+    command: string;
+    commandOutput: string[];
+    commandTook: string;
+    terminalFolder: string;
+    terminalCommand: string;
+    terminalOutput: string[];
+    /** The relay's address, as the phone's browser shows it. */
+    relayHost: string;
+    /** What you ask for from the phone. */
+    phoneReply: string;
   };
   boundaries: {
     heading: string;
@@ -158,6 +204,7 @@ export type Dict = {
     linkDocs: string;
     linkManifesto: string;
     linkRoadmap: string;
+    linkRemote: string;
   };
   footer: {
     tagline: string;
@@ -179,6 +226,8 @@ export type Dict = {
     manifestoIndexLead: string;
     roadmapTag: string;
     roadmapIntro: string;
+    remoteTag: string;
+    remoteIntro: string;
     pagerPrev: string;
     pagerNext: string;
     navGroup: Record<DocsNavGroupId, string>;
@@ -193,6 +242,7 @@ const zh: Dict = {
     quickstart: '从源码启动',
     manifesto: '设计理念',
     roadmap: '路线图',
+    remote: '远程访问',
     github: 'GitHub',
     switchLang: 'English',
     wip: 'Alpha',
@@ -208,7 +258,7 @@ const zh: Dict = {
     headline: '在自己的电脑上，用对话组一支持久的 AI 队友。',
     headlineLines: ['在自己的电脑上，', '用对话组一支', '持久的 AI 队友。'],
     subhead:
-      'Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在你的 Mac 上；模型端点和 MCP 工具由你接入。',
+      'Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，每一轮用的模型都说得出理由。窗口、运行时、会话和共享工作区都在你的 Mac 上；模型端点和 MCP 工具由你接入。',
     wipNote: 'Alpha 版本：macOS 未签名快照，功能与数据结构仍会变化。',
     ctaPrimary: '下载 Alpha（macOS）',
     ctaSecondary: '从源码启动',
@@ -226,7 +276,7 @@ const zh: Dict = {
       {
         title: '先选工作区和模型端点',
         body:
-          '设置就是向导：一个本机目录做共享工作区，再加至少一个 OpenAI 兼容端点。模型名单写清楚擅长领域、思考等级和价格，之后每开一轮由 agent 按任务挑模型和思考等级并留下一句理由，你不用每轮自选。',
+          '设置就是向导：一个本机目录做共享工作区，再加至少一个 OpenAI 兼容端点。端点下已启用的模型各占一行，写清擅长领域、思考等级和价格，点一行就设成默认。之后每开一轮由 agent 按任务挑模型和思考等级并留下一句理由，你不用每轮自选。',
         callout: '密钥只在这个输入框里填，不进聊天。'
       },
       {
@@ -244,37 +294,56 @@ const zh: Dict = {
       {
         title: '在群里下任务，没被点名的自己判断',
         body:
-          '你发一条不带 @ 的消息，在场的每个 Bot 各自决定下场还是旁观；旁观不进主转录。用 @ 点名则必须下场。应用不代你裁决谁说话，也没有轮数熔断。',
+          '你发一条不带 @ 的消息，在场的每个 Bot 各自决定下场还是旁观；旁观不进主转录。用 @ 点名则必须下场。应用不代你裁决谁说话，也没有轮数熔断。下场的那位，名字旁标着这一轮用的模型。',
         callout: '参与判断：Researcher 下场，其余旁观。'
       },
       {
         title: '危险动作停在批准卡上',
         body:
-          'Researcher 想加一个 MCP 服务器来抓网页。新增 MCP、新建端点、工作区外读写和出站网络都要你放行；新增 MCP 这一类不能 Always allow。已配好的工具调用则直接执行。',
+          'Researcher 想加一个 MCP 服务器来抓网页。新增 MCP、新建端点、工作区外读写和出站网络都要你放行；新增 MCP 这一类不能 Always allow。已配好的工具调用则直接执行。在等你的事标在侧栏这条会话上，没有另开的通知页。',
         callout: '允许一次或拒绝。密钥不进转录。'
       },
       {
-        title: '交接就是发消息',
+        title: '交接就是发消息，命令看得见',
         body:
-          'Researcher 整理完把 @Writer 写进消息，Writer 被叫醒接着干。本轮写出的工作区文件自动挂在回复上，没有另一套产物库。',
-        callout: '同一个工作区，不复制、不隔离。'
+          'Researcher 跑脚本核对数字，输出就在它那一行下面边跑边滚，跑完折成一行。整理完它把 @Writer 写进消息，Writer 被叫醒接着干。本轮写出的工作区文件自动挂在回复上，没有另一套产物库。',
+        callout: '跑完折成一行：命令 · 退出码 · 耗时。'
       },
       {
-        title: '产物就在你的工作区里',
+        title: '产物在旁边一块窗格里打开',
         body:
-          '点开 report.md，对话框旁的产物预览是 Monaco 编辑器：行号、查找、折叠、Markdown 渲染或源码。改完 Cmd+S 写回同一路径；侧栏 ⌘O 从右侧打开独立的工作区浮层（文件树 + 预览），不占用对话框预览。',
+          '点开 report.md，主栏分出一块窗格，标签叫「调研的产物」：左边是这件事引用过的文件，右边是 Monaco 编辑器，行号、查找、折叠，Markdown 在渲染和源码之间切换。改完 ⌘S 写回同一路径。一条会话只有一块预览，再点别的文件就换到它。',
         callout: '写回的是磁盘上的真文件。'
       },
       {
-        title: '关窗不停，守护进程接着跑',
+        title: '一件事是一张流程图',
         body:
-          '窗口藏进托盘，进行中的轮次继续。私聊里的 Stop 立即停掉眼前这一轮；群聊要停就发消息。Cmd+Q 或托盘「退出」才结束窗口和守护进程。',
+          '会话窗格窄了，顶栏按钮收进 ⋯。点「经过」，这件事按谁叫醒了谁画出来：一轮一张卡片，交出的文件挂在卡片上。Bot 卡片底下一行是这一轮的模型、思考等级和消息类别，开轮前由 agent 挑定；点开看它为什么这么挑、走了几跳。纠正链结束时的复盘也记在这里，只有判成模型的问题才留成这个 Bot 的经验。',
+        callout: '每轮挑的模型和理由，记在这一轮的卡片上。'
+      },
+      {
+        title: '分出一块，开你自己的终端',
+        body:
+          '在任意窗格里右键，可以向上下左右分割；新的空窗格列着新终端、工作区和日程。开一个终端跑 pnpm dev：这是你自己的 shell，不走批准，Bot 也碰不到。当前窗格描一圈强调色；排法只记在这台 Mac 上，退出再开，分屏和终端都回来。',
+        callout: '关掉终端标签不杀进程，从「＋」接回。'
+      },
+      {
+        title: '关窗不停，等你的事会来找你',
+        body:
+          '窗口藏进托盘，进行中的轮次和终端里的 pnpm dev 都接着跑。Coordinator 复核完，macOS 横幅点开就是这条会话；Dock 角标只数你没看过的和还在等你的。私聊里的 Stop 立即停掉眼前这一轮；Cmd+Q 或托盘「退出」才结束窗口和守护进程。',
         callout: '关窗是隐藏，不是退出。'
+      },
+      {
+        title: '不在 Mac 旁，用手机接着管',
+        body:
+          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上让 @Writer 补一节，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上批准。这是默认关闭的实验功能，发布包暂时还不能配对。',
+        callout: '页面由你自己的中继提供，消息端到端加密。',
+        link: { label: '接入步骤', page: 'remote' }
       }
     ]
   },
   mock: {
-    windowTitle: 'Real Bot',
+    windowTitle: 'Deskfolk',
     roster: '名册',
     addBot: '新建 Bot',
     search: '搜索会话、消息、文件、日程',
@@ -291,7 +360,7 @@ const zh: Dict = {
     groupSettings: '群组设置',
     botSettings: 'Bot 设置',
     members: (n) => `${n} 位成员`,
-    pendingApproval: '待审批',
+    pendingApproval: '待批准',
     unread: '未读',
     settingsTitle: '设置',
     settingsTabs: ['通用', '模型服务', 'MCP 扩展'],
@@ -305,6 +374,7 @@ const zh: Dict = {
     keyHint: '进钥匙串，不进 SQLite。',
     modelsLabel: '模型名单',
     modelCols: { strengths: '擅长', thinking: '思考', price: '价格' },
+    defaultModel: '默认',
     save: '保存',
     newBot: '新建 Bot',
     fieldName: '名字',
@@ -322,20 +392,45 @@ const zh: Dict = {
     allowOnce: '允许一次',
     deny: '拒绝',
     allowed: '已允许',
-    previewTitle: '产物预览',
-    previewRendered: '预览',
+    previewRendered: '渲染',
     previewSource: '源码',
-    previewSave: '保存',
-    previewUnsaved: '未保存',
     previewSaved: '已保存到 report.md',
     trayHidden: '窗口已隐藏到托盘，轮次继续。',
     trayTurns: '进行中',
     trayShow: '显示窗口',
     trayStop: 'Stop',
     trayQuit: '退出',
+    trayTerminal: (command) => `终端 · ${command} 还在跑`,
+    bannerNow: '现在',
     judgementJoin: '下场',
     judgementPass: '旁观',
-    judgementLabel: '参与判断'
+    judgementLabel: '参与判断',
+    trace: '经过',
+    pin: '置顶',
+    more: '更多会话操作',
+    artifactsOf: (name) => `${name}的产物`,
+    flowOf: (name) => `${name}流程`,
+    flowFeedback: '有反馈',
+    flowBlamed: '归咎模型',
+    flowWatched: (n) => `${n} 人旁观`,
+    flowDone: '完成',
+    flowRunning: '进行中',
+    flowWhy: '为什么选它',
+    thinking: '思考',
+    you: '你',
+    split: ['向上分割', '向下分割', '向左分割', '向右分割'],
+    emptyTitle: '这个窗格还没有内容',
+    emptyHint: '从侧栏点一条会话放进来，或者从下面挑一个。',
+    emptyFilter: '按名字或路径找',
+    emptyItems: ['新终端', '工作区', '日程图'],
+    emptyReattach: '可接回',
+    emptyNoReattach: '没有可接回的终端',
+    terminalStop: '停止',
+    terminalEnd: '结束会话',
+    phoneChats: '会话',
+    phoneSearch: '搜索',
+    fileDrop: '文件',
+    fileDropHint: '发到这里的文件进工作区 inbox/，不叫醒 Bot。'
   },
   bots: {
     coordinator: {
@@ -356,7 +451,7 @@ const zh: Dict = {
   },
   script: {
     groupName: '调研',
-    workspacePath: '/Users/you/real-bot-workspace',
+    workspacePath: '/Users/you/deskfolk-workspace',
     endpointName: '本地 vLLM',
     endpointUrl: 'http://127.0.0.1:8000/v1',
     models: [
@@ -389,7 +484,52 @@ const zh: Dict = {
       '',
       '年报显示个人开发者占比 61%，较上一年 +9 pt。'
     ],
-    reportEditLine: '> 核验：Researcher，2026-09-17'
+    reportEditLine: '> 核验：Researcher，2026-09-17',
+    briefPath: 'brief.md',
+    jobTitle: '围绕 brief.md 完成 report.md',
+    routes: {
+      researcher: {
+        model: 'deepseek-v3.2',
+        thinking: '低',
+        kind: '推理',
+        reason: '要调抓取工具、跑脚本核对年报数字，工具调用多；deepseek-v3.2 擅长工具调用，思考给低档就够。',
+        exec: '3 跳 · 0 次工具错误 · 46s'
+      },
+      writer: {
+        model: 'qwen3-32b',
+        thinking: '中',
+        kind: '写作',
+        reason: '照着核验结论起草六节中文报告；qwen3-32b 擅长中文写作。',
+        exec: '2 跳 · 0 次工具错误 · 1m12s'
+      },
+      coordinator: {
+        model: 'qwen3-32b',
+        thinking: '低',
+        kind: '推理',
+        reason: '对照 brief.md 逐条复核，读得多写得少。',
+        exec: '进行中'
+      }
+    },
+    command: 'python3 scripts/check_numbers.py brief.md',
+    commandOutput: [
+      '读取 notes/fetched/annual-report-2025.md',
+      '个人开发者占比 61% · brief 写 61% ✓',
+      '同比 +9 pt · brief 写 +9 pt ✓',
+      '2 / 2 个数字一致'
+    ],
+    commandTook: '3.1s',
+    terminalFolder: 'deskfolk-workspace',
+    terminalCommand: 'pnpm dev',
+    terminalOutput: [
+      '> report-site@0.1.0 dev',
+      '> vite',
+      '',
+      '  VITE v7.1.3  ready in 412 ms',
+      '',
+      '  ➜  Local:   http://localhost:5173/'
+    ],
+    relayHost: 'relay.example.com',
+    phoneReply: '@Writer 结尾补一节「方法」，写清数字是怎么核对的。'
   },
   boundaries: {
     heading: '哪些已经接入，哪些还在建，哪些不做',
@@ -400,9 +540,15 @@ const zh: Dict = {
     rows: [
       {
         dim: '运行时底座',
-        live: 'macOS 桌面窗、常驻守护进程、本地共享工作区、SQLite 持久化',
+        live: 'macOS 桌面窗、常驻守护进程、本地共享工作区、SQLite 持久化；关窗不停，你自己的终端会话也由守护进程持有',
         wip: '复杂真实场景下的长期稳定性验证',
         avoid: '云电脑、云端计费、多用户 SaaS'
+      },
+      {
+        dim: '桌面工作台',
+        live: '主栏任意分屏，标签装会话、终端、日程图或工作区；一件事一张流程图；等你的事标在会话列表上，macOS 横幅与 Dock 角标',
+        wip: '几条会话同时可见时，只有当前那条会报在线，其余仍可能弹一次横幅',
+        avoid: '多窗口进程、手机上分屏'
       },
       {
         dim: 'Bot 形态',
@@ -412,7 +558,7 @@ const zh: Dict = {
       },
       {
         dim: '模型与工具',
-        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；开轮前由 agent 挑模型和思考等级并给出理由，规则兜底',
+        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；开轮前由 agent 挑模型和思考等级并给出理由，规则兜底，记在流程图那一轮的卡片上',
         wip: '工具和协作方式也由 agent 开轮前决定',
         avoid: '绑定单一厂商、供应商目录、假装兼容所有实现'
       },
@@ -427,6 +573,12 @@ const zh: Dict = {
         live: '改人设和技能、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成',
         wip: '全部应用操作的对话覆盖（含首启向导）',
         avoid: '每件事都要手点深层菜单'
+      },
+      {
+        dim: '远程访问',
+        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端，源码态可做集成测试',
+        wip: '独立安全复核，真机主屏幕 WebAuthn 与 Web Push 验收；在这之前公网配对保持关闭',
+        avoid: '项目方运营的云端中继、把实验原型当成可用的远控'
       }
     ],
     footnote: ['详细方向见', '；领域词汇以 ', ' 为准。']
@@ -447,22 +599,23 @@ const zh: Dict = {
       title: '下载 Alpha 快照',
       body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg。构建未签名：首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（完整 FAQ：docs/gatekeeper.zh.md；昂贵动作仍会先问你）：',
       link: '前往最新 Release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
+      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
     },
     linkDocs: '开发说明',
     linkManifesto: '设计理念',
-    linkRoadmap: '路线图'
+    linkRoadmap: '路线图',
+    linkRemote: '远程访问'
   },
   footer: {
     tagline: '本机 macOS 上的单人 agent 协作应用。',
     mit: 'MIT 协议开源。与 xAI / Grok 无官方附属关系。',
-    contributors: 'Real Bot Contributors'
+    contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Real Bot — 在自己的电脑上，用对话组一支持久的 AI 队友',
+    title: 'Deskfolk — 在自己的电脑上，用对话组一支持久的 AI 队友',
     description:
-      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，Alpha 阶段。',
-    imageAlt: 'Real Bot：信使窗口里三个 Bot 在群里协作完成 report.md'
+      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，桌面窗能分屏开终端。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，Alpha 阶段。',
+    imageAlt: 'Deskfolk：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
     onThisPage: '本页',
@@ -474,11 +627,14 @@ const zh: Dict = {
     manifestoIndexHeading: '按主题读术语',
     manifestoIndexLead: '每个主题一页。点开后左侧是整份文档导航，右侧是本页术语。',
     roadmapTag: 'ROADMAP.md',
-    roadmapIntro: 'Real Bot 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
+    roadmapIntro: 'Deskfolk 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
+    remoteTag: '实验性',
+    remoteIntro: '从手机或另一台电脑连到你 Mac 上的 Deskfolk：自己部署中继、让 Mac 连上它、配对设备。默认关闭，页面在构建时由仓库里的 docs/remote-access.zh.md 生成。',
     pagerPrev: '上一页',
     pagerNext: '下一页',
     navGroup: {
       language: '领域语言',
+      guides: '指南',
       direction: '方向'
     },
     pages: {
@@ -487,9 +643,10 @@ const zh: Dict = {
       conversations: { title: '会话', blurb: '群、私聊、线程、回应。' },
       collaboration: { title: '协作', blurb: '点名、判断、交接、轮次。' },
       workspace: { title: '工作区', blurb: '共享目录、产物、附件、搜索。' },
-      runtime: { title: '运行时', blurb: '窗、守护进程、托盘、本机接口。' },
+      runtime: { title: '运行时', blurb: '窗与窗格、守护进程、托盘、终端、本机接口。' },
       models: { title: '模型与工具', blurb: '端点、MCP、日程、技能、上下文与花费。' },
       safety: { title: '批准与边界', blurb: '危险动作、壳、Always allow。' },
+      remote: { title: '远程访问', blurb: '自托管中继、配对手机、Web Push。' },
       roadmap: { title: '路线图', blurb: '建设方向，不是交付时间表。' }
     }
   }
@@ -502,6 +659,7 @@ const en: Dict = {
     quickstart: 'Run from source',
     manifesto: 'Manifesto',
     roadmap: 'Roadmap',
+    remote: 'Remote access',
     github: 'GitHub',
     switchLang: '中文',
     wip: 'Alpha',
@@ -517,7 +675,7 @@ const en: Dict = {
     headline: 'Persistent AI teammates, organized by conversation, on your own Mac.',
     headlineLines: ['Persistent AI teammates,', 'organized by conversation,', 'on your own Mac.'],
     subhead:
-      'Bots have names, duties and boundaries. They chat one to one, join groups, get @mentioned and hand work to each other. The window, runtime, sessions and shared workspace live on your Mac; you plug in the model endpoints and MCP tools.',
+      'Bots have names, duties and boundaries. They chat one to one, join groups, get @mentioned and hand work to each other; every job reads as a flow, and every turn can say why it ran on the model it did. The window, runtime, sessions and shared workspace live on your Mac; you plug in the model endpoints and MCP tools.',
     wipNote: 'Alpha: unsigned macOS snapshot. Features and data structures may still change.',
     ctaPrimary: 'Download alpha (macOS)',
     ctaSecondary: 'Run from source',
@@ -535,7 +693,7 @@ const en: Dict = {
       {
         title: 'Set the workspace and a model endpoint',
         body:
-          'Settings double as the setup wizard: one local folder as the shared workspace, plus at least one OpenAI-compatible endpoint. The model list records strengths, thinking levels and price, so an agent can pick the model and thinking level for each turn — and leave a reason — instead of asking you every time.',
+          'Settings double as the setup wizard: one local folder as the shared workspace, plus at least one OpenAI-compatible endpoint. Each enabled model on an endpoint is its own row, with strengths, thinking levels and price; click a row to make it the default. From then on an agent picks the model and thinking level for each turn — and leaves a reason — instead of asking you every time.',
         callout: 'The API key goes in this field only. Never in chat.'
       },
       {
@@ -553,37 +711,56 @@ const en: Dict = {
       {
         title: 'Post the goal; unmentioned bots decide for themselves',
         body:
-          'Send a message without @ and every bot present decides to join or pass; passing never enters the transcript. An @mention makes joining mandatory. The app does not arbitrate who speaks and has no turn-count breaker.',
+          'Send a message without @ and every bot present decides to join or pass; passing never enters the transcript. An @mention makes joining mandatory. The app does not arbitrate who speaks and has no turn-count breaker. The one who joins has the model its turn runs on beside its name.',
         callout: 'Judgement: Researcher joins, the others pass.'
       },
       {
         title: 'Dangerous actions stop at an approval card',
         body:
-          'Researcher wants an MCP server to fetch web pages. Adding MCP, adding endpoints, reading or writing outside the workspace and outbound network all wait for you; adding MCP can never be set to Always allow. Calls to configured tools run directly.',
+          'Researcher wants an MCP server to fetch web pages. Adding MCP, adding endpoints, reading or writing outside the workspace and outbound network all wait for you; adding MCP can never be set to Always allow. Calls to configured tools run directly. What waits on you is marked on the conversation in the sidebar; there is no separate notifications page.',
         callout: 'Allow once or deny. Secrets never enter the transcript.'
       },
       {
-        title: 'A handoff is just a message',
+        title: 'A handoff is just a message, and commands show',
         body:
-          'Researcher writes @Writer into its message and Writer wakes up to continue. Files written during the turn attach to the reply automatically; there is no separate artifact store.',
-        callout: 'One workspace. Nothing copied, nothing isolated.'
+          'Researcher runs a script to check the figures; its output scrolls under that line while it runs, then folds to one line. Done, it writes @Writer into its message and Writer wakes up to continue. Files written during the turn attach to the reply automatically; there is no separate artifact store.',
+        callout: 'It folds to one line: command · exit code · how long.'
       },
       {
-        title: 'The output is in your workspace',
+        title: 'The output opens in a pane beside it',
         body:
-          'Open report.md and the chat preview pane shows a Monaco editor: line numbers, find, folding, rendered Markdown or source. Edit and press Cmd+S to write back to the same path; ⌘O in the sidebar opens an independent workspace overlay from the right (folder tree + preview), without taking the chat preview pane.',
+          'Open report.md and the main column splits off a pane for it, in a tab named "Research\'s artifacts": the files this job touched on the left, a Monaco editor on the right with line numbers, find, folding, and Markdown switching between rendered and source. Edit and press ⌘S to write back to the same path. A conversation has one preview; opening another file turns it to that one.',
         callout: 'It writes a real file on disk.'
       },
       {
-        title: 'Close the window; the daemon keeps going',
+        title: 'One job reads as a flow',
         body:
-          'The window hides in the tray and running turns continue. Stop in a direct chat ends the current turn immediately; in a group you stop bots by telling them. Only Cmd+Q or Quit in the tray ends the window and the daemon.',
+          'The conversation pane is narrow now, so its header actions fold into ⋯. Pick Trace and the job is drawn by who woke whom: a card per turn, with the files it handed over on the card. Under each Bot card is the model, thinking level and message kind its turn ran on, picked by an agent before the turn; click it for why, and how many hops it took. The review at the end of a correction lands here too, and only a verdict against the model becomes that Bot\'s experience.',
+        callout: 'The model each turn ran on, and why, sits on its card.'
+      },
+      {
+        title: 'Split off a pane for your own terminal',
+        body:
+          'Right-click anywhere in a pane to split it up, down, left or right; the new empty pane offers New terminal, Workspace and Routines. Start a terminal and run pnpm dev: it is your own shell, it needs no approval, and no Bot can touch it. The current pane is framed in the accent colour; the layout is remembered on this Mac, and Quit and reopen brings back the split and the terminal.',
+        callout: 'Closing a terminal tab leaves it running; reattach from "+".'
+      },
+      {
+        title: 'Close the window; what waits on you finds you',
+        body:
+          'The window hides in the tray, and running turns and the pnpm dev in the terminal carry on. When Coordinator finishes its check, a macOS banner opens straight to that conversation, and the Dock badge counts only what you have not seen plus what is still waiting on you. Stop in a direct chat ends the current turn immediately; only Cmd+Q or Quit in the tray ends the window and the daemon.',
         callout: 'Closing hides. It does not quit.'
+      },
+      {
+        title: 'Away from the Mac, carry on from your phone',
+        body:
+          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for one more section from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac. It is an experimental feature, off by default, and a release build cannot pair yet.',
+        callout: 'Your own relay serves the page; messages are end-to-end encrypted.',
+        link: { label: 'Set it up', page: 'remote' }
       }
     ]
   },
   mock: {
-    windowTitle: 'Real Bot',
+    windowTitle: 'Deskfolk',
     roster: 'Roster',
     addBot: 'New bot',
     search: 'Search sessions, messages, files, routines',
@@ -614,6 +791,7 @@ const en: Dict = {
     keyHint: 'Stored in Keychain, not in SQLite.',
     modelsLabel: 'Model list',
     modelCols: { strengths: 'Strengths', thinking: 'Thinking', price: 'Price' },
+    defaultModel: 'Default',
     save: 'Save',
     newBot: 'New bot',
     fieldName: 'Name',
@@ -631,20 +809,45 @@ const en: Dict = {
     allowOnce: 'Allow once',
     deny: 'Deny',
     allowed: 'Allowed',
-    previewTitle: 'Artifact preview',
     previewRendered: 'Rendered',
     previewSource: 'Source',
-    previewSave: 'Save',
-    previewUnsaved: 'Unsaved',
     previewSaved: 'Saved to report.md',
     trayHidden: 'Window hidden in the tray. Turns keep running.',
     trayTurns: 'running',
     trayShow: 'Show window',
     trayStop: 'Stop',
     trayQuit: 'Quit',
+    trayTerminal: (command) => `Terminal · ${command} still running`,
+    bannerNow: 'now',
     judgementJoin: 'join',
     judgementPass: 'pass',
-    judgementLabel: 'Judgement'
+    judgementLabel: 'Judgement',
+    trace: 'Trace',
+    pin: 'Pin',
+    more: 'More conversation actions',
+    artifactsOf: (name) => `${name}'s artifacts`,
+    flowOf: (name) => `${name} flow`,
+    flowFeedback: 'Feedback',
+    flowBlamed: 'Model blamed',
+    flowWatched: (n) => `${n} watched`,
+    flowDone: 'Done',
+    flowRunning: 'In progress',
+    flowWhy: 'Why this model',
+    thinking: 'thinking',
+    you: 'You',
+    split: ['Split up', 'Split down', 'Split left', 'Split right'],
+    emptyTitle: 'Nothing open in this pane',
+    emptyHint: 'Open a conversation from the sidebar, or pick one of these.',
+    emptyFilter: 'Find by name or path',
+    emptyItems: ['New terminal', 'Workspace', 'Routine calendar'],
+    emptyReattach: 'Reattach',
+    emptyNoReattach: 'No terminal to reattach',
+    terminalStop: 'Stop',
+    terminalEnd: 'End session',
+    phoneChats: 'Chats',
+    phoneSearch: 'Search',
+    fileDrop: 'Files',
+    fileDropHint: 'Files sent here land in the workspace inbox/. No Bot wakes.'
   },
   bots: {
     coordinator: {
@@ -665,7 +868,7 @@ const en: Dict = {
   },
   script: {
     groupName: 'Research',
-    workspacePath: '/Users/you/real-bot-workspace',
+    workspacePath: '/Users/you/deskfolk-workspace',
     endpointName: 'Local vLLM',
     endpointUrl: 'http://127.0.0.1:8000/v1',
     models: [
@@ -699,7 +902,52 @@ const en: Dict = {
       '',
       'The annual report puts individual developers at 61%, up 9 pt.'
     ],
-    reportEditLine: '> Verified by Researcher, 2026-09-17'
+    reportEditLine: '> Verified by Researcher, 2026-09-17',
+    briefPath: 'brief.md',
+    jobTitle: 'Turn brief.md into report.md',
+    routes: {
+      researcher: {
+        model: 'deepseek-v3.2',
+        thinking: 'low',
+        kind: 'reasoning',
+        reason: 'Calls the fetch tool and runs a script to check annual-report figures — heavy on tool calls. deepseek-v3.2 is strong at them; low thinking is enough.',
+        exec: '3 hops · 0 tool errors · 46s'
+      },
+      writer: {
+        model: 'qwen3-32b',
+        thinking: 'medium',
+        kind: 'writing',
+        reason: 'Drafts a six-section report from the verified notes; qwen3-32b is strong at writing.',
+        exec: '2 hops · 0 tool errors · 1m12s'
+      },
+      coordinator: {
+        model: 'qwen3-32b',
+        thinking: 'low',
+        kind: 'reasoning',
+        reason: 'Checks report.md against brief.md point by point: a lot of reading, little writing.',
+        exec: 'in progress'
+      }
+    },
+    command: 'python3 scripts/check_numbers.py brief.md',
+    commandOutput: [
+      'read notes/fetched/annual-report-2025.md',
+      'individual developers 61% · brief says 61% ✓',
+      'year on year +9 pt · brief says +9 pt ✓',
+      '2 / 2 figures match'
+    ],
+    commandTook: '3.1s',
+    terminalFolder: 'deskfolk-workspace',
+    terminalCommand: 'pnpm dev',
+    terminalOutput: [
+      '> report-site@0.1.0 dev',
+      '> vite',
+      '',
+      '  VITE v7.1.3  ready in 412 ms',
+      '',
+      '  ➜  Local:   http://localhost:5173/'
+    ],
+    relayHost: 'relay.example.com',
+    phoneReply: '@Writer add a Method section at the end: how the figures were checked.'
   },
   boundaries: {
     heading: 'What is live, what is being built, what we will not do',
@@ -710,9 +958,15 @@ const en: Dict = {
     rows: [
       {
         dim: 'Runtime',
-        live: 'macOS window, resident daemon, local shared workspace, SQLite state',
+        live: 'macOS window, resident daemon, local shared workspace, SQLite state; closing the window stops nothing, and the daemon holds your own terminal sessions too',
         wip: 'Long-running stability in complex real-world scenarios',
         avoid: 'Cloud VMs, cloud billing, multi-user SaaS'
+      },
+      {
+        dim: 'Desktop workbench',
+        live: 'Split the main column any way; tabs hold a conversation, a terminal, the routine calendar or the workspace; one flow per job; what waits on you marked on the conversation list, with macOS banners and a Dock badge',
+        wip: 'With several conversations on screen only the current one reports presence, so the others can still post a banner once',
+        avoid: 'Multiple window processes, split panes on a phone'
       },
       {
         dim: 'Bots',
@@ -722,7 +976,7 @@ const en: Dict = {
       },
       {
         dim: 'Models and tools',
-        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; an agent picks the model and thinking level before each turn and says why, with rules as the fallback',
+        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; an agent picks the model and thinking level before each turn and says why, with rules as the fallback, kept on that turn\'s card in the flow',
         wip: 'Agent-led choice of tools and collaboration, decided before the turn too',
         avoid: 'Vendor lock-in, a provider catalogue, pretending every implementation is compatible'
       },
@@ -737,6 +991,12 @@ const en: Dict = {
         live: 'Bots edit profiles and skills, create bots and groups, configure endpoints, model lists and MCP through tools',
         wip: 'Conversational coverage of every operation, including first-run setup',
         avoid: 'Deep menus for everyday configuration'
+      },
+      {
+        dim: 'Remote access',
+        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; integration testing runs from source',
+        wip: 'Independent security review, and real-device home-screen WebAuthn and Web Push; public pairing stays off until then',
+        avoid: 'A project-run cloud relay, passing a prototype off as working remote access'
       }
     ],
     footnote: ['See the ', ' for direction; ', ' is the source of truth for vocabulary.']
@@ -757,22 +1017,23 @@ const en: Dict = {
       title: 'Download the alpha snapshot',
       body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel. The build is unsigned: if Gatekeeper blocks the first launch, right-click and choose Open, or run (full FAQ: docs/gatekeeper.md; expensive actions still ask first):',
       link: 'Go to the latest release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Real Bot.app"'
+      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
     },
     linkDocs: 'Development guide',
     linkManifesto: 'Manifesto',
-    linkRoadmap: 'Roadmap'
+    linkRoadmap: 'Roadmap',
+    linkRemote: 'Remote access'
   },
   footer: {
     tagline: 'A single-user agent collaboration app for your Mac.',
     mit: 'Open source under MIT. Not affiliated with xAI / Grok.',
-    contributors: 'Real Bot Contributors'
+    contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Real Bot — Persistent AI teammates, organized by conversation, on your own Mac',
+    title: 'Deskfolk — Persistent AI teammates, organized by conversation, on your own Mac',
     description:
-      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, alpha.',
-    imageAlt: 'Real Bot: three bots collaborating on report.md in a group chat window'
+      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Every job reads as a flow, and the window splits into panes with your own terminal. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, alpha.',
+    imageAlt: 'Deskfolk: three bots collaborating on report.md in a group chat window'
   },
   docs: {
     onThisPage: 'On this page',
@@ -784,11 +1045,14 @@ const en: Dict = {
     manifestoIndexHeading: 'Terms by topic',
     manifestoIndexLead: 'One page per topic. The left rail is the whole docs tree; the right rail is this page.',
     roadmapTag: 'ROADMAP.md',
-    roadmapIntro: 'Where Real Bot is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
+    roadmapIntro: 'Where Deskfolk is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
+    remoteTag: 'Experimental',
+    remoteIntro: 'Reach the Deskfolk on your Mac from a phone or another computer: deploy your own relay, point the Mac at it, pair a device. Off by default. Generated at build time from docs/remote-access.md in the repository.',
     pagerPrev: 'Previous',
     pagerNext: 'Next',
     navGroup: {
       language: 'Language',
+      guides: 'Guides',
       direction: 'Direction'
     },
     pages: {
@@ -797,9 +1061,10 @@ const en: Dict = {
       conversations: { title: 'Sessions', blurb: 'Groups, directs, threads, reactions.' },
       collaboration: { title: 'Collaboration', blurb: 'Mentions, judgement, handoffs, turns.' },
       workspace: { title: 'Workspace', blurb: 'Shared folder, artifacts, attachments, search.' },
-      runtime: { title: 'Runtime', blurb: 'Window, daemon, tray, local API.' },
+      runtime: { title: 'Runtime', blurb: 'Window and panes, daemon, tray, terminal, local API.' },
       models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, skills, context, spend.' },
       safety: { title: 'Approval and bounds', blurb: 'Dangerous actions, shells, Always allow.' },
+      remote: { title: 'Remote access', blurb: 'Self-hosted relay, pairing a phone, Web Push.' },
       roadmap: { title: 'Roadmap', blurb: 'Direction, not a delivery schedule.' }
     }
   }

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <!--
-    Real Bot app icon source. macOS-style rounded square with transparent margins
+    Deskfolk app icon source. macOS-style rounded square with transparent margins
     (body 824×824 centered, radius 185), holding the two stacked teammates from
     the brand mark. Regenerate the platform set with the Tauri CLI `icon` command;
     see docs/development.md.

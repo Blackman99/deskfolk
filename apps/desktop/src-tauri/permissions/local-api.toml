@@ -27,3 +27,8 @@ commands.allow = ["independent_runtime_status"]
 identifier = "allow-independent-runtime"
 description = "Lets only the bundled main window enable, wait, force, disable, or cancel independent-runtime handoff. No renderer-supplied program, plist, or data-dir paths."
 commands.allow = ["independent_runtime"]
+
+[[permission]]
+identifier = "allow-hide-main-window"
+description = "Lets the messenger put the window away, which is what ⌘W does once no tab is left to close."
+commands.allow = ["hide_main_window"]

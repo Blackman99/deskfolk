@@ -22,6 +22,7 @@
 
   const onManifesto = $derived(page.url.pathname.includes('/manifesto'));
   const onRoadmap = $derived(/\/roadmap\/?$/.test(page.url.pathname));
+  const onRemote = $derived(/\/remote\/?$/.test(page.url.pathname));
 
   let menuOpen = $state(false);
 
@@ -41,7 +42,7 @@
     <div class="page nav-inner">
       <a class="brand" href="{base}/{lang}">
         <span class="brand-mark"><Logo size={26} /></span>
-        <span class="brand-name serif">Real Bot</span>
+        <span class="brand-name serif">Deskfolk</span>
         <span class="brand-wip">{t.nav.wip}</span>
       </a>
 
@@ -86,6 +87,7 @@
         <a href="{base}/{lang}#quickstart" onclick={() => (menuOpen = false)}>{t.nav.quickstart}</a>
         <a href="{base}/{lang}/manifesto" class:current={onManifesto} aria-current={onManifesto ? 'page' : undefined}>{t.nav.manifesto}</a>
         <a href="{base}/{lang}/roadmap" class:current={onRoadmap} aria-current={onRoadmap ? 'page' : undefined}>{t.nav.roadmap}</a>
+        <a href="{base}/{lang}/remote" class:current={onRemote} aria-current={onRemote ? 'page' : undefined}>{t.nav.remote}</a>
         <a href={switchedPath} hreflang={targetLang}>{t.nav.switchLang}</a>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
       </nav>
@@ -99,7 +101,7 @@
   <footer class="foot">
     <div class="page foot-inner">
       <div class="foot-brand">
-        <span class="foot-id"><Logo size={22} /><span class="brand-name serif">Real Bot</span></span>
+        <span class="foot-id"><Logo size={22} /><span class="brand-name serif">Deskfolk</span></span>
         <p>{t.footer.tagline}</p>
         <p class="fine">{t.footer.mit}</p>
       </div>
@@ -108,6 +110,7 @@
         <a href="{base}/{lang}#boundaries">{t.nav.boundaries}</a>
         <a href="{base}/{lang}/manifesto">{t.nav.manifesto}</a>
         <a href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
+        <a href="{base}/{lang}/remote">{t.nav.remote}</a>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
         <span class="fine">© 2026 {t.footer.contributors}</span>
       </nav>

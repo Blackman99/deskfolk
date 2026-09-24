@@ -89,7 +89,7 @@ export function renderNotificationDisplay(params: DisplayRenderParams): {
   title: string;
   summary: string;
 } {
-  const actor = params.botName || params.sessionName || "Real Bot";
+  const actor = params.botName || params.sessionName || "Deskfolk";
   switch (params.kind) {
     case "approval": {
       const title = truncateCodePoints(`${actor} · 等你批准`, 80);

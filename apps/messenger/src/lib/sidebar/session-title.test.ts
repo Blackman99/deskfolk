@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Bot, SessionSummary } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, type Bot, type SessionSummary } from "@real-bot/protocol";
 import { sessionPresence, sessionTitle } from "./session-title.ts";
 
 const bots = new Map<string, Bot>([
@@ -127,4 +127,17 @@ test("Bot↔Bot title joins the two names", () => {
   };
   expect(sessionTitle(s, bots)).toBe("Writer ↔ Researcher");
   expect(sessionPresence(s, bots, "你", "可打开")).toBe("Writer, Researcher · 你 可打开");
+});
+
+test("the file drop is titled from the label, not from a missing Bot", () => {
+  const s: SessionSummary = {
+    id: FILE_DROP_SESSION_ID,
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+  };
+  expect(sessionTitle(s, bots, { deleted: "已删除", archived: "已归档", fileDrop: "文件" })).toBe("文件");
+  expect(sessionPresence(s, bots, "你", "", { deleted: "已删除", archived: "已归档", fileDrop: "文件" })).toBe("文件");
 });

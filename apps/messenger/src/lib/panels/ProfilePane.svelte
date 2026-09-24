@@ -73,6 +73,7 @@
 	const snapshot = $derived(runtime.snapshot);
 	const modelValues = $derived(modelOptions.map((option) => option.value));
 	const profileSkills = $derived(snapshot.skills.filter((skill) => skill.bot_id === bot.id));
+	const profileMemories = $derived(snapshot.memories.filter((m) => m.bot_id === bot.id));
 
 	function botModelValue(row: Bot): string {
 		if (!row.model) return '';
@@ -101,9 +102,9 @@
 	/** Bumped on every accepted save so the header can say 「已自动保存」. */
 	let profileSavedTick = $state(0);
 	let profileSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	/** The Bot the current draft belongs to; a save resolving after a switch must not touch the new draft. */
-	let profileSaveBotId: string | null = null;
 	let profileSaveQueued = false;
+	/** Cleared on unmount: a save that fails after the pane is gone must not flag the next one. */
+	let mounted = true;
 
 	let skillEditor = $state<'add' | string | null>(null);
 	let skillDraft = $state<SkillDraft>(emptySkillDraft());
@@ -117,7 +118,10 @@
 	);
 
 	// Closing the drawer or switching Bots unmounts this pane; a pending autosave goes out first.
-	$effect(() => () => flushProfileSave());
+	$effect(() => () => {
+		flushProfileSave();
+		mounted = false;
+	});
 
 	/** Server-side edits (a Bot changing its own profile) land in the draft unless you are editing. */
 	$effect(() => {
@@ -196,7 +200,7 @@
 	}
 
 	async function saveSkill(): Promise<void> {
-		if (!runtime.profileBotId || !skillEditor) return;
+		if (!skillEditor) return;
 		skillFailed = false;
 		skillErrors = {};
 		const plan = planSkill(skillDraft);
@@ -207,7 +211,7 @@
 		skillBusy = true;
 		const error =
 			skillEditor === 'add'
-				? await runtime.createSkill({ bot_id: runtime.profileBotId, ...plan.body })
+				? await runtime.createSkill({ bot_id: bot.id, ...plan.body })
 				: await runtime.patchSkill(skillEditor, plan.body);
 		skillBusy = false;
 		if (!error) {
@@ -268,8 +272,6 @@
 	}
 
 	function scheduleProfileSave(delay = 600): void {
-		if (!runtime.profileBotId) return;
-		profileSaveBotId = runtime.profileBotId;
 		if (profileSaveTimer) clearTimeout(profileSaveTimer);
 		profileSaveTimer = setTimeout(() => {
 			profileSaveTimer = null;
@@ -286,8 +288,6 @@
 	}
 
 	async function saveProfile(): Promise<void> {
-		const botId = profileSaveBotId;
-		if (!botId) return;
 		if (profileSaving) {
 			profileSaveQueued = true;
 			return;
@@ -296,21 +296,18 @@
 		if (!profileNeedsSave(sent, profileBaseline)) return;
 		const plan = planCreateBot(sent, modelValues);
 		if (!plan.ok) {
-			if (profileSaveBotId === botId) profileErrors = plan.errors;
+			profileErrors = plan.errors;
 			return;
 		}
 		profileSaving = true;
 		profileFailed = false;
 		profileErrors = {};
-		const error = await runtime.patchBot(botId, plan.body);
+		const error = await runtime.patchBot(bot.id, plan.body);
 		profileSaving = false;
-		const stillHere = profileSaveBotId === botId && runtime.profileBotId === botId;
 		if (!error) {
-			if (stillHere) {
-				profileBaseline = sent;
-				profileSavedTick += 1;
-			}
-		} else if (stillHere) {
+			profileBaseline = sent;
+			profileSavedTick += 1;
+		} else if (mounted) {
 			const mapped = mapCreateBotError(error.status, error.message);
 			if ('top' in mapped) profileFailed = true;
 			else profileErrors = mapped;
@@ -322,16 +319,14 @@
 	}
 
 	async function archiveProfile(): Promise<void> {
-		if (!runtime.profileBotId) return;
 		profileFailed = false;
-		const error = await runtime.archiveBot(runtime.profileBotId);
+		const error = await runtime.archiveBot(bot.id);
 		if (error) profileFailed = true;
 	}
 
 	async function restoreProfile(): Promise<void> {
-		if (!runtime.profileBotId) return;
 		profileFailed = false;
-		const error = await runtime.restoreBot(runtime.profileBotId);
+		const error = await runtime.restoreBot(bot.id);
 		if (error) profileFailed = true;
 	}
 
@@ -375,11 +370,21 @@
 		activeTab = tab;
 	}
 
-	/** The skill sheet is a modal over this pane, so Back closes it before the section. */
+	/**
+	 * A skill sheet, routine page, or memory page sits on top of this section. Back closes that before it
+	 * leaves the section. A save in flight stays put.
+	 */
+	let routineCard = $state<{ backFromEditor: () => boolean; addRoutine: () => void; canAdd: () => boolean } | undefined>();
+	let memoryCard = $state<{ backFromEditor: () => boolean } | undefined>();
+	const routineCount = $derived(runtime.snapshot.routines.filter((row) => row.bot_id === bot.id).length);
 	export function backFromEditor(): boolean {
-		if (!skillEditor || skillBusy) return Boolean(skillEditor);
-		closeSkillEditor();
-		return true;
+		if (skillEditor) {
+			if (!skillBusy) closeSkillEditor();
+			return true;
+		}
+		if (routineCard?.backFromEditor()) return true;
+		if (memoryCard?.backFromEditor()) return true;
+		return false;
 	}
 
 	/** The shell's Back button and the browser's both come through here first. */
@@ -483,6 +488,9 @@
 				<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
 			</svg>
 			<span class="tab-name">{t.detail.botTabMemory}</span>
+			{#if profileMemories.length > 0}
+				<span class="tab-count">{profileMemories.length}</span>
+			{/if}
 			<span class="tab-chevron" aria-hidden="true"></span>
 		</button>
 
@@ -516,6 +524,30 @@
 			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 		</button>
 		<h3 class="bot-detail-title">{tabLabel(activeTab)}</h3>
+		{#if activeTab === 'skills'}
+			<span class="panel-counter-badge bot-detail-count">{profileSkills.length}</span>
+			<button
+				type="button"
+				class="bot-detail-action"
+				onclick={openAddSkill}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<span>{t.sidebar.skillAdd}</span>
+			</button>
+		{:else if activeTab === 'routines'}
+			<span class="panel-counter-badge bot-detail-count">{routineCount}</span>
+			<button
+				type="button"
+				class="bot-detail-action"
+				disabled={!routineCard?.canAdd()}
+				onclick={() => routineCard?.addRoutine()}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<span>{t.routines.add}</span>
+			</button>
+		{:else if activeTab === 'memory'}
+			<span class="panel-counter-badge bot-detail-count">{profileMemories.length}</span>
+		{/if}
 	</div>
 
 <div class="panel-scroll-content profile-pane-scroll flex-1 overflow-y-auto pt-8 px-9 pb-12 flex flex-col gap-8">
@@ -631,8 +663,8 @@
 	</div>
 </div>
 {:else if activeTab === 'skills'}
-<div class="panel-card">
-	<div class="panel-card-head">
+<div class="panel-card skill-card">
+	<div class="panel-card-head skill-card-head">
 		<div class="flex items-center gap-2">
 			<span class="panel-card-title">{t.sidebar.skills}</span>
 			<span class="panel-counter-badge">{profileSkills.length}</span>
@@ -657,14 +689,14 @@
 		{/if}
 		{#if profileSkills.length === 0}
 			<div class="skill-empty-card">
-				<div class="skill-empty-icon">
-					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+				<div class="skill-empty-icon" aria-hidden="true">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 						<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
 					</svg>
 				</div>
 				<p class="skill-empty-text">{t.sidebar.skillsEmpty}</p>
-				<button type="button" class="btn-secondary skill-empty-add-btn" onclick={openAddSkill}>
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+				<button type="button" class="btn-primary skill-empty-add-btn" onclick={openAddSkill}>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<line x1="12" y1="5" x2="12" y2="19"></line>
 						<line x1="5" y1="12" x2="19" y2="12"></line>
 					</svg>
@@ -681,7 +713,7 @@
 					onclick={() => openEditSkill(skill.id)}
 				>
 					<div class="skill-row-icon" class:is-disabled={!skill.enabled}>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
 						</svg>
 					</div>
@@ -690,6 +722,9 @@
 							<span class="skill-name" title={skill.name}>{skill.name}</span>
 							{#if skill.uses && skill.uses.length > 0}
 								<span class="skill-uses-badge" title={skill.uses.join(', ')}>MCP</span>
+							{/if}
+							{#if !skill.enabled}
+								<span class="skill-badge-disabled">已停用</span>
 							{/if}
 						</div>
 						<span class="skill-desc" title={skill.description}>{skill.description}</span>
@@ -702,7 +737,7 @@
 						{/if}
 					</div>
 				</button>
-				<div class="skill-row-actions">
+				<div class="skill-row-actions skill-row-actions-desktop">
 					<label class="mcp-enable-label" title={t.sidebar.skillEnabled}>
 						<input
 							type="checkbox"
@@ -739,14 +774,34 @@
 						</svg>
 					</button>
 				</div>
+				<div class="skill-mobile-toggle">
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<label
+						class="switch-toggle"
+						title={skill.enabled ? t.sidebar.skillEnabled : '已停用'}
+						onclick={(e) => e.stopPropagation()}
+					>
+						<input
+							type="checkbox"
+							aria-label={`${t.sidebar.skillEnabled}: ${skill.name}`}
+							checked={skill.enabled}
+							onchange={(event) => {
+								event.currentTarget.checked = skill.enabled;
+								void toggleSkillEnabled(skill.id, !skill.enabled);
+							}}
+						/>
+						<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+					</label>
+				</div>
 			</div>
 		{/each}
 	</div>
 </div>
 {:else if activeTab === 'routines'}
-<RoutineCard {runtime} {bot} {t} />
+<RoutineCard bind:this={routineCard} {runtime} {bot} {t} />
 {:else if activeTab === 'memory'}
-<MemoryCard {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
+<MemoryCard bind:this={memoryCard} {runtime} {bot} {t} {openDangerConfirm} {clearDanger} />
 {:else if activeTab === 'actions'}
 <div class="panel-card">
 	<div class="panel-card-head">
@@ -834,7 +889,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop skill-modal-backdrop page-on-phone"
-		transition:pageSlide
+		transition:pageSlide={{ instant: !onPhone() }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="skill-modal-title"
@@ -852,7 +907,7 @@
 			onclick={(e) => e.stopPropagation()}
 			onpointerdown={(e) => e.stopPropagation()}
 		>
-			<div class="modal-head">
+			<div class="modal-head skill-modal-head">
 				<button
 					type="button"
 					class="modal-back"
@@ -860,7 +915,7 @@
 					disabled={skillBusy}
 					onclick={closeSkillEditor}
 				>
-					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<h2 id="skill-modal-title">
 					{skillEditor === 'add' ? t.sidebar.skillAdd : t.sidebar.skillEdit}
@@ -885,98 +940,165 @@
 					</div>
 				{/if}
 
-				<div class="form-group">
-					<label for="skill-name" class="field-label">
-						{t.sidebar.skillName} <span class="required-star">*</span>
-					</label>
-					<input
-						id="skill-name"
-						type="text"
-						bind:value={skillDraft.name}
-						placeholder="例如：web_search, git_commit"
-						disabled={skillBusy}
-					/>
-					{#if skillErrors.name}
-						<p class="field-error">{skillNameCopy(skillErrors.name)}</p>
-					{/if}
+				<!-- Card 1: 技能名称与归属 -->
+				<div class="skill-form-card">
+					<div class="skill-card-header">
+						<label for="skill-name" class="field-label">
+							{t.sidebar.skillName} <span class="required-star">*</span>
+						</label>
+						<span class="skill-owner-badge" title={`${t.routines.owner}: ${bot.name}`}>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+								<circle cx="12" cy="7" r="4"></circle>
+							</svg>
+							<span>{bot.name}</span>
+						</span>
+					</div>
+					<div class="form-group">
+						<input
+							id="skill-name"
+							type="text"
+							bind:value={skillDraft.name}
+							placeholder="例如：web_search, git_commit"
+							disabled={skillBusy}
+							aria-invalid={!!skillErrors.name}
+						/>
+						{#if skillErrors.name}
+							<p class="field-error">{skillNameCopy(skillErrors.name)}</p>
+						{/if}
+					</div>
 				</div>
 
-				<div class="form-group">
-					<label for="skill-description" class="field-label">
-						{t.sidebar.skillDescription} <span class="required-star">*</span>
-					</label>
-					<textarea
-						id="skill-description"
-						bind:value={skillDraft.description}
-						rows="2"
-						placeholder="描述此技能适用的场景或触发条件"
-						disabled={skillBusy}
-					></textarea>
-					{#if skillErrors.description}
-						<p class="field-error">{t.sidebar.skillDescriptionEmpty}</p>
-					{/if}
+				<!-- Card 2: 触发场景或适用条件 -->
+				<div class="skill-form-card">
+					<div class="skill-card-header">
+						<label for="skill-description" class="field-label">
+							{t.sidebar.skillDescription} <span class="required-star">*</span>
+						</label>
+						<span class="skill-card-hint">何时自动调用</span>
+					</div>
+					<div class="form-group">
+						<textarea
+							id="skill-description"
+							bind:value={skillDraft.description}
+							rows="3"
+							placeholder="描述此技能适用的场景或触发条件，方便模型识别何时使用..."
+							disabled={skillBusy}
+							aria-invalid={!!skillErrors.description}
+						></textarea>
+						{#if skillErrors.description}
+							<p class="field-error">{t.sidebar.skillDescriptionEmpty}</p>
+						{/if}
+					</div>
 				</div>
 
-				<div class="form-group">
-					<label for="skill-body" class="field-label">
-						{t.sidebar.skillBody} <span class="required-star">*</span>
-					</label>
-					<textarea
-						id="skill-body"
-						class="skill-body-textarea"
-						bind:value={skillDraft.body}
-						rows="7"
-						placeholder="输入具体的 Markdown 指令、规则或提示词内容"
-						disabled={skillBusy}
-					></textarea>
-					{#if skillErrors.body}
-						<p class="field-error">{t.sidebar.skillBodyEmpty}</p>
-					{/if}
+				<!-- Card 3: 指令与规则正文 -->
+				<div class="skill-form-card">
+					<div class="skill-card-header">
+						<label for="skill-body" class="field-label">
+							{t.sidebar.skillBody} <span class="required-star">*</span>
+						</label>
+						<span class="skill-card-hint">Markdown 指令</span>
+					</div>
+					<div class="form-group">
+						<textarea
+							id="skill-body"
+							class="skill-body-textarea"
+							bind:value={skillDraft.body}
+							rows="7"
+							placeholder="输入具体的 Markdown 指令、规则或提示词内容..."
+							disabled={skillBusy}
+							aria-invalid={!!skillErrors.body}
+						></textarea>
+						{#if skillErrors.body}
+							<p class="field-error">{t.sidebar.skillBodyEmpty}</p>
+						{/if}
+					</div>
 				</div>
 
-				<div class="form-group">
-					<label for="skill-uses" class="field-label">{t.sidebar.skillUses}</label>
-					<input
-						id="skill-uses"
-						type="text"
-						bind:value={skillDraft.uses}
-						placeholder={t.sidebar.skillUsesPlaceholder}
-						disabled={skillBusy}
-					/>
-					<p class="muted field-hint">{t.sidebar.skillUsesHint}</p>
+				<!-- Card 4: 依赖的 MCP 工具 -->
+				<div class="skill-form-card">
+					<div class="skill-card-header">
+						<label for="skill-uses" class="field-label">{t.sidebar.skillUses}</label>
+						<span class="skill-card-hint">可选</span>
+					</div>
+					<div class="form-group">
+						<input
+							id="skill-uses"
+							type="text"
+							bind:value={skillDraft.uses}
+							placeholder={t.sidebar.skillUsesPlaceholder}
+							disabled={skillBusy}
+						/>
+						<p class="muted field-hint">{t.sidebar.skillUsesHint}</p>
+					</div>
 				</div>
 
-				<div class="skill-modal-enable-row">
-					<label class="mcp-enable-label">
-						<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
-						<span>{t.sidebar.skillEnabled}</span>
-					</label>
+				<!-- Card 5: 启用状态开关 -->
+				<div class="skill-form-card skill-status-card">
+					<div class="skill-switch-row">
+						<div class="skill-switch-copy">
+							<span class="skill-switch-title">{t.sidebar.skillEnabled}</span>
+							<span class="skill-switch-desc">
+								{skillDraft.enabled ? '已启用，Bot 在匹配任务中将自动读取并执行' : '已停用，Bot 将暂时忽略此技能'}
+							</span>
+						</div>
+						<label class="switch-toggle" class:is-disabled={skillBusy}>
+							<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
+							<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+						</label>
+					</div>
 				</div>
-			</div>
 
-			<div class="modal-foot skill-modal-foot">
-				<div class="skill-modal-foot-left">
-					{#if skillEditor !== 'add'}
+				<!-- Card 6: 移动端危险区域 / 删除技能 (仅编辑时显示) -->
+				{#if skillEditor !== 'add'}
+					<div class="skill-danger-card">
 						<button
 							type="button"
-							class="deny skill-delete-btn"
+							class="deny skill-page-delete"
 							disabled={skillBusy}
 							onclick={() => openDeleteSkillConfirm(skillEditor as string)}
 						>
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<polyline points="3 6 5 6 21 6"></polyline>
 								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
 							</svg>
 							<span>{t.sidebar.skillDelete}</span>
 						</button>
-					{/if}
+					</div>
+				{/if}
+			</div>
+
+			<div class="modal-foot skill-modal-foot">
+				<div class="skill-modal-foot-desktop">
+					<div class="skill-modal-foot-left">
+						{#if skillEditor !== 'add'}
+							<button
+								type="button"
+								class="deny skill-delete-btn"
+								disabled={skillBusy}
+								onclick={() => openDeleteSkillConfirm(skillEditor as string)}
+							>
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<polyline points="3 6 5 6 21 6"></polyline>
+									<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+								</svg>
+								<span>{t.sidebar.skillDelete}</span>
+							</button>
+						{/if}
+					</div>
+					<div class="skill-modal-foot-right">
+						<button type="button" class="btn-cancel" disabled={skillBusy} onclick={closeSkillEditor}>
+							{t.sidebar.skillCancel}
+						</button>
+						<button type="button" class="btn-primary" disabled={skillBusy} onclick={() => void saveSkill()}>
+							{t.sidebar.skillSave}
+						</button>
+					</div>
 				</div>
-				<div class="skill-modal-foot-right">
-					<button type="button" class="btn-cancel" disabled={skillBusy} onclick={closeSkillEditor}>
-						{t.sidebar.skillCancel}
-					</button>
-					<button type="button" class="btn-primary" disabled={skillBusy} onclick={() => void saveSkill()}>
-						{t.sidebar.skillSave}
+				<div class="skill-modal-foot-mobile">
+					<button type="button" class="btn-primary skill-page-save" disabled={skillBusy} onclick={() => void saveSkill()}>
+						{skillBusy ? t.routines.busy : t.sidebar.skillSave}
 					</button>
 				</div>
 			</div>
@@ -1351,6 +1473,21 @@
 		color: var(--danger);
 	}
 
+	.skill-badge-disabled {
+		font-size: 11px;
+		font-weight: 500;
+		padding: 1px 6px;
+		border-radius: 999px;
+		background: var(--sidebar-bg);
+		border: 1px solid var(--line);
+		color: var(--muted);
+		line-height: 1.3;
+	}
+
+	.skill-mobile-toggle {
+		display: none;
+	}
+
 	/* Modal Dialog Styles */
 	.skill-modal-backdrop {
 		z-index: 105;
@@ -1364,31 +1501,6 @@
 		flex-direction: column;
 	}
 
-	/*
-	 * As a page, with a foot the shared frame does not touch: delete on one side, cancel and save
-	 * on the other, all three thumb-sized and wrapping if the labels are long.
-	 */
-	@media (max-width: 680px) {
-		.skill-modal-foot {
-			padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
-			flex-wrap: wrap;
-			gap: 8px;
-		}
-
-		.skill-modal-foot button {
-			min-height: 44px;
-		}
-
-		.skill-modal-foot-right {
-			flex: 1;
-			justify-content: flex-end;
-		}
-
-		.skill-modal-body {
-			padding: 16px 14px;
-		}
-	}
-
 	.skill-modal-body {
 		padding: 18px 22px;
 		display: flex;
@@ -1397,17 +1509,107 @@
 		overflow-y: auto;
 	}
 
-	.skill-modal-body .form-group {
+	.skill-form-card {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 12px 14px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+	}
+
+	.skill-card-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.skill-card-header .field-label {
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ink);
+		margin: 0;
+	}
+
+	.skill-owner-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11.5px;
+		font-weight: 500;
+		color: var(--muted);
+		background: var(--sidebar-bg);
+		border: 1px solid var(--line);
+		padding: 2px 8px;
+		border-radius: 999px;
+	}
+
+	.skill-card-hint {
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+
+	.skill-form-card .form-group {
 		display: flex;
 		flex-direction: column;
 		gap: 5px;
 	}
 
-	.skill-modal-body .field-label {
-		font-size: 12.5px;
+	.skill-status-card {
+		padding: 12px 14px;
+	}
+
+	.skill-switch-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		min-height: 40px;
+	}
+
+	.skill-switch-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.skill-switch-title {
+		font-size: 13.5px;
 		font-weight: 600;
-		color: var(--ink-secondary);
-		margin: 0;
+		color: var(--ink);
+	}
+
+	.skill-switch-desc {
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+
+	.skill-danger-card {
+		padding: 4px 0;
+	}
+
+	.skill-page-delete {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		width: 100%;
+		min-height: 44px;
+		border: 1px solid rgba(239, 68, 68, 0.25);
+		border-radius: var(--radius-md);
+		background: rgba(239, 68, 68, 0.05);
+		color: var(--danger-text, var(--danger, #ef4444));
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.skill-page-delete:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.1);
+		border-color: rgba(239, 68, 68, 0.4);
 	}
 
 	.required-star {
@@ -1423,20 +1625,6 @@
 		resize: vertical;
 	}
 
-	.skill-modal-enable-row {
-		padding-top: 4px;
-	}
-
-	.skill-modal-enable-row .mcp-enable-label {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ink);
-		cursor: pointer;
-	}
-
 	.session-mute-row {
 		border-top: 1px solid var(--line);
 	}
@@ -1444,11 +1632,21 @@
 	.skill-modal-foot {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 		padding: 12px 20px;
 		border-top: 1px solid var(--line);
 		background: var(--sidebar-bg);
 		gap: 12px;
+	}
+
+	.skill-modal-foot-desktop {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+	}
+
+	.skill-modal-foot-mobile {
+		display: none;
 	}
 
 	.skill-modal-foot-left,
@@ -1474,6 +1672,15 @@
 	.skill-modal-foot-right .btn-primary:hover:not(:disabled) {
 		background: var(--accent-hover);
 	}
+
+	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
+	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
+	.switch-track { display: block; width: 44px; height: 24px; border-radius: 9999px; background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+	.switch-toggle input:checked + .switch-track { background: var(--accent); }
+	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
+	.switch-toggle input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.switch-toggle.is-disabled { opacity: 0.55; cursor: default; }
 
 	.profile-save-state.is-error {
 		color: var(--danger-text);
@@ -1613,13 +1820,14 @@
 			transition-delay: 0s;
 		}
 
+		/* It stands in for the drawer's own header, so it keeps that header's safe-area inset. */
 		.bot-detail-head {
 			display: flex;
 			align-items: center;
 			gap: 4px;
 			flex-shrink: 0;
-			min-height: 56px;
-			padding: 0 12px 0 4px;
+			min-height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 12px 0 4px;
 			background: var(--pane);
 			border-bottom: 1px solid var(--line);
 		}
@@ -1649,9 +1857,216 @@
 			color: var(--ink);
 		}
 
+		.bot-detail-count {
+			margin-left: 4px;
+			flex-shrink: 0;
+		}
+
+		.bot-detail-action {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			flex-shrink: 0;
+			height: 40px;
+			margin-left: auto;
+			padding: 0 10px;
+			border: 0;
+			border-radius: var(--radius-md);
+			background: transparent;
+			color: var(--accent);
+			font-size: 14.5px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.bot-detail-action:active {
+			background: var(--row-hover);
+		}
+
+		.bot-detail-action:disabled {
+			opacity: 0.45;
+			cursor: default;
+		}
+
 		.profile-pane-scroll {
 			padding: 16px 12px calc(28px + env(safe-area-inset-bottom));
 			overscroll-behavior: contain;
+		}
+
+		.skill-card {
+			border: 0;
+			border-radius: 0;
+			background: transparent;
+			box-shadow: none;
+		}
+
+		.skill-card-head {
+			display: none;
+		}
+
+		.skill-card-body {
+			gap: 10px;
+			padding: 0;
+		}
+
+		.skill-row-actions-desktop {
+			display: none;
+		}
+
+		.skill-mobile-toggle {
+			display: flex;
+			align-items: center;
+			margin-left: auto;
+			flex-shrink: 0;
+		}
+
+		.skill-row {
+			padding: 12px 14px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-lg, 12px);
+			background: var(--pane);
+			box-shadow: var(--shadow-xs);
+		}
+
+		.skill-row-icon {
+			width: 36px;
+			height: 36px;
+			border-radius: 10px;
+		}
+
+		.skill-row-icon svg {
+			width: 18px;
+			height: 18px;
+		}
+
+		.skill-name {
+			font-size: 15px;
+		}
+
+		.skill-desc {
+			font-size: 13px;
+			line-height: 1.4;
+			line-clamp: 2;
+			-webkit-line-clamp: 2;
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			white-space: normal;
+		}
+
+		.skill-open {
+			min-height: 52px;
+			padding: 0;
+		}
+
+		.skill-open:active {
+			opacity: 0.85;
+		}
+
+		.skill-empty-card {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 12px;
+			padding: 36px 16px;
+			border-radius: var(--radius-lg, 12px);
+			background: var(--pane);
+			border: 1px dashed var(--line);
+			text-align: center;
+		}
+
+		.skill-empty-icon {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 56px;
+			height: 56px;
+			border-radius: 50%;
+			background: var(--sidebar-bg);
+			color: var(--muted);
+		}
+
+		.skill-empty-text {
+			font-size: 14px;
+			color: var(--muted);
+			margin: 0;
+		}
+
+		.skill-empty-add-btn {
+			min-height: 44px;
+			padding: 0 20px;
+			font-size: 14px;
+			border-radius: var(--radius-md);
+		}
+
+		/* Mobile Skill Full Page Editor */
+		.modal-dialog.skill-modal {
+			background: var(--bg);
+		}
+
+		.skill-modal-head {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			flex-shrink: 0;
+			min-height: calc(56px + env(safe-area-inset-top));
+			padding: env(safe-area-inset-top) 12px 0 4px;
+			background: var(--pane);
+			border-bottom: 1px solid var(--line);
+		}
+
+		.skill-modal-body {
+			flex: 1;
+			min-height: 0;
+			overflow-y: auto;
+			padding: 16px 12px calc(24px + env(safe-area-inset-bottom));
+			display: flex;
+			flex-direction: column;
+			gap: 14px;
+			-webkit-overflow-scrolling: touch;
+		}
+
+		.skill-form-card {
+			padding: 14px 16px;
+			border-radius: var(--radius-lg, 12px);
+			box-shadow: var(--shadow-xs);
+		}
+
+		.skill-form-card input:not([type='checkbox']):not([type='radio']),
+		.skill-form-card textarea {
+			padding: 10px 12px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-md);
+			background: var(--input-bg);
+			width: 100%;
+			min-height: 44px;
+			box-sizing: border-box;
+			font-size: 16px;
+			color: var(--ink);
+		}
+
+		.skill-modal-foot {
+			padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+			background: var(--pane);
+			border-top: 1px solid var(--line);
+			box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+		}
+
+		.skill-modal-foot-desktop {
+			display: none;
+		}
+
+		.skill-modal-foot-mobile {
+			display: flex;
+			width: 100%;
+		}
+
+		.skill-page-save {
+			width: 100%;
+			min-height: 48px;
+			font-size: 16px;
+			font-weight: 600;
+			border-radius: var(--radius-md);
 		}
 
 		@media (prefers-reduced-motion: reduce) {

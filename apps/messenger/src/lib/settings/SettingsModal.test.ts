@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { flushSync, mount, unmount } from "svelte";
+import { ApiError } from "../api.ts";
 import { copyFor } from "../copy.ts";
 import { aProvider, fakeRuntime } from "../test-fixtures.ts";
+import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
 import { updateChecker } from "../update-checker.svelte.ts";
 import { IDLE_INSTALL, type UpdateInstallState } from "../updates.ts";
@@ -77,6 +79,35 @@ test("an incomplete add draft does not POST", async () => {
   close();
 });
 
+test("clicking an enabled model sets it as that endpoint's default", async () => {
+  const { host, runtime, close } = open();
+  openModels(host);
+  const picks = [...host.querySelectorAll<HTMLButtonElement>(".provider-model-pick")];
+  expect(picks.map((row) => row.textContent?.trim())).toEqual(["grok-4.6", "gemini-3.8-flash"]);
+  expect(picks[0]?.getAttribute("aria-checked")).toBe("true");
+  click(picks[1]);
+  await sleep(20);
+  expect(runtime.calls.filter((c) => c.name === "patchProvider")).toEqual([
+    { name: "patchProvider", args: ["prov-1", { default_model: "gemini-3.8-flash" }] },
+  ]);
+  close();
+});
+
+test("the model list and the connection open as separate editors", () => {
+  const { host, close } = open();
+  openModels(host);
+  click(host.querySelector(".provider-model-manage"));
+  expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.providerModels);
+  expect(host.querySelector("#provider-prov-1-name")).toBeNull();
+  expect(host.querySelector(".model-picker")).toBeTruthy();
+  click(host.querySelector(".provider-editor-modal .modal-close"));
+  click(host.querySelector(".btn-provider-edit"));
+  expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.providerConnection);
+  expect(host.querySelector("#provider-prov-1-name")).toBeTruthy();
+  expect(host.querySelector(".model-picker")).toBeNull();
+  close();
+});
+
 test("closing the endpoint editor before the debounce still sends the edit", async () => {
   const { host, runtime, close } = open();
   openModels(host);
@@ -95,7 +126,7 @@ function openAbout(host: HTMLElement): void {
   click(tabs[tabs.length - 1]);
 }
 
-function withMobileViewport(run: () => void): void {
+function withMobileViewport(run: () => void | Promise<void>): void | Promise<void> {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({
     matches: query === "(max-width: 720px)",
@@ -108,10 +139,13 @@ function withMobileViewport(run: () => void): void {
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;
   try {
-    run();
-  } finally {
+    const result = run();
+    if (result) return result.finally(() => { window.matchMedia = previousMatchMedia; });
+  } catch (error) {
     window.matchMedia = previousMatchMedia;
+    throw error;
   }
+  window.matchMedia = previousMatchMedia;
 }
 
 test("mobile settings use a root list and drill into a detail screen", () => {
@@ -218,7 +252,7 @@ function fakeWindow(
 }
 
 const OFFERED_DMG =
-  "https://github.com/Blackman99/real-bot/releases/download/v0.1.0-rc.5/Real.Bot_0.1.0-rc.5_aarch64.dmg";
+  "https://github.com/Blackman99/deskfolk/releases/download/v0.1.0-rc.5/Deskfolk_0.1.0-rc.5_aarch64.dmg";
 
 function offerUpdate(over: Partial<UpdateInstallState> = {}, canInstall = true): void {
   updateChecker.status = "ok";
@@ -230,7 +264,7 @@ function offerUpdate(over: Partial<UpdateInstallState> = {}, canInstall = true):
     current: "0.1.0-rc.4",
     latest: "0.1.0-rc.5",
     updateAvailable: true,
-    releaseUrl: "https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-rc.5",
+    releaseUrl: "https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0-rc.5",
     downloadUrl: OFFERED_DMG,
     publishedAt: null,
     notes: null,
@@ -309,7 +343,7 @@ test("a failed install says why, keeps the detail, and still offers the browser"
     phase: "failed",
     version: "0.1.0-rc.5",
     error: "read-only",
-    detail: "/Applications/Real Bot.app is not writable",
+    detail: "/Applications/Deskfolk.app is not writable",
   });
   const { host, close } = open();
   openAbout(host);
@@ -336,6 +370,210 @@ test("a copy that cannot replace itself only offers the browser download", () =>
   close();
   forgetUpdate();
   tauri.restore();
+});
+
+const settle = async () => {
+  await new Promise((r) => setTimeout(r, 0));
+  flushSync();
+};
+
+function choose(el: Element | null | undefined, value: string): void {
+  if (!el) throw new Error("choose: no element");
+  const field = el as HTMLSelectElement;
+  field.value = value;
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+  flushSync();
+}
+
+test("the phone default picker sends only the chosen model", async () => {
+  await withMobileViewport(async () => {
+    const provider = aProvider();
+    const runtime = reactive(fakeRuntime({
+      providers: [provider],
+      settings: {
+        workspace_path: "/Users/you/real-bot-workspace",
+        endpoint_base_url: provider.base_url,
+        endpoint_key_set: true,
+        endpoint_models: provider.models,
+        endpoint_model_catalog: provider.model_catalog,
+        endpoint_default_model: provider.default_model,
+        default_provider_id: provider.id,
+        launch_at_login: true,
+        locale: "zh",
+        theme: "system",
+        wizard_complete: true,
+      },
+    }));
+    runtime.settingsOpen = true;
+    const { host, close } = render(SettingsModal, {
+      runtime,
+      t,
+      saveFailed: false,
+      providerEditor: null,
+      confirmingProvider: false,
+      patchImmediate: async () => true,
+      openDeleteProviderConfirm: () => {},
+      closeSettings: () => {},
+    });
+    openModels(host);
+    choose(host.querySelector("#default-model-prov-1"), "gemini-3.8-flash");
+    await settle();
+    expect(runtime.calls.filter((call) => call.name === "patchProvider")).toEqual([
+      { name: "patchProvider", args: ["prov-1", { default_model: "gemini-3.8-flash" }] },
+    ]);
+    close();
+  });
+});
+
+test("leaving the model list flushes a cleared default before the page closes", async () => {
+  await withMobileViewport(async () => {
+    const provider = aProvider();
+    const runtime = reactive(fakeRuntime({ providers: [provider] }));
+    runtime.settingsOpen = true;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const app = mount(SettingsModal, {
+      target: host,
+      props: {
+        runtime, t, saveFailed: false, providerEditor: null,
+        confirmingProvider: false, confirmingIndependent: false,
+        patchImmediate: async () => true, openDeleteProviderConfirm: () => {},
+        closeSettings: () => {},
+      },
+    });
+    flushSync();
+    try {
+      openModels(host);
+      click(host.querySelector(".provider-model-manage"));
+      click(host.querySelector('.model-row-toggle[aria-label="grok-4.6"]'));
+      const back = () => {
+        const handled = app.backWithinSettings();
+        flushSync();
+        return handled;
+      };
+      expect(back()).toBe(true);
+      await settle();
+      expect(host.querySelector(".provider-editor-modal")).toBeNull();
+      const saves = runtime.calls.filter((call) => call.name === "patchProvider");
+      expect(saves.at(-1)?.args[1]).toMatchObject({ default_model: "" });
+      expect(saves.at(-1)?.args[1]).not.toHaveProperty("name");
+    } finally {
+      void unmount(app);
+      flushSync();
+      host.remove();
+    }
+  });
+});
+
+test("phone back walks attributes, the model list, model services, then settings", () => {
+  withMobileViewport(() => {
+    const runtime = fakeRuntime({ providers: [aProvider()] });
+    runtime.settingsOpen = true;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let closed = 0;
+    const app = mount(SettingsModal, {
+      target: host,
+      props: {
+        runtime, t, saveFailed: false, providerEditor: null,
+        confirmingProvider: false, confirmingIndependent: false,
+        patchImmediate: async () => true, openDeleteProviderConfirm: () => {},
+        closeSettings: () => { closed++; },
+      },
+    });
+    flushSync();
+    try {
+      const back = () => {
+        const handled = app.backWithinSettings();
+        flushSync();
+        return handled;
+      };
+      openModels(host);
+      click(host.querySelector(".provider-model-manage"));
+      click(host.querySelector(".model-row-attrs"));
+      expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.modelSettings);
+      expect(back()).toBe(true);
+      expect(host.querySelector(".model-attributes-page")).toBeNull();
+      expect(host.querySelector(".model-picker")).toBeTruthy();
+      expect(back()).toBe(true);
+      expect(host.querySelector(".provider-editor-modal")).toBeNull();
+      expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabModels);
+      expect(back()).toBe(true);
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
+      expect(closed).toBe(0);
+      expect(back()).toBe(false);
+    } finally {
+      void unmount(app);
+      flushSync();
+      host.remove();
+    }
+  });
+});
+
+test("the default picker waits for a closing list save to finish", async () => {
+  await withMobileViewport(async () => {
+    let finish!: () => void;
+    const runtime = reactive(fakeRuntime({ providers: [aProvider()] }, {
+      patchProvider: () => new Promise<null>((resolve) => { finish = () => resolve(null); }),
+    }));
+    runtime.settingsOpen = true;
+    const { host, close } = render(SettingsModal, {
+      runtime, t, saveFailed: false, providerEditor: null, confirmingProvider: false,
+      patchImmediate: async () => true, openDeleteProviderConfirm: () => {}, closeSettings: () => {},
+    });
+    try {
+      openModels(host);
+      click(host.querySelector(".provider-model-manage"));
+      click(host.querySelector('.model-row-toggle[aria-label="claude-opus-5"]'));
+      click(host.querySelector(".settings-subpage-back"));
+      expect((host.querySelector(".provider-mobile-default select") as HTMLSelectElement).disabled).toBe(true);
+      expect([...host.querySelectorAll<HTMLButtonElement>(".provider-model-pick")].every((button) => button.disabled)).toBe(true);
+      finish();
+      await settle();
+      expect((host.querySelector(".provider-mobile-default select") as HTMLSelectElement).disabled).toBe(false);
+    } finally {
+      close();
+    }
+  });
+});
+
+test("a failed model-list save can be sent again", async () => {
+  await withMobileViewport(async () => {
+    let fail = true;
+    let attempts = 0;
+    const provider = aProvider();
+    const runtime = reactive(fakeRuntime({ providers: [provider] }, {
+      patchProvider: async () => {
+        attempts++;
+        return fail ? new ApiError(409, "conflict", "try again") : null;
+      },
+    }));
+    runtime.settingsOpen = true;
+    const { host, close } = render(SettingsModal, {
+      runtime,
+      t,
+      saveFailed: false,
+      providerEditor: null,
+      confirmingProvider: false,
+      patchImmediate: async () => true,
+      openDeleteProviderConfirm: () => {},
+      closeSettings: () => {},
+    });
+    openModels(host);
+    click(host.querySelector(".provider-model-manage"));
+    click(host.querySelector('.model-row-toggle[aria-label="claude-opus-5"]'));
+    await sleep(650);
+    await settle();
+    const retry = host.querySelector<HTMLButtonElement>(".provider-mobile-status button");
+    expect(retry?.textContent).toContain(t.settings.retry);
+    expect(host.querySelector(".provider-mobile-status")?.classList.contains("is-error")).toBe(true);
+    fail = false;
+    click(retry);
+    await settle();
+    expect(host.querySelector(".provider-mobile-status button")).toBeNull();
+    expect(attempts).toBe(2);
+    close();
+  });
 });
 
 test("✕ closes the page it sits on, not the settings behind it", () => {

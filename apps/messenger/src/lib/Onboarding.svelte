@@ -472,7 +472,7 @@
 							type="button"
 							class="btn-preset-workspace"
 							onclick={() => {
-								runtime.workspacePath = '~/real-bot-workspace';
+								runtime.workspacePath = '~/deskfolk-workspace';
 								if (fieldErrors.workspace) {
 									const next = { ...fieldErrors };
 									delete next.workspace;

@@ -9,7 +9,7 @@ import { STORY_SIZES, type StoryName } from './story-list.ts';
  * onboarding button's lost `:global` were found; both looked fine in every property anyone
  * thought to measure by hand.
  *
- *   DUMP_STORY=route-log DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
+ *   DUMP_STORY=group-pane DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
  *
  * Skips itself unless `DUMP_STORY` is set, so `test:visual` stays about the baselines.
  */

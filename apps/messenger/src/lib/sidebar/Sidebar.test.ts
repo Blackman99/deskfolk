@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, fakeRuntime } from "../test-fixtures.ts";
 import { click, press, render } from "../test-render.ts";
@@ -74,6 +75,19 @@ for (const selected of [null, 'sess-1']) for (const deletedAfterResult of [false
   expect(runtime.snapshot.routines).toHaveLength(1);
   expect(host.querySelector('[role=listbox]')).not.toBeNull();
   close();
+});
+
+test("the file drop is listed above the groups, on the desktop as well as a remote connection", () => {
+  const drop = aDirect({
+    id: FILE_DROP_SESSION_ID,
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+    last_message: aMessage({ body: "shot.png", session_id: FILE_DROP_SESSION_ID }),
+  });
+  const view = open([aBotDirect(), drop]);
+  const row = [...view.host.querySelectorAll(".row")].find((el) => el.textContent?.includes(t.sidebar.fileDrop));
+  expect(row).toBeTruthy();
+  expect(view.host.querySelector(".ghead")?.textContent).toContain(t.sidebar.fileDrop);
+  view.close();
 });
 
 test("only the most recent directs are listed, with the rest behind a toggle", () => {

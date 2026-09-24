@@ -5,6 +5,8 @@
 	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
+	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
+	import { copyableImageAt } from '../image-context.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
@@ -30,17 +32,20 @@
 		formatMessageTime,
 		groupReactions,
 		groupTranscript,
-		isDifferentDay
+		isDifferentDay,
+		isInterruptNote,
+		isUnreachableNote
 	} from './chat-view.ts';
 	import { composerLocked } from './composer-mode.ts';
 	import type { Copy } from '../copy.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { RenderMarkdownOptions } from '../markdown.ts';
-	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
+	import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
-	import { handedOverPaths, withoutAttachmentDeclarations } from '../overlays/artifacts.ts';
+	import { handedOverPaths } from '../overlays/artifacts.ts';
+	import { messageDisplayBody } from './message-body.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
@@ -48,6 +53,9 @@
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
 	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
+	import { deferWhileDragging } from '../workbench/pane-resize.svelte.ts';
+	import { INDEX_MIN_MARKS, activeIndexMark, messageIndexMarks, type IndexMark } from './message-index.ts';
+	import MessageIndex from './MessageIndex.svelte';
 	import {
 		transcriptReadingReady,
 		desktopReadingMode,
@@ -71,11 +79,19 @@
 	let { runtime, t, selected, onOpenProfile, onOpenArtifact, onCreateBot }: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
+	/**
+	 * This conversation's own state: its draft, reply, highlight, history cursor, send in flight.
+	 * Not the runtime's forwards, which follow whichever pane has the keyboard — with two
+	 * conversations on screen, reading those is reading the other one's.
+	 */
+	const view = $derived(selected ? runtime.sessionView(selected.id) : null);
+	const highlightedId = $derived(view?.highlightedMessageId ?? null);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	const connected = $derived(runtime.connection === 'connected');
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
+	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
 	const showMessageAvatars = $derived(selectedKind !== 'you-bot');
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
@@ -83,7 +99,7 @@
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -149,6 +165,53 @@
 	}
 
 	let composer = $state<{ focus: () => void } | null>(null);
+	/** A picture opened from this transcript, enlarged over the whole app. */
+	let inlineImage = $state<{
+		sessionId: string | null;
+		attachment: Attachment | null;
+		relpath: string | null;
+		origin: ImageOrigin | null;
+		placeholder: string | null;
+	} | null>(null);
+	const shownImage = $derived(
+		inlineImage && inlineImage.sessionId === (selected?.id ?? null) ? inlineImage : null
+	);
+
+	function pictureOrigin(from?: HTMLElement | null): ImageOrigin | null {
+		const picture =
+			from?.querySelector('img, .attachment-chip-pending, .md-artifact-pending') ?? from;
+		if (!(picture instanceof HTMLElement)) return null;
+		const box = picture.getBoundingClientRect();
+		if (box.width < 2 || box.height < 2) return null;
+		return { top: box.top, left: box.left, width: box.width, height: box.height };
+	}
+
+	/**
+	 * The thumbnail already on screen for this picture, if any: the enlargement shows it at the
+	 * picture's own proportions while the real bytes come, instead of growing to a guess first.
+	 * The chip keeps owning the object URL; it stays mounted under the enlargement.
+	 */
+	function pictureStandIn(from?: HTMLElement | null): string | null {
+		const img = from instanceof HTMLImageElement ? from : from?.querySelector('img');
+		return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0 ? img.currentSrc || img.src : null;
+	}
+
+	function openInlineImage(attachment: Attachment | null, relpath: string | null, from?: HTMLElement | null): void {
+		inlineImage = {
+			sessionId: selected?.id ?? null,
+			attachment,
+			relpath,
+			origin: pictureOrigin(from),
+			placeholder: pictureStandIn(from)
+		};
+		closeMessageContextMenu();
+	}
+
+	function openBodyImage(message: Message, path: string, from?: HTMLElement | null): void {
+		const attachment =
+			message.attachments.find((row) => row.workspace_relpath === path && !row.is_dir) ?? null;
+		openInlineImage(attachment, path, from);
+	}
 
 	function titleOf(session: SessionSummary): string {
 		return sessionTitle(session, botsById, rosterLabels);
@@ -169,7 +232,7 @@
 			approvalKeyErrors = { ...approvalKeyErrors, [card.id]: true };
 			return;
 		}
-		const error = await runtime.resolveApproval(card.id, action, key);
+		const error = await runtime.resolveApproval(card.id, action, key, selected?.id);
 		if (error && error.status === 422 && approvalNeedsSecret(card)) {
 			approvalKeyErrors = { ...approvalKeyErrors, [card.id]: true };
 			return;
@@ -222,6 +285,14 @@
 	const hiddenOlder = $derived(stream.length - windowedStream.length);
 	const groupedStream = $derived(groupTranscript(windowedStream));
 
+	/** One anchor for each visible message, including the unmounted history. */
+	const indexMarks = $derived(messageIndexMarks(stream));
+	const showMessageIndex = $derived(indexMarks.length >= INDEX_MIN_MARKS || Boolean(view?.hasOlderMessages));
+	let activeIndexId = $state<string | null>(null);
+	/** Held while a tick is being brought into view, so sticking to the bottom cannot undo the jump. */
+	let indexJumpSequence = 0;
+	let indexJumping = false;
+
 	/**
 	 * Growing the window prepends content, and the browser keeps `scrollTop`, so the view would
 	 * slide down by whatever was added. Anchoring on the distance to the bottom keeps the message
@@ -232,8 +303,8 @@
 		const anchor = el ? el.scrollHeight - el.scrollTop : null;
 		stickToBottom = false;
 		if (hiddenOlder > 0) historyWindow += HISTORY_WINDOW_STEP;
-		else if (runtime.hasOlderMessages) {
-			await runtime.loadOlderMessages();
+		else if (view?.hasOlderMessages) {
+			await runtime.loadOlderMessages(view.sessionId);
 			historyWindow += HISTORY_WINDOW_STEP;
 		}
 		await tick();
@@ -254,7 +325,7 @@
 	);
 
 	const liveTurn = $derived(
-		liveTurnsHere.find((turn) => turn.id === runtime.focusedTurnId) ?? liveTurnsHere[0]
+		liveTurnsHere.find((turn) => turn.id === view?.focusedTurnId) ?? liveTurnsHere[0]
 	);
 
 	function getDraft(askId: string): string {
@@ -271,7 +342,7 @@
 		if (!body) return;
 		const submittedVersion = record?.version ?? 1;
 		stickToBottom = true;
-		const res = await runtime.sendAsk(askId, body);
+		const res = await runtime.sendAsk(askId, body, selected?.id);
 		if (res.status === 'accepted') {
 			runtime.clearAskDraft(askId, submittedVersion);
 			await tick();
@@ -331,7 +402,8 @@
 	});
 
 	$effect(() => {
-		const sId = runtime.selectedId;
+		// Each visible pane times its own read, whichever of them has the keyboard.
+		const sId = selected?.id ?? null;
 		const lastMsgId = lastMessageId;
 		void windowFocused;
 		void windowVisible;
@@ -361,7 +433,7 @@
 					return;
 				}
 			}
-			if (runtime.selectedId === sId && lastMsgId) {
+			if (selected?.id === sId && lastMsgId) {
 				void runtime.submitBoundedRead(sId, lastMsgId);
 			}
 			readTimer = null;
@@ -424,32 +496,36 @@
 		pinStreamToBottom();
 	}
 
+	// Another conversation in this stage starts it over. Clicking into another pane is not that.
 	$effect(() => {
-		void runtime.selectedId;
+		void selected?.id;
+		indexJumpSequence++;
+		indexJumping = false;
+		activeIndexId = null;
 		cancelJumpToBottom();
 		historyWindow = HISTORY_WINDOW_INITIAL;
-		if (runtime.highlightedMessageId) {
+		if (untrack(() => highlightedId)) {
 			stickToBottom = false;
 			return () => cancelJumpToBottom();
 		}
 		stickToBottom = true;
 		showScrollBottom = false;
-		void tick().then(() => pinStreamToBottom());
+		void tick().then(() => { if (stickToBottom) pinStreamToBottom(); });
 		return () => cancelJumpToBottom();
 	});
 
 	$effect(() => {
-		const id = runtime.highlightedMessageId;
-		const token = runtime.searchHighlightToken;
+		const id = highlightedId;
+		const token = view?.searchHighlightToken ?? 0;
 		if (!id) return;
 		stickToBottom = false;
 		void snapshot.messages;
-		void runtime.selectedId;
+		void selected?.id;
 		void token;
 		const at = stream.findIndex((item) => item.type === 'message' && item.message.id === id);
 		historyWindow = windowForIndex(stream.length, at, untrack(() => historyWindow));
 		void tick().then(() => {
-			if (runtime.highlightedMessageId !== id) return;
+			if (highlightedId !== id) return;
 			scrollHighlightedMessage();
 		});
 	});
@@ -460,21 +536,23 @@
 		if (!outer || !inner) return;
 		void stickToBottom;
 		const follow = () => {
-			if (jumpToBottom) return;
-			if (stickToBottom) {
-				pinStreamToBottom();
-				return;
-			}
-			showScrollBottom = !isNearBottom(outer.scrollHeight, outer.scrollTop, outer.clientHeight);
+			if (jumpToBottom || indexJumping) return;
+			if (stickToBottom) pinStreamToBottom();
+			else showScrollBottom = !isNearBottom(outer.scrollHeight, outer.scrollTop, outer.clientHeight);
+			refreshActiveIndex();
 		};
-		const ro = new ResizeObserver(follow);
+		// Measuring every mounted bubble on each size change is what makes a divider drag
+		// stutter once several transcripts are on screen. One run when the pointer is released.
+		const deferred = deferWhileDragging(follow);
+		const ro = new ResizeObserver(deferred.run);
 		ro.observe(inner);
 		ro.observe(outer);
-		window.addEventListener('resize', follow);
-		follow();
+		window.addEventListener('resize', deferred.run);
+		deferred.run();
 		return () => {
 			ro.disconnect();
-			window.removeEventListener('resize', follow);
+			window.removeEventListener('resize', deferred.run);
+			deferred.cancel();
 		};
 	});
 
@@ -498,7 +576,7 @@
 	}
 
 	function scrollHighlightedMessage(): void {
-		const id = runtime.highlightedMessageId;
+		const id = highlightedId;
 		const root = streamContainer;
 		if (!id || !root) return;
 		const el = root.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
@@ -513,6 +591,40 @@
 				streamContainer.clientHeight
 			);
 		}, 320);
+	}
+
+	function refreshActiveIndex(): void {
+		const root = streamContainer;
+		if (!root || indexJumping) return;
+		const rootTop = root.getBoundingClientRect().top;
+		const positions = new Map<string, number>();
+		for (const el of root.querySelectorAll<HTMLElement>('[data-message-id]')) {
+			positions.set(el.dataset.messageId!, el.getBoundingClientRect().top - rootTop + root.scrollTop);
+		}
+		activeIndexId = activeIndexMark(indexMarks, positions, root.scrollTop,
+			isNearBottom(root.scrollHeight, root.scrollTop, root.clientHeight));
+	}
+
+	async function jumpToIndexMark(mark: IndexMark): Promise<void> {
+		const sessionId = selected?.id;
+		const sequence = ++indexJumpSequence;
+		cancelJumpToBottom();
+		stickToBottom = false;
+		ignoreStreamScroll = false;
+		indexJumping = true;
+		const at = stream.findIndex((item) => item.type === 'message' && item.message.id === mark.id);
+		historyWindow = windowForIndex(stream.length, at, historyWindow);
+		await tick();
+		if (sequence !== indexJumpSequence || selected?.id !== sessionId) return;
+		const root = streamContainer;
+		const el = root?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(mark.id)}"]`);
+		if (root && el) {
+			const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 24;
+			root.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+			showScrollBottom = !isNearBottom(root.scrollHeight, root.scrollTop, root.clientHeight);
+			activeIndexId = mark.id;
+		}
+		indexJumping = false;
 	}
 
 	/**
@@ -546,7 +658,7 @@
 	}
 
 	function messageBody(message: Message): string {
-		return messageShowsAttachments(message) ? withoutAttachmentDeclarations(message.body) : message.body;
+		return messageDisplayBody(message.body, message.attachments.map((att) => att.workspace_relpath));
 	}
 
 	function markdownOpts(message?: Message, extra?: { streaming?: boolean }): RenderMarkdownOptions {
@@ -577,21 +689,22 @@
 	}
 
 	function pickStarterPrompt(prompt: string): void {
-		runtime.draft = prompt;
+		if (view) view.draft = prompt;
 		void tick().then(() => composer?.focus());
 	}
 
 	/** The composer hands the files over; scrolling to the new message is the stage's job. */
 	async function sendFromComposer(files: File[]): Promise<void> {
 		stickToBottom = true;
-		await runtime.send({ attachments: files.length > 0 ? files : undefined });
+		await runtime.send({ attachments: files.length > 0 ? files : undefined, sessionId: selected?.id });
 		await tick();
 		scrollToBottom(false);
 	}
 
 	function onStreamScroll(e: Event): void {
 		const el = e.currentTarget as HTMLElement;
-		if (!el) return;
+		if (!el || indexJumping) return;
+		refreshActiveIndex();
 		const near = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
 		const next = stickAfterScroll(ignoreStreamScroll, near, jumpToBottom);
 		ignoreStreamScroll = next.ignore;
@@ -658,9 +771,10 @@
 
 	function startQuoteReply(message: Message): void {
 		if (lockedComposer || !canQuoteReply(message)) return;
-		runtime.replyingToId = message.id;
+		if (!view) return;
+		view.replyingToId = message.id;
 		const name = quotedBotName(message, botsById);
-		if (name) runtime.draft = draftWithQuoteMention(runtime.draft, name);
+		if (name) view.draft = draftWithQuoteMention(view.draft, name);
 		void tick().then(() => composer?.focus());
 	}
 
@@ -700,6 +814,8 @@
 	let lastTouchTimestamp = 0;
 
 	function handleMessageMouseDown(e: MouseEvent): void {
+		// A rendered picture keeps the secondary press: its own menu copies the pixels.
+		if (copyableImageAt(e.target)) return;
 		// WebKit selects the word on secondary mousedown, before contextmenu fires.
 		if (e.button === 2 || (e.button === 0 && e.ctrlKey)) e.preventDefault();
 	}
@@ -719,6 +835,11 @@
 	}
 
 	function handleMessageContextMenu(e: MouseEvent, message: Message): void {
+		// The picture's menu is mounted on the document and runs first. Leave this one closed.
+		if (copyableImageAt(e.target)) {
+			messageContextMenu = null;
+			return;
+		}
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -759,9 +880,15 @@
 			void navigator.clipboard.writeText(id).catch(() => {});
 		}
 	}
+
+	/** Open this message's job with the board already on its card. */
+	function showMessageTrace(message: Message): void {
+		if (!message.task_id) return;
+		runtime.openTrace(message.task_id, { messageId: message.id, turnId: message.turn_id });
+	}
 </script>
 
-<div class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
+<div class:has-message-index={showMessageIndex} class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -786,7 +913,7 @@
 			<h2>{t.top.pickSession}</h2>
 			<p class="muted">{t.top.pickSession}</p>
 		</div>
-	{:else if stream.length === 0 && runtime.historyLoading}
+	{:else if stream.length === 0 && view?.historyLoading}
 		<!-- A remote transcript arrives over the relay; saying so beats an empty room that fills
 		     without warning. -->
 		<div class="history-loading m-auto flex flex-col items-center gap-3 text-center py-20" role="status">
@@ -797,7 +924,16 @@
 		</div>
 	{:else if stream.length === 0}
 		<div class="empty-chat-welcome m-auto flex flex-col items-center text-center py-16 px-10 max-w-[460px]">
-			{#if selectedKind === 'you-bot' && selectedPeerBot}
+			{#if fileDrop}
+				<div class="empty-icon" aria-hidden="true">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+						<polyline points="14 2 14 8 20 8"></polyline>
+					</svg>
+				</div>
+				<h2>{t.sidebar.fileDrop}</h2>
+				<p class="muted">{t.sidebar.fileDropEmpty}</p>
+			{:else if selectedKind === 'you-bot' && selectedPeerBot}
 				{@const pal = botAvatarColor(selectedPeerBot.id)}
 				<button
 					type="button"
@@ -854,10 +990,10 @@
 			<p class="muted">{t.stream.empty}</p>
 		</div>
 	{:else}
-		{#if runtime.hasOlderMessages && hiddenOlder === 0}
+		{#if view?.hasOlderMessages && hiddenOlder === 0}
 			<div class="load-earlier flex justify-center py-3">
-				<button type="button" class="btn-xs" disabled={runtime.olderLoading} onclick={() => void showEarlier()}>
-					{runtime.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
+				<button type="button" class="btn-xs" disabled={view?.olderLoading} onclick={() => void showEarlier()}>
+					{view?.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
 				</button>
 			</div>
 		{/if}
@@ -895,7 +1031,7 @@
 					<div
 						class="msg-wrap is-bot"
 						data-message-id={singleMsg.message.id}
-						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
+						class:is-search-hit={highlightedId === singleMsg.message.id}
 						class:is-selected={selectedMessageId === singleMsg.message.id}
 						onmousedown={handleMessageMouseDown}
 						ontouchstart={handleMessageTouchStart}
@@ -985,7 +1121,7 @@
 					<div
 						class="msg-wrap is-card-wrap"
 						data-message-id={singleMsg.message.id}
-						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
+						class:is-search-hit={highlightedId === singleMsg.message.id}
 					>
 						<article class="msg is-approval">
 							<div class="who">{t.stream.approval} · {who(singleMsg.message)}</div>
@@ -1058,14 +1194,22 @@
 					{@const pal = botAvatarColor(singleMsg.message.author)}
 					{@const showContinue = canContinueInterrupt(singleMsg.message, snapshot.turns, {
 						locked: lockedComposer,
+						readOnly: selectedKind === 'bot-bot',
 						hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author)
 					})}
+					{@const isUnreachable = isUnreachableNote(singleMsg.message)}
+					{@const isInterrupt = isInterruptNote(singleMsg.message)}
+					{@const continueHint = isInterrupt
+						? t.stream.continueInterruptHint
+						: isUnreachable
+							? t.stream.continueUnreachableHint
+							: t.stream.continueFailedHint}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="msg-wrap is-bot is-system-row"
 						data-message-id={singleMsg.message.id}
-						class:is-search-hit={runtime.highlightedMessageId === singleMsg.message.id}
+						class:is-search-hit={highlightedId === singleMsg.message.id}
 						class:is-selected={selectedMessageId === singleMsg.message.id}
 						onmousedown={handleMessageMouseDown}
 						ontouchstart={handleMessageTouchStart}
@@ -1113,23 +1257,49 @@
 									{formatMessageTime(singleMsg.message.created_at)}
 								</span>
 							</div>
-							<div class="msg-interrupt-row flex items-center gap-4 w-fit max-w-full">
-								<article class="msg is-system">
-									<div class="who">{who(singleMsg.message)}</div>
-									<div class="body">{singleMsg.message.body}</div>
-								</article>
+							<article
+								class="msg is-system"
+								class:has-continue={showContinue}
+								class:is-unreachable={isUnreachable}
+								class:is-interrupt={isInterrupt}
+							>
+								<div class="who">{who(singleMsg.message)}</div>
+								<div class="system-msg-content flex items-center gap-2">
+									{#if isUnreachable}
+										<span class="system-msg-icon is-unreachable" aria-hidden="true">
+											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+												<circle cx="12" cy="12" r="10" />
+												<line x1="12" y1="8" x2="12" y2="12" />
+												<line x1="12" y1="16" x2="12.01" y2="16" />
+											</svg>
+										</span>
+									{:else if isInterrupt}
+										<span class="system-msg-icon is-interrupt" aria-hidden="true">
+											<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+												<rect x="6" y="6" width="12" height="12" rx="2" />
+											</svg>
+										</span>
+									{/if}
+									<span class="body">{singleMsg.message.body}</span>
+								</div>
 								{#if showContinue}
-									<button
-										type="button"
-										class="btn-mini-continue"
-										title={t.stream.continueInterruptHint}
-										disabled={!connected || runtime.busy}
-										onclick={() => void runtime.continueInterrupt(singleMsg.message.id)}
-									>
-										{t.stream.continueInterrupt}
-									</button>
+									<div class="system-msg-actions">
+										<button
+											type="button"
+											class="btn-continue-turn"
+											title={continueHint}
+											disabled={!connected || view?.sending}
+											onmousedown={(e) => e.stopPropagation()}
+											onclick={() => void runtime.continueInterrupt(singleMsg.message.id, selected?.id)}
+										>
+											<svg class="continue-icon" viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+												<polygon points="6 4 20 12 6 20 6 4" />
+											</svg>
+											<span>{t.stream.continueInterrupt}</span>
+										</button>
+									</div>
 								{/if}
-							</div>
+							</article>
 							{#if singleMsg.replying && singleMsg.replying.length > 0}
 								<div class="msg-attached-replying" aria-live="polite">
 									<ReplyingIndicator
@@ -1172,7 +1342,7 @@
 									<div
 										class="msg-segment is-user-segment flex flex-col relative w-fit max-w-full"
 										data-message-id={item.message.id}
-										class:is-search-hit={runtime.highlightedMessageId === item.message.id}
+										class:is-search-hit={highlightedId === item.message.id}
 										class:is-selected={selectedMessageId === item.message.id}
 										onmousedown={handleMessageMouseDown}
 										ontouchstart={handleMessageTouchStart}
@@ -1188,36 +1358,38 @@
 										<article class="msg is-you">
 											<div class="who">{who(item.message)}</div>
 											<div class="msg-toolbar">
-												{#if canQuoteReply(item.message) && !lockedComposer}
+												<div class="msg-toolbar-pill">
+													{#if canQuoteReply(item.message) && !lockedComposer}
+														<button
+															type="button"
+															class="act-btn"
+															title={t.chat.replyMessage}
+															onclick={() => startQuoteReply(item.message)}
+														>
+															<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+														</button>
+													{/if}
 													<button
 														type="button"
 														class="act-btn"
-														title={t.chat.replyMessage}
-														onclick={() => startQuoteReply(item.message)}
+														class:is-copied={copiedMessageId === item.message.id}
+														title={t.chat.copyMessage}
+														onclick={(e) => copyMessageBody(item.message.id, item.message.body, e)}
 													>
-														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+														{#if copiedMessageId === item.message.id}
+															<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
+														{:else}
+															<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+														{/if}
 													</button>
-												{/if}
-												<button
-													type="button"
-													class="act-btn"
-													class:is-copied={copiedMessageId === item.message.id}
-													title={t.chat.copyMessage}
-													onclick={(e) => copyMessageBody(item.message.id, item.message.body, e)}
-												>
-													{#if copiedMessageId === item.message.id}
-														<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
-													{:else}
-														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-													{/if}
-												</button>
+												</div>
 											</div>
 											{#if item.message.parent_id}
 												{@const quoted = messageLookup.byId.get(item.message.parent_id)}
 												<button
 													type="button"
 													class="quote-ref"
-													onclick={() => quoted && runtime.setHighlightedMessage(quoted.id)}
+													onclick={() => quoted && runtime.setHighlightedMessage(quoted.id, selected?.id)}
 												>
 													<span class="quote-ref-who">{quoted ? who(quoted) : t.top.deleted}</span>
 													<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
@@ -1230,6 +1402,7 @@
 												copiedLabel={t.chat.copied}
 												inverted
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
+												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if messageShowsAttachments(item.message)}
@@ -1239,6 +1412,7 @@
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
+													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
 											{/if}
 											{#if annotationIndex.get(item.message.id)}
@@ -1304,7 +1478,7 @@
 													onOpen={(id) => void runtime.selectSession(id)}
 													traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
 													onShowTrace={item.message.task_id
-														? () => runtime.openTrace(item.message.task_id!)
+														? () => showMessageTrace(item.message)
 														: undefined}
 												/>
 											</div>
@@ -1395,7 +1569,7 @@
 											type="button"
 											class="btn-mini-stop"
 											title={t.composer.stop}
-											onclick={() => void runtime.stopTurn()}
+											onclick={() => void runtime.stopTurn(selected?.id)}
 										>
 											<span class="stop-icon-mini">■</span>
 											<span>{t.composer.stop}</span>
@@ -1425,7 +1599,7 @@
 									class:is-streaming={item.type === 'streaming'}
 									data-message-id={item.type === 'message' ? item.message.id : undefined}
 									class:is-search-hit={item.type === 'message' &&
-										runtime.highlightedMessageId === item.message.id}
+										highlightedId === item.message.id}
 									class:is-selected={item.type === 'message' && selectedMessageId === item.message.id}
 									onmousedown={(e) => {
 										if (item.type === 'message') handleMessageMouseDown(e);
@@ -1452,7 +1626,7 @@
 														type="button"
 														class="btn-mini-stop"
 														title={t.composer.stop}
-														onclick={() => void runtime.stopTurn()}
+														onclick={() => void runtime.stopTurn(selected?.id)}
 													>
 														<span class="stop-icon-mini">■</span>
 														<span>{t.composer.stop}</span>
@@ -1485,6 +1659,7 @@
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												onOpenArtifact={(path) => onOpenArtifact(path)}
+												onOpenImage={(path, from) => openInlineImage(null, path, from)}
 												onOpenProfile={onOpenProfile}
 											>
 												<span class="streaming-cursor"></span>
@@ -1502,36 +1677,38 @@
 										<article class="msg">
 											<div class="who">{who(item.message)}</div>
 											<div class="msg-toolbar">
-												{#if canQuoteReply(item.message) && !lockedComposer}
+												<div class="msg-toolbar-pill">
+													{#if canQuoteReply(item.message) && !lockedComposer}
+														<button
+															type="button"
+															class="act-btn"
+															title={t.chat.replyMessage}
+															onclick={() => startQuoteReply(item.message)}
+														>
+															<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+														</button>
+													{/if}
 													<button
 														type="button"
 														class="act-btn"
-														title={t.chat.replyMessage}
-														onclick={() => startQuoteReply(item.message)}
+														class:is-copied={copiedMessageId === item.message.id}
+														title={t.chat.copyMessage}
+														onclick={(e) => copyMessageBody(item.message.id, item.message.body, e)}
 													>
-														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+														{#if copiedMessageId === item.message.id}
+															<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
+														{:else}
+															<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+														{/if}
 													</button>
-												{/if}
-												<button
-													type="button"
-													class="act-btn"
-													class:is-copied={copiedMessageId === item.message.id}
-													title={t.chat.copyMessage}
-													onclick={(e) => copyMessageBody(item.message.id, item.message.body, e)}
-												>
-													{#if copiedMessageId === item.message.id}
-														<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
-													{:else}
-														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-													{/if}
-												</button>
+												</div>
 											</div>
 											{#if item.message.parent_id}
 												{@const quoted = messageLookup.byId.get(item.message.parent_id)}
 												<button
 													type="button"
 													class="quote-ref"
-													onclick={() => quoted && runtime.setHighlightedMessage(quoted.id)}
+													onclick={() => quoted && runtime.setHighlightedMessage(quoted.id, selected?.id)}
 												>
 													<span class="quote-ref-who">{quoted ? who(quoted) : t.top.deleted}</span>
 													<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
@@ -1543,6 +1720,7 @@
 												copyLabel={t.chat.copyCode}
 												copiedLabel={t.chat.copied}
 												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
+												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
 												onOpenProfile={onOpenProfile}
 											/>
 											{#if messageShowsAttachments(item.message)}
@@ -1552,6 +1730,7 @@
 													api={runtime.client}
 													{t}
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
+													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
 											{/if}
 											{#if annotationIndex.get(item.message.id)}
@@ -1616,7 +1795,7 @@
 													onOpen={(id) => void runtime.selectSession(id)}
 													traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
 													onShowTrace={item.message.task_id
-														? () => runtime.openTrace(item.message.task_id!)
+														? () => showMessageTrace(item.message)
 														: undefined}
 												/>
 											</div>
@@ -1633,16 +1812,22 @@
 		</div>
 	</div>
 
-	{#if showScrollBottom}
-		<button
-			type="button"
-			class="scroll-bottom-btn"
-			title={t.chat.scrollToBottom}
-			aria-label={t.chat.scrollToBottom}
-			onclick={() => scrollToBottom(true)}
-		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-		</button>
+	{#if showMessageIndex}
+		{#key selected?.id}
+		<MessageIndex
+			marks={indexMarks}
+			activeId={activeIndexId}
+			{locale}
+			label={t.stream.messageIndex}
+			emptyLabel={t.stream.messageIndexEmpty}
+			sender={(mark) => mark.kind === 'system' ? (locale === 'zh' ? '系统' : 'System') : whoAuthor(mark.author)}
+			hasEarlier={Boolean(view?.hasOlderMessages)}
+			loading={Boolean(view?.olderLoading)}
+			earlierLabel={view?.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
+			onLoadEarlier={() => void runtime.loadOlderMessages(selected?.id)}
+			onJump={jumpToIndexMark}
+		/>
+		{/key}
 	{/if}
 
 	<Composer
@@ -1650,9 +1835,23 @@
 		{runtime}
 		{t}
 		{selected}
+		{showScrollBottom}
+		onScrollToBottom={() => scrollToBottom(true)}
 		onSend={sendFromComposer}
 		onPickPrompt={pickStarterPrompt}
 	/>
+
+	{#if shownImage}
+		<MessageImageLightbox
+			attachment={shownImage.attachment}
+			relpath={shownImage.relpath}
+			origin={shownImage.origin}
+			placeholder={shownImage.placeholder}
+			api={runtime.client}
+			{t}
+			onClose={() => (inlineImage = null)}
+		/>
+	{/if}
 
 	{#if messageContextMenu}
 		{@const activeMenu = messageContextMenu}
@@ -1667,9 +1866,7 @@
 			onReply={() => startQuoteReply(activeMenu.message)}
 			onCopy={(text) => copyMessageBody(activeMenu.message.id, text)}
 			onOpenFileTree={(path) => handleOpenFileTree(path, activeMenu.message)}
-			onShowTrace={() => {
-				if (activeMenu.message.task_id) runtime.openTrace(activeMenu.message.task_id);
-			}}
+			onShowTrace={() => showMessageTrace(activeMenu.message)}
 			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
 			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
 		/>
@@ -1677,12 +1874,9 @@
 </div>
 
 <style>
-	.msg.is-you :global(.attachment-file-btn),
+	/* Room for the index; a conversation narrow enough to hide it takes this back below. */
+	.has-message-index .stream-inner { padding-left: 40px; padding-right: 40px; }
 
-	.msg.is-you :global(.attachment-bundle-btn) {
-		background: rgba(255, 255, 255, 0.9);
-		color: #0f172a;
-	}
 
 	.empty-icon {
 		width: 60px;
@@ -1992,30 +2186,6 @@
 		filter: brightness(0.95);
 	}
 
-	.btn-mini-continue {
-		display: inline-flex;
-		align-items: center;
-		flex-shrink: 0;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--accent);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
-		border-radius: var(--radius-sm);
-		padding: 1px 8px;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.btn-mini-continue:hover:not(:disabled) {
-		filter: brightness(0.97);
-	}
-
-	.btn-mini-continue:disabled {
-		opacity: 0.55;
-		cursor: default;
-	}
-
 	.stop-icon-mini {
 		font-size: 8px;
 		line-height: 1;
@@ -2087,19 +2257,16 @@
 		box-shadow: 0 2px 8px rgba(37, 99, 235, 0.18);
 	}
 
-	/* Message Toolbar on Hover */
+	/* Message Toolbar on Hover. The strip spans the bubble and the pill sits in its far corner; on a
+	   bubble narrower than the pill the strip grows to fit, away from the avatar rather than over it. */
 	.msg-toolbar {
 		position: absolute;
 		top: -14px;
-		right: 8px;
+		left: 8px;
+		width: calc(100% - 16px);
+		min-width: max-content;
 		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding: 2px 5px;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: 9999px;
-		box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+		justify-content: flex-end;
 		opacity: 0;
 		transform: translateY(2px);
 		pointer-events: none;
@@ -2107,16 +2274,35 @@
 		z-index: 10;
 	}
 
+	.msg-toolbar-pill {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding: 2px 5px;
+		/* Shrunk to a one-word bubble, "✓ 已复制" used to break after every character. */
+		white-space: nowrap;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+		pointer-events: none;
+	}
+
 	.msg:hover .msg-toolbar,
 	.msg-segment:hover .msg-toolbar {
 		opacity: 1;
 		transform: translateY(0);
+	}
+
+	.msg:hover .msg-toolbar-pill,
+	.msg-segment:hover .msg-toolbar-pill {
 		pointer-events: auto;
 	}
 
 	.msg-wrap.is-user .msg-toolbar {
-		right: auto;
-		left: 8px;
+		left: auto;
+		right: 8px;
+		justify-content: flex-start;
 	}
 
 	.act-btn {
@@ -2285,35 +2471,6 @@
 		vertical-align: -2px;
 		animation: cursorBlink 0.8s infinite;
 	}
-
-	/* Scroll to Bottom Floating Button */
-	.scroll-bottom-btn {
-		position: absolute;
-		bottom: 140px;
-		right: 24px;
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		background: var(--input-bg);
-		border: 1px solid var(--line);
-		box-shadow: var(--shadow-md);
-		color: var(--muted);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		pointer-events: auto;
-		transition: all 0.18s ease;
-		z-index: 10;
-	}
-
-	.scroll-bottom-btn:hover {
-		color: var(--accent);
-		background: var(--line-subtle);
-		transform: translateY(-2px);
-		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
-	}
-
 
 	.welcome-identity-btn {
 		background: transparent;
@@ -2555,6 +2712,88 @@
 		font-size: 13px;
 		border-radius: 4px 16px 16px 16px;
 		box-shadow: none;
+		display: inline-flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+	}
+
+	.msg.is-system.has-continue {
+		background: var(--pane);
+		border-style: solid;
+		border-color: var(--line);
+		padding: 10px 14px;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	}
+
+	.msg.is-system.is-unreachable {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+	}
+
+	.system-msg-content {
+		line-height: 1.4;
+	}
+
+	.system-msg-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.system-msg-icon.is-unreachable {
+		color: var(--warn);
+	}
+
+	.system-msg-icon.is-interrupt {
+		color: var(--muted);
+	}
+
+	.system-msg-actions {
+		display: flex;
+		align-items: center;
+		margin-top: 2px;
+	}
+
+	.btn-continue-turn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 12px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--accent);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		user-select: none;
+	}
+
+	.btn-continue-turn:hover:not(:disabled) {
+		background: var(--accent);
+		color: #ffffff;
+		border-color: var(--accent);
+		box-shadow: 0 1px 4px var(--accent-glow);
+	}
+
+	.btn-continue-turn:active:not(:disabled) {
+		background: var(--accent-active);
+		color: #ffffff;
+		border-color: var(--accent-active);
+	}
+
+	.btn-continue-turn:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+
+	.btn-continue-turn .continue-icon {
+		flex-shrink: 0;
 	}
 
 	.msg-wrap.is-system-row .msg.is-system .who {
@@ -2625,18 +2864,19 @@
 		}
 	}
 
-	@media (max-width: 680px) {
-	.msg-wrap.is-bot {
-	max-width: 100%;
-	}
-	}
-	@media (max-width: 680px) {
-	.msg-wrap.is-user {
-	max-width: 100%;
-	}
-	}
-	@media (max-width: 680px) {
-		.stream-inner {
+	/*
+	 * The phone layout follows the conversation's width (the `conversation` container), so a
+	 * workbench pane narrower than a phone gets it in a wide window too. What only a touch screen
+	 * needs — no text selection on long-press, no hover pill — still asks the window.
+	 */
+	@container conversation (max-width: 680px) {
+		.msg-wrap.is-bot,
+		.msg-wrap.is-user {
+			max-width: 100%;
+		}
+
+		.stream-inner,
+		.has-message-index .stream-inner {
 			padding: 14px 12px 120px;
 		}
 	}
@@ -2645,14 +2885,7 @@
 	animation: none;
 	}
 	}
-	@media (max-width: 680px) {
-		.scroll-bottom-btn {
-			bottom: 120px;
-			right: 16px;
-		}
-	}
-
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 		/*
 		 * A phone leaves a bubble about 340px wide, so the line above each message has to earn
 		 * its place. It used to wrap twice over: the Bot's name broke across lines and the model
@@ -2690,12 +2923,6 @@
 			margin-left: auto;
 		}
 
-		/* Long-press opens the same copy and reply actions, so the hover pill has no job here —
-		   and it used to sit on top of the line above the bubble. */
-		.msg-toolbar {
-			display: none;
-		}
-
 		/* Your own portrait next to a name that already says 你 costs 42px of every line. */
 		.msg-wrap.is-user .avatar-col {
 			display: none;
@@ -2703,6 +2930,15 @@
 
 		.msg {
 			padding: 9px 12px;
+		}
+	}
+
+	@media (max-width: 680px) {
+		/* Long-press opens the same copy and reply actions, so the hover pill has no job here —
+		   and it used to sit on top of the line above the bubble. A narrow pane under a mouse
+		   keeps it. */
+		.msg-toolbar {
+			display: none;
 		}
 	}
 

@@ -12,13 +12,14 @@ export const MANIFESTO_TOPICS = [
 
 export type ManifestoTopic = (typeof MANIFESTO_TOPICS)[number];
 
-export const DOCS_PAGE_KEYS = ['manifesto', ...MANIFESTO_TOPICS, 'roadmap'] as const;
+export const DOCS_PAGE_KEYS = ['manifesto', ...MANIFESTO_TOPICS, 'remote', 'roadmap'] as const;
 export type DocsPageKey = (typeof DOCS_PAGE_KEYS)[number];
 
-export type DocsNavGroupId = 'language' | 'direction';
+export type DocsNavGroupId = 'language' | 'guides' | 'direction';
 
 export const DOCS_NAV: { group: DocsNavGroupId; pages: DocsPageKey[] }[] = [
   { group: 'language', pages: ['manifesto', ...MANIFESTO_TOPICS] },
+  { group: 'guides', pages: ['remote'] },
   { group: 'direction', pages: ['roadmap'] }
 ];
 
@@ -59,7 +60,9 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Interrupted',
     'Catch-up',
     'Terminal',
-    'Command stream'
+    'Command stream',
+    'Pane',
+    'Layout'
   ],
   models: [
     'Model endpoint',
@@ -181,6 +184,7 @@ export function termAnchorId(name: string): string {
 export function docsPath(key: DocsPageKey): string {
   if (key === 'manifesto') return '/manifesto';
   if (key === 'roadmap') return '/roadmap';
+  if (key === 'remote') return '/remote';
   return `/manifesto/${key}`;
 }
 

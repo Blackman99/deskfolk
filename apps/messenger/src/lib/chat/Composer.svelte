@@ -16,7 +16,7 @@
 		type ComposerImeState
 	} from './composer-ime.ts';
 	import type { Copy } from '../copy.ts';
-	import { classifySession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
+	import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import {
 		deleteChipElement,
 		getTextBeforeCaret,
@@ -37,6 +37,7 @@
 	import { quotePreview, quotedBotName } from './quote-reply.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import type { StagedAttachment } from '../session-view.svelte.ts';
 	import { isLiveStatus } from './transcript.ts';
 	import { isOutside } from '../click-outside.ts';
 
@@ -48,15 +49,33 @@
 		onSend: (files: File[]) => Promise<void>;
 		/** A starter chip or a suggestion fills the draft; the mirror effect puts it in the editor. */
 		onPickPrompt: (prompt: string) => void;
+		/** The stage owns stick-to-bottom; this only draws the jump control on the card. */
+		showScrollBottom?: boolean;
+		onScrollToBottom?: () => void;
 	};
 
-	let { runtime, t, selected, onSend, onPickPrompt }: Props = $props();
+	let {
+		runtime,
+		t,
+		selected,
+		onSend,
+		onPickPrompt,
+		showScrollBottom = false,
+		onScrollToBottom
+	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
+	/**
+	 * This conversation's own draft, reply, chips and staged files. Never the runtime's forwards:
+	 * those follow whichever pane has the keyboard, so two composers on screen read one draft.
+	 */
+	const view = $derived(selected ? runtime.sessionView(selected.id) : null);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	const connected = $derived(runtime.connection === 'connected');
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
+	/** Remote files land here, and notes to yourself. No Bot reads either. */
+	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
@@ -66,7 +85,7 @@
 			: []
 	);
 	const liveTurn = $derived(
-		liveTurnsHere.find((turn) => turn.id === runtime.focusedTurnId) ?? liveTurnsHere[0]
+		liveTurnsHere.find((turn) => turn.id === view?.focusedTurnId) ?? liveTurnsHere[0]
 	);
 	const pendingHere = $derived(
 		selected ? snapshot.pendingJudgements.filter((j) => j.session_id === selected.id) : []
@@ -85,20 +104,15 @@
 		editorEl?.focus();
 	}
 
-	type PendingAttachment = {
-		id: string;
-		file: File;
-		name: string;
-		size: number;
-		isImage: boolean;
-		previewUrl: string | null;
-	};
-
 	let editorEl = $state<HTMLDivElement | null>(null);
 
 	let composerIme = $state<ComposerImeState>(COMPOSER_IME_IDLE);
 
-	let pendingAttachments = $state<PendingAttachment[]>([]);
+	/** Staged on the conversation, so they wait there when you look at another one. */
+	const pendingAttachments = $derived(view?.stagedAttachments ?? []);
+	function stageAttachments(next: StagedAttachment[]): void {
+		if (view) view.stagedAttachments = next;
+	}
 
 	let fileInputEl = $state<HTMLInputElement | null>(null);
 
@@ -122,15 +136,23 @@
 		return t.chat.lockedNotice;
 	});
 
+	const placeholder = $derived(
+		fileDrop
+			? t.sidebar.fileDropPlaceholder
+			: selectedKind === 'you-bot' && selectedPeerBot
+				? `${t.chat.replyPrompt} ${selectedPeerBot.name}...`
+				: t.composer.send
+	);
+
 	const primaryAction = $derived(composerAction({
 		connected,
 		hasSession: Boolean(selected),
 		locked: lockedComposer,
 		hasLiveTurn: Boolean(liveTurn),
 		pendingJudgement: pendingHere.length > 0,
-		busy: runtime.busy,
-		hasContent: Boolean(runtime.draft.trim()) || pendingAttachments.length > 0,
-		sessionKind: selected?.kind ?? null,
+		busy: view?.sending ?? false,
+		hasContent: Boolean(view?.draft.trim()) || pendingAttachments.length > 0,
+		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
 	}));
 
 	const mentionCandidates = $derived.by<MentionCandidate[]>(() => {
@@ -164,8 +186,8 @@
 	});
 
 	const quoteTarget = $derived(
-		runtime.replyingToId
-			? (snapshot.messages.find((m) => m.id === runtime.replyingToId) ?? null)
+		view?.replyingToId
+			? (snapshot.messages.find((m) => m.id === view.replyingToId) ?? null)
 			: null
 	);
 
@@ -187,11 +209,12 @@
 
 	function syncDraftFromEditor(): void {
 		if (!editorEl) return;
-		runtime.draft = serializeEditorText(editorEl);
+		if (view) view.draft = serializeEditorText(editorEl);
 	}
 
 	function checkMentionTrigger(): void {
-		if (!editorEl) {
+		// No Bot reads the file conversation, so there is no one to mention.
+		if (!editorEl || fileDrop) {
 			showMentionPopup = false;
 			mentionDismissed = false;
 			mentionQuery = '';
@@ -268,7 +291,7 @@
 	let attachLimitHit = $state(false);
 
 	function addFiles(files: FileList | File[]): void {
-		const next: PendingAttachment[] = [];
+		const next: StagedAttachment[] = [];
 		attachLimitHit = false;
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
@@ -289,7 +312,7 @@
 			}
 			next.push({ id, file, name, size: file.size, isImage, previewUrl });
 		}
-		pendingAttachments = [...pendingAttachments, ...next];
+		stageAttachments([...pendingAttachments, ...next]);
 	}
 
 	function removePendingAttachment(id: string): void {
@@ -297,7 +320,7 @@
 		if (target?.previewUrl) {
 			URL.revokeObjectURL(target.previewUrl);
 		}
-		pendingAttachments = pendingAttachments.filter((a) => a.id !== id);
+		stageAttachments(pendingAttachments.filter((a) => a.id !== id));
 	}
 
 	function onComposerPaste(ev: ClipboardEvent): void {
@@ -351,8 +374,22 @@
 	}
 
 	function openFilePicker(): void {
-		if (lockedComposer || !connected || !selected || runtime.busy) return;
+		if (lockedComposer || !connected || !selected || view?.sending) return;
 		fileInputEl?.click();
+	}
+
+	function onFileDragOver(ev: DragEvent): void {
+		if (!fileDrop || lockedComposer || !connected || view?.sending) return;
+		if (!ev.dataTransfer?.types.includes('Files')) return;
+		ev.preventDefault();
+	}
+
+	function onFileDrop(ev: DragEvent): void {
+		if (!fileDrop || lockedComposer || !connected || view?.sending) return;
+		const dropped = ev.dataTransfer?.files;
+		if (!dropped || dropped.length === 0) return;
+		ev.preventDefault();
+		addFiles(dropped);
 	}
 
 	function onComposerCompositionStart(): void {
@@ -474,7 +511,7 @@
 	}
 
 	function cancelQuoteReply(): void {
-		runtime.replyingToId = null;
+		if (view) view.replyingToId = null;
 	}
 
 	/** Only the mention popup closes on an outside click; Escape order is the shell's. */
@@ -486,9 +523,13 @@
 		}
 	}
 
-	/** A session change clears whatever was half-typed into the mention popup. */
+	/**
+	 * Another conversation in this composer clears whatever was half-typed into the mention popup.
+	 * This one's, not the selected one's: clicking into another pane is not a change here.
+	 */
 	$effect(() => {
-		void runtime.selectedId;
+		void selected?.id;
+		attachLimitHit = false;
 		showMentionPopup = false;
 		mentionDismissed = false;
 		mentionQuery = '';
@@ -501,9 +542,9 @@
 		}
 	});
 
-	/** The draft belongs to the runtime; the contenteditable follows it, whoever set it. */
+	/** The draft belongs to the conversation; the contenteditable follows it, whoever set it. */
 	$effect(() => {
-		const targetDraft = runtime.draft;
+		const targetDraft = view?.draft ?? '';
 		if (editorEl) {
 			const currentSerialized = serializeEditorText(editorEl);
 			if (targetDraft !== currentSerialized) {
@@ -523,7 +564,7 @@
 		for (const a of pendingAttachments) {
 			if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
 		}
-		pendingAttachments = [];
+		stageAttachments([]);
 		await onSend(files);
 		if (editorEl) editorEl.innerHTML = '';
 	}
@@ -561,7 +602,7 @@
 
 <svelte:window onclick={onWindowClick} />
 
-		<footer class="composer" bind:this={composerEl}>
+		<footer class="composer" bind:this={composerEl} ondragover={onFileDragOver} ondrop={onFileDrop}>
 {#if showMentionPopup && mentionCandidates.length > 0}
 	<div
 		bind:this={mentionPopupEl}
@@ -603,9 +644,9 @@
 {/if}
 
 <div class="composer-dock">
-{#if selected && !lockedComposer && runtime.composerSuggestions.length > 0}
+{#if selected && !lockedComposer && view && view.composerSuggestions.length > 0}
 	<div class="composer-frost-shell composer-suggest-bar" aria-label={t.chat.suggestNext}>
-		{#each runtime.composerSuggestions as suggestion (suggestion.id)}
+		{#each view.composerSuggestions as suggestion (suggestion.id)}
 			<button
 				type="button"
 				class="suggest-chip"
@@ -618,6 +659,7 @@
 	</div>
 {/if}
 
+<div class="composer-card-wrap">
 <div class="composer-frost-shell composer-card-shell">
 <div
 	class="composer-card"
@@ -662,7 +704,7 @@
 			{#each pendingAttachments as att (att.id)}
 				<div class="composer-attachment-item" class:is-img={att.isImage}>
 					{#if att.isImage && att.previewUrl}
-						<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" />
+						<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
 					{:else}
 						<div class="attachment-file-icon">
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
@@ -686,13 +728,18 @@
 		</div>
 	{/if}
 
-	<div class="composer-row flex items-end gap-2 w-full">
+	<div
+		class="composer-row flex items-end gap-2 w-full"
+		class:is-file-drop={fileDrop}
+		ondragover={onFileDragOver}
+		ondrop={onFileDrop}
+	>
 		<button
 			type="button"
 			class="attach-btn"
 			title={runtime.remote ? `${t.composer.attach} · ${t.composer.attachLimit}` : t.composer.attach}
 			aria-label={runtime.remote ? `${t.composer.attach} · ${t.composer.attachLimit}` : t.composer.attach}
-			disabled={!connected || !selected || lockedComposer || runtime.busy}
+			disabled={!connected || !selected || lockedComposer || view?.sending}
 			onclick={openFilePicker}
 		>
 			<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -706,16 +753,16 @@
 			onchange={onFileInputChange}
 			style="display: none;"
 		/>
-		<div class="composer-editor-wrap">
+		<div class="composer-editor-wrap" class:is-file-drop={fileDrop}>
 		<div
 			bind:this={editorEl}
 			class="composer-input"
-			class:is-empty={!runtime.draft}
+			class:is-empty={!view?.draft}
 			role="textbox"
 			aria-multiline="true"
-			aria-label={selectedKind === 'you-bot' && selectedPeerBot ? `${t.chat.replyPrompt} ${selectedPeerBot.name}...` : t.composer.send}
+			aria-label={placeholder}
 			aria-describedby={!lockedComposer ? 'composer-hint' : undefined}
-			data-placeholder={selectedKind === 'you-bot' && selectedPeerBot ? `${t.chat.replyPrompt} ${selectedPeerBot.name}...` : t.composer.send}
+			data-placeholder={placeholder}
 			contenteditable={Boolean(selected) && !lockedComposer}
 			tabindex="0"
 			oninput={onEditorInput}
@@ -727,7 +774,7 @@
 			onclick={onEditorClick}
 			onpaste={onComposerPaste}
 		></div>
-		{#if runtime.remote && !runtime.draft}
+		{#if runtime.remote && !view?.draft}
 			<span class="composer-inline-limit">{t.composer.attachLimit}</span>
 		{/if}
 		</div>
@@ -739,7 +786,7 @@
 			disabled={primaryAction.disabled}
 			aria-label={primaryAction.kind === 'stop' ? t.composer.stopGeneration : t.composer.send}
 			title={primaryAction.kind === 'stop' ? t.composer.stopGeneration : t.chat.sendHintShortcut}
-			onclick={() => primaryAction.kind === 'stop' ? void runtime.stopTurn() : void send()}
+			onclick={() => primaryAction.kind === 'stop' ? void runtime.stopTurn(selected?.id) : void send()}
 		>
 			{#if primaryAction.kind === 'stop'}
 				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
@@ -748,6 +795,19 @@
 			{/if}
 		</button>
 	</div>
+</div>
+</div>
+<div class="scroll-bottom-slot" class:is-shown={showScrollBottom} aria-hidden={showScrollBottom ? undefined : true}>
+	<button
+		type="button"
+		class="scroll-bottom-btn"
+		tabindex={showScrollBottom ? 0 : -1}
+		title={t.chat.scrollToBottom}
+		aria-label={t.chat.scrollToBottom}
+		onclick={() => onScrollToBottom?.()}
+	>
+		<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+	</button>
 </div>
 </div>
 {#if !lockedComposer}
@@ -810,7 +870,8 @@
 
 	.composer-suggest-bar {
 		position: relative;
-		z-index: 2;
+		/* Above the card, so the chips keep sitting on its left shoulder. */
+		z-index: 3;
 		align-self: flex-start;
 		width: max-content;
 		max-width: 100%;
@@ -830,6 +891,11 @@
 
 	.composer-suggest-bar::-webkit-scrollbar {
 		display: none;
+	}
+
+	/* Stop the chip row before the jump button. Padding inside a full-width bar would still cover it. */
+	.composer-dock:has(.scroll-bottom-slot.is-shown) .composer-suggest-bar {
+		max-width: calc(100% - 52px);
 	}
 
 	.composer-suggest-bar::before {
@@ -865,10 +931,70 @@
 		color: var(--accent);
 	}
 
+	/* The jump control floats above the card's top-right and grows out of the card. */
+	.composer-card-wrap {
+		position: relative;
+		width: 100%;
+	}
+
+	.scroll-bottom-slot {
+		position: absolute;
+		/* Above the card's frost, under the card, so the circle sinks behind the input. */
+		z-index: 1;
+		/* 32px circle, 12px of air, then 32px of travel behind the card. The slot's own clip stays inside the card. */
+		top: -44px;
+		right: 8px;
+		width: 32px;
+		height: 76px;
+		overflow: hidden;
+		pointer-events: none;
+	}
+
+	.scroll-bottom-btn {
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		background: var(--input-bg);
+		/* The slot is this box exactly. An outer shadow is clipped into a square halo. */
+		box-shadow: none;
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		pointer-events: none;
+		transform: translateY(76px);
+		transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.scroll-bottom-slot.is-shown {
+		pointer-events: auto;
+	}
+
+	.scroll-bottom-slot.is-shown .scroll-bottom-btn {
+		transform: translateY(0);
+		pointer-events: auto;
+	}
+
+	.scroll-bottom-btn:hover {
+		color: var(--accent);
+		background: var(--line-subtle);
+	}
+
+	.scroll-bottom-btn:focus-visible {
+		/* Same clip: an offset outline or outer glow is cut into a square. Draw the ring inside. */
+		outline: none;
+		border-color: transparent !important;
+		box-shadow: inset 0 0 0 2px var(--accent);
+	}
+
 	.composer-card-shell {
+		position: relative;
 		width: 100%;
 		border-radius: 24px;
-		z-index: 1;
+		/* No z-index here. A stacking context would trap the card with its frost, and the card could no longer cover the button. */
 	}
 
 	.composer-card-shell::before {
@@ -878,7 +1004,8 @@
 
 	.composer-card {
 		position: relative;
-		z-index: 1;
+		/* Covers the jump button. The suggestion row is higher still, and stops short of the button. */
+		z-index: 2;
 		width: 100%;
 		background: var(--input-bg);
 		border: 1px solid var(--line);
@@ -1383,7 +1510,9 @@
 		color: var(--text);
 	}
 
-	@media (max-width: 680px) {
+	/* Compact as on a phone whenever the conversation is that narrow, a workbench pane included.
+	   The keyboard inset and the safe area are zero outside a phone. */
+	@container conversation (max-width: 680px) {
 		.composer {
 			bottom: var(--keyboard-inset, 0px);
 			padding: 8px 10px max(12px, env(safe-area-inset-bottom));
@@ -1414,14 +1543,14 @@
 			border-radius: 28px;
 		}
 	}
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 	.composer-card {
 	padding: 4px 5px 4px 6px;
 	border-radius: 22px;
 	max-width: 100%;
 	}
 	}
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 	.composer .composer-input {
 	font-size: 15px;
 	max-height: min(120px, 25dvh);
@@ -1433,14 +1562,14 @@
 		font-size: 10px;
 	}
 	}
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 	.composer .composer-input.is-empty::before {
 	left: 4px;
 	right: 4px;
 	top: 6px;
 	}
 	}
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 	.composer .composer-action,
 	.composer .attach-btn {
 	width: 34px;
@@ -1448,12 +1577,12 @@
 	flex-basis: 34px;
 	}
 	}
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 	.composer-hint {
 	display: none;
 	}
 	}
-	@media (max-width: 680px) {
+	@container conversation (max-width: 680px) {
 	.mention-autocomplete-popup {
 	left: 10px;
 	width: calc(100% - 20px);
@@ -1462,7 +1591,8 @@
 	@media (prefers-reduced-motion: reduce) {
 	.composer-card,
 	.composer-action,
-	.composer .attach-btn {
+	.composer .attach-btn,
+	.scroll-bottom-btn {
 	transition: none;
 	}
 	}

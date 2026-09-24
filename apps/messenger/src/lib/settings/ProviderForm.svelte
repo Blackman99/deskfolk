@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import type { FieldErrorKind } from './wizard-save.ts';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -19,7 +21,6 @@
 		type ProviderDraft,
 		type ProviderFieldErrors
 	} from './provider-form.ts';
-	import Select from '../Select.svelte';
 	import { thinkingLevelLabel } from '../copy.ts';
 
 	interface Props {
@@ -31,6 +32,9 @@
 		fieldPrefix: string;
 		/** Set when editing: whether the daemon already holds a key for this endpoint. */
 		keySet?: boolean;
+		/** `connection` is name, URL and key. `models` is the enable list and its attributes. */
+		view?: 'connection' | 'models';
+		detailModel?: string | null;
 		t: Copy;
 		onchange: (draft: ProviderDraft) => void;
 		onfetch: () => void;
@@ -44,12 +48,16 @@
 		fetchError,
 		fieldPrefix,
 		keySet,
+		view = 'connection',
+		detailModel = $bindable(null),
 		t,
 		onchange,
 		onfetch
 	}: Props = $props();
 
+	const phone = new MediaQuery('(max-width: 720px)');
 	const TOOLBAR_MIN_ROWS = 6;
+	let detailTrigger: HTMLButtonElement | null = null;
 	const PRESET_KEYS = new Set<string>(PRESET_STRENGTHS);
 
 	let filterQuery = $state('');
@@ -57,6 +65,7 @@
 	let expanded = $state<Record<string, boolean>>({});
 	let manualOpen = $state(false);
 	let manualName = $state('');
+	let manualFeedback = $state('');
 	let strengthEditing = $state<string | null>(null);
 	let strengthText = $state('');
 	let thinkingEditing = $state<string | null>(null);
@@ -66,7 +75,7 @@
 	const enabled = $derived(new Set(draft.models));
 	const available = $derived(new Set(draft.availableModels));
 	const canProbe = $derived(probeSignature(draft, Boolean(keySet)) !== null);
-	const showToolbar = $derived(rows.length > TOOLBAR_MIN_ROWS);
+	const showToolbar = $derived(phone.current || rows.length > TOOLBAR_MIN_ROWS);
 	const visibleRows = $derived.by(() => {
 		const q = filterQuery.trim().toLowerCase();
 		return rows.filter((name) => {
@@ -94,8 +103,27 @@
 		patch({ modelAttrs: { ...draft.modelAttrs, [name]: next } });
 	}
 
-	function toggleExpanded(name: string): void {
-		expanded = { ...expanded, [name]: !expanded[name] };
+	function toggleExpanded(name: string, trigger: HTMLButtonElement): void {
+		if (phone.current) {
+			detailTrigger = trigger;
+			detailModel = name;
+		} else expanded = { ...expanded, [name]: !expanded[name] };
+	}
+
+	export function backFromDetails(): boolean {
+		if (!detailModel) return false;
+		detailModel = null;
+		void tick().then(() => detailTrigger?.focus({ preventScroll: true }));
+		return true;
+	}
+
+	$effect(() => {
+		if (detailModel && (!phone.current || !enabled.has(detailModel))) detailModel = null;
+	});
+
+	function clearVisible(): void {
+		const visible = new Set(visibleRows);
+		onchange(setDraftModels(draft, draft.models.filter((name) => !visible.has(name))));
 	}
 
 	function selectVisible(): void {
@@ -106,8 +134,14 @@
 
 	function submitManual(): void {
 		const next = addDraftModel(draft, manualName);
-		if (next === draft) return;
+		if (!manualName.trim()) return;
+		if (next === draft) {
+			manualFeedback = t.settings.modelsAlreadyEnabled;
+			return;
+		}
 		onchange(next);
+		manualFeedback = t.settings.modelsManualAdded(manualName.trim());
+		filterQuery = '';
 		manualName = '';
 	}
 
@@ -148,9 +182,135 @@
 	}
 </script>
 
+{#snippet modelAttributes(name: string)}
+	{@const attr = attrOf(name)}
+	{@const customTags = customStrengths(attr)}
+	<div class="model-row-body">
+		<div class="attr-field">
+			<label for={`${fieldPrefix}-price-${name}`} title={t.settings.modelPriceTitle}>
+				{t.settings.modelPrice}
+			</label>
+			<input
+				id={`${fieldPrefix}-price-${name}`}
+				class="attr-price-input"
+				type="number"
+				inputmode="decimal"
+				min="0"
+				step="any"
+				placeholder={t.settings.modelPriceHint}
+				value={attr.price}
+				oninput={(ev) =>
+					patchAttr(name, { ...attr, price: (ev.currentTarget as HTMLInputElement).value })}
+			/>
+		</div>
+		<div class="attr-field">
+			<span class="attr-field-label">{t.settings.modelThinking}</span>
+			<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelThinking}>
+				{#each thinkingChipOptions(attr, draft.advertisedThinking[name]) as level (level)}
+					<button
+						type="button"
+						class="btn-chip"
+						class:active={attr.thinkingLevels.includes(level)}
+						aria-pressed={attr.thinkingLevels.includes(level)}
+						onclick={() => patchAttr(name, toggleAttrThinkingLevel(attr, level))}
+					>
+						{thinkingLevelLabel(t.sidebar.thinkingLevels, level)}
+					</button>
+				{/each}
+				{#if thinkingEditing === name}
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						type="text"
+						class="chip-input mono"
+						autofocus
+						placeholder={t.settings.modelThinkingAddPlaceholder}
+						bind:value={thinkingText}
+						onkeydown={(ev) => {
+							if (ev.key === 'Enter') {
+								ev.preventDefault();
+								submitThinking(name);
+							} else if (ev.key === 'Escape') {
+								ev.preventDefault();
+								ev.stopPropagation();
+								thinkingEditing = null;
+							}
+						}}
+						onblur={() => submitThinking(name)}
+					/>
+				{:else}
+					<button
+						type="button"
+						class="btn-chip is-add"
+						onclick={() => openThinkingInput(name)}
+					>
+						+ {t.settings.modelThinkingAdd}
+					</button>
+				{/if}
+			</div>
+		</div>
+		<div class="attr-field attr-field-strengths">
+			<span class="attr-field-label">{t.settings.modelStrengths}</span>
+			<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelStrengths}>
+				{#each PRESET_STRENGTHS as tag (tag)}
+					<button
+						type="button"
+						class="btn-chip"
+						class:active={hasStrength(attr, tag)}
+						aria-pressed={hasStrength(attr, tag)}
+						onclick={() => patchAttr(name, toggleAttrStrength(attr, tag))}
+					>
+						{tag}
+					</button>
+				{/each}
+				{#each customTags as tag (tag)}
+					<button
+						type="button"
+						class="btn-chip active is-custom"
+						aria-label={t.settings.modelStrengthRemove(tag)}
+						onclick={() => patchAttr(name, toggleAttrStrength(attr, tag))}
+					>
+						{tag} ×
+					</button>
+				{/each}
+				{#if strengthEditing === name}
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						type="text"
+						class="chip-input mono"
+						autofocus
+						placeholder={t.settings.modelStrengthsAddPlaceholder}
+						bind:value={strengthText}
+						onkeydown={(ev) => {
+							if (ev.key === 'Enter') {
+								ev.preventDefault();
+								submitStrength(name);
+							} else if (ev.key === 'Escape') {
+								ev.preventDefault();
+								ev.stopPropagation();
+								strengthEditing = null;
+							}
+						}}
+						onblur={() => submitStrength(name)}
+					/>
+				{:else}
+					<button
+						type="button"
+						class="btn-chip is-add"
+						onclick={() => openStrengthInput(name)}
+					>
+						+ {t.settings.modelStrengthsAdd}
+					</button>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/snippet}
+
+
 {#if failed}
 	<p class="field-error">{t.settings.saveFailed}</p>
 {/if}
+{#if view === 'connection'}
 <div class="modal-section">
 	<label for={`${fieldPrefix}-name`}>{t.settings.providerName}</label>
 	<input
@@ -205,14 +365,14 @@
 		<p class="field-error">{t.settings.keyEmpty}</p>
 	{/if}
 </div>
-
-<div class="modal-section">
-	<div class="field-head-row">
-		<span class="field-head model-picker-head inline-flex items-center" id={`${fieldPrefix}-models-label`}>
+{:else}
+<div class="modal-section model-list-section" class:has-detail={Boolean(detailModel)} inert={Boolean(detailModel)}>
+	<div class="field-head-row model-list-heading">
+		<span class="field-head model-picker-head" id={`${fieldPrefix}-models-label`}>
 			{t.settings.models}
 			{#if rows.length > 0}
 				<span class="badge-count-inline">
-					{t.settings.modelsCounts(draft.models.length, draft.availableModels.length)}
+					{t.settings.modelsCounts(draft.models.length, rows.length)}
 				</span>
 			{/if}
 		</span>
@@ -229,8 +389,9 @@
 			{/if}
 		</button>
 	</div>
+	<p class="model-selection-hint">{t.settings.modelsSelectionHint}</p>
 	{#if fetchError}
-		<div class="models-fetch-tip">{fetchError}</div>
+		<div class="models-fetch-tip" role="alert">{fetchError}</div>
 	{/if}
 	<div class="model-picker" class:has-error={Boolean(errors.models)}>
 		{#if rows.length === 0}
@@ -240,6 +401,8 @@
 		{:else}
 			{#if showToolbar}
 				<div class="model-picker-toolbar">
+					<div class="model-search-field">
+					<svg class="model-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
 					<input
 						type="search"
 						class="model-picker-search"
@@ -247,6 +410,11 @@
 						aria-label={t.settings.modelsSearchPlaceholder}
 						bind:value={filterQuery}
 					/>
+					{#if filterQuery}
+						<button type="button" class="model-search-clear" aria-label={t.settings.modelsClearSearch} onclick={() => (filterQuery = '')}>×</button>
+					{/if}
+					</div>
+					<div class="model-filter-actions">
 					<div class="segmented" role="group" aria-label={t.settings.models}>
 						<button
 							type="button"
@@ -254,7 +422,7 @@
 							aria-pressed={filterMode === 'all'}
 							onclick={() => (filterMode = 'all')}
 						>
-							{t.settings.modelsFilterAll}
+							{t.settings.modelsFilterAll} <span class="model-total-count">{rows.length}</span>
 						</button>
 						<button
 							type="button"
@@ -265,12 +433,13 @@
 							{t.settings.modelsFilterEnabled} {draft.models.length}
 						</button>
 					</div>
-					<button type="button" class="btn-xs" onclick={selectVisible}>
-						{t.settings.modelsSelectAll}
+					<button type="button" class="btn-xs model-select-visible" disabled={visibleRows.every((name) => enabled.has(name))} onclick={selectVisible}>
+						{filterQuery.trim() ? t.settings.modelsSelectVisible : t.settings.modelsSelectAll}
 					</button>
-					<button type="button" class="btn-xs" onclick={() => onchange(setDraftModels(draft, []))}>
-						{t.settings.modelsDeselectAll}
+					<button type="button" class="btn-xs model-clear-visible" disabled={!visibleRows.some((name) => enabled.has(name))} onclick={clearVisible}>
+						{filterQuery.trim() ? t.settings.modelsClearVisible : t.settings.modelsDeselectAll}
 					</button>
+					</div>
 				</div>
 			{/if}
 			<ul class="model-picker-list list-none m-0 p-2 max-h-[260px] overflow-y-auto flex flex-col gap-1" aria-labelledby={`${fieldPrefix}-models-label`}>
@@ -284,22 +453,19 @@
 				{#each visibleRows as name (name)}
 					{@const on = enabled.has(name)}
 					{@const attr = attrOf(name)}
-					{@const open = on && Boolean(expanded[name])}
-					{@const customTags = customStrengths(attr)}
+					{@const open = on && !phone.current && Boolean(expanded[name])}
 					<li class="model-row" class:is-on={on} class:is-open={open}>
 						<div class="model-row-line flex items-center gap-2">
 							<button
 								type="button"
 								role="checkbox"
 								aria-checked={on}
+								aria-label={name}
 								class="model-row-toggle"
 								onclick={() => onchange(toggleDraftModel(draft, name))}
 							>
 								<span class="model-row-box" aria-hidden="true">{on ? '✓' : ''}</span>
 								<span class="model-row-name mono flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-12p5">{name}</span>
-								{#if name === draft.defaultModel}
-									<span class="model-default-tag">{t.settings.modelAttrsDefaultBadge}</span>
-								{/if}
 								{#if !available.has(name)}
 									<span class="model-custom-tag">{t.settings.modelCustomBadge}</span>
 								{/if}
@@ -311,7 +477,7 @@
 									class:has-custom={hasCustomAttrs(attr, draft.advertisedThinking[name])}
 									aria-expanded={open}
 									aria-label={t.settings.modelAttrsToggle(name)}
-									onclick={() => toggleExpanded(name)}
+									onclick={(event) => toggleExpanded(name, event.currentTarget)}
 								>
 									{#if attr.price.trim()}
 										<span class="attr-pill pill-price">{attr.price.trim()}</span>
@@ -322,128 +488,13 @@
 									{#each attr.strengths as tag (tag)}
 										<span class="attr-pill pill-strengths">{tag}</span>
 									{/each}
+									<span class="model-attrs-label">{t.settings.modelSettingsAction}</span>
 									<span class="model-row-caret w-6 text-center text-11" aria-hidden="true">{open ? '▾' : '▸'}</span>
 								</button>
 							{/if}
 						</div>
 						{#if open}
-							<div class="model-row-body">
-								<div class="attr-field">
-									<label for={`${fieldPrefix}-price-${name}`} title={t.settings.modelPriceTitle}>
-										{t.settings.modelPrice}
-									</label>
-									<input
-										id={`${fieldPrefix}-price-${name}`}
-										class="attr-price-input"
-										type="number"
-										inputmode="decimal"
-										min="0"
-										step="any"
-										placeholder={t.settings.modelPriceHint}
-										value={attr.price}
-										oninput={(ev) =>
-											patchAttr(name, { ...attr, price: (ev.currentTarget as HTMLInputElement).value })}
-									/>
-								</div>
-								<div class="attr-field">
-									<span class="attr-field-label">{t.settings.modelThinking}</span>
-									<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelThinking}>
-										{#each thinkingChipOptions(attr, draft.advertisedThinking[name]) as level (level)}
-											<button
-												type="button"
-												class="btn-chip"
-												class:active={attr.thinkingLevels.includes(level)}
-												aria-pressed={attr.thinkingLevels.includes(level)}
-												onclick={() => patchAttr(name, toggleAttrThinkingLevel(attr, level))}
-											>
-												{thinkingLevelLabel(t.sidebar.thinkingLevels, level)}
-											</button>
-										{/each}
-										{#if thinkingEditing === name}
-											<!-- svelte-ignore a11y_autofocus -->
-											<input
-												type="text"
-												class="chip-input mono"
-												autofocus
-												placeholder={t.settings.modelThinkingAddPlaceholder}
-												bind:value={thinkingText}
-												onkeydown={(ev) => {
-													if (ev.key === 'Enter') {
-														ev.preventDefault();
-														submitThinking(name);
-													} else if (ev.key === 'Escape') {
-														ev.preventDefault();
-														thinkingEditing = null;
-													}
-												}}
-												onblur={() => submitThinking(name)}
-											/>
-										{:else}
-											<button
-												type="button"
-												class="btn-chip is-add"
-												onclick={() => openThinkingInput(name)}
-											>
-												+ {t.settings.modelThinkingAdd}
-											</button>
-										{/if}
-									</div>
-								</div>
-								<div class="attr-field attr-field-strengths">
-									<span class="attr-field-label">{t.settings.modelStrengths}</span>
-									<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelStrengths}>
-										{#each PRESET_STRENGTHS as tag (tag)}
-											<button
-												type="button"
-												class="btn-chip"
-												class:active={hasStrength(attr, tag)}
-												aria-pressed={hasStrength(attr, tag)}
-												onclick={() => patchAttr(name, toggleAttrStrength(attr, tag))}
-											>
-												{tag}
-											</button>
-										{/each}
-										{#each customTags as tag (tag)}
-											<button
-												type="button"
-												class="btn-chip active is-custom"
-												aria-label={t.settings.modelStrengthRemove(tag)}
-												onclick={() => patchAttr(name, toggleAttrStrength(attr, tag))}
-											>
-												{tag} ×
-											</button>
-										{/each}
-										{#if strengthEditing === name}
-											<!-- svelte-ignore a11y_autofocus -->
-											<input
-												type="text"
-												class="chip-input mono"
-												autofocus
-												placeholder={t.settings.modelStrengthsAddPlaceholder}
-												bind:value={strengthText}
-												onkeydown={(ev) => {
-													if (ev.key === 'Enter') {
-														ev.preventDefault();
-														submitStrength(name);
-													} else if (ev.key === 'Escape') {
-														ev.preventDefault();
-														strengthEditing = null;
-													}
-												}}
-												onblur={() => submitStrength(name)}
-											/>
-										{:else}
-											<button
-												type="button"
-												class="btn-chip is-add"
-												onclick={() => openStrengthInput(name)}
-											>
-												+ {t.settings.modelStrengthsAdd}
-											</button>
-										{/if}
-									</div>
-								</div>
-							</div>
+							{@render modelAttributes(name)}
 						{/if}
 					</li>
 				{/each}
@@ -465,45 +516,52 @@
 							submitManual();
 						} else if (ev.key === 'Escape') {
 							ev.preventDefault();
+							ev.stopPropagation();
 							manualOpen = false;
 							manualName = '';
 						}
 					}}
 				/>
-				<button type="button" class="btn-xs" onclick={submitManual}>
+				<button type="button" class="btn-xs model-manual-confirm" disabled={!manualName.trim()} onclick={submitManual}>
 					{t.settings.modelsAddConfirm}
 				</button>
+				<button type="button" class="btn-xs model-manual-cancel" onclick={() => { manualOpen = false; manualName = ''; manualFeedback = ''; }}>{t.sidebar.cancel}</button>
 			{:else}
-				<button type="button" class="btn-text-action" onclick={() => (manualOpen = true)}>
+				<button type="button" class="btn-text-action" onclick={() => { manualOpen = true; manualFeedback = ''; }}>
 					+ {t.settings.modelsAddManual}
 				</button>
 			{/if}
 		</div>
+		{#if manualFeedback}<p class="model-manual-feedback" role="status">{manualFeedback}</p>{/if}
 	</div>
 	{#if errors.models}
 		<p class="field-error">{t.settings.modelsEmpty}</p>
 	{/if}
-</div>
-
-<div class="modal-section">
-	<label for={`${fieldPrefix}-default`}>{t.settings.defaultModel}</label>
-	<Select
-		id={`${fieldPrefix}-default`}
-		value={draft.defaultModel}
-		placeholder={t.settings.defaultModelEmpty}
-		emptyLabel={t.settings.defaultModelEmpty}
-		options={draft.models}
-		error={!!errors.defaultModel}
-		onchange={(value) => patch({ defaultModel: value })}
-	/>
 	{#if errors.defaultModel}
 		<p class="field-error">
 			{fieldCopy(errors.defaultModel, t.settings.defaultModelEmpty, t.settings.defaultModelInvalid)}
 		</p>
 	{/if}
 </div>
+	{#if detailModel}
+		<div class="model-attributes-page">
+			<p class="model-attributes-name mono">{detailModel}</p>
+			<p class="model-attributes-hint">{t.settings.modelSettingsHint}</p>
+			{@render modelAttributes(detailModel)}
+		</div>
+	{/if}
+{/if}
 
 <style>
+	.model-picker-head { display: inline-flex; align-items: center; }
+	.model-search-field { display: flex; align-items: center; flex: 1; min-width: 0; }
+	.model-filter-actions { display: flex; align-items: center; gap: 6px; }
+	.model-search-icon, .model-search-clear, .model-total-count, .model-attrs-label, .model-selection-hint { display: none; }
+	.model-manual-feedback { margin: 0; padding: 8px; font-size: 12px; color: var(--ink-secondary); overflow-wrap: anywhere; }
+	.model-attributes-page { position: fixed; inset: calc(56px + env(safe-area-inset-top)) 0 calc(52px + env(safe-area-inset-bottom)); z-index: 1; overflow-y: auto; overscroll-behavior: contain; padding: 20px 16px 32px; background: var(--sidebar-bg); }
+	.model-attributes-name { margin: 0 0 8px; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+	.model-attributes-hint { margin: 0 0 24px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
 	:global([data-theme='dark']) .attr-pill.pill-price,
 
 	:global(body.dark) .attr-pill.pill-price {
@@ -555,17 +613,6 @@
 		color: var(--muted);
 		margin-left: 6px;
 		vertical-align: middle;
-	}
-
-	.model-default-tag {
-		font-size: 10.5px;
-		padding: 1px 6px;
-		border-radius: 4px;
-		background: var(--accent-tint);
-		color: var(--accent);
-		border: 1px solid var(--accent-border);
-		font-weight: 500;
-		flex-shrink: 0;
 	}
 
 	.attr-pill {
@@ -816,5 +863,65 @@
 		font-size: 12px;
 		border-radius: var(--radius-sm);
 		box-shadow: none;
+	}
+
+	@media (max-width: 720px) {
+		.model-list-section { margin: 0; gap: 0; }
+		.model-list-section.has-detail { visibility: hidden; }
+		.model-list-heading { padding: 0 0 8px; gap: 8px; }
+		.model-picker-head { flex-direction: column; align-items: flex-start; gap: 4px; font-size: 16px; }
+		.badge-count-inline { padding: 0; margin: 0; border: 0; background: transparent; font-size: 12px; }
+		.btn-fetch-models-mini { min-height: 44px; padding: 0 12px; font-size: 13px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--pane); }
+		.model-selection-hint { display: block; margin: 0 0 16px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+		.models-fetch-tip { margin-bottom: 16px; padding: 12px; font-size: 13px; overflow-wrap: anywhere; }
+		.model-picker { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+		.model-picker.has-error .model-picker-list { outline: 1px solid var(--danger); }
+		.model-picker-toolbar { flex-direction: column; align-items: stretch; gap: 12px; padding: 0 0 12px; border: 0; }
+		.model-search-field { position: relative; min-height: 48px; }
+		.model-search-icon { display: block; position: absolute; left: 14px; color: var(--muted); pointer-events: none; }
+		:global(.modal-body) .model-picker-search { width: 100%; height: 48px; padding: 0 44px 0 42px; background: var(--pane); border-radius: var(--radius-md); font-size: 16px; }
+		.model-picker-search::-webkit-search-cancel-button { -webkit-appearance: none; }
+		.model-search-clear { display: flex; align-items: center; justify-content: center; position: absolute; right: 2px; width: 44px; height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 22px; }
+		.model-filter-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+		.segmented { grid-column: 1 / -1; display: flex; padding: 3px; border: 0; border-radius: var(--radius-md); background: var(--chip); }
+		.segmented button { flex: 1; min-height: 44px; padding: 8px; font-size: 14px; border-radius: 7px; background: transparent; }
+		.segmented button + button { border: 0; }
+		.segmented button.active { background: var(--pane); color: var(--ink); box-shadow: var(--shadow-xs); }
+		.model-total-count { display: inline; margin-left: 4px; color: var(--muted); font-weight: 400; }
+		.model-filter-actions > .btn-xs { min-height: 44px; background: transparent; border: 0; font-size: 13px; color: var(--accent); }
+		.model-filter-actions > .btn-xs:disabled { opacity: 0.4; }
+		.model-picker-list { max-height: none; overflow: visible; padding: 0; gap: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); }
+		.model-row { border-radius: 0; }
+		.model-row + .model-row { border-top: 1px solid var(--line); }
+		.model-row.is-on { background: transparent; }
+		.model-row.is-on .model-row-toggle:hover { background: transparent; }
+		.model-row:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+		.model-row:last-child { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+		.model-row-line { gap: 0; padding-right: 4px; }
+		.model-row-toggle { min-height: 64px; gap: 12px; padding: 12px; border-radius: inherit; flex-wrap: wrap; }
+		.model-row-box { width: 22px; height: 22px; border-radius: 7px; font-size: 14px; }
+		.model-row-name { font-family: var(--font); font-size: 14px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+		.model-custom-tag { margin-left: 34px; font-size: 11px; }
+		.model-row-attrs { min-width: 56px; min-height: 48px; max-width: none; justify-content: center; padding: 0 8px; margin: 0; color: var(--accent); font-size: 12px; }
+		.model-row-attrs .attr-pill, .model-row-caret { display: none; }
+		.model-attrs-label { display: inline; }
+		.model-picker-none, .model-picker-empty { padding: 28px 16px; font-size: 14px; }
+		.model-picker-empty { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); }
+		.model-picker-empty p { font-size: 14px; }
+		.model-picker-foot { flex-wrap: wrap; gap: 8px; margin-top: 16px; padding: 0; border: 0; }
+		.model-picker-foot .btn-text-action { width: 100%; min-height: 48px; text-align: center; border: 1px dashed var(--line-hover); border-radius: var(--radius-md); background: var(--pane); font-size: 14px; }
+		:global(.modal-body) .model-manual-input { flex: 1 0 100%; width: 100%; min-width: 0; height: 48px; font-size: 16px; padding: 10px 12px; }
+		.model-manual-confirm, .model-manual-cancel { flex: 1; min-height: 44px; font-size: 14px; }
+		.model-manual-confirm { background: var(--accent); color: white; border-color: var(--accent); }
+		.model-manual-feedback { padding: 12px 0 0; font-size: 13px; }
+		.model-row-body { display: flex; flex-direction: column; gap: 24px; padding: 20px 16px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+		.attr-field { gap: 12px; }
+		.attr-field label, .attr-field-label { font-size: 14px; }
+		:global(.modal-body) .attr-price-input, :global(.modal-body) .chip-input { min-height: 48px; padding: 10px 12px; font-size: 16px; }
+		:global(.modal-body) .chip-input { width: 100%; }
+		.chip-row { gap: 8px; }
+		.chip-row .btn-chip { min-height: 44px; padding: 8px 14px; font-size: 14px; border-radius: var(--radius-md); }
+		.modal-section > input { min-height: 48px; font-size: 16px; }
+		.modal-section > label, .field-head-row > label { font-size: 14px; }
 	}
 </style>

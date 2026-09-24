@@ -327,7 +327,7 @@ describe("commit / subscribe / snapshot barrier", () => {
     expect(caught.events.some((e) => e.payload.event === "memory.upsert" && e.payload.id === memory.id && e.payload.source_session_id === null)).toBe(true);
     const after = await h.get<RuntimeSnapshot>("/v1/snapshot");
     expect(after.approvals).toEqual([]);
-    expect(after.spend).toEqual([]);
+    expect(h.store.listSpend({})).toEqual([]);
     expect(after.sessions.some((s) => s.id === group.id)).toBe(false);
   });
 
@@ -389,7 +389,7 @@ describe("commit / subscribe / snapshot barrier", () => {
     h.store.createBot({ name: "fixture", duties: "fixture", boundaries: "fixture" });
     const read = spyOn(h.store, "listSessions");
     try {
-      expect((await h.get<RuntimeSnapshot>("/v1/snapshot")).sessions).toHaveLength(1);
+      expect((await h.get<RuntimeSnapshot>("/v1/snapshot")).sessions).toHaveLength(2);
       expect(read).toHaveBeenCalledTimes(1);
     } finally { read.mockRestore(); }
   });

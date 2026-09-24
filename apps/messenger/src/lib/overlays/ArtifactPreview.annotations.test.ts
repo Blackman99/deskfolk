@@ -13,7 +13,7 @@ mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
 mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
-import { rememberBlobEtag } from "../api.ts";
+import { rememberBlobEtag, rememberBlobOriginalSize } from "../api.ts";
 import { copyFor } from "../copy.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, fill, press, render } from "../test-render.ts";
@@ -207,7 +207,7 @@ function open(opts: Open) {
       putWorkspaceFile: opts.putWorkspaceFile ?? (async () => `"${SHA_B}"`),
       taskArtifacts: async () => ({ id: "task-1", dir: "", title: "", closed_at: null, items: [] }),
     } as never,
-    // A local workspace: the toolbar that carries the annotate switch is shown.
+    // A local workspace, the way the desktop app opens one.
     workspacePath: "/w",
     t,
     onClose: opts.onClose ?? (() => {}),
@@ -253,7 +253,7 @@ test("a snapshot that hands the same path over again keeps annotate mode; anothe
     },
     siblings: [],
     api: { kind: "local", getWorkspaceFileBlob: async () => blobOf(PNG, "image/png"), taskArtifacts: async () => ({ dir: "", items: [] }) } as never,
-    // A local workspace: the toolbar that carries the annotate switch is shown.
+    // A local workspace, the way the desktop app opens one.
     workspacePath: "/w",
     t,
     onClose() {},
@@ -275,6 +275,167 @@ test("a snapshot that hands the same path over again keeps annotate mode; anothe
   flushSync();
   await settle();
   expect(modeToggle(view.host)?.getAttribute("aria-pressed")).toBe("false");
+});
+
+test("while the next file loads, or after it failed to, Save writes nothing from the last file's buffer", async () => {
+  const { loadMonaco } = fakeMonaco();
+  const shell = new SvelteMap<string, string>([["path", "src/a.ts"]]);
+  const puts: Array<[string, string, string | null]> = [];
+  let release: (() => void) | null = null;
+  let failNext = false;
+  const props = {
+    attachment: null,
+    get relpath() {
+      return shell.get("path")!;
+    },
+    target: TARGET,
+    siblings: [],
+    api: {
+      kind: "local",
+      getWorkspaceFileBlob: async (path: string) => {
+        if (path === "src/a.ts") return blobOf("const a = 1;\n", "text/plain");
+        if (failNext) throw new Error("gone");
+        await new Promise<void>((resolve) => (release = resolve));
+        return blobOf("const b = 2;\n", "text/plain", SHA_B);
+      },
+      putWorkspaceFile: async (path: string, value: string, etag: string | null) => {
+        puts.push([path, value, etag]);
+        return `"${SHA_B}"`;
+      },
+      taskArtifacts: async () => ({ dir: "", items: [] }),
+    } as never,
+    workspacePath: "/w",
+    t,
+    onClose() {},
+    onSelect() {},
+    annotations: [],
+    viewedSessionId: "s1",
+    onLoadAnnotations() {},
+    loadMonaco,
+  };
+  const view = render(ArtifactPreview as never, props as never);
+  cleanups.push(view.close);
+  await settle();
+  const pane = view.host.querySelector("aside")!;
+  const save = () => {
+    pane.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true }));
+    flushSync();
+  };
+  // The shortcut does save the file on screen.
+  save();
+  await settle();
+  expect(puts.map(([path]) => path)).toEqual(["src/a.ts"]);
+  puts.length = 0;
+  // b.ts is on its way: nothing is written to it from a.ts's buffer.
+  shell.set("path", "src/b.ts");
+  flushSync();
+  await settle();
+  save();
+  await settle();
+  expect(puts).toEqual([]);
+  release?.();
+  await settle();
+  // And a file that failed to load takes nothing either.
+  failNext = true;
+  shell.set("path", "src/c.ts");
+  flushSync();
+  await settle();
+  save();
+  await settle();
+  expect(puts).toEqual([]);
+});
+
+test("annotate mode cannot be switched on while the image is still loading", async () => {
+  let release: (() => void) | null = null;
+  const props = {
+    attachment: null,
+    relpath: "shots/cover.png",
+    target: TARGET,
+    siblings: [],
+    api: {
+      kind: "local",
+      getWorkspaceFileBlob: async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+        return blobOf(PNG, "image/png");
+      },
+      taskArtifacts: async () => ({ dir: "", items: [] }),
+    } as never,
+    workspacePath: "/w",
+    t,
+    onClose() {},
+    onSelect() {},
+    annotations: [],
+    viewedSessionId: "s1",
+    onLoadAnnotations() {},
+  };
+  const view = render(ArtifactPreview as never, props as never);
+  cleanups.push(view.close);
+  await settle();
+  expect(modeToggle(view.host)?.disabled).toBe(true);
+  release?.();
+  await settle();
+  expect(modeToggle(view.host)?.disabled).toBe(false);
+});
+
+test("annotate mode cannot be switched on while the picture is still loading", async () => {
+  let release: (() => void) | null = null;
+  const props = {
+    attachment: null,
+    relpath: "shots/cover.png",
+    target: TARGET,
+    siblings: [],
+    api: {
+      kind: "local",
+      getWorkspaceFileBlob: async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+        return blobOf(PNG, "image/png");
+      },
+      taskArtifacts: async () => ({ dir: "", items: [] }),
+    } as never,
+    workspacePath: "/w",
+    t,
+    onClose() {},
+    onSelect() {},
+    annotations: [],
+    viewedSessionId: "s1",
+    onLoadAnnotations() {},
+  };
+  const view = render(ArtifactPreview as never, props as never);
+  cleanups.push(view.close);
+  await settle();
+  expect(modeToggle(view.host)?.disabled).toBe(true);
+  release?.();
+  await settle();
+  expect(modeToggle(view.host)?.disabled).toBe(false);
+});
+
+test("a clip that plays from pieces says why it takes no time points here", async () => {
+  const props = {
+    attachment: null,
+    relpath: "media/clip.mp4",
+    target: TARGET,
+    siblings: [],
+    api: {
+      kind: "remote",
+      openMediaSource: async () => ({ url: "blob:clip", dispose() {} }),
+      getWorkspaceFileBlob: async () => {
+        throw new Error("not used");
+      },
+      taskArtifacts: async () => ({ dir: "", items: [] }),
+    } as never,
+    workspacePath: null,
+    t,
+    onClose() {},
+    onSelect() {},
+    annotations: [],
+    viewedSessionId: "s1",
+    onLoadAnnotations() {},
+  };
+  const view = render(ArtifactPreview as never, props as never);
+  cleanups.push(view.close);
+  await settle();
+  expect(hint(view.host)).toBe("streamed");
+  expect(view.host.querySelector("[data-annotation-hint]")?.textContent?.trim()).toBe(t.stream.annotationStreamedHint);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -305,10 +466,11 @@ test("an edit carried Source → Rendered → Source is still unsaved: no annota
   expect(editors).toHaveLength(2);
   expect(editors[1]!.getValue()).toBe(EDITED);
   expect(hint(host)).toBe("dirty");
-  expect(buttonByText(host, t.stream.artifactSave).disabled).toBe(false);
+  // Unsaved, so ⌘S has something to write: the pane marks its name dirty (the toolbar's Save is gone).
+  expect(host.querySelector(".artifact-pane-head h2.is-dirty")).not.toBeNull();
 
   // Closing asks; discarding goes back to what is on disk, not to the buffer carried over.
-  click(host.querySelector(".modal-close"));
+  click(host.querySelector(".artifact-back"));
   click(buttonByText(document.body, t.stream.artifactDiscard));
   expect(closed).toBe(1);
   expect(editors[1]!.getValue()).toBe(DISK);
@@ -338,7 +500,7 @@ test("closing from the rendered view with an edit carried over from Source saves
   click(buttonByText(host, t.stream.artifactRendered));
   await settle();
 
-  click(host.querySelector(".modal-close"));
+  click(host.querySelector(".artifact-back"));
   click(document.body.querySelector(".artifact-dirty-save"));
   await settle();
   expect(puts).toEqual([EDITED]);
@@ -356,7 +518,7 @@ test("a file whose line endings Monaco folds is not unsaved after Source → Ren
   click(buttonByText(host, t.stream.artifactRendered));
   await settle();
   // Nothing to save: closing does not ask.
-  click(host.querySelector(".modal-close"));
+  click(host.querySelector(".artifact-back"));
   await settle();
   expect(document.body.querySelector(".artifact-dirty-save")).toBeNull();
   expect(closed).toBe(1);
@@ -423,7 +585,7 @@ test("an edit carried to Rendered and then undone by hand in Source is the disk 
   expect(hint(host)).toBe("");
   click(buttonByText(host, t.stream.artifactRendered));
   await settle();
-  click(host.querySelector(".modal-close"));
+  click(host.querySelector(".artifact-back"));
   await settle();
   expect(document.body.querySelector(".artifact-dirty-save")).toBeNull();
   expect(closed).toBe(1);
@@ -439,7 +601,7 @@ test("after Discard the buffer is measured against what the model holds, line en
   const editor = editors[0]!;
   editor.type(`${editor.getValue()}多一行\n`);
   expect(hint(host)).toBe("dirty");
-  click(host.querySelector(".modal-close"));
+  click(host.querySelector(".artifact-back"));
   click(buttonByText(document.body, t.stream.artifactDiscard));
   await settle();
   // The pane stayed (the shell decides); a no-op edit on the reverted buffer is still clean.
@@ -743,6 +905,44 @@ test("Escape in image annotate mode with nothing pending leaves the mode; the ne
   expect(heard()).toBe(0);
   expect(escape().defaultPrevented).toBe(false);
   expect(heard()).toBe(1);
+});
+
+test("a remote picture shown as the Mac's copy fetches the original before annotate mode: a box names the file", async () => {
+  const asked: Array<{ size?: string } | undefined> = [];
+  const copy = blobOf(PNG, "image/jpeg", SHA_B);
+  rememberBlobOriginalSize(copy, 3_727_854);
+  const original = blobOf(PNG, "image/png", SHA_A);
+  const view = render(ArtifactPreview as never, {
+    attachment: null,
+    relpath: "shots/cover.png",
+    siblings: [],
+    api: {
+      kind: "remote",
+      getWorkspaceFileBlob: async (_path: string, _progress: unknown, options?: { size?: string }) => {
+        asked.push(options);
+        return options?.size ? copy : original;
+      },
+    } as never,
+    workspacePath: null,
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+    target: TARGET,
+    annotations: [],
+    viewedSessionId: "s1",
+    onLoadAnnotations: () => {},
+  } as never);
+  cleanups.push(view.close);
+  await settle();
+  expect(asked.map((options) => options?.size ?? null)).toEqual(["preview"]);
+  expect(view.host.querySelector(".artifact-original-toggle")).not.toBeNull();
+  click(modeToggle(view.host));
+  await settle();
+  // The copy's size and hash are not the file's: the original came first, and only then the mode.
+  expect(asked.map((options) => options?.size ?? null)).toEqual(["preview", null]);
+  expect(view.host.querySelector(".artifact-original-toggle")).toBeNull();
+  expect(modeToggle(view.host)?.getAttribute("aria-pressed")).toBe("true");
 });
 
 // ---------------------------------------------------------------------------------------------

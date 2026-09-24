@@ -1,4 +1,5 @@
 import {
+  FILE_DROP_SESSION_ID,
   USER_MEMBER,
   type CreateGroupRequest,
   type Message,
@@ -26,6 +27,31 @@ import {
   type StoreContext,
   type TurnRow,
 } from "./shared";
+
+/**
+ * The remote file drop: one you-only direct, created when the store opens — before the change
+ * journal, so no read ever writes it. It has no Bot, so a message posted here cannot open a turn.
+ * Idempotent across restarts.
+ */
+export function ensureFileDropSession(ctx: StoreContext): SessionDetail {
+  const existing = ctx.db
+    .query<SessionRow, [string]>(`SELECT * FROM sessions WHERE id = ?`)
+    .get(FILE_DROP_SESSION_ID);
+  if (existing) return getSession(ctx, FILE_DROP_SESSION_ID);
+  const now = isoNow();
+  ctx.db.transaction(() => {
+    ctx.db.run(
+      `INSERT INTO sessions (id, kind, name, last_read_at, created_at, updated_at)
+       VALUES (?, 'direct', NULL, ?, ?, ?)`,
+      [FILE_DROP_SESSION_ID, now, now, now],
+    );
+    ctx.db.run(
+      `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`,
+      [FILE_DROP_SESSION_ID, USER_MEMBER, now],
+    );
+  })();
+  return getSession(ctx, FILE_DROP_SESSION_ID);
+}
 
 export function listSessions(ctx: StoreContext): SessionSummary[] {
   const deletedBotIds = new Set(
@@ -97,10 +123,11 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
     }));
 }
 
-export function getSession(ctx: StoreContext, id: string): SessionDetail {
+/** `messageLimit` sizes the first page of history; a phone asks for fewer and pages back as it scrolls. */
+export function getSession(ctx: StoreContext, id: string, opts: { messageLimit?: number } = {}): SessionDetail {
   const session = sessionRow(ctx, id);
   const participants = listParticipants(ctx, id);
-  const messages = listMessages(ctx, id, { limit: 50 });
+  const messages = listMessages(ctx, id, { limit: opts.messageLimit ?? 50 });
   const turns = ctx.db
     .query<TurnRow, [string]>(
       `SELECT * FROM turns
@@ -211,6 +238,9 @@ export function renameSession(ctx: StoreContext, id: string, name: string): Sess
 }
 
 export function archiveSession(ctx: StoreContext, id: string): SessionDetail {
+  if (id === FILE_DROP_SESSION_ID) {
+    throw new HttpError(422, "invalid_args", "the file drop cannot be archived");
+  }
   const session = sessionRow(ctx, id);
   if (session.archived_at) return getSession(ctx, id);
   const now = isoNow();
@@ -228,6 +258,9 @@ export function restoreSession(ctx: StoreContext, id: string): SessionDetail {
 
 export function deleteSession(ctx: StoreContext, id: string): void {
   const session = sessionRow(ctx, id);
+  if (id === FILE_DROP_SESSION_ID) {
+    throw new HttpError(422, "invalid_args", "the file drop cannot be deleted");
+  }
   if (session.kind !== "group") {
     throw new HttpError(422, "invalid_args", "only groups can be deleted");
   }

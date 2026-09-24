@@ -1,6 +1,6 @@
 # Gatekeeper FAQ (unsigned alpha)
 
-Real Bot’s alpha `.dmg` is **not notarized**. macOS Gatekeeper will warn on first open. That is expected until [Apple notarization](notarization.md) ships ([tracking issue #10](https://github.com/Blackman99/real-bot/issues/10)).
+Deskfolk’s alpha `.dmg` is **not notarized**. macOS Gatekeeper will warn on first open. That is expected until [Apple notarization](notarization.md) ships ([tracking issue #10](https://github.com/Blackman99/deskfolk/issues/10)).
 
 ## Why the warning appears
 
@@ -8,7 +8,7 @@ Apple treats downloads without Developer ID + notarization as untrusted. The alp
 
 ## First launch (2 steps)
 
-1. In Finder, **right-click** (or Control-click) `Real Bot.app` → **Open**.
+1. In Finder, **right-click** (or Control-click) `Deskfolk.app` → **Open**.
 2. In the dialog, confirm **Open**.
 
 ![Gatekeeper: right-click Open, then confirm](assets/gatekeeper-2step.png)
@@ -20,7 +20,7 @@ If you already tried double-click and got blocked, the right-click path still wo
 If Gatekeeper still refuses after right-click → Open, clear the quarantine flag once:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Real Bot.app"
+xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"
 ```
 
 Then open the app again. This only removes the download quarantine attribute; it does **not** disable Gatekeeper system-wide.
@@ -31,7 +31,7 @@ After the first open, "Download and install" in the About card has the app downl
 
 ## After first open: expensive actions still ask
 
-Opening the app past Gatekeeper is not a blank check. Inside Real Bot:
+Opening the app past Gatekeeper is not a blank check. Inside Deskfolk:
 
 - New model endpoints and MCP servers, workspace-outside I/O, and outbound network stop on an **approval card**.
 - High-cost or irreversible tool use waits for you — bots do not “send later” or burn quota without a clear go-ahead when the action needs approval.
@@ -41,7 +41,7 @@ Gatekeeper is about **macOS trusting the binary**. Approval cards are about **yo
 
 ## Not notarized yet
 
-We will not claim the app is signed or notarized until Developer ID builds ship. Progress and checklist: [notarization plan](notarization.md) · [issue #10](https://github.com/Blackman99/real-bot/issues/10).
+We will not claim the app is signed or notarized until Developer ID builds ship. Progress and checklist: [notarization plan](notarization.md) · [issue #10](https://github.com/Blackman99/deskfolk/issues/10).
 
 ## Related
 

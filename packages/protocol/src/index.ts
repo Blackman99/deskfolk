@@ -39,6 +39,12 @@ export const STATE_DB_NAME = "state.sqlite" as const;
 
 export const USER_MEMBER = "user" as const;
 
+/**
+ * The one you↔Mac conversation that exists only to receive files sent over remote control.
+ * Not a Bot: a file posted here is copied into `inbox/` and never starts a turn.
+ */
+export const FILE_DROP_SESSION_ID = "filedrop" as const;
+
 /** Bot `update_profile` used to insert these; they are no longer shown. */
 export function isHiddenTranscriptKind(kind: string): boolean {
   return kind === "profile_change";
@@ -47,11 +53,34 @@ export function isHiddenTranscriptKind(kind: string): boolean {
 /** Transcript body when a live turn is marked interrupted. Chinese in every locale. */
 export const INTERRUPT_NOTE_BODY = "中断" as const;
 
+export const UNREACHABLE_NOTE_BODIES = [
+  "这一轮没写完：连不上端点",
+  "This turn did not finish: Couldn't reach the endpoint",
+] as const;
+
+/** A turn that stopped on its own, in either locale: 「这一轮没写完：…」. */
+const FAIL_NOTE = /^(?:这一轮没写完：|This turn did not finish:)/;
+
+export function isInterruptNote(message: Pick<Message, "kind" | "body">): boolean {
+  return message.kind === "system" && message.body === INTERRUPT_NOTE_BODY;
+}
+
+export function isUnreachableNote(message: Pick<Message, "kind" | "body">): boolean {
+  return (
+    message.kind === "system" &&
+    (UNREACHABLE_NOTE_BODIES as readonly string[]).includes(message.body)
+  );
+}
+
+export function isContinuableNote(message: Pick<Message, "kind" | "body">): boolean {
+  return isInterruptNote(message) || (message.kind === "system" && FAIL_NOTE.test(message.body));
+}
+
 /** Encrypted Web Push body. Visible copy is fixed; never titles, filenames or Bot names. */
 export const WEB_PUSH_PAYLOAD = { t: "pending" } as const;
 export const WEB_PUSH_COPY = {
-  zh: "Real Bot 有待处理事项",
-  en: "Real Bot has pending items",
+  zh: "Deskfolk 有待处理事项",
+  en: "Deskfolk has pending items",
 } as const;
 
 export const REACTION_EMOJI = ["👍", "👀", "❤️", "❗"] as const;
@@ -247,7 +276,7 @@ export type TaskTraceNode = {
    */
   woken_elsewhere: { actor: string; message_id: string } | null;
   trigger_message_id: string;
-  /** The message to scroll to: this turn's last word, or the trigger when it has not spoken yet. */
+  /** The message to scroll to: the 中断 note on a cut turn, else this turn's last word, else the trigger. */
   focus_message_id: string;
   /** One line, already clipped. */
   summary: string;
@@ -258,6 +287,20 @@ export type TaskTraceNode = {
   approval: { message_id: string | null; summary: string } | null;
   /** Bots who watched the trigger instead of joining. Only the card that opened them carries it. */
   passed: number;
+  /**
+   * The model choice this turn ran on and what came of it. Null on your own card and on a turn
+   * older than model choices; absent altogether from a daemon that predates it.
+   */
+  route?: TaskTraceRoute | null;
+};
+
+/** One card's model choice: the record, and the review and learning of the chain it started. */
+export type TaskTraceRoute = {
+  record: RouteRecord;
+  /** Set on the turn that started a correction chain, once that chain has been reviewed. */
+  review: RouteReview | null;
+  /** What the learning hop kept for that chain, on the same turn. */
+  learning: RouteLearning | null;
 };
 
 /** A job as one picture: the turns that share its work dir, across sessions. */
@@ -849,7 +892,8 @@ export type RuntimeSnapshot = EventCursor & {
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
-  spend: Spend[];
+  // No `spend`: 3,700 usage rows were 1.4 MB of every snapshot and nothing on screen read them.
+  // `GET /v1/spend` serves them to whatever view needs them, when it opens.
   approvals: Approval[];
   mcpServers: McpServer[];
   providers: Provider[];
@@ -883,18 +927,23 @@ export type SequencedEvent = {
  * The cursor is a byte offset, so a transport may coalesce or re-chunk freely.
  */
 /**
- * A shell session you opened yourself. Held by the daemon, so it outlives the window; Quit ends
- * it. Not a Bot's tool, not approval-gated, and invisible to every Bot.
+ * A shell session you opened yourself. Held by the daemon, so it outlives the window. Quit and a
+ * daemon that dies stop the process; the next daemon starts it again in the same place. Ending
+ * the session is what forgets it. Not a Bot's tool, not approval-gated, and invisible to every Bot.
  */
 export type Terminal = {
   id: string;
-  /** Last segment of the cwd, for a tab label. */
+  /** Last segment of {@link Terminal.cwd}, for a tab label. */
   title: string;
+  /**
+   * Where the shell last reported being — zsh does this on its own, via the daemon's own shell
+   * integration — or, until it reports, where the session was opened.
+   */
   cwd: string;
   rows: number;
   cols: number;
   created_at: string;
-  /** `interrupted` means the daemon went away underneath it, same word the transcript uses. */
+  /** `interrupted` means the daemon went away underneath it, same word the transcript uses. A restart starts a new shell rather than reporting one. */
   status: "live" | "exited" | "interrupted";
   exit_code: number | null;
   /** Total bytes ever written to its stream; a reader resumes from an offset. */
@@ -930,6 +979,32 @@ export type TerminalScrollback = {
   skipped: number;
   end: number;
   closed: boolean;
+};
+
+/**
+ * A session's screen as the daemon holds it. Written into an empty terminal it draws what is on
+ * screen now — a full-screen program included, with its modes and cursor — at `rows` × `cols`;
+ * live bytes resume at `offset`. This is what a pane attaches to; {@link TerminalScrollback} is
+ * the raw bytes, kept for readers that predate it.
+ */
+export type TerminalScreenSnapshot = {
+  offset: number;
+  /** base64 of the serialized screen, UTF-8 */
+  data: string;
+  rows: number;
+  cols: number;
+};
+
+/**
+ * A pane's colours, `#rrggbb`. The daemon answers a program's colour requests (OSC 10/11/12/4)
+ * with those of the pane that last attached, since only a pane knows what it is drawing in.
+ */
+export type TerminalColors = {
+  foreground: string;
+  background: string;
+  cursor?: string;
+  /** The sixteen ANSI colours, black to bright white. */
+  palette?: string[];
 };
 
 /**

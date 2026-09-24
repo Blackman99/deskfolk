@@ -6,7 +6,6 @@ import { flushSync, type Component } from 'svelte';
 import type { Annotation } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
-import type { RouteLogRow } from '../../src/lib/overlays/route-log.ts';
 import {
 	aBot,
 	aBotDirect,
@@ -29,7 +28,6 @@ import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
 import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
 import RoutineCard from '../../src/lib/panels/RoutineCard.svelte';
-import RouteLog from '../../src/lib/overlays/RouteLog.svelte';
 import CreateGroupSheet from '../../src/lib/sidebar/CreateGroupSheet.svelte';
 import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
 import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
@@ -40,6 +38,11 @@ import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
 import { updateChecker } from '../../src/lib/update-checker.svelte.ts';
 import ArtifactPreview from '../../src/lib/overlays/ArtifactPreview.svelte';
 import ArtifactCodeEditor from '../../src/lib/overlays/ArtifactCodeEditor.svelte';
+import Workbench from '../../src/lib/workbench/Workbench.svelte';
+import { makeBranch, makeLeaf } from '../../src/lib/workbench/layout-tree.ts';
+import { paneMin } from '../../src/lib/workbench/pane-mins.ts';
+import type { WorkbenchLayout, WorkbenchTab } from '../../src/lib/workbench/layout-types.ts';
+import { createRawSnippet } from 'svelte';
 
 const t = copyFor('zh');
 
@@ -148,80 +151,6 @@ const botDirects = ['01', '02', '03', '04', '05', '06', '07'].map((n, i) =>
 	})
 );
 const botDmWorld = { ...world, sessions: [...sessions, ...botDirects] };
-
-/** Shaped like `RouteLogRow`, not like the daemon's row: the pane is handed labels, not codes. */
-const routeRows: RouteLogRow[] = [
-	{
-		turnId: 'turn-1',
-		botId: 'bot-1',
-		botName: 'Researcher',
-		botKnown: true,
-		triggerMessageId: 'msg-1',
-		model: 'grok-4.6',
-		providerName: null,
-		thinkingLevel: 'high',
-		thinkingLabel: '高',
-		signature: 'reasoning',
-		signatureLabel: '推理',
-		outcome: 'completed',
-		outcomeLabel: '完成',
-		failReason: null,
-		toolErrors: 0,
-		hops: 2,
-		feedback: [],
-		reason: '这条要查证，挑了推理强的。',
-		review: {
-			faultLabel: '不怪模型',
-			directionLabel: null,
-			rounds: 1,
-			reason: '一次就答对了。',
-			blamedModel: false,
-			effect: null,
-			cleaner: false,
-			retired: false
-		},
-		learning: null,
-		createdAt: '2026-09-19T02:00:00.000Z',
-		finishedAt: '2026-09-19T02:00:04.200Z',
-		durationMs: 4200
-	},
-	{
-		turnId: 'turn-2',
-		botId: 'bot-2',
-		botName: '选题策划',
-		botKnown: true,
-		triggerMessageId: 'msg-2',
-		model: 'gemini-3.8-flash',
-		providerName: 'Default',
-		thinkingLevel: 'none',
-		thinkingLabel: '不思考',
-		signature: 'simple',
-		signatureLabel: '闲聊',
-		outcome: 'failed',
-		outcomeLabel: '补全失败',
-		failReason: '连不上端点',
-		toolErrors: 1,
-		hops: 3,
-		feedback: [
-			{ message_id: 'msg-4', body: '这里不对，换个强一点的。', created_at: '2026-09-19T02:01:00.000Z' }
-		],
-		reason: '短问题，挑了快的。',
-		review: {
-			faultLabel: '模型不行',
-			directionLabel: '换更强的',
-			rounds: 3,
-			reason: '同一件事来回三轮才对。',
-			blamedModel: true,
-			effect: 'followed',
-			cleaner: false,
-			retired: true
-		},
-		learning: { kind: 'memory', label: '先读再改' },
-		createdAt: '2026-09-19T02:00:06.000Z',
-		finishedAt: '2026-09-19T02:00:06.900Z',
-		durationMs: 900
-	}
-];
 
 /**
  * The preview reads bytes through the local API. A tiny PNG keeps the shot off Monaco, which
@@ -346,6 +275,125 @@ const settingsProps = (over: Record<string, unknown> = {}) => ({
 
 /** The shared world's Bots all carry an image; this one adds the letter fallback to the shot. */
 const pickerBots = [...bots, aBot({ id: 'bot-4', name: '配音', duties: '配音与混音', avatar: null })];
+
+
+/**
+ * A pane's content in the shots. The workbench never imports a content component itself — the
+ * host passes one in — so the stories stand one in rather than pulling the real panes into the
+ * layout module's graph.
+ */
+const storyTab = (id: string, kind: string, label: string): WorkbenchTab => ({
+	id,
+	kind,
+	params: { label }
+});
+
+const storyBody = createRawSnippet((tab: () => WorkbenchTab) => ({
+	render: () =>
+		`<div style="padding:14px;color:var(--muted);font-size:13px">${tab().params.label ?? tab().kind}</div>`
+}));
+const storyLabel = createRawSnippet((tab: () => WorkbenchTab) => ({
+	render: () => `<span>${tab().params.label ?? tab().kind}</span>`
+}));
+
+/**
+ * The workbench paints its own gutters, so these shots show the dividers the same way the app
+ * does. That is worth saying because it was once the other way round: the gutters were
+ * transparent and read correctly here, sitting on `--bg`, while being invisible in the main
+ * column, which paints itself `--pane`. A shot only tests what the component does not leave to
+ * whatever is behind it.
+ */
+const storyEmptyActions = createRawSnippet(() => ({
+	render: () =>
+		`<div><button type="button" class="pane-open">${t.terminal.title}</button></div>`
+}));
+
+/** What the shell puts in the + menu, and what an empty pane now lays out as the same list. */
+const storyMenuActions = createRawSnippet(() => {
+	const term = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`;
+	const layers = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5L3 7.5Z"></path><path d="M3 12l9 4.5 9-4.5"></path><path d="M3 16.5 12 21l9-4.5"></path></svg>`;
+	const calendar = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="16" y1="3" x2="16" y2="7"></line></svg>`;
+	const row = (name: string, mark: string, quiet: boolean, meta?: string) =>
+		`<button type="button" class="wb-menu-row" role="menuitem"><span class="wb-menu-mark${quiet ? ' is-quiet' : ''}" aria-hidden="true">${mark}</span>` +
+		(meta
+			? `<span class="wb-menu-copy"><span class="wb-menu-name">${name}</span><span class="wb-menu-meta">${meta}</span></span>`
+			: `<span class="wb-menu-name">${name}</span>`) +
+		`</button>`;
+	return {
+		render: () =>
+			`<div>${row(t.terminal.newTab, term, false)}${row(t.sidebar.workspace, layers, true)}${row(t.routines.title, calendar, true)}` +
+			`<div class="wb-menu-section" role="presentation">${t.pane.runningTerminals}</div>` +
+			`${row('real-bot-workspace', term, true, '/Users/me/real-bot-workspace')}${row('real-bot-workspace 2', term, true, '/Users/me/real-bot-workspace')}</div>`
+	};
+});
+
+function workbenchProps(layout: WorkbenchLayout, wide = true) {
+	return {
+		layout,
+		mins: paneMin,
+		t,
+		wide,
+		tabBody: storyBody,
+		tabLabel: storyLabel,
+		// What the shell passes: it is what puts the new-tab button on the strip and what an
+		// empty pane offers, so a shot without it is missing a piece the app always has.
+		emptyActions: storyEmptyActions,
+		onLayout: () => {}
+	};
+}
+
+/** Two columns divided at the same height, which is what makes a genuine four-way cross. */
+const crossLayout: WorkbenchLayout = {
+	version: 1,
+	root: makeBranch(
+		'root',
+		'row',
+		[
+			makeBranch(
+				'left',
+				'column',
+				[
+					makeLeaf('p1', [
+						storyTab('wt1', 'chat', '视频全流程制作组'),
+						// A conversation's settings and model-choice log are a sidebar in its own
+						// tab, not tabs of their own, so the second tab here is another conversation.
+						storyTab('wt6', 'chat', '剪辑师')
+					]),
+					makeLeaf('p2', [storyTab('wt3', 'terminal', 'real-bot')])
+				],
+				[0.55, 0.45]
+			),
+			makeBranch(
+				'right',
+				'column',
+				[
+					makeLeaf('p3', [storyTab('wt4', 'preview', 'storyboard.md')]),
+					makeLeaf('p4', [storyTab('wt5', 'trace', '经过')])
+				],
+				// The same division as the left column, which is what puts a real four-way cross
+				// in the shot rather than two separate T-junctions.
+				[0.55, 0.45]
+			)
+		],
+		[0.56, 0.44]
+	),
+	floating: [],
+	focus: { zone: 'tiled', leafId: 'p1' }
+};
+
+const manyTabs: WorkbenchLayout = {
+	version: 1,
+	root: makeLeaf('p1', [
+		storyTab('wt1', 'chat', '视频全流程制作组'),
+		storyTab('wt2', 'trace', '经过'),
+		storyTab('wt3', 'chat', '剪辑师'),
+		storyTab('wt4', 'preview', 'storyboard.md'),
+		storyTab('wt5', 'terminal', 'real-bot'),
+		storyTab('wt6', 'workspace', '工作区')
+	]),
+	floating: [],
+	focus: { zone: 'tiled', leafId: 'p1' }
+};
 
 const defs: Record<StoryName, Story> = {
 	shell: {
@@ -498,18 +546,6 @@ const defs: Record<StoryName, Story> = {
 			t,
 			onDismiss: () => {},
 			onConfirm: () => {}
-		}
-	},
-	'route-log': {
-		component: RouteLog as never,
-		props: {
-			rows: routeRows,
-			sessionTitle: '视频全流程制作组',
-			loading: false,
-			showEndpoint: true,
-			t,
-			onClose: () => {},
-			onJump: () => {}
 		}
 	},
 	'create-group-sheet': {
@@ -699,9 +735,9 @@ const defs: Record<StoryName, Story> = {
 				current: '0.1.0-rc.2',
 				latest: '0.1.0-rc.3',
 				updateAvailable: true,
-				releaseUrl: 'https://github.com/Blackman99/real-bot/releases/tag/v0.1.0-rc.3',
+				releaseUrl: 'https://github.com/Blackman99/deskfolk/releases/tag/v0.1.0-rc.3',
 				downloadUrl:
-					'https://github.com/Blackman99/real-bot/releases/download/v0.1.0-rc.3/Real.Bot_0.1.0-rc.3_aarch64.dmg',
+					'https://github.com/Blackman99/deskfolk/releases/download/v0.1.0-rc.3/Deskfolk_0.1.0-rc.3_aarch64.dmg',
 				publishedAt: '2026-09-19T00:00:00Z',
 				notes: [
 					'未签名的 macOS rc。优先从源码运行。',
@@ -718,6 +754,56 @@ const defs: Record<StoryName, Story> = {
 			};
 			flushSync();
 		}
+	},
+	workbench: {
+		component: Workbench as never,
+		props: workbenchProps(crossLayout)
+	},
+	'workbench-tabs': {
+		component: Workbench as never,
+		props: workbenchProps(manyTabs)
+	},
+	'workbench-empty': {
+		component: Workbench as never,
+		props: {
+			...workbenchProps({
+				version: 1,
+				root: makeLeaf('p1', []),
+				floating: [],
+				focus: { zone: 'tiled', leafId: 'p1' }
+			}),
+			menuActions: storyMenuActions
+		}
+	},
+	'workbench-solo': {
+		component: Workbench as never,
+		props: workbenchProps(crossLayout, false)
+	},
+	'workbench-float': {
+		component: Workbench as never,
+		props: workbenchProps({
+			version: 1,
+			root: makeBranch(
+				'root',
+				'row',
+				[
+					makeLeaf('p1', [storyTab('ft1', 'chat', '视频全流程制作组')]),
+					makeLeaf('p2', [storyTab('ft2', 'workspace', '工作区')])
+				],
+				[0.6, 0.4]
+			),
+			floating: [
+				{
+					leaf: makeLeaf('f1', [storyTab('ft3', 'terminal', 'real-bot')]),
+					frame: { x: 90, y: 110, width: 420, height: 300 }
+				},
+				{
+					leaf: makeLeaf('f2', [storyTab('ft4', 'trace', '经过')]),
+					frame: { x: 320, y: 260, width: 440, height: 320 }
+				}
+			],
+			focus: { zone: 'floating', leafId: 'f2' }
+		})
 	}
 };
 

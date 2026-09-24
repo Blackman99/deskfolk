@@ -457,6 +457,7 @@ describe("a job's trace", () => {
     const cards = trace.nodes.filter((node) => node.actor === bot.id);
     expect(cards.map((node) => node.status)).toEqual(["redirected", "interrupted", "completed", "running"]);
     expect(cards[1]!.woken_by_turn_id).toBe(trace.nodes.find((node) => node.focus_message_id === second.id && node.actor === "user")!.turn_id);
+    expect(cards[1]!.focus_message_id).toBe(note!.id);
     expect(cards[2]!.turn_id).toBe(fork.id);
     expect(cards[3]!.turn_id).toBe(resumed.id);
     expect(cards[3]!.woken_by_turn_id).toBe(redirected.id);

@@ -1,3 +1,4 @@
+import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { fromBase64url, requestDigest, type RemoteRequest, type AssertionWire, type RegistrationWire,
   type AssertionResponse, type RegistrationResponse } from "@real-bot/remote";
 import type { LocalApi } from "../local-api";
@@ -68,7 +69,7 @@ export class RemoteDispatcher {
     if (request.path.startsWith("/remote/")) return this.control(request, principal);
     if (request.path === "/v1/settings" && request.method !== "GET" && Object.hasOwn(request.body ?? {}, "workspace_path")) deny();
     if (files?.length) {
-      if (request.method !== "POST" || !/^\/v1\/sessions\/[0-9A-HJKMNP-TV-Z]{26}\/messages$/.test(request.path)) deny();
+      if (request.method !== "POST" || !new RegExp(`^/v1/sessions/(?:[0-9A-HJKMNP-TV-Z]{26}|${FILE_DROP_SESSION_ID})/messages$`).test(request.path)) deny();
     }
     validateBusiness(request);
     const url = new URL(request.path, "http://remote.invalid");

@@ -139,6 +139,13 @@
 	}
 
 	let mcpSettings = $state<McpSettings>();
+	let providerForm = $state<ProviderForm>();
+	let providerDetailModel = $state<string | null>(null);
+
+	export function backFromProviderEditor(): void {
+		if (providerForm?.backFromDetails()) return;
+		closeProviderEditor();
+	}
 
 	/**
 	 * What ✕ closes: the screen it sits on, not everything under it. Deep in a section or an
@@ -154,7 +161,7 @@
 		if (!runtime.settingsOpen || !window.matchMedia('(max-width: 720px)').matches) return false;
 		if (confirmingProvider || confirmingIndependent) return true;
 		if (providerEditor) {
-			closeProviderEditor();
+			backFromProviderEditor();
 			return true;
 		}
 		if (mcpSettings?.backFromEditor()) return true;
@@ -384,6 +391,7 @@
 		const editor = providerEditor;
 		if (!editor) return;
 		const synced = withSyncedDefaultModel(draft);
+		providerSavedTick = 0;
 		providerEditor = { ...editor, draft: synced, errors: {}, failed: false };
 		scheduleProviderProbe(editor.target, synced, editorKeySet(editor.target));
 		scheduleProviderSave();
@@ -458,6 +466,7 @@
 				providerEditor = {
 					...providerEditor,
 					target: created.id,
+					view: 'models',
 					draft: { ...providerEditor.draft, apiKey: '' },
 					errors: {},
 					failed: false
@@ -474,6 +483,7 @@
 		const plan = planPatchProvider(provider, editor.draft);
 		if (!plan.ok) {
 			if (providerEditor?.target === id) patchProviderEditor(id, { errors: plan.errors, failed: false });
+			else saveFailed = true;
 			return;
 		}
 		if (Object.keys(plan.patch).length === 0) return;
@@ -524,14 +534,22 @@
 		}
 		lastCreatedSignature = null;
 		providerSavedTick = 0;
+		providerDetailModel = null;
 		providerEditor = {
 			target,
+			view: 'connection',
 			draft,
 			errors: {},
 			failed: false,
 			fetching: false,
 			fetchError: null
 		};
+	}
+
+	/** Opens the enable list for an endpoint that already exists. A new one has nothing to list yet. */
+	function openProviderModels(id: string): void {
+		openEditProvider(id);
+		if (providerEditor?.target === id) providerEditor = { ...providerEditor, view: 'models' };
 	}
 
 	function openAddProvider(): void {
@@ -552,6 +570,7 @@
 
 	function closeProviderEditor(): void {
 		resetProviderProbe();
+		providerDetailModel = null;
 		providerEditor = null;
 	}
 
@@ -591,6 +610,27 @@
 			errors: {}
 		};
 		scheduleProviderSave();
+	}
+
+	/**
+	 * The default model is one click on the list, not a field inside the editor. The patch is the
+	 * model name alone, so a half-typed connection draft cannot ride along.
+	 */
+	async function setProviderDefaultModel(id: string, model: string): Promise<void> {
+		const provider = snapshot.providers.find((row) => row.id === id);
+		if (!provider || provider.default_model === model || !provider.models.includes(model)) return;
+		saveFailed = false;
+		const api = runtime.client;
+		const error = await runtime.patchProvider(id, { default_model: model });
+		if (runtime.client !== api || !runtime.settingsOpen) return;
+		if (error) {
+			saveFailed = true;
+			return;
+		}
+		const open = providerEditor;
+		if (open?.target === id) {
+			providerEditor = { ...open, draft: { ...open.draft, defaultModel: model }, errors: {}, failed: false };
+		}
 	}
 
 	async function setDefaultProvider(id: string): Promise<void> {
@@ -659,6 +699,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop settings-backdrop"
+		inert={Boolean(providerEditor)}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -836,7 +877,7 @@
 					>✕</button>
 				</div>
 
-			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'}>
+			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-models={activeSettingsTab === 'models'}>
 				{#if !providerEditor && (runtime.pendingMutation || credentialOps.length)}<div role="region" aria-label="Pending credentials">{@render pendingCredentials()}</div>{/if}
 				{#if saveFailed}
 					<p class="field-error">{t.settings.saveFailed}</p>
@@ -1081,7 +1122,12 @@
 													checked={runtime.pushEnabled}
 													disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
 													onchange={(ev) =>
-														void runtime.setPushEnabled((ev.currentTarget as HTMLInputElement).checked)}
+														{
+const input = ev.currentTarget as HTMLInputElement;
+const enabled = input.checked;
+input.checked = runtime.pushEnabled;
+void runtime.setPushEnabled(enabled);
+}}
 												/>
 												<span class="switch-track" aria-hidden="true">
 													<span class="switch-thumb"></span>
@@ -1096,7 +1142,7 @@
 										<p class="muted">{t.remote.pushUnsupported}</p>
 									{/if}
 									{#if runtime.pushError === 'failed'}
-										<p class="field-error">{t.remote.pushFailed}</p>
+										<p class="field-error" role="alert">{t.remote.pushFailed} {#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}</p>
 									{/if}
 								{/if}
 							</div>
@@ -1360,7 +1406,7 @@
 						</div>
 					</div>
 				{:else if activeSettingsTab === 'models'}
-					<div class="settings-tab-pane">
+					<div class="settings-tab-pane provider-settings-pane">
 						<div class="provider-list-head flex items-start justify-between gap-6">
 							<p class="muted">{t.settings.providersHint}</p>
 							<button type="button" class="btn-provider-add" onclick={openAddProvider}>
@@ -1380,12 +1426,7 @@
 								{@const host = providerHost(provider.base_url)}
 								<div class="provider-card" class:is-default={isDefault}>
 									<div class="provider-card-head flex items-center justify-between gap-5 min-w-0">
-										<button
-											type="button"
-											class="provider-card-identity"
-											onclick={() => openEditProvider(provider.id)}
-											title={`${t.settings.providerEdit}: ${provider.name}`}
-										>
+										<div class="provider-card-identity">
 											<span
 												class="provider-card-mark"
 												style:background={palette.bg}
@@ -1413,7 +1454,7 @@
 													</span>
 												{/if}
 											</span>
-										</button>
+										</div>
 
 										<div class="provider-card-acts flex items-center gap-3 shrink-0">
 											{#if !isDefault}
@@ -1430,12 +1471,12 @@
 											<button
 												type="button"
 												class="btn-provider-action btn-provider-edit"
-												aria-label={`${t.settings.providerEdit}: ${provider.name}`}
+												aria-label={`${t.settings.providerConnection}: ${provider.name}`}
 												onclick={() => openEditProvider(provider.id)}
-												title={t.settings.providerEdit}
+												title={t.settings.providerConnection}
 											>
-												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-												<span>{t.settings.providerEdit}</span>
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+												<span>{t.settings.providerConnection}</span>
 											</button>
 											<button
 												type="button"
@@ -1449,44 +1490,53 @@
 										</div>
 									</div>
 
-									{#if provider.default_model || provider.models.length > 0}
+									<div class="provider-mobile-default">
+										<label for={`default-model-${provider.id}`}>{t.settings.defaultModel}</label>
+										<select id={`default-model-${provider.id}`} aria-label={`${t.settings.defaultModel}: ${provider.name}`} value={provider.default_model ?? ''} disabled={provider.models.length === 0 || providerSaving} onchange={(event) => void setProviderDefaultModel(provider.id, event.currentTarget.value)}>
+											<option value="" disabled>{provider.models.length ? t.settings.providerChooseDefault : t.settings.providerEnableFirst}</option>
+											{#each provider.models as model (model)}<option value={model}>{model}</option>{/each}
+										</select>
+									</div>
+									<div class="provider-model-rail" role="radiogroup" aria-label={t.settings.defaultModel}>
+										{#if provider.models.length === 0}
+											<button
+												type="button"
+												class="provider-model-empty"
+												onclick={() => openProviderModels(provider.id)}
+											>
+												{t.settings.providerNoDefault}
+											</button>
+										{:else}
+											{#each provider.models as model (model)}
+												{@const chosen = model === provider.default_model}
+												<button
+													type="button"
+													class="provider-model-pick mono"
+													class:is-default={chosen}
+													role="radio"
+													disabled={providerSaving}
+													aria-checked={chosen}
+													aria-label={chosen
+														? t.settings.providerDefaultModel(model)
+														: t.settings.providerPickDefault}
+													onclick={() => void setProviderDefaultModel(provider.id, model)}
+												>
+													<span class="provider-model-mark" aria-hidden="true"></span>
+													<span class="provider-model-pick-name">{model}</span>
+												</button>
+											{/each}
+										{/if}
 										<button
 											type="button"
-											class="provider-card-body-btn"
-											onclick={() => openEditProvider(provider.id)}
-											title={`${t.settings.providerEdit}: ${provider.name}`}
+											class="provider-model-manage"
+											aria-label={`${t.settings.providerModels}: ${provider.name}`}
+											onclick={() => openProviderModels(provider.id)}
 										>
-											<div class="provider-meta-row flex items-center justify-between gap-4 flex-wrap w-full">
-												{#if provider.default_model}
-													<div class="provider-default-model-tag" title={`${t.settings.defaultModel}: ${provider.default_model}`}>
-														<span class="tag-icon">
-															<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-														</span>
-														<span class="tag-label">{t.settings.defaultModel}:</span>
-														<span class="tag-val mono">{provider.default_model}</span>
-													</div>
-												{/if}
-												<span class="provider-model-count-label text-11p5 text-muted font-medium ml-auto">
-													{t.settings.providerModelCount(provider.models.length)}
-												</span>
-											</div>
-
-											{#if provider.models.length > 0}
-												<div class="provider-model-chips flex items-center gap-[5px] flex-wrap w-full">
-													{#each provider.models.slice(0, 4) as model}
-														<span class="provider-model-chip mono" class:is-default={model === provider.default_model}>
-															{model}
-														</span>
-													{/each}
-													{#if provider.models.length > 4}
-														<span class="provider-model-chip is-overflow">
-															+{provider.models.length - 4}
-														</span>
-													{/if}
-												</div>
-											{/if}
+											<span>{t.settings.providerModels}</span>
+											<span class="provider-model-manage-count">{t.settings.modelsEnabledCount(provider.models.length)}</span>
+											<svg class="provider-manage-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
 										</button>
-									{/if}
+									</div>
 								</div>
 							{/each}
 						</div>
@@ -1517,9 +1567,9 @@
 							<div class="settings-rows">
 								<div class="settings-row">
 									<div class="settings-row-info">
-										<span class="settings-row-title">Real Bot</span>
+										<span class="settings-row-title">Deskfolk</span>
 										<span class="settings-row-desc">
-											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.5')}</span>
+											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.6')}</span>
 										</span>
 									</div>
 									{#if updateChecker.available}
@@ -1676,13 +1726,21 @@
 				<button
 					type="button"
 					class="settings-subpage-back"
-					aria-label={locale === 'en' ? 'Back to model providers' : '返回模型服务'}
-					onclick={closeProviderEditor}
+					aria-label={providerDetailModel ? t.common.back : locale === 'en' ? 'Back to model providers' : '返回模型服务'}
+					onclick={backFromProviderEditor}
 				>
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<h2>
-					{providerEditor.target === 'add' ? t.settings.providerAdd : t.settings.providerEdit}
+					{#if providerDetailModel}
+						{t.settings.modelSettings}
+					{:else if providerEditor.target === 'add'}
+						{t.settings.providerAdd}
+					{:else if providerEditor.view === 'models'}
+						{t.settings.providerModels}
+					{:else}
+						{t.settings.providerConnection}
+					{/if}
 				</h2>
 				<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={providerEditor.failed} aria-live="polite">
 					{#if providerSaving}
@@ -1706,17 +1764,27 @@
 					type="button"
 					class="modal-close settings-subpage-close"
 					title={t.common.close}
-					onclick={closeProviderEditor}
+					onclick={backFromProviderEditor}
 				>✕</button>
 			</div>
-			<div class="modal-body">
+			<div class="modal-body provider-editor-body">
 				{@render pendingCredentials()}
+				{#if providerEditor.target !== 'add'}
+					<div class="provider-editor-context">
+						<strong>{providerEditor.draft.name}</strong>
+						<span>{providerHost(providerEditor.draft.baseUrl)}</span>
+					</div>
+				{/if}
+				{#key `${providerEditor.target}:${providerEditor.view}`}
 				<ProviderForm
+					bind:this={providerForm}
+					bind:detailModel={providerDetailModel}
 					draft={providerEditor.draft}
 					errors={providerEditor.errors}
 					failed={providerEditor.failed}
 					fetching={providerEditor.fetching}
 					fetchError={providerEditor.fetchError}
+					view={providerEditor.view}
 					fieldPrefix={providerEditor.target === 'add'
 						? 'provider-add'
 						: `provider-${providerEditor.target}`}
@@ -1725,6 +1793,11 @@
 					onchange={setProviderDraft}
 					onfetch={() => void fetchProviderModels()}
 				/>
+				{/key}
+			</div>
+			<div class="provider-mobile-status" class:is-error={providerEditor.failed || Object.values(providerEditor.errors).some(Boolean)}>
+				<span role="status">{providerSaving ? t.sidebar.autoSaving : providerEditor.failed || Object.values(providerEditor.errors).some(Boolean) ? t.settings.saveFailed : providerSavedTick > 0 ? t.sidebar.autoSaved : t.sidebar.autoSaveHint}</span>
+				{#if providerEditor.failed}<button type="button" disabled={providerSaving} onclick={() => providerEditor && void persistProviderEditor(providerEditor)}>{t.settings.retry}</button>{/if}
 			</div>
 		</div>
 	</div>
@@ -2099,6 +2172,8 @@
 		box-shadow: var(--shadow-xs);
 	}
 
+	.provider-mobile-default, .provider-editor-context, .provider-mobile-status, .provider-manage-chevron { display: none; }
+
 	.provider-list-head :global(.muted) {
 		margin: 0;
 		flex: 1;
@@ -2160,18 +2235,7 @@
 		gap: 10px;
 		flex: 1;
 		min-width: 0;
-		border: none;
-		background: transparent;
-		padding: 0;
-		text-align: left;
-		cursor: pointer;
 		color: inherit;
-		border-radius: var(--radius-sm);
-	}
-
-	.provider-card-identity:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
 	}
 
 	.provider-card-mark {
@@ -2274,90 +2338,91 @@
 		border-color: var(--danger-line);
 	}
 
-	/* Card Body Button (clickable area for models / default model) */
-	.provider-card-body-btn {
+	/* The default model is a row you click. Connection and the enable list live behind their own buttons. */
+	.provider-model-rail {
 		display: flex;
 		flex-direction: column;
+		gap: 2px;
+		padding-top: 8px;
+		border-top: 1px solid var(--line);
+	}
+
+	.provider-model-pick,
+	.provider-model-empty,
+	.provider-model-manage {
+		display: flex;
+		align-items: center;
 		gap: 8px;
 		width: 100%;
+		min-height: 32px;
+		padding: 4px 8px;
 		border: none;
+		border-radius: var(--radius-sm);
 		background: transparent;
-		padding: 8px 0 0 0;
-		border-top: 1px solid var(--line);
+		color: var(--ink-secondary);
+		font-size: 12.5px;
 		text-align: left;
 		cursor: pointer;
-		color: inherit;
-		border-radius: var(--radius-sm);
 	}
 
-	.provider-card-body-btn:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	.provider-default-model-tag {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11.5px;
-		padding: 2px 8px;
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-		border: 1px solid var(--chip-line);
-		color: var(--ink-secondary);
-		max-width: 100%;
-	}
-
-	.provider-default-model-tag .tag-icon {
-		display: inline-flex;
-		color: var(--accent);
-		flex-shrink: 0;
-	}
-
-	.provider-default-model-tag .tag-label {
-		color: var(--muted);
-		font-size: 11px;
-	}
-
-	.provider-default-model-tag .tag-val {
-		font-weight: 600;
+	.provider-model-pick:hover,
+	.provider-model-empty:hover,
+	.provider-model-manage:hover {
+		background: var(--line-subtle);
 		color: var(--ink);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
-	.provider-model-chip {
-		font-size: 11px;
-		padding: 2px 7px;
-		border-radius: 4px;
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
-		color: var(--ink-secondary);
-		max-width: 180px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		transition: all 0.12s ease;
+	.provider-model-pick:focus-visible,
+	.provider-model-empty:focus-visible,
+	.provider-model-manage:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
 	}
 
-	.provider-card:hover .provider-model-chip {
-		border-color: var(--chip-line);
+	.provider-model-mark {
+		flex: none;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 1.5px solid var(--line-hover);
+		background: var(--input-bg);
+		box-sizing: border-box;
 	}
 
-	.provider-model-chip.is-default {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
+	.provider-model-pick.is-default {
+		color: var(--ink);
 		font-weight: 600;
 	}
 
-	.provider-model-chip.is-overflow {
-		font-size: 10.5px;
+	.provider-model-pick.is-default .provider-model-mark {
+		border-color: var(--accent);
+		background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
+	}
+
+	.provider-model-pick-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.provider-model-empty {
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	.provider-model-manage {
+		color: var(--accent);
+		font-weight: 600;
+		font-size: 12px;
+	}
+
+	.provider-model-manage-count {
+		margin-left: auto;
 		font-weight: 500;
 		color: var(--muted);
-		background: transparent;
-		border-style: dashed;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.modal-dialog.provider-editor-modal {
@@ -3391,27 +3456,6 @@
 			overscroll-behavior: contain;
 		}
 
-		.provider-card {
-			padding: 13px;
-			box-shadow: none;
-		}
-
-		.provider-card-head {
-			align-items: flex-start;
-		}
-
-		.provider-card-acts {
-			gap: 6px;
-		}
-
-		.btn-provider-action {
-			min-height: 40px;
-		}
-
-		.btn-provider-setdefault span,
-		.btn-provider-edit span {
-			display: none;
-		}
 	}
 
 	@keyframes settings-subpage-in {
@@ -3465,5 +3509,47 @@
 		to {
 			transform: rotate(360deg);
 		}
+	}
+
+	@media (max-width: 720px) {
+		.settings-main > .modal-body.is-models { padding: 20px 16px max(28px, env(safe-area-inset-bottom)); scrollbar-width: none; }
+		.settings-main > .modal-body.is-models::-webkit-scrollbar { display: none; }
+		.provider-settings-pane { gap: 20px; }
+		.provider-list-head { flex-direction: column; gap: 16px; }
+		.provider-list-head .muted { font-size: 14px; line-height: 1.6; }
+		.btn-provider-add { width: 100%; min-height: 48px; justify-content: center; padding: 10px 16px; border: 1px solid var(--accent-border); border-radius: var(--radius-md); background: var(--accent-tint); font-size: 15px; }
+		.btn-provider-add svg { width: 18px; height: 18px; }
+		.provider-card-list { gap: 20px; }
+		.provider-card, .provider-card.is-default { position: relative; gap: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); box-shadow: none; overflow: hidden; }
+		.provider-card-head { display: contents; }
+		.provider-card-identity { align-items: flex-start; gap: 12px; padding: 18px 16px 16px; }
+		.provider-card-mark { width: 40px; height: 40px; border-radius: var(--radius-md); font-size: 17px; box-shadow: none; }
+		.provider-name-row { gap: 6px; }
+		.provider-card-name { flex: 1 0 100%; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+		.provider-badge-default, .provider-badge-key { padding: 3px 6px; font-size: 11px; }
+		.provider-card-host { width: 100%; font-size: 12px; margin-top: 4px; }
+		.provider-card-host span { overflow: hidden; text-overflow: ellipsis; }
+		.provider-status-dot.is-set { box-shadow: none; }
+		.provider-card-acts { order: 3; gap: 0; border-top: 1px solid var(--line); }
+		.btn-provider-action { flex: 1; justify-content: center; gap: 6px; min-height: 48px; padding: 8px; border: 0; border-radius: 0; background: transparent; font-size: 13px; }
+		.btn-provider-action + .btn-provider-action { border-left: 1px solid var(--line); }
+		.btn-provider-action svg { width: 16px; height: 16px; }
+		.btn-provider-action.btn-provider-delete { flex: 0 0 52px; min-height: 48px; padding: 8px; border-left: 1px solid var(--line); }
+		.provider-mobile-default { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 16px; }
+		.provider-mobile-default label { font-size: 12px; font-weight: 500; color: var(--muted); }
+		.provider-mobile-default select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; font-family: var(--font); font-size: 16px; color: var(--ink); background: var(--sidebar-bg); border: 1px solid var(--line); border-radius: var(--radius-md); text-overflow: ellipsis; }
+		.provider-model-rail { gap: 0; padding: 0; }
+		.provider-model-pick, .provider-model-empty { display: none; }
+		.provider-model-manage { min-height: 56px; padding: 12px 16px; border-radius: 0; font-size: 15px; color: var(--ink); }
+		.provider-model-manage-count { font-size: 12px; }
+		.provider-manage-chevron { display: block; flex-shrink: 0; color: var(--muted); }
+		.provider-editor-modal > .provider-editor-body { padding: 20px 16px 24px; min-height: 0; }
+		.provider-editor-context { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+		.provider-editor-context strong { font-size: 20px; font-weight: 650; overflow-wrap: anywhere; }
+		.provider-editor-context span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+		.provider-mobile-status { display: flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 12px; min-height: calc(52px + env(safe-area-inset-bottom)); padding: 4px 16px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--pane); color: var(--muted); font-size: 12px; }
+		.provider-mobile-status.is-error { color: var(--danger-text); }
+		.provider-mobile-status button { min-height: 44px; padding: 4px 12px; border: 0; border-radius: var(--radius-sm); background: var(--danger-bg); color: var(--danger-text); }
+		.settings-subpage-back, .settings-subpage-close { width: 44px; }
 	}
 </style>

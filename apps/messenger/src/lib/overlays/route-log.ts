@@ -1,4 +1,9 @@
-import type { Bot, Provider, RouteFeedback, RouteLearning, RouteRecord, RouteReview } from "@real-bot/protocol";
+/**
+ * A turn's model choice, in the words the flow board shows it: which model and thinking level the
+ * turn ran on, how it ended, what you said about it afterwards and what the review made of that.
+ * The records ride on the board's cards; this only turns them into labels.
+ */
+import type { Bot, Provider, RouteFeedback, RouteLearning, RouteRecord, RouteReview, TaskTraceRoute } from "@real-bot/protocol";
 
 /** How a turn's model choice ended. `live` stands in for a record the daemon has not closed yet. */
 export type RouteOutcomeKind =
@@ -77,9 +82,18 @@ export type RouteLogInput = {
 };
 
 /**
- * One row per turn, newest first. The daemon lists records oldest-first; the panel reads the other
- * way round, because the choice you want to check is the one that just ran.
+ * One card's model choice. The review and the learning note belong to the chain the turn started,
+ * so they only ever arrive on that turn's card.
  */
+export function routeCardRow(route: TaskTraceRoute, input: Omit<RouteLogInput, "reviews" | "learnings">): RouteLogRow {
+  return routeLogRows([route.record], {
+    ...input,
+    reviews: route.review ? [route.review] : [],
+    learnings: route.learning ? [route.learning] : [],
+  })[0]!;
+}
+
+/** One row per turn, newest first: the daemon lists records oldest-first. */
 export function routeLogRows(
   records: readonly RouteRecord[],
   { bots, providers, reviews = [], learnings = [], labels }: RouteLogInput,

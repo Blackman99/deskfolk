@@ -5,6 +5,10 @@
  * is showing. It is not a run, and it is not a row of its own: the snapshot stays
  * the only source. Times are civil labels (the execution Mac's local HH:MM written
  * into a local Date), never converted from the browser's zone.
+ *
+ * A source is a Bot that owns at least one routine. A Bot with none stays off
+ * the chart. A routine that does not fall inside the visible range still keeps
+ * its Bot; the blocks are what the range decides, not the roster.
  */
 import type { Bot, Routine } from "@real-bot/protocol";
 import type { CalendarEvent, CalendarSource } from "./calendar-entry.ts";
@@ -35,7 +39,11 @@ export function projectRoutines(input: {
 }): RoutineProjection {
   const bots = [...input.bots];
   const byId = new Map(bots.map((bot) => [bot.id, bot]));
-  const sources: CalendarSource[] = bots.map((bot) => ({
+  const scheduled = new Set<string>();
+  for (const routine of input.routines) {
+    if (byId.has(routine.bot_id)) scheduled.add(routine.bot_id);
+  }
+  const sources: CalendarSource[] = bots.filter((bot) => scheduled.has(bot.id)).map((bot) => ({
     id: bot.id,
     name: bot.archived_at ? `${bot.name} · ${input.archivedLabel}` : bot.name,
     color: botAvatarColor(bot.id).text,

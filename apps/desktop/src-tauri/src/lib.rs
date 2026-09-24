@@ -1,4 +1,6 @@
 mod daemon;
+#[cfg(all(target_os = "macos", debug_assertions))]
+mod dev_bundle;
 mod handoff;
 mod installer;
 mod launchd;
@@ -22,7 +24,7 @@ use local_api::{endpoint_from_descriptor, probe_bind, stop_latch_present, BIND_P
 use supervisor::{launched_hidden, Action, Endpoint, Probe, QuitPlan, Supervisor};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, LogicalSize, Manager, PhysicalSize, RunEvent, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalSize, RunEvent, Window, WindowEvent};
 use updates::UpdateCheck;
 
 struct AppState {
@@ -147,6 +149,16 @@ fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
     }
 }
 
+/// Put the window away, the way the close button does. The messenger asks for this when ⌘W finds
+/// no tab left to close, so 关窗 still means 隐藏到托盘 rather than quitting.
+#[tauri::command]
+fn hide_main_window(app: AppHandle) {
+    persist_main_window(&app);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+}
+
 #[tauri::command]
 fn app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
@@ -224,6 +236,25 @@ fn open_external_url(url: String) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
         Err("open with system is only on macOS".into())
+    }
+}
+
+/// The pasteboard's text, for Paste in the terminal's right-click menu. WebKit's own
+/// `clipboard.readText` stops for a second confirming click, which no terminal asks for;
+/// ⌘V never comes here, it is the Edit menu's paste into the focused field.
+#[tauri::command]
+fn read_clipboard_text() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+        let pasteboard = NSPasteboard::generalPasteboard();
+        // SAFETY: an AppKit constant, initialised before any code of ours runs.
+        let kind = unsafe { NSPasteboardTypeString };
+        pasteboard.stringForType(kind).map(|text| text.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
     }
 }
 
@@ -432,6 +463,9 @@ fn stage_from_mount(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    dev_bundle::reexec_inside_bundle();
+
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]
@@ -441,7 +475,7 @@ pub fn run() {
         }));
         let mut autostart = tauri_plugin_autostart::Builder::new()
             .args(["--hidden"])
-            .app_name("Real Bot");
+            .app_name("Deskfolk");
         #[cfg(target_os = "macos")]
         {
             autostart =
@@ -467,8 +501,10 @@ pub fn run() {
             pick_workspace_folder,
             open_workspace_path,
             app_version,
+            hide_main_window,
             check_for_update,
             open_external_url,
+            read_clipboard_text,
             set_launch_at_login,
             independent_runtime_status,
             independent_runtime,
@@ -502,12 +538,15 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
-                persist_current_window(window);
+                persist_current_window(window, true);
                 let _ = window.hide();
                 api.prevent_close();
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                persist_current_window(window);
+                // A live resize fires this on every pointer move. Asking whether the window is
+                // zoomed from inside that drag moves it on macOS, so the drag keeps the flag it
+                // already had and the release asks again.
+                persist_current_window(window, !macos_live_resize(window));
             }
             _ => {}
         })
@@ -515,10 +554,13 @@ pub fn run() {
             "quit" => begin_quit(app),
             "show" => show_main(app),
             "stop" => request_stop(app),
+            // The pane commands belong to the messenger: it holds the arrangement, so it is the
+            // only thing that can say what "close this" means right now.
+            id if id.starts_with("pane-") => send_pane_command(app, id),
             _ => {}
         })
         .build(app_context())
-        .expect("error while building Real Bot");
+        .expect("error while building Deskfolk");
 
     app.run(|app, event| match event {
         RunEvent::ExitRequested { api, code, .. } => {
@@ -542,15 +584,28 @@ pub fn run() {
     });
 }
 
+/**
+ * Hand a pane command to the messenger.
+ *
+ * Nothing is decided here: the window does not know how many panes there are or which one the
+ * keyboard is in. When ⌘W finds nothing left to close the messenger asks for the window to hide,
+ * which is the behaviour 关窗 has always had.
+ */
+fn send_pane_command(app: &AppHandle, id: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("pane-command", id);
+    }
+}
+
 fn install_menus(app: &AppHandle) -> tauri::Result<()> {
     let about = PredefinedMenuItem::about(app, None, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let hide = PredefinedMenuItem::hide(app, None)?;
     let hide_others = PredefinedMenuItem::hide_others(app, None)?;
-    let quit = MenuItem::with_id(app, "quit", "退出 Real Bot", true, Some("CmdOrCtrl+Q"))?;
+    let quit = MenuItem::with_id(app, "quit", "退出 Deskfolk", true, Some("CmdOrCtrl+Q"))?;
     let app_menu = Submenu::with_items(
         app,
-        "Real Bot",
+        "Deskfolk",
         true,
         &[&about, &sep, &hide, &hide_others, &sep, &quit],
     )?;
@@ -568,6 +623,22 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::select_all(app, None)?,
         ],
     )?;
+    let view = Submenu::with_items(
+        app,
+        "视图",
+        true,
+        &[
+            &MenuItem::with_id(app, "pane-split-right", "向右分割", true, Some("CmdOrCtrl+\\"))?,
+            &MenuItem::with_id(app, "pane-split-down", "向下分割", true, Some("CmdOrCtrl+Shift+\\"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "pane-close", "关闭窗格", true, None::<&str>)?,
+            &MenuItem::with_id(app, "pane-equalise", "平分", true, None::<&str>)?,
+            &MenuItem::with_id(app, "pane-reset", "重置布局", true, None::<&str>)?,
+        ],
+    )?;
+    // ⌘W closes the tab in front of you. The window still hides to the tray, but only once there
+    // is nothing left to close — the webview answers first and asks for the hide itself, so the
+    // locked behaviour of 关窗 survives with a step in front of it.
     let window = Submenu::with_items(
         app,
         "窗口",
@@ -575,10 +646,10 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
+            &MenuItem::with_id(app, "pane-close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?,
         ],
     )?;
-    app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &window])?)?;
+    app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &view, &window])?)?;
     Ok(())
 }
 
@@ -595,7 +666,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::new()
         .icon(icon)
         .icon_as_template(false)
-        .tooltip("Real Bot")
+        .tooltip("Deskfolk")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
@@ -821,7 +892,7 @@ fn restore_window_size(app: &AppHandle) {
     window_state::mark_ready();
 }
 
-fn persist_current_window(window: &Window) {
+fn persist_current_window(window: &Window, ask_zoomed: bool) {
     let Ok(physical) = window.inner_size() else {
         return;
     };
@@ -830,8 +901,36 @@ fn persist_current_window(window: &Window) {
         physical,
         window.scale_factor().unwrap_or(1.0),
         window.is_minimized().unwrap_or(false),
-        window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false),
+        if ask_zoomed {
+            Some(window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false))
+        } else {
+            None
+        },
     );
+}
+
+/// True while the user is dragging a window edge.
+///
+/// `isZoomed` (what `is_maximized` calls) is not safe to ask then: AppKit answers it by
+/// recomputing the standard frame, and doing that from inside the resize tracking loop
+/// moves the window off the pointer.
+#[cfg(target_os = "macos")]
+fn macos_live_resize(window: &Window) -> bool {
+    let Ok(handle) = window.ns_window() else {
+        return false;
+    };
+    let ns_window = handle as *mut objc2_app_kit::NSWindow;
+    if ns_window.is_null() {
+        return false;
+    }
+    // The pointer is borrowed from the window for this call. `inLiveResize` does not retain it.
+    let ns_window = unsafe { &*ns_window };
+    ns_window.inLiveResize()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_live_resize(_window: &Window) -> bool {
+    false
 }
 
 fn persist_main_window(app: &AppHandle) {
@@ -846,7 +945,7 @@ fn persist_main_window(app: &AppHandle) {
         physical,
         window.scale_factor().unwrap_or(1.0),
         window.is_minimized().unwrap_or(false),
-        window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false),
+        Some(window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false)),
     );
 }
 
@@ -855,14 +954,20 @@ fn persist_window_size(
     physical: PhysicalSize<u32>,
     scale: f64,
     minimized: bool,
-    zoomed: bool,
+    zoomed: Option<bool>,
 ) {
     if !window_state::is_ready() || minimized {
         return;
     }
     let dir = window_state_dir(app);
     let previous = window_state::load(&dir);
-    let size = window_state::snapshot(physical.width, physical.height, scale, zoomed, &previous);
+    let size = match zoomed {
+        Some(zoomed) => {
+            window_state::snapshot(physical.width, physical.height, scale, zoomed, &previous)
+        }
+        // Mid-drag: keep the size that was restored, and do not rewrite the maximized flag.
+        None => previous,
+    };
     let _ = window_state::save(&dir, &size);
 }
 

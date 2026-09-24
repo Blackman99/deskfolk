@@ -10,8 +10,13 @@ export interface RemoteRequest {
 }
 export interface RemoteResponse {
   v: 1; id: string; status: number; body: unknown;
-  headers?: { etag?: string; contentType?: string };
-  file?: { streamId: number; size: number };
+  /** `originalSize` marks a file GET answered with a scaled copy of a picture: the original's bytes. */
+  headers?: { etag?: string; contentType?: string; contentRange?: string; originalSize?: number };
+  /**
+   * A download. `bytes` carries the whole file when it fits in one frame, so opening a small file
+   * is the response itself. A larger file names a type-5 stream instead, and `bytes` is absent.
+   */
+  file?: { streamId: number; size: number; bytes?: string };
   upload?: { files: Array<{ streamId: number; filename: string; size: number; sha256: string }> };
   snapshotPage?: { transferId: string; index: number; count: number; bytes: string };
 }

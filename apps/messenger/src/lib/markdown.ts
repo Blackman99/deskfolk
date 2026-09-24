@@ -1,6 +1,6 @@
 import { Marked, Renderer, type Tokens } from "marked";
 import remend, { isWithinCodeBlock } from "remend";
-import sanitizeHtml from "sanitize-html";
+import createDOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import {
   ARTIFACT_HREF_SCHEME,
   artifactHref,
@@ -28,84 +28,218 @@ import {
 
 const marked = new Marked({ gfm: true, breaks: true });
 
-const SANITIZE: sanitizeHtml.IOptions = {
-  allowedTags: [
-    "p",
-    "br",
-    "strong",
-    "em",
-    "del",
-    "s",
-    "code",
-    "pre",
-    "a",
-    "ul",
-    "ol",
-    "li",
-    "blockquote",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "hr",
-    "table",
-    "thead",
-    "tbody",
-    "tr",
-    "th",
-    "td",
-  ],
-  allowedAttributes: {
-    a: ["href", "target", "rel", "class", "title"],
-    code: ["class"],
-    pre: ["class"],
-    ol: ["start"],
-    th: ["align"],
-    td: ["align"],
-  },
-  allowedSchemes: ["http", "https", "mailto", "artifact", "bot"],
-  allowedSchemesByTag: {
-    a: ["http", "https", "mailto", "artifact", "bot"],
-  },
-  transformTags: {
-    a: (_tagName, attribs): sanitizeHtml.Tag => {
-      const href = safeHref(attribs.href);
-      if (!href) return { tagName: "span", attribs: {} };
-      if (href.startsWith(BOT_HREF_SCHEME)) {
-        return {
-          tagName: "a",
-          attribs: {
-            href,
-            class: "md-mention-chip",
-            title: attribs.title ?? "",
-          },
-        };
-      }
-      if (href.startsWith(ARTIFACT_HREF_SCHEME)) {
-        return {
-          tagName: "a",
-          attribs: {
-            href,
-            class: "md-artifact-link",
-            title: attribs.title ?? "",
-          },
-        };
-      }
-      return {
-        tagName: "a",
-        attribs: {
-          href,
-          class: "md-external-link",
-          target: "_blank",
-          rel: "noopener noreferrer",
-          title: attribs.title ?? href,
-        },
-      };
-    },
-  },
+/**
+ * Same allowlist sanitize-html used to enforce, now applied through DOMPurify plus a manual pass
+ * over the result (`enforceTagPolicy`). In a browser both enforce it; under happy-dom, where
+ * `bun test` runs, DOMPurify's own tag walk does not work (see `enforceTagPolicy`) and the manual
+ * pass is what decides. DOMPurify has no per-tag attribute allowlist (its ALLOWED_ATTR is global),
+ * so the per-tag rules below are a `uponSanitizeAttribute` hook keyed on the tag names below.
+ * `bun test` cannot see what a browser does with this — tests/visual/markdown.spec.ts renders it
+ * in Chromium and WebKit.
+ */
+const ALLOWED_TAGS = new Set([
+  "p",
+  "br",
+  "strong",
+  "em",
+  "del",
+  "s",
+  "code",
+  "pre",
+  "a",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+]);
+
+/** Per-tag attribute allowlist. A tag missing here keeps no attributes at all. */
+const TAG_ATTRIBUTES: Record<string, readonly string[]> = {
+  a: ["href", "target", "rel", "class", "title"],
+  code: ["class"],
+  pre: ["class"],
+  ol: ["start"],
+  th: ["align"],
+  td: ["align"],
 };
+
+/**
+ * One allowlist the sanitizer enforces. Chat bubbles render under {@link CHAT_POLICY}; the
+ * artifact preview's `sourceLines` rendering under `LINES_POLICY`, which also keeps the lines each
+ * block came from and the `div` that wraps a raw HTML block.
+ */
+type SanitizePolicy = {
+  tags: ReadonlySet<string>;
+  /** Per-tag attribute allowlist. A tag missing here keeps no attributes at all. */
+  attributes: Readonly<Record<string, readonly string[]>>;
+  /**
+   * For a tag named here, the only classes its `class` may keep (dropped when none is left). A
+   * tag not named keeps whatever classes it has, as `code` keeps `language-*`.
+   */
+  classes: Readonly<Record<string, readonly string[]>>;
+};
+
+const CHAT_POLICY: SanitizePolicy = { tags: ALLOWED_TAGS, attributes: TAG_ATTRIBUTES, classes: {} };
+
+/**
+ * sanitize-html's default `nonTextTags`: disallowed tags normally keep their (sanitized) text
+ * content, but these discard it entirely. DOMPurify's own default FORBID_CONTENTS list is
+ * different (e.g. it includes `iframe`/`svg`/`thead` but not `option`), so this is enforced by
+ * hand in `enforceTagPolicy` rather than reused.
+ */
+const CONTENT_DISCARDING_TAGS = new Set(["script", "style", "textarea", "option", "xmp"]);
+
+function tagNameOf(node: Node): string {
+  return node.nodeType === 1 ? (node as Element).tagName.toLowerCase() : "";
+}
+
+/**
+ * The tag allowlist again, by hand, over the tree DOMPurify returned. In a browser DOMPurify has
+ * already enforced it and this changes nothing. Under happy-dom it is the only enforcement:
+ * DOMPurify's tag-name reads (reflected getters on `Node.prototype`) come back `""` there, and
+ * happy-dom's NodeIterator stops once a node in its path is detached — together its walk would
+ * filter the first element or two and return the rest unfiltered (a `<p>` then a `<script>` came
+ * back with the script intact). The `""` entry in ATTRIBUTE_PASS_CONFIG keeps that walk from
+ * removing anything there, and this plain recursive walk reads `.tagName`/`.attributes`, which
+ * happy-dom does answer. The same code runs in both, so tests exercise this pass.
+ *
+ * `<a>` gets special treatment inline (`handleAnchor`) rather than going through the generic
+ * disallow/keep-content branch, since a valid link needs its attributes rewritten, not just
+ * kept, and an invalid one needs unwrapping despite `a` otherwise being an allowed tag.
+ */
+function enforceTagPolicy(root: Element, policy: SanitizePolicy): void {
+  for (const child of Array.from(root.childNodes)) {
+    if (child.nodeType !== 1) continue;
+    const el = child as Element;
+    const tag = el.tagName.toLowerCase();
+    if (tag === "a") {
+      handleAnchor(el, policy);
+      continue;
+    }
+    if (!policy.tags.has(tag)) {
+      if (CONTENT_DISCARDING_TAGS.has(tag)) {
+        el.remove();
+      } else {
+        enforceTagPolicy(el, policy);
+        const parent = el.parentNode;
+        if (parent) {
+          while (el.firstChild) parent.insertBefore(el.firstChild, el);
+          parent.removeChild(el);
+        }
+      }
+      continue;
+    }
+    const classes = policy.classes[tag];
+    if (classes) keepClasses(el, classes);
+    enforceTagPolicy(el, policy);
+  }
+}
+
+/** What sanitize-html's `allowedClasses` did: only the listed classes stay, and an empty `class` goes. */
+function keepClasses(el: Element, allowed: readonly string[]): void {
+  const value = el.getAttribute("class");
+  if (value === null) return;
+  const kept = value.split(/\s+/).filter((name) => allowed.includes(name));
+  if (kept.length > 0) el.setAttribute("class", kept.join(" "));
+  else el.removeAttribute("class");
+}
+
+/**
+ * Mirrors the old sanitize-html `transformTags.a` function: an invalid href drops the tag but
+ * keeps its (recursively policed) children, same as sanitize-html turning it into a disallowed
+ * `<span>` did; a valid one gets exactly the attributes its link kind needs, nothing carried over
+ * from the original tag. `title` is only set when non-empty — sanitize-html's default
+ * `allowedEmptyAttributes` (just `alt`) drops an empty `title` rather than rendering `title=""`.
+ */
+function handleAnchor(el: Element, policy: SanitizePolicy): void {
+  const originalTitle = el.getAttribute("title");
+  const href = safeHref(el.getAttribute("href") ?? undefined);
+  for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name);
+  if (!href) {
+    enforceTagPolicy(el, policy);
+    const parent = el.parentNode;
+    if (parent) {
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+    }
+    return;
+  }
+  const setTitle = (value: string) => {
+    if (value) el.setAttribute("title", value);
+  };
+  if (href.startsWith(BOT_HREF_SCHEME)) {
+    el.setAttribute("href", href);
+    el.setAttribute("class", "md-mention-chip");
+    setTitle(originalTitle ?? "");
+  } else if (href.startsWith(ARTIFACT_HREF_SCHEME)) {
+    el.setAttribute("href", href);
+    el.setAttribute("class", "md-artifact-link");
+    setTitle(originalTitle ?? "");
+  } else {
+    el.setAttribute("href", href);
+    el.setAttribute("class", "md-external-link");
+    el.setAttribute("target", "_blank");
+    el.setAttribute("rel", "noopener noreferrer");
+    setTitle(originalTitle ?? href);
+  }
+  enforceTagPolicy(el, policy);
+}
+
+/** A DOMPurify instance whose attribute hook enforces one policy, and the config it runs with. */
+type Sanitizer = {
+  policy: SanitizePolicy;
+  purifier: ReturnType<typeof createDOMPurify>;
+  config: DOMPurifyConfig;
+};
+
+function createSanitizer(policy: SanitizePolicy): Sanitizer {
+  const purifier = createDOMPurify(window);
+
+  purifier.addHook("uponSanitizeAttribute", (node, data) => {
+    const allowed = policy.attributes[tagNameOf(node)];
+    data.keepAttr = allowed !== undefined && allowed.includes(data.attrName);
+  });
+
+  /** Union of every attribute name any tag in the policy is allowed to keep. */
+  const globalAllowedAttr = Array.from(new Set(Object.values(policy.attributes).flat()));
+  const config: DOMPurifyConfig = {
+    // In a browser DOMPurify reads real tag names and enforces this allowlist itself, with its own
+    // namespace and mutation-XSS hardening; enforceTagPolicy then checks the same list again. Under
+    // happy-dom (`bun test`) its tag-name reads come back "" — the "" entry waves every element
+    // through there, so its walk never detaches a node, and enforceTagPolicy is what decides. An
+    // earlier version listed only "": in a real browser that matched no tag at all and stripped
+    // every message to plain text. Attribute *values* — the href scheme above all — are
+    // re-validated from scratch by `safeHref` in the second pass.
+    ALLOWED_TAGS: [...policy.tags, ""],
+    ALLOWED_ATTR: globalAllowedAttr,
+    ADD_URI_SAFE_ATTR: globalAllowedAttr,
+  };
+
+  return { policy, purifier, config };
+}
+
+const CHAT_SANITIZER = createSanitizer(CHAT_POLICY);
+
+function sanitizeHtmlDom(html: string, sanitizer: Sanitizer = CHAT_SANITIZER): string {
+  const attributesSanitized = sanitizer.purifier.sanitize(html, sanitizer.config);
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = attributesSanitized;
+  enforceTagPolicy(wrapper, sanitizer.policy);
+  return wrapper.innerHTML;
+}
 
 export type RenderMarkdownOptions = {
   streaming?: boolean;
@@ -124,7 +258,7 @@ export type RenderMarkdownOptions = {
 };
 
 /**
- * Rendering one bubble is marked + sanitize-html + two mention passes: fine once, expensive when
+ * Rendering one bubble is marked + DOMPurify + two mention passes: fine once, expensive when
  * a long transcript re-renders on every streamed token or re-mounts bubbles while scrolling. The
  * same text under the same options is the same HTML, so the last few hundred results are kept.
  *
@@ -202,7 +336,7 @@ function renderUncached(source: string, options: RenderMarkdownOptions): string 
   const html = lines
     ? lineMarked.parser(lexWithSourceLines(front + mentioned, (src) => lineMarked.lexer(src)))
     : marked.parse(mentioned, { async: false });
-  const sanitized = sanitizeHtml(html, lines ? SANITIZE_WITH_LINES : SANITIZE);
+  const sanitized = sanitizeHtmlDom(html, lines ? LINES_SANITIZER : CHAT_SANITIZER);
   const withMentions = decorateMentionChips(sanitized, options.mentionBots ?? [], {
     unresolvedTitle: options.unresolvedMentionTitle,
   });
@@ -308,16 +442,16 @@ const lineMarked = new Marked({
 
 const LINE_TAGS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "table", "tr", "hr", "div"];
 
-const SANITIZE_WITH_LINES: sanitizeHtml.IOptions = {
-  ...SANITIZE,
-  allowedTags: [...(SANITIZE.allowedTags as string[]), "div"],
-  allowedAttributes: {
-    ...(SANITIZE.allowedAttributes as Record<string, string[]>),
+/** The chat allowlist, plus the raw-HTML wrapper `div` and every block's source lines. */
+const LINES_POLICY: SanitizePolicy = {
+  tags: new Set([...ALLOWED_TAGS, "div"]),
+  attributes: {
+    ...TAG_ATTRIBUTES,
     ...Object.fromEntries(
       LINE_TAGS.map((tag) => [
         tag,
         [
-          ...((SANITIZE.allowedAttributes as Record<string, string[]>)[tag] ?? []),
+          ...(TAG_ATTRIBUTES[tag] ?? []),
           ...(tag === "div" ? ["class"] : []),
           SRC_START_ATTR,
           SRC_END_ATTR,
@@ -325,8 +459,10 @@ const SANITIZE_WITH_LINES: sanitizeHtml.IOptions = {
       ]),
     ),
   },
-  allowedClasses: { div: ["md-html-block"] },
+  classes: { div: ["md-html-block"] },
 };
+
+const LINES_SANITIZER = createSanitizer(LINES_POLICY);
 
 function healStreaming(source: string): string {
   const healed = remend(source, {

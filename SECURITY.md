@@ -2,7 +2,7 @@
 
 ## 状态与支持范围
 
-Real Bot 当前是 **WIP**，只面向 macOS 本地开发与试用，没有稳定版本的安全维护承诺、独立安全审计声明或响应时限保证。安全修复优先面向最新开发代码。请使用可丢弃数据和可信模型 / 工具，不要把它当作隔离不可信代码的执行环境。
+Deskfolk 当前是 **WIP**，只面向 macOS 本地开发与试用，没有稳定版本的安全维护承诺、独立安全审计声明或响应时限保证。安全修复优先面向最新开发代码。请使用可丢弃数据和可信模型 / 工具，不要把它当作隔离不可信代码的执行环境。
 
 ## 实验性远控密码原型 / Experimental remote cryptography
 
@@ -79,7 +79,7 @@ SQLite、附件与工具结果没有应用层加密承诺；依赖本机账户�
 
 ## English summary
 
-Real Bot is WIP for local macOS experimentation, with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
+Deskfolk is WIP for local macOS experimentation, with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
 
 Local execution does not mean offline or sandboxed execution. Remote model and MCP requests may transmit data, local MCP processes may access the network, all Bots share tools and files, and configured MCP calls are not individually approved. The workspace shell is not an OS sandbox. Single-file HTML preview runs scripts in an opaque-origin iframe (`allow-scripts`, no `allow-same-origin`) and is not an isolated execution environment. Stop and approval cannot undo completed effects or costs.
 

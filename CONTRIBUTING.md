@@ -1,6 +1,6 @@
 # Contributing / 参与贡献
 
-Real Bot 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容性反馈、文档改进、测试和小范围代码贡献。提交前请先阅读 [README](README.md)、[路线图](ROADMAP.md) 和[行为准则](CODE_OF_CONDUCT.md)。
+Deskfolk 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容性反馈、文档改进、测试和小范围代码贡献。提交前请先阅读 [README](README.md)、[路线图](ROADMAP.md) 和[行为准则](CODE_OF_CONDUCT.md)。
 
 ## 提问题或建议
 
@@ -75,7 +75,7 @@ pnpm --filter @real-bot/messenger build
 
 ## English summary
 
-Real Bot is WIP. Issues and pull requests in Chinese or English are welcome. Keep changes focused, discuss major architectural or security changes first, and provide reproducible, redacted reports. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+Deskfolk is WIP. Issues and pull requests in Chinese or English are welcome. Keep changes focused, discuss major architectural or security changes first, and provide reproducible, redacted reports. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 Run all four verification commands above before submitting a PR; also build the landing page when those files change. GitHub Actions repeats those checks on pull requests and `main`, but does not replace local UI or native macOS verification. Exercise behavior changes end to end, including shared state and edge cases; check desktop and narrow viewports for layout changes and the native macOS app for desktop integration. Documentation-only changes need link, command, and factual checks rather than UI interaction.
 

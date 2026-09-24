@@ -227,8 +227,8 @@ describe("isolated fake push service", () => {
     assertNoContentLeak(haystack, ["secret-file.txt", "Writer", you.bot.name, "Wrote"]);
     expect(PUSH_PLAINTEXT).toBe(JSON.stringify({ t: "pending" }));
     expect(PUSH_PLAINTEXT).toBe( JSON.stringify(WEB_PUSH_PAYLOAD));
-    expect(WEB_PUSH_COPY.zh).toBe("Real Bot 有待处理事项");
-    expect(WEB_PUSH_COPY.en).toBe("Real Bot has pending items");
+    expect(WEB_PUSH_COPY.zh).toBe("Deskfolk 有待处理事项");
+    expect(WEB_PUSH_COPY.en).toBe("Deskfolk has pending items");
     expect(JSON.parse(PUSH_PLAINTEXT)).toEqual({ t: "pending" });
     expect(Object.keys(JSON.parse(PUSH_PLAINTEXT))).toEqual(["t"]);
   });
@@ -831,6 +831,27 @@ describe("strict P-256 curve point, auth, and endpoint validation", () => {
   });
 });
 
+/** The server_name in a TLS ClientHello record, or null when there is none. */
+function clientHelloServerName(record: Buffer): string | null {
+  // Record header (5), handshake header (4), client version (2), random (32).
+  if (record[0] !== 0x16 || record[5] !== 0x01) return null;
+  let at = 5 + 4 + 2 + 32;
+  at += 1 + record[at]!; // session id
+  at += 2 + record.readUInt16BE(at); // cipher suites
+  at += 1 + record[at]!; // compression methods
+  const end = Math.min(record.length, at + 2 + record.readUInt16BE(at));
+  at += 2;
+  while (at + 4 <= end) {
+    const type = record.readUInt16BE(at);
+    const length = record.readUInt16BE(at + 2);
+    at += 4;
+    // server_name: list length (2), name type (1), name length (2), name.
+    if (type === 0x0000) return record.subarray(at + 5, at + 5 + record.readUInt16BE(at + 3)).toString("ascii");
+    at += length;
+  }
+  return null;
+}
+
 describe("anti-SSRF and IP validation", () => {
   test("isPrivateOrForbiddenIp rejects loopback, RFC1918, link-local, CGNAT, multicast, IPv6 ULA, IPv4-mapped", () => {
     expect(isPrivateOrForbiddenIp("127.0.0.1")).toBe(true);
@@ -887,9 +908,321 @@ describe("anti-SSRF and IP validation", () => {
       dns.lookup = originalLookup;
     }
   });
+
+  test("createSafePushFetch tunnels the pinned IP through HTTP_PROXY and keeps the endpoint name for TLS", async () => {
+    const net = await import("node:net");
+    const dns = (await import("node:dns")).default;
+    const connects: string[] = [];
+    // The proxy opens the tunnel and reads the name the client puts in its TLS ClientHello, then
+    // hangs up. Nothing leaves the machine, so this runs the same with or without a real proxy.
+    // Assigned from the socket callback, so keep TypeScript from narrowing it to null here.
+    let sni = null as string | null;
+    const proxy = net.createServer((socket) => {
+      let buf = Buffer.alloc(0);
+      let tunnelled = false;
+      socket.on("data", (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        if (!tunnelled) {
+          const split = buf.indexOf("\r\n\r\n");
+          if (split < 0) return;
+          const target = /^CONNECT (\S+) HTTP\/1\.[01]/i.exec(buf.subarray(0, split).toString("latin1"))?.[1] ?? "";
+          connects.push(target);
+          if (target !== "1.1.1.1:443") {
+            socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+            return;
+          }
+          tunnelled = true;
+          buf = buf.subarray(split + 4);
+          socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        }
+        if (buf.length >= 5 && buf.length >= 5 + buf.readUInt16BE(3)) {
+          sni = clientHelloServerName(buf);
+          socket.destroy();
+        }
+      });
+      socket.on("error", () => undefined);
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("proxy did not bind");
+    const proxyUrl = `http://127.0.0.1:${address.port}`;
+    const previous = {
+      HTTP_PROXY: process.env.HTTP_PROXY,
+      HTTPS_PROXY: process.env.HTTPS_PROXY,
+      ALL_PROXY: process.env.ALL_PROXY,
+      NO_PROXY: process.env.NO_PROXY,
+      http_proxy: process.env.http_proxy,
+      https_proxy: process.env.https_proxy,
+      all_proxy: process.env.all_proxy,
+      no_proxy: process.env.no_proxy,
+    };
+    const originalLookup = dns.lookup.bind(dns);
+    dns.lookup = ((hostname: string, options: unknown, callback?: unknown) => {
+      const cb = typeof options === "function" ? options : callback;
+      if (typeof cb !== "function") return originalLookup(hostname as never, options as never, callback as never);
+      if (hostname === "fcm.googleapis.com") {
+        const pinned = [{ address: "1.1.1.1", family: 4 }];
+        if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+          (cb as (err: null, addresses: typeof pinned) => void)(null, pinned);
+        } else {
+          (cb as (err: null, address: string, family: number) => void)(null, "1.1.1.1", 4);
+        }
+        return;
+      }
+      if (hostname === "web.push.apple.com") {
+        const pinned = [{ address: "127.0.0.1", family: 4 }];
+        if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+          (cb as (err: null, addresses: typeof pinned) => void)(null, pinned);
+        } else {
+          (cb as (err: null, address: string, family: number) => void)(null, "127.0.0.1", 4);
+        }
+        return;
+      }
+      return originalLookup(hostname as never, options as never, callback as never);
+    }) as typeof dns.lookup;
+    for (const key of Object.keys(previous) as Array<keyof typeof previous>) delete process.env[key];
+    process.env.HTTPS_PROXY = proxyUrl;
+    process.env.NO_PROXY = "localhost,127.0.0.1";
+    try {
+      const fetchFn = createSafePushFetch();
+      await expect(fetchFn("https://fcm.googleapis.com/", { method: "GET", redirect: "error" })).rejects.toThrow();
+      expect(connects).toEqual(["1.1.1.1:443"]);
+      expect(sni).toBe("fcm.googleapis.com");
+      await expect(fetchFn("https://web.push.apple.com/v1/push/fixture", { method: "POST", redirect: "error" })).rejects.toThrow(/anti_ssrf/);
+      expect(connects).toEqual(["1.1.1.1:443"]);
+    } finally {
+      dns.lookup = originalLookup;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      proxy.close();
+    }
+  });
+
+  test("createSafePushFetch skips the proxy for NO_PROXY and fails a rejected CONNECT", async () => {
+    const net = await import("node:net");
+    const dns = (await import("node:dns")).default;
+    let connections = 0;
+    const proxy = net.createServer((socket) => {
+      connections += 1;
+      socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("proxy did not bind");
+    const previous = {
+      HTTP_PROXY: process.env.HTTP_PROXY,
+      HTTPS_PROXY: process.env.HTTPS_PROXY,
+      ALL_PROXY: process.env.ALL_PROXY,
+      NO_PROXY: process.env.NO_PROXY,
+      http_proxy: process.env.http_proxy,
+      https_proxy: process.env.https_proxy,
+      all_proxy: process.env.all_proxy,
+      no_proxy: process.env.no_proxy,
+    };
+    const originalLookup = dns.lookup.bind(dns);
+    dns.lookup = ((hostname: string, options: unknown, callback?: unknown) => {
+      const cb = typeof options === "function" ? options : callback;
+      if (hostname === "fcm.googleapis.com" && typeof cb === "function") {
+        if (process.env.NO_PROXY === "fcm.googleapis.com") {
+          const err = Object.assign(new Error("getaddrinfo ENOTFOUND fcm.googleapis.com"), { code: "ENOTFOUND" });
+          if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+            (cb as (err: Error, addresses: []) => void)(err, []);
+          } else {
+            (cb as (err: Error, address: string, family: number) => void)(err, "", 4);
+          }
+          return;
+        }
+        const pinned = [{ address: "1.1.1.1", family: 4 }];
+        if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+          (cb as (err: null, addresses: typeof pinned) => void)(null, pinned);
+        } else {
+          (cb as (err: null, address: string, family: number) => void)(null, "1.1.1.1", 4);
+        }
+        return;
+      }
+      return originalLookup(hostname as never, options as never, callback as never);
+    }) as typeof dns.lookup;
+    for (const key of Object.keys(previous) as Array<keyof typeof previous>) delete process.env[key];
+    process.env.HTTPS_PROXY = `http://127.0.0.1:${address.port}`;
+    process.env.NO_PROXY = "fcm.googleapis.com";
+    try {
+      const fetchFn = createSafePushFetch();
+      await expect(fetchFn("https://fcm.googleapis.com/", { method: "GET" })).rejects.toThrow(/ENOTFOUND/);
+      expect(connections).toBe(0);
+      delete process.env.NO_PROXY;
+      await expect(fetchFn("https://fcm.googleapis.com/", { method: "GET" })).rejects.toThrow(/proxy_connect_failed: 403/);
+      expect(connections).toBe(1);
+      const held = net.createServer((socket) => {
+        socket.on("error", () => undefined);
+      });
+      await new Promise<void>((resolve) => held.listen(0, "127.0.0.1", resolve));
+      const heldAddress = held.address();
+      if (!heldAddress || typeof heldAddress === "string") throw new Error("held proxy did not bind");
+      process.env.HTTPS_PROXY = `http://127.0.0.1:${heldAddress.port}`;
+      const controller = new AbortController();
+      const pending = fetchFn("https://fcm.googleapis.com/", { method: "GET", signal: controller.signal });
+      controller.abort();
+      await expect(pending).rejects.toThrow(/abort/i);
+      held.close();
+    } finally {
+      dns.lookup = originalLookup;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      proxy.close();
+    }
+  });
 });
 
 describe("rate limit and 120s deadline", () => {
+  test("a test after an expired retry sends again without a remote rejection", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    let attempts = 0;
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => {
+        if (++attempts === 1) throw Object.assign(new Error("timeout"), { name: "AbortError" });
+        return new Response(null, { status: 201 });
+      },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    expect(await service.test(device)).toMatchObject({ status: "queued", error_code: "timeout" });
+    now += 180_000;
+    expect(await service.test(device)).toMatchObject({ status: "accepted" });
+    expect(attempts).toBe(2);
+    expect(s.db.query<{ state: string }, []>("SELECT state FROM notification_deliveries ORDER BY created_at").all())
+      .toEqual([{ state: "expired" }, { state: "accepted" }]);
+  });
+
+  test("a test during a live retry returns push_pending and preserves the original delivery", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    let attempts = 0;
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => {
+        attempts++;
+        throw Object.assign(new Error("timeout"), { name: "AbortError" });
+      },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    await service.test(device);
+    const before = s.db.query("SELECT * FROM notification_deliveries").all();
+    now += 60_000;
+    await expect(service.test(device)).rejects.toMatchObject({ status: 409, code: "push_pending" });
+    expect(s.db.query("SELECT * FROM notification_deliveries").all()).toEqual(before);
+    expect(attempts).toBe(1);
+  });
+
+  test.each(["pending", "retry_wait", "unknown", "claimed"])("startup expires a stranded %s delivery at its deadline", async (state) => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    const first = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => { throw Object.assign(new Error("timeout"), { name: "AbortError" }); },
+    });
+    cleanup.push(() => first.close());
+    await enablePush(first, device, uaKeys());
+    await first.test(device);
+    first.close();
+    s.db.run("UPDATE notification_deliveries SET state = ?", [state]);
+    now += 120_000;
+    const recovered = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => new Response(null, { status: 201 }),
+    });
+    cleanup.push(() => recovered.close());
+    recovered.recoverScheduled();
+    expect(s.db.query("SELECT state FROM notification_deliveries").all()).toEqual([{ state: "expired" }]);
+    expect(await recovered.test(device)).toMatchObject({ status: "accepted" });
+  });
+
+  test("an expired retry also releases automatic notification delivery", async () => {
+    const s = store();
+    const device = ulid();
+    const you = youBot(s);
+    const vapid = vapidBytes();
+    let now = Date.now();
+    let attempts = 0;
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => {
+        if (++attempts === 1) throw Object.assign(new Error("timeout"), { name: "AbortError" });
+        return new Response(null, { status: 201 });
+      },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    await service.test(device);
+    now += 120_000;
+    s.insertMessage({ sessionId: you.session.id, kind: "bot", author: you.bot.id, body: "a new reply" });
+    await service.flush();
+    expect(attempts).toBe(2);
+    expect(s.db.query("SELECT state FROM notification_deliveries ORDER BY created_at").all())
+      .toEqual([{ state: "expired" }, { state: "accepted" }]);
+  });
+
+  test("recovery preserves an in-flight delivery even across its deadline", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    let now = Date.now();
+    const started = Promise.withResolvers<void>();
+    const response = Promise.withResolvers<Response>();
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      now: () => now,
+      fetch: async () => { started.resolve(); return response.promise; },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    const sending = service.test(device);
+    await started.promise;
+    now += 120_000;
+    service.recoverScheduled();
+    await expect(service.test(device)).rejects.toMatchObject({ code: "push_pending" });
+    expect(s.db.query("SELECT state FROM notification_deliveries").all()).toEqual([{ state: "claimed" }]);
+    response.resolve(new Response(null, { status: 201 }));
+    expect(await sending).toMatchObject({ status: "accepted" });
+  });
+
+  test("test reports the timeout that caused a queued retry", async () => {
+    const s = store();
+    const device = ulid();
+    const vapid = vapidBytes();
+    const service = new PushService({
+      store: s,
+      native: { read: async () => new Uint8Array(vapid) },
+      pausedUpgrade: false,
+      fetch: async () => { throw Object.assign(new Error("timeout"), { name: "AbortError" }); },
+    });
+    cleanup.push(() => service.close());
+    await enablePush(service, device, uaKeys());
+    expect(await service.test(device)).toEqual({ ok: true, status: "queued", error_code: "timeout" });
+  });
   test("service.test(deviceId) obeys 60s per-device rate limit", async () => {
     const s = store();
     const device = ulid();

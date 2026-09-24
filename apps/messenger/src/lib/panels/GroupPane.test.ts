@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import { aBot, aGroup, fakeRuntime } from "../test-fixtures.ts";
-import { buttonByText, click, fieldErrors, fill, render } from "../test-render.ts";
-import GroupPane, { type GroupDetailDraft } from "./GroupPane.svelte";
+import { buttonByText, click, render } from "../test-render.ts";
+import GroupPane from "./GroupPane.svelte";
+import type { GroupDetailDraft } from "./group-edit.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 
 const t = copyFor("zh");
@@ -28,48 +29,12 @@ function open(detail: GroupDetailDraft, selected = aGroup()) {
   return { ...view, runtime };
 }
 
-test("shows the group's name and its members", () => {
+test("shows the group's members", () => {
   const { host, close } = open(aDraft());
-  expect((host.querySelector("input[type=text]") as HTMLInputElement).value).toBe("视频组");
+  expect(host.querySelector("#detail-group-name")).toBeNull();
   expect(host.textContent).toContain("甲");
   expect(host.textContent).toContain("乙");
   close();
-});
-
-test("a blank name reports itself and sends no patch", () => {
-  const detail = aDraft();
-  const { host, runtime, close } = open(detail);
-  fill(host.querySelector("input[type=text]"), "   ");
-  click(buttonByText(host, t.detail.saveName));
-  expect(fieldErrors(host)).toContain(t.sidebar.groupNameEmpty);
-  expect(runtime.calls.filter((c) => c.name === "patchSession")).toHaveLength(0);
-  close();
-});
-
-test("saving a new name patches the session", () => {
-  const detail = aDraft();
-  const { host, runtime, close } = open(detail);
-  fill(host.querySelector("input[type=text]"), "新名字");
-  click(buttonByText(host, t.detail.saveName));
-  const call = runtime.calls.find((c) => c.name === "patchSession");
-  expect(call?.args).toEqual(["sess-1", { name: "新名字" }]);
-  close();
-});
-
-/**
- * The draft is the shell's, not the pane's, precisely so that closing the drawer and opening it
- * again on the same session still shows what you typed. This is the decision, written down.
- */
-test("an unsaved name survives closing and reopening the pane", () => {
-  const detail = aDraft();
-  const first = open(detail);
-  fill(first.host.querySelector("input[type=text]"), "打了一半");
-  expect(detail.name).toBe("打了一半");
-  first.close();
-
-  const second = open(detail);
-  expect((second.host.querySelector("input[type=text]") as HTMLInputElement).value).toBe("打了一半");
-  second.close();
 });
 
 /** Three Bots in: a group is allowed to drop to two, so removal is only offered above that. */

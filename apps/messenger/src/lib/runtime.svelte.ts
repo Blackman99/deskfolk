@@ -1,6 +1,11 @@
 import {
+  FILE_DROP_SESSION_ID,
   USER_MEMBER,
+  type Attachment,
+  type CatchupResponse,
   type ClientEvent,
+  type EventCursor,
+  type SyncFrame,
   type SequencedEvent,
   type CreateBotRequest,
   type CreateGroupRequest,
@@ -34,10 +39,13 @@ import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
 import { collectUntilMessage } from "./sidebar/search-jump.ts";
-import { classifySession, youBotSession } from "./sidebar/session-groups.ts";
+import { classifySession, isFileDropSession, youBotSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
 import { canonicalRelpath, mergeAnnotationRows } from "./annotations/model.ts";
 import { EventSync } from "./event-sync.ts";
+import { SessionView } from "./session-view.svelte.ts";
+import type { TraceFocus } from "./overlays/task-trace.ts";
+import type { PaneContent } from "./workbench/pane-content.ts";
 import { stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
@@ -117,7 +125,8 @@ import {
  */
 export type Connection = "connecting" | "connected" | "disconnected";
 export type HostUnreachable = "runtime" | "host";
-export type DraftReconnect = { draft: string; confirm: boolean } | null;
+/** A draft kept across a dropped connection, and the conversation it was being written in. */
+export type DraftReconnect = { sessionId: string; draft: string; confirm: boolean } | null;
 
 const RETRY_MS = 1000;
 /**
@@ -139,6 +148,11 @@ export function nextRemoteRetry(previous: number, random = Math.random): number 
 const HOST_PAIRING_POLL_MS = 3000;
 /** Attempts that still read as "connecting" before the page says the host cannot be reached. */
 const CONNECTING_ATTEMPTS = 3;
+/**
+ * Past this many missed events a phone takes the snapshot instead: replaying hundreds of frames
+ * costs about what the snapshot does, and the snapshot also re-reads the open conversation.
+ */
+const RESUME_MAX_EVENTS = 300;
 
 export type HostPairing =
   | null
@@ -161,7 +175,90 @@ export class MessengerRuntime {
   /** Consecutive failed attempts since the last connection; the first few are still "connecting". */
   private connectFailures = 0;
   snapshot = $state<Snapshot>(emptySnapshot());
-  selectedId = $state<string | null>(null);
+  private selectedIdValue = $state<string | null>(null);
+  /**
+   * The conversation the app is pointed at. Setting it makes its view first: everything below
+   * reads through `activeView`, so a view that arrived late would leave the first read of a draft
+   * or a loading flag looking at the empty defaults.
+   */
+  get selectedId(): string | null { return this.selectedIdValue; }
+  set selectedId(value: string | null) {
+    if (value) this.sessionView(value);
+    this.selectedIdValue = value;
+  }
+  /**
+   * Every conversation that is open, by id: each pane on the workbench reads its own. A plain map,
+   * so a pane can make its conversation's view while it renders — a view is made once and never
+   * replaced, its fields are what is reactive, and `selectedId` makes the selected one's view
+   * before it moves, so the forwards below never read a view that is not there yet.
+   */
+  private readonly views = new Map<string, SessionView>();
+
+  /** The view for a session, made on first use. */
+  sessionView(id: string): SessionView {
+    let view = this.views.get(id);
+    if (!view) {
+      view = new SessionView(id);
+      this.views.set(id, view);
+    }
+    return view;
+  }
+
+  /** The conversation the app is pointed at, or null when none is. */
+  get activeView(): SessionView | null {
+    return this.selectedId ? (this.views.get(this.selectedId) ?? null) : null;
+  }
+
+  /** The view an action is about: the conversation it names, or the selected one. */
+  private viewFor(sessionId: string | null | undefined): SessionView | null {
+    return sessionId ? this.sessionView(sessionId) : this.activeView;
+  }
+
+  /**
+   * The fields below used to be plain state on this class, one slot each, which is what made a
+   * second open conversation impossible. They now live on the view and are forwarded here under
+   * their old names so that every caller — the composer, the stage, the sidebar, the URL effects —
+   * kept working untouched when they moved.
+   */
+  get draft(): string { return this.activeView?.draft ?? ""; }
+  set draft(value: string) { const view = this.activeView; if (view) view.draft = value; }
+
+  get replyingToId(): string | null { return this.activeView?.replyingToId ?? null; }
+  set replyingToId(value: string | null) { const view = this.activeView; if (view) view.replyingToId = value; }
+
+  get focusedTurnId(): string | null { return this.activeView?.focusedTurnId ?? null; }
+  set focusedTurnId(value: string | null) { const view = this.activeView; if (view) view.focusedTurnId = value; }
+
+  get highlightedMessageId(): string | null { return this.activeView?.highlightedMessageId ?? null; }
+  set highlightedMessageId(value: string | null) { const view = this.activeView; if (view) view.highlightedMessageId = value; }
+
+  get searchHighlightToken(): number { return this.activeView?.searchHighlightToken ?? 0; }
+  set searchHighlightToken(value: number) { const view = this.activeView; if (view) view.searchHighlightToken = value; }
+
+  get composerSuggestions(): ComposerSuggestion[] { return this.activeView?.composerSuggestions ?? []; }
+  set composerSuggestions(value: ComposerSuggestion[]) { const view = this.activeView; if (view) view.composerSuggestions = value; }
+
+  /** Whether the selected conversation has a send in flight. Each conversation has its own. */
+  get busy(): boolean { return this.activeView?.sending ?? false; }
+  set busy(value: boolean) { const view = this.activeView; if (view) view.sending = value; }
+
+  get historyLoading(): boolean { return this.activeView?.historyLoading ?? false; }
+  set historyLoading(value: boolean) { const view = this.activeView; if (view) view.historyLoading = value; }
+
+  get olderLoading(): boolean { return this.activeView?.olderLoading ?? false; }
+  set olderLoading(value: boolean) { const view = this.activeView; if (view) view.olderLoading = value; }
+
+  private get sessionMessageNext(): string | null { return this.activeView?.messageNext ?? null; }
+  private set sessionMessageNext(value: string | null) { const view = this.activeView; if (view) view.messageNext = value; }
+
+  private get sessionDetailId(): string | null {
+    const view = this.activeView;
+    return view?.detailLoaded ? view.sessionId : null;
+  }
+  private set sessionDetailId(value: string | null) {
+    const view = this.activeView;
+    if (view) view.detailLoaded = value === view.sessionId;
+  }
   /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
   previewRelpath = $state<string | null>(null);
   previewMessageId = $state<string | null>(null);
@@ -173,18 +270,26 @@ export class MessengerRuntime {
    */
   annotationFileKeys = $state<Record<string, string>>({});
   forceArtifactTree = $state(false);
+  previewTaskId = $state<string | null>(null);
+  previewSiblings = $state<Attachment[] | null>(null);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
   createGroupOpen = $state(false);
   sessionSettingsOpen = $state(false);
-  routeLogOpen = $state(false);
   /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
   traceTaskId = $state<string | null>(null);
   /** The session the trace was opened from. The chat can move on; the window stays on this job. */
   traceSessionId = $state<string | null>(null);
+  /**
+   * The message the open board should centre, and which request it was.
+   *
+   * The token climbs each time a message asks, so asking again for the card already on screen
+   * still moves there. The header's board has neither.
+   */
+  traceFocus = $state<TraceFocus | null>(null);
+  traceFocusToken = $state(0);
   /** Bumped when a turn or message of the open job changes, so the trace pulls again. */
   traceReload = $state(0);
-  routesLoading = $state(false);
   profileBotId = $state<string | null>(null);
   profileRoutineId = $state<string | null>(null);
   workspaceOpen = $state(false);
@@ -194,14 +299,7 @@ export class MessengerRuntime {
   threadOpen = $state(false);
   searchQuery = $state("");
   searchHits = $state<SearchHit[]>([]);
-  composerSuggestions = $state<ComposerSuggestion[]>([]);
-  draft = $state("");
-  replyingToId = $state<string | null>(null);
-  busy = $state(false);
   pendingMutation = $state<{ id: string; code: string } | null>(null);
-  focusedTurnId = $state<string | null>(null);
-  highlightedMessageId = $state<string | null>(null);
-  searchHighlightToken = $state(0);
   workspacePath = $state("");
   endpointUrl = $state("");
   endpointKey = $state("");
@@ -235,6 +333,7 @@ export class MessengerRuntime {
   pushEnabled = $state(false);
   pushBusy = $state(false);
   pushError = $state<string | null>(null);
+  pushErrorCode = $state<string | null>(null);
   pushPermission = $state<PushPermission>("unsupported");
 
   notificationSummary = $state<NotificationSummary>(EMPTY_NOTIFICATION_SUMMARY);
@@ -265,11 +364,19 @@ export class MessengerRuntime {
   private presenceTimer: ReturnType<typeof setInterval> | null = null;
 
   private api: MessengerApi | null = null;
-  /** The read this conversation has already put on record: `<session>:<message>`. */
-  private boundedReadSent: string | null = null;
+  /**
+   * The read each conversation has already put on record, session id to message id. One slot for
+   * the whole app was enough while only one conversation could be on screen; with several, the
+   * second one's read landed on the first one's slot and was swallowed.
+   */
+  private readonly boundedReadSent = new Map<string, string>();
   private ws: WebSocket | null = null;
-  /** One sink per live stream id: a terminal session, or a Bot's running command. */
-  private readonly streamSinks = new Map<string, (frame: StreamFrame) => void>();
+  /**
+   * The readers of each live stream id — a terminal session, or a Bot's running command. A set
+   * rather than one sink: the same terminal can be shown in two places at once, and a second
+   * reader used to replace the first silently instead of joining it.
+   */
+  private readonly streamSinks = new Map<string, Set<(frame: StreamFrame) => void>>();
   /**
    * What the Bots' commands are printing right now. Not `$state` itself — it is a plain map that
    * a frame mutates many times a second; {@link activityRevision} is what the view watches.
@@ -277,24 +384,31 @@ export class MessengerRuntime {
   readonly activity = new CommandActivity();
   activityRevision = $state(0);
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** When the loop owes its next attempt. A wake-up may bring the timer here, never past it. */
+  private nextAttemptAt = 0;
+  private ticking = false;
   private stopped = false;
   private searchSeq = 0;
-  private pendingFocusTrigger: string | null = null;
-  /** The first page of a selected session is in flight: the stage waits rather than looks empty. */
-  historyLoading = $state(false);
-  /** A page further back is in flight, asked for by scrolling to the top of what is loaded. */
-  olderLoading = $state(false);
-  private sessionMessageNext = $state<string | null>(null);
-  private sessionDetailId: string | null = null;
-  private highlightTimer: ReturnType<typeof setTimeout> | null = null;
-  private routesInFlight: string | null = null;
   private suggestAbort: AbortController | null = null;
   private suggestTimer: ReturnType<typeof setTimeout> | null = null;
   private suggestSeq = 0;
   private sync: EventSync | null = null;
+  /**
+   * Where the page was when its last remote link went: the event cursor it had applied and each
+   * open conversation's history state. Coming back to the same Mac, it replays only what it
+   * missed from here — a few KB — instead of the whole snapshot and every open transcript.
+   */
+  private resumePoint: {
+    cursor: EventCursor;
+    views: Map<SessionView, { detailLoaded: boolean; messageNext: string | null }>;
+  } | null = null;
   private sessionLoad = Promise.resolve();
-  private sessionSeq = 0;
-  private historyRevision = 0;
+  /**
+   * Bumped when the connection is replaced. The per-conversation counters say "a newer read of
+   * this conversation started"; this one says "every read in flight belongs to a dead socket".
+   * They were one counter, which is why loading a second conversation cancelled the first.
+   */
+  private connectionSeq = 0;
   /**
    * While an annotation list is on its way, the ids an event or a write's reply changed since, by
    * a running count: the list was read before them, so for those rows the snapshot is the newer
@@ -322,6 +436,7 @@ export class MessengerRuntime {
     if (typeof window !== "undefined") {
       window.addEventListener("focus", this.onWindowFocus);
       window.addEventListener("blur", this.onWindowBlur);
+      window.addEventListener("online", this.onNetworkOnline);
       document.addEventListener("visibilitychange", this.onWindowVisibility);
     }
     this.pump();
@@ -343,11 +458,12 @@ export class MessengerRuntime {
     if (typeof window !== "undefined") {
       window.removeEventListener("focus", this.onWindowFocus);
       window.removeEventListener("blur", this.onWindowBlur);
+      window.removeEventListener("online", this.onNetworkOnline);
       document.removeEventListener("visibilitychange", this.onWindowVisibility);
     }
     this.markDisconnected();
     if (this.timer) clearTimeout(this.timer);
-    this.clearHighlightTimer();
+    for (const view of this.views.values()) this.clearHighlightTimer(view);
     this.cancelComposerSuggestions();
   }
 
@@ -378,6 +494,7 @@ export class MessengerRuntime {
   }
 
   openSessionSettings(): void {
+    if (this.selectedId && this.toPane({ kind: "chat", sessionId: this.selectedId, side: { kind: "settings", botId: null } })) return;
     this.profileNavigation++;
     this.profileRoutineId = null;
     this.settingsOpen = false;
@@ -391,28 +508,55 @@ export class MessengerRuntime {
   }
 
   /** The model choice log is its own overlay, not a card inside the session panel. */
-  toggleRouteLog(): void {
-    if (this.routeLogOpen) {
-      this.routeLogOpen = false;
-      return;
-    }
-    if (!this.selectedId) return;
-    this.closeSheets();
-    this.threadOpen = false;
-    this.routeLogOpen = true;
-    void this.refreshRoutes(this.selectedId);
+  /**
+   * Where an "open this" goes.
+   *
+   * The desktop shell sets this while the workbench is on, and every opener below asks it first.
+   * One branch point rather than a condition inside each of them: with a dozen call sites the
+   * rule "the desktop never sets those flags" has to be enforceable, not merely intended.
+   */
+  paneOpener: ((content: PaneContent) => void) | null = null;
+
+  private toPane(content: PaneContent): boolean {
+    const open = this.paneOpener;
+    if (!open) return false;
+    open(content);
+    return true;
   }
 
   /** Sessions the daemon holds. Lifecycle only; the bytes are a stream, not state. */
   terminals = $state<Terminal[]>([]);
+  /** Whether `terminals` has been read at all. An empty list before that means "not asked yet". */
+  terminalsLoaded = $state(false);
   terminalOpen = $state(false);
 
   openTerminal(): void {
+    void this.refreshTerminals();
+    if (this.toPane({ kind: "terminal", terminalId: null })) return;
     this.closeSheets();
     void this.refreshTerminals();
     this.threadOpen = false;
-    this.routeLogOpen = false;
     this.terminalOpen = true;
+  }
+
+  /**
+   * A new shell in the workspace, in the list before the next read comes back: a desktop tab
+   * bound to it must not be healed away for naming a session nobody has heard of yet. Null when
+   * there is no workspace or the daemon would not start one; the tab says so itself.
+   */
+  async startTerminal(): Promise<Terminal | null> {
+    const api = this.api;
+    const where = this.snapshot.settings.workspace_path;
+    if (!api || !where) return null;
+    try {
+      const created = await api.openTerminal(where, 24, 80);
+      if (this.api === api && !this.terminals.some((row) => row.id === created.id)) {
+        this.terminals = [...this.terminals, created];
+      }
+      return created;
+    } catch {
+      return null;
+    }
   }
 
   /** The daemon is the list's source of truth; events keep it fresh after this first read. */
@@ -421,7 +565,10 @@ export class MessengerRuntime {
     if (!api) return;
     try {
       const items = await api.terminals();
-      if (this.api === api) this.terminals = items;
+      if (this.api === api) {
+        this.terminals = items;
+        this.terminalsLoaded = true;
+      }
     } catch {
       // A list that will not load is not worth a banner; the pane shows its own failure.
     }
@@ -431,23 +578,58 @@ export class MessengerRuntime {
     this.terminalOpen = false;
   }
 
-  closeRouteLog(): void {
-    this.routeLogOpen = false;
+  /** Jobs whose board is on screen outside the narrow overlay — a workbench pane — by job. */
+  private traceWatchers = new Map<string, number>();
+
+  /**
+   * Keep a board shown outside the overlay current the way the overlay is: every turn and message
+   * of its job reloads it, model choices and all. Returns the function that stops watching.
+   */
+  watchTrace(taskId: string): () => void {
+    this.traceWatchers.set(taskId, (this.traceWatchers.get(taskId) ?? 0) + 1);
+    return () => {
+      const left = (this.traceWatchers.get(taskId) ?? 1) - 1;
+      if (left > 0) this.traceWatchers.set(taskId, left);
+      else this.traceWatchers.delete(taskId);
+    };
   }
 
-  /** `taskId` null opens whatever job this session touched most recently. */
-  openTrace(taskId: string | null = null): void {
+  private boardShows(taskId: string | null | undefined): boolean {
+    if (!taskId) return false;
+    return (this.traceOpen && taskId === this.traceTaskId) || this.traceWatchers.has(taskId);
+  }
+
+  /**
+   * `taskId` null opens whatever job this session touched most recently.
+   * `focus` is the message whose card the board should move to.
+   */
+  openTrace(taskId: string | null = null, focus: TraceFocus | null = null): void {
     if (!this.selectedId) return;
+    const token = focus ? (this.traceFocusToken += 1) : 0;
+    if (this.toPane({
+      kind: "trace",
+      sessionId: this.selectedId,
+      taskId,
+      focus,
+      focusNonce: token || null,
+    })) return;
     this.closeSheets();
     this.threadOpen = false;
     this.routinesOpen = false;
     this.traceSessionId = this.selectedId;
     this.traceTaskId = taskId ?? "";
+    this.traceFocus = focus;
+    this.traceFocusToken = token;
   }
 
   closeTrace(): void {
+    this.clearTrace();
+  }
+
+  private clearTrace(): void {
     this.traceTaskId = null;
     this.traceSessionId = null;
+    this.traceFocus = null;
   }
 
   get traceOpen(): boolean {
@@ -464,9 +646,10 @@ export class MessengerRuntime {
       const api = this.api;
       const loading = this.selectSession(session.id);
       navigation = this.profileNavigation;
-      const selection = this.sessionSeq;
+      const view = this.sessionView(session.id);
+      const selection = view.loadSeq;
       await loading;
-      if (this.api !== api || this.selectedId !== session.id || this.sessionSeq !== selection ||
+      if (this.api !== api || this.selectedId !== session.id || view.loadSeq !== selection ||
         this.profileNavigation !== navigation) return;
     }
     if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
@@ -475,6 +658,7 @@ export class MessengerRuntime {
   }
 
   openProfile(botId: string): void {
+    if (this.selectedId && this.toPane({ kind: "chat", sessionId: this.selectedId, side: { kind: "settings", botId } })) return;
     this.profileNavigation++;
     this.profileRoutineId = null;
     this.settingsOpen = false;
@@ -511,6 +695,7 @@ export class MessengerRuntime {
   }
 
   openWorkspace(selected?: string | null): void {
+    if (this.toPane({ kind: "workspace", selected: selected ?? null })) return;
     this.settingsOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
@@ -528,17 +713,18 @@ export class MessengerRuntime {
    * A preview open beside the chat would cover the grid, so it goes too.
    */
   openRoutines(): void {
+    if (this.toPane({ kind: "routines" })) return;
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
-    this.traceTaskId = null;
-    this.traceSessionId = null;
-    this.routeLogOpen = false;
+    this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
     this.previewAttachmentId = null;
+    this.previewTaskId = null;
+    this.previewSiblings = null;
     this.routinesOpen = true;
   }
 
@@ -584,7 +770,7 @@ export class MessengerRuntime {
       this.settingsOpen = false;
       this.createGroupOpen = false;
       this.closeSessionSettings();
-      this.traceTaskId = null;
+      this.clearTrace();
       this.routinesOpen = false;
       this.workspaceOpen = true;
       this.workspaceSelected = overlay.selected ?? "";
@@ -608,20 +794,19 @@ export class MessengerRuntime {
       this.createGroupOpen = false;
       this.closeSessionSettings();
       this.workspaceOpen = false;
-      this.traceTaskId = null;
-      this.traceSessionId = null;
-      this.routeLogOpen = false;
-      this.threadOpen = false;
+      this.clearTrace();
+        this.threadOpen = false;
       this.previewRelpath = null;
       this.previewAttachmentId = null;
+      this.previewTaskId = null;
+      this.previewSiblings = null;
       this.routinesOpen = true;
       return;
     }
     this.settingsOpen = false;
     this.closeSessionSettings();
     this.workspaceOpen = false;
-    this.traceTaskId = null;
-    this.traceSessionId = null;
+    this.clearTrace();
     this.routinesOpen = false;
   }
 
@@ -630,9 +815,7 @@ export class MessengerRuntime {
     this.createBotOpen = false;
     this.createGroupOpen = false;
     this.closeSessionSettings();
-    this.routeLogOpen = false;
-    this.traceTaskId = null;
-    this.traceSessionId = null;
+    this.clearTrace();
     this.workspaceOpen = false;
     this.routinesOpen = false;
   }
@@ -641,10 +824,11 @@ export class MessengerRuntime {
     if (!opts?.preservePage) this.closeRoutines();
     const api = this.api;
     const sync = this.sync;
-    const selection = ++this.sessionSeq;
+    const view = this.sessionView(id);
+    const connection = this.connectionSeq;
+    const selection = ++view.loadSeq;
     const messageId = opts?.messageId;
-    this.setHighlightedMessage(messageId ?? null);
-    this.routeLogOpen = false;
+    this.setHighlightedMessage(messageId ?? null, id);
     // The window stays open across conversations and follows the one on screen.
     if (this.traceOpen && this.selectedId !== id) this.traceSessionId = id;
     if (this.selectedId !== id) {
@@ -653,18 +837,18 @@ export class MessengerRuntime {
     }
     // A selected row may still have only summary data, not its history cursor.
     if (this.selectedId === id && this.sessionDetailId === id && messageId) {
-      const revision = this.historyRevision;
+      const revision = view.revision;
       await this.ensureMessageLoaded(id, messageId);
-      if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
-        this.selectedId !== id || revision !== this.historyRevision) return;
-      this.setHighlightedMessage(messageId);
+      if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
+        selection !== view.loadSeq || this.selectedId !== id || revision !== view.revision) return;
+      this.setHighlightedMessage(messageId, id);
       return;
     }
     this.selectedId = id;
     this.sessionDetailId = null;
     this.sessionMessageNext = null;
-    this.replyingToId = null;
-    this.composerSuggestions = [];
+    // The reply you were aiming and the chips offered stay with the conversation, like its draft:
+    // clicking into another pane is not leaving this one. Fresh chips replace these when they come.
     this.scheduleComposerSuggestions(id);
     if (this.focusedTurnId) {
       const focused = this.snapshot.turns.find((turn) => turn.id === this.focusedTurnId);
@@ -681,7 +865,8 @@ export class MessengerRuntime {
     if (!api || !sync) return;
     this.historyLoading = true;
     this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
-      if (selection !== this.sessionSeq || this.api !== api || this.sync !== sync) return;
+      if (selection !== view.loadSeq || this.connectionSeq !== connection ||
+        this.api !== api || this.sync !== sync) return;
       sync.pause();
       try {
         const detail = await api.sessionSnapshot(id);
@@ -692,33 +877,37 @@ export class MessengerRuntime {
         const frames = sync.install();
         if (!frames) throw new Error("event gap");
         for (const frame of frames) this.ingest(frame.payload, frame);
-        if (selection !== this.sessionSeq) return;
+        if (selection !== view.loadSeq || this.connectionSeq !== connection) return;
         const unread = this.notificationCapabilities.bounded_read_v1 ? detail.session.unread_count : 0;
         this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements);
         // Pulled, not in the snapshot: what was sent here, and what hangs on this conversation's
         // deliveries (drafts on a Bot↔Bot artifact live in your direct but belong to this view).
-        void this.loadAnnotations({ session_id: id });
-        void this.loadAnnotations({ target_session_id: id });
+        // The file drop has no Bot, so nothing there can be annotated or annotated from.
+        if (id !== FILE_DROP_SESSION_ID) {
+          void this.loadAnnotations({ session_id: id });
+          void this.loadAnnotations({ target_session_id: id });
+        }
         for (const frame of frames) {
           if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
           if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, frame);
         }
         if (messageId) {
-          const revision = this.historyRevision;
+          const revision = view.revision;
           await this.ensureMessageLoaded(id, messageId);
-          if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq ||
-            this.selectedId !== id || revision !== this.historyRevision) return;
-          this.setHighlightedMessage(messageId);
+          if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
+            selection !== view.loadSeq || this.selectedId !== id || revision !== view.revision) return;
+          this.setHighlightedMessage(messageId, id);
         }
-        if (this.api !== api || this.sync !== sync || selection !== this.sessionSeq || this.selectedId !== id) return;
+        if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
+          selection !== view.loadSeq || this.selectedId !== id) return;
         if (!this.notificationCapabilities.bounded_read_v1) {
           await this.markSessionRead(id);
         }
       } catch {
         if (this.api === api) this.markDisconnected();
       } finally {
-        // Only the newest selection owns the flag; an older one finishing must not clear it.
-        if (selection === this.sessionSeq) this.historyLoading = false;
+        // Only the newest read of this conversation owns its flag; an older one must not clear it.
+        if (selection === view.loadSeq && this.connectionSeq === connection) view.historyLoading = false;
       }
     });
     await this.sessionLoad;
@@ -734,20 +923,24 @@ export class MessengerRuntime {
    * after the selection moved, the history was cleared, or the connection was replaced is
    * dropped rather than mixed into a transcript it does not belong to.
    */
-  async loadOlderMessages(): Promise<void> {
+  async loadOlderMessages(sessionId?: string): Promise<void> {
     const api = this.api;
     const sync = this.sync;
-    const id = this.selectedId;
-    const cursor = this.sessionMessageNext;
-    if (!api || !id || !cursor || this.olderLoading) return;
-    const selection = this.sessionSeq;
-    const revision = this.historyRevision;
-    this.olderLoading = true;
+    const id = sessionId ?? this.selectedId;
+    if (!api || !id) return;
+    // A pane scrolled to its top pages its own conversation back, in front or not.
+    const view = this.sessionView(id);
+    const cursor = view.messageNext;
+    if (!cursor || view.olderLoading) return;
+    const connection = this.connectionSeq;
+    const selection = view.loadSeq;
+    const revision = view.revision;
+    view.olderLoading = true;
     try {
       const page = await api.messages(id, { cursor });
-      if (this.api !== api || this.sync !== sync || this.selectedId !== id ||
-        this.sessionSeq !== selection || this.historyRevision !== revision) return;
-      this.sessionMessageNext = page.next ?? null;
+      if (this.api !== api || this.sync !== sync ||
+        this.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
+      view.messageNext = page.next ?? null;
       const known = new Set(this.snapshot.messages.map((message) => message.id));
       const added = page.items.filter((message) => !known.has(message.id));
       if (added.length > 0) {
@@ -756,7 +949,7 @@ export class MessengerRuntime {
     } catch {
       // What is on screen stays; a real drop surfaces as the socket closing.
     } finally {
-      this.olderLoading = false;
+      view.olderLoading = false;
     }
   }
 
@@ -767,30 +960,6 @@ export class MessengerRuntime {
       await api.markSessionRead(id);
     } catch {
       // The selected session is already shown as read; socket failure owns reconnection.
-    }
-  }
-
-  /**
-   * Model choices are not pushed over the socket. The log pulls them when it opens and again
-   * whenever a turn here changes state, so a finished turn's outcome and feedback land on their own.
-   */
-  async refreshRoutes(sessionId: string): Promise<void> {
-    if (!this.api || this.routesInFlight === sessionId) return;
-    this.routesInFlight = sessionId;
-    this.routesLoading = true;
-    try {
-      const { items, reviews, learnings } = await this.api.routes(sessionId);
-      this.snapshot = {
-        ...this.snapshot,
-        routes: [...this.snapshot.routes.filter((r) => r.session_id !== sessionId), ...items],
-        routeReviews: reviews,
-        routeLearnings: learnings,
-      };
-    } catch {
-      // Keep the rows already on screen; a real drop shows up as the socket closing.
-    } finally {
-      this.routesInFlight = null;
-      this.routesLoading = false;
     }
   }
 
@@ -1079,14 +1248,12 @@ export class MessengerRuntime {
       };
       for (const row of sent.annotations) if (held.has(row.id)) this.noteAnnotationWrite(row.id);
       this.annotationFocusId = null;
-      if (sent.message.session_id === this.selectedId) {
-        this.pendingFocusTrigger = sent.message.id;
-        this.claimFocus(sent.message.id);
-        this.setHighlightedMessage(sent.message.id);
-      } else {
-        this.pendingFocusTrigger = sent.message.id;
-        void this.selectSession(sent.message.session_id, { messageId: sent.message.id });
-      }
+      // The conversation the reply landed in follows the turn it wakes, whichever pane shows it.
+      const landed = sent.message.session_id;
+      this.sessionView(landed).pendingFocusTrigger = sent.message.id;
+      this.claimFocus(landed, sent.message.id);
+      if (landed === this.selectedId) this.setHighlightedMessage(sent.message.id, landed);
+      else void this.selectSession(landed, { messageId: sent.message.id });
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
@@ -1211,10 +1378,11 @@ export class MessengerRuntime {
     try {
       await api.deleteSession(id);
       if (this.api !== api) return null;
+      const view = this.views.get(id);
+      if (view) view.focusedTurnId = null;
       if (this.selectedId === id) {
         this.selectedId = null;
         this.closeSessionSettings();
-        this.focusedTurnId = null;
       }
       return null;
     } catch (error) {
@@ -1228,10 +1396,12 @@ export class MessengerRuntime {
     try {
       await api.clearSessionHistory(id);
       if (this.api !== api) return null;
-      if (this.selectedId === id) {
-        this.focusedTurnId = null;
-        this.setHighlightedMessage(null);
-        this.sessionMessageNext = null;
+      // That conversation's own view, whether or not it is the one in front.
+      const view = this.views.get(id);
+      if (view) {
+        view.focusedTurnId = null;
+        view.messageNext = null;
+        this.clearHighlight(view);
       }
       return null;
     } catch (error) {
@@ -1358,33 +1528,40 @@ export class MessengerRuntime {
     }
   }
 
-  async send(opts?: { attachments?: File[] }): Promise<void> {
+  /**
+   * Send what is drafted in a conversation — the one named, or the selected one. On the workbench
+   * a pane always names its own: the selected conversation is whichever pane has the keyboard.
+   */
+  async send(opts?: { attachments?: File[]; sessionId?: string }): Promise<void> {
     const api = this.api;
-    const id = this.selectedId;
-    const body = this.draft.trim();
+    const id = opts?.sessionId ?? this.selectedId;
+    const view = this.viewFor(id);
+    if (!view) return;
+    const body = view.draft.trim();
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
-    if (!api || !id || (!body && !hasAttachments) || this.busy) return;
-    if (this.draftReconnect && !this.draftReconnect.confirm) return;
-    const parentId = this.replyingToId;
-    this.busy = true;
+    if (!api || !id || (!body && !hasAttachments) || view.sending) return;
+    const kept = this.draftReconnect;
+    if (kept && !kept.confirm && kept.sessionId === id) return;
+    const parentId = view.replyingToId;
+    view.sending = true;
     try {
       const message = await api.postMessage(id, body, {
         attachments: opts?.attachments,
         parentId,
       });
-      if (this.draftReconnect?.confirm) this.draftReconnect = null;
+      if (this.draftReconnect?.confirm && this.draftReconnect.sessionId === id) this.draftReconnect = null;
       if (this.api !== api) return;
-      this.draft = "";
-      this.replyingToId = null;
-      this.pendingFocusTrigger = message.id;
-      this.claimFocus(message.id);
+      view.draft = "";
+      view.replyingToId = null;
+      view.pendingFocusTrigger = message.id;
+      this.claimFocus(id, message.id);
     } catch (error) {
       if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
       this.keepUnknownRequest(error, api);
       this.markDisconnected();
     } finally {
-      if (this.api === api) this.busy = false;
+      if (this.api === api) view.sending = false;
     }
   }
 
@@ -1419,9 +1596,11 @@ export class MessengerRuntime {
     this.askDrafts = nextMap;
   }
 
-  async sendAsk(askId: string, body: string): Promise<SendAskResult> {
+  async sendAsk(askId: string, body: string, sessionId?: string): Promise<SendAskResult> {
     const api = this.api;
-    const id = this.selectedId;
+    const id = sessionId ?? this.selectedId;
+    const view = this.viewFor(id);
+    const sending = view?.sending ?? false;
     const text = body.trim();
     const existingDraft = this.askDrafts.get(askId);
     const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
@@ -1429,7 +1608,7 @@ export class MessengerRuntime {
       const pendingId = turn ? (turn.pending_ask_id ?? null) : null;
       const notAllowed = askSubmitAllowed(
         this.connection === "connected",
-        this.busy,
+        sending,
         text,
         pendingId,
         askId,
@@ -1439,12 +1618,12 @@ export class MessengerRuntime {
     } else {
       if (!text) return { status: "not_submitted", reason: "empty" };
       if (this.connection !== "connected") return { status: "not_submitted", reason: "disconnected" };
-      if (this.busy) return { status: "not_submitted", reason: "busy" };
+      if (sending) return { status: "not_submitted", reason: "busy" };
     }
-    if (!api || !id) return { status: "not_submitted", reason: "disconnected" };
+    if (!api || !id || !view) return { status: "not_submitted", reason: "disconnected" };
 
     const reqId = existingDraft?.requestId;
-    this.busy = true;
+    view.sending = true;
     try {
       const res = await api.postMessage(id, text, { askId, ...(reqId ? { requestId: reqId } : {}) });
       return {
@@ -1478,7 +1657,7 @@ export class MessengerRuntime {
       const apiError = new ApiError(500, "failed", error instanceof Error ? error.message : "request failed");
       return { status: "rejected", error: apiError };
     } finally {
-      if (this.api === api) this.busy = false;
+      if (this.api === api) view.sending = false;
     }
   }
 
@@ -1800,7 +1979,7 @@ export class MessengerRuntime {
     }
   }
 
-  async sendTestNotification(): Promise<{ ok: boolean; status: string }> {
+  async sendTestNotification(): Promise<{ ok: boolean; status: string; error_code?: string | null }> {
     const api = this.api;
     const copy = copyFor(this.snapshot.settings.locale).notifications;
     if (!api) {
@@ -2012,9 +2191,8 @@ export class MessengerRuntime {
   async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
     const api = this.api;
     if (!api || this.connection !== "connected" || this.selectedId !== sessionId) return;
-    const key = `${sessionId}:${messageId}`;
-    if (this.boundedReadSent === key) return;
-    this.boundedReadSent = key;
+    if (this.boundedReadSent.get(sessionId) === messageId) return;
+    this.boundedReadSent.set(sessionId, messageId);
     try {
       const detail = await api.markSessionReadThrough(sessionId, messageId);
       if (this.api !== api) return;
@@ -2035,7 +2213,7 @@ export class MessengerRuntime {
       };
     } catch {
       // Bounded read failure is non-fatal, but the next attempt must be allowed through.
-      if (this.boundedReadSent === key) this.boundedReadSent = null;
+      if (this.boundedReadSent.get(sessionId) === messageId) this.boundedReadSent.delete(sessionId);
     }
   }
 
@@ -2143,15 +2321,17 @@ export class MessengerRuntime {
     }
   }
 
-  async stopTurn(): Promise<void> {
+  /** Stop the turn a conversation is on — the one named, or the selected one. */
+  async stopTurn(sessionId?: string): Promise<void> {
     const api = this.api;
     if (!api || this.connection !== "connected") return;
-    const selected = this.snapshot.sessions.find((session) => session.id === this.selectedId);
+    const id = sessionId ?? this.selectedId;
+    const session = this.snapshot.sessions.find((row) => row.id === id);
     const turnId = stopTarget(
       this.snapshot.turns,
-      this.selectedId,
-      this.focusedTurnId,
-      selected?.kind ?? null,
+      id,
+      this.viewFor(id)?.focusedTurnId ?? null,
+      session?.kind ?? null,
     );
     if (!turnId) return;
     try {
@@ -2161,19 +2341,20 @@ export class MessengerRuntime {
     }
   }
 
-  async continueInterrupt(messageId: string): Promise<void> {
+  async continueInterrupt(messageId: string, sessionId?: string): Promise<void> {
     const api = this.api;
-    if (!api || this.connection !== "connected" || this.busy) return;
-    this.busy = true;
+    const view = this.viewFor(sessionId);
+    if (!api || !view || this.connection !== "connected" || view.sending) return;
+    view.sending = true;
     try {
       const turn = await api.continueInterrupt(messageId);
-      if (this.api === api) this.focusedTurnId = turn.id;
+      if (this.api === api) view.focusedTurnId = turn.id;
     } catch (error) {
       if (this.api !== api) return;
       if (error instanceof ApiError && error.status === 422) return;
       this.markDisconnected();
     } finally {
-      if (this.api === api) this.busy = false;
+      if (this.api === api) view.sending = false;
     }
   }
 
@@ -2181,10 +2362,12 @@ export class MessengerRuntime {
     id: string,
     action: ResolveApprovalRequest["action"],
     apiKey?: string,
+    sessionId?: string,
   ): Promise<ApiError | null> {
     const api = this.api;
-    if (!api || this.busy) return null;
-    this.busy = true;
+    const view = this.viewFor(sessionId);
+    if (!api || !view || view.sending) return null;
+    view.sending = true;
     try {
       const body: ResolveApprovalRequest = { action };
       if (typeof apiKey === "string" && apiKey.length > 0) body.api_key = apiKey;
@@ -2196,7 +2379,7 @@ export class MessengerRuntime {
       this.markDisconnected();
       return null;
     } finally {
-      if (this.api === api) this.busy = false;
+      if (this.api === api) view.sending = false;
     }
   }
 
@@ -2252,7 +2435,8 @@ export class MessengerRuntime {
   }
 
   discardDraftReconnect(): void {
-    this.draft = "";
+    const kept = this.draftReconnect;
+    if (kept) this.sessionView(kept.sessionId).draft = "";
     this.draftReconnect = null;
   }
 
@@ -2484,6 +2668,7 @@ export class MessengerRuntime {
   private readonly onWindowFocus = (): void => {
     if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
     else void this.sendPresenceHeartbeat();
+    this.reconnectNow();
   };
 
   private readonly onWindowBlur = (): void => {
@@ -2493,6 +2678,14 @@ export class MessengerRuntime {
   private readonly onWindowVisibility = (): void => {
     if (this.isDesktopShell) void this.reportDesktopNotificationView(false);
     else if (document.visibilityState === "visible") void this.sendPresenceHeartbeat();
+    // A phone freezes this page while it is away and thaws it when you look again. That is the
+    // moment the timer it left behind is worth the least, so the loop is asked again here.
+    if (document.visibilityState === "visible") this.reconnectNow();
+  };
+
+  /** The radio came back. Nothing else is going to say so. */
+  private readonly onNetworkOnline = (): void => {
+    this.reconnectNow();
   };
 
   private readonly onPushMessage = (event: MessageEvent): void => {
@@ -2503,9 +2696,7 @@ export class MessengerRuntime {
       }
     }
     this.dispatchNotificationIntent({ openInbox: true });
-    if (this.connection !== "connected") {
-      this.pump();
-    }
+    this.reconnectNow();
   };
 
   async setPushEnabled(enabled: boolean): Promise<DisablePushResult | boolean> {
@@ -2521,23 +2712,29 @@ export class MessengerRuntime {
     if (!(api instanceof RemoteApi) || this.pushBusy) return false;
     this.pushBusy = true;
     this.pushError = null;
+    this.pushErrorCode = null;
     this.pushPermission = pushPermission();
     try {
       if (enabled) {
         await enablePush(api, "enable");
         this.pushEnabled = true;
         this.pushSubscribed = true;
+        this.pushRecovery = "none";
         this.pushPermission = pushPermission();
+        await this.loadNotificationDevice();
         return true;
       } else {
         const outcome = await disablePush(api);
         this.pushEnabled = !outcome.hostDisabled;
         this.pushSubscribed = !outcome.localRemoved;
         this.pushPermission = pushPermission();
+        await this.loadNotificationDevice();
         return outcome;
       }
     } catch (error) {
       this.pushPermission = pushPermission();
+      this.pushErrorCode = error instanceof ApiError ? error.code
+        : error instanceof Error && error.name !== "Error" ? error.name : null;
       this.pushError = error instanceof Error && error.message === "denied" ? "denied"
         : error instanceof Error && error.message === "unsupported" ? "unsupported"
         : "failed";
@@ -2636,8 +2833,9 @@ export class MessengerRuntime {
   }
 
   private rememberDraftOnDisconnect(): void {
+    const id = this.selectedId;
     const draft = this.draft.trim();
-    if (draft && !this.draftReconnect) this.draftReconnect = { draft, confirm: false };
+    if (id && draft && !this.draftReconnect) this.draftReconnect = { sessionId: id, draft, confirm: false };
   }
 
   private async installSnapshot(api: MessengerApi, sync: EventSync, snapshot: RuntimeSnapshot): Promise<void> {
@@ -2672,9 +2870,13 @@ export class MessengerRuntime {
     this.endpointKey = "";
     this.connection = "connected";
     this.connectFailures = 0;
-    this.focusedTurnId = null;
-    this.pendingFocusTrigger = null;
-    if (this.draftReconnect && !this.draftReconnect.confirm) this.draft = this.draftReconnect.draft;
+    for (const view of this.views.values()) {
+      view.focusedTurnId = null;
+      view.pendingFocusTrigger = null;
+    }
+    // Back into the conversation it was written in, whichever pane has the keyboard now.
+    const kept = this.draftReconnect;
+    if (kept && !kept.confirm) this.sessionView(kept.sessionId).draft = kept.draft;
     const selected = this.selectedId;
     if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
       void this.selectSession(selected, { preservePage: true });
@@ -2715,12 +2917,79 @@ export class MessengerRuntime {
         return;
       }
       for (const event of frames) this.ingest(event.payload, event);
+    }, () => {
+      // The link went without being asked to: the relay closed it, the Mac went away, the phone
+      // changed network. Nobody is going to type to find out, so the page notices by itself and
+      // the loop tries again on its own delay.
+      if (this.api !== api) return;
+      this.markDisconnected();
+      this.reconnectNow();
     });
     const frames = sync.receive(ready);
     if (!frames) throw new Error("invalid remote ready");
+    if (await this.resumeRemote(api, sync, ready)) {
+      this.uvReady = api.uvReady;
+      return;
+    }
+    this.resumePoint = null;
     const snapshot = await api.snapshot();
     await this.installSnapshot(api, sync, snapshot);
     this.uvReady = api.uvReady;
+  }
+
+  /**
+   * Back on the Mac this page left — the same event instance — it asks for the events it missed
+   * and keeps everything on screen. A restarted Mac, a ring that rolled over, too many missed
+   * events or any gap: false, and the caller takes the snapshot.
+   */
+  private async resumeRemote(api: RemoteApi, sync: EventSync, ready: SyncFrame): Promise<boolean> {
+    const point = this.resumePoint;
+    if (!point || ready.type !== "ready" || ready.event_instance_id !== point.cursor.event_instance_id) return false;
+    const missed = ready.watermark_seq - point.cursor.watermark_seq;
+    if (missed < 0 || missed > RESUME_MAX_EVENTS) return false;
+    let caught: CatchupResponse;
+    try {
+      caught = await api.catchup(point.cursor);
+    } catch {
+      return false;
+    }
+    if (this.stopped || this.api !== api || this.sync !== sync) return true;
+    if (caught.resnapshot || caught.event_instance_id !== point.cursor.event_instance_id) return false;
+    const frames = sync.resume(point.cursor, caught.events);
+    if (!frames) return false;
+    this.resumePoint = null;
+    for (const [view, kept] of point.views) {
+      if (this.views.get(view.sessionId) !== view) continue;
+      view.detailLoaded = kept.detailLoaded;
+      view.messageNext = kept.messageNext;
+    }
+    // A new link is a new client: it learns the revisions edits carry from what is on screen.
+    api.observeSnapshot(this.snapshot);
+    this.reconcilePendingMutation(api);
+    for (const frame of frames) this.ingest(frame.payload, frame);
+    void this.refreshMaintenance();
+    void this.loadPushState();
+    this.endpointKey = "";
+    this.connection = "connected";
+    this.connectFailures = 0;
+    for (const view of this.views.values()) {
+      view.focusedTurnId = null;
+      view.pendingFocusTrigger = null;
+      // Streamed text is not an event, so a reply that ran while the link was down is missing
+      // what arrived meanwhile: its conversation reads its history again.
+      if (this.snapshot.turns.some((turn) => turn.session_id === view.sessionId && turn.status === "running")) {
+        view.detailLoaded = false;
+      }
+    }
+    const kept = this.draftReconnect;
+    if (kept && !kept.confirm) this.sessionView(kept.sessionId).draft = kept.draft;
+    const selected = this.selectedId;
+    if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
+      if (!this.views.get(selected)?.detailLoaded) void this.selectSession(selected, { preservePage: true });
+    } else if (selected) {
+      this.selectedId = null;
+    }
+    return true;
   }
 
   private openSocket(api: LocalApi, sync: EventSync): Promise<void> {
@@ -2825,8 +3094,10 @@ export class MessengerRuntime {
   private async ensureMessageLoaded(sessionId: string, messageId: string): Promise<void> {
     const api = this.api;
     const sync = this.sync;
-    const selection = this.sessionSeq;
-    const revision = this.historyRevision;
+    const view = this.sessionView(sessionId);
+    const connection = this.connectionSeq;
+    const selection = view.loadSeq;
+    const revision = view.revision;
     if (!api) return;
     const loaded = this.snapshot.messages.filter((m) => m.session_id === sessionId);
     if (loaded.some((m) => m.id === messageId)) return;
@@ -2837,7 +3108,7 @@ export class MessengerRuntime {
       this.sessionMessageNext,
     );
     if (this.selectedId !== sessionId || this.api !== api || this.sync !== sync ||
-      this.sessionSeq !== selection || this.historyRevision !== revision) return;
+      this.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
     this.sessionMessageNext = result.next;
     const current = new Map(this.snapshot.messages.map((message) => [message.id, message]));
     for (const message of result.messages) if (!current.has(message.id)) current.set(message.id, message);
@@ -2903,24 +3174,27 @@ export class MessengerRuntime {
       this.terminals = this.terminals.filter((existing) => existing.id !== event.id);
     }
     if (this.api) this.reconcilePendingMutation(this.api);
-    if (event.event === "session.cleared" || event.event === "session.removed") this.historyRevision++;
+    if (event.event === "session.cleared" || event.event === "session.removed") {
+      // Only that conversation's reads are invalidated; another pane's are none of its business.
+      const gone = this.views.get(event.id);
+      if (gone) {
+        gone.revision++;
+        gone.resetHistory();
+        // What it was following, flashing or replying to went with the history.
+        gone.focusedTurnId = null;
+        gone.pendingFocusTrigger = null;
+        gone.replyingToId = null;
+        gone.composerSuggestions = [];
+        this.clearHighlight(gone);
+      }
+    }
     if (event.event === "session.removed") {
       if (this.selectedId === event.id) {
         this.selectedId = null;
         this.closeSessionSettings();
-        this.focusedTurnId = null;
-        this.setHighlightedMessage(null);
-        this.sessionMessageNext = null;
-        this.sessionDetailId = null;
       }
-    }
-    if (event.event === "session.cleared") {
-      if (this.selectedId === event.id) {
-        this.focusedTurnId = null;
-        this.setHighlightedMessage(null);
-        this.sessionMessageNext = null;
-        this.sessionDetailId = null;
-      }
+      // Nothing will read it again; a draft for a conversation that is gone is not kept.
+      this.views.delete(event.id);
     }
     let next = applyEvent(this.snapshot, event);
     this.snapshot = next;
@@ -2947,18 +3221,10 @@ export class MessengerRuntime {
       this.syncSettingsDraft(event);
     }
     if (event.event === "turn.upsert") {
-      this.claimFocus(event.trigger_message_id, event.id);
-      if (this.routeLogOpen && event.session_id === this.selectedId) {
-        void this.refreshRoutes(event.session_id);
-      }
-      if (this.traceOpen && event.task_id && event.task_id === this.traceTaskId) this.traceReload += 1;
+      this.claimFocus(event.session_id, event.trigger_message_id, event.id);
+      if (this.boardShows(event.task_id)) this.traceReload += 1;
     }
-    if (
-      (event.event === "message.created" || event.event === "message.upsert") &&
-      this.traceOpen &&
-      event.task_id &&
-      event.task_id === this.traceTaskId
-    ) {
+    if ((event.event === "message.created" || event.event === "message.upsert") && this.boardShows(event.task_id)) {
       this.traceReload += 1;
     }
     if (
@@ -2968,21 +3234,37 @@ export class MessengerRuntime {
     ) {
       this.scheduleComposerSuggestions(this.selectedId);
     }
+    if ((event.event === "message.created" || event.event === "message.upsert") && event.session_id !== this.selectedId) {
+      // Drafted for what was there before. A conversation not in front gets new ones when it is.
+      const view = this.views.get(event.session_id);
+      if (view && view.composerSuggestions.length > 0) view.composerSuggestions = [];
+    }
   }
 
-  private claimFocus(triggerMessageId: string, turnId?: string): void {
-    if (this.pendingFocusTrigger !== triggerMessageId) return;
+  /** Follow the turn a message sent from this conversation woke, once it is known. */
+  private claimFocus(sessionId: string, triggerMessageId: string, turnId?: string): void {
+    const view = this.views.get(sessionId);
+    if (!view || view.pendingFocusTrigger !== triggerMessageId) return;
     const id =
       turnId ??
       this.snapshot.turns.find((turn) => turn.trigger_message_id === triggerMessageId)?.id;
     if (!id) return;
-    this.focusedTurnId = id;
-    this.pendingFocusTrigger = null;
+    view.focusedTurnId = id;
+    view.pendingFocusTrigger = null;
   }
 
   private resetConnection(): void {
+    // Only a remote link that had applied events leaves a point to resume from; an attempt that
+    // never got that far keeps the previous one.
+    const cursor = this.api instanceof RemoteApi ? (this.sync?.snapshotCursor() ?? null) : null;
+    if (cursor) {
+      this.resumePoint = {
+        cursor,
+        views: new Map([...this.views.values()].map((view) => [view, { detailLoaded: view.detailLoaded, messageNext: view.messageNext }])),
+      };
+    }
     this.rememberDraftOnDisconnect();
-    this.boundedReadSent = null;
+    this.boundedReadSent.clear();
     this.connectFailures += 1;
     this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
     this.teardownSocket();
@@ -2997,10 +3279,13 @@ export class MessengerRuntime {
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();
-    this.sessionDetailId = null;
-    this.sessionMessageNext = null;
-    this.sessionSeq++;
-    this.busy = false;
+    // Every open conversation reads its history again from the next connection, not only the selected one.
+    for (const view of this.views.values()) {
+      view.detailLoaded = false;
+      view.messageNext = null;
+    }
+    this.connectionSeq++;
+    for (const view of this.views.values()) view.sending = false;
   }
 
   /**
@@ -3014,7 +3299,8 @@ export class MessengerRuntime {
   private acceptEphemeral(value: unknown): value is StreamFrame | ToolFrame {
     const stream = parseStreamFrame(value);
     if (stream) {
-      this.streamSinks.get(stream.id)?.(stream);
+      // A copy: a reader that lets go while the frame is being delivered must not skip its peers.
+      for (const sink of [...(this.streamSinks.get(stream.id) ?? [])]) sink(stream);
       this.activity.applyStream(stream);
       this.activityRevision += 1;
       return true;
@@ -3056,9 +3342,17 @@ export class MessengerRuntime {
   }
 
   onStream(id: string, sink: (frame: StreamFrame) => void): () => void {
-    this.streamSinks.set(id, sink);
+    let sinks = this.streamSinks.get(id);
+    if (!sinks) {
+      sinks = new Set();
+      this.streamSinks.set(id, sinks);
+    }
+    sinks.add(sink);
     return () => {
-      if (this.streamSinks.get(id) === sink) this.streamSinks.delete(id);
+      const current = this.streamSinks.get(id);
+      if (!current?.delete(sink)) return;
+      // The id is dropped only once nobody is left, so a second reader keeps the entry alive.
+      if (current.size === 0) this.streamSinks.delete(id);
     };
   }
 
@@ -3066,12 +3360,15 @@ export class MessengerRuntime {
     this.resetConnection();
     this.closeSheets();
     this.searchHits = [];
-    this.composerSuggestions = [];
     this.cancelComposerSuggestions();
-    this.focusedTurnId = null;
-    this.setHighlightedMessage(null);
-    this.pendingFocusTrigger = null;
-    this.sessionMessageNext = null;
+    // Every conversation on screen, not only the one in front: each holds its own.
+    for (const view of this.views.values()) {
+      view.composerSuggestions = [];
+      view.focusedTurnId = null;
+      view.pendingFocusTrigger = null;
+      view.messageNext = null;
+      this.clearHighlight(view);
+    }
   }
 
   private cancelComposerSuggestions(): void {
@@ -3095,7 +3392,7 @@ export class MessengerRuntime {
     }
     // These draft what you would send. A Bot↔Bot direct has no composer to put them in.
     const session = this.snapshot.sessions.find((s) => s.id === sessionId);
-    if (session && classifySession(session) === "bot-bot") {
+    if (session && (classifySession(session) === "bot-bot" || isFileDropSession(session))) {
       this.composerSuggestions = [];
       return;
     }
@@ -3125,21 +3422,29 @@ export class MessengerRuntime {
     }
   }
 
-  setHighlightedMessage(messageId: string | null): void {
-    this.clearHighlightTimer();
-    this.highlightedMessageId = messageId;
+  /** Flash a message in a conversation — the one named, or the selected one. */
+  setHighlightedMessage(messageId: string | null, sessionId?: string): void {
+    const view = this.viewFor(sessionId);
+    if (!view) return;
+    this.clearHighlightTimer(view);
+    view.highlightedMessageId = messageId;
     if (!messageId) return;
-    this.searchHighlightToken += 1;
-    this.highlightTimer = setTimeout(() => {
-      if (this.highlightedMessageId === messageId) this.highlightedMessageId = null;
-      this.highlightTimer = null;
+    view.searchHighlightToken += 1;
+    view.highlightTimer = setTimeout(() => {
+      if (view.highlightedMessageId === messageId) view.highlightedMessageId = null;
+      view.highlightTimer = null;
     }, 4000);
   }
 
-  private clearHighlightTimer(): void {
-    if (!this.highlightTimer) return;
-    clearTimeout(this.highlightTimer);
-    this.highlightTimer = null;
+  private clearHighlight(view: SessionView): void {
+    this.clearHighlightTimer(view);
+    view.highlightedMessageId = null;
+  }
+
+  private clearHighlightTimer(view: SessionView): void {
+    if (!view.highlightTimer) return;
+    clearTimeout(view.highlightTimer);
+    view.highlightTimer = null;
   }
 
   private teardownSocket(): void {
@@ -3159,17 +3464,41 @@ export class MessengerRuntime {
 
   private schedule(delay = RETRY_MS): void {
     if (this.stopped) return;
+    // One timer, always the newest: a drop landing while a tick is in flight must not leave two
+    // loops running, which on a relay that allows ten handshakes a minute is a way to be refused.
+    if (this.timer) clearTimeout(this.timer);
+    this.nextAttemptAt = Date.now() + delay;
     this.timer = setTimeout(() => {
       this.pump();
     }, delay);
   }
 
+  /**
+   * Try now — as soon as the delay the loop already owes allows it. A phone comes back from a
+   * dropped link, a locked screen or a changed network with its timers frozen and no interaction
+   * to ride on, and asking again is worth nothing if the relay refuses it: the handshake budget
+   * is spent per minute, so a page that just tried still waits, and one frozen for an hour does
+   * not.
+   */
+  private reconnectNow(): void {
+    if (this.stopped || this.connection === "connected") return;
+    this.schedule(Math.max(0, this.nextAttemptAt - Date.now()));
+  }
+
   /** A tick that throws must still leave a timer behind, or the page never reconnects. */
   private pump(): void {
-    void this.tick().catch(() => {
-      this.markDisconnected();
-      this.schedule();
-    });
+    // An attempt already running owns the next one; a second pass would open a second socket for
+    // the same device, which the relay refuses while the first route is still there.
+    if (this.ticking) return;
+    this.ticking = true;
+    void this.tick()
+      .catch(() => {
+        this.markDisconnected();
+        this.schedule();
+      })
+      .finally(() => {
+        this.ticking = false;
+      });
   }
 }
 

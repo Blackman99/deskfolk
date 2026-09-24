@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { ChatContentPart } from "./completions";
 import { annotationContext, annotationLines } from "./annotation-context";
 import type { Annotation } from "@real-bot/protocol";
-import { assembleJudgementUser, assembleTurnMessages } from "./context";
+import { VISION_WINDOW_IMAGES, assembleJudgementUser, assembleTurnMessages } from "./context";
 import { sha256 } from "./request-digest";
 import { Store } from "./store";
 import { memoryKeyStore } from "./secrets";
@@ -100,7 +100,10 @@ describe("annotationContext", () => {
     const { text, images } = annotationContext(w.store, w.message.id, "zh");
     expect(text).toContain("  位置：x 12%–32%，y 30%–45%（原图 2048×1365，像素 246,410 → 655,614）（文件不在了）");
     expect(images).toHaveLength(1);
-    expect(annotationContext(w.store, w.delivery.id, "zh")).toEqual({ text: "", images: [] });
+    const none = annotationContext(w.store, w.delivery.id, "zh");
+    expect(none.text).toBe("");
+    expect(none.images).toEqual([]);
+    expect(none.textFor(0)).toBe("");
   });
 });
 
@@ -127,6 +130,32 @@ describe("the turn window", () => {
     // The judgement window is text only and never spells out annotations.
     const judged = assembleJudgementUser(w.store, { sessionId: w.direct, botId: w.bot.id, message: w.message, mentions: [], everyone: false });
     expect(String(judged)).not.toContain("[批注");
+  });
+
+  test("crops share the window's picture budget, and the ones left out say so instead of claiming a picture", () => {
+    const w = world();
+    const drafts = Array.from({ length: VISION_WINDOW_IMAGES + 5 }, (_, i) =>
+      w.store.createAnnotation({
+        target_message_id: w.delivery.id,
+        relpath: "cover.png",
+        anchor_kind: "image_region",
+        anchor: { x: 0.01 * i, y: 0.1, w: 0.1, h: 0.1, natural_width: 2048, natural_height: 1365 },
+        content_sha256: sha256(PNG_1X1),
+        body: `第 ${i + 1} 处`,
+        crop: { mime: "image/png", base64: PNG_1X1.toString("base64") },
+      }),
+    );
+    const { message } = w.store.sendAnnotations({ session_id: w.direct, body: "一大批", annotation_ids: drafts.map((d) => d.id) });
+    const woken = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: message.id });
+    const messages = assembleTurnMessages(w.store, { sessionId: w.direct, botId: w.bot.id, turnId: woken.id, triggerMessageId: message.id, locale: "zh", interrupt: false, loop: [] });
+    const batch = messages.find((m) => Array.isArray(m.content) && (m.content as ChatContentPart[]).some((part) => part.type === "text" && part.text.includes("一大批")))!;
+    const parts = batch.content as ChatContentPart[];
+    expect(parts.filter((part) => part.type === "image_url")).toHaveLength(VISION_WINDOW_IMAGES);
+    const text = (parts.find((part) => part.type === "text") as { type: "text"; text: string }).text;
+    expect(text.split("（附区域裁图）").length - 1).toBe(VISION_WINDOW_IMAGES);
+    expect(text.split("（区域裁图没附上：这一轮能带的图片已经用完了）").length - 1).toBe(5);
+    // Every annotation's text is still there.
+    expect(text).toContain(`[批注 ${VISION_WINDOW_IMAGES + 5}/${VISION_WINDOW_IMAGES + 5}`);
   });
 });
 

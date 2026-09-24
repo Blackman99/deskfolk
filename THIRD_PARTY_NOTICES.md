@@ -1,6 +1,6 @@
 # Third-party notices
 
-Real Bot's own code is licensed under the [MIT License](LICENSE). Third-party components retain their respective licenses.
+Deskfolk's own code is licensed under the [MIT License](LICENSE). Third-party components retain their respective licenses.
 
 ## xterm.js
 
@@ -165,4 +165,60 @@ limitations under the License.
 
 ## Package dependencies
 
-JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and `apps/desktop/src-tauri/Cargo.lock`. Their licenses remain applicable independently of Real Bot's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.
+JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and `apps/desktop/src-tauri/Cargo.lock`. Their licenses remain applicable independently of Deskfolk's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.
+
+## Web Push proxy dependencies
+
+The daemon uses `https-proxy-agent` 9.1.0 (including `agent-base` 9.0.0) and `proxy-from-env` 2.1.0, released under the MIT license. Their license notices follow.
+
+### https-proxy-agent
+
+```text
+(The MIT License)
+
+Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### proxy-from-env
+
+```text
+The MIT License
+
+Copyright (C) 2016-2018 Rob Wu <rob@robwu.nl>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```

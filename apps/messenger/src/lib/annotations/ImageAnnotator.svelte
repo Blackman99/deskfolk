@@ -75,6 +75,13 @@
 		onCancel?: () => void;
 		/** Test seam: a canvas and decoder for the crop. */
 		cropDeps?: CropDeps;
+		/**
+		 * Outside annotate mode, and with no box waiting, a click on the picture (or Enter on it)
+		 * enlarges it; left out, the picture is only a picture.
+		 */
+		onOpen?: (img: HTMLImageElement) => void;
+		/** The enlarge button's name. */
+		openLabel?: string;
 	}
 
 	let {
@@ -94,6 +101,8 @@
 		onPendingChange,
 		onCancel,
 		cropDeps,
+		onOpen,
+		openLabel,
 	}: Props = $props();
 
 	const HANDLES: Handle[] = ['nw', 'ne', 'sw', 'se'];
@@ -149,6 +158,8 @@
 	);
 	/** The image has loaded and the layer sits on it: only then are the boxes where they belong. */
 	const shown = $derived(layer !== null && loaded !== null);
+	/** A click on the picture enlarges it only when it is not a click for a box. */
+	const openable = $derived(Boolean(onOpen) && !active && !pendingBox && !dragging);
 	/** Whether Escape is this surface's; a boolean, so a drag does not re-attach the listener on every move. */
 	const engaged = $derived((active && enabled) || pendingBox !== null || dragging);
 
@@ -479,7 +490,23 @@
 </script>
 
 <div class="img-annot" class:is-creating={creating} bind:this={rootEl} data-image-annotator>
-	<img bind:this={imgEl} {src} {alt} class="artifact-img max-w-full max-h-full block my-0 mx-auto" onload={onImageLoad} />
+	{#if onOpen}
+		<!-- The layer is a sibling, not inside: its marks are buttons of their own. -->
+		<button
+			type="button"
+			class="artifact-img-open"
+			class:is-openable={openable}
+			aria-label={openLabel}
+			tabindex={openable ? 0 : -1}
+			onclick={() => {
+				if (openable && imgEl) onOpen?.(imgEl);
+			}}
+		>
+			<img bind:this={imgEl} {src} {alt} class="artifact-img max-w-full max-h-full block my-0 mx-auto" onload={onImageLoad} data-copy-image />
+		</button>
+	{:else}
+		<img bind:this={imgEl} {src} {alt} class="artifact-img max-w-full max-h-full block my-0 mx-auto" onload={onImageLoad} data-copy-image />
+	{/if}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="img-annot-layer"
@@ -543,6 +570,33 @@
 	.img-annot {
 		position: relative;
 		height: 100%;
+	}
+	/*
+	 * The button fills the annotator so the picture keeps fitting exactly as it did, and it lets the
+	 * pointer through: only the picture is a target, not the empty space around a small one.
+	 */
+	.artifact-img-open {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		border: 0;
+		background: none;
+		pointer-events: none;
+	}
+	/* The picture itself stays a target either way: its own menu copies the pixels. */
+	.artifact-img-open .artifact-img {
+		pointer-events: auto;
+	}
+	.artifact-img-open.is-openable .artifact-img {
+		cursor: zoom-in;
+	}
+	.artifact-img-open:focus-visible {
+		outline: none;
+	}
+	.artifact-img-open:focus-visible .artifact-img {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 	.img-annot-layer {
 		position: absolute;

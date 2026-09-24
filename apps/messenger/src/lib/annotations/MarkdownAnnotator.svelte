@@ -75,6 +75,8 @@
 		copyLabel: string;
 		copiedLabel: string;
 		onOpenArtifact?: (relpath: string) => void;
+		/** A picture in the note enlarges in the app; `from` is what it grows out of. */
+		onOpenImage?: (relpath: string, from?: HTMLElement) => void;
 		loadArtifactImage?: (relpath: string) => Promise<Blob>;
 	}
 
@@ -93,6 +95,7 @@
 		copyLabel,
 		copiedLabel,
 		onOpenArtifact,
+		onOpenImage,
 		loadArtifactImage,
 	}: Props = $props();
 
@@ -468,7 +471,7 @@
 		onpointermove={onBodyPointerMove}
 		onpointerleave={onBodyPointerLeave}
 	>
-		<MarkdownBody {source} options={SOURCE_LINES} {copyLabel} {copiedLabel} {onOpenArtifact} {loadArtifactImage} />
+		<MarkdownBody {source} options={SOURCE_LINES} {copyLabel} {copiedLabel} {onOpenArtifact} {onOpenImage} {loadArtifactImage} />
 	</div>
 	<div class="md-annot-layer absolute inset-0" data-annotator-chrome>
 		{#each marks as mark (mark.id)}

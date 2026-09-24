@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-read-clipboard-text"
+description = "Lets the messenger read the pasteboard's text for Paste in the terminal's right-click menu. Read-only, text only."
+commands.allow = ["read_clipboard_text"]

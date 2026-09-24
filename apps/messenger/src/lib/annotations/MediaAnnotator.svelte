@@ -75,6 +75,8 @@
 		onCancel?: () => void;
 		/** Draws the frame for a crop; tests hand in a double, since happy-dom has no canvas. */
 		drawFrame?: FrameDrawer;
+		/** The player could not play the source (a stream that broke off, a file that went away). */
+		onError?: () => void;
 	}
 
 	let {
@@ -90,7 +92,8 @@
 		pending = null,
 		onPendingChange,
 		onCancel,
-		drawFrame = drawVideoFrame
+		drawFrame = drawVideoFrame,
+		onError
 	}: Props = $props();
 
 	let media = $state<HTMLAudioElement | HTMLVideoElement | null>(null);
@@ -310,6 +313,7 @@
 		<video
 			class="media-annot-el"
 			controls
+			playsinline
 			preload="metadata"
 			{src}
 			bind:this={media}
@@ -319,6 +323,7 @@
 			onloadedmetadata={onMeta}
 			ondurationchange={onMeta}
 			onemptied={onEmptied}
+			onerror={() => onError?.()}
 		></video>
 	{:else}
 		<audio
@@ -333,6 +338,7 @@
 			onloadedmetadata={onMeta}
 			ondurationchange={onMeta}
 			onemptied={onEmptied}
+			onerror={() => onError?.()}
 		></audio>
 	{/if}
 

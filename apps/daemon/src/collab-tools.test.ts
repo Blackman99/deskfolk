@@ -179,6 +179,24 @@ describe("send_message artifacts", () => {
     store.close();
   });
 
+  test("unmentioned paths stay attached without an appended body inventory", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-art-list-")));
+    dirs.push(root);
+    for (const path of ["a.txt", "b.txt"]) writeFileSync(join(root, path), "review");
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    try {
+      await store.patchSettings({ workspace_path: root });
+      const bot = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+      const result = await runCollabTool(ctxFor(store, bot.bot.id, bot.direct_session.id), "send_message", {
+        body: "Review in progress.", paths: ["a.txt", "b.txt"],
+      });
+      expect(result.ok).toBe(true);
+      const message = store.getMessage(String(result.data?.message_id));
+      expect(message.body).toBe("Review in progress.");
+      expect(message.attachments.map(att => att.workspace_relpath)).toEqual(["a.txt", "b.txt"]);
+    } finally { store.close(); }
+  });
+
   test("quoting a teammate prepends @Name and still participates", async () => {
     const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
@@ -264,7 +282,8 @@ describe("send_message artifacts", () => {
     expect(result.ok).toBe(true);
     expect(result.data?.paths).toEqual(["out/later.png"]);
     const message = store.getMessage(String(result.data?.message_id));
-    expect(message.body).toContain("[out/later.png](out/later.png)");
+    expect(message.body).toBe("稍后会有图");
+    expect(message.attachments[0]?.workspace_relpath).toBe("out/later.png");
     expect(message.attachments[0]?.exists).toBe(false);
     store.close();
   });

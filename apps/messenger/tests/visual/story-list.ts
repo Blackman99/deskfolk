@@ -6,7 +6,6 @@ export const STORY_SIZES = {
 	'shell-narrow': { width: 600, height: 820 },
 	'danger-dialog': { width: 900, height: 520 },
 	'danger-dialog-narrow': { width: 390, height: 844 },
-	'route-log': { width: 900, height: 720 },
 	// A modal, not a flyout any more: shot at a window it fits in, with room under the field for
 	// the member list to open into.
 	'create-group-sheet': { width: 560, height: 560 },
@@ -43,7 +42,17 @@ export const STORY_SIZES = {
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },
-	'settings-about': { width: 1000, height: 720 }
+	'settings-about': { width: 1000, height: 720 },
+	// A four-pane arrangement with a real four-way cross in it: the junction handle, the tab
+	// strips and the focused-pane marking are all only visible here.
+	workbench: { width: 1280, height: 820 },
+	// A strip with more tabs than fit: the overflow scrolls and the pane menu holds its place.
+	'workbench-tabs': { width: 520, height: 320 },
+	'workbench-empty': { width: 520, height: 480 },
+	// Below the breakpoint the tree is kept but only the focused pane is drawn.
+	'workbench-solo': { width: 600, height: 820 },
+	// Two panes lifted out of the tree, overlapping, so the z-order and the shadow are visible.
+	'workbench-float': { width: 1000, height: 700 }
 } as const;
 
 export type StoryName = keyof typeof STORY_SIZES;

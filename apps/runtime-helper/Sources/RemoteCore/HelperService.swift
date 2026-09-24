@@ -27,7 +27,7 @@ public struct MacAuthenticator: LocalAuthenticator {
     var failure: Error?
     context.evaluatePolicy(
       .deviceOwnerAuthentication,
-      localizedReason: "Real Bot: \(action.kind)\n\(action.display)\nSHA-256: \(action.digest)"
+      localizedReason: "Deskfolk: \(action.kind)\n\(action.display)\nSHA-256: \(action.digest)"
     ) { ok, error in
       resultLock.lock()
       success = ok

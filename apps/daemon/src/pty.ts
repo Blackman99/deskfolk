@@ -11,7 +11,9 @@
  * keystroke is just a byte. {@link Pty.signal} exists for a Stop button, not for Ctrl-C.
  */
 import { existsSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { macSystemLocale, terminalEnv } from "./terminal-env";
 
 export type PtySignal = "SIGINT" | "SIGQUIT" | "SIGTSTP" | "SIGTERM" | "SIGKILL";
 
@@ -90,13 +92,11 @@ export class Pty {
         [helper, "--rows", String(this.rows), "--cols", String(this.cols), "--cwd", options.cwd, "--", ...command],
         {
           stdin: "pipe", stdout: "pipe", stderr: "pipe",
-          env: options.env ?? {
-            PATH: process.env.PATH ?? "/usr/bin:/bin",
-            HOME: process.env.HOME ?? "",
-            SHELL: command[0] ?? "/bin/zsh",
-            TERM: "xterm-256color",
-            LANG: process.env.LANG ?? "en_US.UTF-8",
-          },
+          env: options.env ?? terminalEnv(process.env, {
+            shell: command[0] ?? "/bin/zsh",
+            systemLocale: macSystemLocale(),
+            username: userInfo().username,
+          }),
         },
       ) as Bun.Subprocess<"pipe", "pipe", "pipe">;
     } catch {

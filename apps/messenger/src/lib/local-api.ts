@@ -12,6 +12,8 @@ import type {
   Terminal,
   ToolFrame,
   TerminalScrollback,
+  TerminalScreenSnapshot,
+  TerminalColors,
   TerminalSignal,
   SequencedEvent,
   Bot,
@@ -32,9 +34,6 @@ import type {
   ProbeModelsResponse,
   Provider,
   ResolveApprovalRequest,
-  RouteLearning,
-  RouteRecord,
-  RouteReview,
   ComposerSuggestion,
   SearchHit,
   SessionDetail,
@@ -61,8 +60,8 @@ import {
 import { createAnnotation, listAnnotations, patchAnnotation, sendAnnotations, type SendAnnotationsResult } from "./annotations/client.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
-import { ApiError, rememberBlobEtag } from "./api.ts";
-import { readResponseBlob, type FileProgressHandler } from "./file-progress.ts";
+import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "./api.ts";
+import { readResponseBlob, type FileLoadOptions, type FileProgressHandler } from "./file-progress.ts";
 import type {
   DesktopClickResponse,
   NotificationDevice,
@@ -305,8 +304,8 @@ export class LocalApi {
     return this.get<SessionDetail>(`/v1/sessions/${id}`);
   }
 
-  async markSessionRead(id: string): Promise<SessionDetail> {
-    return this.post<SessionDetail>(`/v1/sessions/${id}/read`);
+  async markSessionRead(id: string): Promise<SessionSummary> {
+    return this.post<SessionSummary>(`/v1/sessions/${id}/read`);
   }
 
   async archiveSession(id: string): Promise<SessionDetail> {
@@ -346,15 +345,6 @@ export class LocalApi {
   async judgements(sessionId: string): Promise<Judgement[]> {
     const page = await this.get<ListPage<Judgement>>(`/v1/sessions/${sessionId}/judgements`);
     return page.items;
-  }
-
-  async routes(
-    sessionId: string,
-  ): Promise<{ items: RouteRecord[]; reviews: RouteReview[]; learnings: RouteLearning[] }> {
-    const page = await this.get<
-      ListPage<RouteRecord> & { reviews?: RouteReview[]; learnings?: RouteLearning[] }
-    >(`/v1/sessions/${sessionId}/routes`);
-    return { items: page.items, reviews: page.reviews ?? [], learnings: page.learnings ?? [] };
   }
 
   async composerSuggestions(sessionId: string, signal?: AbortSignal): Promise<ComposerSuggestion[]> {
@@ -472,6 +462,21 @@ export class LocalApi {
     return this.get<TerminalScrollback>(`/v1/terminals/${id}/scrollback?from=${from}`);
   }
 
+  /** The screen as the daemon holds it, and the offset live bytes resume at. What a pane attaches to. */
+  async terminalScreen(id: string): Promise<TerminalScreenSnapshot> {
+    return this.get<TerminalScreenSnapshot>(`/v1/terminals/${id}/screen`);
+  }
+
+  /** ⌘K for the session, so a pane that attaches later does not bring the history back. */
+  async clearTerminalScreen(id: string): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/clear`, {});
+  }
+
+  /** This pane's colours, which the daemon answers a program's colour requests with. */
+  async terminalColors(id: string, colors: TerminalColors): Promise<void> {
+    await this.post<void>(`/v1/terminals/${id}/colors`, colors);
+  }
+
   async closeTerminal(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/terminals/${id}`);
   }
@@ -489,11 +494,11 @@ export class LocalApi {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
 
-  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler): Promise<Blob> {
+  async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
     const res = await fetch(
-      `${this.endpoint.origin}/v1/workspace/file?path=${encodeURIComponent(path)}`,
-      { method: "GET", headers },
+      `${this.endpoint.origin}/v1/workspace/file?path=${encodeURIComponent(path)}${options?.size ? `&size=${options.size}` : ""}`,
+      { method: "GET", headers, signal: options?.signal },
     );
     if (!res.ok) {
       const json = (await res.json().catch(() => null)) as ErrorBody | null;
@@ -506,14 +511,16 @@ export class LocalApi {
     const blob = await readResponseBlob(res, onProgress);
     const etag = res.headers.get("ETag");
     rememberBlobEtag(blob, etag);
+    rememberBlobOriginalSize(blob, res.headers.get("X-Original-Size"));
     return blob;
   }
 
-  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler): Promise<Blob> {
+  async getAttachmentBlob(id: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.endpoint.token}` };
-    const res = await fetch(`${this.endpoint.origin}/v1/attachments/${id}/content`, {
+    const res = await fetch(`${this.endpoint.origin}/v1/attachments/${id}/content${options?.size ? `?size=${options.size}` : ""}`, {
       method: "GET",
       headers,
+      signal: options?.signal,
     });
     if (!res.ok) {
       throw new ApiError(res.status, "not_found", "failed to fetch attachment");
@@ -521,6 +528,7 @@ export class LocalApi {
     const blob = await readResponseBlob(res, onProgress);
     const etag = res.headers.get("ETag");
     rememberBlobEtag(blob, etag);
+    rememberBlobOriginalSize(blob, res.headers.get("X-Original-Size"));
     return blob;
   }
 
@@ -668,7 +676,7 @@ export class LocalApi {
     return acknowledgeNotification(this, id, ifRevision);
   }
 
-  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionDetail> {
+  async markSessionReadThrough(sessionId: string, throughMessageId: string): Promise<SessionSummary> {
     return markSessionReadThrough(this, sessionId, throughMessageId);
   }
 

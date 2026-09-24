@@ -180,6 +180,13 @@ export function isRasterImageName(name: string): boolean {
   return IMAGE.has(extensionOf(name));
 }
 
+/** A picture looked at inside the message area: raster and SVG, never a directory. */
+export function isInlineImageName(name: string, opts: { isDir?: boolean } = {}): boolean {
+  if (opts.isDir) return false;
+  const kind = artifactKind(name);
+  return kind === "image" || kind === "svg";
+}
+
 /** Kinds the messenger can preview itself. Everything else uses the system opener. */
 export function isInAppPreviewKind(kind: ArtifactKind): boolean {
   return (
@@ -302,11 +309,7 @@ export function linkifyWorkspacePaths(body: string, extraPaths: string[] = []): 
   const linked = parts
     .map((part) => (part.fence ? part.text : linkifyOutsideFences(part.text, known)))
     .join("");
-  const missing = extras.filter((path) => !bodyMentionsPath(linked, path));
-  if (missing.length === 0) return linked;
-  const block = missing.map((path) => `[${path}](${path})`).join("\n");
-  if (!linked.trim()) return block;
-  return `${linked.replace(/\s+$/, "")}\n\n${block}`;
+  return linked;
 }
 
 /**

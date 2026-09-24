@@ -1588,6 +1588,69 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
+  test("continuing an unreachable turn from 这一轮没写完：连不上端点 resumes and finishes", async () => {
+    let callCount = 0;
+    const client: import("./completions").CompletionsClient = {
+      async complete() {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            ok: false,
+            failKind: "unreachable",
+            hadChoices: false,
+            usage: null,
+            missingReason: null,
+          };
+        }
+        return {
+          ok: true,
+          content: "resumed reply after reconnection",
+          toolCalls: [],
+          finishReason: "stop",
+          hadChoices: true,
+          usage: null,
+          missingReason: null,
+        };
+      },
+      async judge() {
+        return {
+          content: null,
+          toolCalls: [],
+          hadToolCalls: false,
+          usage: null,
+          failKind: "unreachable",
+        };
+      },
+    };
+    const h = await startApi(undefined, { completions: client });
+    const { botId, sessionId } = await createWriter(h, "https://mock.invalid");
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "do task" }),
+    });
+    const sys = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "system" && e.author === botId,
+    );
+    expect(sys.body).toBe("这一轮没写完：连不上端点");
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+
+    const continued = await fetch(`${h.origin}/v1/turns/continue`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ message_id: sys.id }),
+    });
+    expect(continued.status).toBe(200);
+    const botMsg = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
+    );
+    expect(botMsg.body).toBe("resumed reply after reconnection");
+    sub.close();
+  });
+
   test("a 400 completion inserts a locale-zh system line and completes the turn", async () => {
     const fixture = await startFixture(() => new Response("nope", { status: 400 }));
     const h = await startApi();
@@ -2173,8 +2236,8 @@ describe("file tools and workspace shell on the local API", () => {
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
     );
-    expect(botMsg.body).toContain("wrote it");
-    expect(botMsg.body).toContain("[report.md](report.md)");
+    expect(botMsg.body).toBe("wrote it");
+    expect(botMsg.attachments).toEqual([expect.objectContaining({ workspace_relpath: "report.md" })]);
     expect(readFileSync(join(workspace, "report.md"), "utf8")).toBe("full report");
     const route = h.store.getTurnRoute(String(botMsg.turn_id));
     expect(route).toMatchObject({
@@ -2217,7 +2280,7 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
-  test("a silent write still posts a clickable path when the turn has no closer", async () => {
+  test("a silent write still posts attachments when the turn has no closer", async () => {
     let hop = 0;
     const fixture = await startFixture(() => {
       hop += 1;
@@ -2238,7 +2301,8 @@ describe("file tools and workspace shell on the local API", () => {
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
     );
-    expect(botMsg.body).toBe("[notes/a.md](notes/a.md)");
+    expect(botMsg.body).toBe("");
+    expect(botMsg.attachments).toEqual([expect.objectContaining({ workspace_relpath: "notes/a.md" })]);
     expect(readFileSync(join(workspace, "notes/a.md"), "utf8")).toBe("hi");
     sub.close();
   });
@@ -3578,6 +3642,18 @@ describe("per-message model and thinking-level routing", () => {
       feedback: [{ body: task }],
     });
     expect(routes.items.every((row) => typeof row.provider_id === "string")).toBe(true);
+    // The flow board carries the same record on the card of the turn it ran on.
+    const taskId = h.store.taskOfTurn(String(running.id))!;
+    const traceRes = await fetch(`${h.origin}/v1/tasks/${taskId}/trace`, { headers: auth(h) });
+    expect(traceRes.status).toBe(200);
+    const trace = (await traceRes.json()) as { nodes: Array<{ turn_id: string; actor: string; route: Record<string, unknown> | null }> };
+    expect(trace.nodes.find((node) => node.turn_id === running.id)!.route).toMatchObject({
+      record: { model: "code-pro", thinking_level: "medium", feedback: [{ body: "这里有 bug，选的模型不对" }] },
+      review: null,
+      learning: null,
+    });
+    // Your own card ran on no model.
+    expect(trace.nodes.find((node) => node.actor === "user")!.route).toBeNull();
     sub.close();
   });
 });

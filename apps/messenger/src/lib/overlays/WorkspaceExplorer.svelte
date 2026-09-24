@@ -2,9 +2,14 @@
 	import type { Copy } from '../copy.ts';
 	import { backdropClick } from '../click-outside.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import ArtifactPreview from './ArtifactPreview.svelte';
+	import WorkspaceView from './WorkspaceView.svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
 
+	/**
+	 * The narrow host for the workspace: a page that slides in from the right, dims what is behind
+	 * it and closes on a click outside. On a wide desktop window the same `WorkspaceView` is a
+	 * pane instead, with none of this around it.
+	 */
 	interface Props {
 		api: MessengerApi | null;
 		workspacePath: string | null;
@@ -19,11 +24,14 @@
 	/** A click outside closes the explorer; a text-selection drag that starts inside never does. */
 	const workspaceBackdrop = backdropClick();
 
-	let pane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
+	let view = $state<{
+		requestCloseFromParent: (afterClose?: () => void) => void;
+		closeFind: () => boolean;
+		blocksClose: () => boolean;
+	} | null>(null);
 
 	export function requestCloseFromParent(afterClose?: () => void): void {
-		if (!afterClose && pane?.closeFind()) return;
-		if (pane) pane.requestCloseFromParent(afterClose);
+		if (view) view.requestCloseFromParent(afterClose);
 		else {
 			onClose();
 			afterClose?.();
@@ -31,11 +39,11 @@
 	}
 
 	export function closeFind(): boolean {
-		return pane?.closeFind() ?? false;
+		return view?.closeFind() ?? false;
 	}
 
 	export function blocksClose(): boolean {
-		return pane?.blocksClose() ?? false;
+		return view?.blocksClose() ?? false;
 	}
 </script>
 
@@ -54,37 +62,20 @@
 	}}
 >
 	<div class="workspace-overlay-pane">
-		{#if !workspacePath}
-			<section class="workspace-unset">
-				<h2>{t.sidebar.workspace}</h2>
-				<p>{t.sidebar.workspaceUnset}</p>
-				<button type="button" onclick={onOpenSettings}>{t.settings.title}</button>
-				<button type="button" onclick={onClose}>{t.common.close}</button>
-			</section>
-		{:else}
-		<ArtifactPreview
-			bind:this={pane}
-			attachment={null}
-			relpath={selected}
-			siblings={[]}
+		<WorkspaceView
+			bind:this={view}
 			{api}
 			{workspacePath}
-			mode="workspace"
+			{selected}
 			{t}
 			{onClose}
-			onSelect={() => {}}
-			onSelectWorkspacePath={onSelect}
+			{onSelect}
+			{onOpenSettings}
 		/>
-		{/if}
 	</div>
 </div>
 
 <style>
-	.workspace-unset { margin: auto; padding: 24px; text-align: center; }
-	.workspace-unset h2 { font-size: 18px; }
-	.workspace-unset p { color: var(--muted); }
-	.workspace-unset button { min-height: 44px; margin: 8px; padding: 8px 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--pane); color: var(--accent); cursor: pointer; }
-
 	.workspace-overlay {
 		position: fixed;
 		inset: 0;

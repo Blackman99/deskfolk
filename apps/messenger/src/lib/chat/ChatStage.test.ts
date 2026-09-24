@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import type { Annotation } from "@real-bot/protocol";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aDirect, aGroup, aMessage, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAttachment, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { click } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
@@ -49,6 +50,84 @@ for (const [label, session, showAvatars] of [
     }
   });
 }
+
+test("a Bot-to-Bot chat offers Continue on an interruption and on a failed turn", () => {
+  const session = aBotDirect();
+  const messages = [
+    aMessage({
+      id: "cut", session_id: session.id, kind: "system", author: "bot-1",
+      body: "中断", turn_id: "turn-cut", created_at: "2026-09-19T02:00:01.000Z",
+    }),
+    aMessage({
+      id: "fail", session_id: session.id, kind: "system", author: "bot-2",
+      body: "这一轮没写完：运行时出错", turn_id: "turn-fail", created_at: "2026-09-19T02:00:02.000Z",
+    }),
+  ];
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot(), aBot({ id: "bot-2", name: "审片员" })],
+    sessions: [session],
+    messages,
+    turns: [
+      aTurn({ id: "turn-cut", session_id: session.id, bot_id: "bot-1", status: "interrupted" }),
+      aTurn({ id: "turn-fail", session_id: session.id, bot_id: "bot-2", status: "completed" }),
+    ],
+  }, { selectedId: session.id }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".btn-continue-turn")];
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => !button.disabled)).toBe(true);
+    expect(buttons[0]?.getAttribute("title")).toBe(t.stream.continueInterruptHint);
+    expect(buttons[1]?.getAttribute("title")).toBe(t.stream.continueFailedHint);
+    click(buttons[1]);
+    expect(runtime.calls.some((call) => call.name === "continueInterrupt" && call.args[0] === "fail")).toBe(true);
+  } finally {
+    close();
+  }
+});
+
+test("a direct chat you can type in still continues a failed turn, and an archived one does not", () => {
+  const session = aDirect();
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [session],
+    messages: [aMessage({
+      id: "fail", session_id: session.id, kind: "system", author: "bot-1",
+      body: "这一轮没写完：端点拒绝了这次补全", turn_id: "turn-fail",
+    })],
+    turns: [aTurn({ id: "turn-fail", session_id: session.id, status: "completed" })],
+  }, { selectedId: session.id }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    expect(host.querySelector(".btn-continue-turn")).not.toBeNull();
+  } finally {
+    close();
+  }
+  const archived = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [{ ...session, archived_at: "2026-09-19T03:00:00.000Z" }],
+    messages: [aMessage({
+      id: "fail-2", session_id: session.id, kind: "system", author: "bot-1",
+      body: "中断", turn_id: "turn-cut",
+    })],
+    turns: [aTurn({ id: "turn-cut", session_id: session.id, status: "interrupted" })],
+  }, { selectedId: session.id }));
+  const second = render(ChatStage, {
+    runtime: archived, t, selected: { ...session, archived_at: "2026-09-19T03:00:00.000Z" },
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    expect(second.host.querySelector(".btn-continue-turn")).toBeNull();
+  } finally {
+    second.close();
+  }
+});
 
 test("empty direct chat keeps its welcome avatar and profile entry", () => {
   const session = aDirect();
@@ -297,7 +376,23 @@ test("left clicking a message does not add is-selected class, right clicking sel
 
   // Context menu must remain open after attaching listeners (no flickering/auto-dismiss)
   expect(host.querySelector(".msg-context-menu")).not.toBeNull();
-  expect(botSegment.classList.contains("is-selected")).toBe(true);
+
+  // A rendered picture keeps this menu closed so its own menu can copy the pixels.
+  const image = document.createElement("img");
+  image.dataset.copyImage = "";
+  Object.defineProperty(image, "currentSrc", { configurable: true, get: () => "blob:http://localhost/shot" });
+  Object.defineProperty(image, "naturalWidth", { configurable: true, value: 8 });
+  botSegment.append(image);
+  const onPicture = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  image.dispatchEvent(onPicture);
+  flushSync();
+  expect(onPicture.defaultPrevented).toBe(false);
+  expect(onPicture.cancelBubble).toBe(false);
+  expect(host.querySelector(".msg-context-menu")).toBeNull();
+  expect(botSegment.classList.contains("is-selected")).toBe(false);
+  const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 2 });
+  image.dispatchEvent(down);
+  expect(down.defaultPrevented).toBe(false);
 
   // Press Escape to close context menu and deselect
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -383,3 +478,194 @@ test("a routed batch links back to the session of the delivery it quotes, not it
     close();
   }
 });
+
+test("a slow picture waits in its thumbnail's box, with the bytes received shown, and grows once", async () => {
+  let report: ((progress: { loaded: number; total: number | null }) => void) | undefined;
+  let resolveBlob!: (blob: Blob) => void;
+  const pending = new Promise<Blob>((resolve) => {
+    resolveBlob = resolve;
+  });
+  const session = aDirect();
+  const picture = anAttachment({
+    id: "pic",
+    message_id: "msg-pic",
+    original_filename: "image.png",
+    workspace_relpath: "inbox/image-3.png",
+    mime: "image/png",
+    size: 4096,
+  });
+  const message = aMessage({
+    id: "msg-pic",
+    session_id: session.id,
+    kind: "user",
+    body: "选哪个",
+    attachments: [picture],
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, {
+    selectedId: session.id,
+    client: {
+      getAttachmentBlob: (_id: string, onProgress?: (progress: { loaded: number; total: number | null }) => void) => {
+        report = onProgress;
+        return pending;
+      },
+    },
+  }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: () => {},
+    onCreateBot: () => {},
+  });
+  try {
+    const chip = host.querySelector(".attachment-file-btn")!;
+    const thumb = chip.querySelector(".attachment-chip-pending")!;
+    thumb.getBoundingClientRect = () =>
+      ({ top: 40, left: 80, width: 36, height: 36, right: 116, bottom: 76, x: 80, y: 40, toJSON() {} }) as DOMRect;
+    click(chip);
+    const frame = host.querySelector<HTMLElement>(".msg-image-frame");
+    expect(frame).not.toBeNull();
+    // The first paint keeps the thumbnail's box; the spinner is already inside it.
+    expect(frame!.style.top).toBe("40px");
+    expect(frame!.style.left).toBe("80px");
+    expect(frame!.style.width).toBe("36px");
+    expect(frame!.style.height).toBe("36px");
+    expect(frame!.querySelector(".msg-image-loading-ring")).not.toBeNull();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    flushSync();
+    // No pixels yet, so no shape to grow to: the frame stays in the thumbnail's box instead of
+    // growing to a guessed one and resizing again when the picture comes.
+    expect(frame!.style.width).toBe("36px");
+    expect(frame!.style.height).toBe("36px");
+    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("正在打开文件…");
+    const loading = frame!.querySelector(".msg-image-loading");
+    expect(loading?.getAttribute("aria-busy")).toBe("true");
+    expect(loading?.textContent).toContain("正在打开文件…");
+    expect(frame!.querySelector(".msg-image-loading-ring")).not.toBeNull();
+    expect(frame!.querySelector(".msg-image-full")).toBeNull();
+    const bar = frame!.querySelector(".msg-image-loading-bar");
+    expect(bar?.getAttribute("aria-valuenow")).toBe("0");
+    expect(frame!.textContent).toContain("0 B / 4.0 KB");
+    report?.({ loaded: 2048, total: 4096 });
+    flushSync();
+    expect(bar?.getAttribute("aria-valuenow")).toBe("50");
+    expect(frame!.querySelector<HTMLElement>(".msg-image-loading-fill")?.style.width).toBe("50%");
+    expect(frame!.textContent).toContain("2.0 KB / 4.0 KB");
+    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("2.0 KB / 4.0 KB");
+    resolveBlob(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }));
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+    expect(host.querySelector(".msg-image-loading")).toBeNull();
+    expect(host.querySelector(".msg-image-waiting")).toBeNull();
+    expect(host.querySelector(".msg-image-full")).not.toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("clicking a picture attachment opens it over the messages", () => {
+  const session = aDirect();
+  const picture = anAttachment({
+    id: "pic",
+    message_id: "msg-pic",
+    original_filename: "image.png",
+    workspace_relpath: "inbox/image-3.png",
+    mime: "image/png",
+  });
+  const message = aMessage({
+    id: "msg-pic",
+    session_id: session.id,
+    kind: "user",
+    body: "选哪个",
+    attachments: [picture],
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, {
+    selectedId: session.id,
+    client: {
+      getAttachmentBlob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+      getWorkspaceFileBlob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+    },
+  }));
+  const opened: string[] = [];
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: (path: string) => opened.push(path),
+    onCreateBot: () => {},
+  });
+  try {
+    click(host.querySelector(".attachment-file-btn"));
+    const stage = host.querySelector(".msg-image-lightbox");
+    expect(stage).not.toBeNull();
+    expect(getComputedStyle(stage!).position).toBe("fixed");
+    expect(stage?.getAttribute("role")).not.toBe("dialog");
+    expect(host.querySelector(".msg-image-frame")?.getAttribute("aria-label")).toBe("image.png");
+    expect(opened).toEqual([]);
+    click(host.querySelector(".msg-image-close"));
+    expect(host.querySelector(".msg-image-lightbox")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("a markdown image link opens over the messages and a text link still opens the preview", () => {
+  const session = aDirect();
+  const message = aMessage({
+    id: "msg-links",
+    session_id: session.id,
+    kind: "bot",
+    author: "bot-1",
+    body: "看 [shot.png](inbox/shot.png) 和 [notes.md](inbox/notes.md)",
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [message], turns: [],
+  }, { selectedId: session.id }));
+  const opened: string[] = [];
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: (path: string) => opened.push(path),
+    onCreateBot: () => {},
+  });
+  try {
+    const links = [...host.querySelectorAll("a")];
+    click(links.find((link) => link.textContent?.includes("shot.png")));
+    expect(host.querySelector(".msg-image-lightbox")).not.toBeNull();
+    expect(opened).toEqual([]);
+    click(links.find((link) => link.textContent?.includes("notes.md")));
+    expect(opened).toEqual(["inbox/notes.md"]);
+  } finally {
+    close();
+  }
+});
+
+for (const session of [aDirect(), aGroup(), aBotDirect()]) {
+  test(`${session.kind} keeps a complete attachment entry without repeating its inventory`, () => {
+    const paths = ["work/check/a.txt", "work/check/b.txt"];
+    const body = "检查继续。查看 [重点](work/check/a.txt)。\n\n" + paths.map(path => `[${path}](${path})`).join("\n");
+    const message = aMessage({ id: "inventory", session_id: session.id, kind: "bot", author: "bot-1", body,
+      attachments: paths.map((path, index) => anAttachment({ id: `att-${index}`, message_id: "inventory", workspace_relpath: path, original_filename: path.split("/").pop()! })),
+    });
+    const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [session], messages: [message], turns: [] }, { selectedId: session.id }));
+    let opened = "";
+    const { host, close } = render(ChatStage, { runtime, t, selected: session,
+      onOpenProfile: () => {}, onCreateBot: () => {},
+      onOpenArtifact: (path: string) => { opened = path; },
+    });
+    try {
+      const segment = host.querySelector('[data-message-id="inventory"]')!;
+      expect(segment.querySelectorAll(".md-artifact-link").length).toBe(1);
+      expect(segment.textContent).toContain("检查继续");
+      const bundle = segment.querySelector<HTMLButtonElement>(".attachment-bundle-btn")!;
+      expect(bundle.textContent).toContain("2 个文件");
+      expect(bundle.title.split("\n")).toEqual(paths);
+      bundle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(opened).toBe(paths[0]!);
+      expect(message.body).toBe(body);
+    } finally { close(); }
+  });
+}

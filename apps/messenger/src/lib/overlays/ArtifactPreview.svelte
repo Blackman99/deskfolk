@@ -3,7 +3,8 @@
 	import type { EncodedCrop } from '../annotations/region-box.ts';
 	import { ANNOTATION_BATCH_MAX, describeAnchor } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { ApiError, etagForBlob } from '../api.ts';
+	import { onPaneResize } from '../workbench/pane-resize.svelte.ts';
+	import { ApiError, etagForBlob, originalSizeForBlob } from '../api.ts';
 	import AnnotationList from '../annotations/AnnotationList.svelte';
 	import AnnotationSendBar from '../annotations/AnnotationSendBar.svelte';
 	import AnnotationComposer from '../annotations/AnnotationComposer.svelte';
@@ -25,6 +26,7 @@
 	} from '../annotations/model.ts';
 	import { anchorFromSelection, type EditorRange } from '../annotations/text-range.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
+	import type { MediaSourceHandle } from '../remote/media-source.ts';
 	import {
 		absWorkspacePath,
 		artifactByteSource,
@@ -43,18 +45,16 @@
 		type ArtifactTreeNode,
 	} from './artifact-tree.ts';
 	import ArtifactTree from './ArtifactTree.svelte';
+	import ArtifactTreeMenu from './ArtifactTreeMenu.svelte';
 	import ArtifactCodeEditor from './ArtifactCodeEditor.svelte';
-	import FileIcon from './FileIcon.svelte';
-	import { fileIconFor } from './file-icon.ts';
 	import { formatFileSize } from '../chat/attachments.ts';
-	import { copyText } from '../clipboard.ts';
 	import {
 		fileProgressPercent,
 		formatFileProgress,
 		type FileProgress,
 	} from '../file-progress.ts';
-	import { highlightLangFromPath, highlightLangLabel } from '../highlight-lang.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
+	import MessageImageLightbox, { type ImageOrigin } from '../chat/MessageImageLightbox.svelte';
 	import { openWorkspacePath } from './open-workspace.ts';
 	import {
 		clampArtifactTreeWidth,
@@ -128,21 +128,41 @@
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
+	/**
+	 * A picture enlarged over the whole app, the way one in a message is: this file when it is an
+	 * image (`own`, shown from the bytes already here), or an image in this Markdown. Only while
+	 * the preview still shows the file it was opened from, so it never outlives what it borrows.
+	 */
+	let enlarged = $state<{ from: string; relpath: string; own: boolean; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
+	const shownEnlarged = $derived(enlarged?.from === relpath ? enlarged : null);
 	let text = $state<string | null>(null);
 	let missing = $state(false);
 	let loading = $state(false);
 	let progress = $state<FileProgress | null>(null);
 	let loadPercent = $derived(progress ? fileProgressPercent(progress) : null);
 	let loadBytes = $derived(progress ? formatFileProgress(progress, formatFileSize) : null);
+	/**
+	 * Remotely a picture opens as the Mac's 1600 px copy; this is the original's length while that
+	 * copy is on screen, and the pane offers the original.
+	 */
+	let reducedFrom = $state<number | null>(null);
+	let originalProgress = $state<FileProgress | null>(null);
+	let originalBytes = $derived(originalProgress ? formatFileProgress(originalProgress, formatFileSize) : null);
 	let openHint = $state(false);
 	let wrap = $state(true);
 	let showSource = $state(false);
-	let copied = $state(false);
-	let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+	/** The file-tree row that was right-clicked, and where its menu hangs. */
+	let treeMenu = $state<{ node: ArtifactTreeNode; x: number; y: number } | null>(null);
 	let liveBlob: string | null = null;
+	let mediaSource: MediaSourceHandle | null = null;
+	/** The clip on screen plays from pieces fetched as it goes (remote), so no whole-file hash exists. */
+	let streamed = $state(false);
 	let loadGen = 0;
+	/** The read behind the file on screen. Another file, or closing, stops it rather than letting it finish ahead of the next. */
+	let loadAbort: AbortController | null = null;
 	/** The key of the bytes on screen; a repeat of it must not swap the object URL. */
 	let loadedKey: string | null = null;
+	let loadedClient: MessengerApi | null = null;
 	let lastSourcePath = $state('');
 	let editor = $state<{
 		getValue: () => string;
@@ -184,7 +204,7 @@
 	} | null>(null);
 	/** Box and element kinds need a mode: the pointer draws instead of scrolling or clicking through. */
 	let annotMode = $state(false);
-	/** The file's scroller, and how far down the composer sits so it clears the view's own toolbar. */
+	/** The file's frame (it holds the scroller), and how far down the composer sits so it clears the view's own toolbar. */
 	let bodyEl = $state<HTMLElement | null>(null);
 	let composerTop = $state<number | null>(null);
 	let annotBusy = $state(false);
@@ -202,10 +222,12 @@
 			return;
 		}
 		const measure = () => {
+			// The composer is pinned to the frame, over the scroller, so a bar is measured from the
+			// frame's top as it is on screen.
 			const top = body.getBoundingClientRect().top;
 			let bottom = 0;
 			for (const bar of body.querySelectorAll<HTMLElement>('[data-annotator-bar]')) {
-				bottom = Math.max(bottom, bar.getBoundingClientRect().bottom - top + body.scrollTop);
+				bottom = Math.max(bottom, bar.getBoundingClientRect().bottom - top);
 			}
 			composerTop = bottom > 0 ? Math.round(bottom + 8) : null;
 		};
@@ -269,6 +291,25 @@
 	function cancelDraft(): void {
 		pendingDraft = null;
 		annotError = null;
+	}
+
+	/**
+	 * Annotate mode on or off. Remotely a picture opens as the Mac's smaller copy, whose size and
+	 * hash are not the file's: a box is drawn on the original, so that is fetched first.
+	 */
+	async function toggleAnnotMode(): Promise<void> {
+		if (annotMode) {
+			annotMode = false;
+			cancelDraft();
+			return;
+		}
+		if (kind === 'image' && reducedFrom !== null) {
+			const path = relpath;
+			await loadOriginal();
+			// Still the copy (the original did not come), or another file by now: stay out of the mode.
+			if (reducedFrom !== null || relpath !== path) return;
+		}
+		annotMode = true;
 	}
 
 	/** Escape from an adapter: the spot waiting for its remark first, then annotate mode; then the pane's. */
@@ -388,13 +429,24 @@
 	let saveError = $state(false);
 	let saveConflict = $state(false);
 	let loadedEtag = $state<string | null>(null);
+	/**
+	 * Whether `loadedEtag` is this file's: an annotation is stored against the file's hash, and the
+	 * one before it belongs to the file shown before. Save keeps using `loadedEtag` either way, so a
+	 * stale buffer meets the daemon's 409 rather than landing on another file.
+	 */
+	let hashFresh = $state(false);
 	/** The PDF's bytes, for the pdf.js viewer. */
 	let pdfBlob = $state<Blob | null>(null);
 	let pdfViewer = $state<{ openFind: () => void; closeFind: () => boolean } | null>(null);
 	/** An SVG's source, kept so an image annotation can size a drawing that declares no size. */
 	let svgRaw = $state<string | null>(null);
-	const contentSha = $derived(contentShaFromEtag(loadedEtag));
-	let pendingNav = $state<null | { kind: 'close'; afterClose?: () => void } | { kind: 'node'; node: ArtifactTreeNode }>(null);
+	const contentSha = $derived(hashFresh ? contentShaFromEtag(loadedEtag) : null);
+	let pendingNav = $state<
+		| null
+		| { kind: 'close'; afterClose?: () => void }
+		| { kind: 'node'; node: ArtifactTreeNode }
+		| { kind: 'leave'; after: () => void }
+	>(null);
 	let treePreferred = $state(loadArtifactTreeWidth());
 	let treeDragging = $state(false);
 	/** Phone only: the list drops down over the top of the preview, which stays put. */
@@ -406,14 +458,12 @@
 
 	$effect(() => {
 		const el = paneEl;
-		if (!el || typeof ResizeObserver === 'undefined') return;
+		if (!el) return;
 		const apply = () => {
 			paneWidth = el.clientWidth || Number.POSITIVE_INFINITY;
 		};
 		apply();
-		const observer = new ResizeObserver(apply);
-		observer.observe(el);
-		return () => observer.disconnect();
+		return onPaneResize(el, apply);
 	});
 	let resolvedTheme = $state(themeManager.resolved);
 	let kind = $derived(
@@ -490,8 +540,6 @@
 			tree.length > 1 ||
 			tree.some((node) => node.kind === 'dir')
 	);
-	let textLang = $derived(highlightLangFromPath(relpath));
-	let icon = $derived(fileIconFor(relpath, { isDir: kind === 'directory' }));
 	let titleName = $derived(
 		attachment?.original_filename ??
 			(relpath ? (relpath.split('/').pop() ?? relpath) : t.stream.workspaceExplorer)
@@ -500,10 +548,6 @@
 	let sourceMode = $derived(kind === 'text' || (canShowSource && showSource));
 	let byteSource = $derived(artifactByteSource({ mode, relpath, attachment }));
 	let remoteClient = $derived(api?.kind === 'remote');
-	let canOpenOnDisk = $derived(
-		!remoteClient && Boolean(workspacePath) && Boolean(relpath) && kind !== 'directory' && !missing
-	);
-	let canRemoteFile = $derived(remoteClient && Boolean(relpath) && kind !== 'directory' && !missing);
 	// The rendered view can hold an unsaved buffer carried over from the source view; the dirty
 	// prompt's Save must be able to write it.
 	let canSave = $derived(Boolean(api && relpath && canShowSource && text !== null && (sourceMode || text !== diskText)));
@@ -531,6 +575,28 @@
 	function movePending(anchor: AnnotationAnchor): void {
 		if (pendingDraft) pendingDraft = { ...pendingDraft, anchor };
 	}
+	/** Markdown and single-file HTML can be read rendered or as source. */
+	let canToggleSource = $derived(kind === 'markdown' || kind === 'html');
+	/**
+	 * The pane has no toolbar: annotating keeps one thin row of its own, and only on a file it
+	 * applies to — its list (which says why nothing new can be added when that is so), annotate
+	 * mode for the kinds drawn with the pointer, and in the source view the line on how to add one.
+	 */
+	const showAnnotToggle = $derived(
+		mode !== 'workspace' && (fileAnnotations.length > 0 || gate.ok || gate.reason !== 'kind')
+	);
+	const showAnnotMode = $derived(mode !== 'workspace' && needsMode && gate.ok);
+	const annotHint = $derived<'' | 'dirty' | 'no-target' | 'streamed' | null>(
+		mode !== 'workspace' && gate.ok && gate.adapter === 'media' && streamed && !loading && contentSha === null
+			? 'streamed'
+			: mode === 'workspace' || !sourceMode || text === null
+				? null
+				: gate.ok
+					? ''
+					: gate.reason === 'dirty' || gate.reason === 'no-target'
+						? gate.reason
+						: null
+	);
 
 	$effect(() => {
 		const path = relpath;
@@ -539,8 +605,10 @@
 		const key = previewLoadKey({ path, kind: previewKind, source, attachmentId: attachment?.id });
 		// Losing the citing message flips the source, not the file: reloading here would restart a
 		// playing video every time you switch sessions or continue an interrupted turn.
-		if (key !== null && key === loadedKey) return;
+		const client = api;
+		if (key !== null && key === loadedKey && client === loadedClient) return;
 		loadedKey = key;
+		loadedClient = client;
 		const att = untrack(() => attachment);
 		void loadPreview(path, previewKind, source, att);
 	});
@@ -585,14 +653,17 @@
 	});
 
 	onDestroy(() => {
+		loadGen += 1;
 		revoke();
+		loadAbort?.abort();
 		taskTreeAbort?.abort();
 		// Anything still in flight for this pane belongs to a listing that is gone.
 		treeGeneration += 1;
-		if (copiedTimer) clearTimeout(copiedTimer);
 	});
 
 	function revoke(): void {
+		mediaSource?.dispose();
+		mediaSource = null;
 		if (liveBlob) URL.revokeObjectURL(liveBlob);
 		liveBlob = null;
 		blobUrl = null;
@@ -624,6 +695,20 @@
 	}
 
 
+	function enlarge(image: string, own: boolean, picture: Element | null | undefined): void {
+		let origin: ImageOrigin | null = null;
+		if (picture instanceof HTMLElement) {
+			const box = picture.getBoundingClientRect();
+			if (box.width >= 2 && box.height >= 2) {
+				origin = { top: box.top, left: box.left, width: box.width, height: box.height };
+			}
+		}
+		// A picture inside a note already shows its 256 px copy: the enlargement starts from it at the
+		// picture's proportions and grows once. The note keeps owning that object URL.
+		const standIn = !own && picture instanceof HTMLImageElement && picture.complete && picture.naturalWidth > 0 ? picture.src : null;
+		enlarged = { from: relpath, relpath: image, own, origin, placeholder: standIn };
+	}
+
 	async function loadPreview(
 		path: string,
 		previewKind: ArtifactKind,
@@ -631,9 +716,18 @@
 		att: Attachment | null,
 	): Promise<void> {
 		const gen = ++loadGen;
+		if (mediaSource) revoke();
+		loadAbort?.abort();
+		loadAbort = null;
 		missing = false;
 		openHint = false;
 		progress = null;
+		// The last file's hash is not this one's. A clip streamed in pieces never gets one, and a
+		// spot picked on it must not be saved against the file shown before it.
+		hashFresh = false;
+		streamed = false;
+		reducedFrom = null;
+		originalProgress = null;
 		if (!source || !api || previewKind === 'directory' || !isInAppPreviewKind(previewKind)) {
 			if (gen !== loadGen) return;
 			loading = false;
@@ -643,9 +737,13 @@
 			return;
 		}
 		loading = true;
+		const abort = new AbortController();
+		loadAbort = abort;
+		const size = previewKind === 'image' && api.kind === 'remote' ? ('preview' as const) : undefined;
 		progress = {
 			loaded: 0,
-			total: typeof att?.size === "number" && att.size > 0 ? att.size : null,
+			// The attachment's size is the original's, which is not what a copy will weigh.
+			total: !size && typeof att?.size === "number" && att.size > 0 ? att.size : null,
 		};
 		try {
 			const onProgress = (next: FileProgress) => {
@@ -655,12 +753,31 @@
 					total: next.total ?? progress?.total ?? null,
 				};
 			};
+			if ((previewKind === 'audio' || previewKind === 'video') && api.kind === 'remote' && api.openMediaSource) {
+				const stream = await api.openMediaSource({ path, ...(source === 'attachment' && att ? { attachmentId: att.id } : {}) }, abort.signal, () => {
+					if (gen !== loadGen) return;
+					missing = true;
+					abort.abort();
+				});
+				if (gen !== loadGen || abort.signal.aborted) { stream?.dispose(); return; }
+				if (stream) {
+					revoke();
+					mediaSource = stream;
+					streamed = true;
+					blobUrl = stream.url;
+					text = null;
+					diskText = null;
+					return;
+				}
+			}
 			const blob =
 				source === 'attachment' && att
-					? await api.getAttachmentBlob(att.id, onProgress)
-					: await api.getWorkspaceFileBlob(path, onProgress);
+					? await api.getAttachmentBlob(att.id, onProgress, { signal: abort.signal, size })
+					: await api.getWorkspaceFileBlob(path, onProgress, { signal: abort.signal, size });
 			if (gen !== loadGen) return;
 			loadedEtag = etagForBlob(blob);
+			hashFresh = true;
+			reducedFrom = size ? originalSizeForBlob(blob) : null;
 			if (previewKind === 'text' || previewKind === 'markdown' || previewKind === 'svg') {
 				const raw = await blob.text();
 				if (gen !== loadGen) return;
@@ -704,37 +821,61 @@
 		}
 	}
 
-	async function download(): Promise<void> {
-		if (!api || !relpath || kind === 'directory') return;
+	/** The picture itself, in place of the copy on screen. The copy stays up while it arrives. */
+	async function loadOriginal(): Promise<void> {
+		const client = api;
+		const total = reducedFrom;
+		const att = attachment;
+		const path = relpath;
+		const source = byteSource;
+		if (!client || total === null || originalProgress) return;
+		const gen = loadGen;
+		loadAbort?.abort();
+		const abort = new AbortController();
+		loadAbort = abort;
+		originalProgress = { loaded: 0, total };
 		try {
+			const onProgress = (next: FileProgress) => {
+				if (gen !== loadGen) return;
+				originalProgress = { loaded: next.loaded, total: next.total ?? total };
+			};
 			const blob =
-				byteSource === 'attachment' && attachment
-					? await api.getAttachmentBlob(attachment.id)
-					: await api.getWorkspaceFileBlob(relpath);
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = attachment?.original_filename ?? relpath.split('/').pop() ?? relpath;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
+				source === 'attachment' && att
+					? await client.getAttachmentBlob(att.id, onProgress, { signal: abort.signal })
+					: await client.getWorkspaceFileBlob(path, onProgress, { signal: abort.signal });
+			if (gen !== loadGen) return;
+			const next = URL.createObjectURL(blob);
+			if (liveBlob) URL.revokeObjectURL(liveBlob);
+			liveBlob = next;
+			blobUrl = next;
+			// The copy's hash was the copy's; an annotation names the file's.
+			loadedEtag = etagForBlob(blob);
+			hashFresh = true;
+			reducedFrom = null;
 		} catch {
-			missing = true;
+			// The copy stays on screen, and so does the offer.
+		} finally {
+			if (gen === loadGen) originalProgress = null;
 		}
 	}
 
-	async function openSystem(reveal = false): Promise<void> {
-		const abs = workspacePath ? absWorkspacePath(workspacePath, relpath) : null;
-		if (!abs) {
+	/**
+	 * Open this tree row with the system, or reveal it in Finder. A failure stays a quiet hint on
+	 * the preview: the browser build has no system opener, and downloading the file from here was
+	 * the old toolbar's job.
+	 */
+	async function openOnDisk(path: string, reveal: boolean): Promise<void> {
+		const abs = workspacePath ? absWorkspacePath(workspacePath, path) : null;
+		if (!abs || remoteClient) {
 			openHint = true;
 			return;
 		}
 		const ok = await openWorkspacePath(abs, reveal);
-		if (!ok) {
-			openHint = true;
-			if (!reveal && kind !== 'directory') await download();
-		}
+		if (!ok) openHint = true;
+	}
+
+	function openTreeMenu(node: ArtifactTreeNode, event: MouseEvent): void {
+		treeMenu = { node, x: event.clientX, y: event.clientY };
 	}
 
 	function selectNode(node: ArtifactTreeNode): void {
@@ -778,13 +919,15 @@
 	}
 
 	async function save(): Promise<boolean> {
-		if (!api || !relpath || !canSave) return false;
+		// Never while another file is loading or failed to: the buffer on screen is the last file's.
+		if (!api || !relpath || !canSave || loading || missing) return false;
 		saving = true;
 		saveError = false;
 		saveConflict = false;
 		try {
 			const value = editor?.getValue() ?? text ?? '';
 			loadedEtag = await api.putWorkspaceFile(relpath, value, loadedEtag);
+			hashFresh = true;
 			text = value;
 			diskText = value;
 			editor?.markSaved(value);
@@ -811,6 +954,7 @@
 			nav.afterClose?.();
 		}
 		else if (nav?.kind === 'node') commitSelect(nav.node);
+		else if (nav?.kind === 'leave') nav.after();
 	}
 
 	function confirmDiscard(): void {
@@ -826,6 +970,7 @@
 			nav.afterClose?.();
 		}
 		else if (nav?.kind === 'node') commitSelect(nav.node);
+		else if (nav?.kind === 'leave') nav.after();
 	}
 
 	export function closeFind(): boolean {
@@ -834,6 +979,20 @@
 
 	export function requestCloseFromParent(afterClose?: () => void): void {
 		requestClose(afterClose);
+	}
+
+	/**
+	 * Another file is about to take this pane — the conversation's preview is one pane, so opening
+	 * a different file turns it rather than opening beside it. An unsaved edit is asked about the
+	 * way leaving it from the tree is; `after` runs once it is saved or let go, never on cancel.
+	 */
+	export function requestLeaveFromParent(after: () => void): void {
+		if (saving) return;
+		if (dirty) {
+			pendingNav = { kind: 'leave', after };
+			return;
+		}
+		after();
 	}
 
 	/** True when closing would have to ask — an unsaved edit, or a save in flight. */
@@ -898,25 +1057,12 @@
 		}
 	}
 
-	function copySource(): void {
-		const value = editor?.getValue() ?? text;
-		if (value == null) return;
-		copyText(value);
-		copied = true;
-		if (copiedTimer) clearTimeout(copiedTimer);
-		copiedTimer = setTimeout(() => {
-			copied = false;
-		}, 1800);
-	}
-
-	function copyRelpath(): void {
-		if (!relpath) return;
-		copyText(relpath);
-		copied = true;
-		if (copiedTimer) clearTimeout(copiedTimer);
-		copiedTimer = setTimeout(() => {
-			copied = false;
-		}, 1800);
+	function toggleSource(): void {
+		// Leaving the source view carries an edit over to the rendered one — only an edit: the
+		// model's own line-ending folding is not one, and a buffer brought back to the disk by hand
+		// is the disk again, not the old carried edit.
+		if (editor) text = editor.isDirty() ? editor.getValue() : (diskText ?? text);
+		showSource = !showSource;
 	}
 
 </script>
@@ -930,111 +1076,58 @@
 	style:--artifact-tree-width="{treeWidth}px"
 	onkeydown={onPaneKey}
 >
+	<!--
+		A phone has no workbench tab to name or close this pane, so it keeps one thin bar: back,
+		and the file's name. The desktop names the file on its tab and closes it there.
+	-->
 	<header class="artifact-pane-head">
-		<div class="artifact-pane-titles min-w-0">
-			<div class="artifact-pane-title-row flex items-center gap-4 min-w-0">
-				<FileIcon {icon} size={16} />
-				<h2 class:is-dirty={dirty}>{titleName}</h2>
-			</div>
-			<p class="mono">{relpath || (workspacePath ?? '')}</p>
-		</div>
-		<button type="button" class="modal-close" title={t.common.close} onclick={() => requestClose()}>✕</button>
+		<button type="button" class="artifact-back" aria-label={t.common.back} onclick={() => requestClose()}>
+			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+				<polyline points="15 18 9 12 15 6"></polyline>
+			</svg>
+		</button>
+		<h2 class:is-dirty={dirty} title={titleName}>{titleName}</h2>
 	</header>
-	{#if canShowSource || canOpenOnDisk || canRemoteFile}
-		<div class="artifact-toolbar">
-			{#if canShowSource}
-				<span class="artifact-code-meta mono text-10 tracking-[0.04em] text-muted">{highlightLangLabel(textLang)}</span>
-				{#if sourceMode}
-					<button
-						type="button"
-						class="artifact-tool-btn"
-						class:is-on={wrap}
-						onclick={() => (wrap = !wrap)}
-					>{t.stream.artifactWrap}</button>
-					<button
-						type="button"
-						class="artifact-tool-btn"
-						onclick={() => editor?.openFind()}
-					>{t.stream.artifactFind}</button>
-				{/if}
-				{#if kind === 'markdown' || kind === 'html'}
-					<button
-						type="button"
-						class="artifact-tool-btn"
-						class:is-on={!showSource}
-						onclick={() => {
-							// Only an edit is carried over: the model's own line-ending folding is not one. A
-							// buffer brought back to the disk by hand is the disk again, not the old carried edit.
-							if (editor) text = editor.isDirty() ? editor.getValue() : (diskText ?? text);
-							showSource = false;
-						}}
-					>{t.stream.artifactRendered}</button>
-					<button
-						type="button"
-						class="artifact-tool-btn"
-						class:is-on={showSource}
-						onclick={() => (showSource = true)}
-					>{t.stream.artifactSource}</button>
-				{/if}
-				{#if sourceMode}
-					<button
-						type="button"
-						class="artifact-tool-btn"
-						onclick={() => void save()}
-						disabled={!dirty || saving || !relpath}
-					>{saving ? t.stream.artifactSaving : t.stream.artifactSave}</button>
-				{/if}
-				<button type="button" class="artifact-tool-btn" onclick={copySource} disabled={text == null}>
-					{copied ? t.chat.copied : t.chat.copyCode}
-				</button>
+	{#if saveError}
+		<p class="muted artifact-save-error pt-0 px-8 pb-3">{saveConflict ? t.stream.artifactSaveConflict : t.stream.artifactSaveFailed}</p>
+	{/if}
+	{#if showAnnotToggle || showAnnotMode || annotHint !== null}
+		<div class="artifact-annot-bar" data-annotation-bar>
+			{#if annotHint !== null}
+				<p class="artifact-annot-hint" data-annotation-hint={annotHint}>
+					{annotHint === 'dirty'
+						? t.stream.annotationDirtyHint
+						: annotHint === 'no-target'
+							? t.stream.annotationNoTarget
+							: annotHint === 'streamed'
+								? t.stream.annotationStreamedHint
+								: t.stream.annotationAddHint}
+				</p>
+			{:else}
+				<span class="artifact-annot-spacer"></span>
 			{/if}
-			{#if mode !== 'workspace' && (fileAnnotations.length > 0 || gate.ok || (!gate.ok && gate.reason !== 'kind'))}
+			{#if showAnnotMode}
 				<button
 					type="button"
-					class="artifact-tool-btn artifact-annot-toggle"
+					class="artifact-annot-btn"
+					class:is-on={annotMode}
+					aria-pressed={annotMode}
+					disabled={originalProgress !== null || loading}
+					onclick={() => void toggleAnnotMode()}
+					data-annotation-mode
+				>{annotMode ? t.stream.annotationModeExit : t.stream.annotationMode}</button>
+			{/if}
+			{#if showAnnotToggle}
+				<button
+					type="button"
+					class="artifact-annot-btn artifact-annot-toggle"
 					class:is-on={annotOpen}
 					aria-pressed={annotOpen}
 					onclick={() => (annotOpen = !annotOpen)}
 					data-annotation-toggle
 				>{t.stream.annotationsTitle}{fileAnnotations.length > 0 ? ` (${fileAnnotations.length})` : ''}</button>
 			{/if}
-			{#if mode !== 'workspace' && needsMode && gate.ok}
-				<button
-					type="button"
-					class="artifact-tool-btn"
-					class:is-on={annotMode}
-					aria-pressed={annotMode}
-					onclick={() => {
-						annotMode = !annotMode;
-						if (!annotMode) cancelDraft();
-					}}
-					data-annotation-mode
-				>{annotMode ? t.stream.annotationModeExit : t.stream.annotationMode}</button>
-			{/if}
-			{#if canOpenOnDisk}
-				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(false)}>{t.stream.artifactOpenSystem}</button>
-				<button type="button" class="artifact-tool-btn" onclick={() => void openSystem(true)}>{t.stream.artifactReveal}</button>
-			{/if}
-			{#if canRemoteFile}
-				<button type="button" class="artifact-tool-btn" onclick={() => void download()}>{t.settings.downloadFile}</button>
-				<button type="button" class="artifact-tool-btn" onclick={copyRelpath}>{t.settings.copyRelpath}</button>
-			{/if}
 		</div>
-	{/if}
-	{#if saveError}
-		<p class="muted artifact-save-error pt-0 px-8 pb-3">{saveConflict ? t.stream.artifactSaveConflict : t.stream.artifactSaveFailed}</p>
-	{/if}
-	{#if remoteClient}
-		<p class="muted artifact-save-error pt-0 px-8 pb-3">{t.settings.fileLimitRemote}</p>
-	{/if}
-	{#if mode !== 'workspace' && sourceMode && text !== null}
-		{#if gate.ok}
-			<p class="muted artifact-annot-hint pt-0 px-8 pb-3" data-annotation-hint>{t.stream.annotationAddHint}</p>
-		{:else if gate.reason === 'dirty'}
-			<p class="muted artifact-annot-hint pt-0 px-8 pb-3" data-annotation-hint="dirty">{t.stream.annotationDirtyHint}</p>
-		{:else if gate.reason === 'no-target'}
-			<p class="muted artifact-annot-hint pt-0 px-8 pb-3" data-annotation-hint="no-target">{t.stream.annotationNoTarget}</p>
-		{/if}
 	{/if}
 	{#if showTree}
 		<div class="artifact-picker">
@@ -1063,6 +1156,7 @@
 				selected={relpath}
 				label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree}
 				onSelect={selectNode}
+				onContextMenu={openTreeMenu}
 				lazyDirs={mode === 'workspace'}
 				{loadedDirs}
 				onExpandDir={(path) => void loadWorkspaceDir(path)}
@@ -1094,189 +1188,245 @@
 			></button>
 		{/if}
 		<div class="artifact-body-with-annots flex-1 min-h-0 min-w-0 flex" class:has-annots={annotOpen && mode !== 'workspace'}>
-		<div
-			bind:this={bodyEl}
-			class="artifact-pane-body flex-1 min-h-0 min-w-0 overflow-auto p-8"
-			class:is-editor={sourceMode && text !== null}
-		>
-			{#if loading}
-				<div class="artifact-loading" role="status" aria-live="polite" aria-busy="true">
-					<span class="artifact-loading-ring" aria-hidden="true"></span>
-					<p class="artifact-loading-copy">{t.stream.artifactLoading}</p>
-					{#if loadBytes}
-						<p class="artifact-loading-bytes">{loadBytes}</p>
-					{/if}
-					<div
-						class="artifact-loading-bar"
-						role="progressbar"
-						aria-label={t.stream.artifactLoading}
-						aria-valuemin={0}
-						aria-valuemax={100}
-						aria-valuenow={loadPercent ?? undefined}
+			<div
+				bind:this={bodyEl}
+				class="artifact-pane-body flex-1 min-h-0 min-w-0"
+				class:is-editor={sourceMode && text !== null}
+			>
+				<!-- Not while elements are being picked: the pill would sit on the picker's own bar. -->
+				{#if canToggleSource && text !== null && !(annotMode && viewAdapter === 'html')}
+					<button
+						type="button"
+						class="artifact-source-toggle"
+						aria-pressed={showSource}
+						onclick={toggleSource}
 					>
-						<div
-							class="artifact-loading-fill"
-							class:is-indeterminate={loadPercent === null}
-							style={loadPercent === null ? undefined : `width: ${loadPercent}%`}
-						></div>
-					</div>
+						{#if showSource}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
+								<circle cx="12" cy="12" r="3"></circle>
+							</svg>
+							{t.stream.artifactRendered}
+						{:else}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<polyline points="16 18 22 12 16 6"></polyline>
+								<polyline points="8 6 2 12 8 18"></polyline>
+							</svg>
+							{t.stream.artifactSource}
+						{/if}
+					</button>
+				{/if}
+				{#if kind === 'image' && blobUrl && !loading && reducedFrom !== null}
+					<button
+						type="button"
+						class="artifact-source-toggle artifact-original-toggle"
+						aria-busy={originalProgress ? 'true' : undefined}
+						disabled={originalProgress !== null}
+						onclick={loadOriginal}
+					>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<rect x="3" y="3" width="18" height="18" rx="2"></rect>
+							<circle cx="9" cy="9" r="2"></circle>
+							<path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path>
+						</svg>
+						{originalProgress ? t.stream.imageOriginalLoading(originalBytes) : t.stream.imageOriginal(formatFileSize(reducedFrom))}
+					</button>
+				{/if}
+				<div class="artifact-pane-scroll">
+					{#if loading}
+						<div class="artifact-loading" role="status" aria-live="polite" aria-busy="true">
+							<span class="artifact-loading-ring" aria-hidden="true"></span>
+							<p class="artifact-loading-copy">{t.stream.artifactLoading}</p>
+							{#if loadBytes}
+								<p class="artifact-loading-bytes">{loadBytes}</p>
+							{/if}
+							<div
+								class="artifact-loading-bar"
+								role="progressbar"
+								aria-label={t.stream.artifactLoading}
+								aria-valuemin={0}
+								aria-valuemax={100}
+								aria-valuenow={loadPercent ?? undefined}
+							>
+								<div
+									class="artifact-loading-fill"
+									class:is-indeterminate={loadPercent === null}
+									style={loadPercent === null ? undefined : `width: ${loadPercent}%`}
+								></div>
+							</div>
+						</div>
+					{/if}
+					{#if truncatedHint && mode === 'workspace'}
+						<p class="muted">{t.stream.workspaceTruncated}</p>
+					{/if}
+					{#if missing}
+						<p class="muted">{t.stream.artifactMissing}</p>
+					{:else if mode === 'workspace' && !relpath}
+						<p class="muted">{t.stream.workspacePickFile}</p>
+					{:else if kind === "directory"}
+						<p class="muted">{mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactDirectory}</p>
+					{:else if sourceMode}
+						{#if text !== null}
+							<ArtifactCodeEditor
+								bind:this={editor}
+								code={text}
+								baseline={diskText}
+								path={relpath}
+								{wrap}
+								onDirty={(next) => (editorDirty = next)}
+								annotations={fileAnnotations}
+								focusAnnotationId={annotFocus}
+								focusAnnotationSeq={annotFocusSeq}
+								annotateEnabled={gate.ok && gate.adapter === 'text' && !pendingDraft}
+								annotateLabel={t.stream.annotationAdd}
+								onAnnotate={offerAnnotation}
+								onPickAnnotation={pickAnnotation}
+								{loadMonaco}
+							/>
+						{/if}
+					{:else if kind === "image" || kind === "svg"}
+						{#if blobUrl}
+							<!--
+								A box is drawn on the picture itself: a remote copy has neither the original's size nor
+								its hash, so it takes no new box (annotate mode fetches the original first).
+							-->
+							<ImageAnnotator
+								src={blobUrl}
+								alt={relpath}
+								isSvg={kind === 'svg'}
+								svgText={svgRaw}
+								annotations={viewAnnotations}
+								focusId={annotFocus}
+								focusSeq={annotFocusSeq}
+								active={annotMode}
+								enabled={gate.ok && gate.adapter === 'image' && !pendingDraft && reducedFrom === null}
+								labels={t.stream.annotImage}
+								onDraft={(draft) => offerDraft('image_region', draft.anchor, draft.crop)}
+								onPick={pickAnnotation}
+								pending={pendingOf('image_region')}
+								onPendingChange={movePending}
+								onCancel={escapeAnnotation}
+								openLabel={`${t.stream.artifactEnlarge} ${relpath.split('/').pop() ?? relpath}`}
+								onOpen={(img) => enlarge(relpath, true, img)}
+							/>
+						{/if}
+					{:else if (kind === "audio" || kind === "video") && blobUrl}
+						<!-- Streamed remotely the clip has no whole-file hash to hang a new point on. -->
+						<MediaAnnotator
+							src={blobUrl}
+							kind={kind}
+							annotations={viewAnnotations}
+							focusId={annotFocus}
+							focusSeq={annotFocusSeq}
+							enabled={gate.ok && gate.adapter === 'media' && !pendingDraft && contentSha !== null}
+							labels={t.stream.annotMedia}
+							onDraft={(draft) => offerDraft('media_time', draft.anchor, draft.crop)}
+							onPick={pickAnnotation}
+							pending={pendingOf('media_time')}
+							onPendingChange={movePending}
+							onCancel={escapeAnnotation}
+							onError={() => {
+								missing = true;
+								loadAbort?.abort();
+							}}
+						/>
+					{:else if kind === "pdf" && pdfBlob}
+						<PdfViewer
+							bind:this={pdfViewer}
+							data={pdfBlob}
+							theme={resolvedTheme}
+							labels={t.stream.annotPdf}
+							annotations={viewAnnotations}
+							focusId={annotFocus}
+							focusSeq={annotFocusSeq}
+							active={annotMode}
+							enabled={gate.ok && gate.adapter === 'pdf' && !pendingDraft}
+							onDraft={(draft) => offerDraft('pdf_region', draft.anchor, draft.crop)}
+							onPick={pickAnnotation}
+							pending={pendingOf('pdf_region')}
+							onPendingChange={movePending}
+							onCancel={escapeAnnotation}
+						/>
+					{:else if kind === "html" && text !== null}
+						<HtmlAnnotator
+							html={text}
+							scheme={resolvedTheme}
+							title={relpath}
+							annotations={viewAnnotations}
+							focusId={annotFocus}
+							focusSeq={annotFocusSeq}
+							active={annotMode && gate.ok && gate.adapter === 'html'}
+							enabled={gate.ok && gate.adapter === 'html' && (!pendingDraft || pendingDraft.kind === 'html_element')}
+							labels={t.stream.annotHtml}
+							onDraft={(draft) => offerDraft('html_element', draft.anchor)}
+							onPick={goToAnnotation}
+							pending={pendingOf('html_element')}
+							onPendingChange={movePending}
+							onCancel={escapeAnnotation}
+						/>
+					{:else if kind === "markdown" && text !== null}
+						<MarkdownAnnotator
+							source={text}
+							annotations={viewAnnotations}
+							focusId={annotFocus}
+							focusSeq={annotFocusSeq}
+							active={gate.ok && gate.adapter === 'markdown'}
+							enabled={gate.ok && gate.adapter === 'markdown' && !pendingDraft}
+							labels={t.stream.annotMarkdown}
+							onDraft={(draft) => offerDraft('text_range', draft.anchor)}
+							onPick={pickAnnotation}
+							pending={pendingOf('text_range')}
+							onCancel={escapeAnnotation}
+							copyLabel={t.chat.copyCode}
+							copiedLabel={t.chat.copied}
+							onOpenArtifact={openMarkdownPath}
+							onOpenImage={(path, from) => enlarge(path, false, from?.querySelector('img, .md-artifact-pending') ?? from)}
+							loadArtifactImage={(path) => {
+								if (!api) return Promise.reject(new Error('API unavailable'));
+								// A picture inside a note is a 72 px chip: the 256 px copy is plenty, and tapping it
+								// enlarges to the 1600 px copy with the original on offer.
+								return api.getWorkspaceFileBlob(path, undefined, { size: 'thumb' });
+							}}
+						/>
+					{:else}
+						<p class="muted">{attachment?.original_filename ?? relpath}</p>
+					{/if}
+					{#if openHint}
+						<p class="muted">{t.stream.artifactOpenUnavailable}</p>
+					{/if}
 				</div>
-			{/if}
-			{#if truncatedHint && mode === 'workspace'}
-				<p class="muted">{t.stream.workspaceTruncated}</p>
-			{/if}
-			{#if missing}
-				<p class="muted">{t.stream.artifactMissing}</p>
-			{:else if mode === 'workspace' && !relpath}
-				<p class="muted">{t.stream.workspacePickFile}</p>
-			{:else if kind === "directory"}
-				<p class="muted">{mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactDirectory}</p>
-			{:else if sourceMode}
-				{#if text !== null}
-					<ArtifactCodeEditor
-						bind:this={editor}
-						code={text}
-						baseline={diskText}
-						path={relpath}
-						{wrap}
-						onDirty={(next) => (editorDirty = next)}
+				<!-- Pinned to the frame, over the file: it stays in view while the file scrolls under it. -->
+				{#if pendingDraft}
+					<div class="artifact-annot-composer" style:top={composerTop === null ? undefined : `${composerTop}px`}>
+						<AnnotationComposer
+							{t}
+							position={describeAnchor(pendingDraft.kind, pendingDraft.anchor, locale)}
+							busy={annotBusy}
+							error={annotError}
+							onSave={(body) => void saveDraft(body)}
+							onCancel={cancelDraft}
+						/>
+					</div>
+				{/if}
+			</div>
+			{#if annotOpen && mode !== 'workspace'}
+				<div class="artifact-annot-col">
+					<AnnotationList
 						annotations={fileAnnotations}
-						focusAnnotationId={annotFocus}
-						focusAnnotationSeq={annotFocusSeq}
-						annotateEnabled={gate.ok && gate.adapter === 'text' && !pendingDraft}
-						annotateLabel={t.stream.annotationAdd}
-						onAnnotate={offerAnnotation}
-						onPickAnnotation={pickAnnotation}
-						{loadMonaco}
-					/>
-				{/if}
-			{:else if kind === "image" || kind === "svg"}
-				{#if blobUrl}
-					<ImageAnnotator
-						src={blobUrl}
-						alt={relpath}
-						isSvg={kind === 'svg'}
-						svgText={svgRaw}
-						annotations={viewAnnotations}
-						focusId={annotFocus}
-						focusSeq={annotFocusSeq}
-						active={annotMode}
-						enabled={gate.ok && gate.adapter === 'image' && !pendingDraft}
-						labels={t.stream.annotImage}
-						onDraft={(draft) => offerDraft('image_region', draft.anchor, draft.crop)}
-						onPick={pickAnnotation}
-						pending={pendingOf('image_region')}
-						onPendingChange={movePending}
-						onCancel={escapeAnnotation}
-					/>
-				{/if}
-			{:else if (kind === "audio" || kind === "video") && blobUrl}
-				<MediaAnnotator
-					src={blobUrl}
-					kind={kind}
-					annotations={viewAnnotations}
-					focusId={annotFocus}
-					focusSeq={annotFocusSeq}
-					enabled={gate.ok && gate.adapter === 'media' && !pendingDraft}
-					labels={t.stream.annotMedia}
-					onDraft={(draft) => offerDraft('media_time', draft.anchor, draft.crop)}
-					onPick={pickAnnotation}
-					pending={pendingOf('media_time')}
-					onPendingChange={movePending}
-					onCancel={escapeAnnotation}
-				/>
-			{:else if kind === "pdf" && pdfBlob}
-				<PdfViewer
-					bind:this={pdfViewer}
-					data={pdfBlob}
-					theme={resolvedTheme}
-					labels={t.stream.annotPdf}
-					annotations={viewAnnotations}
-					focusId={annotFocus}
-					focusSeq={annotFocusSeq}
-					active={annotMode}
-					enabled={gate.ok && gate.adapter === 'pdf' && !pendingDraft}
-					onDraft={(draft) => offerDraft('pdf_region', draft.anchor, draft.crop)}
-					onPick={pickAnnotation}
-					pending={pendingOf('pdf_region')}
-					onPendingChange={movePending}
-					onCancel={escapeAnnotation}
-				/>
-			{:else if kind === "html" && text !== null}
-				<HtmlAnnotator
-					html={text}
-					scheme={resolvedTheme}
-					title={relpath}
-					annotations={viewAnnotations}
-					focusId={annotFocus}
-					focusSeq={annotFocusSeq}
-					active={annotMode && gate.ok && gate.adapter === 'html'}
-					enabled={gate.ok && gate.adapter === 'html' && (!pendingDraft || pendingDraft.kind === 'html_element')}
-					labels={t.stream.annotHtml}
-					onDraft={(draft) => offerDraft('html_element', draft.anchor)}
-					onPick={goToAnnotation}
-					pending={pendingOf('html_element')}
-					onPendingChange={movePending}
-					onCancel={escapeAnnotation}
-				/>
-			{:else if kind === "markdown" && text !== null}
-				<MarkdownAnnotator
-					source={text}
-					annotations={viewAnnotations}
-					focusId={annotFocus}
-					focusSeq={annotFocusSeq}
-					active={gate.ok && gate.adapter === 'markdown'}
-					enabled={gate.ok && gate.adapter === 'markdown' && !pendingDraft}
-					labels={t.stream.annotMarkdown}
-					onDraft={(draft) => offerDraft('text_range', draft.anchor)}
-					onPick={pickAnnotation}
-					pending={pendingOf('text_range')}
-					onCancel={escapeAnnotation}
-					copyLabel={t.chat.copyCode}
-					copiedLabel={t.chat.copied}
-					onOpenArtifact={openMarkdownPath}
-					loadArtifactImage={(path) => {
-						if (!api) return Promise.reject(new Error('API unavailable'));
-						return api.getWorkspaceFileBlob(path);
-					}}
-				/>
-			{:else}
-				<p class="muted">{attachment?.original_filename ?? relpath}</p>
-			{/if}
-			{#if openHint}
-				<p class="muted">{t.stream.artifactOpenUnavailable}</p>
-			{/if}
-			{#if pendingDraft}
-				<div class="artifact-annot-composer" style:top={composerTop === null ? undefined : `${composerTop}px`}>
-					<AnnotationComposer
 						{t}
-						position={describeAnchor(pendingDraft.kind, pendingDraft.anchor, locale)}
+						{locale}
+						{bots}
+						focusId={annotFocus}
 						busy={annotBusy}
 						error={annotError}
-						onSave={(body) => void saveDraft(body)}
-						onCancel={cancelDraft}
+						onReveal={revealAnnotation}
+						onEdit={(row, body) => void editDraft(row, body)}
+						onDelete={(row) => void deleteDraft(row)}
+						onToggleStatus={(row, status) => void toggleAnnotation(row, status)}
+						onClose={() => (annotOpen = false)}
 					/>
 				</div>
 			{/if}
-		</div>
-		{#if annotOpen && mode !== 'workspace'}
-			<div class="artifact-annot-col">
-				<AnnotationList
-					annotations={fileAnnotations}
-					{t}
-					{locale}
-					{bots}
-					focusId={annotFocus}
-					busy={annotBusy}
-					error={annotError}
-					onReveal={revealAnnotation}
-					onEdit={(row, body) => void editDraft(row, body)}
-					onDelete={(row) => void deleteDraft(row)}
-					onToggleStatus={(row, status) => void toggleAnnotation(row, status)}
-					onClose={() => (annotOpen = false)}
-				/>
-			</div>
-		{/if}
 		</div>
 	</div>
 	{#if mode !== 'workspace'}
@@ -1293,6 +1443,29 @@
 		{/each}
 	{/if}
 </aside>
+{#if treeMenu}
+	<ArtifactTreeMenu
+		x={treeMenu.x}
+		y={treeMenu.y}
+		{t}
+		onOpen={() => void openOnDisk(treeMenu?.node.path ?? '', false)}
+		onReveal={() => void openOnDisk(treeMenu?.node.path ?? '', true)}
+		onClose={() => (treeMenu = null)}
+	/>
+{/if}
+{#if shownEnlarged}
+	<MessageImageLightbox
+		attachment={shownEnlarged.own ? attachment : null}
+		relpath={shownEnlarged.relpath}
+		src={shownEnlarged.own ? blobUrl : null}
+		srcOriginalSize={shownEnlarged.own ? reducedFrom : null}
+		placeholder={shownEnlarged.placeholder}
+		origin={shownEnlarged.origin}
+		{api}
+		{t}
+		onClose={() => (enlarged = null)}
+	/>
+{/if}
 {#if pendingNav}
 	<div class="modal-backdrop confirm-backdrop" role="presentation">
 		<div class="modal-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="artifact-dirty-title">
@@ -1311,6 +1484,7 @@
 
 <style>
 	.artifact-pane {
+		height: 100%;
 		background: var(--pane);
 		min-width: 0;
 		min-height: 0;
@@ -1325,56 +1499,127 @@
 		display: none;
 	}
 
+	/*
+	 * The desktop names and closes this pane on the workbench tab, so the bar is a phone thing.
+	 * Keeping it in the document (rather than not rendering it) means a test can still read it.
+	 */
 	.artifact-pane-head {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 14px 16px 10px;
-		border-bottom: 1px solid var(--line);
+		display: none;
 	}
 
-	.artifact-pane-title-row h2 {
+	.artifact-pane-head h2 {
+		margin: 0;
 		min-width: 0;
-	}
-
-	.artifact-toolbar {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-		padding: 6px 16px;
-		border-bottom: 1px solid var(--line);
-		background: var(--pane);
-	}
-
-	.artifact-tool-btn {
-		border: 1px solid var(--line);
-		background: var(--btn-secondary-bg);
-		border-radius: var(--radius-sm);
-		padding: 2px 8px;
-		font-size: 12px;
+		flex: 1;
+		align-self: center;
+		font-size: 16px;
+		font-weight: 600;
+		line-height: 21px;
 		color: var(--ink);
-		cursor: pointer;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.artifact-tool-btn:hover:not(:disabled) {
-		background: var(--btn-secondary-hover);
-	}
-
-	.artifact-tool-btn.is-on {
-		background: var(--accent-tint);
-		border-color: var(--accent-border);
+	.artifact-pane-head h2.is-dirty::after {
+		content: "•";
+		margin-left: 6px;
 		color: var(--accent);
 	}
 
-	.artifact-tool-btn:disabled {
-		opacity: 0.5;
-		cursor: default;
+	.artifact-back {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 48px;
+		width: 48px;
+		align-self: stretch;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--ink-secondary);
+		cursor: pointer;
+	}
+
+	.artifact-back:hover,
+	.artifact-back:active {
+		background: var(--line-subtle);
+		color: var(--accent);
+	}
+
+	.artifact-back:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: -3px;
 	}
 
 	.artifact-pane-body {
 		position: relative;
+		overflow: hidden;
+	}
+
+	/*
+	 * The file scrolls. The source toggle does not: it stays pinned to this pane's top-right,
+	 * over whatever has scrolled past.
+	 */
+	.artifact-pane-scroll {
+		height: 100%;
+		min-height: 0;
+		overflow: auto;
+		padding: 16px;
+	}
+
+	.artifact-source-toggle {
+		position: absolute;
+		top: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 4;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 28px;
+		padding: 0 10px 0 8px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--pane) 88%, transparent);
+		color: var(--ink-secondary);
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 1;
+		cursor: pointer;
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		box-shadow: var(--shadow-xs);
+	}
+
+	.artifact-source-toggle svg {
+		flex-shrink: 0;
+	}
+
+	.artifact-source-toggle:hover {
+		color: var(--accent);
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+	}
+
+	.artifact-source-toggle:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	.artifact-original-toggle {
+		max-width: calc(100% - 32px);
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.artifact-original-toggle:disabled {
+		cursor: progress;
+	}
+
+	.artifact-pane-body.is-editor .artifact-source-toggle {
+		top: 8px;
 	}
 
 	/* The list goes beside the file only when the pane itself is wide enough: beside the chat on a
@@ -1416,16 +1661,72 @@
 		right: 12px;
 		z-index: 6;
 	}
+	/* Annotating's own row, where the toolbar used to be: the how-to line, annotate mode, the list. */
+	.artifact-annot-bar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 36px;
+		padding: 4px 12px;
+		border-bottom: 1px solid var(--line);
+		background: var(--pane);
+		flex-shrink: 0;
+	}
 	.artifact-annot-hint {
+		flex: 1;
+		min-width: 0;
+		margin: 0;
 		font-size: 11.5px;
+		line-height: 1.4;
+		color: var(--muted);
+	}
+	.artifact-annot-spacer {
+		flex: 1;
+	}
+	.artifact-annot-btn {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		height: 26px;
+		padding: 0 10px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		background: var(--btn-secondary-bg);
+		color: var(--ink-secondary);
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 1;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.artifact-annot-btn:hover,
+	.artifact-annot-btn.is-on {
+		color: var(--accent);
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+	}
+	.artifact-annot-btn:disabled {
+		cursor: progress;
+		opacity: 0.6;
+	}
+	.artifact-annot-btn:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.artifact-pane-body.is-editor {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
+
+	.artifact-pane-body.is-editor .artifact-pane-scroll {
+		flex: 1;
+		min-height: 0;
 		padding: 0;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		height: 100%;
 	}
 
 	.artifact-loading {
@@ -1510,26 +1811,9 @@
 		}
 	}
 
-	.artifact-pane-titles h2 {
-		margin: 0;
-		font-size: 14px;
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.artifact-pane-titles p {
-		margin: 4px 0 0;
-		font-size: 11px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
 	.artifact-pane-main.has-tree {
 		display: grid;
+		grid-template-rows: minmax(0, 1fr);
 		grid-template-columns: var(--artifact-tree-width, 168px) 8px minmax(0, 1fr);
 	}
 
@@ -1555,12 +1839,6 @@
 	.artifact-pane.is-tree-dragging .artifact-tree-split::before {
 		background: var(--accent);
 		inset: 0 2px;
-	}
-
-	.artifact-pane-title-row :global(h2.is-dirty::after) {
-		content: "•";
-		margin-left: 6px;
-		color: var(--accent);
 	}
 
 	.artifact-dirty-foot button:first-child {
@@ -1593,15 +1871,26 @@
 		}
 
 		.artifact-pane-head {
-			padding: 12px 12px 10px;
+			display: flex;
+			align-items: stretch;
+			gap: 0;
+			min-height: 64px;
+			padding: 0 16px 0 0;
+			padding-top: env(safe-area-inset-top);
+			border-bottom: 1px solid var(--line);
+			background: var(--pane);
+			flex-shrink: 0;
 		}
 
-		.artifact-pane-head :global(.modal-close) {
-			width: 40px;
-			height: 40px;
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
+		.artifact-source-toggle {
+			top: 10px;
+			height: 36px;
+			padding: 0 14px 0 12px;
+		}
+
+		.artifact-source-toggle svg {
+			width: 16px;
+			height: 16px;
 		}
 
 		/* The list drops over the top of the file instead of replacing the screen it is on. */
@@ -1653,7 +1942,10 @@
 			top: 0;
 			z-index: 5;
 			display: none;
-			max-height: min(52%, 320px);
+			/* The list is worth more than the sliver of file behind it: it runs as far as the
+			   bottom of the sheet, and only stops early when it has nothing more to show. */
+			max-height: 100%;
+			overscroll-behavior: contain;
 			width: auto;
 			max-width: none;
 			border-right: 0;
@@ -1673,6 +1965,10 @@
 			height: 100%;
 		}
 
+		.artifact-pane-scroll {
+			padding: 12px;
+		}
+
 		.artifact-picker-scrim {
 			display: block;
 			position: absolute;
@@ -1690,6 +1986,11 @@
 			top: 8px;
 			right: 8px;
 			left: 8px;
+		}
+
+		.artifact-annot-btn {
+			height: 32px;
+			padding: 0 12px;
 		}
 	}
 </style>

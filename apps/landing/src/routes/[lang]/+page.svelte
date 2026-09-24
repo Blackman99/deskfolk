@@ -10,7 +10,7 @@
   const lang: Lang = $derived(data.lang);
   const t = $derived(DICT[lang]);
   const version: string = $derived(data.version);
-  const cloneCommands = $derived(`git clone ${GITHUB_URL}.git\ncd real-bot\npnpm install\npnpm dev`);
+  const cloneCommands = $derived(`git clone ${GITHUB_URL}.git\ncd deskfolk\npnpm install\npnpm dev`);
 </script>
 
 <Seo {lang} title={t.seo.title} description={t.seo.description} imageAlt={t.seo.imageAlt} softwareSchema />
@@ -63,6 +63,7 @@
         <a class="text-link" href="{GITHUB_BLOB_MAIN}/docs/development.md" target="_blank" rel="noreferrer">{t.quickstart.linkDocs}</a>
         <a class="text-link" href="{base}/{lang}/manifesto">{t.quickstart.linkManifesto}</a>
         <a class="text-link" href="{base}/{lang}/roadmap">{t.quickstart.linkRoadmap}</a>
+        <a class="text-link" href="{base}/{lang}/remote">{t.quickstart.linkRemote}</a>
         <a class="text-link" href={GITHUB_URL} target="_blank" rel="noreferrer">{t.nav.github}</a>
       </div>
     </div>
@@ -84,12 +85,12 @@
     <div class="terminal" aria-label="Terminal">
       <div class="term-bar">
         <span class="l r"></span><span class="l y"></span><span class="l g"></span>
-        <span class="term-title mono">zsh — real-bot</span>
+        <span class="term-title mono">zsh — deskfolk</span>
         <span class="term-copy"><CopyButton text={cloneCommands} label={t.hero.copy} doneLabel={t.hero.copied} compact /></span>
       </div>
       <pre class="mono"><span class="c"># {t.quickstart.step1}</span>
 <span class="p">$</span> git clone {GITHUB_URL}.git
-<span class="p">$</span> cd real-bot
+<span class="p">$</span> cd deskfolk
 <span class="p">$</span> pnpm install
 
 <span class="c"># {t.quickstart.step2}</span>
@@ -234,7 +235,7 @@
 
   .qs-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 36px;
     align-items: start;
   }

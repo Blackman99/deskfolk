@@ -16,14 +16,10 @@ import {
   type Message,
   type Provider,
   type PendingJudgement,
-  type RouteLearning,
-  type RouteRecord,
-  type RouteReview,
   type SearchHit,
   type SessionSummary,
   type Settings,
   type Skill,
-  type Spend,
   type Turn,
 } from "@real-bot/protocol";
 
@@ -32,7 +28,6 @@ export type Snapshot = {
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
-  spend: Spend[];
   mcpServers: McpServer[];
   providers: Provider[];
   skills: Skill[];
@@ -43,15 +38,9 @@ export type Snapshot = {
   turns: Turn[];
   judgements: Judgement[];
   pendingJudgements: PendingJudgement[];
-  /** Per-turn model choices for the open session; fetched, not pushed. */
-  routes: RouteRecord[];
-  /** What the review made of each closed correction chain here. */
-  routeReviews: RouteReview[];
-  /** What a learning hop wrote for a chain in the open session. */
-  routeLearnings: RouteLearning[];
   approvals: Approval[];
   searchHits: SearchHit[];
-  /** Annotations pulled for the open session and the open file, then followed by events. */
+  /** Annotations pulled for each conversation opened and each file previewed, then followed by events. */
   annotations: Annotation[];
 };
 
@@ -73,7 +62,6 @@ export function emptySnapshot(): Snapshot {
     credentialOperations: [],
     bots: [],
     sessions: [],
-    spend: [],
     mcpServers: [],
     providers: [],
     skills: [],
@@ -84,9 +72,6 @@ export function emptySnapshot(): Snapshot {
     turns: [],
     judgements: [],
     pendingJudgements: [],
-    routes: [],
-    routeReviews: [],
-    routeLearnings: [],
     approvals: [],
     searchHits: [],
     annotations: [],
@@ -162,9 +147,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
-        routes: snapshot.routes.filter((r) => r.session_id !== event.id),
-        routeReviews: snapshot.routeReviews.filter((r) => r.session_id !== event.id),
-        routeLearnings: snapshot.routeLearnings.filter((r) => r.session_id !== event.id),
       };
     }
     case "session.cleared": {
@@ -178,9 +160,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: snapshot.turns.filter((t) => t.session_id !== event.id),
         judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
-        routes: snapshot.routes.filter((r) => r.session_id !== event.id),
-        routeReviews: snapshot.routeReviews.filter((r) => r.session_id !== event.id),
-        routeLearnings: snapshot.routeLearnings.filter((r) => r.session_id !== event.id),
       };
     }
     case "message.upsert": {
@@ -243,11 +222,11 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         ),
       };
     }
-    case "spend.created": {
-      const { event: _e, occurred_at: _at, ...row } = event;
-      if (snapshot.spend.some((s) => s.id === row.id)) return snapshot;
-      return { ...snapshot, spend: [...snapshot.spend, row] };
-    }
+    // Usage is not kept on the client: nothing shows it, and on a phone it was most of every
+    // snapshot. A view that needs it asks `GET /v1/spend` when it opens.
+    case "spend.created":
+    case "spend.removed":
+      return snapshot;
     case "judgement.started": {
       const { event: _e, occurred_at: _at, ...row } = event;
       if (snapshot.pendingJudgements.some((j) => j.id === row.id)) return snapshot;
@@ -273,8 +252,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     }
     case "approval.removed":
       return { ...snapshot, approvals: snapshot.approvals.filter((row) => row.id !== event.id) };
-    case "spend.removed":
-      return { ...snapshot, spend: snapshot.spend.filter((row) => row.id !== event.id) };
     case "annotation.removed":
       return { ...snapshot, annotations: snapshot.annotations.filter((a) => a.id !== event.id) };
     case "annotation.upsert": {

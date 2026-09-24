@@ -2,8 +2,13 @@ import { expect, test } from "bun:test";
 import type { Spend } from "@real-bot/protocol";
 import { applyEvent, emptySnapshot } from "./snapshot.ts";
 
-for (const totalTokens of [null, 6100]) {
-  test(`usage remains in the snapshot without a statistics display: ${totalTokens}`, () => {
+/**
+ * Usage rows are not kept on the client. Nothing on screen reads them, and 3,700 of them were
+ * 1.4 MB of every snapshot a phone pulled on each reconnect; `GET /v1/spend` serves a view that
+ * needs them.
+ */
+for (const event of ["spend.created", "spend.removed"] as const) {
+  test(`a ${event} event leaves the snapshot as it was`, () => {
     const spend: Spend = {
       id: "spend-1",
       session_id: "session-1",
@@ -12,17 +17,18 @@ for (const totalTokens of [null, 6100]) {
       judgement_id: null,
       input_tokens: null,
       output_tokens: null,
-      total_tokens: totalTokens,
+      total_tokens: 6100,
       cached_tokens: null,
       reasoning_tokens: null,
       cost_usd_ticks: null,
-      missing_reason: totalTokens === null ? "endpoint_omitted" : null,
+      missing_reason: null,
       created_at: "2026-09-16T00:00:00.000Z",
     };
-    const event = { event: "spend.created" as const, occurred_at: spend.created_at, ...spend };
-    const snapshot = applyEvent(emptySnapshot(), event);
-    expect(snapshot.spend).toEqual([spend]);
-    expect(applyEvent(snapshot, event)).toBe(snapshot);
-    expect(snapshot.messages).toEqual([]);
+    const before = emptySnapshot();
+    const frame = event === "spend.created"
+      ? { event, occurred_at: spend.created_at, ...spend }
+      : { event, occurred_at: spend.created_at, id: spend.id };
+    expect(applyEvent(before, frame)).toBe(before);
+    expect("spend" in before).toBe(false);
   });
 }

@@ -17,6 +17,7 @@ import { HttpError } from "./errors";
 import { ulid } from "./ids";
 import { truncateCodePoints } from "./notification-policy";
 import type { Store } from "./store";
+import { NEEDS_ATTENTION_SQL } from "./store/notifications";
 
 export const BATCHING_WINDOW_MS = 2_000;
 export const SEND_SLOT_INTERVAL_MS = 30_000;
@@ -179,7 +180,7 @@ function renderDesktopDeliveryContent(
     const summary = truncateCodePoints(highest.display.summary, 80);
     body = candidateCount > 1 ? `${summary} (等 ${candidateCount} 项)` : summary;
   } else {
-    title = "Real Bot";
+    title = "Deskfolk";
     if (highest.kind === "approval") {
       body = candidateCount > 1 ? `有 ${candidateCount} 项待处理事项，打开查看` : "有待批准事项，打开查看";
     } else if (highest.kind === "ask") {
@@ -197,7 +198,7 @@ function renderDesktopDeliveryContent(
 }
 
 const TEST_DESKTOP_COPY = {
-  title: "Real Bot",
+  title: "Deskfolk",
   body: "这是一条测试通知",
   sound: "default" as const,
   identifier: "test",
@@ -435,7 +436,7 @@ export class NotificationDeliveryScheduler {
           const firstItem = items[0] ? this.store.getNotification(items[0].id) : null;
           const content = firstItem
             ? renderDesktopDeliveryContent(dev, firstItem, items.length)
-            : { title: "Real Bot", body: "有待处理事项，打开查看" };
+            : { title: "Deskfolk", body: "有待处理事项，打开查看" };
 
           const sound = dev.sound === "off" ? "off" : "default";
           const singleSession = activeDelivery.batch_key.startsWith("session:");
@@ -750,7 +751,7 @@ export class NotificationDeliveryScheduler {
       const highestItem = this.store.getNotification(activeItems[0]!.id);
       const content = highestItem
         ? renderDesktopDeliveryContent(dev, highestItem, activeItems.length)
-        : { title: "Real Bot", body: "有待处理事项，打开查看" };
+        : { title: "Deskfolk", body: "有待处理事项，打开查看" };
 
       const sound = dev.sound === "off" ? "off" : "default";
 
@@ -789,7 +790,7 @@ export class NotificationDeliveryScheduler {
     const highestItem = this.store.getNotification(activeItems[0]!.id);
     const content = highestItem
       ? renderDesktopDeliveryContent(dev, highestItem, activeItems.length)
-      : { title: "Real Bot", body: "有待处理事项，打开查看" };
+      : { title: "Deskfolk", body: "有待处理事项，打开查看" };
 
     const sound = dev.sound === "off" ? "off" : "default";
 
@@ -920,7 +921,7 @@ export class NotificationDeliveryScheduler {
         const activeCount = this.store.db
           .query<{ count: number }, [string]>(`
             SELECT COUNT(*) as count FROM notifications
-            WHERE session_id = ? AND (read_at IS NULL OR action_state = 'open')
+            WHERE session_id = ? AND ${NEEDS_ATTENTION_SQL}
           `)
           .get(sessionId)?.count ?? 0;
         if (activeCount === 0) {

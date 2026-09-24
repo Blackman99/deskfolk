@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
-import { USER_MEMBER, type SessionTaskSummary, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type RouteRecord, type SessionTaskSummary, type TaskTrace } from "@real-bot/protocol";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
@@ -108,8 +108,17 @@ function drag(el: Element, by: { x: number; y: number }): void {
   flushSync();
 }
 
-function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string } = {}) {
+function open(opts: {
+  taskId?: string | null;
+  fail?: boolean;
+  sessionId?: string;
+  writeBack?: boolean;
+  trace?: TaskTrace;
+  focus?: { messageId: string; turnId: string | null } | null;
+  focusToken?: number;
+} = {}) {
   const jumps: Array<[string, string]> = [];
+  const settled: string[] = [];
   let closed = 0;
   const asked: string[] = [];
   const api = {
@@ -121,13 +130,15 @@ function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string
     },
     taskTrace: async (id: string) =>
       id === "task-1"
-        ? picture()
+        ? (opts.trace ?? picture())
         : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] },
     getWorkspaceFileBlob: async () => new Blob(["# 分镜"]),
   };
   const props = reactive({
     api: api as never,
     taskId: opts.taskId === undefined ? "task-1" : opts.taskId,
+    focus: opts.focus ?? null,
+    focusToken: opts.focusToken ?? 0,
     sessionId: opts.sessionId ?? "group-1",
     activeSessionId: "group-1",
     sessions: [group, direct],
@@ -139,9 +150,14 @@ function open(opts: { taskId?: string | null; fail?: boolean; sessionId?: string
     reloadToken: 0,
     onClose: () => (closed += 1),
     onJump: (sessionId: string, messageId: string) => jumps.push([sessionId, messageId]),
+    onTask: (taskId: string) => {
+      settled.push(taskId);
+      // What a pane does: the tab records the job on screen, which comes back as the prop.
+      if (opts.writeBack) props.taskId = taskId;
+    },
   });
   const view = render(TaskTraceView, props as never);
-  return { ...view, props, jumps, asked, closed: () => closed };
+  return { ...view, props, jumps, asked, settled, closed: () => closed };
 }
 
 async function until(host: HTMLElement, selector: string): Promise<Element> {
@@ -152,6 +168,142 @@ async function until(host: HTMLElement, selector: string): Promise<Element> {
   }
   throw new Error(`never saw ${selector}`);
 }
+
+function aRecord(over: Partial<RouteRecord> = {}): RouteRecord {
+  return {
+    turn_id: "t-writer",
+    session_id: "group-1",
+    bot_id: "bot-1",
+    trigger_message_id: "m1",
+    provider_id: null,
+    model: "grok-4.7",
+    thinking_level: "high",
+    signature: "coding",
+    outcome: "completed",
+    fail_kind: null,
+    reason: "要改很多文件，用最强的",
+    chain_id: "t-writer",
+    created_at: "2026-09-22T00:00:01.000Z",
+    finished_at: "2026-09-22T00:04:38.000Z",
+    hops: 16,
+    tool_calls: 20,
+    tool_errors: 0,
+    repeated_failures: 0,
+    files_written: 3,
+    feedback: [],
+    ...over,
+  };
+}
+
+/** The same job, with the model each Bot turn ran on and what came of it riding on its card. */
+function routedPicture(): TaskTrace {
+  const base = picture();
+  const [you, writerTurn, artistTurn] = base.nodes;
+  return {
+    ...base,
+    nodes: [
+      { ...you!, route: null },
+      {
+        ...writerTurn!,
+        route: {
+          record: aRecord({ feedback: [{ message_id: "m-note", body: "又漏了镜头", created_at: "2026-09-22T00:05:00.000Z" }] }),
+          review: {
+            chain_id: "t-writer",
+            turn_id: "t-writer",
+            session_id: "group-1",
+            bot_id: "bot-1",
+            signature: "coding",
+            model: "grok-4.7",
+            thinking_level: "high",
+            fault: "model",
+            direction: "stronger",
+            rounds: 2,
+            confidence: 0.9,
+            reason: "两次都漏了镜头",
+            created_at: "2026-09-22T00:06:00.000Z",
+            retired_at: null,
+            effect: null,
+          },
+          learning: { chain_id: "t-writer", bot_id: "bot-1", session_id: "group-1", kind: "memory", label: "分镜质检标准", created_at: "2026-09-22T00:07:00.000Z", outcome: null },
+        },
+      },
+      {
+        ...artistTurn!,
+        route: {
+          record: aRecord({ turn_id: "t-artist", session_id: "direct-1", bot_id: "bot-2", model: "gemini-3.8", thinking_level: "medium", signature: "writing", outcome: null, finished_at: null, reason: null, chain_id: "t-artist", hops: null, tool_calls: null, tool_errors: null }),
+          review: null,
+          learning: null,
+        },
+      },
+    ],
+  };
+}
+
+test("each Bot card says which model its turn ran on, and unfolds what came of it in place", async () => {
+  const view = open({ trace: routedPicture() });
+  await until(view.host, ".trace-slot");
+  const cardOf = (who: string) =>
+    [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((card) => card.querySelector(".trace-card-who")?.textContent?.trim() === who)!;
+  // Your own card ran on no model.
+  expect(cardOf("你").querySelector(".trace-route-btn")).toBeNull();
+  const line = cardOf("制片").querySelector<HTMLButtonElement>(".trace-route-btn")!;
+  expect(line.querySelector(".trace-route-model")?.textContent).toBe("grok-4.7");
+  expect(line.querySelector(".trace-route-meta")?.textContent).toBe("思考 高 · 写代码");
+  expect(line.querySelector(".trace-route-flag.is-blamed")).not.toBeNull();
+  expect(line.querySelector(".trace-route-flag.is-feedback")?.textContent?.trim()).toBe("1");
+  expect(cardOf("分镜师").querySelector(".trace-route-flag")).toBeNull();
+  expect(view.host.querySelector(".trace-route")).toBeNull();
+
+  click(line);
+  flushSync();
+  const detail = view.host.querySelector<HTMLElement>(".trace-slot .trace-route")!;
+  expect(line.getAttribute("aria-expanded")).toBe("true");
+  expect(detail.querySelector(".trace-route-outcome")?.textContent).toBe("完成");
+  expect(detail.querySelector(".trace-route-why")?.textContent).toContain("要改很多文件，用最强的");
+  expect(detail.querySelector(".trace-route-stats")?.textContent).toContain("16 跳 · 0 次工具错误");
+  expect(detail.querySelector(".trace-route-review")?.classList.contains("is-model")).toBe(true);
+  expect(detail.querySelector(".trace-route-review")?.textContent).toContain("该更强");
+  expect(detail.querySelector(".trace-route-learning")?.textContent).toBe("记下了：分镜质检标准");
+  // A note of yours about the model jumps back to where you said it.
+  click(detail.querySelector(".trace-route-note"));
+  expect(view.jumps).toEqual([["group-1", "m-note"]]);
+  // It unfolds under its own card, and only one at a time.
+  click(cardOf("分镜师").querySelector(".trace-route-btn"));
+  flushSync();
+  expect(view.host.querySelectorAll(".trace-route")).toHaveLength(1);
+  expect(view.host.querySelector(".trace-route-outcome")?.textContent).toBe("进行中");
+  click(view.host.querySelector(".trace-route-close"));
+  flushSync();
+  expect(view.host.querySelector(".trace-route")).toBeNull();
+  view.close();
+});
+
+test("the toolbar lights the cards you pushed back on, or whose review blamed the model, and dims the rest", async () => {
+  const view = open({ trace: routedPicture() });
+  await until(view.host, ".trace-slot");
+  const chip = (label: string) =>
+    [...view.host.querySelectorAll<HTMLButtonElement>(".trace-highlight")].find((b) => b.textContent?.includes(label))!;
+  expect(chip("有反馈").textContent).toContain("1");
+  expect(chip("归咎模型").textContent).toContain("1");
+  click(chip("归咎模型"));
+  flushSync();
+  expect(chip("归咎模型").getAttribute("aria-pressed")).toBe("true");
+  // The whole job stays on the board; only what matches is lit.
+  expect(view.host.querySelectorAll(".trace-card")).toHaveLength(3);
+  expect(view.host.querySelectorAll(".trace-card.is-lit")).toHaveLength(1);
+  expect(view.host.querySelectorAll(".trace-card.is-dim")).toHaveLength(2);
+  click(chip("归咎模型"));
+  flushSync();
+  expect(view.host.querySelectorAll(".trace-card.is-lit, .trace-card.is-dim")).toHaveLength(0);
+  view.close();
+});
+
+test("a job with no model trouble offers no highlight to look for it", async () => {
+  const view = open();
+  await until(view.host, ".trace-slot");
+  expect(view.host.querySelector(".trace-highlight")).toBeNull();
+  view.close();
+});
 
 test("the flow runs top to bottom, a card jumps to its turn, and a file opens under its turn", async () => {
   const view = open();
@@ -164,6 +316,12 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
     }))
     .sort((a, b) => a.top - b.top);
   expect(byRow.map((row) => row.who)).toEqual(["你", "制片", "分镜师"]);
+  const faces = [...view.host.querySelectorAll(".trace-avatar")];
+  expect(faces).toHaveLength(3);
+  expect(faces[0]?.classList.contains("is-you")).toBe(true);
+  expect(faces[0]?.querySelector("img")).toBeNull();
+  expect(faces[1]?.querySelector("img")?.getAttribute("src")).toBe(writer.avatar);
+  expect(faces[2]?.querySelector("img")?.getAttribute("src")).toBe(artist.avatar);
   expect(new Set(byRow.map((row) => row.top)).size).toBe(3);
   // Every handoff is a drawn curve now, not a divider between rows.
   const edges = [...view.host.querySelectorAll(".trace-edges path")];
@@ -172,8 +330,7 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   expect(view.host.querySelector(".trace-card.is-running .trace-summary")?.textContent).toBe("正在画第一格");
   expect(view.host.querySelector(".trace-card.is-completed")).not.toBeNull();
   expect(view.host.querySelector(".trace-card.is-running")).not.toBeNull();
-  // The window floats over the chat: no dimmed page behind it, and the node on screen is marked.
-  expect(view.host.querySelector(".trace-overlay")?.getAttribute("aria-modal")).toBe("false");
+  // The node that lives in the conversation on screen is marked as the one you are on.
   expect(view.host.querySelectorAll(".trace-card.is-here")).toHaveLength(2);
   expect(view.host.querySelector(".trace-place")?.textContent).toContain("群 · 制作组");
   expect(view.host.querySelector(".trace-output")).toBeNull();
@@ -181,7 +338,7 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   click(view.host.querySelector(".trace-card.is-running .trace-card-main"));
   expect(view.jumps).toEqual([["direct-1", "m-approval"]]);
 
-  click(buttonByText(view.host, "board.pdf"));
+  click(view.host.querySelector<HTMLButtonElement>(".trace-file")!);
   const output = await until(view.host, ".trace-output");
   expect(output.querySelector(".trace-output-kicker")?.textContent).toBe("分镜师交出");
   expect(output.querySelector(".trace-output-name")?.textContent).toBe("board.pdf");
@@ -192,55 +349,7 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   view.close();
 });
 
-test("any corner resizes the window, and the corner across from it stays put", async () => {
-  localStorage.setItem("real-bot-trace-window", JSON.stringify({ x: 300, y: 200, width: 440, height: 480 }));
-  const view = open();
-  try {
-    await until(view.host, ".trace-slot");
-    const grips = [...view.host.querySelectorAll(".trace-resize")];
-    const corner = (grip: Element) =>
-      [...grip.classList].find((name) => name.startsWith("trace-resize-"));
-    expect(grips.map(corner)).toEqual([
-      "trace-resize-nw",
-      "trace-resize-ne",
-      "trace-resize-sw",
-      "trace-resize-se",
-    ]);
-    // Nothing is drawn on the corner; only the cursor says a corner is a corner.
-    expect(grips.every((grip) => grip.textContent === "")).toBe(true);
-
-    drag(grips[0]!, { x: -60, y: -40 });
-    const pane = view.host.querySelector(".trace-pane") as HTMLElement;
-    // The top-left went out by the drag; the bottom-right is where it was: 740, 680.
-    expect([pane.style.left, pane.style.top, pane.style.width, pane.style.height]).toEqual([
-      "240px",
-      "160px",
-      "500px",
-      "520px",
-    ]);
-    expect(JSON.parse(localStorage.getItem("real-bot-trace-window") ?? "null")).toEqual({
-      x: 240,
-      y: 160,
-      width: 500,
-      height: 520,
-    });
-
-    drag(grips[3]!, { x: -100, y: -100 });
-    // Pulling the bottom-right in leaves the top-left alone.
-    expect([pane.style.left, pane.style.top, pane.style.width, pane.style.height]).toEqual([
-      "240px",
-      "160px",
-      "400px",
-      "420px",
-    ]);
-  } finally {
-    view.close();
-    localStorage.removeItem("real-bot-trace-window");
-  }
-});
-
-test("a phone shows the flow as a page, with nothing to drag or resize", async () => {
-  localStorage.setItem("real-bot-trace-window", JSON.stringify({ x: 40, y: 50, width: 500, height: 420 }));
+test("a phone shows the flow as a page that fills the screen", async () => {
   const previous = window.matchMedia;
   let view: ReturnType<typeof open> | undefined;
   window.matchMedia = ((query: string) => ({
@@ -257,17 +366,17 @@ test("a phone shows the flow as a page, with nothing to drag or resize", async (
   try {
     view = open();
     await until(view.host, ".trace-slot");
-    const overlay = view.host.querySelector(".trace-overlay");
-    expect(overlay?.classList.contains("is-page")).toBe(true);
-    expect(overlay?.getAttribute("aria-modal")).toBe("true");
-    expect(view.host.querySelector(".trace-resize")).toBeNull();
+    const page = view.host.querySelector(".trace-page");
+    expect(page).not.toBeNull();
+    expect(page?.getAttribute("aria-modal")).toBe("true");
+    // Nothing places the board itself any more: on a phone it is a page, and on a wide window a
+    // pane, whose size is the workbench's business rather than this component's.
     const pane = view.host.querySelector(".trace-pane") as HTMLElement;
     expect(pane.style.left).toBe("");
     expect(pane.style.width).toBe("");
   } finally {
     try { view?.close(); } catch { /* the page slide has nothing to animate here */ }
     window.matchMedia = previous;
-    localStorage.removeItem("real-bot-trace-window");
   }
 });
 
@@ -291,7 +400,7 @@ test("on a phone, Back steps out of full screen and leaves the flow standing", a
     // Nothing over the flow: Back is history's, and the flow is what it closes.
     expect(back()).toBe(false);
 
-    click(buttonByText(view.host, "board.pdf"));
+    click(view.host.querySelector<HTMLButtonElement>(".trace-file")!);
     const output = await until(view.host, ".trace-output");
     // A file unfolded under its card is part of this page, so Back still belongs to history.
     expect(back()).toBe(false);
@@ -338,10 +447,34 @@ test("switching the conversation reloads that conversation's job", async () => {
 
 test("the switcher opens another job from this session", async () => {
   const view = open();
+  const trigger = await until(view.host, ".trace-title-trigger");
+  click(trigger);
   await until(view.host, ".trace-job");
-  click(buttonByText(view.host, "上周的排期"));
+  const jobBtn = [...view.host.querySelectorAll<HTMLButtonElement>(".trace-job")].find((b) =>
+    b.textContent?.includes("上周的排期")
+  )!;
+  click(jobBtn);
   await until(view.host, ".trace-empty");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("上周的排期");
+  view.close();
+});
+
+test("pointed at another job from outside, the board turns to it without a second read of its own", async () => {
+  // A conversation has one board: a card or a link asking for another of its jobs changes the
+  // job this board shows, rather than opening another board beside it.
+  const view = open({ writeBack: true });
+  await until(view.host, ".trace-slot");
+  expect(view.settled).toEqual(["task-1"]);
+  const reads = view.asked.length;
+
+  view.props.taskId = "task-2";
+  flushSync();
+  await until(view.host, ".trace-empty");
+  expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("上周的排期");
+  expect(view.settled).toEqual(["task-1", "task-2"]);
+
+  // The job it settled on coming back as the prop is not another request.
+  expect(view.asked.length).toBe(reads + 1);
   view.close();
 });
 
@@ -389,6 +522,91 @@ function withMeasuredCards(run: () => Promise<void>): Promise<void> {
 // passes with the fix removed. What actually pins the behaviour is the overlap test in
 // task-trace.test.ts, plus the two guards in the pane — measurements are kept across a reload of
 // the same job, and every card is read back after each layout.
+test("opening from a message centres that message's card", async () => {
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    await withMeasuredCards(async () => {
+      const view = open({ focus: { messageId: "m3", turnId: "t-artist" }, focusToken: 1 });
+      await until(view.host, ".trace-slot");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      const flow = view.host.querySelector<HTMLElement>(".trace-flow")!;
+      const card = [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((row) =>
+        row.textContent?.includes("分镜师"),
+      )!;
+      expect(card.classList.contains("is-focus")).toBe(true);
+      const slot = card.parentElement as HTMLElement;
+      const moved = /translate\(([-\d.]+)px,\s*([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(flow.style.transform);
+      expect(moved).not.toBeNull();
+      const [tx, ty, scale] = moved!.slice(1).map(Number);
+      const cx = Number.parseInt(slot.style.left, 10) + 124;
+      const cy = Number.parseInt(slot.style.top, 10) + slot.offsetHeight / 2;
+      expect(tx + cx * scale!).toBeCloseTo(400, 0);
+      expect(ty + cy * scale!).toBeCloseTo(300, 0);
+      // The same job fetched again is not another request to move.
+      (view.props as { reloadToken: number }).reloadToken = 1;
+      flushSync();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      expect(flow.style.transform).toBe(`translate(${tx}px, ${ty}px) scale(${scale})`);
+
+      // The board is already open, so another message slides there instead of cutting.
+      const timers = new Map<number, () => void>();
+      let nextTimer = 1;
+      const setTimer = globalThis.setTimeout;
+      const clearTimer = globalThis.clearTimeout;
+      globalThis.setTimeout = ((fn: () => void) => {
+        const id = nextTimer++;
+        timers.set(id, fn);
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout;
+      globalThis.clearTimeout = ((id: number) => {
+        timers.delete(id);
+      }) as typeof clearTimeout;
+      const realNow = performance.now.bind(performance);
+      let clock = realNow();
+      performance.now = () => clock;
+      try {
+        view.props.focus = { messageId: "m1", turnId: null };
+        view.props.focusToken = 2;
+        flushSync();
+        const started = flow.style.transform;
+        expect(started).toBe(`translate(${tx}px, ${ty}px) scale(${scale})`);
+        for (let i = 0; i < 40 && timers.size > 0; i += 1) {
+          clock += 20;
+          const pending = [...timers.entries()];
+          timers.clear();
+          for (const [, fn] of pending) fn();
+          flushSync();
+        }
+        const you = [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((row) =>
+          row.querySelector(".trace-card-who")?.textContent?.trim() === "你",
+        )!;
+        expect(you.classList.contains("is-focus")).toBe(true);
+        const landed = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(flow.style.transform)!;
+        const slot = you.parentElement as HTMLElement;
+        const x = Number.parseInt(slot.style.left, 10) + 124;
+        const y = Number.parseInt(slot.style.top, 10) + slot.offsetHeight / 2;
+        expect(Math.abs(Number(landed[1]) + x - 400)).toBeLessThanOrEqual(1);
+        expect(Math.abs(Number(landed[2]) + y - 300)).toBeLessThanOrEqual(1);
+        expect(flow.style.transform).not.toBe(started);
+      } finally {
+        performance.now = realNow;
+        globalThis.setTimeout = setTimer;
+        globalThis.clearTimeout = clearTimer;
+      }
+    });
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
+});
+
 test("the board still lays out after the job is fetched again", async () => {
   // What the screenshot showed: a turn was still running, the trace refetched every few seconds,
   // and the cards ended up drawn on top of one another. The measured heights were being thrown
@@ -411,4 +629,167 @@ test("the board still lays out after the job is fetched again", async () => {
     flushSync();
     expect(tops()).toEqual(measured);
   });
+});
+
+test("a node with multiple attachments renders a single bundle button and opens through preview panel", async () => {
+  const opened: Array<{
+    relpath: string;
+    att: any;
+    messageId: string | null;
+    forceTree: boolean;
+    taskId: string | null;
+    siblings: any[];
+  }> = [];
+
+  const multiTrace: TaskTrace = {
+    id: "task-multi",
+    dir: "work/2026-09-22-继续-qb3y",
+    title: "继续",
+    session_id: "group-1",
+    closed_at: null,
+    nodes: [
+      {
+        turn_id: "t-reviewer",
+        session_id: "group-1",
+        actor: "bot-1",
+        status: "completed",
+        woken_by_turn_id: null,
+        woken_elsewhere: null,
+        trigger_message_id: "m1",
+        focus_message_id: "m1",
+        summary: "【驳回重跑】EP01 v4 不能进 120 秒预演",
+        created_at: "2026-09-22T00:00:00.000Z",
+        artifacts: [
+          { path: "work/2026-09-22-继续-qb3y/pair_01.jpg", message_id: "m1", attachment_id: "a1" },
+          { path: "work/2026-09-22-继续-qb3y/pair_02.jpg", message_id: "m1", attachment_id: "a2" },
+          { path: "work/2026-09-22-继续-qb3y/pair_03.jpg", message_id: "m1", attachment_id: "a3" },
+          { path: "work/2026-09-22-继续-qb3y/pair_04.jpg", message_id: "m1", attachment_id: "a4" },
+          { path: "work/2026-09-22-继续-qb3y/pair_05.jpg", message_id: "m1", attachment_id: "a5" },
+        ],
+        ask: null,
+        approval: null,
+        passed: 0,
+      },
+    ],
+  };
+
+  const props = reactive({
+    api: {
+      sessionTasks: async () => [job({ id: "task-multi", title: "继续" })],
+      taskTrace: async () => multiTrace,
+    } as never,
+    taskId: "task-multi",
+    sessionId: "group-1",
+    activeSessionId: "group-1",
+    sessions: [group],
+    bots: [writer],
+    youLabel: "你",
+    deletedLabel: "已删除",
+    workspacePath: "/work",
+    t,
+    reloadToken: 0,
+    onClose: () => {},
+    onJump: () => {},
+    onOpenArtifact: (relpath: string, att: any, messageId: string | null, forceTree: boolean, taskId: string | null, siblings: any[]) => {
+      opened.push({ relpath, att, messageId, forceTree, taskId, siblings });
+    },
+  });
+
+  const view = render(TaskTraceView, props as never);
+  await until(view.host, ".trace-slot");
+
+  // There are 5 files, but ONLY 1 button is rendered (unified entry), not 5 buttons
+  const buttons = view.host.querySelectorAll(".trace-file-btn");
+  expect(buttons).toHaveLength(1);
+
+  const btn = buttons[0] as HTMLButtonElement;
+  expect(btn.classList.contains("is-bundle")).toBe(true);
+  expect(btn.textContent).toContain("5 个文件");
+
+  click(btn);
+  expect(opened).toHaveLength(1);
+  expect(opened[0].relpath).toBe("work/2026-09-22-继续-qb3y/pair_01.jpg");
+  expect(opened[0].forceTree).toBe(true);
+  expect(opened[0].taskId).toBe("task-multi");
+  expect(opened[0].siblings).toHaveLength(5);
+  expect(opened[0].messageId).toBe("m1");
+
+  view.close();
+});
+
+test("a node with a single attachment renders 1 file button and opens through preview panel", async () => {
+  const opened: Array<{
+    relpath: string;
+    att: any;
+    messageId: string | null;
+    forceTree: boolean;
+    taskId: string | null;
+    siblings: any[];
+  }> = [];
+
+  const singleTrace: TaskTrace = {
+    id: "task-single",
+    dir: "work/2026-09-22-继续-qb3y",
+    title: "继续",
+    session_id: "group-1",
+    closed_at: null,
+    nodes: [
+      {
+        turn_id: "t-single",
+        session_id: "group-1",
+        actor: "bot-1",
+        status: "completed",
+        woken_by_turn_id: null,
+        trigger_message_id: "m1",
+        focus_message_id: "m1",
+        summary: "单个产物",
+        created_at: "2026-09-22T00:00:00.000Z",
+        artifacts: [
+          { path: "work/2026-09-22-继续-qb3y/report.md", message_id: "m1", attachment_id: "a1" },
+        ],
+        ask: null,
+        approval: null,
+        passed: 0,
+      },
+    ],
+  };
+
+  const props = reactive({
+    api: {
+      sessionTasks: async () => [job({ id: "task-single", title: "继续" })],
+      taskTrace: async () => singleTrace,
+    } as never,
+    taskId: "task-single",
+    sessionId: "group-1",
+    activeSessionId: "group-1",
+    sessions: [group],
+    bots: [writer],
+    youLabel: "你",
+    deletedLabel: "已删除",
+    workspacePath: "/work",
+    t,
+    reloadToken: 0,
+    onClose: () => {},
+    onJump: () => {},
+    onOpenArtifact: (relpath: string, att: any, messageId: string | null, forceTree: boolean, taskId: string | null, siblings: any[]) => {
+      opened.push({ relpath, att, messageId, forceTree, taskId, siblings });
+    },
+  });
+
+  const view = render(TaskTraceView, props as never);
+  await until(view.host, ".trace-slot");
+
+  const btn = view.host.querySelector(".trace-file-btn") as HTMLButtonElement;
+  expect(btn).not.toBeNull();
+  expect(btn.classList.contains("is-bundle")).toBe(false);
+  expect(btn.textContent).toContain("report.md");
+
+  click(btn);
+  expect(opened).toHaveLength(1);
+  expect(opened[0].relpath).toBe("work/2026-09-22-继续-qb3y/report.md");
+  expect(opened[0].forceTree).toBe(false);
+  expect(opened[0].taskId).toBe("task-single");
+  expect(opened[0].siblings).toHaveLength(1);
+
+  view.close();
 });

@@ -1,4 +1,12 @@
-import { INTERRUPT_NOTE_BODY, USER_MEMBER, type Message, type RouteOutcome, type Turn } from "@real-bot/protocol";
+import {
+  INTERRUPT_NOTE_BODY,
+  USER_MEMBER,
+  isContinuableNote,
+  isInterruptNote,
+  type Message,
+  type RouteOutcome,
+  type Turn,
+} from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
@@ -309,15 +317,22 @@ export function interruptRunningTurns(
 
 export function claimInterruptContinue(ctx: StoreContext, messageId: string): Turn {
   const note = getMessage(ctx, messageId);
-  if (note.kind !== "system" || note.body !== INTERRUPT_NOTE_BODY || !note.turn_id) {
+  const isInterrupt = isInterruptNote(note);
+  if (!isContinuableNote(note) || !note.turn_id) {
     throw new HttpError(422, "invalid_args", "message is not an interrupted turn");
   }
   if (note.source_turn_id) {
     throw new HttpError(422, "invalid_args", "interrupted turn already continued");
   }
   const cut = getTurn(ctx, note.turn_id);
-  if (cut.status !== "interrupted" || cut.bot_id !== note.author) {
+  if (isInterrupt && cut.status !== "interrupted") {
     throw new HttpError(422, "invalid_args", "turn is not interrupted");
+  }
+  if (!isInterrupt && cut.status !== "completed" && cut.status !== "interrupted") {
+    throw new HttpError(422, "invalid_args", "turn is not continuable");
+  }
+  if (cut.bot_id !== note.author) {
+    throw new HttpError(422, "invalid_args", "turn author mismatch");
   }
   const session = sessionRow(ctx, note.session_id);
   if (session.archived_at) {
@@ -355,7 +370,15 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
       "continued",
       true,
     );
+    updateNotificationActionState(
+      ctx,
+      `failure:${cut.id}`,
+      "resolved",
+      "continued",
+      true,
+    );
   })();
+  markInterruptPending(ctx, cut.bot_id);
   touchSession(ctx, note.session_id, now);
   return getTurn(ctx, id);
 }

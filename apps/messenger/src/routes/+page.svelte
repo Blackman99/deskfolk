@@ -205,7 +205,16 @@ const runtime = new MessengerRuntime();
 			const wanted = { selectedId: id, previewRelpath, previewAttachmentId, overlay };
 			const target = sessionUrl(page.url, wanted, HOSTED_MESSENGER);
 			if (!target) return;
-			const step = routeStep(viewFromUrl(page.url, HOSTED_MESSENGER), wanted);
+			const from = viewFromUrl(page.url, HOSTED_MESSENGER);
+			const step = routeStep(from, wanted);
+			// A Bot opened from a group's settings takes that page's place, so the entry
+			// underneath has to be the conversation. Rewritten here rather than through
+			// `stackAfter`: the conversation is already the entry below, and that helper would
+			// pop this one instead of turning it into the conversation.
+			if (step === 'swap' && from.overlay.kind === 'session' && wanted.overlay.kind === 'bot' && routeStack.length > 0) {
+				const under = sessionUrl(page.url, { ...wanted, overlay: { kind: 'none' } }, HOSTED_MESSENGER);
+				if (under) routeStack[routeStack.length - 1] = new URL(under, page.url).search;
+			}
 			const planned = planUrlNavigation({ target: new URL(target, page.url).search, stack: routeStack, step });
 			const plan = planned === 'back' && cancelledBack ? 'replace' : planned;
 			cancelledBack = false;

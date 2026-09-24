@@ -1,4 +1,4 @@
-import type { SessionDetail } from "@real-bot/protocol";
+import type { SessionSummary } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import {
   parseNotificationDevice,
@@ -71,8 +71,8 @@ export async function markSessionReadThrough(
   http: NotificationHttp,
   sessionId: string,
   throughMessageId: string,
-): Promise<SessionDetail> {
-  return http.post<SessionDetail>(`/v1/sessions/${encodeURIComponent(sessionId)}/read`, {
+): Promise<SessionSummary> {
+  return http.post<SessionSummary>(`/v1/sessions/${encodeURIComponent(sessionId)}/read`, {
     through_message_id: throughMessageId,
   });
 }
@@ -137,12 +137,16 @@ export async function unsubscribePushV2(http: NotificationHttp, body: PushUnsubs
   await http.post<void>("/remote/push/unsubscribe", body);
 }
 
-export type NotificationTestResult = { ok: boolean; status: string };
+export type NotificationTestResult = { ok: boolean; status: string; error_code?: string | null };
 
 export async function testRemotePush(http: NotificationHttp): Promise<NotificationTestResult> {
   const raw = await http.post<unknown>("/remote/push/test", {});
   if (!raw || typeof raw !== "object") return { ok: true, status: "accepted" };
-  const row = raw as { ok?: unknown; status?: unknown };
+  const row = raw as { ok?: unknown; status?: unknown; error_code?: unknown };
   const status = typeof row.status === "string" ? row.status : "accepted";
-  return { ok: row.ok !== false, status };
+  return {
+    ok: row.ok !== false,
+    status,
+    ...(typeof row.error_code === "string" || row.error_code === null ? { error_code: row.error_code } : {}),
+  };
 }

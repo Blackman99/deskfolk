@@ -2,11 +2,17 @@ import { expect, test } from "bun:test";
 import { USER_MEMBER, type TaskTrace, type TaskTraceNode } from "@real-bot/protocol";
 import {
   TRACE_CARD_WIDTH,
+  TRACE_GLIDE_MS,
   TRACE_ZOOM_MAX,
   TRACE_ZOOM_MIN,
+  centerOnNode,
   clampZoom,
   filterTrace,
   fitView,
+  focusMoveDue,
+  focusNode,
+  glideEase,
+  glideView,
   pinchSpan,
   zoomAt,
   traceFileIsImage,
@@ -165,6 +171,56 @@ test("fitting centres the board, and nothing else fences it in", () => {
   const far = zoomAt({ scale: 1, x: -9999, y: 12345 }, 1, { x: 0, y: 0 });
   expect(far.x).toBe(-9999);
   expect(far.y).toBe(12345);
+});
+
+test("centring a card puts its middle in the middle of the viewport", () => {
+  const card = { x: 400, y: 800, width: 248, height: 120 };
+  const view = centerOnNode(card, { width: 600, height: 400 });
+  expect(view.scale).toBe(1);
+  expect(view.x + (card.x + card.width / 2) * view.scale).toBe(300);
+  expect(view.y + (card.y + card.height / 2) * view.scale).toBe(200);
+  // A size past the stops is the stop, and the card is still the thing in the middle.
+  const small = centerOnNode(card, { width: 600, height: 400 }, 0.01);
+  expect(small.scale).toBe(TRACE_ZOOM_MIN);
+  expect(small.x + (card.x + card.width / 2) * small.scale).toBeCloseTo(300, 0);
+});
+
+test("a message lands on its own card, and a line you sent does not land on the Bot it woke", () => {
+  const nodes = [
+    node({ turn_id: "user:m1", actor: USER_MEMBER, trigger_message_id: "m1", focus_message_id: "m1" }),
+    node({
+      turn_id: "turn-a",
+      woken_by_turn_id: "user:m1",
+      trigger_message_id: "m1",
+      focus_message_id: "m2",
+      artifacts: [{ path: "a.png", message_id: "m2", attachment_id: "a" }],
+    }),
+  ];
+  expect(focusNode(nodes, { messageId: "m1", turnId: null })?.turn_id).toBe("user:m1");
+  // An earlier bubble of the same turn is still that turn's card.
+  expect(focusNode(nodes, { messageId: "m-earlier", turnId: "turn-a" })?.turn_id).toBe("turn-a");
+  expect(focusNode(nodes, { messageId: "m2", turnId: "turn-a" })?.turn_id).toBe("turn-a");
+  expect(focusNode(nodes, { messageId: "gone", turnId: null })).toBeNull();
+});
+
+test("a slide starts where the board is, eases, and ends on the card", () => {
+  const from = { scale: 0.5, x: 0, y: 0 };
+  const to = { scale: 1, x: -200, y: -400 };
+  expect(TRACE_GLIDE_MS).toBeGreaterThan(0);
+  expect(glideView(from, to, 0)).toEqual(from);
+  expect(glideView(from, to, 1)).toEqual(to);
+  const mid = glideView(from, to, 0.5);
+  expect(mid.x).toBe(-100);
+  expect(mid.scale).toBe(0.75);
+  // Slow at both ends: the first step is shorter than the one through the middle.
+  expect(glideEase(0.1) - glideEase(0)).toBeLessThan(glideEase(0.5) - glideEase(0.4));
+});
+
+test("the same message asked for again is a new move, and a reload of it is not", () => {
+  expect(focusMoveDue(0, null)).toBe(false);
+  expect(focusMoveDue(1, null)).toBe(true);
+  expect(focusMoveDue(1, 1)).toBe(false);
+  expect(focusMoveDue(2, 1)).toBe(true);
 });
 
 test("a pinch is the span between two fingers, and one finger is not a pinch", () => {

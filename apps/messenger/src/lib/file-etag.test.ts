@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { ApiError, etagForBlob } from "./api";
+import { ApiError, etagForBlob, originalSizeForBlob } from "./api";
 import { LocalApi } from "./local-api.ts";
 
 test("postMessage retries keep the original X-Request-Id and body", async () => {
@@ -126,4 +126,22 @@ test("successful save returns the new ETag and local omission remains optional",
   }) as typeof fetch;
   const api = new LocalApi({ origin: "http://fixture", token: "fixture" });
   expect(await api.putWorkspaceFile("note.txt", "new")).toBe('"new"');
+});
+
+/** Locally too, a chip asks for the scaled copy, and the header says what the original weighs. */
+test("a local picture GET asks for a size and remembers the original's", async () => {
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: unknown) => {
+    urls.push(String(input));
+    return new Response(new Uint8Array([1, 2]), { headers: { "X-Original-Size": "3727854" } });
+  }) as typeof fetch;
+  const api = new LocalApi({ origin: "http://fixture", token: "fixture" });
+  const chip = await api.getAttachmentBlob("pic", undefined, { size: "thumb" });
+  const shot = await api.getWorkspaceFileBlob("shots/a.png", undefined, { size: "preview" });
+  expect(urls).toEqual([
+    "http://fixture/v1/attachments/pic/content?size=thumb",
+    "http://fixture/v1/workspace/file?path=shots%2Fa.png&size=preview",
+  ]);
+  expect(originalSizeForBlob(chip)).toBe(3_727_854);
+  expect(originalSizeForBlob(shot)).toBe(3_727_854);
 });

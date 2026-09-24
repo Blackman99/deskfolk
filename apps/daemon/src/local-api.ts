@@ -1,4 +1,5 @@
 import {
+  FILE_DROP_SESSION_ID,
   LOCAL_API_BIND,
   LOCAL_API_NAME,
   REACTION_EMOJI,
@@ -15,6 +16,7 @@ import {
   type WsAuthMessage,
   type RuntimeSnapshot,
   type SessionSnapshot,
+  type SessionSummary,
   type NotificationFilter,
   type StreamFrame,
   type ToolFrame,
@@ -31,6 +33,7 @@ import { corsHeaders, originDecision } from "./origin";
 import { EventStream, sessionUpsertFields } from "./session-events";
 import { StreamHub, type StreamRead } from "./streams";
 import { Terminals } from "./terminals";
+import { ensureZshIntegration } from "./terminal-env";
 import type { PtySignal } from "./pty";
 import { HttpError } from "./errors";
 import { type AttachmentInput, type Store } from "./store";
@@ -41,10 +44,14 @@ import { startScheduler, type Scheduler } from "./scheduler";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
+import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
 import { ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
+import { fileRangeResponse } from "./file-range";
+import { parseImageVariant, reduceImage, type ImageVariant } from "./image-variant";
+import { displayAvatar, isDisplayAvatar, warmDisplayAvatar, withoutDisplayMark } from "./avatar-display";
 import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import type { RuntimeLifecycle } from "./lifecycle";
@@ -89,6 +96,8 @@ export type LocalApiOptions = {
   onRuntimeStop?: () => void;
   policyV1?: boolean;
   pushSettingsV2?: boolean;
+  /** Where Deskfolk's own zsh shell integration is written, for terminals the person opens. */
+  dataDir?: string;
 };
 
 export type LocalApi = {
@@ -131,6 +140,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   }
 
   const events = new EventStream();
+  // Portraits are sent as small copies; making them before the first snapshot asks is cheaper
+  // than sending the originals once.
+  for (const bot of options.store.listBots()) void warmDisplayAvatar(bot.avatar);
   const presence = new PresenceManager();
   const notificationScheduler = new NotificationDeliveryScheduler(options.store, presence);
   events.subscribe((frame) => {
@@ -197,6 +209,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const terminals = new Terminals({
     streams,
     now: options.now,
+    store: options.store,
+    shellIntegrationDir: options.dataDir ? ensureZshIntegration(options.dataDir) : null,
     // Straight onto the sequenced ring: open / resize / exit / gone is a handful of frames, not
     // a firehose, and clients get ordering and catch-up for free. The bytes go elsewhere.
     publish: (event) => {
@@ -334,6 +348,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         await options.store.listMcpServersHydrated();
         scope.guard?.();
         options.store.recoverFiles();
+        // Only a post carries files. One that will be refused must not stage them anywhere first.
+        const posting = request.method === "POST" && parsed.files.length ? matchPath(url.pathname, "/v1/sessions/:id/messages") : null;
+        if (posting) options.store.assertUserMayPost(posting.id!);
         if (parsed.files.some((file) => !file.staged)) options.store.prepareAttachments(parsed.files);
         if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
           const root = options.store.workspacePath();
@@ -429,6 +446,30 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       }, 200, null);
     }
 
+    // What a pane attaches to. The scrollback above stays for readers that predate it.
+    const screen = matchPath(path, "/v1/terminals/:id/screen");
+    if (screen && method === "GET") {
+      const snapshot = await terminals.screen(screen.id!);
+      return jsonResponse({
+        offset: snapshot.offset,
+        data: Buffer.from(snapshot.data, "utf8").toString("base64"),
+        rows: snapshot.rows,
+        cols: snapshot.cols,
+      }, 200, null);
+    }
+
+    const clear = matchPath(path, "/v1/terminals/:id/clear");
+    if (clear && method === "POST") {
+      terminals.clear(clear.id!);
+      return emptyResponse(204, null);
+    }
+
+    const colors = matchPath(path, "/v1/terminals/:id/colors");
+    if (colors && method === "POST") {
+      terminals.colors(colors.id!, terminalColors(body));
+      return emptyResponse(204, null);
+    }
+
     const input = matchPath(path, "/v1/terminals/:id/input");
     if (input && method === "POST") {
       const data = typeof body.data === "string" ? body.data : "";
@@ -477,6 +518,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         const state = options.store.readSnapshot();
         return {
           ...state,
+          bots: state.bots.map(displayBot),
           sessions: snapshotSessions(state.sessions),
           notificationCapabilities: {
             inbox_v1: true,
@@ -556,8 +598,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     const session = matchPath(path, "/v1/sessions/:id/snapshot");
     if (request.method === "GET" && session) {
       const id = session.id!;
+      const limitText = url.searchParams.get("limit");
+      const messageLimit = limitText ? Number(limitText) : undefined;
       const snapshot = options.store.db.transaction((): SessionSnapshot => {
-        const session = options.store.getSession(id);
+        const session = options.store.getSession(id, { messageLimit });
         return {
           session: { ...session, turns: session.turns.map(withPartial), pending_judgements: engine.pendingJudgements(id) },
           judgements: options.store.listJudgements(id), ...events.cursor(),
@@ -666,8 +710,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         options.onRuntimeStop?.();
         return emptyResponse(204, origin);
       }
-      // Quit ends your terminals with the daemon that holds them. A shell outliving the app it
-      // was opened from is an orphan nobody goes looking for.
+      // Quit stops the processes. The rows stay, so the next start puts each shell back where it was.
       if (request.method === "POST" && path === "/v1/runtime/quit") terminals.shutdown();
       const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && !isNonReceiptPath(path);
       const response = isMutation
@@ -753,6 +796,32 @@ function occurred(): string {
   return new Date().toISOString();
 }
 
+/** A verdict as clients read it: the row, and what the next same-kind choice made of it. */
+function reviewOut(store: Store, row: RouteReviewRow) {
+  return {
+    chain_id: row.chain_id,
+    turn_id: row.turn_id,
+    session_id: row.session_id,
+    bot_id: row.bot_id,
+    signature: row.signature,
+    model: row.model,
+    thinking_level: row.thinking_level,
+    fault: row.fault,
+    direction: row.direction,
+    rounds: row.rounds,
+    confidence: row.confidence,
+    reason: row.reason,
+    created_at: row.created_at,
+    retired_at: row.retired_at,
+    effect: store.reviewEffect(row),
+  };
+}
+
+/** A learning note as clients read it: the row, and whether later same-kind chains got shorter. */
+function learningOut(store: Store, row: RouteLearningRow) {
+  return { ...row, outcome: store.learningOutcome({ botId: row.bot_id, chainId: row.chain_id }) };
+}
+
 /** The command line out of a `shell` call's arguments, so a finished row can name itself. */
 function shellCommandOf(name: string | undefined, args: string | undefined): string | undefined {
   if (name !== "shell" || !args) return undefined;
@@ -764,8 +833,50 @@ function shellCommandOf(name: string | undefined, args: string | undefined): str
   }
 }
 
+/** A pane's colours: `#rrggbb` text and background, optionally a cursor and the sixteen ANSI colours. */
+function terminalColors(body: Record<string, unknown>): { foreground: string; background: string; cursor?: string; palette?: string[] } {
+  const hex = (value: unknown): value is string => typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+  const { foreground, background, cursor, palette } = body;
+  if (!hex(foreground) || !hex(background) || (cursor !== undefined && !hex(cursor))
+    || (palette !== undefined && !(Array.isArray(palette) && palette.length <= 16 && palette.every(hex)))) {
+    throw new HttpError(422, "invalid_args", "colours are #rrggbb");
+  }
+  return { foreground, background, ...(cursor ? { cursor } : {}), ...(palette ? { palette: palette as string[] } : {}) };
+}
+
 function numberOr(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * A file's bytes, or with `size` a smaller copy of the picture. The copy is announced by
+ * `X-Original-Size`, the original's length, so a client can offer the original and say what it
+ * costs; without the header the bytes are the original. The remote cap applies to what is sent,
+ * so a picture too large to send whole can still be shown scaled.
+ */
+/** A Bot as clients are sent it: its portrait as the small marked copy (see avatar-display). */
+function displayBot<T extends { avatar: string | null }>(bot: T): T {
+  return { ...bot, avatar: displayAvatar(bot.avatar) };
+}
+
+async function fileResponse(abs: string, mime: string, filename: string, variant: ImageVariant | null, remote: boolean, range: string | null): Promise<Response> {
+  if (range !== null) {
+    if (variant) throw new HttpError(422, "invalid_args", "range cannot be combined with image size");
+    return fileRangeResponse(abs, mime, filename, range, remote);
+  }
+  const reduced = variant ? await reduceImage(abs, mime, variant) : null;
+  if (!reduced && remote && statSync(abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
+  const file = reduced?.bytes ?? readFileSync(abs);
+  return new Response(file, {
+    status: 200,
+    headers: {
+      "ETag": fileEtag(file),
+      "Content-Type": reduced?.mime ?? mime,
+      "Content-Length": String(file.byteLength),
+      "Content-Disposition": `inline; filename="${encodeURIComponent(filename)}"`,
+      ...(reduced ? { "X-Original-Size": String(statSync(abs).size) } : {}),
+    },
+  });
 }
 
 function dispatch(
@@ -846,21 +957,12 @@ function dispatch(
     const root = store.workspacePath();
     if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
     const rel = url.searchParams.get("path") ?? "";
+    const variant = parseImageVariant(url.searchParams.get("size"));
     const located = locateWorkspaceFile(root, rel);
     if (!existsSync(located.abs)) {
       throw new HttpError(404, "not_found", "path not found");
     }
-    if (url.hostname === "remote.invalid" && statSync(located.abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
-    const file = readFileSync(located.abs);
-    return new Response(file, {
-      status: 200,
-      headers: {
-        "ETag": fileEtag(file),
-        "Content-Type": located.mime,
-        "Content-Length": String(file.byteLength),
-        "Content-Disposition": `inline; filename="${encodeURIComponent(located.rel.split("/").pop() ?? located.rel)}"`,
-      },
-    });
+    return fileResponse(located.abs, located.mime, located.rel.split("/").pop() ?? located.rel, variant, url.hostname === "remote.invalid", url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   if (method === "PUT" && path === "/v1/workspace/file") {
@@ -956,11 +1058,13 @@ function dispatch(
   }
 
   if (method === "GET" && path === "/v1/bots") {
-    return jsonResponse({ items: store.listBots() }, 200, null);
+    return jsonResponse({ items: store.listBots().map(displayBot) }, 200, null);
   }
 
   if (method === "POST" && path === "/v1/bots") {
-    const body = (input.body) as CreateBotRequest;
+    let body = (input.body) as CreateBotRequest;
+    // A portrait copied from another Bot's card is that picture: keep it, without the mark.
+    if (typeof body.avatar === "string" && isDisplayAvatar(body.avatar)) body = { ...body, avatar: withoutDisplayMark(body.avatar) };
     const created = store.createBot(body);
     const at = occurred();
     publish({ event: "bot.upsert", occurred_at: at, ...created.bot, deleted_at: null });
@@ -969,20 +1073,20 @@ function dispatch(
       occurred_at: at,
       ...sessionUpsertFields(created.direct_session),
     });
-    return jsonResponse(created, 201, null);
+    return jsonResponse({ ...created, bot: displayBot(created.bot) }, 201, null);
   }
 
   params = matchPath(path, "/v1/bots/:id/archive");
   if (params && method === "POST") {
     const bot = store.archiveBot(params.id!);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
-    return jsonResponse(bot, 200, null);
+    return jsonResponse(displayBot(bot), 200, null);
   }
   params = matchPath(path, "/v1/bots/:id/restore");
   if (params && method === "POST") {
     const bot = store.restoreBot(params.id!);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
-    return jsonResponse(bot, 200, null);
+    return jsonResponse(displayBot(bot), 200, null);
   }
   params = matchPath(path, "/v1/bots/:id/profile-revisions");
   if (params && method === "GET") {
@@ -990,13 +1094,19 @@ function dispatch(
   }
   params = matchPath(path, "/v1/bots/:id");
   if (params && method === "GET") {
-    return jsonResponse(store.getBot(params.id!), 200, null);
+    return jsonResponse(displayBot(store.getBot(params.id!)), 200, null);
   }
   if (params && method === "PATCH") {
-    const body = (input.body) as PatchBotRequest;
+    let body = (input.body) as PatchBotRequest;
+    // A profile save sends back the portrait it was shown with every other edit. That is the
+    // small copy, never a new picture: the stored original stays.
+    if (typeof body.avatar === "string" && isDisplayAvatar(body.avatar)) {
+      const { avatar: _shown, ...rest } = body;
+      body = rest;
+    }
     const bot = store.patchBot(params.id!, body);
     publish({ event: "bot.upsert", occurred_at: occurred(), ...bot, deleted_at: null });
-    return jsonResponse(bot, 200, null);
+    return jsonResponse(displayBot(bot), 200, null);
   }
   if (params && method === "DELETE") {
     const bot = store.getBot(params.id!);
@@ -1059,6 +1169,10 @@ function dispatch(
     } else {
       options.admission?.assertNew();
     }
+    const fileDrop = sessionId === FILE_DROP_SESSION_ID;
+    if (fileDrop && askId) {
+      throw new HttpError(422, "invalid_args", "the file drop does not answer asks");
+    }
     const message = store.transaction(() => {
       const msg = store.postMessage(sessionId, {
         body: bodyText,
@@ -1071,7 +1185,8 @@ function dispatch(
       return msg;
     });
     publish({ event: "message.created", occurred_at: occurred(), ...message });
-    if (!askId) {
+    // A file dropped here is already in inbox/. Nothing is woken.
+    if (!askId && !fileDrop) {
       store.afterCommit(() => { void engine.handleInboundMessage(message, { fork, fromUser: true }); });
     }
     return jsonResponse(message, 201, null);
@@ -1141,14 +1256,30 @@ function dispatch(
   params = matchPath(path, "/v1/tasks/:id/trace");
   if (params && method === "GET") {
     const trace = store.taskTrace(params.id!);
-    // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
+    // Each card carries the model choice its turn ran on, so the board is where it is read.
+    const records = new Map(store.listTaskRoutes(params.id!).map((record) => [record.turn_id, record]));
+    const reviews = new Map(store.listTaskReviews(params.id!).map((row) => [row.turn_id, reviewOut(store, row)]));
+    const learnings = new Map(store.listTaskLearnings(params.id!).map((row) => [row.chain_id, learningOut(store, row)]));
     return jsonResponse(
       {
         ...trace,
         nodes: trace.nodes.map((node) => {
-          if (node.status !== "running") return node;
+          const record = records.get(node.turn_id);
+          const routed = {
+            ...node,
+            route: record
+              ? {
+                  record,
+                  review: reviews.get(node.turn_id) ?? null,
+                  // A chain is named after the turn that started it; its note belongs there.
+                  learning: record.chain_id === record.turn_id ? (learnings.get(record.chain_id) ?? null) : null,
+                }
+              : null,
+          };
+          // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
+          if (node.status !== "running") return routed;
           const live = engine.partialText(node.turn_id)?.replace(/\s+/g, " ").trim();
-          return live ? { ...node, summary: [...live].slice(0, 80).join("") } : node;
+          return live ? { ...routed, summary: [...live].slice(0, 80).join("") } : routed;
         }),
       },
       200,
@@ -1173,27 +1304,8 @@ function dispatch(
     return jsonResponse(
       {
         items: store.listSessionRoutes(params.id!),
-        reviews: store.listSessionReviews(params.id!).map((row) => ({
-          chain_id: row.chain_id,
-          turn_id: row.turn_id,
-          session_id: row.session_id,
-          bot_id: row.bot_id,
-          signature: row.signature,
-          model: row.model,
-          thinking_level: row.thinking_level,
-          fault: row.fault,
-          direction: row.direction,
-          rounds: row.rounds,
-          confidence: row.confidence,
-          reason: row.reason,
-          created_at: row.created_at,
-          retired_at: row.retired_at,
-          effect: store.reviewEffect(row),
-        })),
-        learnings: store.listSessionLearnings(params.id!).map((row) => ({
-          ...row,
-          outcome: store.learningOutcome({ botId: row.bot_id, chainId: row.chain_id }),
-        })),
+        reviews: store.listSessionReviews(params.id!).map((row) => reviewOut(store, row)),
+        learnings: store.listSessionLearnings(params.id!).map((row) => learningOut(store, row)),
       },
       200,
       null,
@@ -1226,7 +1338,10 @@ function dispatch(
       occurred_at: occurred(),
       ...sessionUpsertFields(session),
     });
-    return jsonResponse(session, 200, null);
+    // The read state, not the transcript: a client already has the messages it just read, and
+    // on a phone the whole detail was 150 KB every time a conversation was opened.
+    const { messages: _messages, turns: _turns, pending_judgements: _pending, ...summary } = session;
+    return jsonResponse(summary satisfies SessionSummary, 200, null);
   }
 
   if (method === "POST" && path === "/v1/notifications/read") {
@@ -1521,18 +1636,9 @@ function dispatch(
     if (located.isDir) {
       throw new HttpError(422, "invalid_args", "attachment is a directory");
     }
-    if (url.hostname === "remote.invalid" && statSync(located.abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
-    const file = readFileSync(located.abs);
+    const variant = parseImageVariant(url.searchParams.get("size"));
     const mime = attachmentMime(att.original_filename, att.workspace_relpath);
-    return new Response(file, {
-      status: 200,
-      headers: {
-        "ETag": fileEtag(file),
-        "Content-Type": mime,
-        "Content-Length": String(file.byteLength),
-        "Content-Disposition": `inline; filename="${encodeURIComponent(att.original_filename)}"`,
-      },
-    });
+    return fileResponse(located.abs, mime, att.original_filename, variant, url.hostname === "remote.invalid", url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   params = matchPath(path, "/v1/attachments/:id");

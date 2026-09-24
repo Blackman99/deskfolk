@@ -43,11 +43,16 @@
   function isCurrent(key: DocsPageKey): boolean {
     return key === pageKey;
   }
+
+  const isTopic = $derived(DOCS_NAV[0].pages.includes(pageKey) && pageKey !== 'manifesto');
+  const section = $derived(
+    pageKey === 'roadmap' ? t.nav.roadmap : pageKey === 'remote' ? t.docs.navGroup.guides : t.nav.manifesto
+  );
 </script>
 
 <Seo
   {lang}
-  title="{copy.title} — {pageKey === 'roadmap' ? t.nav.roadmap : t.nav.manifesto} — Real Bot"
+  title="{copy.title} — {section} — Deskfolk"
   {description}
   {suffix}
   imageAlt={t.seo.imageAlt}
@@ -84,22 +89,22 @@
 
   <div class="main">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <a href="{base}/{lang}">Real Bot</a>
+      <a href="{base}/{lang}">Deskfolk</a>
       <span aria-hidden="true">/</span>
-      {#if pageKey === 'roadmap'}
-        <span>{t.nav.roadmap}</span>
+      {#if isTopic}
+        <a href={hrefFor('manifesto')}>{t.nav.manifesto}</a>
+        <span aria-hidden="true">/</span>
+        <span>{copy.title}</span>
       {:else if pageKey === 'manifesto'}
         <span>{t.nav.manifesto}</span>
       {:else}
-        <a href={hrefFor('manifesto')}>{t.nav.manifesto}</a>
-        <span aria-hidden="true">/</span>
         <span>{copy.title}</span>
       {/if}
     </nav>
 
     <header class="head">
       <div class="kicker">
-        <span class="tag mono" class:mustard={pageKey === 'roadmap'}>{tag}</span>
+        <span class="tag mono" class:mustard={pageKey === 'roadmap' || pageKey === 'remote'}>{tag}</span>
         <a class="src" href="{GITHUB_BLOB_MAIN}/{sourceFile}" target="_blank" rel="noreferrer">{t.docs.source}</a>
       </div>
       <h1 class="serif">{copy.title}</h1>

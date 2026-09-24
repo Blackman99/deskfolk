@@ -35,7 +35,7 @@ export async function createRegistration(
   const credential = await bridge.create({
     publicKey: {
       challenge: challengeBytes(challenge),
-      rp: { id: rpId(relayOrigin), name: "Real Bot" },
+      rp: { id: rpId(relayOrigin), name: "Deskfolk" },
       user: { id: new TextEncoder().encode(user.id), name: user.name, displayName: user.name },
       pubKeyCredParams: WEBAUTHN_ALGORITHMS.map((alg) => ({ type: "public-key", alg })),
       attestation: "none",

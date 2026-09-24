@@ -3,11 +3,13 @@
 		USER_MEMBER,
 		type Attachment,
 		type Bot,
-		type SessionSummary
+		type SessionSummary,
+		type Terminal
 	} from '@real-bot/protocol';
 	import { onMount, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
+	import ImageCopy from './ImageCopy.svelte';
 	import {
 		dangerCopy,
 		shouldDropConfirm,
@@ -20,10 +22,11 @@
 		modelSelectValue,
 		type ProviderEditorState
 	} from './settings/provider-form.ts';
-	import { routeLogRows } from './overlays/route-log.ts';
-	import RouteLog from './overlays/RouteLog.svelte';
 	import TerminalPane from './overlays/TerminalPane.svelte';
-	import TaskTraceView from './overlays/TaskTrace.svelte';
+	import { orderTerminals, statusLabel, terminalNames } from './overlays/terminals.ts';
+	// TaskTrace.svelte (the flow board) drags in @dagrejs/dagre and its own graph-layout code;
+	// it is only ever seen after `runtime.traceOpen` fires, so it is loaded with the same
+	// `{#await import(...)}` lazy-mount pattern as the other panels below.
 	import { presentBotIds } from './sidebar/session-groups.ts';
 	import {
 		cleanPinnedIds,
@@ -35,6 +38,7 @@
 	import { themeManager } from './theme.ts';
 	import {
 		classifySession,
+		isFileDropSession,
 		youBotPeer
 	} from './sidebar/session-groups.ts';
 	import { sessionTitle } from './sidebar/session-title.ts';
@@ -45,7 +49,8 @@
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
 	import { handedOverPaths } from './overlays/artifacts.ts';
-	import ArtifactPreview from './overlays/ArtifactPreview.svelte';
+	// ArtifactPreview.svelte is lazy-loaded below (see the artifactPreview block): it only
+	// mounts once a file is actually opened.
 	import { targetFor } from './annotations/model.ts';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import {
@@ -61,17 +66,64 @@
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
-	import GroupPane, { type GroupDetailDraft } from './panels/GroupPane.svelte';
+	import GroupIdentity from './panels/GroupIdentity.svelte';
+	import GroupPane from './panels/GroupPane.svelte';
+	import type { GroupDetailDraft } from './panels/group-edit.ts';
 	import ProfilePane from './panels/ProfilePane.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
-	import RoutineCalendar from './calendar/RoutineCalendar.svelte';
+	// RoutineCalendar.svelte pulls in svelte5plus-calendar; it is loaded lazily below, only once
+	// `runtime.routinesOpen` is true.
+	import Workbench from './workbench/Workbench.svelte';
+	import PaneContentHost from './workbench/PaneContentHost.svelte';
+	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
+	import { paneMin } from './workbench/pane-mins.ts';
+	import { contentOfTab } from './workbench/pane-content.ts';
+	import {
+		activeSessionId,
+		closeChatSide,
+		dropDuplicateBoundTabs,
+		existingTarget,
+		findKind,
+		openContent,
+		settingsSide,
+		toggleChatSide
+	} from './workbench/pane-open.ts';
+	import type { PreviewHandle } from './workbench/preview-context.ts';
+	import type { PaneContent } from './workbench/pane-content.ts';
+	import {
+		MENU_COMMANDS,
+		applyCommand,
+		isTypingTarget,
+		matchWorkbenchKey,
+		type CommandContext,
+		type WorkbenchCommand
+	} from './workbench/workbench-commands.ts';
+	import { hideDesktopWindow, listenToWindow } from './tauri.ts';
+	import { allLeaves, emptyLayout as freshLayout } from './workbench/layout-tree.ts';
+	import {
+		closeTab as closeWorkbenchTab,
+		activateTab,
+		emptyLayout,
+		focusLeaf,
+		leafById,
+		replaceTabParams,
+		splitLeaf
+	} from './workbench/layout-tree.ts';
+	import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from './workbench/workbench-layout.ts';
+	import { contentsEqual, contentToParams, PANE_KIND_SET } from './workbench/pane-content.ts';
+	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
+	import type { WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
-	import SettingsModal from './settings/SettingsModal.svelte';
+	// SettingsModal.svelte (~3.5k lines, plus its provider/MCP/notification sub-panels) is
+	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
+	// template is already gated on `runtime.settingsOpen` (see settingsHead/`{#if runtime.settingsOpen}`
+	// inside that file), so deferring the mount changes nothing but when the bytes are fetched.
+	import type SettingsModal from './settings/SettingsModal.svelte';
 
 	let { runtime }: { runtime: MessengerRuntime } = $props();
 
@@ -132,6 +184,16 @@
 	let mobileSettingsDetail = $state(false);
 	let settingsModal = $state<SettingsModal>();
 	/**
+	 * Settings is opened far more often than once, but its module is only worth fetching the
+	 * first time it is. Once true this never goes back to false, so the lazy-loaded
+	 * `<SettingsModal>` below stays mounted across opens/closes exactly as the old, always-mounted
+	 * import did (its own template already no-ops while `runtime.settingsOpen` is false).
+	 */
+	let settingsEverOpened = $state(false);
+	$effect(() => {
+		if (runtime.settingsOpen) settingsEverOpened = true;
+	});
+	/**
 	 * The Bot and group drawers are two screens on a phone, the same way settings is: the list of
 	 * sections, then one section. The shell holds which one is showing because the drawer's own
 	 * chrome changes with it, and because Back has to unwind the section before it closes.
@@ -150,11 +212,14 @@
 	 * may still have unsaved work.
 	 */
 	/**
-	 * What ✕ closes in the Bot and group drawers: the screen it sits on. A section or a Bot's
-	 * profile opened inside the drawer steps out one level; on the drawer's own screen there is
-	 * nothing above it, so it closes.
+	 * What ✕ closes. A section of the drawer's own screen steps out one level. A Bot opened from a
+	 * group is that Bot's settings page, so its ✕ leaves settings for the conversation.
 	 */
 	function closeCurrentDrawerScreen(): void {
+		if (nestedProfile && narrow) {
+			runtime.closeSessionSettings();
+			return;
+		}
 		if (paneMobileDetail) {
 			paneMobileDetail = false;
 			return;
@@ -180,7 +245,6 @@
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
-			routeLogOpen: runtime.routeLogOpen,
 			traceOpen: runtime.traceOpen,
 			routinesOpen: runtime.routinesOpen,
 			threadOpen: runtime.threadOpen,
@@ -207,7 +271,7 @@
 				runtime.createGroupOpen = false;
 				return true;
 			case 'provider-editor':
-				providerEditor = null;
+				settingsModal?.backFromProviderEditor();
 				return true;
 			case 'independent-confirm':
 				return true;
@@ -217,8 +281,9 @@
 				// Only its inner pages are ours to unwind; settings itself is an entry in history.
 				return settingsModal?.backWithinSettings() ?? false;
 			case 'session-settings':
-				// Same split: the skill sheet and the section list are not in the URL, the drawer
-				// and a Bot's profile inside it are.
+				// The skill sheet and the section list are not in the URL. A Bot opened from a
+				// group is its own settings page, so Back leaves for the conversation.
+				if (nestedProfile) return false;
 				if (profilePane?.backFromEditor()) return true;
 				if (paneMobileDetail) {
 					paneMobileDetail = false;
@@ -227,9 +292,6 @@
 				return false;
 			case 'terminal':
 				runtime.closeTerminal();
-				return true;
-			case 'route-log':
-				runtime.closeRouteLog();
 				return true;
 			case 'trace':
 				// Full screen over the flow is a page; the flow itself is an entry in history.
@@ -317,6 +379,273 @@
 	const previewWidth = $derived(clampPreviewWidth(previewPreferred, shellWidth));
 	const sidebarWidth = $derived(clampSidebarWidth(sidebarPreferred, shellWidth));
 	const isMobile = $derived(shellWidth <= 680);
+	/**
+	 * The desktop workbench. Above the narrow breakpoint the main column is a tree of panes; at or
+	 * below it the app is what it has always been, one screen at a time with a back stack, and
+	 * none of this renders.
+	 */
+	let narrow = $state(false);
+	$effect(() => watchNarrow((value) => (narrow = value)));
+	const wide = $derived(isWorkbenchSurface(narrow));
+	let layout = $state<WorkbenchLayout>(loadWorkbenchLayout() ?? emptyLayout('wb-root'));
+	let paneSeq = 0;
+	const freshPaneId = () => `wb-${Date.now().toString(36)}-${++paneSeq}`;
+
+	function commitLayout(next: WorkbenchLayout): void {
+		if (next === layout) return;
+		layout = next;
+		saveWorkbenchLayout(next);
+	}
+
+	/**
+	 * The two directions the conversation and the arrangement follow each other.
+	 *
+	 * Each tracks only its own side. Tracking both makes them fight — the same shape of bug the
+	 * URL effects in `+page.svelte` carry a comment about — and each is a no-op once the two
+	 * already agree, so they settle rather than ping-pong.
+	 */
+	$effect(() => {
+		if (!wide) return;
+		const id = runtime.selectedId;
+		if (!id) return;
+		untrack(() => {
+			if (activeSessionId(layout) === id) return;
+			commitLayout(
+				openContent(layout, { kind: 'chat', sessionId: id }, { id: freshPaneId, replaceActive: true })
+			);
+		});
+	});
+
+	/**
+	 * Terminal tabs name sessions the snapshot does not carry, so the list is read as soon as the
+	 * workbench is connected — and again after a reconnect — rather than when a terminal opens.
+	 */
+	$effect(() => {
+		if (!wide || runtime.connection !== 'connected') return;
+		untrack(() => void runtime.refreshTerminals());
+	});
+
+	/** Drop tabs whose conversation or terminal has gone, the way pinned rows are cleaned. */
+	$effect(() => {
+		const live = {
+			sessionIds: new Set(snapshot.sessions.map((row) => row.id)),
+			terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
+			knownKinds: PANE_KIND_SET
+		};
+		const viewport = { x: 0, y: 0, width: shellWidth, height: 800 };
+		untrack(() => {
+			const healed = dropDuplicateBoundTabs(
+				healLayout(layout, live, viewport, WB_FALLBACK_MIN, freshPaneId()),
+				freshPaneId
+			);
+			if (healed !== layout) commitLayout(healed);
+		});
+	});
+
+	/** What a tab is called. The layout carries ids; the names come from what they point at. */
+	function paneTitle(tab: WorkbenchTab): string {
+		const content = contentOfTab(tab);
+		if (!content) return t.pane.title;
+		switch (content.kind) {
+			case 'chat':
+				return sessionName(content.sessionId);
+			case 'terminal': {
+				const row = runtime.terminals.find((candidate) => candidate.id === content.terminalId);
+				return row ? (terminalNamesById.get(row.id) ?? row.title) : t.terminal.title;
+			}
+			case 'workspace':
+				return content.selected ? (content.selected.split('/').pop() ?? t.sidebar.workspace) : t.sidebar.workspace;
+			case 'routines':
+				return t.routines.title;
+			case 'trace':
+				return t.pane.flowOf(sessionName(content.sessionId));
+			case 'preview':
+				return content.sessionId ? t.pane.artifactsOf(sessionName(content.sessionId)) : t.pane.title;
+		}
+	}
+
+	/** The conversation's own name, the same words its chat tab uses. */
+	function sessionName(sessionId: string): string {
+		const session = snapshot.sessions.find((row) => row.id === sessionId);
+		return session ? titleOf(session) : t.top.deleted;
+	}
+
+	/**
+	 * While the workbench is on, every "open this" in the app lands in a pane rather than in a
+	 * full-screen layer. Cleared below the breakpoint, where those layers are still the app.
+	 */
+	$effect(() => {
+		if (!wide) {
+			runtime.paneOpener = null;
+			return;
+		}
+		runtime.paneOpener = (content) => {
+			untrack(() => {
+				// "The terminal", asked for without naming one, is the one you have if there is one.
+				if (content.kind === 'terminal' && !content.terminalId) void showTerminal();
+				else openGuarded(ownSettings(content));
+			});
+		};
+		return () => {
+			runtime.paneOpener = null;
+		};
+	});
+
+	/**
+	 * A direct conversation's own settings are its Bot's profile, however they were asked for — the
+	 * header's button or the Bot's avatar in the transcript. One spelling, so the header can tell
+	 * they are open and toggling them finds them.
+	 */
+	function ownSettings(content: PaneContent): PaneContent {
+		if (content.kind !== 'chat' || content.side?.kind !== 'settings' || !content.side.botId) return content;
+		const session = sessionsById.get(content.sessionId);
+		if (!session || classifySession(session) !== 'you-bot' || youBotPeer(session) !== content.side.botId) return content;
+		return { ...content, side: { kind: 'settings', botId: null } };
+	}
+
+	/** The previews on screen, by tab, so one holding an unsaved edit can be asked before it turns. */
+	const previewPanes = new Map<string, PreviewHandle>();
+
+	function trackPreviewPane(tabId: string, pane: PreviewHandle | null): void {
+		if (pane) previewPanes.set(tabId, pane);
+		else previewPanes.delete(tabId);
+	}
+
+	/**
+	 * Open through the layout, asking first when this would turn a conversation's preview away
+	 * from a file with an unsaved edit. That preview is its conversation's only one, so "open
+	 * beside it instead" is not on offer; its own save / discard / cancel question decides.
+	 */
+	function openGuarded(content: PaneContent): void {
+		const open = () => commitLayout(openContent(layout, content, { id: freshPaneId }));
+		const at = existingTarget(layout, content);
+		const pane = at ? previewPanes.get(at.tab.id) : undefined;
+		const current = at ? contentOfTab(at.tab) : null;
+		if (at && pane?.blocksClose() && !(current && contentsEqual(current, content))) {
+			// Bring the question to where the keyboard is, then turn only once it is answered.
+			commitLayout(activateTab(focusLeaf(layout, at.leafId), at.leafId, at.tab.id));
+			pane.requestLeaveFromParent(open);
+			return;
+		}
+		open();
+	}
+
+	/** Fill a pane from its own empty state: whatever you pick lands in that pane, not elsewhere. */
+	function openInPane(leafId: string, content: PaneContent): void {
+		const focused = focusLeaf(layout, leafId);
+		commitLayout(openContent(focused, content, { id: freshPaneId, replaceActive: true }));
+	}
+
+	/**
+	 * A terminal tab is one shell. A new tab starts its own and is bound to it before it shows, so
+	 * two tabs are never the same terminal. If it cannot start one it opens anyway and says why.
+	 */
+	async function openNewTerminal(leafId: string | null): Promise<void> {
+		const created = await runtime.startTerminal();
+		const content: PaneContent = {
+			kind: 'terminal',
+			terminalId: created?.id ?? null,
+			cwd: created?.cwd ?? null
+		};
+		if (leafId && leafById(layout, leafId)) openInPane(leafId, content);
+		else commitLayout(openContent(layout, content, { id: freshPaneId }));
+	}
+
+	/** The sidebar's terminal button: the terminal tab you have, nearest first, or a new one. */
+	async function showTerminal(): Promise<void> {
+		const open = findKind(layout, 'terminal');
+		if (open) {
+			commitLayout(activateTab(focusLeaf(layout, open.leafId), open.leafId, open.tab.id));
+			return;
+		}
+		await openNewTerminal(null);
+	}
+
+	/**
+	 * Sessions no tab shows. Closing a terminal tab never stops its shell, and a phone can start one,
+	 * so what is still there has to be reachable from where you open things.
+	 */
+	const untabbedTerminals = $derived.by(() => {
+		const shown = new Set(
+			allLeaves(layout)
+				.flatMap((leaf) => leaf.tabs)
+				.filter((tab) => tab.kind === 'terminal')
+				.map((tab) => tab.params.terminalId)
+		);
+		return orderTerminals(runtime.terminals.filter((row) => !shown.has(row.id)));
+	});
+	const terminalNamesById = $derived(terminalNames(runtime.terminals));
+
+	/** A session's name, and how it ended when it has. */
+	function terminalName(row: Terminal): string {
+		const name = terminalNamesById.get(row.id) ?? row.title;
+		const status = statusLabel(row, t);
+		return status ? `${name} · ${status}` : name;
+	}
+
+	/** Write the session a terminal pane settled on back into its tab, so a restart comes back to it. */
+	function bindTerminalTab(leafId: string, tabId: string, terminalId: string | null): void {
+		const leaf = leafById(layout, leafId);
+		const tab = leaf?.tabs.find((candidate) => candidate.id === tabId);
+		if (!tab || tab.kind !== 'terminal') return;
+		if ((tab.params.terminalId ?? null) === terminalId) return;
+		const cwd = (terminalId && runtime.terminals.find((row) => row.id === terminalId)?.cwd) || tab.params.cwd;
+		const params: Record<string, string> = {};
+		if (terminalId) params.terminalId = terminalId;
+		if (cwd) params.cwd = cwd;
+		commitLayout(replaceTabParams(layout, leafId, tabId, params));
+	}
+
+	function runWorkbenchCommand(command: WorkbenchCommand): void {
+		commitLayout(
+			applyCommand(layout, command, workbenchCommandContext(), (current, leafId, axis, side) =>
+				splitLeaf(current, leafId, axis, side, [], { leaf: freshPaneId(), branch: freshPaneId() })
+			)
+		);
+	}
+
+	/**
+	 * The native menu owns its accelerators, so a command picked there is handed to the page
+	 * rather than guessed at by it. ⌘W closes the tab in front of you and, once there is nothing
+	 * left to close, asks the window to hide — which is what 关窗 has always meant.
+	 */
+	$effect(() => {
+		if (!wide) return;
+		return listenToWindow('pane-command', (id) => {
+			if (id === 'pane-reset') {
+				commitLayout(freshLayout(freshPaneId()));
+				return;
+			}
+			if (id === 'pane-close-tab' && allLeaves(layout).every((leaf) => leaf.tabs.length === 0)) {
+				void hideDesktopWindow();
+				return;
+			}
+			const command = typeof id === 'string' ? MENU_COMMANDS[id] : undefined;
+			if (command) runWorkbenchCommand(command);
+		});
+	});
+
+	function workbenchCommandContext(): CommandContext {
+		return {
+			viewport: { x: 0, y: 0, width: shellWidth, height: shellEl?.clientHeight || 800 },
+			mins: paneMin,
+			ids: freshPaneId,
+			newPaneMin: WB_FALLBACK_MIN
+		};
+	}
+
+	function onPaneCloseTab(leafId: string, tabId: string): void {
+		commitLayout(closeWorkbenchTab(layout, leafId, tabId, freshPaneId()));
+	}
+
+	/** Following the active pane keeps Stop, the composer and the URL pointing at one conversation. */
+	$effect(() => {
+		if (!wide) return;
+		const id = activeSessionId(layout);
+		untrack(() => {
+			if (id && runtime.selectedId !== id) void runtime.selectSession(id, { preservePage: true });
+		});
+	});
 
 	$effect(() => {
 		const el = shellEl;
@@ -362,6 +691,7 @@
 	}
 
 	async function handleMenuViewInfo(session: SessionSummary): Promise<void> {
+		if (isFileDropSession(session)) return;
 		if (runtime.selectedId !== session.id) {
 			await runtime.selectSession(session.id);
 		}
@@ -418,7 +748,7 @@
 	const selected = $derived(snapshot.sessions.find((s) => s.id === runtime.selectedId) ?? null);
 	const connected = $derived(runtime.connection === 'connected');
 	let composer = $state<{ focus: () => void } | null>(null);
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(
@@ -444,44 +774,10 @@
 	const sessionSettingsLabel = $derived(
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
-	const sessionSettingsTitle = $derived(
-		selectedKind === 'group' ? t.detail.titleGroup : t.detail.titleBot
-	);
 	const nestedProfile = $derived(
 		Boolean(runtime.profileBotId && selectedKind !== 'you-bot')
 	);
-	const nestedBackLabel = $derived(
-		selectedKind === 'group' ? t.detail.backToGroup : t.detail.backToBot
-	);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
-	const routeRows = $derived(
-		selected
-			? routeLogRows(
-					snapshot.routes.filter((route) => route.session_id === selected.id),
-					{
-						bots: snapshot.bots,
-						providers: snapshot.providers,
-						reviews: snapshot.routeReviews,
-						learnings: snapshot.routeLearnings,
-						labels: {
-							outcome: t.routes.outcome,
-							fault: t.routes.fault,
-							direction: t.routes.direction,
-							signature: t.routes.signature,
-							failReason: t.routes.failReason,
-							thinking: t.routes.thinking,
-							unknownBot: t.top.deleted
-						}
-					}
-				)
-			: []
-	);
-
-	function jumpToRouteTrigger(messageId: string): void {
-		if (!selected) return;
-		void runtime.selectSession(selected.id, { messageId });
-	}
-
 	function jumpToTrace(sessionId: string, messageId: string): void {
 		void runtime.selectSession(sessionId, { messageId });
 	}
@@ -584,8 +880,19 @@
 		document.documentElement.lang = locale === 'zh' ? 'zh-Hans' : 'en';
 	});
 
+	/** The conversation whose settings are open beside it on the workbench, if any. */
+	const settingsBeside = $derived(wide ? settingsSide(layout) : null);
+	/**
+	 * Whose settings the draft is for. On the workbench that is the conversation they are open
+	 * beside, which need not be the one the keyboard is in: clicking into another pane must not
+	 * swap the group name being edited for that pane's.
+	 */
+	const draftSession = $derived(
+		settingsBeside ? (sessionsById.get(settingsBeside.sessionId) ?? null) : selected
+	);
+
 	$effect(() => {
-		const session = selected;
+		const session = draftSession;
 		if (!session) {
 			groupDetail.sessionId = null;
 			untrack(() => {
@@ -607,7 +914,7 @@
 	});
 
 	$effect(() => {
-		if (!runtime.sessionSettingsOpen) {
+		if (!runtime.sessionSettingsOpen && !settingsBeside) {
 			untrack(() => {
 				if (shouldDropConfirm('session-settings-closed', dangerConfirm)) {
 					clearDanger('bot', 'group', 'history');
@@ -695,6 +1002,9 @@
 				}
 			}
 		}
+		if (runtime.previewSiblings && runtime.previewSiblings.length > 0) {
+			return runtime.previewSiblings;
+		}
 		if (att) {
 			const owner = snapshot.messages.find((message) => message.id === att.message_id);
 			if (owner && owner.attachments.length > 0) return owner.attachments;
@@ -711,33 +1021,42 @@
 		if (runtime.hosted) {
 			const id = runtime.previewAttachmentId;
 			if (!id) return null;
-			const attachment = findAttachmentById(id);
+			const attachment = findAttachmentById(id) ?? runtime.previewSiblings?.find((s) => s.id === id);
 			if (!attachment) return null;
 			const owner = snapshot.messages.find((message) => message.id === attachment.message_id);
 			return {
 				relpath: attachment.workspace_relpath,
 				attachment,
 				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
-				target: targetFor(snapshot.messages, attachment.workspace_relpath, owner, { sessionId: runtime.selectedId }),
+				forceTree: runtime.forceArtifactTree,
+				taskId: runtime.previewTaskId ?? null,
+				// 挂到谁, the same way as below: the job this preview lists is where a delivery is looked for first.
+				target: targetFor(snapshot.messages, attachment.workspace_relpath, owner, {
+					sessionId: runtime.selectedId,
+					taskId: runtime.previewTaskId ?? owner?.task_id ?? null
+				})
 			};
 		}
 		const relpath = runtime.previewRelpath;
 		if (!relpath) return null;
-		const attachment = findAttachmentByPath(relpath);
+		const attachment = findAttachmentByPath(relpath) ?? runtime.previewSiblings?.find((s) => s.workspace_relpath === relpath);
 		const owner = runtime.previewMessageId
 			? snapshot.messages.find((message) => message.id === runtime.previewMessageId)
 			: undefined;
 		return {
 			relpath,
-			attachment,
+			attachment: attachment ?? null,
 			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
 			forceTree: runtime.forceArtifactTree,
 			// The entry opens the job's tree, not just this message's; older messages have none.
-			taskId: owner?.task_id ?? null,
+			taskId: runtime.previewTaskId ?? owner?.task_id ?? null,
 			// 挂到谁：the message this was opened from when it handed this very path over — the tree
 			// keeps that message while you walk to other files — else the latest Bot message in this
 			// conversation that did, in this job first.
-			target: targetFor(snapshot.messages, relpath, owner, { sessionId: runtime.selectedId, taskId: owner?.task_id ?? null })
+			target: targetFor(snapshot.messages, relpath, owner, {
+				sessionId: runtime.selectedId,
+				taskId: runtime.previewTaskId ?? owner?.task_id ?? null
+			})
 		};
 	});
 
@@ -745,18 +1064,43 @@
 		relpath: string,
 		att?: Attachment,
 		messageId?: string | null,
-		forceTree = false
+		forceTree = false,
+		taskId?: string | null,
+		siblings?: Attachment[] | null,
+		sessionId?: string | null
 	): void {
+		if (runtime.paneOpener) {
+			const sourceMessageId = messageId ?? att?.message_id ?? null;
+			const owner = snapshot.messages.find((row) => row.id === sourceMessageId);
+			runtime.paneOpener({
+				kind: 'preview',
+				// Whose preview this is decides which pane turns: every conversation has one.
+				sessionId: sessionId ?? owner?.session_id ?? selected?.id ?? null,
+				relpath: sanitizePreviewPath(relpath),
+				attachmentId: att?.id ?? null,
+				messageId: sourceMessageId,
+				taskId: taskId ?? owner?.task_id ?? null,
+				forceTree,
+				siblings: siblings ?? siblingsForPath(relpath, att, sourceMessageId)
+			});
+			return;
+		}
 		if (runtime.hosted) {
 			// A remote URL never carries a file path, so the preview goes by attachment id.
 			runtime.previewRelpath = null;
 			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(relpath)?.id ?? null;
+			runtime.previewMessageId = messageId ?? att?.message_id ?? null;
+			runtime.forceArtifactTree = forceTree;
+			runtime.previewTaskId = taskId ?? null;
+			runtime.previewSiblings = siblings ?? null;
 			return;
 		}
 		runtime.previewAttachmentId = null;
 		runtime.previewRelpath = sanitizePreviewPath(relpath);
 		runtime.previewMessageId = messageId ?? att?.message_id ?? null;
 		runtime.forceArtifactTree = forceTree;
+		runtime.previewTaskId = taskId ?? null;
+		runtime.previewSiblings = siblings ?? null;
 	}
 
 	function closeArtifactPreview(): void {
@@ -764,6 +1108,8 @@
 		runtime.previewAttachmentId = null;
 		runtime.previewMessageId = null;
 		runtime.forceArtifactTree = false;
+		runtime.previewTaskId = null;
+		runtime.previewSiblings = null;
 		runtime.annotationFocusId = null;
 	}
 
@@ -884,13 +1230,33 @@
 		return !error;
 	}
 
-	function openProfile(botId: string): void {
+	/**
+	 * `sessionId` is the conversation the profile opens beside on the workbench — the one it was
+	 * asked for from, rather than whichever conversation the keyboard happens to be in.
+	 */
+	function openProfile(botId: string, sessionId?: string): void {
 		if (!botsById.has(botId)) return;
 		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
 		profileFailed = false;
 		// The pane is keyed on the Bot, so opening or switching remounts it with a fresh draft.
+		if (sessionId && runtime.paneOpener) {
+			runtime.paneOpener({ kind: 'chat', sessionId, side: { kind: 'settings', botId } });
+			return;
+		}
 		runtime.openProfile(botId);
 	}
+
+	/** A pane header's settings button: slide the conversation's settings over it, or close them. */
+	function togglePaneSettings(sessionId: string): void {
+		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
+		profileFailed = false;
+		commitLayout(toggleChatSide(layout, sessionId, { kind: 'settings', botId: null }, { id: freshPaneId }));
+	}
+
+	function closePaneSide(sessionId: string): void {
+		commitLayout(closeChatSide(layout, sessionId));
+	}
+
 
 	function toggleSessionSettings(): void {
 		if (runtime.sessionSettingsOpen) {
@@ -1050,7 +1416,7 @@
 				runtime.createGroupOpen = false;
 			} else if (providerEditor) {
 				e.stopPropagation();
-				providerEditor = null;
+				settingsModal?.backFromProviderEditor();
 			} else if (confirmingIndependent) {
 				e.stopPropagation();
 			} else if (searchPageOpen) {
@@ -1059,12 +1425,12 @@
 				closeSettings();
 			} else if (runtime.sessionSettingsOpen && nestedProfile) {
 				closeNestedProfile();
+			} else if (runtime.sessionSettingsOpen && profilePane?.backFromEditor()) {
+				// The routine page (or a skill sheet) closes before the drawer does.
 			} else if (runtime.sessionSettingsOpen) {
 				runtime.closeSessionSettings();
 			} else if (runtime.terminalOpen) {
 				runtime.closeTerminal();
-			} else if (runtime.routeLogOpen) {
-				runtime.closeRouteLog();
 			} else if (runtime.traceOpen) {
 				runtime.closeTrace();
 			} else if (runtime.routinesOpen) {
@@ -1091,19 +1457,126 @@
 		}
 		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
 			const target = e.target as HTMLElement | null;
-			if (target && (target.closest('input, textarea, [contenteditable="true"], .monaco-editor, .editor-widget.find-widget, .composer-input'))) {
-				return;
-			}
+			if (isTypingTarget(target)) return;
 			if (!snapshot.settings.workspace_path) return;
 			e.preventDefault();
 			toggleWorkspaceExplorer();
+			return;
+		}
+		// After the Escape chain and ⌘O, so neither can be taken out from under them.
+		if (wide) {
+			const command = matchWorkbenchKey(e);
+			if (command) {
+				e.preventDefault();
+				runWorkbenchCommand(command);
+			}
 		}
 	}}
 />
 
+<!--
+	The head of a conversation's settings, in the narrow drawer and beside a workbench pane alike.
+	`nested` is a Bot opened from a group's settings. On a phone that page's way out is the
+	conversation; a wider window still steps back to the group's settings.
+-->
+{#snippet settingsHead(group: boolean, nested: boolean, onBack: () => void, onClose: () => void, groupSession: SessionSummary | null = null)}
+	<div class="sheet-head">
+		{#if nested}
+			<button
+				type="button"
+				class="sheet-back"
+				aria-label={narrow ? t.common.back : (group ? t.detail.backToGroup : t.detail.backToBot)}
+				onclick={onBack}
+			>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<span class="sheet-back-label">{group ? t.detail.backToGroup : t.detail.backToBot}</span>
+			</button>
+		{:else if group && groupSession}
+			<GroupIdentity {runtime} session={groupSession} bind:detail={groupDetail} {t} />
+		{:else}
+			<div class="panel-header-title-wrap flex items-center gap-5">
+				<div class="panel-header-icon" aria-hidden="true">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="3"></circle>
+						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+					</svg>
+				</div>
+				<h2>{t.detail.titleBot}</h2>
+			</div>
+		{/if}
+		<button
+			type="button"
+			class="sheet-close"
+			title={t.common.close}
+			onclick={onClose}
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+				<line x1="18" y1="6" x2="6" y2="18"></line>
+				<line x1="6" y1="6" x2="18" y2="18"></line>
+			</svg>
+		</button>
+	</div>
+{/snippet}
+
+<!--
+	A conversation's settings, sliding over its transcript on the workbench. Drawn here rather than
+	in the pane host because they run on state this file holds one copy of — the unsaved draft,
+	which danger confirm is armed — which is also why only one conversation has them open at a time.
+	With no Bot named, a direct conversation shows its Bot and a group its own settings. A Bot
+	picked from a group is simply that Bot's settings: no way back to the group's, the ✕ or the
+	scrim closes it.
+-->
+{#snippet paneSettings(sessionId: string, botId: string | null)}
+	{@const paneSession = sessionsById.get(sessionId)}
+	{@const paneKind = paneSession ? classifySession(paneSession) : null}
+	{@const shownBotId = botId ?? (paneKind === 'you-bot' && paneSession ? youBotPeer(paneSession) : null)}
+	{@const paneBot = shownBotId ? botsById.get(shownBotId) : undefined}
+	<div class="sheet session-settings is-beside" class:is-mobile-detail={paneMobileDetail}>
+		{@render settingsHead(
+			paneKind === 'group' && !paneBot,
+			false,
+			() => {},
+			() => closePaneSide(sessionId),
+			paneKind === 'group' && !paneBot && paneSession ? paneSession : null
+		)}
+		{#if paneBot}
+			{#key paneBot.id}
+				<ProfilePane
+					bind:this={profilePane}
+					{runtime}
+					bot={paneBot}
+					{t}
+					modelOptions={availableModelOptions}
+					selectedKind={paneKind}
+					bind:profileFailed
+					bind:mobileDetail={paneMobileDetail}
+					openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
+					{clearDanger}
+					onDeleteBot={() => openDeleteBotConfirm(paneBot.id)}
+					onClearHistory={() => openClearHistoryConfirm(sessionId)}
+				/>
+			{/key}
+		{:else if paneSession}
+			<GroupPane
+				{runtime}
+				selected={paneSession}
+				{t}
+				bind:detail={groupDetail}
+				bind:mobileDetail={paneMobileDetail}
+				onOpenProfile={(id) => openProfile(id, sessionId)}
+				onDeleteGroup={() => openDeleteGroupConfirm(sessionId)}
+				onClearHistory={() => openClearHistoryConfirm(sessionId)}
+			/>
+		{:else}
+			<p class="pane-settings-gone">{t.top.deleted}</p>
+		{/if}
+	</div>
+{/snippet}
+
 {#if showOnboarding}
 	<Onboarding {runtime} onDismiss={() => (dismissedOnboarding = true)} />
 {:else}
+<ImageCopy {t} />
 <div
 	class="shell"
 	class:has-mobile-navigation={mobileNavigationVisible}
@@ -1145,8 +1618,149 @@
 		onpointerdown={startSidebarResize}
 	></button>
 	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
-		{#if runtime.routinesOpen}
-			<RoutineCalendar {runtime} {t} />
+		{#if wide}
+			<Workbench
+				{layout}
+				mins={paneMin}
+				{t}
+				wide={true}
+				tabName={paneTitle}
+				onLayout={commitLayout}
+				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
+				onCloseTab={onPaneCloseTab}
+			>
+				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}
+					<PaneContentHost
+						{tab}
+						{leafId}
+						{runtime}
+						{t}
+						{pinnedSessionIds}
+						onTogglePin={togglePin}
+						onOpenProfile={openProfile}
+						onOpenArtifact={openArtifactPath}
+						onCreateBot={openCreateBot}
+						onRemoveTab={onPaneCloseTab}
+						onBindTerminal={bindTerminalTab}
+						onUpdateContent={(content) =>
+							commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
+						onPreviewPane={trackPreviewPane}
+						onJump={jumpToTrace}
+						onToggleSettings={togglePaneSettings}
+						onCloseSide={closePaneSide}
+						settingsSide={paneSettings}
+					/>
+				{/snippet}
+				{#snippet tabLabel(tab: WorkbenchTab)}
+					<span>{paneTitle(tab)}</span>
+				{/snippet}
+				{#snippet emptyActions(leafId: string)}
+					<button type="button" class="pane-open" onclick={() => void openNewTerminal(leafId)}>
+						{t.terminal.newTab}
+					</button>
+					{#each untabbedTerminals as row (row.id)}
+						<button
+							type="button"
+							class="pane-open is-reattach"
+							title={row.cwd}
+							onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
+						>
+							{t.terminal.reattach(terminalName(row))}
+						</button>
+					{/each}
+					<button
+						type="button"
+						class="pane-open"
+						disabled={!snapshot.settings.workspace_path}
+						onclick={() => openInPane(leafId, { kind: 'workspace', selected: null })}
+					>
+						{t.sidebar.workspace}
+					</button>
+					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'routines' })}>
+						{t.routines.title}
+					</button>
+				{/snippet}
+				{#snippet menuActions(leafId: string, query: string)}
+					{@const needle = query.trim().toLowerCase()}
+					{@const listed = needle
+						? untabbedTerminals.filter((row) =>
+								`${terminalName(row)} ${row.cwd}`.toLowerCase().includes(needle))
+						: untabbedTerminals}
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						onclick={() => void openNewTerminal(leafId)}
+					>
+						<span class="wb-menu-mark" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="4 17 10 11 4 5"></polyline>
+								<line x1="12" y1="19" x2="20" y2="19"></line>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{t.terminal.newTab}</span>
+					</button>
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						disabled={!snapshot.settings.workspace_path}
+						onclick={() => openInPane(leafId, { kind: 'workspace', selected: null })}
+					>
+						<span class="wb-menu-mark is-quiet" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M3 7.5 12 3l9 4.5-9 4.5L3 7.5Z"></path>
+								<path d="M3 12l9 4.5 9-4.5"></path>
+								<path d="M3 16.5 12 21l9-4.5"></path>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{t.sidebar.workspace}</span>
+					</button>
+					<button
+						type="button"
+						class="wb-menu-row"
+						role="menuitem"
+						onclick={() => openInPane(leafId, { kind: 'routines' })}
+					>
+						<span class="wb-menu-mark is-quiet" aria-hidden="true">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<rect x="3" y="5" width="18" height="16" rx="2"></rect>
+								<line x1="3" y1="10" x2="21" y2="10"></line>
+								<line x1="8" y1="3" x2="8" y2="7"></line>
+								<line x1="16" y1="3" x2="16" y2="7"></line>
+							</svg>
+						</span>
+						<span class="wb-menu-name">{t.routines.title}</span>
+					</button>
+					<div class="wb-menu-section" role="presentation">{t.pane.runningTerminals}</div>
+					{#each listed as row (row.id)}
+						<button
+							type="button"
+							class="wb-menu-row"
+							role="menuitem"
+							title={row.cwd}
+							onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
+						>
+							<span class="wb-menu-mark is-quiet" aria-hidden="true">
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<polyline points="4 17 10 11 4 5"></polyline>
+									<line x1="12" y1="19" x2="20" y2="19"></line>
+								</svg>
+							</span>
+							<span class="wb-menu-copy">
+								<span class="wb-menu-name">{terminalName(row)}</span>
+								<span class="wb-menu-meta">{row.cwd}</span>
+							</span>
+						</button>
+					{:else}
+						<p class="wb-menu-empty">{needle ? t.sidebar.emptySearch : t.pane.noRunningTerminals}</p>
+					{/each}
+				{/snippet}
+			</Workbench>
+		{:else if runtime.routinesOpen}
+			{#await import('./calendar/RoutineCalendar.svelte') then { default: RoutineCalendar }}
+				<RoutineCalendar {runtime} {t} />
+			{/await}
 		{:else if selected}
 		<!--
 			On a phone this is a page over the roster: it arrives from the right and Back walks
@@ -1201,66 +1815,78 @@
 			aria-label={t.stream.artifactResize}
 			onpointerdown={startPreviewResize}
 		></button>
-		<ArtifactPreview
-			bind:this={previewPane}
-			attachment={artifactPreview.attachment}
-			relpath={artifactPreview.relpath}
-			siblings={artifactPreview.siblings}
-			api={runtime.client}
-			workspacePath={snapshot.settings.workspace_path}
-			forceTree={artifactPreview.forceTree}
-			taskId={artifactPreview.taskId}
-			target={artifactPreview.target}
-			annotations={snapshot.annotations}
-			annotationFocusId={runtime.annotationFocusId}
-			annotationFileKey={runtime.annotationFileKeys[artifactPreview.relpath] ?? null}
-			bots={botsById}
-			{locale}
-			sessions={snapshot.sessions}
-			viewedSessionId={runtime.selectedId}
-			onLoadAnnotations={(path) => void runtime.loadAnnotations({ relpath: path })}
-			onCreateAnnotation={(input) => runtime.createAnnotation(input)}
-			onPatchAnnotation={(id, patch) => runtime.patchAnnotation(id, patch)}
-			onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
-			onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
-			{t}
-			onClose={closeArtifactPreview}
-			onSelect={(att) =>
-				openArtifactPath(
-					att.workspace_relpath,
-					att,
-					runtime.previewMessageId,
-					runtime.forceArtifactTree
-				)}
-			onSelectWorkspacePath={(path) =>
-				openArtifactPath(
-					path,
-					undefined,
-					runtime.previewMessageId,
-					runtime.forceArtifactTree
-				)}
-		/>
+		{#await import('./overlays/ArtifactPreview.svelte') then { default: ArtifactPreview }}
+			<ArtifactPreview
+				bind:this={previewPane}
+				attachment={artifactPreview.attachment}
+				relpath={artifactPreview.relpath}
+				siblings={artifactPreview.siblings}
+				api={runtime.client}
+				workspacePath={snapshot.settings.workspace_path}
+				forceTree={artifactPreview.forceTree}
+				taskId={artifactPreview.taskId}
+				target={artifactPreview.target}
+				annotations={snapshot.annotations}
+				annotationFocusId={runtime.annotationFocusId}
+				annotationFileKey={runtime.annotationFileKeys[artifactPreview.relpath] ?? null}
+				bots={botsById}
+				{locale}
+				sessions={snapshot.sessions}
+				viewedSessionId={runtime.selectedId}
+				onLoadAnnotations={(path) => void runtime.loadAnnotations({ relpath: path })}
+				onCreateAnnotation={(input) => runtime.createAnnotation(input)}
+				onPatchAnnotation={(id, patch) => runtime.patchAnnotation(id, patch)}
+				onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
+				onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
+				{t}
+				onClose={closeArtifactPreview}
+				onSelect={(att) =>
+					openArtifactPath(
+						att.workspace_relpath,
+						att,
+						runtime.previewMessageId,
+						runtime.forceArtifactTree,
+						runtime.previewTaskId,
+						runtime.previewSiblings
+					)}
+				onSelectWorkspacePath={(path) =>
+					openArtifactPath(
+						path,
+						undefined,
+						runtime.previewMessageId,
+						runtime.forceArtifactTree,
+						runtime.previewTaskId,
+						runtime.previewSiblings
+					)}
+			/>
+		{/await}
 	{/if}
 	{#if runtime.traceOpen && selected}
-		<TaskTraceView
-			bind:this={tracePane}
-			api={runtime.client}
-			taskId={runtime.traceTaskId || null}
-			sessionId={runtime.traceSessionId || selected.id}
-			activeSessionId={selected.id}
-			sessions={snapshot.sessions}
-			bots={snapshot.bots}
-			youLabel={t.common.you}
-			deletedLabel={t.top.deleted}
-			workspacePath={snapshot.settings.workspace_path}
-			{t}
-			reloadToken={runtime.traceReload}
-			onClose={() => runtime.closeTrace()}
-			onJump={jumpToTrace}
-			onTask={(id) => {
-				if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
-			}}
-		/>
+		{#await import('./overlays/TaskTrace.svelte') then { default: TaskTraceView }}
+			<TaskTraceView
+				bind:this={tracePane}
+				api={runtime.client}
+				taskId={runtime.traceTaskId || null}
+				focus={runtime.traceFocus}
+				focusToken={runtime.traceFocusToken}
+				sessionId={runtime.traceSessionId || selected.id}
+				activeSessionId={selected.id}
+				sessions={snapshot.sessions}
+				bots={snapshot.bots}
+				providers={snapshot.providers}
+				youLabel={t.common.you}
+				deletedLabel={t.top.deleted}
+				workspacePath={snapshot.settings.workspace_path}
+				{t}
+				reloadToken={runtime.traceReload}
+				onClose={() => runtime.closeTrace()}
+				onJump={jumpToTrace}
+				onOpenArtifact={openArtifactPath}
+				onTask={(id) => {
+					if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
+				}}
+			/>
+		{/await}
 	{/if}
 	{#if runtime.terminalOpen}
 		<TerminalPane
@@ -1271,17 +1897,6 @@
 			onStream={(id, sink) => runtime.onStream(id, sink)}
 			onChanged={() => runtime.refreshTerminals()}
 			onClose={() => runtime.closeTerminal()}
-		/>
-	{/if}
-	{#if runtime.routeLogOpen && selected}
-		<RouteLog
-			rows={routeRows}
-			sessionTitle={titleOf(selected)}
-			loading={runtime.routesLoading}
-			showEndpoint={snapshot.providers.length > 1}
-			{t}
-			onClose={() => runtime.closeRouteLog()}
-			onJump={jumpToRouteTrigger}
 		/>
 	{/if}
 	{#if runtime.workspaceOpen}
@@ -1320,54 +1935,21 @@
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
 					if (drawerHasDanger) dismissDangerConfirm();
+					else if (nestedProfile && narrow) runtime.closeSessionSettings();
 					else if (nestedProfile) closeNestedProfile();
+					else if (profilePane?.backFromEditor()) e.stopPropagation();
 					else runtime.closeSessionSettings();
 				}
 			}}
 		>
 			<div class="sheet is-right session-settings" class:is-mobile-detail={paneMobileDetail}>
-				<div class="sheet-head">
-					{#if nestedProfile}
-						<button
-							type="button"
-							class="sheet-back"
-							onclick={closeNestedProfile}
-						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-							<span>{nestedBackLabel}</span>
-						</button>
-					{:else}
-						<div class="panel-header-title-wrap flex items-center gap-5">
-							<div class="panel-header-icon" aria-hidden="true">
-								{#if selectedKind === 'group'}
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-										<circle cx="9" cy="7" r="4"></circle>
-										<path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-										<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-									</svg>
-								{:else}
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<circle cx="12" cy="12" r="3"></circle>
-										<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-									</svg>
-								{/if}
-							</div>
-							<h2>{sessionSettingsTitle}</h2>
-						</div>
-					{/if}
-					<button
-						type="button"
-						class="sheet-close"
-						title={t.common.close}
-						onclick={closeCurrentDrawerScreen}
-					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="18" y1="6" x2="6" y2="18"></line>
-							<line x1="6" y1="6" x2="18" y2="18"></line>
-						</svg>
-					</button>
-				</div>
+				{@render settingsHead(
+					selectedKind === 'group',
+					nestedProfile,
+					() => (narrow ? runtime.closeSessionSettings() : closeNestedProfile()),
+					closeCurrentDrawerScreen,
+					selectedKind === 'group' && !nestedProfile && selected ? selected : null
+				)}
 
 				{#if profileBot}
 					{#key profileBot.id}
@@ -1413,19 +1995,23 @@
 	{#if mobileNavigationVisible}
 		<MobileNavigation active={mobileDestination} {t} updateAvailable={updateChecker.updateVisible} onNavigate={navigateMobile} />
 	{/if}
-	<SettingsModal
-		bind:this={settingsModal}
-		bind:mobileSettingsDetail
-		{runtime}
-		{t}
-		bind:saveFailed
-		bind:providerEditor
-		confirmingProvider={dangerConfirm?.kind === 'provider'}
-		bind:confirmingIndependent
-		{patchImmediate}
-		{openDeleteProviderConfirm}
-		{closeSettings}
-	/>
+	{#if settingsEverOpened}
+		{#await import('./settings/SettingsModal.svelte') then { default: SettingsModal }}
+			<SettingsModal
+				bind:this={settingsModal}
+				bind:mobileSettingsDetail
+				{runtime}
+				{t}
+				bind:saveFailed
+				bind:providerEditor
+				confirmingProvider={dangerConfirm?.kind === 'provider'}
+				bind:confirmingIndependent
+				{patchImmediate}
+				{openDeleteProviderConfirm}
+				{closeSettings}
+			/>
+		{/await}
+	{/if}
 	{#if runtime.createBotOpen}
 		<CreateBotSheet
 			{runtime}
@@ -1467,6 +2053,50 @@
 	@media (max-width: 680px) {
 		.shell.has-mobile-navigation > :global(.side) { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
 
+	}
+
+	/* The drawer's sheet, sliding over one pane instead of over the whole window. */
+	.sheet.session-settings.is-beside {
+		position: relative;
+		inset: auto;
+		width: 100%;
+		height: 100%;
+		min-height: 0;
+		box-sizing: border-box;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		border-right: 0;
+		box-shadow: none;
+		background: var(--bg);
+		z-index: auto;
+		animation: none;
+	}
+	.pane-settings-gone {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		color: var(--muted);
+		font-size: 13px;
+	}
+
+	.pane-open {
+		min-height: 32px;
+		padding: 6px 14px;
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--line);
+		cursor: pointer;
+	}
+	.pane-open:disabled {
+		color: var(--muted);
+		cursor: default;
+	}
+	.pane-open:not(:disabled):hover {
+		background: var(--row-hover);
 	}
 
 	.preview-split {
@@ -1674,6 +2304,30 @@
 		background: var(--accent-tint);
 	}
 
+	/*
+	 * A phone already has a back chevron on every other settings page. The words ("返回群组设置")
+	 * stay for a wider window, where this control is a labelled link, and for the button's name.
+	 */
+	@media (max-width: 680px) {
+		.sheet-back {
+			flex: 0 0 44px;
+			width: 44px;
+			height: 44px;
+			justify-content: center;
+			gap: 0;
+			padding: 0;
+			border-radius: var(--radius-md);
+		}
+
+		.sheet-back-label {
+			display: none;
+		}
+
+		.sheet.session-settings:has(.sheet-back) :global(.sheet-head) {
+			padding-left: 4px;
+		}
+	}
+
 	.sheet.is-right.session-settings {
 		width: 460px;
 		max-width: 94vw;
@@ -1734,6 +2388,15 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+	}
+
+	/*
+	 * The column's own width, not the window's, decides when a conversation takes the phone
+	 * layout (see `.pane-conversation` for a pane of the workbench). A size query only: unlike
+	 * `contain`, it does not re-anchor the `fixed` menus placed from `clientX` / `clientY`.
+	 */
+	.main {
+		container: conversation / inline-size;
 	}
 
 	/* Shell Layout */
@@ -1858,7 +2521,7 @@
 		.shell.is-preview :global(.artifact-pane) {
 			position: fixed;
 			inset: 0;
-			z-index: 60;
+			z-index: 80;
 		}
 	}
 </style>

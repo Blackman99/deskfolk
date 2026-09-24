@@ -25,7 +25,7 @@
 </script>
 
 <svelte:head>
-  <title>Brand image studio — Real Bot</title>
+  <title>Brand image studio — Deskfolk</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
@@ -46,7 +46,7 @@
       <div class="copy">
         <div class="brand">
           <Logo size={44} />
-          <span class="brand-name">Real Bot</span>
+          <span class="brand-name">Deskfolk</span>
           <span class="wip">{t.nav.wip}</span>
         </div>
         <h1>

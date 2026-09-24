@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_COLS, Pty, PtyUnavailable, ptyHelperPath, shellCommand } from "./pty";
+import { CwdTracker } from "./terminal-cwd";
+import { ensureZshIntegration, terminalEnv } from "./terminal-env";
 
 /**
  * These drive the real helper binary: a pty that only works in a mock is not evidence of
@@ -130,4 +132,54 @@ withHelper("closing a session takes the shell with it, not just the helper", asy
   await Bun.sleep(200);
   expect(descendants()).toBe(0);
   rmSync(cwd, { recursive: true, force: true });
+});
+
+/**
+ * A real zsh, with Deskfolk's own environment and shell integration: the user's `.zshenv` and
+ * `.zshrc` still run, `ZDOTDIR` ends up back where it started, and `cd` is reported as OSC 7 in a
+ * form {@link CwdTracker} can decode back to the real path — including a directory name with a
+ * space and CJK text in it, which is exactly the case percent-encoding exists for.
+ */
+withHelper("zsh keeps the user's own dotfiles and reports its cwd via Deskfolk's integration", async () => {
+  const home = scratch();
+  const dataDir = scratch();
+  writeFileSync(join(home, ".zshenv"), 'export M1="one"\n');
+  writeFileSync(join(home, ".zshrc"), 'export M2="two"\n');
+  const target = join(home, "a b 中");
+  mkdirSync(target);
+
+  const zshIntegrationDir = ensureZshIntegration(dataDir);
+  if (zshIntegrationDir === null) throw new Error("could not write the zsh integration fixture");
+  const env = terminalEnv(
+    { HOME: home, PATH: process.env.PATH },
+    { shell: "/bin/zsh", zshIntegrationDir, username: "x" },
+  );
+  expect(env.ZDOTDIR).toBe(zshIntegrationDir);
+
+  const pty = new Pty({ cwd: home, command: ["/bin/zsh", "-l"], env, helper: helper ?? undefined });
+  const chunks: Uint8Array[] = [];
+  let text = "";
+  pty.onData((chunk) => { chunks.push(chunk); text += new TextDecoder().decode(chunk); });
+  const read = () => text;
+
+  await settle(read);
+  pty.write(new TextEncoder().encode(`cd "${target}"; echo "M1=$M1 M2=$M2 Z=$ZDOTDIR"\r`));
+  const out = await settle(read);
+
+  expect(out).toContain("M1=one M2=two");
+  // ZDOTDIR was restored (here, unset — the fixture HOME had none of its own) before the user's
+  // own dotfiles ran, so it is not the integration dir by the time the prompt echoes it back.
+  expect(out).not.toContain(`Z=${zshIntegrationDir}`);
+  // OSC 7 for the target dir: `a b 中` percent-encoded byte by byte.
+  expect(out).toContain("a%20b%20%E4%B8%AD");
+
+  const tracker = new CwdTracker();
+  let decoded: string | null = null;
+  for (const chunk of chunks) decoded = tracker.feed(chunk) ?? decoded;
+  expect(decoded).toBe(target);
+
+  pty.kill();
+  await pty.exited;
+  rmSync(home, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
 });

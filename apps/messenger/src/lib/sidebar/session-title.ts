@@ -1,9 +1,11 @@
 import { USER_MEMBER, type Bot, type SessionSummary } from "@real-bot/protocol";
-import { activeMembers, classifySession } from "./session-groups.ts";
+import { activeMembers, classifySession, isFileDropSession } from "./session-groups.ts";
 
 export type RosterLabels = {
   deleted: string;
   archived: string;
+  /** The remote file drop has no Bot to name it. */
+  fileDrop?: string;
 };
 
 export function sessionTitle(
@@ -11,6 +13,7 @@ export function sessionTitle(
   bots: ReadonlyMap<string, Bot>,
   labels?: RosterLabels,
 ): string {
+  if (isFileDropSession(session)) return labels?.fileDrop ?? "";
   if (session.kind === "group") return session.name ?? "";
   const names = activeMembers(session.participants)
     .filter((member) => member !== USER_MEMBER)
@@ -27,6 +30,7 @@ export function sessionPresence(
   labels?: RosterLabels,
 ): string {
   const kind = classifySession(session);
+  if (kind === "file-drop") return labels?.fileDrop ?? "";
   const botNames = activeMembers(session.participants)
     .filter((member) => member !== USER_MEMBER)
     .map((id) => botName(id, bots, labels, true));

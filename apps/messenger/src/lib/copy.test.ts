@@ -31,6 +31,10 @@ test("the composer labels its icon actions and explains keyboard behavior in bot
   expect(COPY.en.chat.openAssociatedFileTree).toBe("Open associated file tree");
   expect(COPY.zh.chat.copyMessageId).toBe("复制消息 ID");
   expect(COPY.en.chat.copyMessageId).toBe("Copy message ID");
+  expect(COPY.zh.common.copyImage).toBe("复制图片");
+  expect(COPY.en.common.copyImage).toBe("Copy image");
+  expect(COPY.zh.common.copyImageFailed).toBe("没能复制图片");
+  expect(COPY.en.common.copyImageFailed).toBe("Couldn’t copy the image");
   expect(COPY.zh.chat.noAssociatedFiles).toBe("无关联文件");
   expect(COPY.en.chat.noAssociatedFiles).toBe("No associated files");
   expect(COPY.zh.stream.artifactLoading).toBe("正在打开文件…");
@@ -87,6 +91,14 @@ test("provider settings chrome lives on settings.*", () => {
   expect(COPY.en.settings.providerConfirmDelete).toBe("Confirm delete");
   expect(COPY.zh.settings.providerModelCount(2)).toBe("2 个模型");
   expect(COPY.en.settings.providerModelCount(1)).toBe("1 model");
+  expect(COPY.zh.settings.providerConnection).toBe("连接");
+  expect(COPY.en.settings.providerConnection).toBe("Connection");
+  expect(COPY.zh.settings.providerModels).toBe("名单");
+  expect(COPY.en.settings.providerModels).toBe("Models");
+  expect(COPY.zh.settings.providerPickDefault).toBe("设为这个端点的默认模型");
+  expect(COPY.en.settings.providerPickDefault).toBe("Make this the endpoint's default model");
+  expect(COPY.zh.settings.providerDefaultModel("grok-4.6")).toBe("默认模型 grok-4.6");
+  expect(COPY.en.settings.providerDefaultModel("grok-4.6")).toBe("Default model grok-4.6");
 });
 
 test("independent runtime copy stays gated and bilingual", () => {
@@ -225,8 +237,6 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.en.detail.backToGroup).toBe("Back to group settings");
   expect(COPY.zh.detail.backToBot).toBe("返回 Bot 设置");
   expect(COPY.en.detail.backToBot).toBe("Back to bot settings");
-  expect(COPY.zh.detail.saveName).toBe("保存");
-  expect(COPY.en.detail.saveName).toBe("Save");
   expect(COPY.zh.detail.pullIn).toBe("拉入");
   expect(COPY.en.detail.pullIn).toBe("Pull in");
   expect(COPY.zh.detail.remove).toBe("移出");
@@ -266,6 +276,14 @@ test("the routine calendar is named in both locales and says the phone cannot dr
   expect(COPY.en.calendar.detail).toBe("Routine");
   expect(COPY.zh.calendar.phoneReadOnly).toContain("桌面");
   expect(COPY.en.calendar.phoneReadOnly).toContain("desktop");
+  expect(COPY.zh.calendar.filter).toBe("名册");
+  expect(COPY.en.calendar.filter).toBe("Roster");
+  expect(COPY.zh.calendar.filterSearch).toBe("搜索名字或职责");
+  expect(COPY.en.calendar.filterSearch).toBe("Search name or duties");
+  expect(COPY.zh.calendar.filterNoMatch).toBe("没有匹配的 Bot。");
+  expect(COPY.en.calendar.filterNoMatch).toBe("No matching Bots.");
+  expect(COPY.zh.calendar.agendaEmpty).toBe("这一段没有日程。");
+  expect(COPY.en.calendar.agendaEmpty).toBe("Nothing in this range.");
 });
 
 test("sidebar search chrome names sessions and messages in both locales", () => {
@@ -410,6 +428,10 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.artifactFind).toBe("Find");
   expect(COPY.zh.stream.artifactFindNext).toBe("下一个");
   expect(COPY.en.stream.artifactFindNext).toBe("Next");
+  expect(COPY.zh.pane.flowOf("研究")).toBe("研究流程");
+  expect(COPY.en.pane.flowOf("Research")).toBe("Research flow");
+  expect(COPY.zh.pane.artifactsOf("研究")).toBe("研究的产物");
+  expect(COPY.en.pane.artifactsOf("Research")).toBe("Research's artifacts");
   expect(COPY.zh.sidebar.workspace).toBe("工作区");
   expect(COPY.en.sidebar.workspace).toBe("Workspace");
   expect(COPY.zh.sidebar.workspaceUnset).toBe("先在设置里选择工作区目录。");
@@ -432,6 +454,12 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.continueInterruptHint).toBe(
     "Continue from the interruption without retrying the cut action",
   );
+  expect(COPY.zh.stream.continueUnreachableHint).toBe("从断开处继续");
+  expect(COPY.en.stream.continueUnreachableHint).toBe(
+    "Continue from where the connection was lost",
+  );
+  expect(COPY.zh.stream.continueFailedHint).toBe("从失败处继续");
+  expect(COPY.en.stream.continueFailedHint).toBe("Continue from the failed turn");
   expect(COPY.zh.stream.ask).toBe("提问");
   expect(COPY.en.stream.ask).toBe("ask");
   expect(COPY.zh.stream.reply).toBe("回复");
@@ -462,21 +490,12 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   );
 });
 
-test("the model choice log names the log, the outcomes and the message kinds in both locales", () => {
-  expect(COPY.zh.routes.title).toBe("模型选择记录");
-  expect(COPY.zh.routes.topAction).toBe("模型选择记录");
-  expect(COPY.en.routes.topAction).toBe("Model log");
-  expect(COPY.zh.routes.subtitle("视频组", 383)).toBe("视频组 · 383 轮");
-  expect(COPY.en.routes.subtitle("Writer", 1)).toBe("Writer · 1 turn");
-  expect(COPY.en.routes.subtitle("Writer", 2)).toBe("Writer · 2 turns");
-  expect(COPY.zh.routes.subtitleFiltered("视频组", 4, 383)).toBe("视频组 · 4 / 383 轮");
-  expect(COPY.en.routes.subtitleFiltered("Writer", 1, 2)).toBe("Writer · 1 of 2 turns");
+test("a card's model choice names itself, the outcomes and the message kinds in both locales", () => {
+  expect(COPY.zh.routes.cardTitle).toBe("模型选择");
+  expect(COPY.en.routes.cardTitle).toBe("Model choice");
+  expect(COPY.zh.routes.cardToggle).toBe("看这一轮怎么选的模型");
   expect(COPY.zh.routes.filterFeedback).toBe("有反馈");
   expect(COPY.en.routes.filterBlamed).toBe("Model blamed");
-  expect(COPY.zh.routes.filterNoMatch).toBe("没有匹配的记录");
-  expect(COPY.en.routes.title).toBe("Model choice log");
-  expect(COPY.zh.routes.none).toBe("还没有模型选择记录。");
-  expect(COPY.en.routes.none).toBe("No model choices yet.");
   expect(COPY.zh.routes.outcome.live).toBe("进行中");
   expect(COPY.zh.routes.outcome.completed).toBe("完成");
   // A failed completion is not a fifth terminal state for the turn; it is this choice's failure.
