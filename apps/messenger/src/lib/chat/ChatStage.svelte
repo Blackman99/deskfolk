@@ -32,6 +32,7 @@
 		formatMessageTime,
 		groupReactions,
 		groupTranscript,
+		interruptFollowUp,
 		isDifferentDay,
 		isInterruptNote,
 		isUnreachableNote
@@ -1205,6 +1206,7 @@
 						: isUnreachable
 							? t.stream.continueUnreachableHint
 							: t.stream.continueFailedHint}
+					{@const followUp = interruptFollowUp(singleMsg.message, snapshot.messages, snapshot.turns)}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
@@ -1298,6 +1300,31 @@
 											</svg>
 											<span>{t.stream.continueInterrupt}</span>
 										</button>
+									</div>
+								{:else if followUp?.state === 'done'}
+									{@const first = followUp.first}
+									<div class="system-msg-actions">
+										<button
+											type="button"
+											class="interrupt-follow-up"
+											title={t.stream.continueInterruptJump}
+											onmousedown={(e) => e.stopPropagation()}
+											onclick={() => void runtime.selectSession(first.session_id, { messageId: first.id })}
+										>
+											{followUp.failed ? t.stream.continueInterruptFailed : t.stream.continueInterruptDone}
+										</button>
+									</div>
+								{:else if followUp}
+									<div class="system-msg-actions">
+										<span class="interrupt-follow-up">
+											{followUp.state === 'live'
+												? t.stream.continueInterruptLive
+												: followUp.state === 'stopped'
+													? t.stream.continueInterruptStopped
+													: followUp.state === 'nothing'
+														? t.stream.continueInterruptNothing
+														: t.stream.continueInterruptDone}
+										</span>
 									</div>
 								{/if}
 							</article>
@@ -2795,6 +2822,20 @@
 
 	.btn-continue-turn .continue-icon {
 		flex-shrink: 0;
+	}
+
+	/* Where 继续 was: what that follow-up came to, quiet like the other meta text. */
+	.interrupt-follow-up {
+		min-width: 0;
+		font-size: 11px;
+		line-height: 1.35;
+		color: var(--muted);
+		text-align: left;
+	}
+
+	button.interrupt-follow-up:hover {
+		color: var(--accent);
+		text-decoration: underline;
 	}
 
 	.msg-wrap.is-system-row .msg.is-system .who {

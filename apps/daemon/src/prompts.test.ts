@@ -80,6 +80,24 @@ describe("prompts", () => {
     expect(builtinTools("en").find((t) => t.function.name === "resolve_annotation")!.function.description).toContain("You cannot reopen, delete, or create annotations");
   });
 
+  test("a continue names the request the interrupted turn was handling, in both locales", () => {
+    const base = { name: "Writer", duties: "draft", boundaries: "stay" };
+    const resume = { from: "【user】", excerpt: "把第三章改成倒叙", at: "2026-09-22 14:05" };
+    const zh = turnSystemPrompt({ ...base, locale: "zh", interrupt: true, resume });
+    expect(zh.startsWith(
+      "上次断了（工具没有重试）。被打断的那一轮在处理：【user】的「把第三章改成倒叙」（2026-09-22 14:05）。" +
+        "接着把它做完：已经做完的部分看工作区和转录，不要从头重来。\n\n# 人设",
+    )).toBe(true);
+    const en = turnSystemPrompt({ ...base, locale: "en", interrupt: true, resume: { ...resume, at: null } });
+    expect(en.startsWith(
+      '上次断了（工具没有重试）。 The interrupted turn was handling 【user】\'s "把第三章改成倒叙". ' +
+        "Finish it: what is already done is in the workspace and the transcript; do not start over.\n\n# Profile",
+    )).toBe(true);
+    // A continue carries the flag even when another turn already saw it.
+    expect(turnSystemPrompt({ ...base, locale: "zh", interrupt: false, resume }).startsWith("上次断了")).toBe(true);
+    expect(turnSystemPrompt({ ...base, locale: "zh", interrupt: false, resume: null }).startsWith("# 人设")).toBe(true);
+  });
+
   test("every locale requires active recovery before asking the user", () => {
     const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
     const zh = turnSystemPrompt({ ...profile, locale: "zh" });

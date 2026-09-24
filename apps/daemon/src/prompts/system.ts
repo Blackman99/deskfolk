@@ -103,12 +103,36 @@ export type MemoryPromptEntry = {
   age: string;
 };
 
+/** The request a cut turn was handling, for the turn 「继续」 opens from its 中断 or 这一轮没写完 note. */
+export type InterruptResume = {
+  /** Its author as the transcript prefixes it: 【user】 or 【Name】. */
+  from: string;
+  /** Its text on one line, already clipped. */
+  excerpt: string;
+  /** When it was sent, in local time; null when the timestamp does not parse. */
+  at: string | null;
+};
+
+/**
+ * The flag alone tells the next turn that the last one died. A continue also gets told what the
+ * dead turn was doing: all it sees otherwise is that note as its trigger, and it read a 中断 line as
+ * nothing left to do.
+ */
+function interruptLine(locale: Locale, resume: InterruptResume | null | undefined): string {
+  if (!resume) return INTERRUPT_FLAG;
+  return locale === "en"
+    ? `${INTERRUPT_FLAG} The interrupted turn was handling ${resume.from}'s "${resume.excerpt}"${resume.at ? ` (${resume.at})` : ""}. Finish it: what is already done is in the workspace and the transcript; do not start over.`
+    : `${INTERRUPT_FLAG}被打断的那一轮在处理：${resume.from}的「${resume.excerpt}」${resume.at ? `（${resume.at}）` : ""}。接着把它做完：已经做完的部分看工作区和转录，不要从头重来。`;
+}
+
 export function turnSystemPrompt(input: {
   locale: Locale;
   name: string;
   duties: string;
   boundaries: string;
   interrupt: boolean;
+  /** Only on a continue whose original request was found; it carries the flag even when none is pending. */
+  resume?: InterruptResume | null;
   skills?: SkillPromptEntry[];
   memories?: MemoryPromptEntry[];
   mcpGuides?: McpPromptGuide[];
@@ -129,7 +153,7 @@ export function turnSystemPrompt(input: {
   // own tail on endpoints that cache by longest common prefix, not the system text above it.
   if (memory) parts.push(memory);
   const body = parts.join("\n\n");
-  return input.interrupt ? `${INTERRUPT_FLAG}\n\n${body}` : body;
+  return input.interrupt || input.resume ? `${interruptLine(input.locale, input.resume)}\n\n${body}` : body;
 }
 
 function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string {

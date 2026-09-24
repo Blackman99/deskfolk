@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Annotation } from "@real-bot/protocol";
+import type { Annotation, Message, Turn } from "@real-bot/protocol";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAttachment, aTurn, fakeRuntime } from "../test-fixtures.ts";
@@ -669,3 +669,147 @@ for (const session of [aDirect(), aGroup(), aBotDirect()]) {
     } finally { close(); }
   });
 }
+
+/**
+ * A continuable row (中断 unless `body` says otherwise) that was continued says what the continuing
+ * came to, in place of 继续.
+ */
+function renderInterrupt(over: {
+  body?: string;
+  source_turn_id?: string | null;
+  messages?: Message[];
+  turns?: Turn[];
+}) {
+  const session = aGroup({ id: "sess-1" });
+  const cut = aMessage({
+    id: "cut-1",
+    session_id: "sess-1",
+    kind: "system",
+    author: "bot-1",
+    body: over.body ?? "中断",
+    turn_id: "turn-cut",
+    source_turn_id: over.source_turn_id ?? null,
+    created_at: "2026-09-19T02:00:00.000Z",
+  });
+  const runtime = reactive(
+    fakeRuntime(
+      {
+        bots: [aBot({ id: "bot-1", name: "甲" })],
+        sessions: [session],
+        messages: [cut, ...(over.messages ?? [])],
+        turns: over.turns ?? [],
+      },
+      { selectedId: "sess-1" },
+    ),
+  );
+  const view = render(ChatStage, {
+    runtime,
+    t,
+    selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: () => {},
+    onCreateBot: () => {},
+  });
+  const row = view.host.querySelector('[data-message-id="cut-1"] .msg.is-system') as HTMLElement;
+  return { ...view, runtime, row };
+}
+
+const followUpMessage = (over: Partial<Message> = {}) =>
+  aMessage({
+    id: "said-1",
+    session_id: "sess-1",
+    kind: "bot",
+    author: "bot-1",
+    body: "接着把剩下的发了。",
+    turn_id: "turn-next",
+    created_at: "2026-09-19T02:01:00.000Z",
+    ...over,
+  });
+
+test("a 中断 row nobody continued yet offers 继续", () => {
+  const { row, close } = renderInterrupt({});
+  expect(row.querySelector(".btn-continue-turn")?.textContent?.trim()).toBe(t.stream.continueInterrupt);
+  expect(row.querySelector(".interrupt-follow-up")).toBeNull();
+  close();
+});
+
+test("while the follow-up runs, the 中断 row reads 继续中 instead of 继续", () => {
+  const { row, close } = renderInterrupt({
+    source_turn_id: "turn-next",
+    turns: [aTurn({ id: "turn-next", trigger_message_id: "cut-1" })],
+  });
+  expect(row.querySelector(".btn-continue-turn")).toBeNull();
+  expect(row.querySelector(".interrupt-follow-up")?.textContent?.trim()).toBe(
+    t.stream.continueInterruptLive,
+  );
+  close();
+});
+
+test("a follow-up that left a message reads 已继续 and jumps to it", () => {
+  const { row, runtime, close } = renderInterrupt({
+    source_turn_id: "turn-next",
+    messages: [followUpMessage()],
+  });
+  const status = row.querySelector("button.interrupt-follow-up") as HTMLButtonElement;
+  expect(status.textContent?.trim()).toBe(t.stream.continueInterruptDone);
+  expect(status.title).toBe(t.stream.continueInterruptJump);
+  status.click();
+  flushSync();
+  expect(runtime.calls.filter((call) => call.name === "selectSession").map((call) => call.args)).toEqual([
+    ["sess-1", { messageId: "said-1" }],
+  ]);
+  close();
+});
+
+test("a follow-up that failed again says so beside the 中断 row", () => {
+  const { row, close } = renderInterrupt({
+    source_turn_id: "turn-next",
+    messages: [followUpMessage({ kind: "system", body: "这一轮没写完：端点出错" })],
+  });
+  expect(row.querySelector(".interrupt-follow-up")?.textContent?.trim()).toBe(
+    t.stream.continueInterruptFailed,
+  );
+  close();
+});
+
+test("a follow-up seen to end without a message reads 已继续，没有发消息", () => {
+  const { row, close } = renderInterrupt({
+    source_turn_id: "turn-next",
+    turns: [aTurn({ id: "turn-next", trigger_message_id: "cut-1", status: "completed" })],
+  });
+  expect(row.querySelector(".btn-continue-turn")).toBeNull();
+  const status = row.querySelector(".interrupt-follow-up") as HTMLElement;
+  expect(status.tagName).toBe("SPAN");
+  expect(status.textContent?.trim()).toBe(t.stream.continueInterruptNothing);
+  close();
+});
+
+test("a follow-up stopped before it left anything reads 已继续，中途停下", () => {
+  const { row, close } = renderInterrupt({
+    source_turn_id: "turn-next",
+    turns: [aTurn({ id: "turn-next", trigger_message_id: "cut-1", status: "stopped" })],
+  });
+  expect(row.querySelector(".interrupt-follow-up")?.textContent?.trim()).toBe(t.stream.continueInterruptStopped);
+  close();
+});
+
+test("after a reload, a follow-up with nothing in view reads just 已继续, not clickable", () => {
+  const { row, close } = renderInterrupt({ source_turn_id: "turn-next" });
+  const status = row.querySelector(".interrupt-follow-up") as HTMLElement;
+  expect(status.tagName).toBe("SPAN");
+  expect(status.textContent?.trim()).toBe(t.stream.continueInterruptDone);
+  close();
+});
+
+test("a continued 这一轮没写完 row shows its follow-up the same way", () => {
+  const { row, close } = renderInterrupt({
+    body: "这一轮没写完：连不上端点",
+    source_turn_id: "turn-next",
+    turns: [aTurn({ id: "turn-next", trigger_message_id: "cut-1" })],
+  });
+  expect(row.querySelector(".btn-continue-turn")).toBeNull();
+  expect(row.querySelector(".interrupt-follow-up")?.textContent?.trim()).toBe(
+    t.stream.continueInterruptLive,
+  );
+  close();
+});

@@ -460,6 +460,16 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   );
   expect(COPY.zh.stream.continueFailedHint).toBe("从失败处继续");
   expect(COPY.en.stream.continueFailedHint).toBe("Continue from the failed turn");
+  expect(COPY.zh.stream.continueInterruptLive).toBe("继续中");
+  expect(COPY.en.stream.continueInterruptLive).toBe("Continuing");
+  expect(COPY.zh.stream.continueInterruptDone).toBe("已继续");
+  expect(COPY.en.stream.continueInterruptDone).toBe("Continued");
+  expect(COPY.zh.stream.continueInterruptFailed).toBe("已继续，没写完");
+  expect(COPY.en.stream.continueInterruptFailed).toBe("Continued — did not finish");
+  expect(COPY.zh.stream.continueInterruptNothing).toBe("已继续，没有发消息");
+  expect(COPY.en.stream.continueInterruptNothing).toBe("Continued — posted nothing");
+  expect(COPY.zh.stream.continueInterruptStopped).toBe("已继续，中途停下");
+  expect(COPY.en.stream.continueInterruptStopped).toBe("Continued — stopped partway");
   expect(COPY.zh.stream.ask).toBe("提问");
   expect(COPY.en.stream.ask).toBe("ask");
   expect(COPY.zh.stream.reply).toBe("回复");

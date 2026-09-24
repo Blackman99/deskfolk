@@ -426,7 +426,8 @@ test("ending a turn voids its pending approval across the transcript and session
   }
 });
 
-test("continuing from an interrupt stamps source_turn_id on the 中断 note", () => {
+/** A system note from `turn-cut`, then a turn started on it; returns the note as the window holds it. */
+function continueFromNote(body: string) {
   let snapshot = applyEvent(emptySnapshot(), {
     event: "message.created",
     occurred_at: "t",
@@ -436,7 +437,7 @@ test("continuing from an interrupt stamps source_turn_id on the 中断 note", ()
     parent_id: null,
     kind: "system",
     author: "writer",
-    body: "中断",
+    body,
     source_turn_id: null,
     created_at: "t",
     attachments: [],
@@ -455,7 +456,22 @@ test("continuing from an interrupt stamps source_turn_id on the 中断 note", ()
     updated_at: "t2",
     partial_text: null,
   });
-  expect(snapshot.messages[0]?.source_turn_id).toBe("turn-next");
+  return snapshot.messages[0];
+}
+
+test("continuing from an interrupt stamps source_turn_id on the 中断 note", () => {
+  expect(continueFromNote("中断")?.source_turn_id).toBe("turn-next");
+});
+
+test("continuing from a failed turn stamps source_turn_id on its 这一轮没写完 note, in either locale", () => {
+  expect(continueFromNote("这一轮没写完：连不上端点")?.source_turn_id).toBe("turn-next");
+  expect(continueFromNote("This turn did not finish: Couldn't reach the endpoint")?.source_turn_id).toBe(
+    "turn-next",
+  );
+});
+
+test("a turn started on any other system note leaves it unstamped", () => {
+  expect(continueFromNote("@丙 没有匹配到群成员。")?.source_turn_id).toBeNull();
 });
 
 test("turn.token for an unknown turn is ignored", () => {

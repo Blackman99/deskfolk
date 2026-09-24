@@ -1,9 +1,9 @@
 import { existsSync, statSync } from "node:fs";
 import { extname } from "node:path";
-import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
+import { USER_MEMBER, isContinuableNote, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { annotationContext } from "./annotation-context";
-import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
+import { turnSystemPrompt, type InterruptResume, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
   COMPOSER_SUGGEST_RECENT,
@@ -63,6 +63,8 @@ export function assembleTurnMessages(
     triggerMessageId: string;
     locale: Locale;
     interrupt: boolean;
+    /** On a continue: the request the cut turn was handling, from {@link interruptedTrigger}. */
+    resumeFrom?: Message | null;
     loop: ChatMessage[];
     mcpGuides?: McpPromptGuide[];
   },
@@ -77,6 +79,7 @@ export function assembleTurnMessages(
     duties: bot.duties,
     boundaries: bot.boundaries,
     interrupt: input.interrupt,
+    resume: input.resumeFrom ? interruptResume(store, input.resumeFrom) : null,
     skills: store.listEnabledSkills(input.botId).map((skill) => ({
       name: skill.name,
       description: skill.description,
@@ -101,6 +104,76 @@ export function assembleTurnMessages(
     store.turnWorkDir(input.turnId),
   );
   return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
+}
+
+/** How many 中断 or 这一轮没写完 notes a continue walks back through looking for the request. */
+const INTERRUPT_CHAIN_MAX = 10;
+/** How much of that request the continue's system prompt quotes. */
+const RESUME_EXCERPT_LIMIT = 200;
+
+/** A note 继续 can start a turn from: 中断 or 这一轮没写完, naming the turn it closed. */
+function isResumableNote(message: Message): boolean {
+  return isContinuableNote(message) && Boolean(message.turn_id);
+}
+
+function messageOrNull(store: Store, id: string): Message | null {
+  try {
+    return store.getMessage(id);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The request the cut turn behind a 中断 or 这一轮没写完 note was handling: the note names the turn,
+ * the turn names its trigger. A continue that was cut or failed again has such a note as its own
+ * trigger, so the walk goes on to the first trigger that is not one, at most
+ * {@link INTERRUPT_CHAIN_MAX} notes deep. Null when `noteId` is not one of those notes, a link is
+ * gone, or the chain runs longer.
+ */
+export function interruptedTrigger(store: Store, noteId: string): Message | null {
+  let message = messageOrNull(store, noteId);
+  if (!message || !isResumableNote(message)) return null;
+  for (let notes = 1; notes <= INTERRUPT_CHAIN_MAX; notes++) {
+    let triggerId: string;
+    try {
+      triggerId = store.getTurn(message.turn_id!).trigger_message_id;
+    } catch {
+      return null;
+    }
+    message = messageOrNull(store, triggerId);
+    if (!message) return null;
+    if (!isResumableNote(message)) return message;
+  }
+  return null;
+}
+
+/**
+ * That request as the continue's system prompt quotes it: who sent it, as the transcript prefixes
+ * them, its text on one line (or its attachments when it has none, labelled 附件 in every locale as
+ * the transcript labels them), and when. Null when there is nothing to quote, which leaves the plain
+ * flag.
+ */
+export function interruptResume(store: Store, request: Message): InterruptResume | null {
+  let text = request.body.replace(/\s+/g, " ").trim();
+  if (!text && request.attachments.length > 0) {
+    text = `附件：${request.attachments.map((att) => att.workspace_relpath).join("、")}`;
+  }
+  if (!text) return null;
+  const clipped = takeCodePoints(text, RESUME_EXCERPT_LIMIT);
+  return {
+    from: prefix(store, request),
+    excerpt: clipped.truncated ? `${clipped.text}…` : clipped.text,
+    at: localMinute(request.created_at),
+  };
+}
+
+/** `2026-09-22 14:05` in the machine's time zone, which is the user's: the daemon runs beside them. */
+function localMinute(iso: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 export type SituationFacts = {

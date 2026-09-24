@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
+import { classifyMessage } from "./route-decision";
 import { runCollabTool } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -1649,6 +1650,123 @@ describe("turn engine on the local API", () => {
     );
     expect(botMsg.body).toBe("resumed reply after reconnection");
     sub.close();
+  });
+
+  /**
+   * Two Bots were cut by daemon restarts; 继续 opened a turn whose only trigger was the 中断 line, and
+   * each decided there was nothing to do. A continue now names the request the cut turn was handling,
+   * from a 这一轮没写完 note as from a 中断 one.
+   */
+  describe("continuing names the interrupted request", () => {
+    async function continueNote(h: Harness, noteId: string, systems: string[]): Promise<string> {
+      const sub = await subscribe(h);
+      const continued = await fetch(`${h.origin}/v1/turns/continue`, {
+        method: "POST",
+        headers: auth(h),
+        body: JSON.stringify({ message_id: noteId }),
+      });
+      expect(continued.status).toBe(200);
+      await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot");
+      sub.close();
+      return systems.find((text) => text.startsWith("上次断了")) ?? "";
+    }
+
+    function captureSystems(systems: string[]) {
+      return startFixture(({ body }) => {
+        const messages = body.messages as Array<{ role: string; content?: string }>;
+        systems.push(messages.find((m) => m.role === "system")?.content ?? "");
+        return sse(textChunks("picked up"));
+      });
+    }
+
+    function lastNote(h: Harness, sessionId: string) {
+      const note = h.store.listMainMessages(sessionId, 10).find((m) => m.kind === "system" && m.body === "中断");
+      expect(note?.id).toBeString();
+      return note!;
+    }
+
+    test("the continue's system prompt quotes the request the cut turn was handling", async () => {
+      const systems: string[] = [];
+      const fixture = await captureSystems(systems);
+      const h = await startApi();
+      const { botId, sessionId } = await createWriter(h, fixture.origin);
+      const trigger = h.store.postMessage(sessionId, { body: "把第三章改成倒叙，\n然后发我看" });
+      h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+      h.store.interruptRunningTurns();
+      const system = await continueNote(h, lastNote(h, sessionId).id, systems);
+      expect(system).toMatch(
+        /^上次断了（工具没有重试）。被打断的那一轮在处理：【user】的「把第三章改成倒叙， 然后发我看」（\d{4}-\d{2}-\d{2} \d{2}:\d{2}）。接着把它做完：已经做完的部分看工作区和转录，不要从头重来。\n\n# 人设/,
+      );
+    });
+
+    test("a continue that was cut again still leads back to the user's message", async () => {
+      const systems: string[] = [];
+      const fixture = await captureSystems(systems);
+      const h = await startApi();
+      const { botId, sessionId } = await createWriter(h, fixture.origin);
+      const trigger = h.store.postMessage(sessionId, { body: "给分镜配旁白" });
+      h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+      h.store.interruptRunningTurns();
+      // The first continue is claimed, then cut by the next restart before it runs a hop.
+      const first = h.store.claimInterruptContinue(lastNote(h, sessionId).id);
+      h.store.interruptRunningTurns();
+      const second = lastNote(h, sessionId);
+      expect(second.turn_id).toBe(first.id);
+      const system = await continueNote(h, second.id, systems);
+      expect(system).toContain("被打断的那一轮在处理：【user】的「给分镜配旁白」");
+    });
+
+    test("without the request (its row is gone) the continue falls back to the plain flag", async () => {
+      const systems: string[] = [];
+      const fixture = await captureSystems(systems);
+      const h = await startApi();
+      const { botId, sessionId } = await createWriter(h, fixture.origin);
+      const trigger = h.store.postMessage(sessionId, { body: "给分镜配旁白" });
+      h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+      h.store.interruptRunningTurns();
+      h.store.db.run("PRAGMA foreign_keys = OFF");
+      h.store.db.run("DELETE FROM messages WHERE id = ?", [trigger.id]);
+      h.store.db.run("PRAGMA foreign_keys = ON");
+      const system = await continueNote(h, lastNote(h, sessionId).id, systems);
+      expect(system.startsWith("上次断了（工具没有重试）。\n\n# 人设")).toBe(true);
+      expect(system).not.toContain("被打断的那一轮");
+    });
+    test("a continue from a 这一轮没写完 note quotes the request the failed turn was handling", async () => {
+      const systems: string[] = [];
+      const fixture = await captureSystems(systems);
+      const h = await startApi();
+      const { botId, sessionId } = await createWriter(h, fixture.origin);
+      const trigger = h.store.postMessage(sessionId, { body: "给分镜配旁白" });
+      const failed = h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+      const note = h.store.insertMessage({
+        sessionId,
+        turnId: failed.id,
+        kind: "system",
+        author: botId,
+        body: "这一轮没写完：连不上端点",
+      });
+      h.store.setTurnStatus(failed.id, "completed");
+      const system = await continueNote(h, note.id, systems);
+      expect(system).toContain("被打断的那一轮在处理：【user】的「给分镜配旁白」");
+    });
+
+    test("a continue picks its model for the request, not for the note it was started from", async () => {
+      const systems: string[] = [];
+      const fixture = await captureSystems(systems);
+      const h = await startApi();
+      const { botId, sessionId } = await createWriter(h, fixture.origin);
+      const request = "please implement a TypeScript function that parses the AST";
+      expect(classifyMessage(request)).toBe("coding");
+      expect(classifyMessage("中断")).toBe("simple");
+      const trigger = h.store.postMessage(sessionId, { body: request });
+      h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+      h.store.interruptRunningTurns();
+      const note = lastNote(h, sessionId);
+      await continueNote(h, note.id, systems);
+      const continued = h.store.getMessage(note.id).source_turn_id;
+      expect(continued).toBeString();
+      expect(h.store.getTurnRoute(continued!)?.signature).toBe("coding");
+    });
   });
 
   test("a 400 completion inserts a locale-zh system line and completes the turn", async () => {

@@ -11,6 +11,8 @@ import {
   formatMessageTime,
   groupReactions,
   groupTranscript,
+  interruptFollowUp,
+  isCompletionFailNote,
   isDifferentDay,
   isContinuableNote,
   isInterruptNote,
@@ -18,6 +20,7 @@ import {
   itemGroupInfo,
 } from "./chat-view.ts";
 import type { TranscriptItem } from "./transcript.ts";
+import { aMessage, aTurn } from "../test-fixtures.ts";
 
 describe("chat-view helpers", () => {
   test("formatDurationMs formats seconds and minutes correctly", () => {
@@ -536,6 +539,146 @@ describe("chat-view helpers", () => {
     }])).toBe(true);
     expect(canContinueInterrupt(refused, [], { locked: true })).toBe(false);
     expect(canContinueInterrupt(refused, [], { locked: true, readOnly: true })).toBe(true);
+  });
+
+  describe("interruptFollowUp", () => {
+    const cut = aMessage({
+      id: "cut-1",
+      session_id: "sess-1",
+      kind: "system",
+      author: "bot-1",
+      body: "中断",
+      turn_id: "turn-cut",
+      created_at: "2026-09-19T02:00:00.000Z",
+    });
+    const continued = { ...cut, source_turn_id: "turn-next" };
+    const next = (over: Partial<Turn> = {}) =>
+      aTurn({ id: "turn-next", trigger_message_id: "cut-1", status: "completed", ...over });
+    const said = (over: Partial<Message> = {}) =>
+      aMessage({
+        id: "said-1",
+        session_id: "sess-1",
+        kind: "bot",
+        author: "bot-1",
+        body: "接着把剩下的发了。",
+        turn_id: "turn-next",
+        created_at: "2026-09-19T02:01:00.000Z",
+        ...over,
+      });
+
+    test("a note with no follow-up recorded has none, and keeps 继续", () => {
+      expect(interruptFollowUp(cut, [cut], [])).toBeNull();
+      expect(canContinueInterrupt(cut, [])).toBe(true);
+    });
+
+    test("a continued 这一轮没写完 note has a follow-up too", () => {
+      // Continue on a failure note records the follow-up on it the same way it does on 中断.
+      const failure = { ...continued, body: "这一轮没写完：端点出错" };
+      const first = said();
+      expect(interruptFollowUp(failure, [failure, first], [next()])).toEqual({
+        state: "done",
+        first,
+        failed: false,
+      });
+    });
+
+    test("only a continuable note has a follow-up", () => {
+      // A Bot message sent from another turn carries that turn as its source, and is no note.
+      const relayed = { ...continued, kind: "bot" as const, body: "中断" };
+      expect(interruptFollowUp(relayed, [relayed, said()], [next()])).toBeNull();
+      const unmatched = { ...continued, body: "@丙 没有匹配到群成员。在场：甲、乙。点名请逐字写全名。" };
+      expect(interruptFollowUp(unmatched, [unmatched, said()], [next()])).toBeNull();
+    });
+
+    test("a follow-up still going is live, even once it has asked something", () => {
+      expect(interruptFollowUp(continued, [continued], [next({ status: "running" })])).toEqual({
+        state: "live",
+      });
+      const ask = said({ kind: "ask", body: "发哪一版？" });
+      expect(
+        interruptFollowUp(continued, [continued, ask], [next({ status: "waiting_ask" })]),
+      ).toEqual({ state: "live" });
+    });
+
+    test("a follow-up that left messages points at the first one", () => {
+      const later = said({ id: "said-2", created_at: "2026-09-19T02:02:00.000Z" });
+      const first = said();
+      expect(interruptFollowUp(continued, [continued, later, first], [next()])).toEqual({
+        state: "done",
+        first,
+        failed: false,
+      });
+      // Ended turns are not kept after a reload; the messages alone say it did something.
+      expect(interruptFollowUp(continued, [continued, first], [])?.state).toBe("done");
+    });
+
+    test("this session's first message wins over one the follow-up sent elsewhere", () => {
+      const away = said({ id: "away-1", session_id: "sess-2", created_at: "2026-09-19T02:00:30.000Z" });
+      const here = said();
+      expect(interruptFollowUp(continued, [continued, away, here], [])).toMatchObject({
+        state: "done",
+        first: here,
+      });
+      expect(interruptFollowUp(continued, [continued, away], [])).toMatchObject({
+        state: "done",
+        first: away,
+      });
+    });
+
+    test("a follow-up that ended on a completion failure is done and failed", () => {
+      const failure = said({ kind: "system", body: "这一轮没写完：端点出错" });
+      expect(interruptFollowUp(continued, [continued, failure], [next()])).toEqual({
+        state: "done",
+        first: failure,
+        failed: true,
+      });
+      const english = said({ kind: "system", body: "This turn did not finish: Endpoint error" });
+      expect(interruptFollowUp(continued, [continued, said({ id: "said-0" }), english], [])).toMatchObject({
+        state: "done",
+        failed: true,
+      });
+    });
+
+    test("an unmatched-@ note from the follow-up is not a failure", () => {
+      const note = said({ kind: "system", body: "@丙 没有匹配到群成员。在场：甲、乙。点名请逐字写全名。" });
+      expect(interruptFollowUp(continued, [continued, said({ id: "said-0" }), note], [])).toMatchObject({
+        state: "done",
+        failed: false,
+      });
+    });
+
+    test("a follow-up seen to finish without a message posted nothing", () => {
+      expect(interruptFollowUp(continued, [continued], [next()])).toEqual({ state: "nothing" });
+      // A profile change never shows in the transcript, so it is not something to point at.
+      const profile = said({ kind: "profile_change", body: "改了人设" });
+      expect(interruptFollowUp(continued, [continued, profile], [next()])).toEqual({
+        state: "nothing",
+      });
+    });
+
+    test("a follow-up stopped or redirected before it left anything says so", () => {
+      expect(interruptFollowUp(continued, [continued], [next({ status: "stopped" })])).toEqual({ state: "stopped" });
+      expect(interruptFollowUp(continued, [continued], [next({ status: "redirected" })])).toEqual({
+        state: "stopped",
+      });
+      // Something it left still wins: the row points at it.
+      expect(interruptFollowUp(continued, [continued, said()], [next({ status: "stopped" })])?.state).toBe("done");
+    });
+
+    test("after a reload, a follow-up the window never saw end is only known to have run", () => {
+      // The window holds this session's page and other sessions' last messages: a follow-up that
+      // posted only in a Bot↔Bot direct finds nothing here, and must not read as having done nothing.
+      expect(interruptFollowUp(continued, [continued], [])).toEqual({ state: "unknown" });
+    });
+
+    test("isCompletionFailNote matches the daemon's failure note in both locales only", () => {
+      expect(isCompletionFailNote({ kind: "system", body: "这一轮没写完：回复不完整" })).toBe(true);
+      expect(isCompletionFailNote({ kind: "system", body: "This turn did not finish: Incomplete reply" })).toBe(
+        true,
+      );
+      expect(isCompletionFailNote({ kind: "system", body: "中断" })).toBe(false);
+      expect(isCompletionFailNote({ kind: "bot", body: "这一轮没写完：回复不完整" })).toBe(false);
+    });
   });
 });
 

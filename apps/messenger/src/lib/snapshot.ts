@@ -1,6 +1,6 @@
 import {
-  INTERRUPT_NOTE_BODY,
   USER_MEMBER,
+  isContinuableNote,
   isHiddenTranscriptKind,
   type Annotation,
   type Approval,
@@ -197,8 +197,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         turns: upsert(snapshot.turns, turn),
         messages: snapshot.messages.map((message) =>
           message.id === turn.trigger_message_id &&
-          message.kind === "system" &&
-          message.body === INTERRUPT_NOTE_BODY &&
+          isContinuableNote(message) &&
           !message.source_turn_id
             ? { ...message, source_turn_id: turn.id }
             : message,

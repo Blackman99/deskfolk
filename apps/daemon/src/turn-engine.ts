@@ -22,7 +22,13 @@ import {
   type MappedUsage,
   type ToolCall,
 } from "./completions";
-import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
+import {
+  assembleComposerSuggestUser,
+  assembleJudgementUser,
+  assembleTurnMessages,
+  extractJudgement,
+  interruptedTrigger,
+} from "./context";
 import { parseComposerSuggestions } from "./composer-suggestions";
 import { classifyMessage, messageSignature, type RouteDecision } from "./route-decision";
 import { verdictIsExperience } from "./route-agent";
@@ -114,6 +120,8 @@ type Live = {
   abort: AbortController;
   loop: ChatMessage[];
   interrupt: boolean;
+  /** On a continue: the request the cut turn was handling. Null on every other turn. */
+  resumeFrom: Message | null;
   burned: boolean;
   partial: string;
   parentId: string | null;
@@ -870,11 +878,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     return turn;
   }
 
-  function attachLive(turn: Turn): void {
+  function attachLive(turn: Turn, resumeFrom: Message | null = null): void {
     const live: Live = {
       abort: new AbortController(),
       loop: [],
       interrupt: store.pendingInterrupt(turn.bot_id),
+      resumeFrom,
       burned: false,
       partial: "",
       parentId: null,
@@ -931,10 +940,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
+  /**
+   * The new turn's trigger is the 中断 or 这一轮没写完 note, which says nothing about the work: the
+   * request the cut turn was handling rides along, so the prompt can name it and routing can read it.
+   * When it cannot be found (the chain is broken or too long) the turn runs as it did before.
+   */
   function continueFromInterrupt(messageId: string): Turn {
     options.admission?.assertNew();
     const turn = store.claimInterruptContinue(messageId);
-    attachLive(turn);
+    attachLive(turn, interruptedTrigger(store, messageId));
     return turn;
   }
 
@@ -968,12 +982,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       lives.delete(turnId);
       return;
     }
-    let triggerBody = "";
-    try {
-      const turn = store.getTurn(turnId);
-      triggerBody = store.getMessage(turn.trigger_message_id).body;
-    } catch {
-      triggerBody = "";
+    // A continue is routed on the request it picks up, not on the note it was started from.
+    let triggerBody = live.resumeFrom?.body ?? "";
+    if (!live.resumeFrom) {
+      try {
+        const turn = store.getTurn(turnId);
+        triggerBody = store.getMessage(turn.trigger_message_id).body;
+      } catch {
+        triggerBody = "";
+      }
     }
     const agent = await agentRoute(turnId, botId, creds, triggerBody, live.abort.signal);
     if (!active(turnId, live)) return;
@@ -1049,6 +1066,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         triggerMessageId: current.trigger_message_id,
         locale: target.locale,
         interrupt: live.interrupt,
+        resumeFrom: live.resumeFrom,
         loop: live.loop,
         mcpGuides: listed.guides,
       });

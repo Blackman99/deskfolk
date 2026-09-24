@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
-import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
+import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, interruptedTrigger, interruptResume, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
 import { Store } from "./store";
 
 const PNG_1X1 = Buffer.from(
@@ -674,6 +674,109 @@ describe("memory in the turn context", () => {
     const en = systemFor(store, writer.bot.id, writer.direct_session.id, "en");
     expect(en).not.toContain("not a memory layer");
     expect(en).toContain("store it with remember");
+    store.close();
+  });
+});
+
+describe("the request behind a 中断 or 这一轮没写完 note", () => {
+  /** A user request, then `depth` interruptions: each continue is cut in turn. Returns the last note. */
+  function chain(store: Store, depth: number) {
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const sessionId = writer.direct_session.id;
+    const request = store.postMessage(sessionId, { body: "把第三章\n改成倒叙" });
+    let trigger = request.id;
+    let note = request;
+    for (let i = 0; i < depth; i++) {
+      store.createTurn({ sessionId, botId: writer.bot.id, triggerMessageId: trigger });
+      store.interruptRunningTurns();
+      note = store.listMainMessages(sessionId, 1)[0]!;
+      trigger = note.id;
+    }
+    return { request, note, writer };
+  }
+
+  /** The note a failed turn leaves, as the engine writes it: the Bot's, on that turn. */
+  function failNote(store: Store, sessionId: string, botId: string, triggerMessageId: string) {
+    const turn = store.createTurn({ sessionId, botId, triggerMessageId });
+    const note = store.insertMessage({
+      sessionId,
+      turnId: turn.id,
+      kind: "system",
+      author: botId,
+      body: "这一轮没写完：连不上端点",
+    });
+    store.setTurnStatus(turn.id, "completed");
+    return note;
+  }
+
+  test("follows a chain of interruptions back to the request, at most ten notes deep", () => {
+    for (const [depth, found] of [[1, true], [2, true], [10, true], [11, false]] as const) {
+      const store = new Store();
+      const { request, note } = chain(store, depth);
+      expect(note.body).toBe("中断");
+      expect([depth, interruptedTrigger(store, note.id)?.id ?? null]).toEqual([depth, found ? request.id : null]);
+      store.close();
+    }
+  });
+
+  test("a 这一轮没写完 note leads back the same way, also when a continue from it was cut", () => {
+    const store = new Store();
+    const { request, writer } = chain(store, 0);
+    const sessionId = writer.direct_session.id;
+    const failed = failNote(store, sessionId, writer.bot.id, request.id);
+    expect(interruptedTrigger(store, failed.id)?.id).toBe(request.id);
+    // Continued from the failure, then cut: the 中断 walks through the failure note, never quoting it.
+    store.createTurn({ sessionId, botId: writer.bot.id, triggerMessageId: failed.id });
+    store.interruptRunningTurns();
+    const cut = store.listMainMessages(sessionId, 1)[0]!;
+    expect(cut.body).toBe("中断");
+    expect(interruptedTrigger(store, cut.id)?.id).toBe(request.id);
+    // And the other way round: a continue from a 中断 that failed.
+    const again = failNote(store, sessionId, writer.bot.id, cut.id);
+    expect(interruptedTrigger(store, again.id)?.id).toBe(request.id);
+    store.close();
+  });
+
+  test("anything but a continuable note has no request behind it", () => {
+    const store = new Store();
+    const { request, writer } = chain(store, 1);
+    expect(interruptedTrigger(store, request.id)).toBeNull();
+    expect(interruptedTrigger(store, "missing")).toBeNull();
+    // A turn's other system notes, like an @ that matched nobody, are not a cut turn.
+    const sessionId = writer.direct_session.id;
+    const turn = store.createTurn({ sessionId, botId: writer.bot.id, triggerMessageId: request.id });
+    const unmatched = store.insertMessage({
+      sessionId,
+      turnId: turn.id,
+      kind: "system",
+      author: writer.bot.id,
+      body: "@丙 没有匹配到群成员。",
+    });
+    expect(interruptedTrigger(store, unmatched.id)).toBeNull();
+    store.close();
+  });
+
+  test("quotes the request on one line, clipped, with its author as the transcript writes it", () => {
+    const store = new Store();
+    const { request } = chain(store, 1);
+    const resume = interruptResume(store, request)!;
+    expect(resume.from).toBe("【user】");
+    expect(resume.excerpt).toBe("把第三章 改成倒叙");
+    expect(resume.at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    const long = interruptResume(store, { ...request, body: "长".repeat(300) })!;
+    expect(long.excerpt).toBe(`${"长".repeat(200)}…`);
+    expect(interruptResume(store, { ...request, body: "  " })).toBeNull();
+    // A message with only files is quoted by its files, labelled as the transcript labels them.
+    const files = ["brief.md", "refs/cover.png"].map((workspace_relpath, i) => ({
+      id: `att-${i}`,
+      message_id: request.id,
+      workspace_relpath,
+      original_filename: workspace_relpath,
+      created_at: request.created_at,
+    }));
+    expect(interruptResume(store, { ...request, body: "", attachments: files })?.excerpt).toBe(
+      "附件：brief.md、refs/cover.png",
+    );
     store.close();
   });
 });

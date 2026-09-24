@@ -3,6 +3,7 @@ import {
   UNREACHABLE_NOTE_BODIES,
   USER_MEMBER,
   isContinuableNote,
+  isHiddenTranscriptKind,
   isInterruptNote,
   isUnreachableNote,
   type Message,
@@ -33,6 +34,65 @@ export function canContinueInterrupt(
   return !turns.some(
     (turn) => turn.trigger_message_id === message.id && isLiveStatus(turn.status),
   );
+}
+
+/**
+ * The daemon's completion-failure note, 「这一轮没写完：…」 (`COMPLETION_FAIL` in
+ * apps/daemon/src/prompts/transcript-copy.ts), in whichever locale was set when the turn failed:
+ * every continuable note but 中断. A turn's other system notes, like an @ that matched nobody, are
+ * not failures.
+ */
+export function isCompletionFailNote(message: Pick<Message, "kind" | "body">): boolean {
+  return isContinuableNote(message) && !isInterruptNote(message);
+}
+
+/**
+ * What a 继续 on a 中断 or 这一轮没写完 row came to, once the follow-up turn is recorded on the
+ * note.
+ */
+export type InterruptFollowUp =
+  | { state: "live" }
+  | { state: "done"; first: Message; failed: boolean }
+  | { state: "stopped" }
+  | { state: "nothing" }
+  | { state: "unknown" };
+
+/**
+ * The follow-up turn recorded on a continuable row (`source_turn_id`, set when 继续 is used on a
+ * 中断 or 这一轮没写完 note): still going; left something in a transcript (`first` is its earliest
+ * message, this session's before any other, and `failed` says a completion-failure note is among
+ * them); stopped or redirected before it left anything; or seen to finish without a message, as a
+ * no-work closer does by design. After a reload the window holds only this session's page and each
+ * other session's last message, so a follow-up it did not see end and finds no message for is
+ * `unknown` — it may have posted elsewhere — never `nothing`. Null while no follow-up is recorded,
+ * where `canContinueInterrupt` decides instead.
+ */
+export function interruptFollowUp(
+  message: Pick<Message, "id" | "kind" | "body" | "session_id" | "source_turn_id">,
+  messages: readonly Message[],
+  turns: readonly Turn[],
+): InterruptFollowUp | null {
+  const followUpId = message.source_turn_id;
+  if (!isContinuableNote(message) || !followUpId) return null;
+  const turn = turns.find((t) => t.id === followUpId);
+  if (turn && isLiveStatus(turn.status)) return { state: "live" };
+  const produced = messages.filter(
+    (m) => m.turn_id === followUpId && m.id !== message.id && !isHiddenTranscriptKind(m.kind),
+  );
+  if (produced.length === 0) {
+    if (!turn) return { state: "unknown" };
+    return turn.status === "stopped" || turn.status === "redirected" ? { state: "stopped" } : { state: "nothing" };
+  }
+  const here = produced.filter((m) => m.session_id === message.session_id);
+  const first = (here.length > 0 ? here : produced).reduce((a, b) => (isEarlier(b, a) ? b : a));
+  return { state: "done", first, failed: produced.some(isCompletionFailNote) };
+}
+
+function isEarlier(
+  a: Pick<Message, "created_at" | "id">,
+  b: Pick<Message, "created_at" | "id">,
+): boolean {
+  return a.created_at < b.created_at || (a.created_at === b.created_at && a.id < b.id);
 }
 
 export type BotDuration = {
