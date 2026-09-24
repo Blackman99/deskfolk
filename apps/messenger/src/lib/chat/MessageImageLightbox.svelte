@@ -6,6 +6,7 @@
 	import { formatFileSize } from './attachments.ts';
 	import { fileProgressPercent, formatFileProgress, type FileLoadOptions, type FileProgress } from '../file-progress.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
+	import { holdBack } from './enlarged-images.ts';
 	import { artifactKind, svgDisplayBlob } from '../overlays/artifacts.ts';
 
 	/** Viewport rectangle of the picture that was clicked. */
@@ -288,6 +289,8 @@
 		instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = 'hidden';
+		// The phone's Back closes this, the way ✕ does, instead of leaving the page under it.
+		const releaseBack = holdBack(requestClose);
 		if (instant || !origin) {
 			grown = true;
 		} else {
@@ -298,6 +301,7 @@
 			});
 		}
 		return () => {
+			releaseBack();
 			document.body.style.overflow = previousOverflow;
 			window.clearTimeout(closeTimer);
 		};

@@ -573,6 +573,49 @@ test('mounted Shell: Back unwinds what is not in the URL, then leaves the rest t
   }
 });
 
+test('mounted Shell: Back puts an enlarged picture away and leaves the conversation where it is', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    // Reduced motion: the picture goes straight back instead of shrinking into its thumbnail.
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const session = aDirect({ id: 'bot-1', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+    ] });
+    const picture = anAttachment({
+      id: 'pic', message_id: 'msg-pic', original_filename: 'image.png',
+      workspace_relpath: 'inbox/image.png', mime: 'image/png',
+    });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: 'bot-1', name: 'Alpha' })], sessions: [session],
+      messages: [aMessage({ id: 'msg-pic', session_id: session.id, kind: 'user', body: 'look', attachments: [picture] })],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }, {
+      selectedId: session.id,
+      client: { getAttachmentBlob: async () => new Blob([new Uint8Array([1])], { type: 'image/png' }) },
+    }));
+    const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+    const back = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
+
+    click(host.querySelector('.attachment-file-btn'));
+    expect(host.querySelector('.msg-image-lightbox')).not.toBeNull();
+    // The picture is not a page: Back closes it here and history stays put.
+    expect(back()).toBe(true);
+    flushSync();
+    expect(host.querySelector('.msg-image-lightbox')).toBeNull();
+    expect(runtime.selectedId).toBe(session.id);
+    // With it gone, the next Back is the conversation's, and that one is history's.
+    expect(back()).toBe(false);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});
+
 test('mounted Shell: the drawer ✕ closes the open section before the drawer itself', () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({

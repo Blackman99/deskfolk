@@ -114,6 +114,7 @@ export function stackAfter(stack: readonly string[], search: string, replaced: b
  * takes it from there.
  */
 export type BackLayer =
+  | "image"
   | "tools-menu"
   | "create-menu"
   | "danger"
@@ -133,6 +134,7 @@ export type BackLayer =
   | "preview";
 
 export type LayerState = {
+  imageOpen: boolean;
   toolsMenuOpen: boolean;
   createMenuOpen: boolean;
   dangerConfirm: boolean;
@@ -153,6 +155,8 @@ export type LayerState = {
 };
 
 const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
+  // An enlarged picture covers everything, whatever it was opened from; Back puts it away first.
+  ["image", "imageOpen"],
   // Close the tools menu before navigating.
   ["tools-menu", "toolsMenuOpen"],
   // The phone's + menu, like any other menu: over everything, gone at the first Back.

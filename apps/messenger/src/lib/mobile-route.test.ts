@@ -91,6 +91,7 @@ test("the stack follows the URL: back pops, a replacement rewrites the top, anyt
 
 function layers(over: Partial<LayerState> = {}): LayerState {
   return {
+    imageOpen: false,
     createMenuOpen: false,
     dangerConfirm: false,
     createBotOpen: false,
@@ -146,6 +147,13 @@ test("Back closes the innermost thing on top", () => {
   expect(topLayer(layers({ searchOpen: true, threadOpen: true }))).toBe("search");
   expect(topLayer(layers({ searchOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ createMenuOpen: true, settingsOpen: true }))).toBe("create-menu");
+});
+
+test("an enlarged picture is put away before anything else, menus included", () => {
+  expect(topLayer(layers({ imageOpen: true }))).toBe("image");
+  // Opened from a preview or a thread, it is still over them; Back must not leave the page under it.
+  expect(topLayer(layers({ imageOpen: true, artifactPreview: true }))).toBe("image");
+  expect(topLayer(layers({ imageOpen: true, threadOpen: true, toolsMenuOpen: true }))).toBe("image");
 });
 
 test("the phone's tools menu is a menu: it goes before anything Back would navigate to", () => {

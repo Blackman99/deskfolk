@@ -82,6 +82,7 @@
 	import { searchJump } from './sidebar/search-jump.ts';
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
+	import { closeEnlargedImage, imageEnlarged } from './chat/enlarged-images.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
 	import { spendCopyFor } from './spend/spend-copy.ts';
@@ -296,6 +297,7 @@
 
 	export function backMobileLayer(): boolean {
 		switch (topLayer({
+			imageOpen: imageEnlarged(),
 			toolsMenuOpen,
 			createMenuOpen,
 			dangerConfirm: dangerConfirm !== null,
@@ -314,6 +316,9 @@
 			workspaceOpen: runtime.workspaceOpen,
 			artifactPreview: artifactPreview !== null
 		})) {
+			case 'image':
+				// Not a screen: it goes back into the picture it grew out of, and the page stays.
+				return closeEnlargedImage();
 			case 'tools-menu':
 				toolsMenuOpen = false;
 				return true;
