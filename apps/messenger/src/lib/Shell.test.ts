@@ -31,6 +31,7 @@ import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, fill, render } from './test-render.ts';
 import { copyFor } from './copy.ts';
 import { makeBranch, makeLeaf } from './workbench/layout-tree.ts';
+import { paneMin, WB_FALLBACK_MIN, WB_STRIP_PX } from './workbench/pane-mins.ts';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });
@@ -1381,11 +1382,18 @@ test('mounted Shell Spend detail opens the already selected chat and retains its
     spendPage: async () => ({ items: [detail], next: null }),
   } });
   const { host, close } = render(Shell, { runtime }); cleanups.push(close);
-  for (let i = 0; i < 100 && !host.textContent?.includes(detail.created_at); i++) {
+  for (let i = 0; i < 100 && !host.querySelector('[data-spend-view]'); i++) {
     await new Promise((resolve) => setTimeout(resolve, 10)); flushSync();
   }
-  expect(host.textContent).toContain(detail.created_at);
-  click(buttonByText(host, detail.created_at));
+  expect(host.querySelector('[data-spend-view]')).not.toBeNull();
+  click([...host.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent?.trim() === 'Call details'));
+  for (let i = 0; i < 100 && !host.querySelector('time[datetime]'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10)); flushSync();
+  }
+  const stamp = host.querySelector(`time[datetime="${detail.created_at}"]`);
+  expect(stamp).not.toBeNull();
+  expect(host.textContent).not.toContain(detail.created_at);
+  click(stamp?.closest('tr')?.querySelector('button'));
   await settle();
   expect(host.querySelector('.pane-conversation')).not.toBeNull();
   expect(host.querySelector('[data-spend-view]')).toBeNull();
@@ -1393,6 +1401,18 @@ test('mounted Shell Spend detail opens the already selected chat and retains its
   expect(runtime.highlightedMessageId).toBe('spend-trigger');
   expect(navigationUrl(runtime)).toBe('/?s=direct-1');
   expect(storedTabs().filter((tab) => tab.kind === 'chat')).toHaveLength(1);
+});
+
+test('a Spend pane keeps its own floor instead of the unknown-kind fallback', () => {
+  const spend = paneMin({ id: 'spend-tab', kind: 'spend', params: {} });
+  expect(spend).toEqual({ width: 280, height: 220 + WB_STRIP_PX });
+  expect(spend.width).toBeGreaterThan(WB_FALLBACK_MIN.width);
+  expect(spend.height).toBeGreaterThan(WB_FALLBACK_MIN.height);
+  expect(paneMin(null)).toEqual(WB_FALLBACK_MIN);
+  expect(paneMin({ id: 'unknown-tab', kind: 'unknown', params: {} })).toEqual({
+    width: WB_FALLBACK_MIN.width,
+    height: WB_FALLBACK_MIN.height + WB_STRIP_PX,
+  });
 });
 
 test('mounted Shell mobile Spend Back and Escape leave the underlying chat and history intact', async () => {

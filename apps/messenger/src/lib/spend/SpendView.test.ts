@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { SpendDetail, SpendGroup, SpendKind, SpendSummary, SpendTotals } from "@real-bot/protocol";
 import { SPEND_CATEGORY_OF } from "@real-bot/protocol";
 import { flushSync } from "svelte";
-import { click, fill, render } from "../test-render.ts";
+import { click, fill, press, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { spendCopyFor } from "./spend-copy.ts";
 import SpendView from "./SpendView.svelte";
@@ -190,6 +190,24 @@ function button(host: HTMLElement, text: string): HTMLButtonElement {
   return found as HTMLButtonElement;
 }
 
+/** The range control is a native select. `fill` only dispatches `input`, which this control ignores. */
+function chooseRange(host: HTMLElement, range: string): void {
+  const select = host.querySelector(`select[aria-label="${copy.period}"]`) as HTMLSelectElement;
+  select.value = range;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  flushSync();
+}
+
+function openDetails(host: HTMLElement): void {
+  click(host.querySelector('[role="tab"][aria-selected="false"]'));
+}
+
+function coverageOf(host: HTMLElement): HTMLDetailsElement {
+  const found = host.querySelector("details.coverage");
+  if (!found) throw new Error("no coverage disclosure");
+  return found as HTMLDetailsElement;
+}
+
 const storage = () => {
   const memory = new Map<string, string>();
   return {
@@ -219,14 +237,24 @@ async function mount(dimension: SpendGroup[] = [modelGroup, nullModel]) {
 test("the view loads the last 7 days and keeps reported and estimated apart", async () => {
   const { host, calls, close } = await mount();
   try {
-    expect(host.textContent).toContain(copy.ranges.last7);
-    expect(host.querySelector('[aria-pressed="true"]')?.textContent).toBe(copy.ranges.last7);
+    const period = host.querySelector(`select[aria-label="${copy.period}"]`) as HTMLSelectElement;
+    expect(period.value).toBe("last7");
+    expect(period.selectedOptions[0]?.textContent).toBe(copy.ranges.last7);
     expect(host.textContent).toContain("$2.00");
     expect(host.textContent).toContain("$0.50");
     expect(host.textContent).toContain(copy.estimated);
-    expect(host.textContent).toContain(copy.missingUsage(1));
+    const coverage = coverageOf(host);
+    expect(coverage.open).toBe(false);
+    expect(coverage.querySelector("summary")?.textContent).toContain(copy.coverage);
+    expect(coverage.querySelector(".coverage-summary")?.textContent).toContain(copy.missingUsage(1));
+    coverage.open = true;
+    flushSync();
+    expect(coverage.textContent).toContain(copy.estimatedHint);
+    expect(coverage.textContent).toContain(copy.missingUsage(1));
     expect(host.textContent).toContain(copy.dash);
     expect(host.textContent).toContain(copy.unrecordedModel);
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe(copy.overview);
+    expect(host.querySelector(".detail-table")).toBeNull();
     expect(calls.some((call) => call.path === "summary:model")).toBe(true);
     expect(calls.some((call) => call.path === "summary:day")).toBe(true);
   } finally {
@@ -276,7 +304,11 @@ test("sorting, a category expand, and a two-deep drill each narrow the next requ
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(calls.length).toBe(before);
 
-    click(button(host, copy.expand));
+    const expand = host.querySelector(`button[aria-label="${copy.expand}"]`) as HTMLButtonElement;
+    expect(expand.textContent?.trim()).toBe("");
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    click(expand);
+    expect(expand.getAttribute("aria-expanded")).toBe("true");
     expect(host.textContent).toContain(copy.kind.route_review);
     expect(host.textContent).toContain(copy.kind.route_learn);
     click(button(host, copy.kind.route_learn));
@@ -334,15 +366,24 @@ test("clearing one chip leaves the other, and a deleted session has no way in", 
 test("a detail row opens its trigger, and more pages append", async () => {
   const { host, calls, opened, close } = await mount();
   try {
-    click([...host.querySelectorAll("button")].find((button) => button.textContent?.includes("2026-09-24")));
+    expect(host.querySelector(".detail-table")).toBeNull();
+    expect(host.querySelector('time[datetime]')).toBeNull();
+    openDetails(host);
+    const stamp = host.querySelector('time[datetime="2026-09-24T01:00:00.000Z"]');
+    expect(stamp?.textContent).not.toContain("2026-09-24T01:00:00.000Z");
+    expect(stamp?.textContent).toMatch(/\d/);
+    const row = stamp?.closest("tr");
+    expect(row?.querySelector("button")?.textContent).toContain(copy.openTrigger);
+    click(row?.querySelector("button"));
     expect(opened).toEqual(["trigger:sess-1:msg-1"]);
-    const before = host.querySelectorAll("tbody tr").length;
+    const before = host.querySelectorAll(".detail-table tbody tr").length;
     click([...host.querySelectorAll("button")].find((button) => button.textContent === copy.loadMore));
     await new Promise((resolve) => setTimeout(resolve, 0));
     const more = calls.find((call) => call.path === "page:cursor-2");
     more?.resolve({ items: [detail({ id: "row-3", created_at: "2026-09-23T01:00:00.000Z" })], next: null });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(host.querySelectorAll("tbody tr").length).toBeGreaterThan(before);
+    expect(host.querySelectorAll(".detail-table tbody tr").length).toBeGreaterThan(before);
+    expect(host.querySelector('time[datetime="2026-09-23T01:00:00.000Z"]')).not.toBeNull();
     expect(host.textContent).not.toContain(copy.loadMore);
   } finally {
     close();
@@ -371,7 +412,7 @@ test("a spend revision reloads, and a custom range is what gets asked for", asyn
   await new Promise((resolve) => setTimeout(resolve, 450));
   expect(calls.length).toBeGreaterThan(first);
 
-  click([...host.querySelectorAll("button")].find((button) => button.textContent === copy.ranges.custom));
+  chooseRange(host, "custom");
   const from = host.querySelectorAll('input[type="date"]')[0];
   const to = host.querySelectorAll('input[type="date"]')[1];
   fill(from, "2026-09-01");
@@ -416,8 +457,8 @@ test("a filter change drops the request already in flight, and a late page canno
     const stale = calls.filter((call) => call.path.startsWith("summary") || call.path === "page");
     click(button(host, copy.dimensions.bot));
     expect(host.textContent).toContain("Anthropic · opus");
-    expect([...host.querySelectorAll("tbody button")].some((button) => button.textContent?.includes("Anthropic · opus"))).toBe(false);
-    click(button(host, copy.ranges.today));
+    expect([...host.querySelectorAll("tbody button.group-name")].some((button) => !button.hasAttribute("disabled") && button.textContent?.includes("Anthropic · opus"))).toBe(false);
+    chooseRange(host, "today");
     expect(stale.every((call) => {
       call.settled = true;
       return true;
@@ -440,10 +481,11 @@ test("a filter change drops the request already in flight, and a late page canno
     expect(host.textContent).toContain("Retired");
     expect([...host.querySelectorAll("tbody button")].some((button) => button.textContent?.includes("Retired"))).toBe(true);
 
+    openDetails(host);
     const more = [...host.querySelectorAll("button")].find((button) => button.textContent === copy.loadMore);
     click(more);
     const page = calls.find((call) => call.path === "page:cursor-2" && !call.settled);
-    click(button(host, copy.ranges.last7));
+    chooseRange(host, "last7");
     page!.settled = true;
     page!.resolve({ items: [detail({ id: "late-page", session_name: "Late page" })], next: "later" });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -472,10 +514,20 @@ test("closing the view ignores a reload that comes back afterwards", async () =>
 test("an estimate shows its explanation and coverage, and a missing one says why", async () => {
   const { host, close } = await mount();
   try {
-    expect(host.textContent).toContain(copy.estimatedHint);
-    expect(host.textContent).toContain(copy.estimateCoverage(2, 1));
-    const estimated = [...host.querySelectorAll("dd")].find((node) => node.textContent?.includes("$0.50"));
-    expect(estimated?.closest("div")?.parentElement?.parentElement?.textContent).toContain(copy.estimatedHint);
+    const coverage = coverageOf(host);
+    expect(coverage.open).toBe(false);
+    expect(coverage.querySelector("summary")?.textContent).toContain(copy.coverage);
+    expect(coverage.open).toBe(false);
+    coverage.open = true;
+    flushSync();
+    expect(coverage.textContent).toContain(copy.estimatedHint);
+    expect(coverage.textContent).toContain(copy.estimateCoverage(2, 1));
+    const estimated = [...host.querySelectorAll(".money-summary strong")].find((node) => node.textContent?.includes("$0.50"));
+    expect(estimated?.parentElement?.textContent).toContain(copy.estimated);
+    expect(estimated?.parentElement?.textContent).toContain(copy.coveredCalls(1));
+    const reported = [...host.querySelectorAll(".money-summary strong")].find((node) => node.textContent?.includes("$2.00"));
+    expect(reported?.parentElement?.textContent).toContain(copy.reported);
+    expect(reported?.parentElement?.textContent).toContain(copy.coveredCalls(2));
 
     const unconfigured = fakeApi();
     const bare = render(SpendView, { api: unconfigured.api as never, locale: "zh", timeZone: "UTC", storage: storage() });
@@ -491,7 +543,8 @@ test("an estimate shows its explanation and coverage, and a missing one says why
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(bare.host.textContent).toContain(copy.estimateUnknown);
     expect(bare.host.textContent).not.toContain(copy.estimateUnconfigured);
-    const gap = [...bare.host.querySelectorAll("td")].find((cell) => cell.textContent?.trim() === copy.dash && cell.title);
+    openDetails(bare.host);
+    const gap = [...bare.host.querySelectorAll(".detail-table td")].find((cell) => cell.textContent?.trim() === copy.dash && cell.title);
     expect(gap?.getAttribute("title")).toBe(copy.estimateUnconfigured);
     bare.close();
 
@@ -510,37 +563,22 @@ test("an estimate shows its explanation and coverage, and a missing one says why
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(short.host.textContent).toContain(copy.estimateUnknown);
     expect(short.host.textContent).not.toContain(copy.estimateIncompleteUsage);
-    expect(short.host.textContent).toContain(copy.missingUsage(1));
+    expect(short.host.querySelector(".coverage-summary")?.textContent).toContain(copy.missingUsage(1));
     short.close();
   } finally {
     close();
   }
 });
 
-test("token and money trends name each stack, and money does not add the two amounts", async () => {
+test("the trend is its own component, and switching to money does not add the two amounts", async () => {
   const { host, close } = await mount();
   try {
-    const tokenChart = host.querySelector(".trend");
-    expect(tokenChart?.querySelector(".seg")?.getAttribute("title")).toContain(copy.category.turn);
-    expect(host.querySelector(".legend")?.textContent).toContain(copy.category.decision);
-    const tokenBar = tokenChart?.querySelector(".seg");
-    expect(tokenBar?.getAttribute("title")).toContain("1k");
-    expect(tokenBar?.querySelector(".sr")?.textContent).toContain(copy.category.turn);
-
-    click(button(host, copy.metricMoney));
-    expect(host.querySelectorAll(".money-col").length).toBe(2);
-    const columns = [...host.querySelectorAll(".money-col")];
-    expect(columns[0]?.textContent).toContain(copy.reportedStack);
-    expect(columns[1]?.textContent).toContain(copy.estimatedStack);
-    const reportedTitle = columns[0]?.querySelector(".seg")?.getAttribute("title") ?? "";
-    const estimatedTitle = columns[1]?.querySelector(".seg")?.getAttribute("title") ?? "";
-    expect(reportedTitle).toContain("$2.00");
-    expect(estimatedTitle).toContain("$0.50");
-    expect(reportedTitle).not.toContain("$2.50");
-    expect(estimatedTitle).not.toContain("$2.50");
+    expect(host.querySelector("[data-spend-trend]")).not.toBeNull();
+    expect(host.querySelector(".money")).toBeNull();
     expect(host.textContent).not.toContain("$2.50");
-    expect(columns[0]?.querySelector(".seg.is-estimated")).toBeNull();
-    expect(columns[1]?.querySelector(".seg.is-estimated")).toBeTruthy();
+    click(button(host, copy.metricMoney));
+    expect(host.querySelector("[data-spend-trend] .money")).not.toBeNull();
+    expect(host.textContent).not.toContain("$2.50");
   } finally {
     close();
   }
@@ -570,10 +608,12 @@ test("a deleted detail row keeps its snapshot and does not open the session", as
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
+    openDetails(host);
     expect(host.textContent).toContain("Gone notes");
     expect(host.textContent).toContain(copy.deleted);
-    const stamp = [...host.querySelectorAll("td")].find((cell) => cell.textContent?.includes("2026-09-24"));
-    expect(stamp?.querySelector("button")).toBeNull();
+    const stamp = host.querySelector('time[datetime="2026-09-24T01:00:00.000Z"]');
+    expect(stamp?.textContent).not.toContain("2026-09-24T01:00:00.000Z");
+    expect(stamp?.closest("tr")?.querySelector("button")).toBeNull();
     expect(opened).toEqual([]);
   } finally {
     close();
@@ -583,11 +623,12 @@ test("a deleted detail row keeps its snapshot and does not open the session", as
 test("changing the filter while more is loading drops that page and re-enables more for the new one", async () => {
   const { host, calls, close } = await mount();
   try {
+    openDetails(host);
     const more = [...host.querySelectorAll("button")].find((button) => button.textContent === copy.loadMore);
     click(more);
     expect(more && (more as HTMLButtonElement).disabled).toBe(true);
     const late = calls.find((call) => call.path === "page:cursor-2" && !call.settled);
-    click(button(host, copy.ranges.today));
+    chooseRange(host, "today");
     expect(host.textContent).not.toContain(copy.loadMore);
     late!.settled = true;
     late!.resolve({ items: [detail({ id: "late-more", session_name: "Late more" })], next: "still-more" });
@@ -606,7 +647,7 @@ test("changing the filter while more is loading drops that page and re-enables m
 test("a blank or reversed custom range stays on the last result and does not ask again", async () => {
   const { host, calls, close } = await mount();
   try {
-    click(button(host, copy.ranges.custom));
+    chooseRange(host, "custom");
     await new Promise((resolve) => setTimeout(resolve, 450));
     const asked = calls.length;
     const from = host.querySelector('input[aria-label="从"]') as HTMLInputElement;
@@ -694,7 +735,8 @@ test("partial usage is not described as a missing rate, and a known gap still is
     expect(view.host.textContent).toContain(copy.estimateUnknown);
     expect(view.host.textContent).not.toContain(copy.estimateUnconfigured);
     expect(view.host.textContent).not.toContain(copy.estimateIncompleteUsage);
-    const cell = [...view.host.querySelectorAll("td")].find((node) => node.getAttribute("title"));
+    openDetails(view.host);
+    const cell = [...view.host.querySelectorAll(".detail-table td")].find((node) => node.getAttribute("title"));
     expect(cell?.getAttribute("title")).toBe(copy.estimateIncompleteUsage);
     expect(view.host.textContent).not.toMatch(/\$\d+\.\d+.*\$\d+\.\d+/);
   } finally {
@@ -735,6 +777,173 @@ test("today rolls at the next local midnight instead of keeping the day it opene
     // 00:30 EDT, an hour before the clocks fall back. The window still ends at 04:00Z.
     expect(rolled[0]?.query.from).toBe("2026-10-26T04:00:00.000Z");
     expect(rolled[0]?.query.to).toBe("2026-11-02T05:00:00.000Z");
+  } finally {
+    view.close();
+  }
+});
+
+test("a manual refresh drops a page that comes back afterwards", async () => {
+  const { host, calls, close } = await mount();
+  try {
+    openDetails(host);
+    const more = [...host.querySelectorAll("button")].find((button) => button.textContent === copy.loadMore);
+    click(more);
+    const late = calls.find((call) => call.path === "page:cursor-2" && !call.settled);
+    const before = calls.length;
+    click(host.querySelector(`button[aria-label="${copy.refresh}"]`));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls.length).toBeGreaterThan(before);
+    expect(host.textContent).not.toContain(copy.loadMore);
+    late!.settled = true;
+    late!.resolve({ items: [detail({ id: "late-refresh", session_name: "Late refresh" })], next: "still" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.textContent).not.toContain("Late refresh");
+    const fresh = calls.filter((call) => !call.settled);
+    for (const call of fresh) {
+      call.settled = true;
+      if (call.path.startsWith("summary")) call.resolve(summaryFor("model", [modelGroup]));
+      else call.resolve({ items: [detail({ id: "refreshed", session_name: "Refreshed detail" })], next: null });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.textContent).toContain("Refreshed detail");
+    expect(host.textContent).not.toContain("Late refresh");
+  } finally {
+    close();
+  }
+});
+
+test("typing an impossible custom day is ignored and does not ask again", async () => {
+  const { host, calls, close } = await mount();
+  try {
+    chooseRange(host, "custom");
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    answer(calls);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = calls.length;
+    const from = host.querySelector('input[aria-label="从"]') as HTMLInputElement;
+    from.value = "2026-02-31";
+    from.dispatchEvent(new Event("input", { bubbles: true }));
+    flushSync();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect((host.querySelector('input[aria-label="从"]') as HTMLInputElement).value).toBe("");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(copy.rangeBlank);
+    expect(calls.length).toBe(asked);
+    expect(host.textContent).toContain("$2.00");
+  } finally {
+    close();
+  }
+});
+
+test("switching tabs keeps the filters and the loaded page, and does not ask again", async () => {
+  const { host, calls, close } = await mount();
+  try {
+    openDetails(host);
+    click([...host.querySelectorAll("button")].find((button) => button.textContent === copy.loadMore));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const more = calls.find((call) => call.path === "page:cursor-2");
+    more?.resolve({ items: [detail({ id: "row-3", session_name: "Kept page", created_at: "2026-09-23T01:00:00.000Z" })], next: null });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click(button(host, copy.overview));
+    click(button(host, copy.dimensions.bot));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    answer(calls, "bot", [deletedBot]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click(button(host, "Retired"));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const drilled = calls.filter((call) => !call.settled);
+    expect(drilled.some((call) => call.query.bot_id === "bot-gone")).toBe(true);
+    for (const call of drilled) {
+      call.settled = true;
+      if (call.path.startsWith("summary")) call.resolve(summaryFor(call.path.slice("summary:".length), [deletedBot]));
+      else call.resolve({ items: [detail({ id: "kept", session_name: "Kept page", bot_id: "bot-gone", bot_name: "Retired" })], next: "kept-cursor" });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = calls.length;
+    click(button(host, copy.details));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(calls.length).toBe(asked);
+    expect(host.querySelector(".chip")?.textContent).toContain("Retired");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe(copy.details);
+    expect(host.querySelector(".detail-table")?.textContent).toContain("Kept page");
+    expect(host.querySelector(".dimension-table")).toBeNull();
+    click(button(host, copy.overview));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(calls.length).toBe(asked);
+    expect(host.querySelector(".chip")?.textContent).toContain("Retired");
+    expect(host.querySelector(`.dimension-tabs [aria-pressed="true"]`)?.textContent).toBe(copy.dimensions.bot);
+    expect(host.querySelector(".detail-table")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("arrow keys move between the overview and the call details", async () => {
+  const { host, close } = await mount();
+  try {
+    const overview = button(host, copy.overview);
+    const details = button(host, copy.details);
+    expect(overview.getAttribute("aria-selected")).toBe("true");
+    expect(overview.tabIndex).toBe(0);
+    expect(details.getAttribute("aria-selected")).toBe("false");
+    expect(details.tabIndex).toBe(-1);
+    expect(overview.parentElement?.getAttribute("role")).toBe("tablist");
+    press(overview, "ArrowRight");
+    expect(details.getAttribute("aria-selected")).toBe("true");
+    expect(details.tabIndex).toBe(0);
+    expect(overview.tabIndex).toBe(-1);
+    expect(document.activeElement).toBe(details);
+    expect(host.querySelector(".detail-table")).not.toBeNull();
+    press(details, "ArrowLeft");
+    expect(overview.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(overview);
+    expect(host.querySelector(".detail-table")).toBeNull();
+    press(overview, "End");
+    expect(details.getAttribute("aria-selected")).toBe("true");
+    press(details, "Home");
+    expect(overview.getAttribute("aria-selected")).toBe("true");
+  } finally {
+    close();
+  }
+});
+
+test("replacing the client reloads, and no client clears what was on screen", async () => {
+  const props = reactive({ api: null as ReturnType<typeof fakeApi>["api"] | null });
+  const first = fakeApi();
+  props.api = first.api;
+  const view = render(SpendView, {
+    get api() {
+      return props.api as never;
+    },
+    locale: "zh",
+    timeZone: "UTC",
+    storage: storage(),
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    answer(first.calls);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(view.host.textContent).toContain("$2.00");
+    const before = first.calls.length;
+    const replacement = fakeApi();
+    flushSync(() => {
+      props.api = replacement.api;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(first.calls.length).toBe(before);
+    expect(replacement.calls.length).toBeGreaterThan(0);
+    answer(replacement.calls, "model", [group({ id: "next", name: "Next client", total_tokens: 3, reported_usd_ticks: 30_000_000_000 })]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(view.host.textContent).toContain("Next client");
+    expect(view.host.textContent).not.toContain("Anthropic · opus");
+
+    flushSync(() => {
+      props.api = null;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(view.host.textContent).not.toContain("Next client");
+    expect(view.host.textContent).not.toContain("$3.00");
+    expect(view.host.textContent).toContain(copy.loading);
+    expect((view.host.querySelector(`button[aria-label="${copy.refresh}"]`) as HTMLButtonElement).disabled).toBe(true);
   } finally {
     view.close();
   }

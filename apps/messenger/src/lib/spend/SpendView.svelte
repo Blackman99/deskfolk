@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
+	import { SPEND_CATEGORY_OF } from '@real-bot/protocol';
+	import SpendTrend from './SpendTrend.svelte';
 	import type { SpendDetail, SpendGroup, SpendKind, SpendSummary, SpendTotals } from '@real-bot/protocol';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
@@ -18,7 +20,6 @@
 		summaryQueryOf,
 		type SpendDimension,
 		type SpendDrill,
-		type SpendMetric,
 		type SpendRangeIssue,
 		type SpendRangePreset,
 		type SpendSortColumn,
@@ -61,6 +62,27 @@
 	}: Props = $props();
 
 	const copy: SpendCopy = $derived(spendCopyFor(locale));
+	const categoryOf = SPEND_CATEGORY_OF;
+	let section = $state<'overview' | 'details'>('overview');
+	let scrollArea: HTMLDivElement | undefined = $state();
+	const scrollPositions = { overview: 0, details: 0 };
+
+	function switchSection(next: 'overview' | 'details'): void {
+		if (next === section) return;
+		if (scrollArea) scrollPositions[section] = scrollArea.scrollTop;
+		const top = scrollPositions[next];
+		section = next;
+		void tick().then(() => { if (scrollArea) scrollArea.scrollTop = top; });
+	}
+
+	function sectionKey(event: KeyboardEvent, current: 'overview' | 'details'): void {
+		if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+		event.preventDefault();
+		const next = event.key === 'Home' ? 'overview' : event.key === 'End' ? 'details' : current === 'overview' ? 'details' : 'overview';
+		switchSection(next);
+		const tabs = (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+		tabs?.[next === 'overview' ? 0 : 1]?.focus();
+	}
 	let view = $state<SpendViewState>(DEFAULT_SPEND_VIEW);
 	let ready = $state(false);
 	let drill = $state<SpendDrill>({});
@@ -200,7 +222,7 @@
 		return untrack(() => {
 			invalidate();
 			dropPage();
-			if (askedDimension !== shownDimension) groupsActionable = false;
+			groupsActionable = false;
 			failed = false;
 			if (!result.ok) {
 				loading = false;
@@ -211,6 +233,13 @@
 			return () => clearTimeout(handle);
 		});
 	});
+
+	function refresh(): void {
+		if (loading || !rangeResult.ok || !api) return;
+		invalidate();
+		dropPage();
+		reload(rangeResult.window);
+	}
 
 	function setRange(range: SpendRangePreset): void {
 		view.range = range;
@@ -343,7 +372,7 @@
 	});
 
 	function drillGroup(group: SpendGroup): void {
-		if (!groupsActionable || view.dimension !== shownDimension) return;
+		if (!groupsActionable || loading || view.dimension !== shownDimension) return;
 		const label = groupLabel(group, shownDimension);
 		if (view.dimension === 'model') {
 			drill = { ...drill, modelId: group.id, model: group.model, providerId: group.provider_id, modelLabel: label };
@@ -389,53 +418,6 @@
 		}
 	}
 
-	function dayTotal(day: SpendGroup, field: 'total_tokens' | 'reported_usd_ticks' | 'estimated_usd_ticks'): number {
-		let sum = 0;
-		for (const category of day.categories) {
-			const value = category[field];
-			if (value) sum += value;
-		}
-		return sum;
-	}
-
-	const tokenScale = $derived(Math.max(0, ...days.map((day) => dayTotal(day, 'total_tokens'))));
-	const reportedScale = $derived(Math.max(0, ...days.map((day) => dayTotal(day, 'reported_usd_ticks'))));
-	const estimatedScale = $derived(Math.max(0, ...days.map((day) => dayTotal(day, 'estimated_usd_ticks'))));
-
-	type StackPart = { key: string; category: SpendGroup['categories'][number]['category']; height: number; label: string };
-
-	function tokenParts(day: SpendGroup): StackPart[] {
-		if (tokenScale <= 0) return [];
-		const parts: StackPart[] = [];
-		for (const category of day.categories) {
-			const value = category.total_tokens ?? 0;
-			if (value <= 0) continue;
-			parts.push({
-				key: category.category,
-				category: category.category,
-				height: (value / tokenScale) * 100,
-				label: copy.dayTokens(day.id ?? '', copy.category[category.category], formatTokens(value))
-			});
-		}
-		return parts;
-	}
-
-	function moneyParts(day: SpendGroup, field: 'reported_usd_ticks' | 'estimated_usd_ticks', scale: number): StackPart[] {
-		if (scale <= 0) return [];
-		const parts: StackPart[] = [];
-		for (const category of day.categories) {
-			const value = category[field] ?? 0;
-			if (value <= 0) continue;
-			parts.push({
-				key: category.category,
-				category: category.category,
-				height: (value / scale) * 100,
-				label: copy.dayAmount(day.id ?? '', copy.category[category.category], formatUsd(value))
-			});
-		}
-		return parts;
-	}
-
 	function detailSession(row: SpendDetail): string {
 		return row.session_name ?? row.session_id;
 	}
@@ -471,17 +453,6 @@
 		return copy[column.label];
 	}
 
-	/**
-	 * A group cannot say why an amount is missing. `missing_usage_calls` only counts rows with
-	 * every token field empty, so a partial input/output is invisible there and must not be
-	 * read as "the rate is unset".
-	 */
-	function estimateNote(row: SpendTotals): string | null {
-		if (row.estimated_usd_ticks != null) return copy.estimatedHint;
-		if (row.missing_calls > 0) return copy.estimateUnknown;
-		return null;
-	}
-
 	function amountTitle(row: SpendDetail): string | undefined {
 		if (row.estimated_cost_usd_ticks != null && row.cost_usd_ticks == null) return copy.estimatedHint;
 		if (row.cost_usd_ticks == null && row.estimated_cost_usd_ticks == null) {
@@ -490,702 +461,356 @@
 		}
 		return undefined;
 	}
+	function tokenMetrics(row: Pick<SpendTotals, 'input_tokens' | 'cached_tokens' | 'output_tokens' | 'reasoning_tokens'>) {
+		return [
+			{ label: copy.input, value: row.input_tokens },
+			{ label: copy.cached, value: row.cached_tokens },
+			{ label: copy.output, value: row.output_tokens },
+			{ label: copy.reasoning, value: row.reasoning_tokens },
+		];
+	}
+
+	function categoryWidth(value: number | null): number {
+		const maximum = Math.max(0, ...(summary?.categories.map((row) => row.total_tokens ?? 0) ?? []));
+		return value != null && maximum > 0 ? (value / maximum) * 100 : 0;
+	}
+
+	function dateLabel(value: string): string {
+		return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', { timeZone, month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
+	}
+
+	function timeLabel(value: string): string {
+		return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value));
+	}
 </script>
+
+{#snippet icon(name: 'back' | 'refresh' | 'chevron' | 'filter' | 'close' | 'arrow')}
+	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		{#if name === 'back'}<path d="m14 6-6 6 6 6" />
+		{:else if name === 'refresh'}<path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" />
+		{:else if name === 'chevron'}<path d="m8 10 4 4 4-4" />
+		{:else if name === 'filter'}<path d="M4 6h16M7 12h10M10 18h4" />
+		{:else if name === 'close'}<path d="m7 7 10 10M7 17 17-10" />
+		{:else}<path d="M5 12h14m-5-5 5 5-5 5" />{/if}
+	</svg>
+{/snippet}
 
 <section class="spend" aria-label={copy.title} data-spend-view>
 	<header class="spend-head">
-		{#if onClose}
-			<button type="button" class="back" aria-label={backLabel} onclick={onClose}>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="15 18 9 12 15 6"></polyline>
-				</svg>
-				<span>{backLabel}</span>
-			</button>
-		{/if}
-		<h1>{copy.title}</h1>
-		<div class="ranges" role="group" aria-label={copy.ranges.custom}>
-			{#each ranges as range (range)}
-				<button
-					type="button"
-					class:is-on={view.range === range}
-					aria-pressed={view.range === range}
-					onclick={() => setRange(range)}
-				>
-					{copy.ranges[range]}
-				</button>
-			{/each}
+		<div class="spend-toolbar flex items-center gap-5 min-w-0">
+			{#if onClose}<button type="button" class="icon-button back" aria-label={backLabel} onclick={onClose}>{@render icon('back')}</button>{/if}
+			<div class="heading min-w-0"><h1>{copy.title}</h1><p>{copy.subtitle}</p></div>
+			<label class="period-control"><span class="sr">{copy.period}</span><select aria-label={copy.period} value={view.range} onchange={(event) => setRange(event.currentTarget.value as SpendRangePreset)}>{#each ranges as range}<option value={range}>{copy.ranges[range]}</option>{/each}</select>{@render icon('chevron')}</label>
+			<button type="button" class="icon-button refresh" aria-label={copy.refresh} title={copy.refresh} disabled={loading || !!rangeIssue || !api} onclick={refresh}>{@render icon('refresh')}</button>
 		</div>
+		<div class="expandable-controls">
 		{#if view.range === 'custom'}
-			<label class="date">
-				<span>{copy.from}</span>
-				<input type="date" aria-label={copy.from} bind:value={view.customFrom} />
-			</label>
-			<label class="date">
-				<span>{copy.to}</span>
-				<input type="date" aria-label={copy.to} bind:value={view.customTo} />
-			</label>
-			{#if rangeIssue}
-				<p class="field-error" role="alert">{rangeMessage(rangeIssue)}</p>
-			{/if}
+			<div class="custom-dates flex flex-wrap gap-5">
+				<label class="date"><span>{copy.from}</span><input type="date" aria-label={copy.from} aria-invalid={!!rangeIssue} bind:value={view.customFrom} /></label>
+				<label class="date"><span>{copy.to}</span><input type="date" aria-label={copy.to} aria-invalid={!!rangeIssue} bind:value={view.customTo} /></label>
+				{#if rangeIssue}<p class="field-error" role="alert">{rangeMessage(rangeIssue)}</p>{/if}
+			</div>
 		{/if}
+		{#if chips.length}
+			<div class="chips flex flex-wrap items-center gap-3" aria-label={copy.filters}>
+				<span class="filter-icon text-muted" aria-hidden="true">{@render icon('filter')}</span>
+				{#each chips as chip (chip.key)}<button type="button" class="chip" aria-label={copy.clearFilter(chip.label)} onclick={chip.clear}><span>{chip.label}</span>{@render icon('close')}</button>{/each}
+				<button type="button" class="text-action clear-all" onclick={() => (drill = {})}>{copy.clearAll}</button>
+			</div>
+		{/if}
+		</div>
+		<div class="spend-navigation flex items-center justify-between gap-5">
+			<div class="view-tabs flex" role="tablist" aria-label={copy.title}>
+				{#each ['overview', 'details'] as name}
+					<button type="button" role="tab" aria-selected={section === name} tabindex={section === name ? 0 : -1} class:is-active={section === name} onclick={() => switchSection(name as 'overview' | 'details')} onkeydown={(event) => sectionKey(event, name as 'overview' | 'details')}>{name === 'overview' ? copy.overview : copy.details}</button>
+				{/each}
+			</div>
+			<span class="update-status text-11 text-muted" role="status">{loading && summary ? copy.refreshing : ''}</span>
+		</div>
 	</header>
 
-	{#if chips.length > 0}
-		<div class="chips" aria-label={copy.filters}>
-			{#each chips as chip (chip.key)}
-				<button type="button" class="chip" onclick={chip.clear}>
-					<span>{chip.label}</span>
-					<span class="chip-x" aria-hidden="true">×</span>
-					<span class="sr">{copy.clearFilter(chip.label)}</span>
-				</button>
-			{/each}
-		</div>
-	{/if}
-
-	{#if failed}
-		<div class="status" role="alert">
-			<p>{copy.error}</p>
-			<button type="button" onclick={() => reload(askedWindow)}>{copy.retry}</button>
-		</div>
-	{:else if loading && !summary}
-		<p class="status" role="status">{copy.loading}</p>
-	{:else if summary && summary.totals.calls === 0}
-		<p class="status">{copy.empty}</p>
-	{:else if summary}
-		{@const totals = summary.totals}
-		<section class="block" aria-label={copy.totals}>
-			<h2>{copy.totals}</h2>
-			<dl class="figures">
-				<div><dt>{copy.input}</dt><dd class="num">{num(totals.input_tokens)}</dd></div>
-				<div><dt>{copy.cached}</dt><dd class="num">{num(totals.cached_tokens)}</dd></div>
-				<div><dt>{copy.output}</dt><dd class="num">{num(totals.output_tokens)}</dd></div>
-				<div><dt>{copy.reasoning}</dt><dd class="num">{num(totals.reasoning_tokens)}</dd></div>
-				<div><dt>{copy.totalTokens}</dt><dd class="num">{num(totals.total_tokens)}</dd></div>
-				<div><dt>{copy.calls}</dt><dd class="num">{formatTokens(totals.calls)}</dd></div>
-				<div><dt>{copy.reported}</dt><dd class="num">{money(totals.reported_usd_ticks)}</dd></div>
-				<div>
-					<dt>{copy.estimated}</dt>
-					<dd class="num">{money(totals.estimated_usd_ticks, totals.estimated_usd_ticks != null)}</dd>
-				</div>
-			</dl>
-			{#if totals.reported_calls > 0 || totals.estimated_calls > 0}
-				<p class="note">{copy.estimateCoverage(totals.reported_calls, totals.estimated_calls)}</p>
-			{/if}
-			{#if estimateNote(totals)}
-				<p class="note">{estimateNote(totals)}</p>
-			{/if}
-			{#if totals.missing_usage_calls > 0}
-				<p class="note">{copy.missingUsage(totals.missing_usage_calls)}</p>
-			{/if}
-			{#if totals.missing_calls > 0}
-				<p class="note">{copy.missingAmount(totals.missing_calls)}</p>
-			{/if}
-		</section>
-
-		<section class="block" aria-label={copy.categories}>
-			<h2>{copy.categories}</h2>
-			<ul class="categories">
-				{#each summary.categories as category (category.category)}
-					<li>
-						<div class="category-row">
-							<button type="button" class="link" onclick={() => drillCategory(category.category)}>
-								{copy.category[category.category]}
-							</button>
-							<span class="num">{num(category.total_tokens)}</span>
-							<span class="num">{money(category.reported_usd_ticks)}</span>
-							<span class="num" title={estimateNote(category) ?? undefined}>{money(category.estimated_usd_ticks, category.estimated_usd_ticks != null)}</span>
-							{#if category.kinds.length > 1}
-								<button
-									type="button"
-									class="quiet"
-									aria-expanded={expanded[category.category] ? 'true' : 'false'}
-									onclick={() => toggleCategory(category.category)}
-								>
-									{expanded[category.category] ? copy.collapse : copy.expand}
-								</button>
-							{/if}
-						</div>
-						{#if expanded[category.category]}
-							<ul class="kinds">
-								{#each category.kinds as kind (kind.kind)}
-									<li>
-										<button type="button" class="link" onclick={() => drillKind(kind.kind)}>
-											{copy.kind[kind.kind]}
-										</button>
-										<span class="num">{num(kind.total_tokens)}</span>
-										<span class="num">{money(kind.reported_usd_ticks)}</span>
-										<span class="num" title={estimateNote(kind) ?? undefined}>{money(kind.estimated_usd_ticks, kind.estimated_usd_ticks != null)}</span>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		</section>
-
-		<section class="block" aria-label={copy.trend}>
-			<div class="block-head">
-				<h2>{copy.trend}</h2>
-				<div class="ranges" role="group" aria-label={copy.trend}>
-					<button type="button" class:is-on={view.metric === 'tokens'} aria-pressed={view.metric === 'tokens'} onclick={() => (view.metric = 'tokens')}>
-						{copy.metricTokens}
-					</button>
-					<button type="button" class:is-on={view.metric === 'money'} aria-pressed={view.metric === 'money'} onclick={() => (view.metric = 'money')}>
-						{copy.metricMoney}
-					</button>
-				</div>
-			</div>
-			{#if days.length === 0}
-				<p class="note">{copy.empty}</p>
-			{:else if view.metric === 'tokens'}
-				<ul class="legend">
-					{#each ['turn', 'judgement', 'decision', 'feedback', 'other'] as category (category)}
-						<li><span class="swatch is-{category}"></span>{copy.category[category as 'turn']}</li>
-					{/each}
-				</ul>
-				<div class="trend">
-					{#each days as day (day.id)}
-						<div class="bar">
-							<div class="stack" role="img" aria-label={tokenParts(day).map((part) => part.label).join(', ') || day.id}>
-								{#each tokenParts(day) as part (`${day.id}-${part.key}`)}
-									<span class="seg is-{part.category}" style:height="{part.height}%" title={part.label}><span class="sr">{part.label}</span></span>
-								{/each}
-							</div>
-							<span class="day-label">{(day.id ?? '').slice(5)}</span>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<ul class="legend">
-					{#each ['turn', 'judgement', 'decision', 'feedback', 'other'] as category (category)}
-						<li><span class="swatch is-{category}"></span>{copy.category[category as 'turn']}</li>
-					{/each}
-				</ul>
-				<div class="money-trend">
-					<div class="money-col">
-						<p class="note">{copy.reportedStack}</p>
-						<div class="trend" aria-label={copy.reportedStack}>
-							{#each days as day (day.id)}
-								{@const parts = moneyParts(day, 'reported_usd_ticks', reportedScale)}
-								<div class="bar">
-									<div class="stack" role="img" aria-label={parts.map((part) => part.label).join(', ') || `${day.id} ${copy.reportedStack}`}>
-										{#each parts as part (`${day.id}-reported-${part.key}`)}
-											<span class="seg is-{part.category}" style:height="{part.height}%" title={part.label}><span class="sr">{part.label}</span></span>
-										{/each}
-									</div>
-									<span class="day-label">{(day.id ?? '').slice(5)}</span>
-								</div>
-							{/each}
-						</div>
+	<div class="spend-scroll" bind:this={scrollArea} onscroll={() => (scrollPositions[section] = scrollArea?.scrollTop ?? 0)} role="tabpanel" aria-label={section === 'overview' ? copy.overview : copy.details} aria-busy={loading}>
+		{#if failed}
+			<div class="status-box" role="alert"><strong>{copy.error}</strong><button type="button" class="quiet" onclick={refresh} disabled={loading || !!rangeIssue}>{copy.retry}</button></div>
+		{:else if !summary}
+			<div class="loading-state" role="status"><span class="loading-mark" aria-hidden="true"></span>{copy.loading}</div>
+		{:else if summary.totals.calls === 0}
+			<div class="empty-state"><span class="empty-mark" aria-hidden="true">{@render icon('filter')}</span><h2>{copy.empty}</h2><p>{copy.emptyHint}</p>{#if chips.length}<button type="button" class="quiet" onclick={() => (drill = {})}>{copy.clearAll}</button>{/if}</div>
+		{:else}
+			{#if section === 'overview'}
+				{@const totals = summary.totals}
+				<section class="overview-summary" aria-label={copy.totals}>
+					<div class="summary-main">
+						<div class="usage-total"><span class="metric-label">{copy.totalTokens}</span><strong class="primary-number" title={totals.total_tokens?.toLocaleString(locale)}>{num(totals.total_tokens)}</strong><span class="calls-line">{copy.recordedCalls(totals.calls)}</span></div>
+						<div class="money-summary"><div><span class="metric-label"><i class="amount-dot"></i>{copy.reported}</span><strong class="amount-number">{money(totals.reported_usd_ticks)}</strong><span class="metric-foot">{copy.coveredCalls(totals.reported_calls)}</span></div><div><span class="metric-label"><i class="amount-dot is-estimated"></i>{copy.estimated}</span><strong class="amount-number">{money(totals.estimated_usd_ticks)}</strong><span class="metric-foot">{copy.coveredCalls(totals.estimated_calls)}</span></div></div>
 					</div>
-					<div class="money-col">
-						<p class="note">{copy.estimatedStack}</p>
-						<div class="trend" aria-label={copy.estimatedStack}>
-							{#each days as day (day.id)}
-								{@const parts = moneyParts(day, 'estimated_usd_ticks', estimatedScale)}
-								<div class="bar">
-									<div class="stack is-estimated" role="img" aria-label={parts.map((part) => part.label).join(', ') || `${day.id} ${copy.estimatedStack}`}>
-										{#each parts as part (`${day.id}-estimated-${part.key}`)}
-											<span class="seg is-{part.category} is-estimated" style:height="{part.height}%" title={part.label}><span class="sr">{part.label}</span></span>
-										{/each}
-									</div>
-									<span class="day-label">{(day.id ?? '').slice(5)}</span>
-								</div>
-							{/each}
-						</div>
-					</div>
-				</div>
-			{/if}
-		</section>
+					<dl class="token-breakdown figures" aria-label={copy.usageDetails}>{#each tokenMetrics(totals) as item}<div><dt>{item.label}</dt><dd title={item.value?.toLocaleString(locale)}>{num(item.value)}</dd></div>{/each}</dl>
+					<details class="coverage"><summary><span>{copy.coverage}</span><span class="coverage-summary">{totals.missing_usage_calls ? copy.missingUsage(totals.missing_usage_calls) : copy.estimateCoverage(totals.reported_calls, totals.estimated_calls)}</span>{@render icon('chevron')}</summary><div class="coverage-body"><p>{copy.estimatedHint}</p><p>{copy.estimateCoverage(totals.reported_calls, totals.estimated_calls)}</p>{#if totals.missing_calls}<p>{copy.missingAmount(totals.missing_calls)} · {copy.estimateUnknown}</p>{/if}{#if totals.missing_usage_calls}<p>{copy.missingUsage(totals.missing_usage_calls)}</p>{/if}</div></details>
+				</section>
 
-		<section class="block" aria-label={copy.dimension}>
-			<div class="block-head">
-				<h2>{copy.dimension}</h2>
-				<div class="ranges" role="group" aria-label={copy.dimension}>
-					{#each dimensions as dimension (dimension)}
-						<button
-							type="button"
-							class:is-on={view.dimension === dimension}
-							aria-pressed={view.dimension === dimension}
-							onclick={() => (view.dimension = dimension)}
-						>
-							{copy.dimensions[dimension]}
-						</button>
-					{/each}
-				</div>
-			</div>
-			<div class="table-scroll">
-				<table>
-					<thead>
-						<tr>
-							{#each columns as column (column.key)}
-								<th>
-									<button type="button" class="sort" aria-label={copy.sortBy(columnLabel(column))} onclick={() => sortBy(column.key)}>
-										{columnLabel(column)}{sortMark(column.key)}
-									</button>
-								</th>
+				<div class="analysis-grid">
+					<section class="surface trend-surface" aria-label={copy.trend}>
+						<div class="section-head flex items-center justify-between flex-wrap gap-5"><h2>{copy.trend}</h2><div class="segmented flex" role="group" aria-label={copy.trend}><button type="button" aria-pressed={view.metric === 'tokens'} onclick={() => (view.metric = 'tokens')}>{copy.metricTokens}</button><button type="button" aria-pressed={view.metric === 'money'} onclick={() => (view.metric = 'money')}>{copy.metricMoney}</button></div></div>
+						<div class="trend-content"><SpendTrend {days} metric={view.metric} {locale} range={askedWindow} {timeZone} /></div>
+					</section>
+					<section class="surface category-surface" aria-label={copy.categories}>
+						<div class="section-head flex items-center justify-between gap-5"><h2>{copy.categories}</h2><span class="text-11 text-muted">{copy.totalTokens}</span></div>
+						<ul class="categories">
+							{#each summary.categories as category (category.category)}
+								<li class="category-item">
+									<div class="category-row"><button type="button" class="category-name" disabled={loading} onclick={() => drillCategory(category.category)}><i class="category-dot is-{category.category}"></i>{copy.category[category.category]}</button><span class="num">{num(category.total_tokens)}</span><span class="category-call">{copy.recordedCalls(category.calls)}</span></div>
+									<div class="category-track" aria-hidden="true"><span class="is-{category.category}" style:width="{categoryWidth(category.total_tokens)}%"></span></div>
+									<div class="category-amounts"><span>{copy.reported} <b>{money(category.reported_usd_ticks)}</b></span><span>{copy.estimated} <b>{money(category.estimated_usd_ticks)}</b></span>{#if category.kinds.length > 1}<button type="button" class="kind-toggle" aria-label={copy.expand} aria-expanded={!!expanded[category.category]} onclick={() => toggleCategory(category.category)}>{@render icon('chevron')}</button>{/if}</div>
+									{#if expanded[category.category]}<ul class="kinds">{#each category.kinds as kind (kind.kind)}<li><button type="button" class="text-action" disabled={loading} onclick={() => drillKind(kind.kind)}>{copy.kind[kind.kind]}</button><span class="num">{num(kind.total_tokens)}</span><span class="kind-money">{copy.reported} {money(kind.reported_usd_ticks)} · {copy.estimated} {money(kind.estimated_usd_ticks)}</span></li>{/each}</ul>{/if}
+								</li>
 							{/each}
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each sortedGroups as group (`${group.id ?? 'null'}-${group.provider_id ?? ''}-${group.model ?? ''}`)}
+						</ul>
+					</section>
+				</div>
+
+				<section class="surface dimension-surface" aria-label={copy.dimension}>
+					<div class="section-head distribution-head flex items-center justify-between flex-wrap gap-6"><div><h2>{copy.distribution}</h2><p class="section-hint">{copy.breakdownHint}</p></div><div class="segmented dimension-tabs flex" role="group" aria-label={copy.dimension}>{#each dimensions as dimension}<button type="button" aria-pressed={view.dimension === dimension} onclick={() => (view.dimension = dimension)}>{copy.dimensions[dimension]}</button>{/each}</div></div>
+					<div class="compact-sort"><label><span>{copy.sort}</span><select aria-label={copy.sort} value={view.sort} onchange={(event) => (view.sort = event.currentTarget.value as SpendSortColumn)}>{#each columns as column}<option value={column.key}>{columnLabel(column)}</option>{/each}</select></label><button type="button" class="quiet" aria-label={view.dir === 'asc' ? copy.ascending : copy.descending} onclick={() => (view.dir = view.dir === 'asc' ? 'desc' : 'asc')}>{view.dir === 'asc' ? '↑' : '↓'}</button></div>
+					<table class="dimension-table">
+						<thead><tr>{#each columns as column}<th aria-sort={view.sort === column.key ? (view.dir === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" class="sort" aria-label={copy.sortBy(columnLabel(column))} onclick={() => sortBy(column.key)}>{columnLabel(column)}{sortMark(column.key)}</button></th>{/each}<th><span class="sr">{copy.openSession}</span></th></tr></thead>
+						<tbody>{#each sortedGroups as group (`${group.id ?? 'null'}-${group.provider_id ?? ''}-${group.model ?? ''}`)}
 							<tr class:is-deleted={group.deleted}>
-								<td>
-									{#if groupsActionable}
-										<button type="button" class="link" onclick={() => drillGroup(group)}>
-											{groupLabel(group)}
-										</button>
-									{:else}
-										<span>{groupLabel(group)}</span>
-									{/if}
-									{#if group.deleted}<span class="deleted">{copy.deleted}</span>{/if}
-								</td>
-								<td class="num">{formatTokens(group.calls)}</td>
-								<td class="num">{num(group.input_tokens)}</td>
-								<td class="num">{num(group.output_tokens)}</td>
-								<td class="num">{num(group.total_tokens)}</td>
-								<td class="num">{money(group.reported_usd_ticks)}</td>
-								<td class="num" title={estimateNote(group) ?? undefined}>{money(group.estimated_usd_ticks, group.estimated_usd_ticks != null)}</td>
-								<td>
-									{#if groupsActionable && shownDimension === 'session' && group.id && !group.deleted && onOpenSession}
-										<button type="button" class="quiet" onclick={() => onOpenSession?.(group.id!)}>{copy.openSession}</button>
-									{/if}
-								</td>
+								<td class="group-name-cell"><button type="button" class="group-name" disabled={!groupsActionable || loading} onclick={() => drillGroup(group)}>{groupLabel(group)}</button>{#if group.deleted}<span class="deleted">{copy.deleted}</span>{/if}</td>
+								<td class="num group-calls" data-label={copy.calls}>{formatTokens(group.calls)}</td>
+								<td class="num group-input" data-label={copy.input}>{num(group.input_tokens)}</td><td class="num group-output" data-label={copy.output}>{num(group.output_tokens)}</td>
+								<td class="num group-total" data-label={copy.totalTokens}>{num(group.total_tokens)}</td><td class="num group-reported" data-label={copy.reported}>{money(group.reported_usd_ticks)}</td><td class="num group-estimated" data-label={copy.estimated}>{money(group.estimated_usd_ticks)}</td>
+								<td class="group-actions">{#if groupsActionable && shownDimension === 'session' && group.id && !group.deleted && onOpenSession}<button type="button" class="text-action" onclick={() => onOpenSession?.(group.id!)}>{copy.openSession}{@render icon('arrow')}</button>{/if}<details class="group-more"><summary aria-label={copy.inspect}>{copy.usageDetails}{@render icon('chevron')}</summary><dl>{#each tokenMetrics(group) as item}<div><dt>{item.label}</dt><dd>{num(item.value)}</dd></div>{/each}</dl></details></td>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		</section>
-
-		<section class="block" aria-label={copy.details}>
-			<h2>{copy.details}</h2>
-			<div class="table-scroll">
-				<table>
-					<thead>
-						<tr>
-							<th>{copy.time}</th>
-							<th>{copy.categories}</th>
-							<th>{copy.session}</th>
-							<th>{copy.bot}</th>
-							<th>{copy.model}</th>
-							<th>{copy.totalTokens}</th>
-							<th>{copy.amount}</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each details as row (row.id)}
-							<tr class:is-deleted={row.session_deleted || row.bot_deleted}>
-								<td class="num">
-									{#if row.trigger_message_id && !row.session_deleted && onOpenTrigger}
-										<button type="button" class="link" onclick={() => onOpenTrigger?.(row.session_id, row.trigger_message_id!)}>
-											{row.created_at}
-										</button>
-									{:else}
-										{row.created_at}
-									{/if}
-								</td>
-								<td>{copy.kind[row.kind]}</td>
-								<td>
-									{detailSession(row)}
-									{#if row.session_deleted}<span class="deleted">{copy.deleted}</span>{/if}
-								</td>
-								<td>
-									{detailBot(row)}
-									{#if row.bot_deleted}<span class="deleted">{copy.deleted}</span>{/if}
-								</td>
-								<td>{detailModel(row)}</td>
-								<td class="num">{num(row.total_tokens)}</td>
-								<td class="num" title={amountTitle(row)}>{detailAmount(row)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-			{#if nextCursor}
-				<button type="button" class="more" disabled={loadingMore} onclick={() => void loadMore()}>{copy.loadMore}</button>
+						{/each}</tbody>
+					</table>
+				</section>
+			{:else}
+				<section class="surface detail-surface" aria-label={copy.details}>
+					<div class="section-head flex justify-between items-center flex-wrap gap-5"><div><h2>{copy.details}</h2><p class="section-hint">{copy.detailHint}</p></div><span class="text-12 text-muted">{copy.loadedCalls(details.length)}</span></div>
+					<table class="detail-table"><thead><tr><th>{copy.time}</th><th>{copy.categories}</th><th>{copy.session} / {copy.bot}</th><th>{copy.model}</th><th>{copy.totalTokens}</th><th>{copy.amount}</th><th><span class="sr">{copy.openTrigger}</span></th></tr></thead>
+						<tbody>{#each details as row (row.id)}<tr class:is-deleted={row.session_deleted || row.bot_deleted}>
+							<td class="detail-time"><time datetime={row.created_at} title={row.created_at}><span>{dateLabel(row.created_at)}</span><span class="text-muted">{timeLabel(row.created_at)}</span></time></td>
+							<td class="detail-kind"><span class="kind-label is-{categoryOf[row.kind]}">{copy.kind[row.kind]}</span></td>
+							<td class="detail-owner"><span>{detailSession(row)}{#if row.session_deleted}<span class="deleted">{copy.deleted}</span>{/if}</span><span class="owner-bot">{detailBot(row)}{#if row.bot_deleted}<span class="deleted">{copy.deleted}</span>{/if}</span></td>
+							<td class="detail-model" data-label={copy.model}>{detailModel(row)}</td>
+							<td class="detail-tokens num" data-label={copy.totalTokens}>{num(row.total_tokens)}</td><td class="detail-amount num" data-label={row.estimated_cost_usd_ticks != null && row.cost_usd_ticks == null ? copy.estimated : copy.reported} title={amountTitle(row)}>{detailAmount(row)}</td>
+							<td class="detail-actions"><details class="call-breakdown"><summary>{copy.usageDetails}{@render icon('chevron')}</summary><dl>{#each tokenMetrics(row) as item}<div><dt>{item.label}</dt><dd>{num(item.value)}</dd></div>{/each}</dl></details>{#if row.trigger_message_id && !row.session_deleted && onOpenTrigger}<button type="button" class="text-action" onclick={() => onOpenTrigger?.(row.session_id, row.trigger_message_id!)}>{copy.openTrigger}{@render icon('arrow')}</button>{/if}</td>
+						</tr>{/each}</tbody>
+					</table>
+					{#if nextCursor}<div class="pagination"><button type="button" class="more quiet" disabled={loadingMore || loading} onclick={() => void loadMore()}>{loadingMore ? copy.loadingMore : copy.loadMore}</button></div>{/if}
+				</section>
 			{/if}
-		</section>
-	{/if}
+		{/if}
+	</div>
 </section>
 
 <style>
-	.spend {
-		container: spend / inline-size;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-		height: 100%;
-		min-width: 0;
-		min-height: 0;
-		overflow: auto;
-		padding: 16px;
-		background: var(--pane);
-		color: var(--ink);
-		font-family: var(--font);
+	.spend { container: spend / inline-size; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; background: var(--sidebar-bg); color: var(--ink); font-family: var(--font); }
+	.spend-head { flex: none; padding: 18px 24px 0; background: var(--pane); border-bottom: 1px solid var(--line); z-index: 1; position: relative; max-height: 58%; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+	.expandable-controls { min-height: 0; }
+	.heading { flex: 1; }
+	h1, h2, p, dl, dd { margin: 0; }
+	h1 { font-size: 20px; line-height: 1.3; font-weight: 650; letter-spacing: -.025em; }
+	.heading p { margin-top: 3px; color: var(--muted); font-size: 12px; }
+	h2 { font-size: 14px; line-height: 1.5; font-weight: 650; }
+	.spend-scroll { min-width: 0; min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+	.spend-scroll > * { flex-shrink: 0; min-width: 0; }
+	.icon-button { width: 40px; height: 44px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
+	.icon-button:hover { background: var(--line-subtle); color: var(--ink); }
+	.period-control { position: relative; flex: none; }
+	.period-control select { appearance: none; padding: 0 34px 0 12px; height: 40px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--pane); color: var(--ink); font: inherit; font-size: 13px; max-width: 170px; }
+	.period-control svg { position: absolute; right: 10px; top: 12px; pointer-events: none; }
+	.spend-navigation { margin-top: 14px; }
+	.view-tabs { gap: 24px; }
+	.view-tabs button { border: 0; background: transparent; color: var(--muted); min-height: 44px; padding: 0 1px; position: relative; font-size: 13px; font-weight: 550; }
+	.view-tabs button.is-active { color: var(--accent); }
+	.view-tabs button.is-active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); border-radius: 2px; }
+	.date { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+	.date input { min-width: 0; width: 100%; padding: 8px; min-height: 42px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--ink); font: inherit; }
+	.custom-dates { margin-top: 12px; max-width: 560px; }
+	.field-error { width: 100%; font-size: 12px; color: var(--danger); }
+	.chips { padding: 8px 0 2px; }
+	.chip { display: inline-flex; align-items: center; gap: 8px; max-width: min(100%, 320px); min-height: 36px; padding: 5px 9px; border: 1px solid var(--accent-border); border-radius: var(--radius-sm); background: var(--accent-tint); color: var(--accent); font-size: 12px; }
+	.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.chip svg { flex: none; width: 13px; }
+	.text-action { display: inline-flex; align-items: center; justify-content: flex-start; gap: 5px; min-height: 40px; border: 0; background: transparent; padding: 0; font: inherit; font-size: 12px; color: var(--accent); text-align: left; }
+	.clear-all { color: var(--muted); }
+	.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+	.overview-summary { padding: 0 0 2px; }
+	.summary-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: center; gap: 24px; }
+	.usage-total { display: flex; flex-direction: column; gap: 5px; padding: 0 0 0 2px; }
+	.metric-label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+	.primary-number { font-size: clamp(28px, 4cqi, 40px); letter-spacing: -.035em; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+	.calls-line { color: var(--muted); font-size: 12px; }
+	.money-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 16px 20px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-md); }
+	.money-summary > div { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; min-width: 0; }
+	.amount-number { font-size: clamp(20px, 2.8cqi, 28px); font-weight: 550; letter-spacing: -.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+	.amount-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+	.amount-dot.is-estimated { background: none; border: 1.5px solid var(--muted); }
+	.metric-foot { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+	.token-breakdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 20px; gap: 12px; }
+	.token-breakdown > div { padding-left: 12px; border-left: 2px solid var(--line); }
+	dt { color: var(--muted); font-size: 11px; }
+	.token-breakdown dd { font-size: 15px; font-weight: 550; margin-top: 3px; font-variant-numeric: tabular-nums; }
+	.coverage { margin-top: 12px; color: var(--muted); font-size: 11px; }
+	summary { cursor: pointer; list-style: none; }
+	summary::-webkit-details-marker { display: none; }
+	.coverage > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px; min-height: 40px; }
+	.coverage > summary > svg { width: 12px; }
+	.coverage[open] > summary > svg, .group-more[open] > summary svg, .call-breakdown[open] > summary svg { transform: rotate(180deg); }
+	.coverage-summary { margin-left: auto; }
+	.coverage-body { border-left: 2px solid var(--line); padding: 8px 12px; line-height: 1.65; }
+	.coverage-body p + p { margin-top: 4px; }
+	.trend-content { padding: 0 18px 18px; }
+	.analysis-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+	.surface { flex-shrink: 0; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; min-width: 0; }
+	.section-head { padding: 16px 18px; }
+	.section-hint { color: var(--muted); font-size: 12px; margin-top: 3px; }
+	.segmented { gap: 2px; padding: 3px; background: var(--line-subtle); border-radius: var(--radius-sm); }
+	.segmented button { border: 0; background: transparent; border-radius: 4px; color: var(--muted); min-height: 34px; padding: 4px 12px; font-size: 12px; }
+	.segmented button[aria-pressed='true'] { background: var(--pane); color: var(--ink); box-shadow: var(--shadow-xs); font-weight: 550; }
+	.categories, .kinds { list-style: none; margin: 0; padding: 0; }
+	.categories { padding: 0 18px 10px; }
+	.category-item { padding: 5px 0; }
+	.category-item + .category-item { border-top: 1px solid var(--line-subtle); }
+	.category-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 0 10px; }
+	.category-name { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 0; min-height: 36px; text-align: left; font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
+	.category-name:hover { color: var(--accent); }
+	.category-call { color: var(--muted); font-size: 10px; white-space: nowrap; }
+	.category-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--accent); }
+	.category-track { height: 3px; background: var(--line-subtle); border-radius: 4px; overflow: hidden; }
+	.category-track span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+	.category-dot.is-judgement, .category-track .is-judgement { background: var(--purple); }
+	.category-dot.is-decision, .category-track .is-decision { background: var(--ok); }
+	.category-dot.is-feedback, .category-track .is-feedback { background: var(--warn); }
+	.category-dot.is-other, .category-track .is-other { background: var(--muted); }
+	.category-amounts { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 5px; color: var(--muted); font-size: 10px; }
+	.category-amounts b { font-weight: 450; color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+	.kind-toggle { display: flex; justify-content: center; align-items: center; width: 32px; height: 32px; border: 0; margin-left: auto; background: transparent; color: var(--muted); }
+	.kind-toggle[aria-expanded='true'] svg { transform: rotate(180deg); }
+	.kinds { border-left: 2px solid var(--line); padding-left: 12px; margin-top: 6px; }
+	.kinds li { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; align-items: center; }
+	.kind-money { grid-column: 1 / -1; font-size: 10px; color: var(--muted); }
+	.num { font-variant-numeric: tabular-nums; font-size: 12px; }
+	.compact-sort { display: none; }
+	table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+	th, td { padding: 12px 10px; text-align: right; border-bottom: 1px solid var(--line-subtle); vertical-align: top; }
+	th:first-child, td:first-child { padding-left: 18px; text-align: left; }
+	th:last-child, td:last-child { padding-right: 18px; }
+	th { font-weight: 400; font-size: 11px; color: var(--muted); background: var(--sidebar-bg); }
+	.dimension-table th:first-child { width: 27%; }
+	.dimension-table th:last-child { width: 12%; }
+	.dimension-table td { vertical-align: middle; }
+	.sort { min-height: 32px; border: 0; background: transparent; padding: 0; font: inherit; color: inherit; text-align: inherit; }
+	.sort:hover { color: var(--ink); }
+	.group-name { min-height: 40px; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 550; padding: 0; text-align: left; overflow-wrap: anywhere; }
+	.group-name:hover { color: var(--accent); }
+	.group-name:disabled { cursor: default; color: var(--muted); }
+	.deleted { display: inline-block; padding: 1px 5px; font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; margin-left: 5px; }
+	.is-deleted .group-name { color: var(--muted); }
+	.group-actions:empty { padding: 0; }
+	.group-actions .text-action { min-height: 32px; font-size: 11px; overflow-wrap: anywhere; }
+	.group-more { display: none; }
+	.detail-table th:nth-child(1) { width: 12%; }
+	.detail-table th:nth-child(2) { width: 12%; }
+	.detail-table th:nth-child(3) { width: 20%; }
+	.detail-table th:nth-child(4) { width: 22%; }
+	.detail-table th:nth-child(7) { width: 17%; }
+	.detail-table th, .detail-table td { text-align: left; }
+	.detail-table td { overflow-wrap: anywhere; }
+	.detail-time time, .detail-owner { line-height: 1.6; }
+	.detail-time time > span, .detail-owner > span { display: block; }
+	.owner-bot { color: var(--muted); font-size: 11px; }
+	.kind-label { display: inline-flex; max-width: 100%; padding: 3px 6px; border-radius: 4px; color: var(--ink); background: var(--line-subtle); font-size: 10px; }
+	.detail-actions summary { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); min-height: 32px; font-size: 11px; }
+	.detail-actions summary svg { width: 12px; }
+	.call-breakdown dl, .group-more dl { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; padding: 8px 0; }
+	.call-breakdown dt, .group-more dt { font-size: 10px; }
+	.call-breakdown dd, .group-more dd { font-size: 12px; }
+	.detail-actions .text-action { font-size: 11px; }
+	.pagination { padding: 16px; text-align: center; }
+	.quiet { min-height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--pane); color: var(--ink-secondary); font: inherit; font-size: 12px; }
+	.quiet:hover { background: var(--line-subtle); }
+	.empty-state, .loading-state, .status-box { padding: 40px 16px; color: var(--muted); font-size: 13px; text-align: center; display: flex; align-items: center; flex-direction: column; gap: 14px; }
+	.empty-mark { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: var(--radius-md); background: var(--line-subtle); }
+	.empty-state p { max-width: 260px; font-size: 12px; }
+	.loading-mark { display: block; width: 20px; height: 20px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+	@keyframes spin { to { transform: rotate(360deg); } }
+	button:focus-visible, summary:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+	button:disabled { opacity: .55; }
+	@media (prefers-reduced-motion: reduce) { .loading-mark { animation: none; } }
+	@container spend (min-width: 1000px) { .analysis-grid { grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr); align-items: start; } .category-surface .section-head { padding-bottom: 8px; } }
+	@container spend (max-width: 800px) { .dimension-table th:first-child { width: 24%; } th, td { padding: 10px 6px; } .detail-table th:nth-child(4) { width: 19%; } }
+	@container spend (max-width: 620px) {
+		.spend-head { padding: 12px 14px 0; }
+		.spend-toolbar { gap: 8px; }
+		.heading p { display: none; }
+		h1 { font-size: 17px; }
+		.period-control select { max-width: 138px; font-size: 12px; height: 44px; }
+		.refresh, .back { width: 44px; }
+		.spend-navigation { margin-top: 5px; }
+		.trend-content { padding: 0 14px 14px; }
+		.spend-scroll { padding: 16px 12px; gap: 16px; }
+		.summary-main { grid-template-columns: 1fr; gap: 16px; }
+		.usage-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; }
+		.usage-total .metric-label { grid-column: 1 / -1; }
+		.primary-number { font-size: 30px; }
+		.money-summary { gap: 16px; padding: 14px; }
+		.amount-number { font-size: 23px; }
+		.token-breakdown { gap: 5px; margin-top: 16px; }
+		.token-breakdown > div { padding-left: 8px; }
+		.token-breakdown dd { font-size: 13px; }
+		.coverage-summary { width: 100%; margin: 0; order: 3; }
+		.coverage > summary { font-size: 11px; padding: 5px 0; }
+		.analysis-grid { gap: 16px; }
+		.section-head { padding: 14px; }
+		.section-hint { font-size: 11px; }
+		.segmented button { min-height: 40px; padding: 5px 12px; }
+		.category-name { min-height: 44px; }
+		.category-name .category-dot { width: 5px; height: 5px; }
+		.category-amounts { font-size: 10px; }
+		.category-call { font-size: 10px; }
+		.kind-toggle { width: 44px; height: 44px; }
+		.categories { padding: 0 14px 10px; }
+		.chip { min-height: 44px; max-width: calc(100% - 8px); }
+		.filter-icon { display: none; }
+		.clear-all { min-height: 44px; }
+		.compact-sort { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; }
+		.compact-sort label { flex: 1; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; }
+		.compact-sort select { min-width: 0; flex: 1; padding: 0 10px; height: 44px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); font: inherit; font-size: 12px; }
+		.compact-sort .quiet { height: 44px; width: 44px; padding: 0; }
+		.dimension-tabs { width: 100%; }
+		.dimension-tabs button { flex: 1; min-height: 44px; }
+		.dimension-table, .detail-table, tbody { display: block; width: 100%; }
+		thead { display: none; }
+		.dimension-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; padding: 14px; border-top: 1px solid var(--line); }
+		.dimension-table td { display: block; width: auto; border: 0; text-align: left; padding: 0; }
+		.dimension-table .group-name-cell { grid-column: 1 / -1; }
+		.group-name { font-size: 13px; min-height: 44px; }
+		.dimension-table .group-input, .dimension-table .group-output { display: none; }
+		td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: 10px; margin-bottom: 3px; font-weight: 400; }
+		.group-total { grid-row: 2; grid-column: 1; }
+		.group-calls { grid-row: 2; grid-column: 2; }
+		.group-estimated, .group-reported { font-size: 14px; }
+		.dimension-table .group-actions { grid-column: 1 / -1; padding-top: 2px; }
+		.group-more { display: block; }
+		.group-more summary { display: flex; align-items: center; gap: 5px; min-height: 44px; font-size: 11px; color: var(--muted); }
+		.group-more summary svg { width: 12px; }
+		.group-actions .text-action { min-height: 44px; }
+		.detail-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 16px 14px; border-top: 1px solid var(--line); }
+		.detail-table td { padding: 0; border: 0; min-width: 0; }
+		.detail-time time { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; }
+		.detail-kind { justify-self: end; }
+		.detail-owner { grid-column: 1 / -1; font-size: 14px; font-weight: 550; }
+		.detail-model { grid-column: 1 / -1; font-size: 12px; color: var(--ink-secondary); }
+		.detail-tokens, .detail-amount { font-size: 15px; }
+		.detail-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+		.detail-actions .text-action, .detail-actions summary { min-height: 44px; }
+		.call-breakdown { flex: 1 0 50%; }
+		.kind-label { font-size: 10px; padding: 3px 6px; }
+		.custom-dates { gap: 8px; }
+		.date { flex-direction: column; align-items: flex-start; gap: 4px; }
+		.date input { width: 100%; box-sizing: border-box; }
 	}
-
-	.spend-head,
-	.block-head {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 12px;
-	}
-
-	h1,
-	h2 {
-		margin: 0;
-		font-weight: 650;
-		letter-spacing: -0.01em;
-	}
-
-	h1 {
-		font-size: 15px;
-	}
-
-	h2 {
-		font-size: 13px;
-		color: var(--ink-secondary);
-	}
-
-	.ranges {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-	}
-
-	.ranges button,
-	.quiet,
-	.more,
-	.sort,
-	.status button {
-		min-height: 44px;
-		padding: 0 12px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--btn-secondary-bg);
-		color: var(--ink);
-	}
-
-	.back {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		min-height: 44px;
-		padding: 0 10px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--btn-secondary-bg);
-		color: var(--ink);
-	}
-
-	.ranges button.is-on {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
-	}
-
-	.date {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		color: var(--muted);
-	}
-
-	.date input {
-		min-height: 44px;
-		padding: 0 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--input-bg);
-	}
-
-	.field-error {
-		flex-basis: 100%;
-		margin: 0;
-		color: var(--danger);
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		min-height: 44px;
-		padding: 0 12px;
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		background: var(--chip);
-		color: var(--ink);
-	}
-
-	.sr {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-	}
-
-	.status {
-		margin: 0;
-		color: var(--muted);
-	}
-
-	.status button {
-		margin-top: 8px;
-	}
-
-	.block {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding-top: 8px;
-		border-top: 1px solid var(--line-subtle);
-	}
-
-	.figures {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-		gap: 8px 16px;
-		margin: 0;
-	}
-
-	.figures div {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	dt {
-		color: var(--muted);
-		font-size: 12px;
-	}
-
-	dd {
-		margin: 0;
-	}
-
-	.num {
-		font-variant-numeric: tabular-nums;
-		font-family: var(--mono);
-	}
-
-	.note {
-		margin: 0;
-		color: var(--muted);
-	}
-
-	.categories,
-	.kinds {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-
-	.category-row,
-	.kinds li {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 16px;
-	}
-
-	.kinds {
-		padding-left: 16px;
-	}
-
-	.link {
-		min-height: 44px;
-		padding: 0;
-		border: 0;
-		background: none;
-		color: var(--accent);
-		text-align: left;
-	}
-
-	.quiet,
-	.sort,
-	.more {
-		background: transparent;
-	}
-
-	.sort {
-		border: 0;
-		padding: 0 4px;
-		color: var(--muted);
-	}
-
-	.legend {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px 12px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		color: var(--muted);
-		font-size: 12px;
-	}
-
-	.legend li {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.swatch {
-		width: 10px;
-		height: 10px;
-		background: var(--accent);
-	}
-
-	.swatch.is-judgement {
-		background: var(--purple);
-	}
-
-	.swatch.is-decision {
-		background: var(--ok);
-	}
-
-	.swatch.is-feedback {
-		background: var(--warn);
-	}
-
-	.swatch.is-other {
-		background: var(--muted-light);
-	}
-
-	.money-trend {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 12px;
-	}
-
-	.money-col {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.trend {
-		display: flex;
-		align-items: flex-end;
-		gap: 4px;
-		min-height: 120px;
-		overflow-x: auto;
-	}
-
-	.bar {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 4px;
-		min-width: 28px;
-		flex: 1 0 28px;
-	}
-
-	.stack {
-		display: flex;
-		flex-direction: column-reverse;
-		justify-content: flex-start;
-		width: 100%;
-		height: 96px;
-	}
-
-	.seg {
-		display: block;
-		width: 100%;
-		min-height: 2px;
-		background: var(--accent);
-	}
-
-	.seg.is-judgement {
-		background: var(--purple);
-	}
-
-	.seg.is-decision {
-		background: var(--ok);
-	}
-
-	.seg.is-feedback {
-		background: var(--warn);
-	}
-
-	.seg.is-other {
-		background: var(--muted-light);
-	}
-
-	.stack.is-estimated .seg,
-	.seg.is-estimated {
-		background-image: repeating-linear-gradient(-45deg, transparent, transparent 2px, var(--pane) 2px, var(--pane) 4px);
-	}
-
-	.day-label {
-		color: var(--muted);
-		font-size: 11px;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.table-scroll {
-		overflow-x: auto;
-		max-width: 100%;
-	}
-
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 13px;
-	}
-
-	th,
-	td {
-		padding: 4px 8px;
-		border-bottom: 1px solid var(--line-subtle);
-		text-align: left;
-		white-space: nowrap;
-	}
-
-	th {
-		color: var(--muted);
-		font-weight: 500;
-	}
-
-	tr.is-deleted {
-		color: var(--muted);
-	}
-
-	.deleted {
-		margin-left: 6px;
-		color: var(--muted);
-		font-size: 12px;
-	}
-
-	@container spend (max-width: 640px) {
-		.figures {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-
-		.back span {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip: rect(0 0 0 0);
-		}
-
-		.back {
-			width: 44px;
-			justify-content: center;
-			padding: 0;
-		}
-	}
+	@container spend (max-width: 340px) { .spend-head { padding: 10px 10px 0; } .spend-toolbar { gap: 3px; } .period-control select { max-width: 122px; padding-left: 9px; } .refresh, .back { width: 44px; } .money-summary { gap: 8px; padding: 12px; } .amount-number { font-size: 20px; } .token-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .update-status { display: none; } .view-tabs { gap: 18px; } }
 </style>

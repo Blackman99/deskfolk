@@ -2,12 +2,33 @@
 import type { Locale, SpendCategory, SpendKind } from "@real-bot/protocol";
 
 export type SpendCopy = {
+  subtitle: string;
+  overview: string;
+  period: string;
+  refresh: string;
+  refreshing: string;
+  clearAll: string;
+  usageDetails: string;
+  coverage: string;
+  recordedCalls: (n: number) => string;
+  coveredCalls: (n: number) => string;
+  breakdownHint: string;
+  distribution: string;
+  sort: string;
+  ascending: string;
+  descending: string;
+  inspect: string;
+  openTrigger: string;
+  detailHint: string;
+  loadedCalls: (n: number) => string;
+  loadingMore: string;
   title: string;
   open: string;
   loading: string;
   error: string;
   retry: string;
   empty: string;
+  emptyHint: string;
   ranges: { today: string; last7: string; last30: string; all: string; custom: string };
   from: string;
   to: string;
@@ -64,12 +85,33 @@ export type SpendCopy = {
 };
 
 const zh: SpendCopy = {
+  subtitle: "用量与调用成本",
+  overview: "概览",
+  period: "时间范围",
+  refresh: "刷新花费",
+  refreshing: "更新中…",
+  clearAll: "清除全部",
+  usageDetails: "用量分项",
+  coverage: "金额与用量说明",
+  recordedCalls: (n) => `${n.toLocaleString('zh-CN')} 次调用`,
+  coveredCalls: (n) => `${n.toLocaleString('zh-CN')} 次调用有记录`,
+  breakdownHint: "选择一项，查看它的全部用量",
+  distribution: "用量分布",
+  sort: "排序",
+  ascending: "升序",
+  descending: "降序",
+  inspect: "查看用量分项",
+  openTrigger: "查看触发消息",
+  detailHint: "逐次查看调用的归属、用量和金额",
+  loadedCalls: (n) => `已载入 ${n.toLocaleString('zh-CN')} 次调用`,
+  loadingMore: "正在载入…",
   title: "花费",
   open: "花费",
   loading: "正在读取花费…",
   error: "花费没有读出来。",
   retry: "重试",
   empty: "这段时间没有花费。",
+  emptyHint: "试试其他时间范围，或清除当前筛选。",
   ranges: { today: "今天", last7: "近 7 天", last30: "近 30 天", all: "全部", custom: "自定义" },
   from: "从",
   to: "到",
@@ -93,7 +135,7 @@ const zh: SpendCopy = {
   estimateIncompleteUsage: "没有实报，用量也不全，所以没有估算。",
   missingUsage: (n) => `${n} 次调用端点没给用量`,
   missingAmount: (n) => `${n} 次调用没有金额`,
-  categories: "按类别",
+  categories: "调用类别",
   expand: "展开细分",
   collapse: "收起细分",
   category: { turn: "轮次", judgement: "判断", decision: "决策路由", feedback: "反馈路由", other: "其他" },
@@ -112,7 +154,7 @@ const zh: SpendCopy = {
   estimatedStack: "估算",
   dayAmount: (day, category, amount) => `${day} ${category} ${amount}`,
   dayTokens: (day, category, tokens) => `${day} ${category} ${tokens}`,
-  dimension: "维度",
+  dimension: "用量分布",
   dimensions: { model: "模型", session: "会话", bot: "Bot" },
   unrecordedModel: "未记录模型",
   unassignedBot: "未归属 Bot",
@@ -121,23 +163,44 @@ const zh: SpendCopy = {
   clearFilter: (label) => `清除${label}`,
   filters: "当前筛选",
   openSession: "打开会话",
-  details: "明细",
+  details: "调用明细",
   time: "时间",
   session: "会话",
   bot: "Bot",
   model: "模型",
   amount: "金额",
-  loadMore: "更多",
+  loadMore: "载入更多调用",
   dash: "—",
 };
 
 const en: SpendCopy = {
+  subtitle: "Usage and call costs",
+  overview: "Overview",
+  period: "Date range",
+  refresh: "Refresh spend",
+  refreshing: "Updating…",
+  clearAll: "Clear all",
+  usageDetails: "Token breakdown",
+  coverage: "About amounts and usage",
+  recordedCalls: (n) => `${n.toLocaleString('en-US')} calls`,
+  coveredCalls: (n) => `${n.toLocaleString('en-US')} calls recorded`,
+  breakdownHint: "Choose a row to explore its usage",
+  distribution: "Usage breakdown",
+  sort: "Sort",
+  ascending: "Ascending",
+  descending: "Descending",
+  inspect: "View token breakdown",
+  openTrigger: "View trigger message",
+  detailHint: "Inspect the attribution, usage and amount of each call",
+  loadedCalls: (n) => `${n.toLocaleString('en-US')} calls loaded`,
+  loadingMore: "Loading more…",
   title: "Spend",
   open: "Spend",
   loading: "Loading spend…",
   error: "Spend could not be loaded.",
   retry: "Retry",
   empty: "No spend in this range.",
+  emptyHint: "Try another date range or clear the active filters.",
   ranges: { today: "Today", last7: "Last 7 days", last30: "Last 30 days", all: "All", custom: "Custom" },
   from: "From",
   to: "To",
@@ -189,13 +252,13 @@ const en: SpendCopy = {
   clearFilter: (label) => `Clear ${label}`,
   filters: "Filters",
   openSession: "Open session",
-  details: "Details",
+  details: "Call details",
   time: "Time",
   session: "Session",
   bot: "Bot",
   model: "Model",
   amount: "Amount",
-  loadMore: "More",
+  loadMore: "Load more calls",
   dash: "—",
 };
 
