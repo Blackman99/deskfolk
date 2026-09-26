@@ -215,6 +215,30 @@ test("a mobile page runs at each device's own viewport, and a new device is a fr
   expect(view.size()).toEqual([820, 1180]);
 });
 
+test("every rebuild of the page is a new frame, so Back leaves the preview instead of walking the frame through its old builds", async () => {
+  window.localStorage.removeItem("real-bot-html-viewport");
+  cleanups.push(() => window.localStorage.removeItem("real-bot-html-viewport"));
+  const view = devicePreview(MOBILE_PAGE);
+  const seen = [view.frame()];
+  const rebuilt = async (change: () => void) => {
+    const src = view.frame().getAttribute("src");
+    change();
+    flushSync();
+    await settle();
+    // Pointing a loaded frame at a new URL is a navigation the browser records: Back would load the
+    // revoked build (a blank page) and the preview would stay. A new frame's first load records nothing.
+    expect(view.frame().getAttribute("src")).not.toBe(src);
+    expect(seen.includes(view.frame())).toBe(false);
+    expect(view.host.querySelectorAll("iframe")).toHaveLength(1);
+    seen.push(view.frame());
+  };
+
+  await rebuilt(() => view.pick("phone"));
+  await rebuilt(() => { view.props.scheme = "dark"; });
+  await rebuilt(() => { view.props.html = MOBILE_PAGE.replace("Title", "Changed"); });
+  await rebuilt(() => { view.props.active = true; });
+});
+
 test("a page with no viewport tag is laid out 980 wide on a phone, or as wide as its content, and zoomed to the screen", async () => {
   window.localStorage.setItem("real-bot-html-viewport", "phone");
   cleanups.push(() => window.localStorage.removeItem("real-bot-html-viewport"));

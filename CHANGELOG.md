@@ -6,7 +6,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+- Back from an HTML preview goes back to the page you came from. Every time the page was rebuilt — switching between desktop, tablet and phone, entering or leaving annotate mode, a theme change, the file changing on disk — the preview pointed its frame at the new build, and the browser counted that as a page visited inside the preview. Back then went to the previous build, which had already been thrown away, so the preview went blank and a second Back was needed to get out; on a phone it looked as if Back just wiped the page. Each build now gets a new frame, so Back leaves the preview straight away.
 
 ## 0.1.0-rc.7 — 2026-09-26
 

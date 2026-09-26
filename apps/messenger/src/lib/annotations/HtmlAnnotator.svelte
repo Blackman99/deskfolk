@@ -509,20 +509,25 @@
 			>
 				<div class="html-device-body">
 					<div class="html-device-screen" class:is-picking={picking}>
+						<!-- A new frame per build: pointing a loaded frame at the next build is a navigation
+						     the browser records, so Back would reload the revoked build (a blank page) instead
+						     of leaving the preview. A new frame's first load records nothing. -->
 						{#if src}
-							<iframe
-								bind:this={frame}
-								{title}
-								class="artifact-frame"
-								{src}
-								sandbox={HTML_PREVIEW_SANDBOX}
-								referrerpolicy="no-referrer"
-								style:color-scheme={scheme}
-								style:width="{layout.page.width}px"
-								style:height="{layout.page.height}px"
-								style:transform="scale({layout.page.scale})"
-								onload={onFrameLoad}
-							></iframe>
+							{#key src}
+								<iframe
+									bind:this={frame}
+									{title}
+									class="artifact-frame"
+									{src}
+									sandbox={HTML_PREVIEW_SANDBOX}
+									referrerpolicy="no-referrer"
+									style:color-scheme={scheme}
+									style:width="{layout.page.width}px"
+									style:height="{layout.page.height}px"
+									style:transform="scale({layout.page.scale})"
+									onload={onFrameLoad}
+								></iframe>
+							{/key}
 						{/if}
 					</div>
 				</div>
