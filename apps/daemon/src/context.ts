@@ -9,12 +9,22 @@ import {
   COMPOSER_SUGGEST_RECENT,
   type ComposerSuggestPayload,
 } from "./prompts/composer-suggestions";
-import type { Store } from "./store";
+import { TASK_QUIET_MS, type Store } from "./store";
 import { codePointCount, takeCodePoints } from "./text";
 import { visionImage } from "./vision-image";
+import { classifyPath } from "./workspace-paths";
 
 const MAIN_LIMIT = 40;
 const BODY_LIMIT = 4000;
+/**
+ * How much of a job's opening request the situation block quotes. The line itself is in the
+ * transcript window on the first turn; this is for every turn after a handoff or forty lines on.
+ */
+export const BRIEF_LIMIT = 1200;
+/** Files a job has handed over that the block lists; the newest cited come first. */
+export const JOB_ARTIFACTS_LIMIT = 20;
+/** Turns of the job the block recounts, newest last. */
+export const JOB_TRACE_LIMIT = 12;
 /**
  * A backstop, not a working limit: the per-Bot cap's worst case already fits under it, so a Bot
  * always sees every memory it wrote. It only bites if someone raises the per-Bot cap or the body
@@ -98,9 +108,125 @@ export function assembleTurnMessages(
     input.triggerMessageId,
     input.locale,
     input.botId,
-    store.turnWorkDir(input.turnId),
+    input.turnId,
   );
   return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
+}
+
+export type PlanFacts = {
+  /** The plan has no spec yet and no other turn: the trigger is the request, and it can still be clarified. */
+  first_turn: boolean;
+  /** The request that opened the plan, one line, clipped to {@link BRIEF_LIMIT}. */
+  brief: string | null;
+  /** Workspace paths the plan's messages cited and that still exist, newest cited first. */
+  artifacts: string[];
+  /** One line per earlier turn: who, and their last word or the question they are waiting on. */
+  trace: string[];
+};
+
+/**
+ * What a plan looks like from outside the transcript window: what it is for as the organizer last
+ * understood it, its rules and acceptance, its tickets and their state, what has been handed over,
+ * who did what, and how the same kind of plan went before. Every line is read back from rows the
+ * store already keeps; nothing here is summarised by a model at read time, so it costs no call and
+ * cannot drift from the record. A handoff, a mention, a Bot↔Bot direct and a check-back all land in
+ * the same plan, which is how the goal follows the work across sessions.
+ */
+export function planFacts(
+  store: Store,
+  input: {
+    taskId: string;
+    /** The turn being assembled; null for a judgement, which has no turn yet. */
+    turnId: string | null;
+    triggerMessageId: string | null;
+    botId: string;
+    sessionId: string;
+    locale: Locale;
+  },
+): PlanFacts | null {
+  let task;
+  try {
+    task = store.getTask(input.taskId);
+  } catch {
+    return null;
+  }
+  const firstTurn = !store.taskHasEarlierTurns(input.taskId, input.turnId ?? "");
+  const brief = task.brief ? oneLineClip(task.brief, BRIEF_LIMIT) : null;
+  const cited = store.taskArtifacts(input.taskId, (relpath) => workspaceFileExists(store, relpath), JOB_ARTIFACTS_LIMIT);
+  const artifacts = cited.map((row) => row.path);
+  const trace: string[] = [];
+  if (!firstTurn) {
+    const nodes = store
+      .taskTrace(input.taskId)
+      .nodes.filter(
+        (node) =>
+          node.turn_id !== input.turnId &&
+          !(node.actor === USER_MEMBER && node.trigger_message_id === input.triggerMessageId),
+      )
+      .slice(-JOB_TRACE_LIMIT);
+    for (const node of nodes) {
+      const who = node.actor === USER_MEMBER ? "user" : botDisplayName(store, node.actor);
+      const state = traceStateLabel(node.status, input.locale);
+      trace.push(`【${who}】${node.summary}${state}`);
+    }
+  }
+  return {
+    first_turn: firstTurn,
+    brief,
+    artifacts,
+    trace,
+  };
+}
+
+/** A turn that is not simply done says so on its trace line; a completed one needs no label. */
+function traceStateLabel(status: string, locale: Locale): string {
+  const labels: Record<string, { zh: string; en: string }> = {
+    running: { zh: "（进行中）", en: " (running)" },
+    waiting_ask: { zh: "（等用户回答）", en: " (waiting on the user)" },
+    waiting_approval: { zh: "（等批准）", en: " (waiting for approval)" },
+    interrupted: { zh: "（中断）", en: " (interrupted)" },
+    stopped: { zh: "（已停止）", en: " (stopped)" },
+    redirected: { zh: "（改道）", en: " (redirected)" },
+  };
+  const label = labels[status];
+  return label ? label[locale] : "";
+}
+
+function oneLineClip(text: string, limit: number): string {
+  const clipped = takeCodePoints(text.replace(/\s+/g, " ").trim(), limit);
+  return clipped.truncated ? `${clipped.text}…` : clipped.text;
+}
+
+function workspaceFileExists(store: Store, relpath: string): boolean {
+  const root = store.workspacePath();
+  if (!root) return false;
+  const classified = classifyPath(root, relpath);
+  if (classified.zone !== "inside") return false;
+  try {
+    return existsSync(classified.abs);
+  } catch {
+    return false;
+  }
+}
+
+/** The plan's lines of the situation block, after the group facts and before the work dir. */
+export function planLines(facts: PlanFacts, locale: Locale): string[] {
+  const en = locale === "en";
+  const lines: string[] = [];
+  if (facts.first_turn) {
+    lines.push(en ? "This is the first turn of this job." : "这是这件事的第一轮。");
+  } else if (facts.brief) {
+    lines.push(en ? `What this job was asked for: ${facts.brief}` : `这件事最初的要求：${facts.brief}`);
+  }
+  if (facts.artifacts.length > 0) {
+    lines.push(
+      en ? `Handed over so far: ${facts.artifacts.join(", ")}` : `这件事已交出：${facts.artifacts.join("、")}`,
+    );
+  }
+  if (facts.trace.length > 0) {
+    lines.push(`${en ? "So far:" : "经过："}\n${facts.trace.map((line) => `- ${line}`).join("\n")}`);
+  }
+  return lines;
 }
 
 export type SituationFacts = {
@@ -135,9 +261,10 @@ export function situationFacts(
 
 /**
  * The facts this turn opens on. Groups get who is here, who has a live turn and who woke this one;
- * every turn, group or direct, gets its work dir — that path is the whole point of the shell's
- * default cwd, and a Bot that cannot see it cannot write anywhere on purpose. A direct with no
- * work dir (a turn from before work dirs) still gets no situation block at all.
+ * every turn, group or direct, gets its job — what it was asked for, what it has handed over, who
+ * did what, and this Bot's pending check-back — and its work dir, because that path is the whole
+ * point of the shell's default cwd, and a Bot that cannot see it cannot write anywhere on purpose.
+ * A direct with no job (a turn from before work dirs) still gets no situation block at all.
  */
 function situationUserMessage(
   store: Store,
@@ -145,7 +272,7 @@ function situationUserMessage(
   triggerMessageId: string,
   locale: Locale,
   selfBotId: string,
-  workDir: string | null,
+  turnId: string,
 ): ChatMessage | null {
   let sessionKind: string;
   try {
@@ -153,15 +280,20 @@ function situationUserMessage(
   } catch {
     return null;
   }
+  const taskId = store.taskOfTurn(turnId);
+  const workDir = store.turnWorkDir(turnId);
   const workDirLine = workDir
     ? locale === "en"
       ? `This turn's work dir: ${workDir}/`
       : `本轮工作目录：${workDir}/`
     : null;
+  const facts = taskId
+    ? planFacts(store, { taskId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
+    : null;
+  const job = facts ? planLines(facts, locale) : [];
   if (sessionKind !== "group") {
-    return workDirLine
-      ? { role: "user", content: `${SITUATION_HEADING}\n\n${workDirLine}` }
-      : null;
+    const lines = [...job, ...(workDirLine ? [workDirLine] : [])];
+    return lines.length > 0 ? { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` } : null;
   }
   let trigger: Message;
   try {
@@ -169,7 +301,7 @@ function situationUserMessage(
   } catch {
     return null;
   }
-  const facts = situationFacts(store, sessionId, trigger);
+  const group = situationFacts(store, sessionId, trigger);
   const members = store
     .presentBotIds(sessionId)
     .filter((id) => id !== selfBotId)
@@ -184,26 +316,26 @@ function situationUserMessage(
         : "在场成员：只有你。";
   const seatLine =
     locale === "en"
-      ? facts.seats.length > 0
-        ? `Live turns in this group: ${facts.seats.join(", ")}.`
+      ? group.seats.length > 0
+        ? `Live turns in this group: ${group.seats.join(", ")}.`
         : "Live turns in this group: none."
-      : facts.seats.length > 0
-        ? `本群进行中的轮：${facts.seats.join("、")}。`
+      : group.seats.length > 0
+        ? `本群进行中的轮：${group.seats.join("、")}。`
         : "本群没有进行中的轮。";
-  const wakerLabel = facts.waker === "user" ? "user" : facts.waker;
+  const wakerLabel = group.waker === "user" ? "user" : group.waker;
   const wakerLine =
     locale === "en"
       ? `This turn was opened by 【${wakerLabel}】.`
       : `本轮由【${wakerLabel}】叫醒。`;
   const latestLine =
     locale === "en"
-      ? facts.latest_user
-        ? `Latest user line: ${facts.latest_user}`
+      ? group.latest_user
+        ? `Latest user line: ${group.latest_user}`
         : "Latest user line: (none)"
-      : facts.latest_user
-        ? `用户最近一条：${facts.latest_user}`
+      : group.latest_user
+        ? `用户最近一条：${group.latest_user}`
         : "用户最近一条：（无）";
-  const lines = [membersLine, seatLine, wakerLine, latestLine];
+  const lines = [membersLine, seatLine, wakerLine, latestLine, ...job];
   if (workDirLine) lines.push(workDirLine);
   return { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` };
 }
@@ -486,6 +618,7 @@ export function assembleComposerSuggestUser(store: Store, sessionId: string): st
       ? "user"
       : botDisplayName(store, last.author)
     : "user";
+  const open = store.joinableTask(sessionId, new Date(Date.now() - TASK_QUIET_MS).toISOString());
   const payload: ComposerSuggestPayload = {
     session: { id: session.id, kind: session.kind, name: session.name },
     members,
@@ -494,6 +627,7 @@ export function assembleComposerSuggestUser(store: Store, sessionId: string): st
       waker,
       latest_user: latest ? latest.body.replace(/\s+/g, " ").trim().slice(0, LATEST_USER_LIMIT) || null : null,
     },
+    job: open?.brief ? { brief: oneLineClip(open.brief, BRIEF_LIMIT) } : null,
     recent_messages: recent,
   };
   return JSON.stringify(payload);
@@ -529,6 +663,28 @@ export function assembleJudgementUser(store: Store, input: {
     if (clipped.truncated) row.truncated = true;
     return row;
   });
+  // The plan this message lands in — the one the organizer filed it under, else the session's
+  // current one: the judgement then weighs what the plan still lacks, not just whether this one
+  // line sounds like the Bot's business.
+  const filed = input.message.task_id ?? store.joinableTask(input.sessionId, new Date(Date.now() - TASK_QUIET_MS).toISOString())?.id ?? null;
+  const facts = filed
+    ? planFacts(store, {
+        taskId: filed,
+        turnId: null,
+        triggerMessageId: input.message.id,
+        botId: input.botId,
+        sessionId: input.sessionId,
+        locale: store.settingsCached().locale,
+      })
+    : null;
+  const plan = facts
+    ? {
+        brief: facts.brief,
+        first_turn: facts.first_turn,
+        artifacts: facts.artifacts,
+        trace: facts.trace,
+      }
+    : null;
   const payload = {
     you: { name: you.name, duties: you.duties, boundaries: you.boundaries },
     session: { id: session.id, name: session.name },
@@ -542,6 +698,7 @@ export function assembleJudgementUser(store: Store, input: {
       everyone: input.everyone,
     },
     situation: situationFacts(store, input.sessionId, input.message),
+    plan,
     recent_messages: recent,
   };
   return JSON.stringify(payload);

@@ -442,13 +442,14 @@ describe("assembleTurnMessages", () => {
       interrupt: false,
       loop: [],
     });
-    // Members, live turns and the waker are group facts; a direct has none of them. The work dir
-    // is every turn's, because it is where a shell without cwd runs.
+    // Members, live turns and the waker are group facts; a direct has none of them. The job is
+    // every turn's — on its first turn that is the one line saying so — and so is the work dir,
+    // because it is where a shell without cwd runs.
     const situation = messages.find(
       (m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING),
     );
     const body = String(situation?.content).slice(SITUATION_HEADING.length).trim();
-    expect(body).toBe(`本轮工作目录：${store.getTask(turn.task_id!).dir}/`);
+    expect(body).toBe(`这是这件事的第一轮。\n本轮工作目录：${store.getTask(turn.task_id!).dir}/`);
     store.close();
   });
 });
@@ -490,6 +491,7 @@ describe("assembleJudgementUser", () => {
       "members",
       "message",
       "situation",
+      "plan",
       "recent_messages",
     ]);
     store.close();

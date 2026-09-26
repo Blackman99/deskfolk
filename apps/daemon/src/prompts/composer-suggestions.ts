@@ -4,7 +4,7 @@
  */
 export const COMPOSER_SUGGEST_SYSTEM = `你在给用户写下一步要发进输入框的草稿，不是回答群里的人，也不是替 Bot 说话。没有工具，不能发言，不能读工作区。
 
-根据用户消息这份 JSON 里的 session、members、situation、recent_messages 决定用户现在最该发什么。
+根据用户消息这份 JSON 里的 session、members、situation、job、recent_messages 决定用户现在最该发什么。job 是这个会话正在做的那件事开头的要求（没有则为 null）：草稿要朝着把它做完、验收它的方向去，不要把已经提过的要求再说一遍。
 
 只输出一个 JSON 对象。不要 markdown 围栏，不要前言后语，不要 tool-call。
 
@@ -39,5 +39,7 @@ export type ComposerSuggestPayload = {
   session: { id: string; kind: string; name: string | null };
   members: Array<"user" | ComposerSuggestMember>;
   situation: { seats: string[]; waker: string; latest_user: string | null };
+  /** The opening request of the session's open job, so a draft steers toward finishing it. */
+  job: { brief: string } | null;
   recent_messages: ComposerSuggestMessage[];
 };

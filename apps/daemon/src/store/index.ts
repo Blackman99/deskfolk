@@ -242,6 +242,7 @@ export class Store {
   readonly taskTrace = this.bind(tasks.taskTrace);
   readonly sessionTasks = this.bind(tasks.sessionTasks);
   readonly joinableTask = this.bind(tasks.joinableTask);
+  readonly taskHasEarlierTurns = this.bind(tasks.taskHasEarlierTurns);
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
 
   // Sessions -------------------------------------------------------------------------------

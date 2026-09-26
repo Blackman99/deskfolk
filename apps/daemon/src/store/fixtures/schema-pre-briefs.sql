@@ -1,4 +1,8 @@
-export const SCHEMA_SQL = `
+-- The schema as it shipped before a job kept its opening request (`tasks.brief`) and before
+-- check-backs (git HEAD c54f632 at the time this was taken).
+-- A test opens a database built from this file with the current `Store` and expects it to come
+-- up. Do not edit: it is a record of a shape that exists on real machines, not a live schema.
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -192,7 +196,6 @@ CREATE TABLE IF NOT EXISTS tasks (
   session_id TEXT REFERENCES sessions (id),
   title TEXT NOT NULL,
   dir TEXT NOT NULL UNIQUE,
-  brief TEXT,
   created_at TEXT NOT NULL,
   closed_at TEXT
 );
@@ -598,4 +601,3 @@ CREATE TABLE IF NOT EXISTS notification_delivery_items (
   notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   PRIMARY KEY (delivery_id, notification_id)
 );
-`;

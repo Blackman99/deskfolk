@@ -302,7 +302,8 @@ describe("prompts", () => {
   });
 
   test("judgement system prefers pass when the trigger restates recent work", () => {
-    expect(JUDGEMENT_SYSTEM).toContain("situation 和 recent_messages 是背景");
+    expect(JUDGEMENT_SYSTEM).toContain("situation、job 和 recent_messages 是背景");
+    expect(JUDGEMENT_SYSTEM).toContain("最初要求里属于你职责的部分还没有交出、trace 里也没人在做，就 join");
     expect(JUDGEMENT_SYSTEM).toContain("situation 里已有人在做这件事且触发条没有新产物或新结论，则 pass");
     expect(JUDGEMENT_SYSTEM).toContain("触发条与最近转录是同一件事的重复或转述");
     expect(JUDGEMENT_SYSTEM).toContain("把已经向全员提出的请求再点名一遍而 join");

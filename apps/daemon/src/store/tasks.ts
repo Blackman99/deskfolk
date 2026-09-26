@@ -23,6 +23,12 @@ export type Task = {
   session_id: string | null;
   title: string;
   dir: string;
+  /**
+   * The request that opened the job: the body of the message (or the routine's instruction) that
+   * started its first turn, clipped to {@link BRIEF_MAX}. Null only on jobs older than the column
+   * whose first turn no longer exists.
+   */
+  brief: string | null;
   created_at: string;
   closed_at: string | null;
 };
@@ -35,6 +41,9 @@ export const WORK_ROOT = "work";
 
 /** Reserved subdirs inside a work dir. Nothing written here is ever cited as an artifact. */
 export const RESERVED_SUBDIRS = ["tool-results", "scratch"] as const;
+
+/** As much of the opening request as a job keeps; the transcript already clips lines to this. */
+export const BRIEF_MAX = 4000;
 
 const TITLE_MAX = 40;
 const SLUG_MAX = 12;
@@ -105,6 +114,19 @@ export function joinableTask(ctx: StoreContext, sessionId: string, notBefore: st
   );
 }
 
+/**
+ * Whether another turn already belongs to this job. The job's first turn has the brief as its
+ * trigger, so it is the one turn that can still ask what the request meant before doing it.
+ */
+export function taskHasEarlierTurns(ctx: StoreContext, taskId: string, turnId: string): boolean {
+  const row = ctx.db
+    .query<{ id: string }, [string, string]>(
+      `SELECT id FROM turns WHERE task_id = ? AND id != ? LIMIT 1`,
+    )
+    .get(taskId, turnId);
+  return Boolean(row);
+}
+
 export type TaskArtifact = {
   path: string;
   last_cited_at: string;
@@ -150,13 +172,14 @@ export function taskArtifacts(
 
 export function openTask(
   ctx: StoreContext,
-  input: { sessionId: string; title: string; now?: Date },
+  input: { sessionId: string; title: string; brief?: string; now?: Date },
 ): Task {
   sessionRow(ctx, input.sessionId);
   const at = input.now ?? new Date();
   const now = isoNow();
   const id = ulid(at.getTime());
   const title = taskTitle(input.title);
+  const brief = takeCodePoints((input.brief ?? input.title).trim(), BRIEF_MAX).text;
   ctx.db.transaction(() => {
     // One open dir per session: the new job takes over, the old one stops accepting follow-ups.
     ctx.db.run(`UPDATE tasks SET closed_at = ? WHERE session_id = ? AND closed_at IS NULL`, [
@@ -164,9 +187,16 @@ export function openTask(
       input.sessionId,
     ]);
     ctx.db.run(
-      `INSERT INTO tasks (id, session_id, title, dir, created_at, closed_at)
-       VALUES (?, ?, ?, ?, ?, NULL)`,
-      [id, input.sessionId, title, uniqueDir(ctx, { title, id, at }), now],
+      `INSERT INTO tasks (id, session_id, title, dir, brief, created_at, closed_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+      [
+        id,
+        input.sessionId,
+        title,
+        uniqueDir(ctx, { title, id, at }),
+        brief,
+        now,
+      ],
     );
   })();
   return getTask(ctx, id);

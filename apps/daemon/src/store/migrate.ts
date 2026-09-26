@@ -201,6 +201,7 @@ export function migrateSchema(db: Database): void {
     `);
   }
   migrateRouteTables(db, tables);
+  migrateTaskBriefs(db);
   migrateBotThinkingPins(db);
   migrateSpendLedger(db);
   migrateAnnotations(db);
@@ -266,6 +267,28 @@ function backfillInitialNotifications(db: Database): void {
       `, [ulid(), ord, semKey, app.session_id, app.message_id, app.turn_id, app.id, app.created_at]);
     }
   }
+}
+
+/**
+ * A job keeps the request that opened it, so every later turn — after a handoff, in another
+ * session, forty lines on — can still read what was asked. Jobs from before the column carry the
+ * body of the message that opened their first turn, which is the same text the runtime stores now.
+ * Runs after the task backfill so the jobs that pass invents get one too.
+ */
+function migrateTaskBriefs(db: Database): void {
+  const cols = db
+    .query<{ name: string }, []>(`PRAGMA table_info(tasks)`)
+    .all()
+    .map((row) => row.name);
+  if (!cols.includes("brief")) db.run(`ALTER TABLE tasks ADD COLUMN brief TEXT`);
+  // Always, not only when the column was just added: a database from before work dirs gets its
+  // `tasks` table from `SCHEMA_SQL` with the column already there, and its backfilled jobs empty.
+  db.run(
+    `UPDATE tasks SET brief = (
+       SELECT m.body FROM turns t JOIN messages m ON m.id = t.trigger_message_id
+       WHERE t.task_id = tasks.id ORDER BY t.created_at ASC, t.id ASC LIMIT 1
+     ) WHERE brief IS NULL`,
+  );
 }
 
 function migrateNotifications(db: Database): void {

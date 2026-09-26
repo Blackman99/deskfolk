@@ -74,6 +74,25 @@ function seedLegacySpend(db: Database): void {
     `INSERT INTO judgements (id, session_id, message_id, bot_id, decision, created_at) VALUES (?, ?, ?, ?, 'pass', ?)`,
     [judgementId, sessionId, messageId, botId, now],
   );
+  // A shape from after the ledger already carries the kind and the names; the pre-ledger shape
+  // has the migration fill them in from the decision and the session.
+  const ledger = db
+    .query<{ name: string }, []>("PRAGMA table_info(spend)")
+    .all()
+    .some((column) => column.name === "kind");
+  if (ledger) {
+    db.run(
+      `INSERT INTO spend (id, session_id, session_name, bot_id, bot_name, turn_id, judgement_id, kind, provider_id, provider_name, model, thinking_level, input_tokens, output_tokens, total_tokens, created_at)
+       VALUES (?, ?, 'Ledger', ?, 'Ledger', ?, NULL, 'turn', ?, 'Legacy', 'legacy-model', 'low', 3, 1, 4, ?)`,
+      [ulid(), sessionId, botId, turnId, providerId, now],
+    );
+    db.run(
+      `INSERT INTO spend (id, session_id, session_name, bot_id, bot_name, turn_id, judgement_id, kind, created_at)
+       VALUES (?, ?, 'Ledger', ?, 'Ledger', NULL, ?, 'judgement', ?)`,
+      [ulid(), sessionId, botId, judgementId, now],
+    );
+    return;
+  }
   db.run(
     `INSERT INTO spend (id, session_id, bot_id, turn_id, judgement_id, input_tokens, output_tokens, total_tokens, created_at) VALUES (?, ?, ?, ?, NULL, 3, 1, 4, ?)`,
     [ulid(), sessionId, botId, turnId, now],
@@ -109,6 +128,11 @@ describe("a database an earlier build created", () => {
         // The failure this guards against is the constructor throwing, which is what stops the
         // daemon from starting. Everything below only matters once it does not.
         const store = new Store({ filename: file });
+
+        // The seeded turn's job — backfilled or already there — learns what it was asked for.
+        expect(store.db.query<{ brief: string | null }, []>("SELECT brief FROM tasks").all()).toEqual([
+          { brief: "hello" },
+        ]);
 
         const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
         const trigger = store.postMessage(writer.direct_session.id, { body: "导出季度报表" });
