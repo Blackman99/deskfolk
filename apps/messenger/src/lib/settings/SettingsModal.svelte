@@ -1566,9 +1566,16 @@ void runtime.setPushEnabled(enabled);
 							</div>
 
 							<div class="settings-rows">
-								<div class="settings-row">
+								<div class="settings-row about-identity">
+									<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
+									<svg class="about-logo" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">
+										<path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" />
+										<circle cx="25" cy="29" r="10.5" fill="#ffffff" />
+										<circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3" />
+									</svg>
 									<div class="settings-row-info">
 										<span class="settings-row-title">Deskfolk</span>
+										<span class="settings-row-desc">{t.settings.aboutDescription}</span>
 										<span class="settings-row-desc">
 											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.7')}</span>
 										</span>
@@ -2961,6 +2968,14 @@ void runtime.setPushEnabled(enabled);
 		animation: spin 1s linear infinite;
 	}
 
+	.about-identity {
+		gap: 14px;
+	}
+
+	.about-logo {
+		flex-shrink: 0;
+	}
+
 	.about-status-banner.is-ok {
 		background: var(--ok-bg);
 		border: 1px solid var(--ok-line);
@@ -3126,6 +3141,15 @@ void runtime.setPushEnabled(enabled);
 	width: 100%;
 	justify-content: flex-end;
 	}
+	}
+
+	/* Narrow rows stack, but the mark stays beside the name; only the button drops below. */
+	@media (max-width: 540px) {
+		.about-identity {
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: center;
+		}
 	}
 
 	@media (max-width: 540px) {

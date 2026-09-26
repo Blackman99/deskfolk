@@ -370,6 +370,13 @@ test("about card and update chrome are locked in both locales", () => {
   expect(COPY.en.settings.tabAbout).toBe("About");
   expect(COPY.zh.settings.sectionAbout).toBe("关于");
   expect(COPY.en.settings.sectionAbout).toBe("About");
+  // The tagline and the line under the name are the README's, word for word.
+  expect(COPY.zh.settings.aboutSubtitle).toBe("组一支你信得过的私人 AI 团队。");
+  expect(COPY.en.settings.aboutSubtitle).toBe("A private AI team you can trust.");
+  expect(COPY.zh.settings.aboutDescription).toBe("工作台自由组合：会话、终端、流程图和工作区，想怎么分屏就怎么摆。");
+  expect(COPY.en.settings.aboutDescription).toBe(
+    "A workbench you arrange freely: chats, terminals, flow boards and the workspace, split however you like.",
+  );
   expect(COPY.zh.settings.version("0.1.0")).toBe("版本 0.1.0");
   expect(COPY.en.settings.version("0.1.0")).toBe("Version 0.1.0");
   expect(COPY.zh.settings.checkUpdates).toBe("检查更新");
