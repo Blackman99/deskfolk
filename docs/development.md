@@ -305,6 +305,17 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:tool-selection 
 
 用例在 `apps/daemon/eval/tool-selection-cases.json`：`servers` / `skills` 是可复用的库，每条 case 引用库里的键（`{ "use": "github", "usage_note": "…" }` 可覆盖单个字段），给一句触发消息和期望：`expect.first` 是允许的第一个工具调用（`reply` = 不调工具或先 `send_message` / `ask_user`；`read_skill:<技能名>`；或 `mcp_<server>_<tool>` 这类工具名），`expect.forbid` 是整轮都不许出现的调用（`*` 结尾按前缀匹配）。每条 case 发一次补全，system 与真实私聊轮次完全一致（人设 + 技能目录 + 系统指令 + 本轮 MCP），tools 数组是内建工具加按 `mcp_<server>_<tool>` 映射的假 MCP 工具；只看第一个调用是否命中，另记禁止调用和不在数组里的编造名。`--only id,id`、`--category`、`--locale` 筛用例，`--thinking` 选思考等级，`--min-pass 0.8` 让命中率不够时退出码为 1。结果按模型 × 类别 × 语言汇总打印，JSON 写到 `.scratch/tool-selection-eval/<时间戳>.json`（已忽略）。用例文件本身有单测把关：期望里写的技能名或工具名必须在那条 case 里真实存在。密钥只从环境变量读，不进仓库、不进结果文件。
 
+## 目标覆盖评估
+
+一件事做完了没有，看的是最初的要求逐条有没有落到交出的东西上，不是 Bot 说没说「已完成」。改了系统指令里对齐要求、收尾核对那几段，或改了局面块里「最初的要求 / 已交出 / 经过」的措辞之后，拿真做过的事量一下：
+
+```bash
+REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:goal-coverage \
+  --base-url https://api.example.com/v1 --model judge-model --latest 5 --min-pass 0.8
+```
+
+它先把 `state.sqlite`（连同 `-wal` / `-shm`）复制到临时目录再打开副本，守护进程可以照常跑着；默认读本机的库，`--db <path>` 换一个，`$REAL_BOT_DATA_DIR` 也认。挑哪几件事：`--task <id>`、`--session <id>`（那个会话最近活动的一件）或 `--latest [n]`。每件事发一次无工具补全：`brief`（开它的那条要求原文）、它引用过且还在的每个文件的开头（文本类最多 4000 字，其它只给路径）、以及这件事里 Bot 最后六句。评判模型按 brief 拆出每条可验收的要求，逐条答 covered / partial / missing 和依据，Bot 自称完成不算依据。结果按事打印成 Markdown 表，JSON 写到 `.scratch/goal-coverage-eval/<时间戳>.json`（已忽略）；`--min-pass` 让任一件事的覆盖率不够时退出码为 1。解析、评分和报告格式在 `src/goal-coverage-eval.ts`，有单测。
+
 ## 远程音视频预览
 
 `ArtifactPreview`（消息附件、工作区）与 `TraceOutput`（流程图产物）在远程连接下调用 `RemoteApi.openMediaSource`。页面注册 `/sw.js` 后探测媒体能力；`static/media-stream.js` 为播放器提供 `/__remote_media/<随机 id>` 临时同源 URL，经 MessageChannel 把范围请求交给拥有该预览的页面，再由原有 Noise 连接读取文件。URL 只带随机 id；路径和字节范围留在加密 RPC 内。浏览器按需消费响应流，每次 RPC 最多 256 KiB，拖动进度可直接读文件中间或尾部，MP4 的尾部索引也由浏览器请求。预加载只取元数据，用户点播放后继续读取。Worker 不写入媒体缓存，返回 `Cache-Control: no-store`；关闭、换文件、连接结束会注销媒体源并取消在途读取。

@@ -47,6 +47,7 @@ import * as turns from "./turns";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, RESERVED_SUBDIRS, TASK_QUIET_MS, WORK_ROOT } from "./tasks";
+export type { Task } from "./tasks";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
 export type { CheckBack } from "./check-backs";
 export type { EndpointKeyStore, StoreOptions } from "./shared";

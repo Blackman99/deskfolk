@@ -16,6 +16,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - When a review finds that a request was unclear and the user had to correct the Bot more than once, the Bot may now keep one memory of what they turned out to mean, such as the shape, scope or wording they had to spell out. That hop can write memories only; it never changes a skill.
 
+- `pnpm --filter @real-bot/daemon eval:goal-coverage` checks a finished job against its original request with a judge model and reports each requirement as covered, partial or missing, with evidence, on a copy of the database.
+
 - A routine that came due while the lid was shut no longer runs in the few seconds macOS wakes itself, fails, and leaves only "This turn did not finish: Couldn't reach the endpoint". With the lid shut macOS wakes briefly now and then, often before the network is back; a routine caught in one tried the endpoint three times in three seconds, failed, and used up its catch-up, so opening the lid did not run it again. Now the runtime waits a minute after waking from sleep before catching up missed routines.
 
 - Remote control comes back on its own after the Mac's network drops and returns. If the relay let go of the Mac while it was offline, the Mac never heard, kept showing remote as online, and every phone was refused until the app restarted. The Mac now checks with the relay every 15 seconds and reconnects when no answer comes within 10. After a switch to another network, the relay can still take about a minute to release the old connection before the Mac gets back in.
