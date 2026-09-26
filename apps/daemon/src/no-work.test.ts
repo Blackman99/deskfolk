@@ -54,6 +54,29 @@ describe("isNoWorkCloser", () => {
     expect(isNoWorkCloser("")).toBe(true);
   });
 
+  test("drops a silent pass spelled out as a line, markdown emphasis or brackets included", () => {
+    expect(isNoWorkCloser("***无发言，本轮结束***")).toBe(true);
+    expect(isNoWorkCloser("无发言，本轮结束。")).toBe(true);
+    expect(isNoWorkCloser("**本轮不发言。**")).toBe(true);
+    expect(isNoWorkCloser("_暂不发言_")).toBe(true);
+    expect(isNoWorkCloser("（无发言）")).toBe(true);
+    expect(isNoWorkCloser("【保持沉默】")).toBe(true);
+    expect(isNoWorkCloser("> 本轮无需发言")).toBe(true);
+    expect(isNoWorkCloser("*Staying silent this turn.*")).toBe(true);
+    expect(isNoWorkCloser("**本轮没有新工作**")).toBe(true);
+    expect(isNoWorkCloser("无需发言。")).toBe(true);
+    expect(isNoWorkCloser("不需要发言")).toBe(true);
+    expect(isNoWorkCloser("无须发言")).toBe(true);
+  });
+
+  test("keeps emphasized verdicts and passes that hand off", () => {
+    expect(isNoWorkCloser("**驳回重跑**：C01 第 3 秒手指粘连。")).toBe(false);
+    expect(isNoWorkCloser("***通过***")).toBe(false);
+    expect(isNoWorkCloser("本轮我不发言，@视频导演 你来定")).toBe(false);
+    expect(isNoWorkCloser("审片员无发言，C02 还没出片")).toBe(false);
+    expect(isNoWorkCloser("（无发言）见 S01_EP01_C01_review.md")).toBe(false);
+  });
+
   test("keeps real replies, intros, and handoffs", () => {
     expect(isNoWorkCloser("已经把头像换成 pixel 风格，名字还是 Writer。")).toBe(false);
     expect(isNoWorkCloser("已在会话中回复：详情请查看 README.md")).toBe(false);
