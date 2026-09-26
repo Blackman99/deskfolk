@@ -19,5 +19,14 @@
 </div>
 
 <style>
-	.spend-page { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--pane); z-index: 2; }
+	.spend-page {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		min-height: 0;
+		background: var(--sidebar-bg);
+		z-index: 2;
+	}
 </style>

@@ -181,16 +181,16 @@
 {#snippet plot(field: SpendTrendField, scale: number, title: string, plotKey: string, estimated = false)}
 	<figure class="plot m-0 min-w-0 flex flex-col gap-2" data-plot={plotKey} aria-label={title || chartCopy.plot}>
 		{#if title}
-			<figcaption class="text-12 text-muted m-0">{title}</figcaption>
+			<figcaption class="plot-title">{title}</figcaption>
 		{/if}
-		<div class="plot-frame flex items-stretch gap-2 min-w-0">
-			<div class="y-axis flex flex-col justify-between items-end shrink-0 text-11 text-muted tabular" aria-hidden="true">
+		<div class="plot-frame">
+			<div class="y-axis tabular" aria-hidden="true">
 				<span>{yMax(field)}</span>
 				<span>{scale > 0 ? chartCopy.zero : copy.dash}</span>
 			</div>
-			<div class="plot-main flex-1 min-w-0 flex flex-col">
+			<div class="plot-main">
 				<div
-					class="bars min-w-0 flex items-end"
+					class="bars"
 					role="listbox"
 					aria-label={title || chartCopy.plot}
 					aria-orientation="horizontal"
@@ -227,7 +227,7 @@
 						</button>
 					{/each}
 				</div>
-				<div class="axis-row flex justify-between gap-1 min-w-0">
+				<div class="axis-row">
 					{#each labelIndexes as index (index)}
 						<span class="axis-label tabular">{bucketLabel(buckets[index]!)}</span>
 					{/each}
@@ -237,15 +237,15 @@
 	</figure>
 {/snippet}
 
-<section class="spend-trend flex flex-col gap-3 min-w-0 text-ink" aria-label={copy.trend} data-spend-trend>
+<section class="spend-trend" aria-label={copy.trend} data-spend-trend>
 	{#if buckets.length === 0}
-		<p class="m-0 text-muted">{copy.empty}</p>
+		<p class="empty-note">{copy.empty}</p>
 	{:else}
-		<ul class="legend flex flex-wrap gap-x-5 gap-y-3 m-0 p-0 list-none text-12 text-muted">
+		<ul class="legend">
 			{#each SPEND_TREND_CATEGORIES as category (category)}
-				<li class="inline-flex items-center gap-1">
+				<li class="legend-item">
 					<span class="swatch is-{category}" aria-hidden="true"></span>
-					{copy.category[category]}
+					<span>{copy.category[category]}</span>
 				</li>
 			{/each}
 		</ul>
@@ -261,17 +261,21 @@
 
 		{#if readoutPlot && chosen(readoutPlot) != null && buckets[chosen(readoutPlot)!]}
 			{@const bucket = buckets[chosen(readoutPlot)!]}
-			<div class="readout flex flex-col gap-1 p-3 text-12" aria-live="polite" data-readout={readoutPlot}>
-				<p class="m-0 font-medium text-ink-secondary">{bucketLabel(bucket)}</p>
+			<div class="readout" aria-live="polite" data-readout={readoutPlot}>
+				<div class="readout-head">
+					<span class="readout-date font-medium text-ink-secondary">{bucketLabel(bucket)}</span>
+					<span class="readout-metric-type text-muted">
+						{readoutPlot === 'tokens' ? copy.metricTokens : (readoutPlot === 'estimated' ? copy.estimated : copy.reported)}
+					</span>
+				</div>
 				{#if readoutPlot === 'tokens'}
-					<p class="m-0 text-muted">{copy.metricTokens}</p>
-					<ul class="m-0 p-0 list-none flex flex-col gap-1">
+					<ul class="readout-list">
 						{#each SPEND_TREND_CATEGORIES as category (category)}
 							{@const value = spendTrendCategoryValue(bucket, category, 'total_tokens')}
-							<li class="flex items-center justify-between gap-3 min-w-0">
-								<span class="inline-flex items-center gap-1 min-w-0">
+							<li class="readout-row">
+								<span class="readout-cat">
 									<span class="swatch is-{category}" aria-hidden="true"></span>
-									<span class="truncate">{copy.category[category]}</span>
+									<span class="readout-cat-name truncate">{copy.category[category]}</span>
 								</span>
 								<span class="tabular shrink-0" class:text-muted={value == null}>
 									{value == null ? `${copy.dash} ${chartCopy.unknown}` : formatTokens(value)}
@@ -282,14 +286,13 @@
 				{:else}
 					{@const field: SpendTrendField = readoutPlot === 'estimated' ? 'estimated_usd_ticks' : 'reported_usd_ticks'}
 					<div class="min-w-0">
-						<p class="m-0 text-muted">{field === 'reported_usd_ticks' ? copy.reported : copy.estimated}</p>
-						<ul class="m-0 p-0 list-none flex flex-col gap-1">
+						<ul class="readout-list">
 							{#each SPEND_TREND_CATEGORIES as category (category)}
 								{@const value = spendTrendCategoryValue(bucket, category, field)}
-								<li class="flex items-center justify-between gap-2 min-w-0">
-									<span class="inline-flex items-center gap-1 min-w-0">
+								<li class="readout-row">
+									<span class="readout-cat">
 										<span class="swatch is-{category}" aria-hidden="true"></span>
-										<span class="truncate">{copy.category[category]}</span>
+										<span class="readout-cat-name truncate">{copy.category[category]}</span>
 									</span>
 									<span class="tabular shrink-0" class:text-muted={value == null}>
 										{value == null ? `${copy.dash} ${chartCopy.unknown}` : formatUsd(value)}
@@ -307,8 +310,35 @@
 <style>
 	.spend-trend {
 		container: spend-trend / inline-size;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
 		max-width: 100%;
 		overflow-x: hidden;
+		color: var(--ink);
+	}
+
+	.empty-note {
+		margin: 0;
+		color: var(--muted);
+		font-size: 13px;
+	}
+
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.legend-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 	}
 
 	.tabular {
@@ -324,35 +354,56 @@
 		flex: none;
 	}
 
-	.swatch.is-judgement {
-		background: var(--purple);
+	.swatch.is-judgement { background: var(--purple); }
+	.swatch.is-decision { background: var(--ok); }
+	.swatch.is-feedback { background: var(--warn); }
+	.swatch.is-other { background: var(--muted-light); }
+
+	.plot-title {
+		font-size: 12px;
+		font-weight: 550;
+		color: var(--muted);
+		margin-bottom: 4px;
 	}
 
-	.swatch.is-decision {
-		background: var(--ok);
-	}
-
-	.swatch.is-feedback {
-		background: var(--warn);
-	}
-
-	.swatch.is-other {
-		background: var(--muted-light);
+	.plot-frame {
+		display: flex;
+		align-items: stretch;
+		gap: 8px;
+		min-width: 0;
 	}
 
 	.y-axis {
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		align-items: flex-end;
+		flex-shrink: 0;
 		width: max-content;
 		max-width: 52px;
 		height: 180px;
 		line-height: 1;
+		font-size: 11px;
+		color: var(--muted);
+		padding: 2px 0;
+	}
+
+	.plot-main {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.bars {
 		height: 180px;
+		display: flex;
+		align-items: flex-end;
 		gap: 3px;
 		background-image: linear-gradient(to bottom, var(--line-subtle) 1px, transparent 1px);
 		background-size: 100% 25%;
 		border-bottom: 1px solid var(--line);
+		position: relative;
 	}
 
 	.bar {
@@ -369,11 +420,17 @@
 		border-radius: var(--radius-sm);
 		background: transparent;
 		color: var(--muted);
+		cursor: pointer;
+		transition: background 0.12s ease;
 	}
 
 	.bar:focus-visible {
 		outline: none;
 		box-shadow: inset 0 0 0 2px var(--accent);
+	}
+
+	.bar:hover:not(.is-selected) {
+		background: var(--line-subtle);
 	}
 
 	.bar.is-selected {
@@ -388,6 +445,7 @@
 		height: 100%;
 		border-radius: 3px 3px 0 0;
 		overflow: hidden;
+		transition: max-width 0.15s ease;
 	}
 
 	.seg {
@@ -395,23 +453,13 @@
 		width: 100%;
 		min-height: 1px;
 		background: var(--accent);
+		transition: height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.seg.is-judgement {
-		background: var(--purple);
-	}
-
-	.seg.is-decision {
-		background: var(--ok);
-	}
-
-	.seg.is-feedback {
-		background: var(--warn);
-	}
-
-	.seg.is-other {
-		background: var(--muted-light);
-	}
+	.seg.is-judgement { background: var(--purple); }
+	.seg.is-decision { background: var(--ok); }
+	.seg.is-feedback { background: var(--warn); }
+	.seg.is-other { background: var(--muted-light); }
 
 	.stack.is-estimated .seg {
 		background-image: repeating-linear-gradient(
@@ -446,11 +494,19 @@
 		background: var(--ink-secondary);
 	}
 
+	.axis-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 4px;
+		min-width: 0;
+		padding-top: 6px;
+	}
+
 	.axis-label {
 		min-width: 0;
 		overflow: hidden;
 		color: var(--muted);
-		font-size: 10px;
+		font-size: 11px;
 		line-height: 14px;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -467,14 +523,68 @@
 	.money {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 16px;
 		min-width: 0;
 	}
 
 	.readout {
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
-		background: var(--sidebar-bg);
+		background: var(--pane);
+		padding: 12px 14px;
+		box-shadow: var(--shadow-sm);
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		font-size: 12px;
+	}
+
+	.readout-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding-bottom: 6px;
+		border-bottom: 1px solid var(--line-subtle);
+	}
+
+	.readout-date {
+		font-size: 12.5px;
+		font-weight: 600;
+	}
+
+	.readout-metric-type {
+		font-size: 11px;
+		font-weight: 500;
+	}
+
+	.readout-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.readout-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		min-width: 0;
+	}
+
+	.readout-cat {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.readout-cat-name {
+		font-size: 12px;
+		color: var(--ink-secondary);
 	}
 
 	@container spend-trend (min-width: 560px) {
@@ -489,5 +599,21 @@
 		}
 	}
 
-	@container spend-trend (max-width: 450px) { .bars, .y-axis { height: 150px; } .stack { max-width: 24px; } }
+	@container spend-trend (max-width: 450px) {
+		.bars, .y-axis {
+			height: 150px;
+		}
+
+		.stack {
+			max-width: 22px;
+		}
+
+		.bars {
+			gap: 2px;
+		}
+
+		.axis-label {
+			font-size: 10px;
+		}
+	}
 </style>
