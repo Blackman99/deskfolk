@@ -44,9 +44,23 @@ export type TraceEdge = {
 export type TraceRound = {
   /** The card the round hangs from — your line, usually. */
   root: string;
-  /** The band the round takes up. */
+  node: TaskTraceNode;
+  /** Folded, the round is its header row alone. */
+  folded: boolean;
+  /**
+   * The row above the round: when it started, how big it got, which tickets it worked in, and the
+   * fold toggle. None on a board with a single round, where it would only repeat the board.
+   */
+  header: { x: number; y: number; width: number; height: number } | null;
+  /** The band the round takes up, header included. */
   y: number;
   height: number;
+  cards: number;
+  files: number;
+  /** The tickets its turns worked in, in the order they first did. */
+  ticketIds: string[];
+  /** Something in it is still going or waiting on you. */
+  live: boolean;
 };
 
 export type TraceFlow = {
@@ -62,10 +76,16 @@ export type TraceFlow = {
 
 export const TRACE_CARD_WIDTH = 248;
 export const TRACE_CARD_FALLBACK_HEIGHT = 92;
+/** Wider than a card, so a folded round has room for its line and its tickets. */
+export const TRACE_ROUND_WIDTH = 320;
+export const TRACE_ROUND_HEIGHT = 34;
 const RANK_GAP = 56;
 const NODE_GAP = 20;
 /** Wider than a rank's gap, so the space between two rounds does not read as a missing edge. */
 const ROUND_GAP = 44;
+/** Folded rounds in a row sit close, like the lines of a list. */
+const FOLDED_GAP = 8;
+const HEADER_GAP = 10;
 const MARGIN = 12;
 
 /** A job's turns grouped by the line that started them, oldest round first, oldest turn first. */
@@ -107,35 +127,83 @@ function wakerOn(node: TaskTraceNode, byId: ReadonlyMap<string, TaskTraceNode>):
   return from && from !== node.turn_id && byId.has(from) ? from : null;
 }
 
+/** When a round started: the time for today, the date as well before that. */
+export function roundTime(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const time = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  const today =
+    at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth() && at.getDate() === now.getDate();
+  return today ? time : `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${time}`;
+}
+
+/** How many of the newest rounds stay open whatever is in them. */
+export const TRACE_OPEN_ROUNDS = 2;
+
+/**
+ * The rounds a board starts with folded: all but the newest two, and never one with a turn still
+ * going or a card you are looking for (`keepOpen`: the card a message asked for, the cards a ticket
+ * or a highlight lights). A board with three rounds or fewer folds nothing, since a folded row
+ * would save less than it hides.
+ */
+export function defaultFolded(
+  rounds: ReadonlyArray<{ root: string; members: readonly TaskTraceNode[] }>,
+  keepOpen: (node: TaskTraceNode) => boolean = () => false,
+): Set<string> {
+  const folded = new Set<string>();
+  if (rounds.length <= TRACE_OPEN_ROUNDS + 1) return folded;
+  rounds.forEach((round, index) => {
+    if (index >= rounds.length - TRACE_OPEN_ROUNDS) return;
+    if (round.members.some((node) => LIVE.has(node.status) || keepOpen(node))) return;
+    folded.add(round.root);
+  });
+  return folded;
+}
+
 /**
  * Coordinates for every card and a curve for every edge.
  *
  * `boxes` is what the cards measured to on screen; anything unmeasured falls back to a sensible
- * size so the first paint is close and the second is exact.
+ * size so the first paint is close and the second is exact. `folded` rounds are laid out as their
+ * header row alone.
  */
-export function traceFlow(trace: TaskTrace, boxes: ReadonlyMap<string, TraceBox> = new Map()): TraceFlow {
+export function traceFlow(
+  trace: TaskTrace,
+  boxes: ReadonlyMap<string, TraceBox> = new Map(),
+  options: { folded?: ReadonlySet<string> } = {},
+): TraceFlow {
   const byId = new Map(trace.nodes.map((node) => [node.turn_id, node]));
   const wakerOf = (node: TaskTraceNode) => wakerOn(node, byId);
   const grouped = traceRounds(trace.nodes);
+  const headed = grouped.length > 1;
+  const folded = options.folded ?? new Set<string>();
 
   // Each round on its own, then every round's first card on one line down the board.
   const laidRounds = grouped.map(({ root, members }) => {
+    const shut = headed && folded.has(root);
     return {
       root,
       members,
-      laid: layRound(root, members, wakerOf, boxes),
+      folded: shut,
+      laid: shut ? null : layRound(root, members, wakerOf, boxes, trace.session_id),
     };
   });
-  const left = Math.max(0, ...laidRounds.map(({ laid }) => laid.anchor - laid.minX));
-  const right = Math.max(0, ...laidRounds.map(({ laid }) => laid.maxX - laid.anchor));
+  const half = headed ? TRACE_ROUND_WIDTH / 2 : 0;
+  const left = Math.max(half, ...laidRounds.map(({ laid }) => (laid ? laid.anchor - laid.minX : 0)));
+  const right = Math.max(half, ...laidRounds.map(({ laid }) => (laid ? laid.maxX - laid.anchor : 0)));
   const spine = MARGIN + left;
 
   const at = new Map<string, TracePlacement>();
   const bands: TraceRound[] = [];
   let top = MARGIN;
-  laidRounds.forEach(({ root, laid }, index) => {
-    if (index > 0) top += ROUND_GAP;
+  laidRounds.forEach(({ root, members, folded: shut, laid }, index) => {
+    if (index > 0) top += shut && laidRounds[index - 1]!.folded ? FOLDED_GAP : ROUND_GAP;
     const bandTop = top;
+    const header = headed
+      ? { x: Math.round(spine - half), y: Math.round(top), width: TRACE_ROUND_WIDTH, height: TRACE_ROUND_HEIGHT }
+      : null;
+    if (header) top += TRACE_ROUND_HEIGHT + (laid ? HEADER_GAP : 0);
     if (laid) {
       const dx = spine - laid.anchor;
       for (const placement of laid.placements) {
@@ -147,10 +215,21 @@ export function traceFlow(trace: TaskTrace, boxes: ReadonlyMap<string, TraceBox>
       }
       top += laid.height;
     }
+    const ticketIds: string[] = [];
+    for (const node of members) {
+      if (node.ticket_id && !ticketIds.includes(node.ticket_id)) ticketIds.push(node.ticket_id);
+    }
     bands.push({
       root,
+      node: members.find((node) => node.turn_id === root) ?? members[0]!,
+      folded: shut,
+      header,
       y: Math.round(bandTop),
       height: Math.round(top - bandTop),
+      cards: members.length,
+      files: members.reduce((sum, node) => sum + node.artifacts.length, 0),
+      ticketIds,
+      live: members.some((node) => LIVE.has(node.status)),
     });
   });
 
@@ -198,6 +277,7 @@ function layRound(
   members: TaskTraceNode[],
   wakerOf: (node: TaskTraceNode) => string | null,
   boxes: ReadonlyMap<string, TraceBox>,
+  home: string | null,
 ): LaidRound {
   const graph = new dagre.graphlib.Graph();
   graph.setGraph({ rankdir: "TB", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: 0, marginy: 0 });
@@ -206,7 +286,7 @@ function layRound(
     const box = boxes.get(node.turn_id);
     graph.setNode(node.turn_id, {
       width: box?.width || TRACE_CARD_WIDTH,
-      height: box?.height || estimateHeight(node),
+      height: box?.height || estimateHeight(node, home),
     });
   }
   for (const node of members) {
@@ -245,12 +325,14 @@ function layRound(
  * stacked children on top of their parents — and if a measurement was ever lost, it stayed that
  * way, because a card whose size never changes never tells anyone its size again.
  */
-function estimateHeight(node: TaskTraceNode): number {
+function estimateHeight(node: TaskTraceNode, home: string | null): number {
   // A turn that said nothing shows one short line in place of the summary.
   const lines = saidNothing(node) ? 1 : Math.min(4, Math.ceil((node.summary?.length ?? 0) / 22));
   const waiting = node.ask || node.approval ? 1 : 0;
   return (
-    TRACE_CARD_FALLBACK_HEIGHT +
+    TRACE_CARD_FALLBACK_HEIGHT -
+    // Only a card from another conversation names where it happened.
+    (node.session_id === home ? 18 : 0) +
     lines * 20 +
     waiting * 20 +
     (node.passed > 0 ? 18 : 0) +

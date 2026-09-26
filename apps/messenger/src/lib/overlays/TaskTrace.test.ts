@@ -422,7 +422,13 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file hands ov
   expect(view.host.querySelector(".trace-card.is-running")).not.toBeNull();
   // The node that lives in the conversation on screen is marked as the one you are on.
   expect(view.host.querySelectorAll(".trace-card.is-here")).toHaveLength(2);
-  expect(view.host.querySelector(".trace-place")?.textContent).toContain("群 · 制作组");
+  // The job's own conversation is named once, in the header; only the card from elsewhere says where.
+  expect(view.host.querySelector(".trace-meta")?.textContent).toContain("群 · 制作组");
+  const places = [...view.host.querySelectorAll(".trace-place")];
+  expect(places).toHaveLength(1);
+  expect(places[0]?.closest(".trace-card")?.classList.contains("is-running")).toBe(true);
+  // Your own card carries no status: it was sent.
+  expect(view.host.querySelectorAll(".trace-status")).toHaveLength(2);
 
   click(view.host.querySelector(".trace-card.is-running .trace-card-main"));
   expect(view.jumps).toEqual([["direct-1", "m-approval"]]);
@@ -917,5 +923,104 @@ test("a daemon that predates plans still draws the tree, without the spec or the
   expect(view.host.querySelector(".trace-rail")).toBeNull();
   expect(view.host.querySelector(".trace-segments")).toBeNull();
   expect(view.host.querySelectorAll(".trace-card")).toHaveLength(3);
+  view.close();
+});
+
+/** A job of `count` rounds: a line of yours and the Bot answering it, a minute apart. */
+function longJob(count: number): TaskTrace {
+  return {
+    ...picture(),
+    nodes: Array.from({ length: count }, (_, index) => {
+      const minute = String(index).padStart(2, "0");
+      const base = { session_id: "group-1", woken_elsewhere: null, artifacts: [], ask: null, approval: null, passed: 0 };
+      return [
+        {
+          ...base,
+          turn_id: `user:r${index}`,
+          actor: USER_MEMBER,
+          status: "completed" as const,
+          woken_by_turn_id: null,
+          trigger_message_id: `r${index}`,
+          focus_message_id: `r${index}`,
+          summary: `第 ${index} 句`,
+          created_at: `2026-09-22T00:${minute}:00.000Z`,
+        },
+        {
+          ...base,
+          turn_id: `t${index}`,
+          actor: "bot-1",
+          status: "completed" as const,
+          woken_by_turn_id: `user:r${index}`,
+          trigger_message_id: `r${index}`,
+          focus_message_id: `w${index}`,
+          summary: `回第 ${index} 句`,
+          created_at: `2026-09-22T00:${minute}:30.000Z`,
+        },
+      ];
+    }).flat(),
+  };
+}
+
+test("a long job opens with its older rounds folded to a line each, and a line unfolds its round", async () => {
+  const view = open({ trace: longJob(5), pane: true });
+  await until(view.host, ".trace-round");
+  const rows = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-round")];
+  expect(rows()).toHaveLength(5);
+  expect(rows().map((row) => row.classList.contains("is-folded"))).toEqual([true, true, true, false, false]);
+  // Only the newest two rounds are drawn as cards; a folded line says whose line it was.
+  expect(view.host.querySelectorAll(".trace-slot")).toHaveLength(4);
+  expect(rows()[0]?.querySelector(".trace-round-said")?.textContent).toBe("你第 0 句");
+  expect(rows()[0]?.getAttribute("aria-expanded")).toBe("false");
+
+  click(rows()[0]!);
+  flushSync();
+  expect(rows()[0]?.getAttribute("aria-expanded")).toBe("true");
+  expect(view.host.querySelectorAll(".trace-slot")).toHaveLength(6);
+  expect(rows()[0]?.querySelector(".trace-round-said")).toBeNull();
+
+  click(rows()[0]!);
+  flushSync();
+  expect(view.host.querySelectorAll(".trace-slot")).toHaveLength(4);
+  view.close();
+});
+
+test("a message asking for a card in a folded round opens that round", async () => {
+  const view = open({ trace: longJob(5), pane: true, focus: { messageId: "w0", turnId: "t0" }, focusToken: 1 });
+  await until(view.host, ".trace-round");
+  const first = view.host.querySelector(".trace-round");
+  expect(first?.classList.contains("is-folded")).toBe(false);
+  expect([...view.host.querySelectorAll(".trace-card-who")].length).toBe(6);
+  view.close();
+});
+
+test("the wheel pans the board and only ⌘/Ctrl + wheel zooms it", async () => {
+  const view = open({ trace: longJob(5), pane: true });
+  await until(view.host, ".trace-slot");
+  const viewport = view.host.querySelector(".trace-viewport")!;
+  const board = () => {
+    const style = (view.host.querySelector(".trace-flow") as HTMLElement).style.transform;
+    const [, x, y, scale] = /translate\(([^,]+)px, ([^)]+)px\) scale\(([^)]+)\)/.exec(style)!;
+    return { x: Number(x), y: Number(y), scale: Number(scale) };
+  };
+  const wheel = (init: WheelEventInit) => {
+    const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, ...init });
+    // happy-dom's WheelEvent drops the modifier keys from its init; a browser's does not.
+    for (const key of ["ctrlKey", "metaKey", "shiftKey"] as const) {
+      Object.defineProperty(event, key, { value: init[key] ?? false });
+    }
+    viewport.dispatchEvent(event);
+    flushSync();
+  };
+  const start = board();
+  wheel({ deltaY: 120 });
+  expect(board()).toEqual({ ...start, y: start.y - 120 });
+  wheel({ deltaX: 40 });
+  expect(board()).toEqual({ ...start, x: start.x - 40, y: start.y - 120 });
+  // A trackpad pinch arrives as ctrl + wheel, and ⌘ + wheel is the mouse's way to the same.
+  wheel({ deltaY: -200, ctrlKey: true });
+  expect(board().scale).toBeGreaterThan(start.scale);
+  const zoomed = board().scale;
+  wheel({ deltaY: 200, metaKey: true });
+  expect(board().scale).toBeLessThan(zoomed);
   view.close();
 });

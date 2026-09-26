@@ -136,6 +136,19 @@
 	}
 </script>
 
+{#if !detail.spec && detail.revision === 0}
+	<!--
+		Nothing written up yet: one line, not a panel of blanks. There is no version to show and no
+		history to open, and no claim that it is being written up — it is only once someone speaks.
+	-->
+	<section class="plan-spec is-empty" aria-label={t.plan.spec.title} title={t.plan.noSpec}>
+		<span class="plan-spec-empty-title">{t.plan.spec.title}</span>
+		<span class="plan-spec-empty">{t.plan.noSpecShort}</span>
+		{#if detail.brief}
+			<span class="plan-spec-brief"><strong>{t.plan.brief}：</strong>{detail.brief}</span>
+		{/if}
+	</section>
+{:else}
 <section class="plan-spec" aria-label={t.plan.spec.title}>
 	<div class="plan-spec-head">
 		<button type="button" class="plan-spec-toggle" aria-expanded={open} onclick={toggle}>
@@ -400,6 +413,7 @@
 		{/if}
 	{/if}
 </section>
+{/if}
 
 <style>
 	.plan-spec {
@@ -582,6 +596,32 @@
 		font-size: 12px;
 		color: var(--ink-secondary);
 		overflow-wrap: anywhere;
+	}
+
+	.plan-spec.is-empty {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		padding: 8px 12px;
+		box-shadow: none;
+	}
+
+	.plan-spec-empty-title {
+		font: 600 12.5px/1.3 var(--font);
+		color: var(--ink);
+	}
+
+	.plan-spec.is-empty .plan-spec-empty {
+		color: var(--muted);
+	}
+
+	.plan-spec.is-empty .plan-spec-brief {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex: 1 1 12em;
 	}
 
 	/* Hero Goal Card */

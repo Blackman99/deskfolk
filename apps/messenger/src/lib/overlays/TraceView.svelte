@@ -38,6 +38,7 @@
 	import { prefersReducedMotion } from '../reduced-motion.ts';
 	import {
 		clampZoom,
+		defaultFolded,
 		filterTrace,
 		centerOnNode,
 		fitView,
@@ -53,8 +54,10 @@
 		highlightOf,
 		routeHighlightCounts,
 		pinchSpan,
+		roundTime,
 		traceFileName,
 		traceFlow,
+		traceRounds,
 		wokenByName,
 		zoomAt,
 		TRACE_CARD_WIDTH,
@@ -63,6 +66,7 @@
 		type RouteHighlight,
 		type TraceBox,
 		type TraceFocus,
+		type TraceRound,
 		type TraceView
 	} from './task-trace.ts';
 
@@ -160,15 +164,45 @@
 	 * one changes. The first pass uses the fallback size, which is close enough to not flash.
 	 */
 	let boxes = $state<Record<string, TraceBox>>({});
-	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes))) : null);
+	/**
+	 * Rounds you folded or unfolded yourself, over the board's own choice. Only for this job:
+	 * another job starts from its own defaults.
+	 */
+	let foldChoice = $state<Record<string, boolean>>({});
+	const rounds = $derived(shown ? traceRounds(shown.nodes) : []);
+	/**
+	 * A long job keeps its newest rounds open and folds the rest to a line each. A round stays open
+	 * while anything in it is still going, holds the card a message asked for, or holds a card a
+	 * ticket or a highlight is lighting — folding those away would hide the answer to the question.
+	 */
+	const folded = $derived.by(() => {
+		const asked = focus && shown ? focusNode(shown.nodes, focus)?.turn_id ?? null : null;
+		const next = defaultFolded(
+			rounds,
+			(node) =>
+				node.turn_id === asked ||
+				(selectedTicket !== null && node.ticket_id === selectedTicket) ||
+				highlightOf(node, lighting) === 'lit'
+		);
+		for (const [root, shut] of Object.entries(foldChoice)) {
+			if (shut) next.add(root);
+			else next.delete(root);
+		}
+		return next;
+	});
+	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded }) : null);
+
+	function toggleRound(root: string): void {
+		foldChoice = { ...foldChoice, [root]: !folded.has(root) };
+	}
 
 	/**
 	 * The board inside a fixed viewport: no scrollbars, it is dragged.
 	 *
 	 * A fan is wider than any window it opens in, and a scrollbar on each axis turns reading a
 	 * flow into operating a pair of sliders. So the viewport stays put and the board moves under
-	 * it — drag to pan, ⌘/Ctrl + wheel or two fingers to zoom, and the window's own corner still
-	 * resizes the viewport itself.
+	 * it — drag, the wheel or a two-finger swipe to pan, ⌘/Ctrl + wheel or a pinch to zoom, and the
+	 * window's own corner still resizes the viewport itself.
 	 *
 	 * One finger drags the board rather than the page. The board is the page here, so nothing is
 	 * stolen; it does mean the gesture has to be taken properly, which is why the listeners below
@@ -310,6 +344,10 @@
 		if (token === seenFocus) return;
 		seenFocus = token;
 		untrack(() => {
+			// A message asking for its card opens the round it is in, even one you folded.
+			const asked = focus && shown ? focusNode(shown.nodes, focus) : null;
+			const root = asked ? rounds.find((round) => round.members.includes(asked))?.root : undefined;
+			if (root && foldChoice[root]) foldChoice = { ...foldChoice, [root]: false };
 			userMoved = false;
 			glideThis = glideFromMemory || (fitted === currentId && currentId !== null);
 			glideFromMemory = false;
@@ -375,20 +413,21 @@
 
 	function onWheel(event: WheelEvent): void {
 		event.preventDefault();
-		// The wheel zooms, at the pointer. Panning is dragging — on a canvas that reads better
-		// than a wheel that scrolls a board with no scrollbar to scroll against. Shift is the
-		// usual escape hatch for nudging sideways, and a trackpad pinch arrives as ctrl+wheel,
-		// which lands here too.
-		if (event.shiftKey) {
-			userMoved = true;
-			stopGlide();
-			settle({ ...view, x: view.x - (event.deltaX || event.deltaY), y: view.y });
-			return;
-		}
 		userMoved = true;
 		stopGlide();
-		const step = Math.exp(-event.deltaY / 400);
-		settle(zoomAt(view, view.scale * step, localPoint(event)));
+		// ⌘/Ctrl + wheel zooms at the pointer, and a trackpad pinch arrives as ctrl+wheel too.
+		if (event.ctrlKey || event.metaKey) {
+			const step = Math.exp(-event.deltaY / 400);
+			settle(zoomAt(view, view.scale * step, localPoint(event)));
+			return;
+		}
+		// Anything else pans. The rounds stack down the board as they happen, so reading a job is
+		// going down it, and a wheel that zoomed instead turned that into dragging. A wheel that
+		// counts in lines (Firefox) is turned into pixels; Shift on a plain wheel goes sideways.
+		const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewportBox().height : 1;
+		const dx = (event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX) * unit;
+		const dy = (event.shiftKey && !event.deltaX ? 0 : event.deltaY) * unit;
+		settle({ ...view, x: view.x - dx, y: view.y - dy });
 	}
 
 	function onPointerDown(event: PointerEvent): void {
@@ -625,11 +664,14 @@
 	function selectTicket(id: string | null): void {
 		selectedTicket = id;
 		if (id) highlight = null;
+		// What is lit has to be on the board: rounds you folded give way to it.
+		if (id) foldChoice = {};
 	}
 
 	function toggleHighlight(kind: RouteHighlight): void {
 		highlight = lighting === kind ? null : kind;
 		if (highlight) selectedTicket = null;
+		if (highlight) foldChoice = {};
 	}
 
 	/** A ticket you moved comes back alone; the plan's counts and revision moved with it. */
@@ -684,7 +726,7 @@
 		return actorFace(actor, botsById, youLabel, deletedLabel);
 	}
 
-	function placeOf(node: TaskTraceNode): string {
+	function placeOf(node: { session_id: string }): string {
 		const session = sessionsById.get(node.session_id);
 		if (!session) return t.trace.sessionUnknown;
 		if (session.kind === 'group') return t.trace.sessionGroup(session.name ?? session.id);
@@ -724,6 +766,7 @@
 				openRoute = null;
 				selectedTicket = null;
 				segment = 'trace';
+				foldChoice = {};
 			}
 			currentId = next;
 			if (next) onTask?.(next);
@@ -937,9 +980,12 @@
 					{/if}
 				</span>
 				<span class="trace-card-who">{nameOf(node.actor)}</span>
-				<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
 				{#if ticket}
 					<span class="trace-ticket-tag mono" title={ticket.title}>{ticketTag(ticket.seq)}</span>
+				{/if}
+				{#if node.actor !== USER_MEMBER}
+					<!-- Your own line has no status worth reading: it was sent. -->
+					<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
 				{/if}
 			</span>
 			{#if from}
@@ -960,7 +1006,10 @@
 			{#if node.passed > 0}
 				<span class="trace-passed">{t.trace.passed(node.passed)}</span>
 			{/if}
-			<span class="trace-place">{placeOf(node)}</span>
+			{#if node.session_id !== shown?.session_id}
+				<!-- The header names the job's own conversation; only a card from elsewhere says where. -->
+				<span class="trace-place">{placeOf(node)}</span>
+			{/if}
 		</button>
 		{#if route}
 			<!-- How this turn ran: the model it was given, and the trouble that came of it. -->
@@ -1033,6 +1082,36 @@
 			</div>
 		{/if}
 	</article>
+{/snippet}
+
+{#snippet roundRow(round: TraceRound)}
+	<!-- One line per round: folded, it stands in for the whole round; open, it heads it. -->
+	<button
+		type="button"
+		class="trace-round"
+		class:is-folded={round.folded}
+		class:is-live={round.live}
+		style="left: {round.header!.x}px; top: {round.header!.y}px; width: {round.header!.width}px; height: {round.header!.height}px;"
+		aria-expanded={!round.folded}
+		title={round.folded ? t.trace.roundUnfold : t.trace.roundFold}
+		onclick={() => toggleRound(round.root)}
+	>
+		<svg class="trace-round-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
+		{#if round.folded}
+			<span class="trace-round-said"><span class="trace-round-who">{nameOf(round.node.actor)}</span>{round.node.summary}</span>
+		{/if}
+		<span class="trace-round-meta mono" title={formatFullTimestamp(round.node.created_at)}>{roundTime(round.node.created_at)}</span>
+		<span class="trace-round-meta">{t.trace.roundCards(round.cards)}{#if round.files > 0}{` · ${t.trace.roundFiles(round.files)}`}{/if}</span>
+		{#each round.ticketIds as id (id)}
+			{@const ticket = ticketsById.get(id)}
+			{#if ticket}
+				<span class="trace-ticket-tag mono" title={ticket.title}>{ticketTag(ticket.seq)}</span>
+			{/if}
+		{/each}
+		{#if round.live}
+			<span class="trace-round-live" title={t.trace.status.running} aria-label={t.trace.status.running}></span>
+		{/if}
+	</button>
 {/snippet}
 
 {#snippet routeDetail(node: TaskTraceNode, route: RouteLogRow)}
@@ -1204,12 +1283,13 @@
 						{#if detail && totalTicketCount(detail.ticket_counts) > 0}
 							 · {t.plan.ticketCounts(openTicketCount(detail.ticket_counts), totalTicketCount(detail.ticket_counts))}
 						{/if}
+						{#if trace.session_id} · {placeOf({ session_id: trace.session_id })}{/if}
 						 · <span class="mono">{trace.dir}</span>
 					</span>
 				{/if}
 			</div>
 			<div class="trace-header-end">
-				{#if detail}
+				{#if detail && detail.tickets.length > 0}
 					<!-- Only a narrow host shows these: there the rail and the tree take turns. -->
 					<div class="trace-segments" role="tablist" aria-label={t.plan.tickets}>
 						<button type="button" role="tab" aria-selected={segment === 'trace'} class:is-on={segment === 'trace'} onclick={() => (segment = 'trace')}>{t.plan.segmentTrace}</button>
@@ -1311,7 +1391,7 @@
 						{t.trace.failed}
 						<button type="button" onclick={() => void load(currentId ?? taskId)}>{t.trace.retry}</button>
 					</p>
-				{:else if !flow || flow.placements.length === 0}
+				{:else if !flow || flow.rounds.length === 0}
 					<p class="trace-empty">{t.trace.none}</p>
 				{:else}
 					<div
@@ -1331,6 +1411,11 @@
 								<path d={edge.path} />
 							{/each}
 						</svg>
+						{#each flow.rounds as round (round.root)}
+							{#if round.header}
+								{@render roundRow(round)}
+							{/if}
+						{/each}
 						{#each flow.placements as placement (placement.node.turn_id)}
 							<div
 								class="trace-slot"
@@ -1350,7 +1435,8 @@
 				{/if}
 		</div>
 		</div>
-		{#if detail}
+		{#if detail && detail.tickets.length > 0}
+			<!-- An empty ticket list is a quarter of the board saying nothing; it comes with the first ticket. -->
 			<aside class="trace-rail">
 				<TicketList
 					{api}
@@ -1860,28 +1946,84 @@
 		gap: 8px;
 	}
 
-	/* Over the board, at life size. Against the board rather than the screen: in a pane the
-	   screen is the wrong thing to cover, and the host decides how big the board is. */
-	.trace-output-layer {
+	/* A round's line: quieter than a card when it heads an open round, a list row when folded. */
+	.trace-round {
 		position: absolute;
-		inset: 12px;
-		z-index: 120;
 		display: flex;
-		pointer-events: auto;
-		box-shadow: 0 24px 64px rgb(0 0 0 / 45%);
-		border-radius: var(--radius-md);
-		overflow: hidden;
+		align-items: center;
+		gap: 6px;
+		padding: 0 10px;
+		border: 1px dashed var(--line);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted);
+		font-size: 11px;
+		line-height: 1;
+		text-align: left;
+		white-space: nowrap;
+		cursor: pointer;
 	}
 
-	.trace-output-layer > :global(*) {
+	.trace-round:hover {
+		background: var(--line-subtle);
+		color: var(--ink-secondary);
+	}
+
+	.trace-round:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	.trace-round.is-folded {
+		border-style: solid;
+		border-radius: var(--radius-md);
+		background: var(--pane);
+	}
+
+	.trace-round-caret {
+		flex: none;
+		transform: rotate(90deg);
+		transition: transform 0.15s ease;
+	}
+
+	.trace-round.is-folded .trace-round-caret {
+		transform: none;
+	}
+
+	.trace-round-said {
 		flex: 1;
 		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--ink-secondary);
+		font-size: 12px;
 	}
 
-	.trace-output-stop {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
+	.trace-round-who {
+		margin-right: 4px;
+		color: var(--ink);
+		font-weight: 600;
+	}
+
+	.trace-round-who::after {
+		content: '：';
+	}
+
+	.trace-round-meta {
+		flex: none;
+	}
+
+	/* An open round's line is only its facts; push them to the middle so it reads as a divider. */
+	.trace-round:not(.is-folded) {
+		justify-content: center;
+	}
+
+	.trace-round-live {
+		flex: none;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--accent);
 	}
 
 	.trace-empty {

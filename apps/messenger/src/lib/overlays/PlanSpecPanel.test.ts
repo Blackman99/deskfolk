@@ -300,6 +300,29 @@ test("an empty history says so", async () => {
   view.close();
 });
 
+test("before its first write-up the plan is one line: nothing yet, and the opening request", () => {
+  // A panel of blanks with a version 0 and an "organizing" note that stayed up whether or not
+  // anything was being written up took a quarter of the board to say nothing.
+  const view = open({ detail: aDetail({ spec: null, revision: 0, revision_actor: null, brief: "先看看方案" }) });
+  const panel = view.host.querySelector(".plan-spec");
+  expect(panel?.classList.contains("is-empty")).toBe(true);
+  expect(panel?.getAttribute("title")).toBe(t.plan.noSpec);
+  expect(view.host.querySelector(".plan-spec-empty")?.textContent).toBe(t.plan.noSpecShort);
+  expect(view.host.querySelector(".plan-spec-brief")?.textContent).toContain("先看看方案");
+  expect(view.host.querySelector(".plan-spec-toggle")).toBeNull();
+  expect(view.host.querySelector(".plan-spec-foot")).toBeNull();
+  view.close();
+});
+
+test("a null spec past revision 0 keeps the panel, so its history can still be opened", () => {
+  const view = open({ detail: aDetail({ spec: null, revision: 2, brief: null }) });
+  expect(view.host.querySelector(".plan-spec")?.classList.contains("is-empty")).toBe(false);
+  expect(view.host.querySelector(".plan-spec-empty")?.textContent).toBe(t.plan.noSpec);
+  expect(view.host.querySelector(".plan-spec-brief")).toBeNull();
+  expect(view.host.querySelector(".plan-spec-history-toggle")).not.toBeNull();
+  view.close();
+});
+
 test("without an api the panel is read-only: no edit buttons, no history toggle", () => {
   const view = open({ api: null });
   expect(view.host.querySelectorAll(".plan-spec-edit-btn")).toHaveLength(0);

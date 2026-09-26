@@ -13,7 +13,11 @@ import {
   focusNode,
   glideEase,
   glideView,
+  defaultFolded,
   openView,
+  roundTime,
+  traceRounds,
+  TRACE_ROUND_HEIGHT,
   pinchSpan,
   saidNothing,
   TRACE_READABLE_ZOOM,
@@ -410,4 +414,80 @@ test("a Bot's turn that left no line of its own says so instead of repeating the
   expect(saidNothing(node({ ...woke, status: "running" }))).toBe(false);
   expect(saidNothing(node({ ...woke, status: "waiting_ask", ask: { message_id: "m-trigger", question: "?" } }))).toBe(false);
   expect(saidNothing(node({ ...woke, actor: USER_MEMBER }))).toBe(false);
+});
+
+/** Rounds of one line of yours and one Bot answering it, a minute apart. */
+function chatty(count: number, over: (index: number) => Partial<TaskTraceNode> = () => ({})): TaskTraceNode[] {
+  return Array.from({ length: count }, (_, index) => {
+    const minute = String(index).padStart(2, "0");
+    return [
+      node({ turn_id: `you-${index}`, actor: USER_MEMBER, created_at: `2026-09-22T00:${minute}:00.000Z`, summary: `第 ${index} 句` }),
+      node({ turn_id: `bot-${index}`, woken_by_turn_id: `you-${index}`, created_at: `2026-09-22T00:${minute}:30.000Z`, ...over(index) }),
+    ];
+  }).flat();
+}
+
+test("a folded round is its line alone, and folded lines stack close like a list", () => {
+  const nodes = chatty(5);
+  const open = traceFlow(trace(nodes));
+  const folded = traceFlow(trace(nodes), new Map(), { folded: new Set(["you-0", "you-1", "you-2"]) });
+  const ids = folded.placements.map((p) => p.node.turn_id);
+  expect(ids).toEqual(["you-3", "bot-3", "you-4", "bot-4"]);
+  expect(folded.edges.map((edge) => `${edge.from}>${edge.to}`)).toEqual(["you-3>bot-3", "you-4>bot-4"]);
+  const [a, b, c, d] = folded.rounds;
+  expect([a, b, c, d].map((round) => round!.folded)).toEqual([true, true, true, false]);
+  // Two folded lines in a row are a few pixels apart; an open round keeps its distance.
+  expect(b!.header!.y - (a!.header!.y + TRACE_ROUND_HEIGHT)).toBeLessThan(12);
+  expect(d!.header!.y - (c!.header!.y + TRACE_ROUND_HEIGHT)).toBeGreaterThan(30);
+  // Every line and every round's first card sit on the spine.
+  for (const round of folded.rounds) expect(round.header!.x + round.header!.width / 2).toBe(folded.spine);
+  expect(folded.height).toBeLessThan(open.height / 2);
+  // A round's line knows what it stands for.
+  expect(a).toMatchObject({ root: "you-0", cards: 2, files: 0, live: false });
+  expect(a!.node.summary).toBe("第 0 句");
+});
+
+test("a board of one round has no round lines, and folding it does nothing", () => {
+  const nodes = chatty(1);
+  const flow = traceFlow(trace(nodes), new Map(), { folded: new Set(["you-0"]) });
+  expect(flow.rounds).toHaveLength(1);
+  expect(flow.rounds[0]!.header).toBeNull();
+  expect(flow.placements).toHaveLength(2);
+});
+
+test("a round's line lists the tickets its turns worked in, and says when something is still going", () => {
+  const nodes = [
+    node({ turn_id: "you", actor: USER_MEMBER, created_at: "2026-09-22T00:00:00.000Z" }),
+    node({ turn_id: "a", woken_by_turn_id: "you", ticket_id: "t2", created_at: "2026-09-22T00:00:01.000Z" }),
+    node({ turn_id: "b", woken_by_turn_id: "you", ticket_id: "t1", created_at: "2026-09-22T00:00:02.000Z" }),
+    node({
+      turn_id: "c",
+      woken_by_turn_id: "a",
+      ticket_id: "t2",
+      status: "running",
+      created_at: "2026-09-22T00:00:03.000Z",
+      artifacts: [{ path: "x.png", message_id: "m", attachment_id: "f" }],
+    }),
+    node({ turn_id: "you-2", actor: USER_MEMBER, created_at: "2026-09-22T00:01:00.000Z" }),
+  ];
+  const [first, second] = traceFlow(trace(nodes)).rounds;
+  expect(first).toMatchObject({ ticketIds: ["t2", "t1"], live: true, cards: 4, files: 1 });
+  expect(second).toMatchObject({ ticketIds: [], live: false, cards: 1 });
+});
+
+test("a long job folds all but its newest rounds, and never what is still going or what you asked for", () => {
+  // Three rounds or fewer: nothing is worth folding.
+  expect([...defaultFolded(traceRounds(chatty(3)))]).toEqual([]);
+  expect([...defaultFolded(traceRounds(chatty(6)))]).toEqual(["you-0", "you-1", "you-2", "you-3"]);
+  // Round 1 has a turn still running; round 2 holds the card a message asked for.
+  const nodes = chatty(6, (index) => (index === 1 ? { status: "running" } : {}));
+  const asked = "bot-2";
+  expect([...defaultFolded(traceRounds(nodes), (row) => row.turn_id === asked)]).toEqual(["you-0", "you-3"]);
+});
+
+test("a round's time is the clock for today and carries the date before that", () => {
+  const now = new Date(2026, 8, 25, 18, 0);
+  expect(roundTime(new Date(2026, 8, 25, 9, 5).toISOString(), now)).toBe("09:05");
+  expect(roundTime(new Date(2026, 8, 24, 21, 30).toISOString(), now)).toBe("09-24 21:30");
+  expect(roundTime("not a time", now)).toBe("");
 });

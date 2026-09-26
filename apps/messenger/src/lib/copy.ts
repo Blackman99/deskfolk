@@ -994,6 +994,10 @@ const zh = {
     filter: "只看还在进行的，和交出了产物的",
     passed: (count: number) => `${count} 人旁观`,
     silent: "这一轮没发言",
+    roundFold: "收起这一段",
+    roundUnfold: "展开这一段",
+    roundCards: (count: number) => `${count} 张卡`,
+    roundFiles: (count: number) => `${count} 个文件`,
     wokenBy: (name: string) => `由${name}的上一轮叫醒`,
     sessionGroup: (name: string) => `群 · ${name}`,
     sessionDirect: (name: string) => `与${name}的私聊`,
@@ -1019,6 +1023,7 @@ const zh = {
     }
   },
   plan: {
+    noSpecShort: "还没整理出要点",
     noSpec: "还没有整理出要点。等这件事有人动过，应用会整理出目标、验收和任务。",
     brief: "开头的要求",
     kind: "类别",
@@ -2181,6 +2186,10 @@ const en: CopyShape<typeof zh> = {
     filter: "Only what’s still going, and what handed a file over",
     passed: (count: number) => `${count} watched`,
     silent: "Said nothing this turn",
+    roundFold: "Fold this round",
+    roundUnfold: "Unfold this round",
+    roundCards: (count: number) => (count === 1 ? "1 card" : `${count} cards`),
+    roundFiles: (count: number) => (count === 1 ? "1 file" : `${count} files`),
     wokenBy: (name: string) => `Woken by ${name}`,
     sessionGroup: (name: string) => `Group · ${name}`,
     sessionDirect: (name: string) => `Direct with ${name}`,
@@ -2206,6 +2215,7 @@ const en: CopyShape<typeof zh> = {
     }
   },
   plan: {
+    noSpecShort: "Not written up yet",
     noSpec: "No plan yet. Once someone has worked on this, the app writes up the goal, what counts as done, and the tickets.",
     brief: "Opening request",
     kind: "Kind",
