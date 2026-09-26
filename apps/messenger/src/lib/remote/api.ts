@@ -77,6 +77,7 @@ import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "../api.ts"
 import { createAnnotation, listAnnotations, patchAnnotation, sendAnnotations, type SendAnnotationsResult } from "../annotations/client.ts";
 import { shrinkCrop, type CropCodec } from "../annotations/region-box.ts";
 import type { FileLoadOptions, FileProgressHandler, ImageSize } from "../file-progress.ts";
+import { SentFiles, type PictureScaler } from "./sent-files.ts";
 import type { LocalEndpoint } from "../discovery.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { ulid } from "./ids.ts";
@@ -229,6 +230,8 @@ export class RemoteApi {
   private readonly identity: IdentitySecrets;
   private revisions = new Map<string, string>();
   private settingsRev: number | undefined;
+  /** What this page uploaded, read back from here instead of over the relay. */
+  private readonly sent: SentFiles;
   uvReady = false;
   constructor(
     readonly enrollment: StoredEnrollment,
@@ -237,10 +240,13 @@ export class RemoteApi {
       rpc?: (request: RemoteRequest) => Promise<RemoteResponse>;
       /** Re-encodes a crop that does not fit a frame; the browser's canvas unless a test hands one in. */
       cropCodec?: CropCodec;
+      /** Makes a sent picture's thumbnail; the browser's canvas unless a test hands one in. */
+      pictureScaler?: PictureScaler;
     } = {},
     restore: DurablePendingRequest[] = [],
   ) {
     this.identity = identityFrom(enrollment);
+    this.sent = new SentFiles(hooks.pictureScaler);
     this.endpoint = { origin: enrollment.relayOrigin, token: "" };
     this.restorePending(restore);
   }
@@ -515,13 +521,15 @@ export class RemoteApi {
     onUploadProgress?: FileProgressHandler;
   } = {}): Promise<Message> {
     const files = opts.attachments?.length ? await attachmentManifest(opts.attachments) : [];
-    return this.request<Message>("POST", `/v1/sessions/${sessionId}/messages`, {
+    const message = await this.request<Message>("POST", `/v1/sessions/${sessionId}/messages`, {
       body,
       parent_id: opts.parentId ?? null,
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
       ...(files.length ? { files: files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 })) } : {}),
     }, undefined, {}, false, null, opts.requestId, files, opts.onUploadProgress);
+    if (files.length) this.sent.remember(opts.attachments!.map((file, i) => ({ file, sha256: files[i]!.sha256 })), message?.attachments);
+    return message;
   }
   /** What this job cited, pulled once when its entry is opened. There is no push event for it. */
   async taskArtifacts(taskId: string): Promise<TaskArtifacts> {
@@ -610,12 +618,29 @@ export class RemoteApi {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
   }
   async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
+    const sent = this.sent.read({ path }, options?.size);
+    const blob = sent && await sent;
+    if (blob) return this.fromHere(blob, onProgress);
     return this.fileBlob("/v1/workspace/file", { path }, onProgress, options);
   }
   async getAttachmentBlob(id: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {
+    const sent = this.sent.read({ attachmentId: id }, options?.size);
+    const blob = sent && await sent;
+    if (blob) return this.fromHere(blob, onProgress);
     return this.fileBlob(`/v1/attachments/${id}/content`, undefined, onProgress, options);
   }
+  /** A file this page sent, read from here: those bytes already crossed the relay once. */
+  private fromHere(blob: Blob, onProgress?: FileProgressHandler): Blob {
+    onProgress?.({ loaded: blob.size, total: blob.size });
+    return blob;
+  }
   async openMediaSource(source: { path: string; attachmentId?: string }, signal?: AbortSignal, onError?: () => void): Promise<MediaSourceHandle | null> {
+    const pending = this.sent.read(source);
+    const sent = pending && await pending;
+    if (sent) {
+      const url = URL.createObjectURL(sent);
+      return { url, dispose: () => URL.revokeObjectURL(url) };
+    }
     const path = source.attachmentId ? `/v1/attachments/${source.attachmentId}/content` : "/v1/workspace/file";
     return createRemoteMediaSource(async (range, signal) => {
       const response = await this.dispatch({
