@@ -178,6 +178,7 @@ export type MessageRow = {
   body: string;
   source_turn_id: string | null;
   task_id: string | null;
+  ticket_id?: string | null;
   /** Set on an annotation batch routed into your direct: the Bot↔Bot message it points back at. */
   annotation_source_message_id?: string | null;
   message_seq?: number;
@@ -192,6 +193,7 @@ export type TurnRow = {
   trigger_message_id: string;
   partial_text?: string | null;
   task_id: string | null;
+  ticket_id?: string | null;
   pending_ask_id?: string | null;
   routine_id?: string | null;
   routine_due_at?: string | null;

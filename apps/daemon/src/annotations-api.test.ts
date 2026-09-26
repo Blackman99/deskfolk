@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { USER_MEMBER, type Annotation, type Message } from "@real-bot/protocol";
 import { createLocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
-import { Store, TASK_QUIET_MS } from "./store";
+import { Store } from "./store";
 import { sha256 } from "./request-digest";
 import { ulid } from "./ids";
 import type { CompletionRequest, CompletionResult, CompletionsClient } from "./completions";
@@ -193,10 +193,9 @@ describe("sending a batch over HTTP", () => {
   test("makes one quoted reply that names the Bot, opens the drafts, and wakes the Bot in the delivery's folder", async () => {
     const h = await start();
     const { bot, direct, delivery, turn } = delivered(h);
-    // Long quiet, and another job since: an ordinary message would get a new folder.
-    h.store.db.run("UPDATE turns SET last_activity_at = ? WHERE id = ?", [new Date(Date.now() - TASK_QUIET_MS * 2).toISOString(), turn.id]);
+    // Another plan since: an ordinary message would land there, not in the delivery's folder.
     const other = h.store.postMessage(direct, { body: "另一件事" });
-    const otherTurn = h.store.createTurn({ sessionId: direct, botId: bot.id, triggerMessageId: other.id, newTask: true });
+    const otherTurn = h.store.createTurn({ sessionId: direct, botId: bot.id, triggerMessageId: other.id, taskId: h.store.openTask({ sessionId: direct, title: "另一件事" }).id });
     h.store.setTurnStatus(otherTurn.id, "completed");
     expect(h.store.getTask(turn.task_id!).closed_at).not.toBeNull();
 

@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { extname } from "node:path";
-import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
+import { USER_MEMBER, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { annotationContext } from "./annotation-context";
 import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
@@ -9,7 +9,7 @@ import {
   COMPOSER_SUGGEST_RECENT,
   type ComposerSuggestPayload,
 } from "./prompts/composer-suggestions";
-import { TASK_QUIET_MS, type Store } from "./store";
+import { parsePlanSpec, type PlanSpec, type Store } from "./store";
 import { codePointCount, takeCodePoints } from "./text";
 import { visionImage } from "./vision-image";
 import { classifyPath } from "./workspace-paths";
@@ -113,11 +113,38 @@ export function assembleTurnMessages(
   return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
 }
 
+export type PlanTicketFact = {
+  id: string;
+  seq: number;
+  title: string;
+  status: TicketStatus;
+  /** The Bot's display name, when one is on it. */
+  worker: string | null;
+  /** Up to a few of the files filed under it, newest cited first. */
+  artifacts: string[];
+};
+
+export type PlanPrecedent = { goal: string; process: string[]; rules: string[]; outcome: string[] };
+
 export type PlanFacts = {
   /** The plan has no spec yet and no other turn: the trigger is the request, and it can still be clarified. */
   first_turn: boolean;
   /** The request that opened the plan, one line, clipped to {@link BRIEF_LIMIT}. */
   brief: string | null;
+  /** The organizer's reading of the plan; null until it has run. */
+  goal: string | null;
+  kind: string | null;
+  status: PlanStatus;
+  acceptance: string[];
+  rules: string[];
+  process: string[];
+  progress: PlanSpec["progress"] | null;
+  /** The plan's tickets, open ones first. */
+  tickets: PlanTicketFact[];
+  /** The ticket this turn works in, when it has one. */
+  ticket: { id: string; seq: number; title: string; status: TicketStatus; spec: string; dir: string } | null;
+  /** Finished plans of the same kind, newest first: how this kind of thing went last time. */
+  precedents: PlanPrecedent[];
   /** Workspace paths the plan's messages cited and that still exist, newest cited first. */
   artifacts: string[];
   /** One line per earlier turn: who, and their last word or the question they are waiting on. */
@@ -125,6 +152,15 @@ export type PlanFacts = {
   /** The appointment this Bot still has in this session, if any. */
   check_back: { in_minutes: number; note: string } | null;
 };
+
+/** Tickets the situation block lists; a plan past this says how many more there are. */
+export const PLAN_TICKET_LINES = 20;
+/** Finished plans of the same kind the block recounts. */
+export const PLAN_PRECEDENTS_LIMIT = 3;
+/** Files named on one ticket's line. */
+const TICKET_ARTIFACT_LINES = 3;
+
+const TICKET_ORDER: Record<TicketStatus, number> = { doing: 0, review: 1, todo: 2, parked: 3, done: 4 };
 
 /**
  * What a plan looks like from outside the transcript window: what it is for as the organizer last
@@ -138,6 +174,8 @@ export function planFacts(
   store: Store,
   input: {
     taskId: string;
+    /** The ticket the turn works in, when known. */
+    ticketId?: string | null;
     /** The turn being assembled; null for a judgement, which has no turn yet. */
     turnId: string | null;
     triggerMessageId: string | null;
@@ -154,10 +192,46 @@ export function planFacts(
     return null;
   }
   const now = input.now ?? new Date();
-  const firstTurn = !store.taskHasEarlierTurns(input.taskId, input.turnId ?? "");
+  const spec = parsePlanSpec(task.spec);
+  const firstTurn = !spec && !store.taskHasEarlierTurns(input.taskId, input.turnId ?? "");
   const brief = task.brief ? oneLineClip(task.brief, BRIEF_LIMIT) : null;
   const cited = store.taskArtifacts(input.taskId, (relpath) => workspaceFileExists(store, relpath), JOB_ARTIFACTS_LIMIT);
   const artifacts = cited.map((row) => row.path);
+  const byTicket = new Map<string, string[]>();
+  for (const row of cited) {
+    if (!row.ticket_id) continue;
+    const list = byTicket.get(row.ticket_id) ?? [];
+    if (list.length < TICKET_ARTIFACT_LINES) list.push(row.path);
+    byTicket.set(row.ticket_id, list);
+  }
+  const tickets: PlanTicketFact[] = store
+    .listTickets(input.taskId)
+    .map((ticket) => ({
+      id: ticket.id,
+      seq: ticket.seq,
+      title: ticket.title,
+      status: ticket.status,
+      worker: ticket.worker ? botDisplayName(store, ticket.worker) : null,
+      artifacts: byTicket.get(ticket.id) ?? [],
+    }))
+    .sort((a, b) => TICKET_ORDER[a.status] - TICKET_ORDER[b.status] || a.seq - b.seq);
+  let ticket: PlanFacts["ticket"] = null;
+  if (input.ticketId) {
+    try {
+      const row = store.getTicket(input.ticketId);
+      ticket = { id: row.id, seq: row.seq, title: row.title, status: row.status, spec: row.spec, dir: row.dir };
+    } catch {
+      ticket = null;
+    }
+  }
+  const precedents: PlanPrecedent[] = [];
+  if (spec?.kind) {
+    for (const earlier of store.precedentTasks(spec.kind, input.taskId, PLAN_PRECEDENTS_LIMIT)) {
+      const done = parsePlanSpec(earlier.spec);
+      if (!done) continue;
+      precedents.push({ goal: done.goal, process: done.process, rules: done.rules, outcome: done.progress.done });
+    }
+  }
   const trace: string[] = [];
   if (!firstTurn) {
     const nodes = store
@@ -184,10 +258,43 @@ export function planFacts(
   return {
     first_turn: firstTurn,
     brief,
+    goal: spec?.goal ?? null,
+    kind: spec?.kind ?? task.kind,
+    status: task.status,
+    acceptance: spec?.acceptance ?? [],
+    rules: spec?.rules ?? [],
+    process: spec?.process ?? [],
+    progress: spec?.progress ?? null,
+    tickets,
+    ticket,
+    precedents,
     artifacts,
     trace,
     check_back,
   };
+}
+
+const PLAN_STATUS_LABEL: Record<PlanStatus, { zh: string; en: string }> = {
+  active: { zh: "进行中", en: "active" },
+  done: { zh: "已完成", en: "done" },
+  parked: { zh: "搁置", en: "parked" },
+};
+
+const TICKET_STATUS_LABEL: Record<TicketStatus, { zh: string; en: string }> = {
+  todo: { zh: "待做", en: "to do" },
+  doing: { zh: "进行中", en: "doing" },
+  review: { zh: "待验收", en: "review" },
+  done: { zh: "已完成", en: "done" },
+  parked: { zh: "搁置", en: "parked" },
+};
+
+function ticketLine(ticket: PlanTicketFact, locale: Locale): string {
+  const en = locale === "en";
+  const number = String(ticket.seq).padStart(2, "0");
+  const bits = [TICKET_STATUS_LABEL[ticket.status][locale]];
+  if (ticket.worker) bits.push(en ? `${ticket.worker} on it` : `${ticket.worker}在做`);
+  if (ticket.artifacts.length > 0) bits.push(ticket.artifacts.join(en ? ", " : "、"));
+  return en ? `${number} ${ticket.title} (${bits.join("; ")})` : `${number} ${ticket.title}（${bits.join("；")}）`;
 }
 
 /** A turn that is not simply done says so on its trace line; a completed one needs no label. */
@@ -224,11 +331,49 @@ function workspaceFileExists(store: Store, relpath: string): boolean {
 /** The plan's lines of the situation block, after the group facts and before the work dir. */
 export function planLines(facts: PlanFacts, locale: Locale): string[] {
   const en = locale === "en";
+  const sep = en ? "; " : "；";
   const lines: string[] = [];
-  if (facts.first_turn) {
+  if (facts.goal) {
+    const tags = [facts.kind, PLAN_STATUS_LABEL[facts.status][locale]].filter((tag): tag is string => Boolean(tag));
+    lines.push(en ? `Plan: ${facts.goal} (${tags.join(", ")})` : `规划：${facts.goal}（${tags.join("，")}）`);
+    if (facts.acceptance.length > 0) lines.push(`${en ? "Acceptance: " : "验收："}${facts.acceptance.join(sep)}`);
+    if (facts.rules.length > 0) lines.push(`${en ? "Rules: " : "规则："}${facts.rules.join(sep)}`);
+    if (facts.process.length > 0) lines.push(`${en ? "Process: " : "流程与分工："}${facts.process.join(sep)}`);
+    if (facts.progress) {
+      const parts: string[] = [];
+      if (facts.progress.done.length > 0) parts.push(`${en ? "done: " : "已完成 "}${facts.progress.done.join(en ? ", " : "、")}`);
+      if (facts.progress.open.length > 0) parts.push(`${en ? "open: " : "待做 "}${facts.progress.open.join(en ? ", " : "、")}`);
+      if (facts.progress.blocked.length > 0) parts.push(`${en ? "blocked: " : "卡住 "}${facts.progress.blocked.join(en ? ", " : "、")}`);
+      if (parts.length > 0) lines.push(`${en ? "Progress: " : "进展："}${parts.join(sep)}`);
+    }
+  } else if (facts.first_turn) {
     lines.push(en ? "This is the first turn of this job." : "这是这件事的第一轮。");
   } else if (facts.brief) {
     lines.push(en ? `What this job was asked for: ${facts.brief}` : `这件事最初的要求：${facts.brief}`);
+  }
+  if (facts.tickets.length > 0) {
+    const shown = facts.tickets.slice(0, PLAN_TICKET_LINES);
+    const rest = facts.tickets.length - shown.length;
+    const rows = shown.map((ticket) => `- ${ticketLine(ticket, locale)}`);
+    if (rest > 0) rows.push(en ? `- … and ${rest} more` : `- …还有 ${rest} 条`);
+    lines.push(`${en ? "Tickets:" : "任务清单："}\n${rows.join("\n")}`);
+  }
+  if (facts.ticket) {
+    const number = String(facts.ticket.seq).padStart(2, "0");
+    const head = en
+      ? `This turn's ticket: ${number} ${facts.ticket.title} (${TICKET_STATUS_LABEL[facts.ticket.status].en})`
+      : `本轮任务：${number} ${facts.ticket.title}（${TICKET_STATUS_LABEL[facts.ticket.status].zh}）`;
+    lines.push(facts.ticket.spec ? `${head}${en ? " — " : "——"}${oneLineClip(facts.ticket.spec, 600)}` : head);
+  }
+  if (facts.precedents.length > 0) {
+    const rows = facts.precedents.map((earlier) => {
+      const bits: string[] = [];
+      if (earlier.process.length > 0) bits.push(`${en ? "process: " : "流程 "}${earlier.process.join(en ? ", " : "、")}`);
+      if (earlier.rules.length > 0) bits.push(`${en ? "rules: " : "规则 "}${earlier.rules.join(en ? ", " : "、")}`);
+      if (earlier.outcome.length > 0) bits.push(`${en ? "outcome: " : "结局 "}${earlier.outcome.join(en ? ", " : "、")}`);
+      return en ? `- "${earlier.goal}": ${bits.join("; ") || "(no notes)"}` : `- 「${earlier.goal}」：${bits.join("；") || "（没有记录）"}`;
+    });
+    lines.push(`${en ? "Precedents (finished plans of this kind):" : "先例（同类做完的）："}\n${rows.join("\n")}`);
   }
   if (facts.artifacts.length > 0) {
     lines.push(
@@ -300,14 +445,20 @@ function situationUserMessage(
     return null;
   }
   const taskId = store.taskOfTurn(turnId);
+  const ticketId = store.ticketOfTurn(turnId);
   const workDir = store.turnWorkDir(turnId);
+  const planDir = ticketId ? store.turnPlanDir(turnId) : null;
   const workDirLine = workDir
-    ? locale === "en"
-      ? `This turn's work dir: ${workDir}/`
-      : `本轮工作目录：${workDir}/`
+    ? ticketId && planDir
+      ? locale === "en"
+        ? `This turn's ticket dir: ${workDir}/ (plan dir: ${planDir}/)`
+        : `本轮任务目录：${workDir}/（规划目录：${planDir}/）`
+      : locale === "en"
+        ? `This turn's work dir: ${workDir}/`
+        : `本轮工作目录：${workDir}/`
     : null;
   const facts = taskId
-    ? planFacts(store, { taskId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
+    ? planFacts(store, { taskId, ticketId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
     : null;
   const job = facts ? planLines(facts, locale) : [];
   if (sessionKind !== "group") {
@@ -639,7 +790,8 @@ export function assembleComposerSuggestUser(store: Store, sessionId: string): st
       ? "user"
       : botDisplayName(store, last.author)
     : "user";
-  const open = store.joinableTask(sessionId, new Date(Date.now() - TASK_QUIET_MS).toISOString());
+  const open = store.sessionCurrentTask(sessionId);
+  const spec = open ? parsePlanSpec(open.spec) : null;
   const payload: ComposerSuggestPayload = {
     session: { id: session.id, kind: session.kind, name: session.name },
     members,
@@ -648,7 +800,16 @@ export function assembleComposerSuggestUser(store: Store, sessionId: string): st
       waker,
       latest_user: latest ? latest.body.replace(/\s+/g, " ").trim().slice(0, LATEST_USER_LIMIT) || null : null,
     },
-    job: open?.brief ? { brief: oneLineClip(open.brief, BRIEF_LIMIT) } : null,
+    plan: open
+      ? {
+          goal: spec?.goal ?? (open.brief ? oneLineClip(open.brief, BRIEF_LIMIT) : null),
+          acceptance: spec?.acceptance ?? [],
+          open_tickets: store
+            .listTickets(open.id)
+            .filter((ticket) => ticket.status !== "done" && ticket.status !== "parked")
+            .map((ticket) => ticket.title),
+        }
+      : null,
     recent_messages: recent,
   };
   return JSON.stringify(payload);
@@ -687,10 +848,11 @@ export function assembleJudgementUser(store: Store, input: {
   // The plan this message lands in — the one the organizer filed it under, else the session's
   // current one: the judgement then weighs what the plan still lacks, not just whether this one
   // line sounds like the Bot's business.
-  const filed = input.message.task_id ?? store.joinableTask(input.sessionId, new Date(Date.now() - TASK_QUIET_MS).toISOString())?.id ?? null;
+  const filed = input.message.task_id ?? store.sessionCurrentTask(input.sessionId)?.id ?? null;
   const facts = filed
     ? planFacts(store, {
         taskId: filed,
+        ticketId: input.message.ticket_id ?? null,
         turnId: null,
         triggerMessageId: input.message.id,
         botId: input.botId,
@@ -700,8 +862,15 @@ export function assembleJudgementUser(store: Store, input: {
     : null;
   const plan = facts
     ? {
+        goal: facts.goal,
+        kind: facts.kind,
+        status: facts.status,
         brief: facts.brief,
         first_turn: facts.first_turn,
+        acceptance: facts.acceptance,
+        rules: facts.rules,
+        tickets: facts.tickets.map((ticket) => ({ seq: ticket.seq, title: ticket.title, status: ticket.status, worker: ticket.worker })),
+        message_ticket: facts.ticket ? { seq: facts.ticket.seq, title: facts.ticket.title, spec: facts.ticket.spec } : null,
         artifacts: facts.artifacts,
         trace: facts.trace,
       }

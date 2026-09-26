@@ -1,11 +1,12 @@
 import { expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
-import { USER_MEMBER, type RouteRecord, type SessionTaskSummary, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
 mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
 const { default: TaskTraceView } = await import("./TaskTrace.svelte");
+const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aGroup } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
@@ -27,11 +28,69 @@ const direct = aDirect({
 function job(over: Partial<SessionTaskSummary> = {}): SessionTaskSummary {
   return {
     id: "task-1",
-    dir: "work/2026-09-22-先出分镜-7f3k",
+    dir: "work/先出分镜-7f3k",
     title: "先出分镜",
     session_id: "group-1",
     closed_at: null,
     last_activity_at: "2026-09-22T00:00:00.000Z",
+    goal: null,
+    kind: null,
+    status: "active",
+    ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 },
+    ...over,
+  };
+}
+
+/** The plan behind task-1 once the organizer has run: a spec, two tickets, one with a file. */
+function detail(over: Partial<TaskDetail> = {}): TaskDetail {
+  return {
+    ...job({ goal: "先出分镜的草图和配乐", kind: "分镜", ticket_counts: { todo: 1, doing: 1, review: 0, done: 0, parked: 0 } }),
+    brief: "先出分镜",
+    spec: {
+      kind: "分镜",
+      goal: "先出分镜的草图和配乐",
+      acceptance: ["12 格草图交到 board.pdf"],
+      rules: ["不要真人"],
+      process: ["分镜师画，制片审"],
+      progress: { done: [], open: ["草图"], blocked: [] },
+      status: "active",
+    },
+    spec_updated_at: "2026-09-22T00:00:03.000Z",
+    revision: 2,
+    revision_actor: "app",
+    routine_id: null,
+    tickets: [
+      {
+        id: "tk-1",
+        task_id: "task-1",
+        seq: 1,
+        title: "分镜草图",
+        slug: "01-分镜草图",
+        dir: "work/先出分镜-7f3k/01-分镜草图",
+        spec: "画满 12 格",
+        status: "doing",
+        worker: "bot-2",
+        created_at: "2026-09-22T00:00:00.000Z",
+        updated_at: "2026-09-22T00:00:03.000Z",
+        closed_at: null,
+        artifacts: [{ path: "work/先出分镜-7f3k/01-分镜草图/board.pdf", message_id: "m3", attachment_id: "a1" }],
+      },
+      {
+        id: "tk-2",
+        task_id: "task-1",
+        seq: 2,
+        title: "配乐",
+        slug: "02-配乐",
+        dir: "work/先出分镜-7f3k/02-配乐",
+        spec: "",
+        status: "todo",
+        worker: null,
+        created_at: "2026-09-22T00:00:00.000Z",
+        updated_at: "2026-09-22T00:00:00.000Z",
+        closed_at: null,
+        artifacts: [],
+      },
+    ],
     ...over,
   };
 }
@@ -39,7 +98,7 @@ function job(over: Partial<SessionTaskSummary> = {}): SessionTaskSummary {
 function picture(): TaskTrace {
   return {
     id: "task-1",
-    dir: "work/2026-09-22-先出分镜-7f3k",
+    dir: "work/先出分镜-7f3k",
     title: "先出分镜",
     session_id: "group-1",
     closed_at: null,
@@ -50,6 +109,8 @@ function picture(): TaskTrace {
         actor: USER_MEMBER,
         status: "completed",
         woken_by_turn_id: null,
+        woken_elsewhere: null,
+        ticket_id: null,
         trigger_message_id: "m1",
         focus_message_id: "m1",
         summary: "先出分镜",
@@ -65,6 +126,8 @@ function picture(): TaskTrace {
         actor: "bot-1",
         status: "completed",
         woken_by_turn_id: "user:m1",
+        woken_elsewhere: null,
+        ticket_id: null,
         trigger_message_id: "m1",
         focus_message_id: "m2",
         summary: "分镜交给你",
@@ -80,11 +143,13 @@ function picture(): TaskTrace {
         actor: "bot-2",
         status: "running",
         woken_by_turn_id: "t-writer",
+        woken_elsewhere: null,
+        ticket_id: "tk-1",
         trigger_message_id: "m2",
         focus_message_id: "m3",
         summary: "正在画第一格",
         created_at: "2026-09-22T00:00:02.000Z",
-        artifacts: [{ path: "work/2026-09-22-先出分镜-7f3k/board.pdf", message_id: "m3", attachment_id: "a1" }],
+        artifacts: [{ path: "work/先出分镜-7f3k/01-分镜草图/board.pdf", message_id: "m3", attachment_id: "a1" }],
         ask: null,
         approval: { message_id: "m-approval", summary: "写入工作区外" },
         passed: 0,
@@ -108,17 +173,25 @@ function drag(el: Element, by: { x: number; y: number }): void {
   flushSync();
 }
 
+type Opened = { relpath: string; messageId: string | null | undefined; forceTree: boolean | undefined; taskId: string | null | undefined; siblings: number };
+
 function open(opts: {
   taskId?: string | null;
   fail?: boolean;
   sessionId?: string;
   writeBack?: boolean;
   trace?: TaskTrace;
+  /** What the plan endpoint answers; `false` is a daemon that predates plans (404). */
+  detail?: TaskDetail | false;
   focus?: { messageId: string; turnId: string | null } | null;
   focusToken?: number;
+  /** Mount the board itself, the way a pane does, instead of the phone's page around it. */
+  pane?: boolean;
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
+  const opened: Opened[] = [];
+  const patched: Array<[string, Record<string, unknown>]> = [];
   let closed = 0;
   const asked: string[] = [];
   const api = {
@@ -126,12 +199,26 @@ function open(opts: {
       asked.push(sessionId);
       if (sessionId === "direct-9") return [job({ id: "task-9", title: "另一件事" })];
       if (opts.fail) throw new Error("nope");
-      return [job(), job({ id: "task-2", title: "上周的排期", closed_at: "2026-09-15T00:00:00.000Z" })];
+      return [job({ goal: opts.detail === false ? null : "先出分镜的草图和配乐" }), job({ id: "task-2", title: "上周的排期", closed_at: "2026-09-15T00:00:00.000Z", status: "done" })];
     },
     taskTrace: async (id: string) =>
       id === "task-1"
         ? (opts.trace ?? picture())
         : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] },
+    taskDetail: async (id: string) => {
+      if (opts.detail === false) throw Object.assign(new Error("not found"), { status: 404 });
+      if (id === "task-1") return opts.detail ?? detail();
+      return { ...detail(), ...job({ id, title: id === "task-9" ? "另一件事" : "上周的排期" }), spec: null, revision: 0, revision_actor: null, tickets: [] };
+    },
+    taskSpecRevisions: async () => [],
+    patchTaskSpec: async (id: string, body: Record<string, unknown>) => {
+      patched.push([id, body]);
+      return { ...detail(), revision: 3, revision_actor: "user" as const };
+    },
+    patchTicket: async (id: string, body: Record<string, unknown>) => {
+      patched.push([id, body]);
+      return { ...detail().tickets[0]!, ...body };
+    },
     getWorkspaceFileBlob: async () => new Blob(["# 分镜"]),
   };
   const props = reactive({
@@ -155,9 +242,12 @@ function open(opts: {
       // What a pane does: the tab records the job on screen, which comes back as the prop.
       if (opts.writeBack) props.taskId = taskId;
     },
+    onOpenArtifact: (relpath: string, _att?: unknown, messageId?: string | null, forceTree?: boolean, taskId?: string | null, siblings?: unknown[] | null) => {
+      opened.push({ relpath, messageId, forceTree, taskId, siblings: siblings?.length ?? 0 });
+    },
   });
-  const view = render(TaskTraceView, props as never);
-  return { ...view, props, jumps, asked, settled, closed: () => closed };
+  const view = render(opts.pane ? TraceView : TaskTraceView, props as never);
+  return { ...view, props, jumps, asked, settled, opened, patched, closed: () => closed };
 }
 
 async function until(host: HTMLElement, selector: string): Promise<Element> {
@@ -305,7 +395,7 @@ test("a job with no model trouble offers no highlight to look for it", async () 
   view.close();
 });
 
-test("the flow runs top to bottom, a card jumps to its turn, and a file opens under its turn", async () => {
+test("the flow runs top to bottom, a card jumps to its turn, and a file hands over to the host's preview", async () => {
   const view = open();
   await until(view.host, ".trace-slot");
   // Cards sit where the layout put them, so reading order is the y they were given.
@@ -333,18 +423,13 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file opens un
   // The node that lives in the conversation on screen is marked as the one you are on.
   expect(view.host.querySelectorAll(".trace-card.is-here")).toHaveLength(2);
   expect(view.host.querySelector(".trace-place")?.textContent).toContain("群 · 制作组");
-  expect(view.host.querySelector(".trace-output")).toBeNull();
 
   click(view.host.querySelector(".trace-card.is-running .trace-card-main"));
   expect(view.jumps).toEqual([["direct-1", "m-approval"]]);
 
+  // The board draws no file of its own: the host's preview opens it, in this plan's tree.
   click(view.host.querySelector<HTMLButtonElement>(".trace-file")!);
-  const output = await until(view.host, ".trace-output");
-  expect(output.querySelector(".trace-output-kicker")?.textContent).toBe("分镜师交出");
-  expect(output.querySelector(".trace-output-name")?.textContent).toBe("board.pdf");
-  expect(view.host.querySelector(".trace-file.is-open")).not.toBeNull();
-  // The file hangs under the turn that handed it over, as the next station of the flow.
-  expect(view.host.querySelector(".trace-slot .trace-output")).not.toBeNull();
+  expect(view.opened).toEqual([{ relpath: "work/先出分镜-7f3k/01-分镜草图/board.pdf", messageId: "m3", forceTree: false, taskId: "task-1", siblings: 1 }]);
   expect(view.host.querySelector(".artifact-pane")).toBeNull();
   view.close();
 });
@@ -374,47 +459,6 @@ test("a phone shows the flow as a page that fills the screen", async () => {
     const pane = view.host.querySelector(".trace-pane") as HTMLElement;
     expect(pane.style.left).toBe("");
     expect(pane.style.width).toBe("");
-  } finally {
-    try { view?.close(); } catch { /* the page slide has nothing to animate here */ }
-    window.matchMedia = previous;
-  }
-});
-
-test("on a phone, Back steps out of full screen and leaves the flow standing", async () => {
-  const previous = window.matchMedia;
-  let view: ReturnType<typeof open> | undefined;
-  window.matchMedia = ((query: string) => ({
-    matches: query.includes("680") || query.includes("reduce"),
-    media: query,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-    dispatchEvent() { return false; },
-    onchange: null,
-  })) as unknown as typeof window.matchMedia;
-  try {
-    view = open();
-    await until(view.host, ".trace-slot");
-    const back = (view.app as unknown as { backFromFullOutput: () => boolean }).backFromFullOutput;
-    // Nothing over the flow: Back is history's, and the flow is what it closes.
-    expect(back()).toBe(false);
-
-    click(view.host.querySelector<HTMLButtonElement>(".trace-file")!);
-    const output = await until(view.host, ".trace-output");
-    // A file unfolded under its card is part of this page, so Back still belongs to history.
-    expect(back()).toBe(false);
-    expect(view.host.querySelector(".trace-output")).not.toBeNull();
-
-    click(output.querySelector(".trace-output-full"));
-    flushSync();
-    expect(view.host.querySelector(".trace-output-layer .trace-output.is-full")).not.toBeNull();
-    // Full screen is a page over the flow: Back takes that page and stops.
-    expect(back()).toBe(true);
-    flushSync();
-    expect(view.host.querySelector(".trace-output.is-full")).toBeNull();
-    expect(view.host.querySelector(".trace-slot .trace-output")).not.toBeNull();
-    expect(back()).toBe(false);
   } finally {
     try { view?.close(); } catch { /* the page slide has nothing to animate here */ }
     window.matchMedia = previous;
@@ -501,7 +545,8 @@ function withMeasuredCards(run: () => Promise<void>): Promise<void> {
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
     configurable: true,
     get(this: HTMLElement) {
-      return this.classList.contains("trace-slot") ? 80 + (this.textContent?.length ?? 0) : 0;
+      // Even heights, so a centred card lands on whole pixels whatever its text length.
+      return this.classList.contains("trace-slot") ? 80 + 2 * (this.textContent?.length ?? 0) : 0;
     },
   });
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
@@ -622,11 +667,18 @@ test("the board still lays out after the job is fetched again", async () => {
     const measured = tops();
     expect(new Set(measured).size).toBe(measured.length);
 
-    // The same job, fetched again — which is all a live turn does.
+    // The same job, fetched again — which is all a live turn does. Several bumps within a moment
+    // are one read, a moment later.
+    const reads = view.asked.length;
     (view.props as { reloadToken: number }).reloadToken = 1;
     flushSync();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    (view.props as { reloadToken: number }).reloadToken = 2;
     flushSync();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(view.asked.length).toBe(reads);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    flushSync();
+    expect(view.asked.length).toBe(reads + 1);
     expect(tops()).toEqual(measured);
   });
 });
@@ -791,5 +843,79 @@ test("a node with a single attachment renders 1 file button and opens through pr
   expect(opened[0].taskId).toBe("task-single");
   expect(opened[0].siblings).toHaveLength(1);
 
+  view.close();
+});
+
+test("the header reads the plan — goal, status, kind, ticket counts — the spec sits under it, and the rail lists the tickets", async () => {
+  const view = open({ pane: true });
+  await until(view.host, ".ticket-row");
+  expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("先出分镜的草图和配乐");
+  const meta = view.host.querySelector(".trace-meta")!;
+  expect(meta.querySelector(".plan-status.is-active")?.textContent).toBe(t.plan.status.active);
+  expect(meta.textContent).toContain("分镜");
+  expect(meta.textContent).toContain(t.plan.ticketCounts(2, 2));
+  // A pane has the room: the spec opens with the board.
+  const toggle = view.host.querySelector(".plan-spec-toggle")!;
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(view.host.querySelector(".plan-spec")?.textContent).toContain("12 格草图交到 board.pdf");
+  expect(view.host.querySelector(".plan-spec")?.textContent).toContain("不要真人");
+  // The rail, in order, with who is on what.
+  const rows = [...view.host.querySelectorAll(".ticket-row")];
+  expect(rows.map((row) => row.querySelector(".ticket-tag")?.textContent)).toEqual(["01", "02"]);
+  expect(rows[0]?.textContent).toContain("分镜草图");
+  expect(rows[0]?.textContent).toContain(t.plan.worker("分镜师"));
+  expect(rows[1]?.textContent).toContain(t.plan.nobody);
+  // The card that worked in a ticket wears its number.
+  expect(view.host.querySelector(".trace-card.is-running .trace-ticket-tag")?.textContent).toBe("01");
+  expect(view.host.querySelector(".trace-card.is-completed .trace-ticket-tag")).toBeNull();
+  // The switcher rows read the same way.
+  click(await until(view.host, ".trace-title-trigger"));
+  const jobs = [...view.host.querySelectorAll(".trace-job")];
+  expect(jobs[0]?.querySelector(".trace-job-title")?.textContent).toBe("先出分镜的草图和配乐");
+  expect(jobs[1]?.querySelector(".plan-status.is-done")).not.toBeNull();
+  view.close();
+});
+
+test("a ticket picked in the rail lights its cards and dims the rest; Escape lets go of it", async () => {
+  const view = open({ pane: true });
+  await until(view.host, ".ticket-row");
+  click(view.host.querySelector(".ticket-row .ticket-main"));
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
+  expect(view.host.querySelector(".trace-card.is-running")?.classList.contains("is-lit")).toBe(true);
+  expect(view.host.querySelector(".trace-card.is-completed")?.classList.contains("is-dim")).toBe(true);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(view.host.querySelector(".ticket-row.is-selected")).toBeNull();
+  expect(view.host.querySelector(".trace-card.is-dim")).toBeNull();
+  // A ticket's files open in the host's preview, with the plan's folder as the tree.
+  click(view.host.querySelector(".ticket-row .ticket-artifacts"));
+  expect(view.opened).toEqual([{ relpath: "work/先出分镜-7f3k/01-分镜草图/board.pdf", messageId: "m3", forceTree: true, taskId: "task-1", siblings: 1 }]);
+  // And its latest turn is one click away.
+  click(view.host.querySelector(".ticket-row .ticket-jump"));
+  expect(view.jumps).toEqual([["direct-1", "m3"]]);
+  view.close();
+});
+
+test("a phone opens with the spec folded and shows the rail and the tree in turn", async () => {
+  const view = open();
+  await until(view.host, ".ticket-row");
+  expect(view.host.querySelector(".plan-spec-toggle")?.getAttribute("aria-expanded")).toBe("false");
+  const tabs = [...view.host.querySelectorAll(".trace-segments [role='tab']")];
+  expect(tabs.map((tab) => tab.textContent)).toEqual([t.plan.segmentTrace, t.plan.segmentTickets]);
+  click(tabs[1]);
+  expect(view.host.querySelector(".trace-pane")?.classList.contains("is-tickets")).toBe(true);
+  click(tabs[0]);
+  expect(view.host.querySelector(".trace-pane")?.classList.contains("is-tickets")).toBe(false);
+  view.close();
+});
+
+test("a daemon that predates plans still draws the tree, without the spec or the rail", async () => {
+  const view = open({ detail: false, pane: true });
+  await until(view.host, ".trace-slot");
+  expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("先出分镜");
+  expect(view.host.querySelector(".plan-spec")).toBeNull();
+  expect(view.host.querySelector(".trace-rail")).toBeNull();
+  expect(view.host.querySelector(".trace-segments")).toBeNull();
+  expect(view.host.querySelectorAll(".trace-card")).toHaveLength(3);
   view.close();
 });

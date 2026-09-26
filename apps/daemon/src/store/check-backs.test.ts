@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import { Store } from ".";
 import { CHECK_BACK_MAX_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
@@ -138,5 +141,34 @@ describe("firing and voiding", () => {
     expect(store.getCheckBack(mine.row.id).voided_at).not.toBeNull();
     expect(store.getCheckBack(theirs.row.id).voided_at).toBeNull();
     store.close();
+  });
+});
+
+describe("the line a check-back wakes its Bot with", () => {
+  test("a database from before the column finds the lines already fired and hides them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-check-back-line-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const store = new Store({ filename: file });
+      const created = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const writer = created.bot;
+      const session = created.direct_session.id;
+      store.postMessage(session, { body: "写一份周报，交到 report.md" });
+      const { row } = store.scheduleCheckBack({ botId: writer.id, sessionId: session, turnId: null, note: "看 report.md 写好没", afterMinutes: 1 });
+      store.claimCheckBack(row.id, new Date(Date.parse(row.due_at) + 1000));
+      const line = store.insertMessage({ sessionId: session, kind: "system", author: writer.id, body: "回看：看 report.md 写好没" });
+      const echo = store.insertMessage({ sessionId: session, kind: "bot", author: writer.id, body: "回看：看 report.md 写好没" });
+      store.db.run(`ALTER TABLE check_backs DROP COLUMN message_id`);
+      store.close();
+
+      const reopened = new Store({ filename: file });
+      expect(reopened.getCheckBack(row.id).message_id).toBe(line.id);
+      const shown = reopened.listMessages(session).items.map((m) => m.id);
+      expect(shown).not.toContain(line.id);
+      expect(shown).toContain(echo.id);
+      reopened.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

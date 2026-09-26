@@ -12,6 +12,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { notCheckBackLine, voidCheckBacks } from "./check-backs";
 import { hydrateMessage, listMessages } from "./messages";
+import { dropUnreferencedTasks } from "./tasks";
 import { getSessionNotificationPreference, markNotificationsReadThroughMessage } from "./notifications";
 
 export { isPresent } from "./shared";
@@ -302,7 +303,7 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     // Work dirs opened here: the ones only this session's turns belonged to go with it. A dir a
     // handoff carried into another session outlives it and just loses the session link, the way
     // an origin does — the folder on disk is the user's either way.
-    ctx.db.run(`${UNREFERENCED_TASKS} AND session_id = ?`, [id]);
+    dropUnreferencedTasks(ctx, id);
     ctx.db.run(`UPDATE tasks SET session_id = NULL WHERE session_id = ?`, [id]);
     ctx.db.run(
       `UPDATE sessions SET origin_session_id = NULL, origin_message_id = NULL WHERE origin_session_id = ?`,
@@ -317,11 +318,6 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM sessions WHERE id = ?`, [id]);
   })();
 }
-
-/** Work dirs no surviving turn or message belongs to. Run only after those rows are gone. */
-const UNREFERENCED_TASKS = `DELETE FROM tasks
-   WHERE NOT EXISTS (SELECT 1 FROM turns WHERE turns.task_id = tasks.id)
-     AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.task_id = tasks.id)`;
 
 export function clearSessionMessages(ctx: StoreContext, id: string): void {
   sessionRow(ctx, id);
@@ -359,8 +355,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     voidCheckBacks(ctx, { sessionId: id }, now);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
-    // Clearing history ends the jobs it held: dirs nothing else belongs to go, the rest close.
-    ctx.db.run(`${UNREFERENCED_TASKS} AND session_id = ?`, [id]);
+    // Clearing history ends the plans it held: dirs nothing else belongs to go, the rest close.
+    dropUnreferencedTasks(ctx, id);
     ctx.db.run(
       `UPDATE tasks SET closed_at = COALESCE(closed_at, ?) WHERE session_id = ?`,
       [now, id],

@@ -360,8 +360,8 @@
 				// the URL. Answering true here would pop nothing and leave the page open.
 				return false;
 			case 'trace':
-				// Full screen over the flow is a page; the flow itself is an entry in history.
-				return tracePane?.backFromFullOutput() ?? false;
+				// The flow is an entry in history; nothing inside it is a page over it.
+				return false;
 			case 'routines':
 				return false;
 			case 'spend':
@@ -1310,7 +1310,6 @@
 	}
 
 	let previewPane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
-	let tracePane = $state<{ backFromFullOutput: () => boolean } | null>(null);
 
 	function startPreviewResize(ev: PointerEvent): void {
 		if (!artifactPreview) return;
@@ -2201,7 +2200,6 @@
 	{#if runtime.traceOpen && selected}
 		{#await import('./overlays/TaskTrace.svelte') then { default: TaskTraceView }}
 			<TaskTraceView
-				bind:this={tracePane}
 				api={runtime.client}
 				taskId={runtime.traceTaskId || null}
 				focus={runtime.traceFocus}

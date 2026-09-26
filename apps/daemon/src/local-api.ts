@@ -10,6 +10,8 @@ import {
   type PatchProviderRequest,
   type CreateRoutineRequest,
   type PatchRoutineRequest,
+  type PatchTaskSpecRequest,
+  type PatchTicketRequest,
   type CreateBotRequest,
   type PatchBotRequest,
   type RuntimeResponse,
@@ -1301,6 +1303,41 @@ function dispatch(
     return jsonResponse({ items: store.sessionTasks(params.id!) }, 200, null);
   }
 
+  params = matchPath(path, "/v1/tasks/:id/tickets");
+  if (params && method === "GET") {
+    return jsonResponse({ items: store.taskDetail(params.id!, store.citedPathExists).tickets }, 200, null);
+  }
+
+  params = matchPath(path, "/v1/tasks/:id/spec-revisions");
+  if (params && method === "GET") {
+    return jsonResponse({ items: store.listSpecRevisions(params.id!) }, 200, null);
+  }
+
+  params = matchPath(path, "/v1/tasks/:id/spec");
+  if (params && method === "PATCH") {
+    const body = (input.body ?? {}) as PatchTaskSpecRequest;
+    const { task } = store.setPlanSpecByUser(params.id!, body.spec, body.if_revision);
+    engine.renderPlanMirrors(task.id);
+    return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
+  }
+
+  params = matchPath(path, "/v1/tickets/:id");
+  if (params && method === "PATCH") {
+    const body = (input.body ?? {}) as PatchTicketRequest;
+    const { ticket } = store.patchTicketByUser(
+      params.id!,
+      { title: body.title, spec: body.spec, status: body.status, worker: body.worker },
+      body.if_revision,
+    );
+    engine.renderPlanMirrors(ticket.task_id);
+    return jsonResponse(ticket, 200, null);
+  }
+
+  params = matchPath(path, "/v1/tasks/:id");
+  if (params && method === "GET") {
+    return jsonResponse(store.taskDetail(params.id!, store.citedPathExists), 200, null);
+  }
+
   params = matchPath(path, "/v1/sessions/:id/judgements");
   if (params && method === "GET") {
     return jsonResponse({ items: store.listJudgements(params.id!) }, 200, null);
@@ -1895,7 +1932,7 @@ function dispatch(
   return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404, null);
 }
 
-const SPEND_KINDS = new Set<SpendKind>(["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest"]);
+const SPEND_KINDS = new Set<SpendKind>(["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize"]);
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /** Shared by the summary and the detail page. An empty `bot_id` or `model` means the null group. */

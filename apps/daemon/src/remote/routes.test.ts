@@ -35,3 +35,37 @@ test("a remote crop is admitted only as long as a request carrying it can arrive
     }
   }
 });
+
+test("plans and tickets: reads are whitelisted, a spec edit carries the whole spec, a ticket edit only its fields", () => {
+  const ok = (request: RemoteRequest) => expect(() => validateBusiness(request)).not.toThrow();
+  const bad = (request: RemoteRequest) => expect(() => validateBusiness(request)).toThrow();
+  const spec = { kind: "周报", goal: "写一份周报", acceptance: ["交到 report.md"], rules: [], process: [], progress: { done: [], open: [], blocked: [] }, status: "active" };
+  for (const path of [`/v1/tasks/${id}`, `/v1/tasks/${id}/tickets`, `/v1/tasks/${id}/spec-revisions`, `/v1/tasks/${id}/trace`]) {
+    ok({ v: 1, id, method: "GET", path });
+  }
+  bad({ v: 1, id, method: "GET", path: `/v1/tasks/${id}/tickets`, query: { unknown: "1" } });
+
+  const specEdit = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/tasks/${id}/spec`, body });
+  ok(specEdit({ spec, if_revision: 3 }));
+  ok(specEdit({ spec: { goal: "只有目标" } }));
+  bad(specEdit({ spec: { kind: "周报" } }));
+  bad(specEdit({ spec: { ...spec, status: "later" } }));
+  bad(specEdit({ spec: { ...spec, owner: "me" } }));
+  bad(specEdit({ spec: { ...spec, progress: { done: [] } } }));
+  bad(specEdit({ spec, if_revision: "3" }));
+  bad(specEdit({ spec, note: "x" }));
+  bad(specEdit({ spec: "写一份周报" }));
+  bad(specEdit({ if_revision: 3 }));
+
+  const ticketEdit = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/tickets/${id}`, body });
+  ok(ticketEdit({ status: "done", if_revision: 1 }));
+  ok(ticketEdit({ title: "初稿", spec: "第一版", worker: null }));
+  ok(ticketEdit({ worker: id }));
+  bad(ticketEdit({ status: "later" }));
+  bad(ticketEdit({ assignee: id }));
+  bad(ticketEdit({ worker: "bob" }));
+  bad(ticketEdit({ if_revision: 1 }));
+
+  ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organize" } });
+  bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organise" } });
+});

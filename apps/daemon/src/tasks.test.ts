@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { INTERRUPT_NOTE_BODY } from "@real-bot/protocol";
 import { Store } from "./store";
-import { isReservedTaskPath, TASK_QUIET_MS, taskDirName } from "./store/tasks";
+import { isReservedTaskPath, PLAN_MAP_FILE, TICKET_FILE, taskDirName } from "./store/tasks";
 
 /** The listing tests are about which job a file belongs to; whether it is still on disk is its own test. */
 const everything = () => true;
@@ -12,40 +12,31 @@ function fixture() {
   return { store, bot: writer.bot, session: writer.direct_session };
 }
 
-/** Ages a work dir and everything that has touched it, so the next turn sees a quiet one. */
-function backdate(store: Store, taskId: string, ms: number): void {
-  const then = new Date(Date.now() - ms).toISOString();
-  store.db.run(`UPDATE tasks SET created_at = ? WHERE id = ?`, [then, taskId]);
-  store.db.run(`UPDATE turns SET last_activity_at = ? WHERE task_id = ?`, [then, taskId]);
-}
-
-describe("work dir naming", () => {
-  const at = new Date(2026, 8, 21, 14, 30);
-
-  test("dates the folder, keeps CJK, and ends with the id suffix", () => {
-    const dir = taskDirName({ title: "导出季度报表", id: "01K5XQ7F3KZZZZZZZZZZZZ7F3K", at });
-    expect(dir).toBe("work/2026-09-21-导出季度报表-7f3k");
+describe("plan dir naming", () => {
+  test("keeps CJK and ends with the id suffix", () => {
+    const dir = taskDirName({ title: "导出季度报表", id: "01K5XQ7F3KZZZZZZZZZZZZ7F3K" });
+    expect(dir).toBe("work/导出季度报表-7f3k");
   });
 
   test("collapses whitespace, drops what a path cannot hold, and clips to the budget", () => {
     // The budget is 12 code points, which is a sentence in Chinese and about two words in English.
-    const dir = taskDirName({ title: "fix  the a/b?c test", id: "0000000000000000000000ABCD", at });
-    expect(dir).toBe("work/2026-09-21-fix-the-a-b-abcd");
+    const dir = taskDirName({ title: "fix  the a/b?c test", id: "0000000000000000000000ABCD" });
+    expect(dir).toBe("work/fix-the-a-b-abcd");
   });
 
   test("never produces a hidden or traversing segment", () => {
-    const dir = taskDirName({ title: "../../etc/passwd", id: "0000000000000000000000ABCD", at });
-    expect(dir).toBe("work/2026-09-21-etc-passwd-abcd");
+    const dir = taskDirName({ title: "../../etc/passwd", id: "0000000000000000000000ABCD" });
+    expect(dir).toBe("work/etc-passwd-abcd");
   });
 
   test("an empty title still yields a usable folder", () => {
-    const dir = taskDirName({ title: "   ", id: "0000000000000000000000ABCD", at });
-    expect(dir).toBe("work/2026-09-21-abcd");
+    const dir = taskDirName({ title: "   ", id: "0000000000000000000000ABCD" });
+    expect(dir).toBe("work/abcd");
   });
 });
 
 describe("reserved subdirs", () => {
-  const dir = "work/2026-09-21-x-7f3k";
+  const dir = "work/x-7f3k";
 
   test("the daemon's spill and the Bot's scratch are never artifacts", () => {
     expect(isReservedTaskPath(dir, `${dir}/tool-results/01J.json`)).toBe(true);
@@ -58,6 +49,19 @@ describe("reserved subdirs", () => {
     // A same-named folder that is not this work dir's is somebody else's file.
     expect(isReservedTaskPath(dir, "scratch/notes.md")).toBe(false);
     expect(isReservedTaskPath(dir, `${dir}-other/scratch/notes.md`)).toBe(false);
+  });
+
+  test("a ticket dir's spill and scratch, and the app's mirror files, are reserved at both levels", () => {
+    expect(isReservedTaskPath(dir, `${dir}/01-初稿/tool-results/01J.json`)).toBe(true);
+    expect(isReservedTaskPath(dir, `${dir}/02/scratch/probe.py`)).toBe(true);
+    expect(isReservedTaskPath(dir, `${dir}/${PLAN_MAP_FILE}`)).toBe(true);
+    expect(isReservedTaskPath(dir, `${dir}/01-初稿/${TICKET_FILE}`)).toBe(true);
+    expect(isReservedTaskPath(`${dir}/01-初稿`, `${dir}/01-初稿/${TICKET_FILE}`)).toBe(true);
+    expect(isReservedTaskPath(`${dir}/01-初稿`, `${dir}/01-初稿/tool-results/x.json`)).toBe(true);
+    // A ticket's deliverable, and a file merely named like the mirror deeper down, are not.
+    expect(isReservedTaskPath(dir, `${dir}/01-初稿/report.md`)).toBe(false);
+    expect(isReservedTaskPath(dir, `${dir}/01-初稿/notes/${TICKET_FILE}`)).toBe(false);
+    expect(isReservedTaskPath(dir, `${dir}/notes/${PLAN_MAP_FILE}`)).toBe(false);
   });
 });
 
@@ -91,17 +95,25 @@ describe("work dirs", () => {
     store.close();
   });
 
-  test("a quiet gap opens a new one and closes the old", () => {
+  test("no clock splits a plan: a follow-up after a long silence still joins it, and only the organizer's stamp moves it", () => {
     const { store, bot, session } = fixture();
     const first = store.postMessage(session.id, { body: "导出季度报表" });
     const one = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: first.id });
-    backdate(store, one.task_id!, TASK_QUIET_MS + 60_000);
+    store.db.run(`UPDATE turns SET last_activity_at = ? WHERE task_id = ?`, [new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(), one.task_id!]);
 
     const second = store.postMessage(session.id, { body: "帮我订个会议室" });
     const two = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: second.id });
-    expect(two.task_id).not.toBe(one.task_id!);
+    expect(two.task_id).toBe(one.task_id!);
+
+    // The organizer filed the next line under a new plan: the stamp on the message decides.
+    const fresh = store.openTask({ sessionId: session.id, title: "帮我订个会议室" });
+    const third = store.postMessage(session.id, { body: "会议室订大一点的" });
+    store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [fresh.id, third.id]);
+    const three = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: third.id });
+    expect(three.task_id).toBe(fresh.id);
+    expect(store.getTask(one.task_id!)).toMatchObject({ status: "parked" });
     expect(store.getTask(one.task_id!).closed_at).toBeString();
-    expect(store.getTask(two.task_id!).closed_at).toBeNull();
+    expect(store.getTask(fresh.id).closed_at).toBeNull();
     store.close();
   });
 
@@ -159,24 +171,33 @@ describe("work dirs follow the work", () => {
     store.close();
   });
 
-  test("a routine fire opens a new dir even inside the quiet window", () => {
+  test("a routine has one standing plan that never takes the session's current slot, and each fire is a ticket of it", () => {
     const { store, bot, session } = fixture();
     const first = store.postMessage(session.id, { body: "导出季度报表" });
     const one = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: first.id });
+    const routine = store.createRoutine({ bot_id: bot.id, title: "日报", instruction: "每天早上把昨天的数据汇总一次", schedule: { kind: "daily", time: "09:00" } });
 
-    const fired = store.insertMessage({
-      sessionId: session.id,
-      kind: "user",
-      author: "user",
-      body: "每天早上把昨天的数据汇总一次",
-    });
-    const two = store.createTurn({
-      sessionId: session.id,
-      botId: bot.id,
-      triggerMessageId: fired.id,
-      newTask: true,
-    });
-    expect(two.task_id).not.toBe(one.task_id!);
+    expect(store.routineTask(routine.id)).toBeNull();
+    const standing = store.openTask({ sessionId: session.id, title: routine.title, brief: routine.instruction, kind: routine.title, routineId: routine.id });
+    expect(store.routineTask(routine.id)?.id).toBe(standing.id);
+    // Opening it parked nothing: the user's plan is still the one a plain message joins.
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(one.task_id!);
+    expect(store.getTask(one.task_id!).closed_at).toBeNull();
+
+    const ticket = store.createTicket({ taskId: standing.id, title: "2026-09-25", spec: routine.instruction, status: "doing", worker: bot.id });
+    expect(ticket.dir).toBe(`${standing.dir}/01-2026-09-25`);
+    const fired = store.insertMessage({ sessionId: session.id, kind: "user", author: "user", body: routine.instruction });
+    const two = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: fired.id, routineId: routine.id, taskId: standing.id, ticketId: ticket.id });
+    expect(two.task_id).toBe(standing.id);
+    expect(two.ticket_id).toBe(ticket.id);
+    expect(store.turnWorkDir(two.id)).toBe(ticket.dir);
+    expect(store.turnPlanDir(two.id)).toBe(standing.dir);
+    // A message this turn produces is filed under the ticket, and naming the standing plan outright
+    // (which reopens a user's plan) still leaves the session's current plan alone.
+    const note = store.insertMessage({ sessionId: session.id, turnId: two.id, kind: "bot", author: bot.id, body: "汇总好了" });
+    expect(store.getMessage(note.id).ticket_id).toBe(ticket.id);
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(one.task_id!);
+    expect(store.getTask(standing.id).closed_at).toBeNull();
     store.close();
   });
 
@@ -198,7 +219,7 @@ describe("work dirs follow the work", () => {
       sessionId: group.id,
       botId: bot.id,
       triggerMessageId: secondTrigger.id,
-      newTask: true,
+      taskId: store.openTask({ sessionId: group.id, title: "另一件事，做完交给 Reviewer" }).id,
     });
     expect(carrier.task_id).not.toBe(own.task_id!);
     const handoff = store.insertMessage({
@@ -331,7 +352,7 @@ describe("what a work dir's entry lists", () => {
       sessionId: session.id,
       botId: bot.id,
       triggerMessageId: second.id,
-      newTask: true,
+      taskId: store.openTask({ sessionId: session.id, title: "第二件事" }).id,
     });
     store.insertMessage({
       sessionId: session.id,
@@ -532,7 +553,7 @@ describe("a job's trace", () => {
     store.close();
   });
 
-  test("watchers are counted on the card that woke them, and a quiet gap splits the picture", () => {
+  test("watchers are counted on the card that woke them, and another plan splits the picture", () => {
     const { store, bot, session } = fixture();
     const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
     const group = store.createGroup({ name: "制作组", members: [bot.id, reviewer.bot.id] });
@@ -544,9 +565,8 @@ describe("a job's trace", () => {
     expect(trace.nodes[0]!.passed).toBe(1);
     expect(trace.nodes[1]!.passed).toBe(0);
 
-    backdate(store, turn.task_id!, TASK_QUIET_MS + 60_000);
     const later = store.postMessage(group.id, { body: "换一件事" });
-    const next = store.createTurn({ sessionId: group.id, botId: bot.id, triggerMessageId: later.id });
+    const next = store.createTurn({ sessionId: group.id, botId: bot.id, triggerMessageId: later.id, taskId: store.openTask({ sessionId: group.id, title: "换一件事" }).id });
     expect(store.taskTrace(turn.task_id!).nodes.map((node) => node.trigger_message_id)).toEqual([trigger.id, trigger.id]);
     expect(store.taskTrace(next.task_id!).nodes.map((node) => node.summary)).toEqual(["换一件事", "换一件事"]);
     store.close();
@@ -558,7 +578,7 @@ describe("a job's trace", () => {
     const first = store.postMessage(session.id, { body: "第一件事" });
     const one = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: first.id });
     const second = store.postMessage(session.id, { body: "第二件事" });
-    const two = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: second.id, newTask: true });
+    const two = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: second.id, taskId: store.openTask({ sessionId: session.id, title: "另一件事" }).id });
     const carried = store.insertMessage({
       sessionId: reviewer.direct_session.id,
       turnId: one.id,

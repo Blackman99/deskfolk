@@ -1,13 +1,35 @@
 <script lang="ts">
-	import { USER_MEMBER, type Attachment, type Bot, type Provider, type SessionSummary, type SessionTaskSummary, type TaskTrace, type TaskTraceNode } from '@real-bot/protocol';
+	import {
+		USER_MEMBER,
+		type Attachment,
+		type Bot,
+		type PlanStatus,
+		type Provider,
+		type SessionSummary,
+		type SessionTaskSummary,
+		type TaskDetail,
+		type TaskTrace,
+		type TaskTraceNode,
+		type Ticket,
+		type TicketWithArtifacts
+	} from '@real-bot/protocol';
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
-	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
-	import TraceOutput from './TraceOutput.svelte';
+	import PlanSpecPanel from './PlanSpecPanel.svelte';
+	import TicketList from './TicketList.svelte';
+	import {
+		actorFace,
+		actorName,
+		firstPreviewable,
+		openTicketCount,
+		planTitle,
+		ticketArtifactAttachments,
+		ticketTag,
+		totalTicketCount
+	} from './plan-board.ts';
 	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
 	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
@@ -66,6 +88,8 @@
 		workspacePath: string | null;
 		t: Copy;
 		reloadToken: number;
+		/** A page (the phone) opens with the plan's spec folded; a pane has the room to show it. */
+		host?: 'pane' | 'page';
 		/** Absent in a pane: a pane is closed by its own tab, not by a button inside the content. */
 		onClose?: () => void;
 		onJump: (sessionId: string, messageId: string) => void;
@@ -96,6 +120,7 @@
 		workspacePath,
 		t,
 		reloadToken,
+		host = 'pane',
 		onClose,
 		onJump,
 		onTask,
@@ -111,17 +136,16 @@
 	let switcherOpen = $state(false);
 	let titleMenuEl = $state<HTMLDivElement | null>(null);
 	let titleTriggerEl = $state<HTMLButtonElement | null>(null);
-	/** A file opened inside this board. The preview stays here; it never opens the chat's pane. */
-	let openFile = $state<{ path: string; messageId: string; attachmentId: string } | null>(null);
 	/**
-	 * Whether that file is filling the board.
-	 *
-	 * The layer is rendered outside the canvas rather than inside the preview, because the canvas
-	 * carries a `transform` and anything positioned inside it is positioned against the canvas —
-	 * a preview asking to cover the board would have been given the canvas instead.
+	 * The plan behind the trace: its spec, revision and tickets. Null until it arrives, and null
+	 * for good on a daemon that predates plans — the tree still draws, without the panel and rail.
 	 */
-	let outputFull = $state(false);
-	/** The card whose model choice is unfolded under it. One at a time, like the file. */
+	let detail = $state<TaskDetail | null>(null);
+	/** The ticket whose cards are lit; the rest of the board dims. One at a time, like a highlight. */
+	let selectedTicket = $state<string | null>(null);
+	/** On a narrow host the rail and the tree take turns; on a wide one they sit side by side. */
+	let segment = $state<'trace' | 'tickets'>('trace');
+	/** The card whose model choice is unfolded under it. One at a time. */
 	let openRoute = $state<string | null>(null);
 	/** Which kind of model trouble the board is lighting up, if any. */
 	let highlight = $state<RouteHighlight | null>(null);
@@ -345,7 +369,6 @@
 		// Anywhere is the canvas, cards included: a press that turns into a drag pans, and a
 		// press that does not is still the card's click. Reserving the cards would have left
 		// most of a full board unpannable, which is the whole board once it is zoomed in.
-		if ((event.target as HTMLElement | null)?.closest('.trace-output')) return;
 		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 		dragged = false;
 		if (pointers.size === 2) {
@@ -546,6 +569,60 @@
 		trace ? routeHighlightCounts(trace.nodes) : { feedback: 0, blamed: 0 }
 	);
 	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
+	const ticketsById = $derived(new Map((detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
+	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
+	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
+
+	/** A switcher row from a daemon that predates plans has neither a status nor counts. */
+	function planStatusOf(job: SessionTaskSummary): PlanStatus {
+		return job.status ?? (job.closed_at ? 'done' : 'active');
+	}
+
+	/** The ticket a card worked in, as `01`; nothing on your own card and on turns filed under none. */
+	function ticketOf(node: TaskTraceNode): Ticket | null {
+		return node.ticket_id ? (ticketsById.get(node.ticket_id) ?? null) : null;
+	}
+
+	/** Lit when the selected ticket is this card's; dim when a ticket is selected and it is not. */
+	function ticketLightOf(node: TaskTraceNode): 'lit' | 'dim' | null {
+		if (!selectedTicket) return null;
+		return node.ticket_id === selectedTicket ? 'lit' : 'dim';
+	}
+
+	/** A ticket and a model highlight both light cards; showing both at once would say nothing. */
+	function selectTicket(id: string | null): void {
+		selectedTicket = id;
+		if (id) highlight = null;
+	}
+
+	function toggleHighlight(kind: RouteHighlight): void {
+		highlight = lighting === kind ? null : kind;
+		if (highlight) selectedTicket = null;
+	}
+
+	/** A ticket you moved comes back alone; the plan's counts and revision moved with it. */
+	function ticketPatched(ticket: Ticket): void {
+		if (!detail) return;
+		detail = {
+			...detail,
+			revision: detail.revision + 1,
+			revision_actor: 'user',
+			tickets: detail.tickets.map((row) => (row.id === ticket.id ? { ...row, ...ticket } : row))
+		};
+		void reloadPlan();
+	}
+
+	/** The plan changed under an edit, or a ticket moved: read it again, the tree with it. */
+	function reloadPlan(): void {
+		void load(currentId ?? taskId);
+	}
+
+	function openTicketArtifacts(ticket: TicketWithArtifacts): void {
+		const siblings = ticketArtifactAttachments(ticket);
+		const target = firstPreviewable(siblings);
+		if (!target || !onOpenArtifact) return;
+		onOpenArtifact(target.workspace_relpath, target, target.message_id, true, currentId ?? taskId, siblings);
+	}
 	const routeInput = $derived({
 		bots,
 		providers,
@@ -568,15 +645,11 @@
 	}
 
 	function nameOf(actor: string): string {
-		if (actor === USER_MEMBER) return youLabel;
-		return botsById.get(actor)?.name ?? deletedLabel;
+		return actorName(actor, botsById, youLabel, deletedLabel);
 	}
 
-	function avatarOf(actor: string): { src: string | null; letter: string; palette: ReturnType<typeof botAvatarColor> | null } {
-		if (actor === USER_MEMBER) return { src: null, letter: rosterLetter(youLabel), palette: null };
-		const bot = botsById.get(actor);
-		const name = bot?.name ?? deletedLabel;
-		return { src: avatarSrc(bot?.avatar), letter: rosterLetter(name), palette: botAvatarColor(actor) };
+	function avatarOf(actor: string): ReturnType<typeof actorFace> {
+		return actorFace(actor, botsById, youLabel, deletedLabel);
 	}
 
 	function placeOf(node: TaskTraceNode): string {
@@ -589,6 +662,15 @@
 			return t.trace.sessionDirect(peer ? nameOf(peer) : deletedLabel);
 		}
 		return t.trace.sessionDirect(sessionTitle(session, botsById, { deleted: deletedLabel, archived: deletedLabel, fileDrop: t.sidebar.fileDrop }));
+	}
+
+	/** The plan behind a trace; none from a daemon that predates plans, and none is not a failure. */
+	async function readDetail(id: string): Promise<TaskDetail | null> {
+		try {
+			return await api!.taskDetail(id);
+		} catch {
+			return null;
+		}
 	}
 
 	async function load(id: string | null): Promise<void> {
@@ -605,15 +687,20 @@
 			if (seq !== loadSeq) return;
 			jobs = listed;
 			const next = id && listed.some((job) => job.id === id) ? id : (listed[0]?.id ?? null);
-			// A refresh of the same job keeps the file you have open; switching jobs does not.
+			// A refresh of the same plan keeps what you unfolded and lit; switching plans does not.
 			if (next !== currentId) {
-				openFile = null;
 				openRoute = null;
+				selectedTicket = null;
+				segment = 'trace';
 			}
 			currentId = next;
 			if (next) onTask?.(next);
-			trace = next ? await api.taskTrace(next) : null;
+			// The tree and the plan, together. A daemon that predates plans answers the second with a
+			// 404, and the board is then the tree alone — as it was.
+			const [nextTrace, nextDetail] = next ? await Promise.all([api.taskTrace(next), readDetail(next)]) : [null, null];
 			if (seq !== loadSeq) return;
+			trace = nextTrace;
+			detail = nextDetail;
 			if (next && !trace) failed = true;
 		} catch {
 			if (seq !== loadSeq) return;
@@ -678,7 +765,8 @@
 	onMount(() => {
 		void load(taskId);
 		/**
-		 * One Escape, one step out: full screen, then the file, then the board.
+		 * One Escape, one step out: the switcher, then an unfolded model choice, then a lit ticket,
+		 * then the board.
 		 *
 		 * All of it in a single capture listener, because two listeners racing to answer the same
 		 * key is decided by which mounted first — and the shell's own Escape, which closes the
@@ -693,22 +781,16 @@
 				titleTriggerEl?.focus();
 				return;
 			}
-			if (outputFull) {
-				event.preventDefault();
-				event.stopImmediatePropagation();
-				outputFull = false;
-				return;
-			}
-			if (openRoute && !openFile) {
+			if (openRoute) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				openRoute = null;
 				return;
 			}
-			if (!openFile) return;
+			if (!selectedTicket) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			openFile = null;
+			selectedTicket = null;
 		}
 		window.addEventListener('keydown', onKey, true);
 		return () => {
@@ -716,10 +798,15 @@
 		};
 	});
 
+	/**
+	 * A live plan reloads on every turn, message, filing and ticket move. A fan-out lands several of
+	 * those within a frame; one read a moment later shows all of them.
+	 */
 	$effect(() => {
 		void reloadToken;
 		if (reloadToken === 0) return;
-		void load(currentId ?? taskId);
+		const timer = setTimeout(() => void load(currentId ?? taskId), 150);
+		return () => clearTimeout(timer);
 	});
 
 	/**
@@ -744,51 +831,11 @@
 		untrack(() => void load(null));
 	});
 
-	/**
-	 * The phone's Back, one step.
-	 *
-	 * Full screen is a page laid over the flow, so Back leaves it the way it leaves any page and
-	 * the flow is still underneath. A file unfolded under its card is part of this page rather
-	 * than a page over it, so Back does not stop there — `false` hands the press back to history,
-	 * which is what closes the flow itself.
-	 */
-	export function backFromFullOutput(): boolean {
-		if (!outputFull) return false;
-		outputFull = false;
-		return true;
-	}
-
 	function openCard(node: TaskTraceNode): void {
 		const messageId = node.approval?.message_id ?? node.ask?.message_id ?? node.focus_message_id;
 		onJump(node.session_id, messageId);
 	}
 
-
-	/** The turn a file hangs off, so the output names who handed it over. */
-	function ownerOf(attachmentId: string): TaskTraceNode | null {
-		for (const node of shown?.nodes ?? []) {
-			if (node.artifacts.some((file) => file.attachment_id === attachmentId)) return node;
-		}
-		return null;
-	}
-
-	function closeOutput(): void {
-		openFile = null;
-		outputFull = false;
-	}
-
-	function showFile(file: { path: string; messageId: string; attachmentId: string }): void {
-		openFile = openFile?.attachmentId === file.attachmentId ? null : file;
-	}
-
-	function showPath(next: string): void {
-		const known = (shown?.nodes ?? [])
-			.flatMap((node) => node.artifacts)
-			.find((file) => file.path === next);
-		openFile = known
-			? { path: known.path, messageId: known.message_id, attachmentId: known.attachment_id }
-			: { path: next, messageId: '', attachmentId: next };
-	}
 
 	function nodeBundleInfo(node: TaskTraceNode) {
 		const tree = buildCitedPathTree(node.artifacts.map((a) => a.path));
@@ -797,16 +844,9 @@
 		return { tree, fileCount, bundle };
 	}
 
-	function firstPreviewable(rows: Attachment[]): Attachment {
-		return (
-			rows.find((row) => row.exists !== false && !row.is_dir) ??
-			rows.find((row) => row.exists !== false) ??
-			rows[0]!
-		);
-	}
-
+	/** A file a card handed over opens in the host's preview; the board itself shows no file. */
 	function openNodeArtifacts(node: TaskTraceNode): void {
-		if (node.artifacts.length === 0) return;
+		if (node.artifacts.length === 0 || !onOpenArtifact) return;
 		const isBundle = node.artifacts.length > 1;
 		const siblings: Attachment[] = node.artifacts.map((file) => ({
 			id: file.attachment_id,
@@ -817,18 +857,15 @@
 			...(file.exists === undefined ? {} : { exists: file.exists }),
 		}));
 		const target = firstPreviewable(siblings);
-		if (onOpenArtifact) {
-			onOpenArtifact(
-				target.workspace_relpath,
-				target,
-				node.focus_message_id || node.trigger_message_id,
-				isBundle,
-				currentId ?? taskId,
-				siblings
-			);
-		} else {
-			showFile({ path: target.workspace_relpath, messageId: target.message_id, attachmentId: target.id });
-		}
+		if (!target) return;
+		onOpenArtifact(
+			target.workspace_relpath,
+			target,
+			node.focus_message_id || node.trigger_message_id,
+			isBundle,
+			currentId ?? taskId,
+			siblings
+		);
 	}
 </script>
 
@@ -841,13 +878,15 @@
 	{@const face = avatarOf(node.actor)}
 	{@const route = routeOf(node)}
 	{@const lit = highlightOf(node, lighting)}
+	{@const ticket = ticketOf(node)}
+	{@const ticketLight = ticketLightOf(node)}
 	<article
 		class="trace-card is-{node.status}"
 		class:is-here={node.session_id === activeSessionId}
 		class:is-focus={focusedTurn === node.turn_id}
-		class:is-lit={lit === 'lit'}
+		class:is-lit={lit === 'lit' || ticketLight === 'lit'}
 		class:is-lit-blamed={lit === 'lit' && lighting === 'blamed'}
-		class:is-dim={lit === 'dim'}
+		class:is-dim={lit === 'dim' || ticketLight === 'dim'}
 	>
 		<button type="button" class="trace-card-main" onclick={() => openCard(node)} title={t.trace.jump}>
 			<span class="trace-card-line">
@@ -867,6 +906,9 @@
 				</span>
 				<span class="trace-card-who">{nameOf(node.actor)}</span>
 				<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
+				{#if ticket}
+					<span class="trace-ticket-tag mono" title={ticket.title}>{ticketTag(ticket.seq)}</span>
+				{/if}
 			</span>
 			{#if from}
 				<span class="trace-woken">{t.trace.wokenBy(from)}</span>
@@ -929,8 +971,6 @@
 					type="button"
 					class="trace-file-btn trace-file"
 					class:is-bundle={isBundle}
-					class:is-open={node.artifacts.some((a) => openFile?.attachmentId === a.attachment_id)}
-					aria-expanded={node.artifacts.some((a) => openFile?.attachmentId === a.attachment_id)}
 					onclick={() => openNodeArtifacts(node)}
 					title={isBundle ? node.artifacts.map((a) => a.path).join('\n') : single.path}
 				>
@@ -1045,26 +1085,8 @@
 	</section>
 {/snippet}
 
-{#snippet output(full = false)}
-	{#if openFile}
-		{@const owner = ownerOf(openFile.attachmentId)}
-		<div class="trace-output-stop">
-			<TraceOutput
-				path={openFile.path}
-				handedBy={owner ? nameOf(owner.actor) : ''}
-				{api}
-				{workspacePath}
-				{t}
-				{full}
-				onToggleFull={() => (outputFull = !outputFull)}
-				onOpenPath={showPath}
-				onClose={closeOutput}
-			/>
-		</div>
-	{/if}
-{/snippet}
-
-<div class="trace-pane">
+<div class="trace-pane" class:is-page={host === 'page'} class:is-tickets={segment === 'tickets'}>
+	<div class="trace-top">
 		<header class="trace-header">
 			<div class="trace-titles">
 				{#if jobs.length > 1}
@@ -1076,9 +1098,9 @@
 							aria-haspopup="listbox"
 							aria-expanded={switcherOpen}
 							onclick={toggleSwitcher}
-							title={trace ? `${t.trace.title} · ${trace.title || trace.dir}` : t.trace.title}
+							title={heading}
 						>
-							<h2>{trace ? `${t.trace.title} · ${trace.title || trace.dir}` : t.trace.title}</h2>
+							<h2>{heading}</h2>
 							<svg
 								class="trace-title-arrow"
 								class:is-open={switcherOpen}
@@ -1104,6 +1126,8 @@
 								onkeydown={onMenuKeydown}
 							>
 								{#each jobs as job (job.id)}
+									{@const status = planStatusOf(job)}
+									{@const total = totalTicketCount(job.ticket_counts)}
 									<button
 										type="button"
 										role="option"
@@ -1123,8 +1147,12 @@
 											{/if}
 										</span>
 										<div class="trace-job-info">
-											<span class="trace-job-title">{job.title || job.dir}</span>
-											<span class="trace-job-meta mono">{job.closed_at ? t.trace.closed : t.trace.open} · {job.dir}</span>
+											<span class="trace-job-title">{planTitle(job)}</span>
+											<span class="trace-job-meta">
+												<span class="plan-status is-{status}">{t.plan.status[status]}</span>
+												{#if total > 0} · {t.plan.ticketCounts(openTicketCount(job.ticket_counts), total)}{/if}
+												 · <span class="mono">{job.dir}</span>
+											</span>
 										</div>
 									</button>
 								{/each}
@@ -1132,22 +1160,51 @@
 						{/if}
 					</div>
 				{:else}
-					<h2>{trace ? `${t.trace.title} · ${trace.title || trace.dir}` : t.trace.title}</h2>
+					<h2>{heading}</h2>
 				{/if}
 				{#if trace}
-					<span class="trace-meta">{trace.closed_at ? t.trace.closed : t.trace.open} · {trace.dir}</span>
+					<span class="trace-meta">
+						<span class="plan-status is-{planStatus}">{t.plan.status[planStatus]}</span>
+						{#if detail?.kind} · {detail.kind}{/if}
+						{#if detail && totalTicketCount(detail.ticket_counts) > 0}
+							 · {t.plan.ticketCounts(openTicketCount(detail.ticket_counts), totalTicketCount(detail.ticket_counts))}
+						{/if}
+						 · <span class="mono">{trace.dir}</span>
+					</span>
 				{/if}
 			</div>
-			{#if onClose}
-			<button type="button" class="sheet-close" title={t.common.close} onclick={onClose}>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-					<line x1="18" y1="6" x2="6" y2="18"></line>
-					<line x1="6" y1="6" x2="18" y2="18"></line>
-				</svg>
-			</button>
-			{/if}
+			<div class="trace-header-end">
+				{#if detail}
+					<!-- Only a narrow host shows these: there the rail and the tree take turns. -->
+					<div class="trace-segments" role="tablist" aria-label={t.plan.tickets}>
+						<button type="button" role="tab" aria-selected={segment === 'trace'} class:is-on={segment === 'trace'} onclick={() => (segment = 'trace')}>{t.plan.segmentTrace}</button>
+						<button type="button" role="tab" aria-selected={segment === 'tickets'} class:is-on={segment === 'tickets'} onclick={() => (segment = 'tickets')}>{t.plan.segmentTickets}</button>
+					</div>
+				{/if}
+				{#if onClose}
+				<button type="button" class="sheet-close" title={t.common.close} onclick={onClose}>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="18" y1="6" x2="6" y2="18"></line>
+						<line x1="6" y1="6" x2="18" y2="18"></line>
+					</svg>
+				</button>
+				{/if}
+			</div>
 		</header>
-		<div class="trace-body">
+		{#if detail}
+			<PlanSpecPanel
+				{api}
+				{detail}
+				{t}
+				defaultOpen={host !== 'page'}
+				onSaved={(next) => (detail = next)}
+				onConflict={reloadPlan}
+				{onJump}
+			/>
+		{/if}
+	</div>
+	<div class="trace-body">
+		<div class="trace-stage">
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
 				<div class="trace-tools-start">
@@ -1160,7 +1217,7 @@
 							type="button"
 							class="trace-highlight is-feedback"
 							aria-pressed={lighting === 'feedback'}
-							onclick={() => (highlight = lighting === 'feedback' ? null : 'feedback')}
+							onclick={() => toggleHighlight('feedback')}
 						>
 							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
 							<span>{t.routes.filterFeedback}</span>
@@ -1172,7 +1229,7 @@
 							type="button"
 							class="trace-highlight is-blamed"
 							aria-pressed={lighting === 'blamed'}
-							onclick={() => (highlight = lighting === 'blamed' ? null : 'blamed')}
+							onclick={() => toggleHighlight('blamed')}
 						>
 							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
 							<span>{t.routes.filterBlamed}</span>
@@ -1252,21 +1309,33 @@
 										{@render routeDetail(placement.node, route)}
 									{/if}
 								{/if}
-								{#if !outputFull && placement.node.artifacts.some((file) => file.attachment_id === openFile?.attachmentId)}
-									{@render output()}
-								{/if}
 							</div>
 						{/each}
 					</div>
 				{/if}
 		</div>
 		</div>
+		{#if detail}
+			<aside class="trace-rail">
+				<TicketList
+					{api}
+					{detail}
+					nodes={shown?.nodes ?? []}
+					{bots}
+					{youLabel}
+					{deletedLabel}
+					{t}
+					selectedId={selectedTicket}
+					onSelect={selectTicket}
+					{onJump}
+					onOpenArtifacts={openTicketArtifacts}
+					onPatched={ticketPatched}
+					onConflict={reloadPlan}
+				/>
+			</aside>
+		{/if}
+	</div>
 </div>
-	{#if openFile && outputFull}
-		<div class="trace-output-layer">
-			{@render output(true)}
-		</div>
-	{/if}
 
 <style>
 
@@ -1282,6 +1351,138 @@
 		flex-direction: column;
 		overflow: hidden;
 		background: var(--pane);
+		/* The rail folds by the board's own width, not the window's: a narrow pane is a phone. */
+		container: trace / inline-size;
+	}
+
+	/* The title row and the plan's spec under it, one block above the picture. */
+	.trace-top {
+		position: relative;
+		z-index: 10;
+		flex: none;
+		display: flex;
+		flex-direction: column;
+		max-height: 60%;
+		overflow-y: auto;
+		border-bottom: 1px solid var(--line);
+		background: var(--sidebar-bg);
+	}
+
+	.trace-header-end {
+		flex: none;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.plan-status {
+		display: inline-block;
+		padding: 0 6px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: var(--chip);
+		color: var(--muted);
+		font-size: 10.5px;
+		font-weight: 600;
+		line-height: 16px;
+		white-space: nowrap;
+		vertical-align: 1px;
+	}
+
+	.plan-status.is-active {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.plan-status.is-done {
+		border-color: var(--ok-line);
+		background: var(--ok-bg);
+		color: var(--ok-text);
+	}
+
+	.trace-segments {
+		display: none;
+		align-items: center;
+		padding: 3px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: var(--chip);
+		gap: 2px;
+	}
+
+	.trace-segments button {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 11px;
+		border: 0;
+		border-radius: 9999px;
+		background: transparent;
+		color: var(--muted);
+		font: 600 11.5px/1.2 var(--font);
+		cursor: pointer;
+		min-height: 28px;
+		transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+		user-select: none;
+	}
+
+	.trace-segments button.is-on {
+		background: var(--pane);
+		color: var(--ink);
+		box-shadow: var(--shadow-xs);
+	}
+
+	/* The ticket a card worked in, as its number; the rail says the rest. */
+	.trace-ticket-tag {
+		flex: none;
+		padding: 0 5px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+		color: var(--muted);
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 15px;
+	}
+
+	/* The picture and, beside it, the plan's tickets. */
+	.trace-stage {
+		position: relative;
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.trace-rail {
+		flex: none;
+		width: 288px;
+		min-height: 0;
+		overflow-y: auto;
+		border-left: 1px solid var(--line);
+		background: var(--sidebar-bg);
+		-webkit-overflow-scrolling: touch;
+	}
+
+	@container trace (max-width: 560px) {
+		.trace-segments {
+			display: inline-flex;
+		}
+
+		.trace-rail {
+			display: none;
+		}
+
+		.trace-pane.is-tickets .trace-rail {
+			display: block;
+			width: 100%;
+			border-left: 0;
+			overflow-y: auto;
+		}
+
+		.trace-pane.is-tickets .trace-stage {
+			display: none;
+		}
 	}
 
 
@@ -1297,15 +1498,12 @@
 
 
 	.trace-header {
-		position: relative;
-		z-index: 10;
+		flex: none;
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 16px;
 		padding: 12px 14px 10px;
-		border-bottom: 1px solid var(--line);
-		background: var(--sidebar-bg);
 		user-select: none;
 	}
 
@@ -1525,6 +1723,8 @@
 		position: relative;
 		flex: 1;
 		min-height: 0;
+		display: flex;
+		align-items: stretch;
 	}
 
 	.trace-tools {

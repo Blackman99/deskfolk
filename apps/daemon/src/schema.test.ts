@@ -74,8 +74,10 @@ describe("schema", () => {
       "settings",
       "skills",
       "spend",
+      "task_spec_revisions",
       "tasks",
       "terminals",
+      "tickets",
       "turn_route_decisions",
       "turns",
     ]);

@@ -550,7 +550,11 @@ function sendAnnotationsRows(ctx: StoreContext, input: SendAnnotationsRequest): 
  * message sits in, and each Bot of a group batch works in its own folder. Null for a message that
  * carries none.
  */
-export function annotationTaskOfMessage(ctx: StoreContext, messageId: string, botId: string): string | null {
+export function annotationTaskOfMessage(
+  ctx: StoreContext,
+  messageId: string,
+  botId: string,
+): { taskId: string; ticketId: string | null } | null {
   const all = ctx.db
     .query<{ bot_id: string; target_turn_id: string | null }, [string]>(
       `SELECT a.bot_id, a.target_turn_id FROM annotations a
@@ -563,8 +567,12 @@ export function annotationTaskOfMessage(ctx: StoreContext, messageId: string, bo
   const rows = own.length > 0 ? own : all;
   for (const row of rows) {
     if (!row.target_turn_id) continue;
-    const taskId = taskOfTurn(ctx, row.target_turn_id);
-    if (taskId) return taskId;
+    const lineage = ctx.db
+      .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
+        `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
+      )
+      .get(row.target_turn_id);
+    if (lineage?.task_id) return { taskId: lineage.task_id, ticketId: lineage.ticket_id ?? null };
   }
   return null;
 }

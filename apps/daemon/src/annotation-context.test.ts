@@ -202,7 +202,7 @@ describe("who each annotation is for", () => {
     const group = store.createGroup({ name: "g", members: [alpha.bot.id, beta.bot.id] }).id;
     const deliver = (botId: string, body: string, file: string, text: string) => {
       const trigger = store.postMessage(group, { body });
-      const turn = store.createTurn({ sessionId: group, botId, triggerMessageId: trigger.id, newTask: true });
+      const turn = store.createTurn({ sessionId: group, botId, triggerMessageId: trigger.id, taskId: store.openTask({ sessionId: group, title: body }).id });
       const dir = store.turnWorkDir(turn.id)!;
       mkdirSync(join(root, dir), { recursive: true });
       writeFileSync(join(root, dir, file), text);

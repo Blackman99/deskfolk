@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER, type Annotation, type ClientEvent, type TextRangeAnchor } from "@real-bot/protocol";
-import { Store, TASK_QUIET_MS } from ".";
+import { Store } from ".";
 import { sha256 } from "../request-digest";
 
 const roots: string[] = [];
@@ -336,18 +336,18 @@ describe("sending a batch", () => {
 describe("the turn a batch wakes", () => {
   test("works in the delivery's folder even after the quiet period, and even from your direct", () => {
     const w = world();
-    // Long after the delivery: an ordinary follow-up would open a fresh folder.
-    const later = new Date(Date.now() + TASK_QUIET_MS * 2);
+    // Long after the delivery, with another plan opened since: an ordinary follow-up would land there.
+    const later = new Date(Date.now() + 12 * 60 * 60_000);
     const fresh = w.store.postMessage(w.direct, { body: "另一件事" });
-    const unrelated = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: fresh.id, newTask: true });
+    const unrelated = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: fresh.id, taskId: w.store.openTask({ sessionId: w.direct, title: "另一件事" }).id });
     expect(unrelated.task_id).not.toBe(w.delivery.task_id);
     w.store.setTurnStatus(unrelated.id, "completed");
     expect(w.store.getTask(w.delivery.task_id).closed_at).not.toBeNull();
 
     const a = draft(w);
     const { message } = w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [a.id] });
-    // Named outright, the job wins over the quiet window and over the session's open dir.
-    expect(w.store.resolveTurnTask({ sessionId: w.direct, trigger: message, taskId: w.delivery.task_id, now: later })).toBe(w.delivery.task_id);
+    // Named outright, the plan wins over the session's current one.
+    expect(w.store.resolveTurnTask({ sessionId: w.direct, trigger: message, taskId: w.delivery.task_id, now: later })).toMatchObject({ taskId: w.delivery.task_id });
     const turn = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: message.id });
     expect(turn.task_id).toBe(w.delivery.task_id);
     // Reopened, and the session's other open job closed: one open dir per session.
@@ -359,7 +359,7 @@ describe("the turn a batch wakes", () => {
     const w = world();
     Bun.sleepSync(3);
     const ask = w.store.postMessage(w.direct, { body: "再做个幻灯片" });
-    const second = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: ask.id, newTask: true });
+    const second = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: ask.id, taskId: w.store.openTask({ sessionId: w.direct, title: "另一件事" }).id });
     const slidesSha = w.write("slides.md", "# Slides\n");
     const newer = w.store.insertMessage({ sessionId: w.direct, turnId: second.id, kind: "bot", author: w.bot.id, body: "slides.md", paths: ["slides.md"] });
     w.store.setTurnStatus(second.id, "completed");
@@ -378,12 +378,12 @@ describe("the turn a batch wakes", () => {
   test("each Bot of a group batch works in its own delivery's folder", () => {
     const w = world();
     const askWriter = w.store.postMessage(w.group, { body: `@${w.bot.name} 写报告` });
-    const writerJob = w.store.createTurn({ sessionId: w.group, botId: w.bot.id, triggerMessageId: askWriter.id, newTask: true });
+    const writerJob = w.store.createTurn({ sessionId: w.group, botId: w.bot.id, triggerMessageId: askWriter.id, taskId: w.store.openTask({ sessionId: w.group, title: "另一件事" }).id });
     const report = w.store.insertMessage({ sessionId: w.group, turnId: writerJob.id, kind: "bot", author: w.bot.id, body: "report.md", paths: ["report.md"] });
     w.store.setTurnStatus(writerJob.id, "completed");
     Bun.sleepSync(3);
     const askEditor = w.store.postMessage(w.group, { body: `@${w.other.name} 做幻灯片` });
-    const editorJob = w.store.createTurn({ sessionId: w.group, botId: w.other.id, triggerMessageId: askEditor.id, newTask: true });
+    const editorJob = w.store.createTurn({ sessionId: w.group, botId: w.other.id, triggerMessageId: askEditor.id, taskId: w.store.openTask({ sessionId: w.group, title: "另一件事" }).id });
     const slidesSha = w.write("slides.md", "# Slides\n");
     const slides = w.store.insertMessage({ sessionId: w.group, turnId: editorJob.id, kind: "bot", author: w.other.id, body: "slides.md", paths: ["slides.md"] });
     w.store.setTurnStatus(editorJob.id, "completed");
@@ -413,7 +413,7 @@ describe("the turn a batch wakes", () => {
     w.store.setTurnStatus(handoffTurn.id, "completed");
     expect(handoffTurn.task_id).toBe(job);
     // Since then: a new job in the Writer's direct, and one going in your direct with the Editor.
-    const next = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: w.store.postMessage(w.direct, { body: "下一件" }).id, newTask: true });
+    const next = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: w.store.postMessage(w.direct, { body: "下一件" }).id, taskId: w.store.openTask({ sessionId: w.direct, title: "下一件" }).id });
     const editorDirect = w.store.findDirectSession(USER_MEMBER, w.other.id)!.id;
     const going = w.store.createTurn({ sessionId: editorDirect, botId: w.other.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "顺便看看封面" }).id });
     for (const turn of [next, going]) w.store.setTurnStatus(turn.id, "completed");

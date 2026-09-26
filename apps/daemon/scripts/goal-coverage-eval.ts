@@ -6,7 +6,8 @@
  *     --base-url https://api.example.com/v1 --model judge-model \
  *     (--task <id> | --session <id> | --latest [n]) [--db <state.sqlite>] [--min-pass 0.8] [--out path]
  *
- * For each job it reads the opening request (`tasks.brief`), an excerpt of every file the job's
+ * For each job it reads the plan's spec when the organizer has written one (goal, acceptance,
+ * rules) and the opening request (`tasks.brief`), an excerpt of every file the job's
  * messages cited, and the Bots' last words, then asks one tool-less completion to judge each
  * requirement in the brief as covered, partial or missing, with evidence. The database is copied
  * first and the copy is opened, so the daemon may keep running on the original. Results print as a
@@ -30,7 +31,7 @@ import {
   type GoalCoverage,
 } from "../src/goal-coverage-eval";
 import { memoryKeyStore } from "../src/secrets";
-import { Store, type Task } from "../src/store";
+import { parsePlanSpec, Store, type Task } from "../src/store";
 
 type Options = {
   baseUrl: string;
@@ -215,6 +216,7 @@ async function main(): Promise<number> {
     title: string;
     dir: string;
     brief: string;
+    goal: string | null;
     coverage: GoalCoverage | null;
     score: number | null;
     error: string | null;
@@ -224,8 +226,10 @@ async function main(): Promise<number> {
     const client = createCompletionsClient();
     for (const task of selectTasks(store, opts)) {
       const brief = task.brief ?? "";
-      if (!brief) {
-        results.push({ task_id: task.id, title: task.title, dir: task.dir, brief, coverage: null, score: null, error: "job has no brief" });
+      const spec = parsePlanSpec(task.spec);
+      const goal = spec?.goal ?? null;
+      if (!brief && !spec) {
+        results.push({ task_id: task.id, title: task.title, dir: task.dir, brief, goal, coverage: null, score: null, error: "plan has neither a spec nor a brief" });
         continue;
       }
       const deliveries = root
@@ -234,7 +238,12 @@ async function main(): Promise<number> {
             excerpt: deliveryExcerpt(root, row.path, COVERAGE_EXCERPT_LIMIT).excerpt,
           }))
         : [];
-      const payload = goalCoveragePayload({ brief, deliveries, finalMessages: lastWords(store, task.id) });
+      const payload = goalCoveragePayload({
+        brief,
+        plan: spec ? { goal: spec.goal, acceptance: spec.acceptance, rules: spec.rules } : null,
+        deliveries,
+        finalMessages: lastWords(store, task.id),
+      });
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), opts.timeoutMs * 3);
       let raw: string | null = null;
@@ -265,6 +274,7 @@ async function main(): Promise<number> {
         title: task.title,
         dir: task.dir,
         brief,
+        goal,
         coverage,
         score: coverage ? coverageScore(coverage) : null,
         error,
@@ -278,7 +288,7 @@ async function main(): Promise<number> {
   const report: string[] = [`# Goal coverage — ${opts.model}`, ""];
   for (const row of results) {
     if (row.coverage) {
-      report.push(formatCoverageReport({ title: row.title, dir: row.dir, model: opts.model, coverage: row.coverage }), "");
+      report.push(formatCoverageReport({ title: row.goal ?? row.title, dir: row.dir, model: opts.model, coverage: row.coverage }), "");
     } else {
       report.push(`## ${row.title}`, "", `- 工作目录：\`${row.dir}\``, `- 未评判：${row.error ?? "unknown"}`, "");
     }

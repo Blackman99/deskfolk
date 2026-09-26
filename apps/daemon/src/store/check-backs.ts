@@ -22,6 +22,8 @@ export type CheckBack = {
   turn_id: string | null;
   /** The plan that turn worked in, so the woken turn lands in the same folder. */
   task_id: string | null;
+  /** The ticket it worked in, when it had one. */
+  ticket_id: string | null;
   note: string;
   due_at: string;
   created_at: string;
@@ -74,8 +76,8 @@ export function scheduleCheckBack(
   const id = ulid(at.getTime());
   const lineage = input.turnId
     ? ctx.db
-        .query<{ task_id: string | null }, [string]>(
-          `SELECT task_id FROM turns WHERE id = ?`,
+        .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
+          `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
         )
         .get(input.turnId)
     : null;
@@ -91,9 +93,9 @@ export function scheduleCheckBack(
     replaced = voided.length > 0;
     ctx.db.run(
       `INSERT INTO check_backs
-         (id, bot_id, session_id, turn_id, task_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
-      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, takeCodePoints(note, CHECK_BACK_NOTE_MAX).text, due, now],
+         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(note, CHECK_BACK_NOTE_MAX).text, due, now],
     );
   })();
   return { row: getCheckBack(ctx, id), replaced };

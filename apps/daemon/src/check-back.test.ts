@@ -87,10 +87,11 @@ test("a Bot books a check-back, the scheduler wakes it in the same job with its 
     expect(store.pendingCheckBack(writer.bot.id, session)).toBeNull();
 
     // The note is the Bot's reminder to itself. The conversation, the phone, other Bots' transcripts,
-    // search and the unread badge never see it; the flow board still draws the wake.
+    // the organizer, search and the unread badge never see it; the flow board still draws the wake.
     expect(store.getCheckBack(booked.id).message_id).toBe(note.id);
     expect(store.listMessages(session).items.map((m) => m.id)).not.toContain(note.id);
     expect(store.listMainMessages(session, 10).map((m) => m.id)).not.toContain(note.id);
+    expect(store.taskMessagesSince(booking.task_id!, "1970-01-01T00:00:00.000Z").map((m) => m.id)).not.toContain(note.id);
     expect(store.search("写好没").map((hit) => hit.id)).not.toContain(note.id);
     expect(store.unreadCount(session)).toBe(store.listMessages(session).items.filter((m) => m.author !== "user").length);
     expect(shown.some((event) => (event.event === "message.created" || event.event === "message.upsert") && event.id === note.id)).toBe(false);

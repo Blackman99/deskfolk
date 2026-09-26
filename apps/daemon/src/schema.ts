@@ -193,12 +193,48 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   dir TEXT NOT NULL UNIQUE,
   brief TEXT,
+  kind TEXT,
+  spec TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'parked')),
+  spec_updated_at TEXT,
+  routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   closed_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS tasks_session_open
   ON tasks (session_id, closed_at, created_at);
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks (id),
+  seq INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  dir TEXT NOT NULL UNIQUE,
+  spec TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('todo', 'doing', 'review', 'done', 'parked')),
+  worker TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  closed_at TEXT,
+  UNIQUE (task_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS tickets_task_status ON tickets (task_id, status, seq);
+
+CREATE TABLE IF NOT EXISTS task_spec_revisions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks (id),
+  revision INTEGER NOT NULL,
+  spec TEXT NOT NULL,
+  tickets_snapshot TEXT NOT NULL,
+  source_message_id TEXT,
+  source_turn_id TEXT,
+  actor TEXT NOT NULL CHECK (actor IN ('app', 'user')),
+  created_at TEXT NOT NULL,
+  UNIQUE (task_id, revision)
+);
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
@@ -210,6 +246,7 @@ CREATE TABLE IF NOT EXISTS messages (
   body TEXT NOT NULL,
   source_turn_id TEXT,
   task_id TEXT REFERENCES tasks (id),
+  ticket_id TEXT REFERENCES tickets (id),
   message_seq INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
@@ -270,6 +307,7 @@ CREATE TABLE IF NOT EXISTS turns (
   trigger_message_id TEXT NOT NULL REFERENCES messages (id),
   partial_text TEXT,
   task_id TEXT REFERENCES tasks (id),
+  ticket_id TEXT REFERENCES tickets (id),
   pending_ask_id TEXT REFERENCES messages (id) ON DELETE SET NULL,
   routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL,
   routine_due_at TEXT,
@@ -329,6 +367,7 @@ CREATE TABLE IF NOT EXISTS check_backs (
   session_id TEXT NOT NULL,
   turn_id TEXT,
   task_id TEXT,
+  ticket_id TEXT,
   note TEXT NOT NULL,
   due_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -472,7 +511,7 @@ CREATE TABLE IF NOT EXISTS spend (
   turn_id TEXT,
   judgement_id TEXT,
   kind TEXT NOT NULL CHECK (
-    kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest')
+    kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize')
   ),
   chain_id TEXT,
   provider_id TEXT,
@@ -497,6 +536,7 @@ CREATE TABLE IF NOT EXISTS spend (
     OR (kind = 'route_review' AND chain_id IS NOT NULL AND turn_id IS NOT NULL)
     OR (kind = 'route_learn' AND chain_id IS NOT NULL)
     OR kind = 'composer_suggest'
+    OR kind = 'organize'
   )
 );
 

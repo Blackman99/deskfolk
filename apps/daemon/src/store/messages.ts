@@ -170,12 +170,18 @@ export function insertMessage(
       : input.body;
   const now = isoNow();
   const id = ulid();
-  // A message a turn produced belongs to that turn's job, which is what carries the work dir
-  // across a handoff: the woken turn reads it off this row's turn.
-  const taskId = input.turnId ? taskOfTurn(ctx, input.turnId) : null;
+  // A message a turn produced belongs to that turn's plan and ticket, which is what carries the
+  // work dir across a handoff: the woken turn reads it off this row's turn.
+  const lineage = input.turnId
+    ? ctx.db
+        .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
+          `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
+        )
+        .get(input.turnId)
+    : null;
   ctx.db.run(
-    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.sessionId,
@@ -185,7 +191,8 @@ export function insertMessage(
       input.author,
       body,
       input.sourceTurnId ?? null,
-      taskId,
+      lineage?.task_id ?? null,
+      lineage?.ticket_id ?? null,
       now,
     ],
   );

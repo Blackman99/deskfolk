@@ -60,16 +60,26 @@ describe("a job keeps what it was asked for", () => {
     store.close();
   });
 
-  test("the first turn of a job is the one with no earlier turn", () => {
+  test("the first turn of a plan is the one with no earlier turn, and the session's current plan is findable", () => {
     const { store, bot, session } = fixture();
+    expect(store.sessionCurrentTask(session.id)).toBeNull();
     const first = store.postMessage(session.id, { body: "导出季度报表" });
     const one = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: first.id });
     expect(store.taskHasEarlierTurns(one.task_id!, one.id)).toBe(false);
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(one.task_id!);
     const second = store.postMessage(session.id, { body: "再来一版" });
     const two = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: second.id });
     expect(store.taskHasEarlierTurns(two.task_id!, two.id)).toBe(true);
     // A judgement has no turn yet; asked with no turn to exclude, any turn counts as earlier.
     expect(store.taskHasEarlierTurns(two.task_id!, "")).toBe(true);
+    // No clock closes a plan: however long it has been quiet, it is still the one to join. Only
+    // another plan opening in the session takes its place, and parks it.
+    store.db.run(`UPDATE turns SET last_activity_at = ? WHERE task_id = ?`, [new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(), one.task_id!]);
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(one.task_id!);
+    const other = store.openTask({ sessionId: session.id, title: "别的事" });
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(other.id);
+    expect(store.getTask(one.task_id!)).toMatchObject({ status: "parked" });
+    expect(store.getTask(one.task_id!).closed_at).toBeString();
     void USER_MEMBER;
     store.close();
   });

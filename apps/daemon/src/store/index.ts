@@ -41,13 +41,19 @@ import {
 } from "./shared";
 import * as skills from "./skills";
 import * as spend from "./spend";
+import * as planSpec from "./plan-spec";
 import * as tasks from "./tasks";
 import * as terminals from "./terminals";
+import * as tickets from "./tickets";
 import * as turns from "./turns";
 
 export { HttpError } from "../errors";
-export { isReservedTaskPath, RESERVED_SUBDIRS, TASK_QUIET_MS, WORK_ROOT } from "./tasks";
-export type { Task } from "./tasks";
+export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
+export type { Task, PlanSpec, PlanStatus } from "./tasks";
+export { normalizePlanSpec, parsePlanSpec, emptyPlanSpec, PLAN_STATUSES } from "./plan-shape";
+export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
+export { ORGANIZER_NEW_TICKETS_MAX } from "./plan-spec";
+export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
 export type { CheckBack } from "./check-backs";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
@@ -245,9 +251,37 @@ export class Store {
   readonly taskArtifacts = this.bind(tasks.taskArtifacts);
   readonly taskTrace = this.bind(tasks.taskTrace);
   readonly sessionTasks = this.bind(tasks.sessionTasks);
-  readonly joinableTask = this.bind(tasks.joinableTask);
+  readonly sessionCurrentTask = this.bind(tasks.sessionCurrentTask);
+  readonly sessionRecentTasks = this.bind(tasks.sessionRecentTasks);
   readonly taskHasEarlierTurns = this.bind(tasks.taskHasEarlierTurns);
+  readonly taskLiveTurnCount = this.bind(tasks.taskLiveTurnCount);
+  readonly taskArtifactsSince = this.bind(tasks.taskArtifactsSince);
+  readonly taskMessagesSince = this.bind(tasks.taskMessagesSince);
+  readonly setTaskSpec = this.bind(tasks.setTaskSpec);
+  readonly routineTask = this.bind(tasks.routineTask);
+  readonly distinctTaskKinds = this.bind(tasks.distinctTaskKinds);
+  readonly precedentTasks = this.bind(tasks.precedentTasks);
+  readonly turnPlanDir = this.bind(tasks.turnPlanDir);
+  readonly taskSummary = this.bind(tasks.taskSummary);
+  readonly taskLastActivityAt = this.bind(tasks.taskLastActivityAt);
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
+
+  // Tickets and plan specs ---------------------------------------------------------------
+  readonly createTicket = this.bind(tickets.createTicket);
+  readonly getTicket = this.bind(tickets.getTicket);
+  readonly listTickets = this.bind(tickets.listTickets);
+  readonly patchTicket = this.bind(tickets.patchTicket);
+  readonly ticketOfTurn = this.bind(tickets.ticketOfTurn);
+  readonly ticketArtifacts = this.bind(tickets.ticketArtifacts);
+  readonly listTicketDirs = this.bind(tickets.listTicketDirs);
+  readonly listSpecRevisions = this.bind(planSpec.listSpecRevisions);
+  readonly currentRevision = this.bind(planSpec.currentRevision);
+  readonly lastSpecRevisionAt = this.bind(planSpec.lastSpecRevisionAt);
+  readonly recordSpecRevision = this.bind(planSpec.recordSpecRevision);
+  readonly setPlanSpecByUser = this.bind(planSpec.setPlanSpecByUser);
+  readonly patchTicketByUser = this.bind(planSpec.patchTicketByUser);
+  readonly applyOrganizerResult = this.bind(planSpec.applyOrganizerResult);
+  readonly taskDetail = this.bind(planSpec.taskDetail);
 
   // Check-backs ----------------------------------------------------------------------------
   readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);

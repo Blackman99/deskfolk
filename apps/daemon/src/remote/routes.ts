@@ -33,7 +33,7 @@ function add(method: Route["method"], pattern: string, body?: Fields, required?:
 }
 function get(pattern: string, query?: Fields, queryRequired?: string[]): void { routes.push({ method: "GET", path: path(pattern), query, queryRequired }); }
 get("(snapshot|settings|providers|bots|sessions|allow-rules|mcp-servers|skills|memories|routines|credential-operations)");
-get("(providers|bots|sessions|attachments|requests)/:id");
+get("(providers|bots|sessions|attachments|requests|tasks)/:id");
 get("sessions/:id/(judgements|routes|composer-suggestions)");
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
@@ -42,15 +42,33 @@ get("bots/:id/profile-revisions"); get("attachments/:id/content", { size: one("t
 get("tasks/:id/artifacts");
 get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, session_id: id, target_session_id: id, message_id: id, target_message_id: id, status: one("draft", "open", "resolved") });
 get("annotations/:id"); get("annotations/:id/crop");
-get("tasks/:id/trace");
+get("tasks/:id/(trace|tickets|spec-revisions)");
 get("sessions/:id/tasks");
+const planStatus: Check = one("active", "done", "parked");
+const ticketStatus: Check = one("todo", "doing", "review", "done", "parked");
+const specLines: Check = list((v) => typeof v === "string" && v.length <= 400);
+const planSpec: Check = object(
+  {
+    kind: nullable(string),
+    goal: string,
+    acceptance: specLines,
+    rules: specLines,
+    process: specLines,
+    progress: object({ done: specLines, open: specLines, blocked: specLines }, ["done", "open", "blocked"]),
+    status: planStatus,
+  },
+  ["goal"],
+);
+const specRevision: Check = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
+add("PATCH", "tasks/:id/spec", { spec: planSpec, if_revision: specRevision }, ["spec"], true);
+add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
 get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
-const spendKind: Check = one("turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest");
+const spendKind: Check = one("turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize");
 // Remote query values are strings. Repeated local `kind` params arrive here as one comma-separated value.
-const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= 6;
+const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= 7;
 const isoTime: Check = (value) => {
   if (typeof value !== "string") return false;
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);

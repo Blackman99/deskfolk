@@ -11,17 +11,17 @@ import { takeCodePoints } from "./text";
 
 export const GOAL_COVERAGE_SYSTEM = `你在核对一件事做完了没有，不是接着做它。没有工具，不能发言，不能读工作区。
 
-根据用户消息这份 JSON 里的 brief、deliveries、final_messages 决定。brief 是这件事开头那条要求的原文；deliveries 是这件事交出的文件，每条有 path 和 excerpt（长文件只给开头，二进制文件没有 excerpt）；final_messages 是 Bot 最后说的几句。
+根据用户消息这份 JSON 里的 brief、plan、deliveries、final_messages 决定。brief 是这件事开头那条要求的原文；plan 存在时是应用整理出的要点：goal 是现在到底要做什么，acceptance 是怎么算完成，rules 是定过的规则——有 plan 就以 goal、acceptance 和 rules 为准拆要求，brief 只作补充，没有 plan 才从 brief 拆；deliveries 是这件事交出的文件，每条有 path 和 excerpt（长文件只给开头，二进制文件没有 excerpt）；final_messages 是 Bot 最后说的几句。
 
 只输出一个 JSON 对象。不要 markdown 围栏，不要前言后语，不要 tool-call。
 
-- requirements：从 brief 里拆出的每一条可验收的要求，按 brief 里出现的顺序，不多不少。每条有：
+- requirements：拆出的每一条可验收的要求（有 plan 按 goal、acceptance、rules 的顺序，否则按 brief 里出现的顺序），不多不少。每条有：
   - text：原话，或紧贴原话的一句概括。
   - status：covered（交出的东西里看得到它做到了）、partial（做了一部分，或做了但不是要求的形态）、missing（没看到）之一。
   - evidence：一句话，说明在哪个文件或哪句话里看到的；没看到就写「没有」。
 - summary：一句话，这件事整体做没做完。
 
-策略：只认 deliveries 和 final_messages 里看得见的证据，Bot 说「已完成」不算证据。brief 里没提的不要补成要求；brief 里点名了路径的，路径不对就是 partial。拿不准就 partial，不要硬判 covered。`;
+策略：只认 deliveries 和 final_messages 里看得见的证据，Bot 说「已完成」不算证据。要求里没提的不要补成要求；点名了路径的，路径不对就是 partial。拿不准就 partial，不要硬判 covered。`;
 
 /** How much of one handed-over file the judge reads. */
 export const COVERAGE_EXCERPT_LIMIT = 4000;
@@ -36,19 +36,25 @@ export type CoverageStatus = (typeof COVERAGE_STATUSES)[number];
 export type CoverageRequirement = { text: string; status: CoverageStatus; evidence: string };
 export type GoalCoverage = { requirements: CoverageRequirement[]; summary: string };
 
+export type CoveragePlan = { goal: string; acceptance: string[]; rules: string[] };
+
 export type CoveragePayload = {
   brief: string;
+  /** The organizer's reading of the plan, when it has run: the standard the judge measures by. */
+  plan?: CoveragePlan;
   deliveries: Array<{ path: string; excerpt: string | null; truncated?: true }>;
   final_messages: Array<{ author: string; body: string; truncated?: true }>;
 };
 
 export function goalCoveragePayload(input: {
   brief: string;
+  plan?: CoveragePlan | null;
   deliveries: ReadonlyArray<{ path: string; excerpt: string | null }>;
   finalMessages: ReadonlyArray<{ author: string; body: string }>;
 }): CoveragePayload {
   return {
     brief: input.brief,
+    ...(input.plan ? { plan: { goal: input.plan.goal, acceptance: [...input.plan.acceptance], rules: [...input.plan.rules] } } : {}),
     deliveries: input.deliveries.map((delivery) => {
       if (delivery.excerpt === null) return { path: delivery.path, excerpt: null };
       const clipped = takeCodePoints(delivery.excerpt, COVERAGE_EXCERPT_LIMIT);

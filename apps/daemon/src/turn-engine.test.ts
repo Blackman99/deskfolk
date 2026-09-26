@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
 import { CLOSING_CHECK_SYSTEM } from "./closing-check";
+import { ORGANIZER_SYSTEM } from "./prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
 import { runCollabTool } from "./collab-tools";
@@ -84,7 +85,8 @@ function isRoutingCall(body: Record<string, unknown>): boolean {
     system === ROUTE_PICK_SYSTEM ||
     system === ROUTE_REVIEW_SYSTEM ||
     system === ROUTE_LEARN_SYSTEM ||
-    system === CLOSING_CHECK_SYSTEM
+    system === CLOSING_CHECK_SYSTEM ||
+    system === ORGANIZER_SYSTEM
   );
 }
 
@@ -2023,6 +2025,17 @@ describe("turn engine on the local API", () => {
 
     expect(h.store.getRoutine(routine.id).last_fired_for_due_at).toBe(dueNow.toISOString());
     expect(h.engine.fireRoutine(routine.id, dueNow)).toBeNull();
+
+    // The fire ran as a ticket of the routine's standing plan, not as a new plan of the session:
+    // the user's own plan is still the current one.
+    const standing = h.store.routineTask(routine.id)!;
+    expect(standing.routine_id).toBe(routine.id);
+    const fired = h.store.getTurn(opened!.id);
+    expect(fired.task_id).toBe(standing.id);
+    const ticket = h.store.getTicket(fired.ticket_id!);
+    expect(ticket).toMatchObject({ task_id: standing.id, seq: 1, worker: botId });
+    expect(h.store.turnWorkDir(fired.id)).toBe(ticket.dir);
+    expect(h.store.sessionCurrentTask(sessionId)?.id).toBe(h.store.getTurn(String(first.id)).task_id!);
 
     releaseFirst();
     sub.close();
@@ -4088,7 +4101,15 @@ describe("spend ledger for routing and composer calls", () => {
     await waitFor(sub.events, () => calls.includes(ROUTE_LEARN_SYSTEM), 4000);
     await h.engine.drain();
 
-    const rows = ledger(h.store);
+    const all = ledger(h.store);
+    // Each of the three user messages was organized first, on the default model, owned by nobody.
+    const organized = all.filter((row) => row.kind === "organize");
+    expect(organized).toHaveLength(3);
+    for (const row of organized) {
+      expect(row).toMatchObject({ session_id: body.direct_session.id, bot_id: null, turn_id: null, model: "cheap-chat", thinking_level: null });
+      expect(row.input_tokens).not.toBeNull();
+    }
+    const rows = all.filter((row) => row.kind !== "organize");
     const kinds = rows.map((row) => row.kind);
     expect(kinds.filter((kind) => kind === "route_pick")).toHaveLength(3);
     expect(kinds.filter((kind) => kind === "turn")).toHaveLength(3);
@@ -4148,9 +4169,9 @@ describe("spend ledger for routing and composer calls", () => {
     ageChain(h.store, 4 * 60_000);
     h.engine.sweepStaleChains();
     await h.engine.drain();
-    expect(calls).toEqual([ROUTE_PICK_SYSTEM]);
+    expect(calls.filter((call) => call !== ORGANIZER_SYSTEM)).toEqual([ROUTE_PICK_SYSTEM]);
     const rows = ledger(h.store);
-    expect(rows.map((row) => row.kind).sort()).toEqual(["route_pick", "turn"]);
+    expect(rows.map((row) => row.kind).sort()).toEqual(["organize", "route_pick", "turn"]);
     expect(h.store.listSessionReviews(body.direct_session.id)[0]).toMatchObject({ fault: "none" });
     sub.close();
   });
@@ -4190,10 +4211,12 @@ describe("spend ledger for routing and composer calls", () => {
     });
     await waitFor(sub.events, (event) => event.event === "turn.upsert" && event.status === "completed");
     await h.engine.drain();
-    expect(calls).toEqual([]);
+    // The pin covers the Bot's own calls; the organizer still runs once, on the default model.
+    expect(calls).toEqual([ORGANIZER_SYSTEM]);
     const rows = ledger(h.store);
-    expect(rows.map((row) => row.kind)).toEqual(["turn"]);
-    expect(rows[0]).toMatchObject({ model: "code-pro", thinking_level: "high", bot_id: body.bot.id });
+    expect(rows.map((row) => row.kind)).toEqual(["organize", "turn"]);
+    expect(rows[0]).toMatchObject({ model: "cheap-chat", bot_id: null });
+    expect(rows[1]).toMatchObject({ model: "code-pro", thinking_level: "high", bot_id: body.bot.id });
     sub.close();
   });
 
@@ -4522,7 +4545,7 @@ for (const end of ["stop", "delete"] as const) {
     respond({ ok: true, content: "late", toolCalls: [], finishReason: "stop", hadChoices: true,
       usage: { input_tokens: 10, output_tokens: 2, cached_tokens: null, reasoning_tokens: null, total_tokens: 12, cost_usd_ticks: 8 }, missingReason: null });
     await h.engine.drain();
-    expect(h.store.listSpend({ session_id: created.direct_session.id })).toMatchObject([{
+    expect(h.store.listSpend({ session_id: created.direct_session.id }).filter((row) => row.kind !== "organize")).toMatchObject([{
       kind: "turn", turn_id: turn.id, bot_name: "Paid", session_name: "Paid", provider_id: provider.id,
       model: "model", thinking_level: "high", total_tokens: 12, cost_usd_ticks: 8,
     }]);
@@ -4542,9 +4565,10 @@ test("judgements record an unspecified reasoning level when the request sends no
   const group = h.store.createGroup({ name: "Judgements", members: [a.bot.id, b.bot.id] });
   await h.engine.handleInboundMessage(h.store.postMessage(group.id, { body: "Anyone?" }));
   await h.engine.drain();
-  expect(requests).toHaveLength(2);
-  expect(requests.every((request) => !("thinkingLevel" in request))).toBe(true);
-  const rows = h.store.listSpend({ session_id: group.id });
+  const judged = requests.filter((request) => request.messages[0]?.content !== ORGANIZER_SYSTEM);
+  expect(judged).toHaveLength(2);
+  expect(judged.every((request) => !("thinkingLevel" in request))).toBe(true);
+  const rows = h.store.listSpend({ session_id: group.id }).filter((row) => row.kind !== "organize");
   expect(rows).toHaveLength(2);
   expect(rows.every((row) => row.kind === "judgement" && row.model === "model" && row.thinking_level === null)).toBe(true);
 });

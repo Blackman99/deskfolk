@@ -1113,7 +1113,7 @@ describe("annotations tools", () => {
     w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [byAbs.id] });
     // Another session's turn in another job, working in the same folder: only the folder links them.
     const editorDirect = w.editor.direct_session.id;
-    const elsewhere = w.store.createTurn({ sessionId: editorDirect, botId: w.editor.bot.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "看看" }).id, newTask: true });
+    const elsewhere = w.store.createTurn({ sessionId: editorDirect, botId: w.editor.bot.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "看看" }).id, taskId: w.store.openTask({ sessionId: editorDirect, title: "看看" }).id });
     const ctx: ToolCtx = { store: w.store, botId: w.editor.bot.id, sessionId: editorDirect, turnId: elsewhere.id, parentId: null, workDir: "work/job" };
     expect(ids(await runCollabTool(ctx, "list_annotations", {})).sort()).toEqual([w.b.id, byAbs.id].sort());
     w.store.close();
@@ -1140,7 +1140,7 @@ describe("annotations tools", () => {
     const viaLink = make("shelf/job2/draft.md", "经链接");
     const resolved = make("archive/job2/draft.md", "按真实路径");
     const editorDirect = w.editor.direct_session.id;
-    const elsewhere = w.store.createTurn({ sessionId: editorDirect, botId: w.editor.bot.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "看看" }).id, newTask: true });
+    const elsewhere = w.store.createTurn({ sessionId: editorDirect, botId: w.editor.bot.id, triggerMessageId: w.store.postMessage(editorDirect, { body: "看看" }).id, taskId: w.store.openTask({ sessionId: editorDirect, title: "看看" }).id });
     const ctx: ToolCtx = { store: w.store, botId: w.editor.bot.id, sessionId: editorDirect, turnId: elsewhere.id, parentId: null, workDir: "shelf/job2" };
     expect(ids(await runCollabTool(ctx, "list_annotations", {})).sort()).toEqual([viaLink.id, resolved.id].sort());
     w.store.close();

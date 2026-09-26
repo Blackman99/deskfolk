@@ -17,8 +17,8 @@ import {
 import { finishTurnRoute, type TurnExecution } from "./routing";
 import { isPresent } from "./sessions";
 import { annotationTaskOfMessage } from "./annotations";
-import { resolveTurnTask, taskOfTurn } from "./tasks";
 import { voidCheckBacks } from "./check-backs";
+import { resolveTurnTask } from "./tasks";
 import {
   aliveBot,
   isLive,
@@ -38,15 +38,15 @@ export function createTurn(
     sessionId: string;
     botId: string;
     triggerMessageId: string;
-    /** A routine fires as a user message, so only the caller can say this is a fresh job. */
-    newTask?: boolean;
     routineId?: string | null;
     routineDueAt?: string | null;
     /**
      * The plan this turn continues, named outright: a check-back wakes the Bot into the plan it
-     * made the appointment in.
+     * made the appointment in, a routine fires into its standing plan.
      */
     taskId?: string | null;
+    /** The ticket it works in, when the caller knows; otherwise inherited from the trigger. */
+    ticketId?: string | null;
   },
 ): Turn {
   sessionRow(ctx, input.sessionId);
@@ -54,24 +54,26 @@ export function createTurn(
   const trigger = messageRow(ctx, input.triggerMessageId);
   const now = isoNow();
   const id = ulid();
-  const taskId = resolveTurnTask(ctx, {
+  // A batch of annotations continues the plan and ticket that delivered this Bot's artifact.
+  const annotated = input.taskId ? null : annotationTaskOfMessage(ctx, trigger.id, input.botId);
+  const { taskId, ticketId } = resolveTurnTask(ctx, {
     sessionId: input.sessionId,
     trigger,
-    newTask: input.newTask,
-    // A batch of annotations continues the job that delivered this Bot's artifact.
-    taskId: input.taskId ?? annotationTaskOfMessage(ctx, trigger.id, input.botId),
+    taskId: input.taskId ?? annotated?.taskId ?? null,
+    ticketId: input.ticketId ?? annotated?.ticketId ?? null,
   });
   ctx.db.transaction(() => {
     ctx.db.run(
       `INSERT INTO turns
-        (id, session_id, bot_id, status, trigger_message_id, task_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)`,
+        (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.sessionId,
         input.botId,
         input.triggerMessageId,
         taskId,
+        ticketId,
         input.routineId ?? null,
         input.routineDueAt ?? null,
         now,
@@ -79,11 +81,11 @@ export function createTurn(
         now,
       ],
     );
-    // The trigger belongs to the job it opened, so the user's own message carries the anchor too.
-    ctx.db.run(`UPDATE messages SET task_id = ? WHERE id = ? AND task_id IS NULL`, [
-      taskId,
-      trigger.id,
-    ]);
+    // The trigger belongs to the plan it opened, so the user's own message carries the anchor too.
+    ctx.db.run(
+      `UPDATE messages SET task_id = COALESCE(task_id, ?), ticket_id = COALESCE(ticket_id, ?) WHERE id = ?`,
+      [taskId, ticketId, trigger.id],
+    );
   })();
   return getTurn(ctx, id);
 }
@@ -282,9 +284,9 @@ export function interruptTurnRecord(
 
     const noteId = ulid();
     ctx.db.run(
-      `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, created_at)
-       VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?, ?)`,
-      [noteId, row.session_id, row.id, row.bot_id, INTERRUPT_NOTE_BODY, row.task_id, now],
+      `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, created_at)
+       VALUES (?, ?, ?, NULL, 'system', ?, ?, NULL, ?, ?, ?)`,
+      [noteId, row.session_id, row.id, row.bot_id, INTERRUPT_NOTE_BODY, row.task_id, row.ticket_id ?? null, now],
     );
     note = getMessage(ctx, noteId);
 
@@ -359,11 +361,16 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
   const now = isoNow();
   const id = ulid();
   ctx.db.transaction(() => {
+    const lineage = ctx.db
+      .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
+        `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
+      )
+      .get(cut.id);
     ctx.db.run(
       `INSERT INTO turns
-        (id, session_id, bot_id, status, trigger_message_id, task_id, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
-      [id, note.session_id, cut.bot_id, note.id, taskOfTurn(ctx, cut.id), now, now, now],
+        (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, last_activity_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)`,
+      [id, note.session_id, cut.bot_id, note.id, lineage?.task_id ?? null, lineage?.ticket_id ?? null, now, now, now],
     );
     const updated = ctx.db.query<{ id: string }, [string, string]>(
       `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL RETURNING id`,

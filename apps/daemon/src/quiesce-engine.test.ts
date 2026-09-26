@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ClientEvent, Routine, Turn } from "@real-bot/protocol";
 import type { CompletionOk, CompletionResult, CompletionsClient, ToolCall } from "./completions";
 import type { McpHost } from "./mcp-host";
+import { ORGANIZER_SYSTEM } from "./prompts/organizer";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -61,7 +62,13 @@ async function harness(options: { mcp?: McpHost; complete?: CompletionsClient["c
         if (options.complete) return options.complete(request);
         return requests.length === 1 ? first.promise : answer();
       },
-      async judge(request) { return options.judge ? options.judge(request) : { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null }; },
+      async judge(request) {
+        // The organizer runs before every user message opens turns; these tests are about the turns,
+        // so it answers nothing and the message joins the current plan.
+        const organizer = request.messages[0]?.role === "system" && request.messages[0].content === ORGANIZER_SYSTEM;
+        if (organizer || !options.judge) return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
+        return options.judge(request);
+      },
     },
   });
   const quiesce = new Quiesce(store, engine, admission, null);
@@ -310,7 +317,7 @@ test("a pending group join is discarded during drain before persisting its judge
   expect(h.store.listLiveTurns()).toEqual([]);
   expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM judgements").get()!.n).toBe(0);
   expect(h.engine.pendingJudgements()).toEqual([]);
-  const billed = h.store.listSpend({ session_id: group.id });
+  const billed = h.store.listSpend({ session_id: group.id }).filter((row) => row.kind !== "organize");
   expect(billed).toHaveLength(2);
   expect(billed.every((row) => row.kind === "judgement" && row.judgement_id && row.missing_reason === "endpoint_omitted")).toBe(true);
   expect(h.requests).toHaveLength(0);

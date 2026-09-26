@@ -51,7 +51,12 @@ import type {
   ThinkingLevel,
   Turn,
   TaskArtifacts,
+  TaskDetail,
+  TaskSpecRevision,
   TaskTrace,
+  Ticket,
+  PatchTaskSpecRequest,
+  PatchTicketRequest,
   SessionTaskSummary,
   WorkspaceTreePage,
   Annotation,
@@ -539,6 +544,23 @@ export class RemoteApi {
   /** The turns that share a work dir, read back as one picture. Pulled when the trace opens. */
   async taskTrace(taskId: string): Promise<TaskTrace> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`);
+  }
+
+  /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */
+  async taskDetail(taskId: string): Promise<TaskDetail> {
+    return this.get<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`);
+  }
+  /** Every version the plan's spec has had, newest first. */
+  async taskSpecRevisions(taskId: string): Promise<TaskSpecRevision[]> {
+    return (await this.get<ListPage<TaskSpecRevision>>(`/v1/tasks/${encodeURIComponent(taskId)}/spec-revisions`)).items;
+  }
+  /** Your edit of a plan's spec: the whole spec, guarded by the revision you edited from. */
+  async patchTaskSpec(taskId: string, body: PatchTaskSpecRequest): Promise<TaskDetail> {
+    return this.patch<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}/spec`, body);
+  }
+  /** Your edit of one ticket: only the fields sent change. */
+  async patchTicket(ticketId: string, body: PatchTicketRequest): Promise<Ticket> {
+    return this.patch<Ticket>(`/v1/tickets/${encodeURIComponent(ticketId)}`, body);
   }
 
   /** The jobs this session took part in, newest activity first. */

@@ -93,8 +93,10 @@ export type ToolCtx = {
   approved?: boolean;
   approvalApiKey?: string;
   writtenPaths?: string[];
-  /** This turn's work dir, so a path the Bot wrote from its shell's point of view still resolves. */
+  /** This turn's work dir (its ticket's), so a path the Bot wrote from its shell's point of view still resolves. */
   workDir?: string | null;
+  /** The plan dir this turn belongs to: what "this job's" annotations span, whichever ticket is on. */
+  planDir?: string | null;
   /** Unknown `@token`s already rejected once this turn; a resend with them goes through. Absent = always reject. */
   mentionWarned?: Set<string>;
   /** Names in this hop's tools array (built-in + `mcp_…`). Absent = skip the stale-name check in read_skill. */
@@ -1592,13 +1594,14 @@ function listAnnotations(ctx: ToolCtx, args: Record<string, unknown>): ToolResul
     // The work dir as cited and as resolved (a symlinked `work/` resolves elsewhere); a row counts
     // when either spelling of its file sits under either spelling of the dir.
     const dirs: string[] = [];
-    if (ctx.workDir) {
-      dirs.push(`${ctx.workDir}/`);
+    const scopeDir = ctx.planDir ?? ctx.workDir;
+    if (scopeDir) {
+      dirs.push(`${scopeDir}/`);
       const root = ctx.store.workspacePath();
       if (root) {
         try {
-          const resolved = classifyPath(root, ctx.workDir);
-          if (resolved.zone === "inside" && resolved.rel && resolved.rel !== ctx.workDir) dirs.push(`${resolved.rel}/`);
+          const resolved = classifyPath(root, scopeDir);
+          if (resolved.zone === "inside" && resolved.rel && resolved.rel !== scopeDir) dirs.push(`${resolved.rel}/`);
         } catch {
           // A dir that is not there yet has only the one spelling.
         }

@@ -52,6 +52,7 @@ import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
 import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
+import { createOrganizer } from "./organizer";
 import {
   builtinTools,
   checkBackNoteBody,
@@ -66,7 +67,7 @@ import { HttpError } from "./errors";
 import type { TurnAdmission } from "./quiesce";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
-import { isReservedTaskPath, type Store } from "./store";
+import { isReservedTaskPath, localDate, type Store } from "./store";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -86,6 +87,10 @@ export type TurnEngine = {
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
   /** Wakes a Bot at a check-back it booked; null when it was voided, already fired, or nobody to wake. */
   fireCheckBack: (id: string, now?: Date) => Turn | null;
+  /** Files a plan now, when nothing is running in it and something happened since its last version. */
+  settlePlan: (taskId: string) => Promise<boolean>;
+  /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
+  renderPlanMirrors: (taskId: string) => void;
   assertAskPending: (askId: string, sessionId: string) => void;
   replyAsk: (askId: string, answer: Message) => void;
   resolveApproval: (
@@ -127,6 +132,8 @@ export type TurnEngineOptions = {
   streams?: ShellStream;
   /** What the process saw of macOS sleep; the daemon's own watch unless a test brings one. */
   wake?: WakeWatch;
+  /** How long a plan stays quiet after its last turn before the organizer files it. Tests shorten it. */
+  settleQuietMs?: number;
 };
 
 type Live = {
@@ -137,7 +144,9 @@ type Live = {
   partial: string;
   parentId: string | null;
   writtenPaths: string[];
-  /** This turn's work dir, looked up once: the task cannot change under a live turn. */
+  /** The plan dir this turn belongs to, for what is reserved at either level; null on turns from before work dirs. */
+  planDir: string | null;
+  /** This turn's work dir — its ticket's when it has one — looked up once: neither can change under a live turn. */
   workDir: string | null;
   /** Unknown `@token`s send_message already rejected once this turn. */
   mentionWarned: Set<string>;
@@ -192,6 +201,19 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const tasks = new Set<Promise<unknown>>();
   const turnTasks = new Map<string, Set<Promise<unknown>>>();
   const pendingJudges = new Map<string, PendingJudgement>();
+  const organizer = createOrganizer({
+    store,
+    completions,
+    async routing() {
+      const creds = await credentials().catch(() => null);
+      return creds ? routingTarget(creds) : null;
+    },
+    recordSpend({ sessionId, target, usage, responded }) {
+      recordResponseSpend({ kind: "organize", owner: spendOwner(sessionId, null), target: callOf(target), usage, responded });
+    },
+    draining: () => Boolean(options.admission?.draining),
+    settleQuietMs: options.settleQuietMs,
+  });
 
   function track<T>(promise: Promise<T>): Promise<T> {
     tasks.add(promise);
@@ -223,6 +245,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   function publishTurn(turn: Turn, partial: string | null = null): void {
     store.setTurnPartial(turn.id, partial);
     publish({ event: "turn.upsert", occurred_at: occurred(), ...turn, partial_text: partial });
+    // Every way a turn ends passes through here, so this is where its plan learns to file itself.
+    if (turn.status !== "running" && turn.status !== "waiting_ask" && turn.status !== "waiting_approval") {
+      organizer.noteTurnEnded(turn);
+    }
   }
 
   function publishMessage(message: Message): void {
@@ -597,7 +623,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } catch {
       return;
     }
-    dropToolResults(root, stale.map((task) => task.dir));
+    dropToolResults(root, stale.flatMap((task) => [task.dir, ...store.listTicketDirs(task.id)]));
   }
 
   /**
@@ -880,11 +906,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     trigger: Message,
     mode: "redirect" | "fork",
     opts: {
-      newTask?: boolean;
       routineId?: string | null;
       routineDueAt?: string | null;
-      /** The job this turn continues outright, when the trigger cannot say (a check-back's note). */
+      /** The plan this turn continues outright, when the trigger cannot say (a check-back's note, a routine). */
       taskId?: string | null;
+      ticketId?: string | null;
     } = {},
   ): Turn {
     options.admission?.assertNew();
@@ -908,10 +934,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       sessionId,
       botId,
       triggerMessageId: trigger.id,
-      newTask: opts.newTask,
       routineId: opts.routineId,
       routineDueAt: opts.routineDueAt,
       taskId: opts.taskId,
+      ticketId: opts.ticketId,
     });
     attachLive(turn);
     return turn;
@@ -926,6 +952,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       partial: "",
       parentId: null,
       writtenPaths: [],
+      planDir: store.turnPlanDir(turn.id),
       workDir: store.turnWorkDir(turn.id),
       mentionWarned: new Set(),
       toolNames: new Set(),
@@ -996,6 +1023,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   async function drainLives(): Promise<void> {
     for (const timer of chainTimers.values()) clearTimeout(timer);
     chainTimers.clear();
+    organizer.clearTimers();
     while (tasks.size > 0) {
       for (const id of [...lives.keys()]) abortLive(id);
       await Promise.allSettled([...tasks]);
@@ -1264,6 +1292,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     live.closingChecked = true;
     const payload = closingCheckPayload(store, {
       taskId,
+      ticketId: store.ticketOfTurn(turnId),
       turnId,
       botId: turn.bot_id,
       sessionId: turn.session_id,
@@ -1376,7 +1405,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const classified = classifyPath(root, raw);
       if (classified.zone !== "inside") continue;
       // The reserved subdirs are where the daemon spills and where the turn instructions tell the
-      // Bot to put throwaway files. Neither is something to hand the user as an artifact.
+      // Bot to put throwaway files, and the mirror files are the app's own. None of them is
+      // something to hand the user as an artifact, at the plan's level or a ticket's.
+      if (live.planDir && isReservedTaskPath(live.planDir, classified.rel)) continue;
       if (live.workDir && isReservedTaskPath(live.workDir, classified.rel)) continue;
       live.writtenPaths = mergeCitedPaths(live.writtenPaths, [classified.rel]);
     }
@@ -1597,6 +1628,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               parentId: live.parentId,
               writtenPaths: live.writtenPaths,
               workDir: live.workDir,
+              planDir: live.planDir,
               mentionWarned: live.mentionWarned,
               availableToolNames: live.toolNames,
               admission: options.admission,
@@ -2355,13 +2387,43 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         author: USER_MEMBER,
         body: claimed.instruction,
       });
+      // Every routine has one standing plan, and every fire is a ticket of it, so a daily's days
+      // sit side by side and its rules and precedents accumulate. No model call decides this.
+      const plan =
+        store.routineTask(claimed.id) ??
+        store.openTask({
+          sessionId: session.id,
+          title: claimed.title,
+          brief: claimed.instruction,
+          kind: claimed.title,
+          spec: {
+            kind: claimed.title,
+            goal: claimed.title,
+            acceptance: [],
+            rules: [],
+            process: [],
+            progress: { done: [], open: [], blocked: [] },
+            status: "active",
+          },
+          routineId: claimed.id,
+          now,
+        });
+      const ticket = store.createTicket({
+        taskId: plan.id,
+        title: localDate(now),
+        spec: claimed.instruction,
+        status: "doing",
+        worker: claimed.bot_id,
+        now,
+      });
       const turn = store.createTurn({
         sessionId: session.id,
         botId: claimed.bot_id,
         triggerMessageId: trigger.id,
-        newTask: true,
         routineId: claimed.id,
         routineDueAt: claimed.last_fired_for_due_at,
+        taskId: plan.id,
+        ticketId: ticket.id,
       });
       return {
         claimed,
@@ -2416,6 +2478,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           const owner = store.feedbackOwner(message.id);
           if (owner) touchChain(message.session_id, owner);
         }
+        // Filed before any turn opens, so the turns it opens know their plan and ticket from
+        // their first hop. The message itself is already published; only the Bots wait.
+        await track(organizer.organizeMessage(message));
       }
       await track(
         handleParticipation(message, {
@@ -2423,6 +2488,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           fork: opts?.fork,
         }),
       );
+    },
+    settlePlan(taskId) {
+      return organizer.settlePlan(taskId);
+    },
+    renderPlanMirrors(taskId) {
+      organizer.renderMirrors(taskId);
     },
     sweepStaleChains,
     executionOf(turnId) {
@@ -2520,6 +2591,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     abortAll() {
       for (const timer of chainTimers.values()) clearTimeout(timer);
       chainTimers.clear();
+      organizer.clearTimers();
       for (const id of [...lives.keys()]) abortLive(id);
     },
     unsettledTurnIds() { return [...turnTasks.keys()]; },

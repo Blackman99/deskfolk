@@ -1,10 +1,11 @@
-import type { ClientEvent, Judgement, Spend } from "@real-bot/protocol";
+import type { ClientEvent, Judgement, Spend, Ticket } from "@real-bot/protocol";
 import { listApprovals, listAllowRules } from "./approvals";
 import { isCheckBackLine } from "./check-backs";
+import { taskDetail } from "./plan-spec";
 import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
 import { listMemories, withLearning as memoryWithLearning } from "./memories";
-import { getMessage } from "./messages";
+import { citedPathExists, getMessage } from "./messages";
 import { FileProbe, getAnnotation, hasAnnotation } from "./annotations";
 import { getNotification, getNotificationPolicy, getNotificationSummary } from "./notifications";
 import { providersCached } from "./providers";
@@ -20,12 +21,17 @@ type Change = { entity: string; id: string; op: string; session_id: string | nul
 /** TEMP triggers follow nested domain writes and roll back with the business transaction. */
 export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TABLE event_changes (entity TEXT, id TEXT, op TEXT, session_id TEXT)`);
-  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations"];
+  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations", "tasks", "tickets"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       const row = op === "DELETE" ? "OLD" : "NEW";
       const id = table === "settings" ? "'settings'" : `${row}.id`;
-      const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations"].includes(table) ? `${row}.session_id` : "NULL";
+      // A ticket's "session" slot carries its plan, so a removed ticket can still say which board it left.
+      const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations", "tasks"].includes(table)
+        ? `${row}.session_id`
+        : table === "tickets"
+          ? `${row}.task_id`
+          : "NULL";
       ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
         BEGIN INSERT INTO event_changes VALUES ('${table}', ${id}, '${op}', ${session}); END`);
     }
@@ -157,6 +163,24 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
           item
             ? { event: "notification.upsert", occurred_at, ...item }
             : { event: "notification.removed", occurred_at, id },
+        );
+        break;
+      }
+      case "tasks": {
+        if (ctx.db.query("SELECT id FROM tasks WHERE id = ?").get(id)) {
+          out.push({ event: "task.upsert", occurred_at, ...taskDetail(ctx, id, (path) => citedPathExists(ctx, path)) });
+        } else {
+          out.push({ event: "task.removed", occurred_at, id });
+        }
+        break;
+      }
+      case "tickets": {
+        const row = ctx.db.query<Ticket, [string]>("SELECT * FROM tickets WHERE id = ?").get(id);
+        const change = unique.get(`tickets:${id}`);
+        out.push(
+          row
+            ? { event: "ticket.upsert", occurred_at, ...row }
+            : { event: "ticket.removed", occurred_at, id, task_id: change?.session_id ?? "" },
         );
         break;
       }

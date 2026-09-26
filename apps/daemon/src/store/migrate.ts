@@ -6,7 +6,7 @@
 import type { Database } from "bun:sqlite";
 import { sortThinkingLevels, THINKING_LEVELS } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
-import { taskDirName, taskTitle, TASK_QUIET_MS } from "./tasks";
+import { idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
 import { parseStoredCatalog } from "../models";
 import { pickThinkingLevel } from "../route-decision";
 
@@ -202,6 +202,7 @@ export function migrateSchema(db: Database): void {
   }
   migrateRouteTables(db, tables);
   migrateTaskBriefs(db);
+  migratePlans(db);
   migrateBotThinkingPins(db);
   migrateSpendLedger(db);
   migrateAnnotations(db);
@@ -289,6 +290,88 @@ function migrateTaskBriefs(db: Database): void {
        WHERE t.task_id = tasks.id ORDER BY t.created_at ASC, t.id ASC LIMIT 1
      ) WHERE brief IS NULL`,
   );
+}
+
+/**
+ * A job became a plan: it carries a spec the organizer maintains, a kind, a status, and tickets
+ * with their own folders. Old jobs keep their dated dirs and get no tickets; a closed one reads
+ * as done, which a resume flips back to active. The columns and tables are added one by one so a
+ * database that stopped halfway through catches up on the next open.
+ */
+function migratePlans(db: Database): void {
+  const cols = () =>
+    db
+      .query<{ name: string }, []>(`PRAGMA table_info(tasks)`)
+      .all()
+      .map((row) => row.name);
+  const before = cols();
+  if (!before.includes("kind")) db.run(`ALTER TABLE tasks ADD COLUMN kind TEXT`);
+  if (!before.includes("spec")) db.run(`ALTER TABLE tasks ADD COLUMN spec TEXT`);
+  if (!before.includes("status")) db.run(`ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+  // A plan closed before plans had a status — or one the work-dir backfill just closed on the
+  // way here — reads as done. The runtime never leaves a closed plan active without a spec.
+  db.run(`UPDATE tasks SET status = 'done' WHERE closed_at IS NOT NULL AND status = 'active' AND spec IS NULL`);
+  if (!before.includes("spec_updated_at")) db.run(`ALTER TABLE tasks ADD COLUMN spec_updated_at TEXT`);
+  if (!before.includes("routine_id")) {
+    db.run(`ALTER TABLE tasks ADD COLUMN routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL`);
+  }
+  db.run(`CREATE INDEX IF NOT EXISTS tasks_routine ON tasks (routine_id)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tickets (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks (id),
+      seq INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      dir TEXT NOT NULL UNIQUE,
+      spec TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK (status IN ('todo', 'doing', 'review', 'done', 'parked')),
+      worker TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT,
+      UNIQUE (task_id, seq)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS tickets_task_status ON tickets (task_id, status, seq)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS task_spec_revisions (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks (id),
+      revision INTEGER NOT NULL,
+      spec TEXT NOT NULL,
+      tickets_snapshot TEXT NOT NULL,
+      source_message_id TEXT,
+      source_turn_id TEXT,
+      actor TEXT NOT NULL CHECK (actor IN ('app', 'user')),
+      created_at TEXT NOT NULL,
+      UNIQUE (task_id, revision)
+    )
+  `);
+  const turnCols = db.query<{ name: string }, []>(`PRAGMA table_info(turns)`).all().map((row) => row.name);
+  if (!turnCols.includes("ticket_id")) db.run(`ALTER TABLE turns ADD COLUMN ticket_id TEXT REFERENCES tickets (id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS turns_ticket ON turns (ticket_id, last_activity_at)`);
+  const messageCols = db.query<{ name: string }, []>(`PRAGMA table_info(messages)`).all().map((row) => row.name);
+  if (!messageCols.includes("ticket_id")) db.run(`ALTER TABLE messages ADD COLUMN ticket_id TEXT REFERENCES tickets (id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS messages_ticket ON messages (ticket_id, created_at)`);
+  // A database from before check-backs has no table yet; the schema creates it with the column.
+  const checkBackCols = db.query<{ name: string }, []>(`PRAGMA table_info(check_backs)`).all().map((row) => row.name);
+  if (checkBackCols.length > 0 && !checkBackCols.includes("ticket_id")) db.run(`ALTER TABLE check_backs ADD COLUMN ticket_id TEXT`);
+  // The line a check-back woke its Bot with is hidden from the conversation by this column. Ones
+  // already fired are found by what the line says: the Bot's own note, in that session, after it.
+  if (checkBackCols.length > 0 && !checkBackCols.includes("message_id")) {
+    db.run(`ALTER TABLE check_backs ADD COLUMN message_id TEXT`);
+    db.run(
+      `UPDATE check_backs SET message_id = (
+         SELECT m.id FROM messages m
+         WHERE m.session_id = check_backs.session_id AND m.author = check_backs.bot_id AND m.kind = 'system'
+           AND m.body IN ('回看：' || check_backs.note, 'Check-back: ' || check_backs.note)
+           AND m.created_at >= check_backs.created_at
+         ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+       )
+       WHERE fired_at IS NOT NULL`,
+    );
+  }
 }
 
 function migrateNotifications(db: Database): void {
@@ -556,7 +639,10 @@ function migrateSpendLedger(db: Database): void {
     .query<{ name: string }, []>(`PRAGMA table_info(spend)`)
     .all()
     .map((row) => row.name);
-  if (cols.includes("kind") && SPEND_LEDGER_COLUMNS.every((name) => cols.includes(name))) {
+  // The kinds are a CHECK, which SQLite cannot widen in place: a ledger from before the organizer
+  // is rebuilt the same way the pre-ledger table was.
+  const shape = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'spend'`).get()?.sql ?? "";
+  if (cols.includes("kind") && SPEND_LEDGER_COLUMNS.every((name) => cols.includes(name)) && shape.includes("'organize'")) {
     createSpendIndexes(db);
     return;
   }
@@ -573,7 +659,7 @@ function migrateSpendLedger(db: Database): void {
         turn_id TEXT,
         judgement_id TEXT,
         kind TEXT NOT NULL CHECK (
-          kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest')
+          kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize')
         ),
         chain_id TEXT,
         provider_id TEXT,
@@ -598,6 +684,7 @@ function migrateSpendLedger(db: Database): void {
           OR (kind = 'route_review' AND chain_id IS NOT NULL AND turn_id IS NOT NULL)
           OR (kind = 'route_learn' AND chain_id IS NOT NULL)
           OR kind = 'composer_suggest'
+          OR kind = 'organize'
         )
       )
     `);
@@ -734,6 +821,18 @@ type LegacyPenalty = { signature: string; model: string; thinkingLevel: string; 
  * job that only talked is in today, since a work dir is made the first time something uses it.
  * They are closed, so nothing new joins them.
  */
+/** The quiet window jobs were split by, back when a clock did that. Kept here for the record it rebuilds. */
+const LEGACY_QUIET_MS = 6 * 60 * 60_000;
+
+/** `work/2026-09-21-导出季度报表-7f3k`, the dated shape jobs from before plans were named in. */
+function legacyDatedDirName(input: { title: string; id: string; at: Date; suffixLength: number }): string {
+  const parts = [localDate(input.at)];
+  const slug = slugify(input.title);
+  if (slug) parts.push(slug);
+  parts.push(idSuffix(input.id, input.suffixLength));
+  return `${WORK_ROOT}/${parts.join("-")}`;
+}
+
 function backfillTaskAttribution(db: Database): void {
   type Pending = { id: string; session_id: string; created_at: string; waker: string | null; body: string };
   const pending = db
@@ -770,7 +869,7 @@ function backfillTaskAttribution(db: Database): void {
       if (!taskId) {
         const open = openPerSession.get(turn.session_id);
         const warm =
-          open && Date.parse(turn.created_at) - Date.parse(open.lastAt) <= TASK_QUIET_MS;
+          open && Date.parse(turn.created_at) - Date.parse(open.lastAt) <= LEGACY_QUIET_MS;
         if (warm && open) taskId = open.id;
       }
       if (!taskId) {
@@ -779,7 +878,7 @@ function backfillTaskAttribution(db: Database): void {
         const title = taskTitle(turn.body);
         let dir = "";
         for (const suffixLength of [4, 8, 26]) {
-          dir = taskDirName({ title, id, at, suffixLength });
+          dir = legacyDatedDirName({ title, id, at, suffixLength });
           if (!taken.has(dir)) break;
         }
         taken.add(dir);

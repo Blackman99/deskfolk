@@ -254,18 +254,82 @@ export type WorkspaceTreeEntry = {
   kind: "file" | "dir";
 };
 
-/** What a work dir's entry lists: every path this job's messages cited that is still there, newest citation first. */
+/** What a plan's entry lists: every path its messages cited that is still there, newest citation first. */
 export type TaskArtifacts = {
   id: string;
   dir: string;
   title: string;
   closed_at: string | null;
-  items: Array<{ path: string; last_cited_at: string; turn_id: string | null }>;
+  items: Array<{ path: string; last_cited_at: string; turn_id: string | null; ticket_id: string | null }>;
 };
 
+/** A plan (规划) is active until the organizer or you say it is done or parked. */
+export type PlanStatus = "active" | "done" | "parked";
+
+/** A ticket (任务) moves through these as the work does; done and parked close it. */
+export type TicketStatus = "todo" | "doing" | "review" | "done" | "parked";
+
 /**
- * One card on a job's trace: a turn that happened, with the files that turn handed over.
- * Computed when the trace is opened. Nothing here is a plan, a step, or an assignee.
+ * A plan's spec (要点): what the organizer last understood the plan to be. Every field is the
+ * app's reading of the conversation, revised as it goes; you can edit it, and each version is kept.
+ */
+export type PlanSpec = {
+  /** A short label for finding precedents: plans of the same kind. */
+  kind: string | null;
+  goal: string;
+  /** What counts as done. */
+  acceptance: string[];
+  /** Standing constraints and the preferences you stated. */
+  rules: string[];
+  /** How the team goes about it, and who does which part. */
+  process: string[];
+  progress: { done: string[]; open: string[]; blocked: string[] };
+  status: PlanStatus;
+};
+
+/** The smallest unit of a plan that hands something over, with its own folder inside the plan's. */
+export type Ticket = {
+  id: string;
+  task_id: string;
+  /** The ticket's number in its plan; the folder is `NN-slug/`. */
+  seq: number;
+  title: string;
+  slug: string;
+  dir: string;
+  spec: string;
+  status: TicketStatus;
+  /** The Bot observed working on it, as a record, not an assignment. */
+  worker: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+};
+
+export type TicketArtifactRef = { path: string; message_id: string; attachment_id: string; exists?: boolean };
+
+export type TicketWithArtifacts = Ticket & { artifacts: TicketArtifactRef[] };
+
+/** One version of a plan's spec, with the tickets as they stood after it. */
+export type TaskSpecRevision = {
+  id: string;
+  task_id: string;
+  revision: number;
+  actor: "app" | "user";
+  spec: PlanSpec;
+  tickets_snapshot: Ticket[];
+  /** The message that prompted the organizer, when one did. */
+  source_message_id: string | null;
+  source_turn_id: string | null;
+  /** The session that message is in, so the board can jump to it. */
+  session_id: string | null;
+  created_at: string;
+};
+
+export type TicketCounts = Record<TicketStatus, number>;
+
+/**
+ * One card on a plan's trace: a turn that happened, with the files that turn handed over.
+ * Computed when the trace is opened. The ticket it worked in is a record, not an assignment.
  */
 export type TaskTraceNode = {
   turn_id: string;
@@ -293,6 +357,8 @@ export type TaskTraceNode = {
   approval: { message_id: string | null; summary: string } | null;
   /** Bots who watched the trigger instead of joining. Only the card that opened them carries it. */
   passed: number;
+  /** The ticket this turn worked in; null on your own card and on turns filed under no ticket. */
+  ticket_id: string | null;
   /**
    * The model choice this turn ran on and what came of it. Null on your own card and on a turn
    * older than model choices; absent altogether from a daemon that predates it.
@@ -320,7 +386,7 @@ export type TaskTrace = {
   nodes: TaskTraceNode[];
 };
 
-/** One row of the switcher: a job this session took part in. */
+/** One row of the switcher: a plan this session took part in. */
 export type SessionTaskSummary = {
   id: string;
   dir: string;
@@ -328,6 +394,38 @@ export type SessionTaskSummary = {
   session_id: string | null;
   closed_at: string | null;
   last_activity_at: string;
+  /** The spec's goal, null until the organizer has run. */
+  goal: string | null;
+  kind: string | null;
+  status: PlanStatus;
+  ticket_counts: TicketCounts;
+};
+
+/** One plan as the board reads it: the switcher row plus its spec, revision and tickets. */
+export type TaskDetail = SessionTaskSummary & {
+  brief: string | null;
+  spec: PlanSpec | null;
+  spec_updated_at: string | null;
+  /** How many versions the spec has had; zero before the organizer first ran. */
+  revision: number;
+  revision_actor: "app" | "user" | null;
+  routine_id: string | null;
+  tickets: TicketWithArtifacts[];
+};
+
+export type PatchTaskSpecRequest = {
+  /** The whole spec as it should read after your edit. */
+  spec: PlanSpec;
+  /** The revision you edited from; a mismatch is refused so a concurrent change is not lost. */
+  if_revision?: number;
+};
+
+export type PatchTicketRequest = {
+  title?: string;
+  spec?: string;
+  status?: TicketStatus;
+  worker?: string | null;
+  if_revision?: number;
 };
 
 export type WorkspaceTreePage = {
@@ -491,8 +589,10 @@ export type Turn = {
   bot_id: string;
   status: TurnStatus;
   trigger_message_id: string;
-  /** The work dir this turn's intermediate files belong to. Null on turns from before work dirs. */
+  /** The plan this turn's intermediate files belong to. Null on turns from before work dirs. */
   task_id?: string | null;
+  /** The ticket this turn works in, whose folder is its default cwd. */
+  ticket_id?: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;
@@ -532,8 +632,10 @@ export type Message = {
   author: typeof USER_MEMBER | string;
   body: string;
   source_turn_id: string | null;
-  /** The work dir this message belongs to; the anchor its artifact entry opens. */
+  /** The plan this message belongs to; the anchor its artifact entry opens. */
   task_id?: string | null;
+  /** The ticket it was filed under, when the organizer or its turn said so. */
+  ticket_id?: string | null;
   /**
    * A batch of annotations on an artifact from a Bot↔Bot direct lands in your direct with that
    * Bot, with no parent to quote; this points back at the message the artifact came from.
@@ -750,11 +852,13 @@ export type SpendKind =
   | "route_pick"
   | "route_review"
   | "route_learn"
-  | "composer_suggest";
+  | "composer_suggest"
+  | "organize";
 
 /**
- * How the view groups kinds. Decision is the pick before a turn; feedback is the review plus
- * the learning hop; a composer suggestion belongs to neither and is "other".
+ * How the view groups kinds. Decision is the pick before a turn and the organizer's filing of
+ * a message; feedback is the review plus the learning hop; a composer suggestion belongs to
+ * neither and is "other".
  */
 export type SpendCategory = "turn" | "judgement" | "decision" | "feedback" | "other";
 
@@ -765,6 +869,7 @@ export const SPEND_CATEGORY_OF: Record<SpendKind, SpendCategory> = {
   route_review: "feedback",
   route_learn: "feedback",
   composer_suggest: "other",
+  organize: "decision",
 };
 
 /**
@@ -1243,7 +1348,12 @@ export type ClientEvent =
   | ({ event: "notification_policy.changed"; occurred_at: string } & import("./notifications.ts").NotificationPolicy)
   // Lifecycle only — open, exit, gone. The bytes are a stream, not an event.
   | ({ event: "terminal.upsert"; occurred_at: string } & Terminal)
-  | { event: "terminal.removed"; occurred_at: string; id: string };
+  | { event: "terminal.removed"; occurred_at: string; id: string }
+  // A plan's spec or tickets moved; the board it is on refetches.
+  | ({ event: "task.upsert"; occurred_at: string } & TaskDetail)
+  | { event: "task.removed"; occurred_at: string; id: string }
+  | ({ event: "ticket.upsert"; occurred_at: string } & Ticket)
+  | { event: "ticket.removed"; occurred_at: string; id: string; task_id: string };
 
 /**
  * Longest crop `base64` a remote annotation request may carry. A remote request is one logical

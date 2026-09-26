@@ -7,9 +7,11 @@
  *
  * Routes:
  *   GET  /v1/models                 — one model, `fixture`, with thinking levels.
- *   POST /v1/chat/completions       — `stream: false` (judgement, route pick, suggestions) answers `{}`;
+ *   POST /v1/chat/completions       — `stream: false` (judgement, route pick, suggestions) answers `{}`,
+ *                                     except the organizer, which gets a fixed plan (see `organize`);
  *                                     `stream: true` answers by the rules below, as SSE.
  *   POST /__next  { reply }         — queue one scripted reply: `{ content }` or `{ tool_calls: [{ name, arguments }] }`.
+ *   POST /__next  { organizer }     — queue one organizer answer (a JSON string, or an object to stringify).
  *   GET  /__log                     — every request received, newest last (messages trimmed).
  *
  * Rules for a streamed turn, when nothing is queued:
@@ -25,6 +27,7 @@ type Scripted = { content?: string; tool_calls?: Array<{ name: string; arguments
 
 const port = Number(process.env.REAL_BOT_FAKE_PORT ?? 17917);
 const queue: Scripted[] = [];
+const organizerQueue: string[] = [];
 const log: Array<{ at: string; stream: boolean; tools: string[]; last: string; images: number }> = [];
 let callSeq = 0;
 
@@ -42,6 +45,51 @@ function images(content: ChatMessage["content"]): number {
 function trigger(messages: ChatMessage[]): ChatMessage | undefined {
   const users = messages.filter((m) => m.role === "user");
   return users.find((m) => text(m.content).includes("（本轮触发）")) ?? users.at(-1);
+}
+
+/** The organizer's system prompt, by its opening line; the daemon's constant is not imported to keep this script standalone. */
+function isOrganizerCall(messages: ChatMessage[]): boolean {
+  const system = messages.find((m) => m.role === "system");
+  return text(system?.content ?? "").startsWith("你在替这个会话整理「规划」和「任务」");
+}
+
+/**
+ * A fixed filing, so a UI check can see a plan and its tickets without a model: a session with
+ * no plan gets one named after the message, with one ticket in progress under the first Bot in
+ * the room and the message filed under it; a session with a plan continues it, moving its first
+ * ticket to review once a file has been handed over.
+ */
+function organize(messages: ChatMessage[]): string {
+  const queued = organizerQueue.shift();
+  if (queued) return queued;
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(text(messages.findLast((m) => m.role === "user")?.content ?? "{}")) as Record<string, unknown>;
+  } catch {
+    payload = {};
+  }
+  const current = payload.current_plan as { spec?: Record<string, unknown> | null; tickets?: Array<{ id: string; title: string; status: string; worker: string | null }> } | null | undefined;
+  const session = payload.session as { members?: string[] } | undefined;
+  const worker = session?.members?.[0] ?? null;
+  const message = payload.message as { body?: string } | null | undefined;
+  if (!current) {
+    const goal = (message?.body ?? "验证").split("\n")[0]!.slice(0, 60);
+    return JSON.stringify({
+      decision: "new",
+      plan: { kind: "验证", goal, acceptance: ["交出一个文件"], rules: ["不要真人"], process: [`${worker ?? "Bot"} 做，用户验收`], progress: { done: [], open: ["初稿"], blocked: [] }, status: "active" },
+      tickets: [{ id: "new-1", title: "初稿", spec: "先交第一版", status: "doing", worker }],
+      message_ticket: "new-1",
+    });
+  }
+  const since = payload.since_last_revision as { artifacts?: unknown[] } | undefined;
+  const first = current.tickets?.[0];
+  const delivered = (since?.artifacts?.length ?? 0) > 0;
+  return JSON.stringify({
+    decision: "continue",
+    plan: current.spec ?? { goal: "验证", status: "active" },
+    tickets: first && delivered ? [{ id: first.id, title: first.title, status: "review", worker: first.worker }] : [],
+    message_ticket: payload.mode === "message" && first ? first.id : null,
+  });
 }
 
 function decide(messages: ChatMessage[]): Scripted {
@@ -102,9 +150,10 @@ const server = Bun.serve({
     }
     if (request.method === "GET" && url.pathname === "/__log") return Response.json(log);
     if (request.method === "POST" && url.pathname === "/__next") {
-      const body = (await request.json()) as { reply?: Scripted };
+      const body = (await request.json()) as { reply?: Scripted; organizer?: string | Record<string, unknown> };
       if (body.reply) queue.push(body.reply);
-      return Response.json({ queued: queue.length });
+      if (body.organizer !== undefined) organizerQueue.push(typeof body.organizer === "string" ? body.organizer : JSON.stringify(body.organizer));
+      return Response.json({ queued: queue.length, organizer: organizerQueue.length });
     }
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
       const body = (await request.json()) as { messages?: ChatMessage[]; stream?: boolean; tools?: Array<{ function?: { name?: string } }> };
@@ -118,7 +167,8 @@ const server = Bun.serve({
         images: messages.reduce((n, m) => n + images(m.content), 0),
       });
       if (!body.stream) {
-        return Response.json({ choices: [{ index: 0, message: { role: "assistant", content: "{}" }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } });
+        const content = isOrganizerCall(messages) ? organize(messages) : "{}";
+        return Response.json({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } });
       }
       return streamed(decide(messages));
     }

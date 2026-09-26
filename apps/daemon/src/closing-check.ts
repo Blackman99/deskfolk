@@ -17,13 +17,13 @@ import { classifyPath } from "./workspace-paths";
 
 export const CLOSING_CHECK_SYSTEM = `你在替一个 Bot 做收尾自检，不是回答用户，也不能发言。没有工具，不能读工作区。
 
-根据用户消息这份 JSON 决定：brief 是这件事开头那条要求的原文；reply 是这个 Bot 准备发出的收尾消息；deliveries 是这件事已交出的文件，每条有 path 和 excerpt（长文件只给开头，二进制文件没有 excerpt），这一轮交出的排在前面；so_far 是这件事里谁做了什么。
+根据用户消息这份 JSON 决定：ticket 是这一轮要做的那个任务（title 和 spec），没有就是 null；plan 是这件事的规划（goal 目标、acceptance 验收、rules 规则），没有就是 null；brief 是开头那条要求的原文；reply 是这个 Bot 准备发出的收尾消息；deliveries 是这件事已交出的文件，每条有 path 和 excerpt（长文件只给开头，二进制文件没有 excerpt），这一轮交出的排在前面；so_far 是这件事里谁做了什么。
 
 只输出一个 JSON 对象：{"unaddressed": [{"text": "…", "why": "…"}]}。不要 markdown 围栏，不要前言后语，不要 tool-call。
 
-unaddressed 列的是：brief 里明确要求、deliveries 里看不到做到、reply 里也没有交代去向的项。text 是要求的原话或紧贴原话的概括，why 一句话说明为什么算没交代。
+unaddressed 列的是：这一轮该交的东西里，deliveries 里看不到做到、reply 里也没有交代去向的项。标准按这个顺序取：有 ticket 就按 ticket.spec 和 plan.acceptance、plan.rules；没有 ticket 就按 plan；没有 plan 才按 brief。text 是要求的原话或紧贴原话的概括，why 一句话说明为什么算没交代。
 
-策略：只认看得见的证据，Bot 说「已完成」不算。reply 里明确说了交给谁、为什么不做、或什么时候做的，不算 unaddressed；so_far 里别人已经做完的，不算。brief 没提的不要补成要求；寒暄和没有交付物的要求不列。拿不准就不列。没有就返回 {"unaddressed": []}。`;
+策略：只认看得见的证据，Bot 说「已完成」不算。reply 里明确说了交给谁、为什么不做、或什么时候做的，不算 unaddressed；so_far 里别人已经做完的、属于别的任务的，不算。标准里没提的不要补成要求；寒暄和没有交付物的要求不列。拿不准就不列。没有就返回 {"unaddressed": []}。`;
 
 /** How much of one handed-over file the check reads. */
 export const CLOSING_EXCERPT_LIMIT = 3000;
@@ -44,7 +44,9 @@ export const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
 const EXCERPT_BYTES = 64 * 1024;
 
 export type ClosingCheckPayload = {
-  brief: string;
+  brief: string | null;
+  plan: { goal: string; acceptance: string[]; rules: string[] } | null;
+  ticket: { title: string; spec: string } | null;
   reply: string;
   deliveries: Array<{ path: string; excerpt: string | null; truncated?: true }>;
   so_far: string[];
@@ -85,6 +87,7 @@ export function closingCheckPayload(
   store: Store,
   input: {
     taskId: string;
+    ticketId?: string | null;
     turnId: string;
     botId: string;
     sessionId: string;
@@ -101,13 +104,16 @@ export function closingCheckPayload(
   }
   const facts = planFacts(store, {
     taskId: input.taskId,
+    ticketId: input.ticketId ?? null,
     turnId: input.turnId,
     triggerMessageId: null,
     botId: input.botId,
     sessionId: input.sessionId,
     locale: input.locale,
   });
-  if (!brief) return null;
+  const plan = facts?.goal ? { goal: facts.goal, acceptance: facts.acceptance, rules: facts.rules } : null;
+  const ticket = facts?.ticket ? { title: facts.ticket.title, spec: facts.ticket.spec } : null;
+  if (!brief && !plan) return null;
   const root = store.workspacePath();
   const ordered: string[] = [];
   const seen = new Set<string>();
@@ -126,7 +132,9 @@ export function closingCheckPayload(
     return head.truncated ? { path, excerpt: head.excerpt, truncated: true as const } : { path, excerpt: head.excerpt };
   });
   return {
-    brief,
+    brief: brief || null,
+    plan,
+    ticket,
     reply: takeCodePoints(input.reply, CLOSING_REPLY_LIMIT).text,
     deliveries,
     so_far: facts?.trace ?? [],

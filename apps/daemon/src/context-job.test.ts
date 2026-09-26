@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
 import {
+  assembleComposerSuggestUser,
   assembleJudgementUser,
   assembleTurnMessages,
   planFacts,
@@ -178,8 +179,15 @@ describe("the job in the judgement and composer payloads", () => {
       assembleJudgementUser(store, { sessionId: group.id, botId: reviewer.id, message: ask, mentions: [], everyone: false }),
     ) as { plan: Record<string, unknown> | null };
     expect(payload.plan).toEqual({
+      goal: null,
+      kind: null,
+      status: "active",
       brief: "写一份周报，交到 report.md，先给 Reviewer 过一遍",
       first_turn: false,
+      acceptance: [],
+      rules: [],
+      tickets: [],
+      message_ticket: null,
       artifacts: ["report.md"],
       trace: ["【user】写一份周报，交到 report.md，先给 Reviewer 过一遍", "【Writer】初稿在 report.md，@Reviewer 请看"],
     });
@@ -196,6 +204,15 @@ describe("the job in the judgement and composer payloads", () => {
       assembleJudgementUser(store, { sessionId: group.id, botId: reviewer.id, message: ask, mentions: [], everyone: false }),
     ) as { plan: unknown };
     expect(payload.plan).toBeNull();
+    const suggest = JSON.parse(assembleComposerSuggestUser(store, group.id)) as { plan: unknown };
+    expect(suggest.plan).toBeNull();
+    store.close();
+  });
+
+  test("composer suggestions carry the current plan's goal, which is the request until the organizer has run", async () => {
+    const { store, group } = await room();
+    const payload = JSON.parse(assembleComposerSuggestUser(store, group.id)) as { plan: { goal: string | null; acceptance: string[]; open_tickets: string[] } | null };
+    expect(payload.plan).toEqual({ goal: "写一份周报，交到 report.md，先给 Reviewer 过一遍", acceptance: [], open_tickets: [] });
     store.close();
   });
 });

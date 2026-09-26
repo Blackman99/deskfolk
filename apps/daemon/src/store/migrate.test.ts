@@ -149,7 +149,19 @@ describe("a database an earlier build created", () => {
         expect(reopened.getTurn(turn.id).task_id).toBe(turn.task_id!);
         const ledger = reopened.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE name = 'spend'").get()!.sql;
         expect(ledger).toContain("kind TEXT NOT NULL");
+        expect(ledger).toContain("'organize'");
         expect(ledger).not.toContain("REFERENCES");
+        // The plan columns and the ticket tables are there, and a plan that was closed before
+        // plans had a status reads as done.
+        const planTables = reopened.db
+          .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('tickets', 'task_spec_revisions') ORDER BY name")
+          .all()
+          .map((row) => row.name);
+        expect(planTables).toEqual(["task_spec_revisions", "tickets"]);
+        expect(reopened.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM tasks WHERE closed_at IS NOT NULL AND status != 'done'").get()!.n).toBe(0);
+        expect(reopened.getTask(turn.task_id!)).toMatchObject({ status: "active", spec: null, routine_id: null });
+        const ticket = reopened.createTicket({ taskId: turn.task_id!, title: "初稿", spec: "", status: "todo", worker: null });
+        expect(reopened.listTickets(turn.task_id!).map((row) => row.id)).toEqual([ticket.id]);
         const kept = reopened.listSpend({});
         expect(kept).toHaveLength(2);
         const turnRow = kept.find((row) => row.turn_id !== null)!;

@@ -91,7 +91,6 @@ describe("PR1 notifications domain integration", () => {
         sessionId: writer.direct_session.id,
         botId: writer.bot.id,
         triggerMessageId: trigger.id,
-        newTask: true,
         routineId: routine.id,
         routineDueAt: "2026-09-22T09:00:00.000Z",
       });

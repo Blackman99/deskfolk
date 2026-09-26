@@ -28,6 +28,18 @@ describe("goal coverage", () => {
     expect(payload.final_messages).toHaveLength(COVERAGE_MESSAGES);
     expect(payload.final_messages[0]!.body).toBe("第 3 句");
     expect(payload.final_messages.at(-1)).toMatchObject({ truncated: true });
+    expect("plan" in payload).toBe(false);
+  });
+
+  test("the plan's goal, acceptance and rules ride along when the organizer has written them", () => {
+    const payload = goalCoveragePayload({
+      brief: "写周报",
+      plan: { goal: "写一份给管理层的周报", acceptance: ["交到 report.md", "附趋势图"], rules: ["不要口语"] },
+      deliveries: [],
+      finalMessages: [],
+    });
+    expect(payload.plan).toEqual({ goal: "写一份给管理层的周报", acceptance: ["交到 report.md", "附趋势图"], rules: ["不要口语"] });
+    expect(goalCoveragePayload({ brief: "写周报", plan: null, deliveries: [], finalMessages: [] }).plan).toBeUndefined();
   });
 
   test("a verdict is parsed through a fence, and an unknown status or a bare requirement rejects it", () => {

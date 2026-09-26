@@ -3390,6 +3390,11 @@ export class MessengerRuntime {
     if ((event.event === "message.created" || event.event === "message.upsert") && this.boardShows(event.task_id)) {
       this.traceReload += 1;
     }
+    // The organizer's filing and your own edits: the plan's spec and tickets are part of the picture.
+    if (event.event === "task.upsert" && this.boardShows(event.id)) this.traceReload += 1;
+    if ((event.event === "ticket.upsert" || event.event === "ticket.removed") && this.boardShows(event.task_id)) {
+      this.traceReload += 1;
+    }
     if (event.event === "message.created") {
       // Drafted for what was there before, in front or not; ✨ drafts again for what is there now.
       // An upsert is a reaction, an edit or an answer to a row already there: the talk has not moved.

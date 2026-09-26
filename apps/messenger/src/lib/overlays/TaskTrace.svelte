@@ -62,12 +62,6 @@
 		onOpenArtifact
 	}: Props = $props();
 
-	let view = $state<{ backFromFullOutput: () => boolean } | null>(null);
-
-	/** The phone's Back, one step. Handed through so the shell's chain still reaches the board. */
-	export function backFromFullOutput(): boolean {
-		return view?.backFromFullOutput() ?? false;
-	}
 </script>
 
 <div
@@ -79,7 +73,7 @@
 	tabindex="-1"
 >
 	<TraceView
-		bind:this={view}
+		host="page"
 		{api}
 		{taskId}
 		{focus}
