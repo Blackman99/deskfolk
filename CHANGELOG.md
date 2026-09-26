@@ -6,6 +6,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Tabs in a pane keep their width however many are open. Every tab used to shrink to fit, so with six open each name was cut to two or three characters. Past the pane's width the tab row now scrolls sideways — a trackpad swipe or the mouse wheel over it — and a tab you open or switch to scrolls into view.
 - Bots can hand pictures from the workspace to MCP tools such as video and image generators. Those tools only take an image URL or data URI, a remote server cannot read your Mac, and a model cannot copy tens of thousands of base64 characters into a call — once a video Bot spent an hour and 99 hops shrinking one storyboard frame into ever smaller base64, sending nothing and never reaching the video tool. A Bot now writes `workspace://<path relative to the workspace root>` in the argument and the app sends the picture itself (shrunk first when over half a megabyte), while the transcript keeps the short reference; a path outside the workspace, a missing file or a non-picture fails that call with the reason.
 - A turn no longer calls tools forever. Every 40 tool hops in a row, the app asks whether it is stuck: if so it stops calling tools and replies with what is done, where it is stuck and what it needs from whom; if it is making progress it carries on. At 160 hops the tools are taken away and its next reply ends the turn (the longest real turn so far was a video Bot's 141 polling hops).
 

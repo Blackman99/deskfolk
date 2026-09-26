@@ -420,12 +420,93 @@ test("a tab's picture is always shown, and its ⋯ only while the pointer is on 
   expect(style).not.toContain("@container wb-strip");
 });
 
-test("the strip has no padding of its own, so it is exactly as wide as its pane", () => {
+test("tabs keep their width when many share a strip, and the row scrolls sideways", () => {
+  // Shrinking every tab to fit cut six names down to two characters each. Read from the source
+  // because happy-dom does not lay out flex rows.
   const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
   const style = source.slice(source.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
-  const start = style.indexOf(".wb-strip {");
-  const strip = style.slice(start, style.indexOf("}", start));
-  expect(strip).toMatch(/\bpadding:\s*0;/);
+  const block = (selector: string) => {
+    const from = style.slice(style.indexOf(`${selector} {`));
+    return from.slice(0, from.indexOf("}"));
+  };
+  expect(block(".wb-tab")).toContain("flex: 0 0 auto");
+  expect(block(".wb-tabs")).toContain("overflow-x: auto");
+  expect(block(".wb-tabs")).toContain("min-width: 0");
+});
+
+/** Gives the row and its tabs the widths a browser would, so scrolling can be asserted. */
+function laidOut(host: HTMLElement, rowWidth: number, tabWidth: number) {
+  const row = host.querySelector<HTMLElement>(".wb-tabs")!;
+  const tabs = [...row.querySelectorAll<HTMLElement>(".wb-tab")];
+  Object.defineProperty(row, "clientWidth", { configurable: true, value: rowWidth });
+  Object.defineProperty(row, "scrollWidth", { configurable: true, value: tabs.length * tabWidth });
+  tabs.forEach((tab, index) => {
+    Object.defineProperty(tab, "offsetLeft", { configurable: true, value: index * tabWidth });
+    Object.defineProperty(tab, "offsetWidth", { configurable: true, value: tabWidth });
+  });
+  return row;
+}
+
+test("a mouse wheel scrolls an overflowing tab row sideways", () => {
+  const { host, close } = mountWorkbench(layoutOf(makeLeaf("a", ["t1", "t2", "t3", "t4"].map((id) => aTab(id)))));
+  try {
+    const row = laidOut(host, 200, 150);
+    const down = new WheelEvent("wheel", { deltaY: 60, bubbles: true, cancelable: true });
+    row.dispatchEvent(down);
+    expect(row.scrollLeft).toBe(60);
+    expect(down.defaultPrevented).toBe(true);
+    // A trackpad's sideways swipe is the browser's own to scroll.
+    const across = new WheelEvent("wheel", { deltaX: 40, deltaY: 5, bubbles: true, cancelable: true });
+    row.dispatchEvent(across);
+    expect(row.scrollLeft).toBe(60);
+    expect(across.defaultPrevented).toBe(false);
+  } finally {
+    close();
+  }
+});
+
+test("a row that fits leaves the wheel alone", () => {
+  const { host, close } = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1")])));
+  try {
+    const row = laidOut(host, 400, 150);
+    const down = new WheelEvent("wheel", { deltaY: 60, bubbles: true, cancelable: true });
+    row.dispatchEvent(down);
+    expect(row.scrollLeft).toBe(0);
+    expect(down.defaultPrevented).toBe(false);
+  } finally {
+    close();
+  }
+});
+
+test("switching to a tab past the edge scrolls it into view, and only then", () => {
+  const tabs = ["t1", "t2", "t3", "t4"].map((id) => aTab(id));
+  const { host, close, state } = mountWorkbench(layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", tabs),
+    makeLeaf("b", [aTab("t5")]),
+  ])));
+  try {
+    const row = laidOut(host, 200, 150);
+    const leafA = (activeTabId: string) => ({ ...makeLeaf("a", tabs), activeTabId });
+    state.layout = layoutOf(makeBranch("r", "row", [leafA("t4"), makeLeaf("b", [aTab("t5")])]));
+    flushSync();
+    // The last tab's right edge and its flare, at the row's right edge.
+    expect(row.scrollLeft).toBe(4 * 150 + 8 - 200);
+
+    // Scrolled away by hand, then the other pane changes: the row stays where it was put.
+    row.scrollLeft = 0;
+    state.layout = layoutOf(makeBranch("r", "row", [leafA("t4"), makeLeaf("b", [aTab("t5"), aTab("t6")])]));
+    flushSync();
+    expect(host.querySelector(".wb-tabs")).toBe(row);
+    expect(row.scrollLeft).toBe(0);
+
+    // Back to the first tab from the far end: the row returns to its start, never before it.
+    row.scrollLeft = 400;
+    state.layout = layoutOf(makeBranch("r", "row", [leafA("t1"), makeLeaf("b", [aTab("t5")])]));
+    flushSync();
+    expect(row.scrollLeft).toBe(0);
+  } finally {
+    close();
+  }
 });
 
 test("the + menu is lifted above the pane under it while it is open", () => {

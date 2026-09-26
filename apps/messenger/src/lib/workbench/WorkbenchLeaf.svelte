@@ -58,6 +58,8 @@
 
 	const active = $derived(leaf.tabs.find((tab) => tab.id === leaf.activeTabId) ?? null);
 	let strip = $state<HTMLDivElement>();
+	/** The row the tabs scroll in, sideways, once they no longer fit. */
+	let tabRow = $state<HTMLDivElement>();
 	let newTabButton = $state<HTMLButtonElement>();
 	let newTabMenu = $state<HTMLDivElement>();
 	let newTabQuery = $state<HTMLInputElement>();
@@ -203,6 +205,37 @@
 		queueMicrotask(() => newTabQuery?.focus());
 	});
 
+	/*
+	 * Read through their own deriveds so the effect below wakes only when these values change:
+	 * the layout rebuilds `leaf` on every snapshot, and a row the reader scrolled away from must
+	 * not jump back because another pane moved.
+	 */
+	const activeTabId = $derived(leaf.activeTabId);
+	const tabCount = $derived(leaf.tabs.length);
+
+	$effect(() => {
+		// A tab that is opened or switched to lands where it can be seen, flares and all.
+		void tabCount;
+		const row = tabRow;
+		if (!row || !activeTabId) return;
+		const tab = row.querySelector<HTMLElement>(`[data-tab="${CSS.escape(activeTabId)}"]`);
+		if (!tab) return;
+		const flare = 8;
+		const start = tab.offsetLeft - flare;
+		const end = tab.offsetLeft + tab.offsetWidth + flare;
+		if (start < row.scrollLeft) row.scrollLeft = Math.max(0, start);
+		else if (end > row.scrollLeft + row.clientWidth) row.scrollLeft = end - row.clientWidth;
+	});
+
+	/** A trackpad already scrolls the row sideways; a mouse wheel only turns up and down. */
+	function onTabRowWheel(event: WheelEvent): void {
+		const row = event.currentTarget as HTMLElement;
+		if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+		if (row.scrollWidth <= row.clientWidth) return;
+		event.preventDefault();
+		row.scrollLeft += event.deltaY;
+	}
+
 	$effect(() => {
 		if (!newTabOpen) return;
 		// Filtering changes how tall the menu is, so it is placed again.
@@ -248,7 +281,7 @@
 		bind:this={strip}
 		onpointerdown={(event) => onStripPointerDown?.(event, leaf.id)}
 	>
-		<div class="wb-tabs">
+		<div class="wb-tabs" bind:this={tabRow} onwheel={onTabRowWheel}>
 			{#each leaf.tabs as tab, index (tab.id)}
 				{@const actions = tabActions?.(leaf.id, tab) ?? []}
 				<!-- The close control is a sibling of the tab, never nested inside it: a button
@@ -551,7 +584,9 @@
 	.wb-strip.is-menu-open {
 		z-index: 200;
 	}
+	/* Positioned so a tab's `offsetLeft` is measured from the row it scrolls in. */
 	.wb-tabs {
+		position: relative;
 		display: flex;
 		align-items: flex-end;
 		min-width: 0;
@@ -563,14 +598,17 @@
 	.wb-tabs::-webkit-scrollbar {
 		display: none;
 	}
+	/*
+	 * A tab keeps its own width, however many share the strip: squeezing them all cut every name
+	 * to a couple of characters. Past the pane's width the row scrolls sideways instead.
+	 */
 	.wb-tab {
 		/* What the tab is painted, for a label that rings its picture in the same colour. */
 		--wb-tab-surface: var(--bg);
 		position: relative;
 		display: flex;
 		align-items: center;
-		flex: 0 1 auto;
-		min-width: 0;
+		flex: 0 0 auto;
 		height: 28px;
 		padding: 0 2px 0 8px;
 		border-radius: 8px 8px 0 0;
