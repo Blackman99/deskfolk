@@ -18,6 +18,7 @@ export {
   COMPLETION_FAIL,
   FAIL_REASON,
   checkBackNoteBody,
+  reportBackNote,
   routineFireBody,
   unknownMentionBody,
   completionFailBody,

@@ -43,6 +43,34 @@ export function checkBackNoteBody(locale: Locale, note: string): string {
   return locale === "en" ? `Check-back: ${note}` : `回看：${note}`;
 }
 
+/** How much of the direct's last line a report-back quotes. */
+const REPORT_BACK_EXCERPT = 200;
+
+/**
+ * The note a quiet Bot↔Bot direct calls its opener back with, behind the check-back mark: who it
+ * was with, the last word when the other Bot said anything, and to report before moving on.
+ */
+export function reportBackNote(
+  locale: Locale,
+  input: { peer: string; last: { mine: boolean; body: string } | null; peerSpoke: boolean },
+): string {
+  const en = locale === "en";
+  if (!input.peerSpoke || !input.last) {
+    return en
+      ? `Your direct with ${input.peer} has gone quiet; ${input.peer} did not answer your last message. Say here where things stand, then decide the next step.`
+      : `你和${input.peer}的私聊静下来了，${input.peer}没有回你最后那条。先在这里交代现状，再决定下一步。`;
+  }
+  const flat = input.last.body.replace(/\s+/g, " ").trim();
+  const points = [...flat];
+  const excerpt = points.length > REPORT_BACK_EXCERPT ? `${points.slice(0, REPORT_BACK_EXCERPT).join("")}…` : flat;
+  if (en) {
+    const whose = input.last.mine ? "yours" : `${input.peer}'s`;
+    return `Your direct with ${input.peer} has gone quiet; the last word was ${whose}: "${excerpt}". Report here how it came out, then carry on with the next step.`;
+  }
+  const who = input.last.mine ? "你" : input.peer;
+  return `你和${input.peer}的私聊静下来了，最后一条是${who}说的：「${excerpt}」。先在这里交代这次私聊的结果，再接着推进下一步。`;
+}
+
 /**
  * The system line a routine fires with, under its Bot: the app woke it, so the instruction never
  * reads as something you just said.

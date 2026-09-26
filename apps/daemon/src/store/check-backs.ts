@@ -9,6 +9,7 @@
  * made it, clearing or deleting the session, and deleting the Bot all void it. Nothing here opens
  * a turn; the engine does that when the scheduler finds a due row.
  */
+import { USER_MEMBER } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
@@ -71,9 +72,42 @@ export function scheduleCheckBack(
     );
   }
   const at = input.now ?? new Date();
-  const now = at.toISOString();
-  const due = new Date(at.getTime() + minutes * 60_000).toISOString();
-  const id = ulid(at.getTime());
+  return insertCheckBack(ctx, {
+    botId: input.botId,
+    sessionId: input.sessionId,
+    turnId: input.turnId,
+    note,
+    at,
+    due: new Date(at.getTime() + minutes * 60_000),
+  });
+}
+
+/**
+ * The app's check-back for a Bot whose Bot↔Bot direct went quiet: due now, in the session the
+ * direct came from, hung on the direct's last turn. That turn being in another session is what
+ * tells it apart from one the Bot booked itself, and what lets the trace draw the wake back across.
+ * Like any booking it replaces the Bot's pending one there — what it was waiting on has come back.
+ */
+export function bookReportBack(
+  ctx: StoreContext,
+  input: { botId: string; sessionId: string; turnId: string; note: string; now?: Date },
+): CheckBack {
+  aliveBot(ctx, input.botId);
+  sessionRow(ctx, input.sessionId);
+  if (!isPresent(ctx, input.sessionId, input.botId)) {
+    throw new HttpError(422, "not_a_member", "not in that session");
+  }
+  const at = input.now ?? new Date();
+  return insertCheckBack(ctx, { ...input, note: input.note.replace(/\s+/g, " ").trim(), at, due: at }).row;
+}
+
+function insertCheckBack(
+  ctx: StoreContext,
+  input: { botId: string; sessionId: string; turnId: string | null; note: string; at: Date; due: Date },
+): { row: CheckBack; replaced: boolean } {
+  const now = input.at.toISOString();
+  const due = input.due.toISOString();
+  const id = ulid(input.at.getTime());
   const lineage = input.turnId
     ? ctx.db
         .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
@@ -95,7 +129,7 @@ export function scheduleCheckBack(
       `INSERT INTO check_backs
          (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
-      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(note, CHECK_BACK_NOTE_MAX).text, due, now],
+      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, CHECK_BACK_NOTE_MAX).text, due, now],
     );
   })();
   return { row: getCheckBack(ctx, id), replaced };
@@ -183,6 +217,80 @@ export function notCheckBackLine(column = "id"): string {
 
 export function isCheckBackLine(ctx: StoreContext, messageId: string): boolean {
   return Boolean(ctx.db.query(`SELECT 1 FROM check_backs WHERE message_id = ?`).get(messageId));
+}
+
+/** What a quiet Bot↔Bot direct would report back with, read when its quiet clock runs out. */
+export type QuietDirect = {
+  /** Where the direct came from, which is where its opener reports. */
+  originSessionId: string;
+  /** The Bot that opened it: the author of its first message. */
+  openerId: string;
+  peerId: string;
+  /** The newest line in the direct since its last report-back, or since it opened. Null: nothing new. */
+  latest: { author: string; body: string } | null;
+  /** The peer said something in that stretch — a reply, or the line its failed turn left. */
+  peerSpoke: boolean;
+  /** The turn that opened the direct was itself woken by a report-back. */
+  openedFromReportBack: boolean;
+};
+
+/**
+ * Null unless this is a live Bot↔Bot direct that came from a session still there, whose opener
+ * is still in it. A report-back is recognised by hanging on a turn from another session.
+ */
+export function quietDirect(ctx: StoreContext, directId: string): QuietDirect | null {
+  const direct = ctx.db
+    .query<{ kind: string; origin_session_id: string | null; origin_message_id: string | null; archived_at: string | null }, [string]>(
+      `SELECT kind, origin_session_id, origin_message_id, archived_at FROM sessions WHERE id = ?`,
+    )
+    .get(directId);
+  if (!direct || direct.kind !== "direct" || !direct.origin_session_id || direct.archived_at) return null;
+  if (isPresent(ctx, directId, USER_MEMBER)) return null;
+  const origin = ctx.db
+    .query<{ archived_at: string | null }, [string]>(`SELECT archived_at FROM sessions WHERE id = ?`)
+    .get(direct.origin_session_id);
+  if (!origin || origin.archived_at) return null;
+  const opener = ctx.db
+    .query<{ author: string }, [string]>(
+      `SELECT author FROM messages WHERE session_id = ? AND kind = 'bot' ORDER BY created_at ASC, rowid ASC LIMIT 1`,
+    )
+    .get(directId)?.author;
+  if (!opener || !isPresent(ctx, direct.origin_session_id, opener)) return null;
+  const peerId = ctx.db
+    .query<{ member: string }, [string, string]>(
+      `SELECT member FROM session_participants WHERE session_id = ? AND member != ? AND left_at IS NULL LIMIT 1`,
+    )
+    .get(directId, opener)?.member;
+  if (!peerId) return null;
+  const since =
+    ctx.db
+      .query<{ created_at: string }, [string, string, string]>(
+        `SELECT cb.created_at FROM check_backs cb JOIN turns t ON t.id = cb.turn_id
+         WHERE cb.bot_id = ? AND cb.session_id = ? AND t.session_id = ?
+         ORDER BY cb.created_at DESC LIMIT 1`,
+      )
+      .get(opener, direct.origin_session_id, directId)?.created_at ?? "";
+  const fresh = `session_id = ? AND kind IN ('bot', 'system') AND created_at > ? AND ${notCheckBackLine()}`;
+  const latest =
+    ctx.db
+      .query<{ author: string; body: string }, [string, string]>(
+        `SELECT author, body FROM messages WHERE ${fresh} ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(directId, since) ?? null;
+  const peerSpoke = Boolean(
+    ctx.db.query(`SELECT 1 FROM messages WHERE ${fresh} AND author = ? LIMIT 1`).get(directId, since, peerId),
+  );
+  const openedFromReportBack = direct.origin_message_id
+    ? Boolean(
+        ctx.db
+          .query(
+            `SELECT 1 FROM check_backs cb JOIN turns t ON t.id = cb.turn_id
+             WHERE cb.message_id = ? AND t.session_id != cb.session_id`,
+          )
+          .get(direct.origin_message_id),
+      )
+    : false;
+  return { originSessionId: direct.origin_session_id, openerId: opener, peerId, latest, peerSpoke, openedFromReportBack };
 }
 
 /**

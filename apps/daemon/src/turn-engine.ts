@@ -64,6 +64,7 @@ import {
   COMPOSER_SUGGEST_SYSTEM,
   completionFailBody,
   JUDGEMENT_SYSTEM,
+  reportBackNote,
   routineFireBody,
   unknownMentionBody,
   type FailKind,
@@ -72,7 +73,7 @@ import { HttpError } from "./errors";
 import type { TurnAdmission } from "./quiesce";
 import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
-import { isReservedTaskPath, localDate, type Store } from "./store";
+import { isReservedTaskPath, localDate, type CheckBack, type Store } from "./store";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -143,6 +144,8 @@ export type TurnEngineOptions = {
   wake?: WakeWatch;
   /** How long a plan stays quiet after its last turn before the organizer files it. Tests shorten it. */
   settleQuietMs?: number;
+  /** How long a Bot↔Bot direct stays quiet after its last turn before its opener is called back. Tests shorten it. */
+  directQuietMs?: number;
 };
 
 type Live = {
@@ -259,6 +262,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     // Every way a turn ends passes through here, so this is where its plan learns to file itself.
     if (turn.status !== "running" && turn.status !== "waiting_ask" && turn.status !== "waiting_approval") {
       organizer.noteTurnEnded(turn);
+      noteDirectTurnEnded(turn);
     }
   }
 
@@ -693,6 +697,73 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const CHAIN_SWEEP_LIMIT = 20;
   const chainTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** Long enough for the other side's turn to open, short enough that the report still reads as news. */
+  const DIRECT_QUIET_MS = options.directQuietMs ?? 10_000;
+  const directTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * A turn ending in a Bot↔Bot direct restarts that direct's quiet clock. Only a completed turn
+   * starts it again: after Stop or a restart the direct is the user's to pick up, not something to
+   * report on. The clock lives in this process, so a restart inside the window drops that report.
+   */
+  function noteDirectTurnEnded(turn: Turn): void {
+    let session;
+    try {
+      session = store.getSession(turn.session_id);
+    } catch {
+      return;
+    }
+    if (session.kind !== "direct" || !session.origin_session_id) return;
+    clearTimeout(directTimers.get(session.id));
+    directTimers.delete(session.id);
+    if (turn.status !== "completed" || options.admission?.draining) return;
+    const directId = session.id;
+    const timer = setTimeout(() => {
+      directTimers.delete(directId);
+      reportBackIfQuiet(directId, turn.id);
+    }, DIRECT_QUIET_MS);
+    timer.unref?.();
+    directTimers.set(directId, timer);
+  }
+
+  /**
+   * The Bot that opened a direct handed its turn off with the opening message, so nobody is left
+   * where the work came from. When the direct has gone quiet — no live turn, no check-back pending
+   * in it — its opener is woken back there with what the direct came to, once per stretch of new
+   * lines. A direct that a report-back itself opened, and that the other Bot never answered, stays
+   * put: that opener has been back once already, and two Bots must not bounce on silence.
+   */
+  function reportBackIfQuiet(directId: string, lastTurnId: string): void {
+    if (options.admission?.draining) return;
+    let booked: CheckBack;
+    try {
+      if (store.listLiveTurns({ sessionId: directId }).length > 0) return;
+      if (store.listPendingCheckBacks(directId).length > 0) return;
+      const quiet = store.quietDirect(directId);
+      if (!quiet?.latest) return;
+      if (quiet.openedFromReportBack && !quiet.peerSpoke) return;
+      const note = reportBackNote(store.settingsCached().locale, {
+        peer: store.getBot(quiet.peerId).name,
+        last: { mine: quiet.latest.author === quiet.openerId, body: quiet.latest.body },
+        peerSpoke: quiet.peerSpoke,
+      });
+      booked = store.bookReportBack({
+        botId: quiet.openerId,
+        sessionId: quiet.originSessionId,
+        turnId: lastTurnId,
+        note,
+      });
+    } catch {
+      // the direct, its origin or a Bot went away meanwhile; there is nobody to report to
+      return;
+    }
+    try {
+      fireCheckBack(booked.id);
+    } catch {
+      // left pending: the scheduler's next tick fires it
+    }
+  }
+
   function chainFloor(): string {
     return new Date(Date.now() - CHAIN_MAX_AGE_MS).toISOString();
   }
@@ -1034,6 +1105,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   async function drainLives(): Promise<void> {
     for (const timer of chainTimers.values()) clearTimeout(timer);
     chainTimers.clear();
+    for (const timer of directTimers.values()) clearTimeout(timer);
+    directTimers.clear();
     organizer.clearTimers();
     while (tasks.size > 0) {
       for (const id of [...lives.keys()]) abortLive(id);
@@ -2686,6 +2759,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     abortAll() {
       for (const timer of chainTimers.values()) clearTimeout(timer);
       chainTimers.clear();
+      for (const timer of directTimers.values()) clearTimeout(timer);
+      directTimers.clear();
       organizer.clearTimers();
       for (const id of [...lives.keys()]) abortLive(id);
     },

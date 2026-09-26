@@ -55,7 +55,7 @@ export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTick
 export { ORGANIZER_NEW_TICKETS_MAX } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
-export type { CheckBack } from "./check-backs";
+export type { CheckBack, QuietDirect } from "./check-backs";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
 export type { FileCommit, LiveFile } from "./files";
@@ -287,6 +287,8 @@ export class Store {
 
   // Check-backs ----------------------------------------------------------------------------
   readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);
+  readonly bookReportBack = this.bind(checkBacks.bookReportBack);
+  readonly quietDirect = this.bind(checkBacks.quietDirect);
   readonly getCheckBack = this.bind(checkBacks.getCheckBack);
   readonly pendingCheckBack = this.bind(checkBacks.pendingCheckBack);
   readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);

@@ -154,3 +154,141 @@ test("a check-back whose Bot has left the group is consumed without waking anyon
     store.close();
   }
 });
+
+async function until<T>(read: () => T | undefined | null | false, timeoutMs = 4000): Promise<T> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const value = read();
+    if (value) return value;
+    await Bun.sleep(10);
+  }
+  throw new Error("timed out");
+}
+
+function triggerText(messages: ChatMessage[]): string {
+  return textOf(messages.find((m) => m.role === "user" && textOf(m).includes("（本轮触发）"))!);
+}
+
+/**
+ * A Writer in a group with a Reviewer. `reply` answers each turn by what woke it; a turn it leaves
+ * to the default opens a direct with the Reviewer and hands `handoff` over there.
+ */
+function relayHarness(reply: (trigger: string) => string | { handoff: string }) {
+  const root = mkdtempSync(join(tmpdir(), "bot-report-back-"));
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  const shown: ClientEvent[] = [];
+  const engine = createTurnEngine({
+    store,
+    directQuietMs: 20,
+    publish(event) {
+      shown.push(event);
+    },
+    completions: {
+      async complete(request) {
+        const answer = reply(triggerText(request.messages));
+        if (typeof answer === "string") return say(answer);
+        const results = request.messages.filter((m) => m.role === "tool");
+        if (results.length === 0) return call("create_direct", { name: "Reviewer" });
+        const opened = JSON.parse(textOf(results[0]!));
+        return call("send_message", { session_id: opened.data.session_id, body: answer.handoff });
+      },
+      async judge() {
+        throw new Error("no judge");
+      },
+    },
+  });
+  const setup = async () => {
+    await store.patchSettings({ workspace_path: root, endpoint_base_url: "http://127.0.0.1:1/v1", endpoint_api_key: "fixture", endpoint_models: ["fixture"], endpoint_default_model: "fixture" });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" }).bot;
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" }).bot;
+    const group = store.createGroup({ name: "Cut", members: [writer.id, reviewer.id] });
+    return { writer, reviewer, group };
+  };
+  /** The Writer's finished turns in the group, oldest first. */
+  const writerTurnsIn = (sessionId: string, writerId: string) =>
+    shown.filter(
+      (e): e is Extract<ClientEvent, { event: "turn.upsert" }> =>
+        e.event === "turn.upsert" && e.status === "completed" && e.bot_id === writerId && e.session_id === sessionId,
+    );
+  const cleanup = async () => {
+    await engine.close();
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  };
+  return { store, engine, setup, writerTurnsIn, cleanup };
+}
+
+test("a Bot↔Bot direct that goes quiet calls its opener back to the group it came from", async () => {
+  const h = relayHarness((trigger) => {
+    if (trigger.includes("回看：")) return "第一镜审过了，Reviewer 说通过。";
+    if (trigger.includes("第一镜通过")) return "无需回复";
+    if (trigger.includes("请审第一镜")) return "第一镜通过";
+    return { handoff: "请审第一镜" };
+  });
+  try {
+    const { writer, group } = await h.setup();
+    const ask = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@Writer 第一镜送审到通过为止" });
+    await h.engine.handleInboundMessage(ask, { fromUser: true });
+
+    const [, report] = await until(() => {
+      const turns = h.writerTurnsIn(group.id, writer.id);
+      return turns.length >= 2 && turns;
+    });
+    const opening = h.writerTurnsIn(group.id, writer.id)[0]!;
+    expect(opening.trigger_message_id).toBe(ask.id);
+    const direct = h.store.listSessions().find((s) => s.kind === "direct" && s.origin_session_id === group.id)!;
+    const line = h.store.getMessage(report!.trigger_message_id);
+    expect(line).toMatchObject({
+      session_id: group.id,
+      kind: "system",
+      author: writer.id,
+      body: "回看：你和Reviewer的私聊静下来了，最后一条是Reviewer说的：「第一镜通过」。先在这里交代这次私聊的结果，再接着推进下一步。",
+    });
+    // Hung on the direct's last turn, so the flow board draws the wake back across; same job.
+    expect(h.store.getTurn(line.turn_id!).session_id).toBe(direct.id);
+    expect(h.store.getTurn(report!.id).task_id).toBe(h.store.getTurn(opening.id).task_id!);
+    // A reminder like any check-back: the group never shows the line, only the report it led to.
+    const shownInGroup = h.store.listMainMessages(group.id, 10);
+    expect(shownInGroup.map((m) => m.id)).not.toContain(line.id);
+    expect(shownInGroup.map((m) => m.body)).toContain("第一镜审过了，Reviewer 说通过。");
+
+    // Reported is reported: nothing new in the direct, so no second call-back.
+    await Bun.sleep(100);
+    expect(h.writerTurnsIn(group.id, writer.id)).toHaveLength(2);
+    expect(h.store.listPendingCheckBacks()).toEqual([]);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("an unanswered direct reports back once, and the direct that report opens does not bounce", async () => {
+  const h = relayHarness((trigger) => {
+    if (trigger.includes("回看：")) return { handoff: "请再审第二镜" };
+    if (trigger.includes("请再审第二镜") || trigger.includes("请审第二镜")) return "无需回复";
+    return { handoff: "请审第二镜" };
+  });
+  try {
+    const { writer, group } = await h.setup();
+    const ask = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@Writer 第二镜送审" });
+    await h.engine.handleInboundMessage(ask, { fromUser: true });
+
+    const [, report] = await until(() => {
+      const turns = h.writerTurnsIn(group.id, writer.id);
+      return turns.length >= 2 && turns;
+    });
+    const line = h.store.getMessage(report!.trigger_message_id);
+    expect(line.body).toBe("回看：你和Reviewer的私聊静下来了，Reviewer没有回你最后那条。先在这里交代现状，再决定下一步。");
+
+    // The Writer went straight back into a new direct from that call-back, and the Reviewer stayed
+    // silent there too. It has been back once; waking it again would only loop on silence.
+    const second = await until(() =>
+      h.store.listSessions().find((s) => s.kind === "direct" && s.origin_message_id === line.id),
+    );
+    await until(() => h.store.listMainMessages(second.id, 10).length > 0 && h.store.listLiveTurns({ sessionId: second.id }).length === 0);
+    await Bun.sleep(100);
+    expect(h.writerTurnsIn(group.id, writer.id)).toHaveLength(2);
+    expect(h.store.listPendingCheckBacks()).toEqual([]);
+  } finally {
+    await h.cleanup();
+  }
+});
