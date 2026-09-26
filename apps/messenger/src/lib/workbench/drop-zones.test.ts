@@ -9,8 +9,13 @@ import {
   dropZoneAt,
   edgeBand,
   isNoOpDrop,
+  rowScrollStep,
   sideToSplit,
+  stripIndex,
   tabInsertIndex,
+  tabMarkerRect,
+  WB_ROW_SCROLL_MAX_PX,
+  type TabRow,
 } from "./drop-zones.ts";
 
 const aTab = (id: string): WorkbenchTab => ({ id, kind: "chat", params: {} });
@@ -76,14 +81,116 @@ test("the right pane is picked when there are several", () => {
   expect(dropZoneAt(geo, { x: 750, y: 400 })).toEqual({ kind: "centre", leafId: "b" });
 });
 
+/** Three tabs a hundred wide from x 4, in a row that shows all of them. */
+const rowOf = (over: Partial<TabRow> = {}): TabRow => ({
+  strip: { x: 0, y: 0, width: 1000, height: 32 },
+  visible: { x: 4, width: 300 },
+  start: 4,
+  widths: [100, 100, 100],
+  ...over,
+});
+
 test("a tab lands before the tab whose left half the pointer is over", () => {
-  const strip = { x: 0, y: 0, width: 400, height: 28 };
-  const widths = [100, 100, 100];
-  expect(tabInsertIndex(strip, widths, 10)).toBe(0);
-  expect(tabInsertIndex(strip, widths, 60)).toBe(1);
-  expect(tabInsertIndex(strip, widths, 140)).toBe(1);
-  expect(tabInsertIndex(strip, widths, 160)).toBe(2);
-  expect(tabInsertIndex(strip, widths, 390)).toBe(3);
+  const row = rowOf({ start: 0, visible: { x: 0, width: 400 } });
+  expect(tabInsertIndex(row, 10)).toBe(0);
+  expect(tabInsertIndex(row, 60)).toBe(1);
+  expect(tabInsertIndex(row, 140)).toBe(1);
+  expect(tabInsertIndex(row, 160)).toBe(2);
+  expect(tabInsertIndex(row, 390)).toBe(3);
+});
+
+test("past the tabs, on the strip's own buttons, is after the last tab", () => {
+  expect(tabInsertIndex(rowOf(), 900)).toBe(3);
+});
+
+test("in a scrolled row only the tabs on screen can be pointed at", () => {
+  // Scrolled 120 along, 120 wide: most of the second tab and the start of the third are showing.
+  const row = rowOf({ start: 4 - 120, visible: { x: 4, width: 120 } });
+  // Left of the row is its left end, not the first tab scrolled out past it.
+  expect(tabInsertIndex(row, 0)).toBe(1);
+  expect(tabInsertIndex(row, 60)).toBe(2);
+  // Right of it, over the + and ⋯, is its right end: the third tab's left half, not past it.
+  expect(tabInsertIndex(row, 900)).toBe(2);
+});
+
+test("a strip that was measured says between which two tabs the drop goes", () => {
+  const geo = geoOf(single());
+  const rows = new Map([["a", rowOf()]]);
+  expect(dropZoneAt(geo, { x: 140, y: 10 }, { rows })).toEqual({ kind: "tabstrip", leafId: "a", index: 1 });
+  expect(dropZoneAt(geo, { x: 600, y: 10 }, { rows })).toEqual({ kind: "tabstrip", leafId: "a", index: 3 });
+  // Below the strip it is the pane, as before.
+  expect(dropZoneAt(geo, { x: 500, y: 400 }, { rows })).toEqual({ kind: "centre", leafId: "a" });
+});
+
+test("a floating pane's strip is hit before the pane it floats over, the top one first", () => {
+  const geo = geoOf(single());
+  const over = (id: string, x: number): [string, TabRow] =>
+    [id, rowOf({ strip: { x, y: 300, width: 300, height: 32 }, visible: { x, width: 200 }, start: x, widths: [100, 100] })];
+  const rows = new Map([["a", rowOf()], over("f1", 200), over("f2", 350)]);
+  expect(dropZoneAt(geo, { x: 260, y: 310 }, { rows, floating: ["f2", "f1"] }))
+    .toEqual({ kind: "tabstrip", leafId: "f1", index: 1 });
+  // Where the two overlap, the one on top.
+  expect(dropZoneAt(geo, { x: 380, y: 310 }, { rows, floating: ["f2", "f1"] }))
+    .toEqual({ kind: "tabstrip", leafId: "f2", index: 0 });
+  expect(dropZoneAt(geo, { x: 380, y: 310 }, { rows, floating: ["f1", "f2"] }))
+    .toEqual({ kind: "tabstrip", leafId: "f1", index: 2 });
+  // Off their strips the tiled pane underneath is still what the pointer is on.
+  expect(dropZoneAt(geo, { x: 260, y: 400 }, { rows, floating: ["f2", "f1"] })).toEqual({ kind: "centre", leafId: "a" });
+});
+
+test("a strip nobody measured, or a position past its end, means after the last tab", () => {
+  expect(stripIndex(-1, 3)).toBe(3);
+  expect(stripIndex(7, 3)).toBe(3);
+  expect(stripIndex(0, 3)).toBe(0);
+  expect(stripIndex(3, 3)).toBe(3);
+});
+
+test("the gap marker sits between the two tabs, and stays on the part of the row on screen", () => {
+  expect(tabMarkerRect(rowOf(), 1)).toEqual({ x: 103, y: 6, width: 2, height: 24 });
+  // After the last tab, which ends right at the row's edge: drawn just inside it.
+  expect(tabMarkerRect(rowOf(), 3)).toEqual({ x: 302, y: 6, width: 2, height: 24 });
+  // A gap scrolled out to the left shows at the row's left end.
+  const scrolled = rowOf({ start: 4 - 150, visible: { x: 4, width: 120 } });
+  expect(tabMarkerRect(scrolled, 0).x).toBe(4);
+  expect(tabMarkerRect(scrolled, 3).x).toBe(4 + 120 - 2);
+});
+
+test("on a measured strip the indicator is the gap marker, for a floating pane too", () => {
+  const geo = geoOf(single());
+  const size = { width: 400, height: 300 };
+  const float = rowOf({ strip: { x: 200, y: 300, width: 300, height: 32 }, visible: { x: 200, width: 200 }, start: 200 });
+  const rows = new Map([["a", rowOf()], ["f", float]]);
+  expect(dropIndicatorRect(geo, { kind: "tabstrip", leafId: "a", index: 1 }, size, rows))
+    .toEqual({ x: 103, y: 6, width: 2, height: 24 });
+  expect(dropIndicatorRect(geo, { kind: "tabstrip", leafId: "f", index: 0 }, size, rows))
+    .toEqual({ x: 200, y: 306, width: 2, height: 24 });
+  // Unmeasured, it is still the whole strip.
+  expect(dropIndicatorRect(geo, { kind: "tabstrip", leafId: "a", index: 1 }, size)?.width).toBe(1000);
+});
+
+test("a row that overflows scrolls towards whichever end the pointer is near", () => {
+  // 300 of tabs in 120 of row, scrolled 100 along: there is more on both sides.
+  const row = rowOf({ start: 4 - 100, visible: { x: 4, width: 120 } });
+  expect(rowScrollStep(row, 64)).toBe(0);
+  expect(rowScrollStep(row, 10)).toBeLessThan(0);
+  expect(rowScrollStep(row, 120)).toBeGreaterThan(0);
+  // Faster the nearer the end, and at full speed past it.
+  expect(rowScrollStep(row, 5)).toBeLessThan(rowScrollStep(row, 30));
+  expect(rowScrollStep(row, 900)).toBe(WB_ROW_SCROLL_MAX_PX);
+  expect(rowScrollStep(row, -50)).toBe(-WB_ROW_SCROLL_MAX_PX);
+});
+
+test("a row does not scroll past its ends, or at all when everything fits", () => {
+  expect(rowScrollStep(rowOf(), 900)).toBe(0);
+  expect(rowScrollStep(rowOf(), 0)).toBe(0);
+  // At the start of an overflowing row, only onwards.
+  const atStart = rowOf({ visible: { x: 4, width: 120 } });
+  expect(rowScrollStep(atStart, 5)).toBe(0);
+  expect(rowScrollStep(atStart, 120)).toBeGreaterThan(0);
+  // At its end, only back.
+  const atEnd = rowOf({ start: 4 - 180, visible: { x: 4, width: 120 } });
+  expect(rowScrollStep(atEnd, 120)).toBe(0);
+  expect(rowScrollStep(atEnd, 5)).toBeLessThan(0);
 });
 
 test("the indicator shows half the pane for an edge and the whole body for the centre", () => {
@@ -123,6 +230,11 @@ test("a drop that changes nothing is recognised as such", () => {
   expect(isNoOpDrop(layout, drag, { kind: "tabstrip", leafId: "a", index: 1 })).toBe(true);
   expect(isNoOpDrop(layout, drag, { kind: "tabstrip", leafId: "a", index: 2 })).toBe(true);
   expect(isNoOpDrop(layout, drag, { kind: "tabstrip", leafId: "a", index: 0 })).toBe(false);
+  // Unmeasured means after the last tab, which is a move for the middle one.
+  expect(isNoOpDrop(layout, drag, { kind: "tabstrip", leafId: "a", index: -1 })).toBe(false);
+  expect(isNoOpDrop(layout, { ...drag, tabId: "t3" }, { kind: "tabstrip", leafId: "a", index: -1 })).toBe(true);
+  // A whole group put back on its own strip, anywhere along it.
+  expect(isNoOpDrop(layout, { leafId: "a", tabId: "", onlyTab: true }, { kind: "tabstrip", leafId: "a", index: 2 })).toBe(true);
   // Dividing a pane to put back the only tab it holds would leave it where it started.
   expect(isNoOpDrop(layout, { ...drag, onlyTab: true }, { kind: "edge", leafId: "a", side: "east" })).toBe(true);
   expect(isNoOpDrop(layout, drag, { kind: "edge", leafId: "a", side: "east" })).toBe(false);

@@ -14,7 +14,14 @@
 	} from './layout-resize.ts';
 	import { closeLeaf, findPath, focusLeaf, nodeAt, setFloatFrame, splitLeaf, tiledLeaves } from './layout-tree.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
-	import { dropIndicatorRect, dropZoneAt, type DropZone } from './drop-zones.ts';
+	import {
+		dropIndicatorRect,
+		dropZoneAt,
+		isNoOpDrop,
+		rowScrollStep,
+		type DropZone,
+		type TabRow
+	} from './drop-zones.ts';
 	import {
 		applyDrop,
 		beginLeafDrag,
@@ -79,6 +86,8 @@
 	let draggingSash = $state<string | null>(null);
 	let paneDrag = $state<PaneDrag | null>(null);
 	let dropZone = $state<DropZone>({ kind: 'none' });
+	/** Every pane's tab row, measured when a drag starts: where each tab is, which the geometry cannot say. */
+	let tabRows = $state.raw<ReadonlyMap<string, TabRow>>(new Map());
 	let ghost = $state<{ x: number; y: number; label: string } | null>(null);
 	let nextId = 0;
 	const freshId = () => `wb-${Date.now().toString(36)}-${++nextId}`;
@@ -88,8 +97,28 @@
 		viewport.width > 0 && viewport.height > 0 ? computeGeometry(layout, viewport, mins) : null
 	);
 	const indicator = $derived(
-		geometry && paneDrag?.started ? dropIndicatorRect(geometry, dropZone, WB_FALLBACK_MIN) : null
+		geometry && paneDrag?.started ? dropIndicatorRect(geometry, dropZone, WB_FALLBACK_MIN, tabRows) : null
 	);
+	/**
+	 * Between two tabs, the indicator is a bar in the gap rather than a box, and none at all where
+	 * the drop would leave the tab where it is: the bar on either side of it would promise a move.
+	 */
+	const onTabGap = $derived(dropZone.kind === 'tabstrip' && tabRows.has(dropZone.leafId));
+	const idleGap = $derived(
+		onTabGap && paneDrag
+			? isNoOpDrop(
+					layout,
+					{
+						leafId: paneDrag.leafId,
+						tabId: paneDrag.kind === 'tab' ? paneDrag.tabId : '',
+						onlyTab: paneDrag.kind === 'leaf'
+					},
+					dropZone
+				)
+			: false
+	);
+	/** The tab being dragged, which stays in its row, faded, until it is let go. */
+	const draggedTab = $derived(paneDrag?.started && paneDrag.kind === 'tab' ? paneDrag.tabId : null);
 	/*
 	 * The floating panes in a fixed document order; `z` alone says which is on top. Drawing them
 	 * in z-order moved a pane's element when a press raised it, in the middle of that press: the
@@ -259,9 +288,40 @@
 		const target = event.currentTarget as HTMLElement;
 		const pointerId = event.pointerId;
 		let current = drag;
+		let point = pointFrom(event);
+		let float = false;
+		/** The frame loop that scrolls a row while the pointer rests near its end. */
+		let scrolling = 0;
+
+		const locate = () => {
+			// Alt turns any position into a float: there is one window, so "drop outside it" is
+			// not available the way it is in an editor with several.
+			dropZone = geometry
+				? dropZoneAt(geometry, point, { float, rows: tabRows, floating: floatingTopFirst() })
+				: { kind: 'none' };
+		};
+		/** A row that overflows scrolls on its own while the pointer is held near either end. */
+		const scrollRow = () => {
+			scrolling = 0;
+			const zone = dropZone;
+			if (zone.kind !== 'tabstrip') return;
+			const row = tabRows.get(zone.leafId);
+			const element = rowElement(zone.leafId);
+			if (!row || !element) return;
+			const step = rowScrollStep(row, point.x);
+			if (step === 0) return;
+			const before = element.scrollLeft;
+			element.scrollLeft = before + step;
+			if (element.scrollLeft === before) return;
+			const measured = measureRow(zone.leafId);
+			if (measured) tabRows = new Map(tabRows).set(zone.leafId, measured);
+			locate();
+			scrolling = requestAnimationFrame(scrollRow);
+		};
 
 		const move = (moveEvent: PointerEvent) => {
-			const point = pointFrom(moveEvent);
+			point = pointFrom(moveEvent);
+			float = moveEvent.altKey;
 			if (!current.started) {
 				if (!passedThreshold(current, point)) return;
 				current = { ...current, started: true };
@@ -269,21 +329,24 @@
 				dragging = true;
 				dragGate.begin();
 				target.setPointerCapture(pointerId);
+				tabRows = measureRows();
 			}
-			// Alt turns any position into a float: there is one window, so "drop outside it" is
-			// not available the way it is in an editor with several.
-			dropZone = geometry ? dropZoneAt(geometry, point, { float: moveEvent.altKey }) : { kind: 'none' };
+			locate();
 			ghost = { x: point.x, y: point.y, label };
+			if (!scrolling && typeof requestAnimationFrame === 'function') scrolling = requestAnimationFrame(scrollRow);
 		};
 		const finish = (endEvent: PointerEvent) => {
 			target.removeEventListener('pointermove', move);
 			target.removeEventListener('pointerup', finish);
 			target.removeEventListener('pointercancel', finish);
+			if (scrolling) cancelAnimationFrame(scrolling);
+			scrolling = 0;
 			if (!current.started) return;
 			const zone = endEvent.type === 'pointercancel' ? ({ kind: 'none' } as DropZone) : dropZone;
 			const sourceRect = geometry?.leaves.get(current.leafId);
 			paneDrag = null;
 			dropZone = { kind: 'none' };
+			tabRows = new Map();
 			ghost = null;
 			dragging = false;
 			dragGate.end();
@@ -303,6 +366,50 @@
 	function pointFrom(event: PointerEvent): { x: number; y: number } {
 		const box = host?.getBoundingClientRect();
 		return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
+	}
+
+	/** The array order is the z-order, so the last one is on top. */
+	function floatingTopFirst(): string[] {
+		return layout.floating.map((pane) => pane.leaf.id).reverse();
+	}
+
+	function rowElement(leafId: string): HTMLElement | null {
+		return host?.querySelector<HTMLElement>(`.wb-leaf[data-leaf="${CSS.escape(leafId)}"] .wb-tabs`) ?? null;
+	}
+
+	/**
+	 * One pane's strip, row and tabs, read from the page. Only when a drag starts, or its row has
+	 * just scrolled: the rest of the drag hit-tests these numbers, not the DOM.
+	 */
+	function measureRow(leafId: string): TabRow | null {
+		const origin = host?.getBoundingClientRect();
+		const row = rowElement(leafId);
+		const strip = row?.closest<HTMLElement>('.wb-strip');
+		if (!origin || !row || !strip) return null;
+		const stripBox = strip.getBoundingClientRect();
+		const rowBox = row.getBoundingClientRect();
+		const tabs = [...row.querySelectorAll<HTMLElement>(':scope > .wb-tab')].map((tab) => tab.getBoundingClientRect());
+		return {
+			strip: {
+				x: stripBox.left - origin.left,
+				y: stripBox.top - origin.top,
+				width: stripBox.width,
+				height: stripBox.height
+			},
+			visible: { x: rowBox.left - origin.left, width: rowBox.width },
+			start: (tabs[0]?.left ?? rowBox.left) - origin.left,
+			widths: tabs.map((tab) => tab.width)
+		};
+	}
+
+	function measureRows(): Map<string, TabRow> {
+		const rows = new Map<string, TabRow>();
+		for (const leaf of host?.querySelectorAll<HTMLElement>('.wb-leaf[data-leaf]') ?? []) {
+			const id = leaf.dataset.leaf!;
+			const row = measureRow(id);
+			if (row) rows.set(id, row);
+		}
+		return rows;
 	}
 
 	function onFloatFrame(leafId: string, frame: FloatFrame): void {
@@ -495,6 +602,7 @@
 			onClosePane={closePane}
 			onSashPointerDown={startSash}
 			{draggingSash}
+			{draggedTab}
 			onTabPointerDown={(event, leafId, tabId) =>
 				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
@@ -523,6 +631,7 @@
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 				onClosePane={closePane}
+				{draggedTab}
 				onTabPointerDown={(event, leafId, tabId) =>
 					startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 				{onDock}
@@ -548,9 +657,14 @@
 						onpointerdown={(event) => startJunction(event, junction.id)}
 					></button>
 				{/each}
-				{#if indicator}
+			</div>
+			<!-- What a drag shows goes over the floating panes too: their strips are drop targets, and
+			     the chip following the pointer must not slip under one. -->
+			<div class="wb-drag-layer" aria-hidden="true">
+				{#if indicator && !idleGap}
 					<div
 						class="wb-drop"
+						class:is-gap={onTabGap}
 						style:left={`${indicator.x}px`}
 						style:top={`${indicator.y}px`}
 						style:width={`${indicator.width}px`}
@@ -613,10 +727,15 @@
 	.wb-root.is-dragging :global(.wb-body) {
 		pointer-events: none;
 	}
-	.wb-overlay {
+	.wb-overlay,
+	.wb-drag-layer {
 		position: absolute;
 		inset: 0;
 		pointer-events: none;
+	}
+	/* Over the floating panes (40 and up), under an open strip menu (200) and the window's own. */
+	.wb-drag-layer {
+		z-index: 150;
 	}
 	.wb-junction {
 		position: absolute;
@@ -662,6 +781,12 @@
 		outline-offset: -2px;
 		border-radius: 6px;
 		pointer-events: none;
+	}
+	/* The gap a tab will drop into: a caret between two tabs, not a box around the strip. */
+	.wb-drop.is-gap {
+		background: var(--accent);
+		outline: none;
+		border-radius: 1px;
 	}
 	.wb-ghost {
 		position: absolute;

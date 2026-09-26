@@ -47,6 +47,37 @@ test("reordering inside one strip never detaches the tab", () => {
   assertInvariants(moved);
 });
 
+test("a tab dragged leftwards lands in the gap it was dropped in", () => {
+  const layout = layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3"), aTab("t4")]));
+  const moved = applyDrop(layout, beginTabDrag("a", "t4", { x: 0, y: 0 }), { kind: "tabstrip", leafId: "a", index: 1 }, ctx());
+  expect(leafById(moved, "a")!.tabs.map((tab) => tab.id)).toEqual(["t1", "t4", "t2", "t3"]);
+  // One gap along is the same as not moving.
+  expect(applyDrop(layout, beginTabDrag("a", "t2", { x: 0, y: 0 }), { kind: "tabstrip", leafId: "a", index: 2 }, ctx())).toBe(layout);
+});
+
+test("a strip nobody measured takes the tab at its end, in its own pane or another", () => {
+  const layout = layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3")]));
+  const own = applyDrop(layout, beginTabDrag("a", "t1", { x: 0, y: 0 }), { kind: "tabstrip", leafId: "a", index: -1 }, ctx());
+  expect(leafById(own, "a")!.tabs.map((tab) => tab.id)).toEqual(["t2", "t3", "t1"]);
+  const other = applyDrop(twoPanes(), beginTabDrag("b", "t3", { x: 0, y: 0 }), { kind: "tabstrip", leafId: "a", index: -1 }, ctx());
+  expect(leafById(other, "a")!.tabs.map((tab) => tab.id)).toEqual(["t1", "t2", "t3"]);
+});
+
+test("tabs reorder inside a floating pane without leaving it", () => {
+  const base = twoPanes();
+  const floated = applyDrop(base, beginLeafDrag("a", { x: 0, y: 0 }), { kind: "float", point: { x: 500, y: 400 } }, ctx());
+  const id = floated.floating[0]!.leaf.id;
+  const moved = applyDrop(floated, beginTabDrag(id, "t1", { x: 0, y: 0 }), { kind: "tabstrip", leafId: id, index: 2 }, ctx());
+  expect(moved.floating).toHaveLength(1);
+  expect(leafById(moved, id)!.tabs.map((tab) => tab.id)).toEqual(["t2", "t1"]);
+  assertInvariants(moved);
+});
+
+test("dragging a group onto its own strip changes nothing", () => {
+  const layout = twoPanes();
+  expect(applyDrop(layout, beginLeafDrag("a", { x: 0, y: 0 }), { kind: "tabstrip", leafId: "a", index: 1 }, ctx())).toBe(layout);
+});
+
 test("reordering the only tab of a pane leaves it alone rather than closing the pane", () => {
   // Detaching first would remove the pane the tab is being dropped into, and the tab would have
   // nowhere to land.
@@ -139,6 +170,16 @@ test("a floating pane docks back where it is dropped", () => {
   expect(split.floating).toEqual([]);
   expect(tiledLeaves(split.root)).toHaveLength(3);
   assertInvariants(split);
+});
+
+test("a floating pane docked onto a strip lands at that position, or at the end when unmeasured", () => {
+  const base = twoPanes();
+  const floated = applyDrop(base, beginTabDrag("a", "t2", { x: 0, y: 0 }), { kind: "float", point: { x: 500, y: 400 } }, ctx());
+  const id = floated.floating[0]!.leaf.id;
+  const first = dockFloating(floated, id, { kind: "tabstrip", leafId: "b", index: 0 }, ctx());
+  expect(leafById(first, "b")!.tabs.map((tab) => tab.id)).toEqual(["t2", "t3"]);
+  const last = dockFloating(floated, id, { kind: "tabstrip", leafId: "b", index: -1 }, ctx());
+  expect(leafById(last, "b")!.tabs.map((tab) => tab.id)).toEqual(["t3", "t2"]);
 });
 
 test("docking a pane that is not floating, or nowhere, changes nothing", () => {

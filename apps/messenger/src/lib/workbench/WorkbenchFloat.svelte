@@ -21,6 +21,8 @@
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
 		onClosePane?: (leafId: string) => void;
+		/** The tab being dragged right now, wherever it is. */
+		draggedTab?: string | null;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onDock?: (leafId: string) => void;
@@ -45,6 +47,7 @@
 		onActivate,
 		onCloseTab,
 		onClosePane,
+		draggedTab = null,
 		onTabPointerDown,
 		onStripPointerDown,
 		onDock,
@@ -154,6 +157,7 @@
 		{onActivate}
 		{onCloseTab}
 		{onClosePane}
+		{draggedTab}
 		{onTabPointerDown}
 		{onStripPointerDown}
 		{onMenu}

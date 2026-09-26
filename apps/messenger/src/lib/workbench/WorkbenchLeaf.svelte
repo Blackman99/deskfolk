@@ -20,6 +20,8 @@
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
 		onClosePane?: (leafId: string) => void;
+		/** The tab being dragged right now, if it is one of these. It stays put, faded. */
+		draggedTab?: string | null;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
@@ -48,6 +50,7 @@
 		onActivate,
 		onCloseTab,
 		onClosePane,
+		draggedTab = null,
 		onTabPointerDown,
 		onStripPointerDown,
 		onMenu,
@@ -290,6 +293,7 @@
 					class="wb-tab"
 					role="presentation"
 					class:is-active={tab.id === leaf.activeTabId}
+					class:is-dragged={tab.id === draggedTab}
 					data-tab={tab.id}
 				>
 					{#if tab.id === leaf.activeTabId}
@@ -686,6 +690,10 @@
 	}
 	.wb-tab.is-active .wb-tab-button {
 		color: var(--ink);
+	}
+	/* Left where it was while it is carried, so the row does not close up under the pointer. */
+	.wb-tab.is-dragged {
+		opacity: 0.45;
 	}
 	.wb-tab-close {
 		width: 18px;

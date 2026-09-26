@@ -327,6 +327,77 @@ function box(width: number, height: number): DOMRect {
   } as DOMRect;
 }
 
+function rectAt(x: number, y: number, width: number, height: number): DOMRect {
+  return {
+    x, y, width, height, top: y, left: x, right: x + width, bottom: y + height,
+    toJSON() { return {}; },
+  } as DOMRect;
+}
+
+/**
+ * happy-dom has no layout, so a one-pane workbench is handed the boxes a browser would give it:
+ * an 800 × 600 root, a strip across the top, and tabs a hundred wide from x 4.
+ */
+function layOutOnePane(host: HTMLElement): void {
+  (host.querySelector(".wb-root") as HTMLElement).getBoundingClientRect = () => box(800, 600);
+  (host.querySelector(".wb-strip") as HTMLElement).getBoundingClientRect = () => rectAt(0, 0, 800, 32);
+  const tabs = [...host.querySelectorAll<HTMLElement>(".wb-tab")];
+  (host.querySelector(".wb-tabs") as HTMLElement).getBoundingClientRect = () => rectAt(4, 4, tabs.length * 100, 28);
+  tabs.forEach((tab, index) => {
+    tab.getBoundingClientRect = () => rectAt(4 + index * 100, 4, 100, 28);
+  });
+  window.dispatchEvent(new Event("resize"));
+  flushSync();
+}
+
+test("a tab dragged along its strip drops into the gap under the pointer", () => {
+  const { host, close, state } = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3")])));
+  try {
+    layOutOnePane(host);
+    const tab = host.querySelector("#wb-tab-t1") as HTMLElement;
+    const pointer = { bubbles: true, button: 0, pointerId: 1, clientY: 16 };
+    tab.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, clientX: 50 }));
+    tab.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 290 }));
+    flushSync();
+    // The tab stays where it was, faded, and a bar marks the gap after the last one.
+    expect(host.querySelector(".wb-tab.is-dragged")?.getAttribute("data-tab")).toBe("t1");
+    const marker = host.querySelector(".wb-drop.is-gap") as HTMLElement;
+    expect(marker).not.toBeNull();
+    expect(marker.style.left).toBe("302px");
+    tab.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 290 }));
+    flushSync();
+    expect(state.seen).toHaveLength(1);
+    expect(tiledLeaves(state.layout.root)[0]!.tabs.map((each) => each.id)).toEqual(["t2", "t3", "t1"]);
+    expect(host.querySelector(".wb-tab.is-dragged")).toBeNull();
+    expect(host.querySelector(".wb-drop")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("no gap is marked where the drop would leave the tab where it is", () => {
+  const { host, close, state } = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3")])));
+  try {
+    layOutOnePane(host);
+    const tab = host.querySelector("#wb-tab-t2") as HTMLElement;
+    const pointer = { bubbles: true, button: 0, pointerId: 1, clientY: 16 };
+    tab.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, clientX: 150 }));
+    // Onto the right half of the tab itself: the gap after it, which is where it already is.
+    tab.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 180 }));
+    flushSync();
+    expect(host.querySelector(".wb-drop")).toBeNull();
+    // Over the first tab's left half, it would move.
+    tab.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 20 }));
+    flushSync();
+    expect((host.querySelector(".wb-drop.is-gap") as HTMLElement).style.left).toBe("4px");
+    tab.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 20 }));
+    flushSync();
+    expect(tiledLeaves(state.layout.root)[0]!.tabs.map((each) => each.id)).toEqual(["t2", "t1", "t3"]);
+  } finally {
+    close();
+  }
+});
+
 test("a divider drag resizes every pane on the branch and commits when the pointer is released", () => {
   // happy-dom has no layout, so the viewport is handed its box. The content is not pinned to the
   // size it had: that min-width keeps the grid from giving the other panes their new share, and

@@ -8,7 +8,7 @@
  * uncontrollable drag image, and coarse coordinates in the webview this app ships in.
  */
 import type { FloatFrame, NodeId, PaneMin, Rect, TabId, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
-import { WB_DRAG_THRESHOLD_PX, isNoOpDrop, sideToSplit, type DropZone, type Point } from "./drop-zones.ts";
+import { WB_DRAG_THRESHOLD_PX, isNoOpDrop, sideToSplit, stripIndex, type DropZone, type Point } from "./drop-zones.ts";
 import {
   addTab,
   closeTab,
@@ -125,8 +125,8 @@ export function applyDrop(
   // the drag if this were its only tab, and the tab would have nowhere to land.
   if (zone.kind === "tabstrip" && zone.leafId === drag.leafId && drag.kind === "tab") {
     const from = leaf.tabs.findIndex((tab) => tab.id === drag.tabId);
-    const target = zone.index > from ? zone.index - 1 : zone.index;
-    return reorderTab(layout, drag.leafId, drag.tabId, target);
+    const gap = stripIndex(zone.index, leaf.tabs.length);
+    return reorderTab(layout, drag.leafId, drag.tabId, gap > from ? gap - 1 : gap);
   }
 
   const detached = detach(layout, drag, ctx);
@@ -140,9 +140,10 @@ export function applyDrop(
   }
 
   if (zone.kind === "tabstrip") {
+    const at = stripIndex(zone.index, leafById(detached, zone.leafId)!.tabs.length);
     let next = detached;
     moving.forEach((tab, offset) => {
-      next = addTab(next, zone.leafId, tab, zone.index + offset);
+      next = addTab(next, zone.leafId, tab, at + offset);
     });
     return focusLeaf(next, zone.leafId);
   }
@@ -170,9 +171,10 @@ export function dockFloating(
     floating: layout.floating.filter((candidate) => candidate.leaf.id !== leafId),
   };
   if (zone.kind === "centre" || zone.kind === "tabstrip") {
+    const at = zone.kind === "tabstrip" ? stripIndex(zone.index, target.tabs.length) : undefined;
     let next = without;
     pane.leaf.tabs.forEach((tab, offset) => {
-      next = addTab(next, zone.leafId, tab, zone.kind === "tabstrip" ? zone.index + offset : undefined);
+      next = addTab(next, zone.leafId, tab, at === undefined ? undefined : at + offset);
     });
     return focusLeaf(next, zone.leafId);
   }

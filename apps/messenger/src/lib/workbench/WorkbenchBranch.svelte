@@ -22,6 +22,8 @@
 		onSashPointerDown: (event: PointerEvent, sashId: string) => void;
 		/** The divider being dragged right now, so it keeps the accent while the pointer is down. */
 		draggingSash?: string | null;
+		/** The tab being dragged right now, wherever it is. */
+		draggedTab?: string | null;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
@@ -58,6 +60,7 @@
 		onActivate={rest.onActivate}
 		onCloseTab={rest.onCloseTab}
 		onClosePane={rest.onClosePane}
+		draggedTab={rest.draggedTab}
 		onTabPointerDown={rest.onTabPointerDown}
 		onStripPointerDown={rest.onStripPointerDown}
 		onMenu={rest.onMenu}
@@ -105,6 +108,7 @@
 				onClosePane={rest.onClosePane}
 				onSashPointerDown={rest.onSashPointerDown}
 				draggingSash={rest.draggingSash}
+				draggedTab={rest.draggedTab}
 				onTabPointerDown={rest.onTabPointerDown}
 				onStripPointerDown={rest.onStripPointerDown}
 				onMenu={rest.onMenu}
