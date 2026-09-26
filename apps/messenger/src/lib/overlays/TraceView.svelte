@@ -1307,15 +1307,17 @@
 			</div>
 		</header>
 		{#if detail}
-			<PlanSpecPanel
-				{api}
-				{detail}
-				{t}
-				defaultOpen={host !== 'page'}
-				onSaved={(next) => (detail = next)}
-				onConflict={reloadPlan}
-				{onJump}
-			/>
+			<div class="trace-spec">
+				<PlanSpecPanel
+					{api}
+					{detail}
+					{t}
+					defaultOpen={host !== 'page'}
+					onSaved={(next) => (detail = next)}
+					onConflict={reloadPlan}
+					{onJump}
+				/>
+			</div>
 		{/if}
 	</div>
 	<div class="trace-body">
@@ -1476,7 +1478,11 @@
 		container: trace / inline-size;
 	}
 
-	/* The title row and the plan's spec under it, one block above the picture. */
+	/*
+	 * The title row and the plan's spec under it, one block above the picture. Only the spec
+	 * scrolls: the block itself clips nothing, so the plan picker drops out over the board instead
+	 * of being cut off at the block's bottom edge.
+	 */
 	.trace-top {
 		position: relative;
 		z-index: 10;
@@ -1484,9 +1490,13 @@
 		display: flex;
 		flex-direction: column;
 		max-height: 60%;
-		overflow-y: auto;
 		border-bottom: 1px solid var(--line);
 		background: var(--sidebar-bg);
+	}
+
+	.trace-spec {
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.trace-header-end {
