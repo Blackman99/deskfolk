@@ -14,6 +14,8 @@ import {
   glideEase,
   glideView,
   defaultFolded,
+  backOnBoard,
+  holdOnScreen,
   openView,
   roundTime,
   traceRounds,
@@ -403,6 +405,41 @@ test("a board opens whole while it can be read, and on its newest round once it 
   const both = openView(wide, viewport);
   expect(both.scale).toBe(TRACE_READABLE_ZOOM);
   expect(both.x + wide.spine * both.scale).toBe(400);
+});
+
+test("a fold keeps the row you pressed where it was on screen, whatever the zoom", () => {
+  const view = { scale: 0.5, x: 100, y: -400 };
+  // Folding the widest round moved the spine 232 to the left; the row itself kept its height.
+  const held = holdOnScreen(view, { x: 244, y: 2935 }, { x: 12, y: 2935 });
+  expect(held).toEqual({ scale: 0.5, x: 216, y: -400 });
+  expect(held.x + 12 * held.scale).toBe(view.x + 244 * view.scale);
+  // A fold above it pulled it up by 300.
+  expect(holdOnScreen(view, { x: 12, y: 900 }, { x: 12, y: 600 })).toEqual({ scale: 0.5, x: 100, y: -250 });
+});
+
+test("a board that shrank under the view comes back onto its cards, and a view already on them stays", () => {
+  const clear = { x: 12, y: 12, width: 776, height: 536 };
+  // Taller than the view, but its end rose above the view's bottom: the end comes down to it.
+  expect(backOnBoard({ scale: 1, x: 100, y: -2875 }, { width: 344, height: 2981 }, clear)).toEqual({
+    scale: 1,
+    x: 100,
+    y: 548 - 2981,
+  });
+  // Still covering the view: left alone.
+  const covering = { scale: 1, x: 100, y: -1000 };
+  expect(backOnBoard(covering, { width: 344, height: 2981 }, clear)).toEqual(covering);
+  // Small enough to fit and hanging off an edge: wholly in, and no further.
+  expect(backOnBoard({ scale: 1, x: 600, y: 400 }, { width: 344, height: 300 }, clear)).toEqual({
+    scale: 1,
+    x: 788 - 344,
+    y: 548 - 300,
+  });
+  // Wider than the view and pulled off its left edge: no empty strip, at the zoom it is at.
+  expect(backOnBoard({ scale: 0.5, x: 50, y: 100 }, { width: 4000, height: 400 }, clear)).toEqual({
+    scale: 0.5,
+    x: 12,
+    y: 100,
+  });
 });
 
 test("a Bot's turn that left no line of its own says so instead of repeating the line that woke it", () => {

@@ -427,6 +427,50 @@ export function openView(
 }
 
 /**
+ * The view that keeps one point of the board where it was on screen after the layout moved it.
+ *
+ * Folding a round pulls everything under it up, and folding the widest one moves the spine and
+ * with it every round. Keeping the row you pressed under the pointer is what lets the next row be
+ * where your eye already is.
+ */
+export function holdOnScreen(
+  view: TraceView,
+  was: { x: number; y: number },
+  now: { x: number; y: number },
+): TraceView {
+  return {
+    scale: view.scale,
+    x: view.x + (was.x - now.x) * view.scale,
+    y: view.y + (was.y - now.y) * view.scale,
+  };
+}
+
+/**
+ * The view moved back onto the board after the board shrank under it.
+ *
+ * Panning is unbounded, and that stays so; this is for a fold, which takes cards away from under a
+ * view you did not move and can leave it looking at empty canvas. Along each axis a board that fits
+ * the clear area comes wholly into it, and one bigger than it leaves no empty strip at either edge.
+ * It moves as little as that takes, so a view already on cards is left where it is.
+ */
+export function backOnBoard(
+  view: TraceView,
+  board: { width: number; height: number },
+  clear: { x: number; y: number; width: number; height: number },
+): TraceView {
+  const axis = (at: number, size: number, from: number, span: number) => {
+    const to = from + span;
+    if (size <= span) return Math.min(Math.max(at, from), to - size);
+    return Math.max(Math.min(at, from), to - size);
+  };
+  return {
+    scale: view.scale,
+    x: axis(view.x, board.width * view.scale, clear.x, clear.width),
+    y: axis(view.y, board.height * view.scale, clear.y, clear.height),
+  };
+}
+
+/**
  * A Bot's turn that left no line of its own — moved on to a newer message, or finished without
  * speaking. The daemon then fills its summary with the line that woke it, which on the card read
  * as the Bot saying what the card above it said.

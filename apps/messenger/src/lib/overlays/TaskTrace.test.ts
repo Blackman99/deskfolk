@@ -993,6 +993,81 @@ test("a message asking for a card in a folded round opens that round", async () 
   view.close();
 });
 
+test("folding a round keeps its line where you pressed it, and a fold that empties the view brings the cards back", async () => {
+  // The newest round fans out to three Bots, wider than any other, so folding it moves the spine.
+  const base = longJob(5);
+  const answer = base.nodes.find((node) => node.turn_id === "t4")!;
+  const trace = {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      { ...answer, turn_id: "t4b", actor: "bot-2", focus_message_id: "w4b", created_at: "2026-09-22T00:04:40.000Z" },
+      { ...answer, turn_id: "t4c", focus_message_id: "w4c", created_at: "2026-09-22T00:04:50.000Z" },
+    ],
+  };
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    await withMeasuredCards(async () => {
+      const view = open({ trace, pane: true });
+      await until(view.host, ".trace-slot");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      const flow = view.host.querySelector<HTMLElement>(".trace-flow")!;
+      const board = () => {
+        const [, x, y, scale] = /translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(flow.style.transform)!;
+        return { x: Number(x), y: Number(y), scale: Number(scale), width: Number.parseFloat(flow.style.width), height: Number.parseFloat(flow.style.height) };
+      };
+      const newest = () => [...view.host.querySelectorAll<HTMLElement>(".trace-round")].at(-1)!;
+      const onScreen = (row: HTMLElement) => {
+        const at = board();
+        return { x: at.x + Number.parseFloat(row.style.left) * at.scale, y: at.y + Number.parseFloat(row.style.top) * at.scale };
+      };
+      const expectAt = (row: HTMLElement, at: { x: number; y: number }) => {
+        expect(onScreen(row).x).toBeCloseTo(at.x, 6);
+        expect(onScreen(row).y).toBeCloseTo(at.y, 6);
+      };
+      // Read down to the newest round, so its line sits at the top of the view.
+      const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: onScreen(newest()).y - 20 });
+      view.host.querySelector(".trace-viewport")!.dispatchEvent(wheel);
+      flushSync();
+      const pressed = onScreen(newest());
+      const wide = board().width;
+
+      click(newest());
+      flushSync();
+      expect(newest().classList.contains("is-folded")).toBe(true);
+      // The spine moved, and the line you pressed did not.
+      expect(board().width).toBeLessThan(wide);
+      expectAt(newest(), pressed);
+
+      // Nothing is left under it, so the board slides down until the whole of it is in view.
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      flushSync();
+      const settled = board();
+      expect(settled.y).toBe(12);
+      expect(settled.y + settled.height * settled.scale).toBeLessThanOrEqual(588);
+      expect(onScreen(newest()).x).toBeCloseTo(pressed.x, 6);
+      expect(onScreen(newest()).y).toBeGreaterThan(pressed.y);
+
+      // Unfolding holds the line too; the cards come back under it.
+      const folded = onScreen(newest());
+      click(newest());
+      flushSync();
+      expect(newest().classList.contains("is-folded")).toBe(false);
+      expectAt(newest(), folded);
+      view.close();
+    });
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
+});
+
 test("the wheel pans the board and only ⌘/Ctrl + wheel zooms it", async () => {
   const view = open({ trace: longJob(5), pane: true });
   await until(view.host, ".trace-slot");

@@ -46,6 +46,8 @@
 		focusNode,
 		boardViewAge,
 		glideView,
+		backOnBoard,
+		holdOnScreen,
 		openView,
 		rememberBoardView,
 		rememberedBoardView,
@@ -191,10 +193,6 @@
 		return next;
 	});
 	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded }) : null);
-
-	function toggleRound(root: string): void {
-		foldChoice = { ...foldChoice, [root]: !folded.has(root) };
-	}
 
 	/**
 	 * The board inside a fixed viewport: no scrollbars, it is dragged.
@@ -394,6 +392,31 @@
 		if (glideTarget && currentId) rememberBoardView(sessionId, currentId, glideTarget);
 		stopGlide();
 	});
+
+	/**
+	 * Fold or unfold a round without losing your place.
+	 *
+	 * The layout changes under a view that stays put: everything under the round moves up or down,
+	 * and the spine moves sideways when the round was the widest. So the row you pressed is held
+	 * where it was on screen, and a fold that leaves the viewport on empty canvas — the round was
+	 * the last one, or ran on below the view — slides the board back onto cards.
+	 */
+	function toggleRound(root: string): void {
+		const shutting = !folded.has(root);
+		const was = flow?.rounds.find((round) => round.root === root)?.header ?? null;
+		foldChoice = { ...foldChoice, [root]: shutting };
+		// Pressing a row is using the view: neither the opening nor a message's card pulls it back now.
+		userMoved = true;
+		openedView = null;
+		stopGlide();
+		const now = flow?.rounds.find((round) => round.root === root)?.header ?? null;
+		if (!was || !now) return;
+		view = holdOnScreen(view, was, now);
+		const box = viewportBox();
+		if (!shutting || !box.width || !box.height) return;
+		const back = backOnBoard(view, boardBox(), { x: 12, y: 12, ...clearBox() });
+		if (back.x !== view.x || back.y !== view.y) glideTo(back);
+	}
 
 	$effect(() => {
 		const id = currentId;
@@ -1972,6 +1995,9 @@
 		text-align: left;
 		white-space: nowrap;
 		cursor: pointer;
+		/* Not the buttons' `all`: a row that slid to its new place while the cards and the view
+		   jumped to theirs swung away from under the pointer after a fold, then crept back. */
+		transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 	}
 
 	.trace-round:hover {

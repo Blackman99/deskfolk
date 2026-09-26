@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Folding a round on the flow board no longer leaves the view on empty canvas. The board stayed put while the layout changed under it: folding the round you had read down to took its cards out from under the view with nothing below to take their place, and folding the widest round also shifted every round sideways, so the line you had just pressed jumped away. Now the line you press stays where it is on screen when its round folds or unfolds, and a fold that would leave the view looking at empty canvas slides the board back until its cards fill the view. The round lines also no longer slide to their new places a moment after the cards have jumped to theirs.
+
 - The plan picker at the top of a flow board is no longer cut off. The title row and the spec under it scrolled as one block, and that block also clipped the list dropping out of the title: with the spec folded the block is short, so only the first plan showed and the rest were sliced off at the top of the board. Now only the spec scrolls, the list drops out over the board in full, and an open spec still takes at most 60% of the height.
 
 - The About card in Settings shows the Deskfolk mark beside the name, and says what the README says: "A private AI team you can trust." under the name, with "A workbench you arrange freely: chats, terminals, flow boards and the workspace, split however you like." below it. It used to read "Local macOS single-user agent workspace".
