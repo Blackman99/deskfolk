@@ -119,10 +119,10 @@ importers:
         version: link:../../packages/remote
       '@xterm/addon-serialize':
         specifier: 0.13.0
-        version: 0.13.0(@xterm/xterm@5.5.0)
+        version: 0.13.0(@xterm/xterm@6.0.0)
       '@xterm/addon-unicode11':
         specifier: 0.8.0
-        version: 0.8.0(@xterm/xterm@5.5.0)
+        version: 0.8.0(@xterm/xterm@6.0.0)
       '@xterm/headless':
         specifier: 5.5.0
         version: 5.5.0
@@ -137,8 +137,8 @@ importers:
         specifier: latest
         version: 1.4.2
       '@xterm/xterm':
-        specifier: 5.5.0
-        version: 5.5.0
+        specifier: 6.0.0
+        version: 6.0.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -217,22 +217,22 @@ importers:
         version: 4.4.3
       '@xterm/addon-fit':
         specifier: ^0.10.0
-        version: 0.10.0(@xterm/xterm@5.5.0)
+        version: 0.10.0(@xterm/xterm@6.0.0)
       '@xterm/addon-search':
         specifier: ^0.15.0
-        version: 0.15.0(@xterm/xterm@5.5.0)
+        version: 0.15.0(@xterm/xterm@6.0.0)
       '@xterm/addon-unicode11':
         specifier: ^0.8.0
-        version: 0.8.0(@xterm/xterm@5.5.0)
+        version: 0.8.0(@xterm/xterm@6.0.0)
       '@xterm/addon-web-links':
         specifier: ^0.11.0
-        version: 0.11.0(@xterm/xterm@5.5.0)
+        version: 0.11.0(@xterm/xterm@6.0.0)
       '@xterm/addon-webgl':
         specifier: ^0.18.0
-        version: 0.18.0(@xterm/xterm@5.5.0)
+        version: 0.18.0(@xterm/xterm@6.0.0)
       '@xterm/xterm':
-        specifier: ^5.5.0
-        version: 5.5.0
+        specifier: ^6.0.0
+        version: 6.0.0
       docx-preview:
         specifier: 0.4.1
         version: 0.4.1
@@ -1109,8 +1109,8 @@ packages:
   '@xterm/headless@5.5.0':
     resolution: {integrity: sha512-5xXB7kdQlFBP82ViMJTwwEc3gKCLGKR/eoxQm4zge7GPBl86tCdI0IdPJjoKd8mUSFXz5V7i/25sfsEkP4j46g==}
 
-  '@xterm/xterm@5.5.0':
-    resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
+  '@xterm/xterm@6.0.0':
+    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   acorn@8.18.0:
     resolution: {integrity: sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==}
@@ -2865,33 +2865,33 @@ snapshots:
       - ocache
       - srvx
 
-  '@xterm/addon-fit@0.10.0(@xterm/xterm@5.5.0)':
+  '@xterm/addon-fit@0.10.0(@xterm/xterm@6.0.0)':
     dependencies:
-      '@xterm/xterm': 5.5.0
+      '@xterm/xterm': 6.0.0
 
-  '@xterm/addon-search@0.15.0(@xterm/xterm@5.5.0)':
+  '@xterm/addon-search@0.15.0(@xterm/xterm@6.0.0)':
     dependencies:
-      '@xterm/xterm': 5.5.0
+      '@xterm/xterm': 6.0.0
 
-  '@xterm/addon-serialize@0.13.0(@xterm/xterm@5.5.0)':
+  '@xterm/addon-serialize@0.13.0(@xterm/xterm@6.0.0)':
     dependencies:
-      '@xterm/xterm': 5.5.0
+      '@xterm/xterm': 6.0.0
 
-  '@xterm/addon-unicode11@0.8.0(@xterm/xterm@5.5.0)':
+  '@xterm/addon-unicode11@0.8.0(@xterm/xterm@6.0.0)':
     dependencies:
-      '@xterm/xterm': 5.5.0
+      '@xterm/xterm': 6.0.0
 
-  '@xterm/addon-web-links@0.11.0(@xterm/xterm@5.5.0)':
+  '@xterm/addon-web-links@0.11.0(@xterm/xterm@6.0.0)':
     dependencies:
-      '@xterm/xterm': 5.5.0
+      '@xterm/xterm': 6.0.0
 
-  '@xterm/addon-webgl@0.18.0(@xterm/xterm@5.5.0)':
+  '@xterm/addon-webgl@0.18.0(@xterm/xterm@6.0.0)':
     dependencies:
-      '@xterm/xterm': 5.5.0
+      '@xterm/xterm': 6.0.0
 
   '@xterm/headless@5.5.0': {}
 
-  '@xterm/xterm@5.5.0': {}
+  '@xterm/xterm@6.0.0': {}
 
   acorn@8.18.0: {}
 
