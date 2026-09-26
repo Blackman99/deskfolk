@@ -16,6 +16,13 @@ import {
 } from "@real-bot/protocol";
 import { pathExists, runCollabTool, type ToolResult } from "./collab-tools";
 import {
+  CLOSING_CHECK_SYSTEM,
+  CLOSING_CHECK_TIMEOUT_MS,
+  closingCheckNote,
+  closingCheckPayload,
+  parseClosingCheck,
+} from "./closing-check";
+import {
   createCompletionsClient,
   type ChatMessage,
   type CompletionsClient,
@@ -61,6 +68,7 @@ import { resolveCompletionTarget } from "./models";
 import { isoNow, ulid } from "./ids";
 import { isReservedTaskPath, type Store } from "./store";
 import {
+  extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
   mergeCitedPaths,
   resolveBodyPathsToWorkDir,
@@ -137,6 +145,19 @@ type Live = {
   toolNames: Set<string>;
   spoke: boolean;
   drainRejection: boolean;
+  /** The closing check ran (or was skipped for good) this turn; it never runs twice. */
+  closingChecked: boolean;
+  /** The default endpoint's default model, for the closing check; null when none is configured. */
+  routing: {
+    baseUrl: string;
+    apiKey: string;
+    providerId: string;
+    providerName: string;
+    model: string;
+    thinkingLevel: ThinkingLevel | null;
+  } | null;
+  /** The turn's locale, so a note handed back mid-loop reads like the rest of the prompt. */
+  locale: Locale;
   /** Completion hops this turn has started. Written onto the route row when the turn closes. */
   hops: number;
   toolCalls: number;
@@ -910,6 +931,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       toolNames: new Set(),
       spoke: false,
       drainRejection: false,
+      closingChecked: false,
+      routing: null,
+      locale: "zh",
       hops: 0,
       toolCalls: 0,
       toolErrors: 0,
@@ -1009,6 +1033,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
     const target = routed.target;
+    live.routing = routingTarget(creds);
+    live.locale = target.locale;
     let sessionId: string | null = null;
     try {
       sessionId = store.getTurn(turnId).session_id;
@@ -1178,6 +1204,25 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       live.loop.push({ role: "assistant", content: result.content });
       const closer = isNoWorkCloser(result.content);
       const rawBody = closer ? "" : result.content;
+      // A delivery to the user goes out only after one look at what the job asked for. The note
+      // comes back as a user line in the loop, and the next reply is final whatever it says.
+      const closingBody = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
+      const bounce = await closingCheck(turnId, live, current, {
+        body: closingBody,
+        paths: mergeCitedPaths(live.writtenPaths, [
+          ...attachmentLinePaths(closingBody),
+          ...extractWorkspacePathsFromBody(closingBody),
+        ]),
+        sessionId: current.session_id,
+      });
+      if (!active(turnId, live)) {
+        if (live.abort.signal.aborted) drop();
+        return;
+      }
+      if (bounce) {
+        live.loop.push({ role: "user", content: bounce });
+        continue;
+      }
       const message = publishCitedBotMessage(current, live, turnId, rawBody);
       const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
       lives.delete(turnId);
@@ -1190,6 +1235,93 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       return;
     }
+  }
+
+  /**
+   * Runs the closing check once per turn, when a delivery — a message that cites workspace files —
+   * is about to reach a session the user is in. Returns the note to hand back when something in the
+   * job's opening request is neither delivered nor accounted for, else null. Fails open: no job,
+   * no brief, no default model, draining, a refused call or an unreadable verdict all mean "let it
+   * through". The call is billed to the turn, on the default model it ran on.
+   */
+  async function closingCheck(
+    turnId: string,
+    live: Live,
+    turn: Turn,
+    input: { body: string; paths: string[]; sessionId: string },
+  ): Promise<string | null> {
+    if (live.closingChecked || input.paths.length === 0) return null;
+    if (!live.routing || options.admission?.draining) return null;
+    let userPresent = false;
+    try {
+      userPresent = store.isPresent(input.sessionId, USER_MEMBER);
+    } catch {
+      userPresent = false;
+    }
+    if (!userPresent) return null;
+    const taskId = store.taskOfTurn(turnId);
+    if (!taskId) return null;
+    live.closingChecked = true;
+    const payload = closingCheckPayload(store, {
+      taskId,
+      turnId,
+      botId: turn.bot_id,
+      sessionId: turn.session_id,
+      reply: input.body,
+      paths: input.paths,
+      locale: live.locale,
+    });
+    if (!payload) return null;
+    let result;
+    try {
+      result = await completions.judge({
+        baseUrl: live.routing.baseUrl,
+        apiKey: live.routing.apiKey,
+        model: live.routing.model,
+        messages: [
+          { role: "system", content: CLOSING_CHECK_SYSTEM },
+          { role: "user", content: JSON.stringify(payload) },
+        ],
+        signal: live.abort.signal,
+        timeoutMs: CLOSING_CHECK_TIMEOUT_MS,
+      });
+    } catch {
+      return null;
+    }
+    recordResponseSpend({
+      kind: "turn",
+      owner: spendOwner(turn.session_id, turn.bot_id),
+      turnId,
+      target: callOf(live.routing),
+      usage: result.usage,
+      responded: result.failKind === null || result.failKind === "incomplete",
+    });
+    if (!active(turnId, live)) return null;
+    if (result.failKind && result.failKind !== "incomplete") return null;
+    const items = parseClosingCheck(result.content ?? "");
+    if (!items || items.length === 0) return null;
+    return closingCheckNote(live.locale, items);
+  }
+
+  /** The closing check for a `send_message`: the body and paths as the tool would resolve them. */
+  async function closingCheckForSend(
+    turnId: string,
+    live: Live,
+    turn: Turn,
+    args: Record<string, unknown>,
+  ): Promise<string | null> {
+    const body = typeof args.body === "string" ? args.body : "";
+    if (!body.trim() || isNoWorkCloser(body)) return null;
+    const sessionId = typeof args.session_id === "string" && args.session_id ? args.session_id : turn.session_id;
+    const corrected = resolveBodyPathsToWorkDir(body, live.workDir, (relpath) => pathExists(store, relpath));
+    const explicit = Array.isArray(args.paths)
+      ? args.paths.filter((item): item is string => typeof item === "string")
+      : [];
+    const paths = mergeCitedPaths(
+      [...live.writtenPaths, ...explicit],
+      [...extractWorkspacePathsFromBody(corrected), ...attachmentLinePaths(corrected)],
+    );
+    return closingCheck(turnId, live, turn, { body: corrected, paths, sessionId });
   }
 
   function completeSilent(turnId: string): void {
@@ -1278,12 +1410,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       // announce event only says the model asked for it.
       const streamId = `${turnId}:${call.id}`;
       const startedAt = Date.now();
-      publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
-        name: call.name, arguments: call.arguments, phase: "started" });
-      let result = await dispatchTool(turn, live, call.name, args, streamId);
-      publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
-        name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
-        exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null });
+      // A delivery about to be posted gets the closing check first; a bounce comes back to the
+      // Bot as this call's result, and the tool itself does not run.
+      const bounce = call.name === "send_message" ? await closingCheckForSend(turnId, live, turn, args) : null;
+      if (!active(turnId, live)) return "wait";
+      let result: ToolResult;
+      if (bounce) {
+        result = { ok: false, error: { code: "closing_check", message: bounce }, emitted: [] };
+      } else {
+        publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
+          name: call.name, arguments: call.arguments, phase: "started" });
+        result = await dispatchTool(turn, live, call.name, args, streamId);
+        publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
+          name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
+          exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null });
+      }
       if (!active(turnId, live)) return "wait";
       store.touchTurn(turnId);
       if (result.error?.code === "draining") {
@@ -1405,7 +1546,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const payload = result.ok
         ? { ok: true, data: result.data }
         : { ok: false, error: result.error };
-      if (!result.ok) {
+      // A closing-check bounce is a nudge, not a tool that failed: the review must not read it as one.
+      if (!result.ok && result.error?.code !== "closing_check") {
         live.toolErrors += 1;
         live.failedCalls.add(fingerprint);
       }
