@@ -3,6 +3,7 @@ import { startScheduler } from "./scheduler";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import type { TurnEngine } from "./turn-engine";
+import { createWakeWatch } from "./wake";
 
 function backdate(store: Store, id: string, createdAt: Date): void {
   store.db.run(`UPDATE routines SET created_at = ?, last_fired_for_due_at = NULL, updated_at = ? WHERE id = ?`, [
@@ -161,6 +162,64 @@ describe("routine claim and catch-up", () => {
       expect(store.getRoutine(routine.id).last_fired_for_due_at).toBe(
         new Date(2026, 8, 14, 9, 0, 0).toISOString(),
       );
+    } finally {
+      scheduler.stop();
+      store.close();
+    }
+  });
+
+  test("after a sleep the scheduler lets the network come back before catching up", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    const { bot } = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const routine = store.createRoutine({
+      bot_id: bot.id,
+      title: "日报",
+      instruction: "write the daily",
+      schedule: { kind: "daily", time: "09:00" },
+    });
+    backdate(store, routine.id, new Date(2026, 8, 10, 8, 0, 0));
+    const fired: Date[] = [];
+    const swept: Date[] = [];
+    let clock = new Date(2026, 8, 14, 8, 50, 44).getTime();
+    const wake = createWakeWatch({ now: () => clock, beatMs: 15_000, heartbeat: false });
+    const scheduler = startScheduler({
+      store,
+      engine: {
+        fireRoutine(id, at) {
+          if (store.claimRoutineDue(id, at!)) fired.push(at!);
+          return null;
+        },
+        sweepStalledTurns(at) {
+          swept.push(at!);
+        },
+      } as TurnEngine,
+      intervalMs: 15_000,
+      now: () => new Date(clock),
+      wake,
+    });
+    const at = (h: number, m: number, s: number) => new Date(2026, 8, 14, h, m, s);
+    const tickAt = (h: number, m: number, s: number) => {
+      clock = at(h, m, s).getTime();
+      scheduler.tick(new Date(clock));
+    };
+    try {
+      // The start-up tick sees 08:50, before today's 09:00: yesterday's run was never claimed, so it goes.
+      expect(fired).toHaveLength(1);
+      fired.length = 0;
+      // 09:00:01 is a five-second maintenance wake with the lid shut: the tick arrives nine minutes late.
+      tickAt(9, 0, 1);
+      expect(fired).toEqual([]);
+      // Stalled turns are still swept; only new work waits.
+      expect(swept.at(-1)).toEqual(at(9, 0, 1));
+      // The Mac sleeps again and a later wake restarts the wait instead of inheriting the old one.
+      tickAt(9, 33, 54);
+      tickAt(9, 34, 9);
+      tickAt(9, 34, 24);
+      tickAt(9, 34, 39);
+      expect(fired).toEqual([]);
+      tickAt(9, 34, 54);
+      expect(fired).toEqual([at(9, 34, 54)]);
+      expect(store.getRoutine(routine.id).last_fired_for_due_at).toBe(at(9, 0, 0).toISOString());
     } finally {
       scheduler.stop();
       store.close();

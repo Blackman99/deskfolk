@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- A routine that came due while the lid was shut no longer runs in the few seconds macOS wakes itself, fails, and leaves only "This turn did not finish: Couldn't reach the endpoint". With the lid shut macOS wakes briefly now and then, often before the network is back; a routine caught in one tried the endpoint three times in three seconds, failed, and used up its catch-up, so opening the lid did not run it again. Now the runtime waits a minute after waking from sleep before catching up missed routines.
+
 - Remote control comes back on its own after the Mac's network drops and returns. If the relay let go of the Mac while it was offline, the Mac never heard, kept showing remote as online, and every phone was refused until the app restarted. The Mac now checks with the relay every 15 seconds and reconnects when no answer comes within 10. After a switch to another network, the relay can still take about a minute to release the old connection before the Mac gets back in.
 
 - On a phone, the terminal no longer keeps printing "Output outran the reader; N bytes dropped". Whenever more than 8 KiB arrived within 50 ms, the rest used to be thrown away. A full-screen program such as Claude Code does that every few redraws and on every swipe, and the dropped bytes also left its screen garbled. Output now waits its turn and arrives whole, a little later. Bytes are dropped only when output outruns the connection for well over a second. Opening or switching terminals no longer resends the whole history before live output. Switching quickly between sessions no longer shows a notice the size of the whole stream.
