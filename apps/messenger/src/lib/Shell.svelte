@@ -540,7 +540,14 @@
 			terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
 			knownKinds: PANE_KIND_SET
 		};
-		const viewport = { x: 0, y: 0, width: shellWidth, height: 800 };
+		// Only a bound on the window: the workbench keeps its floating panes inside its own box. A
+		// guessed height here pulled up, on the next snapshot, any pane left lower than it allowed.
+		const viewport = {
+			x: 0,
+			y: 0,
+			width: shellWidth,
+			height: untrack(() => shellEl?.clientHeight) || Number.POSITIVE_INFINITY
+		};
 		untrack(() => {
 			const healed = dropDuplicateBoundTabs(
 				healLayout(layout, live, viewport, WB_FALLBACK_MIN, freshPaneId()),

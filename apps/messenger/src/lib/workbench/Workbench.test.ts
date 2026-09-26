@@ -437,6 +437,57 @@ test("a divider drag resizes every pane on the branch and commits when the point
   }
 });
 
+test("a divider drag after the workbench changed width, and not the window, follows the pointer", () => {
+  // Folding the sidebar widens the workbench without a window resize. Measured only on those,
+  // the first pixel of the next divider drag repainted both panes at the old width, and the
+  // release committed a share of that width rather than of the pointer's travel.
+  const NativeObserver = globalThis.ResizeObserver;
+  const nativeFrame = globalThis.requestAnimationFrame;
+  const observed: Array<{ target: Element; callback: () => void }> = [];
+  const frames: FrameRequestCallback[] = [];
+  globalThis.ResizeObserver = class {
+    constructor(private callback: () => void) {}
+    observe(target: Element) { observed.push({ target, callback: this.callback }); }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => frames.push(callback);
+  const { host, close } = mountWorkbench(layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
+  ])));
+  try {
+    const root = host.querySelector(".wb-root") as HTMLElement;
+    root.getBoundingClientRect = () => box(800, 600);
+    window.dispatchEvent(new Event("resize"));
+    flushSync();
+    root.getBoundingClientRect = () => box(1000, 600);
+    const own = observed.filter((entry) => entry.target === root);
+    expect(own).toHaveLength(1);
+    own[0]!.callback();
+    for (const frame of frames.splice(0)) frame(0);
+    flushSync();
+    const sash = host.querySelector(".wb-sash") as HTMLElement;
+    const pointer = { bubbles: true, pointerId: 1, clientY: 20 };
+    sash.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, clientX: 500 }));
+    sash.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 502 }));
+    flushSync();
+    const branch = host.querySelector("[data-branch]") as HTMLElement;
+    const tracks = branch.style.gridTemplateColumns
+      .split(" ")
+      .filter((part) => part.endsWith("px") && part !== "8px")
+      .map((part) => Number.parseFloat(part));
+    expect(tracks).toHaveLength(2);
+    expect(tracks[0]! + tracks[1]!).toBeCloseTo(1000 - 8);
+    expect(tracks[0]!).toBeCloseTo(496 + 2);
+    sash.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 502 }));
+    flushSync();
+  } finally {
+    close();
+    globalThis.ResizeObserver = NativeObserver;
+    globalThis.requestAnimationFrame = nativeFrame;
+  }
+});
+
 test("a drag does not write the variable the branch already owns", () => {
   // `WorkbenchBranch` sets `--wb-tracks` declaratively. A drag that also wrote it gave one inline
   // property two owners: clearing it when the drag ended took away the value Svelte believed was

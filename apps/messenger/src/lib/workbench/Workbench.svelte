@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { flushSync, type Snippet } from 'svelte';
+	import { flushSync, untrack, type Snippet } from 'svelte';
 	import {
 		WB_SASH_PX,
 		type MinSizeLookup,
@@ -166,17 +166,43 @@
 		const element = host;
 		if (!element) return;
 		const box = element.getBoundingClientRect();
+		// Unchanged, it stays the same object: a new one recomputes the geometry and redraws every
+		// handle, and the observer below reports each frame of the sidebar folding.
+		if (box.width === viewport.width && box.height === viewport.height) return;
 		viewport = { x: 0, y: 0, width: box.width, height: box.height };
 	}
 
 	$effect(() => {
-		measure();
+		// Untracked: it reads the viewport it writes, and the listeners must not be rebuilt each time.
+		untrack(measure);
 		if (typeof window === 'undefined') return;
-		// One measurement of the container, on a real resize. Not a per-element observer: the
-		// browser used for UI verification never delivers those, and the layout must not depend
-		// on one firing to be drawn at the right size.
+		// The window resizing is the one signal every browser delivers, so the layout is drawn at
+		// the right size without the observer. The observer is for what resizes the workbench and
+		// not the window — the sidebar folding or being dragged, the preview or the thread opening.
+		// Missing those left the geometry at the old width: the first pixel of a divider drag then
+		// repainted every pane at the old size, and a floating pane stopped at the old edge.
 		window.addEventListener('resize', measure);
-		return () => window.removeEventListener('resize', measure);
+		// Measured on the next frame, not inside the callback: updating the layout from there, on
+		// every frame of the sidebar's transition, had WebKit report "ResizeObserver loop completed
+		// with undelivered notifications" each time.
+		let pending = 0;
+		const measureNextFrame = () => {
+			if (pending) return;
+			pending = requestAnimationFrame(() => {
+				pending = 0;
+				measure();
+			});
+		};
+		const observer =
+			host && typeof ResizeObserver === 'function' && typeof requestAnimationFrame === 'function'
+				? new ResizeObserver(measureNextFrame)
+				: null;
+		if (host) observer?.observe(host);
+		return () => {
+			window.removeEventListener('resize', measure);
+			observer?.disconnect();
+			if (pending) cancelAnimationFrame(pending);
+		};
 	});
 
 	function trackElement(branchId: string): HTMLElement | null {

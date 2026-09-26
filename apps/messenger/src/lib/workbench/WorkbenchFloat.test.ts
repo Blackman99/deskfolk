@@ -18,15 +18,15 @@ const tabLabel = createRawSnippet((tab: () => WorkbenchTab) => ({
 const frame: FloatFrame = { x: 30, y: 40, width: 400, height: 300 };
 const viewport = { x: 0, y: 0, width: 1000, height: 800 };
 
-function mount() {
+function mount(placed: { frame?: FloatFrame; viewport?: typeof viewport } = {}) {
   const frames: FloatFrame[] = [];
   const { host, close } = render(WorkbenchFloat as never, {
     leaf,
-    frame,
+    frame: placed.frame ?? frame,
     z: 0,
     focused: true,
     min: { width: 100, height: 100 },
-    viewport,
+    viewport: placed.viewport ?? viewport,
     t,
     tabBody,
     tabLabel,
@@ -83,6 +83,26 @@ test("pulling a corner resizes on screen and commits when the pointer is release
     expect(pane.style.height).toBe("320px");
     pointer(corner, "pointerup", 40, 20);
     expect(frames).toEqual([{ x: 30, y: 40, width: 440, height: 320 }]);
+  } finally {
+    close();
+  }
+});
+
+test("a pane left past the edge of a narrower workbench is drawn inside it, and moves from there", () => {
+  // Opening the sidebar narrows the workbench under a pane put near its far edge. Drawn where it
+  // was saved, it hung outside; the first pixel of a drag then pulled it back in all at once.
+  const { host, close, frames, pane } = mount({
+    frame: { x: 700, y: 40, width: 400, height: 300 },
+    viewport: { x: 0, y: 0, width: 900, height: 800 },
+  });
+  try {
+    expect(pane.style.left).toBe("492px");
+    const bar = host.querySelector(".wb-float-bar") as HTMLElement;
+    pointer(bar, "pointerdown", 10, 10);
+    pointer(bar, "pointermove", 0, 10);
+    expect(pane.style.transform).toBe("translate3d(-10px, 0px, 0)");
+    pointer(bar, "pointerup", 0, 10);
+    expect(frames).toEqual([{ x: 482, y: 40, width: 400, height: 300 }]);
   } finally {
     close();
   }

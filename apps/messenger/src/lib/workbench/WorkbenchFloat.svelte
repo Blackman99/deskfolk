@@ -2,7 +2,7 @@
 	import { flushSync, type Snippet } from 'svelte';
 	import type { FloatFrame, LeafNode, PaneMin, Rect, TabAction, TabClosing, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
-	import { moveFrame, resizeFrame, type Corner } from './float-frame.ts';
+	import { clampFrame, moveFrame, resizeFrame, type Corner } from './float-frame.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
 
@@ -67,7 +67,16 @@
 	 * pull keeps painting this, rather than the frame from when the pull began.
 	 */
 	let live = $state<FloatFrame | null>(null);
-	const shown = $derived(live ?? frame);
+	/**
+	 * The frame pulled back inside the workbench, which narrows without the window changing size:
+	 * the sidebar opening, the preview opening. A pane left near the far edge would hang outside
+	 * it, then leap back in on the first pixel of a drag. Drags start from here for the same
+	 * reason. The saved frame is not touched, so widening again puts the pane back where it was.
+	 */
+	const placed = $derived(
+		viewport.width > 0 && viewport.height > 0 ? clampFrame(frame, min, viewport) : frame
+	);
+	const shown = $derived(live ?? placed);
 
 	function gesture(
 		event: PointerEvent,
@@ -83,7 +92,7 @@
 		target.setPointerCapture(event.pointerId);
 		const originX = event.clientX;
 		const originY = event.clientY;
-		const origin = frame;
+		const origin = placed;
 		dragGate.begin();
 		let latest = origin;
 
@@ -142,7 +151,7 @@
 		class="wb-float-bar"
 		onpointerdown={(event) => {
 			if ((event.target as HTMLElement).closest('.wb-strip')) return;
-			const start = frame;
+			const start = placed;
 			const floor = min;
 			const box = viewport;
 			gesture(event, (dx, dy) => moveFrame(start, dx, dy, floor, box), false);
@@ -174,7 +183,7 @@
 			class={`wb-float-corner is-${corner}`}
 			aria-label={t.pane.resize}
 			onpointerdown={(event) => {
-				const start = frame;
+				const start = placed;
 				const floor = min;
 				const box = viewport;
 				gesture(event, (dx, dy) => resizeFrame(start, corner, dx, dy, floor, box), true);

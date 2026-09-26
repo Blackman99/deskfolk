@@ -1320,6 +1320,28 @@ test('a conversation’s flow board and artifact preview are named after the con
   localStorage.removeItem('real-bot-workbench-layout');
 });
 
+test('a floating pane left low in the window stays where it was put', async () => {
+  // The clean-up that runs on every snapshot bounded floating panes by a guessed 800px height,
+  // so in a taller window a pane dragged near the bottom was pulled up by the next message.
+  const frame = { x: 300, y: 900, width: 420, height: 320 };
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-a', kind: 'spend', params: {} }]),
+    floating: [{ leaf: makeLeaf('f', [{ id: 't-f', kind: 'routines', params: {} }]), frame }],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
+  expect(saved.floating.map((pane: { frame: unknown }) => pane.frame)).toEqual([frame]);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
 test('a flow board in a pane keeps itself current by watching its job', async () => {
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
     version: 1,
