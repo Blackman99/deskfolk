@@ -1085,8 +1085,109 @@ describe("turn engine on the local API", () => {
     );
     await Bun.sleep(40);
     expect(judgements).toEqual([]);
-    expect(sub.events.some((e) => e.event === "judgement.started")).toBe(false);
+    // Only the named Bot waited on the filing; nobody judged.
+    expect(
+      sub.events.filter((e) => e.event === "judgement.started").map((e) => [e.bot_id, e.stage]),
+    ).toEqual([[writer.id, "organizing"]]);
     expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === researcher.id)).toBe(false);
+    sub.close();
+  });
+
+  test("while your message is being filed, the Bot it wakes already shows under it", async () => {
+    let releaseOrganizer: (() => void) | undefined;
+    const holdOrganizer = new Promise<void>((resolve) => {
+      releaseOrganizer = resolve;
+    });
+    const fixture = await startFixture(
+      () => sse(textChunks("done")),
+      async ({ body }) => {
+        const messages = body.messages as Array<{ content?: string }>;
+        if (messages[0]?.content === ORGANIZER_SYSTEM) await holdOrganizer;
+        return routingAnswer("{}");
+      },
+    );
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const sub = await subscribe(h);
+    const posted = await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "please write" }),
+    });
+    const message = (await posted.json()) as { id: string };
+
+    const organizing = await waitFor(
+      sub.events,
+      (e) => e.event === "judgement.started" && e.session_id === sessionId,
+    );
+    expect(organizing).toMatchObject({ message_id: message.id, bot_id: botId, stage: "organizing" });
+    await Bun.sleep(40);
+    expect(sub.events.some((e) => e.event === "turn.upsert")).toBe(false);
+    // A window that loads the session now sees the same row.
+    const detail = (await (
+      await fetch(`${h.origin}/v1/sessions/${sessionId}`, { headers: auth(h) })
+    ).json()) as { pending_judgements?: unknown[] };
+    expect(detail.pending_judgements).toMatchObject([{ id: organizing.id, bot_id: botId, stage: "organizing" }]);
+
+    releaseOrganizer?.();
+    const ended = await waitFor(sub.events, (e) => e.event === "judgement.ended" && e.id === organizing.id);
+    const running = sub.events.findIndex(
+      (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === botId,
+    );
+    // The turn is up before the row goes, so the Bot never drops out from under the message.
+    expect(running).toBeGreaterThanOrEqual(0);
+    expect(running).toBeLessThan(sub.events.indexOf(ended));
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "done");
+    const after = (await (
+      await fetch(`${h.origin}/v1/sessions/${sessionId}`, { headers: auth(h) })
+    ).json()) as { pending_judgements?: unknown[] };
+    expect(after.pending_judgements ?? []).toEqual([]);
+    sub.close();
+  });
+
+  test("in a group, each Bot waiting on the filing hands over to its judgement", async () => {
+    let releaseOrganizer: (() => void) | undefined;
+    const holdOrganizer = new Promise<void>((resolve) => {
+      releaseOrganizer = resolve;
+    });
+    const fixture = await startFixture(
+      ({ body }) => (isJudgementRequest(body) ? judgementPass() : sse(textChunks("unused"))),
+      async ({ body }) => {
+        const messages = body.messages as Array<{ content?: string }>;
+        if (messages[0]?.content === ORGANIZER_SYSTEM) await holdOrganizer;
+        return routingAnswer("{}");
+      },
+    );
+    const h = await startApi();
+    const { bots, groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "Writer", duties: "write" },
+      { name: "Researcher", duties: "read" },
+    ]);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "please begin" }),
+    });
+    const startedFor = (stage: string) =>
+      sub.events.filter((e) => e.event === "judgement.started" && e.stage === stage);
+    const deadline = Date.now() + 2000;
+    while (startedFor("organizing").length < 2 && Date.now() < deadline) await Bun.sleep(10);
+    expect(startedFor("organizing").map((e) => e.bot_id).sort()).toEqual(bots.map((b) => b.id).sort());
+    expect(startedFor("judging")).toEqual([]);
+
+    releaseOrganizer?.();
+    for (const bot of bots) {
+      await waitFor(sub.events, (e) => e.event === "judgement.created" && e.bot_id === bot.id);
+      const organizing = startedFor("organizing").find((e) => e.bot_id === bot.id)!;
+      const judging = startedFor("judging").find((e) => e.bot_id === bot.id)!;
+      const ended = sub.events.findIndex((e) => e.event === "judgement.ended" && e.id === organizing.id);
+      expect(sub.events.indexOf(judging)).toBeLessThan(ended);
+    }
+    const after = (await (
+      await fetch(`${h.origin}/v1/sessions/${groupId}`, { headers: auth(h) })
+    ).json()) as { pending_judgements?: unknown[] };
+    expect(after.pending_judgements ?? []).toEqual([]);
     sub.close();
   });
 

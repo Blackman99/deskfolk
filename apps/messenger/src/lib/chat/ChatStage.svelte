@@ -1020,7 +1020,7 @@
 							entries={block.entries}
 							{botsById}
 							isUser={false}
-							thinkingText={t.chat.thinking}
+							thinkingText={statusLabels.running}
 							deletedText={t.top.deleted}
 							{onOpenProfile}
 						/>
@@ -1293,7 +1293,7 @@
 										entries={singleMsg.replying}
 										{botsById}
 										isUser={false}
-										thinkingText={t.chat.thinking}
+										thinkingText={statusLabels.running}
 										deletedText={t.top.deleted}
 										{onOpenProfile}
 									/>
@@ -1445,7 +1445,7 @@
 													entries={item.replying}
 													{botsById}
 													isUser={true}
-													thinkingText={t.chat.thinking}
+													thinkingText={statusLabels.running}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
 												/>
@@ -1764,7 +1764,7 @@
 													entries={item.replying}
 													{botsById}
 													isUser={false}
-													thinkingText={t.chat.thinking}
+													thinkingText={statusLabels.running}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
 												/>

@@ -2010,7 +2010,51 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     publishSpend(row);
   }
 
-  async function handleParticipation(message: Message, opts: { fromUser: boolean; fork?: boolean }): Promise<void> {
+  /** Who a message names, read against the whole roster; present members' names may be shortened. */
+  function mentionsIn(sessionId: string, body: string) {
+    const roster = store.listBots();
+    const nameById = new Map(roster.map((b) => [b.id, b.name] as const));
+    const presentNames = store
+      .presentBotIds(sessionId)
+      .map((id) => nameById.get(id))
+      .filter((name): name is string => typeof name === "string");
+    const parsed = parseMentions(body, roster.map((b) => b.name), { lenient: presentNames });
+    return { parsed, nameById, presentNames };
+  }
+
+  /**
+   * The Bots a message is about to wake, before anything has opened: the other one in a direct;
+   * in a group everyone it names (a named Bot outside the group is about to be added), or, naming
+   * no one, everyone present — the focused Bot hears it and the rest judge. `handleParticipation`
+   * decides for real once the message has been filed.
+   */
+  function botsToWake(message: Message): string[] {
+    if (options.admission?.draining) return [];
+    if (message.kind !== "user" && message.kind !== "bot") return [];
+    try {
+      const session = store.getSession(message.session_id);
+      const present = store.presentBotIds(session.id);
+      if (session.kind === "direct") return present.filter((id) => id !== message.author).slice(0, 1);
+      const { parsed } = mentionsIn(session.id, message.body);
+      const named = parsed.mentions
+        .map((name) => store.findBotByName(name)?.id)
+        .filter((id): id is string => typeof id === "string");
+      const woken = parsed.everyone || named.length === 0 ? [...present, ...named] : named;
+      return [...new Set(woken)].filter((id) => id !== message.author);
+    } catch {
+      return [];
+    }
+  }
+
+  async function handleParticipation(
+    message: Message,
+    opts: {
+      fromUser: boolean;
+      fork?: boolean;
+      /** Every turn and judgement this message opens has started; the judgements are still out. */
+      opened?: () => void;
+    },
+  ): Promise<void> {
     if (options.admission?.draining) return;
     const session = store.getSession(message.session_id);
     if (message.kind !== "user" && message.kind !== "bot") return;
@@ -2026,13 +2070,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
 
-    const roster = store.listBots();
-    const nameById = new Map(roster.map((b) => [b.id, b.name] as const));
-    const presentNames = store
-      .presentBotIds(session.id)
-      .map((id) => nameById.get(id))
-      .filter((name): name is string => typeof name === "string");
-    const parsed = parseMentions(message.body, roster.map((b) => b.name), { lenient: presentNames });
+    const { parsed, nameById, presentNames } = mentionsIn(session.id, message.body);
     if (!opts.fromUser && parsed.unresolved.length > 0) {
       const authorName = nameById.get(message.author);
       await noteUnknownMentions(message, parsed.unresolved, presentNames.filter((name) => name !== authorName));
@@ -2093,8 +2131,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     );
     const pendingByBot = new Map<string, PendingJudgement>();
     for (const botId of judges) {
-      pendingByBot.set(botId, startPendingJudgement(message.session_id, message.id, botId));
+      pendingByBot.set(botId, startPendingJudgement(message.session_id, message.id, botId, "judging"));
     }
+    opts.opened?.();
     await Promise.all(
       judges.map((botId) =>
         judge(botId, message, parsed.mentions, parsed.everyone, pendingByBot.get(botId)!),
@@ -2102,12 +2141,18 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     );
   }
 
-  function startPendingJudgement(sessionId: string, messageId: string, botId: string): PendingJudgement {
+  function startPendingJudgement(
+    sessionId: string,
+    messageId: string,
+    botId: string,
+    stage: NonNullable<PendingJudgement["stage"]>,
+  ): PendingJudgement {
     const pending: PendingJudgement = {
       id: ulid(),
       session_id: sessionId,
       message_id: messageId,
       bot_id: botId,
+      stage,
       created_at: isoNow(),
     };
     pendingJudges.set(pending.id, pending);
@@ -2492,21 +2537,30 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   return {
     async handleInboundMessage(message, opts) {
-      if (opts?.fromUser ?? message.author === USER_MEMBER) {
-        if (store.collectRouteFeedback(message)) {
-          const owner = store.feedbackOwner(message.id);
-          if (owner) touchChain(message.session_id, owner);
+      const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
+      // Filing takes a model call, and the Bots it holds back show as thinking under the message
+      // meanwhile, in the transcript and the list alike. Each row gives way once its turn or
+      // judgement has started, so the Bot never blinks out in between.
+      const organizing = fromUser
+        ? botsToWake(message).map((botId) => startPendingJudgement(message.session_id, message.id, botId, "organizing"))
+        : [];
+      const handOver = (): void => {
+        for (const pending of organizing) dropPendingJudgement(pending, true);
+      };
+      try {
+        if (fromUser) {
+          if (store.collectRouteFeedback(message)) {
+            const owner = store.feedbackOwner(message.id);
+            if (owner) touchChain(message.session_id, owner);
+          }
+          // Filed before any turn opens, so the turns it opens know their plan and ticket from
+          // their first hop. The message itself is already published; only the Bots wait.
+          await track(organizer.organizeMessage(message));
         }
-        // Filed before any turn opens, so the turns it opens know their plan and ticket from
-        // their first hop. The message itself is already published; only the Bots wait.
-        await track(organizer.organizeMessage(message));
+        await track(handleParticipation(message, { fromUser, fork: opts?.fork, opened: handOver }));
+      } finally {
+        handOver();
       }
-      await track(
-        handleParticipation(message, {
-          fromUser: opts?.fromUser ?? message.author === USER_MEMBER,
-          fork: opts?.fork,
-        }),
-      );
     },
     settlePlan(taskId) {
       return organizer.settlePlan(taskId);

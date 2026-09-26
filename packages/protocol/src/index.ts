@@ -557,11 +557,17 @@ export type Session = {
   updated_at: string;
 };
 
+/**
+ * A Bot a message has woken that has no turn yet; it shows as thinking under that message.
+ * `judging`: an unnamed group member deciding whether to join. `organizing`: your message is
+ * still being filed, and no turn or judgement opens until it has. A row without it is `judging`.
+ */
 export type PendingJudgement = {
   id: string;
   session_id: string;
   message_id: string;
   bot_id: string;
+  stage?: "organizing" | "judging";
   created_at: string;
 };
 
