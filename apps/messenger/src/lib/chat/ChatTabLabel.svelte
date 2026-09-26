@@ -8,9 +8,8 @@
 	import { sessionPresence } from '../sidebar/session-title.ts';
 
 	/**
-	 * A conversation's tab. In a narrow pane it is also the conversation's header: the avatar and
-	 * its status dot sit before the name, and the header's second line is the tooltip. The
-	 * picture is marked `wb-tab-icon`, which the tab strip shows only while the pane is narrow.
+	 * A conversation's tab, which is also its header: the avatar and its status dot sit before
+	 * the name, and the header's second line is the tooltip. The picture is marked `wb-tab-icon`.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -98,7 +97,6 @@
 		max-width: 100%;
 	}
 
-	/* No `display` here: the strip owns whether the picture is shown. */
 	.chat-tab-avatar {
 		position: relative;
 		flex: 0 0 auto;

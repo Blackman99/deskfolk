@@ -93,7 +93,7 @@
 </span>
 
 <style>
-	/* A conversation's tab in a narrow pane: small enough to sit in a 28px tab. */
+	/* A conversation's tab: small enough to sit in a 28px tab. */
 	.row-avatar.size-tab {
 		--avatar-size: 20px;
 	}

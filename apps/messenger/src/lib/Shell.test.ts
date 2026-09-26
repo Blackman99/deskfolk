@@ -1090,17 +1090,20 @@ test('on the workbench, Bot settings slide over the conversation with a scrim, n
   const tabs = () => host.querySelectorAll('.wb-tab-button').length;
   const pane = () => host.querySelector('.pane-chat')!;
   const scrim = () => pane().querySelector<HTMLElement>('.pane-side-scrim');
-  const action = (title: string) =>
-    [...pane().querySelectorAll<HTMLButtonElement>('.top-actions .btn-top-action')].find((b) => b.title === title)!;
   const dispatch = (el: Element | null | undefined, type: string) =>
     el?.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+  // The tab is the header: the conversation itself has none.
+  expect(pane().querySelector('.top')).toBeNull();
   expect(tabs()).toBe(1);
 
-  click(action(t.top.botSettings));
+  click(host.querySelector('.wb-tab-more'));
+  click(document.querySelector('[data-action="settings"]'));
   await settle();
   expect(tabs()).toBe(1);
   expect(scrim()?.querySelector('.pane-side .profile-pane')).not.toBeNull();
-  expect(action(t.top.botSettings).getAttribute('aria-expanded')).toBe('true');
+  click(host.querySelector('.wb-tab-more'));
+  expect(document.querySelector('[data-action="settings"]')?.classList.contains('is-active')).toBe(true);
+  click(document.body);
   // Not the narrow drawer over the window: the flags it runs on stay down.
   expect(host.querySelector('.profile-backdrop')).toBeNull();
   expect(runtime.sessionSettingsOpen).toBe(false);
@@ -1118,14 +1121,16 @@ test('on the workbench, Bot settings slide over the conversation with a scrim, n
   expect(tabs()).toBe(1);
 
   // The sidebar's own ✕ closes it too.
-  click(action(t.top.botSettings));
+  click(host.querySelector('.wb-tab-more'));
+  click(document.querySelector('[data-action="settings"]'));
   await settle();
   click(pane().querySelector('.pane-side .sheet-close'));
   await settle();
   expect(scrim()).toBeNull();
   expect(tabs()).toBe(1);
-  // Model choices are read on the flow board's cards; the header has no log of its own.
-  expect([...pane().querySelectorAll<HTMLButtonElement>('.top-actions .btn-top-action')].map((b) => b.title))
+  // Model choices are read on the flow board's cards; the tab's ⋯ has no log of its own.
+  click(host.querySelector('.wb-tab-more'));
+  expect([...document.querySelectorAll('[data-action]')].map((row) => row.textContent))
     .not.toContain('Model choice log');
 });
 
@@ -1165,9 +1170,11 @@ test('a Bot picked in a group opens straight to its settings, with no way back t
   const { host, close } = render(Shell, { runtime });
   cleanups.push(close);
   const side = () => host.querySelector('.pane-chat .pane-side');
-  const groupSettings = () => [...host.querySelectorAll<HTMLButtonElement>('.pane-chat .top-actions .btn-top-action')]
-    .find((b) => b.title === t.top.groupSettings)!;
-  click(groupSettings());
+  const openGroupSettings = () => {
+    click(host.querySelector('.wb-tab-more'));
+    click(document.querySelector('[data-action="settings"]'));
+  };
+  openGroupSettings();
   await settle();
   expect(side()?.querySelector<HTMLInputElement>('.sheet-head #detail-group-name')?.value).toBe('Alpha group');
   click(side()?.querySelector('.member-name-btn'));
@@ -1176,8 +1183,9 @@ test('a Bot picked in a group opens straight to its settings, with no way back t
   expect(side()?.querySelector('.sheet-head h2')?.textContent).toBe(t.detail.titleBot);
   expect(side()?.querySelector('.sheet-back')).toBeNull();
   expect(side()?.getAttribute('aria-label')).toBe(t.top.botSettings);
-  // The group's own settings button is not lit by a member's settings.
-  expect(groupSettings().getAttribute('aria-expanded')).toBe('false');
+  // A member's settings are not the group's own, so the tab's ⋯ does not mark them open.
+  click(host.querySelector('.wb-tab-more'));
+  expect(document.querySelector('[data-action="settings"]')?.classList.contains('is-active')).toBe(false);
   expect(host.querySelectorAll('.wb-tab-button')).toHaveLength(1);
 });
 
@@ -1188,16 +1196,14 @@ test('a direct conversation\'s Bot, opened from the transcript, is that conversa
     bots: [aBot()], sessions: [session],
     settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
   }, { selectedId: session.id }));
-  const t = copyFor('en');
   const { host, close } = render(Shell, { runtime });
   cleanups.push(close);
   // What clicking the Bot's avatar asks for.
   runtime.paneOpener?.({ kind: 'chat', sessionId: session.id, side: { kind: 'settings', botId: 'bot-1' } });
   await settle();
-  const settings = [...host.querySelectorAll<HTMLButtonElement>('.pane-chat .top-actions .btn-top-action')]
-    .find((b) => b.title === t.top.botSettings)!;
   expect(host.querySelector('.pane-chat .pane-side .profile-pane')).not.toBeNull();
-  expect(settings.getAttribute('aria-expanded')).toBe('true');
+  click(host.querySelector('.wb-tab-more'));
+  expect(document.querySelector('[data-action="settings"]')?.classList.contains('is-active')).toBe(true);
   expect(JSON.parse(localStorage.getItem('real-bot-workbench-layout')!).root.tabs[0].params)
     .toEqual({ sessionId: session.id, side: 'settings' });
 });

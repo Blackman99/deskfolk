@@ -7,8 +7,6 @@ import { click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import type { MinSizeLookup, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import { makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
-import { NARROW_MAX_WIDTH } from "./surface.ts";
-
 const t = copyFor("zh");
 const flatMins: MinSizeLookup = () => ({ width: 100, height: 100 });
 const aTab = (id: string, kind = "chat"): WorkbenchTab => ({ id, kind, params: {} });
@@ -411,17 +409,23 @@ test("activating or focusing a tab never changes the size of its box", () => {
   expect(offending).toEqual([]);
 });
 
-test("the strip is exactly as wide as its pane, so a tab turns narrow with the conversation under it", () => {
-  // A narrow conversation hands its header to its tab: the header asks the conversation's width,
-  // the tab asks the strip's. A container query measures the content box, so padding on the strip
-  // would have the tab take the avatar a few pixels before the header folded, and both would show.
+test("a tab's picture is always shown, and its ⋯ only while the pointer is on it", () => {
+  const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
+  const style = source.slice(source.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const icon = style.slice(style.indexOf(".wb-tab-button :global(.wb-tab-icon)"));
+  expect(icon.slice(0, icon.indexOf("}"))).toContain("display: inline-flex");
+  const more = style.slice(style.indexOf(".wb-tab-more {"));
+  expect(more.slice(0, more.indexOf("}"))).toContain("opacity: 0");
+  expect(style).toContain(".wb-tab:hover .wb-tab-more");
+  expect(style).not.toContain("@container wb-strip");
+});
+
+test("the strip has no padding of its own, so it is exactly as wide as its pane", () => {
   const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
   const style = source.slice(source.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
   const start = style.indexOf(".wb-strip {");
   const strip = style.slice(start, style.indexOf("}", start));
-  expect(strip).toContain("container: wb-strip / inline-size;");
   expect(strip).toMatch(/\bpadding:\s*0;/);
-  expect(style).toContain(`@container wb-strip (max-width: ${NARROW_MAX_WIDTH}px)`);
 });
 
 test("the + menu is lifted above the pane under it while it is open", () => {

@@ -31,8 +31,8 @@
 		 */
 		menuActions?: Snippet<[string, string]>;
 		/**
-		 * What a tab offers to do for what it shows. A tab with any gets a ⋯ once the pane is
-		 * narrow, which is when a conversation's header folds into its tab.
+		 * What a tab offers to do for what it shows. A tab with any gets a ⋯, shown while the
+		 * pointer is on the tab; a conversation's header used to hold these.
 		 */
 		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
@@ -522,15 +522,12 @@
 	 * are one surface. The tabs that are not active stay on the strip, recessed.
 	 */
 	/*
-	 * The strip is also what a tab asks how wide its pane is. It is the pane's full width with no
-	 * padding of its own — the 4px sides are the end children's margins — so it crosses 680px
-	 * exactly when the conversation under it does, and the header folds into the tab at the moment
-	 * the tab takes it. A container is a containing block for `fixed` descendants, which is why the
-	 * pane itself is not one; nothing fixed lives in the strip, and its menus are portaled.
+	 * The strip is the pane's full width with no padding of its own — the 4px sides are the end
+	 * children's margins. A container is a containing block for `fixed` descendants, which is why
+	 * the pane itself is not one; nothing fixed lives in the strip, and its menus are portaled.
 	 */
 	.wb-strip {
 		--wb-tab-flare: 8px;
-		container: wb-strip / inline-size;
 		display: flex;
 		align-items: flex-end;
 		gap: 0;
@@ -674,14 +671,14 @@
 		color: var(--ink);
 	}
 	/*
-	 * A tab's picture and its ⋯ are for a narrow pane, where they stand in for the header the
-	 * conversation no longer shows. A wide pane keeps the header, and the tab its plain name.
+	 * A tab's picture is always there: a conversation's Bot, or the kind of anything else.
+	 * The ⋯ stays in the layout so hovering a tab never moves the strip, and only shows then.
 	 */
-	.wb-tab-button :global(.wb-tab-icon),
-	.wb-tab-more {
-		display: none;
+	.wb-tab-button :global(.wb-tab-icon) {
+		display: inline-flex;
 	}
 	.wb-tab-more {
+		display: grid;
 		place-items: center;
 		width: 18px;
 		height: 18px;
@@ -692,25 +689,15 @@
 		background: none;
 		opacity: 0;
 	}
+	.wb-tab:hover .wb-tab-more,
+	.wb-tab:focus-within .wb-tab-more,
+	.wb-tab-more.is-open {
+		opacity: 1;
+	}
 	.wb-tab-more:hover,
 	.wb-tab-more.is-open {
 		background: var(--row-hover);
 		color: var(--ink);
-	}
-	/* The strip's own width, which is the pane's: see `.wb-strip`. */
-	@container wb-strip (max-width: 680px) {
-		.wb-tab-button :global(.wb-tab-icon) {
-			display: inline-flex;
-		}
-		.wb-tab-more {
-			display: grid;
-		}
-		/* It keeps its room while it is hidden, so hovering a tab never moves the strip. */
-		.wb-tab:hover .wb-tab-more,
-		.wb-tab:focus-within .wb-tab-more,
-		.wb-tab-more.is-open {
-			opacity: 1;
-		}
 	}
 	.wb-new-tab,
 	.wb-pane-menu,

@@ -5,8 +5,7 @@
 	 * Every tab that is not a live conversation: its kind's picture before the name. The pictures
 	 * are the ones the app opens these from — the tools menu's terminal, calendar and ledger, the
 	 * workspace button's folder, the header's flow board. Marked `wb-tab-icon` like a
-	 * conversation's avatar, so the strip shows them on the same terms: only while the pane is
-	 * narrow.
+	 * conversation's avatar, so the strip shows them on the same terms.
 	 */
 	type Props = {
 		/** Null for a tab this build cannot read, which keeps its bare name. */
@@ -65,7 +64,6 @@
 		max-width: 100%;
 	}
 
-	/* No `display` here: the strip owns whether the picture is shown. */
 	.pane-tab-icon {
 		flex: 0 0 auto;
 		align-items: center;

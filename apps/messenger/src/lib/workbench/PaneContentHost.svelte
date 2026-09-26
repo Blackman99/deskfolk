@@ -5,7 +5,6 @@
 	import type { Attachment } from '@real-bot/protocol';
 	import type { WorkbenchTab } from './layout-types.ts';
 	import { contentOfTab, type PaneContent } from './pane-content.ts';
-	import ChatHeader from '../chat/ChatHeader.svelte';
 	import ChatStage from '../chat/ChatStage.svelte';
 	// RoutineCalendar.svelte (svelte5plus-calendar), TraceView.svelte (the flow board, plus
 	// @dagrejs/dagre) and ArtifactPreview.svelte are loaded lazily below, in the branch that
@@ -33,8 +32,6 @@
 		leafId: string;
 		runtime: MessengerRuntime;
 		t: Copy;
-		pinnedSessionIds: string[];
-		onTogglePin: (id: string) => void;
 		/** A Bot's profile, beside the conversation it was asked for from. */
 		onOpenProfile: (botId: string, sessionId: string) => void;
 		/**
@@ -50,7 +47,6 @@
 			siblings?: Attachment[] | null,
 			sessionId?: string | null
 		) => void;
-		onCreateBot: () => void;
 		onRemoveTab: (leafId: string, tabId: string) => void;
 		/**
 		 * The tab now shows something else of the same kind — another file picked in the
@@ -64,8 +60,6 @@
 		onPreviewPane?: (tabId: string, pane: PreviewHandle | null) => void;
 		/** Jump the conversation to a message, from a card on the board or a note under it. */
 		onJump: (sessionId: string, messageId: string) => void;
-		/** The conversation header's settings button. */
-		onToggleSettings: (sessionId: string) => void;
 		onCloseSide: (sessionId: string) => void;
 		/**
 		 * The settings beside a conversation. The shell draws them: they run on the one copy of the
@@ -79,17 +73,13 @@
 		leafId,
 		runtime,
 		t,
-		pinnedSessionIds,
-		onTogglePin,
 		onOpenProfile,
 		onOpenArtifact,
-		onCreateBot,
 		onRemoveTab,
 		onBindTerminal,
 		onUpdateContent,
 		onPreviewPane,
 		onJump,
-		onToggleSettings,
 		onCloseSide,
 		settingsSide
 	}: Props = $props();
@@ -225,19 +215,7 @@
 	{#if session}
 		<div class="pane-chat">
 			<div class="pane-conversation">
-				<ChatHeader
-					{runtime}
-					{t}
-					selected={session}
-					{pinnedSessionIds}
-					{onTogglePin}
-					// A Bot opened from a group's member list is not the group's own settings.
-					settingsOpen={side !== null && !side.botId}
-					foldsIntoTab
-					onToggleSessionSettings={() => onToggleSettings(content.sessionId)}
-					{onCreateBot}
-					onShowOnboarding={() => {}}
-				/>
+				<!-- The tab above is this conversation's header: avatar, name, and the ⋯. -->
 				<ChatStage
 					{runtime}
 					{t}
@@ -245,7 +223,9 @@
 					onOpenProfile={(botId) => onOpenProfile(botId, content.sessionId)}
 					onOpenArtifact={(relpath, att, messageId, forceTree) =>
 						onOpenArtifact(relpath, att, messageId, forceTree, null, null, content.sessionId)}
-					{onCreateBot}
+					onCreateBot={() => {
+						/* The empty roster's "create a Bot" lives on the phone header, not in a pane. */
+					}}
 				/>
 			</div>
 			{#if side}
@@ -388,7 +368,7 @@
 		/* A pane narrower than a phone lays its conversation out like one, in any window. */
 		container: conversation / inline-size;
 	}
-	/* Over the transcript and its header (whose menus reach 20), within this pane: the tab strip
+	/* Over the transcript (whose menus reach 20), within this pane: the tab strip
 	   above stays usable, and a floating pane (40 and up) still floats over it. */
 	.pane-side-scrim {
 		position: absolute;

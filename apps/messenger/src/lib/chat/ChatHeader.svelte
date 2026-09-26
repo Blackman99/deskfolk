@@ -22,12 +22,6 @@
 		 * narrow shell's drawer; a workbench pane says its own, because its sidebar is in its tab.
 		 */
 		settingsOpen?: boolean;
-		/**
-		 * In a workbench pane the tab right above says who this is. Once the conversation is as
-		 * narrow as a phone the tab takes the avatar, the name and the ⋯, and this header steps
-		 * aside rather than say it all a second time.
-		 */
-		foldsIntoTab?: boolean;
 		onCreateBot: () => void;
 		onShowOnboarding: () => void;
 	};
@@ -40,7 +34,6 @@
 		onTogglePin,
 		onToggleSessionSettings,
 		settingsOpen: paneSettingsOpen,
-		foldsIntoTab = false,
 		onCreateBot,
 		onShowOnboarding
 	}: Props = $props();
@@ -119,7 +112,7 @@
 
 <svelte:window onclick={handleWindowClick} />
 
-<header class="top" class:has-session={selected !== null} class:folds-into-tab={foldsIntoTab}>
+<header class="top" class:has-session={selected !== null}>
 	{#if selected}
 		<div class="top-session-identity flex items-center gap-6 min-w-0 flex-1">
 			<button
@@ -631,13 +624,9 @@
 
 	/*
 	 * The phone header, whenever the conversation is that narrow. The actions fold into the ⋯
-	 * menu. A workbench pane goes one step further and hands the header to its tab.
+	 * menu. A workbench pane has no header of its own: the tab above is it.
 	 */
 	@container conversation (max-width: 680px) {
-		.top.folds-into-tab {
-			display: none;
-		}
-
 		.top.has-session {
 			padding: 0 0 0 10px;
 			gap: 0;

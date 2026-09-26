@@ -1419,10 +1419,10 @@
 	}
 
 	/**
-	 * What a conversation's tab offers: its header's actions, under the tab's ⋯ once the pane is
-	 * narrow and the header has folded into the tab, and first in a right-click on the tab in any
-	 * pane. Each acts on that tab's own conversation, which need not be the one in front: settings
-	 * bring the tab forward first, since they slide over its transcript.
+	 * What a conversation's tab offers: the actions its header used to hold, under the tab's ⋯
+	 * while the pointer is on the tab, and first in a right-click on the tab. Each acts on that
+	 * tab's own conversation, which need not be the one in front: settings bring the tab forward
+	 * first, since they slide over its transcript.
 	 */
 	function chatTabActions(leafId: string, tab: WorkbenchTab): TabAction[] {
 		const content = contentOfTab(tab);
@@ -1926,18 +1926,14 @@
 						{leafId}
 						{runtime}
 						{t}
-						{pinnedSessionIds}
-						onTogglePin={togglePin}
 						onOpenProfile={openProfile}
 						onOpenArtifact={openArtifactPath}
-						onCreateBot={openCreateBot}
 						onRemoveTab={onPaneCloseTab}
 						onBindTerminal={bindTerminalTab}
 						onUpdateContent={(content) =>
 							commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
 						onPreviewPane={trackPreviewPane}
 						onJump={jumpToTrace}
-						onToggleSettings={togglePaneSettings}
 						onCloseSide={closePaneSide}
 						settingsSide={paneSettings}
 					/>

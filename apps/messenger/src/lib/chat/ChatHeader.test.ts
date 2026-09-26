@@ -142,27 +142,4 @@ test("a workbench pane's header shows the settings open in its own tab, not the 
   close();
 });
 
-test("in a workbench pane the header is the one that folds into the tab once it is narrow", () => {
-  const selected = aDirect();
-  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
-  const props = {
-    runtime,
-    t,
-    selected,
-    pinnedSessionIds: [],
-    onTogglePin: () => {},
-    onToggleSessionSettings: () => {},
-    onCreateBot: () => {},
-    onShowOnboarding: () => {},
-  };
-  const pane = render(ChatHeader, { ...props, foldsIntoTab: true });
-  const phone = render(ChatHeader, props);
-  try {
-    expect(pane.host.querySelector(".top.folds-into-tab")).not.toBeNull();
-    // The phone's header has no tab above it, so it stays.
-    expect(phone.host.querySelector(".top.folds-into-tab")).toBeNull();
-  } finally {
-    pane.close();
-    phone.close();
-  }
-});
+
