@@ -13,7 +13,10 @@ import {
   focusNode,
   glideEase,
   glideView,
+  openView,
   pinchSpan,
+  saidNothing,
+  TRACE_READABLE_ZOOM,
   zoomAt,
   traceFileIsImage,
   traceFileName,
@@ -271,4 +274,140 @@ test("cards never overlap, measured or not", () => {
   const taller = new Map(measured);
   taller.set("a", { width: TRACE_CARD_WIDTH, height: 460 });
   expect(child(taller)).toBeGreaterThan(child(measured) + 150);
+});
+
+/** Every pair of cards that share any area, as `a over b`. */
+function overlapping(flow: ReturnType<typeof traceFlow>): string[] {
+  const hits: string[] = [];
+  const all = flow.placements;
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const a = all[i]!;
+      const b = all[j]!;
+      if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) {
+        hits.push(`${a.node.turn_id} over ${b.node.turn_id}`);
+      }
+    }
+  }
+  return hits;
+}
+
+test("siblings stand oldest first without pushing anyone's subtree into another's cards", () => {
+  // The screenshot's collision: siblings were put back in time order after dagre had placed them,
+  // by sliding each one's whole subtree sideways — onto the cards of a cousin that stayed put.
+  // Whatever order the trace lists the turns in and whenever each was woken, nothing overlaps.
+  let seed = 7;
+  const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let round = 0; round < 200; round++) {
+    const nodes: TaskTraceNode[] = [];
+    const count = 4 + Math.floor(next() * 36);
+    for (let i = 0; i < count; i++) {
+      const second = String(Math.floor(next() * 3000)).padStart(4, "0");
+      nodes.push(
+        node({
+          turn_id: `n${i}`,
+          actor: i === 0 || next() < 0.08 ? USER_MEMBER : "bot",
+          woken_by_turn_id: i === 0 || next() < 0.08 ? null : `n${Math.floor(next() * i)}`,
+          created_at: `2026-09-22T00:00:00.${second}Z`,
+          summary: "字".repeat(Math.floor(next() * 90)),
+        }),
+      );
+    }
+    const measured = new Map(nodes.map((row) => [row.turn_id, { width: TRACE_CARD_WIDTH, height: 90 + Math.floor(next() * 220) }]));
+    expect(overlapping(traceFlow(trace(nodes), measured))).toEqual([]);
+    expect(overlapping(traceFlow(trace(nodes)))).toEqual([]);
+  }
+});
+
+test("siblings read left to right in the order they were woken, whatever order the trace lists them", () => {
+  const flow = traceFlow(
+    trace([
+      node({ turn_id: "you", actor: USER_MEMBER, created_at: "2026-09-22T00:00:00.000Z" }),
+      node({ turn_id: "late", woken_by_turn_id: "you", created_at: "2026-09-22T00:00:03.000Z" }),
+      node({ turn_id: "first", woken_by_turn_id: "you", created_at: "2026-09-22T00:00:01.000Z" }),
+      node({ turn_id: "second", woken_by_turn_id: "you", created_at: "2026-09-22T00:00:02.000Z" }),
+      // The first sibling's child is wide enough to matter, and still stays under its own parent.
+      node({ turn_id: "first-a", woken_by_turn_id: "first", created_at: "2026-09-22T00:00:04.000Z" }),
+      node({ turn_id: "first-b", woken_by_turn_id: "first", created_at: "2026-09-22T00:00:05.000Z" }),
+    ]),
+  );
+  expect(rows(flow)).toEqual([["you"], ["first", "second", "late"], ["first-a", "first-b"]]);
+  const at = (id: string) => flow.placements.find((p) => p.node.turn_id === id)!;
+  expect(at("first-b").x).toBeLessThan(at("second").x + TRACE_CARD_WIDTH);
+});
+
+test("each line of yours starts a round below the last one, and every round starts on one spine", () => {
+  // Handed over as one graph, two lines of yours stood side by side: every new line widened the
+  // board, and the job read left to right in one place and top to bottom in the next.
+  const flow = traceFlow(
+    trace([
+      node({ turn_id: "you-1", actor: USER_MEMBER, created_at: "2026-09-22T00:00:00.000Z" }),
+      node({ turn_id: "a", woken_by_turn_id: "you-1", created_at: "2026-09-22T00:00:01.000Z" }),
+      node({ turn_id: "b", woken_by_turn_id: "you-1", created_at: "2026-09-22T00:00:02.000Z" }),
+      node({ turn_id: "c", woken_by_turn_id: "a", created_at: "2026-09-22T00:00:03.000Z" }),
+      node({ turn_id: "you-2", actor: USER_MEMBER, created_at: "2026-09-22T00:01:00.000Z" }),
+      node({ turn_id: "d", woken_by_turn_id: "you-2", created_at: "2026-09-22T00:01:01.000Z" }),
+      // A handoff from another job has no waker here, so it is a round of its own, in its turn.
+      node({
+        turn_id: "handoff",
+        woken_elsewhere: { actor: "bot-9", message_id: "m9" },
+        created_at: "2026-09-22T00:00:30.000Z",
+      }),
+    ]),
+  );
+  expect(flow.rounds.map((round) => round.root)).toEqual(["you-1", "handoff", "you-2"]);
+  const at = (id: string) => flow.placements.find((p) => p.node.turn_id === id)!;
+  const bottom = (ids: string[]) => Math.max(...ids.map((id) => at(id).y + at(id).height));
+  expect(at("handoff").y).toBeGreaterThan(bottom(["you-1", "a", "b", "c"]));
+  expect(at("you-2").y).toBeGreaterThan(bottom(["handoff"]));
+  for (const root of ["you-1", "handoff", "you-2"]) expect(at(root).x + at(root).width / 2).toBe(flow.spine);
+  // As wide as the widest round, not as wide as all of them together.
+  expect(flow.width).toBeLessThan(3 * TRACE_CARD_WIDTH + 80);
+  expect(flow.edges.map((edge) => `${edge.from}>${edge.to}`).sort()).toEqual(["a>c", "you-1>a", "you-1>b", "you-2>d"]);
+});
+
+test("cards on one rank share a top edge, however tall each one is", () => {
+  const nodes = [
+    node({ turn_id: "you", actor: USER_MEMBER }),
+    node({ turn_id: "a", woken_by_turn_id: "you" }),
+    node({ turn_id: "b", woken_by_turn_id: "you" }),
+  ];
+  const flow = traceFlow(
+    trace(nodes),
+    new Map([
+      ["a", { width: TRACE_CARD_WIDTH, height: 320 }],
+      ["b", { width: TRACE_CARD_WIDTH, height: 120 }],
+    ]),
+  );
+  const at = (id: string) => flow.placements.find((p) => p.node.turn_id === id)!;
+  expect(at("a").y).toBe(at("b").y);
+});
+
+test("a board opens whole while it can be read, and on its newest round once it cannot", () => {
+  const viewport = { width: 800, height: 600 };
+  // Small enough to read whole: the same as fitting.
+  const small = { width: 600, height: 500, spine: 300 };
+  expect(openView(small, viewport)).toEqual(fitView(small, viewport));
+  // A long job: readable size, spine centred, the bottom of the board on the bottom of the view.
+  const tall = { width: 520, height: 6000, spine: 136 };
+  const opened = openView(tall, viewport);
+  expect(opened.scale).toBe(1);
+  expect(opened.x).toBe(Math.round((800 - 520) / 2));
+  expect(opened.y + tall.height * opened.scale).toBe(600);
+  // Too wide as well: never below a readable size, and the spine is what stays in view.
+  const wide = { width: 4000, height: 6000, spine: 1800 };
+  const both = openView(wide, viewport);
+  expect(both.scale).toBe(TRACE_READABLE_ZOOM);
+  expect(both.x + wide.spine * both.scale).toBe(400);
+});
+
+test("a Bot's turn that left no line of its own says so instead of repeating the line that woke it", () => {
+  const woke = { trigger_message_id: "m-trigger", focus_message_id: "m-trigger" };
+  expect(saidNothing(node({ ...woke, status: "redirected" }))).toBe(true);
+  expect(saidNothing(node({ ...woke, status: "completed" }))).toBe(true);
+  // It said something; it is still going; it is waiting on you; it is you.
+  expect(saidNothing(node({ trigger_message_id: "m-trigger", focus_message_id: "m-word" }))).toBe(false);
+  expect(saidNothing(node({ ...woke, status: "running" }))).toBe(false);
+  expect(saidNothing(node({ ...woke, status: "waiting_ask", ask: { message_id: "m-trigger", question: "?" } }))).toBe(false);
+  expect(saidNothing(node({ ...woke, actor: USER_MEMBER }))).toBe(false);
 });

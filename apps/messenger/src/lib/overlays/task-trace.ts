@@ -9,6 +9,12 @@
  * The layering is dagre's, because a readable layered DAG is a solved problem and doing it by
  * hand is how the column happened. What stays ours is the card and what it says; dagre is handed
  * measured boxes and returns coordinates, nothing more.
+ *
+ * A job is also a run of rounds: every line of yours starts a tree of its own. Handed to dagre as
+ * one graph, those trees stood side by side, so each new line made the board wider and the order
+ * of events ran left to right in one place and top to bottom in the next. Each round is laid out
+ * on its own and the rounds are stacked down the board in the order they happened, the way the
+ * conversation reads.
  */
 import dagre from "@dagrejs/dagre";
 import { USER_MEMBER, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
@@ -34,9 +40,22 @@ export type TraceEdge = {
   path: string;
 };
 
+/** One tree of the job: the card that started it and everything it woke, as a band of the board. */
+export type TraceRound = {
+  /** The card the round hangs from — your line, usually. */
+  root: string;
+  /** The band the round takes up. */
+  y: number;
+  height: number;
+};
+
 export type TraceFlow = {
   placements: TracePlacement[];
   edges: TraceEdge[];
+  /** Top to bottom, in the order they started. */
+  rounds: TraceRound[];
+  /** The x every round's first card is centred on, so your lines read down one column. */
+  spine: number;
   width: number;
   height: number;
 };
@@ -45,6 +64,48 @@ export const TRACE_CARD_WIDTH = 248;
 export const TRACE_CARD_FALLBACK_HEIGHT = 92;
 const RANK_GAP = 56;
 const NODE_GAP = 20;
+/** Wider than a rank's gap, so the space between two rounds does not read as a missing edge. */
+const ROUND_GAP = 44;
+const MARGIN = 12;
+
+/** A job's turns grouped by the line that started them, oldest round first, oldest turn first. */
+export function traceRounds(nodes: readonly TaskTraceNode[]): Array<{ root: string; members: TaskTraceNode[] }> {
+  const sorted = [...nodes].sort(byTime);
+  const byId = new Map(sorted.map((node) => [node.turn_id, node]));
+  const rootOf = new Map<string, string>();
+  const findRoot = (node: TaskTraceNode): string => {
+    const path: string[] = [];
+    let at = node;
+    let root: string | undefined;
+    // A loop in the wakers cannot happen, but a board that hangs on one would be worse than wrong.
+    while (root === undefined) {
+      root = rootOf.get(at.turn_id);
+      if (root !== undefined) break;
+      path.push(at.turn_id);
+      const up = wakerOn(at, byId);
+      if (!up || path.includes(up)) root = at.turn_id;
+      else at = byId.get(up)!;
+    }
+    for (const id of path) rootOf.set(id, root);
+    return root;
+  };
+  const rounds = new Map<string, TaskTraceNode[]>();
+  for (const node of sorted) {
+    const root = findRoot(node);
+    rounds.set(root, [...(rounds.get(root) ?? []), node]);
+  }
+  return [...rounds].map(([root, members]) => ({ root, members }));
+}
+
+function byTime(a: TaskTraceNode, b: TaskTraceNode): number {
+  return a.created_at.localeCompare(b.created_at) || a.turn_id.localeCompare(b.turn_id);
+}
+
+/** The card that woke this one, when it is on the board and is not this card. */
+function wakerOn(node: TaskTraceNode, byId: ReadonlyMap<string, TaskTraceNode>): string | null {
+  const from = node.woken_by_turn_id;
+  return from && from !== node.turn_id && byId.has(from) ? from : null;
+}
 
 /**
  * Coordinates for every card and a curve for every edge.
@@ -54,54 +115,126 @@ const NODE_GAP = 20;
  */
 export function traceFlow(trace: TaskTrace, boxes: ReadonlyMap<string, TraceBox> = new Map()): TraceFlow {
   const byId = new Map(trace.nodes.map((node) => [node.turn_id, node]));
-  const graph = new dagre.graphlib.Graph();
-  graph.setGraph({ rankdir: "TB", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: 12, marginy: 12 });
-  graph.setDefaultEdgeLabel(() => ({}));
+  const wakerOf = (node: TaskTraceNode) => wakerOn(node, byId);
+  const grouped = traceRounds(trace.nodes);
 
+  // Each round on its own, then every round's first card on one line down the board.
+  const laidRounds = grouped.map(({ root, members }) => {
+    return {
+      root,
+      members,
+      laid: layRound(root, members, wakerOf, boxes),
+    };
+  });
+  const left = Math.max(0, ...laidRounds.map(({ laid }) => laid.anchor - laid.minX));
+  const right = Math.max(0, ...laidRounds.map(({ laid }) => laid.maxX - laid.anchor));
+  const spine = MARGIN + left;
+
+  const at = new Map<string, TracePlacement>();
+  const bands: TraceRound[] = [];
+  let top = MARGIN;
+  laidRounds.forEach(({ root, laid }, index) => {
+    if (index > 0) top += ROUND_GAP;
+    const bandTop = top;
+    if (laid) {
+      const dx = spine - laid.anchor;
+      for (const placement of laid.placements) {
+        at.set(placement.node.turn_id, {
+          ...placement,
+          x: Math.round(placement.x + dx),
+          y: Math.round(placement.y + top),
+        });
+      }
+      top += laid.height;
+    }
+    bands.push({
+      root,
+      y: Math.round(bandTop),
+      height: Math.round(top - bandTop),
+    });
+  });
+
+  const edges: TraceEdge[] = [];
   for (const node of trace.nodes) {
+    const from = wakerOf(node);
+    const fromBox = from ? at.get(from) : undefined;
+    const toBox = at.get(node.turn_id);
+    if (!from || !fromBox || !toBox) continue;
+    edges.push({ from, to: node.turn_id, path: edgePath(fromBox, toBox) });
+  }
+  const placements = trace.nodes.flatMap((node) => at.get(node.turn_id) ?? []);
+  return {
+    placements,
+    edges,
+    rounds: bands,
+    spine: Math.round(spine),
+    width: bands.length ? Math.round(spine + right + MARGIN) : 0,
+    height: bands.length ? Math.round(top + MARGIN) : 0,
+  };
+}
+
+type LaidRound = {
+  root: string;
+  placements: TracePlacement[];
+  /** The centre of the round's first card, where it meets the spine. */
+  anchor: number;
+  minX: number;
+  maxX: number;
+  height: number;
+};
+
+/**
+ * One round, laid out by dagre in the order its turns happened.
+ *
+ * dagre's crossing reduction reorders a rank however it likes, which is the right thing for a
+ * tangled graph and the wrong thing for a round, which is a tree and has nothing to uncross:
+ * two Bots woken by the same line of yours would swap places from one render to the next.
+ * Putting them back in time order afterwards meant moving whole subtrees sideways, into cards
+ * that were already there. With the reordering off, dagre keeps the depth-first order the cards
+ * went in — children together, oldest on the left — and places them without overlap itself.
+ */
+function layRound(
+  root: string,
+  members: TaskTraceNode[],
+  wakerOf: (node: TaskTraceNode) => string | null,
+  boxes: ReadonlyMap<string, TraceBox>,
+): LaidRound {
+  const graph = new dagre.graphlib.Graph();
+  graph.setGraph({ rankdir: "TB", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: 0, marginy: 0 });
+  graph.setDefaultEdgeLabel(() => ({}));
+  for (const node of members) {
     const box = boxes.get(node.turn_id);
     graph.setNode(node.turn_id, {
       width: box?.width || TRACE_CARD_WIDTH,
       height: box?.height || estimateHeight(node),
     });
   }
-  const links: Array<{ from: string; to: string }> = [];
-  for (const node of trace.nodes) {
-    const from = node.woken_by_turn_id;
-    if (!from || !byId.has(from) || from === node.turn_id) continue;
-    graph.setEdge(from, node.turn_id);
-    links.push({ from, to: node.turn_id });
+  for (const node of members) {
+    const from = wakerOf(node);
+    if (from) graph.setEdge(from, node.turn_id);
   }
-  dagre.layout(graph);
+  dagre.layout(graph, { disableOptimalOrderHeuristic: true });
 
-  const placements: TracePlacement[] = [];
-  for (const node of trace.nodes) {
-    const laid = graph.node(node.turn_id) as { x: number; y: number; width: number; height: number } | undefined;
-    if (!laid) continue;
-    placements.push({
-      node,
-      // dagre centres a node on its point; the DOM positions from the corner.
-      x: Math.round(laid.x - laid.width / 2),
-      y: Math.round(laid.y - laid.height / 2),
-      width: Math.round(laid.width),
-      height: Math.round(laid.height),
-    });
-  }
-  orderSiblingsByTime(placements);
-  const at = new Map(placements.map((placement) => [placement.node.turn_id, placement]));
-  const edges: TraceEdge[] = [];
-  for (const link of links) {
-    const from = at.get(link.from);
-    const to = at.get(link.to);
-    if (!from || !to) continue;
-    edges.push({ ...link, path: edgePath(from, to) });
-  }
-  const size = graph.graph() as { width?: number; height?: number };
+  type Laid = { x: number; y: number; width: number; height: number };
+  const laid = members.map((node) => ({ node, box: graph.node(node.turn_id) as Laid }));
+  // dagre centres every card on its rank; a row of cards reads better sharing a top edge.
+  const rankHeight = new Map<number, number>();
+  for (const { box } of laid) rankHeight.set(box.y, Math.max(rankHeight.get(box.y) ?? 0, box.height));
+  const placements = laid.map(({ node, box }) => ({
+    node,
+    x: box.x - box.width / 2,
+    y: box.y - rankHeight.get(box.y)! / 2,
+    width: Math.round(box.width),
+    height: Math.round(box.height),
+  }));
+  const first = placements.find((placement) => placement.node.turn_id === root) ?? placements[0]!;
   return {
+    root,
     placements,
-    edges,
-    width: Math.round(size.width ?? 0),
-    height: Math.round(size.height ?? 0),
+    anchor: first.x + first.width / 2,
+    minX: Math.min(...placements.map((placement) => placement.x)),
+    maxX: Math.max(...placements.map((placement) => placement.x + placement.width)),
+    height: Math.max(...placements.map((placement) => placement.y + placement.height)),
   };
 }
 
@@ -113,7 +246,8 @@ export function traceFlow(trace: TaskTrace, boxes: ReadonlyMap<string, TraceBox>
  * way, because a card whose size never changes never tells anyone its size again.
  */
 function estimateHeight(node: TaskTraceNode): number {
-  const lines = Math.min(4, Math.ceil((node.summary?.length ?? 0) / 22));
+  // A turn that said nothing shows one short line in place of the summary.
+  const lines = saidNothing(node) ? 1 : Math.min(4, Math.ceil((node.summary?.length ?? 0) / 22));
   const waiting = node.ask || node.approval ? 1 : 0;
   return (
     TRACE_CARD_FALLBACK_HEIGHT +
@@ -123,48 +257,6 @@ function estimateHeight(node: TaskTraceNode): number {
     (node.route ? 32 : 0) +
     (node.artifacts.length > 0 ? 38 : 0)
   );
-}
-
-/**
- * Left to right, in the order the turns happened.
- *
- * dagre picks an order that reduces crossings, which is the right thing to optimise and the wrong
- * thing to read: two Bots woken by the same line of yours would swap places from one render to
- * the next. Only children of the same parent are reordered, and only among the columns dagre
- * already gave them, so nothing new crosses — and moving a card moves everything it woke, or the
- * children end up under a card that did not wake them.
- */
-function orderSiblingsByTime(placements: TracePlacement[]): void {
-  const childrenOf = new Map<string, TracePlacement[]>();
-  for (const placement of placements) {
-    const parent = placement.node.woken_by_turn_id;
-    if (!parent) continue;
-    childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), placement]);
-  }
-  const shift = (placement: TracePlacement, delta: number, seen: Set<string>): void => {
-    if (delta === 0 || seen.has(placement.node.turn_id)) return;
-    seen.add(placement.node.turn_id);
-    placement.x += delta;
-    for (const child of childrenOf.get(placement.node.turn_id) ?? []) shift(child, delta, seen);
-  };
-
-  const groups = new Map<string, TracePlacement[]>();
-  for (const placement of placements) {
-    const key = `${placement.y}|${placement.node.woken_by_turn_id ?? ""}`;
-    groups.set(key, [...(groups.get(key) ?? []), placement]);
-  }
-  // Top down: a rank is reordered only after everything above it has settled.
-  for (const group of [...groups.values()].sort((a, b) => a[0]!.y - b[0]!.y)) {
-    if (group.length < 2) continue;
-    const columns = group.map((placement) => placement.x).sort((a, b) => a - b);
-    const byTime = [...group].sort(
-      (a, b) =>
-        a.node.created_at.localeCompare(b.node.created_at) ||
-        a.node.turn_id.localeCompare(b.node.turn_id),
-    );
-    const moves = byTime.map((placement, index) => ({ placement, delta: columns[index]! - placement.x }));
-    for (const move of moves) shift(move.placement, move.delta, new Set());
-  }
 }
 
 /** Bottom of the waking card to the top of the woken one, bent so a fan-out reads as a fan. */
@@ -223,6 +315,48 @@ export function fitView(
     x: Math.round((viewport.width - board.width * scale) / 2),
     y: Math.round((viewport.height - board.height * scale) / 2),
   };
+}
+
+/** Below this a card's words are too small to read. */
+export const TRACE_READABLE_ZOOM = 0.6;
+
+/**
+ * How a board opens: all of it while all of it can still be read, else its newest round.
+ *
+ * Rounds stack down the board as they happen, so a long job fitted whole is a strip of cards too
+ * small to read — and the round you came to look at is the last one, at the bottom, where the
+ * conversation's newest line is too. The spine stays in the middle when the board is wider than
+ * the viewport, because that is where every round starts.
+ */
+export function openView(
+  board: { width: number; height: number; spine: number },
+  viewport: { width: number; height: number },
+): TraceView {
+  const whole = fitView(board, viewport);
+  if (whole.scale >= TRACE_READABLE_ZOOM) return whole;
+  const scale = clampZoom(Math.max(TRACE_READABLE_ZOOM, Math.min(1, viewport.width / (board.width || 1))));
+  const width = board.width * scale;
+  const height = board.height * scale;
+  return {
+    scale,
+    x: Math.round(width <= viewport.width ? (viewport.width - width) / 2 : viewport.width / 2 - board.spine * scale),
+    y: Math.round(height <= viewport.height ? (viewport.height - height) / 2 : viewport.height - height),
+  };
+}
+
+/**
+ * A Bot's turn that left no line of its own — moved on to a newer message, or finished without
+ * speaking. The daemon then fills its summary with the line that woke it, which on the card read
+ * as the Bot saying what the card above it said.
+ */
+export function saidNothing(node: TaskTraceNode): boolean {
+  return (
+    node.actor !== USER_MEMBER &&
+    node.status !== "running" &&
+    !node.ask &&
+    !node.approval &&
+    node.focus_message_id === node.trigger_message_id
+  );
 }
 
 /** The message a context-menu "show this job" was opened from. */

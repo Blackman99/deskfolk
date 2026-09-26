@@ -45,8 +45,10 @@
 		focusNode,
 		boardViewAge,
 		glideView,
+		openView,
 		rememberBoardView,
 		rememberedBoardView,
+		saidNothing,
 		TRACE_GLIDE_MS,
 		highlightOf,
 		routeHighlightCounts,
@@ -215,16 +217,40 @@
 		return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
 	}
 
+	/** The bottom tools float over the canvas, so fitting aims at what is actually clear. */
+	function clearBox(): { width: number; height: number } {
+		const bottomChrome = viewportEl?.parentElement?.querySelector('.trace-tools')?.clientHeight ?? 0;
+		const box = viewportBox();
+		return { width: box.width - 24, height: Math.max(120, box.height - bottomChrome - 24) };
+	}
+
 	function fitBoard(): void {
 		stopGlide();
 		if (!flow?.width || !viewportEl) return;
-		// The bottom tools float over the canvas, so fitting aims at what is actually clear.
-		const body = viewportEl.parentElement;
-		const bottomChrome = body?.querySelector('.trace-tools')?.clientHeight ?? 0;
-		const box = viewportBox();
-		const clear = { width: box.width - 24, height: Math.max(120, box.height - bottomChrome - 24) };
-		const fitted = fitView(boardBox(), clear);
+		const fitted = fitView(boardBox(), clearBox());
 		view = { ...fitted, y: fitted.y + 12 };
+	}
+
+	/** The view the board opened on, so the cards' measurements can move it while it still is. */
+	let openedView: (TraceView & { job: string }) | null = null;
+
+	/** Whole when the whole board can be read; otherwise on its newest round, at the bottom. */
+	function openBoard(): void {
+		stopGlide();
+		if (!flow?.width || !viewportEl || !currentId) return;
+		const opened = openView(flow, clearBox());
+		view = { ...opened, y: opened.y + 12 };
+		openedView = { ...view, job: currentId };
+	}
+
+	/**
+	 * Still on the view it opened on. The first paint lays the board out from estimated heights and
+	 * the measured ones land a frame later, taller or shorter, which moves the bottom it opened on.
+	 * Any pan, zoom, fit or slide is a different view, and from then on the view is yours.
+	 */
+	function stillOpened(): boolean {
+		const at = openedView;
+		return !!at && at.job === currentId && at.x === view.x && at.y === view.y && at.scale === view.scale;
 	}
 
 	/**
@@ -480,13 +506,19 @@
 			if (placedFocus !== token) return;
 			if (!centred) {
 				fitted = id;
-				fitBoard();
+				untrack(() => openBoard());
 				return;
 			}
 		}
-		if (fitted === id) return;
+		if (fitted === id) {
+			// Reading the view here would re-run this on every pan; it is only compared, once per layout.
+			untrack(() => {
+				if (stillOpened()) openBoard();
+			});
+			return;
+		}
 		fitted = id;
-		if (!(asked && placedFocus === token)) fitBoard();
+		if (!(asked && placedFocus === token)) untrack(() => openBoard());
 	});
 
 	/** A pane is often zero-sized for the first frame; the move waits until it has a box. */
@@ -913,7 +945,10 @@
 			{#if from}
 				<span class="trace-woken">{t.trace.wokenBy(from)}</span>
 			{/if}
-			{#if node.summary}
+			{#if saidNothing(node)}
+				<!-- Its summary would be the line that woke it, read as the Bot saying it. -->
+				<span class="trace-silent">{t.trace.silent}</span>
+			{:else if node.summary}
 				<span class="trace-summary">{node.summary}</span>
 			{/if}
 			{#if node.ask}
@@ -1999,6 +2034,7 @@
 	.trace-wait,
 	.trace-woken,
 	.trace-passed,
+	.trace-silent,
 	.trace-place {
 		font-size: 12px;
 		line-height: 1.45;
@@ -2008,7 +2044,8 @@
 
 	.trace-place,
 	.trace-woken,
-	.trace-passed {
+	.trace-passed,
+	.trace-silent {
 		font-size: 11px;
 		color: var(--muted);
 	}
