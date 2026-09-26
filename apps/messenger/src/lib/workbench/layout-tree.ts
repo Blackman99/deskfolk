@@ -15,6 +15,7 @@ import type {
   LeafNode,
   NodeId,
   NodePath,
+  TabCloseScope,
   TabId,
   WorkbenchLayout,
   WorkbenchTab,
@@ -287,6 +288,47 @@ export function closeTab(
   if (leaf.tabs.length === 1) return closeLeaf(layout, leafId, fallbackId);
   const tabs = leaf.tabs.filter((tab) => tab.id !== tabId);
   const activeTabId = leaf.activeTabId === tabId ? pickActiveAfterClose(tabs, index) : leaf.activeTabId;
+  return mapLeaf(layout, leafId, (current) => ({ ...current, tabs, activeTabId }));
+}
+
+/** The tabs a close from `tabId`'s menu takes away, in strip order. */
+export function tabsClosedBy(leaf: LeafNode, tabId: TabId, scope: TabCloseScope): TabId[] {
+  const index = leaf.tabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return [];
+  const ids = leaf.tabs.map((tab) => tab.id);
+  switch (scope) {
+    case "tab":
+      return [tabId];
+    case "others":
+      return ids.filter((id) => id !== tabId);
+    case "right":
+      return ids.slice(index + 1);
+    case "all":
+      return ids;
+  }
+}
+
+/**
+ * Close several of one pane's tabs at once, ending where closing them one by one would: the
+ * active tab stays if it is kept, else the nearest kept one to its right, else to its left, and
+ * closing every tab closes the pane.
+ */
+export function closeTabs(
+  layout: WorkbenchLayout,
+  leafId: NodeId,
+  tabIds: readonly TabId[],
+  fallbackId: NodeId,
+): WorkbenchLayout {
+  const leaf = leafById(layout, leafId);
+  if (!leaf) return layout;
+  const closing = new Set(tabIds);
+  const tabs = leaf.tabs.filter((tab) => !closing.has(tab.id));
+  if (tabs.length === leaf.tabs.length) return layout;
+  if (tabs.length === 0) return closeLeaf(layout, leafId, fallbackId);
+  const activeIndex = leaf.tabs.findIndex((tab) => tab.id === leaf.activeTabId);
+  const activeKept = activeIndex >= 0 && !closing.has(leaf.activeTabId!);
+  const keptBefore = leaf.tabs.slice(0, Math.max(0, activeIndex)).filter((tab) => !closing.has(tab.id)).length;
+  const activeTabId = activeKept ? leaf.activeTabId : pickActiveAfterClose(tabs, keptBefore);
   return mapLeaf(layout, leafId, (current) => ({ ...current, tabs, activeTabId }));
 }
 

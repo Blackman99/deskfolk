@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Axis, TabAction } from './layout-types.ts';
+	import type { Axis, TabAction, TabCloseScope, TabClosing } from './layout-types.ts';
 	import type { Direction } from './layout-geometry.ts';
 	import type { Copy } from '../copy.ts';
 	import { computeContextMenuPosition } from '../sidebar/session-context-menu.ts';
@@ -14,6 +14,8 @@
 		label?: string;
 		/** What the tab under the pointer offers, above everything else. */
 		actions?: TabAction[];
+		/** Closing from the tab under the pointer: it, the others, those to its right, all of them. */
+		closeTabs?: TabClosing | null;
 		/** Whether the window has room for one more pane across (`row`) and down (`column`). */
 		fits?: Record<Axis, boolean>;
 		/** A floating pane is not split in place: it is docked first, which this menu offers. */
@@ -23,7 +25,7 @@
 		 * paste — a terminal. `canCopy` is read once, at the right-click.
 		 */
 		edit?: { canCopy: boolean; onCopy: () => void; onPaste: () => void } | null;
-		/** Left out, the menu offers no splits: a tab's ⋯ holds only what the tab offers. */
+		/** Left out, the menu offers no splits: a tab's ⋯ holds only what the tab offers and its closing. */
 		onSplit?: (dir: Direction) => void;
 		onDock?: () => void;
 		onClosePane?: () => void;
@@ -42,6 +44,7 @@
 		t,
 		label,
 		actions = [],
+		closeTabs = null,
 		fits = { row: false, column: false },
 		floating = false,
 		edit = null,
@@ -59,6 +62,31 @@
 		{ dir: 'left', label: t.pane.splitLeft },
 		{ dir: 'right', label: t.pane.splitRight, keys: '⌘\\' }
 	]);
+
+	const closeItems = $derived<{ scope: TabCloseScope; label: string }[]>([
+		{ scope: 'tab', label: t.pane.closeTab },
+		{ scope: 'others', label: t.pane.closeOtherTabs },
+		{ scope: 'right', label: t.pane.closeTabsRight },
+		{ scope: 'all', label: t.pane.closeAllTabs }
+	]);
+
+	/**
+	 * The picture is a strip of three tabs, the middle one the tab the menu is for; the solid ones
+	 * are those that close. A faint fill, like the splits', could not be told apart at 14px.
+	 */
+	function closesSlot(scope: TabCloseScope, slot: number): boolean {
+		if (scope === 'tab') return slot === 1;
+		if (scope === 'others') return slot !== 1;
+		if (scope === 'right') return slot === 2;
+		return true;
+	}
+
+	/** "Others" and "to the right" stay in the list when there is nothing there, dimmed. */
+	function closeDisabled(closing: TabClosing, scope: TabCloseScope): boolean {
+		if (scope === 'others') return !closing.others;
+		if (scope === 'right') return !closing.right;
+		return false;
+	}
 
 	let menuEl = $state<HTMLDivElement>();
 	let placed = $state<{ x: number; y: number } | null>(null);
@@ -183,7 +211,35 @@
 			<span class="wb-context-label">{action.label}</span>
 		</button>
 	{/each}
-	{#if actions.length > 0 && (edit || onSplit)}
+	{#if closeTabs}
+		{@const closing = closeTabs}
+		{#if actions.length > 0}
+			<div class="wb-context-divider" role="separator"></div>
+		{/if}
+		{#each closeItems as item (item.scope)}
+			<button
+				type="button"
+				class="wb-context-item"
+				role="menuitem"
+				data-close-tabs={item.scope}
+				disabled={closeDisabled(closing, item.scope)}
+				onclick={() => pick(() => closing.onClose(item.scope))}
+			>
+				<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					{#each [2.9, 9.9, 16.9] as left, slot (slot)}
+						{@const closes = closesSlot(item.scope, slot)}
+						<path
+							d={`M${left} 19V8.4a1.5 1.5 0 0 1 1.5-1.5h1.2a1.5 1.5 0 0 1 1.5 1.5V19${closes ? 'z' : ''}`}
+							fill={closes ? 'currentColor' : 'none'}
+						></path>
+					{/each}
+					<path d="M1.5 19h21"></path>
+				</svg>
+				<span class="wb-context-label">{item.label}</span>
+			</button>
+		{/each}
+	{/if}
+	{#if (actions.length > 0 || closeTabs) && (edit || onSplit)}
 		<div class="wb-context-divider" role="separator"></div>
 	{/if}
 	{#if edit}
@@ -260,7 +316,7 @@
 	{/if}
 	{#if onClosePane}
 		{@const closePane = onClosePane}
-		{#if actions.length > 0 || edit || onSplit || (floating && onDock)}
+		{#if actions.length > 0 || closeTabs || edit || onSplit || (floating && onDock)}
 			<div class="wb-context-divider" role="separator"></div>
 		{/if}
 		<button type="button" class="wb-context-item" role="menuitem" data-close-pane onclick={() => pick(closePane)}>

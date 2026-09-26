@@ -1828,6 +1828,43 @@ test('closing a pane from its context menu persists the layout and keeps its ter
   expect(runtime.calls.filter((call) => call.name === 'startTerminal')).toHaveLength(0);
 });
 
+test('a tab\'s right-click closes the tabs to its right, then the others, and the layout is saved', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('only', [
+      { id: 'workspace-tab', kind: 'workspace', params: {} },
+      { id: 'chat-tab', kind: 'chat', params: { sessionId: 'direct-1' } },
+      { id: 'terminal-tab', kind: 'terminal', params: { terminalId: 'term-kept', cwd: '/fixture' } },
+    ]),
+    floating: [], focus: { zone: 'tiled', leafId: 'only' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: 'direct-1' }));
+  runtime.terminals = [aTerminal('term-kept', '2026-09-23T01:00:00.000Z')];
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(() => { close(); localStorage.removeItem('real-bot-workbench-layout'); });
+  await settle();
+  const rightClickTab = (id: string) => {
+    host.querySelector(`[data-tab="${id}"] [role="tab"]`)!.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true, cancelable: true, button: 2, clientX: 50, clientY: 20,
+    }));
+    flushSync();
+  };
+  rightClickTab('chat-tab');
+  click(document.querySelector('[data-close-tabs="right"]'));
+  await settle();
+  expect(storedTabs().map((tab) => tab.kind)).toEqual(['workspace', 'chat']);
+  // Its shell is still there to reattach, as when the tab is closed on its own.
+  expect(runtime.terminals.map((row) => row.id)).toEqual(['term-kept']);
+  rightClickTab('chat-tab');
+  click(document.querySelector('[data-close-tabs="others"]'));
+  await settle();
+  expect(storedTabs().map((tab) => tab.kind)).toEqual(['chat']);
+  expect(host.querySelectorAll('.wb-leaf')).toHaveLength(1);
+});
+
 test('the session list folds to a rail of avatars from its own button or ⌘B, and is remembered', async () => {
   localStorage.setItem('real-bot-sidebar-width', '320');
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({

@@ -1,6 +1,15 @@
 <script lang="ts">
 	import { flushSync, type Snippet } from 'svelte';
-	import { WB_SASH_PX, type MinSizeLookup, type Rect, type TabAction, type WorkbenchLayout, type WorkbenchTab } from './layout-types.ts';
+	import {
+		WB_SASH_PX,
+		type MinSizeLookup,
+		type Rect,
+		type TabAction,
+		type TabCloseScope,
+		type TabClosing,
+		type WorkbenchLayout,
+		type WorkbenchTab
+	} from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { canSplit, computeGeometry, type Direction, type LayoutGeometry } from './layout-geometry.ts';
 	import {
@@ -12,7 +21,18 @@
 		type JunctionDrag,
 		type SashDrag
 	} from './layout-resize.ts';
-	import { closeLeaf, findPath, focusLeaf, nodeAt, setFloatFrame, splitLeaf, tiledLeaves } from './layout-tree.ts';
+	import {
+		closeLeaf,
+		closeTabs,
+		findPath,
+		focusLeaf,
+		leafById,
+		nodeAt,
+		setFloatFrame,
+		splitLeaf,
+		tabsClosedBy,
+		tiledLeaves
+	} from './layout-tree.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
 	import {
 		dropIndicatorRect,
@@ -52,6 +72,11 @@
 		onLayout: (next: WorkbenchLayout) => void;
 		onActivate?: (leafId: string, tabId: string) => void;
 		onCloseTab?: (leafId: string, tabId: string) => void;
+		/**
+		 * Several of one pane's tabs at once, from a tab's menu: the others, those to its right, all
+		 * of them. Left out, the workbench closes them in the layout itself.
+		 */
+		onCloseTabs?: (leafId: string, tabIds: string[]) => void;
 		onClosePane?: (leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
@@ -72,6 +97,7 @@
 		onLayout,
 		onActivate,
 		onCloseTab,
+		onCloseTabs,
 		onClosePane,
 		onMenu,
 		emptyActions,
@@ -540,6 +566,30 @@
 		else onLayout(closeLeaf(layout, leafId, freshId()));
 	}
 
+	/** A close from a tab's menu. The tab alone goes the way its × does. */
+	function closeFrom(leafId: string, tabId: string, scope: TabCloseScope): void {
+		if (scope === 'tab') {
+			onCloseTab?.(leafId, tabId);
+			return;
+		}
+		const leaf = leafById(layout, leafId);
+		const ids = leaf ? tabsClosedBy(leaf, tabId, scope) : [];
+		if (ids.length === 0) return;
+		if (onCloseTabs) onCloseTabs(leafId, ids);
+		else onLayout(closeTabs(layout, leafId, ids, freshId()));
+	}
+
+	/** What a tab's menu — its ⋯, a right-click on it — offers to close. Nothing off a tab. */
+	function closingOf(leafId: string, tabId: string | null): TabClosing | null {
+		const leaf = tabId ? leafById(layout, leafId) : null;
+		if (!leaf || !tabId || !leaf.tabs.some((tab) => tab.id === tabId)) return null;
+		return {
+			others: tabsClosedBy(leaf, tabId, 'others').length > 0,
+			right: tabsClosedBy(leaf, tabId, 'right').length > 0,
+			onClose: (scope) => closeFrom(leafId, tabId, scope)
+		};
+	}
+
 	/** A pane that goes away — closed, docked, healed — takes its menu with it. */
 	$effect(() => {
 		const open = paneMenu;
@@ -580,6 +630,7 @@
 				onFocus={focus}
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+				tabClosing={closingOf}
 				onClosePane={closePane}
 				{onMenu}
 				{emptyActions}
@@ -599,6 +650,7 @@
 			onFocus={focus}
 			onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+			tabClosing={closingOf}
 			onClosePane={closePane}
 			onSashPointerDown={startSash}
 			{draggingSash}
@@ -630,6 +682,7 @@
 				onFocus={focus}
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
+				tabClosing={closingOf}
 				onClosePane={closePane}
 				{draggedTab}
 				onTabPointerDown={(event, leafId, tabId) =>
@@ -687,6 +740,7 @@
 					y={open.y}
 					{t}
 					actions={actionsOf(open.leafId, open.tabId)}
+					closeTabs={closingOf(open.leafId, open.tabId)}
 					fits={fitsFor(open.leafId)}
 					floating={paneMenuFloating}
 					edit={open.edit ? { canCopy: open.canCopy, onCopy: open.edit.copy, onPaste: open.edit.paste } : null}

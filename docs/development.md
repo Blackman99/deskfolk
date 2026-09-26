@@ -103,6 +103,8 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 空窗格右上角的 × 与窗格右键菜单的「关闭窗格」共用 `Workbench.onClosePane`，由 `Shell.onPaneClose` 检查当前窗格的工作区和产物预览是否有未保存编辑，确认后调用 `closeLeaf` 并持久化布局。原生菜单的关闭窗格命令也经过同一入口。关闭会移走整块窗格及其标签，终端仍由守护进程持有；最后一块平铺窗格关闭后保留一个空窗格。`trackTemplate` 的最小轨道使用 CSS `min` / `calc`，窗口小于内容最小尺寸之和时按最小尺寸比例收缩，与 `allocate` 一致，保持边缘关闭按钮可见。回归见 `workbench/pane-close.test.ts` 与 `layout-geometry.test.ts`。
 
+标签的菜单（右键标签、会话标签的 ⋯）在标签自己的操作下面列出「关闭标签页 / 其他 / 右侧 / 所有」，由 `PaneContextMenu` 的 `closeTabs` 画、`Workbench.closingOf` 给出哪几项可用。单关一个走 `onCloseTab`，和标签上的 × 一样；其余由 `layout-tree.ts` 的 `tabsClosedBy` 算出要关的标签，交给宿主的 `onCloseTabs(leafId, tabIds)`，没给就在布局里直接 `closeTabs`。`closeTabs` 的结果和一个个关相同：留下的标签里有原来的当前标签就不动，否则取它右边最近的、再取左边的；全关掉就是 `closeLeaf`。`Shell.onPaneCloseTabs` 和 `onPaneClose` 一样先问要关的工作区和产物预览有没有未保存编辑。回归见 `workbench/layout-tree.test.ts`、`PaneContextMenu.test.ts` 与 `Shell.test.ts`。
+
 ## 日程编辑与版本
 
 日程搜索同时检查快照日程与当前 Bot 名册。软删除 Bot 保留历史日程，结果标为不可用而不是静默关闭。资料导航序号覆盖后来日程/资料、会话设置、关闭和 URL 浮层变化，较早详情返回不能重开旧编辑器或丢弃新草稿。

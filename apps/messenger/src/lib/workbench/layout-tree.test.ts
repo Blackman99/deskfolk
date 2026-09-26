@@ -6,6 +6,7 @@ import {
   assertInvariants,
   closeLeaf,
   closeTab,
+  closeTabs,
   emptyLayout,
   findPath,
   floatLeaf,
@@ -19,6 +20,7 @@ import {
   renormalise,
   reorderTab,
   splitLeaf,
+  tabsClosedBy,
   tiledLeaves,
 } from "./layout-tree.ts";
 
@@ -180,6 +182,62 @@ test("closing the only tab closes the pane", () => {
   assertInvariants(next);
 });
 
+test("a tab's menu closes it, the others, those to its right, or all of them", () => {
+  const leaf = makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3"), aTab("t4")]);
+  expect(tabsClosedBy(leaf, "t2", "tab")).toEqual(["t2"]);
+  expect(tabsClosedBy(leaf, "t2", "others")).toEqual(["t1", "t3", "t4"]);
+  expect(tabsClosedBy(leaf, "t2", "right")).toEqual(["t3", "t4"]);
+  expect(tabsClosedBy(leaf, "t4", "right")).toEqual([]);
+  expect(tabsClosedBy(leaf, "t2", "all")).toEqual(["t1", "t2", "t3", "t4"]);
+  expect(tabsClosedBy(leaf, "gone", "others")).toEqual([]);
+});
+
+test("closing several tabs keeps the active one when it stays", () => {
+  const layout = activateTab(layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3"), aTab("t4")])), "a", "t2");
+  const next = closeTabs(layout, "a", ["t3", "t4"], "fresh");
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.id)).toEqual(["t1", "t2"]);
+  expect(leafById(next, "a")!.activeTabId).toBe("t2");
+  assertInvariants(next);
+});
+
+test("closing several tabs lands where closing them one by one would", () => {
+  const tabs = [aTab("t1"), aTab("t2"), aTab("t3"), aTab("t4"), aTab("t5")];
+  const layout = activateTab(layoutOf(makeLeaf("a", tabs)), "a", "t3");
+  const oneByOne = (ids: string[]) => ids.reduce((current, id) => closeTab(current, "a", id, "fresh"), layout);
+  for (const ids of [["t3", "t4"], ["t2", "t3"], ["t3", "t4", "t5"], ["t1", "t3", "t5"]]) {
+    const next = closeTabs(layout, "a", ids, "fresh");
+    expect(leafById(next, "a")!.activeTabId).toBe(leafById(oneByOne(ids), "a")!.activeTabId);
+    assertInvariants(next);
+  }
+  // Everything to the right of the tab gone, the active among them: the tab itself comes forward.
+  const right = closeTabs(activateTab(layout, "a", "t5"), "a", ["t3", "t4", "t5"], "fresh");
+  expect(leafById(right, "a")!.activeTabId).toBe("t2");
+});
+
+test("closing every tab closes the pane, and closing none changes nothing", () => {
+  const root = makeBranch("br", "row", [makeLeaf("a", [aTab("t1"), aTab("t2")]), makeLeaf("b", [aTab("t3")])]);
+  const layout = layoutOf(root, "a");
+  const next = closeTabs(layout, "a", ["t1", "t2"], "fresh");
+  expect(tiledLeaves(next.root).map((leaf) => leaf.id)).toEqual(["b"]);
+  expect(next.focus.leafId).toBe("b");
+  assertInvariants(next);
+  expect(closeTabs(layout, "a", [], "fresh")).toBe(layout);
+  expect(closeTabs(layout, "a", ["t3"], "fresh")).toBe(layout);
+  expect(closeTabs(layout, "gone", ["t1"], "fresh")).toBe(layout);
+});
+
+test("closing several tabs works on a floating pane too", () => {
+  const floater = makeLeaf("f", [aTab("t1"), aTab("t2"), aTab("t3")]);
+  const layout: WorkbenchLayout = {
+    ...layoutOf(makeLeaf("a", [aTab("t0")])),
+    floating: [{ leaf: floater, frame: { x: 10, y: 10, width: 300, height: 200 } }],
+  };
+  const next = closeTabs(layout, "f", ["t1", "t3"], "fresh");
+  expect(next.floating[0]!.leaf.tabs.map((tab) => tab.id)).toEqual(["t2"]);
+  expect(next.floating[0]!.leaf.activeTabId).toBe("t2");
+  assertInvariants(next);
+});
+
 test("reordering moves a tab and clamps a target past the end", () => {
   const layout = layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3")]));
   expect(leafById(reorderTab(layout, "a", "t1", 2), "a")!.tabs.map((tab) => tab.id)).toEqual(["t2", "t3", "t1"]);
@@ -263,9 +321,13 @@ test("a long run of random operations never breaks an invariant", () => {
         [aTab(`tab${++counter}`)], { leaf: nextId(), branch: nextId() });
     } else if (roll < 0.5) {
       layout = addTab(layout, target.id, aTab(`tab${++counter}`));
-    } else if (roll < 0.65) {
+    } else if (roll < 0.6) {
       const tab = target.tabs.length ? pick(target.tabs) : null;
       if (tab) layout = closeTab(layout, target.id, tab.id, nextId());
+    } else if (roll < 0.65) {
+      const tab = target.tabs.length ? pick(target.tabs) : null;
+      const scope = pick(["others", "right", "all"] as const);
+      if (tab) layout = closeTabs(layout, target.id, tabsClosedBy(target, tab.id, scope), nextId());
     } else if (roll < 0.78) {
       layout = closeLeaf(layout, target.id, nextId());
     } else if (roll < 0.88) {

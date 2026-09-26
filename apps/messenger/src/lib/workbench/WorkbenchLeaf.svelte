@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { LeafNode, TabAction, WorkbenchTab } from './layout-types.ts';
+	import type { LeafNode, TabAction, TabClosing, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import PaneContextMenu from './PaneContextMenu.svelte';
 
@@ -19,6 +19,8 @@
 		onFocus: (leafId: string) => void;
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
+		/** What a tab's ⋯ offers to close: it, the others, those to its right, all of them. */
+		tabClosing?: (leafId: string, tabId: string) => TabClosing | null;
 		onClosePane?: (leafId: string) => void;
 		/** The tab being dragged right now, if it is one of these. It stays put, faded. */
 		draggedTab?: string | null;
@@ -49,6 +51,7 @@
 		onFocus,
 		onActivate,
 		onCloseTab,
+		tabClosing,
 		onClosePane,
 		draggedTab = null,
 		onTabPointerDown,
@@ -444,6 +447,7 @@
 			{t}
 			label={t.pane.tabActions}
 			actions={tabActions(leaf.id, moreTab)}
+			closeTabs={tabClosing?.(leaf.id, moreTab.id) ?? null}
 			anchor={open.anchor}
 			onClose={() => (more = null)}
 		/>

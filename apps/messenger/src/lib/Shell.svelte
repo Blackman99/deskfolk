@@ -119,6 +119,7 @@
 	import { allLeaves, emptyLayout as freshLayout } from './workbench/layout-tree.ts';
 	import {
 		closeTab as closeWorkbenchTab,
+		closeTabs as closeWorkbenchTabs,
 		closeLeaf as closeWorkbenchPane,
 		activateTab,
 		emptyLayout,
@@ -774,6 +775,20 @@
 
 	function onPaneCloseTab(leafId: string, tabId: string): void {
 		commitLayout(closeWorkbenchTab(layout, leafId, tabId, freshPaneId()));
+	}
+
+	/** Close others, to the right, all: asked about first, like closing the pane, when one holds an unsaved edit. */
+	function onPaneCloseTabs(leafId: string, tabIds: string[]): void {
+		const leaf = leafById(layout, leafId);
+		if (!leaf) return;
+		const blocked = leaf.tabs.find((tab) => tabIds.includes(tab.id) && previewPanes.get(tab.id)?.blocksClose());
+		if (blocked) {
+			const pane = previewPanes.get(blocked.id)!;
+			commitLayout(activateTab(focusLeaf(layout, leafId), leafId, blocked.id));
+			pane.requestLeaveFromParent(() => onPaneCloseTabs(leafId, tabIds));
+			return;
+		}
+		commitLayout(closeWorkbenchTabs(layout, leafId, tabIds, freshPaneId()));
 	}
 
 	/** URL restores and browser Back use the same singleton tab as the sidebar. */
@@ -1924,6 +1939,7 @@
 				onLayout={commitLayout}
 				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
 				onCloseTab={onPaneCloseTab}
+				onCloseTabs={onPaneCloseTabs}
 				onClosePane={onPaneClose}
 			>
 				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}

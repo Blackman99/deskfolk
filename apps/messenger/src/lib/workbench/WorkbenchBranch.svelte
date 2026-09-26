@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { LayoutNode, MinSizeLookup, TabAction, WorkbenchTab } from './layout-types.ts';
+	import type { LayoutNode, MinSizeLookup, TabAction, TabClosing, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { minSize, trackTemplate } from './layout-geometry.ts';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
@@ -18,6 +18,7 @@
 		onFocus: (leafId: string) => void;
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
+		tabClosing?: (leafId: string, tabId: string) => TabClosing | null;
 		onClosePane?: (leafId: string) => void;
 		onSashPointerDown: (event: PointerEvent, sashId: string) => void;
 		/** The divider being dragged right now, so it keeps the accent while the pointer is down. */
@@ -59,6 +60,7 @@
 		onFocus={rest.onFocus}
 		onActivate={rest.onActivate}
 		onCloseTab={rest.onCloseTab}
+		tabClosing={rest.tabClosing}
 		onClosePane={rest.onClosePane}
 		draggedTab={rest.draggedTab}
 		onTabPointerDown={rest.onTabPointerDown}
@@ -105,6 +107,7 @@
 				onFocus={rest.onFocus}
 				onActivate={rest.onActivate}
 				onCloseTab={rest.onCloseTab}
+				tabClosing={rest.tabClosing}
 				onClosePane={rest.onClosePane}
 				onSashPointerDown={rest.onSashPointerDown}
 				draggingSash={rest.draggingSash}

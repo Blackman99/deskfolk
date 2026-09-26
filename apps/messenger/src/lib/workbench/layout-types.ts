@@ -40,6 +40,12 @@ export type TabAction = {
   run: () => void;
 };
 
+/** Which of a pane's tabs a close from one tab's menu takes: it, the others, those to its right, all. */
+export type TabCloseScope = "tab" | "others" | "right" | "all";
+
+/** What a tab's menu offers to close. `others` and `right` say whether there is anything there. */
+export type TabClosing = { others: boolean; right: boolean; onClose: (scope: TabCloseScope) => void };
+
 /** A pane: one tab strip and whichever tab is active under it. */
 export type LeafNode = {
   id: NodeId;

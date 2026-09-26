@@ -5,7 +5,7 @@ import { copyFor } from "../copy.ts";
 import { click, press, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import type { LayoutNode, MinSizeLookup, TabAction, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
-import { makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
+import { activateTab, makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 import { registerPaneEdit } from "./pane-edit.ts";
 
 const t = copyFor("zh");
@@ -36,6 +36,7 @@ function mountSized(
   size = { width: 1200, height: 800 },
   body = tabBody,
   tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[],
+  extra: Record<string, unknown> = {},
 ) {
   const state = reactive({ layout, seen: [] as WorkbenchLayout[] });
   const mounted = render(Workbench as never, {
@@ -52,6 +53,7 @@ function mountSized(
     },
     onActivate: () => {},
     onCloseTab: () => {},
+    ...extra,
   } as never);
   const root = mounted.host.querySelector(".wb-root") as HTMLElement;
   root.getBoundingClientRect = () => box(size.width, size.height);
@@ -384,6 +386,11 @@ test("arrow keys walk the directions that can be picked", async () => {
   }
 });
 
+const closeLabels = [t.pane.closeTab, t.pane.closeOtherTabs, t.pane.closeTabsRight, t.pane.closeAllTabs];
+const closeItem = (scope: string) => menu()?.querySelector<HTMLButtonElement>(`[data-close-tabs="${scope}"]`) ?? null;
+const tabIds = (layout: WorkbenchLayout, leafId: string) =>
+  tiledLeaves(layout.root).find((leaf) => leaf.id === leafId)?.tabs.map((tab) => tab.id);
+
 /** What a host hands the workbench for a tab: here, one action on the first tab only. */
 function offering(ran: string[]) {
   return (leafId: string, tab: WorkbenchTab): TabAction[] =>
@@ -397,28 +404,37 @@ test("right-clicking a tab puts what it offers above the splits", () => {
   try {
     rightClick(host.querySelector('[data-tab="t1"] [role="tab"]'));
     const rows = [...menu()!.querySelectorAll('[role="menuitem"]')];
-    expect(rows.map((row) => row.querySelector(".wb-context-label")?.textContent))
-      .toEqual(["设置", t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.close]);
+    expect(rows.map((row) => row.querySelector(".wb-context-label")?.textContent)).toEqual([
+      "设置",
+      ...closeLabels,
+      t.pane.splitUp,
+      t.pane.splitDown,
+      t.pane.splitLeft,
+      t.pane.splitRight,
+      t.pane.close,
+    ]);
     expect(rows[0]!.classList.contains("is-active")).toBe(true);
-    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(2);
+    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(3);
     click(menu()!.querySelector('[data-action="settings"]'));
     expect(ran).toEqual(["a/t1"]);
     expect(menu()).toBeNull();
 
-    // A tab with nothing to offer, and the strip beside the tabs, keep the plain menu.
+    // A tab with nothing to offer still closes; the body beside it keeps the plain menu.
     rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
     expect(menu()!.querySelector("[data-action]")).toBeNull();
-    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(5);
+    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(9);
     press(item("up"), "Escape");
     rightClick(host.querySelector('[data-body="t1"]'));
     expect(menu()!.querySelector("[data-action]")).toBeNull();
+    expect(menu()!.querySelector("[data-close-tabs]")).toBeNull();
+    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(5);
     press(item("up"), "Escape");
   } finally {
     close();
   }
 });
 
-test("a tab's ⋯ holds only what the tab offers, and a second press on it closes it", async () => {
+test("a tab's ⋯ holds what the tab offers and its closing, never the splits; a second press closes it", async () => {
   const ran: string[] = [];
   const { host, close } = mountSized(
     layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2")])), undefined, undefined, offering(ran));
@@ -434,9 +450,11 @@ test("a tab's ⋯ holds only what the tab offers, and a second press on it close
     expect(more!.getAttribute("aria-expanded")).toBe("true");
     expect(menu()?.parentElement).toBe(document.body);
     expect(menu()!.getAttribute("aria-label")).toBe(t.pane.tabActions);
-    expect([...menu()!.querySelectorAll('[role="menuitem"]')].map((row) => row.getAttribute("data-action")))
-      .toEqual(["settings"]);
-    expect(menu()!.querySelector('[role="separator"]')).toBeNull();
+    const rows = [...menu()!.querySelectorAll('[role="menuitem"]')];
+    expect(rows.map((row) => row.getAttribute("data-action") ?? row.getAttribute("data-close-tabs")))
+      .toEqual(["settings", "tab", "others", "right", "all"]);
+    expect(menu()!.querySelector("[data-split]")).toBeNull();
+    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(1);
 
     // The press that lands on the ⋯ is the ⋯'s: it closes, rather than closing and reopening.
     more!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
@@ -454,6 +472,86 @@ test("a tab's ⋯ holds only what the tab offers, and a second press on it close
     click(menu()!.querySelector('[data-action="settings"]'));
     expect(ran).toEqual(["a/t1"]);
     expect(menu()).toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("right-clicking a tab closes the others, those to its right, or all of them", () => {
+  const four = () => makeLeaf("a", ["t1", "t2", "t3", "t4"].map(aTab));
+  const { host, state, close } = mountSized(layoutOf(makeBranch("br", "row", [four(), makeLeaf("b", [aTab("t9")])])));
+  try {
+    rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
+    click(closeItem("right"));
+    expect(menu()).toBeNull();
+    expect(tabIds(state.layout, "a")).toEqual(["t1", "t2"]);
+
+    rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
+    // Nothing to its right any more: offered, but dimmed and skipped by the arrow keys.
+    expect(closeItem("right")!.disabled).toBe(true);
+    expect(closeItem("others")!.disabled).toBe(false);
+    click(closeItem("others"));
+    const leaf = tiledLeaves(state.layout.root).find((candidate) => candidate.id === "a")!;
+    expect(leaf.tabs.map((tab) => tab.id)).toEqual(["t2"]);
+    expect(leaf.activeTabId).toBe("t2");
+
+    rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
+    expect(closeItem("others")!.disabled).toBe(true);
+    expect(closeItem("all")!.disabled).toBe(false);
+    click(closeItem("all"));
+    // All of a pane's tabs gone is the pane gone, as when its last tab is closed.
+    expect(tiledLeaves(state.layout.root).map((candidate) => candidate.id)).toEqual(["b"]);
+  } finally {
+    close();
+  }
+});
+
+test("a host that closes tabs itself is handed which, and closing the one tab goes the way its × does", () => {
+  const closedTabs: string[][] = [];
+  const closedOne: string[] = [];
+  const { host, state, close } = mountSized(
+    layoutOf(makeLeaf("a", ["t1", "t2", "t3"].map(aTab))),
+    undefined,
+    undefined,
+    undefined,
+    {
+      onCloseTab: (leafId: string, tabId: string) => closedOne.push(`${leafId}/${tabId}`),
+      onCloseTabs: (leafId: string, ids: string[]) => closedTabs.push([leafId, ...ids]),
+    },
+  );
+  try {
+    const before = state.layout;
+    rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
+    click(closeItem("others"));
+    rightClick(host.querySelector('[data-tab="t1"] [role="tab"]'));
+    click(closeItem("right"));
+    rightClick(host.querySelector('[data-tab="t3"] [role="tab"]'));
+    click(closeItem("all"));
+    rightClick(host.querySelector('[data-tab="t3"] [role="tab"]'));
+    click(closeItem("tab"));
+    expect(closedTabs).toEqual([["a", "t1", "t3"], ["a", "t2", "t3"], ["a", "t1", "t2", "t3"]]);
+    expect(closedOne).toEqual(["a/t3"]);
+    // The host decides; the workbench does not also close them.
+    expect(state.layout).toBe(before);
+  } finally {
+    close();
+  }
+});
+
+test("a tab's ⋯ closes from its own tab, not the active one", () => {
+  const ran: string[] = [];
+  const { host, state, close } = mountSized(
+    activateTab(layoutOf(makeLeaf("a", ["t1", "t2", "t3"].map(aTab))), "a", "t3"), undefined, undefined, offering(ran));
+  try {
+    // Only t1 offers anything, so only t1 has a ⋯; t3 is the one in front.
+    click(host.querySelector('[data-tab="t1"] > .wb-tab-more'));
+    expect(closeItem("right")!.disabled).toBe(false);
+    click(closeItem("right"));
+    expect(menu()).toBeNull();
+    const leaf = tiledLeaves(state.layout.root)[0]!;
+    expect(leaf.tabs.map((tab) => tab.id)).toEqual(["t1"]);
+    expect(leaf.activeTabId).toBe("t1");
+    expect(ran).toEqual([]);
   } finally {
     close();
   }

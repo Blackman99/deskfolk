@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { flushSync, type Snippet } from 'svelte';
-	import type { FloatFrame, LeafNode, PaneMin, Rect, TabAction, WorkbenchTab } from './layout-types.ts';
+	import type { FloatFrame, LeafNode, PaneMin, Rect, TabAction, TabClosing, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import { moveFrame, resizeFrame, type Corner } from './float-frame.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
@@ -20,6 +20,7 @@
 		onFocus: (leafId: string) => void;
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
+		tabClosing?: (leafId: string, tabId: string) => TabClosing | null;
 		onClosePane?: (leafId: string) => void;
 		/** The tab being dragged right now, wherever it is. */
 		draggedTab?: string | null;
@@ -46,6 +47,7 @@
 		onFocus,
 		onActivate,
 		onCloseTab,
+		tabClosing,
 		onClosePane,
 		draggedTab = null,
 		onTabPointerDown,
@@ -156,6 +158,7 @@
 		{onFocus}
 		{onActivate}
 		{onCloseTab}
+		{tabClosing}
 		{onClosePane}
 		{draggedTab}
 		{onTabPointerDown}
