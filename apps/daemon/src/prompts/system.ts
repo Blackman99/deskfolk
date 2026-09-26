@@ -189,8 +189,8 @@ function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
   const heading = locale === "en" ? "# MCP for this turn" : "# 本轮 MCP";
   const intro =
     locale === "en"
-      ? "These enabled, connected MCP servers are shared by every Bot. All their tools are available in this turn's tools array. Under each server comes the usage note first (written by you or a Bot: what it is for, when to use it, when not to), then the server's own instructions and tool descriptions; the note outranks the server's text. When a skill matches the task, choose tools per its body; otherwise pick from here. Call only tools present in the array."
-      : "这些已启用且连接成功的 MCP 由所有 Bot 共用，全部工具都在本轮 tools 数组里。每台服务器下先是用法备注（你或 Bot 写的：这台用来做什么、何时用、何时不用），再是服务器自带说明和工具说明；备注优先于服务器说明。有匹配的技能时按技能正文选工具，没有再按这里挑。只调用数组中实际存在的工具。";
+      ? "These enabled, connected MCP servers are shared by every Bot. All their tools are available in this turn's tools array. Under each server comes the usage note first (written by you or a Bot: what it is for, when to use it, when not to), then the server's own instructions and tool descriptions; the note outranks the server's text. When a skill matches the task, choose tools per its body; otherwise pick from here. Call only tools present in the array. To hand a picture from the workspace to an argument that takes an image URL or data URI, write `workspace://<path relative to the workspace root>`; the app sends the picture itself (shrunk if large). Never convert a picture to base64 and write it into the arguments yourself."
+      : "这些已启用且连接成功的 MCP 由所有 Bot 共用，全部工具都在本轮 tools 数组里。每台服务器下先是用法备注（你或 Bot 写的：这台用来做什么、何时用、何时不用），再是服务器自带说明和工具说明；备注优先于服务器说明。有匹配的技能时按技能正文选工具，没有再按这里挑。只调用数组中实际存在的工具。要把工作区里的图片交给要图片 URL 或 data URI 的参数，就写 `workspace://<相对工作区根的路径>`，应用会把图片本身发过去（大图先缩小）；不要自己把图片转成 base64 写进参数。";
   const blocks = guides.map((guide) => {
     const title = `## ${guide.name}`;
     const note = guide.usageNote?.trim()

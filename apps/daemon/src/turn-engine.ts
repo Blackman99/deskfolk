@@ -55,6 +55,7 @@ import { parseMentions } from "./mentions";
 import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
 import { checkInNote, lastHopNote, turnPace } from "./turn-pace";
+import { inlineWorkspaceRefs } from "./mcp-workspace-refs";
 import { createOrganizer } from "./organizer";
 import {
   builtinTools,
@@ -1670,7 +1671,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (!mcp) {
       return { ok: false, error: { code: "failed", message: `unknown tool: ${name}` }, emitted: [] };
     }
-    const called = await mcp.call(name, args, live.abort.signal);
+    // A `workspace://` picture goes out as its data URI; the call the model sees keeps the reference.
+    const outgoing = inlineWorkspaceRefs(args, store.workspacePath());
+    if (!outgoing.ok) {
+      return { ok: false, error: { code: "invalid_args", message: outgoing.message }, emitted: [] };
+    }
+    const called = await mcp.call(name, outgoing.args, live.abort.signal);
     if (called.ok) return { ok: true, data: called.data, emitted: [] };
     return { ok: false, error: called.error, emitted: [] };
   }
