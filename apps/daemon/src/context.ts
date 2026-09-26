@@ -1,9 +1,9 @@
 import { existsSync, statSync } from "node:fs";
-import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { annotationContext } from "./annotation-context";
 import { askTranscriptText } from "./ask";
+import { loopPictureSpend, pictureMime } from "./loop-pictures";
 import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
@@ -102,6 +102,7 @@ export function assembleTurnMessages(
     turnId: input.turnId,
     triggerMessageId: input.triggerMessageId,
     selfBotId: input.botId,
+    loopPictures: loopPictureSpend(input.loop),
   });
   const situation = situationUserMessage(
     store,
@@ -546,7 +547,14 @@ export function memoryDigest(store: Store, botId: string, locale: Locale, now: D
 
 function transcriptWindow(
   store: Store,
-  input: { sessionId: string; turnId: string; triggerMessageId: string; selfBotId: string },
+  input: {
+    sessionId: string;
+    turnId: string;
+    triggerMessageId: string;
+    selfBotId: string;
+    /** What the pictures this turn has read already spend; the window gets what is left. */
+    loopPictures: { images: number; bytes: number };
+  },
 ): ChatMessage[] {
   const trigger = store.getMessage(input.triggerMessageId);
   const main = store
@@ -582,7 +590,7 @@ function transcriptWindow(
   for (const m of unique) {
     if (m.kind === "user") annotated.set(m.id, annotationContext(store, m.id, locale));
   }
-  const { images, cropsSent } = windowImages(store, unique, input.selfBotId, input.triggerMessageId, annotated);
+  const { images, cropsSent } = windowImages(store, unique, input.selfBotId, input.triggerMessageId, annotated, input.loopPictures);
   return unique.map((m) =>
     serializeTranscript(
       store,
@@ -605,6 +613,7 @@ const VISION_BYTES_MAX = 10_000_000;
  * that does not fit closes it, so what drops out is always the oldest. Those keep their path line.
  * Bytes are counted as sent, after `visionImage` has shrunk them. An annotation batch's crops
  * (up to 50, a megabyte each) spend the same budget, after the attachments of their message.
+ * Pictures the Bot read this turn with `read_file` ride the loop and come off the top of it.
  */
 export const VISION_WINDOW_IMAGES = 20;
 export const VISION_WINDOW_BYTES = 20_000_000;
@@ -617,8 +626,13 @@ function windowImages(
   selfBotId: string,
   triggerMessageId: string,
   annotated: Map<string, { images: ChatContentPart[] }>,
+  loopPictures: { images: number; bytes: number },
 ): { images: Map<string, ChatContentPart[]>; cropsSent: Map<string, number> } {
-  const budget: VisionBudget = { images: VISION_WINDOW_IMAGES, bytes: VISION_WINDOW_BYTES, closed: false };
+  const budget: VisionBudget = {
+    images: Math.max(0, VISION_WINDOW_IMAGES - loopPictures.images),
+    bytes: Math.max(0, VISION_WINDOW_BYTES - loopPictures.bytes),
+    closed: false,
+  };
   const trigger = messages.find((m) => m.id === triggerMessageId);
   const newestFirst = [...(trigger ? [trigger] : []), ...messages.filter((m) => m !== trigger).reverse()];
   const out = new Map<string, ChatContentPart[]>();
@@ -663,27 +677,11 @@ function serializeTranscript(
   };
 }
 
-function visionMime(filename: string): string | null {
-  switch (extname(filename).toLowerCase()) {
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".webp":
-      return "image/webp";
-    default:
-      return null;
-  }
-}
-
 function visionImageParts(store: Store, attachments: Attachment[], budget: VisionBudget): ChatContentPart[] {
   const parts: ChatContentPart[] = [];
   for (const att of attachments) {
     if (budget.closed) break;
-    const mime = visionMime(att.original_filename) ?? visionMime(att.workspace_relpath);
+    const mime = pictureMime(att.original_filename) ?? pictureMime(att.workspace_relpath);
     if (!mime) continue;
     try {
       const abs = store.getAttachmentFilePath(att);

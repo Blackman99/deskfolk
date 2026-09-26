@@ -31,6 +31,7 @@ import {
 import { parseAskSpec } from "./ask";
 import { avatarMimeFromPath, rasterFileToAvatarDataUri } from "./avatar-image";
 import { parseMentions } from "./mentions";
+import type { LoopPicture } from "./loop-pictures";
 import { isNoWorkCloser } from "./no-work";
 import { HttpError } from "./errors";
 import { ulid } from "./ids";
@@ -62,6 +63,8 @@ export type ToolResult = {
     requiresApiKey?: boolean;
     run: (opts?: { api_key?: string }) => Promise<ToolResult> | ToolResult;
   };
+  /** A picture `read_file` found; the engine shows it after the hop's tool results (see loop-pictures.ts). */
+  picture?: LoopPicture;
   emitted: Array<
     | { kind: "bot"; bot: Bot; deleted_at: string | null }
     | { kind: "session"; session: SessionDetail }

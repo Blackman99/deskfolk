@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
+import { attachPictures } from "./loop-pictures";
 import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
 import { Store } from "./store";
 
@@ -42,7 +43,7 @@ async function pictureRoom(tag: string) {
       });
       return store.insertMessage({ sessionId: group.id, kind: "bot", author: designer.bot.id, body, paths });
     },
-    assemble(triggerMessageId: string): ChatMessage[] {
+    assemble(triggerMessageId: string, loop: ChatMessage[] = []): ChatMessage[] {
       const turn = store.createTurn({ sessionId: group.id, botId: reviewer.bot.id, triggerMessageId });
       return assembleTurnMessages(store, {
         sessionId: group.id,
@@ -51,7 +52,7 @@ async function pictureRoom(tag: string) {
         triggerMessageId,
         locale: "zh",
         interrupt: false,
-        loop: [],
+        loop,
       });
     },
   };
@@ -410,6 +411,22 @@ describe("assembleTurnMessages", () => {
     const messages = room.assemble(trigger.id);
     expect(pictures(messages)).toBe(2);
     expect(typeof lineWith(messages, "第 0 版")?.content).toBe("string");
+    room.store.close();
+  });
+
+  test("pictures the Bot read this turn come off the window's budget, and the loop keeps them", async () => {
+    const room = await pictureRoom("loop");
+    const trigger = room.post("全部起止帧", VISION_WINDOW_IMAGES, PNG_1X1);
+    const loop: ChatMessage[] = [];
+    attachPictures(
+      loop,
+      Array.from({ length: 5 }, (_, i) => ({ path: `frames/${i}.png`, mime: "image/png", bytes: PNG_1X1 })),
+      "zh",
+    );
+    const messages = room.assemble(trigger.id, loop);
+    expect(pictures(messages)).toBe(VISION_WINDOW_IMAGES);
+    expect(pictures([lineWith(messages, "全部起止帧")!])).toBe(VISION_WINDOW_IMAGES - 5);
+    expect(pictures([messages.at(-1)!])).toBe(5);
     room.store.close();
   });
 

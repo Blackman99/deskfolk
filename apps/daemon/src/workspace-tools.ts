@@ -15,9 +15,13 @@ import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
 import { COMMAND_STREAM_BYTES } from "./streams";
+import { LOOP_PICTURE_BYTES_MAX, pictureMime } from "./loop-pictures";
+import { visionImage } from "./vision-image";
 import type { WakeWatch } from "./wake";
 
 const READ_BYTES_MAX = 1_000_000;
+/** A picture is shrunk before it is shown, so a 4K PNG frame is still worth reading. */
+const PICTURE_READ_BYTES_MAX = 50_000_000;
 
 /**
  * What a `shell` produced. `write_file` announces its own path; a command does not, so the files
@@ -126,6 +130,19 @@ function readFile(
   try {
     const st = statSync(classified.abs);
     if (st.isDirectory()) return fail("failed", "path is a directory");
+    const reply = replyPath(classified);
+    const pending = classified.zone === "inside" ? ctx.store.openAnnotationCount(classified.rel) : 0;
+    const mime = pictureMime(classified.abs);
+    if (mime) {
+      // The pixels go to the model after the hop's tool results; the result itself only names them.
+      if (st.size > PICTURE_READ_BYTES_MAX) return fail("too_large", "image is too large");
+      const shown = visionImage(classified.abs, mime, st);
+      if (shown.bytes.byteLength > LOOP_PICTURE_BYTES_MAX) return fail("too_large", "image is too large to show");
+      return {
+        ...ok({ path: reply, mime: shown.mime, ...annotationHint(pending) }),
+        picture: { path: reply, mime: shown.mime, bytes: shown.bytes },
+      };
+    }
     if (st.size > READ_BYTES_MAX) return fail("too_large", "file is too large");
     const buf = readFileSync(classified.abs);
     if (buf.byteLength > READ_BYTES_MAX) return fail("too_large", "file is too large");
@@ -135,21 +152,19 @@ function readFile(
     } catch {
       return fail("not_text", "file is not UTF-8 text");
     }
-    const reply = replyPath(classified);
-    const pending = classified.zone === "inside" ? ctx.store.openAnnotationCount(classified.rel) : 0;
-    if (pending > 0) {
-      return ok({
-        path: reply,
-        content,
-        pending_annotations: pending,
-        hint: `这个文件有 ${pending} 条待处理批注，用 list_annotations 查看。 / This file has ${pending} pending annotation(s); list_annotations shows them.`,
-      });
-    }
-    return ok({ path: reply, content });
+    return ok({ path: reply, content, ...annotationHint(pending) });
   } catch (error) {
     if (isNotFound(error)) return fail("not_found", "file not found");
     return fail("failed", "read failed");
   }
+}
+
+function annotationHint(pending: number): Record<string, unknown> {
+  if (pending === 0) return {};
+  return {
+    pending_annotations: pending,
+    hint: `这个文件有 ${pending} 条待处理批注，用 list_annotations 查看。 / This file has ${pending} pending annotation(s); list_annotations shows them.`,
+  };
 }
 
 function writeFile(

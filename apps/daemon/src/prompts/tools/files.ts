@@ -13,8 +13,8 @@ export const FILE_TAIL = {
 export const READ_FILE: ToolDef = {
   name: "read_file",
   description: {
-    zh: `读取 UTF-8 文本。${FILE_TAIL.zh}`,
-    en: `Read UTF-8 text. ${FILE_TAIL.en}`,
+    zh: `读取 UTF-8 文本；PNG / JPEG / GIF / WebP 图片会作为图像附在这批工具结果之后给你看。${FILE_TAIL.zh}`,
+    en: `Read UTF-8 text; a PNG / JPEG / GIF / WebP picture is shown to you as an image after this batch of tool results. ${FILE_TAIL.en}`,
   },
   properties: {
     path: { type: "string", description: PATH_DESC },

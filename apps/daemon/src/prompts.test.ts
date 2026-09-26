@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { LOOP_PICTURES_MAX } from "./loop-pictures";
 import { builtinTools, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, turnSystemPrompt, unknownMentionBody } from "./prompts";
 
 describe("prompts", () => {
@@ -36,8 +37,9 @@ describe("prompts", () => {
     expect(text).toContain("本轮写入的工作区文件会自动变成可点链接");
     expect(text).toContain("不要为「已写入某文件」再发一条不含路径的收尾");
     expect(text).toContain("介绍已经发出");
-    expect(text).toContain("PNG / JPEG / GIF / WebP 已经作为图像发给你");
-    expect(text).toContain("不要用 read_file 去读它们");
+    expect(text).toContain("PNG / JPEG / GIF / WebP 附件已经作为图像发给你");
+    expect(text).toContain("自己用 read_file 读：图会作为图像附在这批工具结果之后");
+    expect(text).toContain(`一跳最多附 ${LOOP_PICTURES_MAX} 张`);
     expect(text).toContain("不调工具的回复也一样");
     expect(text).toContain("光写「随后」不算");
     expect(text).toContain("要改自己的名字、职责、边界、头像、钉的端点+模型或思考等级，用 update_profile");
@@ -288,7 +290,8 @@ describe("prompts", () => {
     expect(text).toContain("introduction posted");
     expect(text).toContain("no transcript message");
     expect(text).toContain("PNG / JPEG / GIF / WebP attachments are already sent as images");
-    expect(text).toContain("Do not read_file them");
+    expect(text).toContain("read yourself with read_file: it comes back as an image after that batch of tool results");
+    expect(text).toContain(`A hop shows at most ${LOOP_PICTURES_MAX}`);
     expect(text).toContain("and so does a reply without tool calls");
     expect(text).toContain('"to follow" alone does not count');
     expect(text).toContain("To change your own name, duties, boundaries, avatar, pinned endpoint+model, or thinking level, use update_profile");

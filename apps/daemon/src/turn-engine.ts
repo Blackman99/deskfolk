@@ -51,6 +51,7 @@ import { toChatTools } from "./prompts/tool-schema";
 import { FORGET, REMEMBER } from "./prompts/tools/memory";
 import { UPDATE_SKILL } from "./prompts/tools/profile";
 import { dropToolResults, serializeToolResult } from "./tool-results";
+import { attachPictures, fitsHop, pictureResultNote, type LoopPicture } from "./loop-pictures";
 import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
 import { sessionUpsertFields } from "./session-events";
@@ -1515,6 +1516,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     const workDir = live.workDir;
     let posted = false;
     let spoke = false;
+    // What read_file found this hop; shown after all the hop's tool results (see loop-pictures.ts).
+    const pictures: LoopPicture[] = [];
     for (const call of calls) {
       if (!active(turnId, live)) return "wait";
       live.toolCalls += 1;
@@ -1658,7 +1661,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         resolved = withLatestMcp(call.name, resolved);
         noteWrittenPaths(live, call.name, resolved);
         const payload = resolved.ok
-          ? { ok: true, data: resolved.data }
+          ? { ok: true, data: admitPicture(live, pictures, resolved) }
           : { ok: false, error: resolved.error };
         if (!resolved.ok) {
           live.toolErrors += 1;
@@ -1680,7 +1683,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       if (!skipped) posted = true;
       const payload = result.ok
-        ? { ok: true, data: result.data }
+        ? { ok: true, data: admitPicture(live, pictures, result) }
         : { ok: false, error: result.error };
       // A closing-check bounce is a nudge, not a tool that failed: the review must not read it as one.
       if (!result.ok && result.error?.code !== "closing_check") {
@@ -1694,7 +1697,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       });
     }
     if (spoke) return "spoke";
+    attachPictures(live.loop, pictures, live.locale);
     return posted ? "more" : "noop";
+  }
+
+  /** A picture's tool result, which says whether this hop had room to show it. */
+  function admitPicture(live: Live, pictures: LoopPicture[], result: ToolResult): Record<string, unknown> | undefined {
+    if (!result.picture) return result.data;
+    const shown = fitsHop(pictures, result.picture);
+    if (shown) pictures.push(result.picture);
+    return { ...result.data, shown, note: pictureResultNote(live.locale, shown) };
   }
 
   function withLatestMcp(name: string, result: ToolResult): ToolResult {
