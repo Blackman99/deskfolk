@@ -1570,7 +1570,7 @@ void runtime.setPushEnabled(enabled);
 									<div class="settings-row-info">
 										<span class="settings-row-title">Deskfolk</span>
 										<span class="settings-row-desc">
-											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.6')}</span>
+											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.7')}</span>
 										</span>
 									</div>
 									{#if updateChecker.available}

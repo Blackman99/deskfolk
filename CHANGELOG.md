@@ -6,9 +6,18 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.7 — 2026-09-26
+
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
+
 - A Bot that decides to sit a turn out no longer posts a line saying so. A reviewer Bot kept ending group turns with a bold-italic `***无发言，本轮结束***` ("nothing to say, turn over") as a message of its own: the filter that drops such closers didn't know "无发言", "不发言" or "保持沉默", let "无需发言" through, and counted markdown asterisks as content. Silent passes like these, bold, italic, quoted or bracketed, now end the turn without a message.
+
 - Tabs in a pane keep their width however many are open. Every tab used to shrink to fit, so with six open each name was cut to two or three characters. Past the pane's width the tab row now scrolls sideways — a trackpad swipe or the mouse wheel over it — and a tab you open or switch to scrolls into view.
+
 - Bots can hand pictures from the workspace to MCP tools such as video and image generators. Those tools only take an image URL or data URI, a remote server cannot read your Mac, and a model cannot copy tens of thousands of base64 characters into a call — once a video Bot spent an hour and 99 hops shrinking one storyboard frame into ever smaller base64, sending nothing and never reaching the video tool. A Bot now writes `workspace://<path relative to the workspace root>` in the argument and the app sends the picture itself (shrunk first when over half a megabyte), while the transcript keeps the short reference; a path outside the workspace, a missing file or a non-picture fails that call with the reason.
+
 - A turn no longer calls tools forever. Every 40 tool hops in a row, the app asks whether it is stuck: if so it stops calling tools and replies with what is done, where it is stuck and what it needs from whom; if it is making progress it carries on. At 160 hops the tools are taken away and its next reply ends the turn (the longest real turn so far was a video Bot's 141 polling hops).
 
 - Plans finally get written up. The organizer used to get 256 tokens per answer, so every plan stopped halfway through its JSON and was thrown away: no job ever got a plan or tickets, and the flow board's plan panel and ticket rail stayed empty. It now has 4,096 tokens. Filing a message you send may take up to 60 seconds (it was 20, and a reasoning model could spend most of that before its first word), and filing a job once it goes quiet up to 2 minutes. A cut-off answer, an answer that doesn't read as a plan, or a failed call still changes nothing and turns open as before, but the log now says which of those it was instead of failing silently. The organizer is shown the job's latest 30 messages and files, not its first 30, which in a long job meant it never saw what you had just said.
@@ -128,7 +137,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Empty desktop panes now have a close button in their top-right corner. Pane context menus also offer Close pane for tiled and floating panes, including all tabs in that pane. Unsaved workspace or file-preview edits ask before closing; terminal sessions keep running and can be reattached. Split panes shrink with a narrowed window so their close controls stay reachable.
 
 - Added a dedicated Spend view with time ranges, category totals, daily trends, sortable model/session/Bot tables, combined filters and paginated call details. Desktop opens a single pane tab; phones open an overlay. Totals refresh as calls arrive and reported amounts stay separate from estimates.
+
 - Spend now retains six call kinds, actual model/endpoint attribution and name snapshots across conversation clearing, conversation deletion and Bot deletion. Existing records migrate in place, preserving missing model attribution. Local and encrypted remote clients use daemon-side summaries and paginated details; snapshots omit the growing ledger.
+
 - Model attributes accept optional input, output and cached-input billing rates in USD per million tokens, alongside the routing reference price. Settings auto-save them and Bot tools can update them. Calls without reported amounts estimate from available token usage and the rates at insertion; later rate changes preserve recorded estimates.
 
 - Annotations, part 4 (every kind of artifact): select text in a rendered Markdown preview to annotate it; the position is kept as lines and columns of the source. On an image or SVG, turn on annotate mode and drag a box; the crop goes to the Bot with the note. The PDF preview now renders with a bundled pdf.js — pages, zoom, fit width / fit page, find in page, light and dark — and in annotate mode you box a region of a page, sent with its page number, the text inside and a crop. On an HTML page, annotate mode lets you pick an element (↑ ↓ for the outer or inner one, Enter to choose, Esc to leave); the Bot gets its CSS path, text and markup. The page keeps its sandbox; the picker script is only injected in annotate mode, and where the page's scripts are blocked by the CSP it says to annotate the Source view by line instead. Audio and video take a point at the playback position, or a span with "End here", with existing notes marked on a timeline. On a paired phone a crop is re-encoded to fit one remote frame, or left off if it cannot fit, and the note is saved either way. In annotate mode Escape first cancels a pending spot, then leaves annotate mode, and only then closes the pane.
