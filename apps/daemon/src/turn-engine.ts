@@ -54,6 +54,7 @@ import { persistMcpInspect, type McpHost } from "./mcp-host";
 import { parseMentions } from "./mentions";
 import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
+import { checkInNote, lastHopNote, turnPace } from "./turn-pace";
 import { createOrganizer } from "./organizer";
 import {
   builtinTools,
@@ -176,6 +177,8 @@ type Live = {
   locale: Locale;
   /** Completion hops this turn has started. Written onto the route row when the turn closes. */
   hops: number;
+  /** The hop limit's note is in the loop: it goes in once, and the tools stay away after it. */
+  lastHopNoted?: boolean;
   toolCalls: number;
   toolErrors: number;
   /** Failed calls whose name and arguments match an earlier failure in this turn. */
@@ -1127,6 +1130,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         return;
       }
       store.touchTurn(turnId);
+      // A long run of tool calls is asked, now and then, whether it is getting anywhere; past the
+      // limit the tools go and the next reply is the turn's last (see turn-pace.ts).
+      const pace = turnPace(live.hops);
+      if (pace === "check_in") {
+        live.loop.push({ role: "user", content: checkInNote(target.locale, live.hops - 1) });
+      } else if (pace === "last" && !live.lastHopNoted) {
+        live.lastHopNoted = true;
+        live.loop.push({ role: "user", content: lastHopNote(target.locale) });
+      }
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
       if (!active(turnId, live)) return;
       const messages = assembleTurnMessages(store, {
@@ -1139,7 +1151,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         loop: live.loop,
         mcpGuides: listed.guides,
       });
-      const tools = [...builtinTools(target.locale), ...listed.tools];
+      const tools = pace === "last" ? [] : [...builtinTools(target.locale), ...listed.tools];
       live.toolNames = new Set(tools.map((tool) => tool.function.name));
       live.partial = "";
       publishTurn(current, "");
