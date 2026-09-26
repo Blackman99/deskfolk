@@ -2,7 +2,6 @@ import { canonicalize } from './canonical.ts';
 import { check, id, text, utf8 } from './bytes.ts';
 
 export const REMOTE_RPC_VERSION = 1;
-export const REMOTE_FILE_LIMIT = 50 * 1024 * 1024;
 export const REMOTE_FILE_STREAMS = 2;
 export interface RemoteRequest {
   v: 1; id: string; method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'; path: string;

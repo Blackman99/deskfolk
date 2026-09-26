@@ -1,7 +1,7 @@
 import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { base64url, canonicalBytes, canonicalHash, decodeFileChunk, fromBase64url, fragmentMessage, HostSession, identityPublic,
   openPairing, parseRemoteRequest, randomBytes, Reassembler, sealPairingGrant, sha256Hex, signGrant, text,
-  encodeFileChunk, MAX_BODY, MAX_FILE_CHUNK, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
+  encodeFileChunk, MAX_BODY, MAX_FILE_CHUNK, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
   type PairingContext, type PairingQr, type PairingRequest, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import { deflateRawSync } from "node:zlib";
 import type { LocalApi } from "../local-api";
@@ -479,7 +479,7 @@ export class RemoteController {
         if (!row || typeof row !== "object") throw new HttpError(422, "invalid_args", "invalid remote properties");
         const file = row as { filename?: unknown; size?: unknown; sha256?: unknown };
         if (typeof file.filename !== "string" || typeof file.size !== "number" || typeof file.sha256 !== "string") throw new HttpError(422, "invalid_args", "invalid remote properties");
-        if (!Number.isInteger(file.size) || file.size < 0 || file.size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "file too large");
+        if (!Number.isSafeInteger(file.size) || file.size < 0) throw new HttpError(422, "invalid_args", "invalid remote properties");
         if (!/^[0-9a-f]{64}$/.test(file.sha256)) throw new HttpError(422, "invalid_args", "invalid remote properties");
         return { filename: file.filename, size: file.size, sha256: file.sha256 };
       });
@@ -566,7 +566,6 @@ export class RemoteController {
         else if (response.body) {
           const data = new Uint8Array(await response.arrayBuffer());
           try {
-            if (data.length > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "file too large");
             // A file whose response still fits in one frame rides inside it. The old path sent
             // "here it comes" and then the bytes, and the second frame was the one that waited.
             if (data.length > 0 && data.length <= MAX_FILE_CHUNK) {

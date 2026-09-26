@@ -327,12 +327,17 @@ test("✨ waits while a reply is still coming, since drafts made now would be st
   view.close();
 });
 
-test("the remote attachment limit sits inside an empty composer", () => {
+
+test("a phone attaches a film of any size", () => {
   const { host, runtime, close } = open("", true);
-  expect(host.querySelector(".composer-inline-limit")?.textContent).toContain(t.composer.attachLimit);
-  runtime.draft = "已经开始输入";
+  const film = new File(["x"], "film.mp4", { type: "video/mp4" });
+  Object.defineProperty(film, "size", { value: 60 * 1024 * 1024 });
+  const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+  Object.defineProperty(input, "files", { configurable: true, value: [film] });
+  input.dispatchEvent(new Event("change", { bubbles: true }));
   flushSync();
-  expect(host.querySelector(".composer-inline-limit")).toBeNull();
+  expect(runtime.sessionView(runtime.selectedId!).stagedAttachments.map((row) => row.name)).toEqual(["film.mp4"]);
+  expect(host.textContent).not.toContain("50 MiB");
   close();
 });
 

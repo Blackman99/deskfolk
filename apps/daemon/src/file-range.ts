@@ -1,5 +1,4 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
-import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { fileEtag } from "./file-integrity";
 import { HttpError } from "./errors";
 
@@ -15,12 +14,11 @@ export function parseByteRange(value: string, size: number): { start: number; en
 }
 
 /** Read only the requested bytes; hashing a whole movie here would defeat seeking. */
-export function fileRangeResponse(abs: string, mime: string, filename: string, range: string, remote: boolean): Response {
+export function fileRangeResponse(abs: string, mime: string, filename: string, range: string): Response {
   const fd = openSync(abs, "r");
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile()) throw new HttpError(422, "invalid_args", "path is not a file");
-    if (remote && stat.size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
     const selected = parseByteRange(range, stat.size);
     if (!selected) return Response.json({ error: { code: "invalid_range", message: "range not satisfiable" } }, {
       status: 416, headers: { "Content-Range": `bytes */${stat.size}`, "Accept-Ranges": "bytes" },

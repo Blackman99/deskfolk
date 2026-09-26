@@ -56,7 +56,6 @@ import { fileEtag } from "./file-integrity";
 import { fileRangeResponse } from "./file-range";
 import { parseImageVariant, reduceImage, type ImageVariant } from "./image-variant";
 import { displayAvatar, isDisplayAvatar, warmDisplayAvatar, withoutDisplayMark } from "./avatar-display";
-import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import type { RuntimeLifecycle } from "./lifecycle";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
@@ -858,21 +857,19 @@ function numberOr(value: unknown): number | undefined {
 /**
  * A file's bytes, or with `size` a smaller copy of the picture. The copy is announced by
  * `X-Original-Size`, the original's length, so a client can offer the original and say what it
- * costs; without the header the bytes are the original. The remote cap applies to what is sent,
- * so a picture too large to send whole can still be shown scaled.
+ * costs; without the header the bytes are the original.
  */
 /** A Bot as clients are sent it: its portrait as the small marked copy (see avatar-display). */
 function displayBot<T extends { avatar: string | null }>(bot: T): T {
   return { ...bot, avatar: displayAvatar(bot.avatar) };
 }
 
-async function fileResponse(abs: string, mime: string, filename: string, variant: ImageVariant | null, remote: boolean, range: string | null): Promise<Response> {
+async function fileResponse(abs: string, mime: string, filename: string, variant: ImageVariant | null, range: string | null): Promise<Response> {
   if (range !== null) {
     if (variant) throw new HttpError(422, "invalid_args", "range cannot be combined with image size");
-    return fileRangeResponse(abs, mime, filename, range, remote);
+    return fileRangeResponse(abs, mime, filename, range);
   }
   const reduced = variant ? await reduceImage(abs, mime, variant) : null;
-  if (!reduced && remote && statSync(abs).size > REMOTE_FILE_LIMIT) throw new HttpError(413, "file_limit", "remote file limit exceeded");
   const file = reduced?.bytes ?? readFileSync(abs);
   return new Response(file, {
     status: 200,
@@ -969,7 +966,7 @@ function dispatch(
     if (!existsSync(located.abs)) {
       throw new HttpError(404, "not_found", "path not found");
     }
-    return fileResponse(located.abs, located.mime, located.rel.split("/").pop() ?? located.rel, variant, url.hostname === "remote.invalid", url.searchParams.get("range") ?? request.headers.get("Range"));
+    return fileResponse(located.abs, located.mime, located.rel.split("/").pop() ?? located.rel, variant, url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   if (method === "PUT" && path === "/v1/workspace/file") {
@@ -1688,7 +1685,7 @@ function dispatch(
     }
     const variant = parseImageVariant(url.searchParams.get("size"));
     const mime = attachmentMime(att.original_filename, att.workspace_relpath);
-    return fileResponse(located.abs, mime, att.original_filename, variant, url.hostname === "remote.invalid", url.searchParams.get("range") ?? request.headers.get("Range"));
+    return fileResponse(located.abs, mime, att.original_filename, variant, url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   params = matchPath(path, "/v1/attachments/:id");

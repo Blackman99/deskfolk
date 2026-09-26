@@ -1,4 +1,4 @@
-export { REMOTE_RPC_VERSION, REMOTE_FILE_LIMIT, REMOTE_FILE_STREAMS, parseRemoteRequest } from './rpc.ts';
+export { REMOTE_RPC_VERSION, REMOTE_FILE_STREAMS, parseRemoteRequest } from './rpc.ts';
 export type { RemoteRequest, RemoteResponse, RemoteReady, PairingQr, AssertionWire, RegistrationWire } from './rpc.ts';
 export { NOISE_PROTOCOL, MAX_NOISE_MESSAGE } from './noise.ts';
 export { base64url, fromBase64url, hex, unhex, utf8, text, randomBytes } from './bytes.ts';

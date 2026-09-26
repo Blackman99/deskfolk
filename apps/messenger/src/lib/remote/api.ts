@@ -73,7 +73,6 @@ import {
   canonicalBytes,
   fromBase64url,
   MAX_BODY,
-  REMOTE_FILE_LIMIT,
   sha256Hex,
   type IdentitySecrets,
   type RemoteRequest,
@@ -214,7 +213,6 @@ function jsonBody(body: unknown): Record<string, unknown> | undefined {
 async function attachmentManifest(files: File[]): Promise<Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>> {
   const out: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }> = [];
   for (const file of files) {
-    if (file.size > REMOTE_FILE_LIMIT) throw new ApiError(413, "file_limit", "remote attachments are limited to 50 MiB");
     const bytes = new Uint8Array(await file.arrayBuffer());
     out.push({ filename: file.name || "attachment", size: bytes.length, sha256: sha256Hex(bytes), bytes });
   }

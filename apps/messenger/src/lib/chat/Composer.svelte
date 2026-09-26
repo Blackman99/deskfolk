@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { USER_MEMBER, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
-	import { REMOTE_FILE_LIMIT } from '@real-bot/remote';
 	import { formatFileSize } from './attachments.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
@@ -399,18 +398,11 @@
 		checkMentionTrigger();
 	}
 
-	let attachLimitHit = $state(false);
-
 	function addFiles(files: FileList | File[]): void {
 		const next: StagedAttachment[] = [];
-		attachLimitHit = false;
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			if (!file) continue;
-			if (runtime.remote && file.size > REMOTE_FILE_LIMIT) {
-				attachLimitHit = true;
-				continue;
-			}
 			const isImage = file.type.startsWith('image/');
 			let previewUrl: string | null = null;
 			if (isImage) {
@@ -640,7 +632,6 @@
 	 */
 	$effect(() => {
 		void selected?.id;
-		attachLimitHit = false;
 		showMentionPopup = false;
 		mentionDismissed = false;
 		mentionQuery = '';
@@ -799,9 +790,6 @@
 		}
 	}}
 >
-	{#if attachLimitHit}
-		<p class="composer-limit-error">{t.settings.fileLimitHit}</p>
-	{/if}
 	{#if quoteTarget}
 		<div class="composer-quote-bar">
 			<div class="composer-quote-meta min-w-0 flex-1 flex flex-col gap-1">
@@ -866,8 +854,8 @@
 		<button
 			type="button"
 			class="attach-btn"
-			title={runtime.remote ? `${t.composer.attach} · ${t.composer.attachLimit}` : t.composer.attach}
-			aria-label={runtime.remote ? `${t.composer.attach} · ${t.composer.attachLimit}` : t.composer.attach}
+			title={t.composer.attach}
+			aria-label={t.composer.attach}
 			disabled={!connected || !selected || lockedComposer || view?.sending}
 			onclick={openFilePicker}
 		>
@@ -903,9 +891,6 @@
 			onclick={onEditorClick}
 			onpaste={onComposerPaste}
 		></div>
-		{#if runtime.remote && !view?.draft}
-			<span class="composer-inline-limit">{t.composer.attachLimit}</span>
-		{/if}
 		</div>
 		<!-- Beside send rather than the attachment button, so a thumb has one of them on each side. -->
 		{#if canSuggest}
@@ -1288,22 +1273,6 @@
 	.composer .composer-input[contenteditable="false"] {
 		opacity: 0.45;
 		cursor: not-allowed;
-	}
-
-	.composer-inline-limit {
-		display: block;
-		margin: -3px 4px 4px;
-		font-size: 10.5px;
-		line-height: 1.25;
-		color: var(--muted);
-		pointer-events: none;
-	}
-
-	.composer-limit-error {
-		margin: 2px 8px 0;
-		font-size: 11px;
-		line-height: 1.3;
-		color: var(--danger);
 	}
 
 	.attach-btn,
@@ -1850,11 +1819,6 @@
 			font-size: 15px;
 			max-height: min(120px, 25dvh);
 			padding: 6px 4px;
-		}
-
-		.composer-inline-limit {
-			margin: -2px 4px 3px;
-			font-size: 10px;
 		}
 
 		.composer .composer-input.is-empty::before {

@@ -2,7 +2,6 @@ import { afterEach, expect, test } from "bun:test";
 import { closeSync, ftruncateSync, mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { REMOTE_FILE_LIMIT } from "@real-bot/remote";
 import { parseByteRange, fileRangeResponse } from "./file-range";
 
 const dirs: string[] = [];
@@ -29,25 +28,28 @@ test("single byte ranges include bounded, open and suffix forms", () => {
 
 test("range response reads selected bytes and reports total and range length separately", async () => {
   const path = file();
-  const response = fileRangeResponse(path, "video/mp4", "片段.mp4", "bytes=2-5", true);
+  const response = fileRangeResponse(path, "video/mp4", "片段.mp4", "bytes=2-5");
   expect(response.status).toBe(206);
   expect(response.headers.get("Content-Range")).toBe("bytes 2-5/10");
   expect(response.headers.get("Content-Length")).toBe("4");
   expect(response.headers.get("Accept-Ranges")).toBe("bytes");
   expect(response.headers.get("Content-Type")).toBe("video/mp4");
   expect(await response.text()).toBe("2345");
-  const invalid = fileRangeResponse(path, "video/mp4", "clip.mp4", "bytes=99-", true);
+  const invalid = fileRangeResponse(path, "video/mp4", "clip.mp4", "bytes=99-");
   expect(invalid.status).toBe(416);
   expect(invalid.headers.get("Content-Range")).toBe("bytes */10");
 });
 
-test("range limits apply to the whole remote file, and local reads can seek in a sparse large file", async () => {
+test("a film of any size can be read a piece at a time", async () => {
   const path = file();
   const fd = openSync(path, "r+");
-  ftruncateSync(fd, REMOTE_FILE_LIMIT + 1);
+  const size = 64 * 1024 * 1024;
+  ftruncateSync(fd, size);
   closeSync(fd);
-  expect(() => fileRangeResponse(path, "video/mp4", "clip.mp4", "bytes=0-0", true)).toThrow("remote file limit");
-  const tail = fileRangeResponse(path, "video/mp4", "clip.mp4", "bytes=-1", false);
+  const probe = fileRangeResponse(path, "video/mp4", "clip.mp4", "bytes=0-0");
+  expect(probe.status).toBe(206);
+  expect(probe.headers.get("Content-Range")).toBe(`bytes 0-0/${size}`);
+  const tail = fileRangeResponse(path, "video/mp4", "clip.mp4", "bytes=-1");
   expect(tail.headers.get("Content-Length")).toBe("1");
   expect(new Uint8Array(await tail.arrayBuffer())).toEqual(new Uint8Array([0]));
 });

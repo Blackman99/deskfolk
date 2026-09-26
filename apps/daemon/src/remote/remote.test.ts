@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { closeSync, existsSync, ftruncateSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity, requestDigest,
@@ -1176,11 +1176,13 @@ test("duplex upload commits after EOF hash and rejects bad offset, hash, cap and
   const cancelled = await c.upload(bot.direct_session.id, "cancel.txt", bytes, { cancel: true });
   expect(cancelled.status).toBeGreaterThanOrEqual(400);
   expect(existsSync(join(f.root, "inbox", "cancel.txt"))).toBe(false);
-  const oversize = await c.rpc({
-    v: 1, id: ulid(), method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`,
-    body: { body: "x", parent_id: null, fork: false, ask_id: null, files: [{ filename: "big.bin", size: 50 * 1024 * 1024 + 1, sha256: "a".repeat(64) }] },
-  });
-  expect(oversize.status).toBe(413);
+  for (const size of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const invalid = await c.rpc({
+      v: 1, id: ulid(), method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`,
+      body: { body: "x", parent_id: null, fork: false, ask_id: null, files: [{ filename: "big.bin", size, sha256: "a".repeat(64) }] },
+    });
+    expect(invalid.status).toBe(422);
+  }
 });
 
 test("same request id replays a committed attachment POST without staged files", async () => {
@@ -1600,4 +1602,17 @@ test("encrypted media ranges carry 206 metadata and only the selected bytes", as
   const invalid = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "media.mp4", range: "bytes=99-" } });
   expect(invalid.status).toBe(416);
   expect(invalid.headers.contentRange).toBe("bytes */10");
+});
+
+test("a film past 50 MiB still streams to the phone a piece at a time", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const size = 64 * 1024 * 1024;
+  const fd = openSync(join(f.root, "film.mp4"), "w");
+  ftruncateSync(fd, size);
+  closeSync(fd);
+  for (const [range, contentRange] of [["bytes=0-0", `bytes 0-0/${size}`], ["bytes=-4", `bytes ${size - 4}-${size - 1}/${size}`]]) {
+    const response = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "film.mp4", range } });
+    expect(response.status).toBe(206);
+    expect(response.headers.contentRange).toBe(contentRange);
+  }
 });

@@ -177,15 +177,6 @@ test("a Mac that refuses size is asked again for the original", async () => {
   expect(originalSizeForBlob(blob)).toBeNull();
 });
 
-test("remote attachments above 50 MiB are refused before RPC", async () => {
-  const api = new RemoteApi(enrollment, {
-    rpc: async () => { throw new Error("must not send oversize attachments"); },
-  });
-  const huge = new File([new Uint8Array(50 * 1024 * 1024 + 1)], "big.bin");
-  await expect(api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "hi", { attachments: [huge] }))
-    .rejects.toMatchObject({ code: "file_limit" });
-});
-
 test("push subscribe never posts an approval resolve", async () => {
   const calls: RemoteRequest[] = [];
   const api = new RemoteApi(enrollment, {
