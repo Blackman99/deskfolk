@@ -1328,6 +1328,8 @@ export type ClientEvent =
     }
   | ({ event: "spend.created"; occurred_at: string } & Spend)
   | { event: "spend.removed"; occurred_at: string; id: string }
+  /** Billing rates changed and older rows were re-estimated. One per commit, not one per row. */
+  | { event: "spend.repriced"; occurred_at: string }
   | ({ event: "routine.upsert"; occurred_at: string } & Routine)
   | { event: "routine.removed"; occurred_at: string; id: string }
   | ({ event: "skill.upsert"; occurred_at: string } & Skill)

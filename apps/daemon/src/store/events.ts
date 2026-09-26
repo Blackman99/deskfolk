@@ -24,6 +24,7 @@ export function installChangeJournal(ctx: StoreContext): void {
   const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations", "tasks", "tickets"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
+      if (table === "spend" && op === "UPDATE") continue;
       const row = op === "DELETE" ? "OLD" : "NEW";
       const id = table === "settings" ? "'settings'" : `${row}.id`;
       // A ticket's "session" slot carries its plan, so a removed ticket can still say which board it left.
@@ -36,6 +37,9 @@ export function installChangeJournal(ctx: StoreContext): void {
         BEGIN INSERT INTO event_changes VALUES ('${table}', ${id}, '${op}', ${session}); END`);
     }
   }
+  // A spend row is only ever updated by a re-price, which rewrites many rows at once: one change, not one per row.
+  ctx.db.exec(`CREATE TEMP TRIGGER event_spend_UPDATE AFTER UPDATE ON main.spend
+    BEGIN INSERT INTO event_changes VALUES ('spend_repriced', 'spend', 'UPDATE', NULL); END`);
   ctx.db.exec(`CREATE TEMP TRIGGER event_settings_rev AFTER UPDATE ON main.request_meta
     WHEN OLD.settings_rev != NEW.settings_rev
     BEGIN INSERT INTO event_changes VALUES ('settings', 'settings', 'UPDATE', NULL); END`);
@@ -146,6 +150,10 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       case "spend": {
         const row = ctx.db.query<Spend, [string]>("SELECT * FROM spend WHERE id = ?").get(id);
         out.push(row ? { event: "spend.created", occurred_at, ...row } : { event: "spend.removed", occurred_at, id });
+        break;
+      }
+      case "spend_repriced": {
+        out.push({ event: "spend.repriced", occurred_at });
         break;
       }
       case "judgements": {

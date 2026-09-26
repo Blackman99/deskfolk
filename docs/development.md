@@ -255,7 +255,7 @@ pnpm --filter @real-bot/messenger dev
 
 信使通过桌面「工具」菜单、手机搜索旁的工具菜单、窗格标签菜单或桌面「视图 → 花费」打开独立视图。再打开一次定位到已有标签。宽屏只有一个 `spend` 标签，窄屏使用 `?o=spend` 浮层。`SpendView` 的常驻顶栏和独立内容滚动区由宿主分配尺寸；概览和调用明细共用数据与筛选，620px 容器断点将表格切为纵向记录，1000px 以上趋势与类别并排。`SpendTrend` 按时间顺序合并为最多 28 个区间，金额保持两组并使用共同刻度，点选/键盘可读分项；窄窗格不依赖视口媒体查询。范围、维度、排序和趋势指标写本机 `deskfolk.spend.view`；筛选只在当前视图。会话顶栏、列表行、会话设置与流程图维持现有展示。
 
-`spend` 保存六类端点调用、实际模型 / 端点 / 思考等级及名称快照，无会话或 Bot 外键，删除业务记录保留账本。`turn` / `route_pick` 要求轮次 id，`judgement` 要求判断 id，`route_review` 要求链和轮次 id，`route_learn` 要求链 id，`composer_suggest` 的 Bot 为空。迁移夹具覆盖旧结构；旧模型仅从仍存在的轮次选路记录回填。实报字段为 `cost_usd_ticks`，按写入时单价冻结的估算为 `estimated_cost_usd_ticks`，两者分别统计。
+`spend` 保存六类端点调用、实际模型 / 端点 / 思考等级及名称快照，无会话或 Bot 外键，删除业务记录保留账本。`turn` / `route_pick` 要求轮次 id，`judgement` 要求判断 id，`route_review` 要求链和轮次 id，`route_learn` 要求链 id，`composer_suggest` 的 Bot 为空。迁移夹具覆盖旧结构；旧模型仅从仍存在的轮次选路记录回填。实报字段为 `cost_usd_ticks`，估算为 `estimated_cost_usd_ticks`，两者分别统计。估算跟着当前单价走：`patchProviderSync` 里某个模型的 `pricing` 变了，就在同一事务里按（端点, 模型名）重算所有 `cost_usd_ticks` 为空的行（`repriceSpend`），名单里已去掉的模型不动；`Store` 打开时也按当前名单对一遍，补上改动前按写入时单价冻结的旧账本。这种批量更新只发一条 `spend.repriced`，不逐行发 `spend.created`。
 
 | 接口 | 参数和返回 |
 |---|---|

@@ -1131,6 +1131,15 @@ test("a board shown in a pane reloads on its own job's turns and messages, and n
   expect(runtime.traceReload).toBe(before + 2);
 });
 
+test("an open spend view reloads when older rows are re-priced, not only when a call is recorded", async () => {
+  // Setting a model's rates re-estimates the ledger in one commit and says so once.
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const before = runtime.spendRevision;
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { event: "spend.repriced", occurred_at: "now" } });
+  expect(runtime.spendRevision).toBe(before + 1);
+});
+
 test("each conversation keeps its own read on record", async () => {
   // One slot for the whole app meant the second conversation's read overwrote the first's, so
   // coming back to the first re-sent a read the daemon already had — the loop 938d714 removed,

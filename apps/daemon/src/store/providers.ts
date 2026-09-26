@@ -9,6 +9,7 @@ import {
   type PatchProviderRequest,
   sortThinkingLevels,
   THINKING_LEVELS,
+  type ModelPricing,
   type Provider,
   type ThinkingLevel,
 } from "@real-bot/protocol";
@@ -32,6 +33,7 @@ import {
 } from "../models";
 import { type CatalogEntry } from "../route-decision";
 import { ensureLegacyProvider, mirrorDefaultProvider } from "./settings";
+import { repriceSpend } from "./spend";
 import {
   type ProviderRow,
   type StoreContext,
@@ -121,10 +123,14 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
   const name = patch.name !== undefined ? requireNonEmpty("name", patch.name) : current.name;
   const baseUrl =
     patch.base_url !== undefined ? resolveEndpointUrl(patch.base_url) : current.base_url;
-  let catalog = parseStoredCatalog(current.models);
+  const before = parseStoredCatalog(current.models);
+  let catalog = before;
   if (patch.models !== undefined) {
     catalog = normalizeModelCatalog(patch.models);
   }
+  const repriced = catalog
+    .filter((item) => !samePricing(item.pricing, before.find((old) => old.name === item.name)?.pricing))
+    .map((item) => ({ ...item, providerId: id }));
   const models = catalogNames(catalog);
   const availableModels =
     patch.available_models !== undefined
@@ -145,12 +151,17 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
       `UPDATE providers SET name = ?, base_url = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
       [name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
     );
+    repriceSpend(ctx, repriced);
     mirrorDefaultProvider(ctx);
   });
   if (patch.api_key !== undefined) {
     planKey(ctx, providerKeychainName(id), patch.api_key);
   }
   return toProviderCached(ctx, requireProvider(ctx, id));
+}
+
+function samePricing(a: ModelPricing | undefined, b: ModelPricing | undefined): boolean {
+  return a?.input === b?.input && a?.output === b?.output && a?.cached_input === b?.cached_input;
 }
 
 export async function deleteProvider(ctx: StoreContext, id: string): Promise<void> {

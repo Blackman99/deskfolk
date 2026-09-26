@@ -30,7 +30,7 @@
 	/** The spend ledger fills its host. Width comes from the container, not the window. */
 	interface Props {
 		api: MessengerApi | null;
-		/** Bumped when a `spend.created` arrives. The ledger itself is not kept on the client. */
+		/** Bumped when a `spend.created` or `spend.repriced` arrives. The ledger itself is not kept on the client. */
 		revision?: number;
 		locale?: 'zh' | 'en';
 		/** The machine's zone. Day buckets and "today" are cut here. */

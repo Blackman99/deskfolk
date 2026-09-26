@@ -100,6 +100,8 @@ export class Store {
     files.recoverFiles(this.ctx);
     settings.ensureLegacyProviderRow(this.ctx);
     sessions.ensureFileDropSession(this.ctx);
+    // Ledgers from before estimates followed the configured rates still hold what was priced at insert.
+    this.commit(() => spend.repriceSpend(this.ctx, providers.catalogEntries(this.ctx)));
     installChangeJournal(this.ctx);
     this.journalReady = true;
   }

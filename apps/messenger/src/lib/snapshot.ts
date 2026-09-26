@@ -226,6 +226,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     // snapshot. A view that needs it asks `GET /v1/spend` when it opens.
     case "spend.created":
     case "spend.removed":
+    case "spend.repriced":
       return snapshot;
     case "judgement.started": {
       const { event: _e, occurred_at: _at, ...row } = event;

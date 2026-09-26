@@ -15,6 +15,7 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { type CatalogEntry } from "../route-decision";
 import { estimateCostUsdTicks } from "../spend-pricing";
 import { catalogEntries } from "./providers";
 import { presentBotIds } from "./sessions";
@@ -710,6 +711,31 @@ function combine(rows: readonly SpendTotals[]): SpendTotals {
     missing_calls: rows.reduce((total, row) => total + row.missing_calls, 0),
     missing_usage_calls: rows.reduce((total, row) => total + row.missing_usage_calls, 0),
   };
+}
+
+/**
+ * An estimate follows the rates configured now, so setting, changing or clearing a model's rates
+ * re-prices every row of that model without a reported amount. A model that is no longer listed
+ * keeps the estimates it had.
+ */
+export function repriceSpend(ctx: StoreContext, models: readonly Pick<CatalogEntry, "providerId" | "name" | "pricing">[]): void {
+  const rows = ctx.db.query<
+    Pick<Spend, "id" | "input_tokens" | "output_tokens" | "cached_tokens" | "estimated_cost_usd_ticks">,
+    [string, string]
+  >(
+    `SELECT id, input_tokens, output_tokens, cached_tokens, estimated_cost_usd_ticks FROM spend
+     WHERE model = ? AND provider_id = ? AND cost_usd_ticks IS NULL`,
+  );
+  const update = ctx.db.query(`UPDATE spend SET estimated_cost_usd_ticks = ? WHERE id = ?`);
+  for (const { providerId, name, pricing } of models) {
+    for (const row of rows.all(name, providerId)) {
+      const estimated = estimateCostUsdTicks(
+        { inputTokens: row.input_tokens, outputTokens: row.output_tokens, cachedTokens: row.cached_tokens },
+        pricing,
+      );
+      if (estimated !== row.estimated_cost_usd_ticks) update.run(estimated, row.id);
+    }
+  }
 }
 
 function pricingFor(ctx: StoreContext, providerId: string | null, model: string | null) {

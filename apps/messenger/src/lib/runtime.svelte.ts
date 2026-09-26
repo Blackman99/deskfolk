@@ -299,7 +299,7 @@ export class MessengerRuntime {
   /** The spend ledger, same shape as the calendar: one pane on the desktop, a page below 680. */
   spendOpen = $state(false);
   /**
-   * Climbs on `spend.created`. The rows themselves are not kept: a view that is open debounces
+   * Climbs on `spend.created` and `spend.repriced`. The rows themselves are not kept: a view that is open debounces
    * a reload of the summary off this, and one that is closed reads it when it next opens.
    */
   spendRevision = $state(0);
@@ -3382,7 +3382,7 @@ export class MessengerRuntime {
     if (event.event === "settings.changed") {
       this.syncSettingsDraft(event);
     }
-    if (event.event === "spend.created") this.spendRevision += 1;
+    if (event.event === "spend.created" || event.event === "spend.repriced") this.spendRevision += 1;
     if (event.event === "turn.upsert") {
       this.claimFocus(event.session_id, event.trigger_message_id, event.id);
       if (this.boardShows(event.task_id)) this.traceReload += 1;

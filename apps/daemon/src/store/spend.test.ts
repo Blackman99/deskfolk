@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SpendKind, SpendSummaryQuery } from "@real-bot/protocol";
 import { spyOn } from "bun:test";
 import { Store } from ".";
@@ -12,7 +15,7 @@ function open(): Store {
 }
 
 describe("spend ledger", () => {
-  test("a new row freezes the session and bot names, the call target, and the estimate", () => {
+  test("a new row freezes the session and bot names and the call target; its estimate follows the rates", () => {
     const store = open();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
     const reader = store.createBot({ name: "Reader", duties: "read", boundaries: "none" });
@@ -51,7 +54,7 @@ describe("spend ledger", () => {
       outputTokens: 100,
       costUsdTicks: 9,
     });
-    expect(store.listSpend({})[0]!.estimated_cost_usd_ticks).toBe(26_000_000);
+    expect(store.listSpend({})[0]!.estimated_cost_usd_ticks).toBe(280_000_000);
     expect(store.listSpend({})[0]!.session_name).toBe("Desk");
     expect(again.session_name).toBe("Renamed");
     expect(again.provider_name).toBe("Frozen");
@@ -84,6 +87,69 @@ describe("spend ledger", () => {
     expect(suggest.session_name).toBe("Writer");
     expect(suggest.estimated_cost_usd_ticks).toBeNull();
     store.close();
+  });
+
+  test("setting, changing or clearing a model's rates re-prices its unreported rows in one event", () => {
+    const store = open();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const provider = store.createProviderSync({ name: "Late", base_url: "https://late.invalid", models: ["fast", "slow"] });
+    const other = store.createProviderSync({ name: "Other", base_url: "https://other.invalid", models: ["fast"] });
+    const call = (input: Partial<SpendInput>) => store.insertSpend({
+      kind: "turn", sessionId: writer.direct_session.id, botId: writer.bot.id, turnId: ulid(),
+      providerId: provider.id, model: "fast", inputTokens: 1000, cachedTokens: 200, outputTokens: 100, ...input,
+    }).id;
+    const priced = call({});
+    const reported = call({ costUsdTicks: 9 });
+    const partial = call({ outputTokens: null });
+    const slow = call({ model: "slow" });
+    const elsewhere = call({ providerId: other.id });
+    const estimates = () => Object.fromEntries(store.listSpend({}).map((row) => [row.id, row.estimated_cost_usd_ticks]));
+    expect(Object.values(estimates())).toEqual([null, null, null, null, null]);
+    const events: string[] = [];
+    store.onCommit((event) => events.push(event.event));
+
+    store.patchProviderSync(provider.id, { models: [{ name: "fast", price: null, pricing: { input: 2, output: 8, cached_input: 1 } }, "slow"] });
+    expect(estimates()).toEqual({ [priced]: 26_000_000, [reported]: null, [partial]: null, [slow]: null, [elsewhere]: null });
+    expect(events.filter((name) => name.startsWith("spend."))).toEqual(["spend.repriced"]);
+    expect(store.listSpend({}).find((row) => row.id === reported)!.cost_usd_ticks).toBe(9);
+
+    events.length = 0;
+    store.patchProviderSync(provider.id, { name: "Renamed", default_model: "slow" });
+    store.patchProviderSync(provider.id, { models: [{ name: "fast", price: 3, pricing: { input: 2, output: 8, cached_input: 1 } }, "slow"] });
+    expect(events).not.toContain("spend.repriced");
+
+    store.patchProviderSync(provider.id, { models: [{ name: "fast", price: null, pricing: { input: 20, output: 80 } }, "slow"] });
+    expect(estimates()[priced]).toBe(280_000_000);
+    store.patchProviderSync(provider.id, { models: ["fast", "slow"] });
+    expect(estimates()[priced]).toBeNull();
+
+    store.patchProviderSync(provider.id, { models: [{ name: "fast", price: null, pricing: { input: 2, output: 8 } }, "slow"] });
+    expect(estimates()[priced]).toBe(28_000_000);
+    store.patchProviderSync(provider.id, { models: ["slow"] });
+    expect(estimates()[priced]).toBe(28_000_000);
+    store.close();
+  });
+
+  test("opening a ledger estimated at insert time re-prices it from the rates configured now", () => {
+    const root = mkdtempSync(join(tmpdir(), "rb-spend-"));
+    try {
+      const file = join(root, "state.sqlite");
+      const store = new Store({ filename: file });
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const provider = store.createProviderSync({ name: "Priced", base_url: "https://priced.invalid", models: [{ name: "fast", price: null, pricing: { input: 2, output: 8 } }] });
+      const row = store.insertSpend({
+        kind: "turn", sessionId: writer.direct_session.id, botId: writer.bot.id, turnId: ulid(),
+        providerId: provider.id, model: "fast", inputTokens: 1000, outputTokens: 100,
+      });
+      store.db.run("UPDATE spend SET estimated_cost_usd_ticks = NULL");
+      store.close();
+
+      const reopened = new Store({ filename: file });
+      expect(reopened.listSpend({}).map((spend) => [spend.id, spend.estimated_cost_usd_ticks])).toEqual([[row.id, 28_000_000]]);
+      reopened.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("deleting a session, clearing history, or deleting a bot leaves the rows and their names", () => {
