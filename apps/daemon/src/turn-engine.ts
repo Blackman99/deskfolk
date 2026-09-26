@@ -1275,11 +1275,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
       lives.delete(turnId);
       publishTurn(completed, null);
-      if (message) {
-        const session = store.getSession(current.session_id);
-        if (session.kind === "group" && !live.parentId) {
-          void track(handleParticipation(message, { fromUser: false }));
-        }
+      // A closing reply goes out the way send_message would: in a group it wakes whoever it
+      // names, in a Bot↔Bot direct the other Bot. A you↔Bot direct has no one else to wake.
+      if (message && !live.parentId) {
+        void track(handleParticipation(message, { fromUser: false }));
       }
       return;
     }

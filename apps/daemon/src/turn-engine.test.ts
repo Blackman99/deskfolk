@@ -4152,6 +4152,47 @@ describe("a Bot↔Bot direct", () => {
   });
 
   /**
+   * A turn's plain reply is its send_message. Only groups used to read it for who to wake, so a
+   * reviewer answering a submission this way left the other side waiting for good.
+   */
+  test("a turn's closing reply wakes the other bot too, not only send_message", async () => {
+    let n = 0;
+    const fixture = await startFixture(() => {
+      n += 1;
+      return sse(textChunks(n === 1 ? "found three sources" : "no new work"));
+    });
+    const h = await startApi();
+    const { botId } = await createWriter(h, fixture.origin);
+    const researcherId = await addResearcher(h);
+    const direct = h.store.createBotDirect(botId, researcherId, null);
+    const sub = await subscribe(h);
+
+    const opener = h.store.insertMessage({
+      sessionId: direct.id,
+      kind: "bot",
+      author: botId,
+      body: "what did you find?",
+    });
+    await h.engine.handleInboundMessage(opener, { fromUser: false });
+
+    const reply = await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.author === researcherId && e.session_id === direct.id,
+    );
+    expect(reply.body).toBe("found three sources");
+    const back = await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.bot_id === botId && e.session_id === direct.id,
+    );
+    expect(back.trigger_message_id).toBe(reply.id);
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.id === back.id && e.status === "completed",
+    );
+    sub.close();
+  });
+
+  /**
    * With no user in the room there is nobody to want two answers at once, so a second message
    * retunes the live turn rather than cloning it. The user↔Bot default stays fork.
    */
