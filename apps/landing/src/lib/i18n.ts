@@ -586,8 +586,8 @@ const zh: Dict = {
       },
       {
         dim: '远程访问',
-        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端，源码态可做集成测试',
-        wip: '独立安全复核，真机主屏幕 WebAuthn 与 Web Push 验收；在这之前公网配对保持关闭',
+        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端；Android Chrome 真机上已走通，源码态可做集成测试',
+        wip: '独立安全复核，iOS 主屏幕 Web Push 与 WebAuthn 用户验证的真机验收，发布包配对需要的打包门；在这之前公网配对保持关闭',
         avoid: '项目方运营的云端中继、把实验原型当成可用的远控'
       }
     ],
@@ -1010,8 +1010,8 @@ const en: Dict = {
       },
       {
         dim: 'Remote access',
-        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; integration testing runs from source',
-        wip: 'Independent security review, and real-device home-screen WebAuthn and Web Push; public pairing stays off until then',
+        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; checked on a real Android phone in Chrome; integration testing runs from source',
+        wip: 'Independent security review, real-device checks of iOS home-screen Web Push and WebAuthn user verification, and the packaging gate a release build needs before it can pair; public pairing stays off until then',
         avoid: 'A project-run cloud relay, passing a prototype off as working remote access'
       }
     ],

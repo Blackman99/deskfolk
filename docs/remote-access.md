@@ -2,7 +2,7 @@
 
 [简体中文](remote-access.zh.md)
 
-> **Off by default, and not a finished feature.** Remote access is an experimental prototype for integration testing. A release build cannot pair a device yet: until its packaging gate passes, pairing needs Deskfolk running from source with a development switch. The independent security review (S-rev), real-device home-screen WebAuthn (G-uv), real-device L1 and home-screen Web Push (G-push) have **not passed**. Keep public pairing off whenever you are not pairing, and do not route anything through it you could not afford to expose.
+> **Off by default, and not a finished feature.** Remote access is an experimental prototype for integration testing. A release build cannot pair a device yet: until its packaging gate passes, pairing needs Deskfolk running from source with a development switch. Everyday use and Web Push work on a real Android phone in Chrome (from source, with the development switch). The independent security review (S-rev), real-device home-screen WebAuthn (G-uv), real-device iOS L1 and iOS home-screen Web Push (G-push) have **not passed**. Keep public pairing off whenever you are not pairing, and do not route anything through it you could not afford to expose.
 
 Remote access lets a phone, or a browser on another computer, reach the Deskfolk on your Mac: read and answer conversations, handle what is waiting on you, look through the workspace and type into your terminals. There is no Deskfolk cloud. You run the relay yourself, the Mac only ever dials out to it, and the relay passes along encrypted traffic it cannot read.
 
