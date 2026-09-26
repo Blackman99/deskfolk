@@ -3,12 +3,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
-import type { ChatMessage, CompletionOk, JudgeResult } from "./completions";
+import type { ChatMessage, CompletionOk, CompletionsClient, JudgeRequest, JudgeResult } from "./completions";
 import { SITUATION_HEADING } from "./context";
 import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
 import { PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
 import { createTurnEngine } from "./turn-engine";
+import {
+  createOrganizer,
+  ORGANIZER_MAX_TOKENS,
+  ORGANIZER_SETTLE_TIMEOUT_MS,
+  ORGANIZER_TIMEOUT_MS,
+} from "./organizer";
 
 function say(content: string): CompletionOk {
   return { ok: true, content, toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
@@ -224,4 +230,104 @@ test("in a group, every turn a filed line opens lands in its plan and ticket", a
   expect(turns.every((turn) => turn.task_id === plan.id && turn.ticket_id === ticket.id)).toBe(true);
   expect(h.organized.filter((payload) => payload.mode === "message")).toHaveLength(1);
   expect(h.store.getMessage(trigger.id)).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
+});
+
+/** The organizer alone, over a store, answering each call with the next of `answers`. */
+function bareOrganizer(answers: Array<JudgeResult | Error>) {
+  const store = new Store();
+  const requests: JudgeRequest[] = [];
+  const lines: string[] = [];
+  const completions = {
+    async complete() {
+      throw new Error("the organizer never streams");
+    },
+    async judge(request: JudgeRequest) {
+      requests.push(request);
+      const next = answers.shift();
+      if (!next) throw new Error("no answer scripted");
+      if (next instanceof Error) throw next;
+      return next;
+    },
+  } as unknown as CompletionsClient;
+  const organizer = createOrganizer({
+    store,
+    completions,
+    routing: async () => ({
+      baseUrl: "http://127.0.0.1:1/v1",
+      apiKey: "fixture",
+      providerId: "p",
+      providerName: "fixture",
+      model: "fixture",
+      thinkingLevel: null,
+    }),
+    recordSpend: () => {},
+    draining: () => false,
+    log: (line) => lines.push(line),
+  });
+  closes.push(async () => {
+    organizer.clearTimers();
+    store.close();
+  });
+  return { store, organizer, requests, lines };
+}
+
+test("the organizer asks for room for a whole plan, a minute for a line and longer to settle", async () => {
+  // Every real answer was cut at a verdict's 256 tokens, mid-JSON, so no plan was ever filed; and a
+  // reasoning model's first word came at nineteen seconds against a twenty-second limit.
+  const h = bareOrganizer([judged("我不知道"), judged("我不知道")]);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const plan = h.store.openTask({ sessionId: session, title: "写一份周报" });
+  // Opened a minute ago, so the line below is news to it.
+  h.store.db.run("UPDATE tasks SET created_at = ? WHERE id = ?", [new Date(Date.now() - 60_000).toISOString(), plan.id]);
+  const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报" });
+  await h.organizer.organizeMessage(line);
+  expect(await h.organizer.settlePlan(plan.id)).toBe(false);
+  expect(h.requests.map((request) => [request.maxTokens, request.timeoutMs])).toEqual([
+    [ORGANIZER_MAX_TOKENS, ORGANIZER_TIMEOUT_MS],
+    [ORGANIZER_MAX_TOKENS, ORGANIZER_SETTLE_TIMEOUT_MS],
+  ]);
+  expect(ORGANIZER_MAX_TOKENS).toBeGreaterThanOrEqual(2048);
+  expect(ORGANIZER_TIMEOUT_MS).toBeGreaterThanOrEqual(45_000);
+});
+
+test("a filing that comes to nothing files nothing and says why: cut off, unreadable, failed, thrown", async () => {
+  // A cut-off plan would parse if it happened to close its braces; it is refused all the same.
+  const cut = { ...judged('{"decision":"new","plan":{"goal":"写周报"}}'), truncated: true };
+  const failed: JudgeResult = { ...judged(""), content: null, failKind: "first_byte" };
+  const h = bareOrganizer([cut, judged("我不知道"), failed, new Error("socket hang up")]);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  for (const body of ["一", "二", "三", "四"]) {
+    const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body });
+    expect(await h.organizer.organizeMessage(line)).toEqual({ taskId: null, ticketId: null });
+  }
+  expect(h.store.sessionCurrentTask(session)).toBeNull();
+  expect(h.lines).toHaveLength(4);
+  expect(h.lines[0]).toContain(`${ORGANIZER_MAX_TOKENS}-token cap`);
+  expect(h.lines[1]).toContain("did not read as a plan");
+  expect(h.lines[2]).toContain("first_byte");
+  expect(h.lines[3]).toContain("socket hang up");
+  for (const text of h.lines) expect(text).toMatch(/^\[organizer\] filing message /);
+});
+
+test("the organizer is shown the newest of what happened, oldest first", () => {
+  // With no revision yet, "since" is the plan's start; taking the oldest rows froze the window at
+  // the plan's first hour, and the line you just sent never reached the organizer.
+  const store = new Store();
+  closes.push(async () => store.close());
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const plan = store.openTask({ sessionId: session, title: "长的一件事" });
+  const bodies = ["第一句", "第二句", "第三句", "第四句"];
+  for (const [index, body] of bodies.entries()) {
+    const row = store.insertMessage({ sessionId: session, kind: "user", author: "user", body });
+    store.db.run("UPDATE messages SET created_at = ?, task_id = ? WHERE id = ?", [
+      `2026-09-25T00:00:0${index}.000Z`,
+      plan.id,
+      row.id,
+    ]);
+  }
+  expect(store.taskMessagesSince(plan.id, "", 2).map((row) => row.body)).toEqual(["第三句", "第四句"]);
+  expect(store.taskMessagesSince(plan.id, "", 10).map((row) => row.body)).toEqual(bodies);
 });

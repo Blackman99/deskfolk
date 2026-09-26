@@ -250,7 +250,8 @@ export function taskArtifacts(
 
 /**
  * Files this plan's messages cited after `since`, for the organizer to file under tickets: the
- * first `limit` of them, oldest first.
+ * newest `limit`, listed oldest first. Taking the oldest instead froze the window at the plan's
+ * start once more than `limit` had piled up, so recent files were never filed.
  */
 export function taskArtifactsSince(
   ctx: StoreContext,
@@ -266,7 +267,7 @@ export function taskArtifactsSince(
          FROM attachments a
          JOIN messages m ON m.id = a.message_id
          WHERE m.task_id = ? AND m.created_at > ?
-         ORDER BY m.created_at ASC, a.id ASC
+         ORDER BY m.created_at DESC, a.id DESC
          LIMIT ?
        ) ORDER BY cited_at ASC, attachment_id ASC`,
     )
@@ -276,7 +277,8 @@ export function taskArtifactsSince(
 
 /**
  * What was said about this plan after `since`: its own messages, plus the user's lines in the
- * session it lives in, which may not carry the plan yet. The first `limit`, oldest first.
+ * session it lives in, which may not carry the plan yet. The newest `limit`, listed oldest first —
+ * taking the oldest left a plan with no revision yet showing the organizer its first hour forever.
  */
 export function taskMessagesSince(
   ctx: StoreContext,
@@ -295,7 +297,7 @@ export function taskMessagesSince(
            AND (created_at > ? OR (kind = 'ask' AND json_extract(ask_answer, '$.answered_at') > ?))
            AND kind IN ('user', 'bot', 'ask', 'system')
            AND ${notCheckBackLine()}
-         ORDER BY created_at ASC, id ASC
+         ORDER BY created_at DESC, id DESC
          LIMIT ?
        ) ORDER BY created_at ASC, id ASC`,
     )

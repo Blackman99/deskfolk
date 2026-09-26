@@ -355,3 +355,44 @@ describe("completions across macOS sleep", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe("judge token cap", () => {
+  function answering(finishReason: string, sent: Array<Record<string, unknown>>) {
+    return createCompletionsClient({
+      fetch: async (_url, init) => {
+        sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(
+          JSON.stringify({
+            choices: [{ index: 0, message: { role: "assistant", content: '{"plan":' }, finish_reason: finishReason }],
+            usage: { prompt_tokens: 10, completion_tokens: 256 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+  }
+  const ask = (over: { maxTokens?: number; tools?: unknown[] } = {}) => ({
+    baseUrl: "http://127.0.0.1:1/v1",
+    apiKey: "sk-test",
+    model: "test-model",
+    messages: [{ role: "user" as const, content: "go" }],
+    signal: new AbortController().signal,
+    ...over,
+  });
+
+  test("a caller that needs room says how much; the rest keep a verdict's cap", async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const client = answering("stop", sent);
+    await client.judge(ask({ maxTokens: 4096 }));
+    await client.judge(ask());
+    await client.judge(ask({ tools: [{ type: "function", function: { name: "pick" } }] }));
+    expect(sent.map((body) => body.max_tokens)).toEqual([4096, 256, 512]);
+  });
+
+  test("an answer that stopped at the cap says so, and is still handed back", async () => {
+    const cut = await answering("length", []).judge(ask());
+    expect(cut).toMatchObject({ truncated: true, failKind: null, content: '{"plan":' });
+    const whole = await answering("stop", []).judge(ask());
+    expect(whole.truncated).toBeUndefined();
+  });
+});

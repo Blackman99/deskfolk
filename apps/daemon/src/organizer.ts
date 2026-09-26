@@ -9,8 +9,9 @@
  * a moment, a second call files what was handed over: ticket states, workers, progress.
  *
  * It fails open. No default model, a refused call, an unreadable answer, a store that refuses the
- * change: the plan stays as it was and turns open where they would have anyway. The call is billed
- * as its own spend kind so the cost of keeping plans in order is visible.
+ * change: the plan stays as it was and turns open where they would have anyway, and the log says
+ * which of those it was. The call is billed as its own spend kind so the cost of keeping plans in
+ * order is visible.
  *
  * The plan's spec and tickets are mirrored into the workspace as `map.md` and `ticket.md`, the
  * app's own files, so a Bot can read the whole thing and a person can browse it.
@@ -42,6 +43,8 @@ export type OrganizerDeps = {
   draining: () => boolean;
   /** How long a plan has to be quiet after its last turn before it is filed. Tests shorten it. */
   settleQuietMs?: number;
+  /** Where a filing that came to nothing says why. Defaults to stderr. */
+  log?: (line: string) => void;
 };
 
 export type Organizer = {
@@ -55,8 +58,19 @@ export type Organizer = {
   clearTimers(): void;
 };
 
-/** First-byte timeout for the organizer: the user's turns wait on it. */
-export const ORGANIZER_TIMEOUT_MS = 20_000;
+/**
+ * How long a message's filing may take, answer included: the call does not stream. The turns the
+ * line opens wait on it, and the Bots it wakes already show as thinking meanwhile. Twenty seconds
+ * cut off real answers — a reasoning model spent nineteen of them before its first word.
+ */
+export const ORGANIZER_TIMEOUT_MS = 60_000;
+/** A settle has nobody waiting on it. */
+export const ORGANIZER_SETTLE_TIMEOUT_MS = 120_000;
+/**
+ * Room for the plan and its tickets. A short call's default is sized for a verdict, and 256 tokens
+ * stopped every plan partway through its JSON, so nothing was ever filed.
+ */
+export const ORGANIZER_MAX_TOKENS = 4096;
 /** Quiet time after a plan's last turn before it is filed, so a fan-out is filed once. */
 export const SETTLE_QUIET_MS = 30_000;
 /** Whether the plan and its tickets are rendered into the workspace. */
@@ -69,6 +83,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   const settleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const inFlight = new Set<string>();
   const chains = new Map<string, Promise<unknown>>();
+  const log = deps.log ?? ((line: string) => console.error(line));
 
   function traceLines(taskId: string): string[] {
     try {
@@ -104,6 +119,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       current: input.current,
       trace: input.current ? traceLines(input.current.id) : [],
     });
+    // Which filing this was, for the line that says why it came to nothing.
+    const what = input.mode === "message" ? `message ${input.message?.id}` : `plan ${input.current?.id}`;
     let result;
     try {
       result = await deps.completions.judge({
@@ -115,9 +132,11 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
           { role: "user", content: JSON.stringify(payload) },
         ],
         signal: new AbortController().signal,
-        timeoutMs: ORGANIZER_TIMEOUT_MS,
+        timeoutMs: input.mode === "message" ? ORGANIZER_TIMEOUT_MS : ORGANIZER_SETTLE_TIMEOUT_MS,
+        maxTokens: ORGANIZER_MAX_TOKENS,
       });
-    } catch {
+    } catch (error) {
+      log(`[organizer] filing ${what}: the call threw, nothing filed: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
     try {
@@ -130,12 +149,24 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     } catch {
       // the ledger is best-effort; the answer still counts
     }
-    if (result.failKind && result.failKind !== "incomplete") return null;
-    return parseOrganizerResult(result.content ?? "", {
+    // Every way this comes to nothing is said, not swallowed: a filing that never lands looks,
+    // from the board, exactly like one that has not been tried.
+    if (result.failKind && result.failKind !== "incomplete") {
+      log(`[organizer] filing ${what}: the call failed (${result.failKind}), nothing filed`);
+      return null;
+    }
+    // A cut-off plan is not a shorter plan: its tickets and progress would be whatever fit.
+    if (result.truncated) {
+      log(`[organizer] filing ${what}: the answer stopped at the ${ORGANIZER_MAX_TOKENS}-token cap, nothing filed`);
+      return null;
+    }
+    const parsed = parseOrganizerResult(result.content ?? "", {
       mode: input.mode,
       recentPlanIds: new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id)),
       roster: store.listBots().map((bot) => ({ id: bot.id, name: bot.name })),
     });
+    if (!parsed) log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);
+    return parsed;
   }
 
   function shouldFile(message: Message): boolean {
@@ -169,7 +200,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         }),
       );
     } catch (error) {
-      console.error(`[organizer] could not apply the filing of ${message.id}`, error);
+      log(`[organizer] could not apply the filing of ${message.id}: ${error instanceof Error ? error.message : String(error)}`);
       return fallback;
     }
     renderMirrors(applied.task.id);
@@ -224,7 +255,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
           }),
         );
       } catch (error) {
-        console.error(`[organizer] could not apply the settling of ${taskId}`, error);
+        log(`[organizer] could not apply the settling of ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
         return false;
       }
       renderMirrors(taskId);

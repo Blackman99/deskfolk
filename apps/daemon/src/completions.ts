@@ -80,6 +80,12 @@ export type JudgeRequest = {
    * calls are. Present, the answer's tool calls come back for the caller to run.
    */
   tools?: unknown[];
+  /**
+   * The answer's token cap. Absent is sized for a verdict: 256 tool-less, 512 with tools. A caller
+   * that asks for a document back (the organizer's plan) has to say how much room it needs, or the
+   * answer stops mid-sentence.
+   */
+  maxTokens?: number;
 };
 
 export type JudgeResult = {
@@ -89,6 +95,12 @@ export type JudgeResult = {
   hadToolCalls: boolean;
   usage: MappedUsage | null;
   failKind: FailKind | null;
+  /**
+   * The answer stopped at the token cap (`finish_reason: "length"`), so what came back is only its
+   * start. Absent is false. It is not a failure here: a short verdict cut off can still read, so
+   * each caller decides what a cut-off answer is worth.
+   */
+  truncated?: boolean;
 };
 
 export type Clock = {
@@ -639,7 +651,7 @@ async function completeJudgeBody(
         model: request.model,
         messages: toApiMessages(request.messages),
         temperature: 0,
-        max_tokens: request.tools?.length ? 512 : 256,
+        max_tokens: request.maxTokens ?? (request.tools?.length ? 512 : 256),
         stream: false,
         ...(request.tools?.length ? { tools: request.tools } : {}),
       }),
@@ -672,13 +684,15 @@ async function completeJudgeBody(
   if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") {
     return judgeResult({ content: null, toolCalls: [], usage, failKind: "incomplete" });
   }
-  const message = (choices[0] as { message?: Record<string, unknown> }).message ?? {};
+  const choice = choices[0] as { message?: Record<string, unknown>; finish_reason?: unknown };
+  const message = choice.message ?? {};
   const content = message.content;
   return judgeResult({
     content: typeof content === "string" ? content : content == null ? null : String(content),
     toolCalls: judgeToolCalls(message.tool_calls),
     usage,
     failKind: null,
+    ...(choice.finish_reason === "length" ? { truncated: true } : {}),
   });
 }
 
