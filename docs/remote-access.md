@@ -17,7 +17,7 @@ One owner, one Mac, at most 16 paired devices. Nothing is queued while the link 
 ## What a paired device can do
 
 - **Conversations** — the chat list, reading and sending, `@`mentions, Stop, and answering approval cards and questions. What waits on you is marked on the conversation, as on the Mac.
-- **The workspace** — browse folders on the Mac and open or download files up to 50 MiB. Pictures arrive as scaled copies with the original one tap away; audio and video play while they load.
+- **The workspace** — browse folders on the Mac and open or download files up to 50 MiB. Pictures arrive as scaled copies with the original one tap away. An enlarged picture, in a conversation or the workspace, has a download button that saves the original: on a phone it opens the share sheet, whose Save Image puts it in Photos. Audio and video play while they load.
 - **Your terminals** — watch and type into a shell the daemon holds, with a two-row key bar for Esc, Tab, Ctrl, arrows and Paste. Swipe to scroll back through the output, including inside a full-screen program such as Claude Code, vim or less.
 - **A Files conversation** of its own — a file sent there is copied into the workspace `inbox/`, text stays as a note to yourself, and neither wakes a Bot. Files go up at about 0.9 MB/s, inside the relay's shared limit, so a 20 MB video takes around 23 seconds. The send button fills a ring as they go and each file shows how much of it has gone; a send that fails keeps its files in the composer.
 - **Optional Web Push** — a generic "Deskfolk has pending items" reminder sent by the Mac. Tapping it reconnects and opens the chat list; it never approves anything.

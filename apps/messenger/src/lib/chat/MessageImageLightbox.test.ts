@@ -205,3 +205,159 @@ test("before the first pixels the frame waits in place and the progress shows mi
     close();
   }
 });
+
+/** A phone's share sheet: `answer` decides how each opening ends. Restored by the returned function. */
+function onAPhone(answer: () => Promise<void>) {
+  const shared: File[][] = [];
+  const realMatchMedia = window.matchMedia;
+  const realShare = Object.getOwnPropertyDescriptor(navigator, "share");
+  const realCanShare = Object.getOwnPropertyDescriptor(navigator, "canShare");
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(pointer: coarse)",
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => true,
+  })) as typeof window.matchMedia;
+  Object.defineProperty(navigator, "share", {
+    configurable: true,
+    value: (data: ShareData) => {
+      shared.push(data.files ?? []);
+      return answer();
+    },
+  });
+  Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+  const restore = () => {
+    window.matchMedia = realMatchMedia;
+    if (realShare) Object.defineProperty(navigator, "share", realShare);
+    else delete (navigator as { share?: unknown }).share;
+    if (realCanShare) Object.defineProperty(navigator, "canShare", realCanShare);
+    else delete (navigator as { canShare?: unknown }).canShare;
+  };
+  return { shared, restore };
+}
+
+/**
+ * The phone saves the original, not the 1600 px copy on screen. It is fetched once: it also
+ * replaces the copy, and a second save opens the share sheet inside the tap with nothing to wait for.
+ */
+test("a remote save fetches the original once and hands it to the share sheet", async () => {
+  const phone = onAPhone(async () => {});
+  let resolveOriginal!: (blob: Blob) => void;
+  const { api, asked } = fakeApi("remote", (options) =>
+    options?.size ? Promise.resolve(scaledCopy()) : new Promise<Blob>((resolve) => { resolveOriginal = resolve; }));
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  try {
+    await settle();
+    const save = host.querySelector<HTMLButtonElement>(".msg-image-save");
+    expect(save?.getAttribute("aria-label")).toBe("下载原图");
+    const copyUrl = host.querySelector<HTMLImageElement>(".msg-image-full")?.src;
+    save!.click();
+    flushSync();
+    expect(asked).toHaveLength(3);
+    expect(asked[2]?.size).toBeUndefined();
+    expect(save?.disabled).toBe(true);
+    // The offer shows the download a save started.
+    expect(host.querySelector(".msg-image-original")?.textContent).toContain("正在载入原图");
+    resolveOriginal(new Blob([new Uint8Array([9])], { type: "image/png" }));
+    await settle();
+    expect(phone.shared).toHaveLength(1);
+    expect(phone.shared[0]?.[0]?.name).toBe("frame.png");
+    expect(phone.shared[0]?.[0]?.type).toBe("image/png");
+    expect(host.querySelector(".msg-image-original")).toBeNull();
+    expect(host.querySelector<HTMLImageElement>(".msg-image-full")?.src).not.toBe(copyUrl);
+    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    // Opened in the tap itself, before any await.
+    expect(phone.shared).toHaveLength(2);
+    await settle();
+    expect(asked).toHaveLength(3);
+  } finally {
+    close();
+    phone.restore();
+  }
+});
+
+/** The tap was spent while the original came. The bytes are here now, so the next tap works. */
+test("a share sheet refused after the wait asks for one more tap", async () => {
+  let refuse = true;
+  const phone = onAPhone(() => {
+    if (!refuse) return Promise.resolve();
+    refuse = false;
+    return Promise.reject(new DOMException("no gesture", "NotAllowedError"));
+  });
+  const { api, asked } = fakeApi("remote", async (options) =>
+    options?.size ? scaledCopy() : new Blob([new Uint8Array([9])], { type: "image/png" }));
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  try {
+    await settle();
+    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    await settle();
+    await settle();
+    expect(phone.shared).toHaveLength(1);
+    expect(host.querySelector(".msg-image-caption")?.textContent).toBe("原图已取回，再点一次下载");
+    expect(host.querySelector(".msg-image-save")?.classList.contains("is-ready")).toBe(true);
+    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    expect(phone.shared).toHaveLength(2);
+    await settle();
+    expect(asked).toHaveLength(3);
+    expect(host.querySelector(".msg-image-caption")?.textContent).toBe("frame.png");
+    expect(host.querySelector(".msg-image-save")?.classList.contains("is-ready")).toBe(false);
+  } finally {
+    close();
+    phone.restore();
+  }
+});
+
+/** A picture no bigger than its thumbnail is already the original: saved in the tap, nothing fetched. */
+test("a picture that is already the original is saved without another request", async () => {
+  const phone = onAPhone(async () => {});
+  const { api, asked } = fakeApi("remote", async () => new Blob([new Uint8Array([7])], { type: "image/png" }));
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  try {
+    await settle();
+    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    expect(phone.shared).toHaveLength(1);
+    await settle();
+    expect(asked).toHaveLength(1);
+  } finally {
+    close();
+    phone.restore();
+  }
+});
+
+test("an original that does not come says so under the picture", async () => {
+  const phone = onAPhone(async () => {});
+  const { api } = fakeApi("remote", (options) =>
+    options?.size ? Promise.resolve(scaledCopy()) : Promise.reject(new Error("too large")));
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  try {
+    await settle();
+    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    await settle();
+    await settle();
+    expect(phone.shared).toHaveLength(0);
+    expect(host.querySelector(".msg-image-caption")?.textContent).toBe("没能下载原图");
+    expect(host.querySelector<HTMLButtonElement>(".msg-image-save")?.disabled).toBe(false);
+    // The copy stays, and so does the offer.
+    expect(host.querySelector(".msg-image-original")).not.toBeNull();
+  } finally {
+    close();
+    phone.restore();
+  }
+});
+
+/** On the Mac the file is already on this machine. */
+test("a local enlargement offers no save", async () => {
+  const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  try {
+    await settle();
+    expect(host.querySelector(".msg-image-full")).not.toBeNull();
+    expect(host.querySelector(".msg-image-save")).toBeNull();
+  } finally {
+    close();
+  }
+});

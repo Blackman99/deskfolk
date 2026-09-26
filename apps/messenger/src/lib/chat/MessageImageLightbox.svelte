@@ -8,6 +8,7 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { holdBack } from './enlarged-images.ts';
 	import { artifactKind, svgDisplayBlob } from '../overlays/artifacts.ts';
+	import { saveFile } from '../save-file.ts';
 
 	/** Viewport rectangle of the picture that was clicked. */
 	export type ImageOrigin = { top: number; left: number; width: number; height: number };
@@ -68,6 +69,15 @@
 	const offerOriginal = $derived(url ? reducedFrom : src ? srcOriginalSize : null);
 	let originalProgress = $state<FileProgress | null>(null);
 	const originalBytes = $derived(originalProgress ? formatFileProgress(originalProgress, formatFileSize) : null);
+	/** The picture's own bytes once they are in this page, whichever way they came: what a save hands over. */
+	let original: Blob | null = null;
+	/** The original on its way. The offer and a save wait on the same download. */
+	let originalLoad: Promise<Blob | null> | null = null;
+	/** Remotely the picture is otherwise only on the Mac; the page saves the original from here. */
+	const canSave = $derived(api?.kind === 'remote' && Boolean(attachment || relpath));
+	let saving = $state(false);
+	/** Under the picture after a save: the share sheet wants one more tap, or the original never came. */
+	let saveNote = $state<'tap' | 'failed' | null>(null);
 	/** Whatever is still arriving for this enlargement. Closing it stops the download. */
 	let loadAbort: AbortController | null = null;
 	let failed = $state(false);
@@ -177,6 +187,9 @@
 		standIn = null;
 		reducedFrom = null;
 		originalProgress = null;
+		original = null;
+		originalLoad = null;
+		saveNote = null;
 		failed = false;
 		loading = true;
 		loadAbort?.abort();
@@ -204,6 +217,7 @@
 				if (mine !== request) return;
 				if (originalSizeForBlob(small) === null) {
 					url = URL.createObjectURL(small);
+					original = small;
 					return;
 				}
 				standIn = URL.createObjectURL(small);
@@ -218,6 +232,8 @@
 			if (mine !== request) return;
 			url = URL.createObjectURL(display);
 			reducedFrom = originalSizeForBlob(source);
+			// Not a copy: the file itself, an SVG's too (what is on screen is a cleaned copy of it).
+			if (reducedFrom === null) original = source;
 		} catch {
 			if (mine !== request) return;
 			failed = true;
@@ -226,33 +242,86 @@
 		}
 	}
 
-	/** The picture itself, in place of the copy on screen. The copy stays up while it arrives. */
-	async function loadOriginal(): Promise<void> {
+	/**
+	 * The picture itself: on hand, already on its way, or fetched now. A copy on screen gives way
+	 * to it once it is here, and stays up while it arrives. Null when there is nothing to ask for.
+	 */
+	function fetchOriginal(): Promise<Blob | null> {
+		if (original) return Promise.resolve(original);
+		if (originalLoad) return originalLoad;
 		const client = api;
 		const total = offerOriginal;
 		const file = attachment;
 		const workspacePath = relpath;
-		if (!client || total === null || originalProgress || (!file && !workspacePath)) return;
+		// A picture handed over that is not a copy is the file, already in this page (an SVG on
+		// screen is a cleaned copy of it, so that one is fetched).
+		const handedOver = !url && src && srcOriginalSize === null && artifactKind(name) !== 'svg' ? src : null;
+		if (!handedOver && (!client || (!file && !workspacePath))) return Promise.resolve(null);
 		const mine = request;
-		loadAbort?.abort();
-		const abort = new AbortController();
-		loadAbort = abort;
-		originalProgress = { loaded: 0, total };
-		try {
+		let arriving: Promise<Blob>;
+		if (handedOver) {
+			arriving = fetch(handedOver).then((response) => response.blob());
+		} else {
+			loadAbort?.abort();
+			const abort = new AbortController();
+			loadAbort = abort;
+			originalProgress = { loaded: 0, total };
 			const onProgress = (next: FileProgress) => {
 				if (mine !== request) return;
 				originalProgress = { loaded: next.loaded, total: next.total ?? total };
 			};
-			const source = await fetchPicture(client, file, workspacePath, onProgress, { signal: abort.signal });
+			arriving = fetchPicture(client!, file, workspacePath, onProgress, { signal: abort.signal });
+		}
+		const load = arriving
+			.then((source) => {
+				if (mine !== request) return null;
+				original = source;
+				if (total !== null) {
+					const previous = url;
+					url = URL.createObjectURL(source);
+					reducedFrom = null;
+					if (previous) URL.revokeObjectURL(previous);
+				}
+				return source;
+			})
+			.finally(() => {
+				if (mine !== request) return;
+				originalProgress = null;
+				originalLoad = null;
+			});
+		originalLoad = load;
+		return load;
+	}
+
+	/** The offer: the original in place of the copy. Failing, the copy stays on screen, and so does the offer. */
+	function loadOriginal(): void {
+		if (offerOriginal === null || originalProgress) return;
+		fetchOriginal().catch(() => {});
+	}
+
+	/**
+	 * Save the original. On a phone that is the share sheet, whose Save Image puts it in Photos.
+	 * With the bytes on hand the sheet opens in this tap; waited for, it may need another one.
+	 */
+	async function save(): Promise<void> {
+		if (saving) return;
+		const mine = request;
+		saving = true;
+		saveNote = null;
+		try {
+			// No await when the bytes are here: the share sheet has to open inside the tap.
+			const blob = original ?? (await fetchOriginal());
 			if (mine !== request) return;
-			const previous = url;
-			url = URL.createObjectURL(source);
-			reducedFrom = null;
-			if (previous) URL.revokeObjectURL(previous);
+			if (!blob) {
+				saveNote = 'failed';
+				return;
+			}
+			const outcome = await saveFile(blob, name || path.split('/').pop() || 'image');
+			if (mine === request && outcome === 'needs-tap') saveNote = 'tap';
 		} catch {
-			// The copy stays on screen, and so does the offer.
+			if (mine === request) saveNote = 'failed';
 		} finally {
-			if (mine === request) originalProgress = null;
+			if (mine === request) saving = false;
 		}
 	}
 
@@ -343,7 +412,7 @@
 	function onBackdrop(ev: MouseEvent): void {
 		const target = ev.target;
 		if (!(target instanceof Element)) return;
-		if (target.closest('.msg-image-frame, .msg-image-close, .msg-image-original')) return;
+		if (target.closest('.msg-image-frame, .msg-image-close, .msg-image-save, .msg-image-original')) return;
 		requestClose();
 	}
 </script>
@@ -425,6 +494,24 @@
 			{@render progressBar()}
 		</div>
 	{/if}
+	{#if canSave && shown}
+		<button
+			type="button"
+			class="msg-image-save"
+			class:is-ready={saveNote === 'tap'}
+			aria-label={t.stream.imageSave}
+			title={t.stream.imageSave}
+			aria-busy={saving ? 'true' : undefined}
+			disabled={saving}
+			onclick={save}
+		>
+			{#if saving}
+				<span class="msg-image-save-ring" aria-hidden="true"></span>
+			{:else}
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+			{/if}
+		</button>
+	{/if}
 	<button type="button" class="msg-image-close" aria-label={t.common.close} onclick={requestClose}>
 		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
 	</button>
@@ -439,7 +526,9 @@
 			{originalProgress ? t.stream.imageOriginalLoading(originalBytes) : t.stream.imageOriginal(formatFileSize(offerOriginal))}
 		</button>
 	{/if}
-	{#if name}
+	{#if saveNote}
+		<p class="msg-image-caption is-note" role="status">{saveNote === 'tap' ? t.stream.imageSaveTapAgain : t.stream.imageSaveFailed}</p>
+	{:else if name}
 		<p class="msg-image-caption">{name}</p>
 	{/if}
 </div>
@@ -503,6 +592,7 @@
 
 	.msg-image-caption,
 	.msg-image-close,
+	.msg-image-save,
 	.msg-image-original {
 		opacity: 0;
 		pointer-events: none;
@@ -511,6 +601,7 @@
 
 	.msg-image-lightbox.is-shown .msg-image-caption,
 	.msg-image-lightbox.is-shown .msg-image-close,
+	.msg-image-lightbox.is-shown .msg-image-save,
 	.msg-image-lightbox.is-shown .msg-image-original {
 		opacity: 1;
 		pointer-events: auto;
@@ -559,6 +650,11 @@
 		white-space: nowrap;
 		font-size: 12px;
 		color: var(--ink-secondary);
+	}
+
+	.msg-image-caption.is-note {
+		color: var(--ink);
+		font-weight: 600;
 	}
 
 	.msg-image-status {
@@ -786,10 +882,54 @@
 		outline: none;
 	}
 
+	/* Beside ✕, looking like it. */
+	.msg-image-save {
+		position: fixed;
+		top: 16px;
+		right: 60px;
+		z-index: 1;
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 0;
+		border-radius: 999px;
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
+		cursor: pointer;
+	}
+
+	.msg-image-save:hover,
+	.msg-image-save:focus-visible {
+		background: var(--btn-secondary-hover);
+		outline: none;
+	}
+
+	.msg-image-save:disabled {
+		cursor: progress;
+	}
+
+	/* The bytes are here and the share sheet wants the next tap: this is where it goes. */
+	.msg-image-save.is-ready {
+		background: var(--accent);
+		color: #ffffff;
+	}
+
+	.msg-image-save-ring {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 2px solid var(--line-hover);
+		border-top-color: var(--accent);
+		animation: msg-image-spin 0.9s linear infinite;
+	}
+
 	.msg-image-lightbox.is-instant,
 	.msg-image-lightbox.is-instant .msg-image-frame,
 	.msg-image-lightbox.is-instant .msg-image-caption,
 	.msg-image-lightbox.is-instant .msg-image-close,
+	.msg-image-lightbox.is-instant .msg-image-save,
 	.msg-image-lightbox.is-instant .msg-image-original {
 		transition: none;
 	}
@@ -799,12 +939,14 @@
 		.msg-image-frame,
 		.msg-image-caption,
 		.msg-image-close,
+		.msg-image-save,
 		.msg-image-original {
 			transition: none;
 		}
 
 		.msg-image-loading-ring,
-		.msg-image-progress-ring {
+		.msg-image-progress-ring,
+		.msg-image-save-ring {
 			animation: none;
 		}
 
