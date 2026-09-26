@@ -30,22 +30,49 @@ export function askEndedCopy(
   return null;
 }
 
-export function nextDraftVersion(current: AskDraftRecord | undefined, body: string): AskDraftRecord {
-  const sameBody = current?.body === body;
+/** A retry keeps its request id only while the answer it carries is the same one. */
+export function nextDraftVersion(
+  current: AskDraftRecord | undefined,
+  body: string,
+  selected: readonly string[] = current?.selected ?? [],
+): AskDraftRecord {
+  const same = current?.body === body && sameLabels(current.selected, selected);
   return {
     askId: current?.askId ?? "",
     body,
+    selected: [...selected],
     version: (current?.version ?? 0) + 1,
     error: current?.error ?? null,
     ended: current?.ended ?? false,
-    requestId: sameBody ? current?.requestId : undefined,
+    requestId: same ? current?.requestId : undefined,
   };
+}
+
+function sameLabels(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((label, i) => label === b[i]);
+}
+
+/**
+ * Ticking a choice. Single-select swaps (ticking the one already chosen clears it); multi-select
+ * toggles. Kept in the question's order, so the draft reads the way the card does.
+ */
+export function toggleAskChoice(
+  options: readonly { label: string }[],
+  multiSelect: boolean,
+  selected: readonly string[],
+  label: string,
+): string[] {
+  const on = selected.includes(label);
+  if (!multiSelect) return on ? [] : [label];
+  const next = on ? selected.filter((l) => l !== label) : [...selected, label];
+  return options.map((option) => option.label).filter((l) => next.includes(l));
 }
 
 export function recordAskError(current: AskDraftRecord | undefined, askId: string, body: string, error: string): AskDraftRecord {
   return {
     askId,
     body,
+    selected: current?.selected ?? [],
     version: current?.version ?? 1,
     error,
     ended: current?.ended ?? false,
@@ -81,9 +108,10 @@ export function askSubmitAllowed(
   pendingAskId: string | null | undefined,
   askId: string,
   capability: boolean,
+  selectedCount = 0,
 ): SendAskResult | null {
   const text = body.trim();
-  if (!text) return { status: "not_submitted", reason: "empty" };
+  if (!text && selectedCount === 0) return { status: "not_submitted", reason: "empty" };
   if (!connected) return { status: "not_submitted", reason: "disconnected" };
   if (busy) return { status: "not_submitted", reason: "busy" };
   if (!capability || pendingAskId !== askId) return { status: "not_submitted", reason: "stale_ask" };

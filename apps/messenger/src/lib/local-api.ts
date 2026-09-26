@@ -1,4 +1,5 @@
 import type {
+  AnswerAskRequest,
   Approval,
   CredentialOperation,
   AllowRule,
@@ -582,6 +583,11 @@ export class LocalApi {
 
   async continueInterrupt(messageId: string): Promise<Turn> {
     return this.post<Turn>("/v1/turns/continue", { message_id: messageId });
+  }
+
+  /** Your answer to a Bot's question, written onto the question; returns it as it now reads. */
+  async answerAsk(messageId: string, answer: AnswerAskRequest, opts: { requestId?: string } = {}): Promise<Message> {
+    return this.request<Message>("POST", `/v1/messages/${messageId}/answer`, answer, undefined, {}, false, null, opts.requestId);
   }
 
   async putReaction(messageId: string, emoji: string): Promise<void> {

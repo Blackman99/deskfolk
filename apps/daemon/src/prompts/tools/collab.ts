@@ -148,11 +148,33 @@ export const REMOVE_MEMBER: ToolDef = {
 export const ASK_USER: ToolDef = {
   name: "ask_user",
   description: {
-    zh: "向用户问一件需要判断的事。技术障碍先主动排查、尝试可用办法；只有缺少用户独有的信息或决策时才提问，不要让用户代做能用工具完成的工作。不是批准，不要索要聊天正文里的密钥。用户回复后本轮继续。只能在用户在场的会话里问：Bot↔Bot 私聊里用户只能看，问了没人能答。",
-    en: "Ask the user something that needs their judgment. Investigate first and try available remedies for technical obstacles; ask only for information or decisions that require the user, not work you can do with tools. This is not an approval; never request secrets in chat text. The turn continues after they reply. Only ask in a session the user belongs to: a Bot↔Bot direct is read-only to them, so a question there reaches nobody.",
+    zh: "向用户问一件需要判断的事。技术障碍先主动排查、尝试可用办法；只有缺少用户独有的信息或决策时才提问，不要让用户代做能用工具完成的工作。不是批准，不要索要聊天正文里的密钥。能列出几种可能的答案时给 options：推荐的放第一个，label 末尾写「（推荐）」；几项可以同时成立（要哪些功能、改哪几处）设 multi_select: true，只能选一个时省略。用户总能不选、自己写答案，也能选了再补一句，所以不要加「其他」选项。开放的问题（要一个名字、一段说明）不给 options。结果里 selected 是用户选中的 label，custom 是用户自己写的话，answer 是两者合成的一段文字。用户回答后本轮继续。只能在用户在场的会话里问：Bot↔Bot 私聊里用户只能看，问了没人能答。",
+    en: "Ask the user something that needs their judgment. Investigate first and try available remedies for technical obstacles; ask only for information or decisions that require the user, not work you can do with tools. This is not an approval; never request secrets in chat text. When the likely answers can be listed, give options: put the recommended one first and end its label with \"(Recommended)\"; set multi_select: true when several can hold at once (which features, which parts to change), and leave it out when only one can. The user can always skip the options and write their own answer, or pick and add a note, so do not add an \"Other\" option. Leave options out for an open question (a name, a description). In the result, selected holds the labels they picked, custom what they wrote, and answer both as one text. The turn continues after they answer. Only ask in a session the user belongs to: a Bot↔Bot direct is read-only to them, so a question there reaches nobody.",
   },
   properties: {
     question: { type: "string", description: { zh: "问句。", en: "The question." } },
+    options: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          description: { type: "string" },
+        },
+        required: ["label"],
+      },
+      description: {
+        zh: "可选。2 到 8 个选项，每项 { label, description? }：label 是简短的选项文字（80 字以内，互不重复），description 是一句说明它意味着什么、代价是什么（200 字以内）。",
+        en: "Optional. 2 to 8 choices, each { label, description? }: label is the short choice text (at most 80 characters, all different), description one sentence on what it means or costs (at most 200 characters).",
+      },
+    },
+    multi_select: {
+      type: "boolean",
+      description: {
+        zh: "可选。true 时用户可以选多个选项；省略或 false 时最多选一个。没有 options 时不用。",
+        en: "Optional. true lets the user pick several options; omitted or false allows one at most. Unused without options.",
+      },
+    },
   },
   required: ["question"],
 };

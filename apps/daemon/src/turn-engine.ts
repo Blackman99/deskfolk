@@ -2,6 +2,7 @@ import {
   USER_MEMBER,
   attachmentLinePaths,
   INTERRUPT_NOTE_BODY,
+  type AskAnswer,
   type ClientEvent,
   type ComposerSuggestion,
   type Locale,
@@ -14,6 +15,7 @@ import {
   type ThinkingLevel,
   type Turn,
 } from "@real-bot/protocol";
+import { askAnswerText, parseAskAnswer } from "./ask";
 import { pathExists, runCollabTool, type ToolResult } from "./collab-tools";
 import {
   CLOSING_CHECK_SYSTEM,
@@ -93,7 +95,11 @@ export type TurnEngine = {
   /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
   renderPlanMirrors: (taskId: string) => void;
   assertAskPending: (askId: string, sessionId: string) => void;
-  replyAsk: (askId: string, answer: Message) => void;
+  /**
+   * Records your answer on the question and lets its turn go on. Choices are checked against the
+   * ones it offered; returns the question as it now reads.
+   */
+  replyAsk: (askId: string, sessionId: string, answer: { selected?: unknown; custom?: unknown }) => Message;
   resolveApproval: (
     id: string,
     action: "allow_once" | "deny" | "always_allow",
@@ -179,7 +185,7 @@ type Live = {
   ask?: {
     id: string;
     toolCallId: string;
-    waiter: (answer: string) => void;
+    waiter: (answer: AskAnswer) => void;
   };
   approval?: {
     id: string;
@@ -1482,6 +1488,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             kind: "ask",
             author: turn.bot_id,
             body: waitAsk.question,
+            ask: waitAsk.spec,
           });
           store.db.run(
             "UPDATE turns SET status = 'waiting_ask', pending_ask_id = ?, updated_at = ? WHERE id = ?",
@@ -1507,7 +1514,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           role: "tool",
           tool_call_id: call.id,
           content: serializeToolResult(
-            { ok: true, data: { ask_id: ask.id, message_id: ask.id, answer } },
+            {
+              ok: true,
+              data: {
+                ask_id: ask.id,
+                message_id: ask.id,
+                answer: askAnswerText(answer),
+                selected: answer.selected,
+                custom: answer.custom,
+              },
+            },
             store.workspacePath(),
             workDir,
           ),
@@ -1733,7 +1749,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     });
   }
 
-  function waitForAsk(turnId: string, askId: string, toolCallId: string): Promise<string | null> {
+  function waitForAsk(turnId: string, askId: string, toolCallId: string): Promise<AskAnswer | null> {
     const live = lives.get(turnId);
     if (!live) return Promise.resolve(null);
     return new Promise((resolve) => {
@@ -2558,26 +2574,31 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       });
       return row;
     },
-    replyAsk(askId, answer) {
-      assertAskPending(askId, answer.session_id);
+    replyAsk(askId, sessionId, input) {
+      store.assertUserMayPost(sessionId);
+      assertAskPending(askId, sessionId);
       const ask = store.getMessage(askId);
       const turn = store.getTurn(ask.turn_id!);
       const live = lives.get(turn.id)!;
       const waiter = live.ask!.waiter;
       const now = isoNow();
-      const running = store.transaction(() => {
+      const answer = parseAskAnswer(ask.ask ?? null, input.selected, input.custom, now);
+      const { answered, running } = store.transaction(() => {
+        const answered = store.recordAskAnswer(askId, answer);
         store.db.run(
           "UPDATE turns SET status = 'running', pending_ask_id = NULL, updated_at = ? WHERE id = ?",
           [now, turn.id],
         );
         store.updateNotificationActionState(`ask:${askId}`, "resolved", "answered", true);
-        return store.getTurn(turn.id);
+        return { answered, running: store.getTurn(turn.id) };
       });
+      publish({ event: "message.upsert", occurred_at: occurred(), ...answered });
       publishTurn(running);
       store.afterCommit(() => {
         live.ask = undefined;
-        waiter(answer.body);
+        waiter(answer);
       });
+      return answered;
     },
     stop(turnId, opts) {
       const turn = store.stopTurn(turnId, {

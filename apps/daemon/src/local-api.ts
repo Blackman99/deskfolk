@@ -1170,29 +1170,24 @@ function dispatch(
     }
 
     const sessionId = params.id!;
-    if (askId) {
-      engine.assertAskPending(askId, sessionId);
-    } else {
-      options.admission?.assertNew();
-    }
     const fileDrop = sessionId === FILE_DROP_SESSION_ID;
-    if (fileDrop && askId) {
-      throw new HttpError(422, "invalid_args", "the file drop does not answer asks");
+    if (askId) {
+      if (fileDrop) throw new HttpError(422, "invalid_args", "the file drop does not answer asks");
+      if (fileInputs.length > 0) throw new HttpError(422, "invalid_args", "an answer carries no files");
+      // Clients from before `POST /v1/messages/:id/answer` still answer this way. The text is
+      // written onto the question as your own answer, and no message of yours is posted.
+      const answered = store.transaction(() => engine.replyAsk(askId, sessionId, { custom: bodyText }));
+      return jsonResponse(answered, 201, null);
     }
-    const message = store.transaction(() => {
-      const msg = store.postMessage(sessionId, {
-        body: bodyText,
-        parent_id: parentId,
-        attachments: fileInputs.length > 0 ? fileInputs : undefined,
-      });
-      if (askId) {
-        engine.replyAsk(askId, msg);
-      }
-      return msg;
-    });
+    options.admission?.assertNew();
+    const message = store.transaction(() => store.postMessage(sessionId, {
+      body: bodyText,
+      parent_id: parentId,
+      attachments: fileInputs.length > 0 ? fileInputs : undefined,
+    }));
     publish({ event: "message.created", occurred_at: occurred(), ...message });
     // A file dropped here is already in inbox/. Nothing is woken.
-    if (!askId && !fileDrop) {
+    if (!fileDrop) {
       store.afterCommit(() => { void engine.handleInboundMessage(message, { fork, fromUser: true }); });
     }
     return jsonResponse(message, 201, null);
@@ -1650,6 +1645,16 @@ function dispatch(
       id: params.id!,
     });
     return emptyResponse(204, null);
+  }
+
+  // Your answer to a Bot's question is written onto the question: choices it offered, text of your
+  // own, or both. A draining daemon still takes it, like any reply a waiting turn needs to finish.
+  params = matchPath(path, "/v1/messages/:id/answer");
+  if (params && method === "POST") {
+    const body = input.body as { selected?: unknown; custom?: unknown };
+    const ask = store.getMessage(params.id!);
+    const answered = store.transaction(() => engine.replyAsk(ask.id, ask.session_id, { selected: body.selected, custom: body.custom }));
+    return jsonResponse(answered, 200, null);
   }
 
   params = matchPath(path, "/v1/messages/:id/reactions");

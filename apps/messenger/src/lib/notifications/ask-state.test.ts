@@ -9,6 +9,7 @@ import {
   nextDraftVersion,
   pendingAskIdOf,
   recordAskError,
+  toggleAskChoice,
 } from "./ask-state.ts";
 
 const waiting = { id: "turn-1", status: "waiting_ask" as const, pending_ask_id: "ask-2" };
@@ -41,6 +42,23 @@ test("editing a draft body drops the previous requestId", () => {
   expect(nextDraftVersion(first, "two").requestId).toBeUndefined();
 });
 
+test("a draft keeps its ticks; changing them is a different answer with a fresh requestId", () => {
+  const first = { ...nextDraftVersion(undefined, "note", ["A"]), requestId: "req-1" };
+  expect(nextDraftVersion(first, "note").selected).toEqual(["A"]);
+  expect(nextDraftVersion(first, "note").requestId).toBe("req-1");
+  expect(nextDraftVersion(first, "note", ["A", "B"]).requestId).toBeUndefined();
+  expect(recordAskError(first, "ask-1", "note", "failed").selected).toEqual(["A"]);
+});
+
+test("single-select swaps its one tick; multi-select toggles in the question's order", () => {
+  const options = [{ label: "A" }, { label: "B" }, { label: "C" }];
+  expect(toggleAskChoice(options, false, [], "B")).toEqual(["B"]);
+  expect(toggleAskChoice(options, false, ["B"], "C")).toEqual(["C"]);
+  expect(toggleAskChoice(options, false, ["B"], "B")).toEqual([]);
+  expect(toggleAskChoice(options, true, ["C"], "A")).toEqual(["A", "C"]);
+  expect(toggleAskChoice(options, true, ["A", "C"], "A")).toEqual(["C"]);
+});
+
 test("422/409 keep the draft and do not look like success", () => {
   const error = new ApiError(422, "ask_closed", "already answered");
   expect(classifySendAskFailure(error, false)).toEqual({ status: "rejected", error });
@@ -62,4 +80,6 @@ test("not_submitted covers busy, empty, disconnected, and stale ask pointers", (
   expect(askSubmitAllowed(true, false, "hi", "ask-2", "ask-1", true)?.reason).toBe("stale_ask");
   expect(askSubmitAllowed(true, false, "hi", "ask-1", "ask-1", false)?.reason).toBe("stale_ask");
   expect(askSubmitAllowed(true, false, "hi", "ask-1", "ask-1", true)).toBeNull();
+  // A tick alone is an answer.
+  expect(askSubmitAllowed(true, false, "", "ask-1", "ask-1", true, 1)).toBeNull();
 });

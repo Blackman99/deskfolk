@@ -8,6 +8,7 @@
 	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
 	import { copyableImageAt } from '../image-context.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
+	import AskCard from './AskCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
@@ -338,21 +339,14 @@
 		liveTurnsHere.find((turn) => turn.id === view?.focusedTurnId) ?? liveTurnsHere[0]
 	);
 
-	function getDraft(askId: string): string {
-		return runtime.getAskDraft(askId)?.body ?? '';
-	}
-
-	function updateDraft(askId: string, val: string): void {
-		runtime.setAskDraft(askId, val);
-	}
-
 	async function replyAsk(askId: string): Promise<void> {
 		const record = runtime.getAskDraft(askId);
 		const body = (record?.body ?? '').trim();
-		if (!body) return;
+		const picks = record?.selected ?? [];
+		if (!body && picks.length === 0) return;
 		const submittedVersion = record?.version ?? 1;
 		stickToBottom = true;
-		const res = await runtime.sendAsk(askId, body, selected?.id);
+		const res = await runtime.sendAsk(askId, { selected: picks, custom: body }, selected?.id);
 		if (res.status === 'accepted') {
 			runtime.clearAskDraft(askId, submittedVersion);
 			await tick();
@@ -1093,34 +1087,16 @@
 							<article class="msg is-ask">
 								<div class="who">{t.stream.ask} · {who(singleMsg.message)}</div>
 								<div class="body">{singleMsg.message.body}</div>
-								{#if isPendingAsk(singleMsg.message, snapshot.turns, runtime.notificationCapabilities.pending_ask_v1) && !lockedComposer}
-									{@const askErr = runtime.getAskDraft(singleMsg.message.id)?.error}
-									<div class="ask-reply mt-5 flex gap-4">
-										<input
-											type="text"
-											placeholder={t.stream.reply}
-											value={getDraft(singleMsg.message.id)}
-											oninput={(ev) =>
-												updateDraft(singleMsg.message.id, (ev.currentTarget as HTMLInputElement).value)}
-											onkeydown={(ev) => {
-												if (ev.key === 'Enter') {
-													ev.preventDefault();
-													void replyAsk(singleMsg.message.id);
-												}
-											}}
-										/>
-										<button type="button" onclick={() => void replyAsk(singleMsg.message.id)}
-											>{t.stream.reply}</button
-										>
-									</div>
-									{#if askErr}
-										<p class="ask-error text-12 text-danger mt-1.5">{askErr}</p>
-									{/if}
-								{:else}
-									<div class="ask-ended text-12 text-muted mt-2">
-										{t.notifications.askEndedReadOnly}
-									</div>
-								{/if}
+								<AskCard
+									message={singleMsg.message}
+									answerable={isPendingAsk(singleMsg.message, snapshot.turns, runtime.notificationCapabilities.pending_ask_v1) && !lockedComposer}
+									draft={runtime.getAskDraft(singleMsg.message.id)}
+									sending={view?.sending ?? false}
+									{t}
+									onDraft={(body) => runtime.setAskDraft(singleMsg.message.id, body)}
+									onSelect={(picks) => runtime.setAskSelection(singleMsg.message.id, picks)}
+									onSubmit={() => void replyAsk(singleMsg.message.id)}
+								/>
 							</article>
 						</div>
 					</div>
@@ -2580,8 +2556,9 @@
 		color: var(--ink-secondary);
 	}
 
-	/* Ask Card */
+	/* Ask Card: one steady width, since it is a form — choices and your answer are laid out in it. */
 	.msg.is-ask {
+		width: min(100%, 440px);
 		background: var(--pane);
 		border: 1.5px solid var(--accent);
 		max-width: 480px;
@@ -2595,35 +2572,6 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-	}
-
-	.ask-reply :global(input) {
-		flex: 1;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		padding: 7px 11px;
-		background: var(--chip);
-		font-size: 13px;
-		transition: all 0.15s ease;
-	}
-
-	.ask-reply :global(input:focus) {
-		background: var(--input-bg);
-		border-color: var(--accent);
-	}
-
-	.ask-reply :global(button) {
-		background: var(--accent);
-		color: #ffffff;
-		border-radius: var(--radius-sm);
-		padding: 7px 13px;
-		font-weight: 600;
-		font-size: 12.5px;
-		box-shadow: var(--shadow-xs);
-	}
-
-	.ask-reply :global(button:hover) {
-		background: var(--accent-hover);
 	}
 
 	/* Approval Card */

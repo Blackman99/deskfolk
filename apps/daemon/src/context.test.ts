@@ -117,6 +117,35 @@ describe("assembleTurnMessages", () => {
     store.close();
   });
 
+  test("a question reads with the choices it offered and the answer written onto it", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const ask = store.insertMessage({
+      sessionId: session,
+      kind: "ask",
+      author: writer.bot.id,
+      body: "报告要哪些部分？",
+      ask: { options: [{ label: "摘要", description: "开头一段" }, { label: "数据" }, { label: "风险" }], multi_select: true },
+    });
+    store.recordAskAnswer(ask.id, { selected: ["摘要", "风险"], custom: "尽量短", answered_at: new Date().toISOString() });
+    const trigger = store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "继续" });
+    const turn = store.createTurn({ sessionId: session, botId: writer.bot.id, triggerMessageId: trigger.id });
+    const messages = assembleTurnMessages(store, {
+      sessionId: session,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale: "zh",
+      interrupt: false,
+      loop: [],
+    });
+    expect(lineWith(messages, "报告要哪些部分？")?.content).toBe(
+      "【提问】\n报告要哪些部分？\n选项（可多选）：摘要（开头一段） / 数据 / 风险\n用户选了：摘要、风险\n用户补充：尽量短",
+    );
+    store.close();
+  });
+
   test("enabled skills enter the system catalog; disabled ones do not", () => {
     const store = new Store();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

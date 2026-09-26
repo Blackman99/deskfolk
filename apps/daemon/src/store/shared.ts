@@ -181,6 +181,10 @@ export type MessageRow = {
   ticket_id?: string | null;
   /** Set on an annotation batch routed into your direct: the Bot↔Bot message it points back at. */
   annotation_source_message_id?: string | null;
+  /** JSON `AskSpec` on a question that offered choices. */
+  ask_spec?: string | null;
+  /** JSON `AskAnswer` once you answered the question. */
+  ask_answer?: string | null;
   message_seq?: number;
   created_at: string;
 };

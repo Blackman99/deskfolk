@@ -184,12 +184,13 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 | memories `/:id` | PATCH | subject/body strings, enabled bool, if_revision; no POST |
 | sessions | POST | required name, members ULID[] |
 | sessions `/:id` | PATCH | name string +if_revision |
-| sessions `/:id/messages` | POST | required body string, nullable parent_id/ask_id ULIDs, fork bool; optional files `{filename,size,sha256}[]` then type 0x05 |
+| sessions `/:id/messages` | POST | required body string, nullable parent_id/ask_id ULIDs, fork bool; optional files `{filename,size,sha256}[]` then type 0x05. With `ask_id` the body is written onto that question as your answer and no message is posted (older clients) |
 | sessions `/:id/members` | POST/DELETE | required bot_id; DELETE if_revision |
 | sessions `/:id/read` | POST | empty |
 | sessions `/:id/{archive,restore,clear}`; bots `/:id/{archive,restore}` | POST | if_revision string |
 | bots/sessions/providers/mcp-servers/skills/memories/routines/allow-rules `/:id`; sessions `/:id/messages` | DELETE | if_revision string (allow-rule uses created_at) |
 | messages `/:id/reactions` | PUT/DELETE | required emoji string, domain allowlist still applies |
+| messages `/:id/answer` | POST | optional selected string[] (labels the question offered; one at most unless it is multi-select), nullable custom string; at least one of the two. Written onto the question, answers once |
 | approvals `/:id/resolve` | POST | required action allow_once/deny/always_allow; scope/api_key strings |
 | credential-operations `/:id/resolve` | POST | required action repair/cancel; repair requires value string |
 | allow-rules | POST | required kind_key/scope strings |

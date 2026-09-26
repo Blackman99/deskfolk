@@ -25,12 +25,13 @@ import {
   type TicketStatus,
   type TurnStatus,
 } from "@real-bot/protocol";
+import { askTranscriptText, readAskAnswer, readAskSpec } from "../ask";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
-import { sessionRow, type StoreContext } from "./shared";
 import { notCheckBackLine } from "./check-backs";
 import { parsePlanSpec, type PlanSpec, type PlanStatus } from "./plan-shape";
+import { sessionRow, type MessageRow, type StoreContext } from "./shared";
 
 export type { PlanSpec, PlanStatus } from "./plan-shape";
 
@@ -284,19 +285,31 @@ export function taskMessagesSince(
   limit = 30,
 ): Array<{ id: string; author: string; kind: string; body: string; ticket_id: string | null; created_at: string }> {
   const task = getTask(ctx, taskId);
+  // A question you answered since counts as new, and reads with its choices and your answer: the
+  // answer is written onto the question, not posted as a message of yours.
   return ctx.db
-    .query<{ id: string; author: string; kind: string; body: string; ticket_id: string | null; created_at: string }, [string, string | null, string, number]>(
+    .query<MessageRow, [string, string | null, string, string, number]>(
       `SELECT * FROM (
-         SELECT id, author, kind, body, ticket_id, created_at FROM messages
+         SELECT id, author, kind, body, ticket_id, created_at, ask_spec, ask_answer FROM messages
          WHERE (task_id = ? OR (session_id = ? AND kind = 'user'))
-           AND created_at > ?
+           AND (created_at > ? OR (kind = 'ask' AND json_extract(ask_answer, '$.answered_at') > ?))
            AND kind IN ('user', 'bot', 'ask', 'system')
            AND ${notCheckBackLine()}
          ORDER BY created_at ASC, id ASC
          LIMIT ?
        ) ORDER BY created_at ASC, id ASC`,
     )
-    .all(taskId, task.session_id, since, limit);
+    .all(taskId, task.session_id, since, since, limit)
+    .map((row) => ({
+      id: row.id,
+      author: row.author,
+      kind: row.kind,
+      body: row.kind === "ask"
+        ? askTranscriptText({ body: row.body, ask: readAskSpec(row.ask_spec), ask_answer: readAskAnswer(row.ask_answer) })
+        : row.body,
+      ticket_id: row.ticket_id ?? null,
+      created_at: row.created_at,
+    }));
 }
 
 export function openTask(

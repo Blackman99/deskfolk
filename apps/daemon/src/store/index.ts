@@ -341,6 +341,7 @@ export class Store {
   readonly assertUserMayPost = this.bind(messages.assertUserMayPost);
   readonly insertMessage = this.bind(messages.insertMessage);
   readonly getMessage = this.bind(messages.getMessage);
+  readonly recordAskAnswer = this.bind(messages.recordAskAnswer);
   readonly listMainMessages = this.bind(messages.listMainMessages);
   readonly listThreadMessages = this.bind(messages.listThreadMessages);
   readonly putReaction = this.bind(messages.putReaction);

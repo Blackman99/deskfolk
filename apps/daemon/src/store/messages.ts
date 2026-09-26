@@ -3,11 +3,14 @@ import { basename, extname, join } from "node:path";
 import {
   USER_MEMBER,
   isHiddenTranscriptKind,
+  type AskAnswer,
+  type AskSpec,
   type Attachment,
   type Message,
   type Reaction,
 } from "@real-bot/protocol";
 import { attachmentMime } from "../artifact-mime";
+import { readAskAnswer, readAskSpec } from "../ask";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { ensureReplyMention } from "../mentions";
@@ -159,6 +162,8 @@ export function insertMessage(
     body: string;
     sourceTurnId?: string | null;
     paths?: string[];
+    /** The choices on a question; only an `ask` carries them. */
+    ask?: AskSpec | null;
   },
 ): Message {
   sessionRow(ctx, input.sessionId);
@@ -180,8 +185,8 @@ export function insertMessage(
         .get(input.turnId)
     : null;
   ctx.db.run(
-    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.sessionId,
@@ -193,6 +198,7 @@ export function insertMessage(
       input.sourceTurnId ?? null,
       lineage?.task_id ?? null,
       lineage?.ticket_id ?? null,
+      input.kind === "ask" && input.ask ? JSON.stringify(input.ask) : null,
       now,
     ],
   );
@@ -454,7 +460,22 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   const reactions = ctx.db
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
-  return { ...row, attachments, reactions };
+  const { ask_spec, ask_answer, ...rest } = row;
+  if (row.kind !== "ask") return { ...rest, attachments, reactions };
+  return { ...rest, ask: readAskSpec(ask_spec), ask_answer: readAskAnswer(ask_answer), attachments, reactions };
+}
+
+/**
+ * Your answer, written onto the question it answers. There is no message of yours: the question
+ * card carries it, and every later reader learns it from there. Answering twice is refused.
+ */
+export function recordAskAnswer(ctx: StoreContext, askId: string, answer: AskAnswer): Message {
+  const row = messageRow(ctx, askId);
+  if (row.kind !== "ask") throw new HttpError(422, "invalid_args", "only a question takes an answer");
+  if (row.ask_answer) throw new HttpError(422, "invalid_args", "ask is no longer pending");
+  ctx.db.run(`UPDATE messages SET ask_answer = ? WHERE id = ?`, [JSON.stringify(answer), askId]);
+  touchSession(ctx, row.session_id, answer.answered_at);
+  return getMessage(ctx, askId);
 }
 
 export function reserveAttachmentName(ctx: StoreContext, originalFilename: string): { root: string; abs: string; rel: string } {

@@ -162,7 +162,7 @@ describe("Notifications Production Lifecycle", () => {
 
     // Case 1: Ask is NOT in turns -> pendingId must be null (no fallback to askId), so askSubmitAllowed rejects it
     runtime.snapshot.turns = [];
-    const denied = await runtime.sendAsk("ask-outdated", "answer");
+    const denied = await runtime.sendAsk("ask-outdated", { custom: "answer" });
     expect(denied.status).toBe("not_submitted");
     expect((denied as any).reason).toBe("stale_ask");
 
@@ -179,14 +179,14 @@ describe("Notifications Production Lifecycle", () => {
     let postCalls: any[] = [];
     (runtime as any).api = {
       hasPendingRequest: () => false,
-      postMessage: async (id: string, text: string, opts: any) => {
-        postCalls.push({ id, text, opts });
+      answerAsk: async (id: string, answer: any, opts: any) => {
+        postCalls.push({ id, answer, opts });
         throw new ApiError(503, "request_unknown", "network dropped", "req-orig-123");
       },
     };
 
     // First attempt gets unknown
-    const res1 = await runtime.sendAsk("ask-active", "answer 1");
+    const res1 = await runtime.sendAsk("ask-active", { selected: ["Yes"], custom: "answer 1" });
     expect(res1.status).toBe("unknown");
     expect(res1.request_id).toBe("req-orig-123");
 
@@ -195,15 +195,15 @@ describe("Notifications Production Lifecycle", () => {
     expect(draft?.requestId).toBe("req-orig-123");
 
     // Second attempt (retry) passes the same requestId
-    (runtime as any).api.postMessage = async (id: string, text: string, opts: any) => {
-      postCalls.push({ id, text, opts });
-      return { id: "msg-answer", request_id: opts.requestId };
+    (runtime as any).api.answerAsk = async (id: string, answer: any, opts: any) => {
+      postCalls.push({ id, answer, opts });
+      return { id: "ask-active", request_id: opts.requestId };
     };
 
-    const res2 = await runtime.sendAsk("ask-active", "answer 1");
+    const res2 = await runtime.sendAsk("ask-active", { selected: ["Yes"], custom: "answer 1" });
     expect(res2.status).toBe("accepted");
     expect(res2.request_id).toBe("req-orig-123");
-    expect(postCalls[1].opts.requestId).toBe("req-orig-123");
+    expect(postCalls[1]).toMatchObject({ id: "ask-active", answer: { selected: ["Yes"], custom: "answer 1" }, opts: { requestId: "req-orig-123" } });
 
     runtime.setAskDraft("ask-active", "answer 2");
     expect(runtime.getAskDraft("ask-active")?.requestId).toBeUndefined();

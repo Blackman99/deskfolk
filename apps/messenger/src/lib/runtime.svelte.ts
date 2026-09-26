@@ -1727,6 +1727,15 @@ export class MessengerRuntime {
     this.askDrafts = nextMap;
   }
 
+  /** The choices ticked on a question so far; the text you wrote stays as it was. */
+  setAskSelection(askId: string, selected: readonly string[]): void {
+    const current = this.askDrafts.get(askId);
+    const updated = { ...nextDraftVersion(current, current?.body ?? "", selected), askId };
+    const nextMap = new Map(this.askDrafts);
+    nextMap.set(askId, updated);
+    this.askDrafts = nextMap;
+  }
+
   clearAskDraft(askId: string, submittedVersion: number): void {
     const current = this.askDrafts.get(askId);
     const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
@@ -1746,12 +1755,18 @@ export class MessengerRuntime {
     this.askDrafts = nextMap;
   }
 
-  async sendAsk(askId: string, body: string, sessionId?: string): Promise<SendAskResult> {
+  /**
+   * Your answer to a question: the choices you ticked, what you wrote, or both. It is written onto
+   * the question, which comes back already answered, so the card turns over without waiting for
+   * the event.
+   */
+  async sendAsk(askId: string, answer: { selected?: readonly string[]; custom?: string }, sessionId?: string): Promise<SendAskResult> {
     const api = this.api;
     const id = sessionId ?? this.selectedId;
     const view = this.viewFor(id);
     const sending = view?.sending ?? false;
-    const text = body.trim();
+    const text = (answer.custom ?? "").trim();
+    const selected = [...(answer.selected ?? [])];
     const existingDraft = this.askDrafts.get(askId);
     const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
     if (this.notificationCapabilities.pending_ask_v1) {
@@ -1763,10 +1778,11 @@ export class MessengerRuntime {
         pendingId,
         askId,
         true,
+        selected.length,
       );
       if (notAllowed) return notAllowed;
     } else {
-      if (!text) return { status: "not_submitted", reason: "empty" };
+      if (!text && selected.length === 0) return { status: "not_submitted", reason: "empty" };
       if (this.connection !== "connected") return { status: "not_submitted", reason: "disconnected" };
       if (sending) return { status: "not_submitted", reason: "busy" };
     }
@@ -1775,11 +1791,14 @@ export class MessengerRuntime {
     const reqId = existingDraft?.requestId;
     view.sending = true;
     try {
-      const res = await api.postMessage(id, text, { askId, ...(reqId ? { requestId: reqId } : {}) });
+      const res = await api.answerAsk(askId, { selected, custom: text || null }, reqId ? { requestId: reqId } : {});
+      if (this.api === api && res?.id === askId) {
+        this.snapshot = applyEvent(this.snapshot, { event: "message.upsert", occurred_at: new Date().toISOString(), ...res });
+      }
       return {
         status: "accepted",
         request_id: reqId,
-        message_id: res.id,
+        message_id: res?.id,
       };
     } catch (error) {
       if (this.api !== api) return { status: "not_submitted", reason: "stale_connection" };
@@ -1792,7 +1811,7 @@ export class MessengerRuntime {
         if (error.code === "request_unknown" || error.code === "request_pending") {
           this.keepUnknownRequest(error, api);
           const activeRequestId = error.requestId ?? reqId;
-          const draft = existingDraft ?? { ...nextDraftVersion(undefined, text), askId };
+          const draft = existingDraft ?? { ...nextDraftVersion(undefined, text, selected), askId };
           draft.requestId = activeRequestId;
           draft.error = error.message;
           const nextMap = new Map(this.askDrafts);

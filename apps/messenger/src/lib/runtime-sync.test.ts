@@ -645,7 +645,7 @@ for (const operation of ["settings", "stop", "continue", "approval", "ask", "sen
     : operation === "stop" ? runtime.stopTurn()
     : operation === "continue" ? runtime.continueInterrupt("message-1")
     : operation === "approval" ? runtime.resolveApproval("approval-1", "allow_once")
-    : operation === "ask" ? runtime.sendAsk("ask-1", "answer") : runtime.send();
+    : operation === "ask" ? runtime.sendAsk("ask-1", { custom: "answer" }) : runtime.send();
   await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
   const replacement = runtime.client;
   runtime.busy = true;

@@ -233,8 +233,7 @@ test("ask replies and approvals resume captured turns during graceful drain", as
   await until(() => h.store.getTurn(turn.id).status === "waiting_ask");
   expect(h.quiesce.state().remaining).toEqual([turn.id]);
   const ask = h.store.listMainMessages(h.created.direct_session.id, 20).find(row => row.kind === "ask")!;
-  const reply = h.store.postMessage(h.created.direct_session.id, { body: "Yes", parent_id: ask.id });
-  h.engine.replyAsk(ask.id, reply);
+  h.engine.replyAsk(ask.id, h.created.direct_session.id, { custom: "Yes" });
   await until(() => h.store.getTurn(turn.id).status === "waiting_approval");
   const approval = h.store.listApprovals("pending")[0]!;
   h.engine.resolveApproval(approval.id, "allow_once");

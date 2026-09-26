@@ -142,6 +142,7 @@ add("DELETE", "(bots|sessions|providers|mcp-servers|skills|memories|routines|all
 add("DELETE", "sessions/:id/messages", revision);
 add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);
+add("POST", "messages/:id/answer", { selected: list(string), custom: nullable(string) });
 add("PUT", "workspace/file", { path: string, content: string }, ["path", "content"]);
 
 // Terminals. A paired device has the same reach as the window here — that is the decision, and

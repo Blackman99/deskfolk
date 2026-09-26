@@ -338,6 +338,7 @@ presence 是认证连接上的短期界面事实：实例随机 ID、可见 / �
 - `Turn.pending_ask_id: ULID | null` 进入 `/v1/sessions/:id/snapshot`、全局快照中出现的活轮及 `turn.upsert`；capability 为 `pending_ask_v1`。持久化字段在 PR 1 建立，PR 2 暴露。只有 `status=waiting_ask` 且 `pending_ask_id === message.id` 才是当前可回答卡；字段缺失表示能力不足，不按 waiting_ask 猜哪一条可操作。
 - 建问、状态、指针与通知在同一事务；回复同时校验 live waiter 和持久 ID。旧等待在停止 / 恢复后清空，重启绝不凭这个指针恢复工具 waiter。升级前遗留 waiting_ask 先经现有中断恢复处理，不从最新一条 ask 猜当前问题。
 - `chat/transcript.ts::isPendingAsk` 改用精确 ID；进入旧通知时结合该通知的 resolved / voided 显示已回答 / 已失效。即使历史通知已按期限清理，只要当前指针不匹配，旧卡也保持只读“已结束”；Q1 已答、Q2 等待时只有 Q2 有输入框。
+- 回答写在提问上：`POST /v1/messages/:id/answer`（`{ selected, custom }`），提问消息带 `ask`（选项、是否多选）和 `ask_answer`，不再另插一条用户消息；旧客户端带 `ask_id` 的 `POST /v1/sessions/:id/messages` 也按自己写的答案记到提问上。
 - `runtime.sendAsk` 返回显式结果：`accepted`（request_id、message_id）、`rejected`（原 ApiError / 固定 code）、`unknown`（原 request_id）或 `not_submitted`（busy / disconnected / empty / stale connection），不再用 `Promise<void>` 掩盖结果。`ChatStage.replyAsk` 仅在 accepted 且当前 ask、连接 / 选择代际与提交草稿版本仍匹配时清除该份答案并滚动；用户在等待期间编辑的新内容保留。
 - 另一设备先回答、旧卡提交得到 422 / 409 时，保留原 code / 安全错误文案，并通过现有水印屏障刷新该会话；当前 pending_ask_id 已不匹配时显示“此问题已结束，答案尚未发送”，仍匹配则显示实际校验 / 版本错误。保留按 ask_id 索引的答案与错误，不挪到 Q2、不标该请求成功、不因该业务错误强制断线。若会话刷新失败，错误与草稿继续保留。unknown 沿用原请求回执查询 / 用户显式重试，不自动换 ID 重发；离线无持久队列。答案 / 错误放在页面生命周期的 runtime 内存 map（按 ask_id），ChatStage 临时卸载或会话刷新不清除；关闭页面即丢弃，不写 IndexedDB / localStorage。
 

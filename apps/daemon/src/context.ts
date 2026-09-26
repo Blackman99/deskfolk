@@ -3,6 +3,7 @@ import { extname } from "node:path";
 import { USER_MEMBER, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { annotationContext } from "./annotation-context";
+import { askTranscriptText } from "./ask";
 import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
@@ -646,6 +647,7 @@ function serializeTranscript(
   const clipped = takeCodePoints(message.body, BODY_LIMIT);
   let body = clipped.text;
   if (clipped.truncated) body += `\n…（truncated，原 ${clipped.original} 字）`;
+  if (message.kind === "ask") body = askTranscriptText(message, body);
   for (const att of message.attachments) {
     body += `\n附件：${att.workspace_relpath}`;
   }
@@ -764,7 +766,7 @@ export function assembleComposerSuggestUser(store: Store, sessionId: string): st
     members.push({ name: botDisplayName(store, p.member), duties: botDuties(store, p.member) });
   }
   const recent = store.listMainMessages(sessionId, COMPOSER_SUGGEST_RECENT).reverse().map((m) => {
-    const clipped = takeCodePoints(m.body, COMPOSER_SUGGEST_BODY);
+    const clipped = takeCodePoints(m.kind === "ask" ? askTranscriptText(m) : m.body, COMPOSER_SUGGEST_BODY);
     const row: ComposerSuggestPayload["recent_messages"][number] = {
       id: m.id,
       author: m.author === USER_MEMBER ? "user" : botDisplayName(store, m.author),
@@ -834,7 +836,7 @@ export function assembleJudgementUser(store: Store, input: {
     members.push({ name: botDisplayName(store, p.member), duties: botDuties(store, p.member) });
   }
   const recent = store.listMainMessages(input.sessionId, 12).reverse().map((m) => {
-    const clipped = takeCodePoints(m.body, 1500);
+    const clipped = takeCodePoints(m.kind === "ask" ? askTranscriptText(m) : m.body, 1500);
     const row: Record<string, unknown> = {
       id: m.id,
       author: m.author === USER_MEMBER ? "user" : botDisplayName(store, m.author),

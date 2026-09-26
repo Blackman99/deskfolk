@@ -206,6 +206,7 @@ export function migrateSchema(db: Database): void {
   migrateBotThinkingPins(db);
   migrateSpendLedger(db);
   migrateAnnotations(db);
+  migrateAskChoices(db);
   if (!tables.includes("terminals")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS terminals (
@@ -769,6 +770,16 @@ function migrateAnnotations(db: Database): void {
   const annotationCols = db.query<{ name: string }, []>("PRAGMA table_info(annotations)").all().map((row) => row.name);
   if (!annotationCols.includes("file_key")) db.run("ALTER TABLE annotations ADD COLUMN file_key TEXT");
   db.run("CREATE INDEX IF NOT EXISTS annotations_file_key ON annotations (file_key, status)");
+}
+
+/**
+ * A question carries the choices its Bot offered and, once you answer, your answer. Questions
+ * asked before this have neither; their answers stay the separate messages they were posted as.
+ */
+function migrateAskChoices(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
+  if (!cols.includes("ask_spec")) db.run("ALTER TABLE messages ADD COLUMN ask_spec TEXT");
+  if (!cols.includes("ask_answer")) db.run("ALTER TABLE messages ADD COLUMN ask_answer TEXT");
 }
 
 function migrateBotThinkingPins(db: Database): void {

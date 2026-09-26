@@ -69,3 +69,12 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
   ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organize" } });
   bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organise" } });
 });
+
+test("an answer to a question: choices by label and text of your own, nothing else", () => {
+  const answer = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "POST", path: `/v1/messages/${id}/answer`, body });
+  expect(() => validateBusiness(answer({ selected: ["A", "B"], custom: "and why" }))).not.toThrow();
+  expect(() => validateBusiness(answer({ custom: null, selected: [] }))).not.toThrow();
+  expect(() => validateBusiness(answer({ selected: "A" }))).toThrow();
+  expect(() => validateBusiness(answer({ selected: [1] }))).toThrow();
+  expect(() => validateBusiness(answer({ custom: "x", body: "x" }))).toThrow();
+});

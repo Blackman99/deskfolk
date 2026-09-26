@@ -193,7 +193,10 @@ export type SendAskResult =
 
 export type AskDraftRecord = {
   askId: string;
+  /** What you wrote yourself. */
   body: string;
+  /** The choices ticked so far, as labels. */
+  selected: string[];
   version: number;
   error: string | null;
   ended: boolean;

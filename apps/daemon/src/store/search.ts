@@ -60,12 +60,14 @@ export function search(ctx: StoreContext, q: string): SearchHit[] {
       session_id: s.id,
       session_title: titleFor(s.id) || s.name || s.kind,
     }));
+  // What you wrote answering a question lives on the question, so it is found there.
   const messages = ctx.db
-    .query<{ id: string; session_id: string; parent_id: string | null; body: string }, []>(
-      `SELECT id, session_id, parent_id, body FROM messages WHERE kind != 'profile_change' AND ${notCheckBackLine()}`,
+    .query<{ id: string; session_id: string; parent_id: string | null; body: string; answer: string | null }, []>(
+      `SELECT id, session_id, parent_id, body, json_extract(ask_answer, '$.custom') AS answer
+       FROM messages WHERE kind != 'profile_change' AND ${notCheckBackLine()}`,
     )
     .all()
-    .filter((m) => m.body.toLowerCase().includes(needle))
+    .filter((m) => m.body.toLowerCase().includes(needle) || Boolean(m.answer?.toLowerCase().includes(needle)))
     .map((m) => ({
       kind: "message" as const,
       id: m.id,

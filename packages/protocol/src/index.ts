@@ -641,11 +641,51 @@ export type Message = {
    * Bot, with no parent to quote; this points back at the message the artifact came from.
    */
   annotation_source_message_id?: string | null;
+  /** On an `ask`: the choices the Bot offered, or null for a plain question. */
+  ask?: AskSpec | null;
+  /** On an `ask`: your answer, recorded on the question itself instead of as a message of yours. */
+  ask_answer?: AskAnswer | null;
   created_at: string;
   message_seq?: number;
   attachments: Attachment[];
   reactions: Reaction[];
 };
+
+/** One choice a Bot offers on a question. Labels are unique within the question. */
+export type AskOption = {
+  label: string;
+  description?: string | null;
+};
+
+/**
+ * The choices on a question. Single-select takes at most one; multi-select any number. Writing
+ * your own answer is always open, beside or instead of the choices.
+ */
+export type AskSpec = {
+  options: AskOption[];
+  multi_select: boolean;
+};
+
+export type AskAnswer = {
+  /** The chosen labels, in the order the question lists them. */
+  selected: string[];
+  /** What you wrote yourself; null when you only picked. */
+  custom: string | null;
+  answered_at: string;
+};
+
+/** `POST /v1/messages/:id/answer`: at least one choice or some text of your own. */
+export type AnswerAskRequest = {
+  selected?: string[];
+  custom?: string | null;
+};
+
+export const ASK_OPTIONS_MIN = 2;
+export const ASK_OPTIONS_MAX = 8;
+/** Code points. */
+export const ASK_LABEL_MAX = 80;
+export const ASK_DESCRIPTION_MAX = 200;
+export const ASK_CUSTOM_MAX = 4000;
 
 export type SessionDetail = Session & {
   participants: SessionParticipant[];

@@ -26,7 +26,9 @@ import {
   type AnnotationFilter,
   type AnnotationStatus,
   type TextRangeAnchor,
+  type AskSpec,
 } from "@real-bot/protocol";
+import { parseAskSpec } from "./ask";
 import { avatarMimeFromPath, rasterFileToAvatarDataUri } from "./avatar-image";
 import { parseMentions } from "./mentions";
 import { isNoWorkCloser } from "./no-work";
@@ -52,7 +54,7 @@ export type ToolResult = {
   ok: boolean;
   data?: Record<string, unknown>;
   error?: { code: string; message: string };
-  waitAsk?: { question: string };
+  waitAsk?: { question: string; spec: AskSpec | null };
   waitApproval?: {
     kind_key: string;
     target: string;
@@ -592,12 +594,13 @@ function removeMember(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
 
 function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const question = requireString(args.question, "question");
+  const spec = parseAskSpec(args.options, args.multi_select);
   // A Bot↔Bot direct is the user's to read, not to answer in. Parking a turn on a question
   // nobody can reach would hang it for good, so send the Bot back to where the user is.
   if (!ctx.store.isPresent(ctx.sessionId, USER_MEMBER)) {
     return fail("not_a_member", "the user is not in this session; ask where they are");
   }
-  return { ok: true, data: {}, waitAsk: { question }, emitted: [] };
+  return { ok: true, data: {}, waitAsk: { question, spec }, emitted: [] };
 }
 
 /**
