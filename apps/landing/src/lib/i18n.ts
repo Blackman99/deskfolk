@@ -42,6 +42,10 @@ export type Dict = {
     headline: string;
     headlineLines: string[];
     subhead: string;
+    /** Heading of the list below the subhead. */
+    trustLabel: string;
+    /** What the headline's "trust" rests on, one claim per item. */
+    trust: { label: string; body: string }[];
     wipNote: string;
     ctaPrimary: string;
     ctaSecondary: string;
@@ -255,10 +259,16 @@ const zh: Dict = {
     themeDark: '暗色'
   },
   hero: {
-    headline: '在自己的电脑上，用对话组一支持久的 AI 队友。',
-    headlineLines: ['在自己的电脑上，', '用对话组一支', '持久的 AI 队友。'],
-    subhead:
-      'Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，每一轮用的模型都说得出理由。窗口、运行时、会话和共享工作区都在你的 Mac 上；模型端点和 MCP 工具由你接入。',
+    headline: '组一支你信得过的私人 AI 团队。',
+    headlineLines: ['组一支你信得过的', '私人 AI 团队。'],
+    subhead: '工作台自由组合：会话、终端、流程图和工作区，想怎么分屏就怎么摆。',
+    trustLabel: '为什么信得过',
+    trust: [
+      { label: '都在你的 Mac 上。', body: '窗口、运行时、会话和工作区都在本机；模型端点和 MCP 工具由你接入，密钥进钥匙串。' },
+      { label: '危险动作先问你。', body: '工作区外读写、出站网络、新接 MCP 或端点，都等你批准才做；私聊里随时能 Stop。' },
+      { label: '做了什么都看得见。', body: '一件事一张流程图：谁叫醒了谁、每轮交出哪些文件、用了哪个模型、为什么。' },
+      { label: '交付前先自查。', body: '交文件给你之前，先拿你最初的要求对一遍；漏掉的要么补上，要么说清去向。' }
+    ],
     wipNote: 'Alpha 版本：macOS 未签名快照，功能与数据结构仍会变化。',
     ctaPrimary: '下载 Alpha（macOS）',
     ctaSecondary: '从源码启动',
@@ -612,9 +622,9 @@ const zh: Dict = {
     contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Deskfolk — 在自己的电脑上，用对话组一支持久的 AI 队友',
+    title: 'Deskfolk — 组一支你信得过的私人 AI 团队',
     description:
-      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，桌面窗能分屏开终端。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入。MIT 开源，Alpha 阶段。',
+      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，桌面窗能分屏开终端。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：信使窗口里三个 Bot 在群里协作完成 report.md'
   },
   docs: {
@@ -672,10 +682,16 @@ const en: Dict = {
     themeDark: 'Dark'
   },
   hero: {
-    headline: 'Persistent AI teammates, organized by conversation, on your own Mac.',
-    headlineLines: ['Persistent AI teammates,', 'organized by conversation,', 'on your own Mac.'],
-    subhead:
-      'Bots have names, duties and boundaries. They chat one to one, join groups, get @mentioned and hand work to each other; every job reads as a flow, and every turn can say why it ran on the model it did. The window, runtime, sessions and shared workspace live on your Mac; you plug in the model endpoints and MCP tools.',
+    headline: 'A private AI team you can trust.',
+    headlineLines: ['A private AI team', 'you can trust.'],
+    subhead: 'A workbench you arrange freely: chats, terminals, flow boards and the workspace, split however you like.',
+    trustLabel: 'Why you can trust it',
+    trust: [
+      { label: 'It stays on your Mac.', body: 'Runtime, chats and workspace are local; models run on endpoints you add.' },
+      { label: 'It asks first.', body: 'Files outside the workspace, outbound network and new MCP or endpoints need your OK.' },
+      { label: 'It shows its work.', body: 'A flow per job: who woke whom, what each turn handed over, which model and why.' },
+      { label: 'It checks before delivery.', body: 'Files are checked against what you first asked; gaps get filled or explained.' }
+    ],
     wipNote: 'Alpha: unsigned macOS snapshot. Features and data structures may still change.',
     ctaPrimary: 'Download alpha (macOS)',
     ctaSecondary: 'Run from source',
@@ -1030,9 +1046,9 @@ const en: Dict = {
     contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Deskfolk — Persistent AI teammates, organized by conversation, on your own Mac',
+    title: 'Deskfolk — A private AI team you can trust',
     description:
-      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Every job reads as a flow, and the window splits into panes with your own terminal. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools. MIT, alpha.',
+      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Every job reads as a flow, and the window splits into panes with your own terminal. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. MIT, alpha.',
     imageAlt: 'Deskfolk: three bots collaborating on report.md in a group chat window'
   },
   docs: {

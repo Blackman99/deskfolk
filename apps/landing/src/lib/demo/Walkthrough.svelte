@@ -171,6 +171,14 @@
         {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
       </h1>
       <p class="sub">{t.hero.subhead}</p>
+      <div class="trust">
+        <h2 id="trust-label">{t.hero.trustLabel}</h2>
+        <ul aria-labelledby="trust-label">
+          {#each t.hero.trust as item}
+            <li><b>{item.label}</b> {item.body}</li>
+          {/each}
+        </ul>
+      </div>
       <div class="ctas">
         <a class="btn btn-primary" href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.hero.ctaPrimary}</a>
         <a class="btn btn-secondary" href="{base}/{lang}#quickstart">{t.hero.ctaSecondary}</a>
@@ -319,6 +327,56 @@
     line-height: 1.75;
     color: var(--ink-2);
     max-width: 38em;
+  }
+
+  /* Below the buttons on narrow screens, so they stay above the fold. */
+  .trust {
+    order: 1;
+    max-width: 38em;
+  }
+
+  .scroll-hint {
+    order: 2;
+  }
+
+  .trust h2 {
+    margin: 0 0 8px;
+    font-size: 12.5px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--teal);
+  }
+
+  .trust ul {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .trust li {
+    position: relative;
+    padding-left: 18px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+
+  .trust li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--teal);
+  }
+
+  .trust b {
+    font-weight: 650;
+    color: var(--ink);
   }
 
   .ctas {
@@ -579,6 +637,10 @@
       grid-row: 1;
       min-height: calc(100vh - var(--nav-h));
       padding-block: 0;
+    }
+
+    .trust {
+      order: 0;
     }
 
     .stage-col {
