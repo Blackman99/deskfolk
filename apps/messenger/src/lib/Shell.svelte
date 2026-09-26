@@ -83,6 +83,7 @@
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { closeEnlargedImage, imageEnlarged } from './chat/enlarged-images.ts';
+	import { closeFullscreenPreview } from './overlays/fullscreen-preview.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
 	import { spendCopyFor } from './spend/spend-copy.ts';
@@ -296,6 +297,7 @@
 	}
 
 	export function backMobileLayer(): boolean {
+		if (closeFullscreenPreview()) return true;
 		switch (topLayer({
 			imageOpen: imageEnlarged(),
 			toolsMenuOpen,
@@ -1609,6 +1611,11 @@
 
 <svelte:window
 	onkeydown={(e) => {
+		if (e.key === 'Escape' && !e.isComposing && closeFullscreenPreview()) {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			return;
+		}
 		if (searchOpen) {
 			if (e.key === 'Escape' && !e.isComposing) closeGlobalSearch();
 			return;

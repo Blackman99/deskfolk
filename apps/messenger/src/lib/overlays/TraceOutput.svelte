@@ -10,6 +10,7 @@
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import {
 		artifactKind,
+		isOfficeKind,
 		htmlPreviewBlob,
 		HTML_PREVIEW_SANDBOX,
 		svgDisplayBlob
@@ -51,6 +52,7 @@
 
 	let phase = $state<'loading' | 'ready' | 'missing' | 'plain'>('loading');
 	let text = $state<string | null>(null);
+	let officeBlob = $state<Blob | null>(null);
 	let url = $state<string | null>(null);
 	let generation = 0;
 	let liveUrl: string | null = null;
@@ -78,6 +80,7 @@
 		loadAbort = abort;
 		phase = 'loading';
 		text = null;
+		officeBlob = null;
 		dropUrl();
 		const shown = artifactKind(target);
 		if (shown === 'directory' || shown === 'file') {
@@ -105,7 +108,9 @@
 			}
 			const blob = await api.getWorkspaceFileBlob(target, undefined, { signal: abort.signal });
 			if (mine !== generation) return;
-			if (shown === 'markdown' || shown === 'text') {
+			if (isOfficeKind(shown)) {
+				officeBlob = blob;
+			} else if (shown === 'markdown' || shown === 'text') {
 				text = await blob.text();
 			} else if (shown === 'html') {
 				keep(URL.createObjectURL(htmlPreviewBlob(await blob.text())));
@@ -180,6 +185,10 @@
 			{#if workspacePath}
 				<button type="button" class="trace-output-open" onclick={openWithSystem}>{t.trace.outputOpen}</button>
 			{/if}
+		{:else if isOfficeKind(kind) && officeBlob}
+			{#await import('./OfficeViewer.svelte') then { default: OfficeViewer }}
+				<OfficeViewer data={officeBlob} {kind} title={path} labels={t.stream.office} />
+			{/await}
 		{:else if kind === 'markdown' && text !== null}
 			<MarkdownBody
 				source={text}

@@ -1976,3 +1976,50 @@ test('search result selection clears its modal and routes messages, files and ro
   expect(storedTabs().some((tab) => tab.kind === 'preview' && tab.params.relpath === 'report.md')).toBe(true);
   localStorage.removeItem('real-bot-workbench-layout');
 });
+
+for (const action of ['Back', 'Escape'] as const) {
+  test(`mounted Shell: ${action} leaves Office full screen before closing the file preview`, async () => {
+    const previousMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+      media: query, onchange: null,
+      addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      const excel = (await import('exceljs')).default;
+      const book = new excel.Workbook();
+      book.addWorksheet('First').getCell('A1').value = 'first-value';
+      book.addWorksheet('Second').getCell('A1').value = 'kept-value';
+      const blob = new Blob([new Uint8Array(await book.xlsx.writeBuffer())]);
+      const session = aDirect({ id: 'office-session' });
+      const runtime = reactive(fakeRuntime({
+        bots: [aBot()], sessions: [session],
+        settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+      }, {
+        selectedId: session.id, previewRelpath: 'report.xlsx',
+        client: { getWorkspaceFileBlob: async () => blob, workspaceTree: async () => ({ items: [], truncated: false }) },
+      }));
+      const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+      for (let i = 0; i < 100 && !host.textContent?.includes('first-value'); i++) await settle();
+      const root = host.querySelector<HTMLElement>('.office-viewer');
+      expect(root).not.toBeNull();
+      root!.showPopover = () => {};
+      root!.hidePopover = () => {};
+      click([...host.querySelectorAll('button')].find(button => button.textContent === 'Second'));
+      click(root!.querySelector('.office-full'));
+      expect(root!.classList.contains('is-enlarged')).toBe(true);
+      const back = (app as { backMobileLayer: () => boolean }).backMobileLayer;
+      if (action === 'Back') expect(back()).toBe(true);
+      else window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+      flushSync();
+      expect(host.querySelector('.office-viewer')).toBe(root);
+      expect(root!.classList.contains('is-enlarged')).toBe(false);
+      expect(root!.textContent).toContain('kept-value');
+      expect(runtime.previewRelpath).toBe('report.xlsx');
+      expect(runtime.selectedId).toBe(session.id);
+      expect(back()).toBe(false);
+    } finally {
+      window.matchMedia = previousMatchMedia;
+    }
+  });
+}

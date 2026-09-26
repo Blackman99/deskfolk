@@ -316,6 +316,21 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:goal-coverage \
 
 它先把 `state.sqlite`（连同 `-wal` / `-shm`）复制到临时目录再打开副本，守护进程可以照常跑着；默认读本机的库，`--db <path>` 换一个，`$REAL_BOT_DATA_DIR` 也认。挑哪几件事：`--task <id>`、`--session <id>`（那个会话最近活动的一件）或 `--latest [n]`。每件事发一次无工具补全：这件事的要点（整理跳写过的 `goal` / `acceptance` / `rules`，有就以它为准）、`brief`（开它的那条要求原文，没有要点时以它为准）、它引用过且还在的每个文件的开头（文本类最多 4000 字，其它只给路径）、以及这件事里 Bot 最后六句。评判模型按要点或 brief 拆出每条可验收的要求，逐条答 covered / partial / missing 和依据，Bot 自称完成不算依据。结果按事打印成 Markdown 表，JSON 写到 `.scratch/goal-coverage-eval/<时间戳>.json`（已忽略）；`--min-pass` 让任一件事的覆盖率不够时退出码为 1。解析、评分和报告格式在 `src/goal-coverage-eval.ts`，有单测。
 
+## 办公文件预览
+
+聊天附件、工作区文件树和流程图产物共用 `overlays/OfficeViewer.svelte`，支持 Word `.docx`、Excel `.xlsx`、PowerPoint `.pptx`。旧二进制格式 `.doc` / `.xls` / `.ppt` 和宏格式继续走系统应用。字节通过原有附件或工作区接口读取，本机与远程共用；预览库按需加载，文件不上传给第三方转换服务，也无需安装 Office 或 LibreOffice。
+
+- Word 使用 `docx-preview`，保留常见文字、表格和内嵌图片，页面宽度适应预览区域。
+- Word 页面四周和幻灯片周围的底色取宿主的 `--bg`，写进 iframe 的 `--office-fill` 与 `color-scheme`，切换主题时跟着改，不重建文档；纸面在两种主题下都是白色，和 PDF 一样。
+- Excel 使用 `exceljs`，按可见工作表切换，显示单元格文字、日期和公式的已存结果；没有缓存结果的公式显示公式本身，不执行计算。行号保留源表位置，空行省略。最多展示 50 张可见表，每张 1000 个有值的行和 100 列，超出时显示提示。图表、图片、原始数字格式和复杂排版需系统应用查看。
+- PowerPoint 使用 `@aiden0z/pptx-renderer`，按幻灯片顺序翻页。渲染器自带的适应只看宽度，这里改用 `fitMode: 'none'`，预览区大小一变就按宽高中较紧的一边重算缩放（`office/slides.ts`），幻灯片整张放进预览区并居中；全屏时 ←/→、↑/↓、PageUp/PageDown 翻一张，Home/End 到首尾。动画、切换效果和嵌入式媒体保持停用；复杂图形、字体和排版可能与 Office 有差异。
+
+工具栏右侧可全屏铺满应用窗口，按钮、Esc 或手机返回优先退出全屏，保留当前文件、工作表、幻灯片和文档滚动位置；下一次返回再离开预览。办公与 HTML 全屏通过 `overlays/fullscreen-preview.ts` 注册退出处理，`Shell.backMobileLayer()` 在导航其他页面前先关闭全屏，SvelteKit 的返回导航取消后仍保留当前文件 URL。使用 Popover API 将原节点提升到顶层，跨越窗格和流程图的裁剪与变换，不重新读取文件或重建 iframe；Word / PowerPoint 的 iframe 同源但禁脚本，宿主挂在里面的监听也不会执行，点进正文后按键就到不了信使。所以全屏时 iframe 一拿到焦点，下一拍就把焦点交还给全屏层（同一拍里交还，WebKit 仍把按键送进 iframe），再由宿主处理 Escape、翻页键、滚动键，⌘C 复制的是 iframe 里选中的文字。换文件或关闭组件时清理全屏和键盘监听。
+
+预览为只读，办公文件暂不提供批注或保存。三类预览统一限制文件 50 MiB、ZIP 4000 项、单项解压 32 MiB、总解压 128 MiB；加密、损坏、格式不匹配和容量超限有明确错误提示。远程原有文件传输限制继续生效。切文件或关闭时取消读取并丢弃迟到解析结果，幻灯片渲染器销毁时释放其资源。
+
+`office/archive.ts` 在解析前检查 ZIP 目录；`office/document.ts` 去除外部关系，将文档和幻灯片放入禁脚本的 iframe，内容安全策略只允许内嵌图片和样式，禁止网络资源、表单和外部导航。Word 的 HTML 块导入和内嵌字体关闭，Excel 单元格用文本节点呈现。第三方许可见 `THIRD_PARTY_NOTICES.md`。
+
 ## 远程音视频预览
 
 `ArtifactPreview`（消息附件、工作区）与 `TraceOutput`（流程图产物）在远程连接下调用 `RemoteApi.openMediaSource`。页面注册 `/sw.js` 后探测媒体能力；`static/media-stream.js` 为播放器提供 `/__remote_media/<随机 id>` 临时同源 URL，经 MessageChannel 把范围请求交给拥有该预览的页面，再由原有 Noise 连接读取文件。URL 只带随机 id；路径和字节范围留在加密 RPC 内。浏览器按需消费响应流，每次 RPC 最多 256 KiB，拖动进度可直接读文件中间或尾部，MP4 的尾部索引也由浏览器请求。预加载只取元数据，用户点播放后继续读取。Worker 不写入媒体缓存，返回 `Cache-Control: no-store`；关闭、换文件、连接结束会注销媒体源并取消在途读取。

@@ -33,6 +33,7 @@
 		artifactByteSource,
 		artifactKind,
 		isInAppPreviewKind,
+		isOfficeKind,
 		previewLoadKey,
 		stripSvgActiveContent,
 		svgDisplayBlob,
@@ -472,6 +473,8 @@
 	let hashFresh = $state(false);
 	/** The PDF's bytes, for the pdf.js viewer. */
 	let pdfBlob = $state<Blob | null>(null);
+	let officeBlob = $state<Blob | null>(null);
+	const shownOffice = $derived(blobPath === relpath ? officeBlob : null);
 	/** The PDF's bytes only while they are the file on screen's, like `shownBlob`. */
 	const shownPdf = $derived(blobPath === relpath ? pdfBlob : null);
 	let pdfViewer = $state<{ openFind: () => void; closeFind: () => boolean } | null>(null);
@@ -712,6 +715,7 @@
 		liveBlob = null;
 		blobUrl = null;
 		pdfBlob = null;
+		officeBlob = null;
 		blobPath = null;
 	}
 
@@ -857,6 +861,7 @@
 			blobUrl = next;
 			// pdf.js reads the bytes, not a URL.
 			pdfBlob = previewKind === 'pdf' ? blob : null;
+			officeBlob = isOfficeKind(previewKind) ? blob : null;
 			blobPath = path;
 			text = null;
 			diskText = null;
@@ -1385,6 +1390,12 @@
 								loadAbort?.abort();
 							}}
 						/>
+					{:else if isOfficeKind(kind)}
+						{#if shownOffice && !loading}
+							{#await import('./OfficeViewer.svelte') then { default: OfficeViewer }}
+								<OfficeViewer data={shownOffice} {kind} title={relpath} labels={t.stream.office} />
+							{/await}
+						{/if}
 					{:else if kind === "pdf" && shownPdf}
 						<PdfViewer
 							bind:this={pdfViewer}

@@ -8,6 +8,7 @@ import { flushSync } from "svelte";
 import type { Annotation } from "@real-bot/protocol";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
+import { closeFullscreenPreview } from "../overlays/fullscreen-preview.ts";
 import HtmlAnnotator, { type HtmlAnnotatorLabels } from "./HtmlAnnotator.svelte";
 
 const labels: HtmlAnnotatorLabels = {
@@ -320,4 +321,22 @@ test("choosing an element in full screen goes back to the pane, where the remark
   flushSync();
   expect(drafts).toHaveLength(1);
   expect(root().classList.contains("is-enlarged")).toBe(false);
+});
+
+
+test("phone Back exits HTML full screen while preserving the page, and unmount releases it", () => {
+  const view = devicePreview(MOBILE_PAGE);
+  const frame = view.frame();
+  const src = frame.getAttribute("src");
+  const button = view.host.querySelector<HTMLButtonElement>("[data-html-enlarge]")!;
+  button.click(); flushSync();
+  expect(closeFullscreenPreview()).toBe(true);
+  flushSync();
+  expect(view.host.querySelector(".is-enlarged")).toBeNull();
+  expect(view.frame()).toBe(frame);
+  expect(frame.getAttribute("src")).toBe(src);
+  expect(closeFullscreenPreview()).toBe(false);
+  button.click(); flushSync();
+  while (cleanups.length) cleanups.pop()!();
+  expect(closeFullscreenPreview()).toBe(false);
 });

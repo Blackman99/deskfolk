@@ -222,3 +222,38 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## Office previews
+
+Office previews in `apps/messenger` use these dynamically loaded packages:
+
+- [docx-preview](https://github.com/VolodymyrBaydalka/docxjs) 0.4.1 — Apache-2.0, copyright Volodymyr Baydalka.
+- [@aiden0z/pptx-renderer](https://github.com/aiden0z/pptx-renderer) 1.3.0 — Apache-2.0; its bundled third-party notices remain in the package.
+- [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 — MIT, copyright (c) 2014–2019 Guyon Roche.
+
+The Apache-2.0 license text is available at <https://www.apache.org/licenses/LICENSE-2.0> and in the packages' `LICENSE` files. ExcelJS's license follows:
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2014-2019 Guyon Roche
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```

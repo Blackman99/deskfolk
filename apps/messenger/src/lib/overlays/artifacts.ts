@@ -13,6 +13,9 @@ export type ArtifactKind =
   | "audio"
   | "video"
   | "pdf"
+  | "word"
+  | "spreadsheet"
+  | "presentation"
   | "html"
   | "markdown"
   | "text"
@@ -168,6 +171,9 @@ export function artifactKind(filename: string, opts: { isDir?: boolean } = {}): 
   if (AUDIO.has(ext)) return "audio";
   if (VIDEO.has(ext)) return "video";
   if (ext === "pdf") return "pdf";
+  if (ext === "docx") return "word";
+  if (ext === "xlsx") return "spreadsheet";
+  if (ext === "pptx") return "presentation";
   if (HTML.has(ext)) return "html";
   if (MARKDOWN.has(ext)) return "markdown";
   if (TEXT.has(ext)) return "text";
@@ -195,10 +201,15 @@ export function isInAppPreviewKind(kind: ArtifactKind): boolean {
     kind === "audio" ||
     kind === "video" ||
     kind === "pdf" ||
+    isOfficeKind(kind) ||
     kind === "html" ||
     kind === "markdown" ||
     kind === "text"
   );
+}
+
+export function isOfficeKind(kind: ArtifactKind): kind is "word" | "spreadsheet" | "presentation" {
+  return kind === "word" || kind === "spreadsheet" || kind === "presentation";
 }
 
 export type ArtifactByteSource = "attachment" | "workspace";

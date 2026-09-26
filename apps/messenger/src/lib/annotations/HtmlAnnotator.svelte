@@ -48,6 +48,7 @@
 
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
+	import { holdFullscreenPreview } from '../overlays/fullscreen-preview.ts';
 	import type { Annotation, HtmlElementAnchor } from '@real-bot/protocol';
 	import { HTML_PREVIEW_SANDBOX, htmlPreviewBlob, pageCspNonce } from '../overlays/artifacts.ts';
 	import {
@@ -239,6 +240,11 @@
 			const kept = [...notFound].filter((id) => checked.has(id));
 			if (kept.length !== notFound.size) reportMissing(kept);
 		});
+	});
+
+	$effect(() => {
+		if (!enlarged) return;
+		return holdFullscreenPreview(() => { enlarged = false; });
 	});
 
 	// Into the top layer, where no pane's containment or clipping reaches it. Moving the node to the

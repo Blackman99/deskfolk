@@ -30,7 +30,13 @@ test("artifactKind maps extensions and directories", () => {
   expect(artifactKind("Main.kt")).toBe("text");
   expect(artifactKind("Dockerfile")).toBe("text");
   expect(artifactKind("Makefile")).toBe("text");
-  expect(artifactKind("deck.pptx")).toBe("file");
+  expect(artifactKind("deck.pptx")).toBe("presentation");
+  expect(artifactKind("report.DOCX")).toBe("word");
+  expect(artifactKind("data.xlsx")).toBe("spreadsheet");
+  for (const file of ["old.doc", "old.xls", "old.ppt", "macro.docm", "macro.xlsm", "macro.pptm"]) {
+    expect(artifactKind(file)).toBe("file");
+  }
+  for (const kind of ["word", "spreadsheet", "presentation"] as const) expect(isInAppPreviewKind(kind)).toBe(true);
   expect(artifactKind("src", { isDir: true })).toBe("directory");
   expect(isInAppPreviewKind("image")).toBe(true);
   expect(isInAppPreviewKind("pdf")).toBe(true);
