@@ -23,6 +23,7 @@ import {
   closingCheckNote,
   closingCheckPayload,
   parseClosingCheck,
+  promisesLaterWork,
 } from "./closing-check";
 import {
   createCompletionsClient,
@@ -1358,11 +1359,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   /**
-   * Runs the closing check once per turn, when a delivery — a message that cites workspace files —
-   * is about to reach a session the user is in. Returns the note to hand back when something in the
-   * job's opening request is neither delivered nor accounted for, else null. Fails open: no job,
-   * no brief, no default model, draining, a refused call or an unreadable verdict all mean "let it
-   * through". The call is billed to the turn, on the default model it ran on.
+   * Runs the closing check once per turn, when a delivery — a message that cites workspace files,
+   * or one that says the work is still going — is about to reach a session the user is in. Returns
+   * the note to hand back when something in the job's opening request is neither delivered nor
+   * accounted for, else null. Fails open: no job, no brief, no default model, draining, a refused
+   * call or an unreadable verdict all mean "let it through". The call is billed to the turn, on
+   * the default model it ran on.
    */
   async function closingCheck(
     turnId: string,
@@ -1370,7 +1372,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     turn: Turn,
     input: { body: string; paths: string[]; sessionId: string },
   ): Promise<string | null> {
-    if (live.closingChecked || input.paths.length === 0) return null;
+    if (live.closingChecked) return null;
+    if (input.paths.length === 0 && !promisesLaterWork(input.body)) return null;
     if (!live.routing || options.admission?.draining) return null;
     let userPresent = false;
     try {

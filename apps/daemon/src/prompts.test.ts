@@ -38,6 +38,8 @@ describe("prompts", () => {
     expect(text).toContain("介绍已经发出");
     expect(text).toContain("PNG / JPEG / GIF / WebP 已经作为图像发给你");
     expect(text).toContain("不要用 read_file 去读它们");
+    expect(text).toContain("不调工具的回复也一样");
+    expect(text).toContain("光写「随后」不算");
     expect(text).toContain("要改自己的名字、职责、边界、头像、钉的端点+模型或思考等级，用 update_profile");
     expect(text).toContain("可复用的工序写成自己的技能，不要塞进人设");
     expect(text).toContain("create_skill / update_skill / delete_skill");
@@ -287,6 +289,8 @@ describe("prompts", () => {
     expect(text).toContain("no transcript message");
     expect(text).toContain("PNG / JPEG / GIF / WebP attachments are already sent as images");
     expect(text).toContain("Do not read_file them");
+    expect(text).toContain("and so does a reply without tool calls");
+    expect(text).toContain('"to follow" alone does not count');
     expect(text).toContain("To change your own name, duties, boundaries, avatar, pinned endpoint+model, or thinking level, use update_profile");
     expect(text).toContain("Write reusable procedures as your own skills");
     expect(text).toContain("create_skill / update_skill / delete_skill");

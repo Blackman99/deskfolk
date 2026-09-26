@@ -10,6 +10,7 @@ import {
   closingCheckPayload,
   deliveryExcerpt,
   parseClosingCheck,
+  promisesLaterWork,
 } from "./closing-check";
 import type { ChatMessage, CompletionOk, JudgeResult } from "./completions";
 import { memoryKeyStore } from "./secrets";
@@ -147,6 +148,32 @@ describe("the closing check in a turn", () => {
     }
   });
 
+  test("a reply that says the work is still going is checked with no file cited, and the judge hears there is no check-back", async () => {
+    const root = mkdtempSync(join(tmpdir(), "bot-closing-later-"));
+    const h = harness(root, (messages) => {
+      if (messages.some((m) => m.role === "user" && textOf(m).startsWith("收尾自检"))) return say("18 张起止帧逐对看完：没有画风跳变。");
+      return say("正在逐对核验 18 张起止帧，结论随后。");
+    });
+    try {
+      await h.settle();
+      const reviewer = h.store.createBot({ name: "审片员", duties: "review", boundaries: "stay" });
+      const session = reviewer.direct_session.id;
+      const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "逐对核验 18 张起止帧，给出结论" });
+      const done = h.nextCompletion();
+      await h.engine.handleInboundMessage(trigger, { fromUser: true });
+      await done;
+      expect(h.closingCalls).toHaveLength(1);
+      expect(h.closingCalls[0]).toMatchObject({ reply: "正在逐对核验 18 张起止帧，结论随后。", deliveries: [], check_back: null });
+      // The promise never went out; the reply after the nudge did.
+      const posted = h.store.listMainMessages(session, 10).filter((m) => m.kind === "bot").map((m) => m.body);
+      expect(posted).toEqual(["18 张起止帧逐对看完：没有画风跳变。"]);
+    } finally {
+      await h.engine.close();
+      h.store.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("a reply with nothing handed over, and a handoff into a Bot↔Bot direct, are not checked", async () => {
     const root = mkdtempSync(join(tmpdir(), "bot-closing-skip-"));
     writeFileSync(join(root, "report.md"), "# 周报\n");
@@ -209,6 +236,10 @@ describe("closing check pieces", () => {
         { path: "report.md", excerpt: "# 周报\n" },
       ]);
       expect(payload.so_far).toEqual(["【user】写周报，附趋势图", "【Writer】初稿 report.md"]);
+      expect(payload.check_back).toBeNull();
+      const booked = store.scheduleCheckBack({ botId: reviewer.id, sessionId: group.id, turnId: second.id, note: "看 Writer 补图没有", afterMinutes: 30 }).row;
+      const withBooking = closingCheckPayload(store, { taskId: second.task_id!, turnId: second.id, botId: reviewer.id, sessionId: group.id, reply: "图稍后补", paths: [], locale: "zh" })!;
+      expect(withBooking.check_back).toEqual({ note: "看 Writer 补图没有", due_at: booked.due_at });
       // No brief, nothing to check against.
       store.db.run(`UPDATE tasks SET brief = NULL WHERE id = ?`, [second.task_id!]);
       expect(closingCheckPayload(store, { taskId: second.task_id!, turnId: second.id, botId: reviewer.id, sessionId: group.id, reply: "", paths: ["chart.png"], locale: "zh" })).toBeNull();
@@ -247,9 +278,19 @@ describe("closing check pieces", () => {
 
   test("the note reads in the turn's locale", () => {
     expect(closingCheckNote("zh", [{ text: "附趋势图", why: "没看到" }, { text: "交到 report.md", why: "" }])).toBe(
-      "收尾自检：对照这件事最初的要求，下面这些既没有交出，收尾里也没有交代去向：\n- 附趋势图（没看到）\n- 交到 report.md\n补上，或在收尾里说明交给谁、为什么不交、什么时候做，再结束。这一轮只提示这一次。",
+      "收尾自检：对照这件事最初的要求，下面这些既没有交出，收尾里也没有交代去向：\n- 附趋势图（没看到）\n- 交到 report.md\n现在补上；做不了的在收尾里说明交给谁、为什么不交；非要以后再做的先用 check_back 约回看（收尾一发出这一轮就结束），再收尾。这一轮只提示这一次。",
     );
     expect(closingCheckNote("en", [{ text: "a chart", why: "none seen" }])).toContain("- a chart (none seen)");
     expect(closingCheckNote("en", [{ text: "a chart", why: "" }])).toContain("Closing check:");
+    expect(closingCheckNote("en", [{ text: "a chart", why: "" }])).toContain("needs a check_back booked first");
+  });
+
+  test("a closing message that says the work is still going is recognised in either language", () => {
+    expect(promisesLaterWork("正在逐对核验 18 张起止帧，先挂审片条，结论随后。")).toBe(true);
+    expect(promisesLaterWork("初稿先放这，图稍后补")).toBe(true);
+    expect(promisesLaterWork("Checking the frames now, results to follow.")).toBe(true);
+    expect(promisesLaterWork("I'll get back to you with the verdict")).toBe(true);
+    expect(promisesLaterWork("周报在 report.md，趋势图也在里面")).toBe(false);
+    expect(promisesLaterWork("Done: the report is in report.md")).toBe(false);
   });
 });

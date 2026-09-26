@@ -5,6 +5,11 @@
  * Bot once — as a failed `send_message` or as a line in the loop — and lets the next reply through
  * whatever it says. It is a nudge with evidence, not a gate: no brief, no default model, an
  * unreadable verdict or a refused call all let the delivery through.
+ *
+ * A closing message that says the work is still going ("checking the 18 frames, conclusion to
+ * follow") is checked too, cited files or not: the turn ends when it goes out, so "later" only
+ * happens when a check-back is booked or someone named takes it. A reviewer once closed that way
+ * and the group waited on a conclusion nothing was going to write.
  */
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 import { extname } from "node:path";
@@ -17,13 +22,13 @@ import { classifyPath } from "./workspace-paths";
 
 export const CLOSING_CHECK_SYSTEM = `你在替一个 Bot 做收尾自检，不是回答用户，也不能发言。没有工具，不能读工作区。
 
-根据用户消息这份 JSON 决定：ticket 是这一轮要做的那个任务（title 和 spec），没有就是 null；plan 是这件事的规划（goal 目标、acceptance 验收、rules 规则），没有就是 null；brief 是开头那条要求的原文；reply 是这个 Bot 准备发出的收尾消息；deliveries 是这件事已交出的文件，每条有 path 和 excerpt（长文件只给开头，二进制文件没有 excerpt），这一轮交出的排在前面；so_far 是这件事里谁做了什么。
+根据用户消息这份 JSON 决定：ticket 是这一轮要做的那个任务（title 和 spec），没有就是 null；plan 是这件事的规划（goal 目标、acceptance 验收、rules 规则），没有就是 null；brief 是开头那条要求的原文；reply 是这个 Bot 准备发出的收尾消息；deliveries 是这件事已交出的文件，每条有 path 和 excerpt（长文件只给开头，二进制文件没有 excerpt），这一轮交出的排在前面；so_far 是这件事里谁做了什么；check_back 是这个 Bot 在这个会话里约好的回看（note 回看时做什么，due_at 什么时候），没约就是 null。
 
 只输出一个 JSON 对象：{"unaddressed": [{"text": "…", "why": "…"}]}。不要 markdown 围栏，不要前言后语，不要 tool-call。
 
 unaddressed 列的是：这一轮该交的东西里，deliveries 里看不到做到、reply 里也没有交代去向的项。标准按这个顺序取：有 ticket 就按 ticket.spec 和 plan.acceptance、plan.rules；没有 ticket 就按 plan；没有 plan 才按 brief。text 是要求的原话或紧贴原话的概括，why 一句话说明为什么算没交代。
 
-策略：只认看得见的证据，Bot 说「已完成」不算。reply 里明确说了交给谁、为什么不做、或什么时候做的，不算 unaddressed；so_far 里别人已经做完的、属于别的任务的，不算。标准里没提的不要补成要求；寒暄和没有交付物的要求不列。拿不准就不列。没有就返回 {"unaddressed": []}。`;
+策略：只认看得见的证据，Bot 说「已完成」不算。reply 里明确说了交给谁（点了名的人）、为什么不做、或在等谁的什么东西的，不算 unaddressed；so_far 里别人已经做完的、属于别的任务的，不算。reply 一发出这一轮就结束，没有人会替它接着做：reply 说自己「正在做」「随后 / 稍后给出」「结论后补」的事，只有 check_back 不为 null 且 note 对得上、或 reply 点名交给了别人，才算交代；否则把那件事列出来，why 写「这一轮发出就结束，没约回看也没交给别人」。标准里没提的不要补成要求；寒暄和没有交付物的要求不列。拿不准就不列。没有就返回 {"unaddressed": []}。`;
 
 /** How much of one handed-over file the check reads. */
 export const CLOSING_EXCERPT_LIMIT = 3000;
@@ -35,6 +40,19 @@ export const CLOSING_REPLY_LIMIT = 3000;
 export const CLOSING_ITEMS_LIMIT = 6;
 /** First-byte timeout for the check: the user is waiting on this turn. */
 export const CLOSING_CHECK_TIMEOUT_MS = 30_000;
+
+/**
+ * Words a closing message uses when the work is still going. A match only means "check this reply
+ * too"; the judge decides whether anything is left hanging, so a storyboard line that happens to
+ * say 随后 costs one short call and nothing else.
+ */
+const LATER_WORK =
+  /随后|稍后|稍候|回头|待会|过会|晚些|晚点|结论后补|后续再|马上(就)?(给|发|补|出)|正在(逐|进行|核|检|审|处理|生成|渲染|排查|分析|比对|确认|整理|跑)|\b(?:to follow|shortly|in a (?:moment|bit|few minutes)|stay tuned)\b|\bI(?:'ll| will) (?:follow up|get back|report back|post|share|send)\b|\bI'm (?:now )?(?:checking|reviewing|verifying|comparing|working on)\b/i;
+
+/** Whether a closing message says it is still working on something it has not handed over. */
+export function promisesLaterWork(text: string): boolean {
+  return LATER_WORK.test(text);
+}
 
 /** File kinds whose contents the check can read; anything else is named by path only. */
 export const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -50,6 +68,7 @@ export type ClosingCheckPayload = {
   reply: string;
   deliveries: Array<{ path: string; excerpt: string | null; truncated?: true }>;
   so_far: string[];
+  check_back: { note: string; due_at: string } | null;
 };
 
 export type ClosingItem = { text: string; why: string };
@@ -131,6 +150,13 @@ export function closingCheckPayload(
     const head = root ? deliveryExcerpt(root, path) : { excerpt: null, truncated: false };
     return head.truncated ? { path, excerpt: head.excerpt, truncated: true as const } : { path, excerpt: head.excerpt };
   });
+  let booked: { note: string; due_at: string } | null = null;
+  try {
+    const row = store.pendingCheckBack(input.botId, input.sessionId);
+    if (row) booked = { note: row.note, due_at: row.due_at };
+  } catch {
+    booked = null;
+  }
   return {
     brief: brief || null,
     plan,
@@ -138,6 +164,7 @@ export function closingCheckPayload(
     reply: takeCodePoints(input.reply, CLOSING_REPLY_LIMIT).text,
     deliveries,
     so_far: facts?.trace ?? [],
+    check_back: booked,
   };
 }
 
@@ -164,12 +191,12 @@ export function closingCheckNote(locale: Locale, items: readonly ClosingItem[]):
     return [
       "Closing check: against the job's opening request, these are neither delivered nor accounted for in your closing message:",
       ...lines,
-      "Deliver them, or say who takes them, why not, or when, then close. This is the one reminder this turn.",
+      "Deliver them now; for what you cannot, say in the closing who takes it or why not; anything you will only finish later needs a check_back booked first (the turn ends when the reply goes out). Then close. This is the one reminder this turn.",
     ].join("\n");
   }
   return [
     "收尾自检：对照这件事最初的要求，下面这些既没有交出，收尾里也没有交代去向：",
     ...lines,
-    "补上，或在收尾里说明交给谁、为什么不交、什么时候做，再结束。这一轮只提示这一次。",
+    "现在补上；做不了的在收尾里说明交给谁、为什么不交；非要以后再做的先用 check_back 约回看（收尾一发出这一轮就结束），再收尾。这一轮只提示这一次。",
   ].join("\n");
 }
