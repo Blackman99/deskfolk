@@ -3587,7 +3587,13 @@ describe("per-message model and thinking-level routing", () => {
     expect(chain?.learned_chain_id).not.toBeNull();
     const transcript = h.store.listMainMessages(body.direct_session.id, 40);
     expect(transcript.some((row) => row.body.includes("重构先读现有函数"))).toBe(false);
-    const learning = h.store.listSessionLearnings(body.direct_session.id);
+    // The note is written when the learning hop ends, a model call or more after the memory it
+    // announced; reading it the moment the memory arrived failed whenever that call was slow.
+    let learning = h.store.listSessionLearnings(body.direct_session.id);
+    for (const start = Date.now(); learning.length === 0 && Date.now() - start < 4000; ) {
+      await Bun.sleep(10);
+      learning = h.store.listSessionLearnings(body.direct_session.id);
+    }
     expect(learning).toHaveLength(1);
     expect(learning[0]).toMatchObject({ kind: "memory", label: "重构先读现有函数" });
     sub.close();
