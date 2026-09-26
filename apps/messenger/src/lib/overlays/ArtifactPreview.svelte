@@ -58,6 +58,8 @@
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import MessageImageLightbox, { type ImageOrigin } from '../chat/MessageImageLightbox.svelte';
 	import { openWorkspacePath } from './open-workspace.ts';
+	import FileDownload, { type FileDownloadNote } from './FileDownload.svelte';
+	import { isTauri } from '../tauri.ts';
 	import {
 		clampArtifactTreeWidth,
 		loadArtifactTreeWidth,
@@ -591,6 +593,20 @@
 	let sourceMode = $derived(kind === 'text' || (canShowSource && showSource));
 	let byteSource = $derived(artifactByteSource({ mode, relpath, attachment }));
 	let remoteClient = $derived(api?.kind === 'remote');
+	/** A file shown only by name: the desktop window opens it with the system, anywhere else it downloads. */
+	let opensOnDisk = $derived(!remoteClient && isTauri());
+	/**
+	 * Remotely every file shown can be downloaded, from the phone's bar and from the wide layout's.
+	 * A file shown only by name has its own button in the middle instead.
+	 */
+	let canDownload = $derived(
+		remoteClient && Boolean(relpath) && kind !== 'directory' && isInAppPreviewKind(kind) && attachment?.exists !== false && !missing,
+	);
+	let downloadKey = $derived(`${byteSource}:${attachment?.id ?? ''}:${relpath}`);
+	let downloadNote = $state<FileDownloadNote>(null);
+	/** The whole file as it was read for the preview, so a download does not fetch it again. */
+	let original = $state<{ path: string; blob: Blob } | null>(null);
+	let readyOriginal = $derived(original?.path === relpath ? original.blob : null);
 	// The rendered view can hold an unsaved buffer carried over from the source view; the dirty
 	// prompt's Save must be able to write it.
 	let canSave = $derived(Boolean(api && relpath && canShowSource && text !== null && (sourceMode || text !== diskText)));
@@ -770,6 +786,8 @@
 		loadAbort = null;
 		missing = false;
 		openHint = false;
+		original = null;
+		downloadNote = null;
 		progress = null;
 		// The last file's hash is not this one's. A clip streamed in pieces never gets one, and a
 		// spot picked on it must not be saved against the file shown before it.
@@ -828,6 +846,8 @@
 			loadedEtag = etagForBlob(blob);
 			hashFresh = true;
 			reducedFrom = size ? originalSizeForBlob(blob) : null;
+			// A scaled copy stands in for a picture that is already small enough; that copy is the file.
+			if (!size || reducedFrom === null) original = { path, blob };
 			if (previewKind === 'text' || previewKind === 'markdown' || previewKind === 'svg') {
 				const raw = await blob.text();
 				if (gen !== loadGen) return;
@@ -906,6 +926,7 @@
 			hashFresh = true;
 			blobPath = path;
 			reducedFrom = null;
+			original = { path, blob };
 		} catch {
 			// The copy stays on screen, and so does the offer.
 		} finally {
@@ -1134,19 +1155,40 @@
 		A phone has no workbench tab to name or close this pane, so it keeps one thin bar: back,
 		and the file's name. The desktop names the file on its tab and closes it there.
 	-->
-	<header class="artifact-pane-head">
+	<header class="artifact-pane-head" class:has-download={canDownload}>
 		<button type="button" class="artifact-back" aria-label={t.common.back} onclick={() => requestClose()}>
 			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
 				<polyline points="15 18 9 12 15 6"></polyline>
 			</svg>
 		</button>
 		<h2 class:is-dirty={dirty} title={titleName}>{titleName}</h2>
+		{#if canDownload}
+			{#key downloadKey}
+				<FileDownload
+					{api}
+					path={relpath}
+					attachmentId={byteSource === 'attachment' ? (attachment?.id ?? null) : null}
+					name={titleName}
+					{t}
+					ready={readyOriginal}
+					variant="icon"
+					bind:note={downloadNote}
+					--file-download-size="48px"
+					--file-download-radius="0"
+				/>
+			{/key}
+		{/if}
 	</header>
 	{#if saveError}
 		<p class="muted artifact-save-error pt-0 px-8 pb-3">{saveConflict ? t.stream.artifactSaveConflict : t.stream.artifactSaveFailed}</p>
 	{/if}
-	{#if showAnnotToggle || showAnnotMode || annotHint !== null}
-		<div class="artifact-annot-bar" data-annotation-bar>
+	{#if downloadNote}
+		<p class="muted artifact-download-note" role="status">
+			{downloadNote === 'tap' ? t.stream.artifactDownloadTapAgain : t.stream.artifactDownloadFailed}
+		</p>
+	{/if}
+	{#if showAnnotToggle || showAnnotMode || annotHint !== null || canDownload}
+		<div class="artifact-annot-bar" class:is-download-only={!(showAnnotToggle || showAnnotMode || annotHint !== null)} data-annotation-bar>
 			{#if annotHint !== null}
 				<p class="artifact-annot-hint" data-annotation-hint={annotHint}>
 					{annotHint === 'dirty'
@@ -1186,6 +1228,23 @@
 					onclick={() => (annotOpen = !annotOpen)}
 					data-annotation-toggle
 				>{t.stream.annotationsTitle}{fileAnnotations.length > 0 ? ` (${fileAnnotations.length})` : ''}</button>
+			{/if}
+			{#if canDownload}
+				<span class="artifact-bar-download">
+					{#key downloadKey}
+						<FileDownload
+							{api}
+							path={relpath}
+							attachmentId={byteSource === 'attachment' ? (attachment?.id ?? null) : null}
+							name={titleName}
+							{t}
+							ready={readyOriginal}
+							variant="compact"
+							quiet
+							bind:note={downloadNote}
+						/>
+					{/key}
+				</span>
 			{/if}
 		</div>
 	{/if}
@@ -1454,6 +1513,28 @@
 								return api.getWorkspaceFileBlob(path, undefined, { size: 'thumb', signal });
 							}}
 						/>
+					{:else if !isInAppPreviewKind(kind)}
+						<div class="artifact-unsupported">
+							<p class="artifact-unsupported-name">{titleName}</p>
+							<p class="muted">{attachment?.exists === false ? t.stream.artifactMissing : t.stream.artifactUnsupported}</p>
+							{#if attachment?.exists === false}
+								<!-- Nothing to hand over. -->
+							{:else if opensOnDisk}
+								<button type="button" class="artifact-unsupported-open" onclick={() => void openOnDisk(relpath, false)}>
+									{t.stream.artifactOpenSystem}
+								</button>
+							{:else}
+								{#key `${byteSource}:${attachment?.id ?? ''}:${relpath}`}
+									<FileDownload
+										{api}
+										path={relpath}
+										attachmentId={byteSource === 'attachment' ? (attachment?.id ?? null) : null}
+										name={titleName}
+										{t}
+									/>
+								{/key}
+							{/if}
+						</div>
 					{:else}
 						<p class="muted">{attachment?.original_filename ?? relpath}</p>
 					{/if}
@@ -1870,6 +1951,60 @@
 		flex-direction: column;
 	}
 
+	.artifact-download-note {
+		margin: 0;
+		padding: 6px 16px;
+		font-size: 12px;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.artifact-bar-download {
+		display: contents;
+	}
+
+	.artifact-unsupported {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		padding: 48px 16px;
+		text-align: center;
+	}
+
+	.artifact-unsupported p {
+		margin: 0;
+	}
+
+	.artifact-unsupported-name {
+		max-width: 100%;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--ink);
+		overflow-wrap: anywhere;
+	}
+
+	.artifact-unsupported-open {
+		margin-top: 6px;
+		height: 32px;
+		padding: 0 16px;
+		border: 1px solid var(--accent-border);
+		border-radius: 999px;
+		background: var(--accent-tint);
+		color: var(--accent);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.artifact-unsupported-open:hover {
+		border-color: var(--accent);
+	}
+
+	.artifact-unsupported-open:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
 	.artifact-loading {
 		position: absolute;
 		inset: 0;
@@ -2021,6 +2156,21 @@
 			border-bottom: 1px solid var(--line);
 			background: var(--pane);
 			flex-shrink: 0;
+		}
+
+		/* Download mirrors back: the same square, at the other end. */
+		.artifact-pane-head.has-download {
+			padding-right: 0;
+		}
+
+		.artifact-pane-head :global(.file-download-icon) {
+			align-self: center;
+		}
+
+		/* The phone downloads from its own bar; a bar that would hold only that stays away. */
+		.artifact-bar-download,
+		.artifact-annot-bar.is-download-only {
+			display: none;
 		}
 
 		.artifact-source-toggle {

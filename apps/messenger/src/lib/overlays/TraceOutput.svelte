@@ -16,6 +16,8 @@
 		svgDisplayBlob
 	} from './artifacts.ts';
 	import { openWorkspacePath } from './open-workspace.ts';
+	import FileDownload, { type FileDownloadNote } from './FileDownload.svelte';
+	import { isTauri } from '../tauri.ts';
 	import { traceFileName } from './task-trace.ts';
 
 	interface Props {
@@ -49,6 +51,11 @@
 
 	const kind = $derived(artifactKind(path));
 	const name = $derived(traceFileName(path));
+	/** The desktop window opens a file it cannot show with the system; anywhere else it downloads. */
+	const opensOnDisk = $derived(api?.kind !== 'remote' && isTauri());
+	/** The whole file as it was read to show it, so a download does not fetch it again. */
+	let whole = $state<Blob | null>(null);
+	let downloadNote = $state<FileDownloadNote>(null);
 
 	let phase = $state<'loading' | 'ready' | 'missing' | 'plain'>('loading');
 	let text = $state<string | null>(null);
@@ -81,6 +88,8 @@
 		phase = 'loading';
 		text = null;
 		officeBlob = null;
+		whole = null;
+		downloadNote = null;
 		dropUrl();
 		const shown = artifactKind(target);
 		if (shown === 'directory' || shown === 'file') {
@@ -108,6 +117,7 @@
 			}
 			const blob = await api.getWorkspaceFileBlob(target, undefined, { signal: abort.signal });
 			if (mine !== generation) return;
+			whole = blob;
 			if (isOfficeKind(shown)) {
 				officeBlob = blob;
 			} else if (shown === 'markdown' || shown === 'text') {
@@ -150,6 +160,22 @@
 			<span class="trace-output-kicker">{handedBy ? t.trace.outputOf(handedBy) : t.trace.output}</span>
 			<strong class="trace-output-name" title={path}>{name}</strong>
 		</div>
+		{#if api?.kind === 'remote' && phase === 'ready'}
+			{#key path}
+				<FileDownload
+					{api}
+					{path}
+					name={path.split('/').pop() ?? path}
+					{t}
+					ready={whole}
+					variant="icon"
+					bind:note={downloadNote}
+					--file-download-size="22px"
+					--file-download-radius="var(--radius-sm)"
+					--file-download-glyph="13px"
+				/>
+			{/key}
+		{/if}
 		<button
 			type="button"
 			class="trace-output-full"
@@ -176,14 +202,23 @@
 		</button>
 	</header>
 	<div class="trace-output-body">
+		{#if downloadNote}
+			<p class="trace-output-note" role="status">{downloadNote === 'tap' ? t.stream.artifactDownloadTapAgain : t.stream.artifactDownloadFailed}</p>
+		{/if}
 		{#if phase === 'loading'}
 			<p class="trace-output-note">{t.trace.loading}</p>
 		{:else if phase === 'missing'}
 			<p class="trace-output-note">{t.trace.outputMissing}</p>
 		{:else if phase === 'plain'}
 			<p class="trace-output-note">{t.trace.outputPlain}</p>
-			{#if workspacePath}
-				<button type="button" class="trace-output-open" onclick={openWithSystem}>{t.trace.outputOpen}</button>
+			{#if opensOnDisk}
+				{#if workspacePath}
+					<button type="button" class="trace-output-open" onclick={openWithSystem}>{t.trace.outputOpen}</button>
+				{/if}
+			{:else if kind !== 'directory'}
+				{#key path}
+					<FileDownload {api} {path} name={path.split('/').pop() ?? path} {t} variant="compact" />
+				{/key}
 			{/if}
 		{:else if isOfficeKind(kind) && officeBlob}
 			{#await import('./OfficeViewer.svelte') then { default: OfficeViewer }}
