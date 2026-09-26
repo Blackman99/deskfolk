@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@real-bot/protocol";
 import type { FailKind } from "./prompts";
+import type { WakeWatch } from "./wake";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -105,6 +106,10 @@ const DEFAULT_CLOCK: Clock = {
 };
 
 const MAX_ATTEMPTS = 3;
+/** Failures that only say the network was not there: the ones a sleep produces. */
+const NETWORK_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["unreachable", "first_byte", "stalled"]);
+/** How many times sleep may send one request back without it using up an attempt. */
+const WAKE_RETRIES = 10;
 const ORIGIN_STREAM_LIMIT = 2;
 
 type OriginGate = {
@@ -115,7 +120,7 @@ type OriginGate = {
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export function createCompletionsClient(
-  options: { fetch?: FetchLike; clock?: Partial<Clock>; originLimit?: number } = {},
+  options: { fetch?: FetchLike; clock?: Partial<Clock>; originLimit?: number; wake?: WakeWatch } = {},
 ): CompletionsClient {
   const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
   const clock: Clock = { ...DEFAULT_CLOCK };
@@ -127,7 +132,7 @@ export function createCompletionsClient(
 
   return {
     async complete(request) {
-      return completeStreaming(fetchImpl, clock, gate, request);
+      return completeStreaming(fetchImpl, clock, gate, request, options.wake);
     },
     async judge(request) {
       return completeJudge(fetchImpl, clock, gate, request);
@@ -160,12 +165,14 @@ async function completeStreaming(
   clock: Clock,
   gate: OriginGate,
   request: CompletionRequest,
+  wake?: WakeWatch,
 ): Promise<CompletionResult> {
   let lastFail: FailKind = "unreachable";
   let lastUsage: MappedUsage | null = null;
   let lastMissing: CompletionOk["missingReason"] = null;
   let lastHadChoices = false;
   const key = originKey(request.baseUrl);
+  let wakeRetries = 0;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (request.signal.aborted) {
@@ -181,8 +188,10 @@ async function completeStreaming(
       return { ok: false, failKind: lastFail, hadChoices: lastHadChoices, usage: lastUsage, missingReason: lastMissing };
     }
     let result: Attempt;
+    const startedAt = clock.now();
+    const sleptThrough = wake ? () => wake.sleptBetween(startedAt, clock.now()) > 0 : undefined;
     try {
-      result = await oneStreamAttempt(fetchImpl, clock, request);
+      result = await oneStreamAttempt(fetchImpl, clock, request, sleptThrough);
     } finally {
       gate.release(key);
     }
@@ -192,6 +201,19 @@ async function completeStreaming(
     lastHadChoices = result.hadChoices;
     if (result.ok) return result;
     if (!result.retryable) return result;
+    // The Mac slept through this attempt, or woke and sent it before Wi-Fi was back: none of that
+    // is about the endpoint. Wait for the network and go again without spending an attempt.
+    if (
+      wake &&
+      wakeRetries < WAKE_RETRIES &&
+      NETWORK_FAILS.has(lastFail) &&
+      (sleptThrough!() || !wake.settled(clock.now()))
+    ) {
+      wakeRetries += 1;
+      attempt -= 1;
+      if (!(await wake.untilSettled(request.signal))) break;
+      continue;
+    }
     if (result.retryAfterMs) {
       await abortableSleep(clock, result.retryAfterMs, request.signal);
     }
@@ -216,6 +238,7 @@ async function oneStreamAttempt(
   fetchImpl: FetchLike,
   clock: Clock,
   request: CompletionRequest,
+  sleptThrough?: () => boolean,
 ): Promise<Attempt> {
   let response: Response;
   try {
@@ -260,13 +283,14 @@ async function oneStreamAttempt(
     return fail("incomplete", { retryable: false, retryBurned: false, hadChoices: false });
   }
 
-  return readSse(response.body, clock, request);
+  return readSse(response.body, clock, request, sleptThrough);
 }
 
 async function readSse(
   body: ReadableStream<Uint8Array>,
   clock: Clock,
   request: CompletionRequest,
+  sleptThrough?: () => boolean,
 ): Promise<Attempt> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -312,6 +336,7 @@ async function readSse(
           sawUsagePacket,
           retryBurned,
           retryable: true,
+          salvage: !sleptThrough?.(),
         });
       }
       const pending = reader.read().then(
@@ -334,6 +359,7 @@ async function readSse(
           sawUsagePacket,
           retryBurned,
           retryable: true,
+          salvage: !sleptThrough?.(),
         });
       }
       const { done, value } = raced.value;
@@ -413,6 +439,7 @@ async function readSse(
       retryBurned,
       retryable: true,
       unreachable: first,
+      salvage: !sleptThrough?.(),
     });
   } finally {
     try {
@@ -480,6 +507,11 @@ function failOrSalvage(opts: {
   retryBurned: boolean;
   retryable: boolean;
   unreachable?: boolean;
+  /**
+   * False when sleep cut the stream off: half a reply the Mac slept through is not the model
+   * stopping, and the retry after the wake gets the whole of it.
+   */
+  salvage?: boolean;
 }): Attempt {
   const toolCalls = [...opts.tools.entries()]
     .sort((a, b) => a[0] - b[0])
@@ -491,7 +523,7 @@ function failOrSalvage(opts: {
     opts.sawUsagePacket,
     true,
   );
-  if (opts.finishReason !== "content_filter") {
+  if (opts.salvage !== false && opts.finishReason !== "content_filter") {
     const salvaged = salvageHop(opts.hadChoices, opts.content, toolCalls);
     if (salvaged) {
       return {

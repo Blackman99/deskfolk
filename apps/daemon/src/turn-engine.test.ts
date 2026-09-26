@@ -8,6 +8,8 @@ import { createLocalApi } from "./local-api";
 import { runCollabTool } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
+import { createTurnEngine } from "./turn-engine";
+import type { WakeWatch } from "./wake";
 
 type Harness = {
   origin: string;
@@ -1720,6 +1722,36 @@ describe("turn engine on the local API", () => {
     expect(sys.body).toBe("这一轮没写完：卡住了，很久没有任何进展");
     expect(h.store.getTurn(wedged.id).status).toBe("completed");
     sub.close();
+  });
+
+  test("the stale sweep does not count time the Mac spent asleep", async () => {
+    const fixture = await startFixture(() => sse(textChunks("unused")));
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const trigger = h.store.postMessage(sessionId, { body: "go" });
+    const frozen = h.store.createTurn({ sessionId, botId, triggerMessageId: trigger.id });
+    let slept = 0;
+    const wake: WakeWatch = {
+      sleptBetween: () => slept,
+      settled: () => true,
+      untilSettled: async () => true,
+      awakeTimeout: () => () => {},
+      stop: () => {},
+    };
+    const engine = createTurnEngine({ store: h.store, publish: () => {}, wake });
+    try {
+      const later = new Date(Date.now() + 45 * 60_000);
+      // The lid was shut for 40 of those 45 minutes: the turn was frozen, not stuck.
+      slept = 40 * 60_000;
+      engine.sweepStalledTurns(later);
+      expect(h.store.getTurn(frozen.id).status).toBe("running");
+      // Awake for 25 of them with nothing happening is stuck, sleep or no sleep.
+      slept = 20 * 60_000;
+      engine.sweepStalledTurns(later);
+      expect(h.store.getTurn(frozen.id).status).toBe("completed");
+    } finally {
+      await engine.close();
+    }
   });
 
   test("the stale sweep leaves a turn that is waiting on you alone", async () => {

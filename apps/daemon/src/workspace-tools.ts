@@ -15,6 +15,7 @@ import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
 import { COMMAND_STREAM_BYTES } from "./streams";
+import type { WakeWatch } from "./wake";
 
 const READ_BYTES_MAX = 1_000_000;
 
@@ -62,6 +63,8 @@ export type WorkspaceToolCtx = {
   stream?: ShellStream;
   /** This call's stream id, `<turn_id>:<tool_call_id>`. Without it nothing is streamed. */
   streamId?: string;
+  /** With it the shell timeout counts only time the Mac was awake; a shut lid froze the command too. */
+  wake?: WakeWatch;
 };
 
 /** The slice of the daemon's stream hub a command needs. */
@@ -308,18 +311,24 @@ async function runShell(
     }
     ctx.signal.addEventListener("abort", abort, { once: true });
     const timeoutMs = ctx.shellTimeoutMs ?? SHELL_TIMEOUT_MS;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelTimeout = () => {};
     // Raced rather than awaited after the kill: a grandchild that inherited stdout keeps the pipes
     // open for as long as it lives, so reading them to the end is not something to wait on.
     const expired = new Promise<"timeout">((resolve) => {
-      timer = setTimeout(() => {
+      const kill = () => {
         try {
           proc.kill("SIGKILL");
         } catch {
           // already exited
         }
         resolve("timeout");
-      }, timeoutMs);
+      };
+      if (ctx.wake) {
+        cancelTimeout = ctx.wake.awakeTimeout(timeoutMs, kill);
+      } else {
+        const timer = setTimeout(kill, timeoutMs);
+        cancelTimeout = () => clearTimeout(timer);
+      }
     });
     // Read both pipes as they fill rather than after the fact: the whole point is that a ten
     // minute build is visible while it runs. Still raced rather than awaited — see above.
@@ -336,7 +345,7 @@ async function runShell(
       Promise.all([drain(proc.stdout), drain(proc.stderr), proc.exited]),
       expired,
     ]);
-    clearTimeout(timer);
+    cancelTimeout();
     ctx.signal.removeEventListener("abort", abort);
     if (ctx.signal.aborted) return fail("failed", "interrupted");
     if (settled === "timeout") {

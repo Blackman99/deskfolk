@@ -67,6 +67,7 @@ import {
 } from "./artifact-paths";
 import { classifyPath } from "./workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "./workspace-tools";
+import { processWake, type WakeWatch } from "./wake";
 
 export type TurnEngine = {
   handleInboundMessage: (
@@ -113,6 +114,8 @@ export type TurnEngineOptions = {
   admission?: TurnAdmission;
   /** Where a running command's output goes while it runs; absent means nobody can watch. */
   streams?: ShellStream;
+  /** What the process saw of macOS sleep; the daemon's own watch unless a test brings one. */
+  wake?: WakeWatch;
 };
 
 type Live = {
@@ -156,9 +159,10 @@ type Live = {
 export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const store = options.store;
   const publish = options.publish;
+  const wake = options.wake ?? processWake();
   const completions =
     options.completions ??
-    createCompletionsClient(options.sleep ? { clock: { sleep: options.sleep } } : {});
+    createCompletionsClient({ ...(options.sleep ? { clock: { sleep: options.sleep } } : {}), wake });
   const mcp = options.mcp;
   const lives = new Map<string, Live>();
   const tasks = new Set<Promise<unknown>>();
@@ -1421,7 +1425,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {
       return isWorkspaceTool(name)
         ? await runWorkspaceTool(
-            { store, signal: live.abort.signal, workDir: live.workDir, stream: options.streams, streamId },
+            { store, signal: live.abort.signal, workDir: live.workDir, stream: options.streams, streamId, wake },
             name,
             args,
           )
@@ -1640,11 +1644,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    * next boot: Thinking forever in the sidebar, and silence for whoever was waiting on the handoff.
    */
   function sweepStalledTurns(at: Date = new Date()): void {
-    const floor = new Date(at.getTime() - STALE_TURN_MS).toISOString();
     for (const turn of store.listLiveTurns()) {
       // waiting_approval and waiting_ask are waiting on you, so they never go stale.
       if (turn.status !== "running") continue;
-      if (turn.last_activity_at > floor) continue;
+      // A shut lid froze the turn along with everything else; that is not a turn getting nowhere.
+      const last = Date.parse(turn.last_activity_at);
+      const idle = at.getTime() - last - wake.sleptBetween(last, at.getTime());
+      if (idle < STALE_TURN_MS) continue;
       abortLive(turn.id);
       try {
         failTurn(turn.id, "stuck");

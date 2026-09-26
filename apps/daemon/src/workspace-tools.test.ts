@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { runWorkspaceTool } from "./workspace-tools";
+import { createWakeWatch } from "./wake";
 
 const dirs: string[] = [];
 
@@ -258,6 +259,31 @@ describe("workspace tools", () => {
     expect(got.error?.message).toContain("timed out");
     expect(Date.now() - started).toBeLessThan(5000);
     close();
+  });
+
+  test("shell does not count time the Mac slept against the command", async () => {
+    const { store, close } = await storeWithWorkspace();
+    const wake = createWakeWatch({ beatMs: 10 });
+    try {
+      const running = runWorkspaceTool(
+        { store, signal: new AbortController().signal, shellTimeoutMs: 400, wake },
+        "shell",
+        { command: "sleep 1.2; echo done" },
+      );
+      await Bun.sleep(100);
+      // The daemon is frozen for a second, the way a shut lid freezes it; its timeout is long overdue
+      // when it thaws, but the command has only had a moment of awake time.
+      const until = Date.now() + 1000;
+      while (Date.now() < until) {
+        // spin
+      }
+      const got = await running;
+      expect(got.ok).toBe(true);
+      expect(got.data?.stdout).toBe("done\n");
+    } finally {
+      wake.stop();
+      close();
+    }
   });
 
   test("shell comes back when a grandchild holds the output pipe open", async () => {
