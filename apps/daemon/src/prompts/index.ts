@@ -18,6 +18,7 @@ export {
   COMPLETION_FAIL,
   FAIL_REASON,
   checkBackNoteBody,
+  routineFireBody,
   unknownMentionBody,
   completionFailBody,
 } from "./transcript-copy";

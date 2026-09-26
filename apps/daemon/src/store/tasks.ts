@@ -463,6 +463,7 @@ type TraceTurnRow = {
   trigger_created_at: string;
   trigger_turn_id: string | null;
   trigger_author: string;
+  trigger_kind: string;
 };
 
 type TraceMessageRow = {
@@ -492,7 +493,8 @@ type TraceApprovalRow = {
  *
  * A card is a turn. The edge into it is the turn that wrote its trigger; a trigger nobody's turn
  * wrote is you, so the trace grows a card for that message and points the woken turns at it.
- * A Bot woken by another Bot grows no such card — the waking turn is already on the board.
+ * A Bot woken by another Bot grows no such card — the waking turn is already on the board — and
+ * neither does a routine firing, whose trigger is the app's system line.
  */
 export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
   const task = getTask(ctx, taskId);
@@ -500,7 +502,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
     .query<TraceTurnRow, [string]>(
       `SELECT t.id, t.session_id, t.bot_id, t.status, t.trigger_message_id, t.partial_text, t.ticket_id, t.created_at,
               m.body AS trigger_body, m.created_at AS trigger_created_at,
-              m.turn_id AS trigger_turn_id, m.author AS trigger_author
+              m.turn_id AS trigger_turn_id, m.author AS trigger_author, m.kind AS trigger_kind
        FROM turns t
        JOIN messages m ON m.id = t.trigger_message_id
        WHERE t.task_id = ?
@@ -621,8 +623,10 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       : onBoard
         ? turn.trigger_turn_id
         : null;
-    // Woken by someone whose turn belongs to another job: say so rather than inventing a card.
-    const elsewhere = fromYou || onBoard
+    // A system line no turn wrote is the app waking the Bot (a routine firing): nobody handed it over.
+    const byApp = turn.trigger_kind === "system" && !turn.trigger_turn_id;
+    // Woken by someone whose turn belongs to another plan: say so rather than inventing a card.
+    const elsewhere = fromYou || onBoard || byApp
       ? null
       : { actor: turn.trigger_author, message_id: turn.trigger_message_id };
     const word = lastWord.get(turn.id);

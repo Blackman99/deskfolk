@@ -60,6 +60,7 @@ import {
   COMPOSER_SUGGEST_SYSTEM,
   completionFailBody,
   JUDGEMENT_SYSTEM,
+  routineFireBody,
   unknownMentionBody,
   type FailKind,
 } from "./prompts";
@@ -2381,11 +2382,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (!claimed) return null;
       const existing = store.findDirectSession(USER_MEMBER, claimed.bot_id);
       const session = existing ?? store.createDirect(USER_MEMBER, claimed.bot_id);
+      // A system line under the Bot, the way a check-back wakes it: you did not send this, and a
+      // line in your name would also read to the organizer as something you just asked for.
       const trigger = store.insertMessage({
         sessionId: session.id,
-        kind: "user",
-        author: USER_MEMBER,
-        body: claimed.instruction,
+        kind: "system",
+        author: claimed.bot_id,
+        body: routineFireBody(store.settingsCached().locale, claimed.title, claimed.instruction),
       });
       // Every routine has one standing plan, and every fire is a ticket of it, so a daily's days
       // sit side by side and its rules and precedents accumulate. No model call decides this.

@@ -42,3 +42,11 @@ export function completionFailBody(locale: Locale, kind: FailKind): string {
 export function checkBackNoteBody(locale: Locale, note: string): string {
   return locale === "en" ? `Check-back: ${note}` : `回看：${note}`;
 }
+
+/**
+ * The system line a routine fires with, under its Bot: the app woke it, so the instruction never
+ * reads as something you just said.
+ */
+export function routineFireBody(locale: Locale, title: string, instruction: string): string {
+  return locale === "en" ? `Routine "${title}": ${instruction}` : `日程「${title}」：${instruction}`;
+}

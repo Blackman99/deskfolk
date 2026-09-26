@@ -1996,11 +1996,15 @@ describe("turn engine on the local API", () => {
     expect(opened!.bot_id).toBe(botId);
     expect(opened!.id).not.toBe(first.id);
 
+    // The fire is the app's system line under the Bot, not a message in your name.
     const trigger = await waitFor(
       sub.events,
-      (e) => e.event === "message.created" && e.kind === "user" && e.body === "write the daily",
+      (e) => e.event === "message.created" && e.body === "日程「日报」：write the daily",
     );
-    expect(trigger.session_id).toBe(sessionId);
+    expect(trigger).toMatchObject({ session_id: sessionId, kind: "system", author: botId });
+    expect(
+      h.store.listMainMessages(sessionId, 40).some((m) => m.kind === "user" && m.body.includes("write the daily")),
+    ).toBe(false);
     await waitFor(
       sub.events,
       (e) => e.event === "turn.upsert" && e.id === opened!.id && e.status === "running",
@@ -2036,6 +2040,10 @@ describe("turn engine on the local API", () => {
     expect(ticket).toMatchObject({ task_id: standing.id, seq: 1, worker: botId });
     expect(h.store.turnWorkDir(fired.id)).toBe(ticket.dir);
     expect(h.store.sessionCurrentTask(sessionId)?.id).toBe(h.store.getTurn(String(first.id)).task_id!);
+    // Nobody woke it: no card of yours, and no line claiming the Bot handed it to itself.
+    expect(h.store.taskTrace(standing.id).nodes).toEqual([
+      expect.objectContaining({ turn_id: opened!.id, actor: botId, woken_by_turn_id: null, woken_elsewhere: null }),
+    ]);
 
     releaseFirst();
     sub.close();
@@ -2136,7 +2144,7 @@ describe("turn engine on the local API", () => {
     expect(opened).not.toBeNull();
     expect(opened!.session_id).toBe(writer.direct_session.id);
     expect(h.store.getTurn(String(groupTurn.id)).status).toBe("running");
-    expect(h.store.listMainMessages(group.id, 40).some((m) => m.body === "write the daily")).toBe(false);
+    expect(h.store.listMainMessages(group.id, 40).some((m) => m.body.includes("write the daily"))).toBe(false);
     releaseRoutine();
     await waitFor(
       sub.events,
@@ -2176,7 +2184,7 @@ describe("turn engine on the local API", () => {
     expect(opened!.session_id).toBe(sessionId);
     await waitFor(
       sub.events,
-      (e) => e.event === "message.created" && e.kind === "user" && e.body === "write the daily",
+      (e) => e.event === "message.created" && e.kind === "system" && e.body === "日程「日报」：write the daily",
     );
     await waitFor(
       sub.events,
@@ -2188,7 +2196,7 @@ describe("turn engine on the local API", () => {
     expect(h.engine.fireRoutine(routine.id, now)).toBeNull();
 
     const transcript = h.store.listMainMessages(sessionId, 40);
-    expect(transcript.filter((m) => m.body === "write the daily")).toHaveLength(1);
+    expect(transcript.filter((m) => m.body.includes("write the daily"))).toHaveLength(1);
 
     sub.close();
   });
