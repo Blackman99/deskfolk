@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { Window } from "happy-dom";
 import {
   CONTENT_WIDTH_MAX,
   VIEWPORT_DEVICES,
@@ -132,9 +133,34 @@ test("the helper hides scrollbars only on touch devices and carries the nonce", 
   expect(phone).toContain(`<script nonce="n0nce">(function(){"use strict";`);
   expect(phone).toContain(JSON.stringify(CH));
   const desktop = viewportHelperMarkup({ channel: CH, touch: false, nonce: null });
-  expect(desktop).toStartWith("<script>");
+  expect(desktop).toStartWith(`<style data-rb-scroll-fallback="${CH}">`);
+  expect(desktop).toContain("<script>");
   expect(desktop).not.toContain("scrollbar-width");
   expect(() => viewportHelperMarkup({ channel: "nope", touch: false })).toThrow();
+});
+
+test("a locked page still scrolls where the helper's script is blocked, and the helper takes that rule out wherever it runs", async () => {
+  const page = (scripts: boolean) => {
+    const win = new Window({ url: "http://localhost/", settings: { enableJavaScriptEvaluation: scripts } });
+    const markup = viewportHelperMarkup({ channel: CH, touch: true, nonce: "n0nce" });
+    win.document.write(`<!DOCTYPE html><html><head>${markup}<style>html,body{height:1920px;overflow:hidden}</style></head><body></body></html>`);
+    return win;
+  };
+  const fallback = `style[data-rb-scroll-fallback="${CH}"]`;
+
+  // The hosted remote build's policy blocks the helper: the rule unlocks the vertical axis, and
+  // carries the nonce so a nonce-only policy lets it apply.
+  const blocked = page(false);
+  const rule = blocked.document.querySelector(fallback);
+  expect(rule?.textContent).toBe("html{overflow-y:auto!important}");
+  expect(rule?.getAttribute("nonce")).toBe("n0nce");
+  await blocked.happyDOM.close();
+
+  // Where it runs, the helper alone decides; the page's own styles are left alone.
+  const running = page(true);
+  expect(running.document.querySelector(fallback)).toBeNull();
+  expect(running.document.querySelectorAll("style")).toHaveLength(2);
+  await running.happyDOM.close();
 });
 
 test("the helper's messages count only from the page's window, on this build's channel, in their exact shape", () => {

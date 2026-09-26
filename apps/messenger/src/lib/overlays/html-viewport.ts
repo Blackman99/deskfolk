@@ -171,6 +171,11 @@ export function pageLayoutWidth(device: ViewportDevice, meta: ViewportMeta | nul
  * page that hides sideways overflow keeps hiding it. Touch devices have no scrollbars taking room.
  * An Escape the page left alone is passed on, since keys pressed in the page never reach the pane
  * that is filling the window.
+ *
+ * Where no script of the page may run — the hosted remote build allows only the scripts it hashed,
+ * and the blob page inherits that — the helper cannot unlock anything, so a rule in front of it
+ * unlocks the vertical axis of every page. The helper takes that rule out first thing, so wherever
+ * it runs, it alone decides.
  */
 export function viewportHelperMarkup(opts: { channel: string; touch: boolean; nonce?: string | null }): string {
   if (!isChannel(opts.channel)) throw new Error("viewport channel must be 32 hex characters");
@@ -178,13 +183,16 @@ export function viewportHelperMarkup(opts: { channel: string; touch: boolean; no
   const style = opts.touch
     ? `<style${attr}>*{scrollbar-width:none}::-webkit-scrollbar{width:0;height:0;background:transparent}</style>`
     : "";
+  const fallback = `<style${attr} data-rb-scroll-fallback="${opts.channel}">html{overflow-y:auto!important}</style>`;
   // `__name` is a no-op stand-in for the helper some bundlers insert when they keep function names.
   const run = `(function(){"use strict";var __name=function(f){return f};(${viewportHelper.toString()})(${JSON.stringify(opts.channel)});})();`;
-  return `${style}<script${attr}>${run}</script>`;
+  return `${style}${fallback}<script${attr}>${run}</script>`;
 }
 
 /** Runs inside the page, by its own source: nothing outside it is in scope there. */
 function viewportHelper(channel: string): void {
+  const fallback = document.querySelector(`style[data-rb-scroll-fallback="${channel}"]`);
+  if (fallback) fallback.remove();
   const root = document.documentElement;
   const locked = (value: string) => value === "hidden" || value === "clip";
   const unlock = () => {

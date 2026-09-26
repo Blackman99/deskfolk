@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- HTML previews scroll on the phone. Remote access blocks every script in a previewed page, including the small one the preview adds to let a page that turns off scrolling (`overflow: hidden`) scroll anyway when it is taller than the screen. A poster laid out 1080 × 1920 with scrolling off could therefore not be scrolled on the laptop or tablet screen: only its top showed. Where that script cannot run, the preview now lets every page scroll up and down; where it runs, nothing changes. On the phone and tablet screens, a page with no viewport tag that is wider than 980 pixels still has its right edge cut off, since without the script the preview cannot learn how wide the page is.
+
 - Back from an HTML preview goes back to the page you came from. Every time the page was rebuilt — switching between desktop, tablet and phone, entering or leaving annotate mode, a theme change, the file changing on disk — the preview pointed its frame at the new build, and the browser counted that as a page visited inside the preview. Back then went to the previous build, which had already been thrown away, so the preview went blank and a second Back was needed to get out; on a phone it looked as if Back just wiped the page. Each build now gets a new frame, so Back leaves the preview straight away.
 
 ## 0.1.0-rc.7 — 2026-09-26
