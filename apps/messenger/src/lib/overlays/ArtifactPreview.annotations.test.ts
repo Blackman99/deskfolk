@@ -1032,6 +1032,30 @@ test("Esc in the HTML view leaves annotate mode, from the messenger or from the 
   expect(await page.source()).not.toContain("rb-annot-layer");
 });
 
+test("Source sits beside annotate mode in the bar, stays while elements are picked, and leaves the mode", async () => {
+  const { loadMonaco } = fakeMonaco();
+  const { host } = open({ relpath: "site/index.html", body: HTML, type: "text/html", loadMonaco });
+  await settle();
+  const source = () => host.querySelector<HTMLButtonElement>("[data-annotation-bar] .artifact-source-toggle");
+  expect(source()?.textContent?.trim()).toBe(t.stream.artifactSource);
+  expect(source()?.nextElementSibling).toBe(modeToggle(host));
+  expect(host.querySelector(".artifact-pane-body .artifact-source-toggle")).toBeNull();
+
+  click(modeToggle(host));
+  expect(host.querySelector("[data-html-annot-bar]")).not.toBeNull();
+  expect(source()).not.toBeNull();
+
+  click(source());
+  await settle();
+  expect(source()?.textContent?.trim()).toBe(t.stream.artifactRendered);
+  expect(host.querySelector("[data-html-annot-bar]")).toBeNull();
+  // Back on the page, elements are not being picked until asked again.
+  click(source());
+  await settle();
+  expect(modeToggle(host)?.getAttribute("aria-pressed")).toBe("false");
+  expect(host.querySelector("[data-html-annot-bar]")).toBeNull();
+});
+
 test("a numbered chip in the HTML bar goes to its element every time it is clicked", async () => {
   const onPage = row({ id: "html-1", relpath: "site/index.html", anchor_kind: "html_element", anchor: anchorOf() });
   const { host } = open({ relpath: "site/index.html", body: HTML, type: "text/html", annotations: [onPage] });

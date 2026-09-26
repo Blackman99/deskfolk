@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- The artifact preview's Source / Preview switch moved into the row of buttons above the file, next to Annotate and Annotations, instead of floating over the middle of the file's first lines. It stays there while HTML elements are being picked; switching to Source leaves picking (the source is annotated by selecting lines) and keeps a spot already picked whose remark is being written. The HTML preview no longer leaves a gap above the page for it, so the page frame gets a little more height.
+
 - A tab's menu closes several tabs at once; before, tabs could only be closed one × at a time. Right-click any tab and, below what the tab itself offers, there are Close tab, Close other tabs, Close tabs to the right and Close all tabs; a conversation tab's ⋯ has the same four. They close tabs in that pane only. An entry with nothing to close, no other tabs or none to the right, is dimmed. Closing all of them closes the pane, as closing its last tab does (the only pane stays, empty); a workspace or artifact preview among them holding an unsaved edit asks first whether to save, discard or cancel.
 
 - Films and other large files open on the phone. Remote access refused every file over 50 MiB, and the phone then said the file was gone instead of saying why: a 72-second 720p film of about 60 MB, handed over in a group, played on the Mac and showed "file not found" on the phone. Remote file transfers no longer have a size limit, in either direction: audio and video of any length stream a piece at a time, other files open or download whole, and the phone attaches files of any size. The 50 MiB note is gone from the phone's message field.

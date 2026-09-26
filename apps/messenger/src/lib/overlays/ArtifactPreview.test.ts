@@ -234,7 +234,7 @@ test("the desktop preview has no toolbar, and the phone keeps a back bar", () =>
   viewport.setViewport({ width: 1280, height: 800 });
 });
 
-test("markdown source is a floating toggle, and a tree row opens Finder from its menu", async () => {
+test("markdown source is a switch in the annotation row, and a tree row opens Finder from its menu", async () => {
   const note = anAttachment({
     original_filename: "brief.md",
     workspace_relpath: "docs/brief.md",
@@ -266,7 +266,7 @@ test("markdown source is a floating toggle, and a tree row opens Finder from its
     await Promise.resolve();
     await Promise.resolve();
     flushSync();
-    const toggle = host.querySelector<HTMLButtonElement>(".artifact-source-toggle");
+    const toggle = host.querySelector<HTMLButtonElement>("[data-annotation-bar] .artifact-source-toggle");
     expect(toggle?.textContent?.trim()).toBe(t.stream.artifactSource);
     expect(toggle?.querySelector("svg")).not.toBeNull();
     expect(host.querySelector(".artifact-tool-btn")).toBeNull();

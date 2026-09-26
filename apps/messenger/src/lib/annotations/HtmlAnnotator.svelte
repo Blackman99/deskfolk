@@ -492,7 +492,7 @@
 			{/if}
 		</div>
 	{/if}
-	<div class="html-stage" class:is-dark={scheme === 'dark'} class:is-annotating={active} data-html-stage>
+	<div class="html-stage" class:is-dark={scheme === 'dark'} data-html-stage>
 		<div class="html-stage-room" bind:clientWidth={roomWidth} bind:clientHeight={roomHeight}>
 			<div
 				class="html-device is-{device}"
@@ -710,10 +710,7 @@
 		opacity: 0.5;
 		cursor: default;
 	}
-	/*
-	 * The desk the device sits on. Its room is inset from the top by the preview's floating
-	 * 「源码」 pill (hidden while elements are being picked) and from the bottom by the device bar.
-	 */
+	/* The desk the device sits on. Its room is inset from the bottom by the device bar. */
 	.html-stage {
 		--bar-h: 30px;
 		--device-body: #1c1e23;
@@ -745,14 +742,10 @@
 	}
 	.html-stage-room {
 		position: absolute;
-		inset: 44px 16px calc(var(--bar-h) + 20px);
+		inset: 16px 16px calc(var(--bar-h) + 20px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-	}
-	.html-stage.is-annotating .html-stage-room,
-	.html-annot.is-enlarged .html-stage-room {
-		top: 16px;
 	}
 
 	.html-device {

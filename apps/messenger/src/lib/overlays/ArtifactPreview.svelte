@@ -640,10 +640,13 @@
 	}
 	/** Markdown and single-file HTML can be read rendered or as source. */
 	let canToggleSource = $derived(kind === 'markdown' || kind === 'html');
+	/** The switch sits in the annotation row, beside the annotate buttons, once the text has come. */
+	const showSourceToggle = $derived(canToggleSource && text !== null);
 	/**
 	 * The pane has no toolbar: annotating keeps one thin row of its own, and only on a file it
 	 * applies to — its list (which says why nothing new can be added when that is so), annotate
 	 * mode for the kinds drawn with the pointer, and in the source view the line on how to add one.
+	 * The rendered/source switch shares the row.
 	 */
 	const showAnnotToggle = $derived(
 		mode !== 'workspace' && (fileAnnotations.length > 0 || gate.ok || gate.reason !== 'kind')
@@ -1137,6 +1140,9 @@
 		// model's own line-ending folding is not one, and a buffer brought back to the disk by hand
 		// is the disk again, not the old carried edit.
 		if (editor) text = editor.isDirty() ? editor.getValue() : (diskText ?? text);
+		// Picking elements belongs to the rendered page; the source is annotated by selecting lines.
+		// A spot already picked keeps its composer, as a markdown selection does.
+		if (!showSource) annotMode = false;
 		showSource = !showSource;
 	}
 
@@ -1187,8 +1193,8 @@
 			{downloadNote === 'tap' ? t.stream.artifactDownloadTapAgain : t.stream.artifactDownloadFailed}
 		</p>
 	{/if}
-	{#if showAnnotToggle || showAnnotMode || annotHint !== null || canDownload}
-		<div class="artifact-annot-bar" class:is-download-only={!(showAnnotToggle || showAnnotMode || annotHint !== null)} data-annotation-bar>
+	{#if showAnnotToggle || showAnnotMode || annotHint !== null || showSourceToggle || canDownload}
+		<div class="artifact-annot-bar" class:is-download-only={!(showAnnotToggle || showAnnotMode || annotHint !== null || showSourceToggle)} data-annotation-bar>
 			{#if annotHint !== null}
 				<p class="artifact-annot-hint" data-annotation-hint={annotHint}>
 					{annotHint === 'dirty'
@@ -1207,6 +1213,28 @@
 					<input type="checkbox" bind:checked={annotShowResolved} data-annotation-show-resolved />
 					<span>{t.stream.annotationShowResolved}</span>
 				</label>
+			{/if}
+			{#if showSourceToggle}
+				<button
+					type="button"
+					class="artifact-annot-btn artifact-source-toggle"
+					aria-pressed={showSource}
+					onclick={toggleSource}
+				>
+					{#if showSource}
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
+							<circle cx="12" cy="12" r="3"></circle>
+						</svg>
+						{t.stream.artifactRendered}
+					{:else}
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<polyline points="16 18 22 12 16 6"></polyline>
+							<polyline points="8 6 2 12 8 18"></polyline>
+						</svg>
+						{t.stream.artifactSource}
+					{/if}
+				</button>
 			{/if}
 			{#if showAnnotMode}
 				<button
@@ -1312,33 +1340,10 @@
 				class="artifact-pane-body flex-1 min-h-0 min-w-0"
 				class:is-editor={sourceMode && text !== null}
 			>
-				<!-- Not while elements are being picked: the pill would sit on the picker's own bar. -->
-				{#if canToggleSource && text !== null && !(annotMode && viewAdapter === 'html')}
-					<button
-						type="button"
-						class="artifact-source-toggle"
-						aria-pressed={showSource}
-						onclick={toggleSource}
-					>
-						{#if showSource}
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
-								<circle cx="12" cy="12" r="3"></circle>
-							</svg>
-							{t.stream.artifactRendered}
-						{:else}
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<polyline points="16 18 22 12 16 6"></polyline>
-								<polyline points="8 6 2 12 8 18"></polyline>
-							</svg>
-							{t.stream.artifactSource}
-						{/if}
-					</button>
-				{/if}
 				{#if kind === 'image' && shownBlob && !loading && reducedFrom !== null}
 					<button
 						type="button"
-						class="artifact-source-toggle artifact-original-toggle"
+						class="artifact-original-toggle"
 						aria-busy={originalProgress ? 'true' : undefined}
 						disabled={originalProgress !== null}
 						onclick={loadOriginal}
@@ -1706,8 +1711,8 @@
 	}
 
 	/*
-	 * The file scrolls. The source toggle does not: it stays pinned to this pane's top-right,
-	 * over whatever has scrolled past.
+	 * The file scrolls. The offer of the original picture does not: it stays pinned to this pane's
+	 * top, over whatever has scrolled past.
 	 */
 	.artifact-pane-scroll {
 		height: 100%;
@@ -1716,7 +1721,7 @@
 		padding: 16px;
 	}
 
-	.artifact-source-toggle {
+	.artifact-original-toggle {
 		position: absolute;
 		top: 12px;
 		left: 50%;
@@ -1726,6 +1731,7 @@
 		align-items: center;
 		gap: 5px;
 		height: 28px;
+		max-width: calc(100% - 32px);
 		padding: 0 10px 0 8px;
 		border: 1px solid var(--line);
 		border-radius: 999px;
@@ -1734,39 +1740,31 @@
 		font-size: 12px;
 		font-weight: 600;
 		line-height: 1;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
 		cursor: pointer;
 		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
 		box-shadow: var(--shadow-xs);
 	}
 
-	.artifact-source-toggle svg {
+	.artifact-original-toggle svg {
 		flex-shrink: 0;
 	}
 
-	.artifact-source-toggle:hover {
+	.artifact-original-toggle:hover {
 		color: var(--accent);
 		border-color: var(--accent-border);
 		background: var(--accent-tint);
 	}
 
-	.artifact-source-toggle:focus-visible {
+	.artifact-original-toggle:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
 	}
 
-	.artifact-original-toggle {
-		max-width: calc(100% - 32px);
-		white-space: nowrap;
-		font-variant-numeric: tabular-nums;
-	}
-
 	.artifact-original-toggle:disabled {
 		cursor: progress;
-	}
-
-	.artifact-pane-body.is-editor .artifact-source-toggle {
-		top: 8px;
 	}
 
 	/* The list goes beside the file only when the pane itself is wide enough: beside the chat on a
@@ -2173,13 +2171,13 @@
 			display: none;
 		}
 
-		.artifact-source-toggle {
+		.artifact-original-toggle {
 			top: 10px;
 			height: 36px;
 			padding: 0 14px 0 12px;
 		}
 
-		.artifact-source-toggle svg {
+		.artifact-original-toggle svg {
 			width: 16px;
 			height: 16px;
 		}
