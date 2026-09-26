@@ -34,9 +34,10 @@ export const ROUTE_LEARN_SYSTEM = `你在替这个 Bot 记下一条以后同类�
 
 根据用户消息这份 JSON 里的 chain 决定。chain.trigger 是当初那条消息，chain.reply 是 Bot 的回复，chain.follow_ups 是用户随后说的，chain.execution 是实际做了什么（null 表示没数到，不是 0），chain.verdict 是刚才的复盘结论，chain.skills 是这个 Bot 已有的技能。
 
-只能调用 remember、forget、update_skill。不要调用别的工具，不要输出正文。
+只能调用这次给你的工具（remember、forget，有时还有 update_skill）。不要调用别的工具，不要输出正文。
 
 - 一次事故写成一条记忆：remember 的 subject 一眼能认出，body 是一句可执行的结论，写清下次先做什么、不要再做什么。
+- chain.verdict.fault 是 prompt（需求一开始没说清）时：只记用户在 follow_ups 里补上的、下次开工前就该按它做的口径——交付形态、范围、给谁看、默认值、称呼。写成「做 X 这类事时，先按 Y」。不记这一件事本身的细节，也不改技能。
 - 凭据、密钥、只在这一轮成立的状态，不记。没有真正能让下一轮同类任务更短的东西，就什么都不调用。
 - 记忆满了会报错并点名最久没更新的一条。那时先 forget 那一条，再 remember。写不进去就停，不要改别的主题。
 - 不新建技能。只有 chain.skills 里已有一条技能的说明和这件事重合，才用 update_skill 改它的正文。用户在 follow_ups 里明说「以后都这样」时也只改已有技能，没有就记成记忆。`;

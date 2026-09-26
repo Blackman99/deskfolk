@@ -150,3 +150,12 @@ export function parseRouteReview(raw: string): RouteReviewVerdict | null {
 export function verdictIsExperience(verdict: RouteReviewVerdict): boolean {
   return verdict.fault === "model" && verdict.confidence >= REVIEW_CONFIDENCE_FLOOR;
 }
+
+/**
+ * A confident verdict that the request was unclear, after the user had to say so more than once,
+ * is worth one memory of what they turned out to mean — the wording, scope or shape they had to
+ * spell out is what the next request of the same kind should start from. One round is noise.
+ */
+export function verdictIsClarification(verdict: RouteReviewVerdict): boolean {
+  return verdict.fault === "prompt" && verdict.rounds >= 2 && verdict.confidence >= REVIEW_CONFIDENCE_FLOOR;
+}

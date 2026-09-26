@@ -4,6 +4,7 @@ import {
   extractJsonObject,
   parseRoutePick,
   parseRouteReview,
+  verdictIsClarification,
   verdictIsExperience,
 } from "./route-agent";
 import {
@@ -146,6 +147,17 @@ test("only a confident verdict against the model becomes experience", () => {
   expect(verdictIsExperience({ ...base, fault: "prompt", confidence: 0.99 })).toBe(false);
   expect(verdictIsExperience({ ...base, fault: "task", confidence: 0.99 })).toBe(false);
   expect(verdictIsExperience({ ...base, fault: "none", confidence: 0.99 })).toBe(false);
+});
+
+test("a request the user had to spell out twice is worth a memory of what they meant", () => {
+  const base = { direction: "same" as const, reason: "r" };
+  expect(verdictIsClarification({ ...base, fault: "prompt", rounds: 2, confidence: 0.8 })).toBe(true);
+  expect(verdictIsClarification({ ...base, fault: "prompt", rounds: 5, confidence: 0.5 })).toBe(true);
+  // One round is noise; a hedged verdict is not worth a call; other faults are not clarifications.
+  expect(verdictIsClarification({ ...base, fault: "prompt", rounds: 1, confidence: 0.9 })).toBe(false);
+  expect(verdictIsClarification({ ...base, fault: "prompt", rounds: 3, confidence: 0.3 })).toBe(false);
+  expect(verdictIsClarification({ ...base, fault: "model", rounds: 3, confidence: 0.9 })).toBe(false);
+  expect(verdictIsClarification({ ...base, fault: "task", rounds: 3, confidence: 0.9 })).toBe(false);
 });
 
 test("the picker's payload carries the shortlist and the recent conclusions, newest first", () => {

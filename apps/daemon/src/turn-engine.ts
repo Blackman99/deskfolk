@@ -25,7 +25,7 @@ import {
 import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement } from "./context";
 import { parseComposerSuggestions } from "./composer-suggestions";
 import { classifyMessage, messageSignature, type RouteDecision } from "./route-decision";
-import { verdictIsExperience } from "./route-agent";
+import { verdictIsClarification, verdictIsExperience } from "./route-agent";
 import { chainWarrantsReview } from "./route-learning";
 import { type TurnExecution } from "./store/routing";
 import { parseRoutePick, parseRouteReview, type RoutePick } from "./route-agent";
@@ -393,22 +393,29 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       chain.outcome === "completed" &&
       chain.execution.toolErrors !== null &&
       chain.execution.toolErrors > 0;
-    if (!verdictIsExperience(verdict) && !stumbledAndFinished) return;
-    await learnFromChain(chain, routing, verdict);
+    // A request the user had to spell out twice is worth remembering for what they meant; that
+    // hop may write a memory but not touch a skill, since nothing about the procedure was wrong.
+    const clarification = verdictIsClarification(verdict);
+    if (!verdictIsExperience(verdict) && !stumbledAndFinished && !clarification) return;
+    await learnFromChain(chain, routing, verdict, clarification ? "clarification" : "experience");
   }
 
   /**
    * One short call, on the default model, that may write a memory or revise an existing skill.
    * Two tool hops at most. A call that uses no tool writes nothing, and nothing is posted to the
-   * transcript either way.
+   * transcript either way. After a clarification the skill tool is withheld.
    */
   async function learnFromChain(
     chain: NonNullable<ReturnType<Store["chainForReview"]>>,
     routing: CallTarget & { baseUrl: string; apiKey: string },
     verdict: { fault: string; direction: string; reason: string },
+    mode: "experience" | "clarification" = "experience",
   ): Promise<void> {
     const written: { kind: "memory" | "skill"; label: string }[] = [];
-    const tools = toChatTools([REMEMBER, FORGET, UPDATE_SKILL], "zh");
+    const tools = toChatTools(
+      mode === "clarification" ? [REMEMBER, FORGET] : [REMEMBER, FORGET, UPDATE_SKILL],
+      "zh",
+    );
     const allowed = new Set(tools.map((tool) => tool.function.name));
     let skills: { name: string; description: string }[] = [];
     try {
