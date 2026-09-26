@@ -10,7 +10,7 @@ import { ulid } from "../ids";
 import { HttpError } from "../errors";
 import { requestDigest } from "../request-digest";
 import { remoteNative, type LocalAction, type RemoteNativeClient } from "../remote-native";
-import { RelayBudget, RelayConnection, RelayControl, type RelayConfig, type RelaySocketFactory } from "./relay";
+import { RelayBudget, RelayConnection, RelayControl, type RelayConfig, type RelayHeartbeat, type RelaySocketFactory } from "./relay";
 import { RemoteTrust, deny } from "./trust";
 import { RemoteDispatcher } from "./dispatch";
 import type { RemotePrincipal } from "./uv";
@@ -28,6 +28,8 @@ export type RemoteControllerOptions = {
   maint?: MaintenanceControl | null;
   /** Test-only upgrade pause. Production leaves this unset so transport is `policy_v2`; sends still require an open remote gate. */
   pausedUpgrade?: boolean;
+  /** Test-only heartbeat pace. Production asks the relay every 15 s and gives it 10 s to answer. */
+  relayHeartbeat?: RelayHeartbeat;
 };
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
@@ -245,7 +247,7 @@ export class RemoteController {
         this.reconnect = setTimeout(() => { void this.connect().catch(() => undefined); }, this.backoff);
         this.backoff = Math.min(30_000, this.backoff * 2);
       }
-    }, this.options.socketFactory, this.budget);
+    }, this.options.socketFactory, this.budget, this.options.relayHeartbeat);
     this.control = control;
     try {
       await control.connection.ready;

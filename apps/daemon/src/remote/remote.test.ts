@@ -13,6 +13,7 @@ import { ulid } from "../ids";
 import { HttpError } from "../errors";
 import { RemoteNativeClient, type LocalAction } from "../remote-native";
 import { RemoteController } from "./controller";
+import type { RelayHeartbeat } from "./relay";
 import { RemoteTrust } from "./trust";
 import { RemoteUv } from "./uv";
 import { dispatchLocalSetup } from "./local-setup";
@@ -107,7 +108,29 @@ function maintControl(dir: string, kind: RuntimeLifecycle["kind"] = "window", al
   return { maint, exits, setAlive: (value) => { windowAlive = value; } };
 }
 
-async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false, withMaint = false) {
+/**
+ * A socket the network stopped carrying: nothing leaves, nothing arrives, and it never says so.
+ * `silence` also closes it underneath, so the relay lets go while the host still sees it open —
+ * what a laptop's socket looks like after its Wi-Fi drops long enough for the relay to give up.
+ */
+function silenceable(ws: WebSocket): { ws: WebSocket; silence(): Promise<void> } {
+  let silent = false;
+  const handlers: Partial<Record<"message" | "close" | "error", ((event: Event) => void) | null>> = {};
+  for (const type of ["message", "close", "error"] as const) {
+    Object.defineProperty(ws, `on${type}`, { configurable: true, get: () => handlers[type] ?? null, set: fn => { handlers[type] = fn; } });
+    ws.addEventListener(type, event => { if (!silent) handlers[type]?.(event); });
+  }
+  const send = ws.send.bind(ws);
+  ws.send = data => { if (!silent) send(data); };
+  return { ws, silence() {
+    silent = true;
+    const closed = new Promise<void>(resolve => ws.addEventListener("close", () => resolve(), { once: true }));
+    ws.close();
+    return closed;
+  } };
+}
+
+async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false, withMaint = false, relayHeartbeat?: RelayHeartbeat) {
   const root = mkdtempSync(join(tmpdir(), "rb-rc07-"));
   const endpointKeys = memoryKeyStore();
   const store = new Store({ filename: join(root, "host.sqlite"), endpointKey: endpointKeys });
@@ -120,9 +143,12 @@ async function fixture(completions?: import("../completions").CompletionsClient,
   const localOrigin = `http://127.0.0.1:${relay.port}`;
   let hold = false;
   const control = withMaint ? maintControl(root) : null;
-  const controller = new RemoteController({ store, api, native: native.client, maint: control?.maint,
+  /** Every relay socket the host opened, oldest first, when the test controls the network. */
+  const sockets: Array<ReturnType<typeof silenceable>> = [];
+  const controller = new RemoteController({ store, api, native: native.client, maint: control?.maint, relayHeartbeat,
     socketFactory: url => {
       const ws = new WebSocket(`${localOrigin.replace("http:", "ws:")}${new URL(url).pathname}`);
+      if (relayHeartbeat) sockets.push(silenceable(ws));
       if (holdAfterMetadata) {
         let sent = 0, link = false;
         const send = ws.send.bind(ws);
@@ -269,7 +295,7 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     }
     return { socket, noise, next, rpc, download, upload, events, ready, compressed };
   }
-  return { root, store, endpointKeys, api, native, controller, relay, pair, connect, post, maint: control, releasePressure: () => { hold = false; } };
+  return { root, store, endpointKeys, api, native, controller, relay, localOrigin, sockets, pair, connect, post, maint: control, releasePressure: () => { hold = false; } };
 }
 
 test("cancel fences the pump's current unsent frame under held socket pressure", async () => {
@@ -492,6 +518,21 @@ test("more than one relay control burst of revoked history reconciles once and s
   f.controller.stop(); await f.controller.start(); expect(f.controller.status().state).toBe("online");
   expect(f.controller.trust.device(d.deviceId)!.revoked).toBe(1);
 }, 15_000);
+
+test("a control socket the relay let go of while the network was down is noticed and replaced", async () => {
+  const f = await fixture(undefined, false, false, { everyMs: 100, timeoutMs: 200 }), d = await f.pair();
+  expect((await (await f.connect(d)).rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+  await f.sockets[0]!.silence();
+  // The relay refuses a device outright while it holds no host. Asked once: each knock spends the
+  // same ten-a-minute handshake budget the host needs to come back.
+  expect((await fetch(`${f.localOrigin}/v1/relay/device`)).status).toBe(503);
+  // Nothing tells the host. Only asking the relay, and hearing nothing back, can.
+  const opened = f.sockets.length, deadline = Date.now() + 3000;
+  while (!(f.sockets.length > opened && f.controller.status().state === "online") && Date.now() < deadline) await Bun.sleep(20);
+  expect(f.sockets.length).toBeGreaterThan(opened);
+  expect(f.controller.status().state).toBe("online");
+  expect((await (await f.connect(d)).rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+});
 
 test("trusted native renewal reopens only the current paired Split session", async () => {
   const f = await fixture(), d = await f.pair(), first = await f.connect(d);

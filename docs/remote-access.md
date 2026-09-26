@@ -113,7 +113,7 @@ The Mac sends the reminder itself, straight to the phone browser's push service 
 
 ## When something is off
 
-- **Remote disconnected / host unreachable** — the Mac is asleep, Deskfolk is not running, or the relay is down. The phone retries with backoff on its own, and again as soon as it returns to the foreground.
+- **Remote disconnected / host unreachable** — the Mac is asleep, Deskfolk is not running, or the relay is down. The phone retries with backoff on its own, and again as soon as it returns to the foreground. Right after the Mac's network drops or changes, give it a minute or two: the Mac checks with the relay every 15 seconds and reconnects on its own, but after a switch to another network the relay can hold the old connection for about a minute first.
 - **Remote trust mismatch** — on the Mac, the stored remote identity and its trust records no longer agree, for example after restoring the data folder or deleting `dev-remote/credentials.json`. Do not wipe the relay's database to get past it: that is the lost-host-key recovery in [self-hosted deployment](deploy-remote.md#environment-and-bootstrap-recovery), which re-pairs every device.
 - **"The pairing window expired"** — open a new one on the Mac; each code lasts ten minutes and works once.
 - **Blank page after a rebuild** — the CSP header and the build it hashes were deployed separately.

@@ -15,6 +15,9 @@ function exact(value: RecordValue, keys: string[]): void {
 }
 export type RelaySocketFactory = (url: string) => WebSocket;
 const nativeSocket: RelaySocketFactory = url => new WebSocket(url);
+/** How often a control socket asks the relay whether it still hears it, and how long the answer may take. */
+export type RelayHeartbeat = { everyMs: number; timeoutMs: number };
+const HEARTBEAT: RelayHeartbeat = { everyMs: 15_000, timeoutMs: 10_000 };
 
 /** One host-wide FIFO reserves headroom for device traffic and relay control replies. */
 export class RelayBudget {
@@ -115,7 +118,9 @@ export class RelayControl {
   private readonly abort = new AbortController();
   private admissions = 0;
   private pending = new Map<string, { op: string; resolve: (value: RecordValue) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
-  constructor(config: RelayConfig, secret: Uint8Array, notification: (value: RecordValue) => void, disconnected: () => void, factory?: RelaySocketFactory, private readonly budget = new RelayBudget()) {
+  private heartbeat?: ReturnType<typeof setInterval>;
+  constructor(config: RelayConfig, secret: Uint8Array, notification: (value: RecordValue) => void, disconnected: () => void, factory?: RelaySocketFactory,
+    private readonly budget = new RelayBudget(), beat: RelayHeartbeat = HEARTBEAT) {
     this.connection = new RelayConnection(config, secret, "control", data => {
       try {
         const value = object(data);
@@ -136,11 +141,25 @@ export class RelayControl {
         } else throw new Error("relay_notification");
       } catch { this.connection.close(); }
     }, () => {
+      clearInterval(this.heartbeat);
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error("relay_disconnected")); }
       this.pending.clear(); this.abort.abort(); disconnected();
     }, undefined, factory);
+    // A network that drops without a word leaves this socket looking open for good: the relay lets
+    // go of it, its goodbye never arrives, and nothing here writes to a socket until a phone wants
+    // a route, which the relay now refuses before asking. So the control keeps asking the relay
+    // whether it still hears it, and an answer that does not come closes it for a reconnect.
+    void this.connection.ready.then(() => {
+      if (this.abort.signal.aborted) return;
+      let asking = false;
+      this.heartbeat = setInterval(() => {
+        if (asking) return;
+        asking = true;
+        this.command("health", {}, beat.timeoutMs).catch(() => undefined).finally(() => { asking = false; });
+      }, beat.everyMs);
+    }, () => undefined);
   }
-  async command(op: string, fields: RecordValue = {}): Promise<RecordValue> {
+  async command(op: string, fields: RecordValue = {}, timeoutMs = 10_000): Promise<RecordValue> {
     if (this.admissions >= 16) throw new Error("relay_busy");
     this.admissions++;
     const id = base64url(randomBytes(16));
@@ -153,7 +172,7 @@ export class RelayControl {
       await this.budget.take(bytes.length, this.abort.signal);
     } finally { this.admissions--; }
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.connection.close(), 10_000);
+      const timer = setTimeout(() => this.connection.close(), timeoutMs);
       this.pending.set(id, { op, resolve, reject, timer });
       try { this.connection.send(bytes); }
       catch {

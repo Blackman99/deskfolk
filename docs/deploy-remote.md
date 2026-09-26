@@ -83,7 +83,7 @@ Send one binary UTF-8 canonical JSON object `{op,request_id,...fields}`. `reques
 
 | `op` | Exact additional fields | Result / semantics |
 | --- | --- | --- |
-| `health` | none | `devices,routes,mailboxes,sockets,pairing_enabled`; bounded counts, no keys, IPs or paths. |
+| `health` | none | `devices,routes,mailboxes,sockets,pairing_enabled`; bounded counts, no keys, IPs or paths. The Mac also sends it every 15 s as a liveness check and reconnects when no result arrives within 10 s: a network drop can leave its socket looking open after the relay has closed it. |
 | `open_pair` | `pairing_id,expires_unix` | Host locally authorized a pending pair; expires >now and <=now+600s. Pairing gate required. At most four windows. |
 | `register_device` | `device_id,enrollment_pk` | Host must first durably confirm trust locally. Installs one of 16 enrollment keys. Same ID+key is idempotent; replacement or key collision fails. Pairing gate required. |
 | `revoke_device` | `device_id` | Durable removal **before** result; immediate termination of both route endpoints and pending proofs; all pairing mailboxes cleared. Repeat is safe. Host must revoke local trust/epoch and close Noise state first. |
