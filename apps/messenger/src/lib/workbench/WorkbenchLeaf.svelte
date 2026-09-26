@@ -680,6 +680,16 @@
 			var(--pane) 100%
 		);
 	}
+	/*
+	 * Past either end of the row a flare is outside what the row shows, so it is not drawn. The
+	 * last tab's still counted as something to scroll to: only while that tab was active the row
+	 * was a flare wider than its tabs, and bringing the tab into view scrolled the whole row by it,
+	 * so every switch to or from the last tab shifted the strip sideways and cut into the first.
+	 */
+	.wb-tab:first-child .wb-tab-flare.is-left,
+	.wb-tab:last-child .wb-tab-flare.is-right {
+		display: none;
+	}
 	.wb-tab-button {
 		max-width: 180px;
 		overflow: hidden;
