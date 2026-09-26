@@ -323,6 +323,24 @@ CREATE TABLE IF NOT EXISTS routines (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS check_backs (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  turn_id TEXT,
+  task_id TEXT,
+  note TEXT NOT NULL,
+  due_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  fired_at TEXT,
+  fired_turn_id TEXT,
+  message_id TEXT,
+  voided_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS check_backs_pending
+  ON check_backs (due_at) WHERE fired_at IS NULL AND voided_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
   bot_id TEXT NOT NULL REFERENCES bots (id),

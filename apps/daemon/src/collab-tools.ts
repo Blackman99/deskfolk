@@ -132,6 +132,8 @@ export async function runCollabTool(
         return removeMember(ctx, args);
       case "ask_user":
         return askUser(ctx, args);
+      case "check_back":
+        return checkBack(ctx, args);
       case "list_routines":
         return listRoutines(ctx, args);
       case "create_routine":
@@ -594,6 +596,26 @@ function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     return fail("not_a_member", "the user is not in this session; ask where they are");
   }
   return { ok: true, data: {}, waitAsk: { question }, emitted: [] };
+}
+
+/**
+ * The Bot books itself a wake-up in this session. The store keeps one per Bot per session and
+ * says whether this one replaced an earlier appointment; the scheduler fires it, and the turn it
+ * opens lands in this turn's job.
+ */
+function checkBack(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const { row, replaced } = ctx.store.scheduleCheckBack({
+    botId: ctx.botId,
+    sessionId: ctx.sessionId,
+    turnId: ctx.turnId,
+    note: args.note,
+    afterMinutes: args.after_minutes,
+  });
+  return {
+    ok: true,
+    data: { id: row.id, due_at: row.due_at, after_minutes: args.after_minutes, replaced },
+    emitted: [],
+  };
 }
 
 function listRoutines(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {

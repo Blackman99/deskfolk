@@ -15,6 +15,7 @@ import {
   resolveIncomingBotTarget,
   resolveIncomingThinkingLevel,
 } from "./providers";
+import { voidCheckBacks } from "./check-backs";
 import { forgetBotMemories } from "./memories";
 import { bumpCleanupRevision } from "./notifications";
 import { forgetBotRoutes } from "./routing";
@@ -194,6 +195,7 @@ export function deleteBot(ctx: StoreContext, id: string): void {
     bumpCleanupRevision(ctx);
     forgetBotRoutes(ctx, id);
     forgetBotMemories(ctx, id);
+    voidCheckBacks(ctx, { botId: id }, now);
   })();
 }
 

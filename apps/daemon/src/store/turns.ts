@@ -18,6 +18,7 @@ import { finishTurnRoute, type TurnExecution } from "./routing";
 import { isPresent } from "./sessions";
 import { annotationTaskOfMessage } from "./annotations";
 import { resolveTurnTask, taskOfTurn } from "./tasks";
+import { voidCheckBacks } from "./check-backs";
 import {
   aliveBot,
   isLive,
@@ -41,6 +42,11 @@ export function createTurn(
     newTask?: boolean;
     routineId?: string | null;
     routineDueAt?: string | null;
+    /**
+     * The plan this turn continues, named outright: a check-back wakes the Bot into the plan it
+     * made the appointment in.
+     */
+    taskId?: string | null;
   },
 ): Turn {
   sessionRow(ctx, input.sessionId);
@@ -53,7 +59,7 @@ export function createTurn(
     trigger,
     newTask: input.newTask,
     // A batch of annotations continues the job that delivered this Bot's artifact.
-    taskId: annotationTaskOfMessage(ctx, trigger.id, input.botId),
+    taskId: input.taskId ?? annotationTaskOfMessage(ctx, trigger.id, input.botId),
   });
   ctx.db.transaction(() => {
     ctx.db.run(
@@ -247,6 +253,8 @@ export function stopTurn(
   const now = isoNow();
   ctx.db.transaction(() => {
     voidPendingTurnActions(ctx, row.id, "stopped", now);
+    // Stop means "not this"; an appointment this turn made to come back would undo it later.
+    voidCheckBacks(ctx, { turnId: row.id }, now);
     ctx.db.run(`UPDATE turns SET status = 'stopped', updated_at = ? WHERE id = ?`, [now, row.id]);
     finishTurnRoute(ctx, row.id, "stopped", null, opts.execution ?? null);
   })();

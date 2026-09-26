@@ -122,6 +122,8 @@ export type PlanFacts = {
   artifacts: string[];
   /** One line per earlier turn: who, and their last word or the question they are waiting on. */
   trace: string[];
+  /** The appointment this Bot still has in this session, if any. */
+  check_back: { in_minutes: number; note: string } | null;
 };
 
 /**
@@ -142,6 +144,7 @@ export function planFacts(
     botId: string;
     sessionId: string;
     locale: Locale;
+    now?: Date;
   },
 ): PlanFacts | null {
   let task;
@@ -150,6 +153,7 @@ export function planFacts(
   } catch {
     return null;
   }
+  const now = input.now ?? new Date();
   const firstTurn = !store.taskHasEarlierTurns(input.taskId, input.turnId ?? "");
   const brief = task.brief ? oneLineClip(task.brief, BRIEF_LIMIT) : null;
   const cited = store.taskArtifacts(input.taskId, (relpath) => workspaceFileExists(store, relpath), JOB_ARTIFACTS_LIMIT);
@@ -170,11 +174,19 @@ export function planFacts(
       trace.push(`【${who}】${node.summary}${state}`);
     }
   }
+  const pending = store.pendingCheckBack(input.botId, input.sessionId);
+  const check_back = pending
+    ? {
+        in_minutes: Math.max(0, Math.ceil((Date.parse(pending.due_at) - now.getTime()) / 60_000)),
+        note: pending.note,
+      }
+    : null;
   return {
     first_turn: firstTurn,
     brief,
     artifacts,
     trace,
+    check_back,
   };
 }
 
@@ -225,6 +237,13 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
   }
   if (facts.trace.length > 0) {
     lines.push(`${en ? "So far:" : "经过："}\n${facts.trace.map((line) => `- ${line}`).join("\n")}`);
+  }
+  if (facts.check_back) {
+    lines.push(
+      en
+        ? `Your check-back: in ${facts.check_back.in_minutes} min (${facts.check_back.note})`
+        : `你约的回看：${facts.check_back.in_minutes} 分钟后（${facts.check_back.note}）`,
+    );
   }
   return lines;
 }
@@ -384,11 +403,13 @@ function transcriptWindow(
     .reverse();
   const byId = new Map<string, Message>();
   for (const m of main) byId.set(m.id, m);
-  const ordered: Message[] = [];
+  const ordered: Message[] = [...main];
+  // A trigger the window leaves out, older than it or a check-back's line nobody else is shown,
+  // still reads where it happened.
   if (!trigger.parent_id && !byId.has(trigger.id) && trigger.turn_id !== input.turnId) {
-    ordered.push(trigger);
+    const at = ordered.findIndex((m) => m.created_at > trigger.created_at);
+    ordered.splice(at < 0 ? ordered.length : at, 0, trigger);
   }
-  for (const m of main) ordered.push(m);
   if (trigger.parent_id) {
     for (const m of store.listThreadMessages(trigger.parent_id)) {
       if (m.turn_id === input.turnId) continue;

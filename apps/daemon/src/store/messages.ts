@@ -15,6 +15,7 @@ import { classifyBotMessage } from "../notification-policy";
 import { classifyPath } from "../workspace-paths";
 import { prepareFile, commitPreparedFile, discardFile, type FileCommit } from "./files";
 import { getBot, listBots } from "./bots";
+import { notCheckBackLine } from "./check-backs";
 import { createNotification } from "./notifications";
 import {
   clampLimit,
@@ -54,7 +55,7 @@ export function listMessages(
     ? ctx.db
         .query<MessageRow, [string, string, string, string, number]>(
           `SELECT * FROM messages
-           WHERE session_id = ? AND kind != 'profile_change'
+           WHERE session_id = ? AND kind != 'profile_change' AND ${notCheckBackLine()}
              AND (created_at < ? OR (created_at = ? AND id < ?))
            ORDER BY created_at DESC, id DESC
            LIMIT ?`,
@@ -63,7 +64,7 @@ export function listMessages(
     : ctx.db
         .query<MessageRow, [string, number]>(
           `SELECT * FROM messages
-           WHERE session_id = ? AND kind != 'profile_change'
+           WHERE session_id = ? AND kind != 'profile_change' AND ${notCheckBackLine()}
            ORDER BY created_at DESC, id DESC LIMIT ?`,
         )
         .all(sessionId, limit + 1);
@@ -267,7 +268,7 @@ export function listMainMessages(ctx: StoreContext, sessionId: string, limit: nu
   const rows = ctx.db
     .query<MessageRow, [string, number]>(
       `SELECT * FROM messages
-       WHERE session_id = ? AND kind != 'profile_change'
+       WHERE session_id = ? AND kind != 'profile_change' AND ${notCheckBackLine()}
        ORDER BY created_at DESC, rowid DESC
        LIMIT ?`,
     )

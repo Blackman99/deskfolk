@@ -121,6 +121,28 @@ describe("the job in the situation block", () => {
     store.close();
   });
 
+  test("a booked check-back shows on the Bot's own block until it fires, and never on a teammate's", async () => {
+    const { store, writer, reviewer, group, drafting, handoff } = await room();
+    const { row } = store.scheduleCheckBack({
+      botId: writer.id,
+      sessionId: group.id,
+      turnId: drafting.id,
+      note: "看 Reviewer 回了没有",
+      afterMinutes: 30,
+    });
+    const nudge = store.insertMessage({ sessionId: group.id, kind: "user", author: USER_MEMBER, body: "@Writer 顺便加个摘要" });
+    const again = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: nudge.id });
+    const mine = situationOf(assemble(store, { sessionId: group.id, botId: writer.id, turnId: again.id, triggerMessageId: nudge.id }));
+    expect(mine).toMatch(/你约的回看：(29|30) 分钟后（看 Reviewer 回了没有）/);
+    const reviewing = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: handoff.id });
+    const theirs = situationOf(assemble(store, { sessionId: group.id, botId: reviewer.id, turnId: reviewing.id, triggerMessageId: handoff.id }));
+    expect(theirs).not.toContain("你约的回看");
+    store.claimCheckBack(row.id);
+    const after = situationOf(assemble(store, { sessionId: group.id, botId: writer.id, turnId: again.id, triggerMessageId: nudge.id }));
+    expect(after).not.toContain("你约的回看");
+    store.close();
+  });
+
   test("the English block renders the same facts", async () => {
     const { store, reviewer, group, handoff } = await room();
     const reviewing = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: handoff.id });

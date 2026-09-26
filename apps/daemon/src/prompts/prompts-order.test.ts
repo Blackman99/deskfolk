@@ -19,6 +19,7 @@ describe("builtinTools order", () => {
       "add_member",
       "remove_member",
       "ask_user",
+      "check_back",
       "list_routines",
       "create_routine",
       "update_routine",

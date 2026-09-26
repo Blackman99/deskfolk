@@ -10,6 +10,7 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { notCheckBackLine, voidCheckBacks } from "./check-backs";
 import { hydrateMessage, listMessages } from "./messages";
 import { getSessionNotificationPreference, markNotificationsReadThroughMessage } from "./notifications";
 
@@ -77,7 +78,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
       `SELECT * FROM (
          SELECT *, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, id DESC) as rn
          FROM messages
-         WHERE kind != 'profile_change'
+         WHERE kind != 'profile_change' AND ${notCheckBackLine()}
        ) WHERE rn = 1`,
     )
     .all();
@@ -294,6 +295,7 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM session_notification_preferences WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM check_backs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     // Spend is a ledger. Deleting the session leaves the rows, with the names they were written with.
@@ -353,6 +355,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
+    // The jobs end with the history, so nobody comes back to them later.
+    voidCheckBacks(ctx, { sessionId: id }, now);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     // Clearing history ends the jobs it held: dirs nothing else belongs to go, the rest close.
@@ -582,6 +586,7 @@ export function unreadCount(ctx: StoreContext, sessionId: string): number {
        JOIN sessions s ON s.id = m.session_id
        WHERE m.session_id = ?
          AND m.kind != 'profile_change'
+         AND ${notCheckBackLine("m.id")}
          AND m.author != ?
          AND (
            (s.read_through_seq > 0 AND m.message_seq > s.read_through_seq)
@@ -599,6 +604,7 @@ export function unreadCountsBySession(ctx: StoreContext): Map<string, number> {
        FROM messages m
        JOIN sessions s ON s.id = m.session_id
        WHERE m.kind != 'profile_change'
+         AND ${notCheckBackLine("m.id")}
          AND m.author != ?
          AND (
            (s.read_through_seq > 0 AND m.message_seq > s.read_through_seq)

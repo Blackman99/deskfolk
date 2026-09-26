@@ -42,6 +42,19 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
         // a deleted Bot or a closed store must not stall the rest
       }
     }
+    let due: { id: string }[] = [];
+    try {
+      due = options.store.dueCheckBacks(at);
+    } catch {
+      due = [];
+    }
+    for (const row of due) {
+      try {
+        options.engine.fireCheckBack(row.id, at);
+      } catch {
+        // a session that is gone, or an engine that is draining, must not stall the rest
+      }
+    }
   }
 
   const timer = setInterval(() => tick(), intervalMs);

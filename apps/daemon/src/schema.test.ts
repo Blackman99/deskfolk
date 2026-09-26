@@ -34,6 +34,7 @@ describe("schema", () => {
       "approvals",
       "attachments",
       "bots",
+      "check_backs",
       "file_commits",
       "file_stages",
       "judgements",

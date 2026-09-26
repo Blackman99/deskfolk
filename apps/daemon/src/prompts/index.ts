@@ -14,7 +14,13 @@ export type {
   ComposerSuggestMessage,
   ComposerSuggestPayload,
 } from "./composer-suggestions";
-export { COMPLETION_FAIL, FAIL_REASON, unknownMentionBody, completionFailBody } from "./transcript-copy";
+export {
+  COMPLETION_FAIL,
+  FAIL_REASON,
+  checkBackNoteBody,
+  unknownMentionBody,
+  completionFailBody,
+} from "./transcript-copy";
 export type { FailKind } from "./transcript-copy";
 export type { ChatTool } from "./tool-schema";
 export { builtinTools, COLLAB_TOOL_NAMES } from "./builtin-tools";

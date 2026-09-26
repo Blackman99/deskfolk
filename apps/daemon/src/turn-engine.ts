@@ -47,6 +47,7 @@ import { sessionUpsertFields } from "./session-events";
 import { isNoWorkCloser } from "./no-work";
 import {
   builtinTools,
+  checkBackNoteBody,
   COLLAB_TOOL_NAMES,
   COMPOSER_SUGGEST_SYSTEM,
   completionFailBody,
@@ -75,6 +76,8 @@ export type TurnEngine = {
     opts?: { fork?: boolean; fromUser?: boolean },
   ) => Promise<void>;
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
+  /** Wakes a Bot at a check-back it booked; null when it was voided, already fired, or nobody to wake. */
+  fireCheckBack: (id: string, now?: Date) => Turn | null;
   assertAskPending: (askId: string, sessionId: string) => void;
   replyAsk: (askId: string, answer: Message) => void;
   resolveApproval: (
@@ -848,7 +851,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     botId: string,
     trigger: Message,
     mode: "redirect" | "fork",
-    opts: { newTask?: boolean; routineId?: string | null; routineDueAt?: string | null } = {},
+    opts: {
+      newTask?: boolean;
+      routineId?: string | null;
+      routineDueAt?: string | null;
+      /** The job this turn continues outright, when the trigger cannot say (a check-back's note). */
+      taskId?: string | null;
+    } = {},
   ): Turn {
     options.admission?.assertNew();
     if (mode === "redirect") {
@@ -874,6 +883,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       newTask: opts.newTask,
       routineId: opts.routineId,
       routineDueAt: opts.routineDueAt,
+      taskId: opts.taskId,
     });
     attachLive(turn);
     return turn;
@@ -2127,6 +2137,62 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
+  /**
+   * Wakes a Bot at an appointment it made with itself. The note it left becomes a system line in
+   * the same session, seen only by the turn it wakes and the flow board, and opens a turn in the
+   * job the appointment was made in: in a group the Bot's live turn there is retuned like a mention
+   * would, in a direct a new turn forks like a message from the user. Nothing fires while draining;
+   * a Bot since archived or gone from the session just has its appointment consumed, since there is
+   * nobody to wake.
+   */
+  function fireCheckBack(id: string, now: Date = new Date()): Turn | null {
+    if (options.admission?.draining) return null;
+    const result = store.transaction(() => {
+      const claimed = store.claimCheckBack(id, now);
+      if (!claimed) return null;
+      let session;
+      try {
+        session = store.getSession(claimed.session_id);
+      } catch {
+        return null;
+      }
+      let archived: string | null;
+      try {
+        archived = store.getBot(claimed.bot_id).archived_at;
+      } catch {
+        return null;
+      }
+      if (archived || !store.isPresent(session.id, claimed.bot_id)) return null;
+      let bookedBy: string | null = null;
+      if (claimed.turn_id) {
+        try {
+          bookedBy = store.getTurn(claimed.turn_id).id;
+        } catch {
+          bookedBy = null;
+        }
+      }
+      // Hung on the turn that booked it, so the trace draws the Bot waking itself, and the woken
+      // turn inherits the job the way a handoff does even before `taskId` says so.
+      const trigger = store.insertMessage({
+        sessionId: session.id,
+        turnId: bookedBy,
+        kind: "system",
+        author: claimed.bot_id,
+        body: checkBackNoteBody(store.settingsCached().locale, claimed.note),
+      });
+      // The Bot's reminder to itself: the turn reads it, the conversation never shows it.
+      store.recordCheckBackLine(claimed.id, trigger.id);
+      return { claimed, session, trigger };
+    });
+    if (!result) return null;
+    const fork = result.session.kind === "group" ? false : store.isPresent(result.session.id, USER_MEMBER);
+    const turn = startTurn(result.session.id, result.claimed.bot_id, result.trigger, fork ? "fork" : "redirect", {
+      taskId: result.claimed.task_id,
+    });
+    store.markCheckBackFired(id, turn.id);
+    return turn;
+  }
+
   function fireRoutine(routineId: string, now: Date = new Date()): Turn | null {
     options.admission?.assertNew();
     const result = store.transaction(() => {
@@ -2216,6 +2282,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     sweepToolResults,
     sweepStalledTurns,
     fireRoutine,
+    fireCheckBack,
     assertAskPending,
     resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);

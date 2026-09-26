@@ -156,3 +156,28 @@ export const ASK_USER: ToolDef = {
   },
   required: ["question"],
 };
+
+export const CHECK_BACK: ToolDef = {
+  name: "check_back",
+  description: {
+    zh: "约自己稍后在本会话回看一次。到点后你会被一条「回看：<note>」的系统行叫醒，沿用这件事的工作目录；那一轮的局面里有这件事最初的要求、已交出的文件和经过。用在交接出去之后、或在等一个不由你掌控的结果时；note 写清回看时要核对什么、没动静该怎么办。一个会话里同时只有一次待回看，再约就是替换。这不是日程，只响一次。不要为了等而每几分钟约一次；要立刻让别人做事，用 send_message 点名。",
+    en: "Book a check-back with yourself in this session. When it is due you are woken by a system line \"Check-back: <note>\", in the same job's work dir, and that turn's situation block carries the job's opening request, the files handed over and who did what. Use it after a handoff, or while waiting for a result you do not control; put in note what to verify and what to do if nothing has moved. One pending check-back per session; booking another replaces it. It is not a routine and fires once. Do not book one every few minutes just to wait; to get someone moving now, mention them with send_message.",
+  },
+  properties: {
+    after_minutes: {
+      type: "integer",
+      description: {
+        zh: "多少分钟后回看：1 到 10080（七天）的整数。",
+        en: "Minutes until the check-back: an integer from 1 to 10080 (seven days).",
+      },
+    },
+    note: {
+      type: "string",
+      description: {
+        zh: "回看时给自己的一句话：核对什么、没动静怎么办。",
+        en: "One line to your later self: what to verify, and what to do if nothing has moved.",
+      },
+    },
+  },
+  required: ["after_minutes", "note"],
+};

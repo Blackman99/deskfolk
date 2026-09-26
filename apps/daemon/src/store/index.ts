@@ -18,6 +18,7 @@ import { SCHEMA_SQL } from "../schema";
 import * as annotations from "./annotations";
 import * as approvals from "./approvals";
 import * as bots from "./bots";
+import * as checkBacks from "./check-backs";
 import * as judgements from "./judgements";
 import * as mcp from "./mcp";
 import * as memories from "./memories";
@@ -46,6 +47,8 @@ import * as turns from "./turns";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, RESERVED_SUBDIRS, TASK_QUIET_MS, WORK_ROOT } from "./tasks";
+export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
+export type { CheckBack } from "./check-backs";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
 export type { FileCommit, LiveFile } from "./files";
@@ -244,6 +247,17 @@ export class Store {
   readonly joinableTask = this.bind(tasks.joinableTask);
   readonly taskHasEarlierTurns = this.bind(tasks.taskHasEarlierTurns);
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
+
+  // Check-backs ----------------------------------------------------------------------------
+  readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);
+  readonly getCheckBack = this.bind(checkBacks.getCheckBack);
+  readonly pendingCheckBack = this.bind(checkBacks.pendingCheckBack);
+  readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);
+  readonly dueCheckBacks = this.bind(checkBacks.dueCheckBacks);
+  readonly claimCheckBack = this.bind(checkBacks.claimCheckBack);
+  readonly markCheckBackFired = this.bind(checkBacks.markCheckBackFired);
+  readonly recordCheckBackLine = this.bind(checkBacks.recordCheckBackLine);
+  readonly voidCheckBacks = this.bind(checkBacks.voidCheckBacks);
 
   // Sessions -------------------------------------------------------------------------------
   readonly ensureFileDropSession = this.bind(sessions.ensureFileDropSession);

@@ -37,3 +37,8 @@ export function completionFailBody(locale: Locale, kind: FailKind): string {
   const reason = FAIL_REASON[kind][locale];
   return locale === "en" ? COMPLETION_FAIL.en(reason) : COMPLETION_FAIL.zh(reason);
 }
+
+/** The system line a check-back wakes a Bot with: the note it left itself, marked as such. */
+export function checkBackNoteBody(locale: Locale, note: string): string {
+  return locale === "en" ? `Check-back: ${note}` : `回看：${note}`;
+}
