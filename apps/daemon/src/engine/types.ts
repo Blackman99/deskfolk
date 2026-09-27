@@ -15,6 +15,11 @@ export type InboxEntry = {
   message: Message;
   /** Set for a check-back: where the turn it would have opened lands, should it need opening. */
   checkBack?: { taskId: string | null; ticketId: string | null };
+  /**
+   * Your line from another session about this turn's job. It is answered where you said it, so a
+   * turn that ends before reading it does not open another here for it.
+   */
+  elsewhere?: true;
 };
 
 export type Live = {

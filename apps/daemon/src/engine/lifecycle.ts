@@ -20,7 +20,7 @@ import {
 } from "../artifact-paths";
 import { pathExists } from "../collab-tools";
 import type { CompletionsClient } from "../completions";
-import { assembleTurnMessages, planTagger, type PlanRef } from "../context";
+import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "../context";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
 import { isNoWorkCloser } from "../no-work";
 import type { McpHost } from "../mcp-host";
@@ -96,6 +96,7 @@ export type Lifecycle = {
     entry: Omit<InboxEntry, "message">,
     opts?: { taskId?: string | null; ticketId?: string | null },
   ) => Turn;
+  hearAcross: (message: Message) => Turn[];
   attachLive: (turn: Turn, carry?: string | null) => void;
   continueFromInterrupt: (messageId: string) => Turn;
   abortLive: (turnId: string) => void;
@@ -248,6 +249,46 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   }
 
   /**
+   * Your line, once filed under a plan, reaches every turn working in that plan in another session:
+   * you tell a Bot in your direct what to change about the job it is doing in a group, and the
+   * group's turns on that job — its own and its teammates' — read it on their next hop without being
+   * interrupted. Turns in the line's own session already have it in their transcript. Returns the
+   * turns that got it.
+   */
+  function hearAcross(message: Message): Turn[] {
+    if (!message.task_id) return [];
+    const locale = store.settingsCached().locale;
+    let author = "user";
+    if (message.author !== USER_MEMBER) {
+      try {
+        author = store.getBot(message.author).name;
+      } catch {
+        author = message.author;
+      }
+    }
+    // The hearing turn cannot see that session's transcript, so the files come along by path.
+    const body = [message.body, ...message.attachments.map((att) => `附件：${att.workspace_relpath}`)].join("\n");
+    const got: Turn[] = [];
+    for (const current of store.listLiveTurns()) {
+      if (current.task_id !== message.task_id || current.session_id === message.session_id) continue;
+      const live = lives.get(current.id);
+      if (!live || live.abort.signal.aborted) continue;
+      const tag = planTagger(store, { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null }, locale)({
+        taskId: message.task_id,
+        ticketId: message.ticket_id ?? null,
+      });
+      const where = sessionLabel(store, message.session_id, current.bot_id, locale) ?? undefined;
+      live.inbox.push({
+        item: { author, body, checkBack: false, tag: tag || undefined, where },
+        message,
+        elsewhere: true,
+      });
+      got.push(current);
+    }
+    return got;
+  }
+
+  /**
    * A turn that ended before reading its inbox leaves those lines unanswered, so one more turn
    * opens on the last of them — the others are in its transcript. Only a turn that finished does
    * this: Stop means leave it, a redirect already carried them over, an interruption is yours to
@@ -255,8 +296,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    */
   function reopenForUnheard(turn: Turn, live: Live): void {
     if (live.inbox.length === 0 || admission?.draining) return;
-    const pending = live.inbox;
+    // A line heard from another session was answered there; it opens nothing here.
+    const pending = live.inbox.filter((entry) => !entry.elsewhere);
     live.inbox = [];
+    if (pending.length === 0) return;
     let status: Turn["status"];
     try {
       status = store.getTurn(turn.id).status;
@@ -706,6 +749,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   return {
     startTurn,
     hearOrStart,
+    hearAcross,
     attachLive,
     continueFromInterrupt,
     abortLive,

@@ -258,6 +258,7 @@ export class Store {
   readonly sessionTasks = this.bind(tasks.sessionTasks);
   readonly sessionCurrentTask = this.bind(tasks.sessionCurrentTask);
   readonly sessionRecentTasks = this.bind(tasks.sessionRecentTasks);
+  readonly elsewherePlans = this.bind(tasks.elsewherePlans);
   readonly taskHasEarlierTurns = this.bind(tasks.taskHasEarlierTurns);
   readonly taskLiveTurnCount = this.bind(tasks.taskLiveTurnCount);
   readonly taskArtifactsSince = this.bind(tasks.taskArtifactsSince);

@@ -190,6 +190,8 @@ describe("the job in the judgement and composer payloads", () => {
       message_ticket: null,
       artifacts: ["report.md"],
       trace: ["【user】写一份周报，交到 report.md，先给 Reviewer 过一遍", "【Writer】初稿在 report.md，@Reviewer 请看"],
+      live_elsewhere: [],
+      you_heard_elsewhere: false,
     });
     store.close();
   });
@@ -307,6 +309,23 @@ describe("which job a line is about", () => {
     expect(en).toContain('This plan was opened in group "Brief".');
     expect(en).toContain('Also working on this plan elsewhere: Writer (group "Brief").');
     expect(en).toContain('Your other live turns: plan "帮我起一个产品名" · ticket 01 候选名 in your direct with the user.');
+    store.close();
+  });
+
+  test("a judgement on your line about a job going on elsewhere knows who has it there, and whether that is itself", async () => {
+    const { store, writer, reviewer, group, handoff } = await room();
+    store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: handoff.id });
+    const plan = store.taskOfTurn(store.listLiveTurns({ sessionId: group.id })[0]!.id)!;
+    const other = store.createGroup({ name: "周会", members: [writer.id, reviewer.id] });
+    const line = store.insertMessage({ sessionId: other.id, kind: "user", author: USER_MEMBER, body: "周报里别用表格" });
+    store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [plan, line.id]);
+    const filed = store.getMessage(line.id);
+    const judge = (botId: string) =>
+      (JSON.parse(assembleJudgementUser(store, { sessionId: other.id, botId, message: filed, mentions: [], everyone: false })) as {
+        plan: { live_elsewhere: Array<{ bot: string; where: string }>; you_heard_elsewhere: boolean };
+      }).plan;
+    expect(judge(writer.id)).toMatchObject({ live_elsewhere: [{ bot: "you", where: "群「Brief」" }], you_heard_elsewhere: true });
+    expect(judge(reviewer.id)).toMatchObject({ live_elsewhere: [{ bot: "Writer", where: "群「Brief」" }], you_heard_elsewhere: false });
     store.close();
   });
 

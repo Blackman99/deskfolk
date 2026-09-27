@@ -10,6 +10,7 @@ import { isoNow, ulid } from "../ids";
 import { normalizePlanSpec, parsePlanSpec, type PlanSpec } from "./plan-shape";
 import { type StoreContext } from "./shared";
 import {
+  elsewherePlans,
   getTask,
   openTask,
   reopenTask,
@@ -184,8 +185,10 @@ export type OrganizerTicketInput = {
 };
 
 export type OrganizerResult = {
-  decision: "continue" | "new" | "resume";
+  decision: "continue" | "new" | "resume" | "join";
   resumePlanId: string | null;
+  /** A plan the Bots here are on in another session, which the line is about (`elsewherePlans`). */
+  joinPlanId?: string | null;
   spec: PlanSpec;
   tickets: OrganizerTicketInput[];
   /** Which ticket the message that prompted this run is about: an id, a `new-N`, or null. */
@@ -245,6 +248,15 @@ export function applyOrganizerResult(
       if (candidates.some((task) => task.id === result.resumePlanId)) {
         reopenTask(ctx, result.resumePlanId, input.sessionId);
         target = getTask(ctx, result.resumePlanId);
+      }
+    }
+    // A job going on elsewhere takes the line without becoming this session's plan: its own
+    // session keeps it, and this session's current plan stays where it was.
+    if (result.decision === "join" && result.joinPlanId) {
+      const candidates = elsewherePlans(ctx, input.sessionId);
+      if (candidates.some((task) => task.id === result.joinPlanId)) {
+        reopenTask(ctx, result.joinPlanId, input.sessionId);
+        target = getTask(ctx, result.joinPlanId);
       }
     }
     if (!target && result.decision !== "new") target = input.current;

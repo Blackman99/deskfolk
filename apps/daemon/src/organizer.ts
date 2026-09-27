@@ -174,6 +174,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const parsed = parseOrganizerResult(result.content ?? "", {
       mode: input.mode,
       recentPlanIds: new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id)),
+      elsewherePlanIds: new Set(input.mode === "message" ? store.elsewherePlans(input.sessionId).map((task) => task.id) : []),
       roster: store.listBots().map((bot) => ({ id: bot.id, name: bot.name })),
     });
     if (!parsed) log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);

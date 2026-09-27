@@ -244,8 +244,12 @@ export type PlanFacts = {
   title: string;
   /** Where the plan was opened, when that is not this session. */
   home: string | null;
-  /** Turns working in this plan right now in other sessions: who, and where. */
-  elsewhere: Array<{ bot: string; self: boolean; where: string }>;
+  /**
+   * Turns working in this plan right now in other sessions: who, and where. `heard` marks the ones
+   * that were already live when the trigger — your line filed in this plan, here — came in, and so
+   * got it in their inbox.
+   */
+  elsewhere: Array<{ bot: string; self: boolean; where: string; heard: boolean }>;
   /** This Bot's other live turns, on other plans: where, which plan, which ticket. */
   other_work: Array<{ where: string; plan: string; ticket: string | null }>;
 };
@@ -360,11 +364,29 @@ export function planFacts(
       trace.push(`【${who}】${node.summary}${state}${there}`);
     }
   }
+  // Mirrors `hearAcross`: your line filed in this plan went into the inbox of every turn on it
+  // elsewhere that was live when it came in. A turn that opened later never got it.
+  let spokenAt: string | null = null;
+  if (input.triggerMessageId) {
+    try {
+      const trigger = store.getMessage(input.triggerMessageId);
+      if (trigger.author === USER_MEMBER && trigger.task_id === input.taskId && trigger.session_id === input.sessionId) {
+        spokenAt = trigger.created_at;
+      }
+    } catch {
+      spokenAt = null;
+    }
+  }
   const live = store.listLiveTurns();
   const elsewhere = live
     .filter((turn) => turn.task_id === input.taskId && turn.session_id !== input.sessionId && turn.id !== input.turnId)
     .slice(0, ELSEWHERE_LINES)
-    .map((turn) => ({ bot: botDisplayName(store, turn.bot_id), self: turn.bot_id === input.botId, where: where(turn.session_id) }));
+    .map((turn) => ({
+      bot: botDisplayName(store, turn.bot_id),
+      self: turn.bot_id === input.botId,
+      where: where(turn.session_id),
+      heard: spokenAt !== null && turn.created_at < spokenAt,
+    }));
   const other_work: PlanFacts["other_work"] = [];
   for (const turn of live) {
     if (other_work.length >= OTHER_WORK_LINES) break;
@@ -511,6 +533,16 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
       en ? `${turn.self ? "you" : turn.bot} (${turn.where})` : `${turn.self ? "你" : turn.bot}（${turn.where}）`,
     );
     lines.push(en ? `Also working on this plan elsewhere: ${who.join(", ")}.` : `这件事别处进行中的轮：${who.join("、")}。`);
+    const heard = facts.elsewhere.filter((turn) => turn.heard);
+    if (heard.length > 0) {
+      const names = [...new Set(heard.map((turn) => (turn.self ? (en ? "you" : "你") : turn.bot)))];
+      const mine = heard.some((turn) => turn.self);
+      lines.push(
+        en
+          ? `The line that opened this turn has been passed to ${names.join(", ")}.${mine ? " Your turn there got it too and does any work it calls for; here, answer the user and do not make the same change twice." : ""}`
+          : `触发这一轮的那句已经转给了${names.join("、")}。${mine ? "你在那边的那一轮也收到了，要动手的由它接着做；这里回应用户就好，不要重复做同样的改动。" : ""}`,
+      );
+    }
   }
   if (facts.other_work.length > 0) {
     const rows = facts.other_work.map((work) => {
@@ -1059,6 +1091,8 @@ export function assembleJudgementUser(store: Store, input: {
         message_ticket: facts.ticket ? { seq: facts.ticket.seq, title: facts.ticket.title, spec: facts.ticket.spec } : null,
         artifacts: facts.artifacts,
         trace: facts.trace,
+        live_elsewhere: facts.elsewhere.map((turn) => ({ bot: turn.self ? "you" : turn.bot, where: turn.where })),
+        you_heard_elsewhere: facts.elsewhere.some((turn) => turn.self && turn.heard),
       }
     : null;
   const payload = {

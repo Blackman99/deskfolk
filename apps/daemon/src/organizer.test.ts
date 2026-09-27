@@ -45,7 +45,10 @@ afterEach(async () => {
   while (closes.length) await closes.pop()!();
 });
 
-async function harness(answer: Answer, script: (messages: ChatMessage[]) => CompletionOk = () => say("初稿在 draft.md")) {
+async function harness(
+  answer: Answer,
+  script: (messages: ChatMessage[]) => CompletionOk | Promise<CompletionOk> = () => say("初稿在 draft.md"),
+) {
   const root = mkdtempSync(join(tmpdir(), "organizer-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: ChatMessage[][] = [];
@@ -240,6 +243,134 @@ test("in a group, every turn a filed line opens lands in its plan and ticket", a
   for (const judgement of h.judgements) {
     expect(judgement.plan).toMatchObject({ goal: "做一版海报", message_ticket: { seq: 1, title: "文案" } });
   }
+});
+
+/**
+ * The Writer is drafting the group's report — its turn held mid-hop — when you tell it something
+ * about that report in your direct. The organizer files the line under the group's plan, the
+ * group turn hears it, and the turn in your direct knows the group already has it.
+ */
+async function reportInTheGroup(secondHop: "tool" | "done") {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // The direct's turn stays live until the group turn is done, as it would with a slower model.
+  let releaseDirect = () => {};
+  const directHeld = new Promise<void>((resolve) => {
+    releaseDirect = resolve;
+  });
+  let groupHops = 0;
+  let heard = "";
+  let directSituation = "";
+  let groupSituation = "";
+  const h = await harness(
+    (payload) => {
+      if (payload.mode === "settle") return null;
+      if (payload.session.kind === "group") {
+        return JSON.stringify({
+          decision: "new",
+          plan: { goal: "写一份周报", rules: ["不要口语"] },
+          tickets: [{ id: "new-1", title: "初稿", status: "doing", worker: "Writer" }],
+          message_ticket: "new-1",
+        });
+      }
+      const report = payload.elsewhere_plans[0]!;
+      return JSON.stringify({
+        decision: "join",
+        join_plan_id: report.id,
+        plan: { ...report.spec, rules: [...report.spec!.rules, "标题别太长"] },
+        tickets: [],
+        message_ticket: report.tickets[0]!.id,
+      });
+    },
+    async (messages) => {
+      const situation = textOf(messages.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!);
+      if (!situation.includes("在场成员")) {
+        directSituation = situation;
+        await directHeld;
+        return say("收到，标题会短一些");
+      }
+      groupHops += 1;
+      if (groupHops === 1) {
+        await held;
+        return secondHop === "tool" ? call("list_dir", { path: "." }) : say("初稿在 draft.md");
+      }
+      // Later group hops belong to the plan's own nudge once this turn ends with its ticket open.
+      if (groupHops === 2) {
+        heard = messages.filter((m) => m.role === "user").map(textOf).at(-1) ?? "";
+        groupSituation = situation;
+      }
+      return say("初稿在 draft.md，标题改短了");
+    },
+  );
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+  const group = h.store.createGroup({ name: "周报组", members: [writer.bot.id, reviewer.bot.id] });
+  const go = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@Writer 写一份周报" });
+  void h.engine.handleInboundMessage(go, { fromUser: true });
+  await until(() => groupHops === 1);
+  const plan = h.store.sessionCurrentTask(group.id)!;
+  const ticket = h.store.listTickets(plan.id)[0]!;
+  const groupTurn = h.turnOf(go.id)[0]!;
+
+  const aside = h.store.insertMessage({ sessionId: writer.direct_session.id, kind: "user", author: "user", body: "周报标题别太长" });
+  await h.engine.handleInboundMessage(aside, { fromUser: true });
+  await until(() => directSituation !== "");
+  release();
+  await until(() => h.store.getTurn(groupTurn.id).status === "completed");
+  releaseDirect();
+  await until(() => h.turnOf(aside.id)[0]?.status === "completed");
+  await Bun.sleep(30);
+  return {
+    h,
+    group,
+    plan,
+    ticket,
+    groupTurn,
+    aside,
+    heard: () => heard,
+    directSituation: () => directSituation,
+    groupSituation: () => groupSituation,
+    groupHops: () => groupHops,
+  };
+}
+
+test("a line in your direct about the job a Bot is doing in a group is filed there, the group's turn hears it, and the direct's turn leaves the work to it", async () => {
+  const { h, group, plan, ticket, groupTurn, aside, heard, directSituation, groupSituation } = await reportInTheGroup("tool");
+  // Filed under the group's plan and ticket; the direct keeps no plan of its own.
+  expect(h.store.getMessage(aside.id)).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
+  expect(h.turnOf(aside.id)[0]).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
+  expect(h.store.sessionCurrentTask(group.id)?.id).toBe(plan.id);
+  expect(h.store.getTask(plan.id).session_id).toBe(group.id);
+  const parsed = JSON.parse(h.store.getTask(plan.id).spec!) as { rules: string[] };
+  expect(parsed.rules).toEqual(["不要口语", "标题别太长"]);
+
+  // The group turn read it on its next hop, from where it was said.
+  expect(heard()).toContain("你这一轮干活时有人找你");
+  expect(heard()).toContain("【user，在你和用户的私聊里】周报标题别太长");
+  expect(h.turnOf(aside.id)).toHaveLength(1);
+  expect(h.store.getTurn(groupTurn.id).status).toBe("completed");
+
+  // The direct's turn saw the group's job and was told its own group turn has the line.
+  expect(directSituation()).toContain("规划「写一份周报」：写一份周报");
+  expect(directSituation()).toContain("这件事是在群「周报组」里开的。");
+  expect(directSituation()).toContain("这件事别处进行中的轮：你（群「周报组」）。");
+  expect(directSituation()).toContain("触发这一轮的那句已经转给了你。你在那边的那一轮也收到了");
+
+  // The group turn sees the direct's turn on the same job, but its own opening line went to nobody.
+  expect(groupSituation()).toContain("这件事别处进行中的轮：你（你和用户的私聊）。");
+  expect(groupSituation()).not.toContain("触发这一轮的那句");
+});
+
+test("a group turn that ends before reading your line from elsewhere opens no turn for it there", async () => {
+  const { h, group, aside, groupTurn } = await reportInTheGroup("done");
+  // The line was answered in your direct; the group opens nothing on it.
+  const onAside = h.store.db
+    .query<{ n: number }, [string, string]>("SELECT COUNT(*) AS n FROM turns WHERE session_id = ? AND trigger_message_id = ?")
+    .get(group.id, aside.id)!;
+  expect(onAside.n).toBe(0);
+  expect(h.store.getTurn(groupTurn.id).status).toBe("completed");
 });
 
 function call(name: string, args: Record<string, unknown>): CompletionOk {

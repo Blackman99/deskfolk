@@ -353,6 +353,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           } catch {
             filed = message;
           }
+          // The job's turns in other sessions hear it before any turn opens here, so the one that
+          // opens can be told they already have it.
+          lifecycle.hearAcross(filed);
         }
         await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
       } finally {

@@ -794,6 +794,52 @@ export function sessionRecentTasks(ctx: StoreContext, sessionId: string, limit =
   return out;
 }
 
+/** How many plans the Bots here have going elsewhere the organizer is shown. */
+export const ELSEWHERE_PLANS_LIMIT = 3;
+
+/**
+ * Plans the Bots in this session are working on elsewhere: one of them has a live turn in it in
+ * another session, or is the worker on one of its open tickets while it is active. A line you say
+ * here can be about one of those — you tell a Bot in your direct what you think of the job it is
+ * doing in a group — so the organizer may file it there. Routine plans, finished ones and this
+ * session's current plan are left out; newest activity first.
+ */
+export function elsewherePlans(ctx: StoreContext, sessionId: string, limit = ELSEWHERE_PLANS_LIMIT): Task[] {
+  sessionRow(ctx, sessionId);
+  const bots = ctx.db
+    .query<{ member: string }, [string, string]>(
+      `SELECT member FROM session_participants WHERE session_id = ? AND left_at IS NULL AND member != ?`,
+    )
+    .all(sessionId, USER_MEMBER)
+    .map((row) => row.member);
+  if (bots.length === 0) return [];
+  const current = sessionCurrentTask(ctx, sessionId)?.id ?? "";
+  const marks = bots.map(() => "?").join(", ");
+  return ctx.db
+    .query<SummaryRow, string[]>(
+      `SELECT t.*,
+              COALESCE(
+                (SELECT MAX(last_activity_at) FROM turns WHERE turns.task_id = t.id),
+                t.created_at
+              ) AS last_activity_at
+       FROM tasks t
+       WHERE t.routine_id IS NULL AND t.status != 'done' AND t.id != ?
+         AND (
+           EXISTS (SELECT 1 FROM turns u
+                   WHERE u.task_id = t.id AND u.session_id != ?
+                     AND u.status IN ('running', 'waiting_approval', 'waiting_ask')
+                     AND u.bot_id IN (${marks}))
+           OR (t.status = 'active' AND EXISTS (SELECT 1 FROM tickets k
+                   WHERE k.task_id = t.id AND k.status IN ('todo', 'doing', 'review')
+                     AND k.worker IN (${marks})))
+         )
+       ORDER BY last_activity_at DESC, t.id DESC
+       LIMIT ${Math.max(0, Math.floor(limit))}`,
+    )
+    .all(current, sessionId, ...bots, ...bots)
+    .map(({ last_activity_at: _at, ...task }) => task);
+}
+
 function oneLine(body: string): string {
   // A card is one sentence. A markdown link would spend it on the address.
   const flat = body.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\s+/g, " ").trim();

@@ -96,11 +96,49 @@ describe("what the organizer reads", () => {
     expect(empty.current_plan).toBeNull();
     expect(empty.since_last_revision).toEqual({ messages: [], artifacts: [], trace: [], commands: [] });
     expect(empty.recent_plans).toEqual([]);
+    expect(empty.elsewhere_plans).toEqual([]);
     const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
     const settle = organizerPayload(store, { mode: "settle", sessionId: group.id, message: null, current: plan });
     expect(settle.mode).toBe("settle");
     expect(settle.message).toBeNull();
     expect(settle.current_plan?.id).toBe(plan.id);
+    expect(settle.elsewhere_plans).toEqual([]);
+    store.close();
+  });
+
+  test("a line in your direct with a Bot sees the job that Bot is on in a group, whole, and only there", () => {
+    const { store, writer, reviewer, group } = fixture();
+    const plan = store.openTask({ sessionId: group.id, title: "写周报", brief: "写一份周报，交到 report.md", spec: spec() });
+    const draft = store.createTicket({ taskId: plan.id, title: "初稿", status: "doing", worker: writer.id });
+    store.createTicket({ taskId: plan.id, title: "审稿", status: "todo", worker: reviewer.id });
+    const go = store.postMessage(group.id, { body: "写周报" });
+    store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: go.id, taskId: plan.id, ticketId: draft.id });
+    const direct = store.findDirectSession("user", writer.id)!;
+    // Something already said here about that job: it is what a follow-up continues.
+    const earlier = store.postMessage(direct.id, { body: "周报标题别太长" });
+    store.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [plan.id, draft.id, earlier.id]);
+    const line = store.postMessage(direct.id, { body: "还有，别用表格" });
+
+    const payload = organizerPayload(store, { mode: "message", sessionId: direct.id, message: line, current: store.sessionCurrentTask(direct.id) });
+    expect(payload.current_plan).toBeNull();
+    expect(payload.elsewhere_plans).toEqual([
+      {
+        id: plan.id,
+        title: "写周报",
+        home: "群「周报组」",
+        working: ["Writer（群「周报组」）"],
+        status: "active",
+        brief: "写一份周报，交到 report.md",
+        spec: spec(),
+        tickets: [
+          { id: draft.id, seq: 1, title: "初稿", status: "doing", worker: "Writer" },
+          { id: expect.any(String), seq: 2, title: "审稿", status: "todo", worker: "Reviewer" },
+        ],
+        said_here: [{ author: "user", body: "周报标题别太长" }],
+      },
+    ]);
+    // The stamped line made it one of this session's plans too; it is shown once, where join can take it.
+    expect(payload.recent_plans.map((row) => row.id)).not.toContain(plan.id);
     store.close();
   });
 });
@@ -111,7 +149,8 @@ describe("what the organizer answered", () => {
     { id: "01ARZ3NDEKTSV4RRFFQ69G5FA2", name: "Reviewer" },
   ];
   const recent = new Set(["01ARZ3NDEKTSV4RRFFQ69G5FB1"]);
-  const ctx = { mode: "message" as const, recentPlanIds: recent, roster };
+  const elsewhere = new Set(["01ARZ3NDEKTSV4RRFFQ69G5FE1"]);
+  const ctx = { mode: "message" as const, recentPlanIds: recent, elsewherePlanIds: elsewhere, roster };
 
   test("is read out of a fence, needs a plan with a goal, and never throws", () => {
     expect(parseOrganizerResult("nope", ctx)).toBeNull();
@@ -129,6 +168,20 @@ describe("what the organizer answered", () => {
     expect(parseOrganizerResult(JSON.stringify({ decision: "Later", plan }), ctx)).toMatchObject({ decision: "continue" });
     const settled = parseOrganizerResult(JSON.stringify({ decision: "new", plan, message_ticket: "new-1" }), { ...ctx, mode: "settle" });
     expect(settled).toMatchObject({ decision: "continue", messageTicket: null });
+  });
+
+  test("join needs a plan the Bots here are on elsewhere, and only a message run joins", () => {
+    const plan = { goal: "写一份周报" };
+    expect(parseOrganizerResult(JSON.stringify({ decision: "join", join_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FE1", plan, message_ticket: "01ARZ3NDEKTSV4RRFFQ69G5FC1" }), ctx)).toMatchObject({
+      decision: "join",
+      joinPlanId: "01ARZ3NDEKTSV4RRFFQ69G5FE1",
+      resumePlanId: null,
+      messageTicket: "01ARZ3NDEKTSV4RRFFQ69G5FC1",
+    });
+    // A plan of this session's past is not a job elsewhere, and an unknown id is no plan at all.
+    expect(parseOrganizerResult(JSON.stringify({ decision: "join", join_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FB1", plan }), ctx)).toMatchObject({ decision: "continue", joinPlanId: null });
+    expect(parseOrganizerResult(JSON.stringify({ decision: "join", plan }), ctx)).toMatchObject({ decision: "continue", joinPlanId: null });
+    expect(parseOrganizerResult(JSON.stringify({ decision: "join", join_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FE1", plan }), { ...ctx, mode: "settle" })).toMatchObject({ decision: "continue", joinPlanId: null });
   });
 
   test("tickets keep only a real id or a new-N, a title, a known status, and a worker from the roster", () => {

@@ -270,6 +270,69 @@ describe("what one organizer run changes", () => {
     store.close();
   });
 
+  test("a line about a job the Bots here are doing elsewhere joins that plan; this session's plan stays current", () => {
+    const { store, session, bot, reviewer } = fixture();
+    const group = store.createGroup({ name: "周报组", members: [bot.id, reviewer.id] });
+    const report = store.openTask({ sessionId: group.id, title: "写周报", spec: spec({ rules: ["不要口语"] }) });
+    const draft = store.createTicket({ taskId: report.id, title: "初稿", status: "doing", worker: bot.id });
+    store.createTicket({ taskId: report.id, title: "审稿", status: "todo", worker: reviewer.id });
+    const go = store.postMessage(group.id, { body: "写周报" });
+    store.createTurn({ sessionId: group.id, botId: bot.id, triggerMessageId: go.id, taskId: report.id, ticketId: draft.id });
+    const mine = store.openTask({ sessionId: session.id, title: "订会议室", spec: spec({ kind: "会议室", goal: "订会议室" }) });
+    expect(store.elsewherePlans(session.id).map((task) => task.id)).toEqual([report.id]);
+
+    const aside = store.postMessage(session.id, { body: "周报标题别太长" });
+    const joined = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: mine,
+      result: result({
+        decision: "join",
+        joinPlanId: report.id,
+        spec: spec({ rules: ["不要口语", "标题别太长"] }),
+        tickets: [{ id: draft.id, spec: "" }],
+        messageTicket: draft.id,
+      }),
+      source: { messageId: aside.id, turnId: null, messageBody: aside.body },
+    });
+    expect(joined.task.id).toBe(report.id);
+    expect(parsePlanSpec(store.getTask(report.id).spec)?.rules).toEqual(["不要口语", "标题别太长"]);
+    expect(store.getMessage(aside.id)).toMatchObject({ task_id: report.id, ticket_id: draft.id });
+    // The group keeps its job and this direct keeps its own.
+    expect(store.getTask(report.id)).toMatchObject({ session_id: group.id, status: "active", closed_at: null });
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(mine.id);
+    expect(store.sessionCurrentTask(group.id)?.id).toBe(report.id);
+    store.close();
+  });
+
+  test("join only takes a plan the Bots here are on elsewhere; anything else is a continue", () => {
+    const { store, session, bot, reviewer } = fixture();
+    const other = store.createBot({ name: "Other", duties: "x", boundaries: "y" });
+    const theirs = store.openTask({ sessionId: other.direct_session.id, title: "别人的事" });
+    store.createTicket({ taskId: theirs.id, title: "别人的任务", status: "doing", worker: other.bot.id });
+    const mine = store.openTask({ sessionId: session.id, title: "订会议室" });
+    const line = store.postMessage(session.id, { body: "那件事怎么样了" });
+    const stayed = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: mine,
+      result: result({ decision: "join", joinPlanId: theirs.id }),
+      source: { messageId: line.id, turnId: null, messageBody: line.body },
+    });
+    expect(stayed.task.id).toBe(mine.id);
+
+    // What counts: an open ticket of a Bot here in an active plan, or its live turn in another session.
+    const group = store.createGroup({ name: "周报组", members: [bot.id, reviewer.id] });
+    const report = store.openTask({ sessionId: group.id, title: "写周报" });
+    const review = store.createTicket({ taskId: report.id, title: "审稿", status: "todo", worker: reviewer.id });
+    expect(store.elsewherePlans(session.id)).toEqual([]);
+    store.createTicket({ taskId: report.id, title: "初稿", status: "review", worker: bot.id });
+    expect(store.elsewherePlans(session.id).map((task) => task.id)).toEqual([report.id]);
+    store.patchTicket(review.id, { status: "done" });
+    const done = store.openTask({ sessionId: group.id, title: "上周的周报", spec: spec({ status: "done" }) });
+    store.createTicket({ taskId: done.id, title: "初稿", status: "doing", worker: bot.id });
+    expect(store.elsewherePlans(session.id).map((task) => task.id)).not.toContain(done.id);
+    store.close();
+  });
+
   test("settling names the turn it came from and stamps no message", () => {
     const { store, session, bot } = fixture();
     const opener = store.postMessage(session.id, { body: "写周报" });

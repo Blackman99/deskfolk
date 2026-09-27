@@ -1,12 +1,14 @@
 /**
  * The organizer (整理跳): one tool-less short completion that keeps a session's plan and tickets
  * in order. It runs after the user speaks and before any turn opens — deciding whether the line
- * continues the current plan, starts another or goes back to an earlier one, and which ticket it
- * is about — and again once a plan's turns have all ended, to file what was handed over.
+ * continues the current plan, starts another, goes back to an earlier one or is about a job the
+ * Bots here are doing in another session, and which ticket it is about — and again once a plan's
+ * turns have all ended, to file what was handed over.
  *
  * The prompt and the payload live here; the engine-side orchestration is in `organizer.ts`.
  */
 import { USER_MEMBER, type Message, type TicketStatus } from "@real-bot/protocol";
+import { sessionLabel } from "../context";
 import { extractJsonObject } from "../route-agent";
 import {
   isTicketStatus,
@@ -25,16 +27,16 @@ export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「�
 
 规划是一个会话里正在推进的一件事，有要点：kind（类别，用来找先例）、goal（现在到底要做什么）、acceptance（怎么算完成）、rules（用户定过的口径、约束、改善意见）、process（这件事定下来的做法、谁负责哪段）、progress（done / open / blocked）、status（active / done / parked）。任务是规划下能独立交付的一块：title、spec（要做什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁负责，写 Bot 名字：建任务时按分工先填，之后按 trace 里实际在做的人改；没人就 null）。
 
-根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只更新要点和任务，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）、commands（这些轮真正跑过的命令和工具，带退出码）；current_plan.tickets[].files 是落在各任务目录里、被消息引用过的文件；precedents 是同类做完的规划的要点。
+根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只更新要点和任务，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；elsewhere_plans 是这个会话里的 Bot 正在别的会话推进的事（home 是它开在哪，working 是此刻谁在哪做它，said_here 是这个会话里之前归到它的几句），只有 join 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）、commands（这些轮真正跑过的命令和工具，带退出码）；current_plan.tickets[].files 是落在各任务目录里、被消息引用过的文件；precedents 是同类做完的规划的要点。
 
 只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语，不要 tool-call：
-{"decision": "continue" | "new" | "resume", "resume_plan_id": "…或 null", "plan": {"kind": "…", "goal": "…", "acceptance": ["…"], "rules": ["…"], "process": ["…"], "progress": {"done": ["…"], "open": ["…"], "blocked": ["…"]}, "status": "active"}, "tickets": [{"id": "已有任务的 id 或 new-1、new-2…", "title": "…", "spec": "…", "status": "todo", "worker": "Bot 名字或 null"}], "message_ticket": "这条消息在说哪个任务的 id 或 new-N，或 null"}
+{"decision": "continue" | "new" | "resume" | "join", "resume_plan_id": "…或 null", "join_plan_id": "…或 null", "plan": {"kind": "…", "goal": "…", "acceptance": ["…"], "rules": ["…"], "process": ["…"], "progress": {"done": ["…"], "open": ["…"], "blocked": ["…"]}, "status": "active"}, "tickets": [{"id": "已有任务的 id 或 new-1、new-2…", "title": "…", "spec": "…", "status": "todo", "worker": "Bot 名字或 null"}], "message_ticket": "这条消息在说哪个任务的 id 或 new-N，或 null"}
 
 策略：
-- decision：同一件事的后续、追问、改要求、问进度，都是 continue；明显换了一件不相干的事才 new；用户说回到之前那件、且 recent_plans 里有对得上的，才 resume 并给 resume_plan_id。current_plan 为 null 时只能 new。拿不准就 continue。
-- plan：在 current_plan.spec 的基础上改，不要重写没变的部分。用户的改善意见、口径、约束进 rules；目标变了改 goal；怎么算完成进 acceptance；定下来的做法和分工进 process；progress 按 artifacts、commands 和 trace 更新。status 只在这件事明确做完时 done，明确搁置时 parked。
+- decision：同一件事的后续、追问、改要求、问进度，都是 continue；明显换了一件不相干的事才 new；用户说回到之前那件、且 recent_plans 里有对得上的，才 resume 并给 resume_plan_id；这句明显在说 elsewhere_plans 里的某件事（说到它的内容、产物、进展、做法，或接着 said_here 往下说），而不是 current_plan，才 join 并给 join_plan_id。current_plan 为 null 时只能 new 或 join。拿不准就 continue。
+- plan：在你选中的那个规划的 spec 上改（continue 是 current_plan，join 是 elsewhere_plans 里那件），不要重写没变的部分。用户的改善意见、口径、约束进 rules；目标变了改 goal；怎么算完成进 acceptance；定下来的做法和分工进 process；progress 按 artifacts、commands 和 trace 更新。status 只在这件事明确做完时 done，明确搁置时 parked。
 - acceptance 写用户自己能检查的结果，不写「产出某某文档」「给出结论」这种谁写一份就算的话。要做出能用的东西（软件、网站、脚本、工具）时，必须有一条：「有启动方式（一条命令或一个文件），照着能在本机跑起来并走通主流程」。
-- tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。几个人各做一部分、合起来才是一个能用的东西时，另开一个「联调并给出启动方式」的任务，并在 rules 里写明最终交付放在哪个目录。已有任务用它的 id 引用，只写 id 和变了的字段，例如 {"id": "…", "status": "review"}；没变的任务不用列，不列的不动。新任务用 new-1、new-2，要写 title。不能删任务，只能改成 done 或 parked。
+- tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。几个人各做一部分、合起来才是一个能用的东西时，另开一个「联调并给出启动方式」的任务，并在 rules 里写明最终交付放在哪个目录。已有任务用它的 id 引用（join 时是那件事的任务），只写 id 和变了的字段，例如 {"id": "…", "status": "review"}；没变的任务不用列，不列的不动。新任务用 new-1、new-2，要写 title。不能删任务，只能改成 done 或 parked。
 - 依据：Bot 说「已完成」「测试通过」「验收通过」不算依据。任务标 review 要有这个任务交出的文件；标 done 要有文件，而且说跑过、测过的要在 commands 里找得到（退出码 0）。只有文档、报告、没有能跑的东西，不能把「做出能用的东西」的任务标 done。有人交出了属于某任务的文件，至少标 review，并写上 worker。
 - plan.status 标 done 时，每个任务也要在这次答案里标成 done 或 parked；还有待做或进行中的任务，这件事就没做完。
 - message_ticket：mode 是 message 时，这条消息在说哪个任务；一句泛泛的话或问进度就 null。settle 时 null。
@@ -78,6 +80,21 @@ export type OrganizerPayload = {
     }>;
   } | null;
   recent_plans: Array<{ id: string; goal: string; kind: string | null; status: PlanStatus; last_activity_at: string }>;
+  /** Jobs the Bots here are on in other sessions: a line here can be about one of them. Message runs only. */
+  elsewhere_plans: Array<{
+    id: string;
+    title: string;
+    /** Where it was opened; null once that session is gone. */
+    home: string | null;
+    /** Who is working on it right now, and where. */
+    working: string[];
+    status: PlanStatus;
+    brief: string | null;
+    spec: PlanSpec | null;
+    tickets: Array<{ id: string; seq: number; title: string; status: TicketStatus; worker: string | null }>;
+    /** The last lines in this session filed under it, oldest first. */
+    said_here: Array<{ author: string; body: string }>;
+  }>;
   kinds: string[];
   since_last_revision: {
     messages: Array<{ id: string; author: string; kind: string; body: string; ticket_id: string | null; created_at: string; truncated?: true }>;
@@ -176,6 +193,8 @@ export function organizerPayload(
       if (done) precedents.push({ goal: done.goal, process: done.process, rules: done.rules, outcome: done.progress.done });
     }
   }
+  // A line here can be about a job the Bots here are doing somewhere else; a settle files one plan's own work.
+  const elsewhere = input.mode === "message" ? store.elsewherePlans(input.sessionId) : [];
   let message: OrganizerPayload["message"] = null;
   if (input.message) {
     const body = clipBody(input.message.body, ORGANIZER_BODY_LIMIT * 2);
@@ -213,19 +232,64 @@ export function organizerPayload(
             })),
         }
       : null,
-    recent_plans: store.sessionRecentTasks(input.sessionId, ORGANIZER_RECENT_PLANS).map((task) => {
-      const earlier = parsePlanSpec(task.spec);
-      return {
-        id: task.id,
-        goal: earlier?.goal ?? (task.brief ? clipBody(task.brief, 200).text : task.title),
-        kind: task.kind,
-        status: task.status,
-        last_activity_at: store.taskLastActivityAt(task.id),
-      };
-    }),
+    recent_plans: store
+      .sessionRecentTasks(input.sessionId, ORGANIZER_RECENT_PLANS)
+      .filter((task) => !elsewhere.some((plan) => plan.id === task.id))
+      .map((task) => {
+        const earlier = parsePlanSpec(task.spec);
+        return {
+          id: task.id,
+          goal: earlier?.goal ?? (task.brief ? clipBody(task.brief, 200).text : task.title),
+          kind: task.kind,
+          status: task.status,
+          last_activity_at: store.taskLastActivityAt(task.id),
+        };
+      }),
+    elsewhere_plans: elsewhere.map((plan) => elsewherePlan(store, input.sessionId, plan)),
     kinds: store.distinctTaskKinds(ORGANIZER_KINDS_LIMIT),
     since_last_revision: { messages, artifacts, trace: (input.trace ?? []).slice(-ORGANIZER_TRACE_LIMIT), commands },
     precedents,
+  };
+}
+
+/** Lines of this session already filed under a plan elsewhere that the organizer reads. */
+export const ORGANIZER_SAID_HERE = 3;
+
+/**
+ * A job the Bots here are on elsewhere, whole enough to be revised: a line filed there rewrites its
+ * spec the way a continue rewrites the current plan's, so the organizer needs the spec it builds on.
+ */
+function elsewherePlan(store: Store, sessionId: string, plan: Task): OrganizerPayload["elsewhere_plans"][number] {
+  const locale = store.settingsCached().locale;
+  const working = store
+    .listLiveTurns()
+    .filter((turn) => turn.task_id === plan.id)
+    .map((turn) => `${nameOf(store, turn.bot_id)}（${sessionLabel(store, turn.session_id, null, locale) ?? "?"}）`);
+  const said_here = store
+    .listMainMessages(sessionId, 40)
+    .filter((row) => row.task_id === plan.id)
+    .slice(0, ORGANIZER_SAID_HERE)
+    .reverse()
+    .map((row) => ({ author: nameOf(store, row.author), body: clipBody(row.body, 200).text }));
+  return {
+    id: plan.id,
+    title: plan.title,
+    home: plan.session_id ? sessionLabel(store, plan.session_id, null, locale) : null,
+    working: [...new Set(working)],
+    status: plan.status,
+    brief: plan.brief ? clipBody(plan.brief, ORGANIZER_BODY_LIMIT).text : null,
+    spec: parsePlanSpec(plan.spec),
+    tickets: store
+      .listTickets(plan.id)
+      .slice(0, ORGANIZER_TICKETS_LIMIT)
+      .map((ticket) => ({
+        id: ticket.id,
+        seq: ticket.seq,
+        title: ticket.title,
+        status: ticket.status,
+        worker: ticket.worker ? nameOf(store, ticket.worker) : null,
+      })),
+    said_here,
   };
 }
 
@@ -238,7 +302,13 @@ const NEW_TICKET = /^new-\d+$/;
  */
 export function parseOrganizerResult(
   raw: string,
-  ctx: { mode: "message" | "settle"; recentPlanIds: ReadonlySet<string>; roster: ReadonlyArray<{ id: string; name: string }> },
+  ctx: {
+    mode: "message" | "settle";
+    recentPlanIds: ReadonlySet<string>;
+    /** Plans the Bots here are on elsewhere; a join names one of them. */
+    elsewherePlanIds?: ReadonlySet<string>;
+    roster: ReadonlyArray<{ id: string; name: string }>;
+  },
 ): OrganizerResult | null {
   const parsed = extractJsonObject(raw);
   if (!parsed) return null;
@@ -246,6 +316,7 @@ export function parseOrganizerResult(
   if (!spec) return null;
   let decision: OrganizerResult["decision"] = "continue";
   let resumePlanId: string | null = null;
+  let joinPlanId: string | null = null;
   const decisionRaw = typeof parsed.decision === "string" ? parsed.decision.trim().toLowerCase() : "";
   if (ctx.mode === "message") {
     if (decisionRaw === "new") decision = "new";
@@ -254,6 +325,12 @@ export function parseOrganizerResult(
       if (ctx.recentPlanIds.has(id)) {
         decision = "resume";
         resumePlanId = id;
+      }
+    } else if (decisionRaw === "join") {
+      const id = typeof parsed.join_plan_id === "string" ? parsed.join_plan_id.trim() : "";
+      if (ctx.elsewherePlanIds?.has(id)) {
+        decision = "join";
+        joinPlanId = id;
       }
     }
   }
@@ -286,5 +363,5 @@ export function parseOrganizerResult(
     const id = parsed.message_ticket.trim();
     if (ULID.test(id) || NEW_TICKET.test(id)) messageTicket = id;
   }
-  return { decision, resumePlanId, spec, tickets, messageTicket };
+  return { decision, resumePlanId, joinPlanId, spec, tickets, messageTicket };
 }
