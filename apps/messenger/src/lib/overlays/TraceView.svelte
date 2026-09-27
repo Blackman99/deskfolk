@@ -13,13 +13,14 @@
 		type Ticket,
 		type TicketWithArtifacts
 	} from '@real-bot/protocol';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import PlanSpecPanel from './PlanSpecPanel.svelte';
 	import TicketList from './TicketList.svelte';
+	import { loadTraceSide, saveTraceSide, type TraceSide } from './trace-side.ts';
 	import {
 		actorFace,
 		actorName,
@@ -96,7 +97,7 @@
 		workspacePath: string | null;
 		t: Copy;
 		reloadToken: number;
-		/** A page (the phone) opens with the plan's spec folded; a pane has the room to show it. */
+		/** A page fills the screen and has its own close button; a pane is closed by its tab. */
 		host?: 'pane' | 'page';
 		/** Absent in a pane: a pane is closed by its own tab, not by a button inside the content. */
 		onClose?: () => void;
@@ -151,8 +152,13 @@
 	let detail = $state<TaskDetail | null>(null);
 	/** The ticket whose cards are lit; the rest of the board dims. One at a time, like a highlight. */
 	let selectedTicket = $state<string | null>(null);
-	/** On a narrow host the rail and the tree take turns; on a wide one they sit side by side. */
-	let segment = $state<'trace' | 'tickets'>('trace');
+	/**
+	 * Nothing lies over the board. On a wide host the spec or the tickets open beside it, one at a
+	 * time or neither, and the choice outlives the pane. On a narrow one there is no room beside it,
+	 * so the spec, the tree and the tickets take turns as tabs, starting on the tree.
+	 */
+	let side = $state<TraceSide>(loadTraceSide());
+	let segment = $state<'spec' | 'trace' | 'tickets'>('trace');
 	/** The card whose model choice is unfolded under it. One at a time. */
 	let openRoute = $state<string | null>(null);
 	/** Which kind of model trouble the board is lighting up, if any. */
@@ -256,11 +262,16 @@
 		return { width: box.width - 24, height: Math.max(120, box.height - bottomChrome - 24) };
 	}
 
+	/** A view worked out for the clear box, put where that box is: 12px in from the top and the sides. */
+	const inClear = (at: TraceView): TraceView => ({ ...at, x: at.x + 12, y: at.y + 12 });
+
+	/** All of the board in view, from wherever a drag or a zoom left it. */
 	function fitBoard(): void {
-		stopGlide();
 		if (!flow?.width || !viewportEl) return;
-		const fitted = fitView(boardBox(), clearBox());
-		view = { ...fitted, y: fitted.y + 12 };
+		// Pressing it is choosing the view: neither the opening nor a message's card pulls it back now.
+		userMoved = true;
+		openedView = null;
+		glideTo(inClear(fitView(boardBox(), clearBox())));
 	}
 
 	/** The view the board opened on, so the cards' measurements can move it while it still is. */
@@ -270,8 +281,7 @@
 	function openBoard(): void {
 		stopGlide();
 		if (!flow?.width || !viewportEl || !currentId) return;
-		const opened = openView(flow, clearBox());
-		view = { ...opened, y: opened.y + 12 };
+		view = inClear(openView(flow, clearBox()));
 		openedView = { ...view, job: currentId };
 	}
 
@@ -428,10 +438,11 @@
 		});
 	});
 
-	function zoomBy(factor: number, at?: { x: number; y: number }): void {
+	/** The zoom buttons zoom about the middle of the view. */
+	function zoomTo(scale: number): void {
 		stopGlide();
 		const box = viewportBox();
-		settle(zoomAt(view, view.scale * factor, at ?? { x: box.width / 2, y: box.height / 2 }));
+		settle(zoomAt(view, scale, { x: box.width / 2, y: box.height / 2 }));
 	}
 
 	function onWheel(event: WheelEvent): void {
@@ -664,6 +675,11 @@
 	);
 	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
 	const ticketsById = $derived(new Map((detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
+	/** An empty ticket list is a quarter of the board saying nothing; it comes with the first ticket. */
+	const hasTickets = $derived((detail?.tickets.length ?? 0) > 0);
+	/** Tickets asked for on a plan that has none yet leave the board to itself. */
+	const sideShown = $derived<TraceSide>(!detail || (side === 'tickets' && !hasTickets) ? null : side);
+	const segmentShown = $derived(!detail || (segment === 'tickets' && !hasTickets) ? 'trace' : segment);
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
 	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
 
@@ -689,6 +705,28 @@
 		if (id) highlight = null;
 		// What is lit has to be on the board: rounds you folded give way to it.
 		if (id) foldChoice = {};
+	}
+
+	/**
+	 * Open the spec or the tickets beside the board, or put them away. The viewport narrows or
+	 * widens by the panel, so the board keeps its middle where it was — or, while it is still on
+	 * the view it opened on, opens again on the new size.
+	 */
+	async function toggleSide(kind: 'spec' | 'tickets'): Promise<void> {
+		const next = sideShown === kind ? null : kind;
+		const before = viewportBox().width;
+		const opened = stillOpened();
+		side = next;
+		saveTraceSide(next);
+		await tick();
+		const after = viewportBox().width;
+		if (!before || !after || after === before) return;
+		if (opened) {
+			openBoard();
+			return;
+		}
+		stopGlide();
+		view = { ...view, x: view.x + (after - before) / 2 };
 	}
 
 	function toggleHighlight(kind: RouteHighlight): void {
@@ -967,6 +1005,22 @@
 	}
 </script>
 
+{#snippet specIcon()}
+	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+		<polyline points="14 2 14 8 20 8"></polyline>
+		<line x1="16" y1="13" x2="8" y2="13"></line>
+		<line x1="16" y1="17" x2="8" y2="17"></line>
+	</svg>
+{/snippet}
+
+{#snippet ticketsIcon()}
+	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M9 11l3 3L22 4"></path>
+		<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+	</svg>
+{/snippet}
+
 {#snippet card(node: TaskTraceNode)}
 	<!-- An edge already says who woke this card; words are for the ones with no line to follow. -->
 	{@const from =
@@ -1222,7 +1276,12 @@
 	</section>
 {/snippet}
 
-<div class="trace-pane" class:is-page={host === 'page'} class:is-tickets={segment === 'tickets'}>
+<div
+	class="trace-pane"
+	class:is-page={host === 'page'}
+	class:has-side={sideShown !== null}
+	class:has-segment={segmentShown !== 'trace'}
+>
 	<div class="trace-top">
 		<header class="trace-header">
 			<div class="trace-titles">
@@ -1312,11 +1371,32 @@
 				{/if}
 			</div>
 			<div class="trace-header-end">
-				{#if detail && detail.tickets.length > 0}
-					<!-- Only a narrow host shows these: there the rail and the tree take turns. -->
-					<div class="trace-segments" role="tablist" aria-label={t.plan.tickets}>
-						<button type="button" role="tab" aria-selected={segment === 'trace'} class:is-on={segment === 'trace'} onclick={() => (segment = 'trace')}>{t.plan.segmentTrace}</button>
-						<button type="button" role="tab" aria-selected={segment === 'tickets'} class:is-on={segment === 'tickets'} onclick={() => (segment = 'tickets')}>{t.plan.segmentTickets}</button>
+				{#if detail}
+					<!-- Only a wide host shows these: there the spec and the tickets open beside the board. -->
+					<div class="trace-side-toggles">
+						<button
+							type="button"
+							class="trace-side-toggle"
+							aria-pressed={sideShown === 'spec'}
+							title={sideShown === 'spec' ? t.plan.hideSpec : t.plan.showSpec}
+							onclick={() => void toggleSide('spec')}
+						>
+							{@render specIcon()}
+							<span>{t.plan.segmentSpec}</span>
+						</button>
+						{#if hasTickets}
+							<button
+								type="button"
+								class="trace-side-toggle"
+								aria-pressed={sideShown === 'tickets'}
+								title={sideShown === 'tickets' ? t.plan.hideTickets : t.plan.showTickets}
+								onclick={() => void toggleSide('tickets')}
+							>
+								{@render ticketsIcon()}
+								<span>{t.plan.segmentTickets}</span>
+								<span class="trace-side-count mono">{detail.tickets.length}</span>
+							</button>
+						{/if}
 					</div>
 				{/if}
 				{#if onClose}
@@ -1330,16 +1410,15 @@
 			</div>
 		</header>
 		{#if detail}
-			<div class="trace-spec">
-				<PlanSpecPanel
-					{api}
-					{detail}
-					{t}
-					defaultOpen={host !== 'page'}
-					onSaved={(next) => (detail = next)}
-					onConflict={reloadPlan}
-					{onJump}
-				/>
+			<!-- Only a narrow host shows these: there the spec, the tree and the tickets take turns. -->
+			<div class="trace-segments" role="tablist" aria-label={t.trace.title}>
+				<button type="button" role="tab" aria-selected={segmentShown === 'spec'} class:is-on={segmentShown === 'spec'} onclick={() => (segment = 'spec')}>{t.plan.segmentSpec}</button>
+				<button type="button" role="tab" aria-selected={segmentShown === 'trace'} class:is-on={segmentShown === 'trace'} onclick={() => (segment = 'trace')}>{t.plan.segmentTrace}</button>
+				{#if hasTickets}
+					<button type="button" role="tab" aria-selected={segmentShown === 'tickets'} class:is-on={segmentShown === 'tickets'} onclick={() => (segment = 'tickets')}>
+						{t.plan.segmentTickets}<span class="trace-side-count mono">{detail.tickets.length}</span>
+					</button>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -1348,9 +1427,10 @@
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
 				<div class="trace-tools-start">
-					<label class="trace-filter">
+					<label class="trace-filter" title={t.trace.filter}>
 						<input type="checkbox" bind:checked={notableOnly} />
-						<span>{t.trace.filter}</span>
+						<span class="trace-filter-long">{t.trace.filter}</span>
+						<span class="trace-filter-short">{t.trace.filterShort}</span>
 					</label>
 					{#if highlightCounts.feedback > 0}
 						<button
@@ -1380,21 +1460,33 @@
 				<div class="trace-zoom">
 					<button
 						type="button"
+						class="trace-zoom-step"
 						aria-label={t.trace.zoomOut}
 						title={t.trace.zoomOut}
 						disabled={view.scale <= TRACE_ZOOM_MIN}
-						onclick={() => zoomBy(1 / 1.2)}
+						onclick={() => zoomTo(view.scale / 1.2)}
 					>−</button>
-					<button type="button" class="trace-zoom-fit" onclick={fitBoard} title={t.trace.zoomFit}>
+					<button type="button" class="trace-zoom-level" onclick={() => zoomTo(1)} title={t.trace.zoomReset}>
 						{Math.round(view.scale * 100)}%
 					</button>
 					<button
 						type="button"
+						class="trace-zoom-step"
 						aria-label={t.trace.zoomIn}
 						title={t.trace.zoomIn}
 						disabled={view.scale >= TRACE_ZOOM_MAX}
-						onclick={() => zoomBy(1.2)}
+						onclick={() => zoomTo(view.scale * 1.2)}
 					>+</button>
+					<span class="trace-zoom-rule" aria-hidden="true"></span>
+					<button type="button" class="trace-zoom-fit" aria-label={t.trace.zoomFit} title={t.trace.zoomFit} onclick={fitBoard}>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+							<path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+							<path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+							<path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+							<rect x="7" y="8" width="10" height="8" rx="1.5"></rect>
+						</svg>
+					</button>
 				</div>
 			</div>
 		{/if}
@@ -1460,24 +1552,42 @@
 				{/if}
 		</div>
 		</div>
-		{#if detail && detail.tickets.length > 0}
-			<!-- An empty ticket list is a quarter of the board saying nothing; it comes with the first ticket. -->
-			<aside class="trace-rail">
-				<TicketList
-					{api}
-					{detail}
-					nodes={shown?.nodes ?? []}
-					{bots}
-					{youLabel}
-					{deletedLabel}
-					{t}
-					selectedId={selectedTicket}
-					onSelect={selectTicket}
-					{onJump}
-					onOpenArtifacts={openTicketArtifacts}
-					onPatched={ticketPatched}
-					onConflict={reloadPlan}
-				/>
+		{#if detail}
+			<!--
+				Both panels stay mounted while the plan is on screen, so an edit half-typed in the spec
+				survives a look at the tickets, and the window growing or shrinking across the narrow
+				width keeps them. Which one shows is the host width's business, in the styles.
+			-->
+			<aside class="trace-side">
+				<div class="trace-side-panel" class:is-side-on={sideShown === 'spec'} class:is-segment-on={segmentShown === 'spec'}>
+					<PlanSpecPanel
+						{api}
+						{detail}
+						{t}
+						onSaved={(next) => (detail = next)}
+						onConflict={reloadPlan}
+						{onJump}
+					/>
+				</div>
+				{#if hasTickets}
+					<div class="trace-side-panel" class:is-side-on={sideShown === 'tickets'} class:is-segment-on={segmentShown === 'tickets'}>
+						<TicketList
+							{api}
+							{detail}
+							nodes={shown?.nodes ?? []}
+							{bots}
+							{youLabel}
+							{deletedLabel}
+							{t}
+							selectedId={selectedTicket}
+							onSelect={selectTicket}
+							{onJump}
+							onOpenArtifacts={openTicketArtifacts}
+							onPatched={ticketPatched}
+							onConflict={reloadPlan}
+						/>
+					</div>
+				{/if}
 			</aside>
 		{/if}
 	</div>
@@ -1502,9 +1612,9 @@
 	}
 
 	/*
-	 * The title row and the plan's spec under it, one block above the picture. Only the spec
-	 * scrolls: the block itself clips nothing, so the plan picker drops out over the board instead
-	 * of being cut off at the block's bottom edge.
+	 * The title row — and on a narrow host the tabs under it — above the picture, and nothing else:
+	 * the spec lives beside the board or in a tab now, not in a block that pushed the board down.
+	 * The block clips nothing, so the plan picker drops out over the board instead of being cut off.
 	 */
 	.trace-top {
 		position: relative;
@@ -1512,14 +1622,8 @@
 		flex: none;
 		display: flex;
 		flex-direction: column;
-		max-height: 60%;
 		border-bottom: 1px solid var(--line);
 		background: var(--sidebar-bg);
-	}
-
-	.trace-spec {
-		min-height: 0;
-		overflow-y: auto;
 	}
 
 	.trace-header-end {
@@ -1555,9 +1659,68 @@
 		color: var(--ok-text);
 	}
 
+	/* Beside the board: the spec, the tickets, or neither. Pressed is open; press again to put it away. */
+	.trace-side-toggles {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.trace-side-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		min-height: 28px;
+		padding: 3px 10px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: var(--chip);
+		color: var(--ink-secondary);
+		font: 600 11.5px/1.2 var(--font);
+		cursor: pointer;
+		user-select: none;
+		transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.trace-side-toggle:hover {
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	.trace-side-toggle[aria-pressed='true'] {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.trace-side-toggle:focus-visible,
+	.trace-segments button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.trace-side-count {
+		padding: 0 5px;
+		border-radius: 9999px;
+		background: var(--line-subtle);
+		color: var(--muted);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 15px;
+	}
+
+	.trace-side-toggle[aria-pressed='true'] .trace-side-count,
+	.trace-segments button.is-on .trace-side-count {
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	/* A narrow host's tabs: a row of their own under the title, each an equal share of it. */
 	.trace-segments {
 		display: none;
 		align-items: center;
+		max-width: 480px;
+		margin: 0 12px 10px;
 		padding: 3px;
 		border: 1px solid var(--line);
 		border-radius: 9999px;
@@ -1566,17 +1729,20 @@
 	}
 
 	.trace-segments button {
+		flex: 1 1 0;
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
 		gap: 5px;
+		min-width: 0;
+		min-height: 32px;
 		padding: 4px 11px;
 		border: 0;
 		border-radius: 9999px;
 		background: transparent;
 		color: var(--muted);
-		font: 600 11.5px/1.2 var(--font);
+		font: 600 12.5px/1.2 var(--font);
 		cursor: pointer;
-		min-height: 28px;
 		transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 		user-select: none;
 	}
@@ -1600,7 +1766,7 @@
 		line-height: 15px;
 	}
 
-	/* The picture and, beside it, the plan's tickets. */
+	/* The picture and, beside it, the plan's spec or its tickets — beside, never over it. */
 	.trace-stage {
 		position: relative;
 		flex: 1;
@@ -1608,34 +1774,67 @@
 		min-height: 0;
 	}
 
-	.trace-rail {
+	.trace-side {
+		display: none;
 		flex: none;
-		width: 288px;
+		flex-direction: column;
+		width: clamp(260px, 34%, 360px);
 		min-height: 0;
-		overflow-y: auto;
 		border-left: 1px solid var(--line);
 		background: var(--sidebar-bg);
+	}
+
+	.trace-pane.has-side .trace-side {
+		display: flex;
+	}
+
+	.trace-side-panel {
+		display: none;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		-webkit-overflow-scrolling: touch;
 	}
 
-	@container trace (max-width: 560px) {
-		.trace-segments {
-			display: inline-flex;
-		}
+	.trace-side-panel.is-side-on {
+		display: block;
+	}
 
-		.trace-rail {
+	/*
+	 * Narrow by the board's own width, not the window's: a narrow pane is a phone. Below 720px a
+	 * panel beside the board would leave it a strip, so the panel gives way to tabs, and a tab other
+	 * than the tree takes the whole body.
+	 */
+	@container trace (max-width: 720px) {
+		.trace-side-toggles {
 			display: none;
 		}
 
-		.trace-pane.is-tickets .trace-rail {
-			display: block;
+		.trace-segments {
+			display: flex;
+		}
+
+		.trace-pane.has-side .trace-side {
+			display: none;
+		}
+
+		.trace-pane.has-segment .trace-side {
+			display: flex;
 			width: 100%;
 			border-left: 0;
-			overflow-y: auto;
 		}
 
-		.trace-pane.is-tickets .trace-stage {
+		.trace-pane.has-segment .trace-stage {
 			display: none;
+		}
+
+		.trace-side-panel.is-side-on {
+			display: none;
+		}
+
+		.trace-side-panel.is-segment-on {
+			display: block;
 		}
 	}
 
@@ -1823,18 +2022,61 @@
 	.trace-filter {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 0 6px;
+		gap: 6px;
+		min-height: 28px;
+		padding: 3px 10px 3px 8px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: color-mix(in srgb, var(--pane) 92%, transparent);
+		backdrop-filter: blur(6px);
 		font-size: 12px;
 		color: var(--ink-secondary);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.trace-filter input {
+		margin: 0;
+	}
+
+	.trace-filter-short {
+		display: none;
+	}
+
+	/*
+	 * A phone's width fits the tools on one row only with the filter said shortly, and with no
+	 * zoom steps: two fingers zoom there, and fitting is the button a finger needs.
+	 */
+	@container trace (max-width: 560px) {
+		.trace-filter-long {
+			display: none;
+		}
+
+		.trace-filter-short {
+			display: inline;
+		}
+
+		@media (pointer: coarse) {
+			.trace-zoom-step {
+				display: none;
+			}
+		}
 	}
 
 	.trace-tools-start {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: 6px;
 		min-width: 0;
+	}
+
+	/* Each tool is its own pill; the strip they sit on lets the board through, to see and to drag. */
+	.trace-filter,
+	.trace-highlight,
+	.trace-zoom {
+		pointer-events: auto;
+		box-shadow: var(--shadow-xs);
 	}
 
 	/* Light the cards a kind of model trouble landed on; the rest of the job stays in place, dim. */
@@ -1842,6 +2084,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
+		min-height: 28px;
 		padding: 3px 9px;
 		border: 1px solid var(--line);
 		border-radius: 9999px;
@@ -1881,15 +2124,15 @@
 		align-items: stretch;
 	}
 
+	/* Floating over the canvas as pills, not a band across its bottom. */
 	.trace-tools {
 		position: absolute;
 		z-index: 1;
 		left: 0;
 		right: 0;
 		bottom: 0;
-		padding: 6px 10px;
-		background: color-mix(in srgb, var(--pane) 86%, transparent);
-		backdrop-filter: blur(6px);
+		padding: 8px 10px;
+		pointer-events: none;
 	}
 
 	.trace-viewport {
@@ -1907,23 +2150,29 @@
 
 	.trace-tools {
 		display: flex;
-		align-items: center;
+		align-items: flex-end;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 8px;
 	}
 
 	.trace-zoom {
+		flex: none;
 		display: flex;
 		align-items: center;
-		gap: 2px;
+		gap: 0;
+		padding: 1px;
+		border: 1px solid var(--line);
+		border-radius: 9999px;
+		background: color-mix(in srgb, var(--pane) 92%, transparent);
+		backdrop-filter: blur(6px);
 	}
 
 	.trace-zoom button {
 		min-width: 28px;
-		height: 28px;
+		height: 26px;
 		padding: 0 6px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
+		border: 0;
+		border-radius: 9999px;
 		background: transparent;
 		color: var(--muted);
 		font: 500 12px/1 var(--font);
@@ -1940,8 +2189,22 @@
 		cursor: default;
 	}
 
-	.trace-zoom-fit {
+	.trace-zoom-level {
 		min-width: 48px;
+	}
+
+	.trace-zoom-rule {
+		flex: none;
+		width: 1px;
+		height: 14px;
+		margin: 0 2px;
+		background: var(--line);
+	}
+
+	.trace-zoom-fit {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	/* A canvas the size dagre measured, with the cards placed on it and the edges beneath. */

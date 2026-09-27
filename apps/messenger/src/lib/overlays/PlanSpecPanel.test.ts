@@ -90,7 +90,6 @@ function open(over: {
     patchTaskSpec: (taskId: string, body: unknown) => Promise<TaskDetail>;
     taskSpecRevisions: (taskId: string) => Promise<TaskSpecRevision[]>;
   }> | null;
-  defaultOpen?: boolean;
 } = {}) {
   const saved: TaskDetail[] = [];
   const conflicts: number[] = [];
@@ -118,7 +117,6 @@ function open(over: {
     api: api as never,
     detail: over.detail ?? aDetail(),
     t,
-    defaultOpen: over.defaultOpen ?? true,
     onSaved: (detail: TaskDetail) => saved.push(detail),
     onConflict: () => conflicts.push(1),
     onJump: (sessionId: string, messageId: string) => jumps.push([sessionId, messageId]),
@@ -147,22 +145,14 @@ test("renders the goal and every spec list, in order", () => {
   view.close();
 });
 
-test("the toggle collapses to a one-line summary and expands back", () => {
+test("the panel reads whole: no fold of its own — the side panel or the tab is the fold — with its kind and version in the head", () => {
   const view = open();
-  const toggle = view.host.querySelector<HTMLButtonElement>(".plan-spec-toggle")!;
-  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(view.host.querySelector(".plan-spec-toggle")).toBeNull();
   expect(view.host.querySelector(".plan-spec-body")).not.toBeNull();
-
-  click(toggle);
-  expect(toggle.getAttribute("aria-expanded")).toBe("false");
-  expect(view.host.querySelector(".plan-spec-body")).toBeNull();
-  const summary = view.host.querySelector(".plan-spec-summary")!;
-  expect(summary.textContent).toContain(`${t.plan.kind}: 调研`);
-  expect(summary.textContent).toContain(t.plan.revision(3));
-
-  click(toggle);
-  expect(toggle.getAttribute("aria-expanded")).toBe("true");
-  expect(view.host.querySelector(".plan-spec-body")).not.toBeNull();
+  const head = view.host.querySelector(".plan-spec-head")!;
+  expect(head.querySelector(".plan-spec-title")?.textContent).toBe(t.plan.spec.title);
+  expect(head.querySelector(".plan-spec-kind-badge")?.textContent).toBe("调研");
+  expect(head.querySelector(".plan-spec-rev-badge")?.textContent).toBe(t.plan.revision(3));
   view.close();
 });
 
@@ -300,16 +290,15 @@ test("an empty history says so", async () => {
   view.close();
 });
 
-test("before its first write-up the plan is one line: nothing yet, and the opening request", () => {
+test("before its first write-up the plan says nothing is written up yet, and shows the opening request", () => {
   // A panel of blanks with a version 0 and an "organizing" note that stayed up whether or not
-  // anything was being written up took a quarter of the board to say nothing.
+  // anything was being written up said nothing; there is no version and no history yet either.
   const view = open({ detail: aDetail({ spec: null, revision: 0, revision_actor: null, brief: "先看看方案" }) });
   const panel = view.host.querySelector(".plan-spec");
   expect(panel?.classList.contains("is-empty")).toBe(true);
-  expect(panel?.getAttribute("title")).toBe(t.plan.noSpec);
-  expect(view.host.querySelector(".plan-spec-empty")?.textContent).toBe(t.plan.noSpecShort);
+  expect(view.host.querySelector(".plan-spec-empty")?.textContent).toBe(t.plan.noSpec);
   expect(view.host.querySelector(".plan-spec-brief")?.textContent).toContain("先看看方案");
-  expect(view.host.querySelector(".plan-spec-toggle")).toBeNull();
+  expect(view.host.querySelector(".plan-spec-rev-badge")).toBeNull();
   expect(view.host.querySelector(".plan-spec-foot")).toBeNull();
   view.close();
 });
@@ -330,9 +319,3 @@ test("without an api the panel is read-only: no edit buttons, no history toggle"
   view.close();
 });
 
-test("defaultOpen false starts collapsed", () => {
-  const view = open({ defaultOpen: false });
-  expect(view.host.querySelector(".plan-spec-toggle")?.getAttribute("aria-expanded")).toBe("false");
-  expect(view.host.querySelector(".plan-spec-body")).toBeNull();
-  view.close();
-});

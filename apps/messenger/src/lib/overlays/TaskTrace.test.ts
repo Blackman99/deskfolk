@@ -8,6 +8,7 @@ mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", 
 const { default: TaskTraceView } = await import("./TaskTrace.svelte");
 const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
+import { forgetTraceSide, loadTraceSide } from "./trace-side.ts";
 import { aBot, aDirect, aGroup } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
@@ -852,7 +853,8 @@ test("a node with a single attachment renders 1 file button and opens through pr
   view.close();
 });
 
-test("the header reads the plan — goal, status, kind, ticket counts — the spec sits under it, and the rail lists the tickets", async () => {
+test("the header reads the plan — goal, status, kind, ticket counts — and the tickets open beside the board, the spec a press away", async () => {
+  forgetTraceSide();
   const view = open({ pane: true });
   await until(view.host, ".ticket-row");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("先出分镜的草图和配乐");
@@ -860,11 +862,18 @@ test("the header reads the plan — goal, status, kind, ticket counts — the sp
   expect(meta.querySelector(".plan-status.is-active")?.textContent).toBe(t.plan.status.active);
   expect(meta.textContent).toContain("分镜");
   expect(meta.textContent).toContain(t.plan.ticketCounts(2, 2));
-  // A pane has the room: the spec opens with the board.
-  const toggle = view.host.querySelector(".plan-spec-toggle")!;
-  expect(toggle.getAttribute("aria-expanded")).toBe("true");
-  expect(view.host.querySelector(".plan-spec")?.textContent).toContain("12 格草图交到 board.pdf");
-  expect(view.host.querySelector(".plan-spec")?.textContent).toContain("不要真人");
+  // Nothing sits above the board any more: the spec and the tickets share the panel beside it.
+  expect(view.host.querySelector(".trace-top .plan-spec")).toBeNull();
+  const toggles = [...view.host.querySelectorAll(".trace-side-toggle")];
+  expect(toggles.map((toggle) => toggle.textContent?.replace(/\s+/g, ""))).toEqual([t.plan.segmentSpec, `${t.plan.segmentTickets}2`]);
+  expect(toggles.map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+  expect(view.host.querySelector(".trace-pane")?.classList.contains("has-side")).toBe(true);
+  const [specPanel, ticketsPanel] = [...view.host.querySelectorAll(".trace-side .trace-side-panel")];
+  expect(ticketsPanel?.classList.contains("is-side-on")).toBe(true);
+  expect(specPanel?.classList.contains("is-side-on")).toBe(false);
+  // The spec is mounted with it, read in full once it is opened.
+  expect(specPanel?.textContent).toContain("12 格草图交到 board.pdf");
+  expect(specPanel?.textContent).toContain("不要真人");
   // The rail, in order, with who is on what.
   const rows = [...view.host.querySelectorAll(".ticket-row")];
   expect(rows.map((row) => row.querySelector(".ticket-tag")?.textContent)).toEqual(["01", "02"]);
@@ -902,16 +911,66 @@ test("a ticket picked in the rail lights its cards and dims the rest; Escape let
   view.close();
 });
 
-test("a phone opens with the spec folded and shows the rail and the tree in turn", async () => {
+test("the spec and the tickets open beside the board one at a time, and a panel put away stays away", async () => {
+  forgetTraceSide();
+  const view = open({ pane: true });
+  await until(view.host, ".ticket-row");
+  const pane = () => view.host.querySelector(".trace-pane")!;
+  const toggles = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")];
+  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"));
+  // The spec takes the tickets' place rather than stacking on them.
+  click(toggles()[0]);
+  await Promise.resolve();
+  expect(toggles().map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+  expect(shown()).toEqual([true, false]);
+  expect(toggles()[0]?.title).toBe(t.plan.hideSpec);
+  // Pressed again, it goes: the board has the body to itself.
+  click(toggles()[0]);
+  await Promise.resolve();
+  expect(pane().classList.contains("has-side")).toBe(false);
+  expect(shown()).toEqual([false, false]);
+  expect(toggles()[1]?.title).toBe(t.plan.showTickets);
+  expect(loadTraceSide()).toBeNull();
+  view.close();
+  // The next board opens the way this one was left.
+  const again = open({ pane: true });
+  await until(again.host, ".ticket-row");
+  expect(again.host.querySelector(".trace-pane")?.classList.contains("has-side")).toBe(false);
+  again.close();
+  forgetTraceSide();
+});
+
+test("a plan with no tickets yet has no tickets to open beside the board, and leaves it alone", async () => {
+  forgetTraceSide();
+  const view = open({ pane: true, detail: { ...detail(), tickets: [] } });
+  await until(view.host, ".trace-side-toggle");
+  expect([...view.host.querySelectorAll(".trace-side-toggle")].map((toggle) => toggle.textContent?.trim())).toEqual([t.plan.segmentSpec]);
+  expect(view.host.querySelector(".trace-pane")?.classList.contains("has-side")).toBe(false);
+  expect([...view.host.querySelectorAll(".trace-segments [role='tab']")].map((tab) => tab.textContent?.trim())).toEqual([
+    t.plan.segmentSpec,
+    t.plan.segmentTrace,
+  ]);
+  view.close();
+});
+
+test("a phone shows the spec, the tree and the tickets as tabs, starting on the tree", async () => {
   const view = open();
   await until(view.host, ".ticket-row");
-  expect(view.host.querySelector(".plan-spec-toggle")?.getAttribute("aria-expanded")).toBe("false");
-  const tabs = [...view.host.querySelectorAll(".trace-segments [role='tab']")];
-  expect(tabs.map((tab) => tab.textContent)).toEqual([t.plan.segmentTrace, t.plan.segmentTickets]);
-  click(tabs[1]);
-  expect(view.host.querySelector(".trace-pane")?.classList.contains("is-tickets")).toBe(true);
-  click(tabs[0]);
-  expect(view.host.querySelector(".trace-pane")?.classList.contains("is-tickets")).toBe(false);
+  const pane = () => view.host.querySelector(".trace-pane")!;
+  const tabs = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-segments [role='tab']")];
+  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-segment-on"));
+  expect(tabs().map((tab) => tab.textContent?.replace(/\s+/g, ""))).toEqual([t.plan.segmentSpec, t.plan.segmentTrace, `${t.plan.segmentTickets}2`]);
+  expect(tabs().map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true", "false"]);
+  expect(pane().classList.contains("has-segment")).toBe(false);
+  click(tabs()[0]);
+  expect(pane().classList.contains("has-segment")).toBe(true);
+  expect(shown()).toEqual([true, false]);
+  click(tabs()[2]);
+  expect(shown()).toEqual([false, true]);
+  expect(tabs()[2]?.getAttribute("aria-selected")).toBe("true");
+  click(tabs()[1]);
+  expect(pane().classList.contains("has-segment")).toBe(false);
+  expect(shown()).toEqual([false, false]);
   view.close();
 });
 
@@ -920,7 +979,8 @@ test("a daemon that predates plans still draws the tree, without the spec or the
   await until(view.host, ".trace-slot");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("先出分镜");
   expect(view.host.querySelector(".plan-spec")).toBeNull();
-  expect(view.host.querySelector(".trace-rail")).toBeNull();
+  expect(view.host.querySelector(".trace-side")).toBeNull();
+  expect(view.host.querySelector(".trace-side-toggles")).toBeNull();
   expect(view.host.querySelector(".trace-segments")).toBeNull();
   expect(view.host.querySelectorAll(".trace-card")).toHaveLength(3);
   view.close();
@@ -1098,4 +1158,76 @@ test("the wheel pans the board and only ⌘/Ctrl + wheel zooms it", async () => 
   wheel({ deltaY: 200, metaKey: true });
   expect(board().scale).toBeLessThan(zoomed);
   view.close();
+});
+
+test("the fit button brings the whole board back from wherever it was dragged, and the percentage goes back to life size", async () => {
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    await withMeasuredCards(async () => {
+      const view = open({ trace: longJob(3), pane: true });
+      await until(view.host, ".trace-slot");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      const flow = view.host.querySelector<HTMLElement>(".trace-flow")!;
+      const board = () => {
+        const [, x, y, scale] = /translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(flow.style.transform)!;
+        return { x: Number(x), y: Number(y), scale: Number(scale), width: Number.parseFloat(flow.style.width), height: Number.parseFloat(flow.style.height) };
+      };
+      const viewport = view.host.querySelector(".trace-viewport")!;
+      const wheel = (init: WheelEventInit) => {
+        const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, ...init });
+        for (const key of ["ctrlKey", "metaKey", "shiftKey"] as const) {
+          Object.defineProperty(event, key, { value: init[key] ?? false });
+        }
+        viewport.dispatchEvent(event);
+        flushSync();
+      };
+      const zoomButton = (label: string) => view.host.querySelector<HTMLButtonElement>(`.trace-zoom button[aria-label="${label}"]`);
+      // Zoomed in and dragged off into empty canvas.
+      for (let i = 0; i < 3; i += 1) click(zoomButton(t.trace.zoomIn));
+      wheel({ deltaY: 2000, deltaX: 1500 });
+      expect(board().scale).toBeGreaterThan(1);
+
+      const fit = zoomButton(t.trace.zoomFit);
+      expect(fit?.title).toBe(t.trace.zoomFit);
+      click(fit);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      flushSync();
+      const fitted = board();
+      // All of it inside the view, 12px clear of each edge, the middle of it in the middle.
+      expect(fitted.scale).toBeLessThanOrEqual(1);
+      expect(fitted.x).toBeGreaterThanOrEqual(12);
+      expect(fitted.y).toBeGreaterThanOrEqual(12);
+      expect(fitted.x + fitted.width * fitted.scale).toBeLessThanOrEqual(788);
+      expect(fitted.y + fitted.height * fitted.scale).toBeLessThanOrEqual(588);
+      expect(fitted.x + (fitted.width * fitted.scale) / 2).toBeCloseTo(400, 0);
+      // As large as that allows: it fills the view one way, or is drawn at life size.
+      const fills =
+        Math.abs(fitted.width * fitted.scale - 776) < 1 || Math.abs(fitted.height * fitted.scale - 576) < 1;
+      expect(fills || fitted.scale === 1).toBe(true);
+
+      // Zoomed out, the percentage takes it back to 100% and keeps the middle of the view where it was.
+      click(zoomButton(t.trace.zoomOut));
+      const out = board();
+      expect(out.scale).toBeLessThan(fitted.scale);
+      const middle = { x: (400 - out.x) / out.scale, y: (300 - out.y) / out.scale };
+      const level = view.host.querySelector<HTMLButtonElement>(".trace-zoom-level")!;
+      expect(level.title).toBe(t.trace.zoomReset);
+      click(level);
+      const life = board();
+      expect(life.scale).toBe(1);
+      expect(level.textContent?.trim()).toBe("100%");
+      expect(400 - life.x).toBeCloseTo(middle.x, 6);
+      expect(300 - life.y).toBeCloseTo(middle.y, 6);
+      view.close();
+    });
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
 });

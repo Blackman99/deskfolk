@@ -992,7 +992,8 @@ const zh = {
     outputExitFull: "退出全屏",
     zoomIn: "放大",
     zoomOut: "缩小",
-    zoomFit: "适应宽度",
+    zoomFit: "适应画面",
+    zoomReset: "还原到 100%",
     title: "这件事",
     topAction: "经过",
     none: "还没有可以看的事。",
@@ -1002,6 +1003,7 @@ const zh = {
     open: "进行中",
     closed: "已结束",
     filter: "只看还在进行的，和交出了产物的",
+    filterShort: "只看进行中和有产物的",
     passed: (count: number) => `${count} 人旁观`,
     silent: "这一轮没发言",
     roundFold: "收起这一段",
@@ -1033,7 +1035,6 @@ const zh = {
     }
   },
   plan: {
-    noSpecShort: "还没整理出要点",
     noSpec: "还没有整理出要点。等这件事有人动过，应用会整理出目标、验收和任务。",
     brief: "开头的要求",
     kind: "类别",
@@ -1071,9 +1072,12 @@ const zh = {
     artifacts: (n: number) => `${n} 个产物`,
     jumpToTurn: "跳到这一轮",
     changeStatus: "改状态",
+    segmentSpec: "要点",
     segmentTickets: "任务",
     segmentTrace: "经过",
-    showTickets: "看任务",
+    showSpec: "在旁边看要点",
+    hideSpec: "收起要点",
+    showTickets: "在旁边看任务",
     hideTickets: "收起任务"
   },
   detail: {
@@ -2195,7 +2199,8 @@ const en: CopyShape<typeof zh> = {
     outputExitFull: "Leave full screen",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
-    zoomFit: "Fit width",
+    zoomFit: "Fit to view",
+    zoomReset: "Reset to 100%",
     title: "This job",
     topAction: "Trace",
     none: "Nothing to show yet.",
@@ -2205,6 +2210,7 @@ const en: CopyShape<typeof zh> = {
     open: "In progress",
     closed: "Closed",
     filter: "Only what’s still going, and what handed a file over",
+    filterShort: "Going or with files",
     passed: (count: number) => `${count} watched`,
     silent: "Said nothing this turn",
     roundFold: "Fold this round",
@@ -2236,7 +2242,6 @@ const en: CopyShape<typeof zh> = {
     }
   },
   plan: {
-    noSpecShort: "Not written up yet",
     noSpec: "No plan yet. Once someone has worked on this, the app writes up the goal, what counts as done, and the tickets.",
     brief: "Opening request",
     kind: "Kind",
@@ -2274,9 +2279,12 @@ const en: CopyShape<typeof zh> = {
     artifacts: (n: number) => `${n} file${n === 1 ? "" : "s"}`,
     jumpToTurn: "Jump to this turn",
     changeStatus: "Change status",
+    segmentSpec: "Plan",
     segmentTickets: "Tickets",
     segmentTrace: "Trace",
-    showTickets: "Show tickets",
+    showSpec: "Show the plan alongside",
+    hideSpec: "Hide the plan",
+    showTickets: "Show tickets alongside",
     hideTickets: "Hide tickets"
   },
   detail: {

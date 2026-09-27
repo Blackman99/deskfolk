@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { USER_MEMBER, type TaskTrace, type TaskTraceNode } from "@real-bot/protocol";
 import {
   TRACE_CARD_WIDTH,
+  TRACE_FIT_MIN,
   TRACE_GLIDE_MS,
   TRACE_ZOOM_MAX,
   TRACE_ZOOM_MIN,
@@ -180,6 +181,20 @@ test("fitting centres the board, and nothing else fences it in", () => {
   const far = zoomAt({ scale: 1, x: -9999, y: 12345 }, 1, { x: 0, y: 0 });
   expect(far.x).toBe(-9999);
   expect(far.y).toBe(12345);
+});
+
+test("fitting shows all of a board too big for the zoom stops, and from there zooming only goes back in", () => {
+  // A long job: taller at the smallest zoom than any window is.
+  const tall = fitView({ width: 700, height: 7800 }, { width: 776, height: 576 });
+  expect(tall.scale).toBeLessThan(TRACE_ZOOM_MIN);
+  expect(tall.scale).toBeCloseTo(576 / 7800, 9);
+  expect(tall.y).toBe(0);
+  // Nothing is so big that fitting it draws a speck.
+  expect(fitView({ width: 100, height: 1e6 }, { width: 800, height: 600 }).scale).toBe(TRACE_FIT_MIN);
+  // Out from there goes nowhere; in goes one step, not a jump up to the stop.
+  expect(zoomAt(tall, tall.scale / 1.2, { x: 0, y: 0 })).toBe(tall);
+  expect(zoomAt(tall, tall.scale * 1.2, { x: 0, y: 0 }).scale).toBeCloseTo(tall.scale * 1.2, 9);
+  expect(zoomAt(tall, 1, { x: 0, y: 0 }).scale).toBe(1);
 });
 
 test("centring a card puts its middle in the middle of the viewport", () => {

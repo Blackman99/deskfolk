@@ -360,6 +360,13 @@ export function clampZoom(scale: number): number {
   return Math.min(TRACE_ZOOM_MAX, Math.max(TRACE_ZOOM_MIN, scale));
 }
 
+/**
+ * How small fitting may draw a board. A long job is taller at the smallest zoom than any window,
+ * and a fit that stops there shows its middle, not all of it; below the stop it is an outline to
+ * find your way in by, not cards to read.
+ */
+export const TRACE_FIT_MIN = 0.05;
+
 /** Where the board sits inside its viewport, and how big it is drawn. */
 export type TraceView = { scale: number; x: number; y: number };
 
@@ -371,7 +378,8 @@ type KeptView = TraceView & { at: number };
  * Scaling around the corner instead makes the board run away from whatever you were reading.
  */
 export function zoomAt(view: TraceView, next: number, at: { x: number; y: number }): TraceView {
-  const scale = clampZoom(next);
+  // A board fitted smaller than the stop zooms back in from where it is, and no further out.
+  const scale = view.scale < TRACE_ZOOM_MIN && next < TRACE_ZOOM_MIN ? Math.max(view.scale, next) : clampZoom(next);
   if (scale === view.scale) return view;
   // The board point under the pointer has to stay under the pointer.
   const worldX = (at.x - view.x) / view.scale;
@@ -380,7 +388,8 @@ export function zoomAt(view: TraceView, next: number, at: { x: number; y: number
 }
 
 /**
- * The view that shows the whole board, centred, never enlarged past life size.
+ * The view that shows the whole board, centred, never enlarged past life size — and, for a board
+ * too big for the zoom stops, drawn smaller than zooming by hand goes.
  *
  * There is no other constraint on where the board may sit: panning is unbounded, and this is the
  * way back. Fencing the board in made a long flow feel like it was snagging on something.
@@ -389,9 +398,8 @@ export function fitView(
   board: { width: number; height: number },
   viewport: { width: number; height: number },
 ): TraceView {
-  const scale = clampZoom(
-    Math.min(1, Math.min(viewport.width / (board.width || 1), viewport.height / (board.height || 1))),
-  );
+  const fits = Math.min(1, viewport.width / (board.width || 1), viewport.height / (board.height || 1));
+  const scale = Number.isFinite(fits) ? Math.max(TRACE_FIT_MIN, fits) : 1;
   return {
     scale,
     x: Math.round((viewport.width - board.width * scale) / 2),
