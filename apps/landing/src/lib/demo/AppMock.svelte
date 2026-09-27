@@ -20,7 +20,6 @@
     instant = false,
     calloutTarget = null,
     calloutText = null,
-    frozenBeat = null,
     skipToEnd = false,
     onFocus
   }: {
@@ -29,8 +28,6 @@
     instant?: boolean;
     calloutTarget?: string | null;
     calloutText?: string | null;
-    /** With `instant`, show this beat instead of the scene's last one (used by the brand image studio). */
-    frozenBeat?: number | null;
     /** Jump straight to the scene's final beat (used when the reader scrolls back up). */
     skipToEnd?: boolean;
     /** Reports the callout target's rectangle in design px so a narrow stage can zoom onto it. */
@@ -49,7 +46,7 @@
     const offsets = SCENE_BEATS[current] ?? [];
     beat = 0;
     if (instant || skipToEnd) {
-      beat = frozenBeat ?? maxBeat(current);
+      beat = maxBeat(current);
       return;
     }
     const timers = offsets.map((ms, i) => setTimeout(() => (beat = i + 1), ms));

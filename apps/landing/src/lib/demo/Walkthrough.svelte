@@ -6,27 +6,12 @@
   import { LATEST_RELEASE_URL } from '$lib/site';
   import CopyButton from '$lib/CopyButton.svelte';
   import AppMock, { type FocusRect } from './AppMock.svelte';
+  import { CALLOUT_TARGETS } from './scenes';
 
   let { t, lang, version }: { t: Dict; lang: Lang; version: string } = $props();
 
   const DESIGN_W = 900;
   const DESIGN_H = 580;
-
-  /** Which [data-hit] element in the mock each step's callout points at, with a preferred side. */
-  const CALLOUT_TARGETS: (string | null)[] = [
-    null,
-    'settings-key-chip:right',
-    'roster-row:below',
-    'msg-u1:left',
-    'judgement:left',
-    'allow-once:below',
-    'cmd-row:right',
-    'pv-edit:left',
-    'route-line:left',
-    'term-output:left',
-    'tray-status:right',
-    'phone-url:left'
-  ];
 
   /**
    * Narrow screens zoom the window onto the part that matters. Until the callout

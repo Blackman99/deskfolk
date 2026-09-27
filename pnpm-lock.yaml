@@ -182,6 +182,9 @@ importers:
       '@types/sanitize-html':
         specifier: ^2.16.1
         version: 2.16.1
+      playwright:
+        specifier: ^1.63.0
+        version: 1.63.0
       svelte:
         specifier: ^5.56.1
         version: 5.57.0

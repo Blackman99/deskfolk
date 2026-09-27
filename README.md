@@ -1,8 +1,9 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-hero-dark.png">
-    <img alt="Deskfolk: a group chat beside its flow board, a pending approval card and a Markdown preview" src="docs/assets/readme-hero-light.png">
-  </picture>
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-en.mp4">
+    <img alt="Watch the Deskfolk demo (1:45): from first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone" src="docs/assets/promo-en.jpg">
+  </a>
+  <br>
+  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-zh.mp4">中文</a></sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>

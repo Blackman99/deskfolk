@@ -24,6 +24,22 @@ export const SCENE_BEATS: readonly (readonly number[])[] = [
   /* 11 remote   */ [400, 1300, 2300, 3100, 4700, 5300, 6000]
 ];
 
+/** Which [data-hit] element in the mock each step's callout points at, with a preferred side. */
+export const CALLOUT_TARGETS: readonly (string | null)[] = [
+  null,
+  'settings-key-chip:right',
+  'roster-row:below',
+  'msg-u1:left',
+  'judgement:left',
+  'allow-once:below',
+  'cmd-row:right',
+  'pv-edit:left',
+  'route-line:left',
+  'term-output:left',
+  'tray-status:right',
+  'phone-url:left'
+];
+
 export type Part = { type: 'text'; text: string } | { type: 'mention'; bot: BotId };
 
 export type TranscriptItem =

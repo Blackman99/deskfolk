@@ -1,8 +1,9 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-hero-dark.png">
-    <img alt="Deskfolk：群聊与它的流程图、一张待批准卡和 Markdown 预览" src="docs/assets/readme-hero-light.png">
-  </picture>
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-zh.mp4">
+    <img alt="观看 Deskfolk 演示（1:49）：从首次配置到一群 Bot 交出一套发布物料，再到它的流程图、你自己的终端和手机" src="docs/assets/promo-zh.jpg">
+  </a>
+  <br>
+  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-en.mp4">English</a> 版</sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>

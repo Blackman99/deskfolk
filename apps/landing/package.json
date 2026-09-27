@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
     "test": "bun test src/lib",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "film": "node scripts/film/render.ts"
   },
   "dependencies": {
     "@real-bot/protocol": "workspace:*",
@@ -26,6 +27,7 @@
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.1.0",
     "@types/sanitize-html": "^2.16.1",
+    "playwright": "^1.63.0",
     "svelte": "^5.56.1",
     "svelte-check": "^4.6.0",
     "tailwindcss": "^4.1.0",

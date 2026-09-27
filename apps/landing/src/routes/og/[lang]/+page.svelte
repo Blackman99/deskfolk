@@ -14,8 +14,7 @@
 
   const SIZES = {
     og: { w: 1200, h: 630 },
-    social: { w: 1280, h: 640 },
-    hero: { w: 1600, h: 900 }
+    social: { w: 1280, h: 640 }
   } as const;
   const size = $derived(SIZES[variant]);
 
@@ -31,34 +30,21 @@
 
 {#if dev}
   <div class="og {variant}" lang={lang === 'zh' ? 'zh-CN' : 'en'} style:width="{size.w}px" style:height="{size.h}px">
-    {#if variant === 'hero'}
-      <!-- Montage: group collaboration, a pending approval card, the artifact editor. -->
-      <div class="win-a">
-        <div class="scaler" style:transform="scale(0.95)"><AppMock scene={0} {t} instant /></div>
+    <div class="copy">
+      <div class="brand">
+        <Logo size={44} />
+        <span class="brand-name">Deskfolk</span>
+        <span class="wip">{t.nav.wip}</span>
       </div>
-      <div class="win-c">
-        <div class="scaler" style:transform="scale(0.58)"><AppMock scene={5} {t} instant frozenBeat={3} /></div>
-      </div>
-      <div class="win-b">
-        <div class="scaler" style:transform="scale(0.66)"><AppMock scene={7} {t} instant /></div>
-      </div>
-    {:else}
-      <div class="copy">
-        <div class="brand">
-          <Logo size={44} />
-          <span class="brand-name">Deskfolk</span>
-          <span class="wip">{t.nav.wip}</span>
-        </div>
-        <h1>
-          {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
-        </h1>
-        <p class="tagline">{t.footer.tagline}{lang === 'zh' ? ' MIT 开源。' : ' Open source under MIT.'}</p>
-        <p class="url">{siteLabel}</p>
-      </div>
-      <div class="window">
-        <div class="scaler" style:transform="scale(0.8)"><AppMock scene={0} {t} instant /></div>
-      </div>
-    {/if}
+      <h1>
+        {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
+      </h1>
+      <p class="tagline">{t.footer.tagline}{lang === 'zh' ? ' MIT 开源。' : ' Open source under MIT.'}</p>
+      <p class="url">{siteLabel}</p>
+    </div>
+    <div class="window">
+      <div class="scaler" style:transform="scale(0.8)"><AppMock scene={0} {t} instant /></div>
+    </div>
   </div>
 {:else}
   <p>Development only.</p>
@@ -78,13 +64,6 @@
       var(--ground);
     color: var(--ink);
     font-family: var(--font-sans);
-  }
-
-  .hero {
-    background:
-      radial-gradient(1100px 700px at 100% 0%, var(--teal-tint) 0%, transparent 60%),
-      radial-gradient(900px 600px at 0% 100%, var(--mustard-tint) 0%, transparent 55%),
-      var(--ground);
   }
 
   /* ── Open Graph / social preview ── */
@@ -164,10 +143,7 @@
     color: var(--teal);
   }
 
-  .window,
-  .win-a,
-  .win-b,
-  .win-c {
+  .window {
     position: absolute;
     border-radius: 12px;
     box-shadow: var(--shadow-window);
@@ -190,30 +166,5 @@
     width: 900px;
     height: 580px;
     transform-origin: 0 0;
-  }
-
-  /* ── README hero montage ── */
-  .win-a {
-    left: 72px;
-    top: 168px;
-    width: 855px;
-    height: 551px;
-    z-index: 1;
-  }
-
-  .win-c {
-    left: 990px;
-    top: 72px;
-    width: 522px;
-    height: 336px;
-    z-index: 2;
-  }
-
-  .win-b {
-    left: 900px;
-    top: 452px;
-    width: 594px;
-    height: 383px;
-    z-index: 3;
   }
 </style>
