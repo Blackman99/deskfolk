@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ensureHighlightLang, getShikiHighlighter, recoverFromTimeLimit } from "./shiki-highlighter.ts";
+import { WARM_UP_TRIES, ensureHighlightLang, getShikiHighlighter, recoverFromTimeLimit } from "./shiki-highlighter.ts";
 
 type Grammar = Parameters<typeof recoverFromTimeLimit>[0];
 
@@ -17,21 +17,24 @@ function slowGrammar(slow: number) {
   return { calls, grammar };
 }
 
-test("a line that ran out of time gets one more try", () => {
-  const { calls, grammar } = slowGrammar(1);
+test("a line that runs out of time is tried again until it finishes", () => {
+  const { calls, grammar } = slowGrammar(3);
   const result = grammar.tokenizeLine2("a", "start" as never, 500);
   expect(result.stoppedEarly).toBe(false);
   expect(result.ruleStack as unknown).toBe("end of a");
-  expect(calls).toEqual(["start", "start"]);
+  expect(calls).toEqual(["start", "start", "start", "start"]);
 });
 
-test("the next line never starts from where a line stopped", () => {
-  const { calls, grammar } = slowGrammar(2);
-  const result = grammar.tokenizeLine2("a", "start" as never, 500);
-  expect(result.stoppedEarly).toBe(true);
-  expect(result.ruleStack as unknown).toBe("start");
-  expect(grammar.tokenizeLine2("b", result.ruleStack, 500).ruleStack as unknown).toBe("end of b");
-  expect(calls).toHaveLength(3);
+test("the extra tries are spent once per grammar, and then a line that runs out never leaks its stop", () => {
+  const { calls, grammar } = slowGrammar(Infinity);
+  const first = grammar.tokenizeLine2("a", "start" as never, 500);
+  expect(first.stoppedEarly).toBe(true);
+  expect(calls).toHaveLength(1 + WARM_UP_TRIES);
+  // The next line starts from where this one started, not from inside the rule it stopped in.
+  expect(first.ruleStack as unknown).toBe("start");
+  const second = grammar.tokenizeLine2("b", first.ruleStack, 500);
+  expect(second.ruleStack as unknown).toBe("start");
+  expect(calls).toHaveLength(2 + WARM_UP_TRIES);
 });
 
 test("a grammar is wrapped once, however often its language is ensured", () => {
@@ -45,9 +48,12 @@ test("JS loaded as HTML's embed still tokenizes, and its strings stay strings", 
   await ensureHighlightLang("html");
   await ensureHighlightLang("javascript");
   const highlighter = await getShikiHighlighter();
+  // A limit far under one cold regex scan makes every machine as slow as CI's: each scan that
+  // compiles overruns it, and the line still has to come out whole.
   const [line] = highlighter.codeToTokensBase('const CACHE = "real-bot-v1"; // note', {
     lang: "javascript",
     theme: "github-light",
+    tokenizeTimeLimit: 5,
   });
   const text = line!.map((token) => token.content);
   expect(text).toContain('"real-bot-v1"');

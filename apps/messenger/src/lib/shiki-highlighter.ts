@@ -90,21 +90,34 @@ type Grammar = ReturnType<HighlighterCore["getLanguage"]>;
 const recovering = new WeakSet<Grammar>();
 
 /**
+ * Extra tries a grammar gets in all, for lines that run out while its regexes are still being
+ * compiled. Compiling is paid once and kept, so each try gets further; the cold start of HTML's
+ * embedded JS takes about six scans that each overrun a small limit, and a machine slow enough to
+ * overrun 500 ms needs a few of them. Each try that runs out costs about the limit.
+ */
+export const WARM_UP_TRIES = 10;
+
+/**
  * Shiki (and `@shikijs/monaco` after it) tokenizes each line under a 500 ms limit and starts the
  * next line from the rule stack wherever a line that ran out stopped, mid-rule. In WebKit the first
  * line after a cold start pays for compiling the grammar's regexes and runs out (a JS file nearly
  * always), and every line after it was read from inside that rule: the editor lost the colours of
- * the whole file, a light-theme code block the colours of its strings. The line gets one more try,
- * its regexes compiled by then; a line that still runs out hands on the stack it started with, as
- * VS Code does.
+ * the whole file, a light-theme code block the colours of its strings. A line that runs out is
+ * tried again until it finishes, out of the grammar's warm-up tries; one more try was not enough on
+ * a slow machine (CI's macOS runner). A line that still runs out once those are spent is slow on its
+ * own, not cold, and hands on the stack it started with, as VS Code does.
  */
 export function recoverFromTimeLimit(grammar: Grammar): void {
   if (recovering.has(grammar)) return;
   recovering.add(grammar);
   const tokenizeLine2 = grammar.tokenizeLine2.bind(grammar);
+  let triesLeft = WARM_UP_TRIES;
   grammar.tokenizeLine2 = (line, prev, timeLimit) => {
     let result = tokenizeLine2(line, prev, timeLimit);
-    if (result.stoppedEarly) result = tokenizeLine2(line, prev, timeLimit);
+    while (result.stoppedEarly && triesLeft > 0) {
+      triesLeft--;
+      result = tokenizeLine2(line, prev, timeLimit);
+    }
     return result.stoppedEarly && prev ? { ...result, ruleStack: prev } : result;
   };
 }
