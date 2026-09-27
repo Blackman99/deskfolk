@@ -18,37 +18,11 @@
   const COPY = {
     zh: {
       license: 'MIT 开源 · macOS Alpha 快照',
-      callouts: [
-        '密钥只在这一格里填，进钥匙串，不进聊天。',
-        '名字、职责、边界三格必填，头像按名字生成。',
-        '一句话，它自己建好三个队友和一个群。',
-        '没被点名的 Bot，各自判断下不下场。',
-        '工作区外的文件，要你点头才读。',
-        '@ 一下就是交接；命令和输出就在消息底下。',
-        '生成的海报和预告片，直接在旁边窗格里看。',
-        '谁叫醒了谁、每轮交了什么，一张图看完。',
-        '你自己的 shell，就在同一个窗口里。',
-        '关窗不停；做完了，横幅来找你。',
-        '经你自己的中继，在手机上接着管。'
-      ],
       tray: ['显示窗口', '停止所有轮次', '退出 Deskfolk'],
       now: '现在'
     },
     en: {
       license: 'Open source under MIT · macOS alpha snapshot',
-      callouts: [
-        'The key goes in this one field, into the Keychain, never the chat.',
-        'Name, duties and boundaries are required; the avatar follows the name.',
-        'One message, and it hires three teammates and makes a group.',
-        'Bots nobody mentioned decide for themselves whether to join.',
-        'Files outside the workspace wait for your yes.',
-        'An @ is a handoff; commands and their output sit under the message.',
-        'The poster and the teaser open right in the pane beside it.',
-        'Who woke whom and what each turn handed over, on one board.',
-        'Your own shell, in the same window.',
-        'Closing the window stops nothing; when it’s done, a banner finds you.',
-        'Through your own relay, carry on from your phone.'
-      ],
       tray: ['Show window', 'Stop all turns', 'Quit Deskfolk'],
       now: 'now'
     }
@@ -251,7 +225,7 @@
           <li class="item" class:on={scene === i + 1} bind:this={itemEls[i]}>
             <span class="num">{pad(i + 1)}<i> / {pad(steps.length)}</i></span>
             <h2>{step.title}</h2>
-            <p class="callout">{COPY[lang].callouts[i]}</p>
+            <p class="callout">{step.callout}</p>
           </li>
         {/each}
       </ol>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { dev } from '$app/environment';
-  import AppMock from '$lib/demo/AppMock.svelte';
+  import { base } from '$app/paths';
   import Logo from '$lib/Logo.svelte';
   import { DICT, type Lang } from '$lib/i18n';
   import { GITHUB_OWNER, GITHUB_REPO } from '$lib/site';
@@ -42,9 +42,8 @@
       <p class="tagline">{t.footer.tagline}{lang === 'zh' ? ' MIT 开源。' : ' Open source under MIT.'}</p>
       <p class="url">{siteLabel}</p>
     </div>
-    <div class="window">
-      <div class="scaler" style:transform="scale(0.8)"><AppMock scene={0} {t} instant /></div>
-    </div>
+    <!-- The homepage's first-screen still: the real app, four panes at the end of step 9. -->
+    <img class="window" src="{base}/media/walkthrough/{lang}-{theme}/hero.jpg" alt="" />
   </div>
 {:else}
   <p>Development only.</p>
@@ -143,28 +142,20 @@
     color: var(--teal);
   }
 
+  /* Wider than the space left of it: the window runs off the right edge. */
   .window {
     position: absolute;
-    border-radius: 12px;
-    box-shadow: var(--shadow-window);
-    overflow: hidden;
-  }
-
-  .window {
     left: 660px;
     top: 90px;
-    width: 720px;
-    height: 464px;
+    width: 800px;
+    height: 500px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-window);
+    object-fit: cover;
   }
 
   .social .window {
     left: 720px;
     top: 96px;
-  }
-
-  .scaler {
-    width: 900px;
-    height: 580px;
-    transform-origin: 0 0;
   }
 </style>

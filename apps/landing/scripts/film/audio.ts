@@ -1,10 +1,10 @@
 /**
- * The film's soundtrack, synthesized: a 96 BPM lo-fi groove composed to the film's
+ * The film's soundtrack, synthesized: a lo-fi groove composed to the film's
  * timeline (drums enter on step 1, drop out while the window hides in the tray, and a
  * ii–V–I lands on the end card), plus interface sounds placed on the cues the film
  * stage recorded. Everything here is generated, so the result carries no licence.
  *
- * `--music <file>` in render.ts swaps the groove for a track of your own; the
+ * `--music <file>` (live.ts film, recut.ts) swaps the groove for a track of your own; the
  * interface sounds are still laid on top.
  */
 import { execFileSync } from 'node:child_process';

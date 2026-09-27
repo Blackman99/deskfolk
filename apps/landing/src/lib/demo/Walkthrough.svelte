@@ -1,81 +1,41 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { base } from '$app/paths';
   import { docsPath } from '$lib/docs';
   import type { Dict, Lang } from '$lib/i18n';
   import { LATEST_RELEASE_URL } from '$lib/site';
   import CopyButton from '$lib/CopyButton.svelte';
-  import AppMock, { type FocusRect } from './AppMock.svelte';
-  import { CALLOUT_TARGETS } from './scenes';
+  import clips from './clips.json';
 
   let { t, lang, version }: { t: Dict; lang: Lang; version: string } = $props();
 
-  const DESIGN_W = 900;
-  const DESIGN_H = 580;
-
   /**
-   * Narrow screens zoom the window onto the part that matters. Until the callout
-   * target exists in a scene, these regions (design px) are used instead.
+   * The stage shows the real app: one clip per step, cut from the promo's recording
+   * (scripts/film/clips.ts), and the four-pane screen it reaches as the first screen's still.
+   * The recording is continuous, so each clip starts where the one before it ends.
    */
-  const FOCUS_FALLBACK: (FocusRect | null)[] = [
-    null,
-    { x: 180, y: 60, w: 540, h: 470 },
-    { x: 0, y: 0, w: 520, h: 580 },
-    { x: 200, y: 30, w: 700, h: 550 },
-    { x: 200, y: 30, w: 700, h: 550 },
-    { x: 200, y: 30, w: 700, h: 550 },
-    { x: 200, y: 30, w: 700, h: 550 },
-    { x: 380, y: 30, w: 520, h: 550 },
-    { x: 380, y: 30, w: 520, h: 550 },
-    { x: 380, y: 30, w: 520, h: 550 },
-    null,
-    null
-  ];
-
-  /**
-   * Scenes a narrow stage shows whole: the desktop with its banner and Dock does not survive a crop,
-   * and the phone is taller than any crop the landscape stage can make.
-   */
-  const WHOLE_WINDOW = new Set([10, 11]);
+  type Clip = { seconds: number; speed: number };
+  const SETS = clips.sets as Record<string, { steps: Clip[] }>;
 
   let scene = $state(0);
-  let skipToEnd = $state(false);
-  let stageW = $state(720);
-  let narrow = $state(false);
+  /** Scrolling up into a step shows where it ends instead of playing it again. */
+  let back = $state(false);
   let instant = $state(false);
-  let focusTarget = $state<FocusRect | null>(null);
-  let stageEl: HTMLDivElement | undefined = $state();
+  let dark = $state(false);
+  /** Which picture is on the stage: 0 = the still, n = step n's clip. Lags `scene` until that clip can show. */
+  let shown = $state(0);
+  let playing = $state(false);
   let rootEl: HTMLElement | undefined = $state();
+  const videos: (HTMLVideoElement | undefined)[] = $state([]);
+  /** Clips given their source: the current step and the next, and any loaded before. */
+  const wanted = new SvelteSet<number>();
 
+  const set = $derived(`${lang}-${dark ? 'dark' : 'light'}`);
+  const steps = $derived(SETS[set]?.steps ?? []);
   const calloutText = $derived(scene > 0 ? t.demo.steps[scene - 1]?.callout ?? null : null);
-  const calloutTarget = $derived(CALLOUT_TARGETS[scene] ?? null);
-
-  /** Camera: whole window on wide screens; a focused region on narrow ones. */
-  const camera = $derived.by(() => {
-    const fit = stageW / DESIGN_W;
-    if (!narrow || WHOLE_WINDOW.has(scene)) return { s: fit, tx: 0, ty: 0 };
-    const region = focusTarget ? boxAround(focusTarget) : FOCUS_FALLBACK[scene];
-    if (!region) return { s: fit, tx: 0, ty: 0 };
-    const stageH = stageW * (DESIGN_H / DESIGN_W);
-    const s = Math.min(stageW / region.w, stageH / region.h);
-    const cx = region.x + region.w / 2;
-    const cy = region.y + region.h / 2;
-    let tx = stageW / 2 - cx * s;
-    let ty = stageH / 2 - cy * s;
-    tx = Math.min(0, Math.max(stageW - DESIGN_W * s, tx));
-    ty = Math.min(0, Math.max(stageH - DESIGN_H * s, ty));
-    return { s, tx, ty };
-  });
-
-  function boxAround(r: FocusRect): FocusRect {
-    const w = Math.min(DESIGN_W, Math.max(460, r.w + 80));
-    const h = Math.min(DESIGN_H, Math.max(w * (DESIGN_H / DESIGN_W), r.h + 80));
-    let x = r.x + r.w / 2 - w / 2;
-    let y = r.y + r.h / 2 - h / 2;
-    x = Math.max(0, Math.min(DESIGN_W - w, x));
-    y = Math.max(0, Math.min(DESIGN_H - h, y));
-    return { x, y, w, h };
-  }
+  const speed = $derived(shown > 0 ? steps[shown - 1]?.speed ?? 1 : 1);
+  const media = (s: string, file: string) => `${base}/media/walkthrough/${s}/${file}`;
 
   function pad(n: number): string {
     return String(n).padStart(2, '0');
@@ -83,7 +43,7 @@
 
   function setScene(next: number) {
     if (next === scene) return;
-    skipToEnd = next < scene;
+    back = next < scene;
     scene = next;
   }
 
@@ -92,23 +52,95 @@
     el?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'center' });
   }
 
+  function want(n: number) {
+    if (n >= 1 && n <= steps.length) wanted.add(n);
+  }
+
+  /** Puts step n on the stage once its clip can show a frame: from the top, or at its end. */
+  function enter(n: number) {
+    want(n);
+    want(n + 1);
+    videos.forEach((v, i) => {
+      if (v && i !== n - 1 && !v.paused) v.pause();
+    });
+    playing = false;
+    if (n === 0) {
+      shown = 0;
+      return;
+    }
+    const v = videos[n - 1];
+    if (!v || v.readyState < 2) return; // onloadeddata comes back here
+    const reveal = () => {
+      if (scene === n) shown = n;
+    };
+    if (back || instant) {
+      v.pause();
+      const end = Math.max(0, v.duration - 0.05);
+      if (Math.abs(v.currentTime - end) < 0.01) return reveal();
+      v.addEventListener('seeked', reveal, { once: true });
+      v.currentTime = end;
+      return;
+    }
+    play(v, n);
+  }
+
+  function play(v: HTMLVideoElement, n: number) {
+    v.muted = true;
+    v.currentTime = 0;
+    v.play().then(
+      () => {
+        if (scene !== n) return;
+        shown = n;
+        playing = true;
+      },
+      // Autoplay refused (a phone saving power): the first frame waits for the play button.
+      () => {
+        if (scene === n) shown = n;
+      }
+    );
+  }
+
+  function replay() {
+    const v = videos[scene - 1];
+    if (v && scene > 0) play(v, scene);
+  }
+
+  $effect(() => {
+    const n = scene;
+    untrack(() => enter(n));
+  });
+
   onMount(() => {
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const width = window.matchMedia('(max-width: 1023px)');
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const root = document.documentElement;
+    // The other theme's clips replace these; until the current one loads the still stands in,
+    // and then it shows where the step ends.
+    const readTheme = () => {
+      const chosen = root.getAttribute('data-theme');
+      const next = chosen ? chosen === 'dark' : scheme.matches;
+      if (next === dark) return;
+      dark = next;
+      back = true;
+      shown = 0;
+      playing = false;
+      wanted.clear();
+      want(scene);
+      want(scene + 1);
+    };
     instant = motion.matches;
-    narrow = width.matches;
+    readTheme();
     const onMotion = () => (instant = motion.matches);
-    const onWidth = () => (narrow = width.matches);
     motion.addEventListener('change', onMotion);
-    width.addEventListener('change', onWidth);
+    scheme.addEventListener('change', readTheme);
+    const themeObserver = new MutationObserver(readTheme);
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) stageW = e.contentRect.width;
-    });
-    if (stageEl) ro.observe(stageEl);
+    // Step 1's clip loads once the first screen has settled, so it is ready by the first scroll.
+    const warm = setTimeout(() => want(1), 1500);
 
     // Adjacent steps can both touch the observation band; pick the one nearest the viewport centre.
-    const steps = rootEl ? Array.from(rootEl.querySelectorAll<HTMLElement>('[data-scene]')) : [];
+    const els = rootEl ? Array.from(rootEl.querySelectorAll<HTMLElement>('[data-scene]')) : [];
     const visible = new Set<Element>();
     const io = new IntersectionObserver(
       (entries) => {
@@ -132,12 +164,13 @@
       },
       { rootMargin: '-42% 0px -42% 0px', threshold: 0 }
     );
-    steps.forEach((el) => io.observe(el));
+    els.forEach((el) => io.observe(el));
 
     return () => {
+      clearTimeout(warm);
       motion.removeEventListener('change', onMotion);
-      width.removeEventListener('change', onWidth);
-      ro.disconnect();
+      scheme.removeEventListener('change', readTheme);
+      themeObserver.disconnect();
       io.disconnect();
     };
   });
@@ -182,22 +215,50 @@
     <!-- Sticky stage -->
     <div class="stage-col">
       <div class="sticky">
-        <div class="stage" bind:this={stageEl} style:border-radius="{12 * camera.s}px">
+        <div class="stage" style:aspect-ratio="{clips.width} / {clips.height}">
           <div
-            class="scaler"
-            class:animated={narrow && !instant}
-            style:transform="translate({camera.tx}px, {camera.ty}px) scale({camera.s})"
-          >
-            <AppMock
-              {scene}
-              {t}
-              {instant}
-              {skipToEnd}
-              {calloutTarget}
-              {calloutText}
-              onFocus={(r) => (focusTarget = r)}
-            />
-          </div>
+            class="still"
+            class:shown={shown === 0}
+            role="img"
+            aria-label={t.demo.stillLabel}
+            style:--still-light="url({media(`${lang}-light`, 'hero.jpg')})"
+            style:--still-dark="url({media(`${lang}-dark`, 'hero.jpg')})"
+          ></div>
+          {#key set}
+            {#each steps as _, i}
+              <video
+                bind:this={videos[i]}
+                class="clip"
+                class:shown={shown === i + 1}
+                src={wanted.has(i + 1) ? media(set, `${pad(i + 1)}.mp4`) : undefined}
+                preload={wanted.has(i + 1) ? 'auto' : 'none'}
+                muted
+                playsinline
+                disablepictureinpicture
+                aria-hidden="true"
+                onloadeddata={() => {
+                  if (scene === i + 1 && shown !== i + 1) enter(i + 1);
+                }}
+                onended={() => {
+                  if (shown === i + 1) playing = false;
+                }}
+              ></video>
+            {/each}
+          {/key}
+          {#if shown > 0 && shown === scene}
+            {#if playing}
+              {#if speed > 1}
+                <span class="speed" aria-hidden="true">
+                  <svg viewBox="0 0 26 18" width="15" height="11"><path d="M1 1l11 8-11 8zM13 1l11 8-11 8z" fill="currentColor" /></svg>{speed}×
+                </span>
+              {/if}
+            {:else}
+              <button type="button" class="replay" onclick={replay}>
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.6v2.6h2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                {t.demo.replay}
+              </button>
+            {/if}
+          {/if}
         </div>
         <p class="caption" class:on={!!calloutText}>{calloutText ?? ''}</p>
         <ol class="rail" aria-label={t.demo.railLabel}>
@@ -429,23 +490,77 @@
   .stage {
     position: relative;
     width: 100%;
-    aspect-ratio: 900 / 580;
     overflow: hidden;
+    border-radius: 12px;
     box-shadow: var(--shadow-window);
     background: var(--app-bg);
   }
 
-  .scaler {
+  /* Clips hold their last frame when they end; the one on the stage covers the rest. */
+  .still,
+  .clip {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 900px;
-    height: 580px;
-    transform-origin: 0 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
   }
 
-  .scaler.animated {
-    transition: transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  .still {
+    background: var(--still-light) center / cover no-repeat;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme='light'])) .still {
+      background-image: var(--still-dark);
+    }
+  }
+
+  :global(:root[data-theme='dark']) .still {
+    background-image: var(--still-dark);
+  }
+
+  .clip {
+    display: block;
+    object-fit: cover;
+    pointer-events: none;
+  }
+
+  .still.shown,
+  .clip.shown {
+    opacity: 1;
+    z-index: 1;
+  }
+
+  .speed,
+  .replay {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 11px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #fff;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5);
+  }
+
+  .replay {
+    border: 0;
+    cursor: pointer;
+    transition: background-color 160ms ease;
+  }
+
+  .replay:hover {
+    background: rgba(15, 23, 42, 0.88);
   }
 
   .caption {
@@ -645,10 +760,6 @@
       gap: 14px;
     }
 
-    .caption {
-      display: none;
-    }
-
     .steps {
       grid-column: 1;
       grid-row: 2;
@@ -672,7 +783,7 @@
     .step,
     .seg,
     .step h3,
-    .scaler.animated {
+    .replay {
       transition: none;
     }
 

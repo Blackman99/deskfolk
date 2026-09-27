@@ -1,0 +1,198 @@
+{
+  "width": 1480,
+  "height": 924,
+  "sets": {
+    "zh-light": {
+      "steps": [
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 6.4,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 9.5,
+          "speed": 4.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 10.7,
+          "speed": 1
+        }
+      ]
+    },
+    "zh-dark": {
+      "steps": [
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 6.4,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 6.4,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 9.5,
+          "speed": 4.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 10.7,
+          "speed": 1
+        }
+      ]
+    },
+    "en-light": {
+      "steps": [
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 6.4,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 9.4,
+          "speed": 2.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 8.5,
+          "speed": 1
+        }
+      ]
+    },
+    "en-dark": {
+      "steps": [
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 6.4,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 9.4,
+          "speed": 2.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1.5
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 8.6,
+          "speed": 1
+        },
+        {
+          "seconds": 4.3,
+          "speed": 1
+        },
+        {
+          "seconds": 8.5,
+          "speed": 1
+        }
+      ]
+    }
+  }
+}

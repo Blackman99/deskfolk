@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/media/deskfolk-en.mp4">
-    <img alt="Watch the Deskfolk demo (1:45): from first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone" src="docs/assets/promo-en.jpg">
+    <img alt="Watch the Deskfolk demo (1:43): from first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone" src="docs/assets/promo-en.jpg">
   </a>
   <br>
   <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-zh.mp4">中文</a></sub>

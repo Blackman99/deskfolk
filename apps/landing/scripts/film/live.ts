@@ -43,6 +43,8 @@ const { values: opts, positionals } = parseArgs({
     headed: { type: 'boolean', default: false },
     // Another checkout's daemon for the demo (a worktree with changes not applied here yet).
     daemon: { type: 'string' },
+    // The demo messenger's port, when another session's Vite already holds the default.
+    'messenger-port': { type: 'string', default: '5217' },
     until: { type: 'string' }
   }
 });
@@ -62,7 +64,7 @@ const DEMO_ROOT = '/private/tmp/deskfolk-demo';
 const demoHome = path.join(DEMO_ROOT, 'home');
 const dataDir = path.join(DEMO_ROOT, 'data');
 const LOGO = '/Users/Shared/dawn-brand/logo.png';
-const MESSENGER_PORT = 5217;
+const MESSENGER_PORT = Number(opts['messenger-port']);
 const LANDING_PORT = 5288;
 const DESKTOP = { width: 1600, height: 1000 };
 const PHONE = { width: 390, height: 844 };
