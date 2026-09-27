@@ -12,6 +12,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - A release's notes no longer mention GitHub accounts by accident. A changelog line quoting a chat message such as "the API is ready, `@frontend`" made GitHub notify the account by that name and list it as the release's contributor, which is how an unrelated "frontend" account showed up on 0.1.0-rc.9 (that release's notes have been corrected). `release-notes.ts` now puts every `@name` outside code into a code span, so it reads the same on the release page and in the About card without pointing at anyone.
 
+- A Bot now knows which job each line it reads is about. A group or a direct often carries several jobs at once, and until now neither a transcript line nor the "this came in for you" note said which one it belonged to, so the Bot had to guess; a line from another job or ticket now carries `〔plan "…" · ticket 03〕` after the speaker's name. The situation block names the job, says which session it was opened in, lists who else is working on it in other sessions right now (the Bot's own turn elsewhere included) and what else the Bot has on, and marks the steps under "So far" that happened in another session. When you redirect a Bot, the new turn is told which job the old one was on. In a group, a Bot judging whether to take up a line of yours with no @ now weighs the job and ticket that line was filed under, not the session's current one.
+
 ## 0.1.0-rc.9 — 2026-09-27
 
 Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.

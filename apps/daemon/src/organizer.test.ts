@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import type { ChatMessage, CompletionOk, CompletionsClient, JudgeRequest, JudgeResult } from "./completions";
 import { SITUATION_HEADING } from "./context";
+import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
 import { PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
@@ -49,6 +50,7 @@ async function harness(answer: Answer, script: (messages: ChatMessage[]) => Comp
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: ChatMessage[][] = [];
   const organized: OrganizerPayload[] = [];
+  const judgements: Array<Record<string, unknown>> = [];
   const events: ClientEvent[] = [];
   const waiters: Array<() => void> = [];
   store.onCommit((event) => events.push(event));
@@ -71,6 +73,9 @@ async function harness(answer: Answer, script: (messages: ChatMessage[]) => Comp
           const content = answer(payload);
           if (content === null) throw new Error("organizer down");
           return judged(content);
+        }
+        if (request.messages[0]?.content === JUDGEMENT_SYSTEM) {
+          judgements.push(JSON.parse(String(request.messages[1]!.content)) as Record<string, unknown>);
         }
         return judged('{"decision":"join","reason":"fixture"}');
       },
@@ -95,7 +100,7 @@ async function harness(answer: Answer, script: (messages: ChatMessage[]) => Comp
         "SELECT id, task_id, ticket_id, status FROM turns WHERE trigger_message_id = ? ORDER BY created_at ASC",
       )
       .all(triggerId);
-  return { root, store, engine, seen, organized, events, completed, turnOf };
+  return { root, store, engine, seen, organized, judgements, events, completed, turnOf };
 }
 
 test("a user line is filed before its turn opens: the turn works in the ticket dir, sees the plan, the mirrors are written, and the quiet plan is settled", async () => {
@@ -140,7 +145,7 @@ test("a user line is filed before its turn opens: the turn works in the ticket d
 
   // What the Bot saw: the plan's spec, its own ticket, and the folder it works in.
   const situation = textOf(h.seen[0]!.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!);
-  expect(situation).toContain("规划：写一份周报");
+  expect(situation).toContain("规划「写一份周报」：写一份周报（周报，进行中）");
   expect(situation).toContain("验收：交到 report.md");
   expect(situation).toContain("规则：不要口语");
   expect(situation).toContain("本轮任务：01 初稿");
@@ -189,9 +194,9 @@ test("an organizer that answers nothing usable, or is down, changes nothing: the
   expect(h.store.turnWorkDir(turn!.id)).toBe(plan.dir);
   expect(existsSync(join(h.root, plan.dir, PLAN_MAP_FILE))).toBe(false);
   const situation = textOf(h.seen[0]!.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!);
-  expect(situation).toContain("这是这件事的第一轮。");
+  expect(situation).toContain("这是这件事的第一轮（规划「写一份周报，交到 report.md」）。");
   expect(situation).toContain(`本轮工作目录：${plan.dir}/`);
-  expect(situation).not.toContain("规划：");
+  expect(situation).not.toContain("规划「写一份周报，交到 report.md」：");
 
   // The call that failed outright is not billed; the one that answered is.
   down = true;
@@ -230,6 +235,11 @@ test("in a group, every turn a filed line opens lands in its plan and ticket", a
   expect(turns.every((turn) => turn.task_id === plan.id && turn.ticket_id === ticket.id)).toBe(true);
   expect(h.organized.filter((payload) => payload.mode === "message")).toHaveLength(1);
   expect(h.store.getMessage(trigger.id)).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
+  // The judges weigh the ticket the line was filed under, not a copy of it from before filing.
+  expect(h.judgements.length).toBeGreaterThan(0);
+  for (const judgement of h.judgements) {
+    expect(judgement.plan).toMatchObject({ goal: "做一版海报", message_ticket: { seq: 1, title: "文案" } });
+  }
 });
 
 function call(name: string, args: Record<string, unknown>): CompletionOk {

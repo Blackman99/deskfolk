@@ -338,6 +338,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         for (const pending of organizing) participation.dropPendingJudgement(pending, true);
       };
       try {
+        let filed = message;
         if (fromUser) {
           if (store.collectRouteFeedback(message)) {
             const owner = store.feedbackOwner(message.id);
@@ -346,8 +347,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           // Filed before any turn opens, so the turns it opens know their plan and ticket from
           // their first hop. The message itself is already published; only the Bots wait.
           await core.track(organizer.organizeMessage(message));
+          // Read back with its stamp: a judgement weighs the plan the line was filed in.
+          try {
+            filed = store.getMessage(message.id);
+          } catch {
+            filed = message;
+          }
         }
-        await core.track(participation.handleParticipation(message, { fromUser, fork: opts?.fork, opened: handOver }));
+        await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
       } finally {
         handOver();
       }

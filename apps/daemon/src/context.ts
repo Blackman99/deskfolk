@@ -66,6 +66,91 @@ function botDuties(store: Store, id: string): string {
   }
 }
 
+/** The plan and ticket a line or a turn belongs to, as `task_id` / `ticket_id` carry them. */
+export type PlanRef = { taskId: string | null; ticketId: string | null };
+
+/** How much of a plan's title a tag spends; the situation block names it in full. */
+export const PLAN_TAG_TITLE_MAX = 20;
+
+/**
+ * Names the plan and ticket a line belongs to, as seen from the turn reading it: another plan reads
+ * `〔规划「title」· 任务 03〕`, another ticket of the same plan `〔任务 03〕`, and the turn's own
+ * ticket — or a line nobody filed — nothing. The title is the plan's opening words, which never
+ * change once it is open, so a plan keeps one name across turns and matches the messenger. The
+ * lookups are cached for the one assembly that owns the tagger.
+ */
+export function planTagger(store: Store, relativeTo: PlanRef, locale: Locale): (ref: PlanRef) => string {
+  const en = locale === "en";
+  const titles = new Map<string, string | null>();
+  const seqs = new Map<string, number | null>();
+  const title = (id: string): string | null => {
+    if (!titles.has(id)) {
+      try {
+        titles.set(id, oneLineClip(store.getTask(id).title, PLAN_TAG_TITLE_MAX));
+      } catch {
+        titles.set(id, null);
+      }
+    }
+    return titles.get(id)!;
+  };
+  const seq = (id: string): number | null => {
+    if (!seqs.has(id)) {
+      try {
+        seqs.set(id, store.getTicket(id).seq);
+      } catch {
+        seqs.set(id, null);
+      }
+    }
+    return seqs.get(id)!;
+  };
+  return (ref) => {
+    if (!ref.taskId) return "";
+    const number = ref.ticketId ? seq(ref.ticketId) : null;
+    const ticket = number === null ? null : `${en ? "ticket" : "任务"} ${String(number).padStart(2, "0")}`;
+    if (ref.taskId !== relativeTo.taskId) {
+      const name = title(ref.taskId);
+      if (name === null) return "";
+      const plan = en ? `plan "${name}"` : `规划「${name}」`;
+      return `〔${ticket ? `${plan} · ${ticket}` : plan}〕`;
+    }
+    if (!ticket || ref.ticketId === relativeTo.ticketId) return "";
+    return `〔${ticket}〕`;
+  };
+}
+
+/**
+ * Where a session is, said from one Bot's seat: `群「name」`, `你和用户的私聊`, `用户和X的私聊`,
+ * `你和X的私聊`, `X和Y的私聊`. It is how a line heard from another session, a plan opened
+ * elsewhere and a turn running elsewhere say where. Null once the session is gone.
+ */
+export function sessionLabel(store: Store, sessionId: string, selfBotId: string | null, locale: Locale): string | null {
+  let session;
+  try {
+    session = store.getSession(sessionId);
+  } catch {
+    return null;
+  }
+  const en = locale === "en";
+  if (session.kind === "group") {
+    if (!session.name) return en ? "a group" : "一个群";
+    return en ? `group "${session.name}"` : `群「${session.name}」`;
+  }
+  const bots = store.presentBotIds(sessionId);
+  if (store.isPresent(sessionId, USER_MEMBER)) {
+    const bot = bots[0];
+    if (!bot || bot === selfBotId) return en ? "your direct with the user" : "你和用户的私聊";
+    const name = botDisplayName(store, bot);
+    return en ? `the user's direct with ${name}` : `用户和${name}的私聊`;
+  }
+  if (selfBotId && bots.includes(selfBotId)) {
+    const other = bots.find((id) => id !== selfBotId);
+    const name = other ? botDisplayName(store, other) : "?";
+    return en ? `your direct with ${name}` : `你和${name}的私聊`;
+  }
+  const names = bots.map((id) => botDisplayName(store, id));
+  return en ? `the direct between ${names.join(" and ")}` : `${names.join("和")}的私聊`;
+}
+
 export function assembleTurnMessages(
   store: Store,
   input: {
@@ -104,6 +189,7 @@ export function assembleTurnMessages(
     triggerMessageId: input.triggerMessageId,
     selfBotId: input.botId,
     loopPictures: loopPictureSpend(input.loop),
+    locale: input.locale,
   });
   const situation = situationUserMessage(
     store,
@@ -154,7 +240,20 @@ export type PlanFacts = {
   trace: string[];
   /** The appointment this Bot still has in this session, if any. */
   check_back: { in_minutes: number; note: string } | null;
+  /** The plan's name, the one every tag on a line from it uses. */
+  title: string;
+  /** Where the plan was opened, when that is not this session. */
+  home: string | null;
+  /** Turns working in this plan right now in other sessions: who, and where. */
+  elsewhere: Array<{ bot: string; self: boolean; where: string }>;
+  /** This Bot's other live turns, on other plans: where, which plan, which ticket. */
+  other_work: Array<{ where: string; plan: string; ticket: string | null }>;
 };
+
+/** Turns elsewhere on the same plan the block names. */
+export const ELSEWHERE_LINES = 6;
+/** This Bot's other live turns the block names. */
+export const OTHER_WORK_LINES = 3;
 
 /** Tickets the situation block lists; a plan past this says how many more there are. */
 export const PLAN_TICKET_LINES = 20;
@@ -235,6 +334,14 @@ export function planFacts(
       precedents.push({ goal: done.goal, process: done.process, rules: done.rules, outcome: done.progress.done });
     }
   }
+  const en = input.locale === "en";
+  const places = new Map<string, string>();
+  const where = (sessionId: string): string => {
+    if (!places.has(sessionId)) {
+      places.set(sessionId, sessionLabel(store, sessionId, input.botId, input.locale) ?? (en ? "a deleted session" : "已删除的会话"));
+    }
+    return places.get(sessionId)!;
+  };
   const trace: string[] = [];
   if (!firstTurn) {
     const nodes = store
@@ -248,8 +355,36 @@ export function planFacts(
     for (const node of nodes) {
       const who = node.actor === USER_MEMBER ? "user" : botDisplayName(store, node.actor);
       const state = traceStateLabel(node.status, input.locale);
-      trace.push(`【${who}】${node.summary}${state}`);
+      // A plan follows its work into other sessions; a step taken in one of them says so.
+      const there = node.session_id !== input.sessionId ? (en ? ` (in ${where(node.session_id)})` : `（在${where(node.session_id)}）`) : "";
+      trace.push(`【${who}】${node.summary}${state}${there}`);
     }
+  }
+  const live = store.listLiveTurns();
+  const elsewhere = live
+    .filter((turn) => turn.task_id === input.taskId && turn.session_id !== input.sessionId && turn.id !== input.turnId)
+    .slice(0, ELSEWHERE_LINES)
+    .map((turn) => ({ bot: botDisplayName(store, turn.bot_id), self: turn.bot_id === input.botId, where: where(turn.session_id) }));
+  const other_work: PlanFacts["other_work"] = [];
+  for (const turn of live) {
+    if (other_work.length >= OTHER_WORK_LINES) break;
+    if (turn.bot_id !== input.botId || turn.id === input.turnId || !turn.task_id || turn.task_id === input.taskId) continue;
+    let plan: string;
+    try {
+      plan = store.getTask(turn.task_id).title;
+    } catch {
+      continue;
+    }
+    let ticket: string | null = null;
+    if (turn.ticket_id) {
+      try {
+        const row = store.getTicket(turn.ticket_id);
+        ticket = `${String(row.seq).padStart(2, "0")} ${row.title}`;
+      } catch {
+        ticket = null;
+      }
+    }
+    other_work.push({ where: where(turn.session_id), plan, ticket });
   }
   const pending = store.pendingCheckBack(input.botId, input.sessionId);
   const check_back = pending
@@ -274,6 +409,10 @@ export function planFacts(
     artifacts,
     trace,
     check_back,
+    title: task.title,
+    home: task.session_id && task.session_id !== input.sessionId ? where(task.session_id) : null,
+    elsewhere,
+    other_work,
   };
 }
 
@@ -338,7 +477,11 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
   const lines: string[] = [];
   if (facts.goal) {
     const tags = [facts.kind, PLAN_STATUS_LABEL[facts.status][locale]].filter((tag): tag is string => Boolean(tag));
-    lines.push(en ? `Plan: ${facts.goal} (${tags.join(", ")})` : `规划：${facts.goal}（${tags.join("，")}）`);
+    lines.push(
+      en
+        ? `Plan "${facts.title}": ${facts.goal} (${tags.join(", ")})`
+        : `规划「${facts.title}」：${facts.goal}（${tags.join("，")}）`,
+    );
     if (facts.acceptance.length > 0) lines.push(`${en ? "Acceptance: " : "验收："}${facts.acceptance.join(sep)}`);
     if (facts.rules.length > 0) lines.push(`${en ? "Rules: " : "规则："}${facts.rules.join(sep)}`);
     if (facts.process.length > 0) lines.push(`${en ? "Process: " : "流程与分工："}${facts.process.join(sep)}`);
@@ -350,9 +493,31 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
       if (parts.length > 0) lines.push(`${en ? "Progress: " : "进展："}${parts.join(sep)}`);
     }
   } else if (facts.first_turn) {
-    lines.push(en ? "This is the first turn of this job." : "这是这件事的第一轮。");
+    lines.push(
+      en ? `This is the first turn of this job (plan "${facts.title}").` : `这是这件事的第一轮（规划「${facts.title}」）。`,
+    );
   } else if (facts.brief) {
-    lines.push(en ? `What this job was asked for: ${facts.brief}` : `这件事最初的要求：${facts.brief}`);
+    lines.push(
+      en
+        ? `What this job was asked for (plan "${facts.title}"): ${facts.brief}`
+        : `这件事最初的要求（规划「${facts.title}」）：${facts.brief}`,
+    );
+  }
+  if (facts.home) {
+    lines.push(en ? `This plan was opened in ${facts.home}.` : `这件事是在${facts.home}里开的。`);
+  }
+  if (facts.elsewhere.length > 0) {
+    const who = facts.elsewhere.map((turn) =>
+      en ? `${turn.self ? "you" : turn.bot} (${turn.where})` : `${turn.self ? "你" : turn.bot}（${turn.where}）`,
+    );
+    lines.push(en ? `Also working on this plan elsewhere: ${who.join(", ")}.` : `这件事别处进行中的轮：${who.join("、")}。`);
+  }
+  if (facts.other_work.length > 0) {
+    const rows = facts.other_work.map((work) => {
+      const ticket = work.ticket ? (en ? ` · ticket ${work.ticket}` : `· 任务 ${work.ticket}`) : "";
+      return en ? `plan "${work.plan}"${ticket} in ${work.where}` : `${work.where}里的规划「${work.plan}」${ticket}`;
+    });
+    lines.push(en ? `Your other live turns: ${rows.join("; ")}.` : `你同时在干的别的事：${rows.join("；")}。`);
   }
   if (facts.tickets.length > 0) {
     const shown = facts.tickets.slice(0, PLAN_TICKET_LINES);
@@ -564,9 +729,16 @@ function transcriptWindow(
     selfBotId: string;
     /** What the pictures this turn has read already spend; the window gets what is left. */
     loopPictures: { images: number; bytes: number };
+    locale: Locale;
   },
 ): ChatMessage[] {
   const trigger = store.getMessage(input.triggerMessageId);
+  // A session carries more than one job, and a line from another plan or ticket says which.
+  const tag = planTagger(
+    store,
+    { taskId: store.taskOfTurn(input.turnId), ticketId: store.ticketOfTurn(input.turnId) },
+    input.locale,
+  );
   const main = store
     .listMainMessages(input.sessionId, MAIN_LIMIT)
     .filter((m) => m.turn_id !== input.turnId)
@@ -609,6 +781,7 @@ function transcriptWindow(
       input.triggerMessageId,
       annotated.get(m.id)?.textFor(cropsSent.get(m.id) ?? 0) ?? "",
       images.get(m.id) ?? [],
+      tag({ taskId: m.task_id ?? null, ticketId: m.ticket_id ?? null }),
     ),
   );
 }
@@ -667,6 +840,8 @@ function serializeTranscript(
   triggerMessageId: string,
   annotationText: string,
   images: ChatContentPart[],
+  /** The line's plan and ticket when they are not this turn's; empty otherwise. */
+  tag: string,
 ): ChatMessage {
   const clipped = takeCodePoints(message.body, BODY_LIMIT);
   let body = clipped.text;
@@ -677,10 +852,11 @@ function serializeTranscript(
   }
   body += annotationText;
   const triggerLine = message.id === triggerMessageId ? `${TRIGGER_FLAG}\n` : "";
+  // The Bot's own lines stay bare: a tag in its own voice is one it would start writing itself.
   if (message.kind === "bot" && message.author === selfBotId) {
     return { role: "assistant", content: `${triggerLine}${body}` };
   }
-  const text = `${prefix(store, message)}\n${triggerLine}${body}`;
+  const text = `${prefix(store, message)}${tag}\n${triggerLine}${body}`;
   return {
     role: "user",
     content: images.length > 0 ? [{ type: "text", text }, ...images] : text,

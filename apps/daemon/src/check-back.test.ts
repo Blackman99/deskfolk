@@ -101,7 +101,7 @@ test("a Bot books a check-back, the scheduler wakes it in the same job with its 
     // turn in the block, and no appointment still pending.
     const last = seen.at(-1)!;
     const situation = textOf(last.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!);
-    expect(situation).toContain("这件事最初的要求：写一份周报，交到 report.md");
+    expect(situation).toContain("这件事最初的要求（规划「写一份周报，交到 report.md」）：写一份周报，交到 report.md");
     expect(situation).toContain("【Writer】五分钟后我回来看。");
     expect(situation).not.toContain("你约的回看");
     expect(last.some((m) => m.role === "user" && textOf(m).includes("【系统】\n（本轮触发）\n回看：看 report.md 写好没"))).toBe(true);

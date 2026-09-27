@@ -1348,6 +1348,8 @@ describe("turn engine on the local API", () => {
       (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === writer.id,
     );
     await firstWriterArrived;
+    // The group moves on to another job; the Researcher's line is about that one.
+    h.store.openTask({ sessionId: groupId, title: "另一件事" });
     await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
       method: "POST",
       headers: auth(h),
@@ -1366,7 +1368,7 @@ describe("turn engine on the local API", () => {
     );
     expect(said.turn_id).toBe(first.id);
     expect(heardNote).toContain("你这一轮干活时有人找你");
-    expect(heardNote).toContain("【Researcher】@Writer take this");
+    expect(heardNote).toContain("【Researcher】〔规划「另一件事」〕@Writer take this");
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "completed");
     expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === writer.id && e.status === "redirected")).toBe(false);
     expect(new Set(sub.events.filter((e) => e.event === "turn.upsert" && e.bot_id === writer.id).map((e) => String(e.id)))).toEqual(new Set([String(first.id)]));
@@ -1414,6 +1416,8 @@ describe("turn engine on the local API", () => {
     });
     const first = await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === writer.id);
     await secondHopArrived;
+    // The new line opens another job, so the note says which one the old turn was on.
+    h.store.openTask({ sessionId: groupId, title: "提纲" });
     await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
       method: "POST",
       headers: auth(h),
@@ -1424,6 +1428,7 @@ describe("turn engine on the local API", () => {
     expect(carried).toContain("你上一轮被上面这条新消息改道了");
     expect(carried).toContain("draft.md");
     expect(carried).toContain("shell printf draft > draft.md");
+    expect(carried).toContain("它在做的是〔规划「@Writer draft it」〕。");
     releaseFirst();
     sub.close();
   });

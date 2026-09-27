@@ -21,6 +21,10 @@ export type HeardItem = {
   author: string;
   body: string;
   checkBack: boolean;
+  /** The line's plan and ticket when they are not the hearing turn's (`〔规划「…」· 任务 03〕`). */
+  tag?: string;
+  /** Where it was said, when that is not the hearing turn's session. */
+  where?: string;
 };
 
 /** How much of each heard line goes into the note; the whole line is in the transcript anyway. */
@@ -35,6 +39,15 @@ function clip(text: string, max: number): string {
   return cut.truncated ? `${cut.text}…` : cut.text;
 }
 
+/** One heard line: who said it and where, which plan and ticket it is about, and what it said. */
+function heardLine(item: HeardItem, en: boolean): string {
+  const tag = item.tag ?? "";
+  const body = clip(item.body, HEARD_BODY_MAX);
+  if (item.checkBack) return en ? `[Your check-back] ${tag}${body}` : `【你约的回看】${tag}${body}`;
+  const where = item.where ? (en ? `, in ${item.where}` : `，在${item.where}里`) : "";
+  return `【${item.author}${where}】${tag}${body}`;
+}
+
 /**
  * The user line the loop gets at the start of the hop after something was heard. It says the
  * turn goes on, and that an answer can wait for the turn's own hand-over: a reply sent now would
@@ -42,11 +55,7 @@ function clip(text: string, max: number): string {
  */
 export function heardNote(locale: Locale, items: readonly HeardItem[]): string {
   const en = locale === "en";
-  const lines = items.map((item) => {
-    const body = clip(item.body, HEARD_BODY_MAX);
-    if (item.checkBack) return en ? `[Your check-back] ${body}` : `【你约的回看】${body}`;
-    return `【${item.author}】${body}`;
-  });
+  const lines = items.map((item) => heardLine(item, en));
   if (en) {
     return [
       "(App note) While you were working, this came in for you. Your turn was not interrupted; carry on.",
@@ -91,7 +100,13 @@ export function recentToolCalls(loop: readonly ChatMessage[], limit = CARRY_CALL
  */
 export function redirectCarryNote(
   locale: Locale,
-  input: { written: readonly string[]; recent: readonly string[]; unread: readonly HeardItem[] },
+  input: {
+    written: readonly string[];
+    recent: readonly string[];
+    unread: readonly HeardItem[];
+    /** The old turn's plan and ticket when the new one is on another (`〔规划「…」· 任务 02〕`). */
+    previous?: string;
+  },
 ): string | null {
   const written = input.written.slice(-CARRY_FILES_MAX);
   if (written.length === 0 && input.recent.length === 0 && input.unread.length === 0) return null;
@@ -99,19 +114,17 @@ export function redirectCarryNote(
   const parts: string[] = [];
   if (en) {
     parts.push("(App note) Your previous turn was redirected by the message above; what it had done is still there.");
+    if (input.previous) parts.push(`It was working on ${input.previous}.`);
     if (written.length > 0) parts.push(`Files it wrote: ${written.join(", ")}`);
     if (input.recent.length > 0) parts.push(`Last things it did: ${input.recent.join("; ")}`);
-    for (const item of input.unread) {
-      parts.push(`Not read yet — ${item.checkBack ? "[your check-back]" : `[${item.author}]`} ${clip(item.body, HEARD_BODY_MAX)}`);
-    }
+    for (const item of input.unread) parts.push(`Not read yet — ${heardLine(item, true)}`);
     parts.push("Look at these before deciding whether to carry on or turn to the new message.");
   } else {
     parts.push("（应用提示）你上一轮被上面这条新消息改道了，它做过的东西都还在。");
+    if (input.previous) parts.push(`它在做的是${input.previous}。`);
     if (written.length > 0) parts.push(`写过的文件：${written.join("、")}`);
     if (input.recent.length > 0) parts.push(`最后在做：${input.recent.join("；")}`);
-    for (const item of input.unread) {
-      parts.push(`还没读到的——${item.checkBack ? "【你约的回看】" : `【${item.author}】`}${clip(item.body, HEARD_BODY_MAX)}`);
-    }
+    for (const item of input.unread) parts.push(`还没读到的——${heardLine(item, false)}`);
     parts.push("先看一眼这些，再决定是接着做，还是按新消息转向。");
   }
   return parts.join("\n");

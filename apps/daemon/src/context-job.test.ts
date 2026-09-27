@@ -90,7 +90,7 @@ describe("the job in the situation block", () => {
     expect(transcriptOf(messages).some((line) => line.includes(brief.body))).toBe(false);
     // …and the block still carries it, with the file the job has cited and the turns so far.
     const situation = situationOf(messages);
-    expect(situation).toContain("这件事最初的要求：写一份周报，交到 report.md，先给 Reviewer 过一遍");
+    expect(situation).toContain("这件事最初的要求（规划「写一份周报，交到 report.md，先给 Reviewer 过一遍」）：写一份周报，交到 report.md，先给 Reviewer 过一遍");
     expect(situation).toContain("这件事已交出：report.md");
     expect(situation).toContain("经过：\n- 【user】写一份周报，交到 report.md，先给 Reviewer 过一遍\n- 【Writer】初稿在 report.md，@Reviewer 请看");
     expect(situation).not.toContain("这是这件事的第一轮");
@@ -106,7 +106,7 @@ describe("the job in the situation block", () => {
     const { store, writer, group, brief, drafting } = await room();
     const messages = assemble(store, { sessionId: group.id, botId: writer.id, turnId: drafting.id, triggerMessageId: brief.id });
     const situation = situationOf(messages);
-    expect(situation).toContain("这是这件事的第一轮。");
+    expect(situation).toContain("这是这件事的第一轮（规划「写一份周报，交到 report.md，先给 Reviewer 过一遍」）。");
     expect(situation).not.toContain("这件事最初的要求");
     expect(situation).not.toContain("经过：");
     store.close();
@@ -148,7 +148,7 @@ describe("the job in the situation block", () => {
     const { store, reviewer, group, handoff } = await room();
     const reviewing = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: handoff.id });
     const situation = situationOf(assemble(store, { sessionId: group.id, botId: reviewer.id, turnId: reviewing.id, triggerMessageId: handoff.id, locale: "en" }));
-    expect(situation).toContain("What this job was asked for: 写一份周报，交到 report.md，先给 Reviewer 过一遍");
+    expect(situation).toContain(`What this job was asked for (plan "写一份周报，交到 report.md，先给 Reviewer 过一遍"): 写一份周报，交到 report.md，先给 Reviewer 过一遍`);
     expect(situation).toContain("Handed over so far: report.md");
     expect(situation).toContain("So far:\n- 【user】");
     store.close();
@@ -213,6 +213,113 @@ describe("the job in the judgement and composer payloads", () => {
     const { store, group } = await room();
     const payload = JSON.parse(assembleComposerSuggestUser(store, group.id)) as { plan: { goal: string | null; acceptance: string[]; open_tickets: string[] } | null };
     expect(payload.plan).toEqual({ goal: "写一份周报，交到 report.md，先给 Reviewer 过一遍", acceptance: [], open_tickets: [] });
+    store.close();
+  });
+});
+
+describe("which job a line is about", () => {
+  test("a line from another plan or ticket says which; the turn's own ticket, an unfiled line and the Bot's own lines stay bare", async () => {
+    const { store, writer, reviewer, group, drafting } = await room();
+    const report = drafting.task_id!;
+    // Each turn opens on a line of its own: a trigger takes the first plan and ticket that opens on it.
+    const poke = (body: string) => store.insertMessage({ sessionId: group.id, kind: "user", author: USER_MEMBER, body }).id;
+    const draft = store.createTicket({ taskId: report, title: "初稿" });
+    const review = store.createTicket({ taskId: report, title: "审稿" });
+    const poster = store.openTask({ sessionId: group.id, title: "做一张海报，放在 poster.png" });
+    const posterTurn = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: poke("海报"), taskId: poster.id });
+    store.insertMessage({ sessionId: group.id, turnId: posterTurn.id, kind: "bot", author: reviewer.id, body: "海报先出草图" });
+    store.setTurnStatus(posterTurn.id, "completed");
+    const reviewTurn = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: poke("审一下"), taskId: report, ticketId: review.id });
+    store.insertMessage({ sessionId: group.id, turnId: reviewTurn.id, kind: "bot", author: reviewer.id, body: "审稿意见在路上" });
+    store.setTurnStatus(reviewTurn.id, "completed");
+    const writerPoster = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: poke("标题"), taskId: poster.id });
+    store.insertMessage({ sessionId: group.id, turnId: writerPoster.id, kind: "bot", author: writer.id, body: "海报标题我来想" });
+    store.setTurnStatus(writerPoster.id, "completed");
+    const sameTicket = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: poke("看初稿"), taskId: report, ticketId: draft.id });
+    store.insertMessage({ sessionId: group.id, turnId: sameTicket.id, kind: "bot", author: reviewer.id, body: "初稿我看过了" });
+    store.setTurnStatus(sameTicket.id, "completed");
+    store.insertMessage({ sessionId: group.id, kind: "user", author: USER_MEMBER, body: "随便聊一句" });
+    const next = poke("接着写");
+
+    const drafting2 = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: next, taskId: report, ticketId: draft.id });
+    const lines = transcriptOf(assemble(store, { sessionId: group.id, botId: writer.id, turnId: drafting2.id, triggerMessageId: next }));
+    expect(lines).toContain("【Reviewer】〔规划「做一张海报，放在 poster.png」〕\n海报先出草图");
+    expect(lines).toContain("【Reviewer】〔任务 02〕\n审稿意见在路上");
+    expect(lines).toContain("【Reviewer】\n初稿我看过了");
+    // The opening line is this plan's with no ticket of its own: nothing to tell apart.
+    expect(lines).toContain("【user】\n写一份周报，交到 report.md，先给 Reviewer 过一遍");
+    expect(lines).toContain("【user】\n随便聊一句");
+    expect(lines).toContain("【user】〔任务 02〕\n审一下");
+    expect(lines).toContain("【user】\n（本轮触发）\n接着写");
+    // The Writer's own line from the poster stays in its own voice, untagged.
+    expect(lines).toContain("海报标题我来想");
+
+    // English names the plan the same way, in English words.
+    const en = transcriptOf(assemble(store, { sessionId: group.id, botId: writer.id, turnId: drafting2.id, triggerMessageId: next, locale: "en" }));
+    expect(en).toContain('【Reviewer】〔plan "做一张海报，放在 poster.png"〕\n海报先出草图');
+    expect(en).toContain("【Reviewer】〔ticket 02〕\n审稿意见在路上");
+    store.close();
+  });
+
+  test("a plan's long title is clipped in the tag", async () => {
+    const { store, writer, reviewer, group, brief, drafting } = await room();
+    const other = store.openTask({ sessionId: group.id, title: "把上个季度所有渠道的投放数据整理成一张可以筛选的表" });
+    const turn = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: brief.id, taskId: other.id });
+    store.insertMessage({ sessionId: group.id, turnId: turn.id, kind: "bot", author: reviewer.id, body: "表头定了" });
+    store.setTurnStatus(turn.id, "completed");
+    const again = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: brief.id, taskId: drafting.task_id! });
+    const lines = transcriptOf(assemble(store, { sessionId: group.id, botId: writer.id, turnId: again.id, triggerMessageId: brief.id }));
+    expect(lines).toContain("【Reviewer】〔规划「把上个季度所有渠道的投放数据整理成一张可…」〕\n表头定了");
+    store.close();
+  });
+
+  test("a job carried into a Bot↔Bot direct says where it was opened, who is on it elsewhere, where each step happened, and what else this Bot is doing", async () => {
+    const { store, writer, reviewer, group, brief, drafting, handoff } = await room();
+    // The Writer is back on the report in the group, still running.
+    const writing = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: handoff.id });
+    // The Reviewer has something of its own going in its direct with you.
+    const mine = store.findDirectSession(USER_MEMBER, reviewer.id)!;
+    const ask = store.insertMessage({ sessionId: mine.id, kind: "user", author: USER_MEMBER, body: "帮我起一个产品名" });
+    const naming = store.createTurn({ sessionId: mine.id, botId: reviewer.id, triggerMessageId: ask.id });
+    const namingTicket = store.createTicket({ taskId: naming.task_id!, title: "候选名" });
+    store.db.run(`UPDATE turns SET ticket_id = ? WHERE id = ?`, [namingTicket.id, naming.id]);
+    // The Writer took the review into a direct with the Reviewer.
+    const dm = store.createBotDirect(writer.id, reviewer.id, { sessionId: group.id, messageId: handoff.id });
+    const opening = store.insertMessage({ sessionId: dm.id, turnId: drafting.id, kind: "bot", author: writer.id, body: "report.md 第二段帮我看看" });
+    const reviewing = store.createTurn({ sessionId: dm.id, botId: reviewer.id, triggerMessageId: opening.id });
+    expect(reviewing.task_id).toBe(drafting.task_id!);
+
+    const situation = situationOf(assemble(store, { sessionId: dm.id, botId: reviewer.id, turnId: reviewing.id, triggerMessageId: opening.id }));
+    expect(situation).toContain("这件事最初的要求（规划「写一份周报，交到 report.md，先给 Reviewer 过一遍」）");
+    expect(situation).toContain("这件事是在群「Brief」里开的。");
+    expect(situation).toContain("这件事别处进行中的轮：Writer（群「Brief」）。");
+    expect(situation).toContain("- 【user】写一份周报，交到 report.md，先给 Reviewer 过一遍（在群「Brief」）");
+    expect(situation).toContain("- 【Writer】初稿在 report.md，@Reviewer 请看（进行中）（在群「Brief」）");
+    expect(situation).toContain("你同时在干的别的事：你和用户的私聊里的规划「帮我起一个产品名」· 任务 01 候选名。");
+
+    // From the Writer's seat in the group: its own direct with the Reviewer is named from its side.
+    const fromGroup = situationOf(assemble(store, { sessionId: group.id, botId: writer.id, turnId: writing.id, triggerMessageId: handoff.id }));
+    expect(fromGroup).toContain("这件事别处进行中的轮：Reviewer（你和Reviewer的私聊）。");
+    expect(fromGroup).not.toContain("这件事是在");
+    expect(fromGroup).not.toContain("你同时在干的别的事");
+
+    const en = situationOf(assemble(store, { sessionId: dm.id, botId: reviewer.id, turnId: reviewing.id, triggerMessageId: opening.id, locale: "en" }));
+    expect(en).toContain('This plan was opened in group "Brief".');
+    expect(en).toContain('Also working on this plan elsewhere: Writer (group "Brief").');
+    expect(en).toContain('Your other live turns: plan "帮我起一个产品名" · ticket 01 候选名 in your direct with the user.');
+    store.close();
+  });
+
+  test("your own turn on the same job elsewhere is named as yours", async () => {
+    const { store, writer, group, handoff } = await room();
+    store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: handoff.id });
+    const direct = store.findDirectSession(USER_MEMBER, writer.id)!;
+    const aside = store.insertMessage({ sessionId: direct.id, kind: "user", author: USER_MEMBER, body: "周报标题别太长" });
+    const plan = store.taskOfTurn(store.listLiveTurns({ sessionId: group.id })[0]!.id)!;
+    const turn = store.createTurn({ sessionId: direct.id, botId: writer.id, triggerMessageId: aside.id, taskId: plan });
+    const situation = situationOf(assemble(store, { sessionId: direct.id, botId: writer.id, turnId: turn.id, triggerMessageId: aside.id }));
+    expect(situation).toContain("这件事是在群「Brief」里开的。");
+    expect(situation).toContain("这件事别处进行中的轮：你（群「Brief」）。");
     store.close();
   });
 });

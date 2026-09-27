@@ -524,7 +524,7 @@ describe("assembleTurnMessages", () => {
       (m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING),
     );
     const body = String(situation?.content).slice(SITUATION_HEADING.length).trim();
-    expect(body).toBe(`这是这件事的第一轮。\n本轮工作目录：${store.getTask(turn.task_id!).dir}/`);
+    expect(body).toBe(`这是这件事的第一轮（规划「hello」）。\n本轮工作目录：${store.getTask(turn.task_id!).dir}/`);
     store.close();
   });
 });

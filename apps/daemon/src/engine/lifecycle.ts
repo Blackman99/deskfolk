@@ -20,7 +20,7 @@ import {
 } from "../artifact-paths";
 import { pathExists } from "../collab-tools";
 import type { CompletionsClient } from "../completions";
-import { assembleTurnMessages } from "../context";
+import { assembleTurnMessages, planTagger, type PlanRef } from "../context";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
 import { isNoWorkCloser } from "../no-work";
 import type { McpHost } from "../mcp-host";
@@ -166,7 +166,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     } = {},
   ): Turn {
     admission?.assertNew();
-    let carry: string | null = null;
+    let carry: { written: string[]; recent: string[]; unread: HeardItem[]; previous: PlanRef | null } | null = null;
     if (mode === "redirect") {
       const livesForBot = store.listLiveTurns({ sessionId, botId });
       let sessionKind: string | null = null;
@@ -179,6 +179,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const written: string[] = [];
       const recent: string[] = [];
       const unread: HeardItem[] = [];
+      const first = toRedirect[0];
+      const previous = first ? { taskId: first.task_id ?? null, ticketId: first.ticket_id ?? null } : null;
       for (const current of toRedirect) {
         const old = lives.get(current.id);
         if (old) {
@@ -193,7 +195,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         const redirected = store.redirectTurn(current.id, counted);
         publishTurn(redirected);
       }
-      carry = redirectCarryNote(store.settingsCached().locale, { written: [...new Set(written)], recent, unread });
+      carry = { written: [...new Set(written)], recent, unread, previous };
     }
     const turn = store.createTurn({
       sessionId,
@@ -204,7 +206,16 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       taskId: opts.taskId,
       ticketId: opts.ticketId,
     });
-    attachLive(turn, carry);
+    // Rendered once the new turn has its plan, so the note can say the old one was on another.
+    let note: string | null = null;
+    if (carry) {
+      const locale = store.settingsCached().locale;
+      const previous = carry.previous
+        ? planTagger(store, { taskId: turn.task_id ?? null, ticketId: turn.ticket_id ?? null }, locale)(carry.previous)
+        : "";
+      note = redirectCarryNote(locale, { ...carry, previous: previous || undefined });
+    }
+    attachLive(turn, note);
     return turn;
   }
 
@@ -223,7 +234,14 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     for (const current of store.listLiveTurns({ sessionId, botId })) {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
-      live.inbox.push({ ...entry, message: trigger });
+      // A group turn hears lines about other jobs too; the tag says which one this is about.
+      const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
+      const tag = planTagger(
+        store,
+        { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
+        store.settingsCached().locale,
+      )(about);
+      live.inbox.push({ ...entry, item: { ...entry.item, tag: tag || undefined }, message: trigger });
       return current;
     }
     return startTurn(sessionId, botId, trigger, "redirect", opts);
