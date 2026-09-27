@@ -294,6 +294,136 @@ test("markdown source is a switch in the annotation row, and a tree row opens Fi
   }
 });
 
+/** Any row copies its path: the workspace one always, the one on the machine once the root is known. */
+test("a tree row's menu copies its workspace path and its absolute path, a folder's as well as a file's", async () => {
+  const note = anAttachment({
+    original_filename: "brief.md",
+    workspace_relpath: "docs/brief.md",
+    mime: "text/markdown",
+  });
+  const copied: string[] = [];
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text: string) => void copied.push(text) },
+  });
+  const mount = (workspacePath: string | null) =>
+    render(ArtifactPreview, {
+      attachment: note,
+      relpath: "docs/brief.md",
+      siblings: [note],
+      api: {
+        kind: "local",
+        getAttachmentBlob: async () => new Blob(["# 简报\n"], { type: "text/markdown" }),
+      } as never,
+      workspacePath,
+      t,
+      onClose: () => {},
+      onSelect: () => {},
+      mode: "cited",
+    });
+  const menuOn = (host: HTMLElement, name: string) => {
+    const row = [...host.querySelectorAll<HTMLButtonElement>(".artifact-tree-row")].find(
+      (button) => button.textContent?.trim().endsWith(name),
+    )!;
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    flushSync();
+    return document.querySelector<HTMLElement>("[data-testid='artifact-tree-menu']")!;
+  };
+  const known = mount("/Users/you/work");
+  try {
+    await Promise.resolve();
+    flushSync();
+    let menu = menuOn(known.host, "brief.md");
+    expect(menu.querySelector("[data-copy-path]")?.textContent?.trim()).toBe(t.stream.artifactCopyPath);
+    expect(menu.querySelector("[data-copy-abs-path]")?.textContent?.trim()).toBe(t.stream.artifactCopyAbsPath);
+    menu.querySelector<HTMLButtonElement>("[data-copy-abs-path]")!.click();
+    flushSync();
+    expect(document.querySelector("[data-testid='artifact-tree-menu']")).toBeNull();
+    menu = menuOn(known.host, "docs");
+    menu.querySelector<HTMLButtonElement>("[data-copy-path]")!.click();
+    flushSync();
+    menu = menuOn(known.host, "docs");
+    menu.querySelector<HTMLButtonElement>("[data-copy-abs-path]")!.click();
+    flushSync();
+    await Promise.resolve();
+    expect(copied).toEqual(["/Users/you/work/docs/brief.md", "docs", "/Users/you/work/docs"]);
+  } finally {
+    known.close();
+  }
+  // Without a workspace root there is no path on the machine to give, so the menu offers only the workspace one.
+  const unknown = mount(null);
+  try {
+    await Promise.resolve();
+    flushSync();
+    const menu = menuOn(unknown.host, "brief.md");
+    expect(menu.querySelector("[data-copy-abs-path]")).toBeNull();
+    menu.querySelector<HTMLButtonElement>("[data-copy-path]")!.click();
+    flushSync();
+    await Promise.resolve();
+    expect(copied.at(-1)).toBe("docs/brief.md");
+  } finally {
+    unknown.close();
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+  }
+});
+
+/** A terminal opens where the row is: in a folder, or in the folder a file sits in. */
+test("a tree row's menu opens a terminal in that folder, or in a file's own folder", async () => {
+  const note = anAttachment({ original_filename: "brief.md", workspace_relpath: "docs/brief.md", mime: "text/markdown" });
+  const dirs: string[] = [];
+  const mount = (withTerminal: boolean) =>
+    render(ArtifactPreview, {
+      attachment: note,
+      relpath: "docs/brief.md",
+      siblings: [note],
+      api: { kind: "local", getAttachmentBlob: async () => new Blob(["# 简报\n"], { type: "text/markdown" }) } as never,
+      workspacePath: "/Users/you/work",
+      t,
+      onClose: () => {},
+      onSelect: () => {},
+      mode: "cited",
+      ...(withTerminal ? { onOpenTerminal: (dir: string) => dirs.push(dir) } : {}),
+    });
+  const menuOn = (host: HTMLElement, name: string) => {
+    const row = [...host.querySelectorAll<HTMLButtonElement>(".artifact-tree-row")].find(
+      (button) => button.textContent?.trim().endsWith(name),
+    )!;
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    flushSync();
+    return document.querySelector<HTMLElement>("[data-testid='artifact-tree-menu']")!;
+  };
+  const view = mount(true);
+  try {
+    await Promise.resolve();
+    flushSync();
+    let menu = menuOn(view.host, "brief.md");
+    const item = menu.querySelector<HTMLButtonElement>("[data-open-terminal]")!;
+    expect(item.textContent?.trim()).toBe(t.stream.artifactOpenTerminal);
+    item.click();
+    flushSync();
+    expect(document.querySelector("[data-testid='artifact-tree-menu']")).toBeNull();
+    menu = menuOn(view.host, "docs");
+    menu.querySelector<HTMLButtonElement>("[data-open-terminal]")!.click();
+    flushSync();
+    expect(dirs).toEqual(["/Users/you/work/docs", "/Users/you/work/docs"]);
+  } finally {
+    view.close();
+  }
+  // A host that cannot open terminals leaves the item out.
+  const bare = mount(false);
+  try {
+    await Promise.resolve();
+    flushSync();
+    const menu = menuOn(bare.host, "brief.md");
+    expect(menu.querySelector("[data-open-terminal]")).toBeNull();
+    (menu.querySelector("[data-reveal]") as HTMLElement).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  } finally {
+    bare.close();
+  }
+});
+
 /** A preview closed before its file lands stops the read, so the next file is not queued behind it. */
 test("closing the preview stops the read still on the way", () => {
   const signals: Array<AbortSignal | undefined> = [];

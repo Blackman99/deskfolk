@@ -285,6 +285,7 @@
 		workspacePath={snapshot.settings.workspace_path}
 		selected={content.selected ?? ''}
 		{t}
+		onOpenTerminal={(dir) => void runtime.openTerminalAt(dir)}
 		onClose={() => onRemoveTab(leafId, tab.id)}
 		onSelect={selectWorkspace}
 	/>
@@ -345,6 +346,7 @@
 				onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
 				onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
 				{t}
+				onOpenTerminal={(dir) => void runtime.openTerminalAt(dir)}
 				onClose={() => onRemoveTab(leafId, tab.id)}
 				onSelect={selectPreview}
 			/>

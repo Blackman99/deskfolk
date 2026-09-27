@@ -636,14 +636,16 @@ export class MessengerRuntime {
   }
 
   /**
-   * A new shell in the workspace, in the list before the next read comes back: a desktop tab
-   * bound to it must not be healed away for naming a session nobody has heard of yet. Null when
-   * there is no workspace or the daemon would not start one; the tab says so itself.
+   * A new shell in the workspace (or in `cwd`, a folder in it), in the list before the next read
+   * comes back: a desktop tab bound to it must not be healed away for naming a session nobody has
+   * heard of yet. Null when there is no workspace or the daemon would not start one; the tab says
+   * so itself.
    */
-  async startTerminal(): Promise<Terminal | null> {
+  async startTerminal(cwd?: string): Promise<Terminal | null> {
     const api = this.api;
-    const where = this.snapshot.settings.workspace_path;
-    if (!api || !where) return null;
+    const root = this.snapshot.settings.workspace_path;
+    const where = cwd ?? root;
+    if (!api || !root || !where) return null;
     try {
       const created = await api.openTerminal(where, 24, 80);
       if (this.api === api && !this.terminals.some((row) => row.id === created.id)) {
@@ -653,6 +655,18 @@ export class MessengerRuntime {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * A shell started in `cwd` and put in front of you: a tab of its own on the desktop, the phone's
+   * terminal page elsewhere, which shows the newest live session first. Nothing opens when the
+   * shell would not start.
+   */
+  async openTerminalAt(cwd: string): Promise<void> {
+    const created = await this.startTerminal(cwd);
+    if (!created) return;
+    if (this.toPane({ kind: "terminal", terminalId: created.id, cwd: created.cwd })) return;
+    this.openTerminal();
   }
 
   /** The daemon is the list's source of truth; events keep it fresh after this first read. */

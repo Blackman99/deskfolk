@@ -9,10 +9,16 @@
 		t: Copy;
 		onOpen: () => void;
 		onReveal: () => void;
+		/** Starts a terminal in the row's folder, or the folder a file sits in; absent where no terminal can open. */
+		onOpenTerminal?: () => void;
+		/** Copies the row's workspace-relative path; a folder's as much as a file's. */
+		onCopyPath?: () => void;
+		/** Copies the row's path on the machine; absent while the workspace root is unknown. */
+		onCopyAbsPath?: () => void;
 		onClose: () => void;
 	};
 
-	let { x, y, t, onOpen, onReveal, onClose }: Props = $props();
+	let { x, y, t, onOpen, onReveal, onOpenTerminal, onCopyPath, onCopyAbsPath, onClose }: Props = $props();
 
 	let menuEl = $state<HTMLDivElement>();
 	let placed = $state<{ x: number; y: number } | null>(null);
@@ -109,6 +115,24 @@
 	<button type="button" class="artifact-tree-menu-item" role="menuitem" data-reveal onclick={() => pick(onReveal)}>
 		{t.stream.artifactReveal}
 	</button>
+	{#if onOpenTerminal}
+		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open-terminal onclick={() => pick(onOpenTerminal)}>
+			{t.stream.artifactOpenTerminal}
+		</button>
+	{/if}
+	{#if onCopyPath || onCopyAbsPath}
+		<div class="artifact-tree-menu-divider" role="separator"></div>
+	{/if}
+	{#if onCopyPath}
+		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-copy-path onclick={() => pick(onCopyPath)}>
+			{t.stream.artifactCopyPath}
+		</button>
+	{/if}
+	{#if onCopyAbsPath}
+		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-copy-abs-path onclick={() => pick(onCopyAbsPath)}>
+			{t.stream.artifactCopyAbsPath}
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -143,6 +167,12 @@
 		font-weight: 500;
 		text-align: left;
 		cursor: pointer;
+	}
+
+	.artifact-tree-menu-divider {
+		height: 1px;
+		margin: 3px 8px;
+		background: var(--line-subtle);
 	}
 
 	.artifact-tree-menu-item:hover,

@@ -315,6 +315,13 @@ export function absWorkspacePath(root: string, rel: string): string | null {
   return `${prefix}/${parts.join("/")}`;
 }
 
+/** Where a terminal opened on a tree row starts: the folder itself, or the one a file sits in. */
+export function terminalDirFor(root: string, path: string, kind: "file" | "dir"): string | null {
+  if (kind === "dir") return absWorkspacePath(root, path);
+  const slash = path.lastIndexOf("/");
+  return absWorkspacePath(root, slash > 0 ? path.slice(0, slash) : ".");
+}
+
 export function bodyMentionsPath(body: string, path: string): boolean {
   const trimmed = path.trim();
   if (!trimmed) return false;

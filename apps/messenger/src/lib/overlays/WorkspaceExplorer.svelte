@@ -18,9 +18,11 @@
 		onClose: () => void;
 		onSelect: (path: string) => void;
 		onOpenSettings?: () => void;
+		/** Starts a terminal in a folder picked from the tree; see ArtifactPreview. */
+		onOpenTerminal?: (dir: string) => void;
 	}
 
-	let { api, workspacePath, selected, t, onClose, onSelect, onOpenSettings }: Props = $props();
+	let { api, workspacePath, selected, t, onClose, onSelect, onOpenSettings, onOpenTerminal }: Props = $props();
 	/** A click outside closes the explorer; a text-selection drag that starts inside never does. */
 	const workspaceBackdrop = backdropClick();
 
@@ -71,6 +73,7 @@
 			{onClose}
 			{onSelect}
 			{onOpenSettings}
+			{onOpenTerminal}
 		/>
 	</div>
 </div>

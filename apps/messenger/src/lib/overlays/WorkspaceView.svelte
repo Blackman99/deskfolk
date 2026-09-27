@@ -18,9 +18,11 @@
 		onClose: () => void;
 		onSelect: (path: string) => void;
 		onOpenSettings?: () => void;
+		/** Starts a terminal in a folder picked from the tree; see ArtifactPreview. */
+		onOpenTerminal?: (dir: string) => void;
 	}
 
-	let { api, workspacePath, selected, t, onClose, onSelect, onOpenSettings }: Props = $props();
+	let { api, workspacePath, selected, t, onClose, onSelect, onOpenSettings, onOpenTerminal }: Props = $props();
 
 	let pane = $state<{
 		requestCloseFromParent: (afterClose?: () => void) => void;
@@ -73,6 +75,7 @@
 			{onClose}
 			onSelect={() => {}}
 			onSelectWorkspacePath={onSelect}
+			{onOpenTerminal}
 		/>
 	{/await}
 {/if}

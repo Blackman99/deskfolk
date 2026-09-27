@@ -841,6 +841,73 @@ test('a snapshot that changes nothing leaves the workspace listing alone', async
   expect(rows()).toEqual(listed);
 });
 
+/** A terminal asked for from the tree takes the screen, so the explorer drawn over it goes first. */
+test('a terminal opened from the workspace explorer closes the explorer and starts in that folder', async () => {
+  const order: string[] = [];
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, {
+    workspaceOpen: true,
+    workspaceSelected: '',
+    closeWorkspace: () => order.push('closeWorkspace'),
+    openTerminalAt: async (dir: string) => void order.push(`openTerminalAt ${dir}`),
+  }));
+  runtime.client = {
+    kind: 'local',
+    workspaceTree: async (path = '') => ({ path, truncated: false, items: [
+      { name: 'docs', path: 'docs', kind: 'dir' },
+      { name: 'plan.md', path: 'plan.md', kind: 'file' },
+    ] }),
+    getWorkspaceFileBlob: async () => new Blob(['# plan'], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  await settle();
+  const row = [...host.querySelectorAll<HTMLElement>('.artifact-tree-row')].find((el) => el.textContent?.trim().endsWith('docs'))!;
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+  flushSync();
+  click(document.querySelector('[data-testid="artifact-tree-menu"] [data-open-terminal]'));
+  await settle();
+  expect(order).toEqual(['closeWorkspace', 'openTerminalAt /fixture/docs']);
+});
+
+/** In a pane the tree stays where it is; the terminal gets a tab of its own elsewhere. */
+test('a terminal opened from a workspace pane starts in the folder that holds the file and leaves the pane alone', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-ws', kind: 'workspace', params: {} }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }));
+  runtime.client = {
+    kind: 'local',
+    workspaceTree: async (path = '') => ({ path, truncated: false, items: [
+      { name: 'docs', path: 'docs', kind: 'dir' },
+      { name: 'plan.md', path: 'plan.md', kind: 'file' },
+    ] }),
+    getWorkspaceFileBlob: async () => new Blob(['# plan'], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  await settle();
+  const row = [...host.querySelectorAll<HTMLElement>('.artifact-tree-row')].find((el) => el.textContent?.trim() === 'plan.md')!;
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+  flushSync();
+  click(document.querySelector('[data-testid="artifact-tree-menu"] [data-open-terminal]'));
+  await settle();
+  expect(runtime.calls.filter((call) => call.name === 'openTerminalAt').map((call) => call.args)).toEqual([['/fixture']]);
+  expect(runtime.calls.some((call) => call.name === 'closeWorkspace')).toBe(false);
+  expect(storedTabs().some((tab) => tab.kind === 'workspace')).toBe(true);
+  localStorage.removeItem('real-bot-workbench-layout');
+});
+
 /** The workspace in a pane is that tab's: a file picked in its tree is what the tab shows next. */
 test('a file picked in a workspace pane opens in that pane and survives a restart', async () => {
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({

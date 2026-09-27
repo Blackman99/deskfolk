@@ -18,6 +18,7 @@ import {
   looksLikeWorkspaceHref,
   parseArtifactHref,
   stripSvgActiveContent,
+  terminalDirFor,
 } from "./artifacts.ts";
 
 test("artifactKind maps extensions and directories", () => {
@@ -143,6 +144,13 @@ test("absWorkspacePath joins inside the root and rejects escapes", () => {
   expect(absWorkspacePath("/Users/me/ws", "../secret.txt")).toBeNull();
   expect(absWorkspacePath("/Users/me/ws", "a/../../secret.txt")).toBeNull();
   expect(absWorkspacePath("/Users/me/ws", "/etc/passwd")).toBeNull();
+});
+
+test("terminalDirFor opens a folder in itself and a file in the folder that holds it", () => {
+  expect(terminalDirFor("/Users/me/ws", "out/assets", "dir")).toBe("/Users/me/ws/out/assets");
+  expect(terminalDirFor("/Users/me/ws/", "out/assets/logo.png", "file")).toBe("/Users/me/ws/out/assets");
+  expect(terminalDirFor("/Users/me/ws", "README.md", "file")).toBe("/Users/me/ws");
+  expect(terminalDirFor("/Users/me/ws", "../elsewhere", "dir")).toBeNull();
 });
 
 test("handedOverPaths keeps a bare 附件： line and the stored rows", () => {

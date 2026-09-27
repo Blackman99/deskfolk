@@ -30,6 +30,7 @@
 	import type { MediaSourceHandle } from '../remote/media-source.ts';
 	import {
 		absWorkspacePath,
+		terminalDirFor,
 		artifactByteSource,
 		artifactKind,
 		isInAppPreviewKind,
@@ -60,6 +61,7 @@
 	import { openWorkspacePath } from './open-workspace.ts';
 	import FileDownload, { type FileDownloadNote } from './FileDownload.svelte';
 	import { isTauri } from '../tauri.ts';
+	import { copyText } from '../clipboard.ts';
 	import {
 		clampArtifactTreeWidth,
 		loadArtifactTreeWidth,
@@ -79,6 +81,8 @@
 		onSelect: (att: Attachment) => void;
 		mode?: 'cited' | 'workspace';
 		onSelectWorkspacePath?: (path: string) => void;
+		/** Starts a terminal in this folder (absolute); without it the tree offers none. */
+		onOpenTerminal?: (dir: string) => void;
 		forceTree?: boolean;
 		/** The work dir this message belongs to; its whole job is listed, not just this message. */
 		taskId?: string | null;
@@ -113,6 +117,7 @@
 		onSelect,
 		mode = 'cited',
 		onSelectWorkspacePath,
+		onOpenTerminal,
 		forceTree = false,
 		taskId = null,
 		target = null,
@@ -956,6 +961,13 @@
 		treeMenu = { node, x: event.clientX, y: event.clientY };
 	}
 
+	/** Where the right-clicked row sits on the machine; unknown until the workspace root is. */
+	const treeMenuAbsPath = $derived(treeMenu && workspacePath ? absWorkspacePath(workspacePath, treeMenu.node.path) : null);
+	/** The folder a terminal opened from that row starts in: the row itself, or a file's own folder. */
+	const treeMenuTerminalDir = $derived(
+		treeMenu && workspacePath && onOpenTerminal ? terminalDirFor(workspacePath, treeMenu.node.path, treeMenu.node.kind) : null
+	);
+
 	function selectNode(node: ArtifactTreeNode): void {
 		if (mode === 'workspace' && node.kind === 'dir') return;
 		// Picking a file is a request to look at it, so the list gets out of the way.
@@ -1602,6 +1614,9 @@
 		{t}
 		onOpen={() => void openOnDisk(treeMenu?.node.path ?? '', false)}
 		onReveal={() => void openOnDisk(treeMenu?.node.path ?? '', true)}
+		onOpenTerminal={treeMenuTerminalDir && onOpenTerminal ? () => onOpenTerminal(treeMenuTerminalDir) : undefined}
+		onCopyPath={() => copyText(treeMenu?.node.path ?? '')}
+		onCopyAbsPath={treeMenuAbsPath ? () => copyText(treeMenuAbsPath) : undefined}
 		onClose={() => (treeMenu = null)}
 	/>
 {/if}

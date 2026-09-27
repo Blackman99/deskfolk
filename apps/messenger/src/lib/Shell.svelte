@@ -1075,6 +1075,23 @@
 		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
 		else open();
 	}
+
+	/**
+	 * A terminal asked for from a file tree opens in the workbench or, on a phone, as the terminal
+	 * page. A tree drawn over the screen would hide it either way, so that one closes first,
+	 * asking about an unsaved edit the way leaving it any other way does.
+	 */
+	function openTerminalFromWorkspace(dir: string): void {
+		const open = () => void runtime.openTerminalAt(dir);
+		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
+		else open();
+	}
+
+	function openTerminalFromPreview(dir: string): void {
+		const open = () => void runtime.openTerminalAt(dir);
+		if (!wide && previewPane) previewPane.requestCloseFromParent(open);
+		else open();
+	}
 </script>
 
 <svelte:window
@@ -1599,6 +1616,7 @@
 				onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
 				onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
 				{t}
+				onOpenTerminal={openTerminalFromPreview}
 				onClose={closeArtifactPreview}
 				onSelect={(att) =>
 					openArtifactPath(
@@ -1656,6 +1674,7 @@
 			{t}
 			onClose={closeWorkspaceExplorer}
 			onOpenSettings={() => navigateMobile('settings')}
+			onOpenTerminal={openTerminalFromWorkspace}
 			onSelect={openWorkspaceFile}
 		/>
 	{/if}
