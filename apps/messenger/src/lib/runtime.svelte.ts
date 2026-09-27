@@ -36,6 +36,7 @@ import { ApiError, probeHealth } from "./api.ts";
 import type { FileProgress } from "./file-progress.ts";
 import { copyFor } from "./copy.ts";
 import { CommandActivity } from "./chat/command-activity.ts";
+import { TurnActivity, type ToolStep } from "./chat/turn-activity.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { classifyHealth } from "./health.ts";
@@ -47,7 +48,7 @@ import { EventSync } from "./event-sync.ts";
 import { SessionView } from "./session-view.svelte.ts";
 import type { TraceFocus } from "./overlays/task-trace.ts";
 import type { PaneContent } from "./workbench/pane-content.ts";
-import { stopTarget } from "./chat/transcript.ts";
+import { isLiveStatus, stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
@@ -393,6 +394,18 @@ export class MessengerRuntime {
    */
   readonly activity = new CommandActivity();
   activityRevision = $state(0);
+  /**
+   * The step each running turn is in, or last finished — the line that replaces a bare "思考中".
+   * Its own revision: command output moves {@link activityRevision} many times a second, and the
+   * lines under every message need not follow that.
+   */
+  private readonly turnActivity = new TurnActivity();
+  toolRevision = $state(0);
+  /**
+   * When this client last started listening for tool frames. They are not replayed, so a turn
+   * that began earlier may have steps it never saw.
+   */
+  listeningSince = Date.now();
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** When the loop owes its next attempt. A wake-up may bring the timer here, never past it. */
   private nextAttemptAt = 0;
@@ -3404,6 +3417,11 @@ export class MessengerRuntime {
     if (event.event === "spend.created" || event.event === "spend.repriced") this.spendRevision += 1;
     if (event.event === "turn.upsert") {
       this.claimFocus(event.session_id, event.trigger_message_id, event.id);
+      // A finished turn keeps nothing of what it was doing: the transcript and its trace remain.
+      if (!isLiveStatus(event.status)) {
+        this.activity.forget(event.id);
+        this.turnActivity.forget(event.id);
+      }
       if (this.boardShows(event.task_id)) this.traceReload += 1;
     }
     if ((event.event === "message.created" || event.event === "message.upsert") && this.boardShows(event.task_id)) {
@@ -3446,6 +3464,10 @@ export class MessengerRuntime {
     }
     this.rememberDraftOnDisconnect();
     this.boundedReadSent.clear();
+    // A step that ended while the link was down would read as running forever.
+    this.turnActivity.clear();
+    this.listeningSince = Date.now();
+    this.toolRevision += 1;
     this.connectFailures += 1;
     this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
     this.teardownSocket();
@@ -3497,6 +3519,8 @@ export class MessengerRuntime {
     if (!tool) return false;
     this.activity.applyTool(tool);
     this.activityRevision += 1;
+    this.turnActivity.applyTool(tool);
+    this.toolRevision += 1;
     // A command's bytes are only worth carrying while someone can see them run — and only for
     // the conversation that is open. A phone on a radio should not receive the output of a
     // build happening in a session nobody is looking at.
@@ -3504,6 +3528,24 @@ export class MessengerRuntime {
     if (tool.phase === "started" && this.watchesTurn(tool.turn_id)) void this.watchCommand(streamId);
     if (tool.phase === "exited") void this.unwatchCommand(streamId);
     return true;
+  }
+
+  /** The step this turn is in or last finished; reading it follows the next tool frame. */
+  stepOf(turnId: string): ToolStep | null {
+    void this.toolRevision;
+    return this.turnActivity.latestFor(turnId);
+  }
+
+  /** Every step this client has seen the turn take, oldest first. */
+  stepsOf(turnId: string): readonly ToolStep[] {
+    void this.toolRevision;
+    return this.turnActivity.stepsFor(turnId);
+  }
+
+  /** Earlier steps of a long turn that fell off the front of {@link stepsOf}. */
+  droppedStepsOf(turnId: string): number {
+    void this.toolRevision;
+    return this.turnActivity.droppedFor(turnId);
   }
 
   /** Whether this turn belongs to the conversation on screen. */

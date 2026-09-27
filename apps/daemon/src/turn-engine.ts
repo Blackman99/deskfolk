@@ -83,6 +83,7 @@ import {
   resolveBodyPathsToWorkDir,
   writtenPathFromToolData,
 } from "./artifact-paths";
+import { toolTargetOf } from "./tool-activity";
 import { classifyPath } from "./workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "./workspace-tools";
 import { processWake, type WakeWatch } from "./wake";
@@ -166,6 +167,8 @@ type Live = {
   mentionWarned: Set<string>;
   /** Tool names in the current hop's tools array; read_skill flags `mcp_` names a body cites that are missing. */
   toolNames: Set<string>;
+  /** The current hop's MCP tools by model-facing name: which server, and its own name there. */
+  mcpTools: Map<string, { server: string; tool: string }>;
   spoke: boolean;
   drainRejection: boolean;
   /** The closing check ran (or was skipped for good) this turn; it never runs twice. */
@@ -1040,6 +1043,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       workDir: store.turnWorkDir(turn.id),
       mentionWarned: new Set(),
       toolNames: new Set(),
+      mcpTools: new Map(),
       spoke: false,
       drainRejection: false,
       closingChecked: false,
@@ -1229,6 +1233,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       });
       const tools = pace === "last" ? [] : [...builtinTools(target.locale), ...listed.tools];
       live.toolNames = new Set(tools.map((tool) => tool.function.name));
+      live.mcpTools = new Map(listed.guides.flatMap((guide) =>
+        guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName }] as const)));
       live.partial = "";
       publishTurn(current, "");
       let result;
@@ -1547,8 +1553,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (bounce) {
         result = { ok: false, error: { code: "closing_check", message: bounce }, emitted: [] };
       } else {
+        const target = toolTargetOf(call.name, args);
+        const mcpTool = live.mcpTools.get(call.name);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
-          name: call.name, arguments: call.arguments, phase: "started" });
+          name: call.name, arguments: call.arguments, phase: "started",
+          ...(target ? { target } : {}),
+          ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}) });
         result = await dispatchTool(turn, live, call.name, args, streamId);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,

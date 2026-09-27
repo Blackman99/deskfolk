@@ -28,7 +28,9 @@ export function parseToolFrame(value: unknown): ToolFrame | null {
   if (frame.type !== "tool") return null;
   if (typeof frame.turn_id !== "string" || typeof frame.id !== "string" || typeof frame.name !== "string") return null;
   if (frame.phase !== "started" && frame.phase !== "exited") return null;
-  if (frame.command !== undefined && typeof frame.command !== "string") return null;
+  for (const key of ["command", "target", "mcp_server", "mcp_tool"] as const) {
+    if (frame[key] !== undefined && typeof frame[key] !== "string") return null;
+  }
   if (frame.exit_code !== undefined && frame.exit_code !== null && !Number.isSafeInteger(frame.exit_code)) return null;
   if (frame.duration_ms !== undefined && !Number.isSafeInteger(frame.duration_ms)) return null;
   return frame as unknown as ToolFrame;

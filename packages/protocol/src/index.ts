@@ -1296,6 +1296,15 @@ export type ToolFrame = {
   phase: "started" | "exited";
   /** The `shell` command line, when that is what ran. */
   command?: string;
+  /**
+   * What the call is about, in a few words: the path a file tool touches, the name a roster or
+   * skill tool acts on, the subject a memory is filed under. Clipped, and never a body — a write's
+   * content or a message's text stays in the turn's record. Absent when the arguments name nothing.
+   */
+  target?: string;
+  /** For an MCP tool: its server's name and the tool's own name, not the model-facing `mcp_…` one. */
+  mcp_server?: string;
+  mcp_tool?: string;
   exit_code?: number | null;
   duration_ms?: number;
 };
@@ -1349,6 +1358,10 @@ export type ClientEvent =
        * the turn's, not this.
        */
       phase?: "announced" | "started" | "exited";
+      /** On `started`: see {@link ToolFrame}'s fields of the same names. */
+      target?: string;
+      mcp_server?: string;
+      mcp_tool?: string;
       exit_code?: number | null;
       duration_ms?: number;
     }

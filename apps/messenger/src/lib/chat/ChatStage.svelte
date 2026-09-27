@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary,
+	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary, type Turn,
 		type Annotation,
 	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
@@ -52,7 +52,8 @@
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import { getStarterOptions } from './starter-prompts.ts';
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
-	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
+	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey, type ReplyingEntry } from './transcript.ts';
+	import { describeStep, stepText, turnSteps, type StepLine, type TurnSteps } from './turn-activity.ts';
 	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
 	import { deferWhileDragging } from '../workbench/pane-resize.svelte.ts';
 	import { INDEX_MIN_MARKS, activeIndexMark, messageIndexMarks, type IndexMark } from './message-index.ts';
@@ -569,6 +570,40 @@
 		}
 	});
 
+	/** What a thinking Bot is doing, once its turn has started a step: see turn-activity.ts. */
+	function stepLineOf(entry: ReplyingEntry): StepLine | null {
+		if (!entry.turn_id) return null;
+		const step = runtime.stepOf(entry.turn_id);
+		return step ? describeStep(step, t.chat.activity, nowMs) : null;
+	}
+
+	/** Every step behind that line, for the list a click on it opens. */
+	function stepsOfEntry(entry: ReplyingEntry): TurnSteps | null {
+		if (!entry.turn_id) return null;
+		return turnSteps(
+			runtime.stepsOf(entry.turn_id),
+			runtime.droppedStepsOf(entry.turn_id),
+			entry.created_at,
+			runtime.listeningSince,
+			t.chat.activity,
+			nowMs
+		);
+	}
+
+	/** What one of its commands has printed, if this conversation was watching when it ran. */
+	function commandOutput(entry: ReplyingEntry, callId: string): string | null {
+		if (!entry.turn_id) return null;
+		void runtime.activityRevision;
+		const id = `${entry.turn_id}:${callId}`;
+		return runtime.activity.forTurn(entry.turn_id).find((row) => row.id === id)?.text || null;
+	}
+
+	/** A reply that is streaming says so, unless the turn has moved on to a tool call since. */
+	function streamingLabel(turn: Turn): string {
+		const step = runtime.stepOf(turn.id);
+		return step?.running ? stepText(describeStep(step, t.chat.activity, nowMs)) : t.stream.streaming;
+	}
+
 	function who(message: Message): string {
 		if (message.author === USER_MEMBER) return t.common.you;
 		return botsById.get(message.author)?.name ?? t.top.deleted;
@@ -1015,12 +1050,16 @@
 			{#if group.kind === 'replying'}
 				{@const block = group.items[0]}
 				{#if block.type === 'replying'}
-					<div class="replying-list flex flex-col gap-5 self-start pt-2 px-2 pb-1 mt-[-8px]" aria-live="polite">
+					<div class="replying-list flex flex-col gap-5 self-start max-w-full pt-2 px-2 pb-1 mt-[-8px]" aria-live="polite">
 						<ReplyingIndicator
 							entries={block.entries}
 							{botsById}
 							isUser={false}
 							thinkingText={statusLabels.running}
+							stepLine={stepLineOf}
+							stepsOf={stepsOfEntry}
+							outputOf={commandOutput}
+							activityCopy={t.chat.activity}
 							deletedText={t.top.deleted}
 							{onOpenProfile}
 						/>
@@ -1294,6 +1333,10 @@
 										{botsById}
 										isUser={false}
 										thinkingText={statusLabels.running}
+										stepLine={stepLineOf}
+										stepsOf={stepsOfEntry}
+										outputOf={commandOutput}
+										activityCopy={t.chat.activity}
 										deletedText={t.top.deleted}
 										{onOpenProfile}
 									/>
@@ -1446,6 +1489,10 @@
 													{botsById}
 													isUser={true}
 													thinkingText={statusLabels.running}
+													stepLine={stepLineOf}
+													stepsOf={stepsOfEntry}
+													outputOf={commandOutput}
+													activityCopy={t.chat.activity}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
 												/>
@@ -1549,7 +1596,7 @@
 									{@const liveElapsed = formatLiveDuration(single.turn.created_at, nowMs)}
 									<span class="streaming-status inline-flex items-center gap-2 text-11p5 text-accent font-medium">
 										<span class="pulse"></span>
-										{t.stream.streaming}
+										{streamingLabel(single.turn)}
 									</span>
 									<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
 									{#if selected?.kind !== 'group'}
@@ -1606,7 +1653,7 @@
 												{@const liveElapsed = formatLiveDuration(item.turn.created_at, nowMs)}
 												<span class="streaming-status inline-flex items-center gap-2 text-11p5 text-accent font-medium">
 													<span class="pulse"></span>
-													{t.stream.streaming}
+													{streamingLabel(item.turn)}
 												</span>
 												<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
 												{#if selected?.kind !== 'group'}
@@ -1638,7 +1685,7 @@
 									{#if item.type === 'streaming'}
 										<article class="msg is-stream">
 											<div class="who">
-												{botAuthor?.name ?? t.top.deleted} · {t.stream.streaming}
+												{botAuthor?.name ?? t.top.deleted} · {streamingLabel(item.turn)}
 												<span class="pulse"></span>
 											</div>
 											<MarkdownBody
@@ -1765,6 +1812,10 @@
 													{botsById}
 													isUser={false}
 													thinkingText={statusLabels.running}
+													stepLine={stepLineOf}
+													stepsOf={stepsOfEntry}
+													outputOf={commandOutput}
+													activityCopy={t.chat.activity}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
 												/>
@@ -2443,6 +2494,8 @@
 		flex-direction: column;
 		gap: 5px;
 		margin-top: 5px;
+		/* The line names a path or a command: it clips inside the message's width, never past it. */
+		max-width: 100%;
 	}
 
 	.msg-attached-replying.is-user {

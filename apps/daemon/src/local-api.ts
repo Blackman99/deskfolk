@@ -256,6 +256,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         name: event.name ?? "",
         phase: event.phase,
         ...(shellCommandOf(event.name, event.arguments) ? { command: shellCommandOf(event.name, event.arguments) } : {}),
+        ...(event.target ? { target: event.target } : {}),
+        ...(event.mcp_server ? { mcp_server: event.mcp_server } : {}),
+        ...(event.mcp_tool ? { mcp_tool: event.mcp_tool } : {}),
         ...(event.exit_code === undefined ? {} : { exit_code: event.exit_code }),
         ...(event.duration_ms === undefined ? {} : { duration_ms: event.duration_ms }),
       });

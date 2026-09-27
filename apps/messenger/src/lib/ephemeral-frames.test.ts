@@ -21,6 +21,15 @@ test("a tool frame is recognised, and an unknown phase is not", () => {
   expect(parseToolFrame({ type: "event", payload: {} })).toBeNull();
 });
 
+test("a tool frame may say what the call is about, as text", () => {
+  const read = { ...tool, name: "read_file", command: undefined, target: "src/app.ts" };
+  expect(parseToolFrame(read)?.target).toBe("src/app.ts");
+  const mcp = parseToolFrame({ ...tool, name: "mcp_GitHub_create_issue", mcp_server: "GitHub", mcp_tool: "create-issue" });
+  expect([mcp?.mcp_server, mcp?.mcp_tool]).toEqual(["GitHub", "create-issue"]);
+  expect(parseToolFrame({ ...read, target: 7 })).toBeNull();
+  expect(parseToolFrame({ ...tool, mcp_server: {} })).toBeNull();
+});
+
 test("a sequenced event is not ephemeral", () => {
   const event = { type: "event", event_instance_id: "a".repeat(32), seq: 3, payload: { event: "bot.upsert" } };
   expect(isEphemeralFrame(event)).toBe(false);

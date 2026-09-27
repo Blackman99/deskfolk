@@ -5,6 +5,8 @@ import { join } from "node:path";
 import type { StreamFrame, ToolFrame } from "@real-bot/protocol";
 import type { CompletionOk } from "./completions";
 import { createLocalApi } from "./local-api";
+import type { McpHost } from "./mcp-host";
+import type { ChatTool } from "./prompts/tool-schema";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 
@@ -141,6 +143,79 @@ test("a client that never watches is sent nothing", async () => {
 
     expect(frames.some((frame) => frame.type === "tool")).toBe(true);
     expect(frames.some((frame) => frame.type === "stream")).toBe(false);
+  } finally {
+    socket.close();
+    api.terminals.shutdown();
+    await api.engine.close();
+    store.close();
+    await server.stop(true);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("every tool's start says what it is about, and never carries a body", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "bot-activity-")));
+  const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+  const issue: ChatTool = {
+    type: "function",
+    function: { name: "mcp_GitHub_create_issue", description: "Open an issue", parameters: { type: "object", properties: {} } },
+  };
+  const mcp: McpHost = {
+    listChatTools: async () => [issue],
+    listForTurn: async () => ({
+      tools: [issue],
+      guides: [{ name: "GitHub", instructions: null, tools: [{ modelName: issue.function.name, description: "", toolName: "create-issue" }] }],
+    }),
+    inspect: async () => ({ instructions: null, tools: [] }),
+    call: async () => ({ ok: true, data: { number: 7 } }),
+    close: async () => {},
+  };
+  const api = createLocalApi({
+    store, token: "fixture", schedule: false, mcp,
+    completions: {
+      async complete(request) {
+        const results = request.messages.filter((m) => m.role === "tool").length;
+        if (results === 0) return call("write_file", { path: "notes/plan.md", content: "SECRET_BODY" });
+        if (results === 1) return call("mcp_GitHub_create_issue", { title: "SECRET_TITLE" });
+        return { ok: true, content: "done", toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
+      },
+      async judge() { throw new Error("direct turns do not judge"); },
+    },
+  });
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
+  const origin = `http://${server.hostname}:${server.port}`;
+  const tools: ToolFrame[] = [];
+  const socket = new WebSocket(`${origin.replace("http", "ws")}/v1/events`);
+  await new Promise<void>((resolve) => { socket.onopen = () => resolve(); });
+  socket.send(JSON.stringify({ type: "auth", token: "fixture", protocol: "sync-v1" }));
+  let authed!: () => void;
+  const ready = new Promise<void>((resolve) => { authed = resolve; });
+  socket.onmessage = (event) => {
+    const frame = JSON.parse(String(event.data));
+    if (frame.type === "ready") authed();
+    if (frame.type === "tool") tools.push(frame);
+  };
+
+  try {
+    await ready;
+    await store.patchSettings({ workspace_path: root, endpoint_base_url: "http://127.0.0.1:1/v1",
+      endpoint_api_key: "fixture", endpoint_models: ["fixture"], endpoint_default_model: "fixture" });
+    const bot = store.createBot({ name: "Planner", duties: "plan", boundaries: "stay" });
+    const trigger = store.insertMessage({ sessionId: bot.direct_session.id, kind: "user", author: "user", body: "记一下" });
+    await api.engine.handleInboundMessage(trigger, { fromUser: true });
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline && tools.filter((frame) => frame.phase === "exited").length < 2) await Bun.sleep(50);
+
+    const started = tools.filter((frame) => frame.phase === "started");
+    expect(started.map((frame) => frame.name)).toEqual(["write_file", "mcp_GitHub_create_issue"]);
+    expect(started[0]!.target).toBe("notes/plan.md");
+    expect(started[0]!.mcp_server).toBeUndefined();
+    // The model-facing name is folded; the line a person reads uses the server's own names.
+    expect(started[1]!.mcp_server).toBe("GitHub");
+    expect(started[1]!.mcp_tool).toBe("create-issue");
+    expect(started[1]!.target).toBeUndefined();
+    // A write's content and an MCP call's arguments stay in the turn's record.
+    expect(JSON.stringify(tools)).not.toContain("SECRET_");
   } finally {
     socket.close();
     api.terminals.shutdown();

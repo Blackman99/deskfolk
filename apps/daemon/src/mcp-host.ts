@@ -188,6 +188,7 @@ export function createMcpHost(options: McpHostOptions): McpHost {
         tools: tools.map((tool) => ({
           modelName: tool.modelName,
           description: tool.description,
+          toolName: tool.toolName,
         })),
       });
     }

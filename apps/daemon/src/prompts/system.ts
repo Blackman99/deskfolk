@@ -92,7 +92,8 @@ export type McpPromptGuide = {
   instructions: string | null;
   /** Roster-level note written by you or a Bot; rendered first and outranks `instructions`. */
   usageNote?: string | null;
-  tools: Array<{ modelName: string; description: string }>;
+  /** `toolName` is the server's own name for it, for the line a watcher sees while it runs. */
+  tools: Array<{ modelName: string; description: string; toolName?: string }>;
 };
 
 export type SkillPromptEntry = {
