@@ -85,16 +85,43 @@ export function getShikiHighlighter(): Promise<HighlighterCore> {
   return highlighterPromise;
 }
 
+type Grammar = ReturnType<HighlighterCore["getLanguage"]>;
+
+const recovering = new WeakSet<Grammar>();
+
+/**
+ * Shiki (and `@shikijs/monaco` after it) tokenizes each line under a 500 ms limit and starts the
+ * next line from the rule stack wherever a line that ran out stopped, mid-rule. In WebKit the first
+ * line after a cold start pays for compiling the grammar's regexes and runs out (a JS file nearly
+ * always), and every line after it was read from inside that rule: the editor lost the colours of
+ * the whole file, a light-theme code block the colours of its strings. The line gets one more try,
+ * its regexes compiled by then; a line that still runs out hands on the stack it started with, as
+ * VS Code does.
+ */
+export function recoverFromTimeLimit(grammar: Grammar): void {
+  if (recovering.has(grammar)) return;
+  recovering.add(grammar);
+  const tokenizeLine2 = grammar.tokenizeLine2.bind(grammar);
+  grammar.tokenizeLine2 = (line, prev, timeLimit) => {
+    let result = tokenizeLine2(line, prev, timeLimit);
+    if (result.stoppedEarly) result = tokenizeLine2(line, prev, timeLimit);
+    return result.stoppedEarly && prev ? { ...result, ruleStack: prev } : result;
+  };
+}
+
 export async function ensureHighlightLang(lang: HighlightLang): Promise<void> {
   if (lang === "plaintext") return;
   const highlighter = await getShikiHighlighter();
-  if (highlighter.getLoadedLanguages().includes(lang)) return;
-  const loaded = unwrapDefault(await LANG_LOADERS[lang]());
-  if (Array.isArray(loaded)) {
-    await highlighter.loadLanguage(...(loaded as LanguageInput[]));
-  } else {
-    await highlighter.loadLanguage(loaded as LanguageInput);
+  // Already loaded can mean loaded as another language's embed (HTML brings JS and CSS).
+  if (!highlighter.getLoadedLanguages().includes(lang)) {
+    const loaded = unwrapDefault(await LANG_LOADERS[lang]());
+    if (Array.isArray(loaded)) {
+      await highlighter.loadLanguage(...(loaded as LanguageInput[]));
+    } else {
+      await highlighter.loadLanguage(loaded as LanguageInput);
+    }
   }
+  recoverFromTimeLimit(highlighter.getLanguage(lang));
 }
 
 
