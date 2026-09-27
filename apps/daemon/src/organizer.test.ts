@@ -44,7 +44,7 @@ afterEach(async () => {
   while (closes.length) await closes.pop()!();
 });
 
-async function harness(answer: Answer) {
+async function harness(answer: Answer, script: (messages: ChatMessage[]) => CompletionOk = () => say("初稿在 draft.md")) {
   const root = mkdtempSync(join(tmpdir(), "organizer-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: ChatMessage[][] = [];
@@ -62,7 +62,7 @@ async function harness(answer: Answer) {
     completions: {
       async complete(request) {
         seen.push(request.messages);
-        return say("初稿在 draft.md");
+        return script(request.messages);
       },
       async judge(request) {
         if (request.messages[0]?.content === ORGANIZER_SYSTEM) {
@@ -230,6 +230,106 @@ test("in a group, every turn a filed line opens lands in its plan and ticket", a
   expect(turns.every((turn) => turn.task_id === plan.id && turn.ticket_id === ticket.id)).toBe(true);
   expect(h.organized.filter((payload) => payload.mode === "message")).toHaveLength(1);
   expect(h.store.getMessage(trigger.id)).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
+});
+
+function call(name: string, args: Record<string, unknown>): CompletionOk {
+  return { ok: true, content: "", toolCalls: [{ id: crypto.randomUUID(), name, arguments: JSON.stringify(args) }], finishReason: "tool_calls", hadChoices: true, usage: null, missingReason: null };
+}
+
+/** A two-ticket plan, the Writer's in progress and the Reviewer's to do; a settle changes nothing. */
+function twoTickets(payload: OrganizerPayload): string {
+  if (payload.mode === "message" && !payload.current_plan) {
+    return JSON.stringify({
+      decision: "new",
+      plan: { kind: "周报", goal: "写一份周报", acceptance: ["交到 report.md"] },
+      tickets: [
+        { id: "new-1", title: "初稿", spec: "写出第一版", status: "doing", worker: "Writer" },
+        { id: "new-2", title: "审稿", spec: "过一遍", status: "todo", worker: "Reviewer" },
+      ],
+      message_ticket: "new-1",
+    });
+  }
+  return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+}
+
+test("a plan that goes quiet with tickets open calls one Bot back; when nothing moves after that, you are told once", async () => {
+  const h = await harness(twoTickets);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+  const group = h.store.createGroup({ name: "周报组", members: [writer.bot.id, reviewer.bot.id] });
+  const trigger = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@Writer 写一份周报" });
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+
+  const nudges = () =>
+    h.store.db
+      .query<{ id: string; bot_id: string; ticket_id: string | null; fired_turn_id: string | null; note: string }, []>(
+        "SELECT id, bot_id, ticket_id, fired_turn_id, note FROM check_backs WHERE kind = 'plan_nudge'",
+      )
+      .all();
+  await until(() => nudges().length === 1 && nudges()[0]!.fired_turn_id !== null);
+  const plan = h.store.sessionCurrentTask(group.id)!;
+  const [draft, review] = h.store.listTickets(plan.id);
+  const nudge = nudges()[0]!;
+  // The Bot on the first open ticket is called back, into that ticket, with every open ticket named.
+  expect(nudge).toMatchObject({ bot_id: writer.bot.id, ticket_id: draft!.id });
+  expect(nudge.note).toContain("01《初稿》（进行中，Writer）");
+  expect(nudge.note).toContain("02《审稿》（待做，Reviewer）");
+  const woken = h.store.getTurn(nudge.fired_turn_id!);
+  expect(woken).toMatchObject({ bot_id: writer.bot.id, task_id: plan.id, ticket_id: draft!.id });
+  expect(h.store.getMessage(woken.trigger_message_id).body).toStartWith("回看：规划静下来了");
+
+  // The call-back handed nothing over and no ticket moved: the session says so, and you get one notification.
+  await until(() => h.store.listMainMessages(group.id, 20).some((m) => m.kind === "system" && m.body.startsWith("这件事停下了")));
+  const stalled = h.store.listMainMessages(group.id, 20).find((m) => m.body.startsWith("这件事停下了"))!;
+  expect(stalled.body).toContain("已经叫过Writer一次");
+  const notice = h.store.db
+    .query<{ kind: string; fail_kind: string | null; message_id: string | null }, [string]>(
+      "SELECT kind, fail_kind, message_id FROM notifications WHERE semantic_key = ?",
+    )
+    .get(`stalled:${nudge.id}`);
+  expect(notice).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: stalled.id });
+  await Bun.sleep(150);
+  expect(nudges()).toHaveLength(1);
+  expect(h.store.listMainMessages(group.id, 30).filter((m) => m.body.startsWith("这件事停下了"))).toHaveLength(1);
+  expect(h.store.getTicket(review!.id).status).toBe("todo");
+});
+
+test("a turn filed under a ticket moves it to doing when it starts writing and to review when it hands the files over", async () => {
+  let hop = 0;
+  const h = await harness(
+    (payload) =>
+      payload.current_plan
+        ? JSON.stringify({ decision: "continue", plan: payload.current_plan.spec, tickets: [] })
+        : JSON.stringify({
+            decision: "new",
+            plan: { goal: "写一份周报" },
+            tickets: [{ id: "new-1", title: "初稿", status: "todo", worker: "Writer" }],
+            message_ticket: "new-1",
+          }),
+    () => {
+      hop += 1;
+      return hop === 1 ? call("shell", { command: "printf draft > draft.md" }) : say("初稿在 draft.md");
+    },
+  );
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报" });
+  const done = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await done;
+  const plan = h.store.sessionCurrentTask(session)!;
+  const ticket = h.store.listTickets(plan.id)[0]!;
+  expect(ticket).toMatchObject({ status: "review", worker: writer.bot.id });
+  expect(
+    h.events
+      .filter((event) => event.event === "ticket.upsert")
+      .map((event) => (event as { status: string }).status)
+      .filter((status, i, all) => all[i - 1] !== status),
+  ).toEqual(["todo", "doing", "review"]);
+  // What it ran is on record for the closing check and the organizer.
+  const [turn] = h.turnOf(trigger.id);
+  expect(h.store.turnRuns(turn!.id)).toMatchObject([{ tool: "shell", command: "printf draft > draft.md", exit_code: 0, ok: 1, ticket_id: ticket.id }]);
+  expect(readFileSync(join(h.root, plan.dir, PLAN_MAP_FILE), "utf8")).toContain("| 01 | 初稿 | 待验收 | Writer |");
 });
 
 /** The organizer alone, over a store, answering each call with the next of `answers`. */

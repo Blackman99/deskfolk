@@ -55,6 +55,8 @@ describe("what the organizer reads", () => {
     const opener = store.postMessage(group.id, { body: "写一份周报，交到 report.md" });
     const turn = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: opener.id, taskId: plan.id, ticketId: ticket.id });
     store.insertMessage({ sessionId: group.id, turnId: turn.id, kind: "bot", author: writer.id, body: "初稿在 draft.md", paths: [`${ticket.dir}/draft.md`, `${ticket.dir}/tool-results/x.json`] });
+    store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "bun   test\n", exitCode: 1, ok: true });
+    store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "sleep 999", exitCode: null, ok: false, error: "command timed out after 600s and was killed" });
     const message = store.postMessage(group.id, { body: `${"改".repeat(ORGANIZER_BODY_LIMIT * 2)}再改一版` });
 
     const payload = organizerPayload(store, { mode: "message", sessionId: group.id, message, current: store.getTask(plan.id), trace: Array.from({ length: ORGANIZER_TRACE_LIMIT + 3 }, (_, i) => `step ${i}`) });
@@ -64,7 +66,12 @@ describe("what the organizer reads", () => {
     expect(payload.message).toMatchObject({ id: message.id, author: "user", attachments: [], truncated: true });
     expect([...payload.message!.body]).toHaveLength(ORGANIZER_BODY_LIMIT * 2);
     expect(payload.current_plan).toMatchObject({ id: plan.id, kind: "周报", status: "active", brief: "写一份周报，交到 report.md", revision: 1, spec: spec() });
-    expect(payload.current_plan!.tickets).toMatchObject([{ id: ticket.id, seq: 1, title: "初稿", status: "doing", worker: "Writer", artifacts: 1 }]);
+    expect(payload.current_plan!.tickets).toMatchObject([{ id: ticket.id, seq: 1, title: "初稿", status: "doing", worker: "Writer", artifacts: 1, files: [`${ticket.dir}/draft.md`] }]);
+    // What was run, not what was said: the organizer can hold "tests pass" against an exit code.
+    expect(payload.since_last_revision.commands).toEqual([
+      { by: "Writer", ticket: 1, command: "bun test", exit_code: 1, ok: true },
+      { by: "Writer", ticket: 1, command: "sleep 999", exit_code: null, ok: false, error: "command timed out after 600s and was killed" },
+    ]);
     expect([...payload.current_plan!.tickets[0]!.spec].length).toBeLessThan(400);
     expect(payload.since_last_revision.messages.map((row) => [row.author, row.kind])).toEqual([
       ["user", "user"],
@@ -87,7 +94,7 @@ describe("what the organizer reads", () => {
     const { store, group } = fixture();
     const empty = organizerPayload(store, { mode: "message", sessionId: group.id, message: store.postMessage(group.id, { body: "你好" }), current: null });
     expect(empty.current_plan).toBeNull();
-    expect(empty.since_last_revision).toEqual({ messages: [], artifacts: [], trace: [] });
+    expect(empty.since_last_revision).toEqual({ messages: [], artifacts: [], trace: [], commands: [] });
     expect(empty.recent_plans).toEqual([]);
     const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
     const settle = organizerPayload(store, { mode: "settle", sessionId: group.id, message: null, current: plan });
@@ -150,5 +157,29 @@ describe("what the organizer answered", () => {
     expect(parseOrganizerResult(JSON.stringify({ plan: { goal: "x" }, message_ticket: "ticket-3" }), ctx)!.messageTicket).toBeNull();
     const many = Array.from({ length: ORGANIZER_TICKETS_LIMIT + 5 }, (_, i) => ({ id: `new-${i + 1}`, title: `任务 ${i + 1}` }));
     expect(parseOrganizerResult(JSON.stringify({ plan: { goal: "x" }, tickets: many }), ctx)!.tickets).toHaveLength(ORGANIZER_TICKETS_LIMIT);
+  });
+
+  test("an existing ticket named by id with only what changed keeps the rest: no title, status or worker means as it was", () => {
+    const parsed = parseOrganizerResult(
+      JSON.stringify({
+        plan: { goal: "写一份周报", status: "done" },
+        tickets: [
+          { id: "01ARZ3NDEKTSV4RRFFQ69G5FC1", status: "done" },
+          { id: "01ARZ3NDEKTSV4RRFFQ69G5FC2", worker: "Reviewer" },
+          { id: "01ARZ3NDEKTSV4RRFFQ69G5FC3", title: "终稿", status: "someday", worker: null },
+          { id: "new-1", status: "doing" },
+        ],
+      }),
+      { ...ctx, mode: "settle" },
+    );
+    expect(parsed!.tickets).toEqual([
+      { id: "01ARZ3NDEKTSV4RRFFQ69G5FC1", spec: "", status: "done" },
+      { id: "01ARZ3NDEKTSV4RRFFQ69G5FC2", spec: "", worker: "01ARZ3NDEKTSV4RRFFQ69G5FA2" },
+      { id: "01ARZ3NDEKTSV4RRFFQ69G5FC3", spec: "", title: "终稿" },
+    ]);
+    for (const ticket of parsed!.tickets) {
+      expect("status" in ticket && ticket.status === undefined).toBe(false);
+      expect("worker" in ticket && ticket.worker === undefined).toBe(false);
+    }
   });
 });

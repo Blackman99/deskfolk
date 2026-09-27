@@ -108,6 +108,12 @@ export function renderNotificationDisplay(params: DisplayRenderParams): {
       return { title, summary };
     }
     case "failure": {
+      // A plan that stopped with tickets open, after the app called its Bot back once.
+      if (params.failKind === "stalled_plan") {
+        const title = truncateCodePoints(`${params.sessionName || actor} · 停下了`, 80);
+        const summary = truncateCodePoints(sanitizeSummaryText(params.bodySnippet || "还有任务没收口"), 160);
+        return { title, summary };
+      }
       const title = truncateCodePoints(`${actor} · 本轮未完成`, 80);
       const reason = params.failKind ? `失败原因：${params.failKind}` : "执行失败";
       const summary = truncateCodePoints(sanitizeSummaryText(params.bodySnippet || reason), 160);

@@ -18,6 +18,7 @@ import {
 import { askAnswerText, parseAskAnswer } from "./ask";
 import { pathExists, runCollabTool, type ToolResult } from "./collab-tools";
 import {
+  CLOSING_CHECK_MAX_TOKENS,
   CLOSING_CHECK_SYSTEM,
   CLOSING_CHECK_TIMEOUT_MS,
   closingCheckNote,
@@ -63,8 +64,12 @@ import {
   builtinTools,
   checkBackNoteBody,
   COLLAB_TOOL_NAMES,
+  planNudgeNote,
+  stalledPlanBody,
+  type OpenTicketLine,
   COMPOSER_SUGGEST_SYSTEM,
   completionFailBody,
+  JUDGEMENT_MAX_TOKENS,
   JUDGEMENT_SYSTEM,
   reportBackNote,
   routineFireBody,
@@ -87,6 +92,7 @@ import { toolTargetOf } from "./tool-activity";
 import { classifyPath } from "./workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "./workspace-tools";
 import { processWake, type WakeWatch } from "./wake";
+import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from "./turn-inbox";
 
 export type TurnEngine = {
   handleInboundMessage: (
@@ -151,9 +157,24 @@ export type TurnEngineOptions = {
   directQuietMs?: number;
 };
 
+/** A line a live turn has not read yet: a Bot naming it, or its own check-back coming due. */
+type InboxEntry = {
+  item: HeardItem;
+  message: Message;
+  /** Set for a check-back: where the turn it would have opened lands, should it need opening. */
+  checkBack?: { taskId: string | null; ticketId: string | null };
+};
+
 type Live = {
   abort: AbortController;
   loop: ChatMessage[];
+  /**
+   * What was said to this Bot while this turn worked, read out at the start of the next hop. A
+   * turn that ends before reading it opens one more turn on the last line, so nothing is lost.
+   */
+  inbox: InboxEntry[];
+  /** The turn has been seen working on its ticket (moved it from todo to doing); it happens once. */
+  ticketWorking?: boolean;
   interrupt: boolean;
   burned: boolean;
   partial: string;
@@ -208,6 +229,9 @@ type Live = {
   };
 };
 
+/** Tools that are the work itself, not looking around: a turn using one is working on its ticket. */
+const WORKING_TOOLS = new Set(["write_file", "delete_file", "shell"]);
+
 export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const store = options.store;
   const publish = options.publish;
@@ -232,6 +256,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     draining: () => Boolean(options.admission?.draining),
     settleQuietMs: options.settleQuietMs,
+    onQuiet: (taskId) => reconcilePlan(taskId),
   });
 
   function track<T>(promise: Promise<T>): Promise<T> {
@@ -769,6 +794,134 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
+  /**
+   * A plan that went quiet — no live turn, no appointment pending in it — while tickets are still
+   * to do or in progress has stopped short, and nothing else would wake anyone: every Bot closed
+   * its turn thinking its part was done. The app calls one Bot back, the one on the first open
+   * ticket (else whoever spoke last in the plan), with the open tickets. If a call-back came and no
+   * ticket has moved to review or done since, it does not call again: it tells you, once, in the
+   * session and as a notification. Each further call-back needs a ticket to have closed, so they
+   * run out with the tickets; two Bots must not bounce on a plan nobody can move. Only plans in a
+   * session you are in: you are who the last word goes to.
+   */
+  function reconcilePlan(taskId: string): void {
+    if (options.admission?.draining) return;
+    let task: ReturnType<Store["getTask"]>;
+    try {
+      task = store.getTask(taskId);
+    } catch {
+      // the plan, or the store, went away while it was quiet
+      return;
+    }
+    let booked: CheckBack | null = null;
+    try {
+      if (!task.session_id || task.routine_id || task.status !== "active") return;
+      const sessionId = task.session_id;
+      if (!store.isPresent(sessionId, USER_MEMBER)) return;
+      if (store.taskLiveTurnCount(taskId) > 0) return;
+      if (store.pendingPlanCheckBacks(taskId).length > 0) return;
+      const tickets = store.listTickets(taskId);
+      const open = tickets.filter((ticket) => ticket.status === "todo" || ticket.status === "doing");
+      if (open.length === 0) return;
+      const present = new Set(store.presentBotIds(sessionId));
+      const nameOf = (id: string | null): string | null => {
+        if (!id) return null;
+        try {
+          return store.getBot(id).name;
+        } catch {
+          return null;
+        }
+      };
+      const lines: OpenTicketLine[] = open.map((ticket) => ({
+        seq: ticket.seq,
+        title: ticket.title,
+        status: ticket.status as OpenTicketLine["status"],
+        worker: nameOf(ticket.worker),
+      }));
+      const locale = store.settingsCached().locale;
+      const last = store.lastPlanNudge(taskId);
+      if (last) {
+        const since = last.created_at;
+        const moved = tickets.some((ticket) => ticket.updated_at > since && (ticket.status === "review" || ticket.status === "done"));
+        if (!moved) {
+          tellStalled(sessionId, taskId, last, lines, nameOf(last.bot_id) ?? "", locale);
+          return;
+        }
+      }
+      const target = open.find((ticket) => ticket.worker && present.has(ticket.worker) && isAwake(ticket.worker));
+      const botId = target?.worker ?? lastSpeaker(taskId, present);
+      if (!botId) return;
+      const mine = target ? lines[open.indexOf(target)]! : null;
+      booked = store.bookPlanNudge({
+        botId,
+        sessionId,
+        taskId,
+        ticketId: target?.id ?? null,
+        note: planNudgeNote(locale, { open: lines, mine }),
+      });
+    } catch (error) {
+      console.error(`[plan ${taskId}] reconcile failed`, error);
+      return;
+    }
+    try {
+      fireCheckBack(booked.id);
+    } catch {
+      // left pending: the scheduler's next tick fires it
+    }
+  }
+
+  function isAwake(botId: string): boolean {
+    try {
+      return !store.getBot(botId).archived_at;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The Bot that last spoke in the plan and is still in its session. */
+  function lastSpeaker(taskId: string, present: ReadonlySet<string>): string | null {
+    const rows = store.db
+      .query<{ author: string }, [string]>(
+        `SELECT author FROM messages WHERE task_id = ? AND kind = 'bot' ORDER BY created_at DESC, rowid DESC LIMIT 20`,
+      )
+      .all(taskId);
+    return rows.find((row) => present.has(row.author) && isAwake(row.author))?.author ?? null;
+  }
+
+  /** The plan stopped with tickets open after a call-back: a line in the session and one notification, once per call-back. */
+  function tellStalled(
+    sessionId: string,
+    taskId: string,
+    nudge: CheckBack,
+    open: readonly OpenTicketLine[],
+    called: string,
+    locale: Locale,
+  ): void {
+    const key = `stalled:${nudge.id}`;
+    if (store.db.query(`SELECT 1 FROM notifications WHERE semantic_key = ?`).get(key)) return;
+    const note = store.transaction(() => {
+      const note = store.insertMessage({
+        sessionId,
+        kind: "system",
+        author: nudge.bot_id,
+        body: stalledPlanBody(locale, { open, called }),
+      });
+      store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [taskId, note.id]);
+      if (store.isPresent(sessionId, USER_MEMBER)) {
+        store.createNotification({
+          semantic_key: key,
+          kind: "failure",
+          session_id: sessionId,
+          message_id: note.id,
+          action_state: "open",
+          fail_kind: "stalled_plan",
+        });
+      }
+      return note;
+    });
+    publishMessage(note);
+  }
+
   function chainFloor(): string {
     return new Date(Date.now() - CHAIN_MAX_AGE_MS).toISOString();
   }
@@ -1001,6 +1154,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     } = {},
   ): Turn {
     options.admission?.assertNew();
+    let carry: string | null = null;
     if (mode === "redirect") {
       const livesForBot = store.listLiveTurns({ sessionId, botId });
       let sessionKind: string | null = null;
@@ -1010,12 +1164,24 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         sessionKind = null;
       }
       const toRedirect = sessionKind === "group" ? livesForBot : livesForBot.slice(0, 1);
+      const written: string[] = [];
+      const recent: string[] = [];
+      const unread: HeardItem[] = [];
       for (const current of toRedirect) {
-        const counted = executionOf(lives.get(current.id));
+        const old = lives.get(current.id);
+        if (old) {
+          written.push(...old.writtenPaths);
+          recent.push(...recentToolCalls(old.loop));
+          unread.push(...old.inbox.map((entry) => entry.item));
+          // Carried into the new turn's first note below; the old turn must not reopen them.
+          old.inbox = [];
+        }
+        const counted = executionOf(old);
         abortLive(current.id);
         const redirected = store.redirectTurn(current.id, counted);
         publishTurn(redirected);
       }
+      carry = redirectCarryNote(store.settingsCached().locale, { written: [...new Set(written)], recent, unread });
     }
     const turn = store.createTurn({
       sessionId,
@@ -1026,14 +1192,82 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       taskId: opts.taskId,
       ticketId: opts.ticketId,
     });
-    attachLive(turn);
+    attachLive(turn, carry);
     return turn;
   }
 
-  function attachLive(turn: Turn): void {
+  /**
+   * A Bot's line for a Bot that is already working in this session is heard inside that turn
+   * rather than ending it: it waits in the turn's inbox for the next hop. Only when there is no
+   * live turn here that this process runs does a new one open. Returns the turn that got it.
+   */
+  function hearOrStart(
+    sessionId: string,
+    botId: string,
+    trigger: Message,
+    entry: Omit<InboxEntry, "message">,
+    opts: { taskId?: string | null; ticketId?: string | null } = {},
+  ): Turn {
+    for (const current of store.listLiveTurns({ sessionId, botId })) {
+      const live = lives.get(current.id);
+      if (!live || live.abort.signal.aborted) continue;
+      live.inbox.push({ ...entry, message: trigger });
+      return current;
+    }
+    return startTurn(sessionId, botId, trigger, "redirect", opts);
+  }
+
+  function inboxItem(message: Message): HeardItem {
+    let author = message.author;
+    try {
+      author = message.author === USER_MEMBER ? "user" : store.getBot(message.author).name;
+    } catch {
+      // a deleted Bot keeps its id as its name here
+    }
+    return { author, body: message.body, checkBack: false };
+  }
+
+  /**
+   * A turn that ended before reading its inbox leaves those lines unanswered, so one more turn
+   * opens on the last of them — the others are in its transcript. Only a turn that finished does
+   * this: Stop means leave it, a redirect already carried them over, an interruption is yours to
+   * pick up.
+   */
+  function reopenForUnheard(turn: Turn, live: Live): void {
+    if (live.inbox.length === 0 || options.admission?.draining) return;
+    const pending = live.inbox;
+    live.inbox = [];
+    let status: Turn["status"];
+    try {
+      status = store.getTurn(turn.id).status;
+    } catch {
+      return;
+    }
+    if (status !== "completed") return;
+    const last = pending[pending.length - 1]!;
+    try {
+      const reopened = hearOrStart(
+        turn.session_id,
+        turn.bot_id,
+        last.message,
+        { item: last.item, ...(last.checkBack ? { checkBack: last.checkBack } : {}) },
+        last.checkBack ? { taskId: last.checkBack.taskId, ticketId: last.checkBack.ticketId } : {},
+      );
+      for (const entry of pending.slice(0, -1)) {
+        if (!entry.checkBack) continue;
+        // an earlier check-back line is its own reminder; it rides along in the new turn's inbox
+        lives.get(reopened.id)?.inbox.unshift(entry);
+      }
+    } catch (error) {
+      console.error(`[turn ${turn.id}] could not reopen for what it had not read`, error);
+    }
+  }
+
+  function attachLive(turn: Turn, carry: string | null = null): void {
     const live: Live = {
       abort: new AbortController(),
-      loop: [],
+      loop: carry ? [{ role: "user", content: carry }] : [],
+      inbox: [],
       interrupt: store.pendingInterrupt(turn.bot_id),
       burned: false,
       partial: "",
@@ -1075,6 +1309,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             }
           } finally {
             lives.delete(turn.id);
+            reopenForUnheard(turn, live);
           }
         }
       };
@@ -1219,6 +1454,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         live.lastHopNoted = true;
         live.loop.push({ role: "user", content: lastHopNote(target.locale) });
       }
+      // What was said to this Bot since the last hop, read out now: the turn goes on with it.
+      if (live.inbox.length > 0) {
+        const heard = live.inbox.splice(0);
+        live.loop.push({ role: "user", content: heardNote(target.locale, heard.map((entry) => entry.item)) });
+      }
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
       if (!active(turnId, live)) return;
       const messages = assembleTurnMessages(store, {
@@ -1353,6 +1593,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         continue;
       }
       const message = publishCitedBotMessage(current, live, turnId, rawBody);
+      if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
       const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
       lives.delete(turnId);
       publishTurn(completed, null);
@@ -1415,6 +1656,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         ],
         signal: live.abort.signal,
         timeoutMs: CLOSING_CHECK_TIMEOUT_MS,
+        maxTokens: CLOSING_CHECK_MAX_TOKENS,
       });
     } catch {
       return null;
@@ -1470,6 +1712,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (live && !live.spoke && live.writtenPaths.length > 0) {
       publishCitedBotMessage(current, live, turnId, "");
     }
+    if (live?.spoke && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
     const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
     lives.delete(turnId);
     publishTurn(completed, null);
@@ -1527,6 +1770,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     for (const call of calls) {
       if (!active(turnId, live)) return "wait";
       live.toolCalls += 1;
+      if (!live.ticketWorking && (WORKING_TOOLS.has(call.name) || live.mcpTools.has(call.name))) {
+        live.ticketWorking = true;
+        observeTicket(turnId, turn.bot_id, "working");
+      }
       const fingerprint = `${call.name}\n${call.arguments}`;
       if (live.failedCalls.has(fingerprint)) live.repeatedFailures += 1;
       let args: Record<string, unknown> = {};
@@ -1563,6 +1810,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
           exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null });
+        if (!result.waitApproval) recordRun(turnId, live, call.name, args, result);
       }
       if (!active(turnId, live)) return "wait";
       store.touchTurn(turnId);
@@ -1666,6 +1914,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         publishTurn(waiting, null);
         let resolved = await pending;
         if (resolved == null || !active(turnId, live)) return "wait";
+        recordRun(turnId, live, call.name, args, resolved);
         await publishEmitted(turnId, live, resolved.emitted);
         if (!active(turnId, live)) return "wait";
         resolved = withLatestMcp(call.name, resolved);
@@ -1709,6 +1958,56 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (spoke) return "spoke";
     attachPictures(live.loop, pictures, live.locale);
     return posted ? "more" : "noop";
+  }
+
+  /**
+   * Moves the turn's ticket forward on what the turn was seen doing (see `observeTicketWork`), and
+   * rewrites the plan's mirror files when it did. Best-effort: the board is a record of the work.
+   */
+  function observeTicket(turnId: string, botId: string, seen: "working" | "delivered"): void {
+    try {
+      const ticketId = store.ticketOfTurn(turnId);
+      if (!ticketId) return;
+      const moved = store.observeTicketWork({ ticketId, botId, seen });
+      if (moved) organizer.renderMirrors(moved.task_id);
+    } catch {
+      // a ticket or turn gone meanwhile has nothing left to move
+    }
+  }
+
+  /**
+   * What the turn ran, for the closing check and the organizer to hold claims against: a shell
+   * command with how it exited, or an MCP call with its arguments. Best-effort; a turn whose row
+   * went away records nothing.
+   */
+  function recordRun(turnId: string, live: Live, name: string, args: Record<string, unknown>, result: ToolResult): void {
+    const mcpTool = live.mcpTools.get(name);
+    if (name !== "shell" && !mcpTool) return;
+    let command: string;
+    if (name === "shell") {
+      command = typeof args.command === "string" ? args.command : "";
+    } else {
+      let shown = "";
+      try {
+        shown = JSON.stringify(args);
+      } catch {
+        shown = "";
+      }
+      command = `${mcpTool!.server}.${mcpTool!.tool} ${shown}`;
+    }
+    if (!command.trim()) return;
+    try {
+      store.recordTurnRun({
+        turnId,
+        tool: name,
+        command,
+        exitCode: typeof result.data?.exit_code === "number" ? result.data.exit_code : null,
+        ok: result.ok,
+        error: result.ok ? null : (result.error?.message ?? result.error?.code ?? null),
+      });
+    } catch {
+      // the record is evidence, not the work; the call already happened
+    }
   }
 
   /** A picture's tool result, which says whether this hop had room to show it. */
@@ -2178,10 +2477,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const bots = store.presentBotIds(session.id);
       const target = bots.find((id) => id !== message.author);
       if (!target) return;
-      // Your new message forks by default. With no user in the room, a Bot's second message
-      // retunes the live turn instead of cloning it — the way a group already treats Bots.
+      // Your new message forks by default. With no user in the room, a Bot's next message is
+      // heard inside the other Bot's live turn instead of cloning or ending it — as in a group.
       const fork = opts.fork !== undefined ? opts.fork : store.isPresent(session.id, USER_MEMBER);
-      startTurn(session.id, target, message, fork ? "fork" : "redirect");
+      if (fork) startTurn(session.id, target, message, "fork");
+      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, target, message, { item: inboxItem(message) });
+      else startTurn(session.id, target, message, "redirect");
       return;
     }
 
@@ -2232,7 +2533,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
 
     for (const botId of mandatory) {
-      startTurn(session.id, botId, message, opts.fork === true ? "fork" : "redirect");
+      // A Bot naming a Bot that is mid-task is heard in that task; your line still turns it around.
+      if (opts.fork === true) startTurn(session.id, botId, message, "fork");
+      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) });
+      else startTurn(session.id, botId, message, "redirect");
       opened.add(botId);
     }
 
@@ -2430,7 +2734,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           { role: "user", content: user },
         ],
         signal: new AbortController().signal,
+        maxTokens: JUDGEMENT_MAX_TOKENS,
       });
+      // A cut-off verdict reads as a pass below; say so, since from the board it looks like a choice.
+      if (result.truncated) {
+        console.error(`[judgement] ${botId} on ${message.id}: the answer stopped at the ${JUDGEMENT_MAX_TOKENS}-token cap`);
+      }
       if (options.admission?.draining) {
         recordResponseSpend({
           kind: "judgement",
@@ -2544,9 +2853,23 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     });
     if (!result) return null;
     const fork = result.session.kind === "group" ? false : store.isPresent(result.session.id, USER_MEMBER);
-    const turn = startTurn(result.session.id, result.claimed.bot_id, result.trigger, fork ? "fork" : "redirect", {
+    const lands = {
       taskId: result.claimed.task_id,
-    });
+      // Back in the ticket's folder it was booked from, not the plan's: an explicit plan takes
+      // only the ticket it is given.
+      ticketId: result.claimed.task_id ? result.claimed.ticket_id : null,
+    };
+    // In a group, or a direct without you, a Bot already working there hears its reminder in that
+    // turn; otherwise it opens one, a fork beside your own in a direct with you.
+    const turn = fork
+      ? startTurn(result.session.id, result.claimed.bot_id, result.trigger, "fork", lands)
+      : hearOrStart(
+          result.session.id,
+          result.claimed.bot_id,
+          result.trigger,
+          { item: { author: "", body: result.claimed.note, checkBack: true }, checkBack: lands },
+          lands,
+        );
     store.markCheckBackFired(id, turn.id);
     return turn;
   }

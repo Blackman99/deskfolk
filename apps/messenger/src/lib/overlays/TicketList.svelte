@@ -187,7 +187,7 @@
 								</span>
 							{/if}
 							<span class="ticket-who-text">
-								{ticket.worker ? t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel)) : t.plan.nobody}
+								{ticket.worker ? t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel), ticket.status !== "todo") : t.plan.nobody}
 							</span>
 						</span>
 						{#if ticket.spec}

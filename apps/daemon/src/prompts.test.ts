@@ -30,7 +30,12 @@ describe("prompts", () => {
     expect(text).toContain("没有新信息时不要调用 send_message");
     expect(text).toContain("本轮没有新工作");
     expect(text).toContain("主转录里不要留痕迹");
-    expect(text).toContain("会让对方必须下场（群里已有活轮则听进那一轮）");
+    expect(text).toContain("会让对方必须下场（对方正在干活时不会被打断，它下一跳就会读到你这句）");
+    expect(text).toContain("你这一轮干活时有人找你");
+    // Claims are held against what was run, and something to run comes with how to start it.
+    expect(text).toContain("说做过的必须真做过");
+    expect(text).toContain("写「未验证」和原因");
+    expect(text).toContain("附上启动方式");
     expect(text).toContain("要针对某一条主线消息说话时传 parent_id");
     expect(text).toContain("只在对方有尚未看见的新工作要接手时才点名");
     expect(text).toContain("用户已经向全员说过的请求，不要再 @ 一遍去催在场的人");
@@ -320,7 +325,7 @@ describe("prompts", () => {
 
   test("send_message tool copy says mention forces a new turn", () => {
     const zh = builtinTools("zh").find((t) => t.function.name === "send_message")!;
-    expect(zh.function.description).toContain("会点名并让对方必须下场（群里已有活轮则听进那一轮）");
+    expect(zh.function.description).toContain("会点名并让对方必须下场（对方正在干活时不会被打断，它下一跳就会读到）");
     expect(zh.function.description).toContain("要针对某一条主线消息说话时传 parent_id");
     expect(zh.function.description).toContain("对方已经在场并同意时不要再点名");
     expect(zh.function.description).toContain("用户已经向全员说过的请求不要再 @ 一遍");

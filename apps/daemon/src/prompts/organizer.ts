@@ -23,17 +23,20 @@ import { takeCodePoints } from "../text";
 
 export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「任务」，不是回答用户，也不能发言。没有工具，不能读工作区。
 
-规划是一个会话里正在推进的一件事，有要点：kind（类别，用来找先例）、goal（现在到底要做什么）、acceptance（怎么算完成）、rules（用户定过的口径、约束、改善意见）、process（这件事定下来的做法、谁负责哪段）、progress（done / open / blocked）、status（active / done / parked）。任务是规划下能独立交付的一块：title、spec（要做什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁在做，写 Bot 名字，没有就 null）。
+规划是一个会话里正在推进的一件事，有要点：kind（类别，用来找先例）、goal（现在到底要做什么）、acceptance（怎么算完成）、rules（用户定过的口径、约束、改善意见）、process（这件事定下来的做法、谁负责哪段）、progress（done / open / blocked）、status（active / done / parked）。任务是规划下能独立交付的一块：title、spec（要做什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁负责，写 Bot 名字：建任务时按分工先填，之后按 trace 里实际在做的人改；没人就 null）。
 
-根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只更新要点和任务，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）；precedents 是同类做完的规划的要点。
+根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只更新要点和任务，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）、commands（这些轮真正跑过的命令和工具，带退出码）；current_plan.tickets[].files 是落在各任务目录里、被消息引用过的文件；precedents 是同类做完的规划的要点。
 
 只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语，不要 tool-call：
 {"decision": "continue" | "new" | "resume", "resume_plan_id": "…或 null", "plan": {"kind": "…", "goal": "…", "acceptance": ["…"], "rules": ["…"], "process": ["…"], "progress": {"done": ["…"], "open": ["…"], "blocked": ["…"]}, "status": "active"}, "tickets": [{"id": "已有任务的 id 或 new-1、new-2…", "title": "…", "spec": "…", "status": "todo", "worker": "Bot 名字或 null"}], "message_ticket": "这条消息在说哪个任务的 id 或 new-N，或 null"}
 
 策略：
 - decision：同一件事的后续、追问、改要求、问进度，都是 continue；明显换了一件不相干的事才 new；用户说回到之前那件、且 recent_plans 里有对得上的，才 resume 并给 resume_plan_id。current_plan 为 null 时只能 new。拿不准就 continue。
-- plan：在 current_plan.spec 的基础上改，不要重写没变的部分。用户的改善意见、口径、约束进 rules；目标变了改 goal；怎么算完成进 acceptance；定下来的做法和分工进 process；progress 按 artifacts 和 trace 更新。status 只在这件事明确做完时 done，明确搁置时 parked。
-- tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。已有任务用它的 id 引用，只改变了的字段；没变的可以不列，不列的不动。新任务用 new-1、new-2。不能删任务，只能改成 done 或 parked。有人交出了属于某任务的文件，把它标 review 或 done，并写上 worker。
+- plan：在 current_plan.spec 的基础上改，不要重写没变的部分。用户的改善意见、口径、约束进 rules；目标变了改 goal；怎么算完成进 acceptance；定下来的做法和分工进 process；progress 按 artifacts、commands 和 trace 更新。status 只在这件事明确做完时 done，明确搁置时 parked。
+- acceptance 写用户自己能检查的结果，不写「产出某某文档」「给出结论」这种谁写一份就算的话。要做出能用的东西（软件、网站、脚本、工具）时，必须有一条：「有启动方式（一条命令或一个文件），照着能在本机跑起来并走通主流程」。
+- tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。几个人各做一部分、合起来才是一个能用的东西时，另开一个「联调并给出启动方式」的任务，并在 rules 里写明最终交付放在哪个目录。已有任务用它的 id 引用，只写 id 和变了的字段，例如 {"id": "…", "status": "review"}；没变的任务不用列，不列的不动。新任务用 new-1、new-2，要写 title。不能删任务，只能改成 done 或 parked。
+- 依据：Bot 说「已完成」「测试通过」「验收通过」不算依据。任务标 review 要有这个任务交出的文件；标 done 要有文件，而且说跑过、测过的要在 commands 里找得到（退出码 0）。只有文档、报告、没有能跑的东西，不能把「做出能用的东西」的任务标 done。有人交出了属于某任务的文件，至少标 review，并写上 worker。
+- plan.status 标 done 时，每个任务也要在这次答案里标成 done 或 parked；还有待做或进行中的任务，这件事就没做完。
 - message_ticket：mode 是 message 时，这条消息在说哪个任务；一句泛泛的话或问进度就 null。settle 时 null。
 - 一切都写短：goal 一句话，列表每条一句。`;
 
@@ -43,6 +46,11 @@ export const ORGANIZER_TICKETS_LIMIT = 40;
 export const ORGANIZER_ARTIFACTS_LIMIT = 30;
 export const ORGANIZER_TRACE_LIMIT = 12;
 export const ORGANIZER_RECENT_PLANS = 8;
+/** Runs since the last version the organizer sees: enough to tell a test run from a claim. */
+export const ORGANIZER_RUNS_LIMIT = 40;
+/** Files listed under each ticket, newest cited first. */
+export const ORGANIZER_TICKET_FILES = 8;
+const RUN_COMMAND_PREVIEW = 160;
 export const ORGANIZER_KINDS_LIMIT = 50;
 const TICKET_SPEC_PREVIEW = 300;
 
@@ -57,7 +65,17 @@ export type OrganizerPayload = {
     brief: string | null;
     revision: number;
     spec: PlanSpec | null;
-    tickets: Array<{ id: string; seq: number; title: string; status: TicketStatus; worker: string | null; spec: string; artifacts: number }>;
+    tickets: Array<{
+      id: string;
+      seq: number;
+      title: string;
+      status: TicketStatus;
+      worker: string | null;
+      spec: string;
+      artifacts: number;
+      /** Cited files filed under it or sitting in its folder, newest first. */
+      files: string[];
+    }>;
   } | null;
   recent_plans: Array<{ id: string; goal: string; kind: string | null; status: PlanStatus; last_activity_at: string }>;
   kinds: string[];
@@ -65,6 +83,8 @@ export type OrganizerPayload = {
     messages: Array<{ id: string; author: string; kind: string; body: string; ticket_id: string | null; created_at: string; truncated?: true }>;
     artifacts: Array<{ path: string; by: string; ticket_id: string | null; cited_at: string }>;
     trace: string[];
+    /** What the plan's turns actually ran, oldest first: who, under which ticket, and how it exited. */
+    commands: Array<{ by: string; ticket: number | null; command: string; exit_code: number | null; ok: boolean; error?: string }>;
   };
   precedents: Array<{ goal: string; process: string[]; rules: string[]; outcome: string[] }>;
 };
@@ -119,11 +139,35 @@ export function organizerPayload(
       }))
     : [];
   const artifactCounts = new Map<string, number>();
+  const ticketFiles = new Map<string, string[]>();
+  const currentTickets = current ? store.listTickets(current.id) : [];
   if (current) {
     for (const row of store.taskArtifacts(current.id, () => true, 500)) {
       if (row.ticket_id) artifactCounts.set(row.ticket_id, (artifactCounts.get(row.ticket_id) ?? 0) + 1);
+      // A file belongs to a ticket by the message that cited it, or by the folder it sits in: a
+      // handoff can land a turn on another ticket while it writes where the work really is.
+      for (const ticket of currentTickets) {
+        if (row.ticket_id !== ticket.id && !row.path.startsWith(`${ticket.dir}/`)) continue;
+        const files = ticketFiles.get(ticket.id) ?? [];
+        if (files.length < ORGANIZER_TICKET_FILES && !files.includes(row.path)) files.push(row.path);
+        ticketFiles.set(ticket.id, files);
+      }
     }
   }
+  const seqOf = new Map(currentTickets.map((ticket) => [ticket.id, ticket.seq]));
+  const commands: OrganizerPayload["since_last_revision"]["commands"] = current
+    ? store.taskRunsSince(current.id, since, ORGANIZER_RUNS_LIMIT).map((run) => {
+        const item: OrganizerPayload["since_last_revision"]["commands"][number] = {
+          by: nameOf(store, run.bot_id),
+          ticket: run.ticket_id ? (seqOf.get(run.ticket_id) ?? null) : null,
+          command: clipBody(run.command, RUN_COMMAND_PREVIEW).text,
+          exit_code: run.exit_code,
+          ok: run.ok === 1,
+        };
+        if (run.error) item.error = clipBody(run.error, 120).text;
+        return item;
+      })
+    : [];
   const spec = current ? parsePlanSpec(current.spec) : null;
   const precedents: OrganizerPayload["precedents"] = [];
   if (spec?.kind && current) {
@@ -155,8 +199,7 @@ export function organizerPayload(
           brief: current.brief ? clipBody(current.brief, ORGANIZER_BODY_LIMIT).text : null,
           revision: store.currentRevision(current.id),
           spec,
-          tickets: store
-            .listTickets(current.id)
+          tickets: currentTickets
             .slice(0, ORGANIZER_TICKETS_LIMIT)
             .map((ticket) => ({
               id: ticket.id,
@@ -166,6 +209,7 @@ export function organizerPayload(
               worker: ticket.worker ? nameOf(store, ticket.worker) : null,
               spec: clipBody(ticket.spec, TICKET_SPEC_PREVIEW).text,
               artifacts: artifactCounts.get(ticket.id) ?? 0,
+              files: ticketFiles.get(ticket.id) ?? [],
             })),
         }
       : null,
@@ -180,7 +224,7 @@ export function organizerPayload(
       };
     }),
     kinds: store.distinctTaskKinds(ORGANIZER_KINDS_LIMIT),
-    since_last_revision: { messages, artifacts, trace: (input.trace ?? []).slice(-ORGANIZER_TRACE_LIMIT) },
+    since_last_revision: { messages, artifacts, trace: (input.trace ?? []).slice(-ORGANIZER_TRACE_LIMIT), commands },
     precedents,
   };
 }
@@ -222,17 +266,19 @@ export function parseOrganizerResult(
       const row = entry as Record<string, unknown>;
       const id = typeof row.id === "string" ? row.id.trim() : "";
       if (!ULID.test(id) && !NEW_TICKET.test(id)) continue;
+      const opening = NEW_TICKET.test(id);
       const title = typeof row.title === "string" ? row.title.replace(/\s+/g, " ").trim() : "";
-      if (!title) continue;
-      const status = isTicketStatus(row.status) ? row.status : "todo";
+      // A new ticket needs a name. An existing one is referenced by id with only what changed, so
+      // a missing title, status or worker there means "as it was" — not blank, todo or nobody.
+      if (opening && !title) continue;
       const workerName = typeof row.worker === "string" ? row.worker.trim().toLowerCase() : "";
-      tickets.push({
-        id,
-        title,
-        spec: typeof row.spec === "string" ? row.spec.trim() : "",
-        status,
-        worker: workerName ? (byName.get(workerName) ?? null) : null,
-      });
+      const worker = workerName ? (byName.get(workerName) ?? null) : null;
+      const ticket: OrganizerTicketInput = { id, spec: typeof row.spec === "string" ? row.spec.trim() : "" };
+      if (title) ticket.title = title;
+      if (isTicketStatus(row.status)) ticket.status = row.status;
+      else if (opening) ticket.status = "todo";
+      if (worker || opening) ticket.worker = worker;
+      tickets.push(ticket);
     }
   }
   let messageTicket: string | null = null;

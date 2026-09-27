@@ -56,8 +56,9 @@ export function createTurn(
   const id = ulid();
   // A batch of annotations continues the plan and ticket that delivered this Bot's artifact.
   const annotated = input.taskId ? null : annotationTaskOfMessage(ctx, trigger.id, input.botId);
-  const { taskId, ticketId } = resolveTurnTask(ctx, {
+  const { taskId, ticketId, handedTicketId } = resolveTurnTask(ctx, {
     sessionId: input.sessionId,
+    botId: input.botId,
     trigger,
     taskId: input.taskId ?? annotated?.taskId ?? null,
     ticketId: input.ticketId ?? annotated?.ticketId ?? null,
@@ -81,10 +82,11 @@ export function createTurn(
         now,
       ],
     );
-    // The trigger belongs to the plan it opened, so the user's own message carries the anchor too.
+    // The trigger belongs to the plan it opened, so the user's own message carries the anchor too —
+    // with the ticket it came with, not the one this Bot happens to be on: one line can wake a team.
     ctx.db.run(
       `UPDATE messages SET task_id = COALESCE(task_id, ?), ticket_id = COALESCE(ticket_id, ?) WHERE id = ?`,
-      [taskId, ticketId, trigger.id],
+      [taskId, handedTicketId, trigger.id],
     );
   })();
   return getTurn(ctx, id);

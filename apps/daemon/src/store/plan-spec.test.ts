@@ -296,6 +296,74 @@ describe("what one organizer run changes", () => {
     store.close();
   });
 
+  test("a settle naming tickets by id with only what changed moves them and keeps the rest", () => {
+    const { store, session, bot, reviewer } = fixture();
+    const opener = store.postMessage(session.id, { body: "写周报" });
+    const plan = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({
+        decision: "new",
+        tickets: [
+          { id: "new-1", title: "初稿", spec: "写第一版", status: "doing", worker: bot.id },
+          { id: "new-2", title: "审稿", spec: "Reviewer 过一遍", status: "todo", worker: reviewer.id },
+        ],
+      }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+    });
+    const [draft, review] = plan.tickets;
+    const settled = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.task.id),
+      // What a settle writes when it only moves things: no title, no worker, no status on the second.
+      result: result({ tickets: [{ id: draft!.id, spec: "", status: "review" }, { id: review!.id, spec: "" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(settled.tickets[0]).toMatchObject({ title: "初稿", spec: "写第一版", status: "review", worker: bot.id });
+    expect(settled.tickets[1]).toMatchObject({ title: "审稿", spec: "Reviewer 过一遍", status: "todo", worker: reviewer.id });
+    store.close();
+  });
+
+  test("a plan called done while tickets are still to do or in progress stays active; review counts as handed over", () => {
+    const { store, session, bot } = fixture();
+    const opener = store.postMessage(session.id, { body: "做个网页" });
+    const plan = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({
+        decision: "new",
+        tickets: [
+          { id: "new-1", title: "设计", spec: "", status: "todo", worker: bot.id },
+          { id: "new-2", title: "实现", spec: "", status: "todo", worker: bot.id },
+        ],
+      }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+    });
+    const [design, build] = plan.tickets;
+    const done = spec({ status: "done", progress: { done: ["设计", "实现"], open: [], blocked: [] } });
+    const early = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.task.id),
+      result: result({ spec: done, tickets: [{ id: design!.id, spec: "", status: "done" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(early.heldOpenBy.map((ticket) => ticket.id)).toEqual([build!.id]);
+    expect(early.task).toMatchObject({ status: "active", closed_at: null });
+    expect(parsePlanSpec(early.task.spec)).toMatchObject({ status: "active", progress: { done: ["设计", "实现"] } });
+    expect(early.revision.spec).toContain('"status":"active"');
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(plan.task.id);
+
+    const closed = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.task.id),
+      result: result({ spec: done, tickets: [{ id: build!.id, spec: "", status: "review" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(closed.heldOpenBy).toEqual([]);
+    expect(closed.task.status).toBe("done");
+    store.close();
+  });
+
   test("raises plan and ticket events as it goes, and a cleared session takes them away", () => {
     const { store, session, bot } = fixture();
     const seen: ClientEvent[] = [];

@@ -1,0 +1,118 @@
+/**
+ * What a live turn hears while it works, and what it carries across a redirect.
+ *
+ * A Bot mid-task that another Bot names, or that its own check-back comes due for, used to have
+ * its turn ended and a new one opened on that line — with an empty tool loop. On 2026-09-26 a
+ * frontend engineer lost three runs that way (41 tool calls and 19 files in one of them) to
+ * teammates' "the API is ready, @frontend" and never delivered. Now such a line goes into the
+ * live turn's inbox and is read out at the start of its next hop, the way a person at a desk
+ * hears a colleague without dropping what they are holding. Your own message still turns the Bot
+ * around (a group has no Stop); what the old turn had done then comes along as the new turn's
+ * first note, so it does not start from nothing.
+ */
+import type { Locale } from "@real-bot/protocol";
+import type { ChatMessage } from "./completions";
+import { takeCodePoints } from "./text";
+import { toolTargetOf } from "./tool-activity";
+
+/** One line a live turn has not read yet. */
+export type HeardItem = {
+  /** The speaker's display name; a check-back is the Bot's own note. */
+  author: string;
+  body: string;
+  checkBack: boolean;
+};
+
+/** How much of each heard line goes into the note; the whole line is in the transcript anyway. */
+export const HEARD_BODY_MAX = 1500;
+/** Files and tool calls a redirect carries over, newest last. */
+export const CARRY_FILES_MAX = 20;
+export const CARRY_CALLS_MAX = 6;
+const SHELL_COMMAND_MAX = 120;
+
+function clip(text: string, max: number): string {
+  const cut = takeCodePoints(text.trim(), max);
+  return cut.truncated ? `${cut.text}…` : cut.text;
+}
+
+/**
+ * The user line the loop gets at the start of the hop after something was heard. It says the
+ * turn goes on, and that an answer can wait for the turn's own hand-over: a reply sent now would
+ * end the turn and drop the work in hand.
+ */
+export function heardNote(locale: Locale, items: readonly HeardItem[]): string {
+  const en = locale === "en";
+  const lines = items.map((item) => {
+    const body = clip(item.body, HEARD_BODY_MAX);
+    if (item.checkBack) return en ? `[Your check-back] ${body}` : `【你约的回看】${body}`;
+    return `【${item.author}】${body}`;
+  });
+  if (en) {
+    return [
+      "(App note) While you were working, this came in for you. Your turn was not interrupted; carry on.",
+      ...lines,
+      "Decide whether it bears on what you are doing: if it does, take it into account and keep going. Anything that needs an answer can be answered in this turn's hand-over; do not stop the work in hand just to reply.",
+    ].join("\n");
+  }
+  return [
+    "（应用提示）你这一轮干活时有人找你。这一轮没有被打断，接着干。",
+    ...lines,
+    "先判断它和你手上的活有没有关系：有关就把它考虑进去接着做；需要回应的，在这一轮交付时一起回应，不要为了回复停下手上的活。",
+  ].join("\n");
+}
+
+/** `shell npm run build`, `write_file src/App.tsx`: the last few tool calls a loop made. */
+export function recentToolCalls(loop: readonly ChatMessage[], limit = CARRY_CALLS_MAX): string[] {
+  const out: string[] = [];
+  for (let i = loop.length - 1; i >= 0 && out.length < limit; i -= 1) {
+    const entry = loop[i]!;
+    if (entry.role !== "assistant" || !entry.tool_calls) continue;
+    for (let j = entry.tool_calls.length - 1; j >= 0 && out.length < limit; j -= 1) {
+      const call = entry.tool_calls[j]!;
+      let args: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(call.arguments) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+      // A command is what says what a shell was doing; the watcher's target leaves it out.
+      const command = call.name === "shell" && typeof args.command === "string" ? args.command.split("\n")[0]!.trim() : "";
+      const target = command ? clip(command, SHELL_COMMAND_MAX) : toolTargetOf(call.name, args);
+      out.push(target ? `${call.name} ${target}` : call.name);
+    }
+  }
+  return out.reverse();
+}
+
+/**
+ * The first note of a turn opened by redirecting another: what the old one had written, what it
+ * was last doing and what it had not read yet. Null when it had done nothing worth carrying.
+ */
+export function redirectCarryNote(
+  locale: Locale,
+  input: { written: readonly string[]; recent: readonly string[]; unread: readonly HeardItem[] },
+): string | null {
+  const written = input.written.slice(-CARRY_FILES_MAX);
+  if (written.length === 0 && input.recent.length === 0 && input.unread.length === 0) return null;
+  const en = locale === "en";
+  const parts: string[] = [];
+  if (en) {
+    parts.push("(App note) Your previous turn was redirected by the message above; what it had done is still there.");
+    if (written.length > 0) parts.push(`Files it wrote: ${written.join(", ")}`);
+    if (input.recent.length > 0) parts.push(`Last things it did: ${input.recent.join("; ")}`);
+    for (const item of input.unread) {
+      parts.push(`Not read yet — ${item.checkBack ? "[your check-back]" : `[${item.author}]`} ${clip(item.body, HEARD_BODY_MAX)}`);
+    }
+    parts.push("Look at these before deciding whether to carry on or turn to the new message.");
+  } else {
+    parts.push("（应用提示）你上一轮被上面这条新消息改道了，它做过的东西都还在。");
+    if (written.length > 0) parts.push(`写过的文件：${written.join("、")}`);
+    if (input.recent.length > 0) parts.push(`最后在做：${input.recent.join("；")}`);
+    for (const item of input.unread) {
+      parts.push(`还没读到的——${item.checkBack ? "【你约的回看】" : `【${item.author}】`}${clip(item.body, HEARD_BODY_MAX)}`);
+    }
+    parts.push("先看一眼这些，再决定是接着做，还是按新消息转向。");
+  }
+  return parts.join("\n");
+}

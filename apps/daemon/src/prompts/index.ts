@@ -1,6 +1,6 @@
 export { INTERRUPT_FLAG, turnSystemPrompt } from "./system";
 export type { McpPromptGuide, MemoryPromptEntry, SkillPromptEntry } from "./system";
-export { JUDGEMENT_SYSTEM } from "./judgement";
+export { JUDGEMENT_MAX_TOKENS, JUDGEMENT_SYSTEM } from "./judgement";
 export {
   COMPOSER_SUGGEST_SYSTEM,
   COMPOSER_SUGGEST_RECENT,
@@ -18,11 +18,13 @@ export {
   COMPLETION_FAIL,
   FAIL_REASON,
   checkBackNoteBody,
+  planNudgeNote,
   reportBackNote,
+  stalledPlanBody,
   routineFireBody,
   unknownMentionBody,
   completionFailBody,
 } from "./transcript-copy";
-export type { FailKind } from "./transcript-copy";
+export type { FailKind, OpenTicketLine } from "./transcript-copy";
 export type { ChatTool } from "./tool-schema";
 export { builtinTools, COLLAB_TOOL_NAMES } from "./builtin-tools";

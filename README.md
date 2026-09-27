@@ -30,11 +30,12 @@
 - **It stays on your Mac.** Window, daemon, sessions and the shared workspace stay local. Bring any OpenAI-compatible endpoint and MCP servers; keys go to Keychain.
 - **It asks before risky moves.** New endpoints or MCP servers, access outside the workspace and outbound network wait for your approval. What waits on you is marked on the conversation list, with macOS banners and a Dock badge. Stop ends a running turn in a direct chat at any time.
 - **It shows its work.** Every plan is a flow: the app files each message you send into a plan and its tickets, keeps the goal, the done-when and your rules as the plan's spec, and draws the work as a card per turn by who woke whom, carrying the files that turn handed over, the ticket it worked in, and the model it ran on and why. You can open the direct chats Bots have with each other, too.
-- **It checks before handing over.** Before a Bot hands you files, the files and its wrap-up are checked against the plan's spec, or against what you first asked for until the app has written one; anything missing gets done, or the Bot says who has it, why it was left out or when it will be done.
+- **It checks before handing over.** Before a Bot hands you files, the files and its wrap-up are checked against the plan's spec, or against what you first asked for until the app has written one; anything missing gets done, or the Bot says who has it, why it was left out or when it will be done. A "tests pass" or "verified in the browser" has to match a command it actually ran, or it goes back to run it or to say it was not verified.
+- **A job that stalls gets noticed.** Tickets on the flow board move with the work; when a job goes quiet with tickets still open, the app calls the Bot on it back once, and tells you if nothing moves.
 
 ## What it does
 
-- **Persistent teammates.** Bots have names, duties and boundaries; they chat one to one, join groups, get `@`mentioned and hand work to each other.
+- **Persistent teammates.** Bots have names, duties and boundaries; they chat one to one, join groups, get `@`mentioned and hand work to each other; a Bot that is mid-task is not cut off when a teammate `@`s it, and reads the line on its next step.
 - **Office file previews.** Open `.docx`, `.xlsx` and `.pptx` from chat files, the workspace or flow-board outputs. Read documents, switch worksheets and browse slides locally, with full-window viewing and Escape or phone Back to return to the preview; [format support and limits](docs/development.md#办公文件预览).
 - **Annotate what a Bot hands over.** Mark a spot in text or code, rendered Markdown, an image or PDF region, an HTML element or a moment of audio or video; the batch goes out as one reply the Bot works through and resolves note by note.
 - **Model choice that says why.** An agent picks each turn's model and thinking level and leaves a reason; only reviews that blame the model become the Bot's experience.

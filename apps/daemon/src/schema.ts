@@ -374,7 +374,10 @@ CREATE TABLE IF NOT EXISTS check_backs (
   fired_at TEXT,
   fired_turn_id TEXT,
   message_id TEXT,
-  voided_at TEXT
+  voided_at TEXT,
+  -- Null for one the Bot booked itself; 'plan_nudge' for the app's call-back on a plan that went
+  -- quiet with tickets still open.
+  kind TEXT
 );
 
 CREATE INDEX IF NOT EXISTS check_backs_pending
@@ -416,6 +419,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS memories_bot_subject
 
 CREATE INDEX IF NOT EXISTS memories_bot_recent
   ON memories (bot_id, updated_at);
+
+-- What a turn actually ran, in order: each shell command with its exit code, and each MCP call.
+-- The closing check and the organizer read it, so "the tests pass" can be held against a run
+-- instead of against the Bot's word. Written as each call finishes, so a turn that is redirected
+-- or interrupted keeps what it ran.
+CREATE TABLE IF NOT EXISTS turn_runs (
+  id TEXT PRIMARY KEY,
+  turn_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  task_id TEXT,
+  ticket_id TEXT,
+  bot_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  command TEXT NOT NULL,
+  exit_code INTEGER,
+  ok INTEGER NOT NULL,
+  error TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS turn_runs_turn ON turn_runs (turn_id, created_at);
+CREATE INDEX IF NOT EXISTS turn_runs_task ON turn_runs (task_id, created_at);
 
 CREATE TABLE IF NOT EXISTS turn_route_decisions (
   turn_id TEXT PRIMARY KEY REFERENCES turns (id),

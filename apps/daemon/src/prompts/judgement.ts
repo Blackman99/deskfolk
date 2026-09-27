@@ -1,3 +1,10 @@
+/**
+ * Room for a verdict and its one-line reason. A reasoning model counts its thinking against the
+ * cap, and at the short-call default of 256 it spent all of it thinking: three of seven judgements
+ * in one group came back empty and were read as "pass".
+ */
+export const JUDGEMENT_MAX_TOKENS = 1024;
+
 export const JUDGEMENT_SYSTEM = `你正在做一次判断，不是轮次。没有工具，不能发言，不能读工作区。
 
 你没有被点名。没被点名不是旁观的理由。

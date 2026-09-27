@@ -1,8 +1,10 @@
 /**
  * A ticket (任务): the smallest unit of a plan that hands something over. It has a number, a title,
- * a spec, a status, who is on it (as observed, not assigned) and a folder inside the plan's dir.
- * Only the organizer and the user change tickets; Bots see them in the situation block and work
- * in the ticket dir their turn was filed under.
+ * a spec, a status, who is on it (filled from the plan's division of work when the organizer opens
+ * it, then from who is seen doing it — a record, not an assignment) and a folder inside the plan's
+ * dir. The organizer and the user change tickets; the app also moves one forward on what it sees
+ * a turn filed under it do ({@link observeTicketWork}). Bots see them in the situation block and
+ * work in the ticket dir their turn was filed under.
  */
 import type { Ticket, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
@@ -121,6 +123,28 @@ export function patchTicket(
     [next.title, next.spec, next.status, next.worker, now, closing ? 1 : 0, now, id],
   );
   return getTicket(ctx, id);
+}
+
+/**
+ * What the app sees a Bot do on a ticket, without asking a model. A turn filed under it starting
+ * real work (writing, running) moves it from todo to doing; a turn handing files over moves it to
+ * review. Only forward, never to done or parked — that stays the organizer's and yours — and the
+ * worker is filled only when nobody is on it. Between the organizer's runs, which wait for a plan
+ * to go quiet, this is what keeps the board saying who is doing what. Returns the ticket when it
+ * changed, else null.
+ */
+export function observeTicketWork(
+  ctx: StoreContext,
+  input: { ticketId: string; botId: string; seen: "working" | "delivered"; now?: Date },
+): Ticket | null {
+  const row = ctx.db.query<Ticket, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(input.ticketId);
+  if (!row) return null;
+  const moves: Partial<Record<TicketStatus, TicketStatus>> =
+    input.seen === "working" ? { todo: "doing" } : { todo: "review", doing: "review" };
+  const status = moves[row.status];
+  const worker = row.worker ?? input.botId;
+  if (!status && worker === row.worker) return null;
+  return patchTicket(ctx, row.id, { status: status ?? row.status, worker }, { now: input.now });
 }
 
 export function ticketOfTurn(ctx: StoreContext, turnId: string): string | null {

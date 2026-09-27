@@ -1295,7 +1295,12 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
-  test("a bot @ in a group redirects the named bot's live turn instead of cloning", async () => {
+  /**
+   * A teammate naming a Bot that is mid-task used to end that turn and open a new one with an
+   * empty tool loop: a frontend engineer lost three runs that way and never delivered. The line
+   * is heard in the live turn instead, at the start of its next hop.
+   */
+  test("a bot @ in a group is heard inside the named bot's live turn instead of ending it", async () => {
     let writerHops = 0;
     let releaseFirst = () => {};
     const firstHeld = new Promise<void>((resolve) => {
@@ -1305,6 +1310,7 @@ describe("turn engine on the local API", () => {
     const firstWriterArrived = new Promise<void>((resolve) => {
       sawFirstWriter = resolve;
     });
+    let heardNote = "";
     const fixture = await startFixture(async ({ body }) => {
       if (isJudgementRequest(body)) return judgementPass();
       const messages = body.messages as Array<{ role: string; content?: string }>;
@@ -1314,12 +1320,9 @@ describe("turn engine on the local API", () => {
         if (writerHops === 1) {
           sawFirstWriter();
           await firstHeld;
-          return sse(textChunks("first should not land"));
+          return sse(toolCallChunks("call_w", "list_dir", '{"path":"."}'));
         }
-        const situation = messages.find(
-          (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("# 局面"),
-        );
-        expect(situation?.content).toContain("本轮由【Researcher】叫醒。");
+        heardNote = messages.filter((m) => m.role === "user").map((m) => m.content ?? "").at(-1) ?? "";
         return sse(textChunks("heard the handoff"));
       }
       if (system.includes("## 名字\n\nResearcher")) {
@@ -1354,23 +1357,73 @@ describe("turn engine on the local API", () => {
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.body === "@Writer take this" && e.author === researcher.id,
     );
-    await waitFor(
-      sub.events,
-      (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected",
-    );
-    await waitFor(
+    // Still one writer turn, still running: the handoff went into its inbox.
+    expect(h.store.listLiveTurns({ sessionId: groupId, botId: writer.id }).map((turn) => turn.id)).toEqual([String(first.id)]);
+    releaseFirst();
+    const said = await waitFor(
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.body === "heard the handoff" && e.author === writer.id,
     );
-    const writerRunning = sub.events.filter(
-      (e) => e.event === "turn.upsert" && e.bot_id === writer.id && e.status === "running",
-    );
-    expect(writerRunning.length).toBeGreaterThanOrEqual(2);
-    const liveAfterHandoff = h.store.listLiveTurns({ sessionId: groupId, botId: writer.id });
-    expect(liveAfterHandoff).toHaveLength(0);
-    expect(
-      sub.events.some((e) => e.event === "message.created" && e.kind === "bot" && e.body === "first should not land"),
-    ).toBe(false);
+    expect(said.turn_id).toBe(first.id);
+    expect(heardNote).toContain("你这一轮干活时有人找你");
+    expect(heardNote).toContain("【Researcher】@Writer take this");
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "completed");
+    expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === writer.id && e.status === "redirected")).toBe(false);
+    expect(new Set(sub.events.filter((e) => e.event === "turn.upsert" && e.bot_id === writer.id).map((e) => String(e.id)))).toEqual(new Set([String(first.id)]));
+    sub.close();
+  });
+
+  /** Your own @ still turns the Bot around, and what the old turn had done comes along. */
+  test("a user @ in a group redirects the live turn and carries what it had written", async () => {
+    let writerHops = 0;
+    let releaseFirst = () => {};
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let sawSecondHop = () => {};
+    const secondHopArrived = new Promise<void>((resolve) => {
+      sawSecondHop = resolve;
+    });
+    let carried = "";
+    const fixture = await startFixture(async ({ body }) => {
+      if (isJudgementRequest(body)) return judgementPass();
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      if (!system.includes("## 名字\n\nWriter")) return sse(textChunks("should not speak"));
+      writerHops += 1;
+      if (writerHops === 1) return sse(toolCallChunks("call_w", "shell", '{"command":"printf draft > draft.md"}'));
+      if (writerHops === 2) {
+        sawSecondHop();
+        await firstHeld;
+        return sse(textChunks("first should not land"));
+      }
+      carried = messages.filter((m) => m.role === "user").map((m) => m.content ?? "").at(-1) ?? "";
+      return sse(textChunks("turned around"));
+    });
+    const h = await startApi();
+    const { bots, groupId } = await createGroupWithBots(h, fixture.origin, [
+      { name: "Writer", duties: "write" },
+      { name: "Researcher", duties: "read" },
+    ]);
+    const writer = bots.find((b) => b.name === "Writer")!;
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@Writer draft it" }),
+    });
+    const first = await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === writer.id);
+    await secondHopArrived;
+    await fetch(`${h.origin}/v1/sessions/${groupId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "@Writer stop, do the outline first" }),
+    });
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected");
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.body === "turned around");
+    expect(carried).toContain("你上一轮被上面这条新消息改道了");
+    expect(carried).toContain("draft.md");
+    expect(carried).toContain("shell printf draft > draft.md");
     releaseFirst();
     sub.close();
   });
@@ -4199,10 +4252,12 @@ describe("a Bot↔Bot direct", () => {
   });
 
   /**
-   * With no user in the room there is nobody to want two answers at once, so a second message
-   * retunes the live turn rather than cloning it. The user↔Bot default stays fork.
+   * With no user in the room there is nobody to want two answers at once, so a second message is
+   * heard by the live turn rather than cloning or ending it. One that lands after the turn's last
+   * hop started is not lost: the turn closes, and one more turn opens on it. The user↔Bot default
+   * stays fork.
    */
-  test("a second message retunes the live turn instead of forking it", async () => {
+  test("a second message is heard by the live turn, and one it never read opens the next turn", async () => {
     let release = () => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -4214,7 +4269,7 @@ describe("a Bot↔Bot direct", () => {
         await held;
         return sse(textChunks("first"));
       }
-      return sse(textChunks("second"));
+      return sse(textChunks("no new work"));
     });
     const h = await startApi();
     const { botId } = await createWriter(h, fixture.origin);
@@ -4241,11 +4296,15 @@ describe("a Bot↔Bot direct", () => {
       body: "two",
     });
     await h.engine.handleInboundMessage(two, { fromUser: false });
-    await waitFor(
-      sub.events,
-      (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected",
-    );
+    expect(h.store.listLiveTurns({ sessionId: direct.id, botId: researcherId }).map((turn) => turn.id)).toEqual([String(first.id)]);
     release();
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "completed");
+    const next = await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.bot_id === researcherId && e.id !== first.id,
+    );
+    expect(next.trigger_message_id).toBe(two.id);
+    expect(sub.events.some((e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected")).toBe(false);
     sub.close();
   });
 

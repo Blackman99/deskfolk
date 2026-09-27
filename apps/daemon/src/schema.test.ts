@@ -79,6 +79,7 @@ describe("schema", () => {
       "terminals",
       "tickets",
       "turn_route_decisions",
+      "turn_runs",
       "turns",
     ]);
     store.close();

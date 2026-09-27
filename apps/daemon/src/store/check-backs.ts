@@ -33,12 +33,16 @@ export type CheckBack = {
   /** The system line it woke its Bot with. */
   message_id: string | null;
   voided_at: string | null;
+  /** Null when the Bot booked it; `plan_nudge` when the app called a Bot back to a quiet plan. */
+  kind: string | null;
 };
 
 export const CHECK_BACK_MIN_MINUTES = 1;
 /** A week: long enough for "look again after the weekend", short enough to still be this job. */
 export const CHECK_BACK_MAX_MINUTES = 7 * 24 * 60;
 export const CHECK_BACK_NOTE_MAX = 500;
+/** The app's plan call-back lists the plan's open tickets, so it gets more room than a Bot's own note. */
+export const PLAN_NUDGE_NOTE_MAX = 1500;
 
 export function scheduleCheckBack(
   ctx: StoreContext,
@@ -101,20 +105,81 @@ export function bookReportBack(
   return insertCheckBack(ctx, { ...input, note: input.note.replace(/\s+/g, " ").trim(), at, due: at }).row;
 }
 
+/**
+ * The app's call-back for a plan that went quiet while some of its tickets are still to do or in
+ * progress: due now, in the plan's session, for the Bot on one of those tickets, landing in that
+ * ticket's folder. Like any booking it replaces the Bot's pending one there.
+ */
+export function bookPlanNudge(
+  ctx: StoreContext,
+  input: { botId: string; sessionId: string; taskId: string; ticketId: string | null; note: string; now?: Date },
+): CheckBack {
+  aliveBot(ctx, input.botId);
+  sessionRow(ctx, input.sessionId);
+  if (!isPresent(ctx, input.sessionId, input.botId)) {
+    throw new HttpError(422, "not_a_member", "not in that session");
+  }
+  const at = input.now ?? new Date();
+  return insertCheckBack(ctx, {
+    botId: input.botId,
+    sessionId: input.sessionId,
+    turnId: null,
+    note: input.note.replace(/\s+/g, " ").trim(),
+    at,
+    due: at,
+    lineage: { task_id: input.taskId, ticket_id: input.ticketId },
+    kind: PLAN_NUDGE,
+  }).row;
+}
+
+export const PLAN_NUDGE = "plan_nudge";
+
+/** The newest call-back the app made to this plan, fired or not; null when it never made one. */
+export function lastPlanNudge(ctx: StoreContext, taskId: string): CheckBack | null {
+  return (
+    ctx.db
+      .query<CheckBack, [string, string]>(
+        `SELECT * FROM check_backs WHERE task_id = ? AND kind = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(taskId, PLAN_NUDGE) ?? null
+  );
+}
+
+/** Appointments still pending in a plan, whoever booked them. */
+export function pendingPlanCheckBacks(ctx: StoreContext, taskId: string): CheckBack[] {
+  return ctx.db
+    .query<CheckBack, [string]>(
+      `SELECT * FROM check_backs WHERE task_id = ? AND fired_at IS NULL AND voided_at IS NULL ORDER BY due_at ASC, id ASC`,
+    )
+    .all(taskId);
+}
+
 function insertCheckBack(
   ctx: StoreContext,
-  input: { botId: string; sessionId: string; turnId: string | null; note: string; at: Date; due: Date },
+  input: {
+    botId: string;
+    sessionId: string;
+    turnId: string | null;
+    note: string;
+    at: Date;
+    due: Date;
+    /** Where the woken turn lands when no turn says so. */
+    lineage?: { task_id: string | null; ticket_id: string | null };
+    kind?: string | null;
+  },
 ): { row: CheckBack; replaced: boolean } {
   const now = input.at.toISOString();
   const due = input.due.toISOString();
   const id = ulid(input.at.getTime());
-  const lineage = input.turnId
-    ? ctx.db
-        .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
-          `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
-        )
-        .get(input.turnId)
-    : null;
+  const lineage =
+    input.lineage ??
+    (input.turnId
+      ? ctx.db
+          .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
+            `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
+          )
+          .get(input.turnId)
+      : null);
   let replaced = false;
   ctx.db.transaction(() => {
     const voided = ctx.db
@@ -127,9 +192,9 @@ function insertCheckBack(
     replaced = voided.length > 0;
     ctx.db.run(
       `INSERT INTO check_backs
-         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
-      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, CHECK_BACK_NOTE_MAX).text, due, now],
+         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at, kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, input.kind === PLAN_NUDGE ? PLAN_NUDGE_NOTE_MAX : CHECK_BACK_NOTE_MAX).text, due, now, input.kind ?? null],
     );
   })();
   return { row: getCheckBack(ctx, id), replaced };

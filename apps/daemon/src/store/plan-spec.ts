@@ -171,11 +171,16 @@ export function patchTicketByUser(
 export type OrganizerTicketInput = {
   /** An existing ticket's id, or `new-N` for one the organizer wants opened. */
   id: string;
-  title: string;
+  /** Always there on a `new-N`; absent on an existing ticket the organizer only moved. */
+  title?: string;
   spec: string;
-  status: TicketStatus;
-  /** A Bot id, resolved by the parser from the name the organizer wrote. */
-  worker: string | null;
+  /** Absent leaves an existing ticket's status as it was; a `new-N` without one is todo. */
+  status?: TicketStatus;
+  /**
+   * A Bot id, resolved by the parser from the name the organizer wrote. Absent leaves an existing
+   * ticket's worker as it was: the organizer never clears one, only you do.
+   */
+  worker?: string | null;
 };
 
 export type OrganizerResult = {
@@ -186,6 +191,16 @@ export type OrganizerResult = {
   /** Which ticket the message that prompted this run is about: an id, a `new-N`, or null. */
   messageTicket: string | null;
 };
+
+/**
+ * A plan the organizer reads as done while some of its tickets are still to do or in progress is
+ * not done: the run's other changes land, the plan stays active, and whoever looks at the board
+ * sees what is left instead of a finished plan over untouched tickets. Tickets awaiting review
+ * count as handed over. You can still close such a plan yourself.
+ */
+export function ticketsHoldingPlanOpen(tickets: readonly Ticket[]): Ticket[] {
+  return tickets.filter((ticket) => ticket.status === "todo" || ticket.status === "doing");
+}
 
 /** Tickets one organizer run may open. More than this is the organizer rewriting the plan, not filing it. */
 export const ORGANIZER_NEW_TICKETS_MAX = 10;
@@ -211,7 +226,15 @@ export function applyOrganizerResult(
     source: { messageId: string | null; turnId: string | null; messageBody: string };
     now?: Date;
   },
-): { task: Task; tickets: Ticket[]; messageTicketId: string | null; revision: SpecRevisionRow; created: number } {
+): {
+  task: Task;
+  tickets: Ticket[];
+  messageTicketId: string | null;
+  revision: SpecRevisionRow;
+  created: number;
+  /** Tickets that kept a plan the organizer called done open; empty when it was not called done or nothing was left. */
+  heldOpenBy: Ticket[];
+} {
   const at = input.now ?? new Date();
   const now = at.toISOString();
   return ctx.db.transaction(() => {
@@ -243,10 +266,12 @@ export function applyOrganizerResult(
     const placeholders = new Map<string, string>();
     let created = 0;
     for (const entry of result.tickets) {
-      const known = byId.get(entry.id) ?? (NEW_TICKET.test(entry.id) ? byTitle.get(titleKey(entry.title)) : undefined);
+      const known =
+        byId.get(entry.id) ?? (NEW_TICKET.test(entry.id) && entry.title ? byTitle.get(titleKey(entry.title)) : undefined);
       if (known) {
         try {
-          // An empty spec from the organizer says nothing about the ticket; it does not erase one.
+          // What the organizer left out says nothing about the ticket: an empty spec does not
+          // erase one, and a missing title, status or worker keeps what is there.
           const next = patchTicket(
             ctx,
             known.id,
@@ -260,10 +285,17 @@ export function applyOrganizerResult(
         }
         continue;
       }
-      if (!NEW_TICKET.test(entry.id)) continue;
+      if (!NEW_TICKET.test(entry.id) || !entry.title) continue;
       if (created >= ORGANIZER_NEW_TICKETS_MAX || existing.length + created >= TICKETS_MAX) continue;
       try {
-        const ticket = createTicket(ctx, { taskId: target.id, title: entry.title, spec: entry.spec, status: entry.status, worker: entry.worker, now: at });
+        const ticket = createTicket(ctx, {
+          taskId: target.id,
+          title: entry.title,
+          spec: entry.spec,
+          status: entry.status ?? "todo",
+          worker: entry.worker ?? null,
+          now: at,
+        });
         created += 1;
         placeholders.set(entry.id, ticket.id);
         byId.set(ticket.id, ticket);
@@ -273,10 +305,12 @@ export function applyOrganizerResult(
       }
     }
 
-    const task = setTaskSpec(ctx, target.id, result.spec, now);
+    const heldOpenBy = result.spec.status === "done" ? ticketsHoldingPlanOpen(listTickets(ctx, target.id)) : [];
+    const spec: PlanSpec = heldOpenBy.length > 0 ? { ...result.spec, status: "active" } : result.spec;
+    const task = setTaskSpec(ctx, target.id, spec, now);
     const revision = recordSpecRevision(ctx, {
       taskId: task.id,
-      spec: result.spec,
+      spec,
       sourceMessageId: input.source.messageId,
       sourceTurnId: input.source.turnId,
       actor: "app",
@@ -293,7 +327,7 @@ export function applyOrganizerResult(
     if (input.source.messageId) {
       ctx.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [task.id, messageTicketId, input.source.messageId]);
     }
-    return { task, tickets: listTickets(ctx, task.id), messageTicketId, revision, created };
+    return { task, tickets: listTickets(ctx, task.id), messageTicketId, revision, created, heldOpenBy };
   })();
 }
 

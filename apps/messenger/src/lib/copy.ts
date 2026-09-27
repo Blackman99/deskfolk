@@ -1106,7 +1106,8 @@ const zh = {
     tickets: "任务",
     ticketsNone: "还没有拆出任务。",
     ticketCounts: (open: number, total: number) => `${open} 未完成 · 共 ${total}`,
-    worker: (name: string) => `${name}在做`,
+    /** Who is on a ticket: filled from the division of work when it opens, so a ticket nobody started yet reads as theirs to do. */
+    worker: (name: string, started = true) => (started ? `${name}在做` : `${name}来做`),
     nobody: "还没人接",
     artifacts: (n: number) => `${n} 个产物`,
     jumpToTurn: "跳到这一轮",
@@ -2348,7 +2349,7 @@ const en: CopyShape<typeof zh> = {
     tickets: "Tickets",
     ticketsNone: "No tickets yet.",
     ticketCounts: (open: number, total: number) => `${open} open · ${total} total`,
-    worker: (name: string) => `${name} is on it`,
+    worker: (name: string, started = true) => (started ? `${name} is on it` : `For ${name}`),
     nobody: "Nobody yet",
     artifacts: (n: number) => `${n} file${n === 1 ? "" : "s"}`,
     jumpToTurn: "Jump to this turn",

@@ -293,6 +293,7 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM turn_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM session_notification_preferences WHERE session_id = ?`, [id]);
@@ -349,6 +350,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM turn_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     // The jobs end with the history, so nobody comes back to them later.

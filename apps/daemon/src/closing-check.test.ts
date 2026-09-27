@@ -221,6 +221,8 @@ describe("closing check pieces", () => {
       const handoff = store.insertMessage({ sessionId: group.id, turnId: first.id, kind: "bot", author: writer.id, body: "初稿 report.md", paths: ["report.md"] });
       store.setTurnStatus(first.id, "completed");
       const second = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: handoff.id });
+      store.recordTurnRun({ turnId: first.id, tool: "shell", command: "bun test", exitCode: 0, ok: true });
+      store.recordTurnRun({ turnId: second.id, tool: "shell", command: "npm run build", exitCode: 2, ok: true });
       const payload = closingCheckPayload(store, {
         taskId: second.task_id!,
         turnId: second.id,
@@ -236,6 +238,11 @@ describe("closing check pieces", () => {
         { path: "report.md", excerpt: "# 周报\n" },
       ]);
       expect(payload.so_far).toEqual(["【user】写周报，附趋势图", "【Writer】初稿 report.md"]);
+      // What was run, this turn's first: a "build passes" in the reply meets the exit code 2.
+      expect(payload.ran).toEqual([
+        { by: "Reviewer", this_turn: true, command: "npm run build", exit_code: 2, ok: true },
+        { by: "Writer", this_turn: false, command: "bun test", exit_code: 0, ok: true },
+      ]);
       expect(payload.check_back).toBeNull();
       const booked = store.scheduleCheckBack({ botId: reviewer.id, sessionId: group.id, turnId: second.id, note: "看 Writer 补图没有", afterMinutes: 30 }).row;
       const withBooking = closingCheckPayload(store, { taskId: second.task_id!, turnId: second.id, botId: reviewer.id, sessionId: group.id, reply: "图稍后补", paths: [], locale: "zh" })!;
@@ -278,8 +285,9 @@ describe("closing check pieces", () => {
 
   test("the note reads in the turn's locale", () => {
     expect(closingCheckNote("zh", [{ text: "附趋势图", why: "没看到" }, { text: "交到 report.md", why: "" }])).toBe(
-      "收尾自检：对照这件事最初的要求，下面这些既没有交出，收尾里也没有交代去向：\n- 附趋势图（没看到）\n- 交到 report.md\n现在补上；做不了的在收尾里说明交给谁、为什么不交；非要以后再做的先用 check_back 约回看（收尾一发出这一轮就结束），再收尾。这一轮只提示这一次。",
+      "收尾自检：对照这件事最初的要求，下面这些既没有交出、收尾里也没有交代去向，或者是说做过却没有执行记录的声明：\n- 附趋势图（没看到）\n- 交到 report.md\n现在补上；做不了的在收尾里说明交给谁、为什么不交；非要以后再做的先用 check_back 约回看（收尾一发出这一轮就结束）。没有执行记录的声明：现在去跑，跑不了就在收尾里写明「未验证」和原因（比如这里没有能开浏览器的工具）。然后再收尾。这一轮只提示这一次。",
     );
+    expect(closingCheckNote("en", [{ text: "all tests pass", why: "" }])).toContain("run it now, or say plainly that it was not verified");
     expect(closingCheckNote("en", [{ text: "a chart", why: "none seen" }])).toContain("- a chart (none seen)");
     expect(closingCheckNote("en", [{ text: "a chart", why: "" }])).toContain("Closing check:");
     expect(closingCheckNote("en", [{ text: "a chart", why: "" }])).toContain("needs a check_back booked first");

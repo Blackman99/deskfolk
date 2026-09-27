@@ -45,6 +45,11 @@ export type OrganizerDeps = {
   settleQuietMs?: number;
   /** Where a filing that came to nothing says why. Defaults to stderr. */
   log?: (line: string) => void;
+  /**
+   * A plan's quiet clock ran out and its settle is over, whether it filed anything or not: the
+   * engine checks whether the plan stopped with tickets open (see the turn engine's reconcile).
+   */
+  onQuiet?: (taskId: string) => void;
 };
 
 export type Organizer = {
@@ -84,6 +89,12 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   const inFlight = new Set<string>();
   const chains = new Map<string, Promise<unknown>>();
   const log = deps.log ?? ((line: string) => console.error(line));
+  /**
+   * Set when the engine clears the timers (draining, quitting, closing): a settle still in flight
+   * must not call back into an engine that is going away. The next turn end clears it, since a
+   * cancelled drain carries on.
+   */
+  let stopped = false;
 
   function traceLines(taskId: string): string[] {
     try {
@@ -169,6 +180,13 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     return parsed;
   }
 
+  /** A plan called done over open tickets stays active; the log says which tickets kept it. */
+  function noteHeldOpen(taskId: string, held: readonly Ticket[]): void {
+    if (held.length === 0) return;
+    const which = held.map((ticket) => `${String(ticket.seq).padStart(2, "0")} ${ticket.status}`).join(", ");
+    log(`[organizer] plan ${taskId}: called done while tickets are still open (${which}); kept active`);
+  }
+
   function shouldFile(message: Message): boolean {
     if (message.kind !== "user" || message.author !== USER_MEMBER) return false;
     if (!message.body.trim() && message.attachments.length === 0) return false;
@@ -203,6 +221,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       log(`[organizer] could not apply the filing of ${message.id}: ${error instanceof Error ? error.message : String(error)}`);
       return fallback;
     }
+    noteHeldOpen(applied.task.id, applied.heldOpenBy);
     renderMirrors(applied.task.id);
     return { taskId: applied.task.id, ticketId: applied.messageTicketId };
   }
@@ -246,7 +265,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
         .get(taskId);
       try {
-        store.transaction(() =>
+        const applied = store.transaction(() =>
           store.applyOrganizerResult({
             sessionId: task.session_id!,
             current: task,
@@ -254,6 +273,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
             source: { messageId: null, turnId: lastTurn?.id ?? null, messageBody: "" },
           }),
         );
+        noteHeldOpen(taskId, applied.heldOpenBy);
       } catch (error) {
         log(`[organizer] could not apply the settling of ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
         return false;
@@ -268,12 +288,17 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   function noteTurnEnded(turn: Turn): void {
     if (!turn.task_id || deps.draining()) return;
     if (turn.status === "running" || turn.status === "waiting_ask" || turn.status === "waiting_approval") return;
+    stopped = false;
     const taskId = turn.task_id;
     const existing = settleTimers.get(taskId);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       settleTimers.delete(taskId);
-      void settlePlan(taskId).catch((error) => console.error(`[organizer] settling ${taskId} failed`, error));
+      void settlePlan(taskId)
+        .catch((error) => console.error(`[organizer] settling ${taskId} failed`, error))
+        .then(() => {
+          if (!stopped && !deps.draining()) deps.onQuiet?.(taskId);
+        });
     }, deps.settleQuietMs ?? SETTLE_QUIET_MS);
     timer.unref?.();
     settleTimers.set(taskId, timer);
@@ -314,6 +339,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   }
 
   function clearTimers(): void {
+    stopped = true;
     for (const timer of settleTimers.values()) clearTimeout(timer);
     settleTimers.clear();
   }

@@ -373,6 +373,7 @@ function migratePlans(db: Database): void {
        WHERE fired_at IS NOT NULL`,
     );
   }
+  if (checkBackCols.length > 0 && !checkBackCols.includes("kind")) db.run(`ALTER TABLE check_backs ADD COLUMN kind TEXT`);
 }
 
 function migrateNotifications(db: Database): void {

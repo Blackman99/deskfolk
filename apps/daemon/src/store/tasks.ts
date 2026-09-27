@@ -809,11 +809,17 @@ function oneLine(body: string): string {
  * interrupt note. A user message the organizer already filed carries its own stamp. Otherwise the
  * turn joins the session's current plan, and only when there is none does it open one — no clock
  * ever closes a plan; the organizer does.
+ *
+ * Within the plan, a woken Bot that is on exactly one open ticket there works in that one rather
+ * than in whatever ticket woke it: a handoff from the PM's ticket to the frontend engineer is the
+ * frontend ticket's work, not more of the PM's (see {@link ownOpenTicket}).
  */
 export function resolveTurnTask(
   ctx: StoreContext,
   input: {
     sessionId: string;
+    /** The Bot the turn is for; with it, a turn lands on the one open ticket that Bot is on. */
+    botId?: string;
     trigger: { id?: string; body: string; turn_id: string | null; task_id?: string | null; ticket_id?: string | null };
     /**
      * The plan this turn continues, named outright: a batch of annotations wakes the Bot to fix
@@ -824,26 +830,36 @@ export function resolveTurnTask(
     ticketId?: string | null;
     now?: Date;
   },
-): { taskId: string; ticketId: string | null } {
+): {
+  taskId: string;
+  ticketId: string | null;
+  /** The ticket the trigger itself carried, before the woken Bot's own one was preferred. */
+  handedTicketId: string | null;
+} {
   const at = input.now ?? new Date();
   if (input.taskId) {
     reopenTask(ctx, input.taskId, input.sessionId);
-    return { taskId: input.taskId, ticketId: input.ticketId ?? null };
+    return { taskId: input.taskId, ticketId: input.ticketId ?? null, handedTicketId: input.ticketId ?? null };
   }
+  const own = (taskId: string, ticketId: string | null) => ({
+    taskId,
+    ticketId: input.botId ? ownOpenTicket(ctx, taskId, input.botId, ticketId) : ticketId,
+    handedTicketId: ticketId,
+  });
   if (input.trigger.turn_id) {
     const inherited = ctx.db
       .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
         `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
       )
       .get(input.trigger.turn_id);
-    if (inherited?.task_id) return { taskId: inherited.task_id, ticketId: inherited.ticket_id ?? null };
+    if (inherited?.task_id) return own(inherited.task_id, inherited.ticket_id ?? null);
   }
   if (input.trigger.task_id) {
     const stamped = ctx.db.query<{ id: string }, [string]>(`SELECT id FROM tasks WHERE id = ?`).get(input.trigger.task_id);
-    if (stamped) return { taskId: input.trigger.task_id, ticketId: input.trigger.ticket_id ?? null };
+    if (stamped) return own(input.trigger.task_id, input.trigger.ticket_id ?? null);
   }
   const current = sessionCurrentTask(ctx, input.sessionId);
-  if (current) return { taskId: current.id, ticketId: null };
+  if (current) return own(current.id, null);
   return {
     taskId: openTask(ctx, {
       sessionId: input.sessionId,
@@ -852,7 +868,29 @@ export function resolveTurnTask(
       now: at,
     }).id,
     ticketId: null,
+    handedTicketId: null,
   };
+}
+
+/**
+ * The ticket a woken Bot works in. The one it was handed stays when it is this Bot's or nobody's —
+ * you may have pointed at an unclaimed ticket, and this Bot can take it — and when the Bot is on
+ * no open ticket of the plan, or on several. When the handed ticket is another Bot's (or there is
+ * none) and this Bot is on exactly one open ticket — to do, in progress or awaiting review — it
+ * works in that one. The organizer fills a ticket's worker from the plan's division of work when
+ * it opens it, so in a team each role lands in its own folder.
+ */
+export function ownOpenTicket(ctx: StoreContext, taskId: string, botId: string, handed: string | null): string | null {
+  if (handed) {
+    const row = ctx.db.query<{ worker: string | null }, [string]>(`SELECT worker FROM tickets WHERE id = ?`).get(handed);
+    if (!row || row.worker === null || row.worker === botId) return handed;
+  }
+  const mine = ctx.db
+    .query<{ id: string }, [string, string]>(
+      `SELECT id FROM tickets WHERE task_id = ? AND worker = ? AND status IN ('todo', 'doing', 'review') LIMIT 2`,
+    )
+    .all(taskId, botId);
+  return mine.length === 1 ? mine[0]!.id : handed;
 }
 
 /**

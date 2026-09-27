@@ -166,6 +166,16 @@ test("rows render in seq order with tag, title, status, and worker", () => {
   view.close();
 });
 
+test("a ticket filed with its Bot but not started yet reads as that Bot's to do, not as being done", () => {
+  const view = open({
+    detail: aDetail({ tickets: [aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo", worker: "bot-1" })] }),
+  });
+  const who = view.host.querySelector(".ticket-row .ticket-who-text")?.textContent;
+  expect(who).toBe(t.plan.worker("制片", false));
+  expect(who).not.toBe(t.plan.worker("制片"));
+  view.close();
+});
+
 test("the header shows the plan's ticket counts, and no tickets says so", () => {
   const view = open({
     detail: aDetail({ ticket_counts: { todo: 1, doing: 2, review: 0, done: 3, parked: 0 }, tickets: [] }),

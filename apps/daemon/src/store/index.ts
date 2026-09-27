@@ -45,6 +45,7 @@ import * as planSpec from "./plan-spec";
 import * as tasks from "./tasks";
 import * as terminals from "./terminals";
 import * as tickets from "./tickets";
+import * as turnRuns from "./turn-runs";
 import * as turns from "./turns";
 
 export { HttpError } from "../errors";
@@ -60,6 +61,8 @@ export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
 export type { FileCommit, LiveFile } from "./files";
 export type { DecideRouteInput } from "./routing";
+export type { TurnRun } from "./turn-runs";
+export { TURN_RUNS_PER_TURN } from "./turn-runs";
 
 type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (...args: A) => R : never;
 
@@ -274,6 +277,10 @@ export class Store {
   readonly listTickets = this.bind(tickets.listTickets);
   readonly patchTicket = this.bind(tickets.patchTicket);
   readonly ticketOfTurn = this.bind(tickets.ticketOfTurn);
+  readonly observeTicketWork = this.bind(tickets.observeTicketWork);
+  readonly recordTurnRun = this.bind(turnRuns.recordTurnRun);
+  readonly turnRuns = this.bind(turnRuns.turnRuns);
+  readonly taskRunsSince = this.bind(turnRuns.taskRunsSince);
   readonly ticketArtifacts = this.bind(tickets.ticketArtifacts);
   readonly listTicketDirs = this.bind(tickets.listTicketDirs);
   readonly listSpecRevisions = this.bind(planSpec.listSpecRevisions);
@@ -292,6 +299,9 @@ export class Store {
   readonly getCheckBack = this.bind(checkBacks.getCheckBack);
   readonly pendingCheckBack = this.bind(checkBacks.pendingCheckBack);
   readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);
+  readonly bookPlanNudge = this.bind(checkBacks.bookPlanNudge);
+  readonly lastPlanNudge = this.bind(checkBacks.lastPlanNudge);
+  readonly pendingPlanCheckBacks = this.bind(checkBacks.pendingPlanCheckBacks);
   readonly dueCheckBacks = this.bind(checkBacks.dueCheckBacks);
   readonly claimCheckBack = this.bind(checkBacks.claimCheckBack);
   readonly markCheckBackFired = this.bind(checkBacks.markCheckBackFired);
