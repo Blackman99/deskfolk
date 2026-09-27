@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
-import { INTERRUPT_NOTE_BODY, type Approval, type Message, type SessionSummary, type Turn } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, type Approval, type Message, type PendingJudgement, type SessionSummary, type Turn } from "@real-bot/protocol";
 import {
   botWorkStatus,
+  isWorkingStatus,
   sessionStatus,
   sidebarStatus,
+  type SessionStateKind,
   type StatusLabels,
+  workingSessionIds,
 } from "./session-status.ts";
 
 const labels: StatusLabels = {
@@ -256,4 +259,23 @@ test("sidebar you↔bot row shows running status when this session is active", (
   const turns = [makeTurn("t1", "s-you", "running", { bot_id: "writer" })];
   expect(sidebarStatus(youBot, turns, [], labels).kind).toBe("running");
   expect(sidebarStatus(youBot, turns, [], labels).label).toBe("思考中");
+});
+
+/** The list's "only working" filter keeps a turn that is paused on you, not one that has ended. */
+test("a turn waiting on you still counts as working, a failed or interrupted one does not", () => {
+  const working: SessionStateKind[] = ["running", "replying", "waiting_approval", "waiting_ask"];
+  const settled: SessionStateKind[] = ["idle", "failed", "interrupted"];
+  expect(working.every(isWorkingStatus)).toBe(true);
+  expect(settled.some(isWorkingStatus)).toBe(false);
+});
+
+test("the working sessions are the ones whose row reads as live work", () => {
+  const sessions = ["s-run", "s-ask", "s-done", "s-judge", "s-idle"].map((id) => ({ id }));
+  const turns = [
+    makeTurn("t1", "s-run", "running"),
+    makeTurn("t2", "s-ask", "waiting_ask"),
+    makeTurn("t3", "s-done", "completed"),
+  ];
+  const judging = [{ session_id: "s-judge", bot_id: "b1" }] as unknown as PendingJudgement[];
+  expect([...workingSessionIds(sessions, turns, [], judging)].sort()).toEqual(["s-ask", "s-judge", "s-run"]);
 });

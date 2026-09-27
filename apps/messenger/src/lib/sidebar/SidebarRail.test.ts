@@ -6,6 +6,7 @@ import { aBot, aBotDirect, aDirect, aGroup, aMessage, anApproval, aTurn, fakeRun
 import { spendCopyFor } from "../spend/spend-copy.ts";
 import { updateChecker } from "../update-checker.svelte.ts";
 import { click, press, render } from "../test-render.ts";
+import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
 import SidebarRail from "./SidebarRail.svelte";
 
 const t = copyFor("en");
@@ -194,9 +195,12 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 test("the search icon sits under expand, names search, and opens it", () => {
   const view = open();
   const buttons = [...view.host.querySelectorAll<HTMLButtonElement>("nav > .rail-action")];
-  expect(buttons.map((button) => button.classList.contains("rail-expand") || button.classList.contains("rail-search"))).toEqual([true, true]);
-  expect(buttons[0].classList.contains("rail-expand")).toBe(true);
-  expect(buttons[1].classList.contains("rail-search")).toBe(true);
+  // The list's search row, top to bottom: fold, search, then the working filter.
+  expect(buttons.map((button) => ["rail-expand", "rail-search", "rail-working"].find((name) => button.classList.contains(name)))).toEqual([
+    "rail-expand",
+    "rail-search",
+    "rail-working",
+  ]);
   const search = buttons[1];
   expect(search.getAttribute("aria-label")).toBe(t.sidebar.searchShort);
   expect(search.hasAttribute("title")).toBe(false);
@@ -331,4 +335,66 @@ test("taking the rail away clears a tip and its pending hover", async () => {
   again.close();
   await wait(250);
   expect(document.querySelector("[data-rail-tip]")).toBeNull();
+});
+
+const WORKING_ONLY_KEY = "real-bot-sidebar-working-only";
+const railIds = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session);
+
+/** Folding the list must not change what it shows: the rail cuts the same rows, and keeps the pins. */
+test("the rail has the list's working filter, keeps the pins, and flips the same stored switch", () => {
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+  const view = open();
+  const toggle = view.host.querySelector<HTMLButtonElement>(".rail-working")!;
+  expect(toggle.getAttribute("aria-label")).toBe(t.sidebar.workingOnly);
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  expect(toggle.hasAttribute("title")).toBe(false);
+
+  click(toggle);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  expect(toggle.classList.contains("is-active")).toBe(true);
+  // Only the group's turn is live (waiting on approval); the pin stays as it is.
+  expect(railIds(view.host)).toEqual(["direct-pin", "sess-1"]);
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(1);
+  expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBe("1");
+  toggle.focus();
+  flushSync();
+  expect(tipFor("rail-tip-working")?.textContent).toBe(t.sidebar.workingOnlyOff);
+  toggle.blur();
+
+  click(toggle);
+  expect(railIds(view.host)).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1", "botbot-1"]);
+  expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBeNull();
+  view.close();
+});
+
+test("a rail folded with the filter on opens filtered, with every working direct past the cap", () => {
+  window.localStorage.setItem(WORKING_ONLY_KEY, "1");
+  const directs = Array.from({ length: BOT_DM_VISIBLE + 2 }, (_, i) => aBotDirect({ id: `d-${i}` }));
+  const runtime = fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
+    sessions: [aGroup({ id: "sess-1", name: "Video crew" }), aDirect({ id: "direct-1" }), ...directs],
+    turns: directs.map((d, i) => aTurn({ id: `turn-${i}`, session_id: d.id, status: "running" })),
+  });
+  const view = render(SidebarRail, {
+    runtime,
+    t,
+    pinnedSessionIds: [],
+    contextMenuSessionId: null,
+    workspaceOpen: false,
+    onOpenContextMenu: () => {},
+    onExpand: () => {},
+    onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
+    onOpenSpend: () => {},
+    onNewTerminal: () => {},
+    onOpenArchived: () => {},
+    onOpenSettings: () => {},
+    onOpenSearch: () => {},
+  });
+  expect(view.host.querySelector(".rail-working")?.getAttribute("aria-pressed")).toBe("true");
+  expect(railIds(view.host)).toHaveLength(BOT_DM_VISIBLE + 2);
+  expect(railIds(view.host)).not.toContain("sess-1");
+  expect(view.host.querySelector(".rail-divider")).toBeNull();
+  view.close();
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
 });

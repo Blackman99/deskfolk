@@ -27,6 +27,40 @@ export type StatusLabels = {
   idle: string;
 };
 
+/**
+ * Whether a Bot is at work in it: thinking or replying, and also stopped mid-turn on an approval
+ * or a question to you, since that turn is still open. A finished failure or interruption is not.
+ */
+export function isWorkingStatus(kind: SessionStateKind): boolean {
+  return kind === "running" || kind === "replying" || kind === "waiting_approval" || kind === "waiting_ask";
+}
+
+const NO_LABELS: StatusLabels = {
+  running: "",
+  replying: "",
+  waitingApproval: "",
+  waitingAsk: "",
+  failed: "",
+  interrupted: "",
+  idle: "",
+};
+
+/** The sessions a Bot is at work in right now, by the same reading as each row's status. */
+export function workingSessionIds(
+  sessions: readonly Pick<SessionSummary, "id">[],
+  turns: readonly Turn[],
+  approvals: readonly Approval[],
+  pendingJudgements: readonly PendingJudgement[] = [],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const session of sessions) {
+    if (isWorkingStatus(sessionStatus(session.id, turns, approvals, NO_LABELS, pendingJudgements).kind)) {
+      ids.add(session.id);
+    }
+  }
+  return ids;
+}
+
 /** The transcript line a failed turn leaves behind, in either locale. */
 const FAIL_NOTE = /^(这一轮没写完：|This turn did not finish:)/;
 

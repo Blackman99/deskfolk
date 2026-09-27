@@ -6,7 +6,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+- The session list can show only what is being worked on. A pulse button next to the search field (on a phone too) narrows the list to the conversations where a Bot is thinking or replying, or whose turn is waiting on your approval or your answer; one whose turn finishes, fails or is interrupted drops out, and a section with nothing left loses its heading. The Bot ↔ Bot directs are all listed then, not just the latest five. Press it again to see everything; the choice is remembered. The list folded to its rail of avatars has the same button under its search button and shows the same avatars, and switching it in either place carries over when you fold or unfold. The pinned conversations stay as they are in both, and the archived list is not filtered. With the list dragged to its narrowest, the ⌘K hint in the search field is hidden to make room.
 
 ## 0.1.0-rc.8 — 2026-09-26
 

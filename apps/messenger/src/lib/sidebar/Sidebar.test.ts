@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { spendCopyFor } from "../spend/spend-copy.ts";
-import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, aTurn, anApproval, fakeRuntime } from "../test-fixtures.ts";
+import type { Snapshot } from "../snapshot.ts";
 import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
 import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
@@ -477,4 +478,157 @@ test("on a phone the calendar and the terminal live behind one button", () => {
     expect(host.querySelector('.tools-menu')).toBeNull();
     close();
   });
+});
+
+const WORKING_ONLY_KEY = "real-bot-sidebar-working-only";
+
+/** A list with work in some rows: Writer thinking, Researcher idle, the group waiting on an approval. */
+function openWorking(over: Partial<Snapshot> = {}, pinnedSessionIds: string[] = []) {
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+  const drop = aDirect({
+    id: FILE_DROP_SESSION_ID,
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+  });
+  const runtime = reactive(
+    fakeRuntime({
+      bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
+      sessions: [
+        drop,
+        aGroup({ id: "sess-1", name: "视频组" }),
+        aGroup({ id: "sess-2", name: "文案组" }),
+        aDirect({ id: "direct-1" }),
+        aDirect({
+          id: "direct-2",
+          participants: [
+            { member: "user", joined_at: "t", left_at: null },
+            { member: "bot-2", joined_at: "t", left_at: null },
+          ],
+        }),
+        ...botDms(7),
+      ],
+      turns: [
+        aTurn({ id: "turn-w", session_id: "direct-1", status: "running" }),
+        aTurn({ id: "turn-g", session_id: "sess-1", status: "waiting_approval" }),
+        aTurn({ id: "turn-d", session_id: "d-01", status: "running" }),
+        aTurn({ id: "turn-old", session_id: "sess-2", status: "completed" }),
+      ],
+      approvals: [anApproval({ turn_id: "turn-g" })],
+      ...over,
+    }),
+  );
+  const view = render(Sidebar, {
+    runtime,
+    t,
+    selected: null,
+    pinnedSessionIds,
+    workspaceOpen: false,
+    contextMenuSessionId: null,
+    onOpenContextMenu: () => {},
+    onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
+    onOpenSpend: () => {},
+    onNewTerminal: () => {},
+    onOpenSettings: () => {},
+    onCreateBot: () => {},
+    onCreateGroup: () => {},
+    onOpenSearch: () => {},
+  });
+  const titles = () => [...view.host.querySelectorAll(".groups .row .t")].map((el) => el.textContent?.trim());
+  const heads = () => [...view.host.querySelectorAll(".groups .ghead > span:first-child")].map((el) => el.textContent?.trim());
+  const toggle = () => view.host.querySelector<HTMLButtonElement>(".working-filter")!;
+  return { ...view, runtime, titles, heads, toggle };
+}
+
+test("the working filter lists only the rows a Bot is at work in, and remembers it", () => {
+  const { host, titles, heads, toggle, close } = openWorking();
+  expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  expect(titles()).toContain("文案组");
+  expect(titles()).toContain("Researcher");
+  expect(host.querySelectorAll(".row-stack")).toHaveLength(BOT_DM_VISIBLE);
+
+  click(toggle());
+  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+  expect(toggle().title).toBe(t.sidebar.workingOnlyOff);
+  // Thinking counts, and so does a turn stopped on your approval; a finished turn does not.
+  expect(titles()).toEqual(["视频组", "Writer", "Writer ↔ Researcher"]);
+  // The file drop never has a Bot at work, so its section goes; the rest keep their headings.
+  expect(heads()).toEqual([t.sidebar.groups, t.sidebar.youBot, t.sidebar.botBot]);
+  expect(host.querySelector(".ghead-more")).toBeNull();
+  expect(host.querySelector(".working-empty-hint")).toBeNull();
+  expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBe("1");
+
+  click(toggle());
+  expect(titles()).toContain("文案组");
+  expect(heads()[0]).toBe(t.sidebar.fileDrop);
+  expect(host.querySelectorAll(".row-stack")).toHaveLength(BOT_DM_VISIBLE);
+  expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBeNull();
+  close();
+});
+
+test("a row leaves the filtered list when its turn ends, and the list says when nothing is left", () => {
+  const { host, runtime, titles, toggle, close } = openWorking({
+    turns: [aTurn({ id: "turn-w", session_id: "direct-1", status: "running" })],
+    approvals: [],
+  });
+  click(toggle());
+  expect(titles()).toEqual(["Writer"]);
+  flushSync(() => {
+    runtime.snapshot.turns[0].status = "completed";
+  });
+  expect(titles()).toEqual([]);
+  expect(host.querySelectorAll(".groups .ghead")).toHaveLength(0);
+  expect(host.querySelector(".working-empty-hint")?.textContent).toBe(t.sidebar.workingEmpty);
+  close();
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+});
+
+/** The pins stay as they are, so a working pin is on screen even when no row below is. */
+test("with only a pinned conversation working, the empty list says the work is in the pins", () => {
+  const { host, titles, toggle, close } = openWorking(
+    { turns: [aTurn({ id: "turn-w", session_id: "direct-1", status: "running" })], approvals: [] },
+    ["direct-1", "direct-2"],
+  );
+  click(toggle());
+  expect(titles()).toEqual([]);
+  expect(host.querySelectorAll(".pinned-session-btn")).toHaveLength(2);
+  expect(host.querySelector(".working-empty-hint")?.textContent).toBe(t.sidebar.workingEmptyPinned);
+  close();
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+});
+
+test("the list opens already filtered when it was left that way", () => {
+  window.localStorage.setItem(WORKING_ONLY_KEY, "1");
+  const runtime = fakeRuntime({ sessions: [aGroup({ id: "sess-1", name: "视频组" })] });
+  const { host, close } = render(Sidebar, {
+    runtime,
+    t,
+    selected: null,
+    pinnedSessionIds: [],
+    workspaceOpen: false,
+    contextMenuSessionId: null,
+    onOpenContextMenu: () => {},
+    onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
+    onOpenSpend: () => {},
+    onNewTerminal: () => {},
+    onOpenSettings: () => {},
+    onCreateBot: () => {},
+    onCreateGroup: () => {},
+    onOpenSearch: () => {},
+  });
+  expect(host.querySelector(".working-filter")?.getAttribute("aria-pressed")).toBe("true");
+  expect(host.querySelector(".groups .row")).toBeNull();
+  close();
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+});
+
+/** The archived list is its own view; the filter is for the live list and waits outside it. */
+test("the archived list has no working filter", () => {
+  const { host, toggle, close } = openWorking();
+  click(host.querySelector(".tools-entry"));
+  click(host.querySelector(".tools-menu-archived"));
+  expect(host.querySelector(".working-filter")).toBeNull();
+  click(host.querySelector(".btn-back-sessions"));
+  expect(toggle()).not.toBeNull();
+  close();
 });

@@ -8,10 +8,11 @@
 	import { recentBotDms } from './bot-dm-source.ts';
 	import RailTooltip from './RailTooltip.svelte';
 	import { groupSessions, isFileDropSession, isSessionArchived } from './session-groups.ts';
-	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { botWorkStatus, sidebarStatus, workingSessionIds } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
+	import { loadWorkingOnly, onlyWorking, saveWorkingOnly } from './working-only.ts';
 
 	/**
 	 * The session list put away: every conversation it shows, as its avatar alone, in the same
@@ -72,14 +73,30 @@
 	});
 
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
+
+	/** The list's "only working" switch, the same stored one, so folding the list keeps its view. */
+	let workingOnly = $state(loadWorkingOnly());
+	function toggleWorkingOnly(): void {
+		workingOnly = !workingOnly;
+		saveWorkingOnly(workingOnly);
+	}
+	const workingIds = $derived(
+		workingOnly
+			? workingSessionIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
+			: null
+	);
+	const listed = $derived(onlyWorking(grouped, workingIds));
+
 	/** The list's sections, empty ones dropped so no two dividers meet. */
 	const sections = $derived(
 		[
-			grouped.pinned,
-			grouped.fileDrop ? [grouped.fileDrop] : [],
-			grouped.groups,
-			grouped.youBot,
-			recentBotDms(grouped.botBot, { keepId: runtime.selectedId })
+			listed.pinned,
+			listed.fileDrop ? [listed.fileDrop] : [],
+			listed.groups,
+			listed.youBot,
+			workingIds
+				? recentBotDms(listed.botBot, { expanded: true })
+				: recentBotDms(listed.botBot, { keepId: runtime.selectedId })
 		].filter((section) => section.length > 0)
 	);
 
@@ -170,6 +187,18 @@
 		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 			<circle cx="11" cy="11" r="8"></circle>
 			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+		</svg>
+	</RailTooltip>
+	<RailTooltip
+		class="rail-action rail-working {workingOnly ? 'is-active' : ''}"
+		label={[workingOnly ? t.sidebar.workingOnlyOff : t.sidebar.workingOnly]}
+		name={t.sidebar.workingOnly}
+		describedBy="rail-tip-working"
+		aria-pressed={workingOnly}
+		onclick={toggleWorkingOnly}
+	>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
 		</svg>
 	</RailTooltip>
 	<div class="rail-list">

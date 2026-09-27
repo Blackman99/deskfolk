@@ -6,7 +6,8 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
-	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { botWorkStatus, sidebarStatus, workingSessionIds } from './session-status.ts';
+	import { loadWorkingOnly, onlyWorking, saveWorkingOnly } from './working-only.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { latestPreview } from '../chat/transcript.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
@@ -80,13 +81,39 @@
 	});
 
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
-	const fileDrop = $derived(grouped.fileDrop);
+
+	/**
+	 * The list shows only what a Bot is working in. The pins above keep every pin. The rail reads
+	 * and writes the same stored switch, and only one of the two is mounted at a time.
+	 */
+	let workingOnly = $state(loadWorkingOnly());
+	function toggleWorkingOnly(): void {
+		workingOnly = !workingOnly;
+		saveWorkingOnly(workingOnly);
+	}
+	/** Null while the list is unfiltered. */
+	const workingIds = $derived(
+		workingOnly
+			? workingSessionIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
+			: null
+	);
+	const listed = $derived(onlyWorking(grouped, workingIds));
+
+	const fileDrop = $derived(listed.fileDrop);
+	const groupRows = $derived(listed.groups);
+	const youBotRows = $derived(listed.youBot);
 	let botBotExpanded = $state(false);
+	/** Filtered, every working direct is listed: the cap is for idle history, not for live work. */
 	const botBotVisible = $derived(
-		recentBotDms(grouped.botBot, {
-			keepId: runtime.selectedId,
-			expanded: botBotExpanded
-		})
+		workingIds
+			? recentBotDms(listed.botBot, { expanded: true })
+			: recentBotDms(grouped.botBot, {
+					keepId: runtime.selectedId,
+					expanded: botBotExpanded
+				})
+	);
+	const nothingWorking = $derived(
+		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && botBotVisible.length === 0
 	);
 	const archivedSessions = $derived(
 		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
@@ -96,6 +123,7 @@
 			.map((id) => sessionsById.get(id))
 			.filter((session): session is SessionSummary => Boolean(session))
 	);
+	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
 
 	let pinnedExpanded = $state(false);
 	let viewingArchived = $state(false);
@@ -307,6 +335,21 @@
 					<span>{t.sidebar.searchShort}</span><kbd>{searchShortcutLabel()}</kbd>
 				</button>
 			</div>
+			{#if !viewingArchived}
+				<button
+					type="button"
+					class="working-filter"
+					class:is-active={workingOnly}
+					title={workingOnly ? t.sidebar.workingOnlyOff : t.sidebar.workingOnly}
+					aria-label={t.sidebar.workingOnly}
+					aria-pressed={workingOnly}
+					onclick={toggleWorkingOnly}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+					</svg>
+				</button>
+			{/if}
 				{#if !phone && onCollapse}
 					<button
 						type="button"
@@ -403,13 +446,15 @@
 					{/if}
 				</button>
 			{/if}
-			<div class="ghead">
-				<span>{t.sidebar.groups}</span>
-				<button type="button" class="add" title={t.sidebar.addGroup} onclick={onCreateGroup}
-					>+</button
-				>
-			</div>
-			{#each grouped.groups as session (session.id)}
+			{#if !workingIds || groupRows.length > 0}
+				<div class="ghead">
+					<span>{t.sidebar.groups}</span>
+					<button type="button" class="add" title={t.sidebar.addGroup} onclick={onCreateGroup}
+						>+</button
+					>
+				</div>
+			{/if}
+			{#each groupRows as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const unread = unreadOf(session)}
 				<button
@@ -437,11 +482,13 @@
 					{/if}
 				</button>
 			{/each}
-			<div class="ghead">
-				<span>{t.sidebar.youBot}</span>
-				<button type="button" class="add" title={t.sidebar.addBot} onclick={onCreateBot}>+</button>
-			</div>
-			{#each grouped.youBot as session (session.id)}
+			{#if !workingIds || youBotRows.length > 0}
+				<div class="ghead">
+					<span>{t.sidebar.youBot}</span>
+					<button type="button" class="add" title={t.sidebar.addBot} onclick={onCreateBot}>+</button>
+				</div>
+			{/if}
+			{#each youBotRows as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const unread = unreadOf(session)}
 				<button
@@ -469,20 +516,22 @@
 					{/if}
 				</button>
 			{/each}
-			<div class="ghead">
-				<span>{t.sidebar.botBot}</span>
-				{#if grouped.botBot.length > BOT_DM_VISIBLE}
-					<button
-						type="button"
-						class="ghead-more"
-						onclick={() => (botBotExpanded = !botBotExpanded)}
-					>
-						{botBotExpanded
-							? t.sidebar.collapse
-							: t.sidebar.botBotMore(grouped.botBot.length - BOT_DM_VISIBLE)}
-					</button>
-				{/if}
-			</div>
+			{#if !workingIds || botBotVisible.length > 0}
+				<div class="ghead">
+					<span>{t.sidebar.botBot}</span>
+					{#if !workingIds && grouped.botBot.length > BOT_DM_VISIBLE}
+						<button
+							type="button"
+							class="ghead-more"
+							onclick={() => (botBotExpanded = !botBotExpanded)}
+						>
+							{botBotExpanded
+								? t.sidebar.collapse
+								: t.sidebar.botBotMore(grouped.botBot.length - BOT_DM_VISIBLE)}
+						</button>
+					{/if}
+				</div>
+			{/if}
 			{#each botBotVisible as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const source = resolveBotDmOrigin(session, sessionsById)}
@@ -533,6 +582,9 @@
 					{/if}
 				</div>
 			{/each}
+			{#if nothingWorking}
+				<p class="working-empty-hint">{pinnedWorking ? t.sidebar.workingEmptyPinned : t.sidebar.workingEmpty}</p>
+			{/if}
 		{/if}
 	</div>
 	</div>
@@ -700,6 +752,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		container: sidebar-search / inline-size;
 	}
 
 	.tools-entry-wrap {
@@ -726,12 +779,55 @@
 		color: var(--ink);
 	}
 
+	.working-filter {
+		flex: 0 0 auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		padding: 0;
+		border: 1px solid transparent;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+	}
+
+	.working-filter:hover {
+		background: var(--row-hover);
+		color: var(--ink);
+	}
+
+	.working-filter.is-active {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.working-filter:focus-visible {
+		outline: none;
+		border-color: var(--accent);
+		box-shadow: 0 0 0 2px var(--accent-glow);
+	}
+
+	.working-empty-hint {
+		margin: 0;
+		padding: 36px 20px;
+		text-align: center;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
 	.search-trigger-wrap { position: relative; flex: 1; min-width: 0; }
 	.search-trigger { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer; }
 	.search-trigger span { color: var(--muted); }
 	.search-trigger kbd { flex-shrink: 0; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font: 10px var(--font); }
 	.search-trigger:hover { border-color: var(--line-hover); background: var(--row-hover); }
 	@media (max-width: 680px) { .search-trigger kbd { display: none; } }
+	/* Beside the two buttons, a list dragged to its narrowest has no room for "Search" and ⌘K both. */
+	@container sidebar-search (max-width: 199px) { .search-trigger kbd { display: none; } }
 
 	/*
 	 * Above the list, under everything that covers the list: a drawer, a sheet or the settings
@@ -1759,6 +1855,29 @@
 			cursor: pointer;
 			position: relative;
 			transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+		}
+
+		.working-filter {
+			width: var(--tools-entry-size);
+			height: var(--tools-entry-size);
+			border-color: var(--line);
+			border-radius: var(--radius-md);
+			background: var(--pane);
+			color: var(--ink-secondary);
+		}
+
+		.working-filter:active {
+			background: var(--row-hover);
+		}
+
+		.working-filter.is-active {
+			border-color: var(--accent-border);
+			background: var(--accent-tint);
+			color: var(--accent);
+		}
+
+		.working-empty-hint {
+			font-size: 13px;
 		}
 
 		.tools-entry:active,
