@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Shell commands in the workspace stop far less often for approval. Paths with Chinese (or any non-ASCII) names, which work dirs have because they are named after the plan's title, web addresses like `https://…`, and `2>/dev/null` used to count as paths outside the workspace, so the command waited for approval: in one job making a poster and a teaser, 16 of 18 commands stopped and the conversation filled with approval cards. They now run straight away. A path that really is outside still waits, including a `file://` address, a redirection outside, a path glued to an option like `-o/tmp/x`, and `../` escaping the workspace from inside a code string.
+
 - Bots know where the workspace is on this machine, and where `~` points. The instructions only speak in workspace-relative paths, so a Bot that had to name a host path guessed, often `/Users/me`: reading a file the user named on the Desktop failed once before it ran `echo $HOME` to find it. Each turn's situation now carries a line before the work dir giving the workspace root and `~` as they are.
 
 - The name, endpoint and key fields on the second step of the first-run wizard look like every other form field (border, rounded corners, the accent ring when focused) instead of bare browser boxes, and the wizard shows the Deskfolk mark at the top.

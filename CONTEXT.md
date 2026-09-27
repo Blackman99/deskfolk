@@ -183,7 +183,7 @@ _Avoid_: 闸门, ConsentGate
 _Avoid_: 只做字符串前缀, 按 inode / 硬链接判定
 
 **工作区壳（Workspace shell）**：
-一次通过启动前路径检查的 `shell`：cwd 在工作区内，命令里看得见的路径也不出区。直接干。不是内核囚笼。
+一次通过启动前路径检查的 `shell`：cwd 在工作区内，命令里看得见的路径也不出区。路径名用什么文字都一样；网址（`file://` 除外）和 `/dev/null`、标准流这类设备不算路径。直接干。不是内核囚笼。
 _Avoid_: 整机 shell, sandbox, seatbelt, 把 App Sandbox 容器当工作区根
 
 **无约束壳（Unconstrained shell）**：

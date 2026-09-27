@@ -150,6 +150,26 @@ describe("classifyShell", () => {
     expect(classifyShell(root, `python -c "open('/etc/passwd')"`).kind).toBe("unconstrained");
   });
 
+  test("names in any script, web addresses and the null device stay inside", () => {
+    const root = tmp();
+    // Work dirs are named after the plan's title, often in Chinese.
+    expect(classifyShell(root, `python3 -c "open('work/为「晨光」做发布-9kgc/tool-results/a.json')"`).kind).toBe("jailed");
+    expect(classifyShell(root, `ffmpeg -i "work/为「晨光」做发布-9kgc/scratch/raw.mp4" launch/trailer.mp4`).kind).toBe("jailed");
+    expect(classifyShell(root, `curl -fsSL -o scratch/a.mp4 "https://vidgen.example.com/bucket/a.mp4"`).kind).toBe("jailed");
+    expect(classifyShell(root, "ls -la launch 2>/dev/null; echo done").kind).toBe("jailed");
+    expect(classifyShell(root, "fc-list 2>/dev/null | head -5 >/dev/stderr").kind).toBe("jailed");
+    expect(classifyShell(root, "ls -lh launch/*").kind).toBe("jailed");
+  });
+
+  test("an outside path still upgrades through a URL scheme, a redirection or a glued option", () => {
+    const root = tmp();
+    expect(classifyShell(root, "curl -o x file:///etc/passwd").kind).toBe("unconstrained");
+    expect(classifyShell(root, "echo hi 2>/etc/hosts.log").kind).toBe("unconstrained");
+    expect(classifyShell(root, "gcc -I/usr/local/include a.c").kind).toBe("unconstrained");
+    expect(classifyShell(root, "scp a host:/etc/passwd").kind).toBe("unconstrained");
+    expect(classifyShell(root, `python3 -c "open('../../x')"`).kind).toBe("unconstrained");
+  });
+
   test("cwd outside the workspace is unconstrained", () => {
     const root = tmp();
     const got = classifyShell(root, "echo hi", "/tmp");

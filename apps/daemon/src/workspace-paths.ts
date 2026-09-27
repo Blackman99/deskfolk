@@ -38,7 +38,7 @@ export function classifyShell(workspace: string, command: string, cwd = "."): Cl
     return { kind: "unconstrained", cwdAbs: cwdClass.abs };
   }
   for (const token of visiblePathTokens(command)) {
-    if (isExecutablePrefix(token)) continue;
+    if (isExecutablePrefix(token) || isHarmlessDevice(token)) continue;
     const candidate =
       token.startsWith("/") || token.startsWith("~") ? token : joinRaw(cwdClass.abs, token);
     if (classifyPath(workspace, candidate).zone === "outside") {
@@ -46,6 +46,22 @@ export function classifyShell(workspace: string, command: string, cwd = "."): Cl
     }
   }
   return { kind: "jailed", cwdAbs: cwdClass.abs, cwdRel: cwdClass.rel };
+}
+
+/** The null device, the standard streams and the random sources hold nothing of the user's. */
+const HARMLESS_DEVICES = new Set([
+  "/dev/null",
+  "/dev/stdin",
+  "/dev/stdout",
+  "/dev/stderr",
+  "/dev/tty",
+  "/dev/zero",
+  "/dev/random",
+  "/dev/urandom",
+]);
+
+export function isHarmlessDevice(path: string): boolean {
+  return HARMLESS_DEVICES.has(path) || /^\/dev\/fd\/\d+$/.test(path);
 }
 
 export function isExecutablePrefix(path: string): boolean {
@@ -192,8 +208,25 @@ function shellTokens(command: string): string[] {
   return tokens;
 }
 
+/**
+ * A token that is a relative path as written: a slash, no shell syntax, and names in any script
+ * (work dirs are named after the plan's title, which is often Chinese). A colon stays out, so
+ * `host:/etc/passwd` is still looked into below.
+ */
+const RELATIVE_PATH = /^[^\s'"`$|&;<>(){}*?\\:]+$/u;
+
+/** Web addresses name nothing on this machine; `file://` ones do, so those are left in. */
+const WEB_URL = /\b(?:https?|wss?|ftp):\/\/[^\s'"`)]*/gi;
+
+/**
+ * A path starts a token, or follows a quote, a bracket, a redirection, a separator or an
+ * assignment inside one (`open('/etc/passwd')`, `2>/dev/null`, `open('../../x')`); a slash
+ * between two names is not one.
+ */
+const EMBEDDED_PATH = /(?:^|[=:<>(\[{,;|&'"`])(~\/[^'"`\s);|&<>]+|\/[^'"`\s);|&<>]+|\.\.(?:\/[^'"`\s);|&<>]*)?)/g;
+
 function pathCandidates(token: string): string[] {
-  const t = token.replace(/^[`'"]+|[`'"]+$/g, "");
+  const t = token.replace(/^[`'"]+|[`'"]+$/g, "").replace(WEB_URL, "");
   const out: string[] = [];
   const eq = t.indexOf("=");
   if (eq >= 0 && eq < t.length - 1) {
@@ -208,12 +241,14 @@ function pathCandidates(token: string): string[] {
     t.startsWith("../")
   ) {
     out.push(t);
-  } else if (/^[\w.-]+(?:\/[\w.-]+)*\/?$/.test(t) && t.includes("/")) {
+  } else if (t.startsWith("-")) {
+    // An option with its value glued on: `-o/tmp/x`, `-I../include`.
+    const rest = t.replace(/^-+[A-Za-z0-9]*/, "");
+    if (rest && rest !== t) out.push(...pathCandidates(rest));
+  } else if (t.includes("/") && RELATIVE_PATH.test(t)) {
     out.push(t);
   } else {
-    for (const m of t.matchAll(/~\/[^'"`\s)]+|\/[^'"`\s)]+/g)) {
-      out.push(m[0]!);
-    }
+    for (const m of t.matchAll(EMBEDDED_PATH)) out.push(m[1]!);
   }
   return out;
 }
