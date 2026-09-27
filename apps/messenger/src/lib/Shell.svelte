@@ -616,7 +616,11 @@
 	}
 	let saveFailed = $state(false);
 	let dismissedOnboarding = $state(false);
-	const showOnboarding = $derived(!snapshot.settings.wizard_complete && !dismissedOnboarding);
+	/** The wizard's last step, the first Bot, comes after setup is complete; it holds itself up for it. */
+	let onboardingHeld = $state(false);
+	const showOnboarding = $derived(
+		(!snapshot.settings.wizard_complete || onboardingHeld) && !dismissedOnboarding
+	);
 	/** The settings modal owns what is in the endpoint editor; the shell only needs to know it is up. */
 	let providerEditor = $state<ProviderEditorState | null>(null);
 	/** The pane owns the rest of the profile draft; the shell's delete still writes this. */
@@ -1274,7 +1278,7 @@
 {/snippet}
 
 {#if showOnboarding}
-	<Onboarding {runtime} onDismiss={() => (dismissedOnboarding = true)} />
+	<Onboarding {runtime} bind:holding={onboardingHeld} onDismiss={() => (dismissedOnboarding = true)} />
 {:else}
 <ImageCopy {t} />
 {#if searchOpen}

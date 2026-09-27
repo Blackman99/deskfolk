@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AvatarEditor from './AvatarEditor.svelte';
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
@@ -16,21 +17,39 @@
 		planCreateProvider,
 		type ProviderFieldErrors
 	} from './settings/provider-form.ts';
-	import type { ProbedModel } from '@real-bot/protocol';
+	import {
+		botNameErrorCopy,
+		mapCreateBotError,
+		planCreateBot,
+		type CreateBotDraft,
+		type CreateBotFieldErrors
+	} from './panels/create-form.ts';
+	import type { CreateProviderRequest, ProbedModel } from '@real-bot/protocol';
 
 	interface Props {
 		runtime: MessengerRuntime;
 		onDismiss?: () => void;
+		/**
+		 * The wizard asking to stay up. Saving the endpoint completes setup, which is what takes the
+		 * wizard down, but its last step, the first Bot, comes after that. Held from the save on while
+		 * the roster is empty; let go once the Bot is made or the step is skipped.
+		 */
+		holding?: boolean;
 	}
 
-	let { runtime, onDismiss }: Props = $props();
+	let { runtime, onDismiss, holding = $bindable(false) }: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const t = $derived(COPY[locale]);
 	const workspaceReadOnly = $derived(runtime.hosted || runtime.remote);
 
-	let currentStep = $state<1 | 2 | 3>(1);
+	let currentStep = $state<1 | 2 | 3 | 4>(1);
+	/** Nobody on the roster yet: saving setup leads on to the first Bot instead of into the app. */
+	const rosterEmpty = $derived(snapshot.bots.every((bot) => bot.archived_at));
+	/** Setup is saved and behind the user; its steps no longer open. */
+	const setupSaved = $derived(currentStep === 4);
+	const showBotStep = $derived(rosterEmpty || setupSaved);
 	$effect.pre(() => {
 		if (workspaceReadOnly && currentStep === 1) currentStep = 2;
 	});
@@ -230,6 +249,7 @@
 	}
 
 	function goToStep(step: 1 | 2 | 3): void {
+		if (setupSaved) return;
 		if (workspaceReadOnly && step === 1) {
 			currentStep = 2;
 			return;
@@ -341,6 +361,17 @@
 			else if (fieldErrors.models || fieldErrors.defaultModel) currentStep = 3;
 			return;
 		}
+		// Either save below can complete setup, and the wizard comes down with it unless held.
+		holding = rosterEmpty;
+		if (!(await saveSetup(workspace, providerPlan.body))) {
+			holding = false;
+			return;
+		}
+		if (holding) enterBotStep();
+	}
+
+	/** Writes the workspace and the endpoint; false, with the reason on screen, when either is refused. */
+	async function saveSetup(workspace: string, provider: CreateProviderRequest): Promise<boolean> {
 		if (!workspaceReadOnly) {
 			const workspaceError = await runtime.patchSettings({ workspace_path: workspace });
 			if (workspaceError) {
@@ -348,36 +379,86 @@
 				if ('workspace' in mapped) {
 					fieldErrors = { workspace: mapped.workspace };
 					currentStep = 1;
-					return;
+					return false;
 				}
 				saveFailed = true;
-				return;
+				return false;
 			}
 		}
 		const existing = snapshot.providers[0];
 		const providerError = existing
 			? await runtime.patchProvider(existing.id, {
-					name: providerPlan.body.name,
-					base_url: providerPlan.body.base_url,
-					api_key: providerPlan.body.api_key,
-					models: providerPlan.body.models,
-					available_models: providerPlan.body.available_models,
-					default_model: providerPlan.body.default_model
+					name: provider.name,
+					base_url: provider.base_url,
+					api_key: provider.api_key,
+					models: provider.models,
+					available_models: provider.available_models,
+					default_model: provider.default_model
 				})
-			: await runtime.createProvider(providerPlan.body);
-		if (!providerError) return;
+			: await runtime.createProvider(provider);
+		if (!providerError) return true;
 		const mapped = mapProviderError(providerError.message);
 		if ('top' in mapped) {
 			saveFailed = true;
-			return;
+			return false;
 		}
 		fieldErrors = mapped;
 		if (mapped.endpoint || mapped.endpointKey) currentStep = 2;
 		else currentStep = 3;
+		return false;
+	}
+
+	let botDraft = $state<CreateBotDraft>({ name: '', duties: '', boundaries: '', avatar: '', model: '' });
+	let botErrors = $state<CreateBotFieldErrors>({});
+	let botFailed = $state(false);
+	let creatingBot = $state(false);
+
+	/**
+	 * A suggested first teammate, filled in so one click makes it. No model: it runs on the default
+	 * model just chosen, and the profile can pin another later.
+	 */
+	function enterBotStep(): void {
+		botDraft = {
+			name: t.onboarding.botNameSuggested,
+			duties: t.onboarding.botDutiesSuggested,
+			boundaries: t.onboarding.botBoundariesSuggested,
+			avatar: '',
+			model: ''
+		};
+		botErrors = {};
+		botFailed = false;
+		currentStep = 4;
+	}
+
+	function onBotInput(): void {
+		botErrors = {};
+		botFailed = false;
+	}
+
+	async function createFirstBot(): Promise<void> {
+		if (creatingBot) return;
+		botFailed = false;
+		botErrors = {};
+		const plan = planCreateBot(botDraft);
+		if (!plan.ok) {
+			botErrors = plan.errors;
+			return;
+		}
+		creatingBot = true;
+		const error = await runtime.createBot(plan.body);
+		creatingBot = false;
+		// Made: the runtime has already opened the new Bot's direct, which is where the wizard lets go to.
+		if (!error) {
+			holding = false;
+			return;
+		}
+		const mapped = mapCreateBotError(error.status, error.message);
+		if ('top' in mapped) botFailed = true;
+		else botErrors = mapped;
 	}
 </script>
 
-<div class="onboarding-screen w-[100vw] h-screen bg-bg flex items-center justify-center p-10 overflow-y-auto box-border">
+<div class="onboarding-screen w-[100vw] h-screen bg-bg flex p-10 overflow-y-auto box-border">
 	<div class="onboarding-card">
 		<div class="onboarding-hero text-center flex flex-col items-center gap-3">
 			<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
@@ -398,6 +479,7 @@
 					class="step-bar-item"
 					class:is-active={currentStep === 1}
 					class:is-complete={currentStep > 1}
+					disabled={setupSaved}
 					onclick={() => goToStep(1)}
 				>
 					<div class="step-bar-circle">{currentStep > 1 ? '✓' : '1'}</div>
@@ -412,6 +494,7 @@
 				class="step-bar-item"
 				class:is-active={currentStep === 2}
 				class:is-complete={currentStep > 2}
+				disabled={setupSaved}
 				onclick={() => goToStep(2)}
 			>
 				<div class="step-bar-circle">{currentStep > 2 ? '✓' : '2'}</div>
@@ -424,11 +507,28 @@
 				type="button"
 				class="step-bar-item"
 				class:is-active={currentStep === 3}
+				class:is-complete={currentStep > 3}
+				disabled={setupSaved}
 				onclick={() => goToStep(3)}
 			>
-				<div class="step-bar-circle">3</div>
+				<div class="step-bar-circle">{currentStep > 3 ? '✓' : '3'}</div>
 				<span class="step-bar-label">{t.onboarding.step3Title}</span>
 			</button>
+
+			{#if showBotStep}
+				<div class="step-bar-line" class:is-complete={currentStep > 3}></div>
+
+				<!-- Reached only by saving step 3; there is nothing to jump to before that. -->
+				<button
+					type="button"
+					class="step-bar-item"
+					class:is-active={currentStep === 4}
+					disabled
+				>
+					<div class="step-bar-circle">4</div>
+					<span class="step-bar-label">{t.onboarding.step4Title}</span>
+				</button>
+			{/if}
 		</div>
 
 		{#if saveFailed}
@@ -718,15 +818,71 @@
 							← {t.onboarding.prevStep}
 						</button>
 						<button type="button" class="btn-step-primary" onclick={handleComplete}>
-							{t.onboarding.submit} ✓
+							{#if rosterEmpty}
+								{t.onboarding.step3Next} →
+							{:else}
+								{t.onboarding.submit} ✓
+							{/if}
+						</button>
+					</div>
+				</div>
+			{:else if currentStep === 4}
+				<!-- Step 4: First Bot -->
+				<div class="step-pane">
+					<div class="step-pane-header">
+						<h2 class="step-pane-title">{t.onboarding.stepBot}</h2>
+						<p class="step-pane-desc">{t.onboarding.botDesc}</p>
+					</div>
+
+					{#if botFailed}
+						<p class="field-error">{t.sidebar.saveFailed}</p>
+					{/if}
+
+					<div class="modal-section">
+						<span class="field-head">{t.sidebar.botAvatar}</span>
+						<AvatarEditor bind:avatar={botDraft.avatar} name={botDraft.name} {t} onchange={onBotInput} />
+					</div>
+
+					<div class="modal-section">
+						<label for="onboarding-bot-name">{t.sidebar.botName}</label>
+						<input id="onboarding-bot-name" type="text" bind:value={botDraft.name} oninput={onBotInput} />
+						{#if botErrors.name}
+							<p class="field-error">{botNameErrorCopy(botErrors.name, t.sidebar)}</p>
+						{/if}
+					</div>
+
+					<div class="modal-section">
+						<label for="onboarding-bot-duties">{t.sidebar.botDuties}</label>
+						<textarea id="onboarding-bot-duties" rows="3" bind:value={botDraft.duties} oninput={onBotInput}></textarea>
+						{#if botErrors.duties}
+							<p class="field-error">{t.sidebar.dutiesEmpty}</p>
+						{/if}
+					</div>
+
+					<div class="modal-section">
+						<label for="onboarding-bot-boundaries">{t.sidebar.botBoundaries}</label>
+						<textarea id="onboarding-bot-boundaries" rows="2" bind:value={botDraft.boundaries} oninput={onBotInput}></textarea>
+						{#if botErrors.boundaries}
+							<p class="field-error">{t.sidebar.boundariesEmpty}</p>
+						{:else}
+							<p class="muted field-hint">{t.onboarding.botModelHint}</p>
+						{/if}
+					</div>
+
+					<div class="step-nav-footer">
+						<button type="button" class="btn-step-secondary" onclick={() => (holding = false)}>
+							{t.onboarding.skipBot}
+						</button>
+						<button type="button" class="btn-step-primary" disabled={creatingBot} onclick={createFirstBot}>
+							{t.onboarding.createBot} ✓
 						</button>
 					</div>
 				</div>
 			{/if}
 		</div>
 
-		<!-- Skip footer link -->
-		{#if onDismiss}
+		<!-- Skip footer link: setup is still to do. Past the save it is, and the Bot step skips itself. -->
+		{#if onDismiss && !setupSaved}
 			<div class="onboarding-foot flex flex-col items-center gap-5 mt-2">
 				<button type="button" class="btn-onboarding-skip" onclick={onDismiss}>
 					{t.onboarding.skip}
@@ -738,7 +894,13 @@
 
 <style>
 
+	/*
+	 * Centred by its own auto margins, not by the screen's flex alignment: a card taller than the
+	 * window (the Bot step is) then starts at the top and scrolls, instead of overflowing both ends
+	 * with its top out of reach.
+	 */
 	.onboarding-card {
+		margin: auto;
 		width: 620px;
 		max-width: 100%;
 		background: var(--pane);
@@ -763,7 +925,10 @@
 	 */
 	#onboarding-provider-name,
 	#onboarding-endpoint,
-	#onboarding-endpoint-key {
+	#onboarding-endpoint-key,
+	#onboarding-bot-name,
+	#onboarding-bot-duties,
+	#onboarding-bot-boundaries {
 		width: 100%;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
@@ -780,9 +945,20 @@
 
 	#onboarding-provider-name:focus,
 	#onboarding-endpoint:focus,
-	#onboarding-endpoint-key:focus {
+	#onboarding-endpoint-key:focus,
+	#onboarding-bot-name:focus,
+	#onboarding-bot-duties:focus,
+	#onboarding-bot-boundaries:focus {
 		border-color: var(--accent);
 		box-shadow: 0 0 0 3px var(--accent-glow);
+	}
+
+	#onboarding-bot-duties,
+	#onboarding-bot-boundaries {
+		min-height: 60px;
+		resize: vertical;
+		font-family: inherit;
+		line-height: 1.45;
 	}
 
 	.onboarding-title {
@@ -818,8 +994,12 @@
 		z-index: 2;
 	}
 
-	.step-bar-item:hover {
+	.step-bar-item:hover:not(:disabled) {
 		background: rgba(0, 0, 0, 0.04);
+	}
+
+	.step-bar-item:disabled {
+		cursor: default;
 	}
 
 	.step-bar-circle {
@@ -937,8 +1117,13 @@
 		transition: all 0.15s ease;
 	}
 
-	.btn-step-primary:hover {
+	.btn-step-primary:hover:not(:disabled) {
 		background: var(--accent-hover);
+	}
+
+	.btn-step-primary:disabled {
+		opacity: 0.6;
+		cursor: default;
 	}
 
 	.btn-step-secondary {
@@ -1126,6 +1311,11 @@
 			border-radius: 0;
 			box-shadow: none;
 			padding: calc(20px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+		}
+
+		/* A phone has no room for four step names in a row; the current step keeps its name. */
+		.step-bar-item:not(.is-active) .step-bar-label {
+			display: none;
 		}
 	}
 </style>

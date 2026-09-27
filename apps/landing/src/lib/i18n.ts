@@ -601,8 +601,8 @@ const zh: Dict = {
     step2: '并行启动守护进程与桌面窗',
     firstRun: [
       '选一个本机目录作为共享工作区，建议独立于源码仓库；不存在会自动创建。',
-      '在设置里选择工作区文件夹，再填 OpenAI 兼容端点 URL 和 API key，配好模型名单与默认模型。',
-      '通过侧栏创建第一个 Bot，填名称、职责和边界，开始私聊。',
+      '首次打开的设置向导里选好工作区文件夹，再填 OpenAI 兼容端点 URL 和 API key，配好模型名单与默认模型。',
+      '向导最后一步建第一个 Bot：名称、职责和边界已按通用助手填好，可直接创建或改成你要的样子，随即开始私聊。',
       '让它创建其他 Bot、组群或提出 MCP 配置；需要批准时在应用里审核。'
     ],
     download: {
@@ -1025,8 +1025,8 @@ const en: Dict = {
     step2: 'Start the daemon and the desktop window in parallel',
     firstRun: [
       'Pick a local folder as the shared workspace, ideally outside the source checkout; missing folders are created.',
-      'In Settings, choose a workspace folder, then enter an OpenAI-compatible endpoint URL and API key, then the model list and default model.',
-      'Create the first bot from the sidebar with a name, duties and boundaries, and open a direct chat.',
+      'In the setup wizard that opens on first launch, choose the workspace folder, then enter an OpenAI-compatible endpoint URL and API key, then the model list and default model.',
+      'The wizard\'s last step creates the first bot: its name, duties and boundaries come filled in for a general assistant, to create as is or make your own, and its direct chat opens.',
       'Ask it to create other bots, form groups or propose MCP configuration; approve dangerous actions in the app.'
     ],
     download: {

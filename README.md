@@ -61,7 +61,7 @@ pnpm install
 pnpm dev
 ```
 
-First run: pick a workspace folder, add an endpoint and key in Settings, create the first Bot, then let it hire the rest.
+First run: the setup wizard walks you through picking a workspace folder, adding an endpoint and key, and creating the first Bot; then let it hire the rest.
 
 ## Status
 

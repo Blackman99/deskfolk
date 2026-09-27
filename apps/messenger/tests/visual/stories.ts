@@ -440,9 +440,10 @@ const defs: Record<StoryName, Story> = {
 			runtime: fakeRuntime(world, { selectedId: 'sess-1', approvals: [anApproval()] })
 		}
 	},
+	// A first launch: nobody on the roster yet, so the wizard ends on the first Bot.
 	onboarding: {
 		component: Onboarding as never,
-		props: { runtime: fakeRuntime(world), onDismiss: () => {} }
+		props: { runtime: fakeRuntime({ ...world, bots: [] }), onDismiss: () => {} }
 	},
 	sidebar: {
 		component: Sidebar as never,

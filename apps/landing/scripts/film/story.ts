@@ -146,7 +146,8 @@ export async function playStory(s: Stage): Promise<void> {
   await s.click(app.getByRole('option', { name: t.defaultModel, exact: true }));
   await s.hold(400);
   await s.click(app.locator('.onboarding-card .btn-step-primary'));
-  await app.locator('.onboarding-screen').waitFor({ state: 'detached', timeout: 30_000 });
+  // Saving setup on an empty roster leads on to the wizard's last step, the first Bot.
+  await app.locator('#onboarding-bot-name').waitFor({ timeout: 30_000 });
   await s.focus(null);
 
   // Off camera: the image and video server, as it would already be in a lived-in setup.
@@ -159,17 +160,15 @@ export async function playStory(s: Stage): Promise<void> {
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  /* 2 · The first Bot */
+  /* 2 · The first Bot, made in the wizard's last step over the suggested one */
   await s.scene(2);
-  await s.click(app.locator(`button.add[title="${s.lang === 'zh' ? '新建 Bot' : 'New bot'}"]`));
-  const sheet = app.locator('.create-bot-modal');
-  await sheet.waitFor();
-  await s.focus(sheet);
-  await s.type(app.locator('#bot-name'), t.coordinator.name);
-  await s.type(app.locator('#bot-duties'), t.coordinator.duties);
-  await s.type(app.locator('#bot-boundaries'), t.coordinator.boundaries);
-  await s.click(sheet.locator('.modal-foot.actions button').first());
-  await sheet.waitFor({ state: 'detached' });
+  const card = app.locator('.onboarding-card');
+  await s.focus(card);
+  await s.type(app.locator('#onboarding-bot-name'), t.coordinator.name);
+  await s.type(app.locator('#onboarding-bot-duties'), t.coordinator.duties);
+  await s.type(app.locator('#onboarding-bot-boundaries'), t.coordinator.boundaries);
+  await s.click(card.locator('.step-nav-footer .btn-step-primary'));
+  await app.locator('.onboarding-screen').waitFor({ state: 'detached', timeout: 30_000 });
   await s.focus(null);
 
   /* 3 · It hires the rest */
