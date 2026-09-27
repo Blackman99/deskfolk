@@ -36,6 +36,7 @@ import { copyFor } from './copy.ts';
 import { makeBranch, makeLeaf } from './workbench/layout-tree.ts';
 import { paneMin, WB_FALLBACK_MIN, WB_STRIP_PX } from './workbench/pane-mins.ts';
 import { PINNED_STORAGE_KEY } from './sidebar/pinned-sessions.ts';
+import { forgetKeptBoards } from './overlays/task-trace.ts';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });
@@ -1358,6 +1359,100 @@ test('a flow board in a pane keeps itself current by watching its job', async ()
   await settle();
   expect(runtime.calls.filter((call) => call.name === 'watchTrace').map((call) => call.args)).toEqual([['task-7']]);
   localStorage.removeItem('real-bot-workbench-layout');
+});
+
+test('each conversation’s flow board tab comes back where it was left when brought forward again', async () => {
+  // Two boards in one pane: the tab strip swapped one conversation's board for the other's in the
+  // same component, and coming back opened it afresh instead of where you had been reading.
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [
+      { id: 't-one', kind: 'trace', params: { sessionId: 'direct-1', taskId: 'task-1' } },
+      { id: 't-two', kind: 'trace', params: { sessionId: 'g1', taskId: 'task-9' } },
+    ]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains('trace-viewport')) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  cleanups.push(() => {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+    forgetKeptBoards();
+    localStorage.removeItem('real-bot-workbench-layout');
+  });
+  const job = (id: string, session_id: string) => ({
+    id, dir: `work/${id}`, title: id, session_id, closed_at: null,
+    last_activity_at: '2026-09-22T00:00:00.000Z', goal: null, kind: null, status: 'active' as const,
+    ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 },
+  });
+  const trace = (id: string, session_id: string): TaskTrace => ({
+    ...job(id, session_id),
+    nodes: [0, 1, 2].flatMap((round) => [
+      {
+        turn_id: `user:${id}-${round}`, session_id, actor: USER_MEMBER, status: 'completed' as const,
+        woken_by_turn_id: null, woken_elsewhere: null, ticket_id: null,
+        trigger_message_id: `${id}-${round}`, focus_message_id: `${id}-${round}`, summary: `round ${round}`,
+        created_at: `2026-09-22T00:0${round}:00.000Z`, artifacts: [], ask: null, approval: null, passed: 0,
+      },
+      {
+        turn_id: `${id}-bot-${round}`, session_id, actor: 'bot-1', status: 'completed' as const,
+        woken_by_turn_id: `user:${id}-${round}`, woken_elsewhere: null, ticket_id: null,
+        trigger_message_id: `${id}-${round}`, focus_message_id: `${id}-reply-${round}`, summary: `reply ${round}`,
+        created_at: `2026-09-22T00:0${round}:30.000Z`, artifacts: [], ask: null, approval: null, passed: 0,
+      },
+    ]),
+  });
+  const known: Record<string, unknown> = {
+    // The group's tab shows an older job than its latest: bringing it forward must not swap it.
+    sessionTasks: async (sessionId: string) =>
+      sessionId === 'g1' ? [job('task-10', 'g1'), job('task-9', 'g1')] : [job('task-1', 'direct-1')],
+    taskTrace: async (id: string) => trace(id, id === 'task-1' ? 'direct-1' : 'g1'),
+    taskDetail: async () => { throw Object.assign(new Error('not found'), { status: 404 }); },
+  };
+  const client = new Proxy(known, {
+    get: (target, key) => (typeof key !== 'string' || key === 'then' ? undefined : key in target ? target[key] : () => new Promise(() => {})),
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: 'bot-1' })], sessions: [aDirect(), aGroup({ id: 'g1', name: '视频组' })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1', client }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  const until = async (selector: string) => {
+    for (let i = 0; i < 40; i += 1) {
+      await settle();
+      const found = host.querySelector(selector);
+      if (found) return found;
+    }
+    throw new Error(`never saw ${selector}`);
+  };
+  const camera = () => host.querySelector<HTMLElement>('.trace-flow')?.style.transform ?? '';
+  const heading = () => host.querySelector('.trace-titles h2')?.textContent ?? '';
+  const titled = async (title: string) => {
+    for (let i = 0; i < 40 && !heading().endsWith(title); i += 1) await settle();
+    await until('.trace-slot');
+    expect(heading()).toEndWith(title);
+  };
+  const tab = (index: number) => host.querySelectorAll<HTMLElement>('.wb-tab-button')[index]!;
+
+  await titled('task-1');
+  const opened = camera();
+  const viewport = host.querySelector('.trace-viewport')!;
+  viewport.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaX: 45, deltaY: 170 }));
+  flushSync();
+  const left = camera();
+  expect(left).not.toBe(opened);
+
+  click(tab(1));
+  await titled('task-9');
+  click(tab(0));
+  await titled('task-1');
+  expect(camera()).toBe(left);
 });
 
 function aTerminal(id: string, created_at: string) {

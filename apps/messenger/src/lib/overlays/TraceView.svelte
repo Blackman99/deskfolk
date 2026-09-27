@@ -44,7 +44,8 @@
 		backOnBoard,
 		holdOnScreen,
 		highlightOf,
-		rememberBoardView,
+		keepBoard,
+		keptBoard,
 		routeHighlightCounts,
 		traceFlow,
 		traceRounds,
@@ -191,6 +192,7 @@
 	 * the focus-token effect (it also unfolds a round) and the one Escape listener.
 	 */
 	const canvas = new TraceCanvas(sessionId, taskId, {
+		sessionId: () => sessionId,
 		flow: () => flow,
 		currentId: () => currentId,
 		focus: () => focus,
@@ -226,8 +228,31 @@
 		});
 	});
 
+	/**
+	 * The conversation the job on screen was listed for. It is the key the board is kept under, and
+	 * by the time a different conversation's job is being loaded the prop already names that one.
+	 */
+	let boardSession: string | null = null;
+
+	/**
+	 * Keep this job's board as it is, for when it comes back: its tab brought forward again (a tab
+	 * that is not the one showing is unmounted), or the job picked again in the switcher.
+	 */
+	function keepThisBoard(): void {
+		if (!currentId || !boardSession || canvas.fitted !== currentId) return;
+		keepBoard(boardSession, currentId, {
+			...canvas.leaving(),
+			boxes: $state.snapshot(boxes),
+			foldChoice: $state.snapshot(foldChoice),
+			notableOnly,
+			selectedTicket,
+			highlight,
+			openRoute
+		});
+	}
+
 	$effect(() => () => {
-		if (canvas.glideTarget && currentId) rememberBoardView(sessionId, currentId, canvas.glideTarget);
+		keepThisBoard();
 		canvas.stopGlide();
 	});
 
@@ -257,16 +282,6 @@
 	}
 
 	$effect(() => {
-		const id = currentId;
-		const here = canvas.view;
-		if (!id) return;
-		untrack(() => {
-			if (canvas.glideFrame) return;
-			rememberBoardView(sessionId, id, here);
-		});
-	});
-
-	$effect(() => {
 		// A board opens showing all of itself; a message opens on its card. After that the view
 		// is yours, until another message asks. The card's first real measurement still counts
 		// as that opening, so the move lands on the card you see, not the guess that preceded it.
@@ -276,9 +291,15 @@
 		const asked = focus;
 		const drift = canvas.focusDrifted();
 		if (!width || !id || !canvas.viewportEl) return;
-		// The board keeps the previous job on screen until the one this message belongs to
-		// arrives. Moving before that would spend the request on the wrong picture.
+		// The board keeps the previous job on screen, where it was, until the next one arrives.
+		// Placing before that would put the next job's view on the previous job's picture.
+		if (trace?.id !== id) return;
+		// Nor until the job this message belongs to arrives: that would spend the request on the
+		// wrong picture.
 		if (asked && taskId && trace?.id !== taskId && focusMoveDue(token, canvas.placedFocus)) return;
+		// A job whose board you have been on comes back where you left it, not opened afresh. Only a
+		// message asking for a card it has not moved for yet moves it on from there.
+		if (canvas.fitted !== id) untrack(() => canvas.resume(keptBoard(boardSession ?? sessionId, id), id));
 		if (asked && (focusMoveDue(token, canvas.placedFocus) || (drift && !untrack(() => canvas.userMoved)))) {
 			const centred = untrack(() => canvas.focusBoard());
 			if (canvas.placedFocus !== token) return;
@@ -296,7 +317,9 @@
 			return;
 		}
 		canvas.fitted = id;
-		if (!(asked && canvas.placedFocus === token)) untrack(() => canvas.openBoard());
+		// Centred on the card for this request already, here or by the viewport's first size. A
+		// request only spent on an earlier copy of the board moved nothing on this one.
+		if (!(asked && canvas.anchored?.token === token)) untrack(() => canvas.openBoard());
 	});
 
 	$effect(() => {
@@ -327,7 +350,9 @@
 		const id = trace?.id ?? null;
 		if (id === measuredJob) return;
 		measuredJob = id;
-		boxes = {};
+		// A job whose board was left starts from what its cards measured then, so the board it comes
+		// back to is laid out as it was left, not from the fallback height for a frame.
+		boxes = { ...(untrack(() => keptBoard(boardSession ?? sessionId, id)?.boxes) ?? {}) };
 	});
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot])));
 	const sessionsById = $derived(new Map(sessions.map((session) => [session.id, session])));
@@ -475,19 +500,28 @@
 		}
 		loading = true;
 		failed = false;
+		const session = sessionId;
 		try {
-			const listed = await api.sessionTasks(sessionId);
+			const listed = await api.sessionTasks(session);
 			if (seq !== loadSeq) return;
 			jobs = listed;
 			const next = id && listed.some((job) => job.id === id) ? id : (listed[0]?.id ?? null);
-			// A refresh of the same plan keeps what you unfolded and lit; switching plans does not.
+			// A refresh of the same plan keeps what you unfolded and lit. Switching plans leaves this
+			// one as it is, to come back to, and takes the next one up as it was left, or fresh.
 			if (next !== currentId) {
-				openRoute = null;
-				selectedTicket = null;
+				keepThisBoard();
+				const kept = keptBoard(session, next);
+				openRoute = kept?.openRoute ?? null;
+				selectedTicket = kept?.selectedTicket ?? null;
 				segment = 'trace';
-				foldChoice = {};
+				foldChoice = kept?.foldChoice ?? {};
+				if (kept) {
+					notableOnly = kept.notableOnly;
+					highlight = kept.highlight;
+				}
 			}
 			currentId = next;
+			boardSession = session;
 			if (next) onTask?.(next);
 			// The tree and the plan, together. A daemon that predates plans answers the second with a
 			// 404, and the board is then the tree alone — as it was.

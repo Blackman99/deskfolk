@@ -23,16 +23,19 @@ import { prefersReducedMotion } from "../reduced-motion.ts";
 import { deferWhileDragging } from "../workbench/pane-resize.svelte.ts";
 import {
   TRACE_GLIDE_MS,
-  boardViewAge,
   centerOnNode,
   fitView,
   focusMoveDue,
   focusNode,
   glideView,
+  keepPlacedFocus,
+  keptBoard,
+  keptBoardAge,
   openView,
   pinchSpan,
-  rememberedBoardView,
+  placedFocusOf,
   zoomAt,
+  type KeptBoard,
   type TraceBox,
   type TraceFlow,
   type TraceFocus,
@@ -41,6 +44,7 @@ import {
 
 /** What the camera reads from the component, fresh on every call, and how it writes a box back. */
 export type TraceCanvasDeps = {
+  sessionId: () => string;
   flow: () => TraceFlow | null;
   currentId: () => string | null;
   focus: () => TraceFocus | null;
@@ -83,17 +87,17 @@ export class TraceCanvas {
   constructor(sessionId: string, taskId: string | null, deps: TraceCanvasDeps) {
     this.deps = deps;
     /**
-     * The last place this job's board was left, so bringing its tab forward can slide from there.
-     * A tab that is not the one showing is unmounted, and without this the board would open on
-     * the card in a jump.
+     * The last place this job's board was left, for the frames before its job arrives. Putting it
+     * back for real — with whether it was still the opening view — is `resume`, once it has.
      */
-    const remembered = rememberedBoardView(sessionId, taskId);
-    this.view = remembered ?? { scale: 1, x: 0, y: 0 };
+    this.view = keptBoard(sessionId, taskId)?.view ?? { scale: 1, x: 0, y: 0 };
     /**
      * This board was already open a moment ago, just not the tab in front, so the first move
      * slides. A layout restored tomorrow starts where it was without sliding across the window.
      */
-    this.glideFromMemory = (boardViewAge(sessionId, taskId) ?? Infinity) < 10_000;
+    this.glideFromMemory = (keptBoardAge(sessionId, taskId) ?? Infinity) < 10_000;
+    /** A request this conversation's board already moved for is spent, on this copy of it too. */
+    this.placedFocus = placedFocusOf(sessionId);
   }
 
   viewportBox(): { width: number; height: number } {
@@ -149,6 +153,26 @@ export class TraceCanvas {
   }
 
   /**
+   * Come back to a job's board where it was left, instead of opening it afresh. False when it has
+   * not been left before. A board left on the view it opened on is still on it, so it goes on
+   * following the layout; any other is yours, and stays put.
+   */
+  resume(board: KeptBoard | undefined, job: string): boolean {
+    if (!board) return false;
+    this.stopGlide();
+    this.view = { ...board.view };
+    this.openedView = board.opened ? { ...board.view, job } : null;
+    this.userMoved = !board.opened;
+    this.fitted = job;
+    return true;
+  }
+
+  /** The camera as it is being left: where a slide in progress was going, not its halfway. */
+  leaving(): { view: TraceView; opened: boolean } {
+    return { view: { ...(this.glideTarget ?? this.view) }, opened: this.stillOpened() };
+  }
+
+  /**
    * Still on the view it opened on. The first paint lays the board out from estimated heights and
    * the measured ones land a frame later, taller or shorter, which moves the bottom it opened on.
    * Any pan, zoom, fit or slide is a different view, and from then on the view is yours.
@@ -177,6 +201,7 @@ export class TraceCanvas {
     const node = focusNode(flow.placements.map((placement) => placement.node), focus);
     const placement = node ? flow.placements.find((row) => row.node.turn_id === node.turn_id) : null;
     this.placedFocus = this.deps.focusToken();
+    keepPlacedFocus(this.deps.sessionId(), this.placedFocus);
     if (!placement) return false;
     const next = centerOnNode(placement, box);
     if (this.glideThis) this.glideTo(next);

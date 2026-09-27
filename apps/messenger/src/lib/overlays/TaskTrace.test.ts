@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { afterEach, expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
 import { USER_MEMBER, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 
@@ -9,11 +9,15 @@ const { default: TaskTraceView } = await import("./TaskTrace.svelte");
 const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
 import { forgetTraceSide, loadTraceSide } from "./trace-side.ts";
+import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 
 const t = copyFor("zh");
+
+// A board left in one test would otherwise come back where that test left it in the next.
+afterEach(() => forgetKeptBoards());
 
 const writer = aBot({ id: "bot-1", name: "制片" });
 const artist = aBot({ id: "bot-2", name: "分镜师" });
@@ -182,6 +186,8 @@ function open(opts: {
   sessionId?: string;
   writeBack?: boolean;
   trace?: TaskTrace;
+  /** What task-2's trace is; an empty one by default. */
+  otherTrace?: TaskTrace;
   /** What the plan endpoint answers; `false` is a daemon that predates plans (404). */
   detail?: TaskDetail | false;
   focus?: { messageId: string; turnId: string | null } | null;
@@ -205,7 +211,9 @@ function open(opts: {
     taskTrace: async (id: string) =>
       id === "task-1"
         ? (opts.trace ?? picture())
-        : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] },
+        : id === "task-2" && opts.otherTrace
+          ? opts.otherTrace
+          : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] },
     taskDetail: async (id: string) => {
       if (opts.detail === false) throw Object.assign(new Error("not found"), { status: 404 });
       if (id === "task-1") return opts.detail ?? detail();
@@ -1230,4 +1238,112 @@ test("the fit button brings the whole board back from wherever it was dragged, a
   } finally {
     HTMLElement.prototype.getBoundingClientRect = rect;
   }
+});
+
+/** The viewport an 800 × 600 pane gives the board. */
+async function inViewport(run: () => Promise<void>): Promise<void> {
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    await withMeasuredCards(run);
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
+}
+
+/** Let the cards measure and the board place itself on them. */
+async function laidOut(view: { host: HTMLElement }): Promise<void> {
+  await until(view.host, ".trace-slot");
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  flushSync();
+}
+
+function cameraOf(view: { host: HTMLElement }): string {
+  return view.host.querySelector<HTMLElement>(".trace-flow")!.style.transform;
+}
+
+function pan(view: { host: HTMLElement }, by: { x: number; y: number }): void {
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -by.x, deltaY: -by.y });
+  view.host.querySelector(".trace-viewport")!.dispatchEvent(wheel);
+  flushSync();
+}
+
+test("a board brought forward again is where you left it, with the rounds you unfolded", async () => {
+  // A tab that is not the one showing is unmounted: bringing it back mounts the board anew, and it
+  // used to open afresh on its newest round instead of where you had been reading.
+  await inViewport(async () => {
+    const first = open({ trace: longJob(5), pane: true });
+    await laidOut(first);
+    const opened = cameraOf(first);
+    click(first.host.querySelector(".trace-round")!);
+    flushSync();
+    pan(first, { x: 40, y: 260 });
+    const left = cameraOf(first);
+    expect(left).not.toBe(opened);
+    first.close();
+
+    const again = open({ trace: longJob(5), pane: true });
+    await laidOut(again);
+    expect(cameraOf(again)).toBe(left);
+    expect(again.host.querySelector(".trace-round")?.classList.contains("is-folded")).toBe(false);
+    again.close();
+  });
+});
+
+test("a message's card is centred once: its tab brought forward again stays where you took the board", async () => {
+  await inViewport(async () => {
+    const focus = { messageId: "m3", turnId: "t-artist" };
+    const first = open({ pane: true, focus, focusToken: 1 });
+    await laidOut(first);
+    const centred = cameraOf(first);
+    pan(first, { x: 0, y: -180 });
+    const left = cameraOf(first);
+    expect(left).not.toBe(centred);
+    first.close();
+
+    // The tab still carries the request it was opened with; it has been answered already.
+    const again = open({ pane: true, focus, focusToken: 1 });
+    await laidOut(again);
+    expect(cameraOf(again)).toBe(left);
+
+    // A new request does move it.
+    again.props.focus = { messageId: "m1", turnId: null };
+    again.props.focusToken = 2;
+    flushSync();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    flushSync();
+    expect(cameraOf(again)).not.toBe(left);
+    again.close();
+  });
+});
+
+test("a job picked again in the switcher is where you left it", async () => {
+  await inViewport(async () => {
+    const view = open({ trace: longJob(5), otherTrace: { ...longJob(3), id: "task-2", title: "上周的排期" }, pane: true, writeBack: true });
+    await laidOut(view);
+    pan(view, { x: -30, y: 220 });
+    const left = cameraOf(view);
+
+    view.props.taskId = "task-2";
+    flushSync();
+    for (let i = 0; i < 20 && !view.host.querySelector(".trace-titles h2")?.textContent?.includes("上周的排期"); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await laidOut(view);
+    expect(cameraOf(view)).not.toBe(left);
+
+    view.props.taskId = "task-1";
+    flushSync();
+    for (let i = 0; i < 20 && !view.host.querySelector(".trace-titles h2")?.textContent?.includes("先出分镜"); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await laidOut(view);
+    expect(cameraOf(view)).toBe(left);
+    view.close();
+  });
 });

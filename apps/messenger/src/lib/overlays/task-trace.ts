@@ -370,9 +370,6 @@ export const TRACE_FIT_MIN = 0.05;
 /** Where the board sits inside its viewport, and how big it is drawn. */
 export type TraceView = { scale: number; x: number; y: number };
 
-/** A view kept so a remounted board can slide from it. `at` is when it was left. */
-type KeptView = TraceView & { at: number };
-
 /**
  * Zooming keeps the point under the cursor — or under the middle of a pinch — where it is.
  * Scaling around the corner instead makes the board run away from whatever you were reading.
@@ -564,31 +561,67 @@ export function focusMoveDue(token: number, placed: number | null): boolean {
 export const TRACE_GLIDE_MS = 320;
 
 /**
- * Where each job's board was last left, so a tab that was unmounted can slide back from there.
+ * A job's board as it was left, so coming back to it — its tab brought forward again, or the job
+ * picked again in the switcher — finds it exactly there.
  *
- * One per window: a board is one tab of a conversation, and bringing it forward mounts a new
- * copy. The key is the conversation and the job.
+ * A tab that is not the one showing is unmounted, so bringing it forward mounts a new copy. The
+ * camera alone is not enough to come back to the same place: the folds, the filter, the lit ticket
+ * and an unfolded model choice all move the cards under it, and a fresh copy lays its first frame
+ * out from estimated heights until the cards measure again. So all of that is kept with it.
  */
-const boardViews = new Map<string, KeptView>();
+export type KeptBoard = {
+  view: TraceView;
+  /** Still on the view it opened on: then it keeps following the layout, as it did on screen. */
+  opened: boolean;
+  boxes: Record<string, TraceBox>;
+  foldChoice: Record<string, boolean>;
+  notableOnly: boolean;
+  selectedTicket: string | null;
+  highlight: RouteHighlight | null;
+  openRoute: string | null;
+  /** When it was left. */
+  at: number;
+};
 
-export function boardViewKey(sessionId: string, taskId: string): string {
+/** One per window, by conversation and job: a conversation has one board. */
+const keptBoards = new Map<string, KeptBoard>();
+/**
+ * The last message request each conversation's board moved for. A request is used once: the same
+ * one still on the tab when it comes back must not pull the board off where you left it.
+ */
+const placedFocuses = new Map<string, number>();
+
+function keptBoardKey(sessionId: string, taskId: string): string {
   return `${sessionId}:${taskId}`;
 }
 
-export function rememberedBoardView(sessionId: string, taskId: string | null): TraceView | undefined {
+export function keptBoard(sessionId: string, taskId: string | null): KeptBoard | undefined {
   if (!taskId) return undefined;
-  return boardViews.get(boardViewKey(sessionId, taskId));
+  return keptBoards.get(keptBoardKey(sessionId, taskId));
 }
 
 /** How long ago this job's board was left, or null when it has not been. */
-export function boardViewAge(sessionId: string, taskId: string | null, now = Date.now()): number | null {
-  if (!taskId) return null;
-  const kept = boardViews.get(boardViewKey(sessionId, taskId));
+export function keptBoardAge(sessionId: string, taskId: string | null, now = Date.now()): number | null {
+  const kept = keptBoard(sessionId, taskId);
   return kept ? now - kept.at : null;
 }
 
-export function rememberBoardView(sessionId: string, taskId: string, view: TraceView, now = Date.now()): void {
-  boardViews.set(boardViewKey(sessionId, taskId), { scale: view.scale, x: view.x, y: view.y, at: now });
+export function keepBoard(sessionId: string, taskId: string, board: Omit<KeptBoard, "at">, now = Date.now()): void {
+  keptBoards.set(keptBoardKey(sessionId, taskId), { ...board, view: { ...board.view }, at: now });
+}
+
+export function placedFocusOf(sessionId: string): number | null {
+  return placedFocuses.get(sessionId) ?? null;
+}
+
+export function keepPlacedFocus(sessionId: string, token: number): void {
+  placedFocuses.set(sessionId, token);
+}
+
+/** For tests: every board starts as if never opened. */
+export function forgetKeptBoards(): void {
+  keptBoards.clear();
+  placedFocuses.clear();
 }
 
 /** Slow at both ends, so a slide reads as a move rather than a cut. */

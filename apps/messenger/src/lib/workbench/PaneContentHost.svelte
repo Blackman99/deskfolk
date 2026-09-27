@@ -289,28 +289,36 @@
 		onSelect={selectWorkspace}
 	/>
 {:else if content.kind === 'trace'}
-	{#await import('../overlays/TraceView.svelte') then { default: TraceView }}
-		<TraceView
-			api={runtime.client}
-			taskId={content.taskId}
-			focus={content.focus ?? null}
-			focusToken={content.focusNonce ?? 0}
-			sessionId={content.sessionId}
-			activeSessionId={runtime.selectedId ?? content.sessionId}
-			sessions={snapshot.sessions}
-			bots={snapshot.bots}
-			providers={snapshot.providers}
-			youLabel={t.common.you}
-			deletedLabel={t.top.deleted}
-			workspacePath={snapshot.settings.workspace_path}
-			{t}
-			reloadToken={runtime.traceReload}
-			{onJump}
-			onTask={traceTask}
-			onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings) =>
-				onOpenArtifact(relpath, att, messageId, forceTree, taskId, siblings, content.sessionId)}
-		/>
-	{/await}
+	<!--
+		One board per tab. Without the key, going from one conversation's board to another's in the
+		same pane handed the first board the second's props: it opened afresh, and could settle on
+		that conversation's latest job rather than the tab's. Each tab's board has its own place to
+		come back to.
+	-->
+	{#key tab.id}
+		{#await import('../overlays/TraceView.svelte') then { default: TraceView }}
+			<TraceView
+				api={runtime.client}
+				taskId={content.taskId}
+				focus={content.focus ?? null}
+				focusToken={content.focusNonce ?? 0}
+				sessionId={content.sessionId}
+				activeSessionId={runtime.selectedId ?? content.sessionId}
+				sessions={snapshot.sessions}
+				bots={snapshot.bots}
+				providers={snapshot.providers}
+				youLabel={t.common.you}
+				deletedLabel={t.top.deleted}
+				workspacePath={snapshot.settings.workspace_path}
+				{t}
+				reloadToken={runtime.traceReload}
+				{onJump}
+				onTask={traceTask}
+				onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings) =>
+					onOpenArtifact(relpath, att, messageId, forceTree, taskId, siblings, content.sessionId)}
+			/>
+		{/await}
+	{/key}
 {:else if content.kind === 'preview'}
 	{#if preview?.relpath}
 		{#await import('../overlays/ArtifactPreview.svelte') then { default: ArtifactPreview }}
