@@ -422,8 +422,18 @@
 		border-radius: var(--radius-md);
 		background: var(--pane);
 		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-		overflow: hidden;
 		transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+	}
+
+	/*
+	 * The status menu hangs out of the card over the ones below, so the card itself clips
+	 * nothing (`.ticket-main` clips the text), and the one whose menu is open sits on top —
+	 * at full opacity, or a parked card would show the next card through its menu.
+	 */
+	.ticket-row:has(:global(.real-select.is-open)) {
+		position: relative;
+		z-index: 1;
+		opacity: 1;
 	}
 
 	.ticket-row:hover {
@@ -477,8 +487,10 @@
 		width: 100%;
 		box-sizing: border-box;
 		padding: 9px 11px 7px;
+		overflow: hidden;
 		background: none;
 		border: none;
+		border-radius: var(--radius-md) var(--radius-md) 0 0;
 		text-align: left;
 		cursor: pointer;
 		font: inherit;

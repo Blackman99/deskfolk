@@ -2,6 +2,7 @@
 	import {
 		findNextEnabledIndex,
 		findOptionByPrefix,
+		menuScrollTopFor,
 		normalizeOptions,
 		type NormalizedSelectOption,
 		type SelectOption
@@ -110,9 +111,8 @@
 	}
 
 	function scrollToOption(index: number) {
-		if (index >= 0 && optionEls[index]) {
-			optionEls[index]?.scrollIntoView({ block: 'nearest' });
-		}
+		const option = index >= 0 ? optionEls[index] : null;
+		if (menuEl && option) menuEl.scrollTop = menuScrollTopFor(menuEl, option);
 	}
 
 	function open() {

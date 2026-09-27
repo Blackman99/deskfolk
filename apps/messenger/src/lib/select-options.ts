@@ -121,3 +121,18 @@ export function toggleValue(values: readonly string[], value: string): string[] 
 		? values.filter((held) => held !== value)
 		: [...values, value];
 }
+
+/**
+ * Where a menu has to scroll to so one option sits inside it, or the scroll it already has when
+ * the option is in view. Only the menu moves: `scrollIntoView` would also scroll every ancestor,
+ * and one that merely clips — a card with `overflow: hidden` — slides its own content away.
+ */
+export function menuScrollTopFor(
+	menu: { scrollTop: number; clientHeight: number },
+	option: { offsetTop: number; offsetHeight: number }
+): number {
+	if (option.offsetTop < menu.scrollTop) return option.offsetTop;
+	const bottom = option.offsetTop + option.offsetHeight;
+	if (bottom > menu.scrollTop + menu.clientHeight) return bottom - menu.clientHeight;
+	return menu.scrollTop;
+}

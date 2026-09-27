@@ -3,6 +3,7 @@
 	import {
 		filterOptions,
 		findNextEnabledIndex,
+		menuScrollTopFor,
 		normalizeOptions,
 		toggleValue,
 		type NormalizedSelectOption,
@@ -141,7 +142,8 @@
 	}
 
 	function scrollToOption(index: number): void {
-		if (index >= 0) optionEls[index]?.scrollIntoView({ block: 'nearest' });
+		const option = index >= 0 ? optionEls[index] : null;
+		if (menuEl && option) menuEl.scrollTop = menuScrollTopFor(menuEl, option);
 	}
 
 	function move(direction: 1 | -1): void {

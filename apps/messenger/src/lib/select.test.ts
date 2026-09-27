@@ -3,6 +3,7 @@ import {
 	filterOptions,
 	findNextEnabledIndex,
 	findOptionByPrefix,
+	menuScrollTopFor,
 	normalizeOptions,
 	toggleValue,
 	type SelectOption
@@ -127,5 +128,21 @@ describe("multi-select helpers", () => {
 		const held = ["b1"];
 		expect(toggleValue(held, "b2")).toEqual(["b1", "b2"]);
 		expect(held).toEqual(["b1"]);
+	});
+});
+
+describe("menu scrolling", () => {
+	const menu = { scrollTop: 40, clientHeight: 100 };
+
+	test("an option already in view leaves the scroll alone", () => {
+		expect(menuScrollTopFor(menu, { offsetTop: 60, offsetHeight: 30 })).toBe(40);
+	});
+
+	test("an option above the view scrolls up to its top", () => {
+		expect(menuScrollTopFor(menu, { offsetTop: 10, offsetHeight: 30 })).toBe(10);
+	});
+
+	test("an option below the view scrolls down until its bottom shows", () => {
+		expect(menuScrollTopFor(menu, { offsetTop: 150, offsetHeight: 30 })).toBe(80);
 	});
 });
