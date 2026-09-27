@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		USER_MEMBER,
 		type Attachment,
 		type Bot,
 		type PlanStatus,
@@ -20,6 +19,10 @@
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import PlanSpecPanel from './PlanSpecPanel.svelte';
 	import TicketList from './TicketList.svelte';
+	import TraceCard from './TraceCard.svelte';
+	import TraceJobSwitcher from './TraceJobSwitcher.svelte';
+	import TraceRound from './TraceRound.svelte';
+	import TraceRouteDetail from './TraceRouteDetail.svelte';
 	import { loadTraceSide, saveTraceSide, type TraceSide } from './trace-side.ts';
 	import {
 		actorFace,
@@ -28,51 +31,31 @@
 		openTicketCount,
 		planTitle,
 		ticketArtifactAttachments,
-		ticketTag,
 		totalTicketCount
 	} from './plan-board.ts';
-	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
-	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
-	import { isOutside } from '../click-outside.ts';
-	import { deferWhileDragging } from '../workbench/pane-resize.svelte.ts';
-	import { prefersReducedMotion } from '../reduced-motion.ts';
+	import { TraceCanvas } from './trace-canvas.svelte.ts';
 	import {
 		clampZoom,
 		defaultFolded,
 		filterTrace,
-		centerOnNode,
-		fitView,
 		focusMoveDue,
 		focusNode,
-		boardViewAge,
-		glideView,
 		backOnBoard,
 		holdOnScreen,
-		openView,
-		rememberBoardView,
-		rememberedBoardView,
-		saidNothing,
-		TRACE_GLIDE_MS,
 		highlightOf,
+		rememberBoardView,
 		routeHighlightCounts,
-		pinchSpan,
-		roundTime,
-		traceFileName,
 		traceFlow,
 		traceRounds,
 		wokenByName,
-		zoomAt,
 		TRACE_CARD_WIDTH,
 		TRACE_ZOOM_MAX,
 		TRACE_ZOOM_MIN,
 		type RouteHighlight,
 		type TraceBox,
-		type TraceFocus,
-		type TraceRound,
-		type TraceView
+		type TraceFocus
 	} from './task-trace.ts';
-
 
 	/**
 	 * The board itself, filling whatever it is put in. A pane on a wide window, a page on a phone;
@@ -143,8 +126,8 @@
 	let failed = $state(false);
 	let notableOnly = $state(false);
 	let switcherOpen = $state(false);
-	let titleMenuEl = $state<HTMLDivElement | null>(null);
-	let titleTriggerEl = $state<HTMLButtonElement | null>(null);
+	/** So the board's Escape listener can put focus back on the trigger once it closes the switcher. */
+	let jobSwitcher = $state<TraceJobSwitcher>();
 	/**
 	 * The plan behind the trace: its spec, revision and tickets. Null until it arrives, and null
 	 * for good on a daemon that predates plans — the tree still draws, without the panel and rail.
@@ -199,141 +182,28 @@
 		return next;
 	});
 	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded }) : null);
-
 	/**
 	 * The board inside a fixed viewport: no scrollbars, it is dragged.
 	 *
-	 * A fan is wider than any window it opens in, and a scrollbar on each axis turns reading a
-	 * flow into operating a pair of sliders. So the viewport stays put and the board moves under
-	 * it — drag, the wheel or a two-finger swipe to pan, ⌘/Ctrl + wheel or a pinch to zoom, and the
-	 * window's own corner still resizes the viewport itself.
-	 *
-	 * One finger drags the board rather than the page. The board is the page here, so nothing is
-	 * stolen; it does mean the gesture has to be taken properly, which is why the listeners below
-	 * are bound non-passively.
+	 * The camera itself — its pan, zoom, gestures and the card-measuring loop — lives in
+	 * `TraceCanvas`; see there for what it owns and why. What stays here is what a camera has no
+	 * business touching: the fold/unfold-a-round arithmetic (it also decides which round to fold),
+	 * the focus-token effect (it also unfolds a round) and the one Escape listener.
 	 */
-	/**
-	 * The last place this job's board was left, so bringing its tab forward can slide from there.
-	 * A tab that is not the one showing is unmounted, and without this the board would open on
-	 * the card in a jump.
-	 */
-	const remembered = rememberedBoardView(sessionId, taskId);
-	let view = $state<TraceView>(remembered ?? { scale: 1, x: 0, y: 0 });
-	/**
-	 * This board was already open a moment ago, just not the tab in front, so the first move
-	 * slides. A layout restored tomorrow starts where it was without sliding across the window.
-	 */
-	let glideFromMemory = (boardViewAge(sessionId, taskId) ?? Infinity) < 10_000;
-	let viewportEl = $state<HTMLElement | null>(null);
-	let fitted: string | null = null;
-	/** Which focus request has already moved the board. A reload of the same one does not. */
-	let placedFocus = $state<number | null>(null);
-	/** Where that card was when we centred it, so a later measurement can follow it once. */
-	let anchored = $state<{ token: number; turn: string; x: number; y: number; width: number; height: number } | null>(null);
-	/** A pan or a zoom is the view being yours; a measurement must not pull it back. */
-	let userMoved = false;
-	/** Live pointers, so two of them can be read as a pinch and one as a drag. */
-	const pointers = new Map<number, { x: number; y: number }>();
-	// Read in the markup (the cursor, and whether a card is a target), so they are state.
-	let drag = $state<{ x: number; y: number; view: TraceView } | null>(null);
-	let pinch = $state<{ span: number; view: TraceView; at: { x: number; y: number } } | null>(null);
-	let dragged = $state(false);
-
-	const viewportBox = () => {
-		const box = viewportEl?.getBoundingClientRect();
-		return { width: box?.width ?? 0, height: box?.height ?? 0 };
-	};
-	const boardBox = () => ({ width: flow?.width ?? 0, height: flow?.height ?? 0 });
-
-	/** No fence: the board goes where it is dragged. `适应` is the way back. */
-	function settle(next: TraceView): void {
-		view = next;
-	}
-
-	function localPoint(event: { clientX: number; clientY: number }): { x: number; y: number } {
-		const box = viewportEl?.getBoundingClientRect();
-		return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
-	}
-
-	/** The bottom tools float over the canvas, so fitting aims at what is actually clear. */
-	function clearBox(): { width: number; height: number } {
-		const bottomChrome = viewportEl?.parentElement?.querySelector('.trace-tools')?.clientHeight ?? 0;
-		const box = viewportBox();
-		return { width: box.width - 24, height: Math.max(120, box.height - bottomChrome - 24) };
-	}
-
-	/** A view worked out for the clear box, put where that box is: 12px in from the top and the sides. */
-	const inClear = (at: TraceView): TraceView => ({ ...at, x: at.x + 12, y: at.y + 12 });
-
-	/** All of the board in view, from wherever a drag or a zoom left it. */
-	function fitBoard(): void {
-		if (!flow?.width || !viewportEl) return;
-		// Pressing it is choosing the view: neither the opening nor a message's card pulls it back now.
-		userMoved = true;
-		openedView = null;
-		glideTo(inClear(fitView(boardBox(), clearBox())));
-	}
-
-	/** The view the board opened on, so the cards' measurements can move it while it still is. */
-	let openedView: (TraceView & { job: string }) | null = null;
-
-	/** Whole when the whole board can be read; otherwise on its newest round, at the bottom. */
-	function openBoard(): void {
-		stopGlide();
-		if (!flow?.width || !viewportEl || !currentId) return;
-		view = inClear(openView(flow, clearBox()));
-		openedView = { ...view, job: currentId };
-	}
-
-	/**
-	 * Still on the view it opened on. The first paint lays the board out from estimated heights and
-	 * the measured ones land a frame later, taller or shorter, which moves the bottom it opened on.
-	 * Any pan, zoom, fit or slide is a different view, and from then on the view is yours.
-	 */
-	function stillOpened(): boolean {
-		const at = openedView;
-		return !!at && at.job === currentId && at.x === view.x && at.y === view.y && at.scale === view.scale;
-	}
-
-	/**
-	 * Put the asked-for card in the middle, at a size a card can be read at.
-	 * False when the viewport has no size yet, or this job has no such card — the caller fits.
-	 */
-	function focusBoard(): boolean {
-		if (!focus || !flow || !viewportEl) return false;
-		const box = viewportBox();
-		if (!box.width || !box.height) return false;
-		const node = focusNode(flow.placements.map((placement) => placement.node), focus);
-		const placement = node ? flow.placements.find((row) => row.node.turn_id === node.turn_id) : null;
-		placedFocus = focusToken;
-		if (!placement) return false;
-		const next = centerOnNode(placement, box);
-		if (glideThis) glideTo(next);
-		else view = next;
-		anchored = {
-			token: focusToken,
-			turn: placement.node.turn_id,
-			x: placement.x,
-			y: placement.y,
-			width: placement.width,
-			height: placement.height
-		};
-		return true;
-	}
-
-	/** The card moved after we centred it — the first measurement, usually. */
-	function focusDrifted(): boolean {
-		const here = anchored;
-		if (!here || here.token !== focusToken || !flow) return false;
-		const placement = flow.placements.find((row) => row.node.turn_id === here.turn);
-		if (!placement) return false;
-		return (
-			placement.x !== here.x ||
-			placement.y !== here.y ||
-			placement.width !== here.width ||
-			placement.height !== here.height
-		);
-	}
+	const canvas = new TraceCanvas(sessionId, taskId, {
+		flow: () => flow,
+		currentId: () => currentId,
+		focus: () => focus,
+		focusToken: () => focusToken,
+		boxes: () => boxes,
+		setBox: (id, box) => {
+			boxes = { ...boxes, [id]: box };
+		}
+	});
+	/** Aliased so `use:` has a plain reference to bind: the directive cannot take a member expression. */
+	const gestures = canvas.gestures;
+	const watchViewport = canvas.watchViewport;
+	const measured = canvas.measured;
 
 	/**
 	 * A new message's request starts from a view that is not yours yet.
@@ -343,10 +213,6 @@
 	 * job slides; one that is opening lands on the card at once.
 	 */
 	let seenFocus = untrack(() => focusToken);
-	let glideThis = false;
-	let glideFrame: ReturnType<typeof setTimeout> | 0 = 0;
-	/** Where the slide in progress is going, so an unmount keeps the end and not the halfway. */
-	let glideTarget: TraceView | null = null;
 	$effect(() => {
 		const token = focusToken;
 		if (token === seenFocus) return;
@@ -356,51 +222,13 @@
 			const asked = focus && shown ? focusNode(shown.nodes, focus) : null;
 			const root = asked ? rounds.find((round) => round.members.includes(asked))?.root : undefined;
 			if (root && foldChoice[root]) foldChoice = { ...foldChoice, [root]: false };
-			userMoved = false;
-			glideThis = glideFromMemory || (fitted === currentId && currentId !== null);
-			glideFromMemory = false;
+			canvas.syncFocusToken();
 		});
 	});
 
-	function stopGlide(): void {
-		if (!glideFrame) return;
-		clearTimeout(glideFrame);
-		glideFrame = 0;
-		glideTarget = null;
-	}
-
-	/**
-	 * Slide the board that is already on screen. A fresh one has nothing to slide from.
-	 *
-	 * The clock is `setTimeout`, not an animation frame: the board lives in its own tab, and a
-	 * frame never fires while that tab is in the background, which would leave the slide halfway.
-	 */
-	function glideTo(next: TraceView): void {
-		stopGlide();
-		if (prefersReducedMotion()) {
-			view = next;
-			return;
-		}
-		const from = view;
-		const started = performance.now();
-		glideTarget = next;
-		const step = () => {
-			const t = (performance.now() - started) / TRACE_GLIDE_MS;
-			if (t >= 1) {
-				view = next;
-				glideFrame = 0;
-				glideTarget = null;
-				return;
-			}
-			view = glideView(from, next, t);
-			glideFrame = setTimeout(step, 16);
-		};
-		glideFrame = setTimeout(step, 16);
-	}
-
 	$effect(() => () => {
-		if (glideTarget && currentId) rememberBoardView(sessionId, currentId, glideTarget);
-		stopGlide();
+		if (canvas.glideTarget && currentId) rememberBoardView(sessionId, currentId, canvas.glideTarget);
+		canvas.stopGlide();
 	});
 
 	/**
@@ -416,150 +244,27 @@
 		const was = flow?.rounds.find((round) => round.root === root)?.header ?? null;
 		foldChoice = { ...foldChoice, [root]: shutting };
 		// Pressing a row is using the view: neither the opening nor a message's card pulls it back now.
-		userMoved = true;
-		openedView = null;
-		stopGlide();
+		canvas.userMoved = true;
+		canvas.openedView = null;
+		canvas.stopGlide();
 		const now = flow?.rounds.find((round) => round.root === root)?.header ?? null;
 		if (!was || !now) return;
-		view = holdOnScreen(view, was, now);
-		const box = viewportBox();
+		canvas.view = holdOnScreen(canvas.view, was, now);
+		const box = canvas.viewportBox();
 		if (!shutting || !box.width || !box.height) return;
-		const back = backOnBoard(view, boardBox(), { x: 12, y: 12, ...clearBox() });
-		if (back.x !== view.x || back.y !== view.y) glideTo(back);
+		const back = backOnBoard(canvas.view, canvas.boardBox(), { x: 12, y: 12, ...canvas.clearBox() });
+		if (back.x !== canvas.view.x || back.y !== canvas.view.y) canvas.glideTo(back);
 	}
 
 	$effect(() => {
 		const id = currentId;
-		const here = view;
+		const here = canvas.view;
 		if (!id) return;
 		untrack(() => {
-			if (glideFrame) return;
+			if (canvas.glideFrame) return;
 			rememberBoardView(sessionId, id, here);
 		});
 	});
-
-	/** The zoom buttons zoom about the middle of the view. */
-	function zoomTo(scale: number): void {
-		stopGlide();
-		const box = viewportBox();
-		settle(zoomAt(view, scale, { x: box.width / 2, y: box.height / 2 }));
-	}
-
-	function onWheel(event: WheelEvent): void {
-		event.preventDefault();
-		userMoved = true;
-		stopGlide();
-		// ⌘/Ctrl + wheel zooms at the pointer, and a trackpad pinch arrives as ctrl+wheel too.
-		if (event.ctrlKey || event.metaKey) {
-			const step = Math.exp(-event.deltaY / 400);
-			settle(zoomAt(view, view.scale * step, localPoint(event)));
-			return;
-		}
-		// Anything else pans. The rounds stack down the board as they happen, so reading a job is
-		// going down it, and a wheel that zoomed instead turned that into dragging. A wheel that
-		// counts in lines (Firefox) is turned into pixels; Shift on a plain wheel goes sideways.
-		const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewportBox().height : 1;
-		const dx = (event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX) * unit;
-		const dy = (event.shiftKey && !event.deltaX ? 0 : event.deltaY) * unit;
-		settle({ ...view, x: view.x - dx, y: view.y - dy });
-	}
-
-	function onPointerDown(event: PointerEvent): void {
-		// Anywhere is the canvas, cards included: a press that turns into a drag pans, and a
-		// press that does not is still the card's click. Reserving the cards would have left
-		// most of a full board unpannable, which is the whole board once it is zoomed in.
-		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-		dragged = false;
-		if (pointers.size === 2) {
-			const [a, b] = [...pointers.values()];
-			pinch = {
-				span: pinchSpan([{ clientX: a!.x, clientY: a!.y }, { clientX: b!.x, clientY: b!.y }]),
-				view,
-				at: localPoint({ clientX: (a!.x + b!.x) / 2, clientY: (a!.y + b!.y) / 2 }),
-			};
-			drag = null;
-			return;
-		}
-		// Capture is taken only once a drag has actually started. Capturing on the press moves the
-		// click to the capturing element, which is how the file chips and the cards stopped
-		// opening: the press reached them, the click landed on the canvas.
-		drag = { x: event.clientX, y: event.clientY, view };
-	}
-
-	function onPointerMove(event: PointerEvent): void {
-		if (!pointers.has(event.pointerId)) return;
-		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-		event.preventDefault();
-		if (pinch && pointers.size >= 2) {
-			const [a, b] = [...pointers.values()];
-			const span = pinchSpan([{ clientX: a!.x, clientY: a!.y }, { clientX: b!.x, clientY: b!.y }]);
-			if (!span || !pinch.span) return;
-			settle(zoomAt(pinch.view, pinch.view.scale * (span / pinch.span), pinch.at));
-			dragged = true;
-			userMoved = true;
-			stopGlide();
-			return;
-		}
-		if (!drag) return;
-		const dx = event.clientX - drag.x;
-		const dy = event.clientY - drag.y;
-		if (!dragged && Math.abs(dx) <= 3 && Math.abs(dy) <= 3) return;
-		if (!dragged) {
-			dragged = true;
-			userMoved = true;
-			stopGlide();
-			// Now it is a drag, so the pointer belongs to the canvas until it is let go.
-			try {
-				viewportEl?.setPointerCapture(event.pointerId);
-			} catch {
-				// A pointer that has already gone is not worth failing the pan over.
-			}
-		}
-		settle({ ...drag.view, x: drag.view.x + dx, y: drag.view.y + dy });
-	}
-
-	function onPointerUp(event: PointerEvent): void {
-		pointers.delete(event.pointerId);
-		if (pointers.size < 2) pinch = null;
-		if (pointers.size === 0) drag = null;
-		if (viewportEl?.hasPointerCapture?.(event.pointerId)) viewportEl.releasePointerCapture(event.pointerId);
-	}
-
-	/** A drag that ends on a card must not also open it. */
-	function swallowClickAfterDrag(event: MouseEvent): void {
-		if (!dragged) return;
-		event.stopPropagation();
-		event.preventDefault();
-		dragged = false;
-	}
-
-	/** A press with no drag behind it leaves nothing to swallow. */
-	function clearDragFlag(): void {
-		dragged = false;
-	}
-
-	/** Wheel and pointer, bound by hand: Svelte's are passive, where `preventDefault` is ignored. */
-	function gestures(node: HTMLElement) {
-		const options = { passive: false } as const;
-		node.addEventListener('click', swallowClickAfterDrag, true);
-		node.addEventListener('wheel', onWheel, options);
-		node.addEventListener('pointerdown', onPointerDown, options);
-		node.addEventListener('pointermove', onPointerMove, options);
-		node.addEventListener('pointerup', onPointerUp);
-		node.addEventListener('pointercancel', onPointerUp);
-		node.addEventListener('pointerleave', onPointerUp);
-		return {
-			destroy() {
-				node.removeEventListener('click', swallowClickAfterDrag, true);
-				node.removeEventListener('wheel', onWheel);
-				node.removeEventListener('pointerdown', onPointerDown);
-				node.removeEventListener('pointermove', onPointerMove);
-				node.removeEventListener('pointerup', onPointerUp);
-				node.removeEventListener('pointercancel', onPointerUp);
-				node.removeEventListener('pointerleave', onPointerUp);
-			}
-		};
-	}
 
 	$effect(() => {
 		// A board opens showing all of itself; a message opens on its card. After that the view
@@ -569,86 +274,44 @@
 		const id = currentId;
 		const token = focusToken;
 		const asked = focus;
-		const drift = focusDrifted();
-		if (!width || !id || !viewportEl) return;
+		const drift = canvas.focusDrifted();
+		if (!width || !id || !canvas.viewportEl) return;
 		// The board keeps the previous job on screen until the one this message belongs to
 		// arrives. Moving before that would spend the request on the wrong picture.
-		if (asked && taskId && trace?.id !== taskId && focusMoveDue(token, placedFocus)) return;
-		if (asked && (focusMoveDue(token, placedFocus) || (drift && !untrack(() => userMoved)))) {
-			const centred = untrack(() => focusBoard());
-			if (placedFocus !== token) return;
+		if (asked && taskId && trace?.id !== taskId && focusMoveDue(token, canvas.placedFocus)) return;
+		if (asked && (focusMoveDue(token, canvas.placedFocus) || (drift && !untrack(() => canvas.userMoved)))) {
+			const centred = untrack(() => canvas.focusBoard());
+			if (canvas.placedFocus !== token) return;
 			if (!centred) {
-				fitted = id;
-				untrack(() => openBoard());
+				canvas.fitted = id;
+				untrack(() => canvas.openBoard());
 				return;
 			}
 		}
-		if (fitted === id) {
+		if (canvas.fitted === id) {
 			// Reading the view here would re-run this on every pan; it is only compared, once per layout.
 			untrack(() => {
-				if (stillOpened()) openBoard();
+				if (canvas.stillOpened()) canvas.openBoard();
 			});
 			return;
 		}
-		fitted = id;
-		if (!(asked && placedFocus === token)) untrack(() => openBoard());
+		canvas.fitted = id;
+		if (!(asked && canvas.placedFocus === token)) untrack(() => canvas.openBoard());
 	});
-
-	/** A pane is often zero-sized for the first frame; the move waits until it has a box. */
-	function watchViewport(node: HTMLElement) {
-		if (typeof ResizeObserver === 'undefined') return;
-		const observer = new ResizeObserver(() => {
-			if (focus && focusMoveDue(focusToken, placedFocus)) focusBoard();
-		});
-		observer.observe(node);
-		return { destroy: () => observer.disconnect() };
-	}
-
-	/** Every card on screen, so any of them can be re-read without waiting for a resize. */
-	const slots = new Map<string, HTMLElement>();
-
-	function recordBox(id: string, element: HTMLElement): void {
-		const width = Math.round(element.offsetWidth);
-		const height = Math.round(element.offsetHeight);
-		const known = boxes[id];
-		// Only on a real change: writing the same box back would re-run the layout forever.
-		if (!width || !height || (known && known.width === width && known.height === height)) return;
-		boxes = { ...boxes, [id]: { width, height } };
-	}
-
-	/** Measure a card and keep the layout honest about it. */
-	function measured(element: HTMLElement, id: string) {
-		slots.set(id, element);
-		// A pane resize used to write every card's box on each frame and lay the board out again.
-		const deferred = deferWhileDragging(() => recordBox(id, element));
-		deferred.run();
-		if (typeof ResizeObserver === 'undefined') {
-			return { destroy: () => { deferred.cancel(); slots.delete(id); } };
-		}
-		const observer = new ResizeObserver(deferred.run);
-		observer.observe(element);
-		return {
-			destroy: () => {
-				observer.disconnect();
-				deferred.cancel();
-				slots.delete(id);
-			}
-		};
-	}
 
 	$effect(() => {
 		// After every layout, read the cards back. A ResizeObserver only speaks when a size
 		// changes, so without this a measurement lost for any reason would never return.
 		void flow;
 		const frame = requestAnimationFrame(() => {
-			for (const [id, element] of slots) if (element.isConnected) recordBox(id, element);
+			for (const [id, element] of canvas.slots) if (element.isConnected) canvas.recordBox(id, element);
 		});
 		return () => cancelAnimationFrame(frame);
 	});
 	const byId = $derived(new Map((shown?.nodes ?? []).map((node) => [node.turn_id, node])));
 	/** The card this opening was asked to land on, while that request is the one on screen. */
 	const focusedTurn = $derived(
-		focus && placedFocus === focusToken && shown ? focusNode(shown.nodes, focus)?.turn_id ?? null : null
+		focus && canvas.placedFocus === focusToken && shown ? focusNode(shown.nodes, focus)?.turn_id ?? null : null
 	);
 	/**
 	 * Measurements survive a reload of the same job.
@@ -683,11 +346,6 @@
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
 	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
 
-	/** A switcher row from a daemon that predates plans has neither a status nor counts. */
-	function planStatusOf(job: SessionTaskSummary): PlanStatus {
-		return job.status ?? (job.closed_at ? 'done' : 'active');
-	}
-
 	/** The ticket a card worked in, as `01`; nothing on your own card and on turns filed under none. */
 	function ticketOf(node: TaskTraceNode): Ticket | null {
 		return node.ticket_id ? (ticketsById.get(node.ticket_id) ?? null) : null;
@@ -714,19 +372,19 @@
 	 */
 	async function toggleSide(kind: 'spec' | 'tickets'): Promise<void> {
 		const next = sideShown === kind ? null : kind;
-		const before = viewportBox().width;
-		const opened = stillOpened();
+		const before = canvas.viewportBox().width;
+		const opened = canvas.stillOpened();
 		side = next;
 		saveTraceSide(next);
 		await tick();
-		const after = viewportBox().width;
+		const after = canvas.viewportBox().width;
 		if (!before || !after || after === before) return;
 		if (opened) {
-			openBoard();
+			canvas.openBoard();
 			return;
 		}
-		stopGlide();
-		view = { ...view, x: view.x + (after - before) / 2 };
+		canvas.stopGlide();
+		canvas.view = { ...canvas.view, x: canvas.view.x + (after - before) / 2 };
 	}
 
 	function toggleHighlight(kind: RouteHighlight): void {
@@ -846,52 +504,6 @@
 		}
 	}
 
-	function toggleSwitcher(event: MouseEvent): void {
-		event.stopPropagation();
-		switcherOpen = !switcherOpen;
-	}
-
-	function onMenuKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			event.stopImmediatePropagation();
-			switcherOpen = false;
-			titleTriggerEl?.focus();
-		} else if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			const items = Array.from(titleMenuEl?.querySelectorAll<HTMLButtonElement>('.trace-job') ?? []);
-			const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-			const next = items[currentIndex + 1] ?? items[0];
-			next?.focus();
-		} else if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			const items = Array.from(titleMenuEl?.querySelectorAll<HTMLButtonElement>('.trace-job') ?? []);
-			const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-			const prev = items[currentIndex - 1] ?? items[items.length - 1];
-			prev?.focus();
-		}
-	}
-
-	$effect(() => {
-		if (!switcherOpen) return;
-		function onPointerDown(e: PointerEvent): void {
-			if (isOutside(e.target as Node, titleMenuEl)) {
-				switcherOpen = false;
-			}
-		}
-		document.addEventListener('pointerdown', onPointerDown);
-		return () => {
-			document.removeEventListener('pointerdown', onPointerDown);
-		};
-	});
-
-	$effect(() => {
-		if (switcherOpen) {
-			const activeBtn = titleMenuEl?.querySelector<HTMLButtonElement>('.trace-job.is-current');
-			activeBtn?.focus();
-		}
-	});
-
 	function selectJob(id: string): void {
 		switcherOpen = false;
 		if (id === currentId) return;
@@ -914,7 +526,7 @@
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				switcherOpen = false;
-				titleTriggerEl?.focus();
+				jobSwitcher?.focusTrigger();
 				return;
 			}
 			if (openRoute) {
@@ -972,14 +584,6 @@
 		onJump(node.session_id, messageId);
 	}
 
-
-	function nodeBundleInfo(node: TaskTraceNode) {
-		const tree = buildCitedPathTree(node.artifacts.map((a) => a.path));
-		const fileCount = countCitedFiles(tree);
-		const bundle = citedBundleRoot(tree);
-		return { tree, fileCount, bundle };
-	}
-
 	/** A file a card handed over opens in the host's preview; the board itself shows no file. */
 	function openNodeArtifacts(node: TaskTraceNode): void {
 		if (node.artifacts.length === 0 || !onOpenArtifact) return;
@@ -1021,261 +625,6 @@
 	</svg>
 {/snippet}
 
-{#snippet card(node: TaskTraceNode)}
-	<!-- An edge already says who woke this card; words are for the ones with no line to follow. -->
-	{@const from =
-		node.woken_by_turn_id && byId.has(node.woken_by_turn_id)
-			? null
-			: wokenByName(node, byId, nameOf)}
-	{@const face = avatarOf(node.actor)}
-	{@const route = routeOf(node)}
-	{@const lit = highlightOf(node, lighting)}
-	{@const ticket = ticketOf(node)}
-	{@const ticketLight = ticketLightOf(node)}
-	<article
-		class="trace-card is-{node.status}"
-		class:is-here={node.session_id === activeSessionId}
-		class:is-focus={focusedTurn === node.turn_id}
-		class:is-lit={lit === 'lit' || ticketLight === 'lit'}
-		class:is-lit-blamed={lit === 'lit' && lighting === 'blamed'}
-		class:is-dim={lit === 'dim' || ticketLight === 'dim'}
-	>
-		<button type="button" class="trace-card-main" onclick={() => openCard(node)} title={t.trace.jump}>
-			<span class="trace-card-line">
-				<span
-					class="trace-avatar"
-					class:is-you={node.actor === USER_MEMBER}
-					style:background={face.palette?.bg}
-					style:color={face.palette?.text}
-					style:border-color={face.palette?.border}
-					aria-hidden="true"
-				>
-					{#if face.src}
-						<img src={face.src} alt="" class="avatar-img" />
-					{:else}
-						{face.letter}
-					{/if}
-				</span>
-				<span class="trace-card-who">{nameOf(node.actor)}</span>
-				{#if ticket}
-					<span class="trace-ticket-tag mono" title={ticket.title}>{ticketTag(ticket.seq)}</span>
-				{/if}
-				{#if node.actor !== USER_MEMBER}
-					<!-- Your own line has no status worth reading: it was sent. -->
-					<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
-				{/if}
-			</span>
-			{#if from}
-				<span class="trace-woken">{t.trace.wokenBy(from)}</span>
-			{/if}
-			{#if saidNothing(node)}
-				<!-- Its summary would be the line that woke it, read as the Bot saying it. -->
-				<span class="trace-silent">{t.trace.silent}</span>
-			{:else if node.summary}
-				<span class="trace-summary">{node.summary}</span>
-			{/if}
-			{#if node.ask}
-				<span class="trace-wait">{t.trace.waitingAsk} · {node.ask.question}</span>
-			{/if}
-			{#if node.approval}
-				<span class="trace-wait">{t.trace.waitingApproval}{#if node.approval.summary} · {node.approval.summary}{/if}</span>
-			{/if}
-			{#if node.passed > 0}
-				<span class="trace-passed">{t.trace.passed(node.passed)}</span>
-			{/if}
-			{#if node.session_id !== shown?.session_id}
-				<!-- The header names the job's own conversation; only a card from elsewhere says where. -->
-				<span class="trace-place">{placeOf(node)}</span>
-			{/if}
-		</button>
-		{#if route}
-			<!-- How this turn ran: the model it was given, and the trouble that came of it. -->
-			<div class="trace-route-line">
-				<button
-					type="button"
-					class="trace-route-btn"
-					class:is-open={openRoute === node.turn_id}
-					aria-expanded={openRoute === node.turn_id}
-					title={t.routes.cardToggle}
-					onclick={() => toggleRoute(node)}
-				>
-					<span class="trace-route-model mono">{route.model}</span>
-					<span class="trace-route-meta">{t.routes.thinkingPrefix} {route.thinkingLabel} · {route.signatureLabel}</span>
-					<span class="trace-route-flags">
-						{#if route.review?.blamedModel}
-							<span class="trace-route-flag is-blamed" title={t.routes.filterBlamed}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-							</span>
-						{/if}
-						{#if route.feedback.length > 0}
-							<span class="trace-route-flag is-feedback" title={t.routes.feedbackCount(route.feedback.length)}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-								<span class="mono">{route.feedback.length}</span>
-							</span>
-						{/if}
-						{#if route.failReason}
-							<span class="trace-route-flag is-failed" title={route.failReason}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-							</span>
-						{/if}
-					</span>
-					<svg class="trace-route-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-				</button>
-			</div>
-		{/if}
-		{#if node.artifacts.length > 0}
-			{@const isBundle = node.artifacts.length > 1}
-			{@const info = isBundle ? nodeBundleInfo(node) : null}
-			{@const single = node.artifacts[0]!}
-			<div class="trace-files">
-				<button
-					type="button"
-					class="trace-file-btn trace-file"
-					class:is-bundle={isBundle}
-					onclick={() => openNodeArtifacts(node)}
-					title={isBundle ? node.artifacts.map((a) => a.path).join('\n') : single.path}
-				>
-					<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
-						{#if isBundle}
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-							</svg>
-						{:else}
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-								<polyline points="14 2 14 8 20 8"></polyline>
-							</svg>
-						{/if}
-					</div>
-					<div class="file-meta-col flex flex-col min-w-0 flex-1">
-						<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">
-							{isBundle ? (info?.bundle ?? t.stream.artifactBundle) : traceFileName(single.path)}
-						</span>
-						<span class="file-sub text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap" class:mono={!isBundle}>
-							{isBundle ? t.stream.artifactBundleCount(info?.fileCount ?? node.artifacts.length) : single.path}
-						</span>
-					</div>
-				</button>
-			</div>
-		{/if}
-	</article>
-{/snippet}
-
-{#snippet roundRow(round: TraceRound)}
-	<!-- One line per round: folded, it stands in for the whole round; open, it heads it. -->
-	<button
-		type="button"
-		class="trace-round"
-		class:is-folded={round.folded}
-		class:is-live={round.live}
-		style="left: {round.header!.x}px; top: {round.header!.y}px; width: {round.header!.width}px; height: {round.header!.height}px;"
-		aria-expanded={!round.folded}
-		title={round.folded ? t.trace.roundUnfold : t.trace.roundFold}
-		onclick={() => toggleRound(round.root)}
-	>
-		<svg class="trace-round-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
-		{#if round.folded}
-			<span class="trace-round-said"><span class="trace-round-who">{nameOf(round.node.actor)}</span>{round.node.summary}</span>
-		{/if}
-		<span class="trace-round-meta mono" title={formatFullTimestamp(round.node.created_at)}>{roundTime(round.node.created_at)}</span>
-		<span class="trace-round-meta">{t.trace.roundCards(round.cards)}{#if round.files > 0}{` · ${t.trace.roundFiles(round.files)}`}{/if}</span>
-		{#each round.ticketIds as id (id)}
-			{@const ticket = ticketsById.get(id)}
-			{#if ticket}
-				<span class="trace-ticket-tag mono" title={ticket.title}>{ticketTag(ticket.seq)}</span>
-			{/if}
-		{/each}
-		{#if round.live}
-			<span class="trace-round-live" title={t.trace.status.running} aria-label={t.trace.status.running}></span>
-		{/if}
-	</button>
-{/snippet}
-
-{#snippet routeDetail(node: TaskTraceNode, route: RouteLogRow)}
-	<!-- Unfolded under its own card, the way a file is: what was picked, why, and what came of it. -->
-	<section class="trace-route" aria-label={t.routes.cardTitle}>
-		<header class="trace-route-head">
-			<span class="trace-route-title">{t.routes.cardTitle}</span>
-			<span class="trace-route-outcome is-{route.outcome}">{route.outcomeLabel}</span>
-			<button type="button" class="trace-route-close" title={t.trace.outputClose} aria-label={t.trace.outputClose} onclick={() => (openRoute = null)}>
-				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-			</button>
-		</header>
-		<div class="trace-route-chips">
-			<span class="trace-route-chip is-model mono" title={route.model}>{route.model}</span>
-			<span class="trace-route-chip">{t.routes.thinkingPrefix} {route.thinkingLabel}</span>
-			<span class="trace-route-chip" title={t.routes.kindLabel}>{route.signatureLabel}</span>
-			{#if providers.length > 1 && route.providerName}
-				<span class="trace-route-chip" title={t.routes.endpoint}>{route.providerName}</span>
-			{/if}
-		</div>
-		{#if route.durationMs !== null || (route.hops !== null && route.toolErrors !== null)}
-			<p class="trace-route-stats mono">
-				{#if route.durationMs !== null}{formatDurationMs(route.durationMs)}{/if}{#if route.durationMs !== null && route.hops !== null && route.toolErrors !== null}{' · '}{/if}{#if route.hops !== null && route.toolErrors !== null}{t.routes.execution(route.hops, route.toolErrors)}{/if}
-			</p>
-		{/if}
-		{#if route.failReason}
-			<p class="trace-route-fail">{route.failReason}</p>
-		{/if}
-		{#if route.reason}
-			<p class="trace-route-why"><span class="trace-route-label">{t.routes.pickReason}</span>{route.reason}</p>
-		{/if}
-		{#if route.feedback.length > 0}
-			<div class="trace-route-block">
-				<span class="trace-route-label">{t.routes.feedbackCount(route.feedback.length)}</span>
-				<ul class="trace-route-feedback">
-					{#each route.feedback as note (note.message_id)}
-						<li>
-							<button
-								type="button"
-								class="trace-route-note"
-								title={t.routes.jump}
-								onclick={() => onJump(node.session_id, note.message_id)}
-							>
-								<span class="trace-route-note-body">{note.body}</span>
-								<span class="trace-route-note-time mono" title={formatFullTimestamp(note.created_at)}>{formatMessageTime(note.created_at)}</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
-		{#if route.review}
-			<div class="trace-route-block trace-route-review" class:is-model={route.review.blamedModel}>
-				<span class="trace-route-review-head">
-					<span class="trace-route-label">{t.routes.reviewTitle}</span>
-					<span class="trace-route-fault">{route.review.faultLabel}</span>
-					{#if route.review.directionLabel}
-						<span class="trace-route-direction">{route.review.directionLabel}</span>
-					{/if}
-					{#if route.review.rounds > 0}
-						<span class="trace-route-rounds">{t.routes.reviewRounds(route.review.rounds)}</span>
-					{/if}
-				</span>
-				{#if route.review.reason}
-					<span class="trace-route-review-reason">{route.review.reason}</span>
-				{/if}
-				{#if route.review.retired}
-					<span class="trace-route-effect">{t.routes.effectRetired}</span>
-				{:else if route.review.effect === 'unknown'}
-					<span class="trace-route-effect">{t.routes.effectUnused}</span>
-				{:else if route.review.effect === 'followed'}
-					<span class="trace-route-effect">{t.routes.effectFollowed}{route.review.cleaner ? ` · ${t.routes.effectCleaner}` : ''}</span>
-				{/if}
-			</div>
-		{/if}
-		{#if route.learning}
-			<p class="trace-route-learning">
-				{route.learning.kind === 'memory'
-					? t.routes.learnedMemory(route.learning.label)
-					: route.learning.kind === 'skill'
-						? t.routes.learnedSkill(route.learning.label)
-						: t.routes.learnedNone}
-			</p>
-		{/if}
-	</section>
-{/snippet}
-
 <div
 	class="trace-pane"
 	class:is-page={host === 'page'}
@@ -1285,79 +634,15 @@
 	<div class="trace-top">
 		<header class="trace-header">
 			<div class="trace-titles">
-				{#if jobs.length > 1}
-					<div class="trace-title-select" bind:this={titleMenuEl}>
-						<button
-							type="button"
-							class="trace-title-trigger"
-							bind:this={titleTriggerEl}
-							aria-haspopup="listbox"
-							aria-expanded={switcherOpen}
-							onclick={toggleSwitcher}
-							title={heading}
-						>
-							<h2>{heading}</h2>
-							<svg
-								class="trace-title-arrow"
-								class:is-open={switcherOpen}
-								width="12"
-								height="12"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.5"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
-								<polyline points="6 9 12 15 18 9"></polyline>
-							</svg>
-						</button>
-						{#if switcherOpen}
-							<div
-								class="trace-switcher-popover"
-								role="listbox"
-								tabindex="-1"
-								aria-label={t.trace.title}
-								onkeydown={onMenuKeydown}
-							>
-								{#each jobs as job (job.id)}
-									{@const status = planStatusOf(job)}
-									{@const total = totalTicketCount(job.ticket_counts)}
-									<button
-										type="button"
-										role="option"
-										class="trace-job"
-										class:is-current={job.id === currentId}
-										aria-selected={job.id === currentId}
-										onclick={() => {
-											selectJob(job.id);
-											titleTriggerEl?.focus();
-										}}
-									>
-										<span class="trace-job-check" aria-hidden="true">
-											{#if job.id === currentId}
-												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-													<polyline points="20 6 9 17 4 12"></polyline>
-												</svg>
-											{/if}
-										</span>
-										<div class="trace-job-info">
-											<span class="trace-job-title">{planTitle(job)}</span>
-											<span class="trace-job-meta">
-												<span class="plan-status is-{status}">{t.plan.status[status]}</span>
-												{#if total > 0} · {t.plan.ticketCounts(openTicketCount(job.ticket_counts), total)}{/if}
-												 · <span class="mono">{job.dir}</span>
-											</span>
-										</div>
-									</button>
-								{/each}
-							</div>
-						{/if}
-					</div>
-				{:else}
-					<h2>{heading}</h2>
-				{/if}
+				<TraceJobSwitcher
+					bind:this={jobSwitcher}
+					{jobs}
+					{currentId}
+					{heading}
+					{t}
+					bind:open={switcherOpen}
+					onSelectJob={selectJob}
+				/>
 				{#if trace}
 					<span class="trace-meta">
 						<span class="plan-status is-{planStatus}">{t.plan.status[planStatus]}</span>
@@ -1463,22 +748,22 @@
 						class="trace-zoom-step"
 						aria-label={t.trace.zoomOut}
 						title={t.trace.zoomOut}
-						disabled={view.scale <= TRACE_ZOOM_MIN}
-						onclick={() => zoomTo(view.scale / 1.2)}
+						disabled={canvas.view.scale <= TRACE_ZOOM_MIN}
+						onclick={() => canvas.zoomTo(canvas.view.scale / 1.2)}
 					>−</button>
-					<button type="button" class="trace-zoom-level" onclick={() => zoomTo(1)} title={t.trace.zoomReset}>
-						{Math.round(view.scale * 100)}%
+					<button type="button" class="trace-zoom-level" onclick={() => canvas.zoomTo(1)} title={t.trace.zoomReset}>
+						{Math.round(canvas.view.scale * 100)}%
 					</button>
 					<button
 						type="button"
 						class="trace-zoom-step"
 						aria-label={t.trace.zoomIn}
 						title={t.trace.zoomIn}
-						disabled={view.scale >= TRACE_ZOOM_MAX}
-						onclick={() => zoomTo(view.scale * 1.2)}
+						disabled={canvas.view.scale >= TRACE_ZOOM_MAX}
+						onclick={() => canvas.zoomTo(canvas.view.scale * 1.2)}
 					>+</button>
 					<span class="trace-zoom-rule" aria-hidden="true"></span>
-					<button type="button" class="trace-zoom-fit" aria-label={t.trace.zoomFit} title={t.trace.zoomFit} onclick={fitBoard}>
+					<button type="button" class="trace-zoom-fit" aria-label={t.trace.zoomFit} title={t.trace.zoomFit} onclick={() => canvas.fitBoard()}>
 						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
 							<path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
@@ -1494,10 +779,10 @@
 		<!-- A fixed viewport. The board moves under it; the window's corner resizes the viewport. -->
 		<div
 			class="trace-viewport"
-			class:is-dragging={drag !== null || pinch !== null}
+			class:is-dragging={canvas.drag !== null || canvas.pinch !== null}
 			role="group"
 			aria-label={t.trace.title}
-			bind:this={viewportEl}
+			bind:this={canvas.viewportEl}
 			use:gestures
 			use:watchViewport
 		>
@@ -1513,9 +798,9 @@
 				{:else}
 					<div
 						class="trace-flow"
-						class:is-moving={dragged}
+						class:is-moving={canvas.dragged}
 						style="width: {flow.width}px; height: {flow.height}px;
-							transform: translate({view.x}px, {view.y}px) scale({view.scale});"
+							transform: translate({canvas.view.x}px, {canvas.view.y}px) scale({canvas.view.scale});"
 					>
 						<svg
 							class="trace-edges"
@@ -1530,21 +815,40 @@
 						</svg>
 						{#each flow.rounds as round (round.root)}
 							{#if round.header}
-								{@render roundRow(round)}
+								<TraceRound {round} {t} {ticketsById} {nameOf} onToggle={() => toggleRound(round.root)} />
 							{/if}
 						{/each}
 						{#each flow.placements as placement (placement.node.turn_id)}
+							{@const node = placement.node}
+							{@const litKind = highlightOf(node, lighting)}
+							{@const ticketLight = ticketLightOf(node)}
+							{@const route = routeOf(node)}
 							<div
 								class="trace-slot"
 								style="left: {placement.x}px; top: {placement.y}px; width: {TRACE_CARD_WIDTH}px;"
-								use:measured={placement.node.turn_id}
+								use:measured={node.turn_id}
 							>
-								{@render card(placement.node)}
-								{#if openRoute === placement.node.turn_id}
-									{@const route = routeOf(placement.node)}
-									{#if route}
-										{@render routeDetail(placement.node, route)}
-									{/if}
+								<TraceCard
+									{node}
+									{t}
+									here={node.session_id === activeSessionId}
+									focused={focusedTurn === node.turn_id}
+									lit={litKind === 'lit' || ticketLight === 'lit'}
+									litBlamed={litKind === 'lit' && lighting === 'blamed'}
+									dim={litKind === 'dim' || ticketLight === 'dim'}
+									name={nameOf(node.actor)}
+									avatar={avatarOf(node.actor)}
+									ticket={ticketOf(node)}
+									from={node.woken_by_turn_id && byId.has(node.woken_by_turn_id) ? null : wokenByName(node, byId, nameOf)}
+									place={node.session_id !== shown?.session_id ? placeOf(node) : null}
+									{route}
+									routeOpen={openRoute === node.turn_id}
+									onToggleRoute={() => toggleRoute(node)}
+									onOpen={() => openCard(node)}
+									onOpenArtifacts={() => openNodeArtifacts(node)}
+								/>
+								{#if openRoute === node.turn_id && route}
+									<TraceRouteDetail {node} {route} {t} {providers} {onJump} onClose={() => (openRoute = null)} />
 								{/if}
 							</div>
 						{/each}
@@ -1753,19 +1057,6 @@
 		box-shadow: var(--shadow-xs);
 	}
 
-	/* The ticket a card worked in, as its number; the rail says the rest. */
-	.trace-ticket-tag {
-		flex: none;
-		padding: 0 5px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-		color: var(--muted);
-		font-size: 10px;
-		font-weight: 600;
-		line-height: 15px;
-	}
-
 	/* The picture and, beside it, the plan's spec or its tickets — beside, never over it. */
 	.trace-stage {
 		position: relative;
@@ -1865,150 +1156,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-	}
-
-	.trace-titles h2 {
-		margin: 0;
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--ink);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.trace-title-select {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		min-width: 0;
-		max-width: 100%;
-	}
-
-	.trace-title-trigger {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-		max-width: 100%;
-		margin: -3px -6px;
-		padding: 3px 6px;
-		border-radius: var(--radius-sm);
-		border: 1px solid transparent;
-		background: transparent;
-		color: var(--ink);
-		cursor: pointer;
-		text-align: left;
-		transition: background 0.15s ease, border-color 0.15s ease;
-	}
-
-	.trace-title-trigger:hover {
-		background: var(--chip);
-		border-color: var(--line-subtle);
-	}
-
-	.trace-title-trigger:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
-	.trace-title-arrow {
-		flex: none;
-		color: var(--muted);
-		transition: transform 0.2s ease;
-	}
-
-	.trace-title-arrow.is-open {
-		transform: rotate(180deg);
-	}
-
-	.trace-switcher-popover {
-		position: absolute;
-		top: calc(100% + 6px);
-		left: 0;
-		z-index: 100;
-		min-width: 260px;
-		max-width: min(440px, calc(100vw - 32px));
-		max-height: 280px;
-		overflow-y: auto;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-md);
-		padding: 4px;
-		box-sizing: border-box;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.trace-job {
-		display: flex;
-		align-items: flex-start;
-		gap: 8px;
-		width: 100%;
-		padding: 6px 8px;
-		border-radius: var(--radius-sm);
-		border: 1px solid transparent;
-		background: transparent;
-		color: var(--ink);
-		cursor: pointer;
-		text-align: left;
-		font-size: 12px;
-		transition: background 0.12s ease, color 0.12s ease;
-		box-sizing: border-box;
-	}
-
-	.trace-job:hover,
-	.trace-job:focus-visible {
-		background: var(--chip);
-		outline: none;
-	}
-
-	.trace-job.is-current {
-		background: var(--accent-tint);
-		border-color: var(--accent-border);
-		color: var(--accent);
-		font-weight: 500;
-	}
-
-	.trace-job-check {
-		flex: none;
-		width: 14px;
-		height: 14px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin-top: 2px;
-		color: var(--accent);
-	}
-
-	.trace-job-info {
-		min-width: 0;
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.trace-job-title {
-		font-weight: inherit;
-		color: inherit;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.trace-job-meta {
-		font-size: 11px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.trace-job.is-current .trace-job-meta {
-		color: color-mix(in srgb, var(--accent) 70%, var(--muted));
 	}
 
 	.trace-meta {
@@ -2242,615 +1389,10 @@
 		gap: 8px;
 	}
 
-	/* A round's line: quieter than a card when it heads an open round, a list row when folded. */
-	.trace-round {
-		position: absolute;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 0 10px;
-		border: 1px dashed var(--line);
-		border-radius: 999px;
-		background: transparent;
-		color: var(--muted);
-		font-size: 11px;
-		line-height: 1;
-		text-align: left;
-		white-space: nowrap;
-		cursor: pointer;
-		/* Not the buttons' `all`: a row that slid to its new place while the cards and the view
-		   jumped to theirs swung away from under the pointer after a fold, then crept back. */
-		transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-	}
-
-	.trace-round:hover {
-		background: var(--line-subtle);
-		color: var(--ink-secondary);
-	}
-
-	.trace-round:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	.trace-round.is-folded {
-		border-style: solid;
-		border-radius: var(--radius-md);
-		background: var(--pane);
-	}
-
-	.trace-round-caret {
-		flex: none;
-		transform: rotate(90deg);
-		transition: transform 0.15s ease;
-	}
-
-	.trace-round.is-folded .trace-round-caret {
-		transform: none;
-	}
-
-	.trace-round-said {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		color: var(--ink-secondary);
-		font-size: 12px;
-	}
-
-	.trace-round-who {
-		margin-right: 4px;
-		color: var(--ink);
-		font-weight: 600;
-	}
-
-	.trace-round-who::after {
-		content: '：';
-	}
-
-	.trace-round-meta {
-		flex: none;
-	}
-
-	/* An open round's line is only its facts; push them to the middle so it reads as a divider. */
-	.trace-round:not(.is-folded) {
-		justify-content: center;
-	}
-
-	.trace-round-live {
-		flex: none;
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--accent);
-	}
-
 	.trace-empty {
 		margin: 24px 0;
 		font-size: 13px;
 		color: var(--muted);
-	}
-
-	.trace-card {
-		border: 1px solid var(--line);
-		border-left: 3px solid var(--muted-light);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-		overflow: hidden;
-	}
-
-	.trace-card.is-running {
-		border-color: var(--accent-border);
-		border-left-color: var(--accent);
-		background: var(--accent-tint);
-	}
-
-	.trace-card.is-waiting_approval {
-		border-color: var(--warn-line);
-		border-left-color: var(--warn);
-		background: var(--warn-bg);
-	}
-
-	.trace-card.is-waiting_ask {
-		border-color: var(--purple-line);
-		border-left-color: var(--purple);
-		background: var(--purple-bg);
-	}
-
-	.trace-card.is-completed {
-		border-color: var(--ok-line);
-		border-left-color: var(--ok);
-		background: var(--ok-bg);
-	}
-
-	.trace-card.is-redirected {
-		border-color: var(--line);
-		border-left-color: var(--muted);
-		background: var(--chip);
-	}
-
-	.trace-card.is-interrupted,
-	.trace-card.is-stopped {
-		border-color: var(--danger-line);
-		border-left-color: var(--danger);
-		background: var(--danger-bg);
-	}
-
-	.trace-card.is-here {
-		box-shadow: inset 0 0 0 1px var(--accent);
-	}
-
-	.trace-card.is-focus {
-		box-shadow: 0 0 0 2px var(--accent);
-	}
-
-	.trace-card {
-		transition: opacity 0.15s ease;
-	}
-
-	.trace-card.is-dim {
-		opacity: 0.32;
-	}
-
-	.trace-card.is-lit {
-		box-shadow: 0 0 0 2px var(--accent);
-	}
-
-	.trace-card.is-lit.is-lit-blamed {
-		box-shadow: 0 0 0 2px var(--warn);
-	}
-
-	.trace-card-main {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 4px;
-		width: 100%;
-		padding: 9px 10px;
-		border: 0;
-		background: transparent;
-		text-align: left;
-		cursor: pointer;
-		color: inherit;
-	}
-
-	.trace-card-main:hover {
-		background: var(--line-subtle);
-	}
-
-	.trace-card-line {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		width: 100%;
-	}
-
-	.trace-avatar {
-		width: 22px;
-		height: 22px;
-		flex: none;
-		border-radius: 50%;
-		border: 1px solid;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-		font-size: 11px;
-		font-weight: 700;
-		line-height: 1;
-		user-select: none;
-	}
-
-	.trace-avatar.is-you {
-		background: #1e293b;
-		color: #ffffff;
-		border-color: #334155;
-	}
-
-	.trace-card-who {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.trace-status {
-		margin-left: auto;
-		font-size: 11px;
-		color: var(--muted);
-	}
-
-	.trace-status.is-running { color: var(--accent); }
-	.trace-status.is-waiting_approval { color: var(--warn-text); }
-	.trace-status.is-waiting_ask { color: var(--purple); }
-	.trace-status.is-completed { color: var(--ok-text); }
-	.trace-status.is-redirected { color: var(--muted); }
-	.trace-status.is-interrupted,
-	.trace-status.is-stopped { color: var(--danger-text); }
-
-	.trace-summary,
-	.trace-wait,
-	.trace-woken,
-	.trace-passed,
-	.trace-silent,
-	.trace-place {
-		font-size: 12px;
-		line-height: 1.45;
-		color: var(--ink-secondary);
-		overflow-wrap: anywhere;
-	}
-
-	.trace-place,
-	.trace-woken,
-	.trace-passed,
-	.trace-silent {
-		font-size: 11px;
-		color: var(--muted);
-	}
-
-	.trace-wait {
-		color: var(--accent);
-	}
-
-	.trace-files {
-		padding: 0 10px 9px;
-	}
-
-	/* How the turn ran, as one line under what it did: model, thinking level, kind, and trouble. */
-	.trace-route-line {
-		padding: 0 10px 9px;
-	}
-
-	.trace-route-btn {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		width: 100%;
-		padding: 4px 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-		color: var(--ink-secondary);
-		font-size: 11px;
-		line-height: 1.3;
-		text-align: left;
-		cursor: pointer;
-		box-sizing: border-box;
-		transition: border-color 0.15s ease, background 0.15s ease;
-	}
-
-	.trace-route-btn:hover,
-	.trace-route-btn.is-open {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-	}
-
-	.trace-route-model {
-		flex: 0 1 auto;
-		max-width: 50%;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 10.5px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.trace-route-meta {
-		flex: 1 1 auto;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--muted);
-	}
-
-	.trace-route-flags {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		flex: none;
-	}
-
-	.trace-route-flag {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-		font-size: 10px;
-	}
-
-	.trace-route-flag.is-blamed { color: var(--warn-text); }
-	.trace-route-flag.is-feedback { color: var(--accent); }
-	.trace-route-flag.is-failed { color: var(--danger-text); }
-
-	.trace-route-caret {
-		flex: none;
-		color: var(--muted);
-		transition: transform 0.15s ease;
-	}
-
-	.trace-route-btn.is-open .trace-route-caret {
-		transform: rotate(180deg);
-	}
-
-	.trace-route {
-		display: flex;
-		flex-direction: column;
-		gap: 7px;
-		padding: 8px 10px 10px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-		box-shadow: var(--shadow-xs);
-		font-size: 11.5px;
-		color: var(--ink-secondary);
-	}
-
-	.trace-route-head {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.trace-route-title {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.trace-route-outcome {
-		font-size: 10.5px;
-		font-weight: 600;
-		padding: 1px 6px;
-		border-radius: 9999px;
-		border: 1px solid var(--line);
-		background: var(--chip);
-		color: var(--muted);
-		white-space: nowrap;
-	}
-
-	.trace-route-outcome.is-completed {
-		background: var(--ok-bg);
-		color: var(--ok-text);
-		border-color: var(--ok-line);
-	}
-
-	.trace-route-outcome.is-failed {
-		background: var(--danger-bg);
-		color: var(--danger-text);
-		border-color: var(--danger-line);
-	}
-
-	.trace-route-outcome.is-interrupted {
-		background: var(--warn-bg);
-		color: var(--warn-text);
-		border-color: var(--warn-line);
-	}
-
-	.trace-route-outcome.is-live,
-	.trace-route-outcome.is-redirected {
-		background: var(--accent-tint);
-		color: var(--accent);
-		border-color: var(--accent-border);
-	}
-
-	.trace-route-close {
-		margin-left: auto;
-		width: 20px;
-		height: 20px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border: 0;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-	}
-
-	.trace-route-close:hover {
-		background: var(--line-subtle);
-		color: var(--ink);
-	}
-
-	.trace-route-chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-	}
-
-	.trace-route-chip {
-		max-width: 100%;
-		padding: 1px 7px;
-		border: 1px solid var(--line);
-		border-radius: 9999px;
-		background: var(--chip);
-		font-size: 10.5px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.trace-route-chip.is-model {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
-	}
-
-	.trace-route-stats,
-	.trace-route-fail,
-	.trace-route-why,
-	.trace-route-learning {
-		margin: 0;
-		line-height: 1.45;
-		overflow-wrap: anywhere;
-	}
-
-	.trace-route-stats {
-		font-size: 10.5px;
-		color: var(--muted);
-	}
-
-	.trace-route-fail {
-		color: var(--danger-text);
-	}
-
-	.trace-route-learning {
-		color: var(--ok-text);
-	}
-
-	.trace-route-label {
-		margin-right: 6px;
-		font-weight: 600;
-		color: var(--muted);
-	}
-
-	.trace-route-block {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.trace-route-feedback {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.trace-route-note {
-		display: flex;
-		align-items: flex-start;
-		gap: 6px;
-		width: 100%;
-		padding: 5px 7px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-		color: var(--ink);
-		font-size: 11.5px;
-		text-align: left;
-		cursor: pointer;
-		box-sizing: border-box;
-	}
-
-	.trace-route-note:hover {
-		border-color: var(--accent-border);
-	}
-
-	.trace-route-note-body {
-		flex: 1;
-		min-width: 0;
-		line-height: 1.4;
-		overflow-wrap: anywhere;
-	}
-
-	.trace-route-note-time {
-		flex: none;
-		padding-top: 1px;
-		font-size: 10px;
-		color: var(--muted-light);
-	}
-
-	.trace-route-review {
-		padding: 6px 8px;
-		border: 1px solid transparent;
-		border-radius: var(--radius-sm);
-		background: var(--line-subtle);
-	}
-
-	.trace-route-review.is-model {
-		border-color: var(--warn-line);
-		background: var(--warn-bg);
-	}
-
-	.trace-route-review-head {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 5px;
-	}
-
-	.trace-route-fault {
-		font-weight: 600;
-		color: var(--ink-secondary);
-	}
-
-	.trace-route-direction,
-	.trace-route-rounds,
-	.trace-route-effect {
-		font-size: 10.5px;
-		color: var(--muted);
-	}
-
-	.trace-route-review-reason {
-		line-height: 1.45;
-		overflow-wrap: anywhere;
-	}
-
-	.trace-file-btn {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 6px 10px;
-		background: var(--chip);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		cursor: pointer;
-		text-align: left;
-		transition: border-color 0.15s ease, background 0.15s ease;
-		color: var(--ink);
-		box-sizing: border-box;
-	}
-
-	.trace-file-btn:hover,
-	.trace-file-btn.is-open {
-		border-color: var(--accent-border);
-		background: var(--line-subtle);
-	}
-
-	.trace-file-btn.is-open {
-		background: var(--accent-tint);
-	}
-
-	.trace-file-btn .file-icon-box {
-		flex: none;
-		display: flex;
-		align-items: center;
-		color: var(--accent);
-	}
-
-	.trace-file-btn .file-meta-col {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.trace-file-btn .file-title {
-		font-size: 12px;
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		line-height: 1.25;
-	}
-
-	.trace-file-btn .file-sub {
-		font-size: 10px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		line-height: 1.25;
-		margin-top: 1px;
 	}
 
 </style>

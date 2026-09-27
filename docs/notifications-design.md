@@ -23,7 +23,7 @@
 | 已读 | `store/sessions.ts::markSessionRead` 写服务端当前时间；`unreadCount` 按 `created_at > last_read_at` 统计，排除用户和 `profile_change`。 | 加入有界已读游标，避免未展示的新消息被一次“读到现在”吞掉。 |
 | 客户端已读 | `runtime.svelte.ts::selectSession` 直接清未读并调用已读接口；`ingest` 对当前会话的主消息 created/upsert 标读；`sidebar/unread.ts` 对 selected 会话返回零。均未依据焦点或实际阅读位置。 | 当前会话与已读脱钩，由可见性、焦点、遮挡和滚动位置决定何时提交已读。引用回复也参与阅读。 |
 | 阅读位置 | `chat/ChatStage.svelte` 持有 `stickToBottom`、滚动容器和跳转；`chat/stream-scroll.ts::STREAM_NEAR_BOTTOM_PX = 120`。 | 复用这套滚动事实，增加阅读可见性回调；不另起一套滚动判断。 |
-| 批准 / 提问 | `turn-engine.ts::executeTools` 创建批准卡 / `ask` 消息，分别进入 `waiting_approval` / `waiting_ask`；`replyAsk` 校验 `live.ask.id`。转录 `isPendingAsk` 目前只看轮次状态，旧问题会被误画成可回答，客户端还会吞掉 422 后清草稿。 | 一张批准或一个提问只产生一项提醒；增加权威 `pending_ask_id` 与明确提交结果，修复旧卡及跨端回答竞态。 |
+| 批准 / 提问 | `engine/tools.ts::executeTools` 创建批准卡 / `ask` 消息，分别进入 `waiting_approval` / `waiting_ask`；`replyAsk` 校验 `live.ask.id`。转录 `isPendingAsk` 目前只看轮次状态，旧问题会被误画成可回答，客户端还会吞掉 422 后清草稿。 | 一张批准或一个提问只产生一项提醒；增加权威 `pending_ask_id` 与明确提交结果，修复旧卡及跨端回答竞态。 |
 | 失败 / 中断 | `failTurn` 插系统消息并把轮次设为 `completed`，路由记录为 `outcome=failed`、`fail_kind`；中断由引擎 `interruptTurn` 和 Store 恢复两条路径落盘。`runtime.ts::stop` 先等 `engine.close()`，再扫剩余 live 轮。`TurnStatus` 没有 `failed` 或 `need_human`。 | 两条中断路径同事务建项，复用幂等键；失败使用结构化原因；“需要你”不新增轮次终态。 |
 | 日程 | `fireRoutine` 经 `claimRoutineDue` 领取最近到期时间，在你↔Bot 私聊插一条用户形式的 instruction，fork 一轮并新建工作目录；当前轮次没有持久的 routine 来源字段。 | 保存本次日程来源，正确区分日程结果、普通回复与启动记录；保留只补最近一次的规则。 |
 | Web Push 服务端 | `remote/push.ts::PushService` 已有订阅、原生 VAPID 读取、P-256/HKDF/AES128GCM 加密、HTTPS 主机允许名单、禁止重定向、TTL 60 秒、250ms 合并、404/410 删除订阅。 | 保留可复用密码与订阅路径，补策略、有限重试、订阅版本、吊销竞态防护与脱敏诊断。 |
@@ -232,11 +232,11 @@ flowchart TD
 关键写入点：
 
 1. `store/approvals.ts::insertApproval` 与通知插入同事务；`resolveApproval` 以及 `store/turns.ts` 的停止 / 改道 / 中断 / 恢复路径同步使对应通知完成或失效。
-2. `turn-engine.ts::executeTools` 把创建 ask、写 `waiting_ask`、创建通知包在同一同步 `Store.transaction` 中。批准卡、approval、waiting 状态同样收拢到一个同步事务；实际工具、waiter、网络调用仍在提交后。
+2. `engine/tools.ts::executeTools` 把创建 ask、写 `waiting_ask`、创建通知包在同一同步 `Store.transaction` 中。批准卡、approval、waiting 状态同样收拢到一个同步事务；实际工具、waiter、网络调用仍在提交后。
 3. `replyAsk` 同时校验持久 `pending_ask_id` 与当前 `live.ask.id`，在接收答案的同一业务事务中清空该指针、转 running、关闭该 ask 通知。创建下一次 ask 时原子替换为新的 ID；Stop / 改道 / 失败 / 中断一并清指针并作废旧 open ask。不得按一次 running 事件关闭另一条新问题。完整 UI 与错误合同见 §8.1。
 4. 最终 Bot 消息在 `store/messages.ts::insertMessage` 的领域入口分类并建项；跨会话 `collab-tools.ts` 路径同样覆盖。卡片消息、reaction 与 `message.upsert` 不建项。
 5. `failTurn` 在已有事务中写 `failure` 通知和 `fail_kind`，不增加 `TurnStatus`。`finishTurnRoute` 缺少路由行时可能无结果，故通知不能只依赖路由表反查；由失败调用点直接传结构化原因。
-6. **同时覆盖 `turn-engine.ts::interruptTurn` 与 `store/turns.ts::interruptRunningTurns` / `recoverInterruptedTurns`。** 提取同步中断领域函数，由引擎 runner 的 abort-finally、退出扫描、崩溃恢复及强制 drain 路径共同调用。在同一事务内重新确认轮次仍 live、作废批准 / ask、清 pending_ask_id、设置 interrupted、插中断消息并创建 `interrupted:<turn_id>` 通知。已经终态则不重复写；显式原因来自调用入口，不能匹配正文或挂在任意 `setTurnStatus` 上猜。`runtime.ts::stop` 先等 `engine.close()`、再扫描时，已经被 runner 中断的轮次已有通知，不依赖后一扫描补建。Stop / redirect 的终态在 abort-finally 前已提交，不创建中断 / failure 通知。
+6. **同时覆盖 `engine/lifecycle.ts::interruptTurn` 与 `store/turns.ts::interruptRunningTurns` / `recoverInterruptedTurns`。** 提取同步中断领域函数，由引擎 runner 的 abort-finally、退出扫描、崩溃恢复及强制 drain 路径共同调用。在同一事务内重新确认轮次仍 live、作废批准 / ask、清 pending_ask_id、设置 interrupted、插中断消息并创建 `interrupted:<turn_id>` 通知。已经终态则不重复写；显式原因来自调用入口，不能匹配正文或挂在任意 `setTurnStatus` 上猜。`runtime.ts::stop` 先等 `engine.close()`、再扫描时，已经被 runner 中断的轮次已有通知，不依赖后一扫描补建。Stop / redirect 的终态在 abort-finally 前已提交，不创建中断 / failure 通知。
 7. `fireRoutine` 把 claim、触发消息、带来源的根轮创建放进同步外层事务；实际 runner 沿用 `attachLive` 的 `afterCommit`。这样领取成功但轮次未建立的崩溃不会悄悄漏一轮；通知不引入新的补跑任务队列。
 
 向 `store/events.ts` 注册通知与读游标实体，提交后发 `notification.upsert` / `notification.removed` / `notification.summary`。不可在 `committedEvents()` 回调中再创建业务通知：那时业务事务已经提交，会产生崩溃缺口和发布递归。投递器只消费已提交项，在业务事务外等待系统、Keychain 或网络。
@@ -644,7 +644,7 @@ sequenceDiagram
 - [远控协议与激活门](remote-protocol.md)、[自托管部署](deploy-remote.md)、[独立运行时 ADR](adr/0023-independent-runtime.md)。
 - [通知常量、轮次及同步类型](../packages/protocol/src/index.ts)。
 - [PushService 与分类](../apps/daemon/src/remote/push.ts)、[Push 单测](../apps/daemon/src/remote/push.test.ts)、[远程 dispatcher](../apps/daemon/src/remote/dispatch.ts)、[controller 准入](../apps/daemon/src/remote/controller.ts)、[设备信任](../apps/daemon/src/remote/trust.ts)。
-- [Store 提交](../apps/daemon/src/store/transactions.ts)、[journal 映射](../apps/daemon/src/store/events.ts)、[会话已读](../apps/daemon/src/store/sessions.ts)、[消息](../apps/daemon/src/store/messages.ts)、[批准](../apps/daemon/src/store/approvals.ts)、[轮次恢复](../apps/daemon/src/store/turns.ts)、[日程领取](../apps/daemon/src/store/routines.ts)、[引擎失败 / 提问 / 日程](../apps/daemon/src/turn-engine.ts)、[退出顺序](../apps/daemon/src/runtime.ts)、[信号入口](../apps/daemon/src/main.ts)。
+- [Store 提交](../apps/daemon/src/store/transactions.ts)、[journal 映射](../apps/daemon/src/store/events.ts)、[会话已读](../apps/daemon/src/store/sessions.ts)、[消息](../apps/daemon/src/store/messages.ts)、[批准](../apps/daemon/src/store/approvals.ts)、[轮次恢复](../apps/daemon/src/store/turns.ts)、[日程领取](../apps/daemon/src/store/routines.ts)、[引擎失败 / 提问 / 日程](../apps/daemon/src/engine/)、[退出顺序](../apps/daemon/src/runtime.ts)、[信号入口](../apps/daemon/src/main.ts)。
 - [信使 runtime](../apps/messenger/src/lib/runtime.svelte.ts)、[未读](../apps/messenger/src/lib/sidebar/unread.ts)、[转录滚动](../apps/messenger/src/lib/chat/ChatStage.svelte)、[URL](../apps/messenger/src/lib/session-url.ts)、[设置](../apps/messenger/src/lib/settings/SettingsModal.svelte)。
 - [PWA Push 注册](../apps/messenger/src/lib/remote/push.ts)、[SW](../apps/messenger/static/sw.js)、[Manifest](../apps/messenger/static/manifest.webmanifest)、[远程隔离测试](../apps/messenger/src/lib/remote/isolation.test.ts)。
 - [Tauri 生命周期](../apps/desktop/src-tauri/src/lib.rs)、[本机 descriptor](../apps/desktop/src-tauri/src/local_api.rs)、[桌面依赖](../apps/desktop/src-tauri/Cargo.toml)、[平台最低版本](../apps/desktop/src-tauri/tauri.conf.json)、[中继单设备 route](../apps/relay/src/server.ts)。

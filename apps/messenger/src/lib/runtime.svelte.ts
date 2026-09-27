@@ -34,7 +34,6 @@ import {
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
 import type { FileProgress } from "./file-progress.ts";
-import { copyFor } from "./copy.ts";
 import { CommandActivity } from "./chat/command-activity.ts";
 import { TurnActivity, type ToolStep } from "./chat/turn-activity.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
@@ -52,13 +51,16 @@ import { isLiveStatus, stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
-import { confirmPairing, listHostDevices, openPairing, readPairing, removeHostDevice, type HostDevice } from "./remote/pairing-host.ts";
 import type { MessengerApi } from "./messenger-api.ts";
-import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./remote/api.ts";
+import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteMaintenanceStatus } from "./remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
-import { pairFromQr, type PairingProgress } from "./remote/pairing.ts";
-import { disablePush, enablePush, isInboxMessage, pushPermission, refreshPush, type DisablePushResult, type PushPermission } from "./remote/push.ts";
-import { readTauriInternals } from "./tauri.ts";
+import { isInboxMessage, pushPermission } from "./remote/push.ts";
+import type { DisablePushResult, PushPermission } from "./remote/push.ts";
+import type { PairingProgress } from "./remote/pairing.ts";
+import type { HostDevice } from "./remote/pairing-host.ts";
+import { supportsWebLocks } from "./notifications/tab-owner.ts";
+import type { TabRole } from "./notifications/tab-owner.ts";
+import type { InboxState } from "./notifications/inbox-state.ts";
 import type {
   AskDraftRecord,
   NativeFocusFacts,
@@ -67,22 +69,14 @@ import type {
   NotificationDevice,
   NotificationDevicePatch,
   NotificationFilter,
-  NotificationIntent,
   NotificationItem,
-  NotificationPermissionStateDto,
   NotificationPolicy,
   NotificationPolicyPatch,
   NotificationSummary,
-  NotificationViewReport,
   PushRecovery,
   PushStateV2,
   PushTransport,
   SendAskResult,
-} from "./notifications/types.ts";
-import {
-  EMPTY_NATIVE_CAPABILITIES,
-  EMPTY_NOTIFICATION_CAPABILITIES,
-  EMPTY_NOTIFICATION_SUMMARY,
 } from "./notifications/types.ts";
 import {
   parseNotificationCapabilities,
@@ -90,35 +84,15 @@ import {
   parseNotificationSummary,
 } from "./notifications/parse.ts";
 import {
-  acceptFirstPage,
-  acceptMore,
-  applySummary,
-  beginInboxLoad,
-  beginMore,
-  emptyInbox,
-  markLocalRead,
-  rejectInboxLoad,
-  removeInboxItem,
-  upsertInboxItem,
-  type InboxReplayEvent,
-  type InboxState,
-} from "./notifications/inbox-state.ts";
-import {
   askSubmitAllowed,
   classifySendAskFailure,
   clearAskIfMatching,
   nextDraftVersion,
   recordAskError,
 } from "./notifications/ask-state.ts";
-import {
-  TAB_CHANNEL,
-  TAB_LOCK_NAME,
-  TAKEOVER_MS,
-  type TabControlMessage,
-  type TabRole,
-  isTabControlMessage,
-  supportsWebLocks,
-} from "./notifications/tab-owner.ts";
+import { NotificationCenter, type NotificationCenterHost } from "./notifications/notification-center.svelte.ts";
+import { TabOwnership, type TabOwnershipHost } from "./notifications/tab-ownership.svelte.ts";
+import { RemoteAdmin, type RemoteAdminHost } from "./remote/remote-admin.svelte.ts";
 
 /**
  * `connecting` is a real state, not a flavour of `disconnected`: a page that is still trying
@@ -146,8 +120,6 @@ export function nextRemoteRetry(previous: number, random = Math.random): number 
   const jitter = 0.8 + random() * 0.4;
   return Math.round(Math.min(grown * jitter, REMOTE_RETRY_MAX_MS));
 }
-/** A pairing window lasts ten minutes; checking it every three seconds is not a busy loop. */
-const HOST_PAIRING_POLL_MS = 3000;
 /** Attempts that still read as "connecting" before the page says the host cannot be reached. */
 const CONNECTING_ATTEMPTS = 3;
 /**
@@ -173,6 +145,57 @@ export type HostPairing =
   | { phase: "failed"; error: string };
 
 export class MessengerRuntime {
+  /**
+   * The notifications/push/desktop-native cluster, tab ownership, and remote pairing/maintenance
+   * each live in their own class below. Every field and method on `MessengerRuntime` that touches
+   * one of these domains forwards to it, under the same public name components and tests already
+   * use. Each sub-store gets a host adapter built here, not this object itself: the adapter's
+   * getters and methods read `runtime.x` fresh on every call, so a test that replaces `api`,
+   * `sync`, or a method on this instance is seen by the sub-store too, while the fields themselves
+   * stay `private`.
+   */
+  private readonly notificationCenter: NotificationCenter = new NotificationCenter(this.notificationCenterHost());
+  private readonly tabOwnership: TabOwnership = new TabOwnership(this.tabOwnershipHost());
+  private readonly remoteAdmin: RemoteAdmin = new RemoteAdmin(this.remoteAdminHost());
+
+  private notificationCenterHost(): NotificationCenterHost {
+    const runtime = this;
+    return {
+      get api() { return runtime.api; },
+      get sync() { return runtime.sync; },
+      get snapshot() { return runtime.snapshot; },
+      set snapshot(value) { runtime.snapshot = value; },
+      get selectedId() { return runtime.selectedId; },
+      set selectedId(value) { runtime.selectedId = value; },
+      get connection() { return runtime.connection; },
+      get isDesktopShell() { return runtime.isDesktopShell; },
+      get stopped() { return runtime.stopped; },
+      get remoteStatus() { return runtime.remoteStatus; },
+      selectSession: (id, opts) => runtime.selectSession(id, opts),
+      closeSheets: () => runtime.closeSheets(),
+    };
+  }
+
+  private tabOwnershipHost(): TabOwnershipHost {
+    const runtime = this;
+    return {
+      resetConnection: () => runtime.resetConnection(),
+      tick: () => runtime.tick(),
+      dispatchNotificationIntent: (intent) => runtime.dispatchNotificationIntent(intent),
+    };
+  }
+
+  private remoteAdminHost(): RemoteAdminHost {
+    const runtime = this;
+    return {
+      get api() { return runtime.api; },
+      get remote() { return runtime.remote; },
+      get stopped() { return runtime.stopped; },
+      start: () => runtime.start(),
+      sessionView: (id) => runtime.sessionView(id),
+    };
+  }
+
   connection = $state<Connection>("connecting");
   /** Consecutive failed attempts since the last connection; the first few are still "connecting". */
   private connectFailures = 0;
@@ -318,69 +341,103 @@ export class MessengerRuntime {
   endpointDefaultModel = $state("");
   previewAttachmentId = $state<string | null>(null);
   hosted = HOSTED_MESSENGER;
-  pairing = $state<PairingProgress>({ phase: "scan" });
-  pairingBusy = $state(false);
+  // --- Forwarded to `remoteAdmin` (pairing, host pairing/devices, draft-reconnect, maintenance). ---
+  get pairing(): PairingProgress { return this.remoteAdmin.pairing; }
+  set pairing(value: PairingProgress) { this.remoteAdmin.pairing = value; }
+  get pairingBusy(): boolean { return this.remoteAdmin.pairingBusy; }
+  set pairingBusy(value: boolean) { this.remoteAdmin.pairingBusy = value; }
   /** Host side of pairing: what the settings panel shows while a device is being enrolled. */
-  hostPairing = $state<HostPairing>(null);
-  hostPairingBusy = $state(false);
-  hostDevices = $state<HostDevice[]>([]);
-  hostDevicesBusy = $state(false);
-  hostDevicesError = $state<string | null>(null);
-  hostRemoveDeviceId = $state<string | null>(null);
+  get hostPairing(): HostPairing { return this.remoteAdmin.hostPairing; }
+  set hostPairing(value: HostPairing) { this.remoteAdmin.hostPairing = value; }
+  get hostPairingBusy(): boolean { return this.remoteAdmin.hostPairingBusy; }
+  set hostPairingBusy(value: boolean) { this.remoteAdmin.hostPairingBusy = value; }
+  get hostDevices(): HostDevice[] { return this.remoteAdmin.hostDevices; }
+  set hostDevices(value: HostDevice[]) { this.remoteAdmin.hostDevices = value; }
+  get hostDevicesBusy(): boolean { return this.remoteAdmin.hostDevicesBusy; }
+  set hostDevicesBusy(value: boolean) { this.remoteAdmin.hostDevicesBusy = value; }
+  get hostDevicesError(): string | null { return this.remoteAdmin.hostDevicesError; }
+  set hostDevicesError(value: string | null) { this.remoteAdmin.hostDevicesError = value; }
+  get hostRemoveDeviceId(): string | null { return this.remoteAdmin.hostRemoveDeviceId; }
+  set hostRemoveDeviceId(value: string | null) { this.remoteAdmin.hostRemoveDeviceId = value; }
   /** How long to wait before the next relay handshake; grows while the Mac is unreachable. */
   private remoteRetryMs = REMOTE_RETRY_MIN_MS;
-  enrolled = $state(false);
-  hostUnreachable = $state<HostUnreachable>("runtime");
-  draftReconnect = $state<DraftReconnect>(null);
-  remoteStatus = $state<RuntimeSnapshot["remoteStatus"] | null>(null);
-  uvReady = $state(false);
-  uvError = $state<string | null>(null);
-  maintenance = $state<RemoteMaintenanceStatus | null>(null);
-  maintenanceBusy = $state(false);
-  maintenanceError = $state<string | null>(null);
-  maintenanceForceConfirm = $state(false);
-  maintenanceStopConfirm = $state(false);
-  maintenanceRevokeId = $state<string | null>(null);
-  pushEnabled = $state(false);
-  pushBusy = $state(false);
-  pushError = $state<string | null>(null);
-  pushErrorCode = $state<string | null>(null);
-  pushPermission = $state<PushPermission>("unsupported");
+  get enrolled(): boolean { return this.remoteAdmin.enrolled; }
+  set enrolled(value: boolean) { this.remoteAdmin.enrolled = value; }
+  get hostUnreachable(): HostUnreachable { return this.remoteAdmin.hostUnreachable; }
+  set hostUnreachable(value: HostUnreachable) { this.remoteAdmin.hostUnreachable = value; }
+  get draftReconnect(): DraftReconnect { return this.remoteAdmin.draftReconnect; }
+  set draftReconnect(value: DraftReconnect) { this.remoteAdmin.draftReconnect = value; }
+  get remoteStatus(): RuntimeSnapshot["remoteStatus"] | null { return this.remoteAdmin.remoteStatus; }
+  set remoteStatus(value: RuntimeSnapshot["remoteStatus"] | null) { this.remoteAdmin.remoteStatus = value; }
+  get uvReady(): boolean { return this.remoteAdmin.uvReady; }
+  set uvReady(value: boolean) { this.remoteAdmin.uvReady = value; }
+  get uvError(): string | null { return this.remoteAdmin.uvError; }
+  set uvError(value: string | null) { this.remoteAdmin.uvError = value; }
+  get maintenance(): RemoteMaintenanceStatus | null { return this.remoteAdmin.maintenance; }
+  set maintenance(value: RemoteMaintenanceStatus | null) { this.remoteAdmin.maintenance = value; }
+  get maintenanceBusy(): boolean { return this.remoteAdmin.maintenanceBusy; }
+  set maintenanceBusy(value: boolean) { this.remoteAdmin.maintenanceBusy = value; }
+  get maintenanceError(): string | null { return this.remoteAdmin.maintenanceError; }
+  set maintenanceError(value: string | null) { this.remoteAdmin.maintenanceError = value; }
+  get maintenanceForceConfirm(): boolean { return this.remoteAdmin.maintenanceForceConfirm; }
+  set maintenanceForceConfirm(value: boolean) { this.remoteAdmin.maintenanceForceConfirm = value; }
+  get maintenanceStopConfirm(): boolean { return this.remoteAdmin.maintenanceStopConfirm; }
+  set maintenanceStopConfirm(value: boolean) { this.remoteAdmin.maintenanceStopConfirm = value; }
+  get maintenanceRevokeId(): string | null { return this.remoteAdmin.maintenanceRevokeId; }
+  set maintenanceRevokeId(value: string | null) { this.remoteAdmin.maintenanceRevokeId = value; }
 
-  notificationSummary = $state<NotificationSummary>(EMPTY_NOTIFICATION_SUMMARY);
-  notificationPolicy = $state<NotificationPolicy | null>(null);
-  notificationDevice = $state<NotificationDevice | null>(null);
-  notificationCapabilities = $state<NotificationCapabilities>(EMPTY_NOTIFICATION_CAPABILITIES);
-  nativeCapabilities = $state<NativeNotificationCapabilities>(EMPTY_NATIVE_CAPABILITIES);
-  notificationInboxState = $state<InboxState>(emptyInbox());
-  pushTransport = $state<PushTransport>("legacy");
-  pushSubscribed = $state(false);
-  pushRecovery = $state<PushRecovery>("none");
-  remoteGated = $state(false);
+  // --- Forwarded to `notificationCenter` (notifications, push, desktop-native, presence). ---
+  get pushEnabled(): boolean { return this.notificationCenter.pushEnabled; }
+  set pushEnabled(value: boolean) { this.notificationCenter.pushEnabled = value; }
+  get pushBusy(): boolean { return this.notificationCenter.pushBusy; }
+  set pushBusy(value: boolean) { this.notificationCenter.pushBusy = value; }
+  get pushError(): string | null { return this.notificationCenter.pushError; }
+  set pushError(value: string | null) { this.notificationCenter.pushError = value; }
+  get pushErrorCode(): string | null { return this.notificationCenter.pushErrorCode; }
+  set pushErrorCode(value: string | null) { this.notificationCenter.pushErrorCode = value; }
+  get pushPermission(): PushPermission { return this.notificationCenter.pushPermission; }
+  set pushPermission(value: PushPermission) { this.notificationCenter.pushPermission = value; }
+
+  get notificationSummary(): NotificationSummary { return this.notificationCenter.notificationSummary; }
+  set notificationSummary(value: NotificationSummary) { this.notificationCenter.notificationSummary = value; }
+  get notificationPolicy(): NotificationPolicy | null { return this.notificationCenter.notificationPolicy; }
+  set notificationPolicy(value: NotificationPolicy | null) { this.notificationCenter.notificationPolicy = value; }
+  get notificationDevice(): NotificationDevice | null { return this.notificationCenter.notificationDevice; }
+  set notificationDevice(value: NotificationDevice | null) { this.notificationCenter.notificationDevice = value; }
+  get notificationCapabilities(): NotificationCapabilities { return this.notificationCenter.notificationCapabilities; }
+  set notificationCapabilities(value: NotificationCapabilities) { this.notificationCenter.notificationCapabilities = value; }
+  get nativeCapabilities(): NativeNotificationCapabilities { return this.notificationCenter.nativeCapabilities; }
+  set nativeCapabilities(value: NativeNotificationCapabilities) { this.notificationCenter.nativeCapabilities = value; }
+  get notificationInboxState(): InboxState { return this.notificationCenter.notificationInboxState; }
+  set notificationInboxState(value: InboxState) { this.notificationCenter.notificationInboxState = value; }
+  get pushTransport(): PushTransport { return this.notificationCenter.pushTransport; }
+  set pushTransport(value: PushTransport) { this.notificationCenter.pushTransport = value; }
+  get pushSubscribed(): boolean { return this.notificationCenter.pushSubscribed; }
+  set pushSubscribed(value: boolean) { this.notificationCenter.pushSubscribed = value; }
+  get pushRecovery(): PushRecovery { return this.notificationCenter.pushRecovery; }
+  set pushRecovery(value: PushRecovery) { this.notificationCenter.pushRecovery = value; }
+  get remoteGated(): boolean { return this.notificationCenter.remoteGated; }
+  set remoteGated(value: boolean) { this.notificationCenter.remoteGated = value; }
   get isDesktopShell(): boolean {
     return !HOSTED_MESSENGER && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   }
   askDrafts = $state<Map<string, AskDraftRecord>>(new Map());
-  instanceId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-  tabRole = $state<TabRole>("single");
-  tabTakeoverTimeout = $state(false);
-  nativeFocusFacts = $state<NativeFocusFacts>({
-    visible: false,
-    focused: false,
-    minimized: false,
-    effectiveFocused: false,
-  });
-  private tabChannel: BroadcastChannel | null = null;
-  private releaseLock: (() => void) | null = null;
-  private presenceTimer: ReturnType<typeof setInterval> | null = null;
+  get instanceId(): string { return this.notificationCenter.instanceId; }
+  // --- Forwarded to `tabOwnership`. ---
+  get tabRole(): TabRole { return this.tabOwnership.tabRole; }
+  set tabRole(value: TabRole) { this.tabOwnership.tabRole = value; }
+  get tabTakeoverTimeout(): boolean { return this.tabOwnership.tabTakeoverTimeout; }
+  set tabTakeoverTimeout(value: boolean) { this.tabOwnership.tabTakeoverTimeout = value; }
+  get nativeFocusFacts(): NativeFocusFacts { return this.notificationCenter.nativeFocusFacts; }
+  set nativeFocusFacts(value: NativeFocusFacts) { this.notificationCenter.nativeFocusFacts = value; }
+  private get tabChannel(): BroadcastChannel | null { return this.tabOwnership.tabChannel; }
+  private set tabChannel(value: BroadcastChannel | null) { this.tabOwnership.tabChannel = value; }
+  private get releaseLock(): (() => void) | null { return this.tabOwnership.releaseLock; }
+  private set releaseLock(value: (() => void) | null) { this.tabOwnership.releaseLock = value; }
+  private get presenceTimer(): ReturnType<typeof setInterval> | null { return this.notificationCenter.presenceTimer; }
+  private set presenceTimer(value: ReturnType<typeof setInterval> | null) { this.notificationCenter.presenceTimer = value; }
 
   private api: MessengerApi | null = null;
-  /**
-   * The read each conversation has already put on record, session id to message id. One slot for
-   * the whole app was enough while only one conversation could be on screen; with several, the
-   * second one's read landed on the first one's slot and was swallowed.
-   */
-  private readonly boundedReadSent = new Map<string, string>();
   private ws: WebSocket | null = null;
   /**
    * The readers of each live stream id — a terminal session, or a Bot's running command. A set
@@ -439,7 +496,6 @@ export class MessengerRuntime {
   private annotationLoads = 0;
   private profileNavigation = 0;
   private durablePending: DurablePendingRequest[] = [];
-  private notificationIntentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
 
   start(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -1844,523 +1900,103 @@ export class MessengerRuntime {
   }
 
   setNotificationIntentHandler(handler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null): void {
-    this.notificationIntentHandler = handler;
+    this.notificationCenter.setNotificationIntentHandler(handler);
   }
 
   private dispatchNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
-    if (this.notificationIntentHandler) {
-      this.notificationIntentHandler(intent);
-      return;
-    }
-    this.applyNotificationIntent(intent);
+    this.notificationCenter.dispatchNotificationIntent(intent);
   }
 
-  /**
-   * A system banner or a PWA push click lands on the conversation it belongs to. A generic
-   * pending push has no session in it, so it returns to the chat list, where that state shows.
-   */
   applyNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
-    this.closeSheets();
-    if (!intent.sessionId) {
-      this.selectedId = null;
-      return;
-    }
-    void this.selectSession(intent.sessionId, { messageId: intent.messageId ?? undefined });
+    this.notificationCenter.applyNotificationIntent(intent);
   }
 
   async loadNotificationPolicy(): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    try {
-      this.notificationPolicy = await api.getNotificationPolicy();
-    } catch {
-      // Graceful
-    }
+    return this.notificationCenter.loadNotificationPolicy();
   }
 
   async patchNotificationPolicy(patch: Omit<NotificationPolicyPatch, "if_revision">): Promise<void> {
-    const api = this.api;
-    if (!api || !this.notificationPolicy) return;
-    try {
-      const res = await api.patchNotificationPolicy({
-        ...patch,
-        if_revision: this.notificationPolicy.revision,
-      });
-      this.notificationPolicy = res;
-    } catch {
-      // Graceful
-    }
+    return this.notificationCenter.patchNotificationPolicy(patch);
   }
 
   async loadNotificationDevice(): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    try {
-      this.notificationDevice = await api.getNotificationDevice();
-    } catch {
-      // Graceful
-    }
+    return this.notificationCenter.loadNotificationDevice();
   }
 
   async patchNotificationDevice(patch: Omit<NotificationDevicePatch, "if_revision">): Promise<void> {
-    const api = this.api;
-    if (!api || !this.notificationDevice) return;
-    try {
-      const res = await api.patchNotificationDevice({
-        ...patch,
-        if_revision: this.notificationDevice.revision,
-      });
-      this.notificationDevice = res;
-    } catch {
-      // Graceful
-    }
-  }
-
-  private liveInboxWatermark(): { event_instance_id: string; watermark_seq: number } | null {
-    return this.sync?.snapshotCursor() ?? null;
-  }
-
-  private inboxReplayAfter(page: { event_instance_id: string; watermark_seq: number }): {
-    complete: boolean;
-    replay: InboxReplayEvent[];
-    reason?: "invalid" | "instance" | "truncated";
-  } {
-    const result = this.sync?.notificationEventsAfter({
-      event_instance_id: page.event_instance_id,
-      watermark_seq: page.watermark_seq,
-    });
-    if (!result) return { complete: true, replay: [] };
-    if (!result.complete) return { complete: false, replay: [], reason: result.reason };
-    const replay: InboxReplayEvent[] = [];
-    for (const frame of result.frames) {
-      const payload = frame.payload;
-      if (payload.event === "notification.upsert") {
-        const { event: _e, occurred_at: _at, ...item } = payload;
-        replay.push({ seq: frame.seq, event: "notification.upsert", item: item as NotificationItem });
-      } else if (payload.event === "notification.removed") {
-        replay.push({ seq: frame.seq, event: "notification.removed", id: payload.id });
-      } else if (payload.event === "notification.summary") {
-        replay.push({ seq: frame.seq, event: "notification.summary", summary: payload.summary });
-      }
-    }
-    return { complete: true, replay };
-  }
-
-  private deferInboxReload(filter: NotificationFilter, generation: number, overflow: boolean): void {
-    if (overflow) {
-      this.notificationInboxState = {
-        ...this.notificationInboxState,
-        loading: false,
-        loadingMore: false,
-        error: "stale",
-      };
-      return;
-    }
-    queueMicrotask(() => {
-      if (this.stopped || this.notificationInboxState.generation !== generation) return;
-      void this.loadNotificationInbox(filter);
-    });
+    return this.notificationCenter.patchNotificationDevice(patch);
   }
 
   async loadNotificationInbox(filter: NotificationFilter): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    this.notificationInboxState = beginInboxLoad(this.notificationInboxState, filter);
-    const gen = this.notificationInboxState.generation;
-    const priorSummary = this.notificationInboxState.summary;
-    try {
-      const page = await api.listNotifications({ filter, limit: 50 });
-      if (this.notificationInboxState.generation !== gen) return;
-      const live = this.liveInboxWatermark();
-      const liveAhead = Boolean(live && live.event_instance_id === page.event_instance_id && live.watermark_seq > page.watermark_seq);
-      const replayed = this.inboxReplayAfter(page);
-      const instanceMismatch = replayed.reason === "invalid" || replayed.reason === "instance";
-      if (instanceMismatch || (liveAhead && !replayed.complete)) {
-        this.deferInboxReload(filter, gen, replayed.reason === "truncated");
-        return;
-      }
-      this.notificationInboxState = acceptFirstPage(this.notificationInboxState, {
-        filter,
-        generation: gen,
-        instanceId: page.event_instance_id,
-        watermark: page.watermark_seq,
-        upperOrdinal: page.upper_ordinal,
-        page,
-        live,
-        replay: replayed.replay,
-        replayComplete: replayed.complete,
-      });
-      if (!liveAhead) {
-        this.notificationSummary = this.notificationInboxState.summary;
-        this.syncAppBadge();
-      } else if (this.notificationInboxState.summary !== priorSummary) {
-        this.notificationSummary = this.notificationInboxState.summary;
-        this.syncAppBadge();
-      }
-    } catch {
-      this.notificationInboxState = rejectInboxLoad(this.notificationInboxState, gen, "offline");
-    }
+    return this.notificationCenter.loadNotificationInbox(filter);
   }
 
   async loadMoreNotifications(): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    const state = this.notificationInboxState;
-    if (!state.next || state.loadingMore || state.loading) return;
-    this.notificationInboxState = beginMore(state);
-    const gen = this.notificationInboxState.generation;
-    const priorSummary = state.summary;
-    try {
-      const page = await api.listNotifications({
-        filter: state.filter,
-        limit: 50,
-        cursor: state.next,
-      });
-      if (this.notificationInboxState.generation !== gen) return;
-      const live = this.liveInboxWatermark();
-      const liveAhead = Boolean(live && live.event_instance_id === page.event_instance_id && live.watermark_seq > page.watermark_seq);
-      const replayed = this.inboxReplayAfter(page);
-      const instanceMismatch = replayed.reason === "invalid" || replayed.reason === "instance";
-      if (instanceMismatch || (liveAhead && !replayed.complete)) {
-        this.notificationInboxState = { ...state, loadingMore: false, error: replayed.reason === "truncated" ? "stale" : state.error };
-        if (replayed.reason !== "truncated") this.deferInboxReload(state.filter, gen, false);
-        return;
-      }
-      this.notificationInboxState = acceptMore(this.notificationInboxState, {
-        filter: state.filter,
-        generation: gen,
-        instanceId: page.event_instance_id,
-        watermark: page.watermark_seq,
-        upperOrdinal: state.upperOrdinal,
-        page,
-        live,
-        replay: replayed.replay,
-        replayComplete: replayed.complete,
-      });
-      if (!liveAhead) {
-        this.notificationSummary = this.notificationInboxState.summary;
-        this.syncAppBadge();
-      } else if (this.notificationInboxState.summary !== priorSummary) {
-        this.notificationSummary = this.notificationInboxState.summary;
-        this.syncAppBadge();
-      }
-    } catch {
-      this.notificationInboxState = {
-        ...this.notificationInboxState,
-        loadingMore: false,
-        error: "offline",
-      };
-    }
+    return this.notificationCenter.loadMoreNotifications();
   }
 
   async markNotificationRead(id: string): Promise<void> {
-    await this.markNotificationsRead([id]);
+    return this.notificationCenter.markNotificationRead(id);
   }
 
   async markNotificationsRead(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    const api = this.api;
-    if (!api) return;
-    try {
-      await api.markNotificationsRead({ ids });
-      const now = new Date().toISOString();
-      let openDecrements = 0;
-      for (const id of ids) {
-        const item = this.notificationInboxState.items.find((i) => i.id === id);
-        if (item && !item.read_at && item.action_state !== "open") {
-          openDecrements++;
-        }
-      }
-      this.notificationInboxState = markLocalRead(this.notificationInboxState, ids, now);
-      this.notificationSummary = {
-        ...this.notificationSummary,
-        unread_count: Math.max(0, this.notificationSummary.unread_count - ids.length),
-        attention_count: Math.max(0, this.notificationSummary.attention_count - openDecrements),
-      };
-      this.syncAppBadge();
-    } catch {
-      // Non-fatal
-    }
+    return this.notificationCenter.markNotificationsRead(ids);
   }
 
   async markAllNotificationsRead(): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    const upper = this.notificationInboxState.upperOrdinal;
-    try {
-      await api.markNotificationsRead({ through_ordinal: upper, filter: "all" });
-      const now = new Date().toISOString();
-      const allIds = this.notificationInboxState.items.map((i: NotificationItem) => i.id);
-      this.notificationInboxState = markLocalRead(this.notificationInboxState, allIds, now);
-      this.notificationSummary = {
-        ...this.notificationSummary,
-        unread_count: 0,
-        attention_count: this.notificationSummary.open_count,
-      };
-      this.syncAppBadge();
-    } catch {
-      // Non-fatal
-    }
+    return this.notificationCenter.markAllNotificationsRead();
   }
 
   async acknowledgeNotification(id: string, ifRevision: number): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    try {
-      await api.acknowledgeNotification(id, ifRevision);
-      const item = this.notificationInboxState.items.find((i: NotificationItem) => i.id === id);
-      if (item) {
-        const updated: NotificationItem = {
-          ...item,
-          action_state: "resolved",
-          resolution_reason: "acknowledged",
-          revision: item.revision + 1,
-          read_at: item.read_at ?? new Date().toISOString(),
-        };
-        this.notificationInboxState = upsertInboxItem(this.notificationInboxState, updated);
-      }
-    } catch {
-      // Non-fatal
-    }
-  }
-
-  private syncAppBadge(): void {
-    if (typeof navigator === "undefined" || !("setAppBadge" in navigator)) return;
-    const attention = this.notificationSummary.attention_count;
-    if (attention <= 0) {
-      if ("clearAppBadge" in navigator) {
-        navigator.clearAppBadge().catch(() => {});
-      }
-    } else {
-      if (this.notificationDevice?.badge !== false) {
-        navigator.setAppBadge(attention).catch(() => {});
-      }
-    }
+    return this.notificationCenter.acknowledgeNotification(id, ifRevision);
   }
 
   isSessionMuted(sessionId: string): boolean {
-    const session = this.snapshot.sessions.find((s) => s.id === sessionId);
-    return session?.notification_preference?.muted === true;
+    return this.notificationCenter.isSessionMuted(sessionId);
   }
 
   async setSessionMuted(sessionId: string, muted: boolean): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    const session = this.snapshot.sessions.find((s) => s.id === sessionId);
-    const revision = session?.notification_preference?.revision ?? 0;
-    try {
-      const pref = await api.putSessionNotificationPreference(sessionId, { muted, if_revision: revision });
-      this.snapshot = {
-        ...this.snapshot,
-        sessions: this.snapshot.sessions.map((s) =>
-          s.id === sessionId ? { ...s, notification_preference: pref } : s
-        ),
-      };
-    } catch {
-      // Non-fatal
-    }
+    return this.notificationCenter.setSessionMuted(sessionId, muted);
   }
 
   async sendTestNotification(): Promise<{ ok: boolean; status: string; error_code?: string | null }> {
-    const api = this.api;
-    const copy = copyFor(this.snapshot.settings.locale).notifications;
-    if (!api) {
-      throw new ApiError(0, "disconnected", copyFor(this.snapshot.settings.locale).disconnected.host);
-    }
-    const localNativePath = this.isDesktopShell || api.kind === "local";
-    if (localNativePath) {
-      if (!this.nativeCapabilities.native_delivery_v1 || this.pushPermission !== "granted" || !this.notificationDevice?.enabled) {
-        throw new ApiError(409, "delivery_gated", copy.testDeliveryGated);
-      }
-      if ("testDesktopNotification" in api) {
-        return api.testDesktopNotification();
-      }
-      throw new ApiError(409, "delivery_gated", copy.testDeliveryGated);
-    }
-    if (this.remoteGated) {
-      throw new ApiError(503, "gateway_unavailable", copyFor(this.snapshot.settings.locale).notifications.remoteGated);
-    }
-    if ("testRemotePush" in api) {
-      return api.testRemotePush();
-    }
-    throw new ApiError(409, "capability_unavailable", copy.upgradeRequired);
+    return this.notificationCenter.sendTestNotification();
   }
 
   async enableDeviceNotifications(): Promise<boolean> {
-    const res = await this.setPushEnabled(true);
-    return Boolean(res);
+    return this.notificationCenter.enableDeviceNotifications();
   }
 
   async disableDeviceNotifications(): Promise<DisablePushResult | boolean> {
-    return this.setPushEnabled(false);
+    return this.notificationCenter.disableDeviceNotifications();
   }
 
   async pollDesktopNativeState(): Promise<void> {
-    const internals = readTauriInternals();
-    if (!internals?.invoke) return;
-    try {
-      const stateDto = (await internals.invoke("notification_permission_state")) as NotificationPermissionStateDto;
-      if (stateDto) {
-        this.nativeCapabilities = {
-          native_reading_v1: stateDto.nativeReadingV1,
-          native_delivery_v1: stateDto.nativeDeliveryV1,
-        };
-        this.pushPermission = (stateDto.permission === "granted" || stateDto.permission === "denied")
-          ? stateDto.permission
-          : "default";
-      }
-    } catch {
-      // Native call failure
-    }
-    try {
-      const intent = (await internals.invoke("take_notification_intent")) as NotificationIntent | null;
-      if (intent?.clickRef) {
-        await this.handleDesktopNotificationIntent(intent.clickRef);
-      }
-    } catch {
-      // Intent error
-    }
+    return this.notificationCenter.pollDesktopNativeState();
   }
 
   async handleDesktopNotificationIntent(clickRef: string): Promise<void> {
-    const api = this.api;
-    if (!api || !("getDesktopClickTarget" in api)) {
-      this.dispatchNotificationIntent({ openInbox: true });
-      return;
-    }
-    try {
-      const res = await api.getDesktopClickTarget(clickRef);
-      if (res.target?.session_id) {
-        this.dispatchNotificationIntent({
-          sessionId: res.target.session_id,
-          messageId: res.target.message_id ?? null,
-          openInbox: false,
-        });
-        return;
-      }
-      this.dispatchNotificationIntent({ openInbox: true });
-    } catch {
-      this.dispatchNotificationIntent({ openInbox: true });
-    }
+    return this.notificationCenter.handleDesktopNotificationIntent(clickRef);
   }
 
   async reportDesktopNotificationView(atLatest: boolean): Promise<NativeFocusFacts | null> {
-    const internals = readTauriInternals();
-    if (!internals?.invoke) return null;
-    try {
-      const report: NotificationViewReport = {
-        sessionId: this.selectedId,
-        atLatest,
-        visible: document.visibilityState === "visible",
-        focused: document.hasFocus(),
-      };
-      const facts = (await internals.invoke("report_notification_view", { report })) as NativeFocusFacts;
-      if (facts) {
-        this.nativeFocusFacts = facts;
-        return facts;
-      }
-    } catch {
-      // ignore
-    }
-    return null;
+    return this.notificationCenter.reportDesktopNotificationView(atLatest);
   }
 
   async requestDesktopNotificationPermission(): Promise<void> {
-    const internals = readTauriInternals();
-    if (!internals?.invoke) return;
-    try {
-      const stateDto = (await internals.invoke("request_notification_permission")) as NotificationPermissionStateDto;
-      if (stateDto) {
-        this.nativeCapabilities = {
-          native_reading_v1: stateDto.nativeReadingV1,
-          native_delivery_v1: stateDto.nativeDeliveryV1,
-        };
-        this.pushPermission = (stateDto.permission === "granted" || stateDto.permission === "denied")
-          ? stateDto.permission
-          : "default";
-        if (stateDto.permission === "granted") {
-          await this.patchNotificationDevice({ enabled: true });
-        }
-      }
-    } catch {
-      // ignore
-    }
+    return this.notificationCenter.requestDesktopNotificationPermission();
   }
 
   async sendPresenceHeartbeat(atLatest: boolean = false): Promise<void> {
-    const api = this.api;
-    if (!api || this.connection !== "connected" || typeof document === "undefined" || document.visibilityState !== "visible") return;
-    if (this.isDesktopShell) {
-      await this.reportDesktopNotificationView(atLatest);
-      return;
-    }
-    try {
-      await api.postNotificationPresence({
-        instance_id: this.instanceId,
-        visible: document.visibilityState === "visible",
-        focused: document.hasFocus(),
-        session_id: this.selectedId,
-        at_latest: atLatest,
-      });
-    } catch {
-      // Non-fatal
-    }
-  }
-
-  private applyPushState(v2: PushStateV2): void {
-    this.pushSubscribed = v2.subscribed;
-    this.pushEnabled = v2.enabled;
-    this.pushRecovery = v2.recovery;
-    this.pushTransport = v2.push_transport;
-    const state = this.remoteStatus?.state;
-    this.remoteGated =
-      state === "activation_gated" ||
-      state === "native_unavailable" ||
-      state === "off" ||
-      state === "trust_mismatch";
+    return this.notificationCenter.sendPresenceHeartbeat(atLatest);
   }
 
   async loadPushState(): Promise<void> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi)) return;
-    let v2: PushStateV2 | null = null;
-    try {
-      v2 = await api.getPushStateV2();
-      this.applyPushState(v2);
-    } catch {
-      try {
-        const legacy = await api.pushState();
-        this.pushSubscribed = legacy.subscribed;
-        this.pushEnabled = legacy.subscribed;
-        this.pushTransport = "legacy";
-      } catch {
-        // ignore
-      }
-      return;
-    }
-    if (!v2.enabled || v2.push_transport !== "policy_v2") return;
-    try {
-      const result = await refreshPush(api, v2);
-      if (result === "needs_repair") {
-        if (this.pushRecovery === "none") this.pushRecovery = "registration_missing";
-        return;
-      }
-      this.applyPushState(await api.getPushStateV2());
-    } catch {
-      if (this.pushRecovery === "none") this.pushRecovery = "registration_missing";
-    }
+    return this.notificationCenter.loadPushState();
   }
 
   async prefetchPushState(): Promise<PushStateV2 | null> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi)) return null;
-    try {
-      const v2 = await api.getPushStateV2();
-      this.applyPushState(v2);
-      return v2;
-    } catch {
-      return null;
-    }
+    return this.notificationCenter.prefetchPushState();
   }
 
   /**
@@ -2371,120 +2007,19 @@ export class MessengerRuntime {
    * time. A read is sent once per message, and again only if it failed.
    */
   async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
-    const api = this.api;
-    if (!api || this.connection !== "connected" || this.selectedId !== sessionId) return;
-    if (this.boundedReadSent.get(sessionId) === messageId) return;
-    this.boundedReadSent.set(sessionId, messageId);
-    try {
-      const detail = await api.markSessionReadThrough(sessionId, messageId);
-      if (this.api !== api) return;
-      const current = this.snapshot.sessions.find((s) => s.id === sessionId);
-      // Writing the row back unchanged is a new snapshot object for nothing.
-      if (
-        current &&
-        current.unread_count === detail.unread_count &&
-        current.last_read_at === detail.last_read_at
-      ) {
-        return;
-      }
-      this.snapshot = {
-        ...this.snapshot,
-        sessions: this.snapshot.sessions.map((s) =>
-          s.id === sessionId ? { ...s, unread_count: detail.unread_count, last_read_at: detail.last_read_at } : s
-        ),
-      };
-    } catch {
-      // Bounded read failure is non-fatal, but the next attempt must be allowed through.
-      if (this.boundedReadSent.get(sessionId) === messageId) this.boundedReadSent.delete(sessionId);
-    }
+    return this.notificationCenter.submitBoundedRead(sessionId, messageId);
   }
 
   setupTabChannel(): void {
-    if (typeof BroadcastChannel === "undefined") return;
-    if (this.tabChannel) return;
-    try {
-      const ch = new BroadcastChannel(TAB_CHANNEL);
-      this.tabChannel = ch;
-      ch.onmessage = (ev) => {
-        if (!isTabControlMessage(ev.data)) return;
-        const msg = ev.data as TabControlMessage;
-        if (msg.type === "inbox") {
-          this.dispatchNotificationIntent({ openInbox: true });
-        } else if (msg.type === "takeover-request") {
-          if (this.tabRole === "owner") {
-            this.releaseLock?.();
-            this.releaseLock = null;
-            this.resetConnection();
-            this.tabRole = "standby";
-            try { ch.postMessage({ type: "takeover-ack" }); } catch {}
-          }
-        } else if (msg.type === "takeover-ack") {
-          if (this.tabRole === "standby") {
-            void this.acquireTabLock().then((got) => {
-              if (got) {
-                this.tabTakeoverTimeout = false;
-                void this.tick();
-              }
-            });
-          }
-        }
-      };
-    } catch {
-      // BroadcastChannel not available in this environment
-    }
+    this.tabOwnership.setupTabChannel();
   }
 
   async acquireTabLock(): Promise<boolean> {
-    if (typeof navigator === "undefined" || !supportsWebLocks(navigator.locks)) {
-      this.tabRole = "single";
-      return true;
-    }
-    return new Promise<boolean>((resolve) => {
-      navigator.locks.request(TAB_LOCK_NAME, { ifAvailable: true }, async (lock) => {
-        if (!lock) {
-          this.tabRole = "standby";
-          this.setupTabChannel();
-          resolve(false);
-          return;
-        }
-        this.tabRole = "owner";
-        this.tabTakeoverTimeout = false;
-        this.setupTabChannel();
-        resolve(true);
-        await new Promise<void>((held) => {
-          this.releaseLock = held;
-        });
-      }).catch(() => {
-        this.tabRole = "single";
-        resolve(true);
-      });
-    });
+    return this.tabOwnership.acquireTabLock();
   }
 
   async requestTabTakeover(): Promise<void> {
-    if (!this.tabChannel) this.setupTabChannel();
-    this.tabTakeoverTimeout = false;
-    try {
-      this.tabChannel?.postMessage({ type: "takeover-request" });
-    } catch {}
-
-    const timer = setTimeout(() => {
-      if (this.tabRole === "standby") {
-        this.tabTakeoverTimeout = true;
-      }
-    }, TAKEOVER_MS);
-
-    const start = Date.now();
-    while (Date.now() - start < TAKEOVER_MS) {
-      const got = await this.acquireTabLock();
-      if (got) {
-        clearTimeout(timer);
-        this.tabTakeoverTimeout = false;
-        void this.tick();
-        return;
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
+    return this.tabOwnership.requestTabTakeover();
   }
 
   async toggleReaction(messageId: string, emoji: string): Promise<void> {
@@ -2608,77 +2143,27 @@ export class MessengerRuntime {
   }
 
   async submitPairing(raw: string): Promise<PairingProgress> {
-    if (this.pairingBusy) return this.pairing;
-    this.pairingBusy = true;
-    this.pairing = { phase: "waiting" };
-    try {
-      const result = await pairFromQr(raw, { onWaiting: () => { this.pairing = { phase: "waiting" }; } });
-      this.pairing = result;
-      if (result.phase === "enrolled") {
-        this.enrolled = true;
-        this.start();
-      }
-      return result;
-    } finally {
-      this.pairingBusy = false;
-    }
+    return this.remoteAdmin.submitPairing(raw);
   }
 
   confirmDraftReconnect(): void {
-    this.draftReconnect = this.draftReconnect ? { ...this.draftReconnect, confirm: true } : null;
+    this.remoteAdmin.confirmDraftReconnect();
   }
 
   discardDraftReconnect(): void {
-    const kept = this.draftReconnect;
-    if (kept) this.sessionView(kept.sessionId).draft = "";
-    this.draftReconnect = null;
+    this.remoteAdmin.discardDraftReconnect();
   }
 
   async registerUv(): Promise<boolean> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi)) return false;
-    this.uvError = null;
-    try {
-      await api.registerUv();
-      this.uvReady = true;
-      return true;
-    } catch {
-      this.uvReady = false;
-      this.uvError = "uv_failed";
-      return false;
-    }
+    return this.remoteAdmin.registerUv();
   }
 
   async refreshHostDevices(): Promise<void> {
-    const api = this.api;
-    if (this.remote || !api || api instanceof RemoteApi || this.hostDevicesBusy) return;
-    this.hostDevicesBusy = true;
-    this.hostDevicesError = null;
-    try {
-      this.hostDevices = await listHostDevices(api);
-    } catch (error) {
-      this.hostDevicesError = error instanceof ApiError ? error.code : "request_unknown";
-    } finally {
-      this.hostDevicesBusy = false;
-    }
+    return this.remoteAdmin.refreshHostDevices();
   }
 
   async removeHostDevice(id: string): Promise<boolean> {
-    const api = this.api;
-    if (this.remote || !api || api instanceof RemoteApi || this.hostDevicesBusy) return false;
-    this.hostDevicesBusy = true;
-    this.hostDevicesError = null;
-    try {
-      await removeHostDevice(api, id);
-      this.hostRemoveDeviceId = null;
-      this.hostDevices = await listHostDevices(api);
-      return true;
-    } catch (error) {
-      this.hostDevicesError = error instanceof ApiError ? error.code : "request_unknown";
-      return false;
-    } finally {
-      this.hostDevicesBusy = false;
-    }
+    return this.remoteAdmin.removeHostDevice(id);
   }
 
   /**
@@ -2686,60 +2171,12 @@ export class MessengerRuntime {
    * card shows the code for that long, then says so rather than leaving a dead code on screen.
    */
   async startHostPairing(): Promise<void> {
-    const api = this.api;
-    if (this.hostPairingBusy || !api || api instanceof RemoteApi) return;
-    this.hostPairingBusy = true;
-    try {
-      const offer = await openPairing(api);
-      this.hostPairing = { phase: "offer", ...offer };
-      void this.watchHostPairing(api, offer.pairingId);
-    } catch (error) {
-      this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
-    } finally {
-      this.hostPairingBusy = false;
-    }
-  }
-
-  private async watchHostPairing(api: LocalApi, pairingId: string): Promise<void> {
-    while (!this.stopped) {
-      const current = this.hostPairing;
-      if (this.api !== api || current?.phase !== "offer" || current.pairingId !== pairingId) return;
-      if (Math.floor(Date.now() / 1000) >= current.expiresUnix) {
-        this.hostPairing = { phase: "failed", error: "expired" };
-        return;
-      }
-      try {
-        const waited = await readPairing(api, pairingId);
-        const live = this.hostPairing;
-        if (this.api !== api || live?.phase !== "offer" || live.pairingId !== pairingId) return;
-        if (waited.phase === "confirm") {
-          this.hostPairing = { ...live, phase: "confirm", name: waited.name, deviceFingerprint: waited.fingerprint, challenge: waited.challenge };
-          return;
-        }
-      } catch (error) {
-        this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, HOST_PAIRING_POLL_MS));
-    }
+    return this.remoteAdmin.startHostPairing();
   }
 
   /** The person compared the fingerprint on the device; this is the local confirmation. */
   async confirmHostPairing(): Promise<void> {
-    const api = this.api, current = this.hostPairing;
-    if (this.hostPairingBusy || !api || api instanceof RemoteApi || current?.phase !== "confirm") return;
-    this.hostPairingBusy = true;
-    try {
-      const deviceId = await confirmPairing(api, current.pairingId, current.challenge);
-      if (this.hostPairing === current) this.hostPairing = { phase: "paired", deviceId };
-      await this.refreshHostDevices();
-    } catch (error) {
-      if (this.hostPairing === current) {
-        this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
-      }
-    } finally {
-      this.hostPairingBusy = false;
-    }
+    return this.remoteAdmin.confirmHostPairing();
   }
 
   /** The button on the unreachable screen: try now, and look like it. */
@@ -2754,109 +2191,31 @@ export class MessengerRuntime {
 
   /** Closing the card abandons the window; it still expires on the host by itself. */
   closeHostPairing(): void {
-    if (this.hostPairingBusy) return;
-    this.hostPairing = null;
+    this.remoteAdmin.closeHostPairing();
   }
 
   async refreshMaintenance(): Promise<void> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi)) return;
-    try {
-      this.maintenance = await api.remoteStatus();
-      this.uvReady = api.uvReady || this.maintenance.devices.some((row) => row.id === api.enrollment.deviceId && row.hasUv);
-      this.maintenanceError = null;
-    } catch (error) {
-      this.maintenanceError = error instanceof ApiError ? error.code : "request_unknown";
-    }
+    return this.remoteAdmin.refreshMaintenance();
   }
 
   async downloadDiagnostics(): Promise<boolean> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
-    this.maintenanceBusy = true;
-    this.maintenanceError = null;
-    try {
-      const report = await api.privilegedAction({ action: "diagnostics.download", targetId: "runtime" }) as RemoteDiagnostics;
-      const blob = new Blob([JSON.stringify(report)], { type: "application/json" });
-      const href = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = href;
-      link.download = "real-bot-diagnostics.json";
-      link.rel = "noopener";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(href);
-      return true;
-    } catch (error) {
-      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
-      return false;
-    } finally {
-      this.maintenanceBusy = false;
-    }
+    return this.remoteAdmin.downloadDiagnostics();
   }
 
   async restartRuntime(force = false): Promise<boolean> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
-    this.maintenanceBusy = true;
-    this.maintenanceError = null;
-    try {
-      await api.privilegedAction({ action: "runtime.restart", targetId: "runtime", force });
-      this.maintenanceForceConfirm = false;
-      await this.refreshMaintenance();
-      return true;
-    } catch (error) {
-      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
-      await this.refreshMaintenance();
-      return false;
-    } finally {
-      this.maintenanceBusy = false;
-    }
+    return this.remoteAdmin.restartRuntime(force);
   }
 
   async stopRuntime(): Promise<boolean> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
-    this.maintenanceBusy = true;
-    this.maintenanceError = null;
-    try {
-      await api.privilegedAction({ action: "runtime.stop", targetId: "runtime" });
-      this.maintenanceStopConfirm = false;
-      await this.refreshMaintenance();
-      return true;
-    } catch (error) {
-      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
-      await this.refreshMaintenance();
-      return false;
-    } finally {
-      this.maintenanceBusy = false;
-    }
+    return this.remoteAdmin.stopRuntime();
   }
 
   async revokeRemoteDevice(id: string): Promise<boolean> {
-    const api = this.api;
-    if (!(api instanceof RemoteApi) || this.maintenanceBusy) return false;
-    this.maintenanceBusy = true;
-    this.maintenanceError = null;
-    try {
-      await api.privilegedAction({ action: "device.revoke", targetId: id });
-      this.maintenanceRevokeId = null;
-      await this.refreshMaintenance();
-      return true;
-    } catch (error) {
-      this.maintenanceError = error instanceof ApiError ? error.code : "uv_failed";
-      await this.refreshMaintenance();
-      return false;
-    } finally {
-      this.maintenanceBusy = false;
-    }
+    return this.remoteAdmin.revokeRemoteDevice(id);
   }
 
   otherRemoteDevices(): RemoteDeviceRow[] {
-    const api = this.api;
-    if (!(api instanceof RemoteApi) || !this.maintenance) return [];
-    return this.maintenance.devices.filter((row) => row.id !== api.enrollment.deviceId && !row.revoked);
+    return this.remoteAdmin.otherRemoteDevices();
   }
 
   private readonly onWindowFocus = (): void => {
@@ -2894,48 +2253,7 @@ export class MessengerRuntime {
   };
 
   async setPushEnabled(enabled: boolean): Promise<DisablePushResult | boolean> {
-    const api = this.api;
-    if (this.isDesktopShell) {
-      if (enabled) {
-        await this.requestDesktopNotificationPermission();
-      } else {
-        await this.patchNotificationDevice({ enabled: false });
-      }
-      return true;
-    }
-    if (!(api instanceof RemoteApi) || this.pushBusy) return false;
-    this.pushBusy = true;
-    this.pushError = null;
-    this.pushErrorCode = null;
-    this.pushPermission = pushPermission();
-    try {
-      if (enabled) {
-        await enablePush(api, "enable");
-        this.pushEnabled = true;
-        this.pushSubscribed = true;
-        this.pushRecovery = "none";
-        this.pushPermission = pushPermission();
-        await this.loadNotificationDevice();
-        return true;
-      } else {
-        const outcome = await disablePush(api);
-        this.pushEnabled = !outcome.hostDisabled;
-        this.pushSubscribed = !outcome.localRemoved;
-        this.pushPermission = pushPermission();
-        await this.loadNotificationDevice();
-        return outcome;
-      }
-    } catch (error) {
-      this.pushPermission = pushPermission();
-      this.pushErrorCode = error instanceof ApiError ? error.code
-        : error instanceof Error && error.name !== "Error" ? error.name : null;
-      this.pushError = error instanceof Error && error.message === "denied" ? "denied"
-        : error instanceof Error && error.message === "unsupported" ? "unsupported"
-        : "failed";
-      return false;
-    } finally {
-      this.pushBusy = false;
-    }
+    return this.notificationCenter.setPushEnabled(enabled);
   }
 
   private async tick(): Promise<void> {
@@ -3030,6 +2348,10 @@ export class MessengerRuntime {
     const id = this.selectedId;
     const draft = this.draft.trim();
     if (id && draft && !this.draftReconnect) this.draftReconnect = { sessionId: id, draft, confirm: false };
+  }
+
+  private syncAppBadge(): void {
+    this.notificationCenter.syncAppBadge();
   }
 
   private async installSnapshot(api: MessengerApi, sync: EventSync, snapshot: RuntimeSnapshot): Promise<void> {
@@ -3394,21 +2716,17 @@ export class MessengerRuntime {
     this.snapshot = next;
     if (event.event === "annotation.upsert" || event.event === "annotation.removed") this.noteAnnotationWrite(event.id);
     if (event.event === "notification.upsert") {
-      this.notificationInboxState = upsertInboxItem(this.notificationInboxState, event as unknown as NotificationItem);
-      this.syncAppBadge();
+      this.notificationCenter.applyNotificationUpsert(event as unknown as NotificationItem);
     }
     if (event.event === "notification.removed" && typeof event.id === "string") {
-      this.notificationInboxState = removeInboxItem(this.notificationInboxState, event.id);
-      this.syncAppBadge();
+      this.notificationCenter.applyNotificationRemoved(event.id);
     }
     if (event.event === "notification.summary") {
-      this.notificationSummary = event.summary;
-      this.notificationInboxState = applySummary(this.notificationInboxState, event.summary);
-      this.syncAppBadge();
+      this.notificationCenter.applyLiveNotificationSummary(event.summary);
     }
     if (event.event === "notification_policy.changed") {
       const { event: _e, occurred_at: _at, ...policy } = event;
-      this.notificationPolicy = policy;
+      this.notificationCenter.applyNotificationPolicyChanged(policy);
     }
     if (this.api instanceof RemoteApi) this.api.observeSnapshot(this.snapshot);
     if (event.event === "settings.changed") {
@@ -3463,7 +2781,7 @@ export class MessengerRuntime {
       };
     }
     this.rememberDraftOnDisconnect();
-    this.boundedReadSent.clear();
+    this.notificationCenter.clearBoundedReads();
     // A step that ended while the link was down would read as running forever.
     this.turnActivity.clear();
     this.listeningSince = Date.now();

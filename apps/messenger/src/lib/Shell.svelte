@@ -4,27 +4,20 @@
 		type Attachment,
 		type Bot,
 		type SessionSummary,
-		type SearchHit,
-		type Terminal
+		type SearchHit
 	} from '@real-bot/protocol';
 	import { onMount, tick, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
 	import ImageCopy from './ImageCopy.svelte';
-	import {
-		dangerCopy,
-		shouldDropConfirm,
-		visibleDangerKind,
-		type DangerKind,
-		type DangerSource,
-		type DangerAction
-	} from './overlays/danger-confirm.ts';
+	import { dangerCopy, shouldDropConfirm } from './overlays/danger-confirm.ts';
+	import { ShellDangerConfirm } from './overlays/danger-confirm.svelte.ts';
+	import { findAttachmentById, findAttachmentByPath, siblingsForPath } from './overlays/artifact-lookup.ts';
 	import {
 		modelSelectValue,
 		type ProviderEditorState
 	} from './settings/provider-form.ts';
 	import TerminalPane from './overlays/TerminalPane.svelte';
-	import { orderTerminals, statusLabel, terminalNames } from './overlays/terminals.ts';
 	// TaskTrace.svelte (the flow board) drags in @dagrejs/dagre and its own graph-layout code;
 	// it is only ever seen after `runtime.traceOpen` fires, so it is loaded with the same
 	// `{#await import(...)}` lazy-mount pattern as the other panels below.
@@ -49,7 +42,6 @@
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
-	import { handedOverPaths } from './overlays/artifacts.ts';
 	// ArtifactPreview.svelte is lazy-loaded below (see the artifactPreview block): it only
 	// mounts once a file is actually opened.
 	import { targetFor } from './annotations/model.ts';
@@ -70,11 +62,10 @@
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
-	import GroupIdentity from './panels/GroupIdentity.svelte';
-	import SettingsSubject from './panels/SettingsSubject.svelte';
 	import GroupPane from './panels/GroupPane.svelte';
 	import type { GroupDetailDraft } from './panels/group-edit.ts';
 	import ProfilePane from './panels/ProfilePane.svelte';
+	import SettingsHead from './panels/SettingsHead.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import SidebarRail from './sidebar/SidebarRail.svelte';
 	import GlobalSearch from './search/GlobalSearch.svelte';
@@ -94,51 +85,19 @@
 	import PaneTabLabel from './workbench/PaneTabLabel.svelte';
 	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
 	import { paneMin } from './workbench/pane-mins.ts';
-	import { contentOfTab } from './workbench/pane-content.ts';
-	import {
-		activeSessionId,
-		closeChatSide,
-		dropDuplicateBoundTabs,
-		existingTarget,
-		findKind,
-		openContent,
-		settingsSide,
-		toggleChatSide
-	} from './workbench/pane-open.ts';
-	import type { PreviewHandle } from './workbench/preview-context.ts';
-	import type { PaneContent } from './workbench/pane-content.ts';
-	import {
-		MENU_COMMANDS,
-		applyCommand,
-		isTypingTarget,
-		matchWorkbenchKey,
-		type CommandContext,
-		type WorkbenchCommand
-	} from './workbench/workbench-commands.ts';
-	import { hideDesktopWindow, listenToWindow } from './tauri.ts';
-	import { allLeaves, emptyLayout as freshLayout } from './workbench/layout-tree.ts';
-	import {
-		closeTab as closeWorkbenchTab,
-		closeTabs as closeWorkbenchTabs,
-		closeLeaf as closeWorkbenchPane,
-		activateTab,
-		emptyLayout,
-		focusLeaf,
-		leafById,
-		replaceTabParams,
-		splitLeaf
-	} from './workbench/layout-tree.ts';
-	import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from './workbench/workbench-layout.ts';
-	import { contentsEqual, contentToParams, PANE_KIND_SET } from './workbench/pane-content.ts';
-	import { WB_FALLBACK_MIN } from './workbench/pane-mins.ts';
-	import type { TabAction, WorkbenchLayout, WorkbenchTab } from './workbench/layout-types.ts';
+	import { contentOfTab, contentToParams } from './workbench/pane-content.ts';
+	import { closeChatSide, settingsSide, toggleChatSide } from './workbench/pane-open.ts';
+	import { isTypingTarget, matchWorkbenchKey } from './workbench/workbench-commands.ts';
+	import { activateTab, focusLeaf, replaceTabParams } from './workbench/layout-tree.ts';
+	import type { TabAction, WorkbenchTab } from './workbench/layout-types.ts';
+	import { ShellWorkbench } from './workbench/shell-workbench.svelte.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	// SettingsModal.svelte (~3.5k lines, plus its provider/MCP/notification sub-panels) is
 	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
-	// template is already gated on `runtime.settingsOpen` (see settingsHead/`{#if runtime.settingsOpen}`
-	// inside that file), so deferring the mount changes nothing but when the bytes are fetched.
+	// template is already gated on `runtime.settingsOpen` (an `{#if runtime.settingsOpen}` inside
+	// that file), so deferring the mount changes nothing but when the bytes are fetched.
 	import type SettingsModal from './settings/SettingsModal.svelte';
 
 	let { runtime }: { runtime: MessengerRuntime } = $props();
@@ -191,7 +150,7 @@
 	let searchOpener = $state<HTMLElement | null>(null);
 
 	function searchBlocked(): boolean {
-		return Boolean(showOnboarding || dangerConfirm || runtime.createBotOpen || runtime.createGroupOpen || providerEditor || confirmingIndependent || document.querySelector('dialog[open], .skill-modal-backdrop, .memory-modal-backdrop'));
+		return Boolean(showOnboarding || danger.dangerConfirm || runtime.createBotOpen || runtime.createGroupOpen || providerEditor || danger.confirmingIndependent || document.querySelector('dialog[open], .skill-modal-backdrop, .memory-modal-backdrop'));
 	}
 
 	function openGlobalSearch(): void {
@@ -303,11 +262,11 @@
 			imageOpen: imageEnlarged(),
 			toolsMenuOpen,
 			createMenuOpen,
-			dangerConfirm: dangerConfirm !== null,
+			dangerConfirm: danger.dangerConfirm !== null,
 			createBotOpen: runtime.createBotOpen,
 			createGroupOpen: runtime.createGroupOpen,
 			providerEditor: providerEditor !== null,
-			confirmingIndependent,
+			confirmingIndependent: danger.confirmingIndependent,
 			searchOpen,
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
@@ -330,7 +289,7 @@
 				return true;
 			case 'danger':
 				// A running action is not dismissible; swallowing Back is the point.
-				if (escapeDismissesDanger) dismissDangerConfirm();
+				if (danger.escapeDismissesDanger) danger.dismissDangerConfirm();
 				return true;
 			case 'create-bot':
 				runtime.createBotOpen = false;
@@ -497,348 +456,19 @@
 			void tick().then(() => shellEl?.querySelector<HTMLElement>(next ? '.rail-expand' : '.side-collapse')?.focus());
 		}
 	}
-	let layout = $state<WorkbenchLayout>(loadWorkbenchLayout() ?? emptyLayout('wb-root'));
-	let paneSeq = 0;
-	const freshPaneId = () => `wb-${Date.now().toString(36)}-${++paneSeq}`;
-
-	function commitLayout(next: WorkbenchLayout): void {
-		if (next === layout) return;
-		layout = next;
-		saveWorkbenchLayout(next);
-	}
-
 	/**
-	 * The two directions the conversation and the arrangement follow each other.
-	 *
-	 * Each tracks only its own side. Tracking both makes them fight — the same shape of bug the
-	 * URL effects in `+page.svelte` carry a comment about — and each is a no-op once the two
-	 * already agree, so they settle rather than ping-pong.
+	 * The desktop workbench cluster: the pane tree, its persistence, and the effects and pane-open
+	 * plumbing that keep it in step with the selected conversation and the live snapshot. See
+	 * `workbench/shell-workbench.svelte.ts`.
 	 */
-	let selectionInitialized = false;
-	$effect(() => {
-		if (!wide) return;
-		const id = runtime.selectedId;
-		const restoring = !selectionInitialized;
-		selectionInitialized = true;
-		if (!id) return;
-		untrack(() => {
-			const leaf = leafById(layout, layout.focus.leafId);
-			const active = leaf?.tabs.find((tab) => tab.id === leaf.activeTabId);
-			// A remembered tool tab is in front of the URL's underlying conversation.
-			if (restoring && active && active.kind !== 'chat') return;
-			if (activeSessionId(layout) === id) return;
-			commitLayout(
-				openContent(layout, { kind: 'chat', sessionId: id }, { id: freshPaneId, replaceActive: true })
-			);
-		});
-	});
-
-	/**
-	 * Terminal tabs name sessions the snapshot does not carry, so the list is read as soon as the
-	 * workbench is connected — and again after a reconnect — rather than when a terminal opens.
-	 */
-	$effect(() => {
-		if (!wide || runtime.connection !== 'connected') return;
-		untrack(() => void runtime.refreshTerminals());
-	});
-
-	/** Drop tabs whose conversation or terminal has gone, the way pinned rows are cleaned. */
-	$effect(() => {
-		const live = {
-			sessionIds: new Set(snapshot.sessions.map((row) => row.id)),
-			terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
-			knownKinds: PANE_KIND_SET
-		};
-		// Only a bound on the window: the workbench keeps its floating panes inside its own box. A
-		// guessed height here pulled up, on the next snapshot, any pane left lower than it allowed.
-		const viewport = {
-			x: 0,
-			y: 0,
-			width: shellWidth,
-			height: untrack(() => shellEl?.clientHeight) || Number.POSITIVE_INFINITY
-		};
-		untrack(() => {
-			const healed = dropDuplicateBoundTabs(
-				healLayout(layout, live, viewport, WB_FALLBACK_MIN, freshPaneId()),
-				freshPaneId
-			);
-			if (healed !== layout) commitLayout(healed);
-		});
-	});
-
-	/** What a tab is called. The layout carries ids; the names come from what they point at. */
-	function paneTitle(tab: WorkbenchTab): string {
-		const content = contentOfTab(tab);
-		if (!content) return t.pane.title;
-		switch (content.kind) {
-			case 'chat':
-				return sessionName(content.sessionId);
-			case 'terminal': {
-				const row = runtime.terminals.find((candidate) => candidate.id === content.terminalId);
-				return row ? (terminalNamesById.get(row.id) ?? row.title) : t.terminal.title;
-			}
-			case 'workspace':
-				return content.selected ? (content.selected.split('/').pop() ?? t.sidebar.workspace) : t.sidebar.workspace;
-			case 'routines':
-				return t.routines.title;
-			case 'spend':
-				return spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title;
-			case 'trace':
-				return t.pane.flowOf(sessionName(content.sessionId));
-			case 'preview':
-				return content.sessionId ? t.pane.artifactsOf(sessionName(content.sessionId)) : t.pane.title;
-		}
-	}
-
-	/** The conversation's own name, the same words its chat tab uses. */
-	function sessionName(sessionId: string): string {
-		const session = snapshot.sessions.find((row) => row.id === sessionId);
-		return session ? titleOf(session) : t.top.deleted;
-	}
-
-	/**
-	 * While the workbench is on, every "open this" in the app lands in a pane rather than in a
-	 * full-screen layer. Cleared below the breakpoint, where those layers are still the app.
-	 *
-	 * The terminal page is a phone screen. A wide window opens a terminal tab instead, and a tab
-	 * stays out of the address, so a page left open while the window grows leaves the address too.
-	 */
-	$effect(() => {
-		if (!wide || !runtime.terminalOpen) return;
-		untrack(() => runtime.closeTerminal());
-	});
-
-	$effect(() => {
-		if (!wide) {
-			runtime.paneOpener = null;
-			return;
-		}
-		runtime.paneOpener = (content) => {
-			untrack(() => {
-				// "The terminal", asked for without naming one, is the one you have if there is one.
-				if (content.kind === 'terminal' && !content.terminalId) void showTerminal();
-				else openGuarded(ownSettings(content));
-			});
-		};
-		return () => {
-			runtime.paneOpener = null;
-		};
-	});
-
-	/**
-	 * A direct conversation's own settings are its Bot's profile, however they were asked for — the
-	 * header's button or the Bot's avatar in the transcript. One spelling, so the header can tell
-	 * they are open and toggling them finds them.
-	 */
-	function ownSettings(content: PaneContent): PaneContent {
-		if (content.kind !== 'chat' || content.side?.kind !== 'settings' || !content.side.botId) return content;
-		const session = sessionsById.get(content.sessionId);
-		if (!session || classifySession(session) !== 'you-bot' || youBotPeer(session) !== content.side.botId) return content;
-		return { ...content, side: { kind: 'settings', botId: null } };
-	}
-
-	/** The previews on screen, by tab, so one holding an unsaved edit can be asked before it turns. */
-	const previewPanes = new Map<string, PreviewHandle>();
-
-	function trackPreviewPane(tabId: string, pane: PreviewHandle | null): void {
-		if (pane) previewPanes.set(tabId, pane);
-		else previewPanes.delete(tabId);
-	}
-
-	/**
-	 * Open through the layout, asking first when this would turn a conversation's preview away
-	 * from a file with an unsaved edit. That preview is its conversation's only one, so "open
-	 * beside it instead" is not on offer; its own save / discard / cancel question decides.
-	 */
-	function openGuarded(content: PaneContent): void {
-		const open = () => commitLayout(openContent(layout, content, { id: freshPaneId }));
-		const at = existingTarget(layout, content);
-		const pane = at ? previewPanes.get(at.tab.id) : undefined;
-		const current = at ? contentOfTab(at.tab) : null;
-		if (at && pane?.blocksClose() && !(current && contentsEqual(current, content))) {
-			// Bring the question to where the keyboard is, then turn only once it is answered.
-			commitLayout(activateTab(focusLeaf(layout, at.leafId), at.leafId, at.tab.id));
-			pane.requestLeaveFromParent(open);
-			return;
-		}
-		open();
-	}
-
-	/** Fill a pane from its own empty state: whatever you pick lands in that pane, not elsewhere. */
-	function openInPane(leafId: string, content: PaneContent): void {
-		const focused = focusLeaf(layout, leafId);
-		commitLayout(openContent(focused, content, { id: freshPaneId, replaceActive: true }));
-	}
-
-	/**
-	 * A terminal tab is one shell. A new tab starts its own and is bound to it before it shows, so
-	 * two tabs are never the same terminal. If it cannot start one it opens anyway and says why.
-	 */
-	async function openNewTerminal(leafId: string | null): Promise<void> {
-		const created = await runtime.startTerminal();
-		const content: PaneContent = {
-			kind: 'terminal',
-			terminalId: created?.id ?? null,
-			cwd: created?.cwd ?? null
-		};
-		if (leafId && leafById(layout, leafId)) openInPane(leafId, content);
-		else commitLayout(openContent(layout, content, { id: freshPaneId }));
-	}
-
-	/** Reopen the nearest terminal tab, creating a shell when none is open. */
-	async function showTerminal(): Promise<void> {
-		const open = findKind(layout, 'terminal');
-		if (open) {
-			commitLayout(activateTab(focusLeaf(layout, open.leafId), open.leafId, open.tab.id));
-			return;
-		}
-		await openNewTerminal(null);
-	}
-
-	/**
-	 * Sessions no tab shows. Closing a terminal tab never stops its shell, and a phone can start one,
-	 * so what is still there has to be reachable from where you open things.
-	 */
-	const untabbedTerminals = $derived.by(() => {
-		const shown = new Set(
-			allLeaves(layout)
-				.flatMap((leaf) => leaf.tabs)
-				.filter((tab) => tab.kind === 'terminal')
-				.map((tab) => tab.params.terminalId)
-		);
-		return orderTerminals(runtime.terminals.filter((row) => !shown.has(row.id)));
-	});
-	const terminalNamesById = $derived(terminalNames(runtime.terminals));
-
-	/** A session's name, and how it ended when it has. */
-	function terminalName(row: Terminal): string {
-		const name = terminalNamesById.get(row.id) ?? row.title;
-		const status = statusLabel(row, t);
-		return status ? `${name} · ${status}` : name;
-	}
-
-	/** Write the session a terminal pane settled on back into its tab, so a restart comes back to it. */
-	function bindTerminalTab(leafId: string, tabId: string, terminalId: string | null): void {
-		const leaf = leafById(layout, leafId);
-		const tab = leaf?.tabs.find((candidate) => candidate.id === tabId);
-		if (!tab || tab.kind !== 'terminal') return;
-		if ((tab.params.terminalId ?? null) === terminalId) return;
-		const cwd = (terminalId && runtime.terminals.find((row) => row.id === terminalId)?.cwd) || tab.params.cwd;
-		const params: Record<string, string> = {};
-		if (terminalId) params.terminalId = terminalId;
-		if (cwd) params.cwd = cwd;
-		commitLayout(replaceTabParams(layout, leafId, tabId, params));
-	}
-
-	function runWorkbenchCommand(command: WorkbenchCommand): void {
-		if (command.kind === 'close-pane') {
-			onPaneClose(layout.focus.leafId);
-			return;
-		}
-		commitLayout(
-			applyCommand(layout, command, workbenchCommandContext(), (current, leafId, axis, side) =>
-				splitLeaf(current, leafId, axis, side, [], { leaf: freshPaneId(), branch: freshPaneId() })
-			)
-		);
-	}
-
-	/**
-	 * The native menu owns its accelerators, so a command picked there is handed to the page
-	 * rather than guessed at by it. ⌘W closes the tab in front of you and, once there is nothing
-	 * left to close, asks the window to hide — which is what 关窗 has always meant.
-	 */
-	$effect(() => {
-		if (!wide) return;
-		return listenToWindow('pane-command', (id) => {
-			if (id === 'pane-reset') {
-				commitLayout(freshLayout(freshPaneId()));
-				return;
-			}
-			if (id === 'view-spend') {
-				runtime.openSpend();
-				return;
-			}
-			if (id === 'pane-close-tab' && allLeaves(layout).every((leaf) => leaf.tabs.length === 0)) {
-				void hideDesktopWindow();
-				return;
-			}
-			const command = typeof id === 'string' ? MENU_COMMANDS[id] : undefined;
-			if (command) runWorkbenchCommand(command);
-		});
-	});
-
-	function workbenchCommandContext(): CommandContext {
-		return {
-			viewport: { x: 0, y: 0, width: shellWidth, height: shellEl?.clientHeight || 800 },
-			mins: paneMin,
-			ids: freshPaneId,
-			newPaneMin: WB_FALLBACK_MIN
-		};
-	}
-
-	function onPaneClose(leafId: string): void {
-		const leaf = leafById(layout, leafId);
-		if (!leaf) return;
-		const blocked = leaf.tabs.find((tab) => previewPanes.get(tab.id)?.blocksClose());
-		if (blocked) {
-			const pane = previewPanes.get(blocked.id)!;
-			commitLayout(activateTab(focusLeaf(layout, leafId), leafId, blocked.id));
-			pane.requestLeaveFromParent(() => onPaneClose(leafId));
-			return;
-		}
-		commitLayout(closeWorkbenchPane(layout, leafId, freshPaneId()));
-	}
-
-	function onPaneCloseTab(leafId: string, tabId: string): void {
-		commitLayout(closeWorkbenchTab(layout, leafId, tabId, freshPaneId()));
-	}
-
-	/** Close others, to the right, all: asked about first, like closing the pane, when one holds an unsaved edit. */
-	function onPaneCloseTabs(leafId: string, tabIds: string[]): void {
-		const leaf = leafById(layout, leafId);
-		if (!leaf) return;
-		const blocked = leaf.tabs.find((tab) => tabIds.includes(tab.id) && previewPanes.get(tab.id)?.blocksClose());
-		if (blocked) {
-			const pane = previewPanes.get(blocked.id)!;
-			commitLayout(activateTab(focusLeaf(layout, leafId), leafId, blocked.id));
-			pane.requestLeaveFromParent(() => onPaneCloseTabs(leafId, tabIds));
-			return;
-		}
-		commitLayout(closeWorkbenchTabs(layout, leafId, tabIds, freshPaneId()));
-	}
-
-	/** URL restores and browser Back use the same singleton tab as the sidebar. */
-	let spendInitialized = false;
-	$effect(() => {
-		if (!wide) return;
-		const spend = runtime.spendOpen;
-		const restoring = !spendInitialized;
-		spendInitialized = true;
-		untrack(() => {
-			if (spend) {
-				openGuarded({ kind: 'spend' });
-				return;
-			}
-			if (restoring) return;
-			const leaf = leafById(layout, layout.focus.leafId);
-			const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
-			if (leaf && tab?.kind === 'spend') {
-				if (runtime.selectedId) openGuarded({ kind: 'chat', sessionId: runtime.selectedId });
-				else onPaneCloseTab(leaf.id, tab.id);
-			}
-		});
-	});
-
-	/** Following the active pane keeps Stop, the composer and the URL pointing at one conversation. */
-	$effect(() => {
-		if (!wide) return;
-		const id = activeSessionId(layout);
-		const leaf = leafById(layout, layout.focus.leafId);
-		const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
-		untrack(() => {
-			runtime.spendOpen = tab?.kind === 'spend';
-			if (id && runtime.selectedId !== id) void runtime.selectSession(id, { preservePage: true });
-		});
+	const workbench = new ShellWorkbench({
+		runtime: () => runtime,
+		wide: () => wide,
+		shellWidth: () => shellWidth,
+		shellEl: () => shellEl,
+		sessionsById: () => sessionsById,
+		titleOf,
+		t: () => t
 	});
 
 	$effect(() => {
@@ -902,7 +532,7 @@
 
 	function handleMenuClearHistory(session: SessionSummary): void {
 		closeContextMenuNow();
-		openClearHistoryConfirm(session.id, 'menu');
+		danger.openClearHistoryConfirm(session.id, 'menu');
 	}
 
 	async function handleMenuToggleArchive(session: SessionSummary): Promise<void> {
@@ -929,11 +559,11 @@
 		closeContextMenuNow();
 		const data = deriveSessionContextMenu(session, false, botsById);
 		if (data.delete.kind === 'group' && data.delete.targetId) {
-			openDeleteGroupConfirm(data.delete.targetId, 'menu');
+			danger.openDeleteGroupConfirm(data.delete.targetId, 'menu');
 			return;
 		}
 		if (data.delete.kind === 'bot' && data.delete.targetId) {
-			openDeleteBotConfirm(data.delete.targetId, 'menu');
+			danger.openDeleteBotConfirm(data.delete.targetId, 'menu');
 		}
 	}
 
@@ -991,68 +621,28 @@
 	let providerEditor = $state<ProviderEditorState | null>(null);
 	/** The pane owns the rest of the profile draft; the shell's delete still writes this. */
 	let profileFailed = $state(false);
-	/**
-	 * One confirm at a time. These used to be five booleans that each cleared the other four on the
-	 * way up; every opener, every close path and the window handler had to keep that list in sync.
-	 */
-	type DangerConfirm = {
-		/** Picks the copy, and says which close paths drop this confirm. */
-		kind: DangerKind;
-		/** What the confirm button does. Whoever opens the dialog knows; the shell does not. */
-		run: DangerAction;
-		running?: boolean;
-		/** The session this group / history confirm acts on. Independent of the open chat. */
-		sessionId?: string;
-		/** The Bot this confirm acts on, so it goes when that Bot leaves the roster. */
-		botId?: string;
-		/** The endpoint this is about, so the confirm goes when someone else deletes it. */
-		providerId?: string;
-		/** Drawer/settings confirms go when that surface closes. A sidebar menu confirm does not. */
-		source?: DangerSource;
-	};
-	let dangerConfirm = $state<DangerConfirm | null>(null);
-	let confirmingIndependent = $state(false);
 	/** The profile drawer closes on a click outside it, not on the tail of a text-selection drag. */
 	const profileBackdrop = backdropClick();
-
-	async function confirmDanger(): Promise<void> {
-		const pending = dangerConfirm;
-		if (!pending || pending.running) return;
-		pending.running = true;
-		try {
-			await pending.run(() => dangerConfirm === pending);
-		} finally {
-			pending.running = false;
-		}
-	}
-
-	/** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
-	function clearDanger(...kinds: DangerKind[]): void {
-		if (dangerConfirm && kinds.includes(dangerConfirm.kind)) dangerConfirm = null;
-	}
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
-	const botIdSet = $derived(new Set(snapshot.bots.map((b) => b.id)));
-	const providerIdSet = $derived(new Set(snapshot.providers.map((p) => p.id)));
-	/** A group or history confirm follows the session it named, not whichever chat is open. */
-	const dangerConfirmKind = $derived(
-		visibleDangerKind(dangerConfirm, {
-			selectedId: selected?.id ?? null,
-			sessions: sessionsById,
-			botIds: botIdSet,
-			providerIds: providerIdSet
-		})
-	);
-	/** The native confirmation consumes its own keyboard events before this fallback. */
-	const escapeDismissesDanger = $derived(
-		dangerConfirmKind !== null && dangerConfirmKind !== 'skill' && dangerConfirmKind !== 'memory'
-	);
-	/** The session drawer's backdrop refuses to close while one of its own confirms is up. */
-	const drawerHasDanger = $derived(
-		dangerConfirmKind === 'bot' ||
-			dangerConfirmKind === 'group' ||
-			dangerConfirmKind === 'history'
-	);
-	const dangerConfirmCopy = $derived(dangerConfirmKind ? dangerCopy(dangerConfirmKind, t) : null);
+	/**
+	 * One confirm at a time, and the open/delete actions that arm it. These used to be five
+	 * booleans that each cleared the other four on the way up; every opener, every close path and
+	 * the window handler had to keep that list in sync. See `overlays/danger-confirm.svelte.ts`.
+	 */
+	const danger = new ShellDangerConfirm({
+		runtime: () => runtime,
+		selected: () => selected,
+		sessionsById: () => sessionsById,
+		groupDetail: () => groupDetail,
+		setProfileFailed: (value) => {
+			profileFailed = value;
+		},
+		setSaveFailed: (value) => {
+			saveFailed = value;
+		},
+		closeNestedProfile
+	});
+	const dangerConfirmCopy = $derived(danger.dangerConfirmKind ? dangerCopy(danger.dangerConfirmKind, t) : null);
 	/**
 	 * The group pane's draft. It lives here, not in the pane: the reset below runs on every session
 	 * change whether or not the drawer is open, so an unsaved name survives closing and reopening
@@ -1066,25 +656,12 @@
 		pullPick: ''
 	});
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 	$effect(() => {
 		document.documentElement.lang = locale === 'zh' ? 'zh-Hans' : 'en';
 	});
 
 	/** The conversation whose settings are open beside it on the workbench, if any. */
-	const settingsBeside = $derived(wide ? settingsSide(layout) : null);
+	const settingsBeside = $derived(wide ? settingsSide(workbench.layout) : null);
 	/**
 	 * Whose settings the draft is for. On the workbench that is the conversation they are open
 	 * beside, which need not be the one the keyboard is in: clicking into another pane must not
@@ -1099,7 +676,7 @@
 		if (!session) {
 			groupDetail.sessionId = null;
 			untrack(() => {
-				if (shouldDropConfirm('no-session', dangerConfirm)) clearDanger('group', 'history');
+				if (shouldDropConfirm('no-session', danger.dangerConfirm)) danger.clearDanger('group', 'history');
 			});
 			return;
 		}
@@ -1112,15 +689,15 @@
 			pullPick: ''
 		};
 		untrack(() => {
-			if (shouldDropConfirm('session-changed', dangerConfirm)) clearDanger('group', 'history');
+			if (shouldDropConfirm('session-changed', danger.dangerConfirm)) danger.clearDanger('group', 'history');
 		});
 	});
 
 	$effect(() => {
 		if (!runtime.sessionSettingsOpen && !settingsBeside) {
 			untrack(() => {
-				if (shouldDropConfirm('session-settings-closed', dangerConfirm)) {
-					clearDanger('bot', 'group', 'history');
+				if (shouldDropConfirm('session-settings-closed', danger.dangerConfirm)) {
+					danger.clearDanger('bot', 'group', 'history');
 				}
 			});
 		}
@@ -1130,14 +707,14 @@
 		if (!runtime.settingsOpen) {
 			providerEditor = null;
 			untrack(() => {
-				if (shouldDropConfirm('settings-closed', dangerConfirm)) clearDanger('provider');
+				if (shouldDropConfirm('settings-closed', danger.dangerConfirm)) danger.clearDanger('provider');
 			});
 			return;
 		}
 		// A Bot or another window can delete the endpoint out from under an open confirm.
-		const pending = untrack(() => dangerConfirm);
+		const pending = untrack(() => danger.dangerConfirm);
 		if (pending?.providerId && !snapshot.providers.some((row) => row.id === pending.providerId)) {
-			dangerConfirm = null;
+			danger.dangerConfirm = null;
 		}
 	});
 
@@ -1158,79 +735,17 @@
 	}
 
 
-	function findAttachmentByPath(relpath: string): Attachment | null {
-		for (const message of snapshot.messages) {
-			const att = message.attachments.find((row) => row.workspace_relpath === relpath);
-			if (att) return att;
-		}
-		return null;
-	}
-
-	function findAttachmentById(id: string): Attachment | null {
-		for (const message of snapshot.messages) {
-			const att = message.attachments.find((row) => row.id === id);
-			if (att) return att;
-		}
-		return null;
-	}
-
-	function siblingsForPath(
-		relpath: string,
-		att?: Attachment | null,
-		messageId?: string | null
-	): Attachment[] {
-		if (messageId) {
-			const owner = snapshot.messages.find((message) => message.id === messageId);
-			if (owner) {
-				// The same list the bubble's entry counts, so the file tree and the entry cannot
-				// disagree about what this message handed over. The context menu's looser reading
-				// belongs to a menu, where a stray `1/3` out of prose costs nothing; in a file tree
-				// it is a file that does not exist.
-				const associated = handedOverPaths(
-					owner.body ?? '',
-					owner.attachments.map((row) => row.workspace_relpath)
-				);
-				if (associated.length > 0) {
-					return associated.map((path) => {
-						const existing = owner.attachments.find((a) => a.workspace_relpath === path);
-						if (existing) return existing;
-						return {
-							id: `virtual-${owner.id}-${path}`,
-							message_id: owner.id,
-							workspace_relpath: path,
-							original_filename: path.split('/').pop() ?? path,
-							created_at: owner.created_at
-						};
-					});
-				}
-			}
-		}
-		if (runtime.previewSiblings && runtime.previewSiblings.length > 0) {
-			return runtime.previewSiblings;
-		}
-		if (att) {
-			const owner = snapshot.messages.find((message) => message.id === att.message_id);
-			if (owner && owner.attachments.length > 0) return owner.attachments;
-		}
-		for (const message of snapshot.messages) {
-			if (message.attachments.some((row) => row.workspace_relpath === relpath)) {
-				return message.attachments;
-			}
-		}
-		return att ? [att] : [];
-	}
-
 	const artifactPreview = $derived.by(() => {
 		if (runtime.hosted) {
 			const id = runtime.previewAttachmentId;
 			if (!id) return null;
-			const attachment = findAttachmentById(id) ?? runtime.previewSiblings?.find((s) => s.id === id);
+			const attachment = findAttachmentById(snapshot.messages, id) ?? runtime.previewSiblings?.find((s) => s.id === id);
 			if (!attachment) return null;
 			const owner = snapshot.messages.find((message) => message.id === attachment.message_id);
 			return {
 				relpath: attachment.workspace_relpath,
 				attachment,
-				siblings: siblingsForPath(attachment.workspace_relpath, attachment),
+				siblings: siblingsForPath(snapshot.messages, attachment.workspace_relpath, attachment, undefined, runtime.previewSiblings),
 				forceTree: runtime.forceArtifactTree,
 				taskId: runtime.previewTaskId ?? null,
 				// 挂到谁, the same way as below: the job this preview lists is where a delivery is looked for first.
@@ -1242,14 +757,14 @@
 		}
 		const relpath = runtime.previewRelpath;
 		if (!relpath) return null;
-		const attachment = findAttachmentByPath(relpath) ?? runtime.previewSiblings?.find((s) => s.workspace_relpath === relpath);
+		const attachment = findAttachmentByPath(snapshot.messages, relpath) ?? runtime.previewSiblings?.find((s) => s.workspace_relpath === relpath);
 		const owner = runtime.previewMessageId
 			? snapshot.messages.find((message) => message.id === runtime.previewMessageId)
 			: undefined;
 		return {
 			relpath,
 			attachment: attachment ?? null,
-			siblings: siblingsForPath(relpath, attachment, runtime.previewMessageId),
+			siblings: siblingsForPath(snapshot.messages, relpath, attachment, runtime.previewMessageId, runtime.previewSiblings),
 			forceTree: runtime.forceArtifactTree,
 			// The entry opens the job's tree, not just this message's; older messages have none.
 			taskId: runtime.previewTaskId ?? owner?.task_id ?? null,
@@ -1284,14 +799,14 @@
 				messageId: sourceMessageId,
 				taskId: taskId ?? owner?.task_id ?? null,
 				forceTree,
-				siblings: siblings ?? siblingsForPath(relpath, att, sourceMessageId)
+				siblings: siblings ?? siblingsForPath(snapshot.messages, relpath, att, sourceMessageId, runtime.previewSiblings)
 			});
 			return;
 		}
 		if (runtime.hosted) {
 			// A remote URL never carries a file path, so the preview goes by attachment id.
 			runtime.previewRelpath = null;
-			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(relpath)?.id ?? null;
+			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(snapshot.messages, relpath)?.id ?? null;
 			runtime.previewMessageId = messageId ?? att?.message_id ?? null;
 			runtime.forceArtifactTree = forceTree;
 			runtime.previewTaskId = taskId ?? null;
@@ -1400,25 +915,8 @@
 
 	function closeSettings(): void {
 		providerEditor = null;
-		clearDanger('provider');
+		danger.clearDanger('provider');
 		runtime.settingsOpen = false;
-	}
-
-	function openDeleteProviderConfirm(id: string): void {
-		dangerConfirm = { kind: 'provider', run: () => deleteProvider(id), providerId: id, source: 'settings' };
-	}
-
-	async function deleteProvider(id: string): Promise<void> {
-		const pending = dangerConfirm;
-		saveFailed = false;
-		const error = await runtime.deleteProvider(id);
-		if (dangerConfirm !== pending) return;
-		if (error) {
-			saveFailed = true;
-			dangerConfirm = null;
-			return;
-		}
-		dangerConfirm = null;
 	}
 
 	async function patchImmediate(patch: {
@@ -1438,7 +936,7 @@
 	 */
 	function openProfile(botId: string, sessionId?: string): void {
 		if (!botsById.has(botId)) return;
-		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
+		if (danger.dangerConfirm?.source !== 'menu') danger.clearDanger('bot');
 		profileFailed = false;
 		// The pane is keyed on the Bot, so opening or switching remounts it with a fresh draft.
 		if (sessionId && runtime.paneOpener) {
@@ -1450,13 +948,15 @@
 
 	/** A pane header's settings button: slide the conversation's settings over it, or close them. */
 	function togglePaneSettings(sessionId: string): void {
-		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
+		if (danger.dangerConfirm?.source !== 'menu') danger.clearDanger('bot');
 		profileFailed = false;
-		commitLayout(toggleChatSide(layout, sessionId, { kind: 'settings', botId: null }, { id: freshPaneId }));
+		workbench.commitLayout(
+			toggleChatSide(workbench.layout, sessionId, { kind: 'settings', botId: null }, { id: workbench.freshPaneId })
+		);
 	}
 
 	function closePaneSide(sessionId: string): void {
-		commitLayout(closeChatSide(layout, sessionId));
+		workbench.commitLayout(closeChatSide(workbench.layout, sessionId));
 	}
 
 	/**
@@ -1484,7 +984,7 @@
 				label: t.trace.topAction,
 				icon: traceIcon,
 				run: () =>
-					openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, focus: null, focusNonce: null })
+					workbench.openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, focus: null, focusNonce: null })
 			},
 			{
 				id: 'settings',
@@ -1493,7 +993,7 @@
 				// A Bot opened from a group's member list is not the group's own settings.
 				active: Boolean(content.side && !content.side.botId),
 				run: () => {
-					commitLayout(activateTab(focusLeaf(layout, leafId), leafId, tab.id));
+					workbench.commitLayout(activateTab(focusLeaf(workbench.layout, leafId), leafId, tab.id));
 					togglePaneSettings(session.id);
 				}
 			}
@@ -1516,80 +1016,8 @@
 	function closeNestedProfile(): void {
 		// Unmounting the pane flushes its pending autosave and drops its drafts.
 		runtime.closeProfile();
-		if (dangerConfirm?.source !== 'menu') clearDanger('bot');
+		if (danger.dangerConfirm?.source !== 'menu') danger.clearDanger('bot');
 		profileFailed = false;
-	}
-
-	/**
-	 * Deferred so the click that dismisses does not also reach the backdrop underneath. A timeout,
-	 * not `requestAnimationFrame`: a window in the tray paints nothing, and a dismissal should not
-	 * wait for the window to come back.
-	 */
-	function dismissDangerConfirm(): void {
-		const pending = dangerConfirm;
-		if (pending?.running) return;
-		setTimeout(() => {
-			if (dangerConfirm === pending) dangerConfirm = null;
-		}, 0);
-	}
-
-	function openDeleteBotConfirm(botId?: string, source: DangerSource = 'drawer'): void {
-		const id = botId ?? runtime.profileBotId ?? selectedPeer ?? null;
-		if (!id) return;
-		dangerConfirm = { kind: 'bot', run: () => deleteProfile(id), botId: id, source };
-	}
-
-	function openDeleteGroupConfirm(sessionId?: string, source: DangerSource = 'drawer'): void {
-		const id = sessionId ?? selected?.id ?? null;
-		if (!id) return;
-		dangerConfirm = { kind: 'group', run: () => deleteGroupSession(id), sessionId: id, source };
-	}
-
-	function openClearHistoryConfirm(sessionId?: string, source: DangerSource = 'drawer'): void {
-		const id = sessionId ?? selected?.id ?? null;
-		if (!id) return;
-		dangerConfirm = { kind: 'history', run: () => clearGroupHistory(id), sessionId: id, source };
-	}
-
-	async function deleteProfile(botId: string): Promise<void> {
-		const pending = dangerConfirm;
-		profileFailed = false;
-		const error = await runtime.deleteBot(botId);
-		if (dangerConfirm !== pending) return;
-		if (error) {
-			profileFailed = true;
-			return;
-		}
-		dangerConfirm = null;
-		if (runtime.profileBotId === botId || selectedPeer === botId) {
-			if (selectedKind === 'you-bot') runtime.closeSessionSettings();
-			else closeNestedProfile();
-		}
-	}
-
-	async function deleteGroupSession(sessionId: string): Promise<void> {
-		const pending = dangerConfirm;
-		if (groupDetail.sessionId === sessionId) groupDetail.failed = false;
-		const error = await runtime.deleteSession(sessionId);
-		if (dangerConfirm !== pending) return;
-		if (error) {
-			if (groupDetail.sessionId === sessionId) groupDetail.failed = true;
-			return;
-		}
-		dangerConfirm = null;
-		if (runtime.selectedId === sessionId) runtime.closeSessionSettings();
-	}
-
-	async function clearGroupHistory(sessionId: string): Promise<void> {
-		const pending = dangerConfirm;
-		if (groupDetail.sessionId === sessionId) groupDetail.failed = false;
-		const error = await runtime.clearSessionHistory(sessionId);
-		if (dangerConfirm !== pending) return;
-		if (error) {
-			if (groupDetail.sessionId === sessionId) groupDetail.failed = true;
-			return;
-		}
-		dangerConfirm = null;
 	}
 
 	function openCreateBot(): void {
@@ -1632,7 +1060,7 @@
 		// The terminal is a full screen here, and the bar would sit on top of its key row.
 		!runtime.terminalOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
-		!runtime.profileBotId && !dangerConfirm &&
+		!runtime.profileBotId && !danger.dangerConfirm &&
 		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
 	);
 
@@ -1665,8 +1093,8 @@
 				toolsMenuOpen = false;
 			} else if (createMenuOpen) {
 				createMenuOpen = false;
-			} else if (escapeDismissesDanger) {
-				dismissDangerConfirm();
+			} else if (danger.escapeDismissesDanger) {
+				danger.dismissDangerConfirm();
 			} else if (runtime.createBotOpen) {
 				runtime.createBotOpen = false;
 			} else if (runtime.createGroupOpen) {
@@ -1674,7 +1102,7 @@
 			} else if (providerEditor) {
 				e.stopPropagation();
 				settingsModal?.backFromProviderEditor();
-			} else if (confirmingIndependent) {
+			} else if (danger.confirmingIndependent) {
 				e.stopPropagation();
 
 			} else if (runtime.settingsOpen) {
@@ -1733,7 +1161,7 @@
 			const command = matchWorkbenchKey(e);
 			if (command) {
 				e.preventDefault();
-				runWorkbenchCommand(command);
+				workbench.runWorkbenchCommand(command);
 			}
 		}
 	}}
@@ -1769,64 +1197,6 @@
 {/snippet}
 
 <!--
-	The head of a conversation's settings, in the narrow drawer and beside a workbench pane alike.
-	`nested` is a Bot opened from a group's settings. On a phone that page's way out is the
-	conversation; a wider window still steps back to the group's settings.
-	On a phone the page fills the screen, so the head says whose settings these are: the Bot, or
-	for a Bot↔Bot direct both of them. A group's head already does, with its editable name.
--->
-{#snippet settingsHead(group: boolean, nested: boolean, onBack: () => void, onClose: () => void, groupSession: SessionSummary | null = null, subjectBot: Bot | null = null, subjectSession: SessionSummary | null = null)}
-	<div class="sheet-head">
-		{#if nested}
-			<button
-				type="button"
-				class="sheet-back"
-				aria-label={narrow ? t.common.back : (group ? t.detail.backToGroup : t.detail.backToBot)}
-				onclick={onBack}
-			>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
-				<span class="sheet-back-label">{group ? t.detail.backToGroup : t.detail.backToBot}</span>
-			</button>
-			{#if narrow && subjectBot}
-				<SettingsSubject variant="head" bot={subjectBot} {t} caption={t.detail.titleBot} />
-			{/if}
-		{:else if group && groupSession}
-			<GroupIdentity {runtime} session={groupSession} bind:detail={groupDetail} {t} />
-		{:else if narrow && (subjectBot || subjectSession)}
-			<SettingsSubject
-				variant="head"
-				bot={subjectBot}
-				session={subjectBot ? null : subjectSession}
-				bots={botsById}
-				{t}
-				caption={t.detail.titleBot}
-			/>
-		{:else}
-			<div class="panel-header-title-wrap flex items-center gap-5">
-				<div class="panel-header-icon" aria-hidden="true">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="3"></circle>
-						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-					</svg>
-				</div>
-				<h2>{t.detail.titleBot}</h2>
-			</div>
-		{/if}
-		<button
-			type="button"
-			class="sheet-close"
-			title={t.common.close}
-			onclick={onClose}
-		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-				<line x1="18" y1="6" x2="6" y2="18"></line>
-				<line x1="6" y1="6" x2="18" y2="18"></line>
-			</svg>
-		</button>
-	</div>
-{/snippet}
-
-<!--
 	A conversation's settings, sliding over its transcript on the workbench. Drawn here rather than
 	in the pane host because they run on state this file holds one copy of — the unsaved draft,
 	which danger confirm is armed — which is also why only one conversation has them open at a time.
@@ -1840,13 +1210,18 @@
 	{@const shownBotId = botId ?? (paneKind === 'you-bot' && paneSession ? youBotPeer(paneSession) : null)}
 	{@const paneBot = shownBotId ? botsById.get(shownBotId) : undefined}
 	<div class="sheet session-settings is-beside" class:is-mobile-detail={paneMobileDetail}>
-		{@render settingsHead(
-			paneKind === 'group' && !paneBot,
-			false,
-			() => {},
-			() => closePaneSide(sessionId),
-			paneKind === 'group' && !paneBot && paneSession ? paneSession : null
-		)}
+		<SettingsHead
+			group={paneKind === 'group' && !paneBot}
+			nested={false}
+			onBack={() => {}}
+			onClose={() => closePaneSide(sessionId)}
+			groupSession={paneKind === 'group' && !paneBot && paneSession ? paneSession : null}
+			{t}
+			{narrow}
+			{runtime}
+			{botsById}
+			bind:detail={groupDetail}
+		/>
 		{#if paneBot}
 			{#key paneBot.id}
 				<ProfilePane
@@ -1858,10 +1233,10 @@
 					selectedKind={paneKind}
 					bind:profileFailed
 					bind:mobileDetail={paneMobileDetail}
-					openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
-					{clearDanger}
-					onDeleteBot={() => openDeleteBotConfirm(paneBot.id)}
-					onClearHistory={() => openClearHistoryConfirm(sessionId)}
+					openDangerConfirm={(kind, run) => (danger.dangerConfirm = { kind, run, source: 'drawer' })}
+					clearDanger={(kind) => danger.clearDanger(kind)}
+					onDeleteBot={() => danger.openDeleteBotConfirm(paneBot.id)}
+					onClearHistory={() => danger.openClearHistoryConfirm(sessionId)}
 				/>
 			{/key}
 		{:else if paneSession}
@@ -1872,8 +1247,8 @@
 				bind:detail={groupDetail}
 				bind:mobileDetail={paneMobileDetail}
 				onOpenProfile={(id) => openProfile(id, sessionId)}
-				onDeleteGroup={() => openDeleteGroupConfirm(sessionId)}
-				onClearHistory={() => openClearHistoryConfirm(sessionId)}
+				onDeleteGroup={() => danger.openDeleteGroupConfirm(sessionId)}
+				onClearHistory={() => danger.openClearHistoryConfirm(sessionId)}
 			/>
 		{:else}
 			<p class="pane-settings-gone">{t.top.deleted}</p>
@@ -1919,7 +1294,7 @@
 			onToggleWorkspace={toggleWorkspaceExplorer}
 			onOpenRoutines={openRoutinesFromUi}
 			onOpenSpend={openSpendFromUi}
-			onNewTerminal={() => void openNewTerminal(null)}
+			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenArchived={openArchivedFromRail}
 			onOpenSettings={() => runtime.openSettings()}
 		/>
@@ -1940,7 +1315,7 @@
 			onToggleWorkspace={toggleWorkspaceExplorer}
 			onOpenRoutines={openRoutinesFromUi}
 			onOpenSpend={openSpendFromUi}
-			onNewTerminal={() => void openNewTerminal(null)}
+			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenSettings={() => runtime.openSettings()}
 			onCreateBot={openCreateBot}
 			onCreateGroup={openCreateGroup}
@@ -1956,17 +1331,17 @@
 	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
 		{#if wide}
 			<Workbench
-				{layout}
+				layout={workbench.layout}
 				mins={paneMin}
 				{t}
 				wide={true}
-				tabName={paneTitle}
+				tabName={workbench.paneTitle}
 				tabActions={chatTabActions}
-				onLayout={commitLayout}
-				onActivate={(leafId, tabId) => commitLayout(activateTab(layout, leafId, tabId))}
-				onCloseTab={onPaneCloseTab}
-				onCloseTabs={onPaneCloseTabs}
-				onClosePane={onPaneClose}
+				onLayout={workbench.commitLayout}
+				onActivate={(leafId, tabId) => workbench.commitLayout(activateTab(workbench.layout, leafId, tabId))}
+				onCloseTab={workbench.onPaneCloseTab}
+				onCloseTabs={workbench.onPaneCloseTabs}
+				onClosePane={workbench.onPaneClose}
 			>
 				{#snippet tabBody(tab: WorkbenchTab, leafId: string)}
 					<PaneContentHost
@@ -1976,11 +1351,11 @@
 						{t}
 						onOpenProfile={openProfile}
 						onOpenArtifact={openArtifactPath}
-						onRemoveTab={onPaneCloseTab}
-						onBindTerminal={bindTerminalTab}
+						onRemoveTab={workbench.onPaneCloseTab}
+						onBindTerminal={workbench.bindTerminalTab}
 						onUpdateContent={(content) =>
-							commitLayout(replaceTabParams(layout, leafId, tab.id, contentToParams(content)))}
-						onPreviewPane={trackPreviewPane}
+							workbench.commitLayout(replaceTabParams(workbench.layout, leafId, tab.id, contentToParams(content)))}
+						onPreviewPane={workbench.trackPreviewPane}
 						onJump={jumpToTrace}
 						onCloseSide={closePaneSide}
 						settingsSide={paneSettings}
@@ -1990,51 +1365,51 @@
 					{@const tabContent = contentOfTab(tab)}
 					{@const tabSession = tabContent?.kind === 'chat' ? sessionsById.get(tabContent.sessionId) : undefined}
 					{#if tabSession}
-						<ChatTabLabel {runtime} {t} session={tabSession} title={paneTitle(tab)} />
+						<ChatTabLabel {runtime} {t} session={tabSession} title={workbench.paneTitle(tab)} />
 					{:else}
-						<PaneTabLabel kind={tabContent?.kind ?? null} title={paneTitle(tab)} />
+						<PaneTabLabel kind={tabContent?.kind ?? null} title={workbench.paneTitle(tab)} />
 					{/if}
 				{/snippet}
 				{#snippet emptyActions(leafId: string)}
-					<button type="button" class="pane-open" onclick={() => void openNewTerminal(leafId)}>
+					<button type="button" class="pane-open" onclick={() => void workbench.openNewTerminal(leafId)}>
 						{t.terminal.newTab}
 					</button>
-					{#each untabbedTerminals as row (row.id)}
+					{#each workbench.untabbedTerminals as row (row.id)}
 						<button
 							type="button"
 							class="pane-open is-reattach"
 							title={row.cwd}
-							onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
+							onclick={() => workbench.openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
 						>
-							{t.terminal.reattach(terminalName(row))}
+							{t.terminal.reattach(workbench.terminalName(row))}
 						</button>
 					{/each}
 					<button
 						type="button"
 						class="pane-open"
 						disabled={!snapshot.settings.workspace_path}
-						onclick={() => openInPane(leafId, { kind: 'workspace', selected: null })}
+						onclick={() => workbench.openInPane(leafId, { kind: 'workspace', selected: null })}
 					>
 						{t.sidebar.workspace}
 					</button>
-					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'routines' })}>
+					<button type="button" class="pane-open" onclick={() => workbench.openInPane(leafId, { kind: 'routines' })}>
 						{t.routines.title}
 					</button>
-					<button type="button" class="pane-open" onclick={() => openInPane(leafId, { kind: 'spend' })}>
+					<button type="button" class="pane-open" onclick={() => workbench.openInPane(leafId, { kind: 'spend' })}>
 						{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}
 					</button>
 				{/snippet}
 				{#snippet menuActions(leafId: string, query: string)}
 					{@const needle = query.trim().toLowerCase()}
 					{@const listed = needle
-						? untabbedTerminals.filter((row) =>
-								`${terminalName(row)} ${row.cwd}`.toLowerCase().includes(needle))
-						: untabbedTerminals}
+						? workbench.untabbedTerminals.filter((row) =>
+								`${workbench.terminalName(row)} ${row.cwd}`.toLowerCase().includes(needle))
+						: workbench.untabbedTerminals}
 					<button
 						type="button"
 						class="wb-menu-row"
 						role="menuitem"
-						onclick={() => void openNewTerminal(leafId)}
+						onclick={() => void workbench.openNewTerminal(leafId)}
 					>
 						<span class="wb-menu-mark" aria-hidden="true">
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2049,7 +1424,7 @@
 						class="wb-menu-row"
 						role="menuitem"
 						disabled={!snapshot.settings.workspace_path}
-						onclick={() => openInPane(leafId, { kind: 'workspace', selected: null })}
+						onclick={() => workbench.openInPane(leafId, { kind: 'workspace', selected: null })}
 					>
 						<span class="wb-menu-mark is-quiet" aria-hidden="true">
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2064,7 +1439,7 @@
 						type="button"
 						class="wb-menu-row"
 						role="menuitem"
-						onclick={() => openInPane(leafId, { kind: 'routines' })}
+						onclick={() => workbench.openInPane(leafId, { kind: 'routines' })}
 					>
 						<span class="wb-menu-mark is-quiet" aria-hidden="true">
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2080,7 +1455,7 @@
 						type="button"
 						class="wb-menu-row"
 						role="menuitem"
-						onclick={() => openInPane(leafId, { kind: 'spend' })}
+						onclick={() => workbench.openInPane(leafId, { kind: 'spend' })}
 					>
 						<span class="wb-menu-mark is-quiet" aria-hidden="true">
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2097,7 +1472,7 @@
 							class="wb-menu-row"
 							role="menuitem"
 							title={row.cwd}
-							onclick={() => openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
+							onclick={() => workbench.openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
 						>
 							<span class="wb-menu-mark is-quiet" aria-hidden="true">
 								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2106,7 +1481,7 @@
 								</svg>
 							</span>
 							<span class="wb-menu-copy">
-								<span class="wb-menu-name">{terminalName(row)}</span>
+								<span class="wb-menu-name">{workbench.terminalName(row)}</span>
 								<span class="wb-menu-meta">{row.cwd}</span>
 							</span>
 						</button>
@@ -2302,12 +1677,12 @@
 			tabindex="-1"
 			onmousedowncapture={profileBackdrop.press}
 			onclick={(e) => {
-				if (drawerHasDanger) return;
+				if (danger.drawerHasDanger) return;
 				if (profileBackdrop.isOutside(e)) runtime.closeSessionSettings();
 			}}
 			onkeydown={(e) => {
 				if (e.key === 'Escape') {
-					if (drawerHasDanger) dismissDangerConfirm();
+					if (danger.drawerHasDanger) danger.dismissDangerConfirm();
 					else if (nestedProfile && narrow) runtime.closeSessionSettings();
 					else if (nestedProfile) closeNestedProfile();
 					else if (profilePane?.backFromEditor()) e.stopPropagation();
@@ -2316,15 +1691,20 @@
 			}}
 		>
 			<div class="sheet is-right session-settings" class:is-mobile-detail={paneMobileDetail}>
-				{@render settingsHead(
-					selectedKind === 'group',
-					nestedProfile,
-					() => (narrow ? runtime.closeSessionSettings() : closeNestedProfile()),
-					closeCurrentDrawerScreen,
-					selectedKind === 'group' && !nestedProfile && selected ? selected : null,
-					profileBot,
-					selected
-				)}
+				<SettingsHead
+					group={selectedKind === 'group'}
+					nested={nestedProfile}
+					onBack={() => (narrow ? runtime.closeSessionSettings() : closeNestedProfile())}
+					onClose={closeCurrentDrawerScreen}
+					groupSession={selectedKind === 'group' && !nestedProfile && selected ? selected : null}
+					subjectBot={profileBot}
+					subjectSession={selected}
+					{t}
+					{narrow}
+					{runtime}
+					{botsById}
+					bind:detail={groupDetail}
+				/>
 
 				{#if profileBot}
 					{#key profileBot.id}
@@ -2337,10 +1717,10 @@
 							{selectedKind}
 							bind:profileFailed
 							bind:mobileDetail={paneMobileDetail}
-							openDangerConfirm={(kind, run) => (dangerConfirm = { kind, run, source: 'drawer' })}
-							{clearDanger}
-							onDeleteBot={() => openDeleteBotConfirm()}
-							onClearHistory={() => openClearHistoryConfirm()}
+							openDangerConfirm={(kind, run) => (danger.dangerConfirm = { kind, run, source: 'drawer' })}
+							clearDanger={(kind) => danger.clearDanger(kind)}
+							onDeleteBot={() => danger.openDeleteBotConfirm()}
+							onClearHistory={() => danger.openClearHistoryConfirm()}
 						/>
 					{/key}
 				{:else}
@@ -2351,8 +1731,8 @@
 						bind:detail={groupDetail}
 						bind:mobileDetail={paneMobileDetail}
 						onOpenProfile={openProfile}
-						onDeleteGroup={() => openDeleteGroupConfirm()}
-						onClearHistory={() => openClearHistoryConfirm()}
+						onDeleteGroup={() => danger.openDeleteGroupConfirm()}
+						onClearHistory={() => danger.openClearHistoryConfirm()}
 					/>
 				{/if}
 			</div>
@@ -2362,9 +1742,9 @@
 		<DangerDialog
 			copy={dangerConfirmCopy}
 			{t}
-			onDismiss={dismissDangerConfirm}
-			busy={Boolean(dangerConfirm?.running)}
-			onConfirm={() => void confirmDanger()}
+			onDismiss={() => danger.dismissDangerConfirm()}
+			busy={Boolean(danger.dangerConfirm?.running)}
+			onConfirm={() => void danger.confirmDanger()}
 		/>
 	{/if}
 	{#if mobileNavigationVisible}
@@ -2379,10 +1759,10 @@
 				{t}
 				bind:saveFailed
 				bind:providerEditor
-				confirmingProvider={dangerConfirm?.kind === 'provider'}
-				bind:confirmingIndependent
+				confirmingProvider={danger.dangerConfirm?.kind === 'provider'}
+				bind:confirmingIndependent={danger.confirmingIndependent}
 				{patchImmediate}
-				{openDeleteProviderConfirm}
+				openDeleteProviderConfirm={(id) => danger.openDeleteProviderConfirm(id)}
 				{closeSettings}
 			/>
 		{/await}
@@ -2661,51 +2041,14 @@
 		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.sheet-back {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		flex: 1;
-		min-width: 0;
-		justify-content: flex-start;
-		border: 0;
-		background: transparent;
-		padding: 4px 6px;
-		border-radius: var(--radius-sm);
-		color: var(--accent);
-		font-size: 13px;
-		font-weight: 600;
-		box-shadow: none;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.sheet-back:hover {
-		color: var(--accent-hover);
-		background: var(--accent-tint);
-	}
-
 	/*
 	 * A phone already has a back chevron on every other settings page. The words ("返回群组设置")
 	 * stay for a wider window, where this control is a labelled link, and for the button's name.
+	 * The rest of `.sheet-back`'s own styling lives with its markup, in `panels/SettingsHead.svelte`.
 	 */
 	@media (max-width: 680px) {
-		.sheet-back {
-			flex: 0 0 44px;
-			width: 44px;
-			height: 44px;
-			justify-content: center;
-			gap: 0;
-			padding: 0;
-			border-radius: var(--radius-md);
-		}
-
-		.sheet-back-label {
-			display: none;
-		}
-
 		/* The same inset and gap as a section's own head, so what follows Back lines up with its title. */
-		.sheet.session-settings:has(.sheet-back) :global(.sheet-head) {
+		.sheet.session-settings:has(:global(.sheet-back)) :global(.sheet-head) {
 			padding-left: 4px;
 			gap: 4px;
 		}
@@ -2731,18 +2074,6 @@
 		background: var(--pane);
 		min-height: 56px;
 		box-sizing: border-box;
-	}
-
-	.panel-header-icon {
-		width: 28px;
-		height: 28px;
-		border-radius: var(--radius-sm);
-		background: var(--accent-tint);
-		color: var(--accent);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid var(--accent-border);
 	}
 
 	.sheet.session-settings :global(.sheet-head) :global(h2) {
