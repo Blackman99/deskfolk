@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { USER_MEMBER, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { annotationContext } from "./annotation-context";
@@ -459,12 +460,21 @@ function situationUserMessage(
         ? `This turn's work dir: ${workDir}/`
         : `本轮工作目录：${workDir}/`
     : null;
+  // The prompt speaks in workspace-relative paths, so a Bot that has to name a host path (a file the
+  // user points at outside the workspace, a cwd) used to guess the root and `~` — often `/Users/me`.
+  const root = workDir ? store.workspacePath() : null;
+  const rootLine = root
+    ? locale === "en"
+      ? `The workspace root on this machine is ${root}/ and ~ is ${homedir()}; write host paths from these, never guess.`
+      : `工作区根在这台机器上是 ${root}/，~ 是 ${homedir()}；要写宿主路径就照这两个写，不要猜。`
+    : null;
+  const dirLines = [rootLine, workDirLine].filter((line): line is string => !!line);
   const facts = taskId
     ? planFacts(store, { taskId, ticketId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
     : null;
   const job = facts ? planLines(facts, locale) : [];
   if (sessionKind !== "group") {
-    const lines = [...job, ...(workDirLine ? [workDirLine] : [])];
+    const lines = [...job, ...dirLines];
     return lines.length > 0 ? { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` } : null;
   }
   let trigger: Message;
@@ -508,7 +518,7 @@ function situationUserMessage(
         ? `用户最近一条：${group.latest_user}`
         : "用户最近一条：（无）";
   const lines = [membersLine, seatLine, wakerLine, latestLine, ...job];
-  if (workDirLine) lines.push(workDirLine);
+  lines.push(...dirLines);
   return { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` };
 }
 

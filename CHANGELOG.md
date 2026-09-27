@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Bots know where the workspace is on this machine, and where `~` points. The instructions only speak in workspace-relative paths, so a Bot that had to name a host path guessed, often `/Users/me`: reading a file the user named on the Desktop failed once before it ran `echo $HOME` to find it. Each turn's situation now carries a line before the work dir giving the workspace root and `~` as they are.
+
 - The name, endpoint and key fields on the second step of the first-run wizard look like every other form field (border, rounded corners, the accent ring when focused) instead of bare browser boxes, and the wizard shows the Deskfolk mark at the top.
 
 - On a phone, the flow page is one step in history. Opening it used to leave two entries (the page, then the job it settled on), and every job picked from its title and every file opened from a card added another, so Back walked through all of them, often with nothing visibly changing, before it reached the conversation. Now nothing done on the page adds an entry: Back first puts away a file opened from a card, and otherwise goes straight back to the conversation. Tapping a card also closes the page and shows that message in the conversation; before, it scrolled the conversation hidden underneath the page and nothing seemed to happen.

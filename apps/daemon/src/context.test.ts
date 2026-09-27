@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
@@ -463,6 +463,35 @@ describe("assembleTurnMessages", () => {
     expect(situation).toContain("本轮由");
     expect(situation.trimEnd().endsWith(`本轮工作目录：${store.getTask(turn.task_id!).dir}/`)).toBe(true);
     store.close();
+  });
+
+  test("with a workspace set, the situation names its root and ~ before the work dir", async () => {
+    const root = mkdtempSync(join(tmpdir(), "rb-situation-root-"));
+    const store = new Store();
+    await store.patchSettings({ workspace_path: root });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const group = store.createGroup({ name: "Brief", members: [writer.bot.id, reviewer.bot.id] });
+    const trigger = store.insertMessage({ sessionId: group.id, kind: "user", author: USER_MEMBER, body: "把桌面上的 logo 用进海报" });
+    const turn = store.createTurn({ sessionId: group.id, botId: writer.bot.id, triggerMessageId: trigger.id });
+    const messages = assembleTurnMessages(store, {
+      sessionId: group.id,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale: "zh",
+      interrupt: false,
+      loop: [],
+    });
+    const situation = String(
+      messages.find((m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING))?.content,
+    );
+    const rootLine = `工作区根在这台机器上是 ${store.workspacePath()}/，~ 是 ${homedir()}；要写宿主路径就照这两个写，不要猜。`;
+    expect(situation).toContain(rootLine);
+    expect(situation.indexOf(rootLine)).toBeLessThan(situation.indexOf("本轮工作目录："));
+    expect(situation.trimEnd().endsWith(`本轮工作目录：${store.getTask(turn.task_id!).dir}/`)).toBe(true);
+    store.close();
+    rmSync(root, { recursive: true, force: true });
   });
 
   test("a direct session's situation block is the work dir and nothing else", () => {
