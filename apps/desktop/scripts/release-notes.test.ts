@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   changelogSection,
   configuredVersion,
+  escapeMentions,
   langMarker,
   RELEASE_BODY_LIMIT,
   releaseBody,
@@ -117,6 +118,43 @@ test("a body over GitHub's limit drops the oldest entries of the longer language
   expect(body).toContain("- 新的一条。");
   expect(body).not.toContain("另有");
   expect(body).toContain("Unsigned macOS snapshot");
+});
+
+/**
+ * GitHub reads a bare `@name` in a release body as a mention: rc.9 quoted a Bot's
+ * "the API is ready, @frontend" and listed the GitHub account "frontend" as its contributor.
+ */
+test("a bare @name goes into a code span so GitHub does not mention anyone", () => {
+  expect(escapeMentions('the backend\'s "the API is ready, @frontend" ended its turn')).toBe(
+    'the backend\'s "the API is ready, `@frontend`" ended its turn',
+  );
+  expect(escapeMentions("ask @frontend.")).toBe("ask `@frontend`.");
+  expect(escapeMentions("(@xx did not match)")).toBe("(`@xx` did not match)");
+  expect(escapeMentions("「@37.79s」")).toBe("「`@37.79s`」");
+  expect(escapeMentions("pnpm --filter @real-bot/daemon")).toBe("pnpm --filter `@real-bot/daemon`");
+});
+
+test("an @ that is already code, an address, or not a name stays as it is", () => {
+  for (const text of [
+    "type `@everyone` to reach the group",
+    "``@Writer`` and `pnpm --filter @real-bot/daemon`",
+    "```\n@frontend\n```",
+    "  ```sh\n  @frontend\n  ```",
+    "mail dev@example.com",
+    "https://example.com/@frontend",
+    "another Bot @-mentions it",
+    "your @ to storyboard",
+  ]) {
+    expect(escapeMentions(text)).toBe(text);
+  }
+});
+
+test("the body carries both languages with their mentions escaped", () => {
+  const en = ENGLISH.replace("- a new one.", '- "the API is ready, @frontend".');
+  const zh = CHANGELOG_ZH.replace("- 新的一条。", "- 插一条「@xx 不在群里」。");
+  const body = releaseBody(en, zh, "0.2.0");
+  expect(body).toContain('"the API is ready, `@frontend`"');
+  expect(body).toContain("「`@xx` 不在群里」");
 });
 
 /**

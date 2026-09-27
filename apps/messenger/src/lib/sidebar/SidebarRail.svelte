@@ -8,11 +8,11 @@
 	import { recentBotDms } from './bot-dm-source.ts';
 	import RailTooltip from './RailTooltip.svelte';
 	import { groupSessions, isFileDropSession, isSessionArchived } from './session-groups.ts';
-	import { botWorkStatus, sidebarStatus, workingSessionIds } from './session-status.ts';
+	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
-	import { loadWorkingOnly, onlyWorking, saveWorkingOnly } from './working-only.ts';
+	import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from './working-only.ts';
 
 	/**
 	 * The session list put away: every conversation it shows, as its avatar alone, in the same
@@ -74,7 +74,7 @@
 
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
 
-	/** The list's "only working" switch, the same stored one, so folding the list keeps its view. */
+	/** The list's "working and unread" switch, the same stored one, so folding the list keeps its view. */
 	let workingOnly = $state(loadWorkingOnly());
 	function toggleWorkingOnly(): void {
 		workingOnly = !workingOnly;
@@ -82,10 +82,10 @@
 	}
 	const workingIds = $derived(
 		workingOnly
-			? workingSessionIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
+			? workingOrUnreadIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
 			: null
 	);
-	const listed = $derived(onlyWorking(grouped, workingIds));
+	const listed = $derived(onlyWorking(grouped, workingIds, runtime.selectedId));
 
 	/** The list's sections, empty ones dropped so no two dividers meet. */
 	const sections = $derived(

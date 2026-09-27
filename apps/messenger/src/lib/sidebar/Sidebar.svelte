@@ -6,8 +6,8 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
-	import { botWorkStatus, sidebarStatus, workingSessionIds } from './session-status.ts';
-	import { loadWorkingOnly, onlyWorking, saveWorkingOnly } from './working-only.ts';
+	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from './working-only.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { latestPreview } from '../chat/transcript.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
@@ -83,8 +83,9 @@
 	const grouped = $derived(groupSessions(snapshot.sessions, pinnedSessionIds, aliveBotIds, botsById));
 
 	/**
-	 * The list shows only what a Bot is working in. The pins above keep every pin. The rail reads
-	 * and writes the same stored switch, and only one of the two is mounted at a time.
+	 * The list shows only what a Bot is working in or you have not read, and the conversation on
+	 * screen. The pins above keep every pin. The rail reads and writes the same stored switch, and
+	 * only one of the two is mounted at a time.
 	 */
 	let workingOnly = $state(loadWorkingOnly());
 	function toggleWorkingOnly(): void {
@@ -94,10 +95,10 @@
 	/** Null while the list is unfiltered. */
 	const workingIds = $derived(
 		workingOnly
-			? workingSessionIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
+			? workingOrUnreadIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
 			: null
 	);
-	const listed = $derived(onlyWorking(grouped, workingIds));
+	const listed = $derived(onlyWorking(grouped, workingIds, runtime.selectedId));
 
 	const fileDrop = $derived(listed.fileDrop);
 	const groupRows = $derived(listed.groups);

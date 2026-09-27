@@ -348,13 +348,16 @@ test("the rail has the list's working filter, keeps the pins, and flips the same
   expect(toggle.getAttribute("aria-label")).toBe(t.sidebar.workingOnly);
   expect(toggle.getAttribute("aria-pressed")).toBe("false");
   expect(toggle.hasAttribute("title")).toBe(false);
+  // A Bot↔Bot direct shows no unread in the list, so its unread must not bring it back here.
+  view.runtime.snapshot.sessions.find((s) => s.id === "botbot-1")!.unread_count = 3;
 
   click(toggle);
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
   expect(toggle.classList.contains("is-active")).toBe(true);
-  // Only the group's turn is live (waiting on approval); the pin stays as it is.
-  expect(railIds(view.host)).toEqual(["direct-pin", "sess-1"]);
-  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(1);
+  // The group's turn is live (waiting on approval) and Writer's direct is unread; the pin stays
+  // as it is.
+  expect(railIds(view.host)).toEqual(["direct-pin", "sess-1", "direct-1"]);
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(2);
   expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBe("1");
   toggle.focus();
   flushSync();

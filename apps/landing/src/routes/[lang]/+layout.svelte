@@ -23,6 +23,7 @@
   const onManifesto = $derived(page.url.pathname.includes('/manifesto'));
   const onRoadmap = $derived(/\/roadmap\/?$/.test(page.url.pathname));
   const onRemote = $derived(/\/remote\/?$/.test(page.url.pathname));
+  const onHome = $derived(page.url.pathname.replace(/\/$/, '') === `${base}/${lang}`);
 
   let menuOpen = $state(false);
 
@@ -37,7 +38,7 @@
   });
 </script>
 
-<div class="site">
+<div class="site" class:home={onHome}>
   <header class="nav">
     <div class="page nav-inner">
       <a class="brand" href="{base}/{lang}">
@@ -123,6 +124,12 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+  }
+
+  /* The walkthrough's stage grows with a wide screen, up to the clips' own 1480px beside the copy;
+     the nav, the other sections and the footer line up with it. */
+  .site.home {
+    --page-max: 2080px;
   }
 
   .nav {

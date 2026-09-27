@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { flushSync, onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { base } from '$app/paths';
   import { docsPath } from '$lib/docs';
   import type { Dict, Lang } from '$lib/i18n';
   import { LATEST_RELEASE_URL } from '$lib/site';
   import CopyButton from '$lib/CopyButton.svelte';
+  import VideoDialog from './VideoDialog.svelte';
   import clips from './clips.json';
 
   let { t, lang, version }: { t: Dict; lang: Lang; version: string } = $props();
@@ -27,6 +28,11 @@
   let shown = $state(0);
   let playing = $state(false);
   let rootEl: HTMLElement | undefined = $state();
+  let film: VideoDialog | undefined = $state();
+  let enlarged: VideoDialog | undefined = $state();
+  let stageWidth = $state(0);
+  let innerWidth = $state(0);
+  let innerHeight = $state(0);
   const videos: (HTMLVideoElement | undefined)[] = $state([]);
   /** Clips given their source: the current step and the next, and any loaded before. */
   const wanted = new SvelteSet<number>();
@@ -36,6 +42,27 @@
   const calloutText = $derived(scene > 0 ? t.demo.steps[scene - 1]?.callout ?? null : null);
   const speed = $derived(shown > 0 ? steps[shown - 1]?.speed ?? 1 : 1);
   const media = (s: string, file: string) => `${base}/media/walkthrough/${s}/${file}`;
+
+  /** The full film is the README's: 1920×1080, the English one recorded dark and the Chinese one light. */
+  const FILM_GROUND: Record<Lang, string> = { zh: '#eef2f6', en: '#0d1219' };
+  /** The step whose clip the stage is showing, for the enlarged view. */
+  const onStage = $derived(shown > 0 && shown === scene ? shown : 0);
+  /** The step the enlarged view holds; set as it opens, so a later theme change cannot swap it. */
+  let enlargedStep = $state(1);
+  /**
+   * Enlarging is offered only where the dialog would show the clip clearly bigger than the stage
+   * (the dialog's frame: the viewport less its gutters and header, at most the clip's own size).
+   */
+  const canEnlarge = $derived.by(() => {
+    if (!stageWidth || !innerWidth) return false;
+    const gutter = Math.min(48, Math.max(16, innerWidth * 0.04));
+    const frame = Math.min(
+      clips.width,
+      innerWidth - 2 * gutter,
+      ((innerHeight - 2 * gutter - 88) * clips.width) / clips.height
+    );
+    return frame >= stageWidth * 1.25;
+  });
 
   function pad(n: number): string {
     return String(n).padStart(2, '0');
@@ -98,6 +125,12 @@
         if (scene === n) shown = n;
       }
     );
+  }
+
+  function enlarge() {
+    // Its source has to be in place before open() plays it, while the click still counts.
+    flushSync(() => (enlargedStep = onStage));
+    enlarged?.open();
   }
 
   function replay() {
@@ -176,7 +209,12 @@
   });
 </script>
 
-<section class="walk" id="demo" bind:this={rootEl}>
+<section
+  class="walk"
+  id="demo"
+  bind:this={rootEl}
+  style:--stage-max="min({clips.width}px, calc((100vh - var(--nav-h) - 132px) * {clips.width} / {clips.height}))"
+>
   <div class="page walk-grid">
     <!-- Hero copy: scene 0 -->
     <div class="hero step" data-scene="0">
@@ -206,16 +244,23 @@
         <code class="mono">{t.hero.runCommand}</code>
         <CopyButton text={t.hero.runCommand} label={t.hero.copy} doneLabel={t.hero.copied} compact />
       </div>
-      <p class="scroll-hint">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        {t.hero.scrollHint}
-      </p>
+      <div class="hints">
+        <p class="scroll-hint">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          {t.hero.scrollHint}
+        </p>
+        <button type="button" class="watch-link" onclick={() => film?.open()}>
+          <span class="watch-dot" aria-hidden="true"><svg viewBox="0 0 16 16" width="8" height="8"><path d="M4 2.2v11.6L13.6 8z" fill="currentColor" /></svg></span>
+          <span class="watch-label">{t.film.watchHint}</span>
+          <span class="watch-time">{t.film.duration}</span>
+        </button>
+      </div>
     </div>
 
     <!-- Sticky stage -->
     <div class="stage-col">
       <div class="sticky">
-        <div class="stage" style:aspect-ratio="{clips.width} / {clips.height}">
+        <div class="stage" style:aspect-ratio="{clips.width} / {clips.height}" bind:clientWidth={stageWidth}>
           <div
             class="still"
             class:shown={shown === 0}
@@ -245,6 +290,21 @@
               ></video>
             {/each}
           {/key}
+          {#if scene === 0 && shown === 0}
+            <button type="button" class="watch" onclick={() => film?.open()}>
+              <span class="watch-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2.2v11.6L13.6 8z" fill="currentColor" /></svg></span>
+              <span>{t.film.watch}</span>
+              <span class="watch-time">{t.film.duration}</span>
+            </button>
+          {/if}
+          {#if onStage && canEnlarge}
+            <button type="button" class="enlarge" aria-label={t.demo.enlarge} onclick={enlarge}>
+              <span class="enlarge-pill" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="12" height="12"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                {t.demo.enlarge}
+              </span>
+            </button>
+          {/if}
           {#if shown > 0 && shown === scene}
             {#if playing}
               {#if speed > 1}
@@ -304,6 +364,32 @@
     </div>
   </div>
 </section>
+
+<svelte:window bind:innerWidth bind:innerHeight />
+
+<VideoDialog
+  bind:this={film}
+  src="{base}/media/deskfolk-{lang}.mp4"
+  width={1920}
+  height={1080}
+  title={t.film.title}
+  badge={t.film.duration}
+  description={t.film.description}
+  closeLabel={t.film.close}
+  ground={FILM_GROUND[lang]}
+/>
+
+<VideoDialog
+  bind:this={enlarged}
+  src={media(set, `${pad(enlargedStep)}.mp4`)}
+  width={clips.width}
+  height={clips.height}
+  title="{pad(enlargedStep)} · {t.demo.steps[enlargedStep - 1]?.title ?? ''}"
+  description={t.demo.steps[enlargedStep - 1]?.callout}
+  closeLabel={t.film.close}
+  ground="var(--app-bg)"
+  loop
+/>
 
 <style>
   .walk {
@@ -381,7 +467,7 @@
     max-width: 38em;
   }
 
-  .scroll-hint {
+  .hints {
     order: 2;
   }
 
@@ -454,13 +540,71 @@
     font-size: 13.5px;
   }
 
+  .hints {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 18px;
+    margin-top: 4px;
+  }
+
   .scroll-hint {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin: 4px 0 0;
+    margin: 0;
     font-size: 13px;
     color: var(--ink-3);
+  }
+
+  .watch-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--teal);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .watch-link:hover {
+    color: var(--teal-2);
+  }
+
+  .watch-label {
+    text-decoration: underline;
+    text-decoration-color: var(--teal-line);
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+  }
+
+  .watch-link:hover .watch-label {
+    text-decoration-color: currentColor;
+  }
+
+  .watch-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--teal);
+    color: var(--paper);
+  }
+
+  .watch-dot svg {
+    margin-left: 1px;
+  }
+
+  .watch-link .watch-time {
+    font-weight: 500;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
   }
 
   .scroll-hint svg {
@@ -537,7 +681,7 @@
     position: absolute;
     right: 10px;
     bottom: 10px;
-    z-index: 2;
+    z-index: 3;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -557,6 +701,98 @@
     border: 0;
     cursor: pointer;
     transition: background-color 160ms ease;
+  }
+
+  /* Over the whole clip, so a click anywhere on it opens it bigger; the pill says so. */
+  .enlarge {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 10px;
+    border: 0;
+    border-radius: inherit;
+    background: none;
+    color: #fff;
+    font: inherit;
+    cursor: zoom-in;
+  }
+
+  .enlarge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 11px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    font-size: 12.5px;
+    font-weight: 600;
+    box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5);
+    transition: background-color 160ms ease;
+  }
+
+  .enlarge:hover .enlarge-pill,
+  .enlarge:focus-visible .enlarge-pill {
+    background: rgba(15, 23, 42, 0.9);
+  }
+
+  /* The full film, over the first screen's still. */
+  .watch {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 2;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 18px 0 6px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.8);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.55);
+    transition: background-color 160ms ease;
+  }
+
+  .watch:hover {
+    background: rgba(15, 23, 42, 0.92);
+  }
+
+  .watch-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #fff;
+    color: #0f172a;
+    transition: transform 160ms ease;
+  }
+
+  .watch-icon svg {
+    margin-left: 2px;
+  }
+
+  .watch:hover .watch-icon {
+    transform: scale(1.06);
+  }
+
+  .watch .watch-time {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.72);
+    font-variant-numeric: tabular-nums;
   }
 
   .replay:hover {
@@ -752,10 +988,13 @@
       padding-bottom: 0;
     }
 
+    /* As wide as the column, but never so tall that the rail drops below the fold. */
     .sticky {
       position: sticky;
       top: var(--nav-h);
+      width: min(100%, var(--stage-max));
       height: calc(100vh - var(--nav-h));
+      margin-inline: auto;
       justify-content: center;
       gap: 14px;
     }
@@ -775,6 +1014,14 @@
     }
   }
 
+  /* Wide screens: the copy keeps a reading width and the stage takes the rest (the homepage's
+     page is wider than the docs' for it, see the [lang] layout). */
+  @media (min-width: 1280px) {
+    .walk-grid {
+      grid-template-columns: clamp(400px, 24vw, 460px) minmax(0, 1fr);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .scroll-hint svg {
       animation: none;
@@ -783,7 +1030,10 @@
     .step,
     .seg,
     .step h3,
-    .replay {
+    .replay,
+    .enlarge-pill,
+    .watch,
+    .watch-icon {
       transition: none;
     }
 

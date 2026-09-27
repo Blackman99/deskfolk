@@ -45,6 +45,25 @@ export function changelogSection(changelog: string, version: string): string {
   return section;
 }
 
+/**
+ * A code span, a fenced block, or an `@name` GitHub would link. Code comes first so an `@` inside
+ * one is matched as part of the code and left alone; a word character or `/` before the `@` (an
+ * address, a URL path) keeps it from being a mention, and so does a non-alphanumeric after it
+ * (`@-mentions`, a lone `@`). The name runs on through `.`, `-` and `/` so `@37.79s` or
+ * `@scope/pkg` is wrapped whole, but not onto a sentence's closing punctuation.
+ */
+const CODE_OR_MENTION =
+  /^[ \t]*```[\s\S]*?^[ \t]*```|(`+).*?\1|(?<![\w`/])@[A-Za-z0-9](?:[\w./-]*\w)?/gm;
+
+/**
+ * Changelog prose that quotes a chat line — `"the API is ready, @frontend"` — reads to GitHub as
+ * a mention: the account by that name is notified and listed as the release's contributor. Inside
+ * a code span it is just text, on the release page and in the About card alike.
+ */
+export function escapeMentions(markdown: string): string {
+  return markdown.replace(CODE_OR_MENTION, (match) => (match.startsWith("@") ? `\`${match}\`` : match));
+}
+
 /** Locale tag for a body section. `common` is the part every locale gets. */
 export function langMarker(lang: string): string {
   return `<!-- lang:${lang} -->`;
@@ -60,9 +79,9 @@ export function releaseBody(
   changelogZh: string | null,
   version: string,
 ): string {
-  const en = changelogSection(changelogEn, version);
+  const en = escapeMentions(changelogSection(changelogEn, version));
   if (!en) return "";
-  const zh = changelogZh ? changelogSection(changelogZh, version) : "";
+  const zh = changelogZh ? escapeMentions(changelogSection(changelogZh, version)) : "";
   const sections: Section[] = [{ lang: "en", text: en, dropped: 0 }];
   if (zh) sections.push({ lang: "zh", text: zh, dropped: 0 });
   let body = assemble(sections);

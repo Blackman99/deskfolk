@@ -61,6 +61,20 @@ export type Dict = {
     /** What the first screen's still shows, for screen readers. */
     stillLabel: string;
     replay: string;
+    /** Opens the step's clip bigger than the stage. */
+    enlarge: string;
+  };
+  /** The full demo film (static/media/deskfolk-<lang>.mp4), played in a dialog. */
+  film: {
+    /** On the first screen's still. */
+    watch: string;
+    /** Beside the scroll hint. */
+    watchHint: string;
+    /** The film's length, shown beside both entries; change it with the film. */
+    duration: string;
+    title: string;
+    description: string;
+    close: string;
   };
   boundaries: {
     heading: string;
@@ -160,6 +174,7 @@ const zh: Dict = {
     railLabel: '演示进度',
     stillLabel: 'Deskfolk 窗口：左边是群聊「发布」，下面是这件事的流程图，右边是生成的预告片，再往下是终端',
     replay: '从头播放',
+    enlarge: '放大看这一步',
     steps: [
       {
         title: '先选工作区和模型端点',
@@ -229,6 +244,14 @@ const zh: Dict = {
         link: { label: '接入步骤', page: 'remote' }
       }
     ]
+  },
+  film: {
+    watch: '播放完整视频',
+    watchHint: '或者直接看完整视频',
+    duration: '1:49',
+    title: 'Deskfolk 完整演示',
+    description: '从首次配置到一群 Bot 交出一套发布物料，再到它的流程图、你自己的终端和手机。',
+    close: '关闭'
   },
   boundaries: {
     heading: '哪些已经接入，哪些还在建，哪些不做',
@@ -397,6 +420,7 @@ const en: Dict = {
     railLabel: 'Walkthrough progress',
     stillLabel: 'The Deskfolk window: the Launch group on the left with its flow below, the generated teaser on the right with a terminal below',
     replay: 'Play from the start',
+    enlarge: 'Enlarge this step',
     steps: [
       {
         title: 'Set the workspace and a model endpoint',
@@ -466,6 +490,14 @@ const en: Dict = {
         link: { label: 'Set it up', page: 'remote' }
       }
     ]
+  },
+  film: {
+    watch: 'Play the full video',
+    watchHint: 'or watch the full video',
+    duration: '1:43',
+    title: 'Deskfolk, the full demo',
+    description: 'From first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone.',
+    close: 'Close'
   },
   boundaries: {
     heading: 'What is live, what is being built, what we will not do',

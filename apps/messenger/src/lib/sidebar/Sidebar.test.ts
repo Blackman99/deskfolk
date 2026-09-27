@@ -582,6 +582,49 @@ test("a row leaves the filtered list when its turn ends, and the list says when 
   window.localStorage.removeItem(WORKING_ONLY_KEY);
 });
 
+/** Unread counts where the row shows it: a Bot↔Bot direct has no unread dot, so there only work does. */
+test("the filter also lists what you have not read, outside Bot↔Bot directs", () => {
+  const { host, runtime, titles, heads, toggle, close } = openWorking({ turns: [], approvals: [] });
+  click(toggle());
+  expect(titles()).toEqual([]);
+  flushSync(() => {
+    for (const session of runtime.snapshot.sessions) {
+      if ([FILE_DROP_SESSION_ID, "sess-2", "direct-2", "d-03"].includes(session.id)) session.unread_count = 2;
+    }
+  });
+  expect(heads()).toEqual([t.sidebar.fileDrop, t.sidebar.groups, t.sidebar.youBot]);
+  expect(titles()).toEqual([t.sidebar.fileDrop, "文案组", "Researcher"]);
+  expect(host.querySelector(".working-empty-hint")).toBeNull();
+  close();
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+});
+
+/** Opening an unread row reads it; it stays put until you open another. */
+test("the conversation on screen stays in the filtered list once it is read", () => {
+  const { runtime, titles, toggle, close } = openWorking({ turns: [], approvals: [] });
+  const session = (id: string) => runtime.snapshot.sessions.find((s) => s.id === id)!;
+  flushSync(() => {
+    session("sess-2").unread_count = 1;
+  });
+  click(toggle());
+  expect(titles()).toEqual(["文案组"]);
+  flushSync(() => {
+    runtime.selectedId = "sess-2";
+    session("sess-2").unread_count = 0;
+  });
+  expect(titles()).toEqual(["文案组"]);
+  flushSync(() => {
+    runtime.selectedId = "direct-1";
+  });
+  expect(titles()).toEqual(["Writer"]);
+  flushSync(() => {
+    runtime.selectedId = null;
+  });
+  expect(titles()).toEqual([]);
+  close();
+  window.localStorage.removeItem(WORKING_ONLY_KEY);
+});
+
 /** The pins stay as they are, so a working pin is on screen even when no row below is. */
 test("with only a pinned conversation working, the empty list says the work is in the pins", () => {
   const { host, titles, toggle, close } = openWorking(

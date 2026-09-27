@@ -240,6 +240,11 @@
     align-items: start;
   }
 
+  /* The homepage's page is wide for the walkthrough's stage; the copy keeps a reading width. */
+  .qs-copy {
+    max-width: 44em;
+  }
+
   .qs-copy p + p {
     margin-top: 12px;
   }
