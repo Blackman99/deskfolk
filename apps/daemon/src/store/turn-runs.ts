@@ -4,7 +4,7 @@
  * organizer can tell "the tests pass" from a test run that passed. Written as each call finishes,
  * so a turn that is redirected or interrupted keeps its record.
  */
-import { ulid } from "../ids";
+import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { type StoreContext } from "./shared";
 
@@ -44,7 +44,9 @@ export function recordTurnRun(
     .query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM turn_runs WHERE turn_id = ?`)
     .get(input.turnId);
   if ((count?.n ?? 0) >= TURN_RUNS_PER_TURN) return;
-  const at = input.now ?? new Date();
+  // The store's clock, not the wall's: `isoNow` runs a little ahead in a burst, and a run stamped
+  // behind the spec revision it followed would drop out of "since the last version".
+  const at = input.now ?? new Date(isoNow());
   const command = takeCodePoints(input.command.replace(/\s+/g, " ").trim(), TURN_RUN_COMMAND_MAX).text;
   ctx.db.run(
     `INSERT INTO turn_runs (id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, created_at)
