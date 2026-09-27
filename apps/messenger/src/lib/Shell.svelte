@@ -363,7 +363,16 @@
 				// the URL. Answering true here would pop nothing and leave the page open.
 				return false;
 			case 'trace':
-				// The flow is an entry in history; nothing inside it is a page over it.
+				// The flow is one entry in history, and nothing done on it adds another. A file opened
+				// from a card lies over the page without an entry of its own, so Back puts it away here,
+				// the way Escape does, and only the next Back leaves the flow for the conversation.
+				if (artifactPreview) {
+					if (!previewPane?.closeFind()) {
+						if (previewPane) previewPane.requestCloseFromParent();
+						else closeArtifactPreview();
+					}
+					return true;
+				}
 				return false;
 			case 'routines':
 				return false;
@@ -965,6 +974,15 @@
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
 	function jumpToTrace(sessionId: string, messageId: string): void {
 		void runtime.selectSession(sessionId, { messageId });
+	}
+	/**
+	 * The flow page covers the conversation, so a card's message is shown by leaving the page for
+	 * it: back to the conversation it was opened from, or in place of the page when the card lives
+	 * in another one. Either way the jump adds no entry of its own.
+	 */
+	function jumpFromTracePage(sessionId: string, messageId: string): void {
+		runtime.closeTrace();
+		jumpToTrace(sessionId, messageId);
 	}
 	let saveFailed = $state(false);
 	let dismissedOnboarding = $state(false);
@@ -1669,7 +1687,8 @@
 				runtime.closeSessionSettings();
 			} else if (runtime.terminalOpen) {
 				runtime.closeTerminal();
-			} else if (runtime.traceOpen) {
+			} else if (runtime.traceOpen && !artifactPreview) {
+				// A file opened from the flow lies over it, so the preview below closes first.
 				runtime.closeTrace();
 			} else if (runtime.routinesOpen) {
 				runtime.closeRoutines();
@@ -2245,7 +2264,7 @@
 				{t}
 				reloadToken={runtime.traceReload}
 				onClose={() => runtime.closeTrace()}
-				onJump={jumpToTrace}
+				onJump={jumpFromTracePage}
 				onOpenArtifact={openArtifactPath}
 				onTask={(id) => {
 					if (runtime.traceTaskId !== id) runtime.traceTaskId = id;

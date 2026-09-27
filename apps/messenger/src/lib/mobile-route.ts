@@ -11,6 +11,10 @@
  * pushes, so Back retraces where you have been rather than dropping you at the roster. Picking
  * another file inside a preview is not one of those: it is still the same screen, so it rewrites
  * the entry and Back leaves the preview instead of stepping through every file looked at.
+ *
+ * The phone's flow page is one screen too, whatever happens on it — another job picked from its
+ * title, the job it settles on once loaded, a file opened from a card. Each rewrites its entry,
+ * so Back leaves the flow for the conversation it was opened from.
  */
 import type { UrlOverlay, UrlView } from "./session-url.ts";
 
@@ -48,7 +52,13 @@ function fileLayer(layer: string): string | null {
   return FILE_LAYERS.find((prefix) => layer.startsWith(prefix)) ?? null;
 }
 
+/** Both URLs show the same conversation's flow page, so the change happened on that page. */
+function onFlowPage(prev: UrlView, next: UrlView): boolean {
+  return prev.overlay.kind === "trace" && next.overlay.kind === "trace" && prev.selectedId === next.selectedId;
+}
+
 export function routeStep(prev: UrlView, next: UrlView): RouteStep {
+  if (onFlowPage(prev, next)) return "swap";
   const before = routeLayers(prev);
   const after = routeLayers(next);
   if (after.length > before.length) return "deeper";

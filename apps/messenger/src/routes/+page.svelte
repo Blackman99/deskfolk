@@ -40,6 +40,7 @@ beforeNavigate((navigation) => {
 			// rather than walked back to — walking would fight the restore this cancel triggers.
 			// A pane that has to ask first answers later, so the flag waits for it.
 			cancelledBack = true;
+			awaitRestore();
 			navigation.cancel();
 			return;
 		}
@@ -182,6 +183,24 @@ const runtime = new MessengerRuntime();
 	let selfBack = false;
 	/** A Back the chain answered: the entry is still ours to rewrite, not one to walk off. */
 	let cancelledBack = false;
+	/**
+	 * A cancelled Back is undone by a step forward that lands a moment later. Until it does, the
+	 * browser still sits on the entry underneath, so a URL written now — a file the chain just put
+	 * away — would rewrite that entry, the conversation, instead of the one Back was pressed on.
+	 */
+	let restoring = $state(false);
+
+	function awaitRestore(): void {
+		restoring = true;
+		// SvelteKit ignores the popstate of its own restore; it is only a signal here.
+		const landed = () => {
+			restoring = false;
+			removeEventListener('popstate', landed);
+			clearTimeout(timer);
+		};
+		addEventListener('popstate', landed);
+		const timer = setTimeout(landed, 1000);
+	}
 
 	$effect(() => {
 		const search = page.url.search;
@@ -208,6 +227,8 @@ const runtime = new MessengerRuntime();
 			spendOpen: runtime.spendOpen,
 			terminalOpen: runtime.terminalOpen
 		});
+		// Written once the restore of a cancelled Back has landed; see `restoring`.
+		if (restoring) return;
 		untrack(() => {
 			const wanted = { selectedId: id, previewRelpath, previewAttachmentId, overlay };
 			const target = sessionUrl(page.url, wanted, HOSTED_MESSENGER);

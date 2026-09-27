@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
-import type { ClientEvent, SpendDetail, SpendSummary } from '@real-bot/protocol';
+import { USER_MEMBER, type ClientEvent, type SpendDetail, type SpendSummary, type TaskTrace } from '@real-bot/protocol';
 import { MessengerRuntime } from './runtime.svelte.ts';
 import { overlayFromFlags, sessionUrl, viewFromUrl } from './session-url.ts';
 // Monaco's Vite-only stylesheet alias is unrelated to the mounted confirmation surfaces.
@@ -1810,6 +1810,89 @@ test('mounted Shell mobile Spend Back and Escape leave the underlying chat and h
   runtime.openSpend(); runtime.openWorkspace(); flushSync();
   expect(runtime.spendOpen).toBe(false);
   expect(runtime.workspaceOpen).toBe(true);
+});
+
+test('mounted Shell phone flow page: a file opened on it goes at the first Back, and a card leaves the page for its message', async () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null, addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  cleanups.push(() => {
+    setViewport({ width: 1024, height: 768 });
+    window.matchMedia = previousMatchMedia;
+  });
+  const runtime = spendRuntime();
+  const job = {
+    id: 'task-1', dir: 'work/a', title: 'Storyboard', session_id: 'direct-1', closed_at: null,
+    last_activity_at: '2026-09-22T00:00:00.000Z', goal: null, kind: null, status: 'active',
+    ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 },
+  };
+  const trace: TaskTrace = {
+    id: 'task-1', dir: 'work/a', title: 'Storyboard', session_id: 'direct-1', closed_at: null,
+    nodes: [{
+      turn_id: 'user:spend-trigger', session_id: 'direct-1', actor: USER_MEMBER, status: 'completed',
+      woken_by_turn_id: null, woken_elsewhere: null, ticket_id: null,
+      trigger_message_id: 'spend-trigger', focus_message_id: 'spend-trigger', summary: 'Ledger trigger',
+      created_at: '2026-09-22T00:00:00.000Z',
+      artifacts: [{ path: 'work/a/board.md', message_id: 'spend-trigger', attachment_id: 'att-board' }],
+      ask: null, approval: null, passed: 0,
+    }],
+  };
+  // The board reads its job; whatever else is asked of the daemon here never answers.
+  const known: Record<string, unknown> = {
+    kind: 'local',
+    sessionTasks: async () => [job],
+    taskTrace: async () => trace,
+    taskDetail: async () => { throw Object.assign(new Error('not found'), { status: 404 }); },
+  };
+  (runtime as unknown as { api: unknown }).api = new Proxy(known, {
+    get: (target, key) => (typeof key !== 'string' || key === 'then' ? undefined : key in target ? target[key] : () => new Promise(() => {})),
+  });
+  const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+  const back = (app as { backMobileLayer: () => boolean }).backMobileLayer;
+  const until = async (selector: string) => {
+    for (let i = 0; i < 40; i += 1) {
+      await settle();
+      const found = host.querySelector(selector);
+      if (found) return found;
+    }
+    throw new Error(`never saw ${selector}`);
+  };
+
+  runtime.openTrace();
+  // The job it settles on is written into the page's own entry (mobile-route.ts rewrites it).
+  click(await until('.trace-page .trace-file'));
+  await settle();
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1&p=work%2Fa%2Fboard.md&o=trace&k=task-1');
+  await until('.artifact-pane');
+  // The file lies over the page with no entry of its own, so Back puts it away and stays on the flow.
+  expect(back()).toBe(true);
+  flushSync();
+  expect(runtime.previewRelpath).toBeNull();
+  expect(runtime.traceOpen).toBe(true);
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1&o=trace&k=task-1');
+  // The next Back is history's: it leaves the flow for the conversation.
+  expect(back()).toBe(false);
+  // Escape walks the same way. A real key lands on an element, which the preview's branch reads.
+  click(host.querySelector('.trace-page .trace-file'));
+  await until('.artifact-pane');
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); flushSync();
+  expect(runtime.previewRelpath).toBeNull();
+  expect(runtime.traceOpen).toBe(true);
+
+  // The page covers the conversation, so a card shows its message by closing the page.
+  click(host.querySelector('.trace-page .trace-card-main'));
+  flushSync();
+  expect(runtime.traceOpen).toBe(false);
+  expect(runtime.selectedId).toBe('direct-1');
+  expect(runtime.highlightedMessageId).toBe('spend-trigger');
+  expect(navigationUrl(runtime)).toBe('/?s=direct-1');
 });
 
 

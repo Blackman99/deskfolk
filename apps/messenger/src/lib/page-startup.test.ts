@@ -18,6 +18,8 @@ const entries: string[] = ["/"];
 let beforeNavigation: (navigation: { type: string; delta?: number; cancel: () => void }) => void;
 let settingsBackHandled = false;
 let settingsBackCalls = 0;
+/** What the stub Shell's chain closes when it answers a Back. */
+let onBackLayer: (() => void) | null = null;
 let mountRealShell = false;
 mock.module("$app/state", () => ({ page }));
 mock.module("$app/navigation", () => ({
@@ -38,7 +40,7 @@ afterAll(() => {
   mock.module("$lib/Shell.svelte", () => ({ default: RealShell }));
 });
 mock.module("$lib/Shell.svelte", () => ({ default: (...args: Parameters<typeof RealShell>) => mountRealShell ? RealShell(...args) : ({
-  backMobileLayer() { settingsBackCalls++; return settingsBackHandled; },
+  backMobileLayer() { settingsBackCalls++; if (settingsBackHandled) onBackLayer?.(); return settingsBackHandled; },
 }) }));
 const { default: Page } = await import("../routes/+page.svelte");
 
@@ -76,6 +78,7 @@ afterEach(() => {
   entries.push("/");
   settingsBackHandled = false;
   settingsBackCalls = 0;
+  onBackLayer = null;
   mountRealShell = false;
 });
 
@@ -363,6 +366,47 @@ test('a Bot opened from group settings leaves the conversation underneath, so Ba
   } finally {
     window.history.back = previousBack;
   }
+});
+
+test('a Back that puts away a file over the flow page rewrites the flow entry once the browser is back on it', async () => {
+  page.url = new URL('http://localhost/');
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
+    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
+    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect()] });
+    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  close = render(Page, {}).close;
+  const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+  await until(() => runtime.connection === 'connected');
+  await runtime.selectSession('direct-1');
+  await until(() => page.url.searchParams.get('s') === 'direct-1');
+  runtime.openTrace('task-1');
+  await until(() => page.url.searchParams.get('o') === 'trace');
+  // A file opened from a card is part of the flow page, so it takes the flow's entry.
+  runtime.previewRelpath = 'work/a/board.md';
+  await until(() => page.url.searchParams.get('p') === 'work/a/board.md');
+  expect(navigationModes).toEqual(['push', 'push', 'replace']);
+  expect(entries).toEqual(['/', '/?s=direct-1', '/?s=direct-1&p=work%2Fa%2Fboard.md&o=trace&k=task-1']);
+
+  // Back: the chain puts the file away and cancels, and SvelteKit steps forward again to undo it.
+  settingsBackHandled = true;
+  onBackLayer = () => { runtime.previewRelpath = null; };
+  let cancelled = 0;
+  beforeNavigation({ type: 'popstate', delta: -1, cancel: () => { cancelled++; } });
+  expect(cancelled).toBe(1);
+  expect(runtime.previewRelpath).toBeNull();
+  // Until that step lands the browser is on the conversation's entry, so nothing is written yet.
+  for (let i = 0; i < 5; i++) { flushSync(); await new Promise((resolve) => setTimeout(resolve, 1)); }
+  expect(navigations).toHaveLength(3);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await until(() => page.url.searchParams.get('p') === null);
+  expect(navigationModes).toEqual(['push', 'push', 'replace', 'replace']);
+  expect(entries).toEqual(['/', '/?s=direct-1', '/?s=direct-1&o=trace&k=task-1']);
+  expect(runtime.traceOpen).toBe(true);
 });
 
 test('a back step this page asked for is not mistaken for a Back press', async () => {

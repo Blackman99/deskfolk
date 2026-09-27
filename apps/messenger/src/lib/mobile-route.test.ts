@@ -82,6 +82,33 @@ test("picking another file in a preview is not a new screen, so it rewrites the 
   expect(routeStep(preview, { ...preview, selectedId: "s2", previewRelpath: "notes/b.md" })).toBe("lateral");
 });
 
+test("the flow page is one screen: nothing done on it pushes, so Back leaves it for the conversation", () => {
+  const flow: UrlView = { ...session, overlay: { kind: "trace", taskId: null } };
+  const job: UrlView = { ...session, overlay: { kind: "trace", taskId: "task-1" } };
+  const otherJob: UrlView = { ...session, overlay: { kind: "trace", taskId: "task-2" } };
+  // Opening it is a screen.
+  expect(routeStep(session, flow)).toBe("deeper");
+  expect(routeStep(session, job)).toBe("deeper");
+  // The job it settles on once loaded, and another job picked from its title.
+  expect(routeStep(flow, job)).toBe("swap");
+  expect(routeStep(job, otherJob)).toBe("swap");
+  // A file opened from a card, turned to another file, and put away again.
+  const file: UrlView = { ...job, previewRelpath: "work/a/board.pdf" };
+  expect(routeStep(job, file)).toBe("swap");
+  expect(routeStep(file, { ...file, previewRelpath: "work/a/notes.md" })).toBe("swap");
+  expect(routeStep(file, job)).toBe("swap");
+  // The phone reached through the relay names the file by attachment.
+  expect(routeStep(job, { ...job, previewAttachmentId: "att-1" })).toBe("swap");
+  // So each of them rewrites the flow's entry, and the conversation stays right underneath it.
+  const stack = ["", "?s=s1", "?s=s1&o=trace"];
+  expect(planUrlNavigation({ target: "?s=s1&o=trace&k=task-1", stack, step: "swap" })).toBe("replace");
+  expect(stackAfter(stack, "?s=s1&o=trace&k=task-1", true)).toEqual(["", "?s=s1", "?s=s1&o=trace&k=task-1"]);
+  expect(planUrlNavigation({ target: "?s=s1", stack: ["", "?s=s1", "?s=s1&o=trace&k=task-2"], step: routeStep(otherJob, session) })).toBe("back");
+  // Leaving it is not a step on it: closing the page goes back, another conversation is elsewhere.
+  expect(routeStep(job, session)).toBe("shallower");
+  expect(routeStep(job, { ...job, selectedId: "s2" })).toBe("lateral");
+});
+
 test("the stack follows the URL: back pops, a replacement rewrites the top, anything else extends", () => {
   expect(stackAfter(["", "?s=s1"], "?s=s1", false)).toEqual(["", "?s=s1"]);
   expect(stackAfter(["", "?s=s1", "?s=s1&o=session"], "?s=s1", false)).toEqual(["", "?s=s1"]);
