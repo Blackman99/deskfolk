@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.9 — 2026-09-27
+
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
+
 - The setup wizard you see the first time you open the app now ends by creating your first bot. Saving the endpoint on step three used to drop you straight into an empty app, where you had to find the + on the roster row yourself. Now a "Create your first bot" step follows, with a name, duties and boundaries already filled in for a general assistant: create it as is, or change it and its avatar first. It runs on the default model you just chose. Creating it opens your direct with it, with starter suggestions drawn from those duties; "Skip, create one later" goes into the app without one. When the roster already has bots (for instance when you run the wizard again after removing the endpoint), the step is left out and saving goes straight into the app as before. On a phone the step bar keeps only the current step's name so four steps fit, and a wizard taller than the window now scrolls from its top instead of pushing the top of the card out of reach.
 
 - The walkthrough on the website now shows the real app. Each of its eleven steps plays a short clip cut from the same recording as the demo film, from the first-run wizard to carrying on from a phone, and the first screen shows the frame where that recording has the conversation, its flow, the generated teaser and a terminal side by side; the clips follow the site's language and its light or dark theme. The hand-built imitation of the window that the walkthrough, the first mock-up film and the Open Graph image were drawn from is gone, and the steps now tell the recording's story, a launch kit for a pour-over kettle, instead of a research report.
