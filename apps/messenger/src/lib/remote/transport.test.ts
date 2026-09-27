@@ -1,15 +1,27 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { base64url, sha256Hex } from "@real-bot/remote";
 import { RemoteTransport } from "./transport.ts";
 import { deviceKeys, enrollment, fakeHost, type FakeSocket } from "./test-host.ts";
 
 const requestId = "01ARZ3NDEKTSV4RRFFQ69G5FAY";
 
+/**
+ * Every link a test opens is closed after it. A link left open keeps its stall check running, and
+ * 30 s later it ends the link and rejects whatever was still waiting — an unhandled rejection that
+ * bun pins on whichever test in another file is running by then (CI's ProfilePane test).
+ */
+const opened: RemoteTransport[] = [];
+afterEach(() => {
+  for (const transport of opened.splice(0)) transport.close();
+});
+
 function transportFor(socket: FakeSocket, now?: () => number): RemoteTransport {
-  return new RemoteTransport(enrollment, deviceKeys, {
+  const transport = new RemoteTransport(enrollment, deviceKeys, {
     socketFactory: () => socket as unknown as WebSocket,
     ...(now ? { now } : {}),
   });
+  opened.push(transport);
+  return transport;
 }
 
 /**
@@ -115,7 +127,7 @@ function upload(size: number) {
 
 /** A transport on a clock the test owns: an upload's waits move it rather than taking real time. */
 function pacedTransport(relay: ReturnType<typeof fakeHost>, clock: { now: number }, onSleep?: () => void) {
-  return new RemoteTransport(enrollment, deviceKeys, {
+  const transport = new RemoteTransport(enrollment, deviceKeys, {
     socketFactory: () => relay.socket as unknown as WebSocket,
     now: () => clock.now,
     sleep: async (ms) => {
@@ -124,6 +136,8 @@ function pacedTransport(relay: ReturnType<typeof fakeHost>, clock: { now: number
       await Bun.sleep(0);
     },
   });
+  opened.push(transport);
+  return transport;
 }
 
 async function until(check: () => boolean): Promise<void> {
@@ -373,7 +387,7 @@ test("an ordinary request jumps the pictures without stopping one", async () => 
   const transport = transportFor(relay.socket);
   await transport.connect();
   void transport.rpc(picture(bg1), undefined, undefined, { background: true });
-  void transport.rpc(picture(bg2), undefined, undefined, { background: true });
+  const second = transport.rpc(picture(bg2), undefined, undefined, { background: true });
   relay.respond(streamed(bg1, 7, 4));
   const read = transport.rpc({ v: 1, id: note, method: "POST", path: "/v1/sessions/s/read", body: {} });
   expect(relay.cancels).toEqual([]);
@@ -382,6 +396,9 @@ test("an ordinary request jumps the pictures without stopping one", async () => 
   relay.respond({ v: 1, id: note, status: 204, body: null });
   expect((await read).status).toBe(204);
   expect(relay.requests.map((row) => row.id)).toEqual([bg1, note, bg2]);
+  // Answered, so nothing is left waiting on the link when it closes.
+  relay.respond(inline(bg2, "two"));
+  expect(await ((await second).body as Blob).text()).toBe("two");
 });
 
 /** A chat left behind stops asking for its pictures; a preview closed stops its file. */
