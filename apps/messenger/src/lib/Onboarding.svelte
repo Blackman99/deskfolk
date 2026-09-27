@@ -380,14 +380,12 @@
 <div class="onboarding-screen w-[100vw] h-screen bg-bg flex items-center justify-center p-10 overflow-y-auto box-border">
 	<div class="onboarding-card">
 		<div class="onboarding-hero text-center flex flex-col items-center gap-3">
-			<div class="onboarding-icon-box">
-				<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 2a3 3 0 0 0-3 3v1a6 6 0 0 0-6 6v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a6 6 0 0 0-6-6V5a3 3 0 0 0-3-3z"></path>
-					<circle cx="9" cy="13" r="1.5" fill="currentColor"></circle>
-					<circle cx="15" cy="13" r="1.5" fill="currentColor"></circle>
-					<path d="M10 17h4"></path>
-				</svg>
-			</div>
+			<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
+			<svg class="onboarding-logo" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
+				<path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" />
+				<circle cx="25" cy="29" r="10.5" fill="#ffffff" />
+				<circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3" />
+			</svg>
 			<h1 class="onboarding-title">{t.onboarding.welcome}</h1>
 			<p class="onboarding-subtitle m-0 text-13 text-muted max-w-[480px] leading-[1.45]">{t.onboarding.subtitle}</p>
 		</div>
@@ -754,17 +752,37 @@
 		animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.onboarding-icon-box {
-		width: 48px;
-		height: 48px;
-		border-radius: var(--radius-lg);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
-		color: var(--accent);
-		display: flex;
-		align-items: center;
-		justify-content: center;
+	.onboarding-logo {
+		display: block;
 		margin-bottom: 2px;
+	}
+
+	/*
+	 * The provider fields sit in neither a `.modal-body` nor a `.sheet`, where the shared input
+	 * styles live, so they rendered as bare browser inputs. Same look as those.
+	 */
+	#onboarding-provider-name,
+	#onboarding-endpoint,
+	#onboarding-endpoint-key {
+		width: 100%;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		padding: 8px 12px;
+		background: var(--input-bg);
+		color: var(--ink);
+		font-size: 13.5px;
+		box-shadow: var(--shadow-xs);
+		outline: none;
+		transition:
+			border-color 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+
+	#onboarding-provider-name:focus,
+	#onboarding-endpoint:focus,
+	#onboarding-endpoint-key:focus {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
 	.onboarding-title {
