@@ -1,5 +1,7 @@
 # Native remote credentials (security prototype)
 
+> **The shipped app does not use this path.** Since [ADR 0033](adr/0033-remote-credentials-in-a-file.md), the compiled daemon keeps remote credentials in `dev-remote/credentials.json` (0600) and the window confirms each action with LocalAuthentication itself. What follows is the sealed provider that would replace it once a qualified sealed runtime exists; none of it is active in any build today.
+
 Remote control and standalone runtime remain **disabled**. This is the native interface for downstream pairing/runtime integration, not a passed release gate. G-pack is **not run / blocked**: this repository does not yet build a qualified sealed daemon. That is an implementation prerequisite, not merely missing stable signing/provisioning credentials or a clean isolated Mac. The independent-runtime settings switch is present and fail-closed (`g_pack_not_verified` / `dev_does_not_install_agent`); tests use a fake `launchctl` and never bootstrap the user's Aqua domain. No production Keychain item, personal database or login job is used by automated tests.
 
 ## Supported macOS architecture

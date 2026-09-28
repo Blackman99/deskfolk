@@ -5,7 +5,8 @@ import type { MessengerApi } from "../messenger-api.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import type { DraftReconnect, HostPairing, HostUnreachable } from "../runtime.svelte.ts";
 import { RemoteApi, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./api.ts";
-import { confirmPairing, listHostDevices, openPairing, readPairing, removeHostDevice, type HostDevice } from "./pairing-host.ts";
+import { confirmPairing, initializeHost, listHostDevices, openPairing, readPairing, removeHostDevice, type HostDevice,
+  type HostRelay } from "./pairing-host.ts";
 import { pairFromQr, type PairingProgress } from "./pairing.ts";
 
 /** A pairing window lasts ten minutes; checking it every three seconds is not a busy loop. */
@@ -42,6 +43,9 @@ export class RemoteAdmin {
   hostDevicesBusy = $state(false);
   hostDevicesError = $state<string | null>(null);
   hostRemoveDeviceId = $state<string | null>(null);
+  /** The connect form: registering this Mac with a relay before anything can pair. */
+  hostSetupBusy = $state(false);
+  hostSetupError = $state<string | null>(null);
   enrolled = $state(false);
   hostUnreachable = $state<HostUnreachable>("runtime");
   draftReconnect = $state<DraftReconnect>(null);
@@ -124,10 +128,33 @@ export class RemoteAdmin {
       this.hostDevices = await listHostDevices(api);
       return true;
     } catch (error) {
-      this.hostDevicesError = error instanceof ApiError ? error.code : "request_unknown";
+      const code = error instanceof ApiError ? error.code : "request_unknown";
+      // Dismissing the Touch ID sheet is changing one's mind, not a failure to report.
+      if (code !== "cancelled") this.hostDevicesError = code;
       return false;
     } finally {
       this.hostDevicesBusy = false;
+    }
+  }
+
+  /**
+   * Registers this Mac with the person's relay, spending its one-time bootstrap token. On success
+   * the status it answers with is the card's next state, so the form gives way to pairing at once.
+   */
+  async connectHost(relay: HostRelay): Promise<boolean> {
+    const api = this.host.api;
+    if (this.host.remote || !api || api instanceof RemoteApi || this.hostSetupBusy) return false;
+    this.hostSetupBusy = true;
+    this.hostSetupError = null;
+    try {
+      const status = await initializeHost(api, relay);
+      this.remoteStatus = status as RuntimeSnapshot["remoteStatus"];
+      return true;
+    } catch (error) {
+      this.hostSetupError = error instanceof ApiError ? error.code : "request_unknown";
+      return false;
+    } finally {
+      this.hostSetupBusy = false;
     }
   }
 
@@ -184,8 +211,10 @@ export class RemoteAdmin {
       if (this.hostPairing === current) this.hostPairing = { phase: "paired", deviceId };
       await this.refreshHostDevices();
     } catch (error) {
-      if (this.hostPairing === current) {
-        this.hostPairing = { phase: "failed", error: error instanceof ApiError ? error.code : "request_unknown" };
+      const code = error instanceof ApiError ? error.code : "request_unknown";
+      // A dismissed or failed Touch ID sheet spent nothing; the approve button stays for another go.
+      if (this.hostPairing === current && code !== "cancelled" && code !== "authentication") {
+        this.hostPairing = { phase: "failed", error: code };
       }
     } finally {
       this.hostPairingBusy = false;

@@ -64,6 +64,8 @@ export class RemoteController {
   private routes = new Set<string>();
   constructor(private readonly options: RemoteControllerOptions) {
     this.native = options.native ?? remoteNative;
+    // The sealed provider cannot be set up from any build yet; say so, so the panel offers no form.
+    if (this.native === remoteNative) this.statusValue = { state: "off", diagnostic: "sealed_runtime_required", devices: 0 };
     this.trust = new RemoteTrust(options.store, this.native, options.now);
     this.push = new PushService({
       store: options.store,
@@ -125,22 +127,33 @@ export class RemoteController {
     if (this.native === remoteNative && !capability.enabled) { this.setStatus("activation_gated", capability.diagnostic); deny(); }
     if (this.options.config && canonicalHash(this.options.config) !== canonicalHash(config)) deny();
     validateRelay(config);
-    if (!this.trust.host()) await this.trust.initialize({ host_id: config.hostId, relay_origin: config.origin, relay_id: config.relayId });
+    if (bootstrap !== undefined) fromBase64url(bootstrap, 32);
+    const first = !this.trust.host();
+    // A missing DB at a later high-water is a restore; refuse it before the token is spent.
+    if (first && await this.native.highwater() !== 1) deny();
+    // A first registration only sticks once the relay took the token: a mistyped address or a
+    // spent token leaves nothing behind, and the connect form can simply be sent again.
+    if (first && bootstrap !== undefined) await this.bootstrap(config, bootstrap);
+    if (first) await this.trust.initialize({ host_id: config.hostId, relay_origin: config.origin, relay_id: config.relayId });
     const stored = this.trust.host();
     if (!stored || stored.host_id !== config.hostId || stored.relay_origin !== config.origin || stored.relay_id !== config.relayId) deny();
     this.options.config = { ...config };
-    if (bootstrap !== undefined) {
-      fromBase64url(bootstrap, 32);
-      const host = await this.native.read("host_identity"), enrollment = await this.native.read("enrollment");
+    if (!first && bootstrap !== undefined) await this.bootstrap(config, bootstrap);
+    await this.start();
+  }
+  /** Enrolls this host's key with the relay, spending its one-time bootstrap token. */
+  private async bootstrap(config: RelayConfig, bootstrap: string): Promise<void> {
+    const host = await this.native.read("host_identity"), enrollment = await this.native.read("enrollment");
+    try {
+      const publicKeys = identityPublic({ dh: new Uint8Array(host.subarray(0, 32)), signing: new Uint8Array(host.subarray(32)), enrollment: new Uint8Array(enrollment) });
+      let response: Response;
       try {
-        const publicKeys = identityPublic({ dh: new Uint8Array(host.subarray(0, 32)), signing: new Uint8Array(host.subarray(32)), enrollment: new Uint8Array(enrollment) });
-        const response = await (this.options.fetch ?? fetch)(`${config.origin}/v1/relay/bootstrap`, { method: "POST", redirect: "error",
+        response = await (this.options.fetch ?? fetch)(`${config.origin}/v1/relay/bootstrap`, { method: "POST", redirect: "error",
           headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(10_000),
           body: new TextDecoder().decode(canonicalBytes({ bootstrap, host_id: config.hostId, enrollment_pk: base64url(publicKeys.enrollment) })) });
-        if (response.status !== 201) throw new Error("relay_bootstrap");
-      } finally { host.fill(0); enrollment.fill(0); }
-    }
-    await this.start();
+      } catch { throw new HttpError(502, "relay_unreachable", "the relay did not answer"); }
+      if (response.status !== 201) throw new HttpError(502, "relay_bootstrap", "the relay refused the bootstrap token");
+    } finally { host.fill(0); enrollment.fill(0); }
   }
   async prepareChange(change: TrustChange): Promise<{ challenge: string; expiresIn: 120 }> {
     return this.localActions.prepare(change);

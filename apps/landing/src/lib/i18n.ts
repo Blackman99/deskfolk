@@ -239,7 +239,7 @@ const zh: Dict = {
       {
         title: '不在 Mac 旁，用手机接着管',
         body:
-          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上 @Writer 补一句英文主标语，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上批准。这是默认关闭的实验功能，发布包暂时还不能配对。',
+          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上 @Writer 补一句英文主标语，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上用触控 ID 批准。这是默认关闭的实验功能。',
         callout: '经你自己的中继，在手机上接着管。',
         link: { label: '接入步骤', page: 'remote' }
       }
@@ -298,8 +298,8 @@ const zh: Dict = {
       },
       {
         dim: '远程访问',
-        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端；Android Chrome 真机上已走通，源码态可做集成测试',
-        wip: '独立安全复核，iOS 主屏幕 Web Push 与 WebAuthn 用户验证的真机验收，发布包配对需要的打包门；在这之前公网配对保持关闭',
+        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端；Android Chrome 真机上已走通，安装的应用即可登记中继、配对设备',
+        wip: '独立安全复核，iOS 主屏幕 Web Push 与 WebAuthn 用户验证的真机验收，把远控凭据从文件搬进钥匙串的打包门；在这之前公网配对保持关闭',
         avoid: '项目方运营的云端中继、把实验原型当成可用的远控'
       }
     ],
@@ -485,7 +485,7 @@ const en: Dict = {
       {
         title: 'Away from the Mac, carry on from your phone',
         body:
-          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for a Chinese tagline from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac. It is an experimental feature, off by default, and a release build cannot pair yet.',
+          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for a Chinese tagline from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac with Touch ID. It is an experimental feature, off by default.',
         callout: 'Through your own relay, carry on from your phone.',
         link: { label: 'Set it up', page: 'remote' }
       }
@@ -544,8 +544,8 @@ const en: Dict = {
       },
       {
         dim: 'Remote access',
-        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; checked on a real Android phone in Chrome; integration testing runs from source',
-        wip: 'Independent security review, real-device checks of iOS home-screen Web Push and WebAuthn user verification, and the packaging gate a release build needs before it can pair; public pairing stays off until then',
+        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; checked on a real Android phone in Chrome; the installed app registers with a relay and pairs devices',
+        wip: 'Independent security review, real-device checks of iOS home-screen Web Push and WebAuthn user verification, and the packaging gate that moves remote credentials from a file into the Keychain; public pairing stays off until then',
         avoid: 'A project-run cloud relay, passing a prototype off as working remote access'
       }
     ],

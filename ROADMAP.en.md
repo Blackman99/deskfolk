@@ -70,11 +70,12 @@ Groundwork in place:
 - Sessions, the workspace, terminals and files on the phone: after a disconnect it reconnects on its own with backoff, and back in the foreground it fetches only what changed in the meantime; pictures arrive first as scaled-down copies; the "Files" session sends files from the phone into the workspace `inbox/` without waking a Bot.
 - Optional Web Push sends only generic reminders that something is waiting, goes out from the Mac, and when opened only brings you back to the session list; it never approves anything.
 - Everyday features and Web Push work end to end in Chrome on a real Android device (from source, with the development switch).
+- The installed app registers with a relay and pairs devices: remote credentials live in a private file in the data folder, and the window approves each device with Touch ID (ADR 0033).
 
 Next:
 
 - Pass, item by item: the independent security review (S-rev), home-screen WebAuthn on a real device (G-uv), iOS L1 on a real device, and iOS home-screen Web Push (G-push).
-- Packaging gate (G-pack): a release build can pair only with a sealed daemon runtime and proper signing; until then, pairing works only when starting from source.
+- Packaging gate (G-pack): a sealed daemon runtime and proper signing, so remote credentials can move from the file into a dedicated Keychain access group.
 - Until these checks pass, public pairing stays off, and remote control is not publicly promised as a working feature.
 
 For the steps to deploy the relay, connect the Mac and pair a phone, see the [remote access guide](docs/remote-access.md).

@@ -65,7 +65,7 @@ pnpm dev
 
 ## 状态
 
-Alpha，仅 macOS，功能和数据格式仍会变化。远程访问是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；发布包暂时不能配对，只能从源码启动。
+Alpha，仅 macOS，功能和数据格式仍会变化。远程访问是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)）。
 
 [哪些已接入、哪些不做](https://blackman99.github.io/deskfolk/zh#boundaries) · [路线图](ROADMAP.md) · [领域语言](CONTEXT.md) · [中继部署](docs/deploy-remote.md)
 

@@ -1,11 +1,11 @@
 /**
  * Dev-only driver for the remote setup channel.
  *
- * The packaged app drives this from the window over an inherited socketpair
- * that the signed helper authorizes; in development there is no such window,
- * so a daemon started with REAL_BOT_DEV_REMOTE=1 exposes the same dispatcher
- * on a unix socket. Confirmations that Touch ID would sign are answered here
- * by the person at the terminal.
+ * The packaged app drives this from the window over the socketpair it spawned
+ * the daemon with; in development there is no such window, so a daemon started
+ * with REAL_BOT_DEV_REMOTE=1 exposes the same dispatcher on a unix socket.
+ * Confirmations the packaged window asks Touch ID for are answered here by the
+ * person at the terminal.
  *
  *   bun scripts/dev-remote.ts status
  *   bun scripts/dev-remote.ts init --origin https://relay.example.com --relay-id <id> [--bootstrap-file <path>]

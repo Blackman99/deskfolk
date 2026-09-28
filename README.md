@@ -65,7 +65,7 @@ First run: the setup wizard walks you through picking a workspace folder, adding
 
 ## Status
 
-Alpha, macOS only; features and data formats may still change. Remote access is a default-off prototype. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. A release build cannot pair yet, so remote access needs Deskfolk running from source.
+Alpha, macOS only; features and data formats may still change. Remote access is a default-off prototype. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. The installed app can pair: it keeps the Mac's remote identity in a private file rather than the Keychain and approves each device with Touch ID ([ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)).
 
 [What is live and what is not](https://blackman99.github.io/deskfolk/en#boundaries) · [Roadmap](ROADMAP.en.md) · [Domain language](CONTEXT.en.md) · [Relay deployment](docs/deploy-remote.md)
 

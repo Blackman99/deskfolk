@@ -57,7 +57,7 @@ import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
 import { isInboxMessage, pushPermission } from "./remote/push.ts";
 import type { DisablePushResult, PushPermission } from "./remote/push.ts";
 import type { PairingProgress } from "./remote/pairing.ts";
-import type { HostDevice } from "./remote/pairing-host.ts";
+import type { HostDevice, HostRelay } from "./remote/pairing-host.ts";
 import { supportsWebLocks } from "./notifications/tab-owner.ts";
 import type { TabRole } from "./notifications/tab-owner.ts";
 import type { InboxState } from "./notifications/inbox-state.ts";
@@ -359,6 +359,10 @@ export class MessengerRuntime {
   set hostDevicesError(value: string | null) { this.remoteAdmin.hostDevicesError = value; }
   get hostRemoveDeviceId(): string | null { return this.remoteAdmin.hostRemoveDeviceId; }
   set hostRemoveDeviceId(value: string | null) { this.remoteAdmin.hostRemoveDeviceId = value; }
+  get hostSetupBusy(): boolean { return this.remoteAdmin.hostSetupBusy; }
+  set hostSetupBusy(value: boolean) { this.remoteAdmin.hostSetupBusy = value; }
+  get hostSetupError(): string | null { return this.remoteAdmin.hostSetupError; }
+  set hostSetupError(value: string | null) { this.remoteAdmin.hostSetupError = value; }
   /** How long to wait before the next relay handshake; grows while the Mac is unreachable. */
   private remoteRetryMs = REMOTE_RETRY_MIN_MS;
   get enrolled(): boolean { return this.remoteAdmin.enrolled; }
@@ -2178,6 +2182,11 @@ export class MessengerRuntime {
 
   async removeHostDevice(id: string): Promise<boolean> {
     return this.remoteAdmin.removeHostDevice(id);
+  }
+
+  /** Registers this Mac with the person's relay; the connect form in the remote card. */
+  async connectHost(relay: HostRelay): Promise<boolean> {
+    return this.remoteAdmin.connectHost(relay);
   }
 
   /**

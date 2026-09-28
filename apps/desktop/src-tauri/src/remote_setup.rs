@@ -71,33 +71,46 @@ pub async fn remote_local_setup(
     if bytes.is_empty() || bytes.len() > 8192 {
         return Err("too_large".into());
     }
-    #[cfg(unix)]
-    {
-        tauri::async_runtime::spawn_blocking(move || {
-            let mut guard = CHANNEL.lock().map_err(|_| "unavailable")?;
-            let stream = guard.as_mut().ok_or("desktop_channel_unavailable")?;
-            let result = (|| {
-                stream.write_all(&(bytes.len() as u32).to_be_bytes())?;
-                stream.write_all(&bytes)?;
-                let mut prefix = [0; 4];
-                stream.read_exact(&mut prefix)?;
-                let length = u32::from_be_bytes(prefix) as usize;
-                if length == 0 || length > 8192 {
-                    return Err(std::io::Error::other("invalid response"));
-                }
-                let mut body = vec![0; length];
-                stream.read_exact(&mut body)?;
-                serde_json::from_slice(&body).map_err(std::io::Error::other)
-            })();
-            if result.is_err() {
-                *guard = None;
-            }
-            result.map_err(|_| "desktop_channel_unavailable".to_string())
-        })
+    tauri::async_runtime::spawn_blocking(move || exchange_bytes(&bytes))
         .await
         .map_err(|_| "unavailable".to_string())?
+}
+
+/// One framed request and its reply over the channel. Also used by the window itself for the
+/// confirmation steps its webview may not send (`remote_native::remote_native_confirmation`).
+pub(crate) fn exchange(request: &Value) -> Result<Value, String> {
+    let bytes = serde_json::to_vec(request).map_err(|_| "malformed")?;
+    if bytes.is_empty() || bytes.len() > 8192 {
+        return Err("too_large".into());
     }
-    #[cfg(not(unix))]
+    exchange_bytes(&bytes)
+}
+
+#[cfg(unix)]
+fn exchange_bytes(bytes: &[u8]) -> Result<Value, String> {
+    let mut guard = CHANNEL.lock().map_err(|_| "unavailable")?;
+    let stream = guard.as_mut().ok_or("desktop_channel_unavailable")?;
+    let result = (|| {
+        stream.write_all(&(bytes.len() as u32).to_be_bytes())?;
+        stream.write_all(bytes)?;
+        let mut prefix = [0; 4];
+        stream.read_exact(&mut prefix)?;
+        let length = u32::from_be_bytes(prefix) as usize;
+        if length == 0 || length > 8192 {
+            return Err(std::io::Error::other("invalid response"));
+        }
+        let mut body = vec![0; length];
+        stream.read_exact(&mut body)?;
+        serde_json::from_slice(&body).map_err(std::io::Error::other)
+    })();
+    if result.is_err() {
+        *guard = None;
+    }
+    result.map_err(|_| "desktop_channel_unavailable".to_string())
+}
+
+#[cfg(not(unix))]
+fn exchange_bytes(_bytes: &[u8]) -> Result<Value, String> {
     Err("unavailable".into())
 }
 
@@ -113,5 +126,10 @@ mod tests {
         assert!(validate(&json!({"operation":"prepare_remove_device", "deviceId":"01ARZ3NDEKTSV4RRFFQ69G5FAV"})).is_ok());
         assert!(validate(&json!({"operation":"read", "material":"host_identity"})).is_err());
         assert!(validate(&json!({"operation":"status", "url":"http://localhost"})).is_err());
+        // The confirmation steps are the window's own; its webview cannot mint a proof.
+        let challenge = format!("{}=", "A".repeat(43));
+        assert!(validate(&json!({"operation":"challenge_proof", "challenge": challenge})).is_err());
+        assert!(validate(&json!({"operation":"challenge_display", "challenge": challenge})).is_err());
+        assert!(validate(&json!({"operation":"dev_authenticate", "challenge": challenge})).is_err());
     }
 }

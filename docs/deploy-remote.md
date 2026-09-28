@@ -36,9 +36,13 @@ CADDY_BIN="$(go env GOPATH)/bin/caddy" pnpm --filter @real-bot/relay test:edge
 
 `@real-bot/relay` exports `startRelay(RelayOptions)`, `RelayOptions`, `RelayLog`, `LIMITS`. `startRelay` returns `{port, stop(): Promise<void>}`; tests can inject a clock, never an authentication verifier. No public production option bypasses the stored-key proof. `pnpm --filter @real-bot/relay start` runs `src/main.ts`; `build` emits runnable `dist/main.js` for Bun.
 
-## Development pairing loop (dev only)
+## Registering and pairing from the Mac
 
-Nothing in a production build can pair: the sealed provider only loads inside a compiled daemon and answers `g_pack_not_verified`, and the Tauri setup/confirmation commands refuse a development origin. To exercise the protocol against a real relay before those gates pass, start a source-run daemon with `REAL_BOT_DEV_REMOTE=1`. It substitutes a file-backed credential provider (`dev-remote/credentials.json`, 0600, atomically rewritten) and opens the window's setup dispatcher on `dev-remote/setup.sock` (0600; a long data directory falls back to `$TMPDIR/real-bot-dev-remote-<hash>.sock`). Framing, operations and the 120-second one-shot challenge window are the production ones; two extra operations stand in for the Touch ID sheet.
+The installed app registers the Mac from **Settings → General → Remote (experimental)**: relay address, `RELAY_ID` and the bootstrap token, sent as `initialize` over the window's setup channel ([ADR 0033](adr/0033-remote-credentials-in-a-file.md)). A first registration writes the Mac's `remote_host` row only after the relay answered 201, so a mistyped address or a refused token leaves nothing to trip the next attempt; the channel reports `relay_bootstrap` (relay refused) and `relay_unreachable` (no answer) apart from its generic `remote_setup_denied`. The compiled daemon keeps its keys in the file credential store (`dev-remote/credentials.json`, 0600, atomically rewritten, created on first use) and each pairing or removal is approved on a LocalAuthentication sheet the window shows with the daemon's own description of the action.
+
+### Development pairing loop (source only)
+
+The Tauri setup/confirmation commands refuse a development origin, and a source-run daemon without the switch uses the sealed provider, which answers `g_pack_not_verified`. To exercise the protocol from source, start the daemon with `REAL_BOT_DEV_REMOTE=1`. It uses the same file credential store and opens the window's setup dispatcher on `dev-remote/setup.sock` (0600; a long data directory falls back to `$TMPDIR/real-bot-dev-remote-<hash>.sock`). Framing, operations and the 120-second one-shot challenge window are the production ones; two extra operations stand in for the Touch ID sheet.
 
 ```sh
 REAL_BOT_DEV_REMOTE=1 bun apps/daemon/src/main.ts
@@ -49,7 +53,7 @@ bun apps/daemon/scripts/dev-remote.ts pair
 
 `init` submits the bootstrap token read from a file — never argv — and prints the generated host ULID. `pair` prints the one-time pairing JSON for the device, waits for the mailbox submission, shows the device name, the full host-side fingerprint and the text the Touch ID sheet would have displayed, and only then asks for approval. Compare that fingerprint against the device before answering.
 
-A compiled daemon never reaches this path and the production activation gate is untouched. Keys live on disk rather than in the Keychain and a terminal prompt is not user presence, so G-pack, L1, G-uv, G-push and S-rev remain unpassed; this loop only proves transport, pairing, events and files work before the physical gates are run.
+A compiled daemon never offers the stand-in operations: a terminal prompt is not user presence. Keys on disk rather than in the Keychain are the shipped trade-off (ADR 0033); L1, G-uv, G-push and S-rev remain unpassed either way.
 
 ## HTTP/WS contract for host and client adapters
 
@@ -104,7 +108,7 @@ A mailbox holds at most **64 KiB total**, not 64 KiB per direction: request must
 
 ## Daemon integration status
 
-Ticket07 supplies `RemoteController`, actual outbound host control/per-device links, durable local enrollment reconciliation, native-confirmed pairing and shared RPC contracts in [remote protocol](remote-protocol.md#daemon-adapter-and-downstream-client-contract-ticket-07). Configure/initialize only through the trusted bundled-window setup channel; bootstrap is submitted in a body and not retained by the daemon. Runtime reuses stored public metadata on restart. Default/no configuration leaves remote off, native-unavailable leaves local chat operational, and stock Bun still has no qualified sealed credential runtime. There is no production mock/native bypass or public enable switch. PWA08, complete file09, domain/container/native/physical/security-review gates remain incomplete; a local relay/daemon test is not deployment acceptance.
+Ticket07 supplies `RemoteController`, actual outbound host control/per-device links, durable local enrollment reconciliation, native-confirmed pairing and shared RPC contracts in [remote protocol](remote-protocol.md#daemon-adapter-and-downstream-client-contract-ticket-07). Configure/initialize only through the bundled window's setup channel (or, from source, the development loop); bootstrap is submitted in a body and not retained by the daemon. Runtime reuses stored public metadata on restart. Default/no configuration leaves remote off, an unreadable credential file leaves local chat operational, and stock Bun still has no qualified sealed credential runtime, which is why the shipped app uses the file store (ADR 0033). There is no confirmation bypass or public enable switch. PWA08, complete file09, domain/container/native/physical/security-review gates remain incomplete; a local relay/daemon test is not deployment acceptance.
 
 The host adapter now paces all outgoing link/control frames through one1.5MB/s budget (64-byte/frame allowance), leaving headroom below the relay's aggregate2.5MB/s. It waits for the socket buffer only when the next ciphertext would pass 64 KiB; a file GET whose response still fits in one frame is carried on that response (`file.bytes`) instead of a following type5 frame. Control commands are≥75ms apart, and successful revoke ACKs clear durable pending flags while retaining trust tombstones. This does not relax relay limits; device clients must cooperate with the remaining inbound budget. Actual integration tests cover50MiB GET, concurrent1MiB GET, >1MiB paged snapshots and >70 historical revocations. Cancel retains stream state through sent EOF; already-networked frames remain unretractable. Native-confirmed relay/identity changes require fresh relay enrollment rather than overwriting the one-use host registration.
 

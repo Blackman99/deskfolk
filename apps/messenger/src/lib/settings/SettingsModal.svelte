@@ -10,6 +10,7 @@
 	import { JAIL_COPY, thinkingLevelLabel, type Copy } from '../copy.ts';
 	import { copyText } from '../clipboard.ts';
 	import { formatFingerprint } from '../remote/fingerprint.ts';
+	import { parseHostRelay, type HostRelayField } from '../remote/pairing-host.ts';
 	import {
 		applyProbedModels,
 		draftFromProvider,
@@ -302,6 +303,31 @@
 	let providerSavedTick = $state(0);
 	let workspaceSaving = $state(false);
 	let pairingCopied = $state(false);
+	let relayForm = $state({ origin: '', relayId: '', bootstrap: '' });
+	let relayInvalid = $state<HostRelayField | null>(null);
+
+	/** Before this Mac is registered with a relay there is nothing to pair; the card asks for one. */
+	const relayConnectable = $derived(
+		!runtime.remote && runtime.remoteStatus?.state === 'off' && !runtime.remoteStatus.diagnostic
+	);
+
+	async function connectRelay(event: SubmitEvent) {
+		event.preventDefault();
+		const parsed = parseHostRelay(relayForm);
+		if ('invalid' in parsed) {
+			relayInvalid = parsed.invalid;
+			return;
+		}
+		relayInvalid = null;
+		if (await runtime.connectHost(parsed.relay)) relayForm = { origin: '', relayId: '', bootstrap: '' };
+	}
+
+	function relaySetupMessage(code: string): string {
+		if (code === 'relay_bootstrap') return t.remote.hostConnectRefused;
+		if (code === 'relay_unreachable') return t.remote.hostConnectUnreachable;
+		if (code === 'desktop_channel_unavailable') return t.remote.setupChannelLost;
+		return t.remote.hostConnectFailed;
+	}
 
 	/**
 	 * The badge carries the state; the sentence under it only appears when the state needs
@@ -907,6 +933,68 @@
 									<p class="muted">{remoteLabel === t.remote.statusGated ? t.remote.experimental : remoteExplains}</p>
 								{/if}
 
+								{#if relayConnectable}
+									<form class="relay-connect" data-testid="remote-connect" onsubmit={connectRelay}>
+										<p class="pairing-invite-text">{t.remote.hostConnectIntro}</p>
+										<fieldset class="relay-connect-fields" disabled={runtime.hostSetupBusy}>
+											<div class="modal-section">
+												<label for="relay-connect-origin">{t.remote.hostConnectOrigin}</label>
+												<input
+													id="relay-connect-origin"
+													type="text"
+													class="mono"
+													inputmode="url"
+													autocomplete="off"
+													spellcheck="false"
+													placeholder="https://relay.example.com"
+													bind:value={relayForm.origin}
+													aria-invalid={relayInvalid === 'origin'}
+												/>
+												{#if relayInvalid === 'origin'}<p class="field-error">{t.remote.hostConnectInvalidOrigin}</p>{/if}
+											</div>
+											<div class="modal-section">
+												<label for="relay-connect-id">{t.remote.hostConnectRelayId}</label>
+												<input
+													id="relay-connect-id"
+													type="text"
+													class="mono"
+													autocomplete="off"
+													spellcheck="false"
+													bind:value={relayForm.relayId}
+													aria-invalid={relayInvalid === 'relayId'}
+												/>
+												{#if relayInvalid === 'relayId'}<p class="field-error">{t.remote.hostConnectInvalidRelayId}</p>{/if}
+											</div>
+											<div class="modal-section">
+												<label for="relay-connect-token">{t.remote.hostConnectToken}</label>
+												<input
+													id="relay-connect-token"
+													type="password"
+													class="mono"
+													autocomplete="off"
+													bind:value={relayForm.bootstrap}
+													aria-invalid={relayInvalid === 'bootstrap'}
+												/>
+												{#if relayInvalid === 'bootstrap'}
+													<p class="field-error">{t.remote.hostConnectInvalidToken}</p>
+												{:else}
+													<p class="field-hint muted">{t.remote.hostConnectTokenHint}</p>
+												{/if}
+											</div>
+										</fieldset>
+										{#if runtime.hostSetupError}
+											<p class="field-error" role="alert" data-testid="remote-connect-error">{relaySetupMessage(runtime.hostSetupError)}</p>
+										{/if}
+										<button
+											type="submit"
+											class="btn-pair"
+											disabled={runtime.hostSetupBusy || !relayForm.origin.trim() || !relayForm.relayId.trim() || !relayForm.bootstrap.trim()}
+										>
+											{t.remote.hostConnect}
+										</button>
+									</form>
+								{/if}
+
 								{#if !runtime.remote && runtime.remoteStatus?.state === 'online'}
 									<div class="pairing" data-testid="remote-pairing">
 										{#if !runtime.hostPairing}
@@ -984,7 +1072,11 @@
 										{:else}
 											<div class="pairing-failed" role="alert">
 												<p class="pairing-failed-text">
-													{runtime.hostPairing.error === 'expired' ? t.remote.hostPairExpired : t.remote.hostPairFailed}
+													{runtime.hostPairing.error === 'expired'
+														? t.remote.hostPairExpired
+														: runtime.hostPairing.error === 'desktop_channel_unavailable'
+															? t.remote.setupChannelLost
+															: t.remote.hostPairFailed}
 												</p>
 												<div class="pairing-failed-actions">
 													<button type="button" class="btn-pair" disabled={runtime.hostPairingBusy} onclick={() => void runtime.startHostPairing()}>
@@ -1024,7 +1116,7 @@
 											</ul>
 										{/if}
 									</div>
-								{:else if runtime.remoteStatus && !runtime.remote}
+								{:else if runtime.remoteStatus && !runtime.remote && !relayConnectable}
 									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
 								{/if}
 
@@ -2588,6 +2680,31 @@ void runtime.setPushEnabled(enabled);
 		margin: 0;
 		font-size: 12.5px;
 		color: var(--ink-secondary);
+	}
+
+	/* The step before pairing: register this Mac with the person's relay, once. */
+	.relay-connect {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 12px 14px;
+		border: 1px dashed var(--line);
+		border-radius: var(--radius-md);
+		background: var(--sidebar-bg);
+	}
+
+	.relay-connect-fields {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		min-width: 0;
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+
+	.relay-connect .field-error {
+		margin: 0;
 	}
 
 	.btn-pair {

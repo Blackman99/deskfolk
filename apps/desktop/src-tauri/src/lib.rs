@@ -5,6 +5,7 @@ mod handoff;
 mod installer;
 mod launchd;
 mod local_api;
+mod local_confirm;
 pub(crate) mod notifications;
 #[cfg(target_os = "macos")]
 pub(crate) mod notifications_macos;

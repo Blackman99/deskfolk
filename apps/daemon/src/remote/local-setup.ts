@@ -1,8 +1,10 @@
-import { Socket } from "node:net";
-import type { Duplex } from "node:stream";
+import { closeSync, createReadStream, createWriteStream } from "node:fs";
+import { Duplex } from "node:stream";
 import { RemoteController } from "./controller";
 import { deny } from "./trust";
+import { HttpError } from "../errors";
 import { remoteNative } from "../remote-native";
+import type { FileRemoteNative } from "./file-native";
 import type { RelayConfig } from "./relay";
 
 export type LocalSetupRequest =
@@ -53,7 +55,30 @@ export async function dispatchLocalSetup(controller: RemoteController, input: un
   }
 }
 
-/** `dispatch` is only overridden by the dev-only channel; the inherited socketpair always uses the production dispatcher. */
+/** What the window may tell apart; everything else stays one redacted refusal. */
+const REASONS = new Set(["relay_unreachable", "relay_bootstrap"]);
+function reason(error: unknown): string {
+  return error instanceof HttpError && REASONS.has(error.code) ? error.code : "remote_setup_denied";
+}
+
+/**
+ * The packaged window's dispatcher over the file credential store: setup, plus the two steps of a
+ * confirmation. The window shows `challenge_display` on its LocalAuthentication sheet and asks for
+ * `challenge_proof` only after the person passed it. Its webview cannot send either: Tauri's
+ * `remote_local_setup` forwards setup operations only.
+ */
+export function windowDispatch(native: FileRemoteNative): (controller: RemoteController, input: unknown) => Promise<unknown> {
+  return async (controller, input) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) deny();
+    const value = input as { operation?: unknown; challenge?: unknown };
+    if (value.operation !== "challenge_display" && value.operation !== "challenge_proof") return dispatchLocalSetup(controller, input);
+    if (Object.keys(value).sort().join() !== "challenge,operation" || typeof value.challenge !== "string") deny();
+    if (value.operation === "challenge_display") return native.describe(value.challenge) ?? deny();
+    return { proof: native.authenticate(value.challenge) };
+  };
+}
+
+/** `dispatch` is overridden by the dev-only channel and the packaged window's; the sealed channel uses the production dispatcher. */
 export function attachLocalSetup(stream: Duplex, controller: RemoteController, onGone?: () => void,
   dispatch: (controller: RemoteController, input: unknown) => Promise<unknown> = dispatchLocalSetup): () => void {
   let buffer = Buffer.alloc(0), busy = false, stopped = false;
@@ -78,7 +103,7 @@ export function attachLocalSetup(stream: Duplex, controller: RemoteController, o
     let request: unknown;
     try { request = JSON.parse(buffer.subarray(4).toString("utf8")); } catch { close(); return; }
     buffer.fill(0); buffer = Buffer.alloc(0);
-    void dispatch(controller, request).then(value => ({ ok: true, value }), () => ({ ok: false, error: "remote_setup_denied" })).then(response => {
+    void dispatch(controller, request).then(value => ({ ok: true, value }), error => ({ ok: false, error: reason(error) })).then(response => {
       if (stopped) return;
       const payload = Buffer.from(JSON.stringify(response));
       if (payload.length > 8192) { close(); return; }
@@ -90,10 +115,43 @@ export function attachLocalSetup(stream: Duplex, controller: RemoteController, o
   return close;
 }
 
-export async function inheritedLocalSetup(controller: RemoteController, onGone?: () => void): Promise<(() => void) | undefined> {
+/**
+ * With the sealed provider, the native library checks that FD 3 leads to the signed desktop before
+ * anything is read from it. With the file store (`file`), the packaged daemon trusts it for what it
+ * is: the socketpair the window made and handed only to the process it spawned. Another same-user
+ * process could start a daemon with its own FD 3, but that daemon reads the same 0600 file anyway.
+ */
+export async function inheritedLocalSetup(controller: RemoteController, onGone?: () => void, file?: FileRemoteNative): Promise<(() => void) | undefined> {
   if (!process.argv.includes("--desktop-remote-channel")) return;
   try {
+    if (file) return attachLocalSetup(inheritedChannel(3), controller, onGone, windowDispatch(file));
     await remoteNative.authorizeDesktopChannel();
-    return attachLocalSetup(new Socket({ fd: 3, readable: true, writable: true }), controller, onGone);
+    return attachLocalSetup(inheritedChannel(3), controller, onGone);
   } catch { return; }
+}
+
+/**
+ * The inherited socketpair as a stream. Bun's `new net.Socket({ fd })` ends it at once (the
+ * window read EOF before sending anything), which went unnoticed while the sealed provider refused
+ * the channel before attaching; plain reads and writes on the descriptor work. Destroying closes
+ * FD 3, so the window reads EOF; the window closing its end ends the stream here.
+ */
+export function inheritedChannel(fd: number): Duplex {
+  const input = createReadStream("", { fd, autoClose: false, highWaterMark: 8192 });
+  const output = createWriteStream("", { fd, autoClose: false });
+  let open = true;
+  const channel = new Duplex({
+    read() {},
+    write(chunk, _encoding, done) { output.write(chunk, done); },
+    destroy(error, done) {
+      input.destroy(); output.destroy();
+      if (open) { open = false; try { closeSync(fd); } catch { /* already gone */ } }
+      done(error);
+    },
+  });
+  input.on("data", chunk => channel.push(chunk));
+  input.on("end", () => channel.destroy());
+  input.on("error", error => channel.destroy(error));
+  output.on("error", error => channel.destroy(error));
+  return channel;
 }

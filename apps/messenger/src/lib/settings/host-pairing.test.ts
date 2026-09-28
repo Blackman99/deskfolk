@@ -110,3 +110,43 @@ test("an expired window says so instead of leaving a dead code on screen", () =>
   expect(host.querySelector("[data-testid=pairing-code]")).toBeNull();
   close();
 });
+
+test("a Mac not yet on a relay asks for one before offering to pair", () => {
+  const { host, runtime, close } = open(null, { remoteStatus: { state: "off", diagnostic: null, devices: 0 } });
+  const form = host.querySelector<HTMLFormElement>("[data-testid=remote-connect]");
+  expect(form?.textContent).toContain("Relay address");
+  expect(host.querySelector("[data-testid=remote-pairing]")).toBeNull();
+  // A typo is named before the one-time token is spent.
+  fill(host, "#relay-connect-origin", "http://relay.example.com");
+  fill(host, "#relay-connect-id", "home");
+  fill(host, "#relay-connect-token", "A".repeat(43));
+  form?.requestSubmit();
+  flushSync();
+  expect(form?.textContent).toContain("https:// URL with no path");
+  fill(host, "#relay-connect-origin", "https://relay.example.com/");
+  form?.requestSubmit();
+  flushSync();
+  const connects = runtime.calls.filter((c) => c.name === "connectHost");
+  expect(connects).toHaveLength(1);
+  expect(connects[0].args[0]).toEqual({ origin: "https://relay.example.com", relayId: "home", bootstrap: "A".repeat(43) });
+  close();
+});
+
+test("the connect form says why the relay turned the Mac away", () => {
+  const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: null, devices: 0 }, hostSetupError: "relay_bootstrap" });
+  expect(host.querySelector("[data-testid=remote-connect-error]")?.textContent).toContain("refused the token");
+  close();
+});
+
+test("a build whose credential store cannot be set up offers no connect form", () => {
+  const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: "sealed_runtime_required", devices: 0 } });
+  expect(host.querySelector("[data-testid=remote-connect]")).toBeNull();
+  close();
+});
+
+function fill(host: Element, selector: string, value: string) {
+  const input = host.querySelector<HTMLInputElement>(selector)!;
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  flushSync();
+}

@@ -685,7 +685,9 @@ export class PushService {
 
   constructor(private readonly options: PushServiceOptions) {
     this.pausedUpgrade = options.pausedUpgrade ?? false;
-    void this.vapidFingerprint().catch(() => undefined);
+    // A warm-up only (subscribing reads it again). Before any relay there is nothing to push to,
+    // and on the file credential store the read would write this Mac's keys for nothing.
+    if (!options.trust || options.trust.host()) void this.vapidFingerprint().catch(() => undefined);
     if (options.trust) {
       options.trust.onInvalidate(() => {
         for (const ctrl of this.inFlightByDevice.values()) {

@@ -15,6 +15,7 @@ import type { CompletionsClient } from "./completions";
 import { RemoteController } from "./remote/controller";
 import { inheritedLocalSetup } from "./remote/local-setup";
 import { createDevRemote, devPairingDispatch } from "./remote/dev-setup";
+import { shippedRemoteNative } from "./remote/file-native";
 import { RuntimeLifecycle } from "./lifecycle";
 import { recoverLifecycle } from "./remote/lifecycle";
 import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
@@ -213,9 +214,10 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     });
     store.recoverInterruptedTurns();
     recoverLifecycle(store);
-    // Source runs with REAL_BOT_DEV_REMOTE=1 swap in file-backed credentials so the protocol can
-    // be exercised before G-pack; a compiled daemon never gets one.
+    // Remote credentials live in a file (ADR 0033). The compiled daemon always uses it and confirms
+    // through its window; source runs only with REAL_BOT_DEV_REMOTE=1, confirming by stand-in.
     const dev = createDevRemote(options.dataDir);
+    const shipped = dev ? undefined : shippedRemoteNative(options.dataDir);
     const devPairing = dev ? devPairingDispatch(dev.native) : undefined;
     api = createLocalApi({
       store,
@@ -262,10 +264,10 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       },
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
-    remote = new RemoteController({ store, api, maint, native: dev?.native,
+    remote = new RemoteController({ store, api, maint, native: dev?.native ?? shipped,
       config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
     if (options.desktopRemoteChannel) {
-      closeSetup = await inheritedLocalSetup(remote, () => { windowAlive = false; });
+      closeSetup = await inheritedLocalSetup(remote, () => { windowAlive = false; }, shipped);
       windowAlive = Boolean(closeSetup);
     }
     if (dev) closeDevSetup = dev.listen(remote);

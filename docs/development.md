@@ -39,19 +39,21 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 手机推送的 `showNotification` 显式指定 `icon: /icon-192.png`（与 PWA manifest 共用）和 `badge: /notification-badge.png`。后者为 96×96 的透明底白色双圆标志，源文件是信使 `static/notification-badge.svg`；修改时用浏览器将 SVG 以 96×96 绘制到透明 canvas，再导出 PNG。Android 通知栏使用 badge 的透明轮廓，系统自行着色。图标随托管信使静态包发布，重新打开 PWA 更新 service worker 后供新通知使用；各手机系统的实际通知外观仍需真机确认。`remote/push-worker.test.ts` 执行真实 worker 的推送和点击处理器，验证图标路径、PNG 尺寸、载荷限制及回到会话列表的行为。
 
-## 开发态远控闭环（仅源码态）
+## 远控的凭据与确认（ADR 0033）
 
-生产那条路径永远打不开：`remote-native.ts` 只在编译后的 `/$bunfs/` 里加载 dylib，且 `capability()` 固定答 `g_pack_not_verified`，controller 见到真 native 未启用就落 `activation_gated`；Tauri 的 `remote_local_setup` / `remote_native_confirmation` 只认 bundled main，dev 源也被拒。因此开发期要真跑协议，只能走这条显式开关的替身通道。
+远控凭据只有一种实现：`remote/file-native.ts` 的 `FileRemoteNative`。身份、enrollment、VAPID 与高水位存在数据目录 `dev-remote/credentials.json`（目录 0700、文件 0600，原子写，第一次用到密钥才生成，坏文件报 `corrupt` 不覆盖），`prepare`/`consume` 是一次性挑战、120 秒窗口与动作摘要比对，`describe`/`authenticate` 是确认的两步。谁能走确认那两步，决定了它在哪条路上：
 
-源码态 daemon 带 `REAL_BOT_DEV_REMOTE=1` 启动时，`remote/dev-setup.ts` 交出 `remote/dev-native.ts`：身份、enrollment、VAPID 与高水位存在数据目录 `dev-remote/credentials.json`（0600，原子写），`prepare`/`consume` 保持同样的一次性挑战、120 秒窗口与动作摘要比对，`describe`/`authenticate` 顶替 Touch ID 弹窗。同一开关把窗口那条 setup dispatcher 开在 `dev-remote/setup.sock`（0600；数据目录过长时退回 `$TMPDIR/real-bot-dev-remote-<hash>.sock`），协议帧与继承 FD3 完全一致，只多两个 `dev_describe` / `dev_authenticate` 操作。
+- **编译态（发布包）**：`shippedRemoteNative` 见到 `/$bunfs/` 就交出它。窗 spawn 时给的 FD3 按来历信任（不再找 dylib 验签名），上面用 `windowDispatch`：设置操作之外只多 `challenge_display` / `challenge_proof`。Tauri 的 `remote_native_confirmation` 先问前者，用 `LAContext` 弹触控 ID（`local_confirm.rs`），人过了才问后者拿 proof；`remote_local_setup` 的白名单里没有这两步，网页发不了。
+- **源码态带 `REAL_BOT_DEV_REMOTE=1`**：`remote/dev-setup.ts` 交出同一个存储，并把 setup dispatcher 开在 `dev-remote/setup.sock`（0600；数据目录过长时退回 `$TMPDIR/real-bot-dev-remote-<hash>.sock`），协议帧与 FD3 一致，多两个不问人的替身 `dev_describe` / `dev_authenticate`。编译态守护进程从不提供这两个（`devRemoteAllowed` 见到 `/$bunfs/` 直接 false）。
+- **源码态不带开关**：仍是封口的 `remote-native.ts`（只在编译后的 `/$bunfs/` 里加载 dylib，`capability()` 固定答 `g_pack_not_verified`），远控状态是 `off` + `sealed_runtime_required`，卡片不给登记表。
 
-设置面板里的远控卡也走这条开关：源码态时 daemon 在 `POST /v1/remote/setup` 上开放设备列表、移除和配对操作（`status` / `list_devices` / `prepare_remove_device` / `confirm_remove_device` / `open_pair` / `prepare_pair` / `confirm_pair` 与两个确认替身），改中继、重置身份仍然只在 unix socket 上；打包态同一张卡改走窗口的 `remote_local_setup` 与 Touch ID 确认，信使侧由 `remote/pairing-host.ts` 分流，卡片本身不关心是哪条。
+设置面板里的远控卡：这台 Mac 还没登记中继时给一张登记表（中继地址、`RELAY_ID`、bootstrap 令牌 → `initialize`），之后是配对和设备列表。源码态时 daemon 在 `POST /v1/remote/setup` 上开放登记、设备列表、移除和配对操作（`status` / `initialize` / `list_devices` / `prepare_remove_device` / `confirm_remove_device` / `open_pair` / `prepare_pair` / `confirm_pair` 与两个确认替身），改中继、重置身份仍然只在 unix socket 上；打包态同一张卡改走窗口的 `remote_local_setup` 与触控 ID 确认，信使侧由 `remote/pairing-host.ts` 分流，卡片本身不关心是哪条。打包窗答了的就是最终答案，不再回落到本机 HTTP（打包态守护进程没有那条路由）。
 
 配对内容用紧凑编码：`rb1` + base64url 打包的版本、两个 ULID、三个时间戳字段、配对密钥与两把主机公钥、中继 id，约 205 字符，原来那份 JSON 是 399 字节。中继地址不进编码——读它的设备本来就由那个 origin 提供服务，于是粘贴来的内容没法把设备指向别的中继。`parsePairingQr` 两种都收，早先复制走的 JSON 仍然能配上。
 
 `bun apps/daemon/scripts/dev-remote.ts status | init | pair` 是它的驱动：`init --origin https://… --relay-id … --bootstrap-file <路径>`（bootstrap 只从文件读，不进 argv），`pair` 打印配对 JSON、轮询设备提交、显示设备名与完整指纹、按 y 才取 proof 并确认。
 
-编译后的 daemon 拿不到这条路径（`devRemoteAllowed` 见到 `/$bunfs/` 直接 false），生产激活门与 Rust 侧一行未改。凭据在磁盘不在钥匙串、终端确认不是用户在场，所以 G-pack、L1、G-uv、G-push、S-rev 都不因为这条闭环而通过；它只用来在真机门之前把传输、配对、事件与文件路径跑通。
+终端确认不是用户在场，所以这条开发闭环只用来把传输、配对、事件与文件路径跑通；L1、G-uv、G-push、S-rev 都不因为它或发布包的文件存储而通过。
 ## 守护进程源码布局
 
 `apps/daemon/src` 按职责分文件，两处按目录组织：

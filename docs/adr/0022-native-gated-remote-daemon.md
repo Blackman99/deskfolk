@@ -1,6 +1,6 @@
 # ADR 0022: Native-gated outbound remote daemon and shared draining
 
-Status: experimental implementation; production activation blocked. Date: 2026-09-20.
+Status: experimental implementation; production activation blocked. Date: 2026-09-20. Superseded in part by [ADR 0033](0033-remote-credentials-in-a-file.md) (2026-09-28): the shipped app keeps remote credentials in a file and confirms in its window; the sealed native path below stays unshipped.
 
 ## Decision
 

@@ -2,7 +2,7 @@
 
 [简体中文](remote-access.zh.md)
 
-> **Off by default, and not a finished feature.** Remote access is an experimental prototype for integration testing. A release build cannot pair a device yet: until its packaging gate passes, pairing needs Deskfolk running from source with a development switch. Everyday use and Web Push work on a real Android phone in Chrome (from source, with the development switch). The independent security review (S-rev), real-device home-screen WebAuthn (G-uv), real-device iOS L1 and iOS home-screen Web Push (G-push) have **not passed**. Keep public pairing off whenever you are not pairing, and do not route anything through it you could not afford to expose.
+> **Off by default, and not a finished feature.** Remote access is an experimental prototype. The installed app can set it up and pair devices: it keeps the Mac's remote identity in a private file in its data folder rather than the Keychain, and Touch ID (or your login password) approves each device ([ADR 0033](adr/0033-remote-credentials-in-a-file.md) says what that trades). Everyday use and Web Push work on a real Android phone in Chrome (verified from source; the installed app runs the same protocol on the same file). The independent security review (S-rev), real-device home-screen WebAuthn (G-uv), real-device iOS L1 and iOS home-screen Web Push (G-push) have **not passed**. Keep public pairing off whenever you are not pairing, and do not route anything through it you could not afford to expose.
 
 Remote access lets a phone, or a browser on another computer, reach the Deskfolk on your Mac: read and answer conversations, handle what is waiting on you, look through the workspace and type into your terminals. There is no Deskfolk cloud. You run the relay yourself, the Mac only ever dials out to it, and the relay passes along encrypted traffic it cannot read.
 
@@ -28,7 +28,7 @@ Changing the workspace folder, pointing the Mac at a relay and approving a new d
 ## Before you start
 
 - A Linux server you control, with Docker Compose, ports 80 and 443 free, and a domain name pointing at it (this guide uses `relay.example.com`).
-- Deskfolk running from source on the Mac: the [Run from source](../README.md) requirements, and Bun on the path.
+- Deskfolk on the Mac: the installed app, or a source checkout (the [Run from source](../README.md) requirements, and Bun on the path).
 - A phone with a current browser. For Web Push, iOS needs 16.4 or later with the page added to the Home Screen.
 
 ## 1. Deploy the relay
@@ -74,34 +74,36 @@ Every variable, limit and recovery rule is in [self-hosted deployment](deploy-re
 
 ## 2. Point the Mac at the relay
 
-Copy the bootstrap file to the Mac (mode 0600), then start Deskfolk from source with the development switch:
+In the app, open **Settings → General → Remote (experimental)**. Until the Mac is registered, the card asks for the relay:
 
-```sh
-REAL_BOT_DEV_REMOTE=1 pnpm dev
-```
+- **Relay address** — `https://relay.example.com`, the domain from step 1.
+- **Relay ID** — the `RELAY_ID` from the env file.
+- **One-time bootstrap token** — the contents of the bootstrap file. Copy the file to the Mac (mode 0600) and paste from it, rather than through a chat or a note.
 
-The switch keeps the Mac's remote identity in `dev-remote/credentials.json` in the daemon's data folder instead of the Keychain, and stands in for the Touch ID sheet. A release build does not have it: its sealed credential store answers `g_pack_not_verified` until the packaging gate passes.
+Choose **Connect to relay**. The relay consumes the token: it cannot be used again. A refused or mistyped token leaves nothing behind on the Mac, so correct it and try again (a spent token needs a fresh one, see [bootstrap recovery](deploy-remote.md#environment-and-bootstrap-recovery)). Empty the bootstrap file on both machines afterwards. The card now reads **Remote online**.
 
-In another terminal, register the Mac once:
+The Mac's remote identity lives in `dev-remote/credentials.json` in the daemon's data folder (`~/Library/Application Support/real-bot`), mode 0600, created the first time you connect. Anything running as your user can read it, as it can the rest of that folder. The name dates from when only source runs used it; the installed app and a source run share the folder, so a Mac registered from source keeps its identity and paired devices in the app.
+
+**From source**, start Deskfolk with the development switch, `REAL_BOT_DEV_REMOTE=1 pnpm dev`. It uses the same file and stands in for the Touch ID sheet: the settings card approves without one, and so does the CLI, which can also register the Mac:
 
 ```sh
 bun apps/daemon/scripts/dev-remote.ts init --origin https://relay.example.com --relay-id my-relay --bootstrap-file ~/deskfolk-bootstrap
 bun apps/daemon/scripts/dev-remote.ts status
 ```
 
-`init` reads the token from the file — never from the command line — prints the Mac's host id, and the relay consumes the token: it cannot be used again. Empty the bootstrap file on both machines afterwards. In the app, **Settings → General → Remote (experimental)** now reads **Remote online**.
+`init` reads the token from the file — never from the command line — and prints the Mac's host id.
 
 ## 3. Pair a phone
 
 1. On the Mac, in **Settings → General → Remote (experimental)**, choose **Pair a device**. The card shows a one-time code starting with `rb1` and the Mac's signing fingerprint. The code expires in ten minutes. (`bun apps/daemon/scripts/dev-remote.ts pair` prints the same code and copies it to the clipboard.)
 2. Get the code to the phone — Universal Clipboard, AirDrop, a note you delete afterwards. It carries a one-time secret; keep it out of chats and logs.
 3. On the phone, open `https://relay.example.com` and paste the code into **Pairing payload**. The page shows the relay address and the Mac's fingerprint: check they match what the Mac shows, then tap **Submit and wait for Mac confirmation**. The code only works on the relay that served the page, so a pasted code cannot send the phone anywhere else.
-4. The Mac shows the device's name and its fingerprint. Compare it with the phone, then choose **Approve this device**.
+4. The Mac shows the device's name and its fingerprint. Compare it with the phone, then choose **Approve this device** and pass the Touch ID sheet, or enter your login password; the sheet names the device and its full fingerprint. Dismissing it pairs nothing and leaves the approve button there. (From source, the stand-in approves without a sheet.)
 5. The phone opens the chat list. Add the page to the Home Screen so it opens like an app.
 6. On the phone, in **Settings → Remote (experimental)**, choose **Register user verification on this device** if you want the maintenance actions.
 7. Turn pairing off again: set `RELAY_PAIRING_ENABLED=0` and run the `up -d` command once more. Paired devices keep working; turn it back on only to pair another.
 
-To drop a device, use **Remove device** in the Mac's list of connected devices. The relay forgets its key at once and its link closes.
+To drop a device, use **Remove device** in the Mac's list of connected devices, and pass the same sheet. The relay forgets its key at once and its link closes.
 
 ## Web Push (optional)
 
@@ -116,6 +118,7 @@ The Mac sends the reminder itself, straight to the phone browser's push service 
 - **Remote disconnected / host unreachable** — the Mac is asleep, Deskfolk is not running, or the relay is down. The phone retries with backoff on its own, and again as soon as it returns to the foreground. Right after the Mac's network drops or changes, give it a minute or two: the Mac checks with the relay every 15 seconds and reconnects on its own, but after a switch to another network the relay can hold the old connection for about a minute first.
 - **Remote trust mismatch** — on the Mac, the stored remote identity and its trust records no longer agree, for example after restoring the data folder or deleting `dev-remote/credentials.json`. Do not wipe the relay's database to get past it: that is the lost-host-key recovery in [self-hosted deployment](deploy-remote.md#environment-and-bootstrap-recovery), which re-pairs every device.
 - **"The pairing window expired"** — open a new one on the Mac; each code lasts ten minutes and works once.
+- **"The runtime was already running when this window opened"** — the window only reaches remote setup on a runtime it started itself, for example not after the window crashed and came back. Quit Deskfolk and open it again.
 - **Blank page after a rebuild** — the CSP header and the build it hashes were deployed separately.
 
 Protocol, cryptography and the list of open gates: [remote protocol](remote-protocol.md).

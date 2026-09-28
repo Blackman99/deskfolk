@@ -242,9 +242,20 @@ pub async fn remote_native_confirmation<R: tauri::Runtime>(
     operation: Operation,
     challenge: Option<String>,
 ) -> Result<LocalConfirmation, String> {
-    let request = request(&operation, challenge)?;
+    let request = request(&operation, challenge.clone())?;
     let directory = native_dir(&app.path().resource_dir().map_err(|_| "unavailable")?);
     tauri::async_runtime::spawn_blocking(move || {
+        // The shipped daemon keeps its challenges on the file credential store (ADR 0033).
+        if let (Operation::Confirm, Some(challenge)) = (&operation, challenge.as_deref()) {
+            let local = super::local_confirm::confirm(
+                challenge,
+                super::remote_setup::exchange,
+                super::local_confirm::verify_owner,
+            );
+            if let Some(local) = local {
+                return Ok(local);
+            }
+        }
         let capability = native_call(
             &directory,
             &json!({
