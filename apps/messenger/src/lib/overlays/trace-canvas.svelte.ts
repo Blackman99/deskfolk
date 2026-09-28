@@ -41,6 +41,7 @@ import {
   type TraceFocus,
   type TraceView
 } from "./task-trace.ts";
+import { viewCentredOn } from "./trace-minimap.ts";
 
 /** What the camera reads from the component, fresh on every call, and how it writes a box back. */
 export type TraceCanvasDeps = {
@@ -58,6 +59,8 @@ export class TraceCanvas {
 
   view = $state<TraceView>({ scale: 1, x: 0, y: 0 });
   viewportEl = $state<HTMLElement | null>(null);
+  /** The viewport's size as state, for what draws the view (the minimap); the camera reads the box. */
+  viewportSize = $state<{ width: number; height: number }>({ width: 0, height: 0 });
   /** Which focus request has already moved the board. A reload of the same one does not. */
   placedFocus = $state<number | null>(null);
   /** Where that card was when we centred it, so a later measurement can follow it once. */
@@ -281,6 +284,23 @@ export class TraceCanvas {
     this.glideFrame = setTimeout(step, 16);
   }
 
+  /**
+   * The minimap's press and drag: this board point in the middle of the view, at the zoom it is at.
+   * A press slides there; the drag that follows keeps it under the pointer.
+   */
+  centreOn(point: { x: number; y: number }, glide: boolean): void {
+    // Moving it from the map is choosing the view, as a drag on the board is.
+    this.userMoved = true;
+    this.openedView = null;
+    const next = viewCentredOn(this.view, this.viewportBox(), point);
+    if (glide) {
+      this.glideTo(next);
+      return;
+    }
+    this.stopGlide();
+    this.settle(next);
+  }
+
   /** The zoom buttons zoom about the middle of the view. */
   zoomTo(scale: number): void {
     this.stopGlide();
@@ -412,12 +432,31 @@ export class TraceCanvas {
 
   /** A pane is often zero-sized for the first frame; the move waits until it has a box. */
   watchViewport = (node: HTMLElement) => {
+    // Read off the node itself: the binding that sets `viewportEl` need not have run yet.
+    const sizeOf = () => {
+      const box = node.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    };
+    this.viewportSize = sizeOf();
     if (typeof ResizeObserver === "undefined") return;
+    // The size lands a frame later: a state write inside the callback, while the shell's columns
+    // are still animating, has WebKit report a ResizeObserver loop on every frame of it.
+    let frame = 0;
     const observer = new ResizeObserver(() => {
       if (this.deps.focus() && focusMoveDue(this.deps.focusToken(), this.placedFocus)) this.focusBoard();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const box = sizeOf();
+        if (box.width !== this.viewportSize.width || box.height !== this.viewportSize.height) this.viewportSize = box;
+      });
     });
     observer.observe(node);
-    return { destroy: () => observer.disconnect() };
+    return {
+      destroy: () => {
+        observer.disconnect();
+        cancelAnimationFrame(frame);
+      }
+    };
   };
 
   /** Measure a card and keep the layout honest about it. */

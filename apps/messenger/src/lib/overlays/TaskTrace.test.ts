@@ -8,6 +8,7 @@ mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", 
 const { default: TaskTraceView } = await import("./TaskTrace.svelte");
 const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
+import { forgetTraceMinimap, loadTraceMinimap } from "./trace-minimap.ts";
 import { forgetTraceSide, loadTraceSide } from "./trace-side.ts";
 import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup } from "../test-fixtures.ts";
@@ -17,7 +18,10 @@ import { reactive } from "../test-reactive.svelte.ts";
 const t = copyFor("zh");
 
 // A board left in one test would otherwise come back where that test left it in the next.
-afterEach(() => forgetKeptBoards());
+afterEach(() => {
+  forgetKeptBoards();
+  forgetTraceMinimap();
+});
 
 const writer = aBot({ id: "bot-1", name: "制片" });
 const artist = aBot({ id: "bot-2", name: "分镜师" });
@@ -1348,4 +1352,127 @@ test("a job picked again in the switcher is where you left it", async () => {
     expect(cameraOf(view)).toBe(left);
     view.close();
   });
+});
+
+/** The board's camera as numbers: where the middle of an 800 × 600 view is on the board, and the zoom. */
+function middleOf(view: { host: HTMLElement }): { x: number; y: number; scale: number } {
+  const [, x, y, scale] = /translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(cameraOf(view))!;
+  const zoom = Number(scale);
+  return { x: (400 - Number(x)) / zoom, y: (300 - Number(y)) / zoom, scale: zoom };
+}
+
+function rectOf(el: Element): { x: number; y: number; width: number; height: number } {
+  const read = (name: string) => Number(el.getAttribute(name));
+  return { x: read("x"), y: read("y"), width: read("width"), height: read("height") };
+}
+
+function pointer(el: Element, type: string, at: { x: number; y: number }): void {
+  el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, pointerType: "mouse", clientX: at.x, clientY: at.y }));
+  flushSync();
+}
+
+test("the minimap draws every card and frames the view; pressing it slides the board there, and dragging the frame carries it", async () => {
+  await inViewport(async () => {
+    const view = open({ trace: longJob(5), pane: true });
+    await laidOut(view);
+    const map = view.host.querySelector(".trace-minimap")!;
+    expect(map).not.toBeNull();
+    expect(map.querySelectorAll(".minimap-card")).toHaveLength(view.host.querySelectorAll(".trace-slot").length);
+    // Folded rounds are their line, on the map as on the board.
+    expect(map.querySelectorAll(".minimap-round.is-folded").length).toBe(view.host.querySelectorAll(".trace-round.is-folded").length);
+    expect(map.querySelector(".minimap-view")).not.toBeNull();
+
+    // Off into empty canvas, then back by pressing a card on the map: it slides into the middle.
+    pan(view, { x: -2400, y: -1800 });
+    const target = map.querySelector('.minimap-card[data-turn="t4"]')!;
+    const drawn = rectOf(target);
+    const slot = [...view.host.querySelectorAll<HTMLElement>(".trace-slot")].find((el) => el.textContent?.includes("回第 4 句"))!;
+    const card = { x: Number.parseFloat(slot.style.left) + 124, y: Number.parseFloat(slot.style.top) + slot.offsetHeight / 2 };
+    const scale = middleOf(view).scale;
+    const at = { x: drawn.x + drawn.width / 2, y: drawn.y + drawn.height / 2 };
+    pointer(map, "pointerdown", at);
+    pointer(map, "pointerup", at);
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    flushSync();
+    const landed = middleOf(view);
+    expect(landed.scale).toBe(scale);
+    expect(landed.x).toBeCloseTo(card.x, 3);
+    expect(landed.y).toBeCloseTo(card.y, 3);
+
+    // The frame picked up and moved takes the view with it, by as much as the map says.
+    const frame = rectOf(map.querySelector(".minimap-view")!);
+    const perPixel = 800 / scale / frame.width;
+    const from = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+    pointer(map, "pointerdown", from);
+    // A press on the frame alone moves nothing.
+    expect(middleOf(view).x).toBeCloseTo(landed.x, 3);
+    pointer(map, "pointermove", { x: from.x - 6, y: from.y - 10 });
+    pointer(map, "pointerup", { x: from.x - 6, y: from.y - 10 });
+    const moved = middleOf(view);
+    expect(moved.x).toBeCloseTo(landed.x - 6 * perPixel, 3);
+    expect(moved.y).toBeCloseTo(landed.y - 10 * perPixel, 3);
+    view.close();
+  });
+});
+
+test("the minimap lights and dims what the board does", async () => {
+  await inViewport(async () => {
+    const view = open({ trace: routedPicture(), pane: true });
+    await laidOut(view);
+    const chip = [...view.host.querySelectorAll<HTMLButtonElement>(".trace-highlight")].find((b) => b.textContent?.includes("有反馈"))!;
+    click(chip);
+    flushSync();
+    const card = (turn: string) => view.host.querySelector(`.minimap-card[data-turn="${turn}"]`)!;
+    expect(card("t-writer").classList.contains("is-lit")).toBe(true);
+    expect(card("t-artist").classList.contains("is-dim")).toBe(true);
+    // Each card in its status's colour, as on the board.
+    expect(card("t-artist").classList.contains("is-running")).toBe(true);
+    view.close();
+  });
+});
+
+test("the minimap can be put away from the zoom pill, and stays away on the next board", async () => {
+  await inViewport(async () => {
+    const view = open({ pane: true });
+    await laidOut(view);
+    const toggle = view.host.querySelector<HTMLButtonElement>(".trace-zoom-minimap")!;
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.title).toBe(t.trace.minimapHide);
+    expect(view.host.querySelector(".trace-minimap")).not.toBeNull();
+    click(toggle);
+    flushSync();
+    expect(view.host.querySelector(".trace-minimap")).toBeNull();
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.title).toBe(t.trace.minimapShow);
+    expect(loadTraceMinimap()).toBe(false);
+    view.close();
+
+    const again = open({ pane: true });
+    await laidOut(again);
+    expect(again.host.querySelector(".trace-minimap")).toBeNull();
+    click(again.host.querySelector<HTMLButtonElement>(".trace-zoom-minimap"));
+    flushSync();
+    expect(again.host.querySelector(".trace-minimap")).not.toBeNull();
+    again.close();
+  });
+});
+
+test("a viewport too small to spare a corner draws no minimap", async () => {
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 240, height: 180, top: 0, left: 0, right: 240, bottom: 180, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    const view = open({ pane: true });
+    await until(view.host, ".trace-slot");
+    flushSync();
+    expect(view.host.querySelector(".trace-zoom-minimap")).not.toBeNull();
+    expect(view.host.querySelector(".trace-minimap")).toBeNull();
+    view.close();
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
 });
