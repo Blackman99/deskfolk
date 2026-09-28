@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import daemonPackage from "../../package.json";
 import type { LocalApi } from "../local-api";
 import { HttpError } from "../errors";
 import type { RuntimeLifecycle } from "../lifecycle";
@@ -26,9 +25,9 @@ const ERROR_CODES = new Set([
   "credential_superseded", "receipt_expired", "key_write_pending", "request_unknown", "failed",
 ]);
 
-export function runtimeVersion(root = join(import.meta.dir, "../../package.json")): string {
-  const value = JSON.parse(readFileSync(root, "utf8")) as { version?: unknown };
-  return typeof value.version === "string" ? value.version : "0.0.0";
+/** Inlined at build time: the compiled daemon has no package.json beside its modules. */
+export function runtimeVersion(): string {
+  return daemonPackage.version;
 }
 
 export function restartAvailable(lifecycle: RuntimeLifecycle, windowAlive: () => boolean): boolean {
