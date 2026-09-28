@@ -8,7 +8,6 @@ mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
 mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
-const { default: TraceOutput } = await import("./TraceOutput.svelte");
 const t = copyFor("zh");
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); flushSync(); }
 
@@ -108,21 +107,6 @@ test("in the desktop window the file opens with the system instead", async () =>
   open.click();
   await settle();
   expect(invoked).toEqual([{ path: "/Users/me/ws/subs.srt", reveal: false }]);
-  view.close();
-});
-
-test("a flow output that cannot be shown downloads on the phone", async () => {
-  const names = catchDownloads();
-  const view = render(TraceOutput, { path: "BEACON_ZERO/EP01/subs.srt", handedBy: "", workspacePath: "/Users/me/ws", t, onOpenPath: () => {}, onClose: () => {},
-    api: { kind: "remote", getWorkspaceFileBlob: async () => new Blob(["srt"]) } as never,
-  });
-  await settle();
-  expect(view.host.textContent).toContain(t.trace.outputPlain);
-  expect([...view.host.querySelectorAll("button")].some((button) => button.textContent?.trim() === t.trace.outputOpen)).toBe(false);
-  expect(view.host.querySelector(".file-download.is-compact")).not.toBeNull();
-  downloadButton(view.host)!.click();
-  await settle(); await settle();
-  expect(names).toEqual(["subs.srt"]);
   view.close();
 });
 
@@ -259,16 +243,3 @@ test("the local window and a folder offer no download", async () => {
   workspace.close();
 });
 
-test("a flow card downloads the file it shows", async () => {
-  const names = catchDownloads();
-  let reads = 0;
-  const view = render(TraceOutput, { path: "BEACON_ZERO/docs/EP01_MASTER_ASSEMBLY_REPORT.md", handedBy: "", workspacePath: null, t, onOpenPath: () => {}, onClose: () => {},
-    api: { kind: "remote", getWorkspaceFileBlob: async () => { reads++; return new Blob(["# 总装"]); } } as never,
-  });
-  await settle(); await settle();
-  view.host.querySelector<HTMLButtonElement>(`.trace-output-head button[aria-label="${t.stream.artifactDownload}"]`)!.click();
-  await settle();
-  expect(reads).toBe(1);
-  expect(names).toEqual(["EP01_MASTER_ASSEMBLY_REPORT.md"]);
-  view.close();
-});

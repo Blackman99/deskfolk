@@ -9,7 +9,6 @@ mock.module('monaco-editor-css', () => ({}));
 mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
 mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', () => ({}));
 const { default: ArtifactPreview } = await import('./ArtifactPreview.svelte');
-const { default: TraceOutput } = await import('./TraceOutput.svelte');
 const t = copyFor('zh');
 
 async function workbook(): Promise<Blob> {
@@ -30,7 +29,7 @@ async function settle(host: HTMLElement, text: string) {
   throw new Error(`Preview did not show ${text}`);
 }
 
-for (const mode of ['cited', 'workspace', 'trace'] as const) {
+for (const mode of ['cited', 'workspace'] as const) {
   test(`${mode} opens the shared Office viewer through the expected file API`, async () => {
     const blob = await workbook();
     const calls: string[] = [];
@@ -41,9 +40,7 @@ for (const mode of ['cited', 'workspace', 'trace'] as const) {
       workspaceTree: async () => ({ items: [], truncated: false }),
     };
     const attachment = anAttachment({ id: 'office-att', original_filename: 'report.xlsx', workspace_relpath: 'report.xlsx' });
-    const view = mode === 'trace'
-      ? render(TraceOutput, { path: 'report.xlsx', handedBy: '', api: api as never, workspacePath: '/workspace', t, onOpenPath: () => {}, onClose: () => {} })
-      : render(ArtifactPreview, { attachment, relpath: 'report.xlsx', siblings: [attachment], api: api as never, workspacePath: '/workspace', t, mode, onSelect: () => {}, onClose: () => {} });
+    const view = render(ArtifactPreview, { attachment, relpath: 'report.xlsx', siblings: [attachment], api: api as never, workspacePath: '/workspace', t, mode, onSelect: () => {}, onClose: () => {} });
     try {
       await settle(view.host, 'shared-preview-cell');
       expect(calls).toEqual([mode === 'cited' ? 'attachment:office-att' : 'workspace:report.xlsx']);

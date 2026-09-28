@@ -1043,8 +1043,6 @@ const zh = {
     }
   },
   trace: {
-    outputFull: "全屏",
-    outputExitFull: "退出全屏",
     zoomIn: "放大",
     zoomOut: "缩小",
     zoomFit: "适应画面",
@@ -1072,11 +1070,6 @@ const zh = {
     waitingApproval: "在等批准",
     waitingAsk: "在等回答",
     jump: "跳到这一轮",
-    output: "产物",
-    outputOf: (name: string) => `${name}交出`,
-    outputMissing: "这个文件不在了。",
-    outputPlain: "这种文件在流程图里看不了内容。",
-    outputOpen: "用系统打开",
     outputClose: "收起",
     resize: "调整窗口大小",
     status: {
@@ -2312,8 +2305,6 @@ const en: CopyShape<typeof zh> = {
     }
   },
   trace: {
-    outputFull: "Full screen",
-    outputExitFull: "Leave full screen",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
     zoomFit: "Fit to view",
@@ -2341,11 +2332,6 @@ const en: CopyShape<typeof zh> = {
     waitingApproval: "Waiting for approval",
     waitingAsk: "Waiting for an answer",
     jump: "Jump to this turn",
-    output: "Handed over",
-    outputOf: (name: string) => `From ${name}`,
-    outputMissing: "This file is gone.",
-    outputPlain: "This file has nothing to show here.",
-    outputOpen: "Open with the system",
     outputClose: "Put away",
     resize: "Resize window",
     status: {

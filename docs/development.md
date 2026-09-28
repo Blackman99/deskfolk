@@ -342,7 +342,7 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:goal-coverage \
 
 ## 远程音视频预览
 
-`ArtifactPreview`（消息附件、工作区）与 `TraceOutput`（流程图产物）在远程连接下调用 `RemoteApi.openMediaSource`。页面注册 `/sw.js` 后探测媒体能力；`static/media-stream.js` 为播放器提供 `/__remote_media/<随机 id>` 临时同源 URL，经 MessageChannel 把范围请求交给拥有该预览的页面，再由原有 Noise 连接读取文件。URL 只带随机 id；路径和字节范围留在加密 RPC 内。浏览器按需消费响应流，每次 RPC 最多 256 KiB，拖动进度可直接读文件中间或尾部，MP4 的尾部索引也由浏览器请求。预加载只取元数据，用户点播放后继续读取。Worker 不写入媒体缓存，返回 `Cache-Control: no-store`；关闭、换文件、连接结束会注销媒体源并取消在途读取。
+`ArtifactPreview`（消息附件、工作区；流程图里点开的产物也交给它预览）在远程连接下调用 `RemoteApi.openMediaSource`。页面注册 `/sw.js` 后探测媒体能力；`static/media-stream.js` 为播放器提供 `/__remote_media/<随机 id>` 临时同源 URL，经 MessageChannel 把范围请求交给拥有该预览的页面，再由原有 Noise 连接读取文件。URL 只带随机 id；路径和字节范围留在加密 RPC 内。浏览器按需消费响应流，每次 RPC 最多 256 KiB，拖动进度可直接读文件中间或尾部，MP4 的尾部索引也由浏览器请求。预加载只取元数据，用户点播放后继续读取。Worker 不写入媒体缓存，返回 `Cache-Control: no-store`；关闭、换文件、连接结束会注销媒体源并取消在途读取。
 
 现有文件 GET 新增 `range=bytes=<start>-<end>`（含开放尾部和后缀形式），回环 HTTP 同时支持 `Range` 请求头；206 响应含 `Content-Range` / `Accept-Ranges` / `Content-Length`，无效或不可满足的单段范围返回 416。范围读取只读选中片段，ETag 校验选中片段的 SHA-256；远程不设文件大小上限，几十上百 MB 的影片同样分段播放；范围与 `size` 图片变体不能组合。浏览器无 Service Worker、旧 Worker 无媒体能力或旧主机拒绝 range 时保留整文件 Blob 预览；编解码支持仍由浏览器决定。本机窗口保留原加载路径。
 

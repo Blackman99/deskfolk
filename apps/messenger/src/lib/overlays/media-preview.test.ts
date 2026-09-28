@@ -3,14 +3,12 @@ import { flushSync } from "svelte";
 import type { MediaSourceHandle } from "../remote/media-source.ts";
 import { copyFor } from "../copy.ts";
 import { render } from "../test-render.ts";
-import { reactive } from "../test-reactive.svelte.ts";
 import { anAttachment } from "../test-fixtures.ts";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
 mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
-const { default: TraceOutput } = await import("./TraceOutput.svelte");
 const t = copyFor("zh");
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); flushSync(); }
 
@@ -52,31 +50,6 @@ test("closing during media setup releases a late source", async () => {
   finish({ url: "/__remote_media/late", dispose: () => { disposed++; } });
   await settle();
   expect(disposed).toBe(1);
-});
-
-test("flow output switches media, aborts the old source and reports player failure", async () => {
-  const disposed: string[] = [];
-  const signals: AbortSignal[] = [];
-  const props = reactive({ path: "clip.mp4", handedBy: "", workspacePath: null, t, onOpenPath: () => {}, onClose: () => {},
-    api: { kind: "remote", openMediaSource: async ({ path }: { path: string }, signal: AbortSignal) => {
-      signals.push(signal);
-      return { url: `/__remote_media/${path}`, dispose: () => { disposed.push(path); } };
-    } } as never,
-  });
-  const view = render(TraceOutput, props);
-  await settle();
-  expect(view.host.querySelector("video")?.getAttribute("src")).toBe("/__remote_media/clip.mp4");
-  props.path = "sound.mp3";
-  flushSync(); await settle();
-  expect(signals[0]!.aborted).toBe(true);
-  expect(disposed).toEqual(["clip.mp4"]);
-  const audio = view.host.querySelector("audio")!;
-  expect(audio.getAttribute("src")).toBe("/__remote_media/sound.mp3");
-  audio.dispatchEvent(new Event("error")); flushSync();
-  expect(view.host.textContent).toContain(t.trace.outputMissing);
-  expect(signals[1]!.aborted).toBe(true);
-  view.close();
-  expect(disposed).toEqual(["clip.mp4", "sound.mp3"]);
 });
 
 test("hosts without range support keep the whole-file preview", async () => {
