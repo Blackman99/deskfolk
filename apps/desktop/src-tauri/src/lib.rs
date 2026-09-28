@@ -55,18 +55,40 @@ fn local_api_endpoint(state: tauri::State<'_, Mutex<AppState>>) -> Option<LocalA
     read_endpoint(&guard)
 }
 
-fn expand_home(raw: &str) -> std::path::PathBuf {
-    if raw == "~" || raw.starts_with("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            if raw == "~" {
-                return std::path::PathBuf::from(home);
-            }
+/// `~` / `~/…` expansion (and, on Windows, `~\…`), independent of the real
+/// environment and of `cfg!(windows)` so both branches are testable from
+/// macOS: `windows` picks whether a backslash after `~` is recognised and
+/// whether `USERPROFILE` backs up a missing `HOME`, `env` looks up one
+/// variable at a time.
+fn expand_home_with(
+    raw: &str,
+    windows: bool,
+    env: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> std::path::PathBuf {
+    let rest = if raw == "~" {
+        Some("")
+    } else if let Some(rest) = raw.strip_prefix("~/") {
+        Some(rest)
+    } else if windows {
+        raw.strip_prefix("~\\")
+    } else {
+        None
+    };
+    if let Some(rest) = rest {
+        let home = env("HOME").or_else(|| if windows { env("USERPROFILE") } else { None });
+        if let Some(home) = home {
             let mut path = std::path::PathBuf::from(home);
-            path.push(&raw[2..]);
+            if !rest.is_empty() {
+                path.push(rest);
+            }
             return path;
         }
     }
     std::path::PathBuf::from(raw)
+}
+
+fn expand_home(raw: &str) -> std::path::PathBuf {
+    expand_home_with(raw, cfg!(windows), |name| std::env::var_os(name))
 }
 
 fn starting_directory(current: Option<&str>) -> Option<std::path::PathBuf> {
@@ -143,10 +165,71 @@ fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
                 }
             })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        if reveal {
+            windows_reveal_in_explorer(&path)
+        } else {
+            windows_shell_open(&path)
+        }
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = reveal;
         Err("open with system is only on macOS".into())
+    }
+}
+
+/// `explorer.exe /select,"<path>"`, which highlights the file/folder in a
+/// Finder-style window rather than opening it. `/select,` wants exactly this
+/// form glued to the path — `raw_arg` keeps it literal instead of the normal
+/// argument quoting `.arg()` would apply. Explorer's own exit code is not a
+/// reliable success signal (observed non-zero on success), so only a failure
+/// to launch the process at all is reported as an error.
+#[cfg(windows)]
+fn windows_reveal_in_explorer(path: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new("explorer.exe");
+    cmd.raw_arg(format!("/select,\"{path}\""));
+    daemon::suppress_console_window(&mut cmd);
+    cmd.spawn().map(|_| ()).map_err(|err| err.to_string())
+}
+
+/// `ShellExecuteW(NULL, "open", <target>, NULL, NULL, SW_SHOWNORMAL)`: the
+/// Windows equivalent of macOS `open` — opens a file/folder with its default
+/// handler, or a URL with the default browser/mail client.
+#[cfg(windows)]
+fn windows_shell_open(target: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let wide = |s: &str| -> Vec<u16> {
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    };
+    let verb = wide("open");
+    let file = wide(target);
+    // SAFETY: `verb` and `file` are NUL-terminated UTF-16 buffers kept alive
+    // for the duration of this call; the rest of the arguments are optional.
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // Per ShellExecute's own contract, a return value over 32 is success;
+    // anything else is one of the SE_ERR_* instance-value error codes.
+    if (result as isize) > 32 {
+        Ok(())
+    } else {
+        Err(format!("open failed: {result:?}"))
     }
 }
 
@@ -183,7 +266,7 @@ async fn check_for_update(app: AppHandle, force: bool) -> Result<UpdateCheck, St
     let current = app.package_info().version.clone();
     let user_agent = format!("real-bot-desktop/{current}");
     let url = updates::feed_url();
-    let arch = updates::arch_tag();
+    let arch = updates::platform_arch_tag();
 
     let result = tauri::async_runtime::spawn_blocking(move || -> Result<UpdateCheck, String> {
         let releases = updates::fetch_releases(&url, &user_agent)?;
@@ -234,7 +317,11 @@ fn open_external_url(url: String) -> Result<(), String> {
                 }
             })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows_shell_open(&url)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         Err("open with system is only on macOS".into())
     }
@@ -253,10 +340,69 @@ fn read_clipboard_text() -> Option<String> {
         let kind = unsafe { NSPasteboardTypeString };
         pasteboard.stringForType(kind).map(|text| text.to_string())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows_clipboard_text()
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         None
     }
+}
+
+/// The Win32 clipboard as Unicode text. `OpenClipboard` can transiently fail
+/// while another process (a copy just finished elsewhere) holds it, so a
+/// handful of short retries ride that out instead of failing the paste.
+#[cfg(windows)]
+fn windows_clipboard_text() -> Option<String> {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, OpenClipboard,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+
+    const CF_UNICODETEXT: u32 = 13;
+    const OPEN_ATTEMPTS: u32 = 5;
+
+    let mut opened = false;
+    for attempt in 0..OPEN_ATTEMPTS {
+        // SAFETY: a null owner window asks for the clipboard without
+        // associating it with one of ours.
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            opened = true;
+            break;
+        }
+        if attempt + 1 < OPEN_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+    if !opened {
+        return None;
+    }
+    // SAFETY: the clipboard is open for the whole block below and is always
+    // closed before this function returns, on every path.
+    let text = unsafe {
+        let handle = GetClipboardData(CF_UNICODETEXT);
+        if handle.is_null() {
+            None
+        } else {
+            let ptr = GlobalLock(handle) as *const u16;
+            if ptr.is_null() {
+                None
+            } else {
+                // The handle owns NUL-terminated UTF-16 text; find the NUL rather
+                // than trusting `GlobalSize` not to include allocator padding.
+                let mut len = 0usize;
+                while *ptr.add(len) != 0 {
+                    len += 1;
+                }
+                let value = String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len));
+                GlobalUnlock(handle);
+                Some(value)
+            }
+        }
+    };
+    unsafe { CloseClipboard() };
+    text
 }
 
 fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
@@ -474,14 +620,14 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main(app);
         }));
-        let mut autostart = tauri_plugin_autostart::Builder::new()
+        let autostart = tauri_plugin_autostart::Builder::new()
             .args(["--hidden"])
             .app_name("Deskfolk");
+        // Shadowing (rather than reassigning a `mut` binding) means the
+        // variable needs no `mut` on platforms where this branch is absent.
         #[cfg(target_os = "macos")]
-        {
-            autostart =
-                autostart.macos_launcher(tauri_plugin_autostart::MacosLauncher::AppleScript);
-        }
+        let autostart =
+            autostart.macos_launcher(tauri_plugin_autostart::MacosLauncher::AppleScript);
         builder = builder.plugin(autostart.build());
     }
 
@@ -523,6 +669,8 @@ pub fn run() {
         .setup(|app| {
             install_menus(app.handle())?;
             install_tray(app.handle())?;
+            #[cfg(windows)]
+            disable_browser_accelerator_keys(app.handle());
             register_login_item(app.handle());
             restore_independent_mode(app.handle(), &local_api::data_dir());
             restore_window_size(app.handle());
@@ -601,15 +749,23 @@ fn send_pane_command(app: &AppHandle, id: &str) {
 fn install_menus(app: &AppHandle) -> tauri::Result<()> {
     let about = PredefinedMenuItem::about(app, None, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let hide = PredefinedMenuItem::hide(app, None)?;
-    let hide_others = PredefinedMenuItem::hide_others(app, None)?;
     let quit = MenuItem::with_id(app, "quit", "退出 Deskfolk", true, Some("CmdOrCtrl+Q"))?;
-    let app_menu = Submenu::with_items(
-        app,
-        "Deskfolk",
-        true,
-        &[&about, &sep, &hide, &hide_others, &sep, &quit],
-    )?;
+    // On Windows this menu renders as the window's own in-window menu bar,
+    // which has no concept of hiding the app (or "other" apps) the way the
+    // macOS app menu does, so those two items are dropped there.
+    #[cfg(target_os = "macos")]
+    let app_menu = {
+        let hide = PredefinedMenuItem::hide(app, None)?;
+        let hide_others = PredefinedMenuItem::hide_others(app, None)?;
+        Submenu::with_items(
+            app,
+            "Deskfolk",
+            true,
+            &[&about, &sep, &hide, &hide_others, &sep, &quit],
+        )?
+    };
+    #[cfg(not(target_os = "macos"))]
+    let app_menu = Submenu::with_items(app, "Deskfolk", true, &[&about, &sep, &quit])?;
     let edit = Submenu::with_items(
         app,
         "编辑",
@@ -689,6 +845,32 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
         state.stop_item = Some(stop);
     }
     Ok(())
+}
+
+/// WebView2's own Ctrl+R / F5 reload, Ctrl+P print, Ctrl+F find and zoom
+/// shortcuts would otherwise compete with the messenger's own bindings for
+/// the same keys (macOS's WKWebView has no such built-in accelerators).
+/// Best-effort: an older or unusual WebView2 runtime that lacks
+/// `ICoreWebView2Settings3` just keeps its default behaviour.
+#[cfg(windows)]
+fn disable_browser_accelerator_keys(app: &AppHandle) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+    use windows_core::Interface;
+
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.with_webview(|webview| {
+        let disable = || -> windows_core::Result<()> {
+            // SAFETY: each call borrows the controller/CoreWebView2 handle for
+            // just the duration of the call, as their signatures require.
+            let core = unsafe { webview.controller().CoreWebView2() }?;
+            let settings = unsafe { core.Settings() }?;
+            let settings3 = settings.cast::<ICoreWebView2Settings3>()?;
+            unsafe { settings3.SetAreBrowserAcceleratorKeysEnabled(false) }
+        };
+        let _ = disable();
+    });
 }
 
 fn register_login_item(app: &AppHandle) {
@@ -1247,6 +1429,58 @@ mod tests {
         assert_eq!(guard.supervisor.is_connected(), connected);
         assert_eq!(read_endpoint(&guard).is_some(), connected);
         assert!(!guard.quitting);
+    }
+
+    fn fake_env(
+        pairs: Vec<(&'static str, &'static str)>,
+    ) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| std::ffi::OsString::from(*value))
+        }
+    }
+
+    #[test]
+    fn expand_home_accepts_backslash_only_on_windows_and_falls_back_to_userprofile() {
+        assert_eq!(
+            expand_home_with(
+                "~\\ws",
+                true,
+                fake_env(vec![("USERPROFILE", r"C:\Users\me")])
+            ),
+            std::path::PathBuf::from(r"C:\Users\me").join("ws")
+        );
+        // HOME still wins over USERPROFILE when both are set.
+        assert_eq!(
+            expand_home_with(
+                "~/ws",
+                true,
+                fake_env(vec![("HOME", r"C:\Users\me"), ("USERPROFILE", r"C:\Wrong")])
+            ),
+            std::path::PathBuf::from(r"C:\Users\me").join("ws")
+        );
+        assert_eq!(
+            expand_home_with("~", true, fake_env(vec![("USERPROFILE", r"C:\Users\me")])),
+            std::path::PathBuf::from(r"C:\Users\me")
+        );
+        // Off Windows, a backslash after `~` is just a literal path segment,
+        // and there is no USERPROFILE fallback.
+        assert_eq!(
+            expand_home_with("~\\ws", false, fake_env(vec![("HOME", "/Users/me")])),
+            std::path::PathBuf::from("~\\ws")
+        );
+        assert_eq!(
+            expand_home_with("~", true, fake_env(vec![])),
+            std::path::PathBuf::from("~")
+        );
+        // `~/…` still works on Windows without a leading `HOME`/`USERPROFILE`
+        // mismatch: the un-expandable case is left alone, same as today.
+        assert_eq!(
+            expand_home_with("~/ws", true, fake_env(vec![])),
+            std::path::PathBuf::from("~/ws")
+        );
     }
 
     #[test]

@@ -27,6 +27,8 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
     };
     #[cfg(unix)]
     let channel = super::remote_setup::prepare_channel(&mut cmd)?;
+    #[cfg(windows)]
+    suppress_console_window(&mut cmd);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit());
@@ -43,16 +45,31 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
 /// the entitlements the credential runtime needs. A build that only produced the plain compiled
 /// daemon leaves it next to the window binary instead, and starting a runtime still beats none.
 fn bundled_daemon(resources: &std::path::Path) -> Option<PathBuf> {
-    let native = super::remote_native::native_dir(resources).join(SIDECAR_NAME);
+    let name = sidecar_name();
+    let native = super::remote_native::native_dir(resources).join(&name);
     if native.is_file() {
         return Some(native);
     }
-    let beside = std::env::current_exe().ok()?.parent()?.join(SIDECAR_NAME);
+    let beside = std::env::current_exe().ok()?.parent()?.join(&name);
     beside.is_file().then_some(beside)
 }
 
 /// Base name of the compiled daemon, in the resource directory or beside the window binary.
-const SIDECAR_NAME: &str = "real-bot-daemon";
+/// `EXE_SUFFIX` is `.exe` on Windows and empty everywhere else.
+const SIDECAR_NAME_STEM: &str = "real-bot-daemon";
+
+fn sidecar_name() -> String {
+    format!("{SIDECAR_NAME_STEM}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// A console-owning child (bun, the compiled daemon) would otherwise flash a
+/// black terminal window behind the app on every launch.
+#[cfg(windows)]
+pub(crate) fn suppress_console_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
 
 pub fn child_alive(child: &mut Child) -> bool {
     child.try_wait().ok().flatten().is_none()
@@ -75,8 +92,18 @@ fn bun_path() -> Option<PathBuf> {
     if let Some(path) = which("bun") {
         return Some(path);
     }
-    let home = std::env::var("HOME").ok()?;
-    let fallback = PathBuf::from(home).join(".bun/bin/bun");
+    // `HOME` is usually unset on Windows; `USERPROFILE` is the variable that
+    // actually carries the user's home directory there.
+    let home = if cfg!(windows) {
+        std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME"))
+    } else {
+        std::env::var("HOME")
+    }
+    .ok()?;
+    let fallback = PathBuf::from(home)
+        .join(".bun")
+        .join("bin")
+        .join(format!("bun{}", std::env::consts::EXE_SUFFIX));
     fallback.is_file().then_some(fallback)
 }
 
@@ -103,13 +130,37 @@ fn watch_daemon() -> bool {
 
 fn which(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
+    let pathext = std::env::var("PATHEXT").ok();
     for dir in std::env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
+        for candidate in which_candidates(name, cfg!(windows), pathext.as_deref()) {
+            let candidate = dir.join(candidate);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
     None
+}
+
+/// The file names to try for `name` in one `PATH` directory, in order.
+///
+/// Off Windows this is just `name`. On Windows a bare command has no
+/// extension, so the shell (and this) tries each of `PATHEXT`'s (`bun` before
+/// `bun.exe`, so an extensionless shim on `PATH` still wins). `windows` and
+/// `pathext` are injected — real callers pass `cfg!(windows)` and the real
+/// `PATHEXT` — so the Windows list is exercised from a macOS test.
+fn which_candidates(name: &str, windows: bool, pathext: Option<&str>) -> Vec<String> {
+    if !windows || name.contains('.') {
+        return vec![name.to_string()];
+    }
+    let mut candidates = vec![name.to_string()];
+    for ext in pathext.unwrap_or(".EXE;.CMD;.BAT").split(';') {
+        let ext = ext.trim();
+        if !ext.is_empty() {
+            candidates.push(format!("{name}{ext}"));
+        }
+    }
+    candidates
 }
 
 #[cfg(test)]
@@ -131,5 +182,40 @@ mod tests {
     #[test]
     fn debug_builds_watch_the_daemon_by_default() {
         assert_eq!(watch_daemon(), cfg!(debug_assertions));
+    }
+
+    #[test]
+    fn sidecar_name_carries_the_platform_exe_suffix() {
+        assert_eq!(
+            sidecar_name(),
+            format!("real-bot-daemon{}", std::env::consts::EXE_SUFFIX)
+        );
+    }
+
+    #[test]
+    fn which_candidates_try_pathext_suffixes_on_windows_only() {
+        assert_eq!(
+            which_candidates("bun", false, None),
+            vec!["bun".to_string()]
+        );
+        assert_eq!(
+            which_candidates("bun", false, Some(".EXE;.CMD")),
+            vec!["bun".to_string()],
+            "PATHEXT is a Windows-shell concept only"
+        );
+        assert_eq!(
+            which_candidates("bun", true, Some(".COM;.EXE;.BAT")),
+            vec!["bun", "bun.COM", "bun.EXE", "bun.BAT"]
+        );
+        assert_eq!(
+            which_candidates("bun", true, None),
+            vec!["bun", "bun.EXE", "bun.CMD", "bun.BAT"],
+            "a missing PATHEXT still tries the common extensions"
+        );
+        // A name that already carries an extension is left alone either way.
+        assert_eq!(
+            which_candidates("bun.exe", true, None),
+            vec!["bun.exe".to_string()]
+        );
     }
 }

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createRawSnippet, flushSync } from "svelte";
 import Workbench from "./Workbench.svelte";
 import { copyFor } from "../copy.ts";
@@ -311,7 +312,7 @@ test("a pane is not a containing block, so menus land where they were opened", (
   // column's width away from the pointer. Checked in the source because happy-dom has no layout
   // to measure, and this is the kind of thing added back later for a performance reason.
   const source = readFileSync(
-    new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname,
+    fileURLToPath(new URL("./WorkbenchLeaf.svelte", import.meta.url)),
     "utf8",
   );
   const declarations = source
@@ -495,7 +496,7 @@ test("a drag does not write the variable the branch already owns", () => {
   // re-render — left the branch with no track list and every pane in it collapsed into one
   // column. The drag paints the grid property instead and clears that, falling back to the
   // variable. happy-dom has no layout to drive a real drag through, so the rule is read here.
-  const source = readFileSync(new URL("./Workbench.svelte", import.meta.url).pathname, "utf8");
+  const source = readFileSync(fileURLToPath(new URL("./Workbench.svelte", import.meta.url)), "utf8");
   const paintBody = source.slice(source.indexOf("function paint("), source.indexOf("function startSash("));
   expect(paintBody).not.toContain("'--wb-tracks'");
   expect(paintBody).toContain("grid-template-columns");
@@ -507,7 +508,7 @@ test("activating or focusing a tab never changes the size of its box", () => {
   // tab jumped up two pixels: every click nudged the whole strip. The active tab is told apart by
   // colour and shape. Read from the source because happy-dom does not lay text out, so a width
   // that depends on font weight cannot be measured there.
-  const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
+  const source = readFileSync(fileURLToPath(new URL("./WorkbenchLeaf.svelte", import.meta.url)), "utf8");
   const style = source
     .slice(source.indexOf("<style>"), source.indexOf("</style>"))
     .replace(/\/\*[\s\S]*?\*\//g, "");
@@ -532,7 +533,7 @@ test("activating or focusing a tab never changes the size of its box", () => {
 });
 
 test("a tab's picture is always shown, and its ⋯ only while the pointer is on it", () => {
-  const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
+  const source = readFileSync(fileURLToPath(new URL("./WorkbenchLeaf.svelte", import.meta.url)), "utf8");
   const style = source.slice(source.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
   const icon = style.slice(style.indexOf(".wb-tab-button :global(.wb-tab-icon)"));
   expect(icon.slice(0, icon.indexOf("}"))).toContain("display: inline-flex");
@@ -545,7 +546,7 @@ test("a tab's picture is always shown, and its ⋯ only while the pointer is on 
 test("tabs keep their width when many share a strip, and the row scrolls sideways", () => {
   // Shrinking every tab to fit cut six names down to two characters each. Read from the source
   // because happy-dom does not lay out flex rows.
-  const source = readFileSync(new URL("./WorkbenchLeaf.svelte", import.meta.url).pathname, "utf8");
+  const source = readFileSync(fileURLToPath(new URL("./WorkbenchLeaf.svelte", import.meta.url)), "utf8");
   const style = source.slice(source.indexOf("<style>")).replace(/\/\*[\s\S]*?\*\//g, "");
   const block = (selector: string) => {
     const from = style.slice(style.indexOf(`${selector} {`));

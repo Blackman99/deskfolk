@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /**
  * The stylesheet is global, so nothing tells you when a rule stops being used — a deleted
@@ -87,7 +87,10 @@ const literals = new Set<string>();
 const prefixes = new Set<string>();
 for (const dir of SOURCE_DIRS) {
   for (const path of walk(dir)) {
-    if (!/\.(svelte|ts)$/.test(path) || path.includes(".test.") || path.includes(`${STYLES}/`)) continue;
+    // `path` is `join()`-ed, so it is `\`-separated on win32; compare against `STYLES` (always
+    // `/`) on a normalized copy rather than changing what gets read.
+    const posixPath = sep === "/" ? path : path.split(sep).join("/");
+    if (!/\.(svelte|ts)$/.test(path) || path.includes(".test.") || posixPath.includes(`${STYLES}/`)) continue;
     const text = readFileSync(path, "utf8");
     // No newlines inside a chunk. A quote regex that may cross lines walks straight over the
     // apostrophe in an English copy string and swallows unrelated code, and every word in the

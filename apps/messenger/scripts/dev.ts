@@ -17,8 +17,10 @@ if (action === "refuse") {
   process.exit(1);
 }
 
-const vite = join(import.meta.dir, "../node_modules/.bin/vite");
-const child = Bun.spawn([vite, "dev"], {
+// `.bin/vite` is a shell shim (`vite.cmd` on win32) meant to be run by a shell; spawning vite's
+// own JS entry with the current runtime instead needs no shell and works the same everywhere.
+const vite = join(import.meta.dir, "../node_modules/vite/bin/vite.js");
+const child = Bun.spawn([process.execPath, vite, "dev"], {
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit",

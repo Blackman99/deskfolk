@@ -14,7 +14,7 @@ import {
 import { parsePlanSpec, type PlanSpec, type Store } from "./store";
 import { codePointCount, takeCodePoints } from "./text";
 import { visionImage } from "./vision-image";
-import { classifyPath } from "./workspace-paths";
+import { asFolder, classifyPath } from "./workspace-paths";
 
 const MAIN_LIMIT = 40;
 const BODY_LIMIT = 4000;
@@ -662,8 +662,8 @@ function situationUserMessage(
   const root = workDir ? store.workspacePath() : null;
   const rootLine = root
     ? locale === "en"
-      ? `The workspace root on this machine is ${root}/ and ~ is ${homedir()}; write host paths from these, never guess.`
-      : `工作区根在这台机器上是 ${root}/，~ 是 ${homedir()}；要写宿主路径就照这两个写，不要猜。`
+      ? `The workspace root on this machine is ${asFolder(root)} and ~ is ${homedir()}; write host paths from these, never guess.`
+      : `工作区根在这台机器上是 ${asFolder(root)}，~ 是 ${homedir()}；要写宿主路径就照这两个写，不要猜。`
     : null;
   const dirLines = [rootLine, workDirLine].filter((line): line is string => !!line);
   const facts = taskId

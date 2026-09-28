@@ -1,11 +1,19 @@
 import { expect, test } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 import { x25519 } from '@noble/curves/ed25519.js';
 import { DeviceSession, HostSession, MAX_LOGICAL_MESSAGE, Reassembler, encodePrologue, fragmentMessage, hex, unhex } from '../src/index.ts';
 import { binding, deviceKeys, devicePublic, hostKeys, hostPublic, replayStore } from './helpers.ts';
 
+// `new URL(...).pathname` gives `/D:/...` on Windows — an extra leading slash `fs`/`Bun.spawn`
+// don't strip — so this goes through `fileURLToPath` instead. Cargo also names the binary
+// `snow-peer.exe` there.
+const SNOW_PEER = fileURLToPath(
+  new URL(`./snow/target/debug/snow-peer${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url),
+);
+
 for (const rustInitiator of [false, true]) {
   test(`independent snow 0.10.0 ${rustInitiator ? 'initiator' : 'responder'} verifies real prologue + Hello and 1MiB duplex`, async () => {
-    const peer = Bun.spawn([new URL('./snow/target/debug/snow-peer', import.meta.url).pathname], { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+    const peer = Bun.spawn([SNOW_PEER], { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
     const reader = peer.stdout.getReader();
     let buffer = '';
     async function read(): Promise<Record<string, unknown>> {

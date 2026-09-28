@@ -200,6 +200,9 @@ test("a file's rows are found however the preview spelled its path", () => {
   expect(canonicalRelpath("deliveries/./pick.ts/")).toBe("deliveries/pick.ts");
   expect(canonicalRelpath("/Users/you/ws/deliveries/pick.ts", "/Users/you/ws/")).toBe("deliveries/pick.ts");
   expect(canonicalRelpath("/Users/you/wsx/pick.ts", "/Users/you/ws")).toBe("Users/you/wsx/pick.ts");
+  // A Windows root: `\` folds to `/`, and the drive letter's case does not have to match.
+  expect(canonicalRelpath("C:\\ws\\deliveries\\pick.ts", "C:\\ws")).toBe("deliveries/pick.ts");
+  expect(canonicalRelpath("c:\\WS\\deliveries\\pick.ts", "C:\\ws")).toBe("deliveries/pick.ts");
   const rows = [row({ id: "a", relpath: "deliveries/pick.ts" }), row({ id: "b", relpath: "other.ts" })];
   expect(annotationsForFile(rows, "./deliveries//pick.ts").map((r) => r.id)).toEqual(["a"]);
   expect(annotationsForFile(rows, "/Users/you/ws/deliveries/pick.ts", "/Users/you/ws").map((r) => r.id)).toEqual(["a"]);

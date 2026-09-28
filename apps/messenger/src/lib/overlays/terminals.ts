@@ -139,9 +139,14 @@ export class InputQueue {
   }
 }
 
-/** `/Users/you/x` as the prompt writes it, `~/x`. The daemon's is a Mac, so home is under /Users. */
+/**
+ * `/Users/you/x` as the prompt writes it, `~/x`. On Windows the daemon's home is
+ * `C:\Users\you`, case-insensitively (the shell reports either case for the drive letter).
+ */
 export function tildePath(path: string): string {
-  return path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+  const mac = path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+  if (mac !== path) return mac;
+  return path.replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/i, "~");
 }
 
 /** One key of the phone's key bar. Paste and the keyboard toggle draw an icon, so they carry no label. */

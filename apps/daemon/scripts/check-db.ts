@@ -14,11 +14,12 @@
 import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { APP_SUPPORT_DIRNAME, STATE_DB_NAME } from "@real-bot/protocol";
+import { defaultAppDataDir, STATE_DB_NAME } from "@real-bot/protocol";
 import { Store } from "../src/store";
 
 const source =
-  process.argv[2] ?? join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME, STATE_DB_NAME);
+  process.argv[2] ??
+  join(defaultAppDataDir({ platform: process.platform, env: process.env, home: homedir() }), STATE_DB_NAME);
 
 if (!existsSync(source)) {
   console.error(`no database at ${source}`);

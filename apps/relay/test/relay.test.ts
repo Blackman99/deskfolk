@@ -16,7 +16,10 @@ describe('durable enrollment and admission', () => {
     try {
       const attempts = await Promise.all([f.enroll(), f.enroll()]);
       expect(attempts.map(r => r.status).sort()).toEqual([201, 400]);
-      expect(statSync(`${f.directory}/enrollment.sqlite`).mode & 0o777).toBe(0o600);
+      // NTFS has no POSIX mode bits: this file is always 0o666 there regardless of what we chmod.
+      if (process.platform !== 'win32') {
+        expect(statSync(`${f.directory}/enrollment.sqlite`).mode & 0o777).toBe(0o600);
+      }
       expect(readFileSync(`${f.directory}/enrollment.sqlite`).includes(Buffer.from(f.bootstrap))).toBe(false);
       await f.restart(); expect((await f.enroll()).status).toBe(400);
       const control = await f.host(); expect((await f.command(control, 'health')).devices).toBe(0);

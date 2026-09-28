@@ -7,6 +7,7 @@
 	import MessageAttachments from './MessageAttachments.svelte';
 	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
 	import { copyableImageAt } from '../image-context.ts';
+	import { desktopPlatform } from '../platform.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import AskCard from './AskCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
@@ -856,8 +857,9 @@
 	function handleMessageMouseDown(e: MouseEvent): void {
 		// A rendered picture keeps the secondary press: its own menu copies the pixels.
 		if (copyableImageAt(e.target)) return;
-		// WebKit selects the word on secondary mousedown, before contextmenu fires.
-		if (e.button === 2 || (e.button === 0 && e.ctrlKey)) e.preventDefault();
+		// WebKit selects the word on secondary mousedown, before contextmenu fires. Control-click as
+		// right-click is a mac habit only — on Windows Ctrl+click is an ordinary modified click.
+		if (e.button === 2 || (e.button === 0 && e.ctrlKey && desktopPlatform() === 'mac')) e.preventDefault();
 	}
 
 	function handleMessageTouchStart(): void {

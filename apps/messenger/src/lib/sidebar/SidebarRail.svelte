@@ -3,6 +3,7 @@
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { formatShortcut } from '../keymap.ts';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import { recentBotDms } from './bot-dm-source.ts';
@@ -167,7 +168,7 @@
 <nav class="rail" aria-label={t.sidebar.sessions}>
 	<RailTooltip
 		class="rail-action rail-expand"
-		label={shortcutTip(t.sidebar.show, '⌘B')}
+		label={shortcutTip(t.sidebar.show, formatShortcut(['mod', 'B']))}
 		describedBy="rail-tip-expand"
 		aria-expanded="false"
 		onclick={onExpand}
@@ -247,7 +248,7 @@
 	<div class="rail-foot">
 		<RailTooltip
 			class="rail-action rail-workspace {workspaceOpen ? 'is-active' : ''}"
-			label={workspaceSet ? shortcutTip(t.sidebar.workspace, '⌘O') : [t.sidebar.workspace, t.sidebar.workspaceUnset]}
+			label={workspaceSet ? shortcutTip(t.sidebar.workspace, formatShortcut(['mod', 'O'])) : [t.sidebar.workspace, t.sidebar.workspaceUnset]}
 			name={t.sidebar.workspace}
 			describedBy="rail-tip-workspace"
 			enabled={workspaceSet}

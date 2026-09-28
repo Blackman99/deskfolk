@@ -15,6 +15,7 @@ import {
   USER_MEMBER,
   annotationStale,
   isAnnotationAnchorKind,
+  looksLikeHostAbsolutePath,
   normalizeCitedPath,
   parseMentions,
   validateAnchor,
@@ -357,7 +358,8 @@ export function checkAnnotatedPath(ctx: StoreContext, value: unknown): { relpath
   const raw = requireString("relpath", value);
   const cited = normalizeCitedPath(raw);
   if (!cited || cited === ".") throw new HttpError(422, "invalid_args", "relpath must name a file");
-  if (/^[a-z][a-z0-9+.-]*:/i.test(cited) || cited.includes("://")) {
+  // `C:\notes.md` starts like a one-letter scheme; a drive path is a file, not a link.
+  if ((/^[a-z][a-z0-9+.-]*:/i.test(cited) && !looksLikeHostAbsolutePath(cited)) || cited.includes("://")) {
     throw new HttpError(422, "invalid_args", "only workspace files can be annotated, not links");
   }
   const located = resolveAttachmentLocation(ctx, cited);

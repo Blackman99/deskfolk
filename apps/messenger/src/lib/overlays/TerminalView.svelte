@@ -12,9 +12,12 @@
 		controlByte,
 		macEditingBytes,
 		terminalShortcut,
+		windowsTerminalShortcut,
 		type Arrow,
 		type TerminalShortcut
 	} from './terminal-keys.ts';
+	import { desktopPlatform } from '../platform.ts';
+	import { isPrimaryModifier } from '../keymap.ts';
 	import {
 		documentTheme,
 		findDecorations,
@@ -76,6 +79,9 @@
 		tabIds = 'all',
 		onBind
 	}: Props = $props();
+
+	/** Read once: the platform does not change under a mounted pane. */
+	const platform = desktopPlatform();
 
 	/** The session an "end this" is waiting on confirmation for. Ending one stops what it runs. */
 	let endConfirmId = $state<string | null>(null);
@@ -202,7 +208,7 @@
 			allowProposedApi: true,
 			convertEol: false,
 			cursorBlink: true,
-			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace',
 			fontSize: terminalFontSize.current,
 			scrollback: 5000,
 			// A program that takes the mouse (vim, htop, a TUI) still lets ⌥-drag select, as Terminal.app does.
@@ -210,7 +216,10 @@
 			theme: xtermTheme(theme),
 			minimumContrastRatio: minimumContrast(theme),
 			// OSC 8 links a program prints on purpose, next to the URLs found in plain text below.
-			linkHandler: { activate: (event, uri) => openLink(event, uri) }
+			linkHandler: { activate: (event, uri) => openLink(event, uri) },
+			// ConPTY writes lines the way Windows programs expect; xterm reads its own DECSTBM/DECSET
+			// differently under it than under a Unix pty on the wire, so it must be told which this is.
+			...(platform === 'windows' ? { windowsPty: { backend: 'conpty' as const } } : {})
 		});
 		fit = new FitAddon();
 		term.loadAddon(fit);
@@ -252,11 +261,7 @@
 		stopTheme = followTheme();
 		stopEdit = registerPaneEdit(host, {
 			canCopy: () => term?.hasSelection() ?? false,
-			copy: () => {
-				const text = term?.getSelection();
-				if (text) copyText(text);
-				term?.focus();
-			},
+			copy: copySelection,
 			paste: () => void pasteClipboard()
 		});
 		await refresh();
@@ -316,19 +321,32 @@
 		return () => observer.disconnect();
 	}
 
-	/** A plain click selects, as in Terminal.app; ⌘-click opens. A finger has no ⌘, so a tap opens. */
+	/**
+	 * A plain click selects, as in Terminal.app; the platform's modifier opens it (⌘ on mac,
+	 * Ctrl elsewhere — there is no ⌘ key on Windows). A finger has no modifier, so a tap opens.
+	 */
 	function openLink(event: MouseEvent, uri: string): void {
-		if (!event.metaKey && lastPointer !== 'touch') return;
+		if (!isPrimaryModifier(event, platform) && lastPointer !== 'touch') return;
 		void openExternalLink(uri);
 	}
 
+	/** Copies the selection, as the pane's own Copy menu item does. */
+	function copySelection(): void {
+		const text = term?.getSelection();
+		if (text) copyText(text);
+		term?.focus();
+	}
+
 	/**
-	 * The keys a Mac terminal answers that xterm leaves to the app. Swallowed on every phase so
-	 * xterm never sends its own bytes for them too; acted on once, on the way down.
+	 * The keys a Mac terminal answers that xterm leaves to the app, plus — on Windows — the
+	 * Ctrl+Shift bar Windows Terminal answers the same way. Swallowed on every phase so xterm
+	 * never sends its own bytes for them too; acted on once, on the way down.
 	 */
 	function onTerminalKey(event: KeyboardEvent): boolean {
 		const bytes = macEditingBytes(event);
-		const shortcut = bytes ? null : terminalShortcut(event);
+		const shortcut = bytes
+			? null
+			: (terminalShortcut(event) ?? (platform === 'windows' ? windowsTerminalShortcut(event) : null));
 		if (!bytes && !shortcut) return true;
 		if (event.type === 'keydown') {
 			event.preventDefault();
@@ -345,6 +363,12 @@
 				// and the daemon's too, or the next pane to attach would bring it all back.
 				term?.clear();
 				if (activeId && daemonAnswers) void api?.clearTerminalScreen(activeId).catch(() => undefined);
+				break;
+			case 'copy':
+				copySelection();
+				break;
+			case 'paste':
+				void pasteClipboard();
 				break;
 			case 'find':
 				openFind();
@@ -1097,7 +1121,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-family: ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace;
 	}
 
 	.terminal-new,

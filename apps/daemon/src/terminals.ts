@@ -21,6 +21,7 @@ import type { Store } from "./store";
 import { CwdTracker } from "./terminal-cwd";
 import { macSystemLocale, terminalEnv } from "./terminal-env";
 import { TerminalScreen, type ScreenColors, type ScreenSnapshot } from "./terminal-screen";
+import { isAbsoluteHostPath } from "./workspace-paths";
 
 /**
  * Where a restored screen ends and the new shell begins. The old session may have stopped
@@ -103,7 +104,7 @@ export class Terminals {
       throw new HttpError(409, "conflict", `at most ${MAX_TERMINALS} terminals at once`);
     }
     const cwd = input.cwd.trim();
-    if (!cwd.startsWith("/") || cwd.length > 4096 || /[\x00-\x1f\x7f]/.test(cwd)) {
+    if (!isAbsoluteHostPath(cwd) || cwd.length > 4096 || /[\x00-\x1f\x7f]/.test(cwd)) {
       throw new HttpError(422, "invalid_args", "cwd must be an absolute path");
     }
     const id = ulid();
@@ -403,8 +404,9 @@ export class Terminals {
   }
 }
 
-/** A tab label: the last segment of the cwd, or `/` at the root. */
-function titleFor(cwd: string): string {
+/** A tab label: the last segment of the cwd, or the root itself (`/`, `C:`). */
+export function titleFor(cwd: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform === "win32") return cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd;
   return cwd.split("/").filter(Boolean).at(-1) ?? "/";
 }
 

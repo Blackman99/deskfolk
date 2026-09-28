@@ -1,4 +1,18 @@
 import type { Locale } from "@real-bot/protocol";
+import { desktopPlatform } from "./platform.ts";
+
+/**
+ * Read once: the platform does not change while the app is running, and a handful of strings
+ * below (Finder/Explorer, Trash/Recycle Bin, Keychain/Credential Manager, …) need to know it.
+ * Everything else in `zh`/`en` stays a plain string, unchanged from before Windows existed.
+ */
+const isWindows = desktopPlatform() === "windows";
+/** The word for the file manager and its trash, on this platform — used by a few `stream` strings below. */
+const zhTrashWord = isWindows ? "回收站" : "废纸篓";
+const enTrashWord = isWindows ? "Recycle Bin" : "Trash";
+const enTrashOwner = isWindows ? "the" : "the Mac’s";
+/** The OS name itself, where a string names it directly rather than something it owns. */
+const osName = isWindows ? "Windows" : "macOS";
 
 /** Locked in 设置里「壳不是囚笼」写哪一句. Do not paraphrase. */
 export const JAIL_COPY = {
@@ -509,7 +523,7 @@ const zh = {
     mcpUrl: "URL",
     mcpHeaders: "headers",
     mcpAuth: "Authorization",
-    mcpAuthHint: "Bearer token。只写进钥匙串，不进列表。",
+    mcpAuthHint: isWindows ? "Bearer token。只写进 Windows 凭据管理器，不进列表。" : "Bearer token。只写进钥匙串，不进列表。",
     mcpEnabled: "启用",
     mcpAdd: "添加",
     mcpConfirmAdd: "确认添加",
@@ -710,18 +724,18 @@ const zh = {
     artifactDownloadTapAgain: "文件已取回，再点一次下载",
     artifactDownloadFailed: "没能下载这个文件",
     artifactOpenSystem: "用系统默认应用打开",
-    artifactReveal: "在 Finder 中打开",
+    artifactReveal: isWindows ? "在文件资源管理器中显示" : "在 Finder 中打开",
     artifactOpenTerminal: "在此位置打开终端",
     artifactCopyPath: "复制工作区路径",
     artifactCopyAbsPath: "复制绝对路径",
-    artifactTrash: "移到废纸篓",
-    artifactTrashCount: (count: number) => `将 ${count} 项移到废纸篓`,
-    artifactTrashTitle: (name: string, count: number) => (count > 1 ? `将 ${count} 项移到废纸篓？` : `将“${name}”移到废纸篓？`),
+    artifactTrash: `移到${zhTrashWord}`,
+    artifactTrashCount: (count: number) => `将 ${count} 项移到${zhTrashWord}`,
+    artifactTrashTitle: (name: string, count: number) => (count > 1 ? `将 ${count} 项移到${zhTrashWord}？` : `将“${name}”移到${zhTrashWord}？`),
     artifactTrashBody: (names: string[], count: number, folders: boolean, unsaved: boolean) =>
       [
         count > 1
-          ? `${names.slice(0, 3).map((name) => `“${name}”`).join("、")}${count > 3 ? ` 等 ${count} 项` : ""}会移到 Mac 的废纸篓，可以从那里放回。`
-          : "它会移到 Mac 的废纸篓，可以从那里放回。",
+          ? `${names.slice(0, 3).map((name) => `“${name}”`).join("、")}${count > 3 ? ` 等 ${count} 项` : ""}会移到${isWindows ? "" : " Mac 的"}${zhTrashWord}，可以从那里放回。`
+          : `它会移到${isWindows ? "" : " Mac 的"}${zhTrashWord}，可以从那里放回。`,
         folders ? "文件夹会连同里面的内容一起移走。" : "",
         unsaved ? "正在编辑的文件还有未保存的修改，会一起丢掉。" : "",
       ].join(""),
@@ -1172,7 +1186,7 @@ const zh = {
   },
   onboarding: {
     welcome: "欢迎使用 Deskfolk",
-    subtitle: "本机 macOS 单人 Agent 协作空间。初次使用，先设好工作区和模型服务，再建第一个 Bot，就能开始协作。",
+    subtitle: `本机 ${osName} 单人 Agent 协作空间。初次使用，先设好工作区和模型服务，再建第一个 Bot，就能开始协作。`,
     step1Title: "工作区目录",
     step2Title: "模型端点与密钥",
     step3Title: "模型选择与默认",
@@ -1255,6 +1269,8 @@ const zh = {
     deviceNotifications: "本设备系统通知",
     deviceSubtitle: "管理当前设备接收系统通知与推送的偏好",
     deviceEnable: "开启这台设备的系统通知",
+    /** Shown once notifications are on. Windows doesn't have this native path built yet. */
+    deviceEnabledDesktopNote: isWindows ? "Windows 桌面通知暂未实现，设置会保留" : "通过 macOS 本地横幅与提示音通知",
     deviceEnabled: "已开启",
     deviceDisabled: "已关闭",
     deviceSound: "声音",
@@ -1638,7 +1654,7 @@ const en: CopyShape<typeof zh> = {
     preferencesSubtitle: "Personalize appearance, language, and launch behavior",
     themeDesc: "Color theme for the interface",
     languageDesc: "Display language for the interface",
-    launchDesc: "Start Deskfolk automatically when logging into macOS",
+    launchDesc: `Start Deskfolk automatically when logging into ${osName}`,
     aboutSubtitle: "Hand it to Bots that see it through.",
     aboutDescription:
       "Bots split the work and hand it on; stalls get chased, unverified claims get called out, and every step is on record.",
@@ -1795,7 +1811,9 @@ const en: CopyShape<typeof zh> = {
     mcpUrl: "URL",
     mcpHeaders: "headers",
     mcpAuth: "Authorization",
-    mcpAuthHint: "Bearer token. Written only to the keychain, never listed.",
+    mcpAuthHint: isWindows
+      ? "Bearer token. Written only to Windows Credential Manager, never listed."
+      : "Bearer token. Written only to the keychain, never listed.",
     mcpEnabled: "Enabled",
     mcpAdd: "Add",
     mcpConfirmAdd: "Confirm add",
@@ -1992,18 +2010,18 @@ const en: CopyShape<typeof zh> = {
     artifactDownloadTapAgain: "File is here — tap download again",
     artifactDownloadFailed: "Couldn’t download this file",
     artifactOpenSystem: "Open with default app",
-    artifactReveal: "Show in Finder",
+    artifactReveal: isWindows ? "Show in File Explorer" : "Show in Finder",
     artifactOpenTerminal: "Open terminal here",
     artifactCopyPath: "Copy workspace path",
     artifactCopyAbsPath: "Copy absolute path",
-    artifactTrash: "Move to Trash",
-    artifactTrashCount: (count: number) => `Move ${count} items to Trash`,
-    artifactTrashTitle: (name: string, count: number) => (count > 1 ? `Move ${count} items to the Trash?` : `Move “${name}” to the Trash?`),
+    artifactTrash: `Move to ${enTrashWord}`,
+    artifactTrashCount: (count: number) => `Move ${count} items to ${enTrashWord}`,
+    artifactTrashTitle: (name: string, count: number) => (count > 1 ? `Move ${count} items to the ${enTrashWord}?` : `Move “${name}” to the ${enTrashWord}?`),
     artifactTrashBody: (names: string[], count: number, folders: boolean, unsaved: boolean) =>
       [
         count > 1
-          ? `${names.slice(0, 3).map((name) => `“${name}”`).join(", ")}${count > 3 ? ` and ${count - 3} more` : ""} go to the Mac’s Trash, where you can put them back.`
-          : "It goes to the Mac’s Trash, where you can put it back.",
+          ? `${names.slice(0, 3).map((name) => `“${name}”`).join(", ")}${count > 3 ? ` and ${count - 3} more` : ""} go to ${enTrashOwner} ${enTrashWord}, where you can put them back.`
+          : `It goes to ${enTrashOwner} ${enTrashWord}, where you can put it back.`,
         folders ? "Folders go with everything in them." : "",
         unsaved ? "Unsaved edits in the file you are editing are lost." : "",
       ].filter(Boolean).join(" "),
@@ -2446,7 +2464,7 @@ const en: CopyShape<typeof zh> = {
   },
   onboarding: {
     welcome: "Welcome to Deskfolk",
-    subtitle: "Your local macOS single-user agent workspace. Set up the workspace and a model provider, then create your first bot to start collaborating.",
+    subtitle: `Your local ${osName} single-user agent workspace. Set up the workspace and a model provider, then create your first bot to start collaborating.`,
     step1Title: "Workspace",
     step2Title: "Endpoint & Auth",
     step3Title: "Models",
@@ -2529,6 +2547,9 @@ const en: CopyShape<typeof zh> = {
     deviceNotifications: "Device System Notifications",
     deviceSubtitle: "Manage system notification and push preferences for this device",
     deviceEnable: "Enable system notifications for this device",
+    deviceEnabledDesktopNote: isWindows
+      ? "Desktop notifications aren't implemented on Windows yet; the setting is kept"
+      : "Desktop native banners and alerts are active",
     deviceEnabled: "Enabled",
     deviceDisabled: "Disabled",
     deviceSound: "Sound",

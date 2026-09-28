@@ -1,4 +1,5 @@
 import type { SettingsPatch } from "@real-bot/protocol";
+import { isAbsoluteHostPath } from "../paths.ts";
 
 export type FieldErrorKind = "empty" | "invalid";
 
@@ -88,8 +89,14 @@ export function mapSettingsError(message: string): MappedSettingsError {
   return { top: true };
 }
 
-function looksLikeAbsoluteOrHome(value: string): boolean {
-  return value.startsWith("/") || value === "~" || value.startsWith("~/");
+/**
+ * Absolute, or home-relative — `/…`, `C:\…`, `C:/…`, `\\server\share…`, `~`, `~/…`, `~\…`. The
+ * daemon validates the path for real (existence, whether it can be created); this only keeps the
+ * wizard from refusing a Windows path outright.
+ */
+export function looksLikeAbsoluteOrHome(value: string): boolean {
+  if (value === "~" || value.startsWith("~/") || value.startsWith("~\\")) return true;
+  return isAbsoluteHostPath(value);
 }
 
 function isHttpOrHttpsUrl(value: string): boolean {

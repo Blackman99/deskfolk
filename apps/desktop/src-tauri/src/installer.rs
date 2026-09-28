@@ -249,12 +249,40 @@ pub fn verify_bundle(
 /// Is this path writable by us? Asked of the kernel rather than by writing a
 /// probe file, because one of the paths asked about is the running app bundle
 /// and nothing should be creating files inside a signed bundle.
+#[cfg(unix)]
 pub fn is_writable(path: &Path) -> bool {
     let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else {
         return false;
     };
     // SAFETY: `c_path` is a valid NUL-terminated string for the call's duration.
     unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 }
+}
+
+/// There is no `access(2)`-alike on Windows (and installs never live inside a
+/// signed bundle there the way this check has to be careful about on macOS),
+/// so probe honestly instead: a file opens for write, a directory accepts a
+/// throwaway file it then removes.
+#[cfg(not(unix))]
+pub fn is_writable(path: &Path) -> bool {
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) => return false,
+    };
+    if metadata.permissions().readonly() {
+        return false;
+    }
+    if metadata.is_dir() {
+        let probe = path.join(format!(".real-bot-writable-{}", std::process::id()));
+        match std::fs::File::create(&probe) {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&probe);
+                true
+            }
+            Err(_) => false,
+        }
+    } else {
+        std::fs::OpenOptions::new().write(true).open(path).is_ok()
+    }
 }
 
 /// Can we replace this bundle in place? Both the bundle and the folder holding
@@ -589,6 +617,15 @@ mod tests {
             None
         );
         assert_eq!(bundle_root(Path::new("/")), None);
+        // A Windows install has none of these path components either way, so
+        // `can_install_update` (built on this) is false there without any
+        // platform check of its own — the in-app installer stays macOS-only.
+        assert_eq!(
+            bundle_root(Path::new(
+                r"C:\Users\me\AppData\Local\Programs\Deskfolk\Deskfolk.exe"
+            )),
+            None
+        );
     }
 
     #[test]
@@ -833,6 +870,9 @@ mod tests {
 
     /// The script has to survive paths with spaces (`/Applications/Deskfolk.app`)
     /// and run without the app around: exercise it against stand-in folders.
+    /// It is a `/bin/sh` script exercising unix shell semantics (`kill -0`,
+    /// `/bin/mv`), so this only runs where that exists.
+    #[cfg(unix)]
     #[test]
     fn the_swap_script_replaces_the_bundle_and_cleans_up() {
         let dir = temp_dir("swap");

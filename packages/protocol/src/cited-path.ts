@@ -144,9 +144,37 @@ export function extensionOf(name: string): string {
   return base.slice(dot + 1).toLowerCase();
 }
 
+/** `C:\x`, `C:/x`, `\\server\share\x`: a Windows host path. A share needs both names, so `\\n` is not one. */
+const WINDOWS_ABSOLUTE = /^(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/;
+
+/**
+ * An absolute path on some host: `/x` on a Mac, `C:\x`, `C:/x` or `\\server\share\x` on Windows.
+ * Such a path is cited as written, never read from the workspace root.
+ */
+export function looksLikeHostAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || WINDOWS_ABSOLUTE.test(path);
+}
+
+/**
+ * `src\foo.ts` or `.\notes\a.md`: a relative path written with Windows separators, which is the
+ * same workspace path as with slashes. Each name is a real one (no empty, padded or reserved
+ * characters), so `\n` or `a \ b` in prose is not taken for a path.
+ */
+function isBackslashRelative(path: string): boolean {
+  if (!path.includes("\\") || /^[\\/]/.test(path) || /[:*?"<>|\t\r\n]/.test(path)) return false;
+  const names = path.split(/[\\/]/);
+  if (names.at(-1) === "") names.pop();
+  return names.every((name) => name.length > 0 && name.trim() === name);
+}
+
+function citedAsWritten(raw: string): string {
+  const path = raw.trim();
+  return path.startsWith("<") && path.endsWith(">") ? path.slice(1, -1).trim() : path;
+}
+
 export function normalizeCitedPath(raw: string): string | null {
-  let path = raw.trim();
-  if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1).trim();
+  let path = citedAsWritten(raw);
+  if (!looksLikeHostAbsolutePath(path) && isBackslashRelative(path)) path = path.replace(/\\/g, "/");
   if (path.startsWith("./")) path = path.slice(2);
   if (!path || path === ".") return path === "." ? "." : null;
   return path;
@@ -156,14 +184,22 @@ function hasScheme(path: string): boolean {
   return /^(https?:|mailto:|javascript:|data:|artifact:|bot:)/i.test(path) || path.includes("://");
 }
 
-/** True for a relative workspace path: has a slash, or a known filename suffix. */
+/**
+ * True for a relative workspace path: has a slash, or a known filename suffix; and for a Windows
+ * host path. Backslashes alone only count with a known suffix or a leading `.\` / `..\`, so a
+ * registry key or an escape in prose stays text.
+ */
 export function looksLikeWorkspacePath(raw: string): boolean {
   const path = normalizeCitedPath(raw);
   if (!path) return false;
   if (hasScheme(path)) return false;
   if (path.startsWith("@")) return false;
+  if (WINDOWS_ABSOLUTE.test(path)) return true;
   const ext = extensionOf(path);
-  return path.includes("/") || (Boolean(ext) && KNOWN_EXT.has(ext));
+  const known = Boolean(ext) && KNOWN_EXT.has(ext);
+  const written = citedAsWritten(raw);
+  if (!written.includes("/") && written.includes("\\")) return known || /^\.\.?\\/.test(written);
+  return path.includes("/") || known;
 }
 
 /**

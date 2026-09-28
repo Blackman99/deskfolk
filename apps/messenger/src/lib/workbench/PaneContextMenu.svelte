@@ -2,6 +2,7 @@
 	import type { Axis, TabAction, TabCloseScope, TabClosing } from './layout-types.ts';
 	import type { Direction } from './layout-geometry.ts';
 	import type { Copy } from '../copy.ts';
+	import { formatShortcut } from '../keymap.ts';
 	import { computeContextMenuPosition } from '../sidebar/session-context-menu.ts';
 	import { SPLIT_TOWARDS } from './workbench-commands.ts';
 
@@ -58,9 +59,9 @@
 	/* Reading order of the request: up, down, left, right. The two with a key say which. */
 	const items = $derived<{ dir: Direction; label: string; keys?: string }[]>([
 		{ dir: 'up', label: t.pane.splitUp },
-		{ dir: 'down', label: t.pane.splitDown, keys: '⇧⌘\\' },
+		{ dir: 'down', label: t.pane.splitDown, keys: formatShortcut(['shift', 'mod', '\\']) },
 		{ dir: 'left', label: t.pane.splitLeft },
-		{ dir: 'right', label: t.pane.splitRight, keys: '⌘\\' }
+		{ dir: 'right', label: t.pane.splitRight, keys: formatShortcut(['mod', '\\']) }
 	]);
 
 	const closeItems = $derived<{ scope: TabCloseScope; label: string }[]>([
@@ -257,7 +258,7 @@
 				<path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path>
 			</svg>
 			<span class="wb-context-label">{t.pane.copy}</span>
-			<span class="wb-context-keys" aria-hidden="true">⌘C</span>
+			<span class="wb-context-keys" aria-hidden="true">{formatShortcut(['mod', 'C'])}</span>
 		</button>
 		<button type="button" class="wb-context-item" role="menuitem" data-edit="paste" onclick={() => pick(editing.onPaste)}>
 			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -265,7 +266,7 @@
 				<path d="M9.5 5.5V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"></path>
 			</svg>
 			<span class="wb-context-label">{t.pane.paste}</span>
-			<span class="wb-context-keys" aria-hidden="true">⌘V</span>
+			<span class="wb-context-keys" aria-hidden="true">{formatShortcut(['mod', 'V'])}</span>
 		</button>
 		{#if onSplit}
 			<div class="wb-context-divider" role="separator"></div>

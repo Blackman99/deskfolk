@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { createMcpHost, type McpHost } from "./mcp-host";
+import { childEnv, createMcpHost, windowsSpawnPlan, type McpHost } from "./mcp-host";
 
 const fixture = join(import.meta.dir, "mcp-fixture.ts");
 
@@ -540,5 +540,73 @@ describe("MCP HTTP host", () => {
     } finally {
       http.close();
     }
+  });
+});
+
+describe("childEnv", () => {
+  test("POSIX keeps today's narrow whitelist only", () => {
+    const source = { HOME: "/h", PATH: "/bin", SystemRoot: "C:\\Windows", SECRET: "x" };
+    expect(childEnv(source, "darwin")).toEqual({ HOME: "/h", PATH: "/bin" });
+  });
+
+  test("win32 also passes through what node/npm need to resolve shims and find itself", () => {
+    const source = {
+      PATH: "C:\\bin",
+      SystemRoot: "C:\\Windows",
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      APPDATA: "C:\\Users\\me\\AppData\\Roaming",
+      SECRET: "x",
+    };
+    const env = childEnv(source, "win32");
+    expect(env).toEqual({
+      PATH: "C:\\bin",
+      SystemRoot: "C:\\Windows",
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      APPDATA: "C:\\Users\\me\\AppData\\Roaming",
+    });
+  });
+
+  test("win32 matches env var names case-insensitively", () => {
+    const env = childEnv({ Path: "C:\\bin", systemroot: "C:\\Windows" }, "win32");
+    expect(env.PATH).toBe("C:\\bin");
+    expect(env.SystemRoot).toBe("C:\\Windows");
+  });
+});
+
+describe("windowsSpawnPlan", () => {
+  test("a real executable spawns directly, no cmd.exe wrapping", () => {
+    const which = (name: string) => (name === "node" ? "C:\\Program Files\\node\\node.exe" : null);
+    const plan = windowsSpawnPlan("node", ["server.js"], {}, which);
+    expect(plan).toEqual({ command: "C:\\Program Files\\node\\node.exe", args: ["server.js"], verbatim: false });
+  });
+
+  test("npx.cmd is wrapped through cmd.exe /d /s /c with escaped args", () => {
+    const which = (name: string) => (name === "npx" ? "C:\\Program Files\\nodejs\\npx.cmd" : null);
+    const plan = windowsSpawnPlan("npx", ["-y", "@modelcontextprotocol/server-fs"], { ComSpec: "C:\\Windows\\System32\\cmd.exe" }, which);
+    expect(plan.command).toBe("C:\\Windows\\System32\\cmd.exe");
+    expect(plan.verbatim).toBe(true);
+    expect(plan.args[0]).toBe("/d");
+    expect(plan.args[1]).toBe("/s");
+    expect(plan.args[2]).toBe("/c");
+    expect(plan.args[3]).toContain("npx.cmd");
+    expect(plan.args[3]).toContain("-y");
+  });
+
+  test("shell metacharacters in an argument are escaped with ^, not left live for cmd.exe", () => {
+    const which = () => "C:\\Program Files\\nodejs\\npx.cmd";
+    const plan = windowsSpawnPlan("npx", ["--config", "a&b|c^d\"e"], {}, which);
+    const shellCommand = plan.args[3]!;
+    // The raw metacharacters must never appear unescaped inside the built command line.
+    expect(shellCommand).not.toMatch(/(?<!\^)&/);
+    expect(shellCommand).not.toMatch(/(?<!\^)\|(?!\/)/);
+    expect(shellCommand).toContain("^&");
+    expect(shellCommand).toContain("^|");
+  });
+
+  test("an unresolvable command falls back to itself (not found), still wrapped if it ends .cmd", () => {
+    const which = () => null;
+    const plan = windowsSpawnPlan("missing.cmd", [], {}, which);
+    expect(plan.verbatim).toBe(true);
+    expect(plan.args[3]).toContain("missing.cmd");
   });
 });

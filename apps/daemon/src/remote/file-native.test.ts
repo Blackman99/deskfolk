@@ -117,3 +117,10 @@ test("only a compiled daemon ships with the file store", () => {
   expect(shippedRemoteNative(root(), "/repo/apps/daemon/src/remote/file-native.ts")).toBeUndefined();
   expect(shippedRemoteNative(root(), "/$bunfs/root/real-bot-daemon")).toBeInstanceOf(FileRemoteNative);
 });
+
+test("a compiled win32 daemon is recognized too (B:\\~BUN\\, either slash direction)", () => {
+  expect(isCompiledDaemon("B:\\~BUN\\root\\real-bot-daemon.exe")).toBe(true);
+  expect(isCompiledDaemon("B:/~BUN/root/real-bot-daemon.exe")).toBe(true);
+  expect(isCompiledDaemon("C:\\repo\\apps\\daemon\\src\\remote\\file-native.ts")).toBe(false);
+  expect(shippedRemoteNative(root(), "B:\\~BUN\\root\\real-bot-daemon.exe")).toBeInstanceOf(FileRemoteNative);
+});

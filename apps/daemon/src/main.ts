@@ -61,6 +61,16 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   void runtime.stop();
 });
+// Neither SIGINT nor SIGTERM ever arrives on Windows; SIGBREAK (Ctrl-Break / a console close
+// event) is the nearest equivalent Bun/Node expose there, and the window's own HTTP
+// `/v1/runtime/quit` is the primary way it stops the daemon regardless — this is a fallback for
+// whatever spawns the daemon directly. Whether Bun actually delivers SIGBREAK needs a real Windows
+// machine to confirm; if it does not, `/v1/runtime/quit` still works.
+if (process.platform === "win32") {
+  process.on("SIGBREAK", () => {
+    void runtime.stop();
+  });
+}
 
 function fatal(line: string): never {
   console.error(`${LOCAL_API_NAME} ${line}`);

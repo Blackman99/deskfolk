@@ -146,6 +146,41 @@ test("ensureZshIntegration returns null rather than throwing when it cannot writ
   expect(ensureZshIntegration(blocked)).toBeNull();
 });
 
+test("win32 passes through what node/PowerShell need beyond the POSIX whitelist", () => {
+  const env = terminalEnv(
+    {
+      PATH: "C:\\bin",
+      SystemRoot: "C:\\Windows",
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      APPDATA: "C:\\Users\\me\\AppData\\Roaming",
+      ANTHROPIC_API_KEY: "sk-secret",
+    },
+    { shell: "pwsh.exe", platform: "win32" },
+  );
+  expect(env.PATH).toBe("C:\\bin");
+  expect(env.SystemRoot).toBe("C:\\Windows");
+  expect(env.ComSpec).toBe("C:\\Windows\\System32\\cmd.exe");
+  expect(env.APPDATA).toBe("C:\\Users\\me\\AppData\\Roaming");
+  expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+});
+
+test("win32 never injects the POSIX default PATH when PATH is genuinely missing", () => {
+  const env = terminalEnv({}, { shell: "pwsh.exe", platform: "win32" });
+  expect(env.PATH).toBeUndefined();
+});
+
+test("win32 env var names match case-insensitively (a fake env spelled 'Path')", () => {
+  const env = terminalEnv({ Path: "C:\\bin", systemroot: "C:\\Windows" }, { shell: "pwsh.exe", platform: "win32" });
+  expect(env.PATH).toBe("C:\\bin");
+  expect(env.SystemRoot).toBe("C:\\Windows");
+});
+
+test("darwin/linux are unaffected by the win32 passthrough list", () => {
+  const env = terminalEnv({ SystemRoot: "C:\\Windows", PATH: "/bin" }, { shell: "/bin/zsh", platform: "darwin" });
+  expect(env.SystemRoot).toBeUndefined();
+  expect(env.PATH).toBe("/bin");
+});
+
 test("macSystemLocale is cached: repeated calls return the same value without re-spawning", () => {
   const original = Bun.spawnSync;
   let calls = 0;

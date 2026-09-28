@@ -186,20 +186,50 @@ impl NotificationAdapter for FallbackNotificationAdapter {
     fn setup_delegate(&self, _on_click: Box<dyn Fn(&str) + Send + Sync + 'static>) {}
 }
 
+#[cfg(unix)]
 fn generate_random_128_hex() -> String {
     let mut buf = [0u8; 16];
     let res = unsafe { libc::getentropy(buf.as_mut_ptr().cast(), 16) };
     if res == 0 {
         buf.iter().map(|b| format!("{b:02x}")).collect()
     } else {
-        format!(
-            "{:032x}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        )
+        fallback_random_128_hex()
     }
+}
+
+#[cfg(windows)]
+fn generate_random_128_hex() -> String {
+    use windows_sys::Win32::Security::Cryptography::{
+        BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+    };
+    let mut buf = [0u8; 16];
+    // SAFETY: `buf` is a correctly-sized, valid output buffer for the call's
+    // duration; a null algorithm handle asks bcrypt for its default RNG.
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status == 0 {
+        buf.iter().map(|b| format!("{b:02x}")).collect()
+    } else {
+        fallback_random_128_hex()
+    }
+}
+
+/// Not random, but at least unique-ish and available everywhere: only reached
+/// if the OS's own CSPRNG call fails, which in practice does not happen.
+fn fallback_random_128_hex() -> String {
+    format!(
+        "{:032x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    )
 }
 
 pub struct NotificationState {

@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { isCompiledBinary } from "./platform";
 
 export type RemoteMaterial = "host_identity" | "enrollment" | "vapid" | "highwater";
 const actionKinds = ["pair_device", "remove_device", "reset_identity", "change_relay", "change_workspace", "renew_first_uv", "recover_trust"] as const;
@@ -113,8 +114,10 @@ export class RemoteNativeClient {
 
 let transport: Promise<NativeTransport> | undefined;
 async function loadNative(): Promise<NativeTransport> {
-  // Source Bun is never a credential principal, even if renamed to match the daemon.
-  if (process.platform !== "darwin" || !import.meta.path.startsWith("/$bunfs/")) {
+  // Source Bun is never a credential principal, even if renamed to match the daemon. The sealed
+  // provider is macOS-only (the Swift dylib below); this check being platform-general costs
+  // nothing since the `darwin` check above already excludes win32/linux.
+  if (process.platform !== "darwin" || !isCompiledBinary(import.meta.path)) {
     throw new RemoteNativeError("disabled");
   }
   const { dlopen, FFIType, ptr } = await import("bun:ffi");

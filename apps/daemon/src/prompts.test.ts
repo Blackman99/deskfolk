@@ -468,4 +468,51 @@ describe("mention spelling", () => {
       "@x does not match any member here. Members: Writer. Mention people by their exact full name.",
     );
   });
+
+  describe("the system block's win32 shell wording (shell: 'bash' | 'powershell')", () => {
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
+
+    test("shell defaults to 'sh' (this machine), so passing it explicitly changes nothing", () => {
+      expect(turnSystemPrompt({ ...profile, locale: "zh" })).toBe(
+        turnSystemPrompt({ ...profile, locale: "zh", shell: "sh" }),
+      );
+      expect(turnSystemPrompt({ ...profile, locale: "en" })).toBe(
+        turnSystemPrompt({ ...profile, locale: "en", shell: "sh" }),
+      );
+    });
+
+    test("bash (Git Bash) says paths are native Windows absolute but keeps the timeout idiom", () => {
+      const zh = turnSystemPrompt({ ...profile, locale: "zh", shell: "bash" });
+      expect(zh).toContain("宿主绝对路径是原生 Windows 路径");
+      expect(zh).toContain("`timeout 30 npm run dev`");
+      expect(zh).not.toContain("PowerShell 没有 `timeout` 包装器");
+
+      const en = turnSystemPrompt({ ...profile, locale: "en", shell: "bash" });
+      expect(en).toContain("a host absolute path is a native Windows path");
+      expect(en).toContain("`timeout 30 npm run dev`");
+      expect(en).not.toContain("PowerShell has no `timeout` wrapper");
+    });
+
+    test("powershell says paths are native Windows absolute and swaps the timeout idiom for Start-Process", () => {
+      const zh = turnSystemPrompt({ ...profile, locale: "zh", shell: "powershell" });
+      expect(zh).toContain("宿主绝对路径是原生 Windows 路径");
+      expect(zh).toContain("PowerShell 没有 `timeout` 包装器");
+      expect(zh).toContain("Start-Process");
+      expect(zh).not.toContain("`timeout 30 npm run dev`");
+
+      const en = turnSystemPrompt({ ...profile, locale: "en", shell: "powershell" });
+      expect(en).toContain("a host absolute path is a native Windows path");
+      expect(en).toContain("PowerShell has no `timeout` wrapper");
+      expect(en).toContain("Start-Process");
+      expect(en).not.toContain("`timeout 30 npm run dev`");
+    });
+
+    test("everything outside those two sentences is untouched by the shell kind", () => {
+      const sh = turnSystemPrompt({ ...profile, locale: "en", shell: "sh" });
+      const powershell = turnSystemPrompt({ ...profile, locale: "en", shell: "powershell" });
+      expect(sh).toContain("send_message ends this turn");
+      expect(powershell).toContain("send_message ends this turn");
+      expect(sh.length).not.toBe(powershell.length); // the two swapped sentences do differ in length
+    });
+  });
 });

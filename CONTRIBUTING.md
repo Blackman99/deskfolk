@@ -14,7 +14,7 @@ Deskfolk 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容�
 
 ## 开发环境
 
-准备 macOS、Node.js `>=22`、pnpm `12.3.4`、Bun `>=1.2`、Rust / Cargo 和 [Tauri macOS 前置依赖](https://v2.tauri.app/start/prerequisites/#macos)。在仓库根目录执行：
+准备 Node.js `>=22`、pnpm `12.3.4`、Bun `>=1.2`、Rust / Cargo；macOS 上另装 [Tauri macOS 前置依赖](https://v2.tauri.app/start/prerequisites/#macos)。Windows 目前是刚起步的实验性预览：装 Rust 的 MSVC 工具链和 [Tauri Windows 前置依赖](https://v2.tauri.app/start/prerequisites/#windows)（Visual Studio Build Tools 勾 "Desktop development with C++"、WebView2 运行时），再先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper；已知限制见[开发说明](docs/development.md)。在仓库根目录执行：
 
 ```bash
 pnpm install
@@ -32,12 +32,11 @@ pnpm dev
 ```bash
 pnpm test
 pnpm typecheck
-pnpm --filter @real-bot/daemon build:sidecar
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 pnpm --filter @real-bot/messenger build
 ```
 
-桌面壳把守护进程当 sidecar 打包（`externalBin`），Tauri 在 crate 编译期就校验该文件存在，所以单独跑 `cargo test` 前先编一次 sidecar（`pnpm dev` 和 `pnpm tauri build` 的钩子已经代劳）。
+守护进程和终端 helper 不是 sidecar（`externalBin` 为空）：它们由 `build:native` 编进应用资源目录 `native/`，`src-tauri/build.rs` 只在 release profile 才校验这些文件存在（Windows 要 `real-bot-daemon.exe` / `real-bot-pty.exe`，macOS 另加 Swift helper 和凭据库）；debug profile（包括单独跑 `cargo test`）没有 `native/` 就自动建一个空目录，不需要先手动编。
 
 改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build 与 macOS `cargo test`），不能代替本机 UI 或原生桌面验证。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 

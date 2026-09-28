@@ -3,6 +3,17 @@
   box-sizing: border-box;
 }
 
+/*
+ * Chromium (WebView2 on Windows) draws a permanent 17px classic scrollbar that never fades;
+ * WKWebView already draws its own thin overlay one on macOS, which this leaves alone.
+ * `scrollbar-color`/`scrollbar-width` are inherited, so setting them once on the root reaches
+ * every scrollable box under it.
+ */
+:root[data-platform="windows"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
 html,
 body {
   margin: 0;

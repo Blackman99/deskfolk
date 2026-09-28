@@ -12,7 +12,7 @@
     "test": "cargo build --locked --manifest-path test/snow/Cargo.toml && bun test test && cargo test --locked --manifest-path test/snow/Cargo.toml",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc -p tsconfig.build.json",
-    "build:browser": "bun build src/index.ts test/browser/main.ts --target browser --minify --outdir dist/browser --entry-naming '[name].[ext]'",
+    "build:browser": "bun build src/index.ts test/browser/main.ts --target browser --minify --outdir dist/browser --entry-naming \"[name].[ext]\"",
     "smoke:serve": "bun test/browser/serve.ts"
   },
   "devDependencies": {

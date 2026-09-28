@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-  APP_SUPPORT_DIRNAME,
   LOCAL_API_DESCRIPTOR_NAME,
   LOCAL_API_NAME,
+  defaultAppDataDir,
 } from "@real-bot/protocol";
 import { LOCAL_API_DISCOVERY_PATH } from "@real-bot/protocol/local-discovery";
 import type { Plugin } from "vite";
@@ -22,7 +22,7 @@ export function localApiDiscovery(): Plugin {
         }
         const dataDir =
           process.env.REAL_BOT_DATA_DIR ??
-          join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME);
+          defaultAppDataDir({ platform: process.platform, env: process.env, home: homedir() });
         const file = join(dataDir, LOCAL_API_DESCRIPTOR_NAME);
         try {
           const parsed = JSON.parse(readFileSync(file, "utf8")) as { port?: unknown; token?: unknown };

@@ -5,6 +5,7 @@
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import {
+		looksLikeAbsoluteOrHome,
 		mapSettingsError,
 		parseModelLines,
 		type FieldErrorKind,
@@ -210,7 +211,7 @@
 			fieldErrors = { ...fieldErrors, workspace: 'empty' };
 			return;
 		}
-		if (!ws.startsWith('/') && ws !== '~' && !ws.startsWith('~/')) {
+		if (!looksLikeAbsoluteOrHome(ws)) {
 			fieldErrors = { ...fieldErrors, workspace: 'invalid' };
 			return;
 		}
@@ -334,7 +335,7 @@
 				currentStep = 1;
 				return;
 			}
-			if (!workspace.startsWith('/') && workspace !== '~' && !workspace.startsWith('~/')) {
+			if (!looksLikeAbsoluteOrHome(workspace)) {
 				fieldErrors = { workspace: 'invalid' };
 				currentStep = 1;
 				return;

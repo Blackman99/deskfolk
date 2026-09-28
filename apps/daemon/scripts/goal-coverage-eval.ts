@@ -17,7 +17,7 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { APP_SUPPORT_DIRNAME, STATE_DB_NAME } from "@real-bot/protocol";
+import { defaultAppDataDir, STATE_DB_NAME } from "@real-bot/protocol";
 import { deliveryExcerpt } from "../src/closing-check";
 import { createCompletionsClient } from "../src/completions";
 import {
@@ -47,7 +47,8 @@ type Options = {
 const DAEMON_DIR = resolve(import.meta.dir, "..");
 const REPO_DIR = resolve(DAEMON_DIR, "../..");
 const DEFAULT_DB = join(
-  process.env.REAL_BOT_DATA_DIR ?? join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME),
+  process.env.REAL_BOT_DATA_DIR ??
+    defaultAppDataDir({ platform: process.platform, env: process.env, home: homedir() }),
   STATE_DB_NAME,
 );
 

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * One piece of content, two hosts, and nothing that lets them drift apart.
@@ -11,7 +12,7 @@ import { join } from "node:path";
  * behaviour a line at a time. So the content components are checked here rather than trusted:
  * they hold no host chrome, no breakpoint, and no opinion about which host they are in.
  */
-const ROOT = new URL("../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 
 function viewFiles(): string[] {
   const found: string[] = [];

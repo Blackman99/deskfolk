@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import type { ToolResult } from "./collab-tools";
 import { atomicWrite, withFileLock } from "./file-integrity";
 import { HttpError } from "./errors";
+import { killProcessTree, toolShell } from "./platform";
 import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
@@ -280,7 +281,10 @@ async function runShell(
   const command = requireString(args.command, "command");
   const explicitCwd = optionalString(args.cwd);
   const cwd = explicitCwd ?? ctx.workDir ?? ".";
-  const classified = classifyShell(root, command, cwd);
+  // The approval gate reads paths the way the shell that runs them will: Git Bash's `/c/x` is
+  // `C:\x`, PowerShell's is `C:\c\x`.
+  const shell = toolShell();
+  const classified = classifyShell(root, command, cwd, undefined, shell.kind);
   // The work dir is created here rather than up front: a turn that only talks should not leave an
   // empty folder behind, but a cwd that does not exist fails the spawn.
   if (!explicitCwd && ctx.workDir && classified.kind === "jailed") {
@@ -307,13 +311,19 @@ async function runShell(
   const streaming = Boolean(ctx.stream && ctx.streamId);
   if (streaming) ctx.stream!.open(ctx.streamId!, COMMAND_STREAM_BYTES);
   try {
-    const proc = Bun.spawn(["/bin/sh", "-c", command], {
+    const proc = Bun.spawn(shell.argv(command), {
       cwd: classified.cwdAbs,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
     });
+    // On win32, SIGTERM/SIGKILL only ever reach the shell itself; a `cmd → npx → node` chain it
+    // started would outlive it. killProcessTree walks the whole tree there. POSIX is unchanged.
     const abort = () => {
+      if (process.platform === "win32") {
+        killProcessTree(proc.pid);
+        return;
+      }
       try {
         proc.kill("SIGTERM");
       } catch {
@@ -331,10 +341,14 @@ async function runShell(
     // open for as long as it lives, so reading them to the end is not something to wait on.
     const expired = new Promise<"timeout">((resolve) => {
       const kill = () => {
-        try {
-          proc.kill("SIGKILL");
-        } catch {
-          // already exited
+        if (process.platform === "win32") {
+          killProcessTree(proc.pid);
+        } else {
+          try {
+            proc.kill("SIGKILL");
+          } catch {
+            // already exited
+          }
         }
         resolve("timeout");
       };
@@ -445,12 +459,15 @@ function collectEntries(
   const out: Array<{ name: string; kind: "file" | "dir"; path: string }> = [];
   for (const name of names) {
     const childAbs = join(absDir, name);
+    // Inside the workspace this is the wire format (always `/`, never the host separator).
+    // Outside it, `listedPath` is a host absolute path, so it joins with the host's own separator
+    // (`\` on Windows) instead of an assumed `/`.
     const childPath =
       zone === "inside"
         ? listedPath === "."
           ? name
           : `${listedPath}/${name}`
-        : `${listedPath.replace(/\/$/, "")}/${name}`;
+        : join(listedPath, name);
     let kind: "file" | "dir" = "file";
     try {
       if (statSync(childAbs).isDirectory()) kind = "dir";

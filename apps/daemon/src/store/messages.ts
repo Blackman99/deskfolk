@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, posix, win32 } from "node:path";
 import {
   USER_MEMBER,
   isHiddenTranscriptKind,
@@ -380,8 +380,9 @@ export function resolveAttachmentLocation(
     const inbox = classifyPath(ctx.inboxRoot, "inbox");
     const classified = classifyPath(ctx.inboxRoot, relpath);
     if (inbox.zone !== "inside" || classified.zone !== "inside") return null;
-    if (inbox.abs === realpathSync(ctx.inboxRoot)) return null;
-    if (classified.abs !== inbox.abs && !classified.abs.startsWith(`${inbox.abs}/`)) return null;
+    // Compared as paths under the same root, which are `/`-separated on every platform.
+    if (inbox.rel === ".") return null;
+    if (classified.rel !== inbox.rel && !classified.rel.startsWith(`${inbox.rel}/`)) return null;
     return statOrMissing(classified.abs);
   } catch { return null; }
 }
@@ -478,20 +479,38 @@ export function recordAskAnswer(ctx: StoreContext, askId: string, answer: AskAns
   return getMessage(ctx, askId);
 }
 
+/** Device names Windows opens in any folder and with any extension: `CON.txt` is the console. */
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com\d|lpt\d)(?:[ .].*)?$/i;
+
+/**
+ * The name an uploaded file is kept under: its own base name with anything unusual replaced. On
+ * Windows a name also cannot end in a dot or a space (Win32 trims them, so two names would land on
+ * one file) or be a device name.
+ */
+export function attachmentFileName(originalFilename: string, platform: NodeJS.Platform = process.platform): string {
+  const path = platform === "win32" ? win32 : posix;
+  let name = path.basename(originalFilename).replace(/[^\w.\- 一-龥]/g, "_").trim() || "attachment";
+  if (platform === "win32") {
+    name = name.replace(/[. ]+$/, "") || "attachment";
+    if (WINDOWS_DEVICE_NAME.test(name)) name = `_${name}`;
+  }
+  return name;
+}
+
 export function reserveAttachmentName(ctx: StoreContext, originalFilename: string): { root: string; abs: string; rel: string } {
   const root = realpathSync(workspacePath(ctx) || ctx.inboxRoot);
   const inboxDir = join(root, "inbox");
   const inbox = classifyPath(root, "inbox");
-  if (inbox.zone !== "inside" || (!workspacePath(ctx) && inbox.abs === root)) throw new HttpError(422, "invalid_args", "inbox is outside its permitted root");
+  if (inbox.zone !== "inside" || (!workspacePath(ctx) && inbox.rel === ".")) throw new HttpError(422, "invalid_args", "inbox is outside its permitted root");
   mkdirSync(inboxDir, { recursive: true });
-  const raw = basename(originalFilename).replace(/[^\w.\- 一-龥]/g, "_").trim() || "attachment";
+  const raw = attachmentFileName(originalFilename);
   const ext = extname(raw);
   const base = basename(raw, ext);
   let name = raw;
   let counter = 1;
   for (;;) {
     const candidate = classifyPath(root, join(inboxDir, name));
-    if (candidate.zone !== "inside" || (!workspacePath(ctx) && !candidate.abs.startsWith(`${inbox.abs}/`))) throw new HttpError(422, "invalid_args", "attachment is outside its permitted root");
+    if (candidate.zone !== "inside" || (!workspacePath(ctx) && !candidate.rel.startsWith(`${inbox.rel}/`))) throw new HttpError(422, "invalid_args", "attachment is outside its permitted root");
     if (!existsSync(candidate.abs) && !ctx.db.query("SELECT 1 FROM file_stages WHERE root = ? AND final_rel = ? UNION ALL SELECT 1 FROM file_commits WHERE root = ? AND final_rel = ?").get(root, candidate.rel, root, candidate.rel)) {
       return { root, abs: candidate.abs, rel: candidate.rel };
     }

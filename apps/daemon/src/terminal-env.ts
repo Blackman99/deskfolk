@@ -9,9 +9,10 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { envLookup, WINDOWS_ENV_PASSTHROUGH } from "./platform";
 
 /** Everything else in the daemon's own env stays behind; a shell only gets these, when present. */
-const ENV_WHITELIST = [
+const POSIX_ENV_WHITELIST = [
   "PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "SSH_AUTH_SOCK",
   "__CF_USER_TEXT_ENCODING", "LANG", "LC_ALL", "LC_CTYPE",
 ] as const;
@@ -28,6 +29,8 @@ export type TerminalEnvOptions = {
   username?: string;
   /** Injectable so a test never depends on which locales this machine has installed. */
   localeAvailable?: (name: string) => boolean;
+  /** Injectable for tests; defaults to the real OS. */
+  platform?: string;
 };
 
 /** Whether macOS ships `<name>.UTF-8`'s tables — the same thing Terminal.app effectively checks. */
@@ -60,12 +63,24 @@ function deriveLang(systemLocale: string | null | undefined, available: (name: s
  * username), so this needs nothing injected to be tested.
  */
 export function terminalEnv(source: Record<string, string | undefined>, options: TerminalEnvOptions): Record<string, string> {
+  const platform = options.platform ?? process.platform;
+  // On win32, node/PowerShell/cmd need far more than the narrow POSIX whitelist just to run at
+  // all — see WINDOWS_ENV_PASSTHROUGH — and env var names there are case-insensitive.
+  const whitelist: readonly string[] =
+    platform === "win32" ? [...POSIX_ENV_WHITELIST, ...WINDOWS_ENV_PASSTHROUGH] : POSIX_ENV_WHITELIST;
   const env: Record<string, string> = {};
-  for (const key of ENV_WHITELIST) {
-    const value = source[key];
+  for (const key of whitelist) {
+    const value = envLookup(source, key, platform);
     if (value !== undefined) env[key] = value;
   }
-  env.PATH = source.PATH !== undefined ? source.PATH : DEFAULT_PATH;
+  const path = envLookup(source, "PATH", platform);
+  if (platform === "win32") {
+    // A real Windows PATH is always present already; forcing the POSIX default here would be
+    // nonsense for cmd.exe/PowerShell and could only ever mask a genuinely missing PATH.
+    if (path !== undefined) env.PATH = path;
+  } else {
+    env.PATH = path !== undefined ? path : DEFAULT_PATH;
+  }
   if (env.USER === undefined && options.username) env.USER = options.username;
   if (env.LOGNAME === undefined && options.username) env.LOGNAME = options.username;
 

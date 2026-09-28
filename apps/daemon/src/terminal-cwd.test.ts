@@ -92,6 +92,33 @@ test("multiple sequences in one chunk: the last one wins", () => {
   expect(tracker.feed(chunk)).toBe("/Users/x/second");
 });
 
+test("on Windows a drive path is the folder whatever the host, in its native spelling", () => {
+  const tracker = new CwdTracker({ platform: "win32", hostname: "DESKTOP-1" });
+  expect(tracker.feed(osc7("/C:/Users/x/project", BEL, "DESKTOP-1"))).toBe("C:\\Users\\x\\project");
+  expect(tracker.feed(osc7("/c:/Users/x/project/", ST, ""))).toBe("C:\\Users\\x\\project");
+  expect(tracker.feed(osc7("/C:/", BEL))).toBe("C:\\");
+  expect(tracker.feed(osc7("/C:", BEL))).toBe("C:\\");
+  expect(tracker.feed(osc7("/C:/Users/x/a b 中文", BEL))).toBe("C:\\Users\\x\\a b 中文");
+  // `C:x` names no folder of its own.
+  expect(tracker.feed(osc7("/C:x", BEL))).toBeNull();
+});
+
+test("on Windows Git Bash's /c/… is a drive, another machine's path is its share, and Git's own /tmp is nothing", () => {
+  const tracker = new CwdTracker({ platform: "win32", hostname: "desktop-1.corp.example" });
+  expect(tracker.feed(osc7("/c/Users/x", BEL, "DESKTOP-1"))).toBe("C:\\Users\\x");
+  expect(tracker.feed(osc7("/d", BEL, "localhost"))).toBe("D:\\");
+  expect(tracker.feed(osc7("/share/dir", BEL, "fileserver"))).toBe("\\\\fileserver\\share\\dir");
+  expect(tracker.feed(osc7("/tmp", BEL, "DESKTOP-1"))).toBeNull();
+  expect(tracker.feed(osc7("/tmp", BEL, ""))).toBeNull();
+  expect(tracker.feed(osc7("/", BEL, "fileserver"))).toBeNull();
+});
+
+test("on a Mac the same reports stay POSIX paths", () => {
+  const tracker = new CwdTracker({ platform: "darwin" });
+  expect(tracker.feed(osc7("/c/Users/x", BEL))).toBe("/c/Users/x");
+  expect(tracker.feed(osc7("/share/dir", BEL, "fileserver"))).toBe("/share/dir");
+});
+
 test("an oversize, unterminated payload is dropped rather than kept forever", () => {
   const tracker = new CwdTracker();
   const huge = new TextEncoder().encode(`${ESC}]7;file://myhost/${"a".repeat(9000)}`);

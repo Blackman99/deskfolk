@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { arrowBytes, controlByte, macEditingBytes, terminalShortcut } from "./terminal-keys.ts";
+import { arrowBytes, controlByte, macEditingBytes, terminalShortcut, windowsTerminalShortcut } from "./terminal-keys.ts";
 
 const key = (k: string, mods: Partial<Record<"metaKey" | "ctrlKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
   key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods,
@@ -53,6 +53,30 @@ test("the phone's Ctrl turns a key into the byte a hardware Ctrl sends", () => {
   expect(controlByte("中")).toBeNull();
   expect(controlByte("ab")).toBeNull();
   expect(controlByte("")).toBeNull();
+});
+
+test("Ctrl+Shift+letter is the Windows terminal's; plain Ctrl+K and Ctrl+F still reach the shell", () => {
+  expect(windowsTerminalShortcut(key("c", { ctrlKey: true, shiftKey: true }))).toBe("copy");
+  expect(windowsTerminalShortcut(key("C", { ctrlKey: true, shiftKey: true }))).toBe("copy");
+  expect(windowsTerminalShortcut(key("v", { ctrlKey: true, shiftKey: true }))).toBe("paste");
+  expect(windowsTerminalShortcut(key("f", { ctrlKey: true, shiftKey: true }))).toBe("find");
+  expect(windowsTerminalShortcut(key("k", { ctrlKey: true, shiftKey: true }))).toBe("clear");
+  // Plain Ctrl+K (kill-line) and Ctrl+F (forward-search) are the shell's.
+  expect(windowsTerminalShortcut(key("k", { ctrlKey: true }))).toBeNull();
+  expect(windowsTerminalShortcut(key("f", { ctrlKey: true }))).toBeNull();
+});
+
+test("the Windows font-size keys are plain Ctrl, next to nothing the shell gives them", () => {
+  expect(windowsTerminalShortcut(key("=", { ctrlKey: true }))).toBe("font-bigger");
+  expect(windowsTerminalShortcut(key("+", { ctrlKey: true, shiftKey: true }))).toBeNull();
+  expect(windowsTerminalShortcut(key("-", { ctrlKey: true }))).toBe("font-smaller");
+  expect(windowsTerminalShortcut(key("0", { ctrlKey: true }))).toBe("font-reset");
+});
+
+test("windowsTerminalShortcut answers only Ctrl — never bare, never ⌘, never Alt", () => {
+  expect(windowsTerminalShortcut(key("c", { shiftKey: true }))).toBeNull();
+  expect(windowsTerminalShortcut(key("c", { metaKey: true, shiftKey: true }))).toBeNull();
+  expect(windowsTerminalShortcut(key("c", { ctrlKey: true, altKey: true, shiftKey: true }))).toBeNull();
 });
 
 test("an arrow goes the way the program on screen asked for it", () => {

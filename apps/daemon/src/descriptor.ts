@@ -5,21 +5,21 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-  APP_SUPPORT_DIRNAME,
+  defaultAppDataDir,
   LOCAL_API_DESCRIPTOR_NAME,
   STATE_DB_NAME,
   type LocalApiDescriptor,
 } from "@real-bot/protocol";
+import { renameReplacing } from "./file-integrity";
 
 export function defaultDataDir(): string {
-  return join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME);
+  return defaultAppDataDir({ platform: process.platform, env: process.env, home: homedir() });
 }
 
 export function descriptorPath(dataDir: string): string {
@@ -48,7 +48,7 @@ export function writeDescriptor(dataDir: string, descriptor: LocalApiDescriptor)
     closeSync(fd);
   }
   chmodSync(tmp, 0o600);
-  renameSync(tmp, dest);
+  renameReplacing(tmp, dest);
   chmodSync(dest, 0o600);
 }
 

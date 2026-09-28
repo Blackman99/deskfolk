@@ -1,6 +1,7 @@
 import { realpathSync, statSync } from "node:fs";
 import { base64url, canonicalHash, canonicalize, identityPublic } from "@real-bot/remote";
 import type { LocalAction } from "../remote-native";
+import { isAbsoluteHostPath } from "../workspace-paths";
 import type { RemoteNativeProvider } from "./controller";
 import { RemoteTrust, deny } from "./trust";
 import { deletePushSubs } from "./push";
@@ -18,7 +19,7 @@ export function validateRelay(config: RelayConfig): void {
     !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(config.hostId) || !/^[A-Za-z0-9_-]{1,64}$/.test(config.relayId)) deny();
 }
 function workspace(path: string) {
-  if (typeof path !== "string" || !path.startsWith("/") || path.length > 4096) deny();
+  if (typeof path !== "string" || !isAbsoluteHostPath(path) || path.length > 4096) deny();
   const real = realpathSync(path), stat = statSync(real);
   if (!stat.isDirectory()) deny();
   return { path: real, dev: stat.dev, ino: stat.ino };

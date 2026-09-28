@@ -7,6 +7,8 @@
  * sequences — is enough; anything else a program writes just passes through unrecognized.
  */
 
+import { hostname } from "node:os";
+
 /** However chatty a shell gets between two reports, an in-progress sequence does not grow forever. */
 const MAX_PAYLOAD_BYTES = 8 * 1024;
 const MAX_PATH_LENGTH = 4096;
@@ -22,6 +24,12 @@ type State = "idle" | "esc" | "bracket" | "seven" | "payload" | "payload-esc";
 export class CwdTracker {
   private state: State = "idle";
   private payload: number[] = [];
+
+  /**
+   * `platform` says how a folder is spelled on this machine; `hostname` is this machine's name,
+   * which on Windows tells a folder of its own from a share on another machine.
+   */
+  constructor(private readonly options: { platform?: NodeJS.Platform; hostname?: string } = {}) {}
 
   /** The last cwd this chunk reported, or `null` if none of it was a valid OSC 7. */
   feed(chunk: Uint8Array): string | null {
@@ -50,7 +58,7 @@ export class CwdTracker {
           if (byte === 0x07) {
             // A garbage payload just means no cwd this time; an earlier valid one in the same
             // chunk still counts.
-            found = decode(this.payload) ?? found;
+            found = this.decode() ?? found;
             this.state = "idle";
           } else if (byte === 0x1b) {
             this.state = "payload-esc";
@@ -64,7 +72,7 @@ export class CwdTracker {
           break;
         case "payload-esc":
           if (byte === 0x5c) {
-            found = decode(this.payload) ?? found;
+            found = this.decode() ?? found;
             this.state = "idle";
           } else {
             // Not `ESC \` after all; the byte that looked like a terminator might start its own
@@ -76,15 +84,22 @@ export class CwdTracker {
     }
     return found;
   }
+
+  private decode(): string | null {
+    const url = decode(this.payload);
+    if (!url || (this.options.platform ?? process.platform) !== "win32") return url?.path ?? null;
+    return windowsCwd(url.host, url.path, this.options.hostname ?? hostname());
+  }
 }
 
 /** `file://<any host>/<path>`, percent-decoded as UTF-8 bytes; anything else is not a cwd. */
-function decode(payload: number[]): string | null {
+function decode(payload: number[]): { host: string; path: string } | null {
   if (payload.length < FILE_PREFIX.length) return null;
   for (let i = 0; i < FILE_PREFIX.length; i++) if (payload[i] !== FILE_PREFIX[i]) return null;
   let i = FILE_PREFIX.length;
   while (i < payload.length && payload[i] !== 0x2f) i++; // skip the host
   if (i >= payload.length) return null; // no path at all
+  const host = String.fromCharCode(...payload.slice(FILE_PREFIX.length, i));
 
   const pathBytes: number[] = [];
   for (; i < payload.length; i++) {
@@ -105,8 +120,27 @@ function decode(payload: number[]): string | null {
 
   try {
     const path = new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(pathBytes));
-    return path.length <= MAX_PATH_LENGTH && !CONTROL_CHARS.test(path) ? path : null;
+    return path.length <= MAX_PATH_LENGTH && !CONTROL_CHARS.test(path) ? { host, path } : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * A reported path as a Windows folder. `file://HOST/C:/Users/x` is a drive whatever the host
+ * says, and Git Bash reports the same folder as `/c/Users/x`; a path with no drive from another
+ * machine is its share, `\\server\share\x`. Anything else (Git Bash's own `/tmp`) has no Windows
+ * name, so the cwd stays where it was.
+ */
+function windowsCwd(host: string, path: string, localHost: string): string | null {
+  const native = (root: string, rest = "") => root + rest.split(/[\\/]+/).filter(Boolean).join("\\");
+  const drive = /^\/([A-Za-z]):(?:[\\/](.*))?$/s.exec(path);
+  if (drive) return native(`${drive[1]!.toUpperCase()}:\\`, drive[2]);
+  const label = (name: string) => name.toLowerCase().split(".")[0] ?? "";
+  if (host === "" || label(host) === "localhost" || label(host) === label(localHost)) {
+    const bash = /^\/([A-Za-z])(?:\/(.*))?$/s.exec(path);
+    return bash ? native(`${bash[1]!.toUpperCase()}:\\`, bash[2]) : null;
+  }
+  const share = native("", path);
+  return share && /^[\w.-]+$/.test(host) && !share.includes(":") ? `\\\\${host}\\${share}` : null;
 }

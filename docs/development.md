@@ -2,7 +2,7 @@
 
 > **WIP：**本文记录当前开发实现与限制，不是稳定版功能承诺。项目定位见 [README](../README.md)，建设方向见[路线图](../ROADMAP.md)。
 
-本机 macOS 上的单人 agent 协作应用。词汇见 [`CONTEXT.md`](../CONTEXT.md)。以下命令均在项目根目录执行。
+本机单人 agent 协作应用，日常在 macOS 上开发；Windows 是刚起步的实验性预览，见下文「Windows（实验性）」一节。词汇见 [`CONTEXT.md`](../CONTEXT.md)。以下命令均在项目根目录执行，未特别说明的部分默认按 macOS 描述。
 
 ## 包
 
@@ -15,7 +15,8 @@
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
 | `@real-bot/protocol` | `packages/protocol` | 本机接口类型（含通知 DTO 与游标编解码），加上点名解析和工作区路径判定（无 I/O） |
 | `@real-bot/remote` | `packages/remote` | 浏览器/Bun 纯密码与编码接口；实验性、默认关闭，见[协议契约](remote-protocol.md) |
-| `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+，原生远控凭据/认证（默认禁用），以及终端会话的 pty（`real-bot-pty`） |
+| `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+ 专属，原生远控凭据/认证（默认禁用），以及终端会话的 pty（`real-bot-pty`） |
+| `real-bot-conpty` | `apps/conpty-helper` | Rust · Windows 专属，终端会话的 pty（`real-bot-pty.exe`，走 ConPTY）；没有远控凭据的等价物 |
 
 根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
 
@@ -217,6 +218,8 @@ DUMP_STORY=group-pane DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 
 ## 原生远控凭据接口（默认禁用）
 
+这一整节是 macOS 专属：Windows 没有共享 Keychain access group 的等价物，本节描述的签名 helper、entitlements 与凭据桥都不存在，远控/手机配对在 Windows 上尚不可用。Windows 的终端 pty 由 `apps/conpty-helper` 单独提供，见文末「Windows（实验性）」。
+
 应用发布包（含默认必需 daemon）最低要求 macOS 13.0，Tauri 元数据与打包检查一致。`apps/runtime-helper` 是 Swift 6/macOS 13+ helper、`libRemoteCredentials.dylib` 与 `real-bot-pty`。`pnpm --filter @real-bot/desktop build:native` 编译并打包三者和独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
 
 终端的 pty 单独一个 product：`swift build --package-path apps/runtime-helper --product real-bot-pty`。开发态不必先跑 `build:native`，`apps/daemon/src/pty.ts` 会去 `.build/{release,debug}/` 找它；`REAL_BOT_PTY_HELPER` 可指定别处。它不带钥匙串访问组——开 shell 这件事你在 Terminal.app 里本来就能做，没有可提升的权限，所以它是独立 product 而不是凭据 helper 的一个子命令。控制终端只能在 fork 和 exec 之间用 `ioctl(TIOCSCTTY)` 拿到，`posix_spawn` 没有那个接缝，所以这一小块必须是原生的；两条路线的实测对照留在 `.scratch/terminal/prototypes/`。
@@ -232,6 +235,43 @@ Swift 验证用 `swift build --package-path apps/runtime-helper` 与 `swift run 
 - Node `>=22` 与 pnpm `12.3.4`（`packageManager`）
 - Bun `>=1.2`（守护进程，不当 npm 依赖）
 - Rust / Cargo（Tauri 2）
+
+## Windows（实验性）
+
+刚起步的预览：能装依赖、能 `pnpm dev`、能本地或经 CI 打出未签名安装包，但不少功能还没有 Windows 版本，下面如实列出。
+
+前置：
+
+- Rust stable 的 MSVC 工具链（`rustup default stable-msvc`），加 Visual Studio Build Tools，安装时勾选 "Desktop development with C++"。
+- WebView2 运行时——Windows 11 预装；Windows 10 需要单独安装。
+- Node `>=22` 与 pnpm。
+- Bun（Windows 上同样 `>=1.2` 起，和 macOS 同一个版本号）。
+- 建议装 Git for Windows：Bot 的 `shell` 工具找得到 Git Bash 时优先用它跑命令，找不到才退到 PowerShell；`REAL_BOT_TOOL_SHELL` 可以指定一个 `bash.exe` / `pwsh.exe` / `powershell.exe` 覆盖这个判断。
+
+终端会话的 pty 在 Windows 上由新 crate `apps/conpty-helper`（基于 ConPTY，对应 macOS 的 `real-bot-pty`）提供，先编译一次：
+
+```bash
+cargo build --manifest-path apps/conpty-helper/Cargo.toml
+```
+
+然后照常：
+
+```bash
+pnpm install
+pnpm dev
+```
+
+数据目录是 `%LOCALAPPDATA%\real-bot`（没设 `LOCALAPPDATA` 时退到 `<用户目录>\AppData\Local\real-bot`）；`REAL_BOT_DATA_DIR` 仍然优先于这个默认值。
+
+本地打安装包：
+
+```bash
+pnpm --filter @real-bot/desktop tauri build --bundles nsis
+```
+
+CI（`.github/workflows/windows.yml`）在 `windows-latest` 上跑一遍单元测试，另起一个任务打同一个未签名 NSIS 安装包，作为 Actions artifact 上传（`deskfolk-windows-x64-nsis`）。这个包不签名也不公证，SmartScreen 大概率会提示「未知发布者」。
+
+还没有的：远控接线与手机配对、独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
 
 ## 命令
 
@@ -484,7 +524,7 @@ GitHub 仓库侧的展示信息：描述、主页（落地页地址）和 topics
 
 release 正文由 `apps/desktop/scripts/release-notes.ts` 生成：按 `tauri.conf.json` 的版本在 `CHANGELOG.md` 里找 `## <版本>` 那一段，正文 = 该段内容 + 未签名说明，`generateReleaseNotes` 关掉。信使的「关于」卡片直接画这份正文（见下一段），所以正文必须是「改了什么」而不是「去看 CHANGELOG」。找不到该段时脚本以非零退出、打包任务失败——发版前先滚 CHANGELOG。GitHub 拒收超过 125,000 字符的正文，一个周期攒得太长时，脚本从较长那种语言的末尾（最早的条目）逐条去掉，并在那一节末尾写明「另有 N 条」、指回 CHANGELOG。正文里裸露的 `@名字`（比如引用群聊原话里的 `@frontend`）会被 GitHub 当成提及：通知同名账号，还把它列成这个 release 的贡献者，所以脚本把代码片段之外的 `@名字` 包进代码片段；已在代码里的、邮箱、`@-mentions` 这类不动。脚本的纯函数由 `apps/desktop/scripts/release-notes.test.ts` 覆盖（`pnpm test` 会跑），其中一条直接拿本仓库的 CHANGELOG 和当前版本对，防止两边脱节。
 
-当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致（去掉 `v` 前缀），否则 `tauri-action` 会按配置里的版本建 release。例如标签 `v0.1.0-alpha.1` 对应配置版本 `0.1.0-alpha.1`。Windows / Linux 不在发布范围。仓库配了 `APPLE_SIGNING_IDENTITY`、`APPLE_CERTIFICATE`（base64 的 `.p12`）、`APPLE_CERTIFICATE_PASSWORD` 三个 secrets 时，`release.yml` 先把证书导入一个临时钥匙串（`build-native` 签内层二进制比 Tauri 导入证书早），`build-native` 和 Tauri 都改用这个身份签名，内层二进制加 `--timestamp`；再配齐 `APPLE_ID`、`APPLE_PASSWORD`（App 专用密码）、`APPLE_TEAM_ID` 就由 Tauri 公证并装订。没配 secrets 时一个变量都不导出，照旧 ad-hoc。证书和密码只放在仓库 secrets 里，不写进工作流；步骤见 [notarization.md](notarization.md)。
+当前没有稳定版或受支持的签名安装包。快照使用 ad-hoc 签名（`signingIdentity: "-"`）。Gatekeeper 可能拦截；优先 `pnpm install` 后 `pnpm dev`。打标签前把 `apps/desktop/src-tauri/tauri.conf.json` 与 `Cargo.toml` 的版本改成与标签一致（去掉 `v` 前缀），否则 `tauri-action` 会按配置里的版本建 release。例如标签 `v0.1.0-alpha.1` 对应配置版本 `0.1.0-alpha.1`。这条打 tag 的发布流水线只签名/公证 macOS 安装包，Linux 仍不在范围；Windows 现在有单独一条实验性路径（`.github/workflows/windows.yml`，见「Windows（实验性）」），产出未签名 NSIS 安装包作为 Actions artifact，不随 tag 发布、不经这里的签名/公证。仓库配了 `APPLE_SIGNING_IDENTITY`、`APPLE_CERTIFICATE`（base64 的 `.p12`）、`APPLE_CERTIFICATE_PASSWORD` 三个 secrets 时，`release.yml` 先把证书导入一个临时钥匙串（`build-native` 签内层二进制比 Tauri 导入证书早），`build-native` 和 Tauri 都改用这个身份签名，内层二进制加 `--timestamp`；再配齐 `APPLE_ID`、`APPLE_PASSWORD`（App 专用密码）、`APPLE_TEAM_ID` 就由 Tauri 公证并装订。没配 secrets 时一个变量都不导出，照旧 ad-hoc。证书和密码只放在仓库 secrets 里，不写进工作流；步骤见 [notarization.md](notarization.md)。
 
 自动检查更新走「检查 + 应用内下载安装」，浏览器下载作为降级（检查见 [ADR 0015](adr/0015-update-check-via-github-releases.md)，下载与替换见 [ADR 0022](adr/0022-in-app-update-download-and-swap.md)）。窗口进程启动 15 秒后发起首次检查，之后每 6 小时重复一次；设置里的「检查更新」按钮随时可强制刷新。网络请求只在 `apps/desktop/src-tauri/src/updates.rs`（Rust 侧）发出——webview 的 CSP 把 `connect-src` 钉在回环地址，前端本身拿不到 GitHub 的公网访问。结果在 Rust 进程内缓存 30 分钟，非强制检查命中缓存不重复请求。请求的是 `GET /repos/Blackman99/deskfolk/releases?per_page=10` 而不是 `/releases/latest`：仓库目前每个 release 都是 prerelease，`/releases/latest` 会 404。拿到列表后跳过 draft 与无法解析的 tag，按 semver 取最高版本；比较基准是 `tauri.conf.json` 的 `version`（经 `app.package_info()` 读出），当前版本带预发布标识时所有 release 都参与比较，否则只看正式 release。下载按钮按机器架构在 release 资产里找 `Deskfolk_<ver>_aarch64.dmg` / `Deskfolk_<ver>_x64.dmg`，这依赖 `tauri-action` 产出的命名规则；资产改名不会报错，只会让按钮退化成打开发布页。打开外链统一经新命令 `open_external_url`，只放行 `https://github.com/Blackman99/deskfolk/` 前缀，防止把系统浏览器带去任意地址。本地验证可设 `REAL_BOT_UPDATE_FEED=<url>` 让窗口进程改从该地址取 releases JSON：起一个 `python3 -m http.server` 在本地端口提供伪造的 `releases.json`，但里面的 `html_url` / `browser_download_url` 仍必须是真实的 `https://github.com/Blackman99/deskfolk/...` 链接，否则会被打开外链的白名单拒绝。检查结果多带一个 `notes`：所选 release 的正文（空白则为 null）。「关于」卡片发现新版时不只给一个跳浏览器的「查看发布说明」，而是把正文里的 `###` 分组和条目直接列出来（`settings/release-notes.ts` 的 `releaseNoteGroups`，只取标题和列表项，段落和围栏留在发布页）。这里不走聊天的 markdown 渲染器：它会把看着像工作区路径的字串变成产物链接，而 changelog 里全是这种路径。「忽略此版本」只记在信使 webview 的 `localStorage`（键 `real-bot-ignored-update`），不进守护进程的 `Settings` 契约——这是纯界面偏好，浏览器开发态也压根没有可更新的桌面壳。仍然不用 `tauri-plugin-updater`：它要 `latest.json` 加 minisign 签名，而当前构建是 ad-hoc 签名（`signingIdentity: "-"`），没有密钥，`release.yml` 也没开 `uploadUpdaterJson`；关掉验签用它不会比自己这条路更可信。
 

@@ -38,6 +38,8 @@ test("live file abort deletes tmp and does not commit", async () => {
   const hash = createHash("sha256").update(bytes).digest("hex");
   const live = st.openLiveFile(root, join(root, "inbox", "b.txt"), hash, bytes.length);
   st.writeLiveFile(live, 0, bytes);
+  // Stored the way every workspace path is, whatever the platform's separator.
+  expect(live.temp_rel).toBe(`inbox/.real-bot-stage-${live.id}`);
   const tmp = join(root, live.temp_rel);
   expect(existsSync(tmp)).toBe(true);
   st.abortLiveFile(live);

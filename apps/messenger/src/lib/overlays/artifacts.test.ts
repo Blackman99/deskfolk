@@ -146,11 +146,20 @@ test("absWorkspacePath joins inside the root and rejects escapes", () => {
   expect(absWorkspacePath("/Users/me/ws", "/etc/passwd")).toBeNull();
 });
 
+test("absWorkspacePath joins a Windows root with backslashes", () => {
+  expect(absWorkspacePath("C:\\Users\\me\\ws", "out/mock.png")).toBe("C:\\Users\\me\\ws\\out\\mock.png");
+  expect(absWorkspacePath("C:\\Users\\me\\ws", "../secret.txt")).toBeNull();
+});
+
 test("terminalDirFor opens a folder in itself and a file in the folder that holds it", () => {
   expect(terminalDirFor("/Users/me/ws", "out/assets", "dir")).toBe("/Users/me/ws/out/assets");
   expect(terminalDirFor("/Users/me/ws/", "out/assets/logo.png", "file")).toBe("/Users/me/ws/out/assets");
   expect(terminalDirFor("/Users/me/ws", "README.md", "file")).toBe("/Users/me/ws");
   expect(terminalDirFor("/Users/me/ws", "../elsewhere", "dir")).toBeNull();
+});
+
+test("terminalDirFor joins onto a Windows root with backslashes", () => {
+  expect(terminalDirFor("C:\\Users\\me\\ws", "out/assets/logo.png", "file")).toBe("C:\\Users\\me\\ws\\out\\assets");
 });
 
 test("handedOverPaths keeps a bare 附件： line and the stored rows", () => {

@@ -59,9 +59,15 @@ export function effectiveLines(row: Annotation): { start_line: number; end_line:
  * (`file_key`).
  */
 export function canonicalRelpath(path: string, workspacePath: string | null = null): string {
-  let p = path.trim();
-  const root = workspacePath?.trim().replace(/\/+$/, "");
-  if (root && (p === root || p.startsWith(`${root}/`))) p = p.slice(root.length);
+  let p = path.trim().replace(/\\/g, "/");
+  const root = workspacePath?.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (root) {
+    // A Windows root's drive letter can come back either case; the workspace path itself never
+    // changes case underneath the prefix that's stripped off.
+    const lowerP = p.toLowerCase();
+    const lowerRoot = root.toLowerCase();
+    if (lowerP === lowerRoot || lowerP.startsWith(`${lowerRoot}/`)) p = p.slice(root.length);
+  }
   return p
     .split("/")
     .filter((part) => part && part !== ".")

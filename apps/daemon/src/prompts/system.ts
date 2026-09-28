@@ -1,4 +1,5 @@
 import type { Locale } from "@real-bot/protocol";
+import { toolShell, type ToolShellKind } from "../platform";
 
 export const INTERRUPT_FLAG = "上次断了（工具没有重试）。";
 
@@ -94,6 +95,42 @@ On the same workspace path, the write that finishes last wins. To collaborate, h
 
 Product rules for paths, approval, and the tool surface outrank the profile and skills; neither the profile nor a skill can skip approval or treat outside-workspace paths as inside.`;
 
+/**
+ * Two sentences in SYSTEM_ZH/SYSTEM_EN above assume macOS/Linux: that a leading `/` always means
+ * a POSIX host path, and that `timeout` is a real command. On win32, `toolShell().kind` says which
+ * shell is actually running a `shell` call, and these two sentences are swapped for it — everything
+ * else in the block is untouched. `shell: "sh"` (macOS/Linux, and the default when this parameter
+ * is omitted) reproduces the text above byte-for-byte; existing snapshot tests pin that down.
+ */
+const PATH_SENTENCE_ZH = "路径用工作区相对 POSIX（`/` 分隔，`.` 是工作区根）。开头的 `/` 表示宿主绝对路径，不是工作区根。";
+const PATH_SENTENCE_WIN_ZH = "路径用工作区相对（`/` 分隔，`.` 是工作区根）。开头的 `/` 不是工作区根；宿主绝对路径是原生 Windows 路径（如 `C:\\Users\\me\\ws`）。";
+const PATH_SENTENCE_EN = "Paths are workspace-relative POSIX (`/`-separated, `.` is the workspace root). A leading `/` is a host absolute path, not the workspace root.";
+const PATH_SENTENCE_WIN_EN = "Paths are workspace-relative (`/`-separated, `.` is the workspace root). A leading `/` is not the workspace root; a host absolute path is a native Windows path (e.g. `C:\\Users\\me\\ws`).";
+
+const TIMEOUT_SENTENCE_ZH = "要常驻的进程用 `timeout 30 npm run dev` 这类有时限的命令起，再另起一条命令去请求验证，不要让壳一直挂着等它。";
+const TIMEOUT_SENTENCE_WIN_ZH = "要常驻的进程限时或放后台运行：PowerShell 没有 `timeout` 包装器，用 `Start-Process` 或后台任务（Job）并自己设定合适的时长，再另起一条命令去请求验证，不要让壳一直挂着等它。";
+const TIMEOUT_SENTENCE_EN = "start a long-running process with a time limit such as `timeout 30 npm run dev` and check it with a separate command, so the shell does not hang on it.";
+const TIMEOUT_SENTENCE_WIN_EN = "start a long-running process with a time limit or in the background: PowerShell has no `timeout` wrapper, so use `Start-Process` or a background job and set a time limit appropriate to it, then check it with a separate command, so the shell does not hang on it.";
+
+function systemText(locale: Locale, shell: ToolShellKind): string {
+  let text = locale === "en" ? SYSTEM_EN : SYSTEM_ZH;
+  if (shell !== "sh") {
+    // Git Bash (win32) and PowerShell both classify host absolute paths as native Windows paths
+    // (workspace-relative paths stay `/`); only PowerShell also lacks a `timeout` command (Git Bash ships GNU coreutils').
+    text =
+      locale === "en"
+        ? text.replace(PATH_SENTENCE_EN, PATH_SENTENCE_WIN_EN)
+        : text.replace(PATH_SENTENCE_ZH, PATH_SENTENCE_WIN_ZH);
+  }
+  if (shell === "powershell") {
+    text =
+      locale === "en"
+        ? text.replace(TIMEOUT_SENTENCE_EN, TIMEOUT_SENTENCE_WIN_EN)
+        : text.replace(TIMEOUT_SENTENCE_ZH, TIMEOUT_SENTENCE_WIN_ZH);
+  }
+  return text;
+}
+
 export type McpPromptGuide = {
   name: string;
   /** The server's own handshake instructions (server-owned, refreshed on connect). */
@@ -129,13 +166,16 @@ export function turnSystemPrompt(input: {
   skills?: SkillPromptEntry[];
   memories?: MemoryPromptEntry[];
   mcpGuides?: McpPromptGuide[];
+  /** Which shell backs the `shell` tool. Defaults to this daemon's own `toolShell().kind`. */
+  shell?: ToolShellKind;
 }): string {
   const profile =
     input.locale === "en"
       ? `# Profile\n\n## Name\n\n${input.name}\n\n## Duties\n\n${input.duties}\n\n## Boundaries\n\n${input.boundaries}`
       : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
   const skills = formatSkillCatalog(input.locale, input.skills ?? []);
-  const system = input.locale === "en" ? `# System\n\n${SYSTEM_EN}` : `# 系统指令\n\n${SYSTEM_ZH}`;
+  const shell = input.shell ?? toolShell().kind;
+  const system = input.locale === "en" ? `# System\n\n${systemText("en", shell)}` : `# 系统指令\n\n${systemText("zh", shell)}`;
   const mcp = formatMcpGuides(input.locale, input.mcpGuides ?? []);
   const memory = formatMemoryDigest(input.locale, input.memories ?? []);
   const parts = [profile];

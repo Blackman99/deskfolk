@@ -8,7 +8,7 @@ import type { Pty } from "./pty";
 import { ptyHelperPath } from "./pty";
 import { memoryKeyStore } from "./secrets";
 import { StreamHub } from "./streams";
-import { Terminals } from "./terminals";
+import { Terminals, titleFor } from "./terminals";
 import { Store } from "./store";
 
 /** The real helper, for the same reason as pty.test.ts: a mocked terminal proves nothing. */
@@ -93,6 +93,15 @@ test("an unknown terminal is a 404, not a crash", async () => {
 test("cwd has to be an absolute path", async () => {
   const h = await start();
   expect((await call(h, "POST", "/v1/terminals", { cwd: "relative/path" })).status).toBe(422);
+});
+
+test("a tab is named after the cwd's last folder, in either platform's spelling", () => {
+  expect(titleFor("/Users/x/projects/real-bot", "darwin")).toBe("real-bot");
+  expect(titleFor("/", "darwin")).toBe("/");
+  expect(titleFor("C:\\Users\\x\\real-bot", "win32")).toBe("real-bot");
+  expect(titleFor("C:/Users/x/real-bot/", "win32")).toBe("real-bot");
+  expect(titleFor("C:\\", "win32")).toBe("C:");
+  expect(titleFor("\\\\server\\share\\dir", "win32")).toBe("dir");
 });
 
 withHelper("a session opens, runs a command and reports its output", async () => {

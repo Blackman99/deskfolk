@@ -13,6 +13,7 @@
 import { existsSync } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { killProcessTree, resolvePowerShell } from "./platform";
 import { macSystemLocale, terminalEnv } from "./terminal-env";
 
 export type PtySignal = "SIGINT" | "SIGQUIT" | "SIGTSTP" | "SIGTERM" | "SIGKILL";
@@ -36,18 +37,33 @@ export const SHUTDOWN_GRACE_MS = 4000;
 export class PtyUnavailable extends Error {}
 
 /**
- * Packaged next to the daemon; in a source checkout, whatever `swift build` last produced.
- * The override exists for tests and for a daemon started from somewhere unusual.
+ * Packaged next to the daemon; in a source checkout, whatever the platform's own build last
+ * produced (`swift build` on macOS/Linux, `cargo build` for the win32 ConPTY helper). The override
+ * exists for tests and for a daemon started from somewhere unusual.
  */
-export function ptyHelperPath(env: Record<string, string | undefined> = process.env): string {
+export function ptyHelperPath(
+  env: Record<string, string | undefined> = process.env,
+  platform: string = process.platform,
+  exists: (path: string) => boolean = existsSync,
+): string {
   const override = env.REAL_BOT_PTY_HELPER;
   if (override) return override;
+  if (platform === "win32") {
+    const packaged = join(dirname(process.execPath), "real-bot-pty.exe");
+    if (exists(packaged)) return packaged;
+    const root = resolve(import.meta.dir, "../../..");
+    for (const configuration of ["release", "debug"]) {
+      const built = join(root, "apps/conpty-helper/target", configuration, "real-bot-pty.exe");
+      if (exists(built)) return built;
+    }
+    throw new PtyUnavailable("pty helper is not built");
+  }
   const packaged = join(dirname(process.execPath), "real-bot-pty");
-  if (existsSync(packaged)) return packaged;
+  if (exists(packaged)) return packaged;
   const root = resolve(import.meta.dir, "../../..");
   for (const configuration of ["release", "debug"]) {
     const built = join(root, "apps/runtime-helper/.build", configuration, "real-bot-pty");
-    if (existsSync(built)) return built;
+    if (exists(built)) return built;
   }
   throw new PtyUnavailable("pty helper is not built");
 }
@@ -60,8 +76,19 @@ function frame(type: number, payload: Uint8Array): Uint8Array {
   return out;
 }
 
-/** The shell a person expects, started as a login shell: launchd hands the daemon a bare PATH. */
-export function shellCommand(env: Record<string, string | undefined> = process.env): string[] {
+/**
+ * The shell a person expects. On macOS/Linux, started as a login shell: launchd hands the daemon
+ * a bare PATH. On win32 there is no such thing as a login shell and no `$SHELL` to read — `pwsh.exe`
+ * if it is on PATH, else the Windows PowerShell that always ships, with `-NoLogo` only.
+ */
+export function shellCommand(
+  env: Record<string, string | undefined> = process.env,
+  platform: string = process.platform,
+  which: (name: string) => string | null = (name) => Bun.which(name, { PATH: env.PATH }) ?? null,
+): string[] {
+  if (platform === "win32") {
+    return [resolvePowerShell(env, platform, which), "-NoLogo"];
+  }
   return [env.SHELL && env.SHELL.startsWith("/") ? env.SHELL : "/bin/zsh", "-l"];
 }
 
@@ -157,7 +184,13 @@ export class Pty {
     this.send(frame(FRAME_SHUTDOWN, new Uint8Array(0)));
     this.close();
     const escalate = setTimeout(() => {
-      try { this.process.kill(9); } catch { /* already gone */ }
+      // On win32 SIGKILL only ever reaches the helper itself, not the shell (and whatever it
+      // spawned) sitting behind the ConPTY; killProcessTree walks the whole tree there instead.
+      if (process.platform === "win32") {
+        killProcessTree(this.process.pid);
+      } else {
+        try { this.process.kill(9); } catch { /* already gone */ }
+      }
     }, SHUTDOWN_GRACE_MS);
     void this.exited.finally(() => clearTimeout(escalate));
   }

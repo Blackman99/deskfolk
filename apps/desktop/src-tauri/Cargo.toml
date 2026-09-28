@@ -26,6 +26,24 @@ semver = "1"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 
+[target.'cfg(windows)'.dependencies]
+# Already resolved transitively (tauri/wry/tray-icon pull windows-sys 0.61 and
+# windows-core 0.61 themselves), so pinning our own use of them costs nothing
+# extra to build.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_System_Threading",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.61"
+# For `Webview::with_webview`'s WebView2 controller handle (disabling the
+# browser accelerator keys) — the same crate Tauri's own docs use for this.
+webview2-com = "0.38"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"

@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import {
   USER_MEMBER,
@@ -19,6 +19,7 @@ import {
   type Turn,
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { isAbsoluteHostPath } from "../workspace-paths";
 import { parseStoredThinkingLevel } from "../models";
 import { Transactions } from "./transactions";
 import { ulid } from "../ids";
@@ -528,7 +529,9 @@ export function resolveWorkspacePath(value: unknown): string {
     throw new HttpError(422, "invalid_args", "workspace_path cannot be empty");
   }
   const expanded = expandHome(trimmed);
-  if (!isAbsolute(expanded)) {
+  // Not `path.isAbsolute`: on Windows that also takes `\x`, which lands on whatever drive the
+  // daemon happens to run from.
+  if (!isAbsoluteHostPath(expanded)) {
     throw new HttpError(422, "invalid_args", "workspace_path must be an absolute directory");
   }
   try {
@@ -546,9 +549,9 @@ export function resolveWorkspacePath(value: unknown): string {
   }
 }
 
-export function expandHome(path: string): string {
+export function expandHome(path: string, platform: NodeJS.Platform = process.platform): string {
   if (path === "~") return homedir();
-  if (path.startsWith("~/")) return join(homedir(), path.slice(2));
+  if (path.startsWith("~/") || (platform === "win32" && path.startsWith("~\\"))) return join(homedir(), path.slice(2));
   return path;
 }
 

@@ -4,6 +4,7 @@ import {
   looksLikeWorkspacePath,
   withoutAttachmentDeclarations,
 } from "@real-bot/protocol";
+import { joinHostPath } from "../paths.ts";
 
 export { extensionOf };
 
@@ -291,28 +292,9 @@ function decodePercentPath(path: string): string {
   return current;
 }
 
-/** Join a workspace-relative POSIX path onto an absolute workspace root. Rejects escapes. */
+/** Join a workspace-relative `/`-path onto an absolute workspace root, in the root's own separator. */
 export function absWorkspacePath(root: string, rel: string): string | null {
-  const base = root.trim();
-  const path = rel.trim();
-  if (!base || !path) return null;
-  if (path.startsWith("/") || path.includes("://")) return null;
-  let depth = 0;
-  const parts: string[] = [];
-  for (const seg of path.split("/")) {
-    if (seg === "" || seg === ".") continue;
-    if (seg === "..") {
-      if (depth === 0) return null;
-      parts.pop();
-      depth--;
-      continue;
-    }
-    parts.push(seg);
-    depth++;
-  }
-  const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
-  if (parts.length === 0) return prefix;
-  return `${prefix}/${parts.join("/")}`;
+  return joinHostPath(root, rel);
 }
 
 /** Where a terminal opened on a tree row starts: the folder itself, or the one a file sits in. */

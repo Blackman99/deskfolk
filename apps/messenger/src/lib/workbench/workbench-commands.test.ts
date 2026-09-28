@@ -49,6 +49,15 @@ test("the divide bindings are read off the keystroke", () => {
   expect(matchWorkbenchKey(key({ key: "\\", metaKey: true }))).toEqual({ kind: "split", axis: "row", side: "after" });
   expect(matchWorkbenchKey(key({ key: "|", code: "Backslash", metaKey: true, shiftKey: true } as never)))
     .toEqual({ kind: "split", axis: "column", side: "after" });
+  // Ctrl+\ splits, as ⌘\ does on mac — this is the "already works on Windows" ctrlKey path.
+  expect(matchWorkbenchKey(key({ key: "\\", ctrlKey: true }))).toEqual({ kind: "split", axis: "row", side: "after" });
+});
+
+test("AltGr typing a \\ (Ctrl+Alt on the Windows layouts that need it) never splits a pane", () => {
+  expect(matchWorkbenchKey(key({ key: "\\", ctrlKey: true, altKey: true }))).toBeNull();
+  expect(
+    matchWorkbenchKey(key({ key: "\\", ctrlKey: true, getModifierState: (k: string) => k === "AltGraph" } as never)),
+  ).toBeNull();
 });
 
 test("arrows move focus, and with shift they move the edge instead", () => {

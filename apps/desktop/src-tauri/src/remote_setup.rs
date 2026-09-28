@@ -1,12 +1,18 @@
 use serde_json::Value;
-use std::io::{Read, Write};
-use std::sync::Mutex;
-use std::time::Duration;
 
+// The desktop remote channel is a unix domain socket pair handed to the daemon
+// over an inherited fd; there is no Windows equivalent yet, so every piece of
+// it (down to the imports only it uses) is unix-only.
+#[cfg(unix)]
+use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::{net::UnixStream, process::CommandExt};
+#[cfg(unix)]
+use std::sync::Mutex;
+#[cfg(unix)]
+use std::time::Duration;
 
 #[cfg(unix)]
 static CHANNEL: Mutex<Option<UnixStream>> = Mutex::new(None);

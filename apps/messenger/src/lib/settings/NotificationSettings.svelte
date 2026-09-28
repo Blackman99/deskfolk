@@ -505,9 +505,7 @@
 						<div class="settings-row-info">
 							<span class="settings-row-title">{t.notifications.deviceEnable}</span>
 							<span class="settings-row-desc">
-								{device?.enabled
-									? (locale === 'en' ? 'Desktop native banners and alerts are active' : '通过 macOS 本地横幅与提示音通知')
-									: t.notifications.deviceDisabled}
+								{device?.enabled ? t.notifications.deviceEnabledDesktopNote : t.notifications.deviceDisabled}
 							</span>
 						</div>
 						<div class="settings-row-action">

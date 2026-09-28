@@ -12,6 +12,8 @@ type Key = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shift
 /** The terminal's own commands, not bytes for the shell. */
 export type TerminalShortcut =
   | "clear"
+  | "copy"
+  | "paste"
   | "find"
   | "find-next"
   | "find-previous"
@@ -45,6 +47,28 @@ export function terminalShortcut(event: Key): TerminalShortcut | null {
   if (event.shiftKey) return null;
   if (key === "k") return "clear";
   if (key === "f") return "find";
+  if (key === "-") return "font-smaller";
+  if (key === "0") return "font-reset";
+  return null;
+}
+
+/**
+ * The Windows terminal's own bar, bound the way Windows Terminal does: copy and paste, find and
+ * clear move onto Ctrl+Shift so plain Ctrl+K and Ctrl+F still reach the shell (kill-line,
+ * forward-search); the font keys stay plain Ctrl, next to nothing the shell gives Ctrl+= or
+ * Ctrl+- a meaning of its own.
+ */
+export function windowsTerminalShortcut(event: Key): TerminalShortcut | null {
+  if (event.metaKey || event.altKey || !event.ctrlKey) return null;
+  const key = event.key.toLowerCase();
+  if (event.shiftKey) {
+    if (key === "c") return "copy";
+    if (key === "v") return "paste";
+    if (key === "f") return "find";
+    if (key === "k") return "clear";
+    return null;
+  }
+  if (key === "=" || key === "+") return "font-bigger";
   if (key === "-") return "font-smaller";
   if (key === "0") return "font-reset";
   return null;

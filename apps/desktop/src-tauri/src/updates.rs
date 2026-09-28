@@ -73,6 +73,30 @@ pub fn arch_tag() -> Option<&'static str> {
     arch_tag_for(std::env::consts::ARCH)
 }
 
+/// Map a Rust `std::env::consts::ARCH` value to the suffix used in the NSIS
+/// installer's name (`Deskfolk_<ver>_<arch>-setup.exe`) — aarch64 is spelled
+/// `arm64` there, unlike the `.dmg` naming above.
+pub fn windows_arch_tag_for(arch: &str) -> Option<&'static str> {
+    match arch {
+        "aarch64" => Some("arm64"),
+        "x86_64" => Some("x64"),
+        _ => None,
+    }
+}
+
+pub fn windows_arch_tag() -> Option<&'static str> {
+    windows_arch_tag_for(std::env::consts::ARCH)
+}
+
+/// The architecture tag for this platform's own release asset naming.
+pub fn platform_arch_tag() -> Option<&'static str> {
+    if cfg!(windows) {
+        windows_arch_tag()
+    } else {
+        arch_tag()
+    }
+}
+
 /// Parse a release tag (`v1.2.3` or `1.2.3`) into a semver version. Strips at
 /// most one leading `v`/`V`. Returns `None` on any parse failure.
 pub fn parse_tag(tag: &str) -> Option<semver::Version> {
@@ -89,6 +113,17 @@ pub fn parse_tag(tag: &str) -> Option<semver::Version> {
 pub fn pick_dmg(assets: &[Asset], arch: Option<&str>) -> Option<String> {
     let arch = arch?;
     let suffix = format!("_{arch}.dmg");
+    assets
+        .iter()
+        .find(|asset| asset.name.ends_with(&suffix))
+        .map(|asset| asset.browser_download_url.clone())
+}
+
+/// Pick the NSIS installer asset (`Deskfolk_<ver>_<arch>-setup.exe`) matching
+/// the given architecture tag ([`windows_arch_tag`]'s spelling).
+pub fn pick_windows_installer(assets: &[Asset], arch: Option<&str>) -> Option<String> {
+    let arch = arch?;
+    let suffix = format!("_{arch}-setup.exe");
     assets
         .iter()
         .find(|asset| asset.name.ends_with(&suffix))
@@ -125,8 +160,12 @@ pub fn pick_update(
         },
         Some((version, release)) => {
             let update_available = version > *current;
-            let download_url =
-                pick_dmg(&release.assets, arch).or_else(|| Some(release.html_url.clone()));
+            let picked = if cfg!(windows) {
+                pick_windows_installer(&release.assets, arch)
+            } else {
+                pick_dmg(&release.assets, arch)
+            };
+            let download_url = picked.or_else(|| Some(release.html_url.clone()));
             UpdateCheck {
                 current: current.to_string(),
                 latest: Some(version.to_string()),
@@ -371,6 +410,46 @@ mod tests {
         assert_eq!(arch_tag_for("x86_64"), Some("x64"));
         assert_eq!(arch_tag_for("arm"), None);
         assert_eq!(arch_tag_for(""), None);
+    }
+
+    /// Windows spells the aarch64 tag `arm64`, not `aarch64` — the `.dmg` and
+    /// the NSIS installer disagree here, so this has its own mapping.
+    #[test]
+    fn windows_arch_tag_spells_aarch64_as_arm64() {
+        assert_eq!(windows_arch_tag_for("aarch64"), Some("arm64"));
+        assert_eq!(windows_arch_tag_for("x86_64"), Some("x64"));
+        assert_eq!(windows_arch_tag_for("arm"), None);
+        assert_eq!(windows_arch_tag_for(""), None);
+    }
+
+    #[test]
+    fn picks_windows_installer_by_arch_suffix() {
+        let assets = vec![
+            Asset {
+                name: "Deskfolk_0.2.0_x64-setup.exe".into(),
+                browser_download_url: "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_x64-setup.exe".into(),
+            },
+            Asset {
+                name: "Deskfolk_0.2.0_arm64-setup.exe".into(),
+                browser_download_url: "https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_arm64-setup.exe".into(),
+            },
+        ];
+        assert_eq!(
+            pick_windows_installer(&assets, Some("x64")).as_deref(),
+            Some("https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_x64-setup.exe")
+        );
+        assert_eq!(
+            pick_windows_installer(&assets, Some("arm64")).as_deref(),
+            Some("https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_arm64-setup.exe")
+        );
+        assert_eq!(pick_windows_installer(&assets, None), None);
+        assert_eq!(pick_windows_installer(&assets, Some("unknown")), None);
+        // A `.dmg` of the same architecture tag is not an NSIS installer.
+        let dmg_only = vec![Asset {
+            name: "Deskfolk_0.2.0_x64.dmg".into(),
+            browser_download_url: "https://example.invalid/Deskfolk_0.2.0_x64.dmg".into(),
+        }];
+        assert_eq!(pick_windows_installer(&dmg_only, Some("x64")), None);
     }
 
     #[test]

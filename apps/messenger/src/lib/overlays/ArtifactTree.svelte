@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { isPrimaryModifier } from '../keymap.ts';
 	import { treeRange, visibleTreePaths, type ArtifactTreeNode } from './artifact-tree.ts';
 	import FileIcon from './FileIcon.svelte';
 	import { fileIconFor } from './file-icon.ts';
@@ -14,7 +15,7 @@
 		 * menu acts on: every picked row when this one is among them, this row alone otherwise.
 		 */
 		onContextMenu?: (node: ArtifactTreeNode, event: MouseEvent, picked: ArtifactTreeNode[]) => void;
-		/** ⌘⌫ (Delete elsewhere) on a focused row, with the rows it applies to. */
+		/** ⌘⌫ on mac, Ctrl+⌫ or plain Delete elsewhere, on a focused row, with the rows it applies to. */
 		onTrash?: (picked: ArtifactTreeNode[]) => void;
 		lazyDirs?: boolean;
 		loadedDirs?: ReadonlySet<string>;
@@ -120,7 +121,7 @@
 			picked = [];
 			return;
 		}
-		const trashKey = (event.key === 'Backspace' && event.metaKey) || (event.key === 'Delete' && !event.metaKey);
+		const trashKey = (event.key === 'Backspace' && isPrimaryModifier(event)) || (event.key === 'Delete' && !event.metaKey);
 		if (!trashKey || !onTrash) return;
 		const row = (event.target as HTMLElement | null)?.closest<HTMLElement>('.artifact-tree-row');
 		const node = row?.dataset.path ? byPath.get(row.dataset.path) : undefined;

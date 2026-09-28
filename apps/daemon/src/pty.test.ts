@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { DEFAULT_COLS, Pty, PtyUnavailable, ptyHelperPath, shellCommand } from "./pty";
+import { dirname, join, resolve } from "node:path";
+import { DEFAULT_COLS, Pty, PtyUnavailable, SHUTDOWN_GRACE_MS, ptyHelperPath, shellCommand } from "./pty";
 import { CwdTracker } from "./terminal-cwd";
 import { ensureZshIntegration, terminalEnv } from "./terminal-env";
 
@@ -13,7 +13,11 @@ import { ensureZshIntegration, terminalEnv } from "./terminal-env";
 const helper = (() => {
   try { return ptyHelperPath(); } catch { return null; }
 })();
-const withHelper = helper ? test : test.skip;
+const onWindows = process.platform === "win32";
+/** The POSIX sessions below drive `/bin/sh`; Windows has its own set at the end of the file. */
+const withHelper = helper && !onWindows ? test : test.skip;
+/** The ConPTY helper: `cargo build --manifest-path apps/conpty-helper/Cargo.toml` first. */
+const withConpty = helper && onWindows ? test : test.skip;
 
 function scratch(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), "real-bot-pty-")));
@@ -47,6 +51,39 @@ test("ptyHelperPath prefers an explicit override", () => {
 test("shellCommand starts a login shell and ignores a relative SHELL", () => {
   expect(shellCommand({ SHELL: "/bin/bash" })).toEqual(["/bin/bash", "-l"]);
   expect(shellCommand({ SHELL: "zsh" })).toEqual(["/bin/zsh", "-l"]);
+});
+
+test("ptyHelperPath on win32 looks for real-bot-pty.exe, override first", () => {
+  expect(ptyHelperPath({ REAL_BOT_PTY_HELPER: "D:\\tools\\real-bot-pty.exe" }, "win32", () => false)).toBe(
+    "D:\\tools\\real-bot-pty.exe",
+  );
+});
+
+test("ptyHelperPath on win32 finds the packaged .exe next to the daemon", () => {
+  const packaged = join(dirname(process.execPath), "real-bot-pty.exe");
+  expect(ptyHelperPath({}, "win32", (path) => path === packaged)).toBe(packaged);
+});
+
+test("ptyHelperPath on win32 falls back to the cargo target dir in a source checkout", () => {
+  const root = resolve(import.meta.dir, "../../..");
+  const built = join(root, "apps/conpty-helper/target", "release", "real-bot-pty.exe");
+  expect(ptyHelperPath({}, "win32", (path) => path === built)).toBe(built);
+});
+
+test("ptyHelperPath on win32 throws when nothing is found", () => {
+  expect(() => ptyHelperPath({}, "win32", () => false)).toThrow(PtyUnavailable);
+});
+
+test("shellCommand on win32 prefers pwsh.exe on PATH, with -NoLogo only", () => {
+  const which = (name: string) => (name === "pwsh.exe" ? "C:\\tools\\pwsh\\pwsh.exe" : null);
+  expect(shellCommand({}, "win32", which)).toEqual(["C:\\tools\\pwsh\\pwsh.exe", "-NoLogo"]);
+});
+
+test("shellCommand on win32 falls back to the bundled Windows PowerShell", () => {
+  expect(shellCommand({ SystemRoot: "C:\\Windows" }, "win32", () => null)).toEqual([
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "-NoLogo",
+  ]);
 });
 
 test("a missing helper is reported, not guessed at", () => {
@@ -183,3 +220,54 @@ withHelper("zsh keeps the user's own dotfiles and reports its cwd via Deskfolk's
   rmSync(home, { recursive: true, force: true });
   rmSync(dataDir, { recursive: true, force: true });
 });
+
+const typed = (text: string) => new TextEncoder().encode(text);
+
+withConpty("ConPTY: the session runs in the requested cwd and the exit code comes back", async () => {
+  const cwd = scratch();
+  // Wide, so ConPTY does not wrap a long temp path across two lines.
+  const { pty, read } = open(cwd, ["cmd.exe", "/d", "/c", "cd & exit 7"], 24, 300);
+  expect(await pty.exited).toBe(7);
+  expect((await settle(read, 200, 3000)).toLowerCase()).toContain(cwd.split("\\").pop()!.toLowerCase());
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+withConpty("ConPTY: Ctrl-C stops the foreground program and the shell survives it", async () => {
+  const cwd = scratch();
+  const { pty, read } = open(cwd, ["cmd.exe", "/d", "/q", "/k"], 24, 200);
+  await settle(read);
+  pty.write(typed("ping -t 127.0.0.1\r"));
+  await settle(read);
+  pty.write(typed("\x03"));
+  await settle(read);
+  // Typed while ping still ran, this would never be read; the expanded %ERRORLEVEL% proves cmd did.
+  pty.write(typed("echo ALIVE_%ERRORLEVEL%\r"));
+  expect(await settle(read)).toMatch(/ALIVE_\d/);
+  pty.kill();
+  await pty.exited;
+  rmSync(cwd, { recursive: true, force: true });
+}, 60_000);
+
+withConpty("ConPTY: a resize reaches the program", async () => {
+  const cwd = scratch();
+  const { pty, read } = open(cwd, ["powershell.exe", "-NoLogo", "-NoProfile"], 24, 100);
+  await settle(read, 1000, 30000);
+  pty.resize(30, 123);
+  await Bun.sleep(300);
+  pty.write(typed("'W=' + $Host.UI.RawUI.WindowSize.Width\r"));
+  expect(await settle(read, 1000, 30000)).toContain("W=123");
+  pty.kill();
+  await pty.exited;
+  rmSync(cwd, { recursive: true, force: true });
+}, 60_000);
+
+withConpty("ConPTY: kill() takes the session down without waiting for the escalation", async () => {
+  const cwd = scratch();
+  const { pty } = open(cwd, ["cmd.exe", "/d", "/c", "ping -n 60 127.0.0.1 > NUL"]);
+  await Bun.sleep(1000);
+  const started = Date.now();
+  pty.kill();
+  await pty.exited;
+  expect(Date.now() - started).toBeLessThan(SHUTDOWN_GRACE_MS);
+  rmSync(cwd, { recursive: true, force: true });
+}, 30_000);

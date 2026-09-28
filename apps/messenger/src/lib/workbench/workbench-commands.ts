@@ -9,6 +9,7 @@ import type { Axis, MinSizeLookup, NodeId, PaneMin, Rect, WorkbenchLayout } from
 import { canSplit, computeGeometry, neighbourLeaf, type Direction, type LayoutGeometry } from "./layout-geometry.ts";
 import { activateTab, closeLeaf, closeTab, findPath, focusLeaf, leafById } from "./layout-tree.ts";
 import { beginSashDrag, equalise, resizeSash } from "./layout-resize.ts";
+import { isAltGraph } from "../keymap.ts";
 
 /**
  * Where a keystroke belongs to whatever has focus rather than to the workbench.
@@ -71,7 +72,9 @@ const ARROWS: Record<string, Direction> = {
  */
 export function matchWorkbenchKey(event: KeyboardEvent): WorkbenchCommand | null {
   if (isTypingTarget(event.target)) return null;
-  const mod = event.metaKey || event.ctrlKey;
+  // AltGr is Ctrl+Alt in disguise on the Windows layouts that need it to type a character — `\`
+  // included, which is exactly the key ⌘\ / Ctrl+\ splits a pane with.
+  const mod = (event.metaKey || event.ctrlKey) && !isAltGraph(event);
 
   if (event.key === "Tab" && event.ctrlKey) {
     return { kind: "cycle-tab", dir: event.shiftKey ? -1 : 1 };

@@ -21,24 +21,87 @@ export function fileEtag(bytes: Uint8Array): string {
   return `"${sha256(bytes)}"`;
 }
 
-export function syncDirectory(path: string): void {
+/**
+ * `open` + `fsync` a directory to make sure a rename or unlink inside it survives a crash. Windows
+ * has no such thing — opening a directory this way fails with EISDIR/EPERM — and NTFS journals
+ * metadata changes itself, so this is a no-op there rather than an error every writer would have
+ * to swallow.
+ */
+export function syncDirectory(path: string, platform: string = process.platform): void {
+  if (platform === "win32") return;
   const fd = openSync(path, constants.O_RDONLY);
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
 
-export function stageFile(abs: string, bytes: Uint8Array | string, tmp = join(dirname(abs), `.real-bot-stage-${ulid()}`)): string {
-  const mode = existsSync(abs) ? statSync(abs).mode & 0o777 : 0o600;
+/** A handful of short, synchronous waits — at most ~200ms total — never a real sleep loop. */
+const RENAME_RETRY_DELAYS_MS = [5, 10, 25, 50, 100];
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isTransientRenameError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "EPERM" || code === "EBUSY" || code === "EACCES";
+}
+
+/**
+ * `renameSync` over a destination another process has open — antivirus, a search indexer, an
+ * editor with the file mapped — throws EPERM/EBUSY/EACCES on Windows for a few milliseconds, not
+ * because the rename is actually invalid. POSIX renames are atomic and never contend like this, so
+ * there this is exactly today's single `renameSync` call.
+ */
+export function renameReplacing(
+  tmp: string,
+  dest: string,
+  platform: string = process.platform,
+  rename: (from: string, to: string) => void = renameSync,
+): void {
+  if (platform !== "win32") {
+    rename(tmp, dest);
+    return;
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename(tmp, dest);
+      return;
+    } catch (error) {
+      if (attempt >= RENAME_RETRY_DELAYS_MS.length || !isTransientRenameError(error)) throw error;
+      sleepSync(RENAME_RETRY_DELAYS_MS[attempt]!);
+    }
+  }
+}
+
+export function stageFile(
+  abs: string,
+  bytes: Uint8Array | string,
+  tmp = join(dirname(abs), `.real-bot-stage-${ulid()}`),
+  platform: string = process.platform,
+): string {
+  // A read-only target (Windows' read-only attribute, surfaced in `statSync().mode`) must never
+  // make its staged replacement read-only too: that temp file is renamed over the target next, and
+  // a read-only temp file cannot be renamed away on Windows. POSIX keeps copying the target's mode,
+  // e.g. to preserve an executable bit across a rewrite.
+  const mode = platform !== "win32" && existsSync(abs) ? statSync(abs).mode & 0o777 : 0o600;
   const fd = openSync(tmp, "wx", mode);
-  try { writeFileSync(fd, bytes); fsyncSync(fd); }
-  catch (error) { unlinkSync(tmp); throw error; }
-  finally { closeSync(fd); }
-  syncDirectory(dirname(tmp));
+  try {
+    writeFileSync(fd, bytes);
+    fsyncSync(fd);
+  } catch (error) {
+    // Windows cannot unlink a file that still has an open handle; closing first is required there
+    // and harmless on POSIX, where the fd would otherwise be closed by the `finally` below anyway.
+    closeSync(fd);
+    unlinkSync(tmp);
+    throw error;
+  }
+  closeSync(fd);
+  syncDirectory(dirname(tmp), platform);
   return tmp;
 }
 
-export function commitFile(tmp: string, abs: string): void {
-  renameSync(tmp, abs);
-  syncDirectory(dirname(abs));
+export function commitFile(tmp: string, abs: string, platform: string = process.platform): void {
+  renameReplacing(tmp, abs, platform);
+  syncDirectory(dirname(abs), platform);
 }
 
 export function atomicWrite(abs: string, content: string, ifMatch?: string | null): string {

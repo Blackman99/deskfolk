@@ -19,6 +19,11 @@ export function originDecision(origin: string | null): "missing" | "allowed" | "
   if (url.protocol === "tauri:" && host === "localhost") {
     return "allowed";
   }
+  // WebView2 (the Windows webview) serves the app over http(s)://tauri.localhost instead of the
+  // tauri: scheme macOS/WKWebView uses; https only if the Tauri config ever sets useHttpsScheme.
+  if ((url.protocol === "http:" || url.protocol === "https:") && host === "tauri.localhost" && !url.port) {
+    return "allowed";
+  }
   if (url.protocol === "http:" && LOOPBACK_HOSTS.has(host)) {
     return "allowed";
   }

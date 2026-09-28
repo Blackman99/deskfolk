@@ -5,9 +5,9 @@
  * `store.getBot(id)` while the code behind it stays small enough to read in one sitting.
  */
 import { chmodSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { homedir } from "node:os";
-import { APP_SUPPORT_DIRNAME, providerKeychainName, mcpAuthKeychainName, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
+import { defaultAppDataDir, providerKeychainName, mcpAuthKeychainName, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
 import { installChangeJournal, committedEvents } from "./events";
 import { Transactions } from "./transactions";
 import { Receipts } from "./receipts";
@@ -93,7 +93,7 @@ export class Store {
       db: this.db,
       keys: new KeyCache(options.endpointKey ?? memoryKeyStore(), this.db, (name) => this.keysChanged(name)),
       tx: new Transactions(this.db, () => { if (this.journalReady) this.emit(committedEvents(this.ctx)); }),
-      inboxRoot: options.filename && options.filename !== ":memory:" ? dirname(options.filename) : join(homedir(), "Library", "Application Support", APP_SUPPORT_DIRNAME),
+      inboxRoot: options.filename && options.filename !== ":memory:" ? dirname(options.filename) : defaultAppDataDir({ platform: process.platform, env: process.env, home: homedir() }),
       keyPlan: null,
       activeStages: new Set(),
       legacy: { copiedKey: false },

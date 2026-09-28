@@ -1,11 +1,20 @@
 import { expect, test } from "bun:test";
-import { mapSettingsError, planSettingsSave, planWorkspaceSave } from "./wizard-save.ts";
+import { looksLikeAbsoluteOrHome, mapSettingsError, planSettingsSave, planWorkspaceSave } from "./wizard-save.ts";
 
 test("settings Save only PATCHes a legal workspace path", () => {
   expect(planWorkspaceSave("   ")).toEqual({ ok: false, error: "empty" });
   expect(planWorkspaceSave("relative")).toEqual({ ok: false, error: "invalid" });
   expect(planWorkspaceSave("~/Projects")).toEqual({ ok: true, workspace_path: "~/Projects" });
   expect(planWorkspaceSave("/tmp/ws")).toEqual({ ok: true, workspace_path: "/tmp/ws" });
+});
+
+test("a Windows path is a legal workspace path too — the daemon validates it for real", () => {
+  expect(looksLikeAbsoluteOrHome("C:\\Users\\me\\ws")).toBe(true);
+  expect(looksLikeAbsoluteOrHome("C:/Users/me/ws")).toBe(true);
+  expect(looksLikeAbsoluteOrHome("\\\\server\\share\\ws")).toBe(true);
+  expect(looksLikeAbsoluteOrHome("~\\Projects")).toBe(true);
+  expect(planWorkspaceSave("C:\\Users\\me\\ws")).toEqual({ ok: true, workspace_path: "C:\\Users\\me\\ws" });
+  expect(planWorkspaceSave("\\\\server\\share\\ws")).toEqual({ ok: true, workspace_path: "\\\\server\\share\\ws" });
 });
 
 test("incomplete empty path, URL, and key do not produce a PATCH", () => {

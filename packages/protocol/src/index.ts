@@ -1442,6 +1442,7 @@ export type ClientEvent =
 export const ANNOTATION_REMOTE_CROP_BASE64_MAX = 1_000_000;
 
 export * from "./annotations.ts";
+export * from "./app-data-dir.ts";
 export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";
 export * from "./mentions.ts";

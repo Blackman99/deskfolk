@@ -1,5 +1,6 @@
 import type { McpHeader, McpServer, McpTransport } from "@real-bot/protocol";
 import { mappedMcpChatTools, mapMcpTools, type MappedMcpTool } from "./mcp-names";
+import { killProcessTree, pickEnv, WINDOWS_ENV_PASSTHROUGH } from "./platform";
 import type { ChatTool, McpPromptGuide } from "./prompts";
 
 const CLIENT_INFO = { name: "real-bot", version: "0.0.0" };
@@ -333,11 +334,22 @@ function modernMeta(version = MODERN_VERSION): Record<string, unknown> {
   };
 }
 
-function childEnv(): Record<string, string> {
-  const keys = ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER", "TMPDIR", "LANG", "LC_ALL"];
+const POSIX_ENV_KEYS = ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER", "TMPDIR", "LANG", "LC_ALL"] as const;
+
+/**
+ * On win32, `node`/`npm`/`npx` need far more than the narrow POSIX whitelist to resolve `.cmd`
+ * shims, find `%APPDATA%`, or just run at all — see {@link WINDOWS_ENV_PASSTHROUGH}. Windows env
+ * var names are case-insensitive, so `pickEnv` matches them that way there.
+ */
+export function childEnv(
+  source: Record<string, string | undefined> = process.env,
+  platform: string = process.platform,
+): Record<string, string> {
+  const keys: readonly string[] =
+    platform === "win32" ? [...POSIX_ENV_KEYS, ...WINDOWS_ENV_PASSTHROUGH] : POSIX_ENV_KEYS;
+  const picked = pickEnv(source, keys, platform);
   const env: Record<string, string> = {};
-  for (const key of keys) {
-    const value = process.env[key];
+  for (const [key, value] of Object.entries(picked)) {
     if (value && !value.startsWith("()")) env[key] = value;
   }
   return env;
@@ -430,13 +442,65 @@ function readInstructions(result: Record<string, unknown>): string | null {
   return null;
 }
 
+// Windows argv/cmd.exe escaping below, ported from cross-spawn (MIT,
+// github.com/moxystudio/node-cross-spawn/blob/master/lib/util/escape.js) — a battle-tested
+// answer to a real CVE class (Node's own GHSA-hhm8-gxrj-9xpr): quoting an argument for the MSVCRT
+// argv parser is not enough, because cmd.exe's *own* metacharacters (`&|<>^%` and friends) are
+// still live inside a quoted `.cmd`/`.bat` invocation unless escaped again with `^`.
+const CMD_META_CHARS = /([()[\]%!^"`<>&|;, *?])/g;
+
+function windowsCmdEscapeCommand(command: string): string {
+  return command.replace(CMD_META_CHARS, "^$1");
+}
+
+function windowsCmdEscapeArgument(arg: string): string {
+  let escaped = arg;
+  escaped = escaped.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+  escaped = escaped.replace(/(?=(\\+?)?)\1$/, "$1$1");
+  escaped = `"${escaped}"`;
+  escaped = escaped.replace(CMD_META_CHARS, "^$1");
+  return escaped;
+}
+
+/**
+ * `npx` on Windows is `npx.cmd`, a batch file — you cannot `CreateProcess` a `.cmd`/`.bat`
+ * directly, only through `cmd.exe /c`. `Bun.which` resolves the command the way a shell would
+ * (honouring `PATHEXT`), and only a resolved `.cmd`/`.bat` target is routed through `cmd.exe`;
+ * a real executable (`.exe`) still spawns directly, unchanged. MCP server command/args come from
+ * config the user reviewed and approved, but that is still attacker-adjacent input (a shared MCP
+ * config, a compromised registry package), so every argument is escaped rather than trusted.
+ */
+export function windowsSpawnPlan(
+  command: string,
+  args: string[],
+  env: Record<string, string>,
+  which: (name: string, opts: { PATH?: string }) => string | null = (name, opts) => Bun.which(name, opts) ?? null,
+): { command: string; args: string[]; verbatim: boolean } {
+  const resolved = which(command, { PATH: env.PATH }) ?? command;
+  if (!/\.(cmd|bat)$/i.test(resolved)) return { command: resolved, args, verbatim: false };
+  const shellCommand = [windowsCmdEscapeCommand(resolved), ...args.map(windowsCmdEscapeArgument)].join(" ");
+  const comspec = env.ComSpec || "C:\\Windows\\System32\\cmd.exe";
+  return { command: comspec, args: ["/d", "/s", "/c", `"${shellCommand}"`], verbatim: true };
+}
+
 function spawnChild(server: McpServerSpec): Bun.Subprocess | null {
   try {
+    const env = childEnv();
+    if (process.platform === "win32") {
+      const plan = windowsSpawnPlan(server.command, server.args, env);
+      return Bun.spawn([plan.command, ...plan.args], {
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        env,
+        windowsVerbatimArguments: plan.verbatim,
+      });
+    }
     return Bun.spawn([server.command, ...server.args], {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: childEnv(),
+      env,
     });
   } catch {
     return null;
@@ -641,17 +705,27 @@ class StdioSession {
     }
     const exited = await waitFor(this.proc.exited, this.shutdownWaitMs);
     if (!exited) {
-      try {
-        this.proc.kill("SIGTERM");
-      } catch {
-        // gone
+      // On win32 a signal only ever reaches the direct child; an npx-launched `cmd → node` chain
+      // would outlive it. killProcessTree walks the whole tree there instead.
+      if (process.platform === "win32") {
+        killProcessTree(this.proc.pid);
+      } else {
+        try {
+          this.proc.kill("SIGTERM");
+        } catch {
+          // gone
+        }
       }
       const afterTerm = await waitFor(this.proc.exited, this.shutdownWaitMs);
       if (!afterTerm) {
-        try {
-          this.proc.kill("SIGKILL");
-        } catch {
-          // gone
+        if (process.platform === "win32") {
+          killProcessTree(this.proc.pid);
+        } else {
+          try {
+            this.proc.kill("SIGKILL");
+          } catch {
+            // gone
+          }
         }
         await this.proc.exited;
       }

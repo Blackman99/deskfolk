@@ -7,6 +7,7 @@
 		type NormalizedSelectOption,
 		type SelectOption
 	} from './select-options.ts';
+	import { isAltGraph } from './keymap.ts';
 
 	interface Props {
 		value?: string;
@@ -209,7 +210,9 @@
 				}
 				break;
 			default:
-				if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				// AltGr (Ctrl+Alt) types a real character on the Windows layouts that need it — `@`, an
+				// accent — so it must still reach type-to-find; a lone Ctrl or Alt is a shortcut, not text.
+				if (e.key.length === 1 && !e.metaKey && (!e.ctrlKey && !e.altKey || isAltGraph(e))) {
 					clearTimeout(typeaheadTimer);
 					typeaheadBuffer += e.key;
 					typeaheadTimer = setTimeout(() => {

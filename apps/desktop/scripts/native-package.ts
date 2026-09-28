@@ -2,7 +2,18 @@ import { join } from "node:path";
 import config from "../src-tauri/tauri.conf.json";
 
 export const minimumMacOS = config.bundle.macOS.minimumSystemVersion;
-const nativeFiles = ["real-bot-daemon", "real-bot-runtime-helper", "real-bot-pty", "libRemoteCredentials.dylib"];
+
+/**
+ * What `build-native.ts` ships into `native/`, per OS. macOS carries the Swift
+ * runtime helper, pty helper and credentials library alongside the daemon; Windows has no
+ * equivalent of any of those, so it ships only the daemon and the ConPTY helper.
+ */
+export function nativeFilesFor(platform: string): string[] {
+  if (platform === "win32") return ["real-bot-daemon.exe", "real-bot-pty.exe"];
+  return ["real-bot-daemon", "real-bot-runtime-helper", "real-bot-pty", "libRemoteCredentials.dylib"];
+}
+
+const nativeFiles = nativeFilesFor("darwin");
 
 export function assertMinimum(advertised: string, required: string): void {
   const parse = (value: string) => {

@@ -25,6 +25,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { defaultAppDataDir } from "@real-bot/protocol";
 import { bunKeyStore } from "../src/secrets";
 
 const { values: opts, positionals } = parseArgs({
@@ -143,7 +144,7 @@ function narrowModels(body: string): string {
 type Live = { base: string; key: string; mcpUrl: string | null; mcpAuth: string | null };
 
 async function liveConfig(): Promise<Live> {
-  const dir = join(homedir(), "Library", "Application Support", "real-bot");
+  const dir = defaultAppDataDir({ platform: process.platform, env: process.env, home: homedir() });
   const desc = JSON.parse(readFileSync(join(dir, "local-api.json"), "utf-8")) as { port: number; token: string };
   const api = async (path: string) => {
     const res = await fetch(`http://127.0.0.1:${desc.port}${path}`, { headers: { Authorization: `Bearer ${desc.token}` } });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   attachmentLinePaths,
   extensionOf,
+  looksLikeHostAbsolutePath,
   looksLikeWorkspacePath,
   normalizeCitedPath,
   withoutAttachmentDeclarations,
@@ -32,6 +33,53 @@ describe("normalizeCitedPath", () => {
     expect(normalizeCitedPath(" <out/a.png> ")).toBe("out/a.png");
     expect(normalizeCitedPath("./notes/a.txt")).toBe("notes/a.txt");
     expect(normalizeCitedPath("")).toBeNull();
+  });
+
+  test("a relative path with Windows separators is the same workspace path with slashes", () => {
+    expect(normalizeCitedPath("src\\foo.ts")).toBe("src/foo.ts");
+    expect(normalizeCitedPath(".\\notes\\a.txt")).toBe("notes/a.txt");
+    expect(normalizeCitedPath("..\\x\\y.csv")).toBe("../x/y.csv");
+    expect(normalizeCitedPath("<work\\周报 v2\\out.md>")).toBe("work/周报 v2/out.md");
+    expect(normalizeCitedPath("src/ui\\Home.svelte")).toBe("src/ui/Home.svelte");
+    expect(normalizeCitedPath("src\\components\\")).toBe("src/components/");
+  });
+
+  test("a Windows host path, and backslashes that are not separators, stay as written", () => {
+    expect(normalizeCitedPath("C:\\Users\\me\\ws\\a.csv")).toBe("C:\\Users\\me\\ws\\a.csv");
+    expect(normalizeCitedPath("C:/Users/me/ws/a.csv")).toBe("C:/Users/me/ws/a.csv");
+    expect(normalizeCitedPath("\\\\server\\share\\a.csv")).toBe("\\\\server\\share\\a.csv");
+    expect(normalizeCitedPath("\\d+")).toBe("\\d+");
+    expect(normalizeCitedPath("a \\ b")).toBe("a \\ b");
+    expect(normalizeCitedPath("a\\\\b")).toBe("a\\\\b");
+    expect(normalizeCitedPath("artifact:out\\a.png")).toBe("artifact:out\\a.png");
+  });
+});
+
+describe("Windows paths in citations", () => {
+  test("a backslashed relative path looks like a path with a known suffix or a leading .\\", () => {
+    expect(looksLikeWorkspacePath("src\\foo.ts")).toBe(true);
+    expect(looksLikeWorkspacePath("a\\b.csv")).toBe(true);
+    expect(looksLikeWorkspacePath(".\\build")).toBe(true);
+    expect(looksLikeWorkspacePath("..\\docs")).toBe(true);
+    // A registry key, an escape, a regex: text.
+    expect(looksLikeWorkspacePath("HKCU\\Software\\Deskfolk")).toBe(false);
+    expect(looksLikeWorkspacePath("a\\n")).toBe(false);
+    expect(looksLikeWorkspacePath("\\d+")).toBe(false);
+    expect(looksLikeWorkspacePath("\\\\n")).toBe(false);
+  });
+
+  test("a Windows host path is a host path, with or without a suffix", () => {
+    for (const path of ["C:\\x\\y.csv", "C:\\Users\\me\\ws", "C:/Users/me/ws", "\\\\server\\share\\dir"]) {
+      expect([path, looksLikeWorkspacePath(path), looksLikeHostAbsolutePath(path)]).toEqual([path, true, true]);
+    }
+    expect(looksLikeHostAbsolutePath("/Users/me/ws")).toBe(true);
+    for (const path of ["src\\foo.ts", "src/foo.ts", "~/x", "\\x", "C:", "C:x", "\\\\server"]) {
+      expect([path, looksLikeHostAbsolutePath(path)]).toEqual([path, false]);
+    }
+  });
+
+  test("the attachment line shape takes backslashed paths too", () => {
+    expect(attachmentLinePaths("附件：out\\mock.png")).toEqual(["out/mock.png"]);
   });
 });
 

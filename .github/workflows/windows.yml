@@ -1,0 +1,142 @@
+name: Windows
+
+# Experimental: builds and tests the Windows preview described in docs/development.md. Runs on
+# this branch's own pushes (not yet on `main`, `pull_request`) so it doesn't block work that has
+# nothing to do with Windows, and on demand via workflow_dispatch.
+on:
+  push:
+    branches: [windows-compat]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # windows-latest runners default `run:` steps to PowerShell; this repo's scripts (and the
+    # pipe-separated multi-line steps below) assume the bash the runner image ships (Git Bash).
+    shell: bash
+
+jobs:
+  unit:
+    name: Windows unit tests
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Every check after the install runs even when an earlier one failed, so one run shows all
+      # of what is still broken on Windows; the job still goes red if any of them failed.
+      - name: Protocol tests
+        if: success() || failure()
+        run: pnpm --filter @real-bot/protocol test
+
+      - name: Typecheck protocol
+        if: success() || failure()
+        run: pnpm --filter @real-bot/protocol typecheck
+
+      - name: Typecheck daemon
+        if: success() || failure()
+        run: pnpm --filter @real-bot/daemon typecheck
+
+      - name: Typecheck messenger
+        if: success() || failure()
+        run: pnpm --filter @real-bot/messenger typecheck
+
+      - name: Typecheck desktop
+        if: success() || failure()
+        run: pnpm --filter @real-bot/desktop typecheck
+
+      - name: Messenger tests
+        if: success() || failure()
+        run: pnpm --filter @real-bot/messenger test
+
+      - name: Desktop script tests
+        if: success() || failure()
+        run: pnpm --filter @real-bot/desktop test
+
+      - name: ConPTY helper crate tests
+        if: success() || failure()
+        run: cargo test --manifest-path apps/conpty-helper/Cargo.toml
+
+      - name: Desktop Tauri crate tests
+        if: success() || failure()
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      # The daemon's terminal tests drive the real helper and skip when it is not built.
+      - name: Build ConPTY helper for the daemon's terminal tests
+        if: success() || failure()
+        run: cargo build --manifest-path apps/conpty-helper/Cargo.toml
+
+      # Report-only: most of the daemon suite still assumes POSIX (paths, signals, process
+      # groups). We want to see how much of it already passes on Windows, not block the job on it.
+      - name: Daemon tests (informational — many are still POSIX-only)
+        if: success() || failure()
+        continue-on-error: true
+        run: pnpm --filter @real-bot/daemon test
+
+  bundle:
+    name: Windows installer (unsigned)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      # beforeBuildCommand builds the messenger and runs build:native, which now compiles
+      # real-bot-daemon.exe and real-bot-pty.exe into src-tauri/native/ for this branch.
+      - name: Build unsigned NSIS installer
+        run: pnpm --filter @real-bot/desktop tauri build --bundles nsis
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskfolk-windows-x64-nsis
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

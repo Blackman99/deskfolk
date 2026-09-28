@@ -1,0 +1,30 @@
+[package]
+name = "real-bot-conpty"
+version = "0.1.0"
+description = "Windows ConPTY helper for Deskfolk's terminal sessions"
+license = "MIT"
+authors = ["Deskfolk contributors"]
+edition = "2021"
+
+[[bin]]
+name = "real-bot-pty"
+path = "src/main.rs"
+
+# `portable-pty` (ConPTY) and the Job Object bindings are Windows-only: keeping them off the
+# macOS build is what lets `cargo test` run the platform-independent modules (protocol/cli/
+# signal) from this same crate without a Windows toolchain.
+[target.'cfg(windows)'.dependencies]
+portable-pty = "0.9"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

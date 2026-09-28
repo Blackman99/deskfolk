@@ -16,6 +16,7 @@
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
+	import { formatShortcut } from '../keymap.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -355,7 +356,7 @@
 					<button
 						type="button"
 						class="side-collapse"
-						title="{t.sidebar.hide} (⌘B)"
+						title="{t.sidebar.hide} ({formatShortcut(['mod', 'B'])})"
 						aria-label={t.sidebar.hide}
 						aria-expanded="true"
 						onclick={onCollapse}
@@ -595,7 +596,7 @@
 				type="button"
 				class="foot-action"
 				class:is-active={workspaceOpen}
-				title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (⌘O)` : t.sidebar.workspaceUnset}
+				title={snapshot.settings.workspace_path ? `${t.sidebar.workspace} (${formatShortcut(['mod', 'O'])})` : t.sidebar.workspaceUnset}
 				aria-label={t.sidebar.workspace}
 				aria-expanded={workspaceOpen}
 				disabled={!snapshot.settings.workspace_path}

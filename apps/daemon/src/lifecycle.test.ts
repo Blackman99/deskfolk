@@ -16,6 +16,18 @@ test("standalone kind still never installs a job; latch remains a file only", as
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("the latch still works on an injected win32 platform (no directory fsync, retrying rename)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rc-latch-win32-"));
+  try {
+    const lifecycle = new RuntimeLifecycle(dir, "none", "win32");
+    expect(lifecycle.isStopped()).toBe(false);
+    await lifecycle.writeStopLatch();
+    expect(lifecycle.isStopped()).toBe(true);
+    await lifecycle.clearStopLatch();
+    expect(lifecycle.isStopped()).toBe(false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("stop latch is durable, private and never installs or exits a supervisor", async () => {
   const dir = mkdtempSync(join(tmpdir(), "rc07-latch-"));
   try {

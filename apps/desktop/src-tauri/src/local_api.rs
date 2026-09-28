@@ -25,11 +25,31 @@ pub fn data_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("REAL_BOT_DATA_DIR") {
         return PathBuf::from(dir);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join(DEFAULT_DIRNAME)
+    PathBuf::from(default_data_dir(cfg!(windows), |name| {
+        std::env::var(name).ok()
+    }))
+}
+
+/// Contract §1's default-data-directory rule, joined by hand rather than
+/// through `std::path::Path` (whose separator follows the platform this is
+/// *compiled* for, not the `windows` flag) and reading the environment
+/// through a closure rather than the real process environment, so the win32
+/// branch — `%LOCALAPPDATA%\real-bot`, falling back to
+/// `%USERPROFILE%\AppData\Local\real-bot` — is exercised from a macOS test.
+fn default_data_dir(windows: bool, env: impl Fn(&str) -> Option<String>) -> String {
+    let value = |name: &str| env(name).filter(|v| !v.is_empty());
+    if windows {
+        let root = value("LOCALAPPDATA")
+            .or_else(|| value("USERPROFILE").map(|home| format!("{home}\\AppData\\Local")))
+            .unwrap_or_else(|| ".".to_string());
+        format!("{}\\{DEFAULT_DIRNAME}", root.trim_end_matches('\\'))
+    } else {
+        let home = value("HOME").unwrap_or_else(|| ".".to_string());
+        format!(
+            "{}/Library/Application Support/{DEFAULT_DIRNAME}",
+            home.trim_end_matches('/')
+        )
+    }
 }
 
 pub fn descriptor_path(dir: &Path) -> PathBuf {
@@ -91,7 +111,33 @@ pub fn pid_alive(pid: i32) -> bool {
             None => false,
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, STILL_ACTIVE};
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        if pid <= 0 {
+            return false;
+        }
+        // SAFETY: `pid` is a plain process id; the handle is closed on every path below.
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid as u32) };
+        if handle.is_null() {
+            // Denied still means the process exists (we just can't query it) —
+            // the same case `kill(pid, 0)` reports as EPERM on unix.
+            return std::io::Error::last_os_error().raw_os_error()
+                == Some(ERROR_ACCESS_DENIED as i32);
+        }
+        let mut exit_code: u32 = 0;
+        // SAFETY: `handle` was just opened above and is closed right after; `exit_code`
+        // is a valid out-pointer for the call's duration.
+        let alive = unsafe {
+            GetExitCodeProcess(handle, &mut exit_code) != 0 && exit_code == STILL_ACTIVE as u32
+        };
+        unsafe { CloseHandle(handle) };
+        alive
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         false
@@ -245,6 +291,52 @@ mod tests {
             fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
         }
         dir
+    }
+
+    fn fake_env(pairs: Vec<(&'static str, &'static str)>) -> impl Fn(&str) -> Option<String> {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_string())
+        }
+    }
+
+    #[test]
+    fn default_data_dir_matches_contract_section_1() {
+        // win32: LOCALAPPDATA wins outright.
+        assert_eq!(
+            default_data_dir(
+                true,
+                fake_env(vec![("LOCALAPPDATA", r"C:\Users\me\AppData\Local")])
+            ),
+            r"C:\Users\me\AppData\Local\real-bot"
+        );
+        // win32: falls back to USERPROFILE\AppData\Local when LOCALAPPDATA is unset.
+        assert_eq!(
+            default_data_dir(true, fake_env(vec![("USERPROFILE", r"C:\Users\me")])),
+            r"C:\Users\me\AppData\Local\real-bot"
+        );
+        // win32: an empty LOCALAPPDATA is treated as unset, not as a literal empty root.
+        assert_eq!(
+            default_data_dir(
+                true,
+                fake_env(vec![("LOCALAPPDATA", ""), ("USERPROFILE", r"C:\Users\me")])
+            ),
+            r"C:\Users\me\AppData\Local\real-bot"
+        );
+        // win32: neither set falls back to the cwd, same spirit as the mac fallback.
+        assert_eq!(default_data_dir(true, fake_env(vec![])), r".\real-bot");
+
+        // macOS/Linux: unchanged rule.
+        assert_eq!(
+            default_data_dir(false, fake_env(vec![("HOME", "/Users/me")])),
+            "/Users/me/Library/Application Support/real-bot"
+        );
+        assert_eq!(
+            default_data_dir(false, fake_env(vec![])),
+            "./Library/Application Support/real-bot"
+        );
     }
 
     #[test]

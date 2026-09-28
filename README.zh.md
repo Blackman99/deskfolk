@@ -21,7 +21,7 @@
 <p align="center">
   <a href="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-146a7c.svg"></a>
-  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-0f172a.svg">
+  <img alt="Platform: macOS, Windows (preview)" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20(preview)-0f172a.svg">
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
@@ -36,7 +36,7 @@
 ## 适合谁
 
 - **适合**：会自己配模型端点和 API key 的独立开发者、技术型个人和小工作室，手上有一件要几个角色分工、分几步交出文件的活，比如一份调研报告、一套发布物料、一个带测试和启动说明的小工具。
-- **暂不适合**：几个人共用一套、要 Windows 或 Linux、要 Mac 睡眠时也接着干活，或者不想自己接模型端点。
+- **暂不适合**：几个人共用一套、要 Linux、要 Mac 睡眠时也接着干活，或者不想自己接模型端点。Windows 有一条刚起步的实验性预览：从源码构建，或用 CI 打出的未签名安装包——见下方「获取」。
 
 ## 它做什么
 
@@ -53,7 +53,7 @@
 
 ## 获取
 
-macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。
+macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows 有一条刚起步的实验性预览（从源码构建，或用 CI 打出的安装包，见下文）；Linux 暂不支持。
 
 - **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供未签名的 `.dmg`，不用另装别的。首次打开被 Gatekeeper 拦截时，右键选「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"`（[Gatekeeper FAQ](docs/gatekeeper.zh.md)）。
 - **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装。外观在 设置 → 基础偏好 → 外观。
@@ -66,11 +66,13 @@ pnpm install
 pnpm dev
 ```
 
+- **Windows（实验性预览）：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`；[`windows.yml`](.github/workflows/windows.yml) 这条 GitHub Actions 工作流也会把一份未签名的 NSIS 安装包传成 artifact（没签名，SmartScreen 会提示未知发布者）。远控/手机配对、独立运行时、应用内下载安装更新、桌面通知和图片缩略图这些还没有——完整清单和前置条件见[开发说明](docs/development.md)。
+
 首次使用：启动向导会带你选一个工作区目录、填端点和密钥、建第一个 Bot；之后再让它把其他队友建出来。
 
 ## 状态
 
-Alpha，仅 macOS，功能和数据格式仍会变化。远程访问是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)）。
+Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)）。
 
 [哪些已接入、哪些不做](https://blackman99.github.io/deskfolk/zh#boundaries) · [路线图](ROADMAP.md) · [领域语言](CONTEXT.md) · [中继部署](docs/deploy-remote.md)
 

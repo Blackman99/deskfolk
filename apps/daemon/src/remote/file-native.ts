@@ -2,6 +2,7 @@ import { generateKeyPairSync, randomBytes as nodeRandomBytes } from "node:crypto
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalHash, generateIdentity } from "@real-bot/remote";
+import { isCompiledBinary } from "../platform";
 import { RemoteNativeError, type LocalAction, type RemoteMaterial } from "../remote-native";
 
 /**
@@ -28,9 +29,9 @@ const CHALLENGE = /^[A-Za-z0-9+/]{43}=$/;
 /** Keep the window identical to the native one so timing bugs surface here too. */
 const WINDOW_MS = 120_000;
 
-/** A compiled daemon runs its modules out of /$bunfs/; source Bun never does. */
+/** A compiled daemon runs its modules out of `/$bunfs/` (`B:\~BUN\` on win32); source Bun never does. */
 export function isCompiledDaemon(modulePath: string = import.meta.path): boolean {
-  return modulePath.startsWith("/$bunfs/");
+  return isCompiledBinary(modulePath);
 }
 
 /** The packaged daemon's credential store; source runs get one only through the dev switch. */

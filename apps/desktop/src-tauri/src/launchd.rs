@@ -516,9 +516,9 @@ mod tests {
     #[test]
     fn group_or_world_writable_program_is_rejected() {
         let dir = temp_dir();
-        let program = program_in(&dir);
         #[cfg(unix)]
         {
+            let program = program_in(&dir);
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&program, fs::Permissions::from_mode(0o722)).unwrap();
             assert!(assert_user_owned_not_group_world_writable(&program).is_err());
@@ -569,9 +569,9 @@ mod tests {
         let dir = temp_dir();
         let real = dir.join("real.plist");
         fs::write(&real, b"not-a-job").unwrap();
-        let link = dir.join(PLIST_NAME);
         #[cfg(unix)]
         {
+            let link = dir.join(PLIST_NAME);
             std::os::unix::fs::symlink(&real, &link).unwrap();
             let paths = AgentPaths::for_data_dir(program_in(&dir), dir.clone(), link);
             assert!(write_agent_plist(&paths).is_err());
@@ -582,10 +582,10 @@ mod tests {
     #[test]
     fn symlink_program_is_rejected() {
         let dir = temp_dir();
-        let real = program_in(&dir);
-        let link = dir.join("linked-daemon");
         #[cfg(unix)]
         {
+            let real = program_in(&dir);
+            let link = dir.join("linked-daemon");
             std::os::unix::fs::symlink(&real, &link).unwrap();
             assert!(assert_user_owned_not_group_world_writable(&link).is_err());
             let paths = AgentPaths::for_data_dir(link, dir.clone(), dir.join(PLIST_NAME));

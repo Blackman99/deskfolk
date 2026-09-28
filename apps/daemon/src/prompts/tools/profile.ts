@@ -1,63 +1,86 @@
-import type { ToolDef } from "../tool-schema";
+import type { Localized, ToolDef } from "../tool-schema";
+import { toolShell, type ToolShellKind } from "../../platform";
 
-export const UPDATE_PROFILE: ToolDef = {
-  name: "update_profile",
-  description: {
-    zh: "改自己的名字、职责、边界、头像、钉的端点+模型和/或思考等级。至少提供一项。头像用 avatar_style 生成，或用工作区里一张 PNG / JPEG / GIF / WebP 的 avatar_path；不要两个一起给。endpoint_id 与 model 可只改一项；两项都空则清成空钉。thinking_level 钉补全的思考等级，只能和 model 一起钉：没钉模型时给它会被拒绝，清掉模型也一并清掉它；钉了模型而不给它，会落到该模型的默认档。改名须未删除名唯一。不能删或归档自己。不要为这次改人设再发一条聊天消息。",
-    en: "Change your own name, duties, boundaries, avatar, pinned endpoint+model, and/or thinking level. Provide at least one field. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path; do not pass both. endpoint_id and model may be changed independently; empty values for both clear the pin. thinking_level pins the completion's thinking level and only goes with a pinned model: it is refused without one, clearing the model clears it too, and pinning a model without it lands on that model's default. A new name must be unique among undeleted Bots. You cannot delete or archive yourself. Do not send a chat message about this profile change.",
-  },
-  properties: {
-    name: {
-      type: "string",
-      description: { zh: "新的名字。未删除名必须唯一。", en: "New name. Undeleted names must be unique." },
+/** Same shape as `avatar_path`'s POSIX/Windows split in `tools/files.ts`'s `pathDesc`. */
+function avatarPathDescription(shell: ToolShellKind): Localized {
+  if (shell === "sh") {
+    return {
+      zh: "工作区相对 POSIX，或宿主绝对路径，指向一张 PNG / JPEG / GIF / WebP。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
+      en: "Workspace-relative POSIX, or a host absolute path, to a PNG / JPEG / GIF / WebP. Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
+    };
+  }
+  // Only "bash" (Git Bash) and "powershell" ever come back from toolShell() on win32.
+  return {
+    zh: "工作区相对路径（用 `/` 分隔），或宿主绝对路径（原生 Windows 路径，如 `C:\\Users\\me\\avatar.png`），指向一张 PNG / JPEG / GIF / WebP。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
+    en: "A workspace-relative path (`/`-separated), or a host absolute path (a native Windows path, e.g. `C:\\Users\\me\\avatar.png`), to a PNG / JPEG / GIF / WebP. Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
+  };
+}
+
+/**
+ * Computed once at module load from the real `toolShell()` (see `tools/files.ts` for why that is
+ * enough to make this platform-correct with no caller changes): macOS/Linux gets today's byte-
+ * identical text, an actual win32 daemon gets the Windows one. `updateProfileTool` is exported too
+ * so a different shell kind can be exercised directly in tests.
+ */
+export function updateProfileTool(shell: ToolShellKind = toolShell().kind): ToolDef {
+  return {
+    name: "update_profile",
+    description: {
+      zh: "改自己的名字、职责、边界、头像、钉的端点+模型和/或思考等级。至少提供一项。头像用 avatar_style 生成，或用工作区里一张 PNG / JPEG / GIF / WebP 的 avatar_path；不要两个一起给。endpoint_id 与 model 可只改一项；两项都空则清成空钉。thinking_level 钉补全的思考等级，只能和 model 一起钉：没钉模型时给它会被拒绝，清掉模型也一并清掉它；钉了模型而不给它，会落到该模型的默认档。改名须未删除名唯一。不能删或归档自己。不要为这次改人设再发一条聊天消息。",
+      en: "Change your own name, duties, boundaries, avatar, pinned endpoint+model, and/or thinking level. Provide at least one field. Generate an avatar with avatar_style, or set one from a workspace PNG / JPEG / GIF / WebP via avatar_path; do not pass both. endpoint_id and model may be changed independently; empty values for both clear the pin. thinking_level pins the completion's thinking level and only goes with a pinned model: it is refused without one, clearing the model clears it too, and pinning a model without it lands on that model's default. A new name must be unique among undeleted Bots. You cannot delete or archive yourself. Do not send a chat message about this profile change.",
     },
-    duties: { type: "string", description: { zh: "新的职责说明。", en: "New duties." } },
-    boundaries: { type: "string", description: { zh: "新的边界。", en: "New boundaries." } },
-    avatar_style: {
-      type: "string",
-      enum: ["beam", "marble", "pixel", "sunset", "bauhaus", "ring"],
-      description: {
-        zh: "生成头像的风格：beam、marble、pixel、sunset、bauhaus、ring。",
-        en: "Generated avatar style: beam, marble, pixel, sunset, bauhaus, or ring.",
+    properties: {
+      name: {
+        type: "string",
+        description: { zh: "新的名字。未删除名必须唯一。", en: "New name. Undeleted names must be unique." },
+      },
+      duties: { type: "string", description: { zh: "新的职责说明。", en: "New duties." } },
+      boundaries: { type: "string", description: { zh: "新的边界。", en: "New boundaries." } },
+      avatar_style: {
+        type: "string",
+        enum: ["beam", "marble", "pixel", "sunset", "bauhaus", "ring"],
+        description: {
+          zh: "生成头像的风格：beam、marble、pixel、sunset、bauhaus、ring。",
+          en: "Generated avatar style: beam, marble, pixel, sunset, bauhaus, or ring.",
+        },
+      },
+      avatar_seed: {
+        type: "integer",
+        description: {
+          zh: "可选。配合 avatar_style 换一版同一风格。省略则按当前名字生成。",
+          en: "Optional. With avatar_style, pick another drawing of the same style. Omit to generate from the current name.",
+        },
+      },
+      avatar_path: {
+        type: "string",
+        description: avatarPathDescription(shell),
+      },
+      endpoint_id: {
+        type: "string",
+        description: {
+          zh: "钉到这个端点。JSON null 或空字符串表示清除。只给这一项则保留现有模型名，新名单没有则清成空钉。",
+          en: "Pin to this endpoint. JSON null or an empty string clears it. If this is the only pin field, keep the current model name, or clear the pin if that name is not on the new list.",
+        },
+      },
+      model: {
+        type: "string",
+        description: {
+          zh: "钉到这个模型名。JSON null 或空字符串表示清除。只给这一项则落在当前钉的端点；没有钉则用默认端点。须在目标名单上。",
+          en: "Pin to this model name. JSON null or an empty string clears it. If this is the only pin field, it lands on the currently pinned endpoint, or the default endpoint if none is pinned. Must be on the target list.",
+        },
+      },
+      thinking_level: {
+        type: "string",
+        description: {
+          zh: "钉的思考等级，即补全的 reasoning_effort（如 none / low / medium / high / xhigh / max，以该模型名单为准）。须和 model 一起钉，且是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时传它会 422。JSON null 或空字符串把它退回该模型的默认档；要连模型一起放开就把 model 清掉，那时模型和等级都由应用每条消息挑。",
+          en: "Pinned thinking level, the completion's reasoning_effort (none / low / medium / high / xhigh / max, whatever the model lists). It goes with a pinned model and must be one that model supports (see model_catalog.thinking_levels from list_endpoints); passing it with no pinned model is a 422. JSON null or an empty string drops it back to that model's default; clear the model instead to let the app pick the model and the level per message.",
+        },
       },
     },
-    avatar_seed: {
-      type: "integer",
-      description: {
-        zh: "可选。配合 avatar_style 换一版同一风格。省略则按当前名字生成。",
-        en: "Optional. With avatar_style, pick another drawing of the same style. Omit to generate from the current name.",
-      },
-    },
-    avatar_path: {
-      type: "string",
-      description: {
-        zh: "工作区相对 POSIX，或宿主绝对路径，指向一张 PNG / JPEG / GIF / WebP。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
-        en: "Workspace-relative POSIX, or a host absolute path, to a PNG / JPEG / GIF / WebP. Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
-      },
-    },
-    endpoint_id: {
-      type: "string",
-      description: {
-        zh: "钉到这个端点。JSON null 或空字符串表示清除。只给这一项则保留现有模型名，新名单没有则清成空钉。",
-        en: "Pin to this endpoint. JSON null or an empty string clears it. If this is the only pin field, keep the current model name, or clear the pin if that name is not on the new list.",
-      },
-    },
-    model: {
-      type: "string",
-      description: {
-        zh: "钉到这个模型名。JSON null 或空字符串表示清除。只给这一项则落在当前钉的端点；没有钉则用默认端点。须在目标名单上。",
-        en: "Pin to this model name. JSON null or an empty string clears it. If this is the only pin field, it lands on the currently pinned endpoint, or the default endpoint if none is pinned. Must be on the target list.",
-      },
-    },
-    thinking_level: {
-      type: "string",
-      description: {
-        zh: "钉的思考等级，即补全的 reasoning_effort（如 none / low / medium / high / xhigh / max，以该模型名单为准）。须和 model 一起钉，且是该模型支持的等级（见 list_endpoints 的 model_catalog.thinking_levels）；没钉模型时传它会 422。JSON null 或空字符串把它退回该模型的默认档；要连模型一起放开就把 model 清掉，那时模型和等级都由应用每条消息挑。",
-        en: "Pinned thinking level, the completion's reasoning_effort (none / low / medium / high / xhigh / max, whatever the model lists). It goes with a pinned model and must be one that model supports (see model_catalog.thinking_levels from list_endpoints); passing it with no pinned model is a 422. JSON null or an empty string drops it back to that model's default; clear the model instead to let the app pick the model and the level per message.",
-      },
-    },
-  },
-};
+  };
+}
+
+export const UPDATE_PROFILE: ToolDef = updateProfileTool();
 
 export const LIST_SKILLS: ToolDef = {
   name: "list_skills",

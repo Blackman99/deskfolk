@@ -139,6 +139,13 @@ test("a path under a home folder reads the way the prompt writes it", () => {
   expect(tildePath("/")).toBe("/");
 });
 
+test("a Windows path under a home folder reads the same way, case-insensitively", () => {
+  expect(tildePath("C:\\Users\\you\\real-bot-workspace")).toBe("~\\real-bot-workspace");
+  expect(tildePath("C:\\Users\\you")).toBe("~");
+  expect(tildePath("c:\\USERS\\you\\a\\b")).toBe("~\\a\\b");
+  expect(tildePath("C:\\Temp\\Users\\you")).toBe("C:\\Temp\\Users\\you");
+});
+
 test("shells opened in the same folder are told apart by number, oldest first, the same everywhere", () => {
   const row = (id: string, title: string, created_at: string): Terminal => ({
     id, title, cwd: `/work/${title}`, rows: 24, cols: 80, created_at, status: "live", exit_code: null, stream_end: 0,

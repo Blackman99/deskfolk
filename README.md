@@ -21,7 +21,7 @@
 <p align="center">
   <a href="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-146a7c.svg"></a>
-  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-0f172a.svg">
+  <img alt="Platform: macOS, Windows (preview)" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20(preview)-0f172a.svg">
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
@@ -36,7 +36,7 @@
 ## Who it's for
 
 - **For** solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves, with a job that needs a few roles and several file-producing steps: a research report, a launch kit, a small tool with tests and a start command.
-- **Not yet for** several people sharing one setup, Windows or Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint.
+- **Not yet for** several people sharing one setup, Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint. Windows is an experimental preview: build from source or grab an unsigned installer from CI — see [Get it](#get-it).
 
 ## What it does
 
@@ -53,7 +53,7 @@
 
 ## Get it
 
-macOS 13 (Ventura) or later, Apple silicon or Intel.
+macOS 13 (Ventura) or later, Apple silicon or Intel. Windows is an experimental preview (build from source, or a CI installer artifact — see below); Linux is not yet supported.
 
 - **Download** the latest unsigned `.dmg` from [Releases](https://github.com/Blackman99/deskfolk/releases/latest); nothing else to install. If Gatekeeper blocks the first launch, right-click → Open, or run `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"` ([Gatekeeper FAQ](docs/gatekeeper.md)).
 - **Updates** show as a dot on the labeled **Settings** entry at the bottom of the desktop sidebar; Settings → About downloads and installs them. Appearance is in Settings → Preferences → Appearance.
@@ -66,11 +66,13 @@ pnpm install
 pnpm dev
 ```
 
+- **Windows (experimental preview):** same `git clone` / `pnpm install` / `pnpm dev`, with Rust's MSVC toolchain and Visual Studio Build Tools ("Desktop development with C++") standing in for Xcode, plus a one-time `cargo build --manifest-path apps/conpty-helper/Cargo.toml` for the terminal helper. To build an installer locally, `pnpm --filter @real-bot/desktop tauri build --bundles nsis`; the [`windows.yml`](.github/workflows/windows.yml) GitHub Actions workflow also uploads an unsigned NSIS installer as a run artifact (SmartScreen will warn — it's not signed). Remote access/phone pairing, the independent runtime, in-app update install, desktop notifications and image downscaling aren't there yet — see the [development guide](docs/development.md) for the full list and prerequisites.
+
 First run: the setup wizard walks you through picking a workspace folder, adding an endpoint and key, and creating the first Bot; then let it hire the rest.
 
 ## Status
 
-Alpha, macOS only; features and data formats may still change. Remote access is a default-off prototype. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. The installed app can pair: it keeps the Mac's remote identity in a private file rather than the Keychain and approves each device with Touch ID ([ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)).
+Alpha; macOS is the primary target and features and data formats may still change there too. Windows is a fresh, experimental preview — expect rough edges and missing features (see [Get it](#get-it)). Linux is not yet supported. Remote access is a default-off prototype. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. The installed app can pair: it keeps the Mac's remote identity in a private file rather than the Keychain and approves each device with Touch ID ([ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)).
 
 [What is live and what is not](https://blackman99.github.io/deskfolk/en#boundaries) · [Roadmap](ROADMAP.en.md) · [Domain language](CONTEXT.en.md) · [Relay deployment](docs/deploy-remote.md)
 

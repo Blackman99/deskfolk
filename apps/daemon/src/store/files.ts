@@ -1,9 +1,9 @@
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, unlinkSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { commitFile, stageFile, syncDirectory, withFileLock } from "../file-integrity";
 import { sha256 } from "../request-digest";
-import { classifyPath } from "../workspace-paths";
+import { classifyPath, workspaceRelative } from "../workspace-paths";
 import { HttpError } from "../errors";
 import { ulid } from "../ids";
 import type { StoreContext } from "./shared";
@@ -24,7 +24,7 @@ export function prepareFile(ctx: StoreContext, root: string, abs: string, bytes:
   if (target.zone !== "inside") throw new HttpError(422, "invalid_args", "file target is outside workspace");
   const id = ulid();
   const tmp = join(dirname(target.abs), `.real-bot-stage-${id}`);
-  const row: FileCommit = { id, root, temp_rel: relative(root, tmp), final_rel: target.rel, sha256: sha256(typeof bytes === "string" ? Buffer.from(bytes) : bytes) };
+  const row: FileCommit = { id, root, temp_rel: workspaceRelative(root, tmp), final_rel: target.rel, sha256: sha256(typeof bytes === "string" ? Buffer.from(bytes) : bytes) };
   ctx.db.run("INSERT INTO file_stages(id, root, temp_rel, final_rel, sha256) VALUES (?, ?, ?, ?, ?)", [row.id, root, row.temp_rel, row.final_rel, row.sha256]);
   ctx.activeStages.add(id);
   try { stageFile(target.abs, bytes, tmp); }
@@ -43,7 +43,7 @@ export function openLiveFile(ctx: StoreContext, root: string, abs: string, expec
   const id = ulid();
   const tmp = join(dirname(target.abs), `.real-bot-stage-${id}`);
   const row: LiveFile = {
-    id, root, temp_rel: relative(root, tmp), final_rel: target.rel, sha256: expected,
+    id, root, temp_rel: workspaceRelative(root, tmp), final_rel: target.rel, sha256: expected,
     expected, size, offset: 0, fd: -1, hasher: createHash("sha256"),
   };
   ctx.db.run("INSERT INTO file_stages(id, root, temp_rel, final_rel, sha256) VALUES (?, ?, ?, ?, ?)", [row.id, root, row.temp_rel, row.final_rel, row.sha256]);

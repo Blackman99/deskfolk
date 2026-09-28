@@ -33,6 +33,24 @@ test("the dev provider is unavailable without the switch and inside a compiled d
   expect(createDevRemote(root(), "/$bunfs/root/dev-setup.ts")).toBeUndefined();
 });
 
+test("the dev provider is also unavailable inside a compiled win32 daemon (B:\\~BUN\\)", () => {
+  // This is the security-relevant case: a win32 compiled daemon must never take the dev-remote
+  // path just because its own module path does not start with the POSIX /$bunfs/ prefix.
+  expect(devRemoteAllowed("B:\\~BUN\\root\\dev-setup.ts", { REAL_BOT_DEV_REMOTE: "1" } as NodeJS.ProcessEnv)).toBe(false);
+  expect(devRemoteAllowed("B:/~BUN/root/dev-setup.ts", { REAL_BOT_DEV_REMOTE: "1" } as NodeJS.ProcessEnv)).toBe(false);
+  expect(createDevRemote(root(), "B:\\~BUN\\root\\dev-setup.ts")).toBeUndefined();
+});
+
+test("devSocketPath on win32 is a named pipe, not a filesystem path under the data dir", () => {
+  const path = devSocketPath("/tmp/whatever", "win32", "dongsheng");
+  expect(path).toBe("\\\\.\\pipe\\real-bot-dev-remote-dongsheng");
+});
+
+test("devSocketPath on win32 sanitizes an unusual username", () => {
+  const path = devSocketPath("/tmp/whatever", "win32", "dong sheng/../weird");
+  expect(path).toBe("\\\\.\\pipe\\real-bot-dev-remote-dong_sheng_.._weird");
+});
+
 test("the dev channel answers setup and confirmation operations over its socket", async () => {
   const dir = root();
   process.env.REAL_BOT_DEV_REMOTE = "1";

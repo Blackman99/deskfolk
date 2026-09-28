@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { assertMinimum, machOMinimums, minimumMacOS } from "./native-package";
+import { assertMinimum, machOMinimums, minimumMacOS, nativeFilesFor } from "./native-package";
+
+test("the native resource list is per-OS: Windows ships no Swift helper or credentials library", () => {
+  expect(nativeFilesFor("darwin")).toEqual([
+    "real-bot-daemon",
+    "real-bot-runtime-helper",
+    "real-bot-pty",
+    "libRemoteCredentials.dylib",
+  ]);
+  expect(nativeFilesFor("win32")).toEqual(["real-bot-daemon.exe", "real-bot-pty.exe"]);
+});
 
 test("published macOS minimum covers every mandatory nested deployment target", () => {
   expect(minimumMacOS).toBe("13.0");

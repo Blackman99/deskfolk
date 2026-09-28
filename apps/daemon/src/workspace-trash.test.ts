@@ -1,9 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HttpError } from "./errors";
-import { trashWorkspacePaths, type TrashMover } from "./workspace-trash";
+import { trashWorkspacePaths, windowsTrashArgv, windowsTrashBatches, type TrashMover } from "./workspace-trash";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -93,3 +93,71 @@ test("nothing outside the workspace, and never the workspace itself", async () =
   expect(move.asked).toHaveLength(0);
   expect(existsSync(join(outside, "keep.md"))).toBe(true);
 });
+
+describe("windowsTrashArgv (command construction only — never executed here)", () => {
+  test("runs PowerShell non-interactively with a fixed script, no profile", () => {
+    const argv = windowsTrashArgv("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+    expect(argv[0]).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+    expect(argv).toContain("-NoProfile");
+    expect(argv).toContain("-NonInteractive");
+    expect(argv).toContain("-Command");
+  });
+
+  test("the script uses Microsoft.VisualBasic.FileIO.FileSystem with the Recycle Bin option", () => {
+    const script = windowsTrashArgv("pwsh.exe").at(-1)!;
+    expect(script).toContain("Microsoft.VisualBasic.FileIO.FileSystem");
+    expect(script).toContain("RecycleOption]::SendToRecycleBin");
+    expect(script).toContain("UIOption]::OnlyErrorDialogs");
+    expect(script).toContain("DeleteFile");
+    expect(script).toContain("DeleteDirectory");
+    // The paths travel through the environment, never spliced into the script text.
+    expect(script).toContain("$env:REAL_BOT_TRASH_PATHS");
+    expect(script).toContain("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8");
+  });
+
+  test("the script text is identical no matter what the exe path is, and never embeds a path", () => {
+    const evilPaths = [
+      'C:\\Users\\me\\"; Remove-Item -Recurse -Force C:\\ #',
+      "C:\\Users\\me\\$(calc.exe)",
+      "C:\\Users\\me\\`; Invoke-Expression 'evil'",
+    ];
+    const scripts = evilPaths.map(() => windowsTrashArgv("pwsh.exe").at(-1)!);
+    // Every generated script is byte-identical: `path` never reaches windowsTrashArgv at all, it
+    // is only ever layered on as the REAL_BOT_TRASH_PATHS env var by the caller.
+    expect(new Set(scripts).size).toBe(1);
+    for (const evil of evilPaths) {
+      expect(scripts[0]).not.toContain(evil);
+    }
+  });
+});
+
+describe("windowsTrashBatches", () => {
+  test("keeps a normal pick in one batch, in order", () => {
+    expect(windowsTrashBatches(["C:\\ws\\a.md", "C:\\ws\\b"])).toEqual([["C:\\ws\\a.md", "C:\\ws\\b"]]);
+  });
+
+  test("splits a large pick so every batch's JSON fits the limit, losing nothing", () => {
+    const paths = Array.from({ length: 1000 }, (_, i) => `C:\\Users\\me\\工作区\\folder-${i}\\notes-${i}.md`);
+    const batches = windowsTrashBatches(paths, 16_000);
+    expect(batches.length).toBeGreaterThan(1);
+    for (const batch of batches) expect(JSON.stringify(batch).length).toBeLessThanOrEqual(16_000);
+    expect(batches.flat()).toEqual(paths);
+  });
+
+  test("a single path longer than the limit still goes, alone", () => {
+    const long = `C:\\${"x".repeat(200)}`;
+    expect(windowsTrashBatches(["C:\\a", long, "C:\\b"], 100)).toEqual([["C:\\a"], [long], ["C:\\b"]]);
+  });
+});
+
+// The one check of the real PowerShell call; only a Windows machine (CI's windows-latest) runs it.
+test.skipIf(process.platform !== "win32")("moves a file and a folder with a non-ASCII name to the Recycle Bin", async () => {
+  const root = workspace();
+  mkdirSync(join(root, "草稿"));
+  writeFileSync(join(root, "草稿", "a.md"), "a\n");
+  const result = await trashWorkspacePaths(root, ["report.md", "草稿"]);
+  expect(result.failed).toEqual([]);
+  expect(result.trashed.sort()).toEqual(["report.md", "草稿"].sort());
+  expect(existsSync(join(root, "report.md"))).toBe(false);
+  expect(existsSync(join(root, "草稿"))).toBe(false);
+}, 60_000);

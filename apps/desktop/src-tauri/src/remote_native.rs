@@ -46,6 +46,19 @@ pub struct LocalConfirmation {
 
 pub struct BundledNativeCaller;
 
+/// Is `url` the bundled document's own origin — `tauri://localhost` on macOS,
+/// or `http(s)://tauri.localhost` when `allow_webview2_origin` —
+/// which real callers set from `cfg!(windows)`, since WebView2 serves the app
+/// there instead. Kept separate from [`authorize_document`]'s other checks
+/// (port, userinfo, path) so the Windows origin is testable from macOS by
+/// passing `true` directly rather than needing to compile for Windows.
+fn is_bundled_document_origin(url: &tauri::Url, allow_webview2_origin: bool) -> bool {
+    (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+        || (allow_webview2_origin
+            && (url.scheme() == "http" || url.scheme() == "https")
+            && url.host_str() == Some("tauri.localhost"))
+}
+
 fn authorize_document(
     label: &str,
     url: &tauri::Url,
@@ -57,8 +70,7 @@ fn authorize_document(
     }
     if !local_acl
         || label != "main"
-        || url.scheme() != "tauri"
-        || url.host_str() != Some("localhost")
+        || !is_bundled_document_origin(url, cfg!(windows))
         || url.port().is_some()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -183,14 +195,16 @@ fn start_helper(directory: &Path, state: &HelperState) -> Result<(), String> {
             return Ok(());
         }
     }
-    *child = Some(
-        Command::new(directory.join("real-bot-runtime-helper"))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| "helper_unavailable")?,
-    );
+    let mut cmd = Command::new(directory.join("real-bot-runtime-helper"));
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // Unreachable in practice on Windows today (`native_call` below already
+    // refuses off macOS, so nothing ever gets this far), but a spawn that did
+    // reach here should not flash a console window either.
+    #[cfg(windows)]
+    super::daemon::suppress_console_window(&mut cmd);
+    *child = Some(cmd.spawn().map_err(|_| "helper_unavailable")?);
     Ok(())
 }
 
@@ -394,6 +408,35 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    /// Contract §2: WebView2 serves the bundled app from `http(s)://tauri.localhost`
+    /// (no port) instead of `tauri://localhost`. Exercised directly with the flag
+    /// real callers derive from `cfg!(windows)`, so the Windows branch is checked
+    /// without needing to compile for Windows.
+    #[test]
+    fn windows_webview2_origin_is_accepted_only_when_injected() {
+        for url in [
+            "http://tauri.localhost/",
+            "https://tauri.localhost/index.html",
+        ] {
+            let url: tauri::Url = url.parse().unwrap();
+            assert!(is_bundled_document_origin(&url, true), "{url}");
+            assert!(!is_bundled_document_origin(&url, false), "{url}");
+        }
+        // Still not just any host or scheme once the flag is on.
+        for url in [
+            "http://evil.example/",
+            "ftp://tauri.localhost/",
+            "http://localhost/",
+        ] {
+            let url: tauri::Url = url.parse().unwrap();
+            assert!(!is_bundled_document_origin(&url, true), "{url}");
+        }
+        // The macOS origin is unaffected by the flag either way.
+        let tauri_localhost: tauri::Url = "tauri://localhost/".parse().unwrap();
+        assert!(is_bundled_document_origin(&tauri_localhost, true));
+        assert!(is_bundled_document_origin(&tauri_localhost, false));
     }
 
     struct ReleaseFixtureCaller;
