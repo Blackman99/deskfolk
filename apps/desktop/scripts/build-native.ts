@@ -42,6 +42,8 @@ for (const [file, id] of [
   ["real-bot-daemon", "com.real-bot.daemon"],
 ]) {
   const args = ["codesign", "--force", "--sign", identity, "--identifier", id!, "--options", "runtime"];
+  // Notarization rejects a Developer ID signature without a secure timestamp; ad-hoc cannot carry one.
+  if (identity !== "-") args.push("--timestamp");
   if (file === "real-bot-daemon") args.push("--entitlements", resolve(import.meta.dir, "../src-tauri/daemon-entitlements.plist"));
   args.push(resolve(output, file!));
   await run(args);

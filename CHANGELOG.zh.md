@@ -8,6 +8,8 @@
 
 - 从源码运行（`pnpm dev`）时，台前调度里窗口旁边也显示 Deskfolk 的图标了。Dock 里一直是对的，但 `tauri dev` 所用的 `Deskfolk Dev.app` 外壳自己没有图标，台前调度里就是一个空白应用。现在外壳带上了应用图标，第一次加上图标时会重新向系统登记一次。
 
+- 发布流程可以用 Developer ID 签名并公证了。仓库配上 `APPLE_SIGNING_IDENTITY`、`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD` 三个 secrets 后，应用和里面带的运行时、pty、helper 都用这张证书签名；再配上 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`，就交给 Apple 公证：第一次打开不用再右键「打开」或跑 `xattr`，从第一个签名版本之后，更新也不会再弹钥匙串确认。没配这些 secrets 之前，发布包照旧是 ad-hoc 签名。每个 secret 填什么见 [notarization.md](docs/notarization.md#repository-secrets)。
+
 ## 0.1.0-rc.11 — 2026-09-28
 
 未签名的 macOS rc。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。

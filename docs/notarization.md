@@ -16,14 +16,26 @@ Ship macOS `.dmg` builds signed with **Developer ID Application** and **notarize
 
 ## Build / CI checklist
 
-- [ ] Export Developer ID cert + private key for CI (or use a Mac runner with the cert installed).
-- [ ] Configure Tauri / cargo-bundle signing env (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_SPECIFIC_PASSWORD` — exact names follow current Tauri docs).
-- [ ] Sign the `.app` before packaging the `.dmg`.
-- [ ] Submit with `xcrun notarytool submit … --wait`.
-- [ ] Staple: `xcrun stapler staple "Deskfolk.app"` (or the `.dmg` as appropriate).
-- [ ] Verify on a clean Mac: double-click opens without Gatekeeper bypass.
+- [x] CI imports the Developer ID certificate from repository secrets into a throwaway keychain before the build (`release.yml`, step "Developer ID signing (when configured)"). It has to come before the build: `build-native.ts` signs the bundled daemon, pty and helper before Tauri would import a certificate itself.
+- [x] `APPLE_SIGNING_IDENTITY` is exported only when the secret exists; Tauri reads it ahead of `signingIdentity: "-"` in `tauri.conf.json`, and `build-native.ts` signs the nested binaries with it plus `--timestamp` (notarization rejects Developer ID signatures without a secure timestamp).
+- [x] Notarize and staple: Tauri does both for the `.app` when `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are exported. With the certificate but without all three, the run signs, skips notarization and leaves a warning.
+- [ ] Add the repository secrets below (maintainer).
+- [ ] Verify on a clean Mac: double-click opens without Gatekeeper bypass; `spctl -a -vv /Applications/Deskfolk.app` says `source=Notarized Developer ID`.
 - [ ] Update [Gatekeeper FAQ](gatekeeper.md) when signed builds ship (remove “unsigned alpha” framing for those builds).
-- [ ] Release notes must say **signed + notarized** only after staple succeeds — never a fake badge.
+- [ ] Release notes must say **signed + notarized** only after staple succeeds — never a fake badge. `apps/desktop/scripts/release-notes.ts` still appends the unsigned note; change it once a notarized build has been checked on a clean Mac.
+
+## Repository secrets
+
+Set each with `gh secret set <NAME> -R Blackman99/deskfolk`. Without `APPLE_SIGNING_IDENTITY` the release stays ad-hoc signed and exports nothing.
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_SIGNING_IDENTITY` | The certificate's full name, as `security find-identity -v -p codesigning` prints it: `Developer ID Application: <Name> (<TEAMID>)` |
+| `APPLE_CERTIFICATE` | The certificate **and its private key** exported from Keychain Access as `.p12`, then `base64 -i cert.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | The password chosen for that `.p12` export |
+| `APPLE_ID` | The Apple Account email of the developer team member |
+| `APPLE_PASSWORD` | An app-specific password for that account (account.apple.com → Sign-In and Security) |
+| `APPLE_TEAM_ID` | The 10-character Team ID |
 
 ## Cost / ops notes
 
@@ -47,4 +59,4 @@ G-pack is **not run / blocked**, not passed: a buildable qualified sealed runtim
 
 ## Status
 
-**Unsigned alpha** is what GitHub Releases ship today (`v0.1.0-rc.1` and later until this checklist completes).
+**Unsigned alpha** is what GitHub Releases ship today (`v0.1.0-rc.1` and later until this checklist completes). The release workflow is ready to sign and notarize; it is waiting for the repository secrets.

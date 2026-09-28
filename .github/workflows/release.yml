@@ -89,6 +89,46 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
+      # Developer ID signing and notarization turn on once the repository has these secrets; without
+      # them the build stays ad-hoc signed and nothing below is exported (an empty
+      # APPLE_SIGNING_IDENTITY or APPLE_ID would make Tauri sign with "" or notarize an ad-hoc app).
+      # The certificate goes into a throwaway keychain before the build because build-native signs the
+      # bundled daemon, pty and helper before Tauri would import it. See docs/notarization.md.
+      - name: Developer ID signing (when configured)
+        env:
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "No APPLE_SIGNING_IDENTITY secret: this build stays ad-hoc signed."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/deskfolk-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain"
+          echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          if [ -n "$NOTARY_APPLE_ID" ] && [ -n "$NOTARY_PASSWORD" ] && [ -n "$NOTARY_TEAM_ID" ]; then
+            {
+              echo "APPLE_ID=$NOTARY_APPLE_ID"
+              echo "APPLE_PASSWORD=$NOTARY_PASSWORD"
+              echo "APPLE_TEAM_ID=$NOTARY_TEAM_ID"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::Signing with Developer ID but not notarizing: APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are not all set."
+          fi
+
       # The body is this version's CHANGELOG section: the app renders it in the About card when it
       # finds an update, so it has to say what changed rather than point at the file.
       - name: Release notes from CHANGELOG

@@ -8,6 +8,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - Running from source (`pnpm dev`), Stage Manager shows the Deskfolk icon beside the window. The Dock already did, but the `Deskfolk Dev.app` wrapper that `tauri dev` runs in had no icon of its own, and Stage Manager showed a blank app. The wrapper now carries the app's icon and registers itself again the first time it gains it.
 
+- The release workflow can sign with a Developer ID and notarize. Once the repository has the `APPLE_SIGNING_IDENTITY`, `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` secrets, it signs the app and the runtime, pty and helper bundled in it with that certificate; with `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` as well, Apple notarizes it, so the first launch no longer needs right-click → Open or `xattr`, and from the first signed version on, updates stop asking for Keychain access. Until those secrets are set, releases stay ad-hoc signed as before. What to put in each secret is in [notarization.md](docs/notarization.md#repository-secrets).
+
 ## 0.1.0-rc.11 — 2026-09-28
 
 Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
