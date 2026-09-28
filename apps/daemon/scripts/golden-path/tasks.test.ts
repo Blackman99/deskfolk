@@ -7,6 +7,7 @@ import {
   mentionsSomeone,
   parseSetups,
   parseTaskSet,
+  requireSetups,
   seedDir,
   selectTasks,
   TaskSetError,
@@ -121,10 +122,51 @@ describe("task set", () => {
     expect(() => selectTasks(set, ["c"])).toThrow(TaskSetError);
   });
 
-  test("--setup reads manual, coordinator or both", () => {
+  test("--setup reads manual, coordinator, solo, both or all, comma-separated, unique and in SETUPS order", () => {
     expect(parseSetups("both")).toEqual(["manual", "coordinator"]);
     expect(parseSetups("coordinator")).toEqual(["coordinator"]);
-    expect(() => parseSetups("solo")).toThrow("--setup");
+    expect(parseSetups("solo")).toEqual(["solo"]);
+    expect(parseSetups("all")).toEqual(["manual", "coordinator", "solo"]);
+    expect(parseSetups("solo,manual")).toEqual(["manual", "solo"]);
+    expect(parseSetups("solo,solo,manual")).toEqual(["manual", "solo"]);
+    expect(() => parseSetups("team")).toThrow("--setup");
+  });
+
+  test("a solo block: bot validated like other profiles, message must not @ anyone", () => {
+    const task = parseOne({
+      setups: {
+        ...(minimalTask().setups as Record<string, unknown>),
+        solo: { bot: { name: "Generalist", duties: "d", boundaries: "b" }, message: "工作区根目录的 `brief.md` 是要做的事，请你把它做出来。" },
+      },
+    });
+    expect(task.setups.solo).toEqual({
+      bot: { name: "Generalist", duties: "d", boundaries: "b" },
+      message: "工作区根目录的 `brief.md` 是要做的事，请你把它做出来。",
+    });
+    rejects(
+      { setups: { ...(minimalTask().setups as Record<string, unknown>), solo: { bot: { name: "Generalist", duties: "d", boundaries: "b" }, message: "@Generalist 请做" } } },
+      "must not @ anyone",
+    );
+    rejects({ setups: { ...(minimalTask().setups as Record<string, unknown>), solo: { message: "做" } } }, "tasks[0].setups.solo.bot");
+  });
+
+  test("a task set with no setups.solo still loads: it is optional", () => {
+    const task = parseOne();
+    expect(task.setups.solo).toBeUndefined();
+  });
+
+  test("requireSetups: solo requested but a task lacks setups.solo", () => {
+    const withSolo = parseOne({
+      id: "a",
+      setups: {
+        ...(minimalTask().setups as Record<string, unknown>),
+        solo: { bot: { name: "Generalist", duties: "d", boundaries: "b" }, message: "做" },
+      },
+    });
+    const withoutSolo = parseOne({ id: "b" });
+    expect(() => requireSetups([withSolo], ["solo"])).not.toThrow();
+    expect(() => requireSetups([withSolo, withoutSolo], ["solo"])).toThrow("b has no setups.solo");
+    expect(() => requireSetups([withoutSolo], ["manual"])).not.toThrow();
   });
 });
 
@@ -155,6 +197,15 @@ describe("the shipped task set", () => {
   test("the Coordinator is asked to hire exactly the Bots the manual setup creates", () => {
     for (const task of loaded.set.tasks) {
       for (const bot of task.setups.manual.bots) expect(task.setups.coordinator.message).toContain(`- ${bot.name}：`);
+    }
+  });
+
+  test("every shipped task has a solo setup that works alone: no 大家, boundaries forbid hiring", () => {
+    for (const task of loaded.set.tasks) {
+      const solo = task.setups.solo;
+      expect(solo).toBeDefined();
+      expect(solo!.message).not.toContain("大家");
+      expect(solo!.bot.boundaries).toContain("不建其他 Bot");
     }
   });
 

@@ -8,7 +8,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { FileCheck, GoldenTask, VerifyStep } from "./tasks";
 
-export type CheckResult = { name: string; ok: boolean; detail: string };
+export type CheckResult = { name: string; ok: boolean; detail: string; kind: "deliverable" | "content" | "verify" };
 
 /** Line endings and trailing blanks do not count; everything else in the output does. */
 export function normalizeOutput(text: string): string {
@@ -26,13 +26,13 @@ export function checkFileText(body: string, check: FileCheck): CheckResult {
   for (const needle of check.contains) if (!body.includes(needle)) problems.push(`missing ${JSON.stringify(needle)}`);
   for (const source of check.matches) if (!new RegExp(source, "mi").test(body)) problems.push(`no match for /${source}/`);
   for (const source of check.not_matches) if (new RegExp(source, "mi").test(body)) problems.push(`must not match /${source}/`);
-  return { name: `${check.path} content`, ok: problems.length === 0, detail: problems.length ? problems.join("; ") : "ok" };
+  return { name: `${check.path} content`, ok: problems.length === 0, detail: problems.length ? problems.join("; ") : "ok", kind: "content" };
 }
 
 export function deliverableResult(path: string, bytes: number | null): CheckResult {
-  if (bytes === null) return { name: `${path} delivered`, ok: false, detail: "missing" };
-  if (bytes === 0) return { name: `${path} delivered`, ok: false, detail: "empty" };
-  return { name: `${path} delivered`, ok: true, detail: `${bytes} bytes` };
+  if (bytes === null) return { name: `${path} delivered`, ok: false, detail: "missing", kind: "deliverable" };
+  if (bytes === 0) return { name: `${path} delivered`, ok: false, detail: "empty", kind: "deliverable" };
+  return { name: `${path} delivered`, ok: true, detail: `${bytes} bytes`, kind: "deliverable" };
 }
 
 const BUN_SUBCOMMANDS = new Set(["test", "run", "x", "install", "add", "remove", "build", "init", "create", "upgrade", "pm", "link", "unlink", "repl", "exec"]);
@@ -57,7 +57,7 @@ export function verifyResult(step: VerifyStep, run: { exit: number | null; stdou
     problems.push(`stdout differs: ${JSON.stringify(tail(normalizeOutput(run.stdout), 300))}`);
   }
   if (problems.length > 0 && run.stderr.trim()) problems.push(`stderr: ${JSON.stringify(tail(run.stderr.trim(), 300))}`);
-  return { name, ok: problems.length === 0, detail: problems.length ? problems.join("; ") : `exit ${run.exit}` };
+  return { name, ok: problems.length === 0, detail: problems.length ? problems.join("; ") : `exit ${run.exit}`, kind: "verify" };
 }
 
 function tail(text: string, limit: number): string {
@@ -88,7 +88,7 @@ export function runChecks(task: GoldenTask, workspace: string, bun: string = pro
   for (const check of task.checks) {
     const abs = join(workspace, check.path);
     if (!existsSync(abs) || !statSync(abs).isFile()) {
-      results.push({ name: `${check.path} content`, ok: false, detail: "missing" });
+      results.push({ name: `${check.path} content`, ok: false, detail: "missing", kind: "content" });
       continue;
     }
     results.push(checkFileText(readFileSync(abs, "utf8"), check));
@@ -96,14 +96,14 @@ export function runChecks(task: GoldenTask, workspace: string, bun: string = pro
   for (const step of task.verify) {
     const cwd = join(workspace, step.cwd);
     if (!existsSync(cwd)) {
-      results.push({ name: verifyName(step), ok: false, detail: `no ${step.cwd}/ to run in` });
+      results.push({ name: verifyName(step), ok: false, detail: `no ${step.cwd}/ to run in`, kind: "verify" });
       continue;
     }
     const [head, ...rest] = step.command;
     // `bun <file>` exits 1 when the file is missing too, which would pass a step expecting exit 1.
     const script = scriptOf(step.command);
     if (script && !existsSync(join(cwd, script))) {
-      results.push({ name: verifyName(step), ok: false, detail: `${script} is missing` });
+      results.push({ name: verifyName(step), ok: false, detail: `${script} is missing`, kind: "verify" });
       continue;
     }
     const run = spawnSync(head === "bun" ? bun : head!, rest, {

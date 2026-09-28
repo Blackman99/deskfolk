@@ -7,7 +7,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-export const SETUPS = ["manual", "coordinator"] as const;
+export const SETUPS = ["manual", "coordinator", "solo"] as const;
 export type Setup = (typeof SETUPS)[number];
 
 export type BotProfile = { name: string; duties: string; boundaries: string };
@@ -46,6 +46,8 @@ export type GoldenTask = {
   setups: {
     manual: { group: string; bots: BotProfile[] };
     coordinator: { bot: BotProfile; message: string };
+    /** One generalist Bot, alone in your direct with it. Optional so other task sets still load. */
+    solo?: { bot: BotProfile; message: string };
   };
 };
 
@@ -163,6 +165,14 @@ function task(value: unknown, where: string): GoldenTask {
   if (names.has(lead.name)) fail(`${where}.setups.coordinator.bot.name`, "must differ from the teammates it hires");
   const leadMessage = text(coordinator.message, `${where}.setups.coordinator.message`);
   if (mentionsSomeone(leadMessage)) fail(`${where}.setups.coordinator.message`, "must not @ anyone");
+  let solo: { bot: BotProfile; message: string } | undefined;
+  if (setups.solo !== undefined) {
+    const soloRow = record(setups.solo, `${where}.setups.solo`);
+    const soloBot = bot(soloRow.bot, `${where}.setups.solo.bot`);
+    const soloMessage = text(soloRow.message, `${where}.setups.solo.message`);
+    if (mentionsSomeone(soloMessage)) fail(`${where}.setups.solo.message`, "must not @ anyone: it works alone, nobody to address");
+    solo = { bot: soloBot, message: soloMessage };
+  }
   const brief = workspacePath(row.brief ?? "brief.md", `${where}.brief`, { dot: false });
   return {
     id,
@@ -185,6 +195,7 @@ function task(value: unknown, where: string): GoldenTask {
     setups: {
       manual: { group: text(manual.group, `${where}.setups.manual.group`).trim(), bots },
       coordinator: { bot: lead, message: leadMessage },
+      ...(solo ? { solo } : {}),
     },
   };
 }
@@ -212,10 +223,35 @@ export function selectTasks(set: TaskSet, only: readonly string[] | null): Golde
   return set.tasks.filter((item) => wanted.has(item.id));
 }
 
+/** `manual|coordinator|solo|both|all`, comma-separated; `both` = manual+coordinator, `all` = every setup. */
 export function parseSetups(value: string): Setup[] {
-  if (value === "both") return [...SETUPS];
-  if ((SETUPS as readonly string[]).includes(value)) return [value as Setup];
-  throw new TaskSetError(`--setup must be manual, coordinator or both, not ${value}`);
+  const wanted = new Set<Setup>();
+  const names = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const name of names) {
+    if (name === "both") {
+      wanted.add("manual");
+      wanted.add("coordinator");
+    } else if (name === "all") {
+      for (const setup of SETUPS) wanted.add(setup);
+    } else if ((SETUPS as readonly string[]).includes(name)) {
+      wanted.add(name as Setup);
+    } else {
+      throw new TaskSetError(`--setup must be manual, coordinator, solo, both or all (comma-separated), not ${name}`);
+    }
+  }
+  if (wanted.size === 0) throw new TaskSetError(`--setup must be manual, coordinator, solo, both or all (comma-separated), not ${JSON.stringify(value)}`);
+  return SETUPS.filter((setup) => wanted.has(setup));
+}
+
+/** `solo` needs every selected task to carry `setups.solo`; the other setups are required by the schema already. */
+export function requireSetups(tasks: readonly GoldenTask[], setups: readonly Setup[]): void {
+  if (!setups.includes("solo")) return;
+  for (const task of tasks) {
+    if (!task.setups.solo) throw new TaskSetError(`${task.id} has no setups.solo`);
+  }
 }
 
 export type LoadedTaskSet = { set: TaskSet; file: string; dir: string };

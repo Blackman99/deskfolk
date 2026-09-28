@@ -56,6 +56,9 @@ export type SettleTiming = {
   settleGraceMs: number;
   /** How long a settle call may take before it is given up on (ORGANIZER_SETTLE_TIMEOUT_MS plus slack). */
   organizerTimeoutMs: number;
+  /** False under the `organize-settle` ablation: a plan counts as settled once its timer and grace
+   *  have passed, without waiting for an `organize` row or the organizer's own timeout. */
+  settleFiles: boolean;
 };
 
 export type SettleVerdict = { state: "busy" | "settled" | "blocked"; waitingOn: string[] };
@@ -64,6 +67,7 @@ export function planSettled(plan: PlanSettleState, nowMs: number, timing: Settle
   if (plan.lastTurnEndMs === null) return true;
   const due = plan.lastTurnEndMs + timing.settleQuietMs;
   if (nowMs < due + timing.settleGraceMs) return false;
+  if (!timing.settleFiles) return true;
   if (!plan.needsFiling) return true;
   if (plan.organizedAtMs !== null && plan.organizedAtMs >= due - 1_000) return true;
   return nowMs >= due + timing.organizerTimeoutMs;
