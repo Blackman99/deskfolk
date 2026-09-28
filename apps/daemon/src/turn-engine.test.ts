@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
-import { CLOSING_CHECK_SYSTEM } from "./closing-check";
 import { ORGANIZER_SYSTEM } from "./prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
@@ -77,7 +76,7 @@ function routingAnswer(content: string): Response {
   return Response.json({ choices: [{ message: { role: "assistant", content } }] });
 }
 
-/** True for the daemon's own short calls: picking a model, reviewing a chain, learning from it, the closing check. */
+/** True for the daemon's own short calls: picking a model, reviewing a chain, learning from it. */
 function isRoutingCall(body: Record<string, unknown>): boolean {
   const messages = body.messages as Array<{ role?: string; content?: string }> | undefined;
   const system = messages?.find((row) => row.role === "system")?.content ?? "";
@@ -85,7 +84,6 @@ function isRoutingCall(body: Record<string, unknown>): boolean {
     system === ROUTE_PICK_SYSTEM ||
     system === ROUTE_REVIEW_SYSTEM ||
     system === ROUTE_LEARN_SYSTEM ||
-    system === CLOSING_CHECK_SYSTEM ||
     system === ORGANIZER_SYSTEM
   );
 }

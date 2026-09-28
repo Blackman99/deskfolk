@@ -26,7 +26,6 @@ import {
   type AblationGroup,
   type SideCall,
 } from "./ablation";
-import { CLOSING_CHECK_SYSTEM } from "./closing-check";
 import type { ChatMessage, CompletionOk, JudgeResult } from "./completions";
 import { createLocalApi } from "./local-api";
 import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
@@ -87,7 +86,6 @@ type Handlers = {
   routePick?: (payload: Record<string, unknown>) => string | null;
   routeReview?: (payload: Record<string, unknown>) => string;
   routeLearn?: () => string;
-  closingCheck?: (payload: Record<string, unknown>) => string;
 };
 
 function payloadOf(request: { messages: ChatMessage[] }): Record<string, unknown> {
@@ -116,7 +114,6 @@ function engineHarness(opts: {
   const judgementPayloads: Record<string, unknown>[] = [];
   const routePickPayloads: Record<string, unknown>[] = [];
   const routeReviewPayloads: Record<string, unknown>[] = [];
-  const closingCheckPayloads: Record<string, unknown>[] = [];
   const seen: ChatMessage[][] = [];
   const events: ClientEvent[] = [];
   let completedCount = 0;
@@ -175,12 +172,6 @@ function engineHarness(opts: {
           calls.push("route-learn");
           return judged(handlers.routeLearn ? handlers.routeLearn() : "{}");
         }
-        if (system === CLOSING_CHECK_SYSTEM) {
-          const payload = payloadOf(request);
-          closingCheckPayloads.push(payload);
-          calls.push("closing-check");
-          return judged(handlers.closingCheck ? handlers.closingCheck(payload) : '{"unaddressed":[]}');
-        }
         calls.push(`unknown:${String(system)}`);
         return judged('{"decision":"join","reason":"fixture"}');
       },
@@ -215,7 +206,6 @@ function engineHarness(opts: {
     judgementPayloads,
     routePickPayloads,
     routeReviewPayloads,
-    closingCheckPayloads,
     seen,
     events,
     completed,
@@ -395,62 +385,58 @@ describe("organizer: organize-message / organize-settle", () => {
 // ---------------------------------------------------------------------------------------------
 
 describe("engine/closing.ts: closing-check", () => {
-  function deliveryScript(messages: ChatMessage[]): CompletionOk {
-    if (messages.some((m) => m.role === "user" && textOf(m).startsWith("收尾自检"))) {
-      return say("趋势图这次没做：数据源还没给我，给了就补。周报见 report.md");
+  /**
+   * Since 2026-09-28 (ADR 0036) the closing check is deterministic and makes no judge call: a
+   * reply that promises "结论随后" with no check-back booked and nobody named to take it is
+   * bounced once as a line in the loop, purely from `turn_runs` / `check_backs` evidence.
+   */
+  function promiseScript(messages: ChatMessage[]): CompletionOk {
+    if (messages.some((m) => m.role === "user" && textOf(m).startsWith("（应用提示）"))) {
+      return say("18 张起止帧逐对看完：没有画风跳变。");
     }
-    if (!messages.some((m) => m.role === "tool")) return call("write_file", { path: "report.md", content: "# 周报\n本周…\n" });
-    return say("写好了，见 report.md");
+    return say("正在逐对核验 18 张起止帧，结论随后。");
   }
 
-  test("closing-check on (baseline): a delivery missing something from the brief is checked once and bounced", async () => {
-    const h = engineHarness({
-      handlers: {
-        closingCheck: () => JSON.stringify({ unaddressed: [{ text: "附上一张趋势图", why: "没看到图，收尾也没提" }] }),
-      },
-      script: deliveryScript,
-    });
+  test("closing-check on (baseline): an unbacked 'later' promise is bounced once, deterministically", async () => {
+    const h = engineHarness({ script: promiseScript });
     await h.settle();
-    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
-    const session = writer.direct_session.id;
+    const reviewer = h.store.createBot({ name: "审片员", duties: "review", boundaries: "stay" });
+    const session = reviewer.direct_session.id;
     const trigger = h.store.insertMessage({
       sessionId: session,
       kind: "user",
       author: "user",
-      body: "写一份周报，附上一张趋势图，交到 report.md",
+      body: "逐对核验 18 张起止帧，给出结论",
     });
     const done = h.completed();
     await h.engine.handleInboundMessage(trigger, { fromUser: true });
     await done;
 
-    expect(h.calls.filter((c) => c === "closing-check")).toHaveLength(1);
     const posted = h.store.listMainMessages(session, 10).filter((m) => m.kind === "bot").map((m) => m.body);
-    expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain("趋势图这次没做");
+    expect(posted).toEqual(["18 张起止帧逐对看完：没有画风跳变。"]);
+    // The bounce reached the model as a loop line, not a judge call.
+    expect(h.calls).not.toContain("closing-check");
   });
 
-  test("closing-check off: the same delivery reaches the session unchecked, with no judge call", async () => {
-    const h = engineHarness({ ablation: new Set(["closing-check"]), script: deliveryScript });
+  test("closing-check off: the same unbacked promise reaches the session unchecked, with no extra hop", async () => {
+    const h = engineHarness({ ablation: new Set(["closing-check"]), script: promiseScript });
     await h.settle();
-    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
-    const session = writer.direct_session.id;
+    const reviewer = h.store.createBot({ name: "审片员", duties: "review", boundaries: "stay" });
+    const session = reviewer.direct_session.id;
     const trigger = h.store.insertMessage({
       sessionId: session,
       kind: "user",
       author: "user",
-      body: "写一份周报，附上一张趋势图，交到 report.md",
+      body: "逐对核验 18 张起止帧，给出结论",
     });
     const done = h.completed();
     await h.engine.handleInboundMessage(trigger, { fromUser: true });
     await done;
 
-    expect(h.calls.filter((c) => c === "closing-check")).toHaveLength(0);
     const posted = h.store.listMainMessages(session, 10).filter((m) => m.kind === "bot").map((m) => m.body);
-    expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain("写好了，见");
-    expect(posted[0]).not.toContain("趋势图这次没做");
-    // Two hops only: write_file, then the reply. No third "收尾自检" nudge hop.
-    expect(h.seen).toHaveLength(2);
+    expect(posted).toEqual(["正在逐对核验 18 张起止帧，结论随后。"]);
+    // One hop only: the promise goes straight out, no "（应用提示）" nudge hop.
+    expect(h.seen).toHaveLength(1);
   });
 });
 

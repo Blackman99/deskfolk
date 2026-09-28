@@ -380,7 +380,7 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:golden-path \
 
 没完成的一定落进一类失败，按这个顺序取第一条对得上的：`aborted`（Ctrl-C 中止）、`setup_failed`（没组成班）、`error`（运行时自己出错）、`timeout`（超时）、`stalled`（停在「这件事停下了」之后再没动静）、`blocked_on_user`（停在等你回答，别的原因）、`no_delivery`（交付文件缺或空）、`checks_failed`（别的确定性检查没过）、`not_judged`（评判没给出分数）、`coverage_below`（覆盖率没到线）。`summary.md` 每行运行都带一栏「失败」，明细里还写着具体是哪个检查、或者覆盖率低到多少。
 
-输出在 `.scratch/golden-path-eval/<时间戳>/`（已忽略；`--out` 换位置）：`summary.md` 是完成率、平均介入、按组班和按任务的表（消融条件不止一个时再加一张按消融的表）、一张花费构成表（`turn` / `closing_check`（没有思考档的轮次调用，也就是交付前核对那一次）/ `organize` / `route_pick` / `route_review` / `route_learn` / `judgement` 各多少行、多少 token、多少钱、占几成）、每次运行一行（带消融和失败两栏）、再是每次的明细（私聊只有一个 Bot 时这里写「私聊：<Bot 名>」，否则是群里谁发过言、规划和任务、检查、用量、逐条覆盖；消融没生效时这里多一行警告）；`results.json` 是同样的数据。`runs/<任务>--<组班>--<n>/` 下是那次的 `data/` 和 `workspace/`；消融不是 `none` 时文件夹名多一段，`runs/<任务>--<组班>--<消融>--<n>/`。每跑完一次就重写一遍，中途 Ctrl-C 会收拾好当前这次、写下已有的结果，退出码 130（再按一次立刻退出）。其它退出码：跑完是 0，不论完成率多少；给了 `--min-rate` 而完成率低于它是 1；参数错或脚本自己出错是 2。
+输出在 `.scratch/golden-path-eval/<时间戳>/`（已忽略；`--out` 换位置）：`summary.md` 是完成率、平均介入、按组班和按任务的表（消融条件不止一个时再加一张按消融的表）、一张花费构成表（`turn` / `closing_check`（没有思考档的轮次调用：旧版本的交付前核对；现在的核对不调模型，这一栏在新提交上是空的）/ `organize` / `route_pick` / `route_review` / `route_learn` / `judgement` 各多少行、多少 token、多少钱、占几成）、每次运行一行（带消融和失败两栏）、再是每次的明细（私聊只有一个 Bot 时这里写「私聊：<Bot 名>」，否则是群里谁发过言、规划和任务、检查、用量、逐条覆盖；消融没生效时这里多一行警告）；`results.json` 是同样的数据。`runs/<任务>--<组班>--<n>/` 下是那次的 `data/` 和 `workspace/`；消融不是 `none` 时文件夹名多一段，`runs/<任务>--<组班>--<消融>--<n>/`。每跑完一次就重写一遍，中途 Ctrl-C 会收拾好当前这次、写下已有的结果，退出码 130（再按一次立刻退出）。其它退出码：跑完是 0，不论完成率多少；给了 `--min-rate` 而完成率低于它是 1；参数错或脚本自己出错是 2。
 
 几次 `eval:golden-path` 的 `results.json`（不同模型、开没开某个消融、或就是想并排看）用 `eval:golden-path:combine` 比：
 
