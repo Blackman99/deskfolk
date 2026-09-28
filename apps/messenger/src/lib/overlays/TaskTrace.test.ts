@@ -661,6 +661,7 @@ test("opening from a message centres that message's card", async () => {
         globalThis.setTimeout = setTimer;
         globalThis.clearTimeout = clearTimer;
       }
+      view.close();
     });
   } finally {
     HTMLElement.prototype.getBoundingClientRect = rect;
@@ -695,6 +696,7 @@ test("the board still lays out after the job is fetched again", async () => {
     flushSync();
     expect(view.asked.length).toBe(reads + 1);
     expect(tops()).toEqual(measured);
+    view.close();
   });
 });
 

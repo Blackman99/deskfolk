@@ -376,6 +376,9 @@ test("a document using most of Markdown pairs every character, and every one poi
   }
 });
 
+// This walk and "random documents" further down run thousands of Range comparisons, and happy-dom
+// answers each by walking the document, which every test file in the run shares. Each takes under a
+// second on its own, but several seconds late in the full suite on a CI runner: past bun's 5 s default.
 test("every anchor a selection can make passes validateAnchor, and draws again", () => {
   const source = [
     "---",
@@ -438,7 +441,7 @@ test("every anchor a selection can make passes validateAnchor, and draws again",
     expect(rangesForAnchor(map, anchor).length).toBeGreaterThan(0);
   }
   expect(made).toBeGreaterThan(1000);
-});
+}, 30_000);
 
 test("a selection in a nested item after a tab maps to its exact source columns", () => {
   const source = ["- top", "-\ttab item", "\t-\tnested **words** here"].join("\n");
@@ -565,4 +568,4 @@ test("random documents: every character pairs, and every selection draws exactly
     }
   }
   expect(checked).toBeGreaterThan(1500);
-});
+}, 30_000);
