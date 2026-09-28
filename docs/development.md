@@ -118,7 +118,7 @@ Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现�
 
 `LocalApi.createRoutine` / `patchRoutine` / `deleteRoutine` 经 runtime 捕获当前 API 实例调用；HTTP 返回行不写入快照，只有 `routine.upsert` / `routine.removed` 和重连快照更新列表。编辑草稿或删除确认保留当时的 `updated_at`；PATCH 和 DELETE JSON 体传 `if_revision`，不匹配返回 `409 revision_conflict`，格式错误返回 422，已删除返回 404。旧本机调用可省略该字段；注入 `requireRevision: true` 时日程 PATCH/DELETE 均不可省略。请求体先参与回执摘要，日程版本字段保留至 Store，在业务+回执的同一外层事务中仅比较一次，不先被通用 PATCH 检查剥离。Store 使日程 `updated_at` 至少递增一毫秒（含 scheduler claim）；不另包一套 Store 事务。未修改的表单跟随实时更新，有修改的表单保留草稿并要求显式载入最新版，连接变化不会自动重试写入。网络结果未知时沿用 `LocalApi` 待确认请求与原始 id，只允许显式重试同一载荷；不得为了显示日程错误丢弃该 API 实例。成功或终态回执只清理对应请求，不合成快照行。日程错误按 code 区分 `request_unknown` / `request_pending` 与 `revision_conflict`；卡片中的“重试原请求”调用既有 `runtime.retryPendingMutation` → `LocalApi.retryPending`，不重建载荷或 id。该 runtime 方法返回 `ApiError | null`，使卡片保留重试收到的真实终态错误。重试明确说明不会发送后来修改的草稿，待确认退休后保留草稿并禁用提交，用户核对列表/重新打开后继续；不把原请求成功说成后来草稿已保存。
 
-批注的界面验证有一套现成的隔离夹具：`bun apps/daemon/scripts/fake-openai.ts`（`127.0.0.1:17917`，脚本化的 OpenAI 兼容端点：判断类非流式请求一律答 `{}`，带批注的触发消息答成逐条 `resolve_annotation`，工具结果之后答一句收尾；`POST /__next` 可以塞一条指定回复，`GET /__log` 看它收到了什么），和 `REAL_BOT_DATA_DIR=<一次性目录> bun apps/daemon/scripts/ui-fixture.ts`（`127.0.0.1:17907`、内存钥匙串、`schedule: false`，工作区里放好代码、Markdown、HTML、PDF 和用 ffmpeg 生成的图片 / 视频 / 音频，Writer 在你的私聊里一次交出，Editor 在一条 Bot↔Bot 私聊里交出 `notes.md`）。信使用同一个 `REAL_BOT_DATA_DIR` 起在别的端口：`cd apps/messenger && REAL_BOT_DATA_DIR=<同一目录> pnpm exec vite dev --port 5197 --strictPort`。开跑前先 `lsof` 看端口，结束只停自己起的进程。
+批注的界面验证有一套现成的隔离夹具：`bun apps/daemon/scripts/fake-openai.ts`（`127.0.0.1:17917`，脚本化的 OpenAI 兼容端点：判断类非流式请求默认答 `{}`（参与判断读作旁观），整理跳答一份固定规划，目标覆盖评判按 acceptance 逐条答（有文件就 covered）；带批注的触发消息答成逐条 `resolve_annotation`，工具结果之后答一句收尾；`POST /__next` 可以塞一条指定回复（`reply`）、整理跳答案（`organizer`）、参与判断（`judgement`: `"join"` / `"pass"`）或覆盖评判（`coverage`），`GET /__log` 看它收到了什么，`REAL_BOT_FAKE_PORT` 换端口），和 `REAL_BOT_DATA_DIR=<一次性目录> bun apps/daemon/scripts/ui-fixture.ts`（`127.0.0.1:17907`、内存钥匙串、`schedule: false`，工作区里放好代码、Markdown、HTML、PDF 和用 ffmpeg 生成的图片 / 视频 / 音频，Writer 在你的私聊里一次交出，Editor 在一条 Bot↔Bot 私聊里交出 `notes.md`）。信使用同一个 `REAL_BOT_DATA_DIR` 起在别的端口：`cd apps/messenger && REAL_BOT_DATA_DIR=<同一目录> pnpm exec vite dev --port 5197 --strictPort`。开跑前先 `lsof` 看端口，结束只停自己起的进程。
 
 隔离 UI fixture 除 `schedule: false` 停定时 ticker 外，还须禁用注入 engine 的 `fireRoutine`：创建/修改 HTTP 路由会立即询问日程是否到期。fake keystore、fake completions 与独立端口/数据目录仍全部必需。
 
@@ -323,7 +323,48 @@ REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:goal-coverage \
   --base-url https://api.example.com/v1 --model judge-model --latest 5 --min-pass 0.8
 ```
 
-它先把 `state.sqlite`（连同 `-wal` / `-shm`）复制到临时目录再打开副本，守护进程可以照常跑着；默认读本机的库，`--db <path>` 换一个，`$REAL_BOT_DATA_DIR` 也认。挑哪几件事：`--task <id>`、`--session <id>`（那个会话最近活动的一件）或 `--latest [n]`。每件事发一次无工具补全：这件事的要点（整理跳写过的 `goal` / `acceptance` / `rules`，有就以它为准）、`brief`（开它的那条要求原文，没有要点时以它为准）、它引用过且还在的每个文件的开头（文本类最多 4000 字，其它只给路径）、以及这件事里 Bot 最后六句。评判模型按要点或 brief 拆出每条可验收的要求，逐条答 covered / partial / missing 和依据，Bot 自称完成不算依据。结果按事打印成 Markdown 表，JSON 写到 `.scratch/goal-coverage-eval/<时间戳>.json`（已忽略）；`--min-pass` 让任一件事的覆盖率不够时退出码为 1。解析、评分和报告格式在 `src/goal-coverage-eval.ts`，有单测。
+它先把 `state.sqlite`（连同 `-wal` / `-shm`）复制到临时目录再打开副本，守护进程可以照常跑着；默认读本机的库，`--db <path>` 换一个，`$REAL_BOT_DATA_DIR` 也认。挑哪几件事：`--task <id>`、`--session <id>`（那个会话最近活动的一件）或 `--latest [n]`。每件事发一次无工具补全：这件事的要点（整理跳写过的 `goal` / `acceptance` / `rules`，有就以它为准）、`brief`（开它的那条要求原文，没有要点时以它为准）、它引用过且还在的每个文件的开头（文本类最多 4000 字，其它只给路径）、以及这件事里 Bot 最后六句。评判模型按要点或 brief 拆出每条可验收的要求，逐条答 covered / partial / missing 和依据，Bot 自称完成不算依据。结果按事打印成 Markdown 表，JSON 写到 `.scratch/goal-coverage-eval/<时间戳>.json`（已忽略）；`--min-pass` 让任一件事的覆盖率不够时退出码为 1。解析、评分和报告格式在 `src/goal-coverage-eval.ts`，有单测；那一次补全和取 Bot 最后几句在 `scripts/goal-coverage-judge.ts`，下面的黄金路径基准也用它。评判答案的上限是 4096 token：短调用默认的 256 会把逐条带依据的答案截在半路，整份判成答得不成形。
+
+## 黄金路径基准
+
+产品说的是「交给一组 Bot，盯到交付」。这个基准把它量成一个数：几件固定的事，按黄金路径组班、发一句话，看有几件自己做完、交出的东西对得上要求，平均要你插手几次。
+
+```bash
+REAL_BOT_EVAL_API_KEY=sk-… pnpm --filter @real-bot/daemon eval:golden-path \
+  --base-url https://api.example.com/v1 --model team-model --judge-model judge-model \
+  --setup both --runs 1 --timeout-min 30 --min-pass 0.8
+```
+
+先加 `--list` 看会跑哪些（什么都不跑，顺带校验任务集）；第一次建议 `--only research --setup manual` 跑一次，看一眼花费再放开。
+
+任务集在 `apps/daemon/eval/golden-path/tasks.json`，每件事的种子文件在同名文件夹里，整棵拷到工作区根目录。三件事都是小工作室、独立开发者手上要几个角色、交好几个文件的活，不需要出站网络和 MCP，无人值守能跑完：
+
+- `research`：`brief.md` 加 `sources/` 里四份资料，交根目录 `report.md`（原来 v1 的黄金路径，题目换成三人工作室给要调用 `git` 的 Mac 小工具选分发渠道）；
+- `launch-kit`：`product.md` 描述的产品，交上线文案 `launch/copy.md` 和单文件落地页 `launch/index.html`；
+- `small-tool`：记账 CSV 汇总命令行工具，用 Bun 写，交 `tool/tally.ts`、`tool/tally.test.ts`、`tool/README.md`，`bun test` 要真能跑通。
+
+每件事写了两种组班，都不说谁做哪一步，任务那句话不带 @，靠参与判断把人带下场：
+
+- `manual`：你（脚本）通过本机接口建三个角色 Bot 和一个群，在群里发任务；
+- `coordinator`：只建一个 Coordinator，在你和它的私聊里请它建这三个角色（名册里有就直接用）、开群、把自己拉进去；群出现、它那一轮结束后，脚本把同一句任务发进群。它 10 分钟内没开出自己在的群，或者没开群就静下来了，这次记「没组成班」。
+
+`--setup manual|coordinator|both` 选组班，`--runs n` 每格跑几次，`--only id,id` 只跑其中几件，`--tasks <file>` 换任务集。
+
+每一次运行（任务 × 组班 × 第几次）在脚本进程里起一个隔离的运行时：和 `ui-fixture.ts` 一样用 `startRuntime`，数据目录在输出文件夹里，端口随机，内存钥匙串，不碰钥匙串，也不碰你在跑的守护进程和它的库。调度器是开着的：Bot 约的回看靠它到点叫醒，把一件事做完离不开它。工作区放在系统临时目录（不在任何 git 仓库里，Bot 在里面跑 `git` 碰不到你的仓库），跑完拷回输出文件夹（不拷 `node_modules`），保留下来的库里工作区路径改指这份拷贝，所以之后还能用 `eval:goal-coverage --db runs/<…>/data/state.sqlite --latest 1` 重评。端点和默认模型走 `PATCH /v1/settings`（先 `POST /v1/models/probe` 拿这个模型的思考档，`--price 输入,输出[,缓存]` 给了就一起写进单价），建 Bot、建群、发消息、答批准和提问都走本机接口，和窗口一样。
+
+什么时候算「静下来」，下面几条同时成立：没有活轮（running / waiting_approval / waiting_ask），`GET /v1/sessions` 里也没有待判断或整理中的 Bot；没有在截止之前到点的待回看（截止之后才到点的记下来，不等）；每个有轮结束过的规划都过了整理跳的 settle——最后一轮结束 30 秒后开始，之后要么没有新东西可整理，要么这个会话出了一行 `organize` 花费，要么等满整理跳自己的超时；15 秒里库里什么都没写，快照 5 秒没变。settle 之后应用替 Bot 约的立刻响的回看会开新轮，所以对账叫回的那一轮也会被等到。墙钟 `--timeout-min`（默认 30 分钟）从你第一句话起算，到点还没静下来就是「超时」；表里的用时是从第一句话到最后一次动静。
+
+介入是要你出面的事，直接从库里数：出现过的批准卡（`approvals`，任何状态都算——允许一次也是越界发生了）、Bot 问你的问题（`messages.kind = 'ask'`，会话列表里的「等你回答」）、「这件事停下了」（`notifications` 里 `fail_kind = 'stalled_plan'`，ADR 0031）。无人值守时脚本替你答：批准按 `--approvals`（默认 `deny`；要 API key 的卡一律拒绝），提问选第一个（推荐的）选项，没有选项就回一句「你们按自己的判断定就行，不用等我」。答不上（接口拒了）的那一轮算停在等你，其它都静下来时这次记「等你处理」。应用自己的叫回（`check_backs.kind = 'plan_nudge'`）、补全失败的轮和中断的轮也列出来，但不算介入。
+
+完成 = 这件事自己静下来（不是超时、不是没组成班，这件事的规划最后也没停在「这件事停下了」之后——那样记「等你处理」），评判覆盖率 ≥ `--min-pass`（默认 0.8），而且确定性检查全过：交付文件都在且非空、任务集里写的内容检查（比如落地页有 viewport、不引用外部资源），以及团队离场后脚本自己跑的命令（`small-tool` 的 `bun test`、两条对照输出和出错退出码；命令只拿到 `PATH` / `HOME` / 语言这几个环境变量）。评判和 `eval:goal-coverage` 是同一个提示词，但要求以任务集里固定的 goal / acceptance / rules 为准，不用整理跳这一次整理出的要点，这样不同次、不同模型量的是同一把尺；brief 是任务那句话加 `brief.md` 原文，文件先给交付物再给这件事引用过的，HTML 去掉 style / script 的正文再给它看。
+
+输出在 `.scratch/golden-path-eval/<时间戳>/`（已忽略；`--out` 换位置）：`summary.md` 是完成率、平均介入、按组班和按任务的表、每次一行，再是每次的明细（群里谁发过言、规划和任务、检查、用量、逐条覆盖）；`results.json` 是同样的数据；`runs/<任务>--<组班>--<n>/` 下是那次的 `data/` 和 `workspace/`。每跑完一次就重写一遍，中途 Ctrl-C 会收拾好当前这次、写下已有的结果，退出码 130（再按一次立刻退出）。其它退出码：跑完是 0，不论完成率多少；给了 `--min-rate` 而完成率低于它是 1；参数错或脚本自己出错是 2。
+
+密钥只从环境变量读（默认 `REAL_BOT_EVAL_API_KEY`，`--api-key-env` 换，或 `--key-stdin` 从标准输入读），不进库、不进结果文件。Bot 的 `shell` 继承进程启动时的环境，在 Bun 里事后 `delete process.env.X` 也拦不住，所以脚本会换一个去掉了密钥、名字像 KEY / TOKEN / SECRET / PASSWORD 的变量和 `REAL_BOT_*` 的环境重新起一遍自己，密钥从标准输入交过去；每次跑完还会在保留的数据和工作区里找一遍密钥，找到就报警。
+
+花钱：这是真跑。每次运行是一整队 Bot（三四个，每个若干跳，上下文越跑越长）的轮次，加上整理、参与判断、选路、收尾自检这些短调用，再加一次评判。次数 = 任务数 × 组班数 × `--runs`，默认 3 × 2 × 1 = 6 次，每次最长 `--timeout-min` 分钟。给了 `--price` 花费行会带估算，摘要里有每次的 token 数和金额。
+
+不花钱的走一遍：对着 `scripts/fake-openai.ts`（起在空闲端口，比如 `REAL_BOT_FAKE_PORT=17947`）跑，覆盖率没有意义，看的是起运行时 → 组班 → 发任务 → 静下来 → 检查和评判 → 报告 → 清理这一串。先用 `POST /__next` 塞 `{"judgement":"join"}`（每个要下场的 Bot 一条）和一条让某个 Bot `write_file` 的 `{"reply":{"tool_calls":[…]}}`，`coordinator` 再在前面塞 `create_bot` ×3、`create_group` 和一句收尾，然后 `--base-url http://127.0.0.1:17947/v1 --model fixture --timeout-min 5`。纯逻辑（任务集校验、介入计数、静下来的判定、完成率和报告格式、检查）在 `scripts/golden-path/*.ts`，旁边有单测，随 `bun test` 一起跑。
 
 ## 办公文件预览
 

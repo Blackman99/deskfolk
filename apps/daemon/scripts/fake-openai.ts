@@ -8,10 +8,15 @@
  * Routes:
  *   GET  /v1/models                 — one model, `fixture`, with thinking levels.
  *   POST /v1/chat/completions       — `stream: false` (judgement, route pick, suggestions) answers `{}`,
- *                                     except the organizer, which gets a fixed plan (see `organize`);
- *                                     `stream: true` answers by the rules below, as SSE.
+ *                                     except the organizer, which gets a fixed plan (see `organize`), a
+ *                                     judgement with a queued answer, and the goal-coverage judge, which
+ *                                     gets a verdict (see `coverage`); `stream: true` answers by the
+ *                                     rules below, as SSE.
  *   POST /__next  { reply }         — queue one scripted reply: `{ content }` or `{ tool_calls: [{ name, arguments }] }`.
  *   POST /__next  { organizer }     — queue one organizer answer (a JSON string, or an object to stringify).
+ *   POST /__next  { judgement }     — queue one participation judgement: "join", "pass", or `{ decision, reason }`.
+ *                                     Without one a judgement still answers `{}`, which reads as a pass.
+ *   POST /__next  { coverage }      — queue one goal-coverage verdict (a JSON string, or an object to stringify).
  *   GET  /__log                     — every request received, newest last (messages trimmed).
  *
  * Rules for a streamed turn, when nothing is queued:
@@ -28,6 +33,8 @@ type Scripted = { content?: string; tool_calls?: Array<{ name: string; arguments
 const port = Number(process.env.REAL_BOT_FAKE_PORT ?? 17917);
 const queue: Scripted[] = [];
 const organizerQueue: string[] = [];
+const judgementQueue: string[] = [];
+const coverageQueue: string[] = [];
 const log: Array<{ at: string; stream: boolean; tools: string[]; last: string; images: number }> = [];
 let callSeq = 0;
 
@@ -47,10 +54,45 @@ function trigger(messages: ChatMessage[]): ChatMessage | undefined {
   return users.find((m) => text(m.content).includes("（本轮触发）")) ?? users.at(-1);
 }
 
-/** The organizer's system prompt, by its opening line; the daemon's constant is not imported to keep this script standalone. */
-function isOrganizerCall(messages: ChatMessage[]): boolean {
+/** A short call's kind, by its system prompt's opening line; the daemon's constants are not imported to keep this script standalone. */
+function systemStarts(messages: ChatMessage[], opening: string): boolean {
   const system = messages.find((m) => m.role === "system");
-  return text(system?.content ?? "").startsWith("你在替这个会话整理「规划」和「任务」");
+  return text(system?.content ?? "").startsWith(opening);
+}
+
+function isOrganizerCall(messages: ChatMessage[]): boolean {
+  return systemStarts(messages, "你在替这个会话整理「规划」和「任务」");
+}
+
+function isJudgementCall(messages: ChatMessage[]): boolean {
+  return systemStarts(messages, "你正在做一次判断，不是轮次");
+}
+
+function isCoverageCall(messages: ChatMessage[]): boolean {
+  return systemStarts(messages, "你在核对一件事做完了没有");
+}
+
+/**
+ * The goal-coverage judge, when nothing is queued: one requirement per acceptance line of the
+ * plan (else the brief's first line), covered when any delivery has text, missing otherwise. It
+ * checks the pipeline end to end, not the job.
+ */
+function coverage(messages: ChatMessage[]): string {
+  const queued = coverageQueue.shift();
+  if (queued) return queued;
+  let payload: { brief?: string; plan?: { acceptance?: string[] }; deliveries?: Array<{ path: string; excerpt: string | null }> } = {};
+  try {
+    payload = JSON.parse(text(messages.filter((m) => m.role === "user").at(-1)?.content ?? "{}")) as typeof payload;
+  } catch {
+    payload = {};
+  }
+  const items = payload.plan?.acceptance?.length ? payload.plan.acceptance : [(payload.brief ?? "交付").split("\n")[0]!.slice(0, 80)];
+  const delivered = (payload.deliveries ?? []).filter((d) => d.excerpt && d.excerpt.trim());
+  const status = delivered.length > 0 ? "covered" : "missing";
+  return JSON.stringify({
+    requirements: items.map((item) => ({ text: item, status, evidence: delivered.length > 0 ? `${delivered[0]!.path}（脚本评判）` : "没有" })),
+    summary: delivered.length > 0 ? "脚本评判：交出了文件。" : "脚本评判：没有交出文件。",
+  });
 }
 
 /**
@@ -64,7 +106,7 @@ function organize(messages: ChatMessage[]): string {
   if (queued) return queued;
   let payload: Record<string, unknown> = {};
   try {
-    payload = JSON.parse(text(messages.findLast((m) => m.role === "user")?.content ?? "{}")) as Record<string, unknown>;
+    payload = JSON.parse(text(messages.filter((m) => m.role === "user").at(-1)?.content ?? "{}")) as Record<string, unknown>;
   } catch {
     payload = {};
   }
@@ -150,10 +192,20 @@ const server = Bun.serve({
     }
     if (request.method === "GET" && url.pathname === "/__log") return Response.json(log);
     if (request.method === "POST" && url.pathname === "/__next") {
-      const body = (await request.json()) as { reply?: Scripted; organizer?: string | Record<string, unknown> };
+      const body = (await request.json()) as {
+        reply?: Scripted;
+        organizer?: string | Record<string, unknown>;
+        judgement?: string | Record<string, unknown>;
+        coverage?: string | Record<string, unknown>;
+      };
       if (body.reply) queue.push(body.reply);
       if (body.organizer !== undefined) organizerQueue.push(typeof body.organizer === "string" ? body.organizer : JSON.stringify(body.organizer));
-      return Response.json({ queued: queue.length, organizer: organizerQueue.length });
+      if (body.judgement !== undefined) {
+        const verdict = body.judgement === "join" || body.judgement === "pass" ? { decision: body.judgement, reason: "scripted" } : body.judgement;
+        judgementQueue.push(typeof verdict === "string" ? verdict : JSON.stringify(verdict));
+      }
+      if (body.coverage !== undefined) coverageQueue.push(typeof body.coverage === "string" ? body.coverage : JSON.stringify(body.coverage));
+      return Response.json({ queued: queue.length, organizer: organizerQueue.length, judgement: judgementQueue.length, coverage: coverageQueue.length });
     }
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
       const body = (await request.json()) as { messages?: ChatMessage[]; stream?: boolean; tools?: Array<{ function?: { name?: string } }> };
@@ -167,7 +219,13 @@ const server = Bun.serve({
         images: messages.reduce((n, m) => n + images(m.content), 0),
       });
       if (!body.stream) {
-        const content = isOrganizerCall(messages) ? organize(messages) : "{}";
+        const content = isOrganizerCall(messages)
+          ? organize(messages)
+          : isJudgementCall(messages)
+            ? (judgementQueue.shift() ?? "{}")
+            : isCoverageCall(messages)
+              ? coverage(messages)
+              : "{}";
         return Response.json({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } });
       }
       return streamed(decide(messages));

@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "research",
+      "title": "分发渠道调研报告",
+      "seed": "research",
+      "brief": "brief.md",
+      "message": "工作区根目录的 `brief.md` 是这次要做的调研，资料在 `sources/`，请大家照它把 `report.md` 做出来。",
+      "goal": "按 brief.md 写一份 Mac 小工具分发渠道的调研报告，交到工作区根目录 report.md",
+      "acceptance": [
+        "终稿在工作区根目录 report.md，不只贴在聊天里",
+        "篇幅 800–1500 字，中文",
+        "包含四部分：背景与问题、三条渠道对比、推荐方案、风险与待核实事项",
+        "对比是一张 Markdown 表格，Mac App Store、官网直接分发、Setapp 都在表里，至少比较抽成或费用、审核与上架周期、沙盒等技术限制、更新方式、获客五项",
+        "推荐方案给出明确结论（选哪条或怎么组合），并说明为什么适合三人工作室、为什么适合要调用 git 和 shell 的工具",
+        "关键事实后面注明出处文件名（sources/…）",
+        "资料里没有的写进「待核实」，没有编造资料之外的数字"
+      ],
+      "rules": ["不上网查资料", "不改动 sources/ 里的文件"],
+      "deliverables": ["report.md"],
+      "checks": [
+        { "path": "report.md", "contains": ["sources/"], "matches": ["^\\s*\\|.+\\|.+\\|"] }
+      ],
+      "verify": [],
+      "setups": {
+        "manual": {
+          "group": "渠道调研",
+          "bots": [
+            {
+              "name": "Researcher",
+              "duties": "调查 brief.md 提出的问题，读工作区里的资料，把发现和出处写进工作区供同事用。",
+              "boundaries": "不访问网络；不读工作区外；不一个人写完终稿。"
+            },
+            {
+              "name": "Writer",
+              "duties": "根据工作区资料和同事的笔记起草 brief 要求的交付文，按审阅意见修改。",
+              "boundaries": "不访问网络；不读工作区外；不跳过调查和审阅去包办。"
+            },
+            {
+              "name": "Reviewer",
+              "duties": "审阅草稿是否满足 brief 的每条要求，在工作区留下意见或改稿，直到交付可接受。",
+              "boundaries": "不访问网络；不读工作区外；不从空白独写终稿。"
+            }
+          ]
+        },
+        "coordinator": {
+          "bot": {
+            "name": "Coordinator",
+            "duties": "协调人，不是执笔。按用户的要求在名册上找齐或新建队友、开群；群里有人卡住时帮大家理清下一步。",
+            "boundaries": "不自己写交付物；除人设职责外不指定谁做哪一步；不访问网络；不读工作区外。"
+          },
+          "message": "请先读工作区根目录的 `brief.md`，了解这次要做什么。然后在名册上建这三位队友（名册里已经有同名的就直接用，不要建重名的）：\n- Researcher：调查 brief.md 提出的问题，读工作区里的资料，把发现和出处写进工作区供同事用；不访问网络，不读工作区外，不一个人写完终稿。\n- Writer：根据工作区资料和同事的笔记起草 brief 要求的交付文，按审阅意见修改；不访问网络，不读工作区外，不跳过调查和审阅去包办。\n- Reviewer：审阅草稿是否满足 brief 的每条要求，在工作区留下意见或改稿，直到交付可接受；不访问网络，不读工作区外，不从空白独写终稿。\n再开一个群，把他们三位和你自己拉进去。群开好后在这里告诉我群名就行，任务我会自己发到群里；你先不要在群里布置任务，也不要指定谁做哪一步。"
+        }
+      }
+    },
+    {
+      "id": "launch-kit",
+      "title": "上线文案和落地页",
+      "seed": "launch-kit",
+      "brief": "brief.md",
+      "message": "工作区根目录的 `brief.md` 写了这次上线要的两样东西，产品资料在 `product.md`，请大家照着做出来。",
+      "goal": "按 brief.md 和 product.md 做出 Tidemark 的上线文案 launch/copy.md 和单文件落地页 launch/index.html",
+      "acceptance": [
+        "launch/copy.md 有 3 个备选主标题（每个不超过 20 字）和 1 句副标题",
+        "launch/copy.md 有 3 段功能介绍，分别对应 product.md 的三项核心功能",
+        "launch/copy.md 有一段 150–250 字的 Product Hunt 介绍",
+        "launch/copy.md 有 3 条不超过 140 字的社交媒体短帖",
+        "launch/copy.md 有 3 条常见问答，其中一条回答了不支持云同步",
+        "launch/index.html 是单文件：CSS 内联，不引用外部脚本、样式表、字体或图片",
+        "launch/index.html 有主标题、功能区、价格区、常见问答和链接到 https://tidemark.example.com/download 的下载按钮",
+        "页面和文案里的价格（29 美元买断、含一年更新）和系统要求（macOS 13 及以上）与 product.md 一致，主标题与文案一致",
+        "页面有 viewport meta，375px 宽度下能读",
+        "没有编造 product.md 之外的功能、用户数、评分或媒体报道"
+      ],
+      "rules": ["只写 product.md 里有的功能和数字", "口吻直接、具体、不夸张"],
+      "deliverables": ["launch/copy.md", "launch/index.html"],
+      "checks": [
+        { "path": "launch/copy.md", "contains": ["云同步"] },
+        {
+          "path": "launch/index.html",
+          "contains": ["https://tidemark.example.com/download", "29"],
+          "matches": ["<meta[^>]*name=[\"']?viewport"],
+          "not_matches": [
+            "<script[^>]*\\ssrc\\s*=",
+            "<link[^>]*\\shref\\s*=\\s*[\"']?(https?:)?//",
+            "<img[^>]*\\ssrc\\s*=\\s*[\"']?(https?:)?//",
+            "@import",
+            "url\\(\\s*[\"']?(https?:)?//"
+          ]
+        }
+      ],
+      "verify": [],
+      "setups": {
+        "manual": {
+          "group": "上线物料",
+          "bots": [
+            {
+              "name": "Copywriter",
+              "duties": "按产品资料写上线文案：标题、功能介绍、发布介绍、短帖和问答。",
+              "boundaries": "只写产品资料里有的功能和数字；不访问网络；不读工作区外。"
+            },
+            {
+              "name": "Designer",
+              "duties": "把文案做成单文件落地页（HTML + 内联 CSS），保证手机上也能读。",
+              "boundaries": "不引用外部资源；不访问网络；不读工作区外；不自己改文案口径，有问题找写文案的同事。"
+            },
+            {
+              "name": "Reviewer",
+              "duties": "核对文案和页面与产品资料是否一致、是否满足 brief 的每条要求，提出修改意见直到可以发布。",
+              "boundaries": "不访问网络；不读工作区外；不从空白独写交付物。"
+            }
+          ]
+        },
+        "coordinator": {
+          "bot": {
+            "name": "Coordinator",
+            "duties": "协调人，不是执笔。按用户的要求在名册上找齐或新建队友、开群；群里有人卡住时帮大家理清下一步。",
+            "boundaries": "不自己写交付物；除人设职责外不指定谁做哪一步；不访问网络；不读工作区外。"
+          },
+          "message": "请先读工作区根目录的 `brief.md` 和 `product.md`，了解这次要做什么。然后在名册上建这三位队友（名册里已经有同名的就直接用，不要建重名的）：\n- Copywriter：按产品资料写上线文案（标题、功能介绍、发布介绍、短帖和问答）；只写产品资料里有的功能和数字，不访问网络，不读工作区外。\n- Designer：把文案做成单文件落地页（HTML + 内联 CSS），保证手机上也能读；不引用外部资源，不访问网络，不读工作区外，不自己改文案口径。\n- Reviewer：核对文案和页面与产品资料是否一致、是否满足 brief 的每条要求，提出修改意见直到可以发布；不访问网络，不读工作区外，不从空白独写交付物。\n再开一个群，把他们三位和你自己拉进去。群开好后在这里告诉我群名就行，任务我会自己发到群里；你先不要在群里布置任务，也不要指定谁做哪一步。"
+        }
+      }
+    },
+    {
+      "id": "small-tool",
+      "title": "记账 CSV 汇总命令行工具",
+      "seed": "small-tool",
+      "brief": "brief.md",
+      "message": "工作区根目录的 `brief.md` 是一个命令行小工具的需求，样例数据在 `samples/`，请大家把它做出来，测试要真的能跑通。",
+      "goal": "按 brief.md 用 Bun 做出命令行工具 tool/tally.ts，附测试 tool/tally.test.ts 和说明 tool/README.md",
+      "acceptance": [
+        "tool/tally.ts 按 brief 的用法 `bun tool/tally.ts <csv 文件> [--month YYYY-MM]` 运行，不依赖第三方包",
+        "输出格式正确：每类一行「类别<TAB>合计」、两位小数、按合计降序、合计相同按类别名升序，最后一行 TOTAL",
+        "--month 只统计那个月的行",
+        "文件不存在、表头不对、金额不是数字时向标准错误说明并以退出码 1 结束",
+        "tool/tally.test.ts 覆盖排序、--month 过滤、负数金额、表头错误四种情况，在 tool/ 里运行 bun test 全部通过",
+        "tool/README.md 写明运行命令、跑测试的方法和输出格式",
+        "对样例 samples/expenses.csv 的两条对照命令输出与 brief 一致"
+      ],
+      "rules": ["只用 Bun 自带能力，不装第三方包"],
+      "deliverables": ["tool/tally.ts", "tool/tally.test.ts", "tool/README.md"],
+      "checks": [
+        { "path": "tool/README.md", "contains": ["bun tool/tally.ts", "bun test"] }
+      ],
+      "verify": [
+        { "cwd": "tool", "command": ["bun", "test"], "expect_exit": 0, "timeout_sec": 120 },
+        {
+          "cwd": ".",
+          "command": ["bun", "tool/tally.ts", "samples/expenses.csv"],
+          "expect_exit": 0,
+          "expect_stdout": "software\t198.00\nbooks\t110.80\nfood\t106.00\ntransport\t35.50\nTOTAL\t450.30\n"
+        },
+        {
+          "cwd": ".",
+          "command": ["bun", "tool/tally.ts", "samples/expenses.csv", "--month", "2026-08"],
+          "expect_exit": 0,
+          "expect_stdout": "software\t99.00\nfood\t80.70\nbooks\t68.00\ntransport\t0.00\nTOTAL\t247.70\n"
+        },
+        { "cwd": ".", "command": ["bun", "tool/tally.ts", "samples/no-such-file.csv"], "expect_exit": 1 }
+      ],
+      "setups": {
+        "manual": {
+          "group": "tally",
+          "bots": [
+            {
+              "name": "Developer",
+              "duties": "按需求实现命令行工具和 README，修复同事报告的问题。",
+              "boundaries": "只用 Bun 自带能力，不装第三方包；不访问网络；不读工作区外。"
+            },
+            {
+              "name": "Tester",
+              "duties": "按需求写测试并真的跑一遍，把失败和不符合需求的地方报给同事。",
+              "boundaries": "不访问网络；不读工作区外；不替写实现的同事包办实现。"
+            },
+            {
+              "name": "Reviewer",
+              "duties": "对照需求检查用法、输出格式和出错处理，照 README 亲自跑一遍样例命令，确认能交付。",
+              "boundaries": "不访问网络；不读工作区外；不从空白独写交付物。"
+            }
+          ]
+        },
+        "coordinator": {
+          "bot": {
+            "name": "Coordinator",
+            "duties": "协调人，不是执笔。按用户的要求在名册上找齐或新建队友、开群；群里有人卡住时帮大家理清下一步。",
+            "boundaries": "不自己写交付物；除人设职责外不指定谁做哪一步；不访问网络；不读工作区外。"
+          },
+          "message": "请先读工作区根目录的 `brief.md`，了解这次要做什么。然后在名册上建这三位队友（名册里已经有同名的就直接用，不要建重名的）：\n- Developer：按需求实现命令行工具和 README，修复同事报告的问题；只用 Bun 自带能力，不装第三方包，不访问网络，不读工作区外。\n- Tester：按需求写测试并真的跑一遍，把失败和不符合需求的地方报给同事；不访问网络，不读工作区外，不替写实现的同事包办实现。\n- Reviewer：对照需求检查用法、输出格式和出错处理，照 README 亲自跑一遍样例命令，确认能交付；不访问网络，不读工作区外，不从空白独写交付物。\n再开一个群，把他们三位和你自己拉进去。群开好后在这里告诉我群名就行，任务我会自己发到群里；你先不要在群里布置任务，也不要指定谁做哪一步。"
+        }
+      }
+    }
+  ]
+}

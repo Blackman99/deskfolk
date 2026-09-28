@@ -1,0 +1,652 @@
+/**
+ * One benchmark run: an isolated runtime in this process (own data dir under the output folder,
+ * own free port, in-memory keystore, never the Keychain), the endpoint configured through the
+ * local API, the team formed the way the setup says, your one line posted in the group, then
+ * waiting until the job settles (see `settle.ts`) while answering approvals and questions the way
+ * `--approvals` says and counting them. Then the runtime stops, the checks run, the judge reads
+ * the delivery, and the run's numbers come back.
+ *
+ * The workspace lives in a temporary folder outside any repository while the team works — a Bot
+ * running `git` in it must not find yours — and is copied next to the data afterwards, with the
+ * kept database pointed at the copy so `eval:goal-coverage --db` can re-judge it later.
+ */
+import { Database } from "bun:sqlite";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, relative } from "node:path";
+import { USER_MEMBER, type Approval, type Message } from "@real-bot/protocol";
+import { deliveryExcerpt } from "../../src/closing-check";
+import type { CompletionsClient } from "../../src/completions";
+import { stateDbPath } from "../../src/descriptor";
+import { COVERAGE_EXCERPT_LIMIT, goalCoveragePayload, type CoveragePayload } from "../../src/goal-coverage-eval";
+import { ORGANIZER_SETTLE_TIMEOUT_MS, SETTLE_QUIET_MS } from "../../src/organizer";
+import { startRuntime, type RuntimeHandle } from "../../src/runtime";
+import { memoryKeyStore } from "../../src/secrets";
+import type { Store } from "../../src/store";
+import { judgeCoverage, lastBotWords } from "../goal-coverage-judge";
+import { runChecks } from "./checks";
+import { htmlForJudge, isAppFile, judgedFiles } from "./deliveries";
+import { countInterventions, endedStalled, STALLED_PLAN, type Interventions } from "./interventions";
+import { isCompleted, type RunOutcome, type RunResult, type RunStats } from "./report";
+import { settleVerdict, type PlanSettleState, type SettleSnapshot, type SettleTiming } from "./settle";
+import { seedDir, type GoldenTask, type LoadedTaskSet, type Setup } from "./tasks";
+
+export const TIMING: SettleTiming = {
+  quietMs: 15_000,
+  stableMs: 5_000,
+  settleQuietMs: SETTLE_QUIET_MS,
+  settleGraceMs: 3_000,
+  organizerTimeoutMs: ORGANIZER_SETTLE_TIMEOUT_MS + 15_000,
+};
+const POLL_MS = 2_000;
+const PROGRESS_MS = 30_000;
+/** The group is ready once it exists and nothing has moved for this long. */
+const TEAM_QUIET_MS = 5_000;
+/** How long the Coordinator gets to hire and open the group, within the run's own budget. */
+const TEAM_BUDGET_MS = 10 * 60_000;
+const MAX_JUDGED_FILES = 16;
+const MAX_LISTED_FILES = 200;
+const HTML_READ_BYTES = 256 * 1024;
+const LIVE = "('running', 'waiting_approval', 'waiting_ask')";
+
+/** What you say when a Bot asks you something mid-run. Each answer still counts as an intervention. */
+export const AUTO_ANSWER = "你们按自己的判断定就行，不用等我。";
+export const AUTO_ANSWER_PICKED = "按推荐的来，后面的也按你们的判断定，不用等我。";
+
+export type RunOptions = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  judgeModel: string;
+  timeoutMs: number;
+  judgeTimeoutMs: number;
+  approvals: "allow-once" | "deny";
+  minPass: number;
+  price: { input: number; output: number; cached_input?: number } | null;
+  client: CompletionsClient;
+  aborted: () => boolean;
+  log: (line: string) => void;
+};
+
+type Api = <T = unknown>(method: string, path: string, body?: unknown) => Promise<T>;
+
+function apiFor(handle: RuntimeHandle): Api {
+  return async <T,>(method: string, path: string, body?: unknown): Promise<T> => {
+    const res = await fetch(`${handle.origin}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${handle.token}`, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${(await res.text()).slice(0, 300)}`);
+    return (res.status === 204 ? null : await res.json()) as T;
+  };
+}
+
+const ms = (iso: string | null | undefined): number | null => (iso ? Date.parse(iso) : null);
+const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+function listFiles(root: string, dir = ""): string[] {
+  const out: string[] = [];
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(join(root, dir), { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const rel = dir ? `${dir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+      out.push(...listFiles(root, rel));
+    } else if (entry.isFile()) {
+      out.push(rel);
+    }
+  }
+  return out.sort();
+}
+
+function fileContains(dir: string, needle: string): boolean {
+  if (needle.length < 12 || !existsSync(dir)) return false;
+  for (const rel of listFiles(dir)) {
+    try {
+      if (readFileSync(join(dir, rel)).includes(needle)) return true;
+    } catch {
+      // unreadable: nothing of ours in it
+    }
+  }
+  return false;
+}
+
+async function configure(api: Api, workspace: string, opts: RunOptions): Promise<void> {
+  const entry: { name: string; thinking_levels?: string[]; pricing?: RunOptions["price"] } = { name: opts.model };
+  try {
+    const probed = await api<{ catalog: Array<{ name: string; thinking_levels: string[] }> }>("POST", "/v1/models/probe", {
+      endpoint_base_url: opts.baseUrl,
+      endpoint_api_key: opts.apiKey,
+    });
+    const hit = probed.catalog.find((row) => row.name === opts.model);
+    if (!hit) opts.log(`  the endpoint's /models does not list ${opts.model}; using it anyway`);
+    else if (hit.thinking_levels.length > 0) entry.thinking_levels = hit.thinking_levels;
+  } catch (error) {
+    opts.log(`  could not list the endpoint's models (${errorText(error)}); thinking levels fall back to the app's defaults`);
+  }
+  if (opts.price) entry.pricing = opts.price;
+  await api("PATCH", "/v1/settings", {
+    workspace_path: workspace,
+    endpoint_base_url: opts.baseUrl,
+    endpoint_api_key: opts.apiKey,
+    endpoint_models: [entry],
+    endpoint_default_model: opts.model,
+    locale: "zh",
+  });
+}
+
+/** Approvals and questions, answered the way a human at the keyboard would under `--approvals`. */
+type Pump = { handled: Set<string>; blockedTurns: Set<string> };
+
+async function pump(store: Store, api: Api, state: Pump, opts: RunOptions, label: string): Promise<void> {
+  for (const approval of store.listApprovals("pending") as Approval[]) {
+    if (state.handled.has(approval.id)) continue;
+    state.handled.add(approval.id);
+    // A card that wants a key is never given one: the run has no key to hand a Bot.
+    const action = opts.approvals === "allow-once" && !approval.requires_api_key ? "allow_once" : "deny";
+    try {
+      await api("POST", `/v1/approvals/${approval.id}/resolve`, { action });
+      opts.log(`[${label}] approval ${approval.kind_key ?? "?"} (${(approval.summary ?? "").slice(0, 80)}) → ${action}`);
+    } catch (error) {
+      state.blockedTurns.add(approval.turn_id);
+      opts.log(`[${label}] could not answer approval ${approval.id}: ${errorText(error)}`);
+    }
+  }
+  const waiting = store.db
+    .query<{ id: string; pending_ask_id: string }, []>(
+      `SELECT id, pending_ask_id FROM turns WHERE status = 'waiting_ask' AND pending_ask_id IS NOT NULL`,
+    )
+    .all();
+  for (const turn of waiting) {
+    if (state.handled.has(turn.pending_ask_id)) continue;
+    state.handled.add(turn.pending_ask_id);
+    let ask: Message;
+    try {
+      ask = store.getMessage(turn.pending_ask_id);
+    } catch {
+      continue;
+    }
+    const first = ask.ask?.options?.[0]?.label;
+    const answer = first ? { selected: [first], custom: AUTO_ANSWER_PICKED } : { custom: AUTO_ANSWER };
+    try {
+      await api("POST", `/v1/messages/${ask.id}/answer`, answer);
+      opts.log(`[${label}] question "${ask.body.replace(/\s+/g, " ").slice(0, 80)}" → ${first ? `picked "${first}"` : "told them to decide"}`);
+    } catch (error) {
+      state.blockedTurns.add(turn.id);
+      opts.log(`[${label}] could not answer question ${ask.id}: ${errorText(error)}`);
+    }
+  }
+}
+
+function scalar<T>(store: Store, sql: string, ...params: Array<string | number>): T | null {
+  const row = store.db.query<{ v: T | null }, Array<string | number>>(sql).get(...params);
+  return row?.v ?? null;
+}
+
+async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: string; stableSince: number }, deadlineMs: number): Promise<SettleSnapshot> {
+  const now = Date.now();
+  const live = store.db.query<{ id: string }, []>(`SELECT id FROM turns WHERE status IN ${LIVE}`).all();
+  let pendingJudgements = 0;
+  try {
+    const sessions = await api<{ items: Array<{ pending_judgements?: unknown[] }> }>("GET", "/v1/sessions");
+    pendingJudgements = sessions.items.reduce((n, s) => n + (s.pending_judgements?.length ?? 0), 0);
+  } catch {
+    pendingJudgements = 1; // unknown reads as busy
+  }
+  const checkBackDueMs = store.db
+    .query<{ due_at: string }, []>(`SELECT due_at FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL`)
+    .all()
+    .map((row) => Date.parse(row.due_at));
+  const lastActivity = scalar<string>(
+    store,
+    `SELECT MAX(at) AS v FROM (
+       SELECT MAX(updated_at) AS at FROM turns
+       UNION ALL SELECT MAX(created_at) FROM messages
+       UNION ALL SELECT MAX(created_at) FROM spend
+       UNION ALL SELECT MAX(MAX(created_at, COALESCE(fired_at, ''), COALESCE(voided_at, ''))) FROM check_backs
+     )`,
+  );
+  const fingerprint = [
+    scalar<string>(
+      store,
+      `SELECT (SELECT COUNT(*) FROM turns) || '|' || (SELECT COUNT(*) FROM messages) || '|' || (SELECT COUNT(*) FROM spend)
+         || '|' || (SELECT COUNT(*) FROM check_backs) || '|' || (SELECT COUNT(*) FROM judgements)
+         || '|' || (SELECT COUNT(*) FROM task_spec_revisions) || '|' || COALESCE((SELECT MAX(updated_at) FROM turns), '')
+         || '|' || COALESCE((SELECT MAX(updated_at) FROM tickets), '') AS v`,
+    ),
+    live.length,
+    pendingJudgements,
+  ].join("|");
+  if (fingerprint !== state.fingerprint) {
+    state.fingerprint = fingerprint;
+    state.stableSince = now;
+  }
+  const plans: PlanSettleState[] = store.db
+    .query<{ id: string; session_id: string }, []>(
+      `SELECT DISTINCT t.id, t.session_id FROM tasks t JOIN turns u ON u.task_id = t.id WHERE t.session_id IS NOT NULL`,
+    )
+    .all()
+    .map((plan) => {
+      const since = store.lastSpecRevisionAt(plan.id);
+      return {
+        id: plan.id,
+        lastTurnEndMs: ms(scalar<string>(store, `SELECT MAX(updated_at) AS v FROM turns WHERE task_id = ? AND status NOT IN ${LIVE}`, plan.id)),
+        needsFiling: store.taskMessagesSince(plan.id, since, 1).length > 0 || store.taskArtifactsSince(plan.id, since, 1).length > 0,
+        organizedAtMs: ms(scalar<string>(store, `SELECT MAX(created_at) AS v FROM spend WHERE kind = 'organize' AND session_id = ?`, plan.session_id)),
+      };
+    });
+  return {
+    nowMs: now,
+    deadlineMs,
+    liveTurns: live.length,
+    blockedTurns: live.filter((turn) => state.blockedTurns.has(turn.id)).length,
+    pendingJudgements,
+    checkBackDueMs,
+    lastActivityMs: ms(lastActivity) ?? now,
+    stableSinceMs: state.stableSince,
+    plans,
+  };
+}
+
+/** The group the Coordinator opened and sits in: the one with the most Bots, newest first. */
+function coordinatorGroup(store: Store, botId: string): { id: string; name: string | null } | null {
+  return (
+    store.db
+      .query<{ id: string; name: string | null }, [string, string]>(
+        `SELECT s.id, s.name FROM sessions s
+         JOIN session_participants p ON p.session_id = s.id AND p.member = ? AND p.left_at IS NULL
+         WHERE s.kind = 'group' AND s.archived_at IS NULL
+         ORDER BY (SELECT COUNT(*) FROM session_participants q WHERE q.session_id = s.id AND q.left_at IS NULL AND q.member != ?) DESC,
+                  s.created_at DESC
+         LIMIT 1`,
+      )
+      .get(botId, USER_MEMBER) ?? null
+  );
+}
+
+type Waited = { outcome: RunOutcome; detail: string | null; endedAtMs: number };
+
+type Team =
+  | { ok: true; startedAtMs: number; groupId: string; taskMessageId: string; teamMs: number | null }
+  | { ok: false; startedAtMs: number; waited: Waited };
+
+async function formTeam(
+  handle: RuntimeHandle,
+  api: Api,
+  state: Pump & { fingerprint: string; stableSince: number },
+  task: GoldenTask,
+  setup: Setup,
+  opts: RunOptions,
+  label: string,
+): Promise<Team> {
+  if (setup === "manual") {
+    const ids: string[] = [];
+    for (const profile of task.setups.manual.bots) {
+      ids.push((await api<{ bot: { id: string } }>("POST", "/v1/bots", profile)).bot.id);
+    }
+    const group = await api<{ id: string }>("POST", "/v1/sessions", { name: task.setups.manual.group, members: ids });
+    const startedAtMs = Date.now();
+    const posted = await api<{ id: string }>("POST", `/v1/sessions/${group.id}/messages`, { body: task.message });
+    opts.log(`[${label}] group ${task.setups.manual.group} with ${task.setups.manual.bots.map((b) => b.name).join(", ")}; task posted`);
+    return { ok: true, startedAtMs, groupId: group.id, taskMessageId: posted.id, teamMs: null };
+  }
+  const lead = await api<{ bot: { id: string }; direct_session: { id: string } }>("POST", "/v1/bots", task.setups.coordinator.bot);
+  const startedAtMs = Date.now();
+  await api("POST", `/v1/sessions/${lead.direct_session.id}/messages`, { body: task.setups.coordinator.message });
+  opts.log(`[${label}] asked ${task.setups.coordinator.bot.name} to hire the team and open a group`);
+  const deadlineMs = startedAtMs + opts.timeoutMs;
+  const teamDeadlineMs = Math.min(deadlineMs, startedAtMs + TEAM_BUDGET_MS);
+  for (;;) {
+    if (opts.aborted()) return { ok: false, startedAtMs, waited: { outcome: "aborted", detail: "interrupted while the team was forming", endedAtMs: Date.now() } };
+    await pump(handle.store, api, state, opts, label);
+    const snap = await snapshot(handle.store, api, state, deadlineMs);
+    const group = coordinatorGroup(handle.store, lead.bot.id);
+    const quiet =
+      snap.liveTurns === 0 &&
+      snap.pendingJudgements === 0 &&
+      snap.nowMs - snap.stableSinceMs >= TEAM_QUIET_MS &&
+      snap.nowMs - snap.lastActivityMs >= TEAM_QUIET_MS;
+    if (group && (quiet || snap.nowMs >= teamDeadlineMs)) {
+      const posted = await api<{ id: string }>("POST", `/v1/sessions/${group.id}/messages`, { body: task.message });
+      const teamMs = Date.now() - startedAtMs;
+      opts.log(`[${label}] ${task.setups.coordinator.bot.name} opened ${group.name ?? group.id} in ${Math.round(teamMs / 1000)}s; task posted`);
+      return { ok: true, startedAtMs, groupId: group.id, taskMessageId: posted.id, teamMs };
+    }
+    if (!group) {
+      const verdict = settleVerdict(snap, TIMING);
+      if (verdict.state !== "busy") {
+        return { ok: false, startedAtMs, waited: { outcome: "setup_failed", detail: `${task.setups.coordinator.bot.name} settled without opening a group it is in`, endedAtMs: snap.lastActivityMs } };
+      }
+      if (snap.nowMs >= teamDeadlineMs) {
+        return { ok: false, startedAtMs, waited: { outcome: "setup_failed", detail: `no group after ${Math.round((snap.nowMs - startedAtMs) / 60_000)} min`, endedAtMs: snap.nowMs } };
+      }
+    }
+    await Bun.sleep(POLL_MS);
+  }
+}
+
+async function waitSettled(
+  handle: RuntimeHandle,
+  api: Api,
+  state: Pump & { fingerprint: string; stableSince: number },
+  deadlineMs: number,
+  opts: RunOptions,
+  label: string,
+): Promise<Waited> {
+  let lastProgress = Date.now();
+  for (;;) {
+    if (opts.aborted()) return { outcome: "aborted", detail: "interrupted", endedAtMs: Date.now() };
+    await pump(handle.store, api, state, opts, label);
+    const snap = await snapshot(handle.store, api, state, deadlineMs);
+    const verdict = settleVerdict(snap, TIMING);
+    if (verdict.state === "settled") return { outcome: "settled", detail: null, endedAtMs: snap.lastActivityMs };
+    if (verdict.state === "blocked") return { outcome: "blocked_on_user", detail: verdict.waitingOn.join("; "), endedAtMs: snap.lastActivityMs };
+    if (snap.nowMs >= deadlineMs) return { outcome: "timeout", detail: `still ${verdict.waitingOn.join("; ")}`, endedAtMs: deadlineMs };
+    if (snap.nowMs - lastProgress >= PROGRESS_MS) {
+      lastProgress = snap.nowMs;
+      const turns = scalar<number>(handle.store, `SELECT COUNT(*) AS v FROM turns`) ?? 0;
+      opts.log(`[${label}] ${Math.round((snap.nowMs - (deadlineMs - opts.timeoutMs)) / 1000)}s: ${turns} turn(s) so far; waiting on ${verdict.waitingOn.join("; ")}`);
+    }
+    await Bun.sleep(POLL_MS);
+  }
+}
+
+type Collected = {
+  plan: RunResult["plan"];
+  planId: string | null;
+  endedStalled: boolean;
+  team: RunResult["team"];
+  interventions: Interventions;
+  stats: RunStats;
+  cited: string[];
+  finalMessages: Array<{ author: string; body: string }>;
+  pendingCheckBacks: number;
+};
+
+function nameOf(store: Store, id: string | null): string | null {
+  if (!id) return null;
+  try {
+    return store.getBot(id).name;
+  } catch {
+    return id;
+  }
+}
+
+function collect(store: Store, groupId: string | null, taskMessageId: string | null, workspace: string): Collected {
+  let planId: string | null = null;
+  if (taskMessageId) {
+    try {
+      planId = store.getMessage(taskMessageId).task_id ?? null;
+    } catch {
+      planId = null;
+    }
+  }
+  let plan: RunResult["plan"] = null;
+  let stalled = false;
+  let cited: string[] = [];
+  if (planId) {
+    const task = store.getTask(planId);
+    plan = {
+      id: task.id,
+      title: task.title,
+      dir: task.dir,
+      status: task.status,
+      tickets: store.listTickets(planId).map((ticket) => ({ seq: ticket.seq, title: ticket.title, status: ticket.status, worker: nameOf(store, ticket.worker) })),
+    };
+    const stalls = store.db
+      .query<{ created_at: string }, [string, string]>(
+        `SELECT n.created_at FROM notifications n JOIN messages m ON m.id = n.message_id
+         WHERE n.kind = 'failure' AND n.fail_kind = ? AND m.task_id = ?`,
+      )
+      .all(STALLED_PLAN, planId)
+      .map((row) => row.created_at);
+    stalled = endedStalled(stalls, scalar<string>(store, `SELECT MAX(updated_at) AS v FROM turns WHERE task_id = ?`, planId));
+    cited = store.taskArtifacts(planId, (path) => existsSync(join(workspace, path))).map((row) => row.path);
+  } else if (groupId) {
+    cited = store.db
+      .query<{ path: string }, [string]>(
+        `SELECT DISTINCT a.workspace_relpath AS path FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.session_id = ?`,
+      )
+      .all(groupId)
+      .map((row) => row.path);
+  }
+  const group = groupId ? store.db.query<{ name: string | null }, [string]>(`SELECT name FROM sessions WHERE id = ?`).get(groupId) : null;
+  const speakers = groupId
+    ? Object.fromEntries(
+        store.db
+          .query<{ author: string; n: number }, [string]>(
+            `SELECT author, COUNT(*) AS n FROM messages WHERE session_id = ? AND kind = 'bot' GROUP BY author ORDER BY n DESC`,
+          )
+          .all(groupId)
+          .map((row) => [nameOf(store, row.author) ?? row.author, row.n]),
+      )
+    : {};
+  const interventions = countInterventions({
+    approvals: store.db.query<{ status: string; kind_key: string | null }, []>(`SELECT status, kind_key FROM approvals`).all(),
+    asks: store.db.query<{ id: string }, []>(`SELECT id FROM messages WHERE kind = 'ask'`).all(),
+    notifications: store.db.query<{ kind: string; fail_kind: string | null }, []>(`SELECT kind, fail_kind FROM notifications`).all(),
+    checkBacks: store.db.query<{ kind: string | null }, []>(`SELECT kind FROM check_backs`).all(),
+    routes: store.db.query<{ outcome: string | null }, []>(`SELECT outcome FROM turn_route_decisions`).all(),
+    turns: store.db.query<{ status: string }, []>(`SELECT status FROM turns`).all(),
+  });
+  const work = store.db
+    .query<{ hops: number | null; tool_calls: number | null; tool_errors: number | null }, []>(
+      `SELECT SUM(hops) AS hops, SUM(tool_calls) AS tool_calls, SUM(tool_errors) AS tool_errors FROM turn_route_decisions`,
+    )
+    .get();
+  const spend = store.db
+    .query<{ n: number; input: number | null; output: number | null; reported: number | null; estimated: number | null }, []>(
+      `SELECT COUNT(*) AS n, SUM(input_tokens) AS input, SUM(output_tokens) AS output,
+              SUM(cost_usd_ticks) AS reported, SUM(estimated_cost_usd_ticks) AS estimated FROM spend`,
+    )
+    .get();
+  const ticks = spend && (spend.reported !== null || spend.estimated !== null) ? (spend.reported ?? 0) + (spend.estimated ?? 0) : null;
+  return {
+    plan,
+    planId,
+    endedStalled: stalled,
+    team: { group_id: groupId, group_name: group?.name ?? null, bots: store.listBots().map((bot) => bot.name), speakers },
+    interventions,
+    stats: {
+      turns: scalar<number>(store, `SELECT COUNT(*) AS v FROM turns`) ?? 0,
+      hops: work?.hops ?? 0,
+      tool_calls: work?.tool_calls ?? 0,
+      tool_errors: work?.tool_errors ?? 0,
+      messages: scalar<number>(store, `SELECT COUNT(*) AS v FROM messages WHERE kind IN ('user', 'bot', 'ask')`) ?? 0,
+      spend_rows: spend?.n ?? 0,
+      input_tokens: spend?.input ?? 0,
+      output_tokens: spend?.output ?? 0,
+      cost_usd: ticks === null ? null : ticks / 1e10,
+      judge_input_tokens: null,
+      judge_output_tokens: null,
+    },
+    cited,
+    finalMessages: planId ? lastBotWords(store, { taskId: planId }) : groupId ? lastBotWords(store, { sessionId: groupId }) : [],
+    pendingCheckBacks: scalar<number>(store, `SELECT COUNT(*) AS v FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL`) ?? 0,
+  };
+}
+
+function excerptForJudge(workspace: string, rel: string): string | null {
+  if (/\.html?$/i.test(rel)) {
+    try {
+      const raw = readFileSync(join(workspace, rel));
+      return htmlForJudge(raw.subarray(0, HTML_READ_BYTES).toString("utf8"));
+    } catch {
+      return null;
+    }
+  }
+  // One past the judge's limit, so the payload marks a long file as cut.
+  return deliveryExcerpt(workspace, rel, COVERAGE_EXCERPT_LIMIT + 1).excerpt;
+}
+
+function judgePayload(loaded: LoadedTaskSet, task: GoldenTask, workspace: string, collected: Collected): CoveragePayload {
+  const brief = readFileSync(join(seedDir(loaded, task), task.brief), "utf8");
+  const files = judgedFiles({
+    deliverables: task.deliverables,
+    cited: collected.cited,
+    exists: (path) => existsSync(join(workspace, path)) && statSync(join(workspace, path)).isFile(),
+    limit: MAX_JUDGED_FILES,
+  });
+  return goalCoveragePayload({
+    brief: `${task.message}\n\n——以下是 ${task.brief} 的原文——\n${brief}`,
+    plan: { goal: task.goal, acceptance: task.acceptance, rules: task.rules },
+    deliveries: files.map((path) => ({ path, excerpt: excerptForJudge(workspace, path) })),
+    finalMessages: collected.finalMessages,
+  });
+}
+
+/** The kept database points at the kept copy of the workspace, not the temporary one. */
+function relocateWorkspace(dataDir: string, workspace: string): void {
+  const db = new Database(stateDbPath(dataDir));
+  try {
+    db.run(`UPDATE settings SET value = ? WHERE key = 'workspace_path'`, [workspace]);
+  } finally {
+    db.close();
+  }
+}
+
+const EMPTY_INTERVENTIONS: Interventions = {
+  total: 0,
+  approvals: 0,
+  approval_kinds: {},
+  asks: 0,
+  stalls: 0,
+  plan_nudges: 0,
+  turn_failures: 0,
+  interrupted: 0,
+};
+
+const EMPTY_STATS: RunStats = {
+  turns: 0,
+  hops: 0,
+  tool_calls: 0,
+  tool_errors: 0,
+  messages: 0,
+  spend_rows: 0,
+  input_tokens: 0,
+  output_tokens: 0,
+  cost_usd: null,
+  judge_input_tokens: null,
+  judge_output_tokens: null,
+};
+
+export async function runOnce(input: {
+  loaded: LoadedTaskSet;
+  task: GoldenTask;
+  setup: Setup;
+  index: number;
+  outDir: string;
+  opts: RunOptions;
+}): Promise<RunResult> {
+  const { loaded, task, setup, index, outDir, opts } = input;
+  const label = `${task.id}/${setup}#${index}`;
+  const runDir = join(outDir, "runs", `${task.id}--${setup}--${index}`);
+  const dataDir = join(runDir, "data");
+  mkdirSync(dataDir, { recursive: true });
+  const scratch = mkdtempSync(join(tmpdir(), "deskfolk-golden-path-"));
+  const workspace = join(scratch, "workspace");
+  cpSync(seedDir(loaded, task), workspace, { recursive: true });
+  const seeded = new Set(listFiles(workspace));
+
+  let outcome: RunOutcome = "error";
+  let detail: string | null = null;
+  let startedAtMs = Date.now();
+  let endedAtMs = startedAtMs;
+  let teamMs: number | null = null;
+  let collected: Collected | null = null;
+  let handle: RuntimeHandle | null = null;
+  try {
+    // Scheduler on: it is what fires the check-backs Bots book, and seeing a job through relies on them.
+    handle = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: memoryKeyStore(), schedule: true, supervisor: "none" });
+    const api = apiFor(handle);
+    await configure(api, workspace, opts);
+    const state = { handled: new Set<string>(), blockedTurns: new Set<string>(), fingerprint: "", stableSince: Date.now() };
+    const team = await formTeam(handle, api, state, task, setup, opts, label);
+    startedAtMs = team.startedAtMs;
+    let groupId: string | null = null;
+    let taskMessageId: string | null = null;
+    if (!team.ok) {
+      ({ outcome, detail, endedAtMs } = team.waited);
+    } else {
+      groupId = team.groupId;
+      taskMessageId = team.taskMessageId;
+      teamMs = team.teamMs;
+      ({ outcome, detail, endedAtMs } = await waitSettled(handle, api, state, startedAtMs + opts.timeoutMs, opts, label));
+    }
+    collected = collect(handle.store, groupId, taskMessageId, workspace);
+    if (outcome === "settled" && collected.endedStalled) {
+      outcome = "blocked_on_user";
+      detail = "the app told you the plan stopped with tickets open, and nothing moved after";
+    }
+  } catch (error) {
+    outcome = "error";
+    detail = errorText(error);
+    endedAtMs = Date.now();
+    opts.log(`[${label}] error: ${detail}`);
+  } finally {
+    try {
+      await handle?.stop();
+    } catch (error) {
+      opts.log(`[${label}] runtime did not stop cleanly: ${errorText(error)}`);
+    }
+  }
+
+  const checks = runChecks(task, workspace);
+  const payload = collected && outcome !== "setup_failed" && outcome !== "aborted" ? judgePayload(loaded, task, workspace, collected) : null;
+  const written = listFiles(workspace).filter((path) => !seeded.has(path) && !isAppFile(path));
+  const kept = join(runDir, "workspace");
+  cpSync(workspace, kept, { recursive: true, filter: (source) => basename(source) !== "node_modules" });
+  rmSync(scratch, { recursive: true, force: true });
+  try {
+    relocateWorkspace(dataDir, kept);
+  } catch (error) {
+    opts.log(`[${label}] could not point the kept database at the kept workspace: ${errorText(error)}`);
+  }
+  const keyLeak = fileContains(dataDir, opts.apiKey) || fileContains(kept, opts.apiKey);
+  if (keyLeak) opts.log(`[${label}] WARNING: the endpoint key appears in ${runDir}; delete that folder`);
+
+  let verdict: Awaited<ReturnType<typeof judgeCoverage>> | null = null;
+  if (payload) {
+    opts.log(`[${label}] judging with ${opts.judgeModel} (${payload.deliveries.length} file(s))`);
+    verdict = await judgeCoverage({ client: opts.client, baseUrl: opts.baseUrl, apiKey: opts.apiKey, model: opts.judgeModel, timeoutMs: opts.judgeTimeoutMs, payload });
+  }
+  const stats: RunStats = {
+    ...(collected?.stats ?? EMPTY_STATS),
+    judge_input_tokens: verdict?.usage?.input_tokens ?? null,
+    judge_output_tokens: verdict?.usage?.output_tokens ?? null,
+  };
+  const checksOk = checks.every((check) => check.ok);
+  const score = verdict?.score ?? null;
+  const result: RunResult = {
+    task: task.id,
+    title: task.title,
+    setup,
+    run: index,
+    outcome,
+    outcome_detail: detail,
+    completed: false,
+    wall_ms: Math.max(0, endedAtMs - startedAtMs),
+    team_ms: teamMs,
+    team: collected?.team ?? { group_id: null, group_name: null, bots: [], speakers: {} },
+    plan: collected?.plan ?? null,
+    coverage: verdict?.coverage ?? null,
+    score,
+    judge_error: payload ? (verdict?.error ?? null) : outcome === "setup_failed" ? "no team, nothing to judge" : outcome === "aborted" ? "aborted" : "nothing collected",
+    checks,
+    checks_ok: checksOk,
+    interventions: collected?.interventions ?? EMPTY_INTERVENTIONS,
+    stats,
+    files: { cited: collected?.cited ?? [], written: written.slice(0, MAX_LISTED_FILES) },
+    pending_check_backs: collected?.pendingCheckBacks ?? 0,
+    run_dir: relative(outDir, runDir),
+    key_leak: keyLeak,
+  };
+  result.completed = isCompleted(result, opts.minPass);
+  return result;
+}

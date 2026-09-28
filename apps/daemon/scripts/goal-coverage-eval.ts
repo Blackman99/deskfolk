@@ -17,21 +17,18 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { APP_SUPPORT_DIRNAME, STATE_DB_NAME, USER_MEMBER } from "@real-bot/protocol";
+import { APP_SUPPORT_DIRNAME, STATE_DB_NAME } from "@real-bot/protocol";
 import { deliveryExcerpt } from "../src/closing-check";
 import { createCompletionsClient } from "../src/completions";
 import {
-  coverageScore,
   formatCoverageReport,
-  GOAL_COVERAGE_SYSTEM,
   goalCoveragePayload,
-  parseGoalCoverage,
   COVERAGE_EXCERPT_LIMIT,
-  COVERAGE_MESSAGES,
   type GoalCoverage,
 } from "../src/goal-coverage-eval";
 import { memoryKeyStore } from "../src/secrets";
 import { parsePlanSpec, Store, type Task } from "../src/store";
+import { judgeCoverage, lastBotWords } from "./goal-coverage-judge";
 
 type Options = {
   baseUrl: string;
@@ -179,27 +176,6 @@ function selectTasks(store: Store, opts: Options): Task[] {
   throw new Error("pick jobs with --task, --session or --latest");
 }
 
-function lastWords(store: Store, taskId: string): Array<{ author: string; body: string }> {
-  const rows = store.db
-    .query<{ author: string; body: string }, [string, number]>(
-      `SELECT author, body FROM messages WHERE task_id = ? AND kind = 'bot'
-       ORDER BY created_at DESC, id DESC LIMIT ?`,
-    )
-    .all(taskId, COVERAGE_MESSAGES)
-    .reverse();
-  return rows.map((row) => {
-    let author = row.author;
-    if (row.author !== USER_MEMBER) {
-      try {
-        author = store.getBot(row.author).name;
-      } catch {
-        author = row.author;
-      }
-    }
-    return { author, body: row.body };
-  });
-}
-
 async function main(): Promise<number> {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
@@ -242,42 +218,18 @@ async function main(): Promise<number> {
         brief,
         plan: spec ? { goal: spec.goal, acceptance: spec.acceptance, rules: spec.rules } : null,
         deliveries,
-        finalMessages: lastWords(store, task.id),
+        finalMessages: lastBotWords(store, { taskId: task.id }),
       });
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), opts.timeoutMs * 3);
-      let raw: string | null = null;
-      let error: string | null = null;
-      try {
-        const answer = await client.judge({
-          baseUrl: opts.baseUrl,
-          apiKey,
-          model: opts.model,
-          messages: [
-            { role: "system", content: GOAL_COVERAGE_SYSTEM },
-            { role: "user", content: JSON.stringify(payload) },
-          ],
-          signal: controller.signal,
-          timeoutMs: opts.timeoutMs,
-        });
-        if (answer.failKind && answer.failKind !== "incomplete") error = `completion failed: ${answer.failKind}`;
-        raw = answer.content;
-      } catch (caught) {
-        error = caught instanceof Error ? caught.message : String(caught);
-      } finally {
-        clearTimeout(timer);
-      }
-      const coverage = raw ? parseGoalCoverage(raw) : null;
-      if (!coverage && !error) error = "the judge did not answer in the expected shape";
+      const verdict = await judgeCoverage({ client, baseUrl: opts.baseUrl, apiKey, model: opts.model, timeoutMs: opts.timeoutMs, payload });
       results.push({
         task_id: task.id,
         title: task.title,
         dir: task.dir,
         brief,
         goal,
-        coverage,
-        score: coverage ? coverageScore(coverage) : null,
-        error,
+        coverage: verdict.coverage,
+        score: verdict.score,
+        error: verdict.error,
       });
     }
   } finally {
