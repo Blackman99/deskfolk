@@ -106,7 +106,9 @@ export function conptyBuildPlan(triple: string, nativeDir: string): ConptyBuildP
   return {
     manifestPath,
     args: ["cargo", "build", "--release", "--manifest-path", manifestPath, "--target", triple],
-    builtPath: resolve("apps/conpty-helper/target", triple, "release/real-bot-pty.exe"),
+    // Left relative on purpose: `resolve` here would anchor it to the cwd pnpm runs this script
+    // in (`apps/desktop`), not the repo root the caller joins it onto.
+    builtPath: `apps/conpty-helper/target/${triple}/release/real-bot-pty.exe`,
     destPath: resolve(nativeDir, "real-bot-pty.exe"),
   };
 }

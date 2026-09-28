@@ -6,6 +6,7 @@
 //! wires them to real Win32 objects.
 
 use crate::cli;
+use crate::handshake::{self, CursorHandshake};
 use crate::protocol::{self, ControlEvent};
 use crate::signal::{self, SignalAction};
 
@@ -170,6 +171,9 @@ pub fn run() -> ! {
         .master
         .take_writer()
         .unwrap_or_else(|err| fail_internal(&format!("could not open a writer on the pty: {err}")));
+    // Shared: the output thread writes the handshake's answer into the same input the daemon's
+    // keystrokes go to.
+    let writer = Arc::new(Mutex::new(writer));
     let master: Arc<Mutex<Option<Box<dyn MasterPty + Send>>>> = Arc::new(Mutex::new(Some(pair.master)));
 
     // Thread 1: pty output -> stdout, unframed, byte for byte, flushed after every read so the
@@ -177,14 +181,25 @@ pub fn run() -> ! {
     let (output_done, output_finished) = std::sync::mpsc::channel::<()>();
     {
         let mut reader = reader;
+        let writer = Arc::clone(&writer);
         std::thread::spawn(move || {
             let mut stdout = io::stdout();
             let mut buffer = [0u8; 8192];
+            let mut handshake = CursorHandshake::new();
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) => break,
                     Ok(n) => {
-                        if stdout.write_all(&buffer[..n]).is_err() {
+                        let (forward, reply) = handshake.filter(&buffer[..n]);
+                        if reply {
+                            let mut writer = writer.lock().unwrap();
+                            let _ = writer.write_all(handshake::REPLY);
+                            let _ = writer.flush();
+                        }
+                        if forward.is_empty() {
+                            continue;
+                        }
+                        if stdout.write_all(&forward).is_err() {
                             break;
                         }
                         let _ = stdout.flush();
@@ -205,13 +220,14 @@ pub fn run() -> ! {
     // nothing to deadlock on.
     {
         let master = Arc::clone(&master);
-        let mut writer = writer;
+        let writer = Arc::clone(&writer);
         std::thread::spawn(move || {
             let mut stdin = io::stdin().lock();
             loop {
                 let event = protocol::read_event(&mut stdin).unwrap_or(ControlEvent::EndOfStream);
                 match event {
                     ControlEvent::Input(bytes) => {
+                        let mut writer = writer.lock().unwrap();
                         let _ = writer.write_all(&bytes);
                         let _ = writer.flush();
                     }
@@ -222,6 +238,7 @@ pub fn run() -> ! {
                     }
                     ControlEvent::Signal(signo) => match signal::windows_action(signo) {
                         SignalAction::WriteByte(byte) => {
+                            let mut writer = writer.lock().unwrap();
                             let _ = writer.write_all(&[byte]);
                             let _ = writer.flush();
                         }

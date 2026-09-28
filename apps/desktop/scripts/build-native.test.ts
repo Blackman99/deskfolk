@@ -78,8 +78,7 @@ test("the ConPTY helper is built for the requested triple and copied beside the 
     "--target",
     "x86_64-pc-windows-msvc",
   ]);
-  expect(plan.builtPath).toBe(
-    resolve("apps/conpty-helper/target/x86_64-pc-windows-msvc/release/real-bot-pty.exe"),
-  );
+  // Repo-relative, not resolved against whatever cwd the script happens to run in.
+  expect(plan.builtPath).toBe("apps/conpty-helper/target/x86_64-pc-windows-msvc/release/real-bot-pty.exe");
   expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-pty.exe"));
 });

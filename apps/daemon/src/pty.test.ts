@@ -49,8 +49,8 @@ test("ptyHelperPath prefers an explicit override", () => {
 });
 
 test("shellCommand starts a login shell and ignores a relative SHELL", () => {
-  expect(shellCommand({ SHELL: "/bin/bash" })).toEqual(["/bin/bash", "-l"]);
-  expect(shellCommand({ SHELL: "zsh" })).toEqual(["/bin/zsh", "-l"]);
+  expect(shellCommand({ SHELL: "/bin/bash" }, "darwin")).toEqual(["/bin/bash", "-l"]);
+  expect(shellCommand({ SHELL: "zsh" }, "darwin")).toEqual(["/bin/zsh", "-l"]);
 });
 
 test("ptyHelperPath on win32 looks for real-bot-pty.exe, override first", () => {
@@ -230,7 +230,7 @@ withConpty("ConPTY: the session runs in the requested cwd and the exit code come
   expect(await pty.exited).toBe(7);
   expect((await settle(read, 200, 3000)).toLowerCase()).toContain(cwd.split("\\").pop()!.toLowerCase());
   rmSync(cwd, { recursive: true, force: true });
-});
+}, 30_000);
 
 withConpty("ConPTY: Ctrl-C stops the foreground program and the shell survives it", async () => {
   const cwd = scratch();

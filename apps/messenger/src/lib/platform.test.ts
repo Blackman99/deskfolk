@@ -13,9 +13,9 @@ test("falls back to navigator.platform, then userAgent", () => {
   expect(desktopPlatform({})).toBe("other");
 });
 
-test("happy-dom's own navigator classifies as this machine's OS", () => {
-  // The test navigator fakes `process.platform` into its UA, so on the Mac this runs on it
-  // reads as "mac" — the same branch a real WKWebView takes, without a real Windows box.
+test("the test navigator reads as the Mac on every host", () => {
+  // test-setup.ts pins navigator.platform, so a Windows CI host takes the same branch as a
+  // WKWebView; the Windows branch is exercised by passing a navigator in, as above.
   expect(desktopPlatform()).toBe("mac");
 });
 

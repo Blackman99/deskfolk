@@ -48,13 +48,17 @@
 // the pseudo console's own host keeps its duplicate of the write end open until
 // `ClosePseudoConsole` runs. So the shutdown order is: wait for the child, close/drop the
 // pseudo console, *then* drain the output pipe to EOF, then exit. See `windows_impl::run`.
+//
+// And one more: conhost asks the terminal where its cursor is before it draws anything, and waits.
+// The helper answers that itself; see `handshake`.
 
-// These three modules are the platform-independent core (see the module docs), unit tested
+// These modules are the platform-independent core (see the module docs), unit tested
 // everywhere via `cargo test`, but only ever *called* from `windows_impl`, which doesn't exist
 // on this build. Real dead code on Windows would still be a real warning there.
 #![cfg_attr(not(windows), allow(dead_code))]
 
 mod cli;
+mod handshake;
 mod protocol;
 mod signal;
 

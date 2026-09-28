@@ -17,6 +17,11 @@ if (!(globalThis as { document?: unknown }).document) {
   GlobalRegistrator.register();
 }
 
+// happy-dom takes navigator.platform from the host OS. The suite is written against the Mac window
+// (⌘ labels, Ctrl-click as a right-click, Finder wording), and the Windows branches are tested by
+// passing the platform in; pinned, a Windows CI host runs the same suite as a Mac.
+Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" });
+
 // happy-dom's IntersectionObserver never reports anything, so a component that waits to be seen
 // (a transcript picture, see when-visible.ts) would wait forever. In a test everything rendered
 // is on screen, and it is seen as it is observed.
@@ -74,7 +79,8 @@ plugin({
       if (args.path.includes(`${sep}svelte5plus-calendar${sep}`)) {
         const dir = dirname(args.path);
         code = code.replace(/from (['"])(\.[^'"]+)\1/g, (_match, quote: string, spec: string) => {
-          return `from ${quote}${join(dir, spec)}${quote}`;
+          // Forward slashes: a Windows path's backslashes would read as escapes in the literal.
+          return `from ${quote}${join(dir, spec).replaceAll("\\", "/")}${quote}`;
         });
       }
       return { contents: code, loader: "js" };
