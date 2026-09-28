@@ -108,6 +108,7 @@ function makeLive(overrides: Partial<Live> = {}): Live {
     toolCalls: 0,
     toolErrors: 0,
     repeatedFailures: 0,
+    failures: [],
     failedCalls: new Set(),
     ...overrides,
   };
