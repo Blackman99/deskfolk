@@ -32,11 +32,12 @@ clean_completions 是这个 Bot 最近干净做完的选择：终态完成、工
  */
 export const ROUTE_LEARN_SYSTEM = `你在替这个 Bot 记下一条以后同类任务用得上的结论，不是回答用户，也不能在会话里发言。
 
-根据用户消息这份 JSON 里的 chain 决定。chain.trigger 是当初那条消息，chain.reply 是 Bot 的回复，chain.follow_ups 是用户随后说的，chain.execution 是实际做了什么（null 表示没数到，不是 0），chain.verdict 是刚才的复盘结论，chain.skills 是这个 Bot 已有的技能。
+根据用户消息这份 JSON 里的 chain 决定。chain.trigger 是当初那条消息，chain.reply 是 Bot 的回复，chain.follow_ups 是用户随后说的，chain.execution 是实际做了什么（null 表示没数到，不是 0），chain.failures 是这条链里失败过的工具调用（按先后排；tool 是工具名，target 是它作用的路径、命令或参数，error 是报错原文），chain.verdict 是刚才的复盘结论，chain.skills 是这个 Bot 已有的技能。
 
 只能调用这次给你的工具（remember、forget，有时还有 update_skill）。不要调用别的工具，不要输出正文。
 
 - 一次事故写成一条记忆：remember 的 subject 一眼能认出，body 是一句可执行的结论，写清下次先做什么、不要再做什么。
+- 结论要落在具体的东西上：follow_ups 里用户的原话，或 failures 里某个工具、路径、参数和它的报错，以及最后做成的办法。「先核实」「别编造」「先读再改」这类对哪件事都成立的提醒不是记忆，不记；failures 为空、follow_ups 也没点出具体做法时，什么都不调用。
 - chain.verdict.fault 是 prompt（需求一开始没说清）时：只记用户在 follow_ups 里补上的、下次开工前就该按它做的口径——交付形态、范围、给谁看、默认值、称呼。写成「做 X 这类事时，先按 Y」。不记这一件事本身的细节，也不改技能。
 - 凭据、密钥、只在这一轮成立的状态，不记。没有真正能让下一轮同类任务更短的东西，就什么都不调用。
 - 记忆满了会报错并点名最久没更新的一条。那时先 forget 那一条，再 remember。写不进去就停，不要改别的主题。
@@ -173,10 +174,14 @@ export type RouteLearnPayload = {
     execution: ReviewExecution;
     verdict: { fault: string; direction: string; reason: string };
     skills: { name: string; description: string }[];
+    failures: { tool: string; target: string | null; error: string }[];
   };
 };
 
-/** What the learning hop sees. The reply stays short; the skills are names and descriptions only. */
+/**
+ * What the learning hop sees. The reply stays short; the skills are names and descriptions only;
+ * the failed calls are the few the chain kept, so a memory can name what went wrong.
+ */
 export function routeLearnPayload(input: {
   message: string;
   model: string;
@@ -187,6 +192,7 @@ export function routeLearnPayload(input: {
   execution: ReviewExecution;
   verdict: { fault: string; direction: string; reason: string };
   skills: readonly { name: string; description: string }[];
+  failures?: readonly { tool: string; target: string | null; error: string }[];
 }): RouteLearnPayload {
   return {
     chain: {
@@ -199,6 +205,7 @@ export function routeLearnPayload(input: {
       execution: input.execution,
       verdict: input.verdict,
       skills: input.skills.map((skill) => ({ name: skill.name, description: skill.description })),
+      failures: (input.failures ?? []).map((failure) => ({ ...failure })),
     },
   };
 }

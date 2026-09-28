@@ -63,7 +63,8 @@ export type LifecycleDeps = {
   callOf: SpendTracker["callOf"];
   recordSpend: SpendTracker["recordSpend"];
   closeChain: Chains["closeChain"];
-  touchChain: Chains["touchChain"];
+  holdChain: Chains["holdChain"];
+  chainTurnEnded: Chains["turnEnded"];
   clearChainTimers: Chains["clearTimers"];
   clearDirectTimers: () => void;
   clearOrganizerTimers: () => void;
@@ -131,7 +132,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     callOf,
     recordSpend,
     closeChain,
-    touchChain,
+    holdChain,
+    chainTurnEnded,
     clearChainTimers,
     clearDirectTimers,
     clearOrganizerTimers,
@@ -356,6 +358,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       toolErrors: 0,
       repeatedFailures: 0,
       failedCalls: new Set(),
+      failures: [],
     };
     store.afterCommit(() => {
       lives.set(turn.id, live);
@@ -378,6 +381,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           } finally {
             lives.delete(turn.id);
             reopenForUnheard(turn, live);
+            chainTurnEnded(turn.id);
           }
         }
       };
@@ -473,7 +477,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     } catch {
       // route row is best-effort; the completion still carries the chosen fields
     }
-    if (sessionId) touchChain(sessionId, botId);
+    // The chain's quiet clock waits while this turn runs; its end starts it (`chainTurnEnded`).
+    if (sessionId) holdChain(sessionId, botId);
     const drop = (): void => {
       lives.delete(turnId);
     };
@@ -684,6 +689,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       toolErrors: live.toolErrors,
       repeatedFailures: live.repeatedFailures,
       filesWritten: live.writtenPaths.length,
+      failures: live.failures,
     };
   }
 

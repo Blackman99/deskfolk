@@ -978,6 +978,9 @@ function migrateRouteTables(db: Database, tables: string[]): void {
       db.run(`ALTER TABLE turn_route_decisions ADD COLUMN ${column} INTEGER`);
     }
   }
+  if (!decisionCols.includes("tool_failures")) {
+    db.run(`ALTER TABLE turn_route_decisions ADD COLUMN tool_failures TEXT`);
+  }
   db.run(
     `CREATE INDEX IF NOT EXISTS turn_route_decisions_chain ON turn_route_decisions (chain_id)`,
   );

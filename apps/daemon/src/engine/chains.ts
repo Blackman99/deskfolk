@@ -3,7 +3,8 @@
  * to whichever turn last touched it before the user (or the other Bot) went quiet. When it closes,
  * it is reviewed once — was the model at fault, the request, or the job itself? — and a confident
  * verdict may be turned into a memory or a skill revision. The quiet clock that decides when a
- * chain is done living here too: every new word about the same thing pushes it back.
+ * chain is done living here too. It runs only while no turn of the chain does: a turn starting
+ * holds it, a turn ending starts it again, and every new word about the same thing pushes it back.
  */
 import type { ClientEvent, RouteOutcome } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
@@ -42,6 +43,8 @@ export type ChainsDeps = {
    * (so it still closes), `learning` skips the learning hop after a review.
    */
   ablation?: Ablation;
+  /** How long a chain stays quiet after its last turn ended before it closes. Tests shorten it. */
+  quietMs?: number;
 };
 
 export type Chains = {
@@ -49,6 +52,8 @@ export type Chains = {
   closeChain: (sessionId: string, botId: string) => void;
   sweepStaleChains: () => void;
   touchChain: (sessionId: string, botId: string) => void;
+  holdChain: (sessionId: string, botId: string) => void;
+  turnEnded: (turnId: string) => void;
   clearTimers: () => void;
 };
 
@@ -56,8 +61,12 @@ export function createChains(deps: ChainsDeps): Chains {
   const { store, publish, occurred, completions, admission, track, credentials, routingTarget, recordResponseSpend, spendOwner } = deps;
   const ablation = deps.ablation ?? NO_ABLATION;
 
-  /** A chain closes when the user goes quiet, even if they never say so. */
-  const CHAIN_QUIET_MS = 3 * 60_000;
+  /**
+   * A chain closes when the user goes quiet after the Bot stopped, even if they never say so. Long
+   * enough to read what was handed over and come back about it: in real use one reply in five
+   * about a turn came 3–15 minutes after it ended, past the old three-minute window.
+   */
+  const CHAIN_QUIET_MS = deps.quietMs ?? 15 * 60_000;
   /** Past this, a chain is cold: not joined by a new turn, and not worth a review call. */
   const CHAIN_MAX_AGE_MS = 24 * 60 * 60_000;
   /** How many chains one restart is willing to pay to catch up on. */
@@ -82,6 +91,9 @@ export function createChains(deps: ChainsDeps): Chains {
       return;
     }
     if (!chain) return;
+    // A turn of it is still running: nothing to read yet, and the user has not answered it. Its end
+    // starts the clock again (`turnEnded`), or reviews it if a newer chain took its place meanwhile.
+    if (chain.live) return;
     // A quiet chain is only worth a review when the model side failed, or the tools failed twice.
     // A clean finish is recorded locally so the chain closes, without paying for a call.
     if (
@@ -242,6 +254,7 @@ export function createChains(deps: ChainsDeps): Chains {
             },
             verdict,
             skills,
+            failures: chain.failures,
           }),
         ),
       },
@@ -354,20 +367,25 @@ export function createChains(deps: ChainsDeps): Chains {
   /**
    * The quiet timers live in this process, so a daemon that stopped mid-chain would leave the
    * review undone until the user happened to change the subject. On start, chains that went quiet
-   * while nobody was running are reviewed — recent ones only, and a bounded number of them.
+   * while nobody was running are reviewed — recent ones only, and a bounded number of them. Chains
+   * not quiet yet — a turn this restart interrupted has only just ended — get their clock back.
    */
   function sweepStaleChains(): void {
+    const range = {
+      quietBefore: new Date(Date.now() - CHAIN_QUIET_MS).toISOString(),
+      notBefore: chainFloor(),
+      limit: CHAIN_SWEEP_LIMIT,
+    };
     let chains: string[] = [];
+    let recent: { chainId: string; sessionId: string; botId: string }[] = [];
     try {
-      chains = store.staleOpenChains({
-        quietBefore: new Date(Date.now() - CHAIN_QUIET_MS).toISOString(),
-        notBefore: chainFloor(),
-        limit: CHAIN_SWEEP_LIMIT,
-      });
+      chains = store.staleOpenChains(range);
+      recent = store.recentOpenChains(range);
     } catch {
       return;
     }
     for (const chainId of chains) void track(reviewChain(chainId));
+    for (const chain of recent) settle(chain);
   }
 
   function chainKey(sessionId: string, botId: string): string {
@@ -380,6 +398,39 @@ export function createChains(deps: ChainsDeps): Chains {
     if (!timer) return;
     clearTimeout(timer);
     chainTimers.delete(key);
+  }
+
+  /** A turn of the chain started: the clock waits for it to end rather than running under it. */
+  function holdChain(sessionId: string, botId: string): void {
+    clearChainTimer(sessionId, botId);
+  }
+
+  /**
+   * A turn ended, so its chain's quiet clock starts from now. When a newer chain has taken over
+   * here meanwhile — a new subject started while this turn still ran — this chain was already
+   * closed and only waited for the turn, so it is reviewed now.
+   */
+  function turnEnded(turnId: string): void {
+    if (admission?.draining) return;
+    let chain;
+    try {
+      chain = store.unreviewedChainOf(turnId);
+    } catch {
+      return;
+    }
+    if (chain) settle(chain);
+  }
+
+  /** Starts the clock on a chain that is still the open one here, or reviews one a newer chain replaced. */
+  function settle(chain: { chainId: string; sessionId: string; botId: string }): void {
+    let open: string | null;
+    try {
+      open = store.openChain(chain.sessionId, chain.botId, chainFloor());
+    } catch {
+      return;
+    }
+    if (open === chain.chainId) touchChain(chain.sessionId, chain.botId);
+    else void track(reviewChain(chain.chainId));
   }
 
   /** Restarts the quiet clock: every new word about the same thing pushes the review back. */
@@ -400,5 +451,5 @@ export function createChains(deps: ChainsDeps): Chains {
     chainTimers.clear();
   }
 
-  return { reviewChain, closeChain, sweepStaleChains, touchChain, clearTimers };
+  return { reviewChain, closeChain, sweepStaleChains, touchChain, holdChain, turnEnded, clearTimers };
 }

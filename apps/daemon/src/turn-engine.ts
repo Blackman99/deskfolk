@@ -93,6 +93,8 @@ export type TurnEngineOptions = {
   settleQuietMs?: number;
   /** How long a Bot↔Bot direct stays quiet after its last turn before its opener is called back. Tests shorten it. */
   directQuietMs?: number;
+  /** How long a Bot's chain stays quiet after its last turn before it is reviewed. Tests shorten it. */
+  chainQuietMs?: number;
   /** Side-calls switched off for a benchmark (see `ablation.ts`). The daemon never sets it. */
   ablation?: Ablation;
 };
@@ -172,6 +174,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     recordResponseSpend: spend.recordResponseSpend,
     spendOwner: spend.spendOwner,
     ablation,
+    quietMs: options.chainQuietMs,
   });
 
   const directReport = createDirectReport({
@@ -284,7 +287,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     callOf: spend.callOf,
     recordSpend: spend.recordSpend,
     closeChain: chains.closeChain,
-    touchChain: chains.touchChain,
+    holdChain: chains.holdChain,
+    chainTurnEnded: chains.turnEnded,
     clearChainTimers: chains.clearTimers,
     clearDirectTimers: directReport.clearTimers,
     clearOrganizerTimers: organizer.clearTimers,

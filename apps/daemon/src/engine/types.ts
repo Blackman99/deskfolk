@@ -7,6 +7,7 @@ import type { AskAnswer, Locale, Message, ThinkingLevel } from "@real-bot/protoc
 import type { ToolResult } from "../collab-tools";
 import type { ChatMessage } from "../completions";
 import type { RouteDecision } from "../route-decision";
+import type { ToolFailure } from "../store/routing";
 import type { HeardItem } from "../turn-inbox";
 
 /** A line a live turn has not read yet: a Bot naming it, or its own check-back coming due. */
@@ -72,6 +73,8 @@ export type Live = {
   repeatedFailures: number;
   /** `${name}\n${arguments}` of calls that already failed, so a repeat can be recognised. */
   failedCalls: Set<string>;
+  /** The first few distinct failed calls, written onto the route row for the learning hop. */
+  failures: ToolFailure[];
   ask?: {
     id: string;
     toolCallId: string;

@@ -465,7 +465,9 @@ CREATE TABLE IF NOT EXISTS turn_route_decisions (
   tool_calls INTEGER,
   tool_errors INTEGER,
   repeated_failures INTEGER,
-  files_written INTEGER
+  files_written INTEGER,
+  -- The first few failed calls as JSON [{tool, target, error}], for the learning hop to name.
+  tool_failures TEXT
 );
 
 CREATE INDEX IF NOT EXISTS turn_route_decisions_session

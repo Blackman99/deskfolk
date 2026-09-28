@@ -4384,10 +4384,16 @@ function ledger(store: Store): LedgerRow[] {
   return store.db.query<LedgerRow, []>(`SELECT * FROM spend ORDER BY created_at ASC, id ASC`).all();
 }
 
-/** The restart sweep only reviews a chain that went quiet. Age its rows past the quiet window. */
+/**
+ * The restart sweep only reviews a chain that went quiet. Age its rows past the quiet window:
+ * when its turns started and ended, and when you last said something about them.
+ */
 function ageChain(store: Store, quietMs: number): void {
   const at = new Date(Date.now() - quietMs).toISOString();
-  store.db.run(`UPDATE turn_route_decisions SET created_at = ?`, [at]);
+  store.db.run(
+    `UPDATE turn_route_decisions SET created_at = ?, finished_at = CASE WHEN finished_at IS NULL THEN NULL ELSE ? END`,
+    [at, at],
+  );
   store.db.run(`UPDATE route_feedback SET created_at = ?`, [at]);
 }
 
@@ -4475,7 +4481,7 @@ describe("spend ledger for routing and composer calls", () => {
       );
     }
     // The chain stays open until the user goes quiet. The restart sweep is that same review path.
-    ageChain(h.store, 4 * 60_000);
+    ageChain(h.store, 16 * 60_000);
     h.engine.sweepStaleChains();
     await waitFor(sub.events, () => calls.includes(ROUTE_LEARN_SYSTEM), 4000);
     await h.engine.drain();
@@ -4545,7 +4551,7 @@ describe("spend ledger for routing and composer calls", () => {
       body: JSON.stringify({ body: "你好" }),
     });
     await waitFor(sub.events, (event) => event.event === "turn.upsert" && event.status === "completed");
-    ageChain(h.store, 4 * 60_000);
+    ageChain(h.store, 16 * 60_000);
     h.engine.sweepStaleChains();
     await h.engine.drain();
     expect(calls.filter((call) => call !== ORGANIZER_SYSTEM)).toEqual([ROUTE_PICK_SYSTEM]);
@@ -4642,7 +4648,7 @@ describe("spend ledger for routing and composer calls", () => {
             sub.events,
             () => sub.events.filter((event) => event.event === "turn.upsert" && event.status === "completed").length >= 2,
           );
-          ageChain(h.store, 4 * 60_000);
+          ageChain(h.store, 16 * 60_000);
           h.engine.sweepStaleChains();
           if (mode !== "down" || kind !== "route_review") {
             await waitFor(sub.events, () => calls.includes(kind === "route_learn" ? ROUTE_LEARN_SYSTEM : ROUTE_REVIEW_SYSTEM), 4000);
