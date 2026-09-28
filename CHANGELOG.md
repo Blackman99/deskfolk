@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.10 — 2026-09-28
+
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
+
 - The installed app starts its runtime again. Since 0.1.0-rc.6 the runtime bundled in the app quit before it began listening: it looked for the version in a `package.json` that only a source checkout has. On a Mac where no runtime was already running, the window kept saying "Can't reach the runtime" and never got past it. The version is now built into the runtime, and a test starts the compiled runtime from outside the source tree, the way the app ships it, before a release is packaged.
 
 - The session list's filter (the pulse button beside search, and its twin on the folded rail) now keeps conversations with messages you have not read, not only the ones a Bot is working in, and says so: "Only working or unread". An unread Bot↔Bot direct still stays out, as its row shows no unread, so the filter does not bring that whole section back. The conversation you have open stays in the filtered list too, so opening an unread row no longer makes it vanish the moment it is read; it goes when you open another. The empty-list hints read "No session is working or unread." and "Nothing outside the pinned ones is working or unread."
