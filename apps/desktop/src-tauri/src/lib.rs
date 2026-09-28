@@ -1561,4 +1561,69 @@ mod tests {
             );
         }
     }
+
+    /// Every command `run()` registers, by the name the webview invokes it with.
+    fn registered_commands() -> Vec<String> {
+        let source = include_str!("lib.rs");
+        let run = &source[source.find("pub fn run()").expect("run()")..];
+        let start =
+            run.find("generate_handler![").expect("handler list") + "generate_handler![".len();
+        let list = &run[start..start + run[start..].find(']').expect("handler list end")];
+        list.split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| entry.rsplit("::").next().unwrap().to_string())
+            .collect()
+    }
+
+    /// The app ships its own ACL manifest (`permissions/*.toml`), so Tauri
+    /// refuses any command no capability grants — and the messenger only sees a
+    /// rejected promise. rc.5 through rc.11 shipped the in-app installer that
+    /// way: `can_install_update` was refused, the About card read that as "this
+    /// copy can't replace itself", and every update went through the browser.
+    #[test]
+    fn every_registered_command_is_granted_to_the_bundled_window() {
+        let mut context = crate::app_context::<tauri::test::MockRuntime>();
+        let authority = context.runtime_authority_mut();
+        let commands = registered_commands();
+        assert!(commands.len() > 10, "{commands:?}");
+        let refused: Vec<_> = commands
+            .iter()
+            .filter(|command| {
+                authority
+                    .resolve_access(command, "main", "main", &tauri::ipc::Origin::Local)
+                    .is_none()
+            })
+            .collect();
+        assert!(refused.is_empty(), "no capability grants {refused:?}");
+    }
+
+    /// Starting or cancelling an install is granted to the bundled document
+    /// only; the dev window (`devUrl`) may still ask whether it could and read
+    /// the progress.
+    #[test]
+    fn update_install_starts_only_from_the_bundled_document() {
+        let mut context = crate::app_context::<tauri::test::MockRuntime>();
+        let authority = &*context.runtime_authority_mut();
+        let dev = tauri::ipc::Origin::Remote {
+            url: "http://localhost:5173/".parse().unwrap(),
+        };
+        let allowed = |command: &str, origin: &tauri::ipc::Origin| {
+            authority
+                .resolve_access(command, "main", "main", origin)
+                .is_some()
+        };
+        for command in [
+            "can_install_update",
+            "update_install_state",
+            "start_update_install",
+            "cancel_update_install",
+        ] {
+            assert!(allowed(command, &tauri::ipc::Origin::Local), "{command}");
+        }
+        assert!(allowed("can_install_update", &dev));
+        assert!(allowed("update_install_state", &dev));
+        assert!(!allowed("start_update_install", &dev));
+        assert!(!allowed("cancel_update_install", &dev));
+    }
 }

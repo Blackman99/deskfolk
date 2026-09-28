@@ -12,3 +12,13 @@ commands.allow = ["check_for_update"]
 identifier = "allow-open-external-url"
 description = "Lets the messenger open a GitHub release page or asset in the system browser. Only https://github.com/Blackman99/deskfolk/ URLs are accepted."
 commands.allow = ["open_external_url"]
+
+[[permission]]
+identifier = "allow-update-install-status"
+description = "Lets the messenger ask whether this copy can replace itself, and poll an in-app install while it runs. Read-only; starting and cancelling use the local update-install capability."
+commands.allow = ["can_install_update", "update_install_state"]
+
+[[permission]]
+identifier = "allow-update-install"
+description = "Lets only the bundled main window start or cancel an in-app update. The command refuses development builds and any URL outside https://github.com/Blackman99/deskfolk/releases/download/."
+commands.allow = ["start_update_install", "cancel_update_install"]

@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "update-install",
+  "description": "Frame-local ACL for starting or cancelling an in-app update; the command also refuses development builds and URLs outside this repository's release downloads. Readiness and progress stay on the default capability.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-update-install"]
+}

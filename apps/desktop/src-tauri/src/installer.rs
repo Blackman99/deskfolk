@@ -328,7 +328,7 @@ pub fn open_asset(
     url: &str,
     user_agent: &str,
 ) -> Result<(Box<dyn Read + Send + Sync + 'static>, Option<u64>), String> {
-    let agent = crate::updates::with_env_proxy(ureq::AgentBuilder::new(), url)
+    let agent = crate::updates::with_proxy(ureq::AgentBuilder::new(), url)
         .timeout_connect(CONNECT_TIMEOUT)
         .timeout_read(READ_TIMEOUT)
         .user_agent(user_agent)

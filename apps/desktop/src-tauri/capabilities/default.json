@@ -20,6 +20,7 @@
     "allow-app-version",
     "allow-hide-main-window",
     "allow-check-for-update",
+    "allow-update-install-status",
     "allow-open-external-url",
     "allow-read-clipboard-text",
     "allow-notification-permission-state",

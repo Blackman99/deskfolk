@@ -152,13 +152,20 @@ pub fn is_allowed_release_url(url: &str) -> bool {
     url.starts_with(RELEASE_URL_PREFIX) && !url.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
-/// The proxy to use for `host`, from the conventional environment variables.
-/// `HTTPS_PROXY` wins over `ALL_PROXY`, and `NO_PROXY` takes the host out.
+/// The proxy to use for `host`. The conventional environment variables come
+/// first: `HTTPS_PROXY` wins over `ALL_PROXY`, and `NO_PROXY` takes the host
+/// out. With neither set, `system` supplies the `scutil --proxy` dump and the
+/// system's own setting decides.
 ///
 /// GitHub is reachable only through a proxy on plenty of machines, and neither
-/// the check nor the download can ask the user for one — but the shell that
-/// launched the app usually already has these set.
-pub fn proxy_from_env(host: &str, read: impl Fn(&str) -> Option<String>) -> Option<String> {
+/// the check nor the download can ask the user for one. A shell launch carries
+/// the variables; a copy opened from Finder or at login carries none, and there
+/// the setting the browser follows is the only one there is.
+pub fn proxy_for(
+    host: &str,
+    read: impl Fn(&str) -> Option<String>,
+    system: impl FnOnce() -> Option<String>,
+) -> Option<String> {
     let value = |name: &str| {
         read(name)
             .or_else(|| read(&name.to_lowercase()))
@@ -168,7 +175,77 @@ pub fn proxy_from_env(host: &str, read: impl Fn(&str) -> Option<String>) -> Opti
     if bypasses_proxy(host, value("NO_PROXY").as_deref()) {
         return None;
     }
-    value("HTTPS_PROXY").or_else(|| value("ALL_PROXY"))
+    value("HTTPS_PROXY")
+        .or_else(|| value("ALL_PROXY"))
+        .or_else(|| system().and_then(|dump| proxy_from_scutil(host, &dump)))
+}
+
+/// The proxy macOS would use for `host`, read from `scutil --proxy`: the
+/// secure web proxy (HTTPS) in System Settings → Network → Proxies, which is
+/// what browsers follow and what proxy apps switch on. `ExceptionsList` takes
+/// the host out the way `NO_PROXY` does. Only the top-level dictionary counts;
+/// `__SCOPED__` holds per-interface copies. A PAC file or a SOCKS-only setup
+/// gives `None` — this build evaluates neither.
+pub fn proxy_from_scutil(host: &str, dump: &str) -> Option<String> {
+    let mut depth = 0usize;
+    let mut in_exceptions = false;
+    let mut fields = Vec::new();
+    let mut exceptions = Vec::new();
+    for line in dump.lines() {
+        let line = line.trim();
+        if line == "}" {
+            depth = depth.saturating_sub(1);
+            in_exceptions = in_exceptions && depth > 1;
+            continue;
+        }
+        let opens = line.ends_with('{');
+        if let Some((name, value)) = line.split_once(" : ") {
+            if depth == 1 && opens {
+                in_exceptions = name == "ExceptionsList";
+            } else if depth == 1 {
+                fields.push((name, value));
+            } else if depth == 2 && in_exceptions {
+                exceptions.push(value);
+            }
+        }
+        if opens {
+            depth += 1;
+        }
+    }
+    let field = |key: &str| {
+        fields
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| value.trim())
+    };
+    if field("HTTPSEnable") != Some("1") {
+        return None;
+    }
+    let server = field("HTTPSProxy").filter(|server| !server.is_empty())?;
+    let port = field("HTTPSPort")?.parse::<u16>().ok()?;
+    if bypasses_proxy(host, Some(&exceptions.join(","))) {
+        return None;
+    }
+    Some(format!("http://{server}:{port}"))
+}
+
+/// The system's proxy settings as `scutil --proxy` prints them; `None` off
+/// macOS or when it can't run.
+fn system_proxy_dump() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("/usr/sbin/scutil")
+            .arg("--proxy")
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
 }
 
 /// Does `NO_PROXY` cover this host? `*` covers everything, and an entry
@@ -196,11 +273,15 @@ pub fn url_host(url: &str) -> &str {
     host.split(':').next().unwrap_or(host)
 }
 
-/// Point the agent at the environment's proxy when there is one for this URL.
-/// An unusable proxy value (a SOCKS URL, say — this build has no SOCKS) is
-/// dropped rather than failing the request before it is tried.
-pub fn with_env_proxy(builder: ureq::AgentBuilder, url: &str) -> ureq::AgentBuilder {
-    let Some(proxy) = proxy_from_env(url_host(url), |name| std::env::var(name).ok()) else {
+/// Point the agent at the proxy for this URL, when there is one (see
+/// [`proxy_for`]). An unusable proxy value (a SOCKS URL, say — this build has
+/// no SOCKS) is dropped rather than failing the request before it is tried.
+pub fn with_proxy(builder: ureq::AgentBuilder, url: &str) -> ureq::AgentBuilder {
+    let Some(proxy) = proxy_for(
+        url_host(url),
+        |name| std::env::var(name).ok(),
+        system_proxy_dump,
+    ) else {
         return builder;
     };
     match ureq::Proxy::new(&proxy) {
@@ -210,7 +291,7 @@ pub fn with_env_proxy(builder: ureq::AgentBuilder, url: &str) -> ureq::AgentBuil
 }
 
 pub fn fetch_releases(url: &str, user_agent: &str) -> Result<Vec<Release>, String> {
-    let agent = with_env_proxy(ureq::AgentBuilder::new(), url)
+    let agent = with_proxy(ureq::AgentBuilder::new(), url)
         .timeout(Duration::from_secs(10))
         .user_agent(user_agent)
         .build();
@@ -450,45 +531,135 @@ mod tests {
         assert_eq!(pick_update(&version("0.1.0"), &[], Some("aarch64")).notes, None);
     }
 
+    fn env(pairs: Vec<(&'static str, &'static str)>) -> impl Fn(&str) -> Option<String> {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_string())
+        }
+    }
+
+    /// What `scutil --proxy` prints with a proxy app's "system proxy" on.
+    const SCUTIL_PROXY_ON: &str = "<dictionary> {
+  ExceptionsList : <array> {
+    0 : 127.0.0.1
+    1 : 192.168.0.0/16
+    2 : localhost
+    3 : *.local
+    4 : <local>
+  }
+  FTPPassive : 1
+  HTTPEnable : 1
+  HTTPPort : 12334
+  HTTPProxy : 127.0.0.1
+  HTTPSEnable : 1
+  HTTPSPort : 12334
+  HTTPSProxy : 127.0.0.1
+  ProxyAutoConfigEnable : 0
+  SOCKSEnable : 1
+  SOCKSPort : 12334
+  SOCKSProxy : 127.0.0.1
+}
+";
+
     #[test]
     fn proxy_comes_from_the_environment_unless_no_proxy_covers_the_host() {
-        let env = |pairs: Vec<(&'static str, &'static str)>| {
-            move |name: &str| {
-                pairs
-                    .iter()
-                    .find(|(key, _)| *key == name)
-                    .map(|(_, value)| (*value).to_string())
-            }
-        };
+        let from_env = |host: &str, read| proxy_for(host, read, || None);
         assert_eq!(
-            proxy_from_env("github.com", env(vec![("HTTPS_PROXY", "http://127.0.0.1:12334")])),
+            from_env("github.com", env(vec![("HTTPS_PROXY", "http://127.0.0.1:12334")])),
             Some("http://127.0.0.1:12334".to_string())
         );
         // Lowercase spellings are just as conventional.
         assert_eq!(
-            proxy_from_env("github.com", env(vec![("https_proxy", "http://127.0.0.1:1")])),
+            from_env("github.com", env(vec![("https_proxy", "http://127.0.0.1:1")])),
             Some("http://127.0.0.1:1".to_string())
         );
         // HTTPS_PROXY wins over ALL_PROXY; an empty value is no value.
         assert_eq!(
-            proxy_from_env(
+            from_env(
                 "github.com",
                 env(vec![("HTTPS_PROXY", "http://a:1"), ("ALL_PROXY", "http://b:2")])
             ),
             Some("http://a:1".to_string())
         );
         assert_eq!(
-            proxy_from_env("github.com", env(vec![("HTTPS_PROXY", "  "), ("ALL_PROXY", "http://b:2")])),
+            from_env("github.com", env(vec![("HTTPS_PROXY", "  "), ("ALL_PROXY", "http://b:2")])),
             Some("http://b:2".to_string())
         );
-        assert_eq!(proxy_from_env("github.com", env(vec![])), None);
+        assert_eq!(from_env("github.com", env(vec![])), None);
         assert_eq!(
-            proxy_from_env(
+            from_env(
                 "github.com",
                 env(vec![("HTTPS_PROXY", "http://a:1"), ("NO_PROXY", "localhost,github.com")])
             ),
             None
         );
+    }
+
+    /// A copy opened from Finder has no proxy variables; github.com downloads
+    /// then go through the system proxy the browser uses, or not at all on
+    /// networks where github.com only answers through one.
+    #[test]
+    fn without_variables_the_system_proxy_is_used() {
+        let system = || Some(SCUTIL_PROXY_ON.to_string());
+        assert_eq!(
+            proxy_for("github.com", env(vec![]), system),
+            Some("http://127.0.0.1:12334".to_string())
+        );
+        // The shell's variables still win, and NO_PROXY still means direct.
+        assert_eq!(
+            proxy_for(
+                "github.com",
+                env(vec![("HTTPS_PROXY", "http://a:1")]),
+                system
+            ),
+            Some("http://a:1".to_string())
+        );
+        assert_eq!(
+            proxy_for("github.com", env(vec![("NO_PROXY", "github.com")]), system),
+            None
+        );
+        // The system dump is only read when the variables leave it open.
+        assert_eq!(
+            proxy_for(
+                "github.com",
+                env(vec![("HTTPS_PROXY", "http://a:1")]),
+                || -> Option<String> { panic!("read scutil although HTTPS_PROXY is set") }
+            ),
+            Some("http://a:1".to_string())
+        );
+    }
+
+    #[test]
+    fn scutil_proxy_is_the_https_proxy_unless_excepted() {
+        assert_eq!(
+            proxy_from_scutil("github.com", SCUTIL_PROXY_ON),
+            Some("http://127.0.0.1:12334".to_string())
+        );
+        assert_eq!(proxy_from_scutil("printer.local", SCUTIL_PROXY_ON), None);
+        assert_eq!(proxy_from_scutil("localhost", SCUTIL_PROXY_ON), None);
+        let off = SCUTIL_PROXY_ON.replace("HTTPSEnable : 1", "HTTPSEnable : 0");
+        assert_eq!(proxy_from_scutil("github.com", &off), None);
+        let no_port = SCUTIL_PROXY_ON.replace("  HTTPSPort : 12334\n", "");
+        assert_eq!(proxy_from_scutil("github.com", &no_port), None);
+        // Nothing configured at all.
+        let empty = "<dictionary> {\n  FTPPassive : 1\n  HTTPEnable : 0\n  HTTPSEnable : 0\n}\n";
+        assert_eq!(proxy_from_scutil("github.com", empty), None);
+        // A per-interface copy under __SCOPED__ is not the system setting.
+        let scoped = "<dictionary> {
+  HTTPSEnable : 0
+  __SCOPED__ : <dictionary> {
+    en0 : <dictionary> {
+      HTTPSEnable : 1
+      HTTPSPort : 8080
+      HTTPSProxy : 10.0.0.1
+    }
+  }
+}
+";
+        assert_eq!(proxy_from_scutil("github.com", scoped), None);
+        assert_eq!(proxy_from_scutil("github.com", ""), None);
     }
 
     #[test]
