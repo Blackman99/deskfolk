@@ -459,6 +459,7 @@
     line-height: 1.75;
     color: var(--ink-2);
     max-width: 38em;
+    text-wrap: pretty;
   }
 
   /* Below the buttons on narrow screens, so they stay above the fold. */
@@ -493,6 +494,7 @@
     font-size: 15px;
     line-height: 1.6;
     color: var(--ink-2);
+    text-wrap: pretty;
   }
 
   .trust li::before {

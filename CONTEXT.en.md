@@ -2,7 +2,7 @@
 
 [简体中文](CONTEXT.md)
 
-A single-person agent collaboration app running locally on macOS. Its way of collaborating matches Grok Bot: named, persistent teammates, directs, groups, mentions, and asynchronous handoffs; the computer is a shared folder on this Mac, not a cloud VM.
+A single-person agent collaboration app running locally on macOS: a team of named, persistent Bots splits one job and hands it on until it is delivered, while the app keeps the plan and its done-when in view, chases what stalls and checks the delivery first. They collaborate through directs, groups, mentions and asynchronous handoffs (modelled on Grok Bot); the computer is a shared folder on this Mac, not a cloud VM.
 
 > **WIP**: This document defines the domain language; it is not a statement that every capability has passed acceptance. For the current scope, see the [README](README.md); for the direction of work on agent decisions, feedback on automatic tasks, reflection after each run, and full coverage of conversation operations, see the [roadmap](ROADMAP.md).
 

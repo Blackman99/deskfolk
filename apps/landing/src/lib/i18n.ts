@@ -39,10 +39,11 @@ export type Dict = {
   hero: {
     headline: string;
     headlineLines: string[];
+    /** What kind of job and who it is for; the trust list below says how. */
     subhead: string;
     /** Heading of the list below the subhead. */
     trustLabel: string;
-    /** What the headline's "trust" rests on, one claim per item. */
+    /** What the headline's promise rests on, one claim per item. */
     trust: { label: string; body: string }[];
     wipNote: string;
     ctaPrimary: string;
@@ -148,15 +149,15 @@ const zh: Dict = {
     themeDark: '暗色'
   },
   hero: {
-    headline: '组一支你信得过的私人 AI 团队。',
-    headlineLines: ['组一支你信得过的', '私人 AI 团队。'],
-    subhead: '工作台自由组合：会话、终端、流程图和工作区，想怎么分屏就怎么摆。',
-    trustLabel: '为什么信得过',
+    headline: '交给一组 Bot，盯到交付。',
+    headlineLines: ['交给一组 Bot，', '盯到交付。'],
+    subhead: '一份调研报告、一套发布物料、一个带测试的小工具，交给几个 Bot 分工交接。面向自带模型端点的独立开发者和小工作室。',
+    trustLabel: '为什么放心交给它',
     trust: [
-      { label: '都在你的 Mac 上。', body: '窗口、运行时、会话和工作区都在本机；模型端点和 MCP 工具由你接入，密钥进钥匙串。' },
-      { label: '危险动作先问你。', body: '工作区外读写、出站网络、新接 MCP 或端点，都等你批准才做；私聊里随时能 Stop。' },
+      { label: '交付前先自查。', body: '交文件前先对一遍验收：漏掉的补上或说清去向，「测试通过」要有跑过的命令作证。' },
+      { label: '停在半路有人管。', body: '一件事静下来却还有任务没做完，应用先叫回那个 Bot，还不动就告诉你。' },
       { label: '做了什么都看得见。', body: '一件事一张流程图：谁叫醒了谁、每轮交出哪些文件、用了哪个模型、为什么。' },
-      { label: '交付前先自查。', body: '交文件给你之前，先拿你最初的要求对一遍；漏掉的要么补上，要么说清去向。' }
+      { label: '危险动作先问你。', body: '会话和文件在本机，模型调用走你接入的端点；工作区外读写、出站网络、新工具要你批准。' }
     ],
     wipNote: 'Alpha 版本：macOS 未签名快照，功能与数据结构仍会变化。',
     ctaPrimary: '下载 Alpha（macOS）',
@@ -334,9 +335,9 @@ const zh: Dict = {
     contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Deskfolk — 组一支你信得过的私人 AI 团队',
+    title: 'Deskfolk — 交给一组 Bot，盯到交付',
     description:
-      'macOS 本地单人 agent 协作应用：Bot 有名字、职责和边界，可以私聊、进群、被 @ 点名、彼此交接；一件事一张流程图，桌面窗能分屏开终端。窗口、运行时、会话和共享工作区都在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。MIT 开源，Alpha 阶段。',
+      'macOS 本机的 AI 团队：几个 Bot 分工交接，把一份调研报告、一套发布物料或一个小工具做到交付。交付前按验收自查，停在半路会被追，说「测试通过」要有跑过的命令作证，每一步都画在流程图上。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：一个窗口里并排着群聊、流程图、生成的预告片和终端'
   },
   docs: {
@@ -394,15 +395,15 @@ const en: Dict = {
     themeDark: 'Dark'
   },
   hero: {
-    headline: 'A private AI team you can trust.',
-    headlineLines: ['A private AI team', 'you can trust.'],
-    subhead: 'A workbench you arrange freely: chats, terminals, flow boards and the workspace, split however you like.',
-    trustLabel: 'Why you can trust it',
+    headline: 'Hand it to Bots that see it through.',
+    headlineLines: ['Hand it to Bots', 'that see it through.'],
+    subhead: 'Reports, launch kits, small tools with tests: a few Bots split the job and hand it on. For solo developers and small studios with their own model endpoint.',
+    trustLabel: 'Why you can hand it over',
     trust: [
-      { label: 'It stays on your Mac.', body: 'Runtime, chats and workspace are local; models run on endpoints you add.' },
-      { label: 'It asks first.', body: 'Files outside the workspace, outbound network and new MCP or endpoints need your OK.' },
+      { label: 'It checks before delivery.', body: 'Checked against the done-when; "tests pass" needs a command that ran.' },
+      { label: 'Stalls get chased.', body: 'A job gone quiet with tickets open calls its Bot back, then tells you if nothing moves.' },
       { label: 'It shows its work.', body: 'A flow per job: who woke whom, what each turn handed over, which model and why.' },
-      { label: 'It checks before delivery.', body: 'Files are checked against what you first asked; gaps get filled or explained.' }
+      { label: 'It asks first.', body: 'Local files, models on endpoints you add; outside access and new tools need your OK.' }
     ],
     wipNote: 'Alpha: unsigned macOS snapshot. Features and data structures may still change.',
     ctaPrimary: 'Download alpha (macOS)',
@@ -580,9 +581,9 @@ const en: Dict = {
     contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Deskfolk — A private AI team you can trust',
+    title: 'Deskfolk — Hand it to Bots that see it through',
     description:
-      'A single-user agent collaboration app for macOS. Bots have names, duties and boundaries; they chat one to one, join groups, get @mentioned and hand work to each other. Every job reads as a flow, and the window splits into panes with your own terminal. Window, runtime, sessions and shared workspace stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. MIT, alpha.',
+      'A local AI team for macOS: Bots split the work and hand it on until a research report, a launch kit or a small tool is delivered. Deliveries are checked against the done-when, stalled jobs get chased, a "tests pass" needs a command that actually ran, and every step is drawn on a flow board. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
     imageAlt: 'Deskfolk: a group chat, its flow, the teaser the team made and a terminal side by side in one window'
   },
   docs: {

@@ -8,9 +8,9 @@
 
 <h1 align="center">Deskfolk</h1>
 
-<p align="center">A private AI team you can trust.</p>
+<p align="center">Hand it to Bots that see it through.</p>
 
-<p align="center">A workbench you arrange freely: chats, terminals, flow boards and the workspace, split however you like.</p>
+<p align="center">Bots split the work and hand it on; stalls get chased, unverified claims get called out, and every step is on record.</p>
 
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/"><b>Website</b></a> ·
@@ -25,13 +25,18 @@
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
-## Why you can trust it
+## Why you can hand it over
 
-- **It stays on your Mac.** Window, daemon, sessions and the shared workspace stay local. Bring any OpenAI-compatible endpoint and MCP servers; keys go to Keychain.
-- **It asks before risky moves.** New endpoints or MCP servers, access outside the workspace and outbound network wait for your approval. What waits on you is marked on the conversation list, with macOS banners and a Dock badge. Stop ends a running turn in a direct chat at any time.
-- **It shows its work.** Every plan is a flow: the app files each message you send into a plan and its tickets, keeps the goal, the done-when and your rules as the plan's spec, and draws the work as a card per turn by who woke whom, carrying the files that turn handed over, the ticket it worked in, and the model it ran on and why. You can open the direct chats Bots have with each other, too.
 - **It checks before handing over.** Before a Bot hands you files, the files and its wrap-up are checked against the plan's spec, or against what you first asked for until the app has written one; anything missing gets done, or the Bot says who has it, why it was left out or when it will be done. A "tests pass" or "verified in the browser" has to match a command it actually ran, or it goes back to run it or to say it was not verified.
 - **A job that stalls gets noticed.** Tickets on the flow board move with the work; when a job goes quiet with tickets still open, the app calls the Bot on it back once, and tells you if nothing moves.
+- **It shows its work.** Every plan is a flow: the app files each message you send into a plan and its tickets, keeps the goal, the done-when and your rules as the plan's spec, and draws the work as a card per turn by who woke whom, carrying the files that turn handed over, the ticket it worked in, and the model it ran on and why. You can open the direct chats Bots have with each other, too.
+- **It asks before risky moves.** New endpoints or MCP servers, access outside the workspace and outbound network wait for your approval. What waits on you is marked on the conversation list, with macOS banners and a Dock badge. Stop ends a running turn in a direct chat at any time.
+- **The work and the files stay on your Mac.** Window, daemon, sessions and the shared workspace are local, and keys go to Keychain. You bring the models and MCP servers: any OpenAI-compatible endpoint works, and each turn's context goes to the endpoint you configured.
+
+## Who it's for
+
+- **For** solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves, with a job that needs a few roles and several file-producing steps: a research report, a launch kit, a small tool with tests and a start command.
+- **Not yet for** several people sharing one setup, Windows or Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint.
 
 ## What it does
 
