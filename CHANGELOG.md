@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.11 — 2026-09-28
+
+Unsigned macOS rc. This is not a supported signed installer; Gatekeeper may block it. Prefer running from source.
+
 - The installed app can set up remote access and pair devices. Until now only Deskfolk run from source could: the app's remote credential store needed a Keychain access group and a signed, sealed runtime that no build has, and the window's setup channel failed its signature check before getting that far. The app now keeps the Mac's remote identity in a private file in its data folder (`dev-remote/credentials.json`, the same file source runs use, so a Mac registered from source keeps its identity and paired devices in the app), and approves each pairing or device removal with Touch ID or your login password, on a sheet that names the device and its fingerprint. Dismissing the sheet pairs nothing and leaves the approve button there. When the Mac is not registered yet, **Settings → General → Remote (experimental)** asks for the relay address, the relay ID and the one-time bootstrap token; a mistyped address or a refused token leaves nothing behind, and the card says which it was. What the file gives up against the Keychain is in [ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md): any program running as you can read it.
 
 ## 0.1.0-rc.10 — 2026-09-28
