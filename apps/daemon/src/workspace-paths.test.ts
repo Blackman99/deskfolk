@@ -170,6 +170,23 @@ describe("classifyShell", () => {
     expect(classifyShell(root, `python3 -c "open('../../x')"`).kind).toBe("unconstrained");
   });
 
+  test("an absolute path under no entry of / is not a path: tags, comments and regexes in a script stay inside", () => {
+    const root = tmp();
+    expect(classifyShell(root, `python3 - << 'PY'
+from pathlib import Path
+p = Path("launch/index.html")
+p.write_text(p.read_text().replace("<h1>旧标题</h1>", "<h1>新标题</h1></p></style>"))
+PY`).kind).toBe("jailed");
+    expect(classifyShell(root, `node -e 'const fs = require("fs"); // 1. 检查外部资源
+const n = fs.readFileSync("launch/copy.md", "utf8").split(/\s+/g).length; console.log(n)'`).kind).toBe("jailed");
+    expect(classifyShell(root, `python3 -c 'print("<a href=\"//tidemark.example.com/download\">下载</a>")'`).kind).toBe("jailed");
+    // The root itself and real entries under it still count.
+    expect(classifyShell(root, "ls /").kind).toBe("unconstrained");
+    expect(classifyShell(root, `python3 -c "open('/etc/hosts')"`).kind).toBe("unconstrained");
+    expect(classifyShell(root, "bun tool/tally.ts samples/a.csv >/tmp/out.txt").kind).toBe("unconstrained");
+    expect(classifyShell(root, `python3 -c "open('/Users/x/secret')"`).kind).toBe("unconstrained");
+  });
+
   test("cwd outside the workspace is unconstrained", () => {
     const root = tmp();
     const got = classifyShell(root, "echo hi", "/tmp");
