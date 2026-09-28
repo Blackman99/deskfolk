@@ -8,6 +8,8 @@
 
 - 从源码运行（`pnpm dev`）时，台前调度里窗口旁边也显示 Deskfolk 的图标了。Dock 里一直是对的，但 `tauri dev` 所用的 `Deskfolk Dev.app` 外壳自己没有图标，台前调度里就是一个空白应用。现在外壳带上了应用图标，第一次加上图标时会重新向系统登记一次。
 
+- 装完更新后，应用只问一次钥匙串访问，不再每个端点、每个 MCP 服务器各问一次。安装版的运行时是 ad-hoc 签名，每个新版本对钥匙串来说都是没见过的程序，以前它每读一个 key 就要你输一次登录密码：配了三个端点和一个 MCP，每次更新后第一次启动就弹四个框。现在所有 key 都放在一个钥匙串项里（`com.real-bot.daemon` / `credentials`）。这次更新后的第一次启动，已有的每个 key 还会各问一次，用来把它搬过来；之后每次更新只问一次。旧的项保留着，回装老版本时照样找得到 key；在新版本里改或删这个 key 时才删掉。Windows 和 Linux 仍是一个 key 一项，那里的凭据库不会因为更新而再问。为什么不改成文件、也不放开钥匙串访问限制，见 [ADR 0034](docs/adr/0034-one-keychain-entry-on-macos.md)。
+
 - 发布流程可以用 Developer ID 签名并公证了。仓库配上 `APPLE_SIGNING_IDENTITY`、`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD` 三个 secrets 后，应用和里面带的运行时、pty、helper 都用这张证书签名；再配上 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`，就交给 Apple 公证：第一次打开不用再右键「打开」或跑 `xattr`，从第一个签名版本之后，更新也不会再弹钥匙串确认。没配这些 secrets 之前，发布包照旧是 ad-hoc 签名。每个 secret 填什么见 [notarization.md](docs/notarization.md#repository-secrets)。
 
 ## 0.1.0-rc.11 — 2026-09-28

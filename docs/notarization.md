@@ -37,6 +37,10 @@ Set each with `gh secret set <NAME> -R Blackman99/deskfolk`. Without `APPLE_SIGN
 | `APPLE_PASSWORD` | An app-specific password for that account (account.apple.com → Sign-In and Security) |
 | `APPLE_TEAM_ID` | The 10-character Team ID |
 
+## Keychain prompts after an update
+
+An ad-hoc signed daemon has no Team ID, so the Keychain knows it only by its `cdhash`, which changes with every build: each update is a new program that has to be allowed again, with the login password. Since [ADR 0034](adr/0034-one-keychain-entry-on-macos.md) all credentials sit in one entry, so that is one prompt per update rather than one per endpoint and MCP server. A Developer ID build is recorded as `teamid:<TEAMID>` instead, and later updates read the entry without asking; the first Developer ID version still asks once, because the entry was last allowed for an ad-hoc build.
+
 ## Cost / ops notes
 
 - Apple Developer Program annual fee.

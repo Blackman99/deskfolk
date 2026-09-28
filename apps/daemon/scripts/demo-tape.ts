@@ -25,6 +25,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { bunKeyStore } from "../src/secrets";
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -150,7 +151,6 @@ async function liveConfig(): Promise<Live> {
     return res.json() as Promise<any>;
   };
   const settings = await api("/v1/settings");
-  const service = "com.real-bot.daemon";
   // The endpoint whose models the story uses (`--models`), whichever of yours is the default today.
   const providers = (await api("/v1/providers")) as { items?: any[] } | any[];
   const wanted = opts.models?.split(",")[0];
@@ -161,15 +161,15 @@ async function liveConfig(): Promise<Live> {
   const providerId = provider?.id ?? settings.default_provider_id;
   const base = provider?.base_url ?? settings.endpoint_base_url;
   const key =
-    (providerId ? await Bun.secrets.get({ service, name: `endpoint-api-key:${providerId}` }) : null) ??
-    (await Bun.secrets.get({ service, name: "endpoint-api-key" }));
+    (providerId ? await bunKeyStore.get(`endpoint-api-key:${providerId}`) : null) ??
+    (await bunKeyStore.get("endpoint-api-key"));
   if (!key) throw new Error("no endpoint key in the Keychain for the endpoint with the story's models");
   const servers = (await api("/v1/mcp-servers")) as { items?: any[] } | any[];
   const list = Array.isArray(servers) ? servers : (servers.items ?? []);
   const server = list.find((s: any) => s.name === opts.mcp);
   let mcpAuth: string | null = null;
   if (server?.auth_set) {
-    const raw = await Bun.secrets.get({ service, name: `mcp-auth:${server.id}` });
+    const raw = await bunKeyStore.get(`mcp-auth:${server.id}`);
     if (raw) mcpAuth = /^bearer\s/i.test(raw) ? raw : `Bearer ${raw}`;
   }
   if (!server) log(`no MCP server named ${opts.mcp} in the live daemon; MCP calls will fail`);
