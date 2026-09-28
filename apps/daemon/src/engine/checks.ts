@@ -6,7 +6,7 @@
  * started alongside it — and command checks are serialized daemon-wide, so a plan full of `bun
  * test` checks does not turn into several at once fighting over the same CPU.
  */
-import type { AcceptanceCheck } from "@real-bot/protocol";
+import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
 import { evaluateCheck, type CheckVerdict } from "../acceptance-eval";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { TurnAdmission } from "../quiesce";
@@ -16,7 +16,7 @@ import type { WakeWatch } from "../wake";
 export type CheckEvaluator = (
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch },
+  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale },
 ) => Promise<CheckVerdict>;
 
 export type PlanChecksDeps = {
@@ -73,23 +73,21 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     return result;
   }
 
-  function effectiveCwd(check: AcceptanceCheck, planDir: string): string | null {
+  /**
+   * A command with no cwd runs at the workspace root, the same base a file check's path is read
+   * from and the one the file tree shows — not a Bot shell's default ticket dir. A command the
+   * organizer promotes from a turn's run carries that run's cwd.
+   */
+  function effectiveCwd(check: AcceptanceCheck): string | null {
     if (check.kind !== "command") return check.cwd;
-    if (check.cwd) return check.cwd;
-    if (check.ticket_id) {
-      try {
-        return store.getTicket(check.ticket_id).dir;
-      } catch {
-        // the ticket is gone; fall through to the plan dir
-      }
-    }
-    return planDir;
+    return check.cwd ?? ".";
   }
 
-  async function evaluateOne(check: AcceptanceCheck, root: string | null, planDir: string, signal: AbortSignal): Promise<CheckVerdict> {
-    const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check, planDir) } : check;
-    if (check.kind === "command") return exclusiveCommand(() => evaluate(root, resolved, { signal, wake }));
-    return evaluate(root, resolved, { signal, wake });
+  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal): Promise<CheckVerdict> {
+    const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check) } : check;
+    const locale = store.settingsCached().locale;
+    if (check.kind === "command") return exclusiveCommand(() => evaluate(root, resolved, { signal, wake, locale }));
+    return evaluate(root, resolved, { signal, wake, locale });
   }
 
   async function runOnce(taskId: string, opts: RunOptions): Promise<void> {
@@ -126,7 +124,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
         if (Date.now() - startedAt > RUN_BUDGET_MS) {
           try {
             const skipped = store.beginCheckRun(check.id, opts.cause);
-            store.finishCheckRun(skipped.id, { outcome: "blocked", exitCode: null, detail: "out of time this run", output: null });
+            store.finishCheckRun(skipped.id, { outcome: "blocked", exitCode: null, detail: store.settingsCached().locale === "en" ? "out of time this run" : "这一轮检查的时间用完了", output: null });
             ran = true;
           } catch {
             // the check went away meanwhile
@@ -142,7 +140,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
         ran = true;
         let verdict: CheckVerdict;
         try {
-          verdict = await evaluateOne(check, root, task.dir, controller.signal);
+          verdict = await evaluateOne(check, root, controller.signal);
         } catch (error) {
           verdict = { outcome: "error", exitCode: null, detail: error instanceof Error ? error.message : "check failed", output: null };
         }

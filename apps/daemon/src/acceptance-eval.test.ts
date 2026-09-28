@@ -156,7 +156,7 @@ describe("evaluateCheck: contains / matches", () => {
       check({ kind: "matches", path: "a.txt", pattern: "(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)(.*)b" }),
     );
     expect(result.outcome).toBe("error");
-    expect(result.detail).toContain("too long");
+    expect(result.detail).toContain("跑得太久");
     // Comfortably under the several seconds an un-terminated worker would have taken.
     expect(Date.now() - startedAt).toBeLessThan(4_000);
     ws.close();
@@ -201,7 +201,7 @@ describe("evaluateCheck: command", () => {
     const ws = workspace();
     const result = await evaluateCheck(ws.root, check({ kind: "command", command: "bun missing.ts" }));
     expect(result.outcome).toBe("fail");
-    expect(result.detail).toContain("missing.ts is missing");
+    expect(result.detail).toContain("missing.ts 不在");
     ws.close();
   });
 
@@ -209,7 +209,7 @@ describe("evaluateCheck: command", () => {
     const ws = workspace();
     const result = await evaluateCheck(ws.root, check({ kind: "command", command: "true", cwd: "no/such/dir" }));
     expect(result.outcome).toBe("fail");
-    expect(result.detail).toBe("missing cwd");
+    expect(result.detail).toBe("运行目录不在");
     ws.close();
   });
 
@@ -238,7 +238,7 @@ describe("evaluateCheck: command", () => {
     const startedAt = Date.now();
     const result = await evaluateCheck(ws.root, check({ kind: "command", command, timeout_sec: 1 }));
     expect(result.outcome).toBe("fail");
-    expect(result.detail).toContain("timed out");
+    expect(result.detail).toContain("秒还没跑完");
     expect(Date.now() - startedAt).toBeLessThan(4_000);
     await new Promise((resolve) => setTimeout(resolve, 1_500));
     expect(existsSync(marker)).toBe(false);
@@ -264,4 +264,20 @@ describe("evaluateCheck: command", () => {
     expect(result.output!.startsWith("…")).toBe(true);
     ws.close();
   }, 10_000);
+});
+
+describe("evaluateCheck: detail follows the locale", () => {
+  test("the one-line detail reads in the app's language", async () => {
+    const ws = workspace();
+    writeFileSync(join(ws.root, "a.md"), "报告正文\n");
+    const zh = await evaluateCheck(ws.root, check({ kind: "contains", path: "a.md", pattern: "不在里面的一句" }));
+    expect(zh.detail).toBe('没有 "不在里面的一句"');
+    const en = await evaluateCheck(ws.root, check({ kind: "contains", path: "a.md", pattern: "not in there" }), { locale: "en" });
+    expect(en.detail).toBe('missing "not in there"');
+    const exit = await evaluateCheck(ws.root, check({ kind: "command", command: "exit 3" }), { locale: "en" });
+    expect(exit.detail).toBe("exit 3, expected 0");
+    const exitZh = await evaluateCheck(ws.root, check({ kind: "command", command: "exit 3" }));
+    expect(exitZh.detail).toBe("退出码 3，应为 0");
+    ws.close();
+  });
 });

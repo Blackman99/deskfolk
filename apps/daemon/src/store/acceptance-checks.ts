@@ -332,7 +332,8 @@ export function normalizeCheckInput(ctx: StoreContext, task: Task, raw: unknown,
   if (kind === "command") {
     if (!command) throw new HttpError(422, "invalid_args", "command is required for a command check");
     if (!root) throw new HttpError(422, "outside_workspace", "no workspace is open");
-    const effectiveCwd = cwd ?? (ticketId ? ticketDirOf(ctx, ticketId) : task.dir);
+    // Relative to the workspace root when not given, like a file check's path: what you see in the file tree.
+    const effectiveCwd = cwd ?? ".";
     let classified;
     try {
       classified = classifyShell(root, command, effectiveCwd);
@@ -357,11 +358,6 @@ export function normalizeCheckInput(ctx: StoreContext, task: Task, raw: unknown,
     expect_stdout: kind === "command" ? expectStdout : null,
     timeout_sec: kind === "command" ? timeoutSec : null,
   };
-}
-
-function ticketDirOf(ctx: StoreContext, ticketId: string): string {
-  const row = ctx.db.query<{ dir: string }, [string]>(`SELECT dir FROM tickets WHERE id = ?`).get(ticketId);
-  return row?.dir ?? "";
 }
 
 function activeCount(ctx: StoreContext, taskId: string): number {

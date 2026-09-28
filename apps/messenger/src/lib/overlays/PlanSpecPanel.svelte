@@ -11,6 +11,9 @@
 		specWithLines,
 		type SpecListField
 	} from './plan-board.ts';
+	import { checkSummary, checksForLine, orphanChecks } from './acceptance-checks.ts';
+	import AcceptanceCheckRow from './AcceptanceCheckRow.svelte';
+	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -41,6 +44,40 @@
 	let historyFailed = $state(false);
 	let history = $state<TaskSpecRevision[]>([]);
 	let historyKey: string | null = null;
+
+	let addingCheck = $state(false);
+	let runningAll = $state(false);
+	let runError = $state<string | null>(null);
+
+	const checks = $derived(detail.checks ?? []);
+	const acceptanceLines = $derived(detail.spec?.acceptance ?? []);
+	const orphanedChecks = $derived(orphanChecks(checks, acceptanceLines));
+	const checksTotal = $derived(checkSummary(checks));
+	const anyCheckRunning = $derived(checks.some((check) => check.running));
+
+	async function runAllChecks(): Promise<void> {
+		if (!api || runningAll) return;
+		runningAll = true;
+		runError = null;
+		try {
+			const result = await api.runChecks(detail.id);
+			onSaved(result);
+		} catch {
+			runError = t.plan.checks.runFailed;
+		} finally {
+			runningAll = false;
+		}
+	}
+
+	function openAddCheck(): void {
+		addingCheck = true;
+		runError = null;
+	}
+
+	function checkSaved(result: TaskDetail): void {
+		addingCheck = false;
+		onSaved(result);
+	}
 
 	const GUIDELINE_FIELDS: readonly SpecListField[] = ['acceptance', 'rules', 'process'];
 	const PROGRESS_FIELDS: readonly SpecListField[] = ['progress.done', 'progress.open', 'progress.blocked'];
@@ -246,20 +283,36 @@
 								{#if count > 0}
 									<span class="plan-spec-field-count mono">{count}</span>
 								{/if}
+								{#if field === 'acceptance' && checksTotal.total > 0}
+									<span class="plan-spec-checks-summary mono">{t.plan.checks.summary(checksTotal.pass, checksTotal.total)}</span>
+								{/if}
 							</div>
-							{#if api && editing !== field}
-								<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-									<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<path d="M12 20h9"></path>
-										<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-									</svg>
-									<span>{t.plan.edit}</span>
-								</button>
-							{/if}
+							<div class="plan-spec-list-actions">
+								{#if field === 'acceptance' && api}
+									{#if checksTotal.total > 0}
+										<button type="button" class="plan-spec-checks-run-btn" onclick={runAllChecks} disabled={runningAll || anyCheckRunning}>
+											<span aria-hidden="true">▶</span> {t.plan.checks.run}
+										</button>
+									{/if}
+									<button type="button" class="plan-spec-checks-add-btn" onclick={openAddCheck}>{t.plan.checks.add}</button>
+								{/if}
+								{#if api && editing !== field}
+									<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M12 20h9"></path>
+											<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+										</svg>
+										<span>{t.plan.edit}</span>
+									</button>
+								{/if}
+							</div>
 						</div>
+
+						{#if field === 'acceptance' && runError}<p class="plan-spec-error">{runError}</p>{/if}
 
 						{#if editing === field}
 							<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
+							{#if field === 'acceptance'}<p class="plan-spec-checks-hint">{t.plan.checks.editHint}</p>{/if}
 							<div class="plan-spec-edit-actions">
 								<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
 								<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
@@ -269,10 +322,25 @@
 							{@const lines = specLines(spec, field)}
 							{#if lines.length > 0}
 								<ul class="plan-spec-ul">
-									{#each lines as line}<li>{line}</li>{/each}
+									{#each lines as line}<li>{line}{#if field === 'acceptance' && checksForLine(checks, line).length > 0}<span class="plan-spec-checks-pills">{#each checksForLine(checks, line) as check (check.id)}<AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} />{/each}</span>{/if}</li>{/each}
 								</ul>
 							{:else}
 								<p class="plan-spec-empty-line">{t.plan.empty}</p>
+							{/if}
+
+							{#if field === 'acceptance' && orphanedChecks.length > 0}
+								<div class="plan-spec-checks-orphans">
+									<span class="plan-spec-checks-orphans-title">{t.plan.checks.orphansTitle}</span>
+									<span class="plan-spec-checks-pills">
+										{#each orphanedChecks as check (check.id)}
+											<AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} />
+										{/each}
+									</span>
+								</div>
+							{/if}
+
+							{#if field === 'acceptance' && addingCheck && api}
+								<AcceptanceCheckForm {api} {detail} {t} editing={null} onSaved={checkSaved} onCancel={() => (addingCheck = false)} />
 							{/if}
 						{/if}
 					</div>
@@ -669,6 +737,85 @@
 		color: var(--accent);
 	}
 
+	.plan-spec-list-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex: none;
+	}
+
+	.plan-spec-checks-summary {
+		flex: none;
+		padding: 1px 7px;
+		border-radius: 9999px;
+		background: var(--accent-tint);
+		color: var(--accent);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 15px;
+	}
+
+	.plan-spec-checks-run-btn,
+	.plan-spec-checks-add-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		flex: none;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+		color: var(--ink-secondary);
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1;
+		padding: 3px 7px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		min-height: 24px;
+	}
+
+	.plan-spec-checks-run-btn:hover:not(:disabled),
+	.plan-spec-checks-add-btn:hover:not(:disabled) {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.plan-spec-checks-run-btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.plan-spec-checks-hint {
+		margin: 0;
+		font-size: 10.5px;
+		color: var(--muted-light);
+	}
+
+	.plan-spec-checks-pills {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 4px;
+		margin-left: 4px;
+		vertical-align: middle;
+	}
+
+	.plan-spec-checks-orphans {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px dashed var(--line);
+	}
+
+	.plan-spec-checks-orphans-title {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+
 	.plan-spec-ul {
 		margin: 0;
 		padding: 0 0 0 14px;
@@ -950,6 +1097,25 @@
 		.plan-spec-edit-btn {
 			min-height: 30px;
 			padding: 4px 9px;
+		}
+
+		.plan-spec-list-head {
+			flex-wrap: wrap;
+		}
+
+		.plan-spec-list-actions {
+			flex-wrap: wrap;
+		}
+
+		.plan-spec-checks-run-btn,
+		.plan-spec-checks-add-btn {
+			min-height: 36px;
+			padding: 6px 12px;
+		}
+
+		.plan-spec-checks-pills {
+			margin-left: 0;
+			width: 100%;
 		}
 
 		.plan-spec-goal-input,

@@ -140,56 +140,70 @@ function matchInWorker(pattern: string, body: string): Promise<"match" | "no-mat
 const FILE_READ_MAX = 1_000_000;
 
 /** `exists` / `contains` / `matches`: read from disk, never spawn anything. */
-export async function evaluateFileCheck(root: string, check: AcceptanceCheck): Promise<CheckVerdict> {
+/**
+ * A run's one-line `detail` is shown on the flow board and quoted to the organizer and in call-back
+ * notes, so it is written in the app's locale, like every other line the app says.
+ */
+function sayer(locale: Locale): (zh: string, en: string) => string {
+  return (zh, en) => (locale === "en" ? en : zh);
+}
+
+export async function evaluateFileCheck(root: string, check: AcceptanceCheck, locale: Locale = "zh"): Promise<CheckVerdict> {
+  const say = sayer(locale);
   const path = check.path ?? "";
-  if (!path) return { outcome: "error", exitCode: null, detail: "no path set on this check", output: null };
+  if (!path) return { outcome: "error", exitCode: null, detail: say("这条检查没有写路径", "no path set on this check"), output: null };
   let classified;
   try {
     classified = classifyPath(root, path);
   } catch {
-    return { outcome: "blocked", exitCode: null, detail: "outside the workspace", output: null };
+    return { outcome: "blocked", exitCode: null, detail: say("在工作区外", "outside the workspace"), output: null };
   }
-  if (classified.zone !== "inside") return { outcome: "blocked", exitCode: null, detail: "outside the workspace", output: null };
+  if (classified.zone !== "inside") return { outcome: "blocked", exitCode: null, detail: say("在工作区外", "outside the workspace"), output: null };
   let stat;
   try {
     stat = statSync(classified.abs);
   } catch {
-    return { outcome: "fail", exitCode: null, detail: "missing file", output: null };
+    return { outcome: "fail", exitCode: null, detail: say("文件不在", "missing file"), output: null };
   }
-  if (!stat.isFile()) return { outcome: "fail", exitCode: null, detail: "missing file", output: null };
+  if (!stat.isFile()) return { outcome: "fail", exitCode: null, detail: say("文件不在", "missing file"), output: null };
 
   if (check.kind === "exists") {
-    if (stat.size === 0) return { outcome: "fail", exitCode: null, detail: "empty", output: null };
-    return { outcome: "pass", exitCode: null, detail: `${stat.size} bytes`, output: null };
+    if (stat.size === 0) return { outcome: "fail", exitCode: null, detail: say("文件是空的", "empty"), output: null };
+    return { outcome: "pass", exitCode: null, detail: say(`${stat.size} 字节`, `${stat.size} bytes`), output: null };
   }
 
-  if (stat.size > FILE_READ_MAX) return { outcome: "error", exitCode: null, detail: "file is larger than 1 MB", output: null };
+  if (stat.size > FILE_READ_MAX) return { outcome: "error", exitCode: null, detail: say("文件超过 1 MB", "file is larger than 1 MB"), output: null };
   let body: string;
   try {
     body = readFileSync(classified.abs, "utf8");
   } catch {
-    return { outcome: "error", exitCode: null, detail: "could not read the file", output: null };
+    return { outcome: "error", exitCode: null, detail: say("读不了这个文件", "could not read the file"), output: null };
   }
   const pattern = check.pattern ?? "";
 
   if (check.kind === "contains") {
     const found = body.includes(pattern);
     const ok = check.negate ? !found : found;
+    const quoted = JSON.stringify(pattern);
     const detail = ok
-      ? "ok"
+      ? say("对上了", "ok")
       : check.negate
-        ? `still contains ${JSON.stringify(pattern)}`
-        : `missing ${JSON.stringify(pattern)}`;
+        ? say(`还包含 ${quoted}`, `still contains ${quoted}`)
+        : say(`没有 ${quoted}`, `missing ${quoted}`);
     return { outcome: ok ? "pass" : "fail", exitCode: null, detail, output: null };
   }
 
   // matches
   const matched = await matchInWorker(pattern, body);
-  if (matched === "bad-regex") return { outcome: "error", exitCode: null, detail: "pattern does not compile", output: null };
-  if (matched === "timeout") return { outcome: "error", exitCode: null, detail: "pattern took too long to run", output: null };
+  if (matched === "bad-regex") return { outcome: "error", exitCode: null, detail: say("正则写得不对", "pattern does not compile"), output: null };
+  if (matched === "timeout") return { outcome: "error", exitCode: null, detail: say("正则跑得太久", "pattern took too long to run"), output: null };
   const found = matched === "match";
   const ok = check.negate ? !found : found;
-  const detail = ok ? "ok" : check.negate ? `still matches /${pattern}/` : `no match for /${pattern}/`;
+  const detail = ok
+    ? say("对上了", "ok")
+    : check.negate
+      ? say(`还匹配 /${pattern}/`, `still matches /${pattern}/`)
+      : say(`匹配不到 /${pattern}/`, `no match for /${pattern}/`);
   return { outcome: ok ? "pass" : "fail", exitCode: null, detail, output: null };
 }
 
@@ -287,24 +301,25 @@ function spawnCommand(
 export async function runCommandCheck(
   root: string,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string> },
+  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale },
 ): Promise<CheckVerdict> {
+  const say = sayer(opts.locale ?? "zh");
   const command = check.command ?? "";
-  if (!command.trim()) return { outcome: "error", exitCode: null, detail: "no command set on this check", output: null };
+  if (!command.trim()) return { outcome: "error", exitCode: null, detail: say("这条检查没有写命令", "no command set on this check"), output: null };
   const cwd = check.cwd ?? ".";
   let classified;
   try {
     classified = classifyShell(root, command, cwd);
   } catch {
-    return { outcome: "blocked", exitCode: null, detail: "outside the workspace", output: null };
+    return { outcome: "blocked", exitCode: null, detail: say("在工作区外", "outside the workspace"), output: null };
   }
-  if (classified.kind === "unconstrained") return { outcome: "blocked", exitCode: null, detail: "outside the workspace", output: null };
+  if (classified.kind === "unconstrained") return { outcome: "blocked", exitCode: null, detail: say("在工作区外", "outside the workspace"), output: null };
   if (!existsSync(classified.cwdAbs) || !statSync(classified.cwdAbs).isDirectory()) {
-    return { outcome: "fail", exitCode: null, detail: "missing cwd", output: null };
+    return { outcome: "fail", exitCode: null, detail: say("运行目录不在", "missing cwd"), output: null };
   }
   const script = scriptOf(command);
   if (script && !existsSync(join(classified.cwdAbs, script))) {
-    return { outcome: "fail", exitCode: null, detail: `${script} is missing`, output: null };
+    return { outcome: "fail", exitCode: null, detail: say(`${script} 不在`, `${script} is missing`), output: null };
   }
 
   const timeoutSec = check.timeout_sec ?? 120;
@@ -313,18 +328,18 @@ export async function runCommandCheck(
   const combined = normalizeOutput(`${result.stdout}${result.stderr ? (result.stdout ? "\n" : "") + result.stderr : ""}`);
   const output = combined ? tail(combined, OUTPUT_TAIL_MAX) : null;
 
-  if (result.spawnError) return { outcome: "error", exitCode: null, detail: "could not run the command", output };
-  if (result.aborted) return { outcome: "error", exitCode: null, detail: "interrupted", output };
-  if (result.timedOut) return { outcome: "fail", exitCode: null, detail: `timed out after ${timeoutSec}s`, output };
+  if (result.spawnError) return { outcome: "error", exitCode: null, detail: say("命令没能跑起来", "could not run the command"), output };
+  if (result.aborted) return { outcome: "error", exitCode: null, detail: say("跑到一半被打断", "interrupted"), output };
+  if (result.timedOut) return { outcome: "fail", exitCode: null, detail: say(`${timeoutSec} 秒还没跑完`, `timed out after ${timeoutSec}s`), output };
 
   const expectExit = check.expect_exit ?? 0;
   const problems: string[] = [];
-  if (result.exitCode !== expectExit) problems.push(`exit ${result.exitCode ?? "none"}, expected ${expectExit}`);
+  if (result.exitCode !== expectExit) problems.push(say(`退出码 ${result.exitCode ?? "无"}，应为 ${expectExit}`, `exit ${result.exitCode ?? "none"}, expected ${expectExit}`));
   if (check.expect_stdout !== null && check.expect_stdout !== undefined) {
-    if (normalizeOutput(result.stdout) !== normalizeOutput(check.expect_stdout)) problems.push("stdout differs from what was expected");
+    if (normalizeOutput(result.stdout) !== normalizeOutput(check.expect_stdout)) problems.push(say("输出和期望的不一样", "stdout differs from what was expected"));
   }
   const outcome: AcceptanceCheckOutcome = problems.length === 0 ? "pass" : "fail";
-  const detail = problems.length > 0 ? problems.join("; ") : `exit ${result.exitCode}`;
+  const detail = problems.length > 0 ? problems.join(say("；", "; ")) : say(`退出码 ${result.exitCode}`, `exit ${result.exitCode}`);
   return { outcome, exitCode: result.exitCode, detail, output };
 }
 
@@ -332,11 +347,11 @@ export async function runCommandCheck(
 export async function evaluateCheck(
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string> } = {},
+  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale } = {},
 ): Promise<CheckVerdict> {
-  if (!root) return { outcome: "blocked", exitCode: null, detail: "no workspace is open", output: null };
+  if (!root) return { outcome: "blocked", exitCode: null, detail: sayer(opts.locale ?? "zh")("没有打开工作区", "no workspace is open"), output: null };
   if (check.kind === "command") return runCommandCheck(root, check, opts);
-  return evaluateFileCheck(root, check);
+  return evaluateFileCheck(root, check, opts.locale);
 }
 
 /** One line describing what a check verifies, for the plan's mirror files. */
