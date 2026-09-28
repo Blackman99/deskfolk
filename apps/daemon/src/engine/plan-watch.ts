@@ -7,6 +7,7 @@
  * doing, so there is something here to watch in the first place.
  */
 import { USER_MEMBER, type Locale, type Message, type Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
 import { planNudgeNote, stalledPlanBody, type OpenTicketLine } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import type { CheckBack, Store } from "../store";
@@ -18,6 +19,8 @@ export type PlanWatchDeps = {
   /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
   renderMirrors: (taskId: string) => void;
   fireCheckBack: (id: string, now?: Date) => Turn | null;
+  /** Benchmark switches (see `ablation.ts`): `plan-nudge` never calls a Bot back or says the plan stopped. */
+  ablation?: Ablation;
 };
 
 export type PlanWatch = {
@@ -27,6 +30,7 @@ export type PlanWatch = {
 
 export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
   const { store, admission, publishMessage, renderMirrors, fireCheckBack } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
 
   function isAwake(botId: string): boolean {
     try {
@@ -91,7 +95,7 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
    * session you are in: you are who the last word goes to.
    */
   function reconcilePlan(taskId: string): void {
-    if (admission?.draining) return;
+    if (admission?.draining || ablation.has("plan-nudge")) return;
     let task: ReturnType<Store["getTask"]>;
     try {
       task = store.getTask(taskId);

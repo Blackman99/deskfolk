@@ -6,6 +6,7 @@
  * ways a turn's reply actually reaches the transcript, closing check already run.
  */
 import { attachmentLinePaths, USER_MEMBER, type Message, type Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -44,6 +45,8 @@ export type ClosingDeps = {
   executionOf: (live: Live | undefined) => TurnExecution | null;
   /** Late-bound: plan-watch.ts is built after this module. */
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
+  /** Benchmark switches (see `ablation.ts`): `closing-check` lets every delivery through unchecked. */
+  ablation?: Ablation;
 };
 
 export type Closing = {
@@ -65,6 +68,7 @@ export type Closing = {
 
 export function createClosing(deps: ClosingDeps): Closing {
   const { store, completions, admission, lives, active, publishTurn, publishMessage, recordResponseSpend, spendOwner, executionOf, observeTicket } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
 
   /**
    * Runs the closing check once per turn, when a delivery — a message that cites workspace files,
@@ -80,6 +84,7 @@ export function createClosing(deps: ClosingDeps): Closing {
     turn: Turn,
     input: { body: string; paths: string[]; sessionId: string },
   ): Promise<string | null> {
+    if (ablation.has("closing-check")) return null;
     if (live.closingChecked) return null;
     if (input.paths.length === 0 && !promisesLaterWork(input.body)) return null;
     if (!live.routing || admission?.draining) return null;

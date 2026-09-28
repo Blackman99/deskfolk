@@ -12,6 +12,7 @@ import {
   type PendingJudgement,
   type Turn,
 } from "@real-bot/protocol";
+import { ABLATED_JOIN_REASON, NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
 import { assembleJudgementUser, extractJudgement } from "../context";
 import { isoNow, ulid } from "../ids";
@@ -53,6 +54,8 @@ export type ParticipationDeps = {
     entry: Omit<InboxEntry, "message">,
     opts?: { taskId?: string | null; ticketId?: string | null },
   ) => Turn;
+  /** Benchmark switches (see `ablation.ts`): `judgement` has every Bot join without a call. */
+  ablation?: Ablation;
 };
 
 export type Participation = {
@@ -93,6 +96,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     startTurn,
     hearOrStart,
   } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
   const pendingJudges = new Map<string, PendingJudgement>();
 
   /** A Bot's `@token` matched nobody present: say so in the transcript so the miss is visible. */
@@ -302,6 +306,27 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       settled = true;
     };
     try {
+      if (ablation.has("judgement")) {
+        // Off: every Bot the line would have asked joins, the way a "join" verdict does, unbilled.
+        if (admission?.draining) return;
+        let row;
+        try {
+          row = store.insertJudgement({
+            sessionId: message.session_id,
+            messageId: message.id,
+            botId,
+            decision: "join",
+            reason: ABLATED_JOIN_REASON,
+            error: null,
+          });
+        } catch {
+          return;
+        }
+        startTurn(message.session_id, botId, message, "redirect");
+        finish(row);
+        publish({ event: "judgement.created", occurred_at: occurred(), ...row });
+        return;
+      }
       let creds: Creds | null;
       try {
         creds = await credentials();

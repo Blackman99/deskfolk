@@ -6,6 +6,7 @@
  * chain is done living here too: every new word about the same thing pushes it back.
  */
 import type { ClientEvent, RouteOutcome } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
 import { runCollabTool } from "../collab-tools";
 import { type ChatMessage, type CompletionsClient } from "../completions";
 import { parseRouteReview, verdictIsClarification, verdictIsExperience } from "../route-agent";
@@ -36,6 +37,11 @@ export type ChainsDeps = {
   routingTarget: Routing["routingTarget"];
   recordResponseSpend: SpendTracker["recordResponseSpend"];
   spendOwner: SpendTracker["spendOwner"];
+  /**
+   * Benchmark switches (see `ablation.ts`): `review` records every chain as not worth a review
+   * (so it still closes), `learning` skips the learning hop after a review.
+   */
+  ablation?: Ablation;
 };
 
 export type Chains = {
@@ -48,6 +54,7 @@ export type Chains = {
 
 export function createChains(deps: ChainsDeps): Chains {
   const { store, publish, occurred, completions, admission, track, credentials, routingTarget, recordResponseSpend, spendOwner } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
 
   /** A chain closes when the user goes quiet, even if they never say so. */
   const CHAIN_QUIET_MS = 3 * 60_000;
@@ -78,6 +85,7 @@ export function createChains(deps: ChainsDeps): Chains {
     // A quiet chain is only worth a review when the model side failed, or the tools failed twice.
     // A clean finish is recorded locally so the chain closes, without paying for a call.
     if (
+      ablation.has("review") ||
       !chainWarrantsReview({
         followUps: chain.followUps.length,
         outcome: chain.outcome === "running" ? null : (chain.outcome as RouteOutcome),
@@ -180,6 +188,7 @@ export function createChains(deps: ChainsDeps): Chains {
     // hop may write a memory but not touch a skill, since nothing about the procedure was wrong.
     const clarification = verdictIsClarification(verdict);
     if (!verdictIsExperience(verdict) && !stumbledAndFinished && !clarification) return;
+    if (ablation.has("learning")) return;
     await learnFromChain(chain, routing, verdict, clarification ? "clarification" : "experience");
   }
 

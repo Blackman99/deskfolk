@@ -19,6 +19,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { USER_MEMBER, type Message, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "./ablation";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { atomicWrite } from "./file-integrity";
 import { ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
@@ -50,6 +51,8 @@ export type OrganizerDeps = {
    * engine checks whether the plan stopped with tickets open (see the turn engine's reconcile).
    */
   onQuiet?: (taskId: string) => void;
+  /** Benchmark switches (see `ablation.ts`): `organize-message` / `organize-settle` skip that call. */
+  ablation?: Ablation;
 };
 
 export type Organizer = {
@@ -89,6 +92,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   const inFlight = new Set<string>();
   const chains = new Map<string, Promise<unknown>>();
   const log = deps.log ?? ((line: string) => console.error(line));
+  const ablation = deps.ablation ?? NO_ABLATION;
   /**
    * Set when the engine clears the timers (draining, quitting, closing): a settle still in flight
    * must not call back into an engine that is going away. The next turn end clears it, since a
@@ -205,7 +209,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   async function organizeOne(message: Message): Promise<{ taskId: string | null; ticketId: string | null }> {
     const current = store.sessionCurrentTask(message.session_id);
     const fallback = { taskId: current?.id ?? null, ticketId: null };
-    if (deps.draining() || !shouldFile(message)) return fallback;
+    if (deps.draining() || ablation.has("organize-message") || !shouldFile(message)) return fallback;
     const parsed = await call({ mode: "message", sessionId: message.session_id, message, current });
     if (!parsed) return fallback;
     let applied;
@@ -245,7 +249,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   }
 
   async function settlePlan(taskId: string): Promise<boolean> {
-    if (deps.draining() || inFlight.has(taskId)) return false;
+    // Off, the quiet timer still runs and `onQuiet` still reconciles the plan: only the filing is skipped.
+    if (deps.draining() || ablation.has("organize-settle") || inFlight.has(taskId)) return false;
     let task: Task;
     try {
       task = store.getTask(taskId);

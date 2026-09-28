@@ -6,6 +6,7 @@
  * target for a call — a turn, a judgement, the organizer, a chain review — goes through here.
  */
 import type { ThinkingLevel } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
 import { classifyMessage, messageSignature } from "../route-decision";
 import { parseRoutePick, type RoutePick } from "../route-agent";
@@ -20,6 +21,8 @@ export type RoutingDeps = {
   completions: CompletionsClient;
   recordResponseSpend: SpendTracker["recordResponseSpend"];
   spendOwner: SpendTracker["spendOwner"];
+  /** Benchmark switches (see `ablation.ts`): `route-pick` leaves every pick to the rules. */
+  ablation?: Ablation;
 };
 
 export type Routing = {
@@ -47,6 +50,7 @@ export type Routing = {
 
 export function createRouting(deps: RoutingDeps): Routing {
   const { store, completions, recordResponseSpend, spendOwner } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
 
   async function credentials(): Promise<Creds | null> {
     const settings = await store.settings();
@@ -110,6 +114,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     text: string,
     signal: AbortSignal,
   ): Promise<{ routed: Routed; pick: RoutePick } | null> {
+    if (ablation.has("route-pick")) return null;
     if (!text.trim()) return null;
     const routing = routingTarget(creds);
     if (!routing) return null;

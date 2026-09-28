@@ -31,6 +31,7 @@ import {
   isNonReceiptPath,
 } from "@real-bot/protocol";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import type { Ablation } from "./ablation";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { corsHeaders, originDecision } from "./origin";
@@ -104,6 +105,8 @@ export type LocalApiOptions = {
   dataDir?: string;
   /** How workspace files reach the Trash; the Mac's own Trash when absent. */
   trash?: TrashMover;
+  /** Side-calls switched off for a benchmark (see `ablation.ts`); ignored when `engine` is given. */
+  ablation?: Ablation;
 };
 
 export type LocalApi = {
@@ -294,6 +297,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       mcp,
       admission: options.admission,
       streams,
+      ablation: options.ablation,
     });
 
   const scheduler =

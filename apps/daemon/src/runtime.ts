@@ -7,6 +7,7 @@ import {
   stateDbPath,
   writeDescriptor,
 } from "./descriptor";
+import type { Ablation } from "./ablation";
 import { createLocalApi } from "./local-api";
 import { HttpError } from "./errors";
 import { bunKeyStore } from "./secrets";
@@ -35,6 +36,8 @@ export type RuntimeOptions = {
   supervisor?: import("./quiesce").SupervisorControl["kind"];
   onHandoff?: () => void;
   onRuntimeStop?: () => void;
+  /** Side-calls switched off for a benchmark (see `ablation.ts`). `main.ts` never sets it. */
+  ablation?: Ablation;
 };
 
 export type RuntimeHandle = {
@@ -231,6 +234,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       }),
       completions: options.completions,
       schedule: options.schedule,
+      ablation: options.ablation,
       remoteStatus: () => remote?.status() ?? { state: "off", diagnostic: null, devices: 0 },
       onQuit: () => {
         options.onQuit?.();
