@@ -17,6 +17,7 @@ path = "src/main.rs"
 portable-pty = "0.9"
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
+    "Win32_System_Console",
     "Win32_Security",
     "Win32_System_JobObjects",
     "Win32_System_Threading",

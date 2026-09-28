@@ -22,6 +22,7 @@ use windows_sys::Win32::System::JobObjects::{
     SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
+use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
 use windows_sys::Win32::System::Threading::TerminateProcess;
 
 /// A CLI/argument problem: same `real-bot-pty: <message>` + exit 64 the Swift helper uses.
@@ -140,6 +141,14 @@ pub fn run() -> ! {
         Ok(options) => options,
         Err(message) => fail_usage(&message),
     };
+
+    // Whether Ctrl+C is ignored is inherited: a helper started with it switched off (anything
+    // launched in a new process group is) would hand every shell a Ctrl+C that does nothing — on
+    // windows-latest, `ping -t` ran on through it. Turn it back on before the shell inherits it.
+    // A failure leaves things as they were, so it is not checked.
+    unsafe {
+        SetConsoleCtrlHandler(None, 0);
+    }
 
     let pty_system = native_pty_system();
     let pair = pty_system

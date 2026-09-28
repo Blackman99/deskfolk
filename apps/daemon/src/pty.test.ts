@@ -223,13 +223,26 @@ withHelper("zsh keeps the user's own dotfiles and reports its cwd via Deskfolk's
 
 const typed = (text: string) => new TextEncoder().encode(text);
 
+/** Windows lets a folder go only once the processes that stood in it are gone: retry for a moment. */
+async function removeDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt >= 30 || (error as NodeJS.ErrnoException).code !== "EBUSY") throw error;
+      await Bun.sleep(100);
+    }
+  }
+}
+
 withConpty("ConPTY: the session runs in the requested cwd and the exit code comes back", async () => {
   const cwd = scratch();
   // Wide, so ConPTY does not wrap a long temp path across two lines.
   const { pty, read } = open(cwd, ["cmd.exe", "/d", "/c", "cd & exit 7"], 24, 300);
   expect(await pty.exited).toBe(7);
   expect((await settle(read, 200, 3000)).toLowerCase()).toContain(cwd.split("\\").pop()!.toLowerCase());
-  rmSync(cwd, { recursive: true, force: true });
+  await removeDir(cwd);
 }, 30_000);
 
 /** Waits for `pattern` in what the session has said since `from`; fails with the tail if it never shows. */
@@ -260,7 +273,7 @@ withConpty("ConPTY: Ctrl-C stops the foreground program and the shell survives i
   await until(read, /ALIVE_\d/, interrupted);
   pty.kill();
   await pty.exited;
-  rmSync(cwd, { recursive: true, force: true });
+  await removeDir(cwd);
 }, 120_000);
 
 withConpty("ConPTY: a resize reaches the program", async () => {
@@ -275,7 +288,7 @@ withConpty("ConPTY: a resize reaches the program", async () => {
   await until(read, /W=123/, asked);
   pty.kill();
   await pty.exited;
-  rmSync(cwd, { recursive: true, force: true });
+  await removeDir(cwd);
 }, 180_000);
 
 withConpty("ConPTY: kill() takes the session down without waiting for the escalation", async () => {
@@ -286,5 +299,5 @@ withConpty("ConPTY: kill() takes the session down without waiting for the escala
   pty.kill();
   await pty.exited;
   expect(Date.now() - started).toBeLessThan(SHUTDOWN_GRACE_MS);
-  rmSync(cwd, { recursive: true, force: true });
+  await removeDir(cwd);
 }, 30_000);
