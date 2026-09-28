@@ -1688,6 +1688,8 @@ mod tests {
 
     #[test]
     fn independent_runtime_mutators_use_bundled_frame_acl() {
+        // The bundled page's origin: WebView2 serves it from http://tauri.localhost.
+        let page = if cfg!(windows) { "http://tauri.localhost/index.html" } else { "tauri://localhost/index.html" };
         use serde_json::json;
         use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
         let mut context = crate::app_context();
@@ -1713,7 +1715,7 @@ mod tests {
         let bundled = tauri::WebviewWindowBuilder::new(
             &app,
             "main",
-            tauri::WebviewUrl::External("tauri://localhost/index.html".parse().unwrap()),
+            tauri::WebviewUrl::External(page.parse().unwrap()),
         )
         .build()
         .unwrap();
@@ -1737,7 +1739,7 @@ mod tests {
         };
         let status = invoke(
             "independent_runtime_status",
-            "tauri://localhost/index.html",
+            page,
             None,
         )
         .expect("status from bundled main");
@@ -1749,14 +1751,14 @@ mod tests {
         assert_eq!(status["supervising"], json!(true));
         assert!(invoke(
             "independent_runtime",
-            "tauri://localhost/index.html",
+            page,
             Some("enable")
         )
         .is_err());
         for operation in ["enable", "wait", "force", "disable", "cancel"] {
             let ok = invoke(
                 "independent_runtime_release_fixture",
-                "tauri://localhost/index.html",
+                page,
                 Some(operation),
             );
             assert!(ok.is_ok(), "{operation}: {ok:?}");

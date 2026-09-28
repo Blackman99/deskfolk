@@ -514,7 +514,10 @@ mod tests {
         assert!(!check_older.update_available);
     }
 
+    // pick_update looks for the NSIS installer on Windows; picks_windows_installer_by_arch_suffix
+    // covers that side.
     #[test]
+    #[cfg(not(windows))]
     fn picks_arch_dmg_and_falls_back_to_release_page() {
         let current = version("0.1.0");
         let mut r = release("v0.2.0", false, false);

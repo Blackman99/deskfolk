@@ -232,34 +232,51 @@ withConpty("ConPTY: the session runs in the requested cwd and the exit code come
   rmSync(cwd, { recursive: true, force: true });
 }, 30_000);
 
+/** Waits for `pattern` in what the session has said since `from`; fails with the tail if it never shows. */
+async function until(read: () => string, pattern: RegExp, from = 0, capMs = 30_000): Promise<string> {
+  const start = Date.now();
+  while (Date.now() - start < capMs) {
+    const seen = read().slice(from);
+    if (pattern.test(seen)) return seen;
+    await Bun.sleep(100);
+  }
+  throw new Error(`never saw ${pattern} in ${JSON.stringify(read().slice(from).slice(-600))}`);
+}
+
 withConpty("ConPTY: Ctrl-C stops the foreground program and the shell survives it", async () => {
   const cwd = scratch();
-  const { pty, read } = open(cwd, ["cmd.exe", "/d", "/q", "/k"], 24, 200);
-  await settle(read);
+  const prompt = new RegExp(`${cwd.split("\\").pop()}>`, "i");
+  const { pty, read } = open(cwd, ["cmd.exe", "/d", "/k"], 24, 200);
+  await until(read, prompt);
   pty.write(typed("ping -t 127.0.0.1\r"));
-  await settle(read);
+  const pinging = read().length;
+  await until(read, /Reply from|127\.0\.0\.1.*TTL/i, pinging);
+  const interrupted = read().length;
   pty.write(typed("\x03"));
-  await settle(read);
-  // Typed while ping still ran, this would never be read; the expanded %ERRORLEVEL% proves cmd did.
+  // ping answers Ctrl+C with its statistics and cmd draws the prompt again.
+  await until(read, prompt, interrupted);
+  // Read by cmd, not swallowed by a ping still running: the expanded %ERRORLEVEL% proves it.
   pty.write(typed("echo ALIVE_%ERRORLEVEL%\r"));
-  expect(await settle(read)).toMatch(/ALIVE_\d/);
+  await until(read, /ALIVE_\d/, interrupted);
   pty.kill();
   await pty.exited;
   rmSync(cwd, { recursive: true, force: true });
-}, 60_000);
+}, 120_000);
 
 withConpty("ConPTY: a resize reaches the program", async () => {
   const cwd = scratch();
   const { pty, read } = open(cwd, ["powershell.exe", "-NoLogo", "-NoProfile"], 24, 100);
-  await settle(read, 1000, 30000);
+  // A cold Windows PowerShell can take many seconds to draw its first prompt.
+  await until(read, /PS [^\r\n]*>/, 0, 90_000);
   pty.resize(30, 123);
-  await Bun.sleep(300);
+  await Bun.sleep(500);
+  const asked = read().length;
   pty.write(typed("'W=' + $Host.UI.RawUI.WindowSize.Width\r"));
-  expect(await settle(read, 1000, 30000)).toContain("W=123");
+  await until(read, /W=123/, asked);
   pty.kill();
   await pty.exited;
   rmSync(cwd, { recursive: true, force: true });
-}, 60_000);
+}, 180_000);
 
 withConpty("ConPTY: kill() takes the session down without waiting for the escalation", async () => {
   const cwd = scratch();

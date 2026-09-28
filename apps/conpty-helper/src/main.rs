@@ -59,6 +59,7 @@
 
 mod cli;
 mod handshake;
+mod input;
 mod protocol;
 mod signal;
 

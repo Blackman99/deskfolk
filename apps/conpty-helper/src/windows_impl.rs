@@ -7,6 +7,7 @@
 
 use crate::cli;
 use crate::handshake::{self, CursorHandshake};
+use crate::input;
 use crate::protocol::{self, ControlEvent};
 use crate::signal::{self, SignalAction};
 
@@ -228,7 +229,7 @@ pub fn run() -> ! {
                 match event {
                     ControlEvent::Input(bytes) => {
                         let mut writer = writer.lock().unwrap();
-                        let _ = writer.write_all(&bytes);
+                        let _ = writer.write_all(&input::encode(&bytes));
                         let _ = writer.flush();
                     }
                     ControlEvent::Resize { rows, cols } => {
@@ -239,7 +240,7 @@ pub fn run() -> ! {
                     ControlEvent::Signal(signo) => match signal::windows_action(signo) {
                         SignalAction::WriteByte(byte) => {
                             let mut writer = writer.lock().unwrap();
-                            let _ = writer.write_all(&[byte]);
+                            let _ = writer.write_all(&input::encode(&[byte]));
                             let _ = writer.flush();
                         }
                         SignalAction::Ignore => {}

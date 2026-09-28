@@ -1,9 +1,8 @@
 //! Maps the Darwin signal numbers the daemon sends (see `apps/daemon/src/pty.ts`'s `SIGNO`
-//! table) into what this helper does with them on Windows, where there is no `kill()`. Contract
-//! (§3 of the shared Windows plan): 2/3 are delivered as control bytes that ConPTY's
-//! Win32-input-mode already turns into the right console event; 18 has no Windows analogue and
-//! is dropped; 9/15 don't map to a specific per-signal behaviour on Windows, only to "make it
-//! stop, all of it".
+//! table) into what this helper does with them on Windows, where there is no `kill()`: 2/3 are
+//! typed as the control keys they stand for (see `input` for how Ctrl+C reaches conhost); 18 has
+//! no Windows analogue and is dropped; 9/15 don't map to a specific per-signal behaviour on
+//! Windows, only to "make it stop, all of it".
 
 /// What a `signal` control frame (see `protocol.rs`) asks the Windows side to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

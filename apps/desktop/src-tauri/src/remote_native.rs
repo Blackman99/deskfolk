@@ -460,6 +460,8 @@ mod tests {
 
     #[test]
     fn actual_tauri_ipc_uses_frame_acl_and_command_document_guard() {
+        // The bundled page's origin: WebView2 serves it from http://tauri.localhost.
+        let page = if cfg!(windows) { "http://tauri.localhost/index.html" } else { "tauri://localhost/index.html" };
         use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
         let mut context = crate::app_context();
         context.config_mut().app.windows.clear();
@@ -480,7 +482,7 @@ mod tests {
         let bundled = tauri::WebviewWindowBuilder::new(
             &app,
             "main",
-            tauri::WebviewUrl::External("tauri://localhost/index.html".parse().unwrap()),
+            tauri::WebviewUrl::External(page.parse().unwrap()),
         )
         .build()
         .unwrap();
@@ -498,8 +500,8 @@ mod tests {
                 },
             )
         };
-        assert!(invoke("release_origin_fixture", "tauri://localhost/index.html").is_ok());
-        assert!(invoke("debug_origin_fixture", "tauri://localhost/index.html").is_err());
+        assert!(invoke("release_origin_fixture", page).is_ok());
+        assert!(invoke("debug_origin_fixture", page).is_err());
         for frame in [
             "blob:tauri://localhost/fixture",
             "about:srcdoc",
