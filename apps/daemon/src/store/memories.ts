@@ -107,6 +107,26 @@ export function findMemoryBySubject(ctx: StoreContext, botId: string, subject: s
   return row ? toMemory(row) : null;
 }
 
+/**
+ * This Bot's other enabled memories written from one session since `since`, newest first. A
+ * preference revised a few times in one conversation tends to come back under a new subject each
+ * time instead of as an overwrite; a remember that opens a new subject is shown these.
+ */
+export function sessionMemoriesSince(
+  ctx: StoreContext,
+  input: { botId: string; sessionId: string; since: string; exceptId: string; limit?: number },
+): Memory[] {
+  return ctx.db
+    .query<MemoryRow, [string, string, string, string, number]>(
+      `SELECT * FROM memories
+       WHERE bot_id = ? AND source_session_id = ? AND enabled = 1 AND updated_at >= ? AND id != ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT ?`,
+    )
+    .all(input.botId, input.sessionId, input.since, input.exceptId, input.limit ?? 5)
+    .map(toMemory);
+}
+
 /** The subject that has gone longest without being rewritten — what a full Bot should drop first. */
 export function stalestMemory(ctx: StoreContext, botId: string): Memory | null {
   const row = ctx.db

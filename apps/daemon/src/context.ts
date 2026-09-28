@@ -720,12 +720,13 @@ function situationUserMessage(
 }
 
 /**
- * How old a memory reads in the prompt. Bucketed rather than dated: an ISO timestamp would
- * change the system text every day and cost the prefix cache for no gain, and the Bot only has
- * to know whether a conclusion is fresh or stale. The messenger shows the same buckets.
+ * How old a memory reads in the prompt, counted from when it was last written: a conclusion
+ * rewritten today is today's. Bucketed rather than dated: an ISO timestamp would change the system
+ * text every day and cost the prefix cache for no gain, and the Bot only has to know whether a
+ * conclusion is fresh or stale. The messenger shows the same buckets.
  */
-export function memoryAgeLabel(locale: Locale, createdAt: string, now: Date = new Date()): string {
-  const days = Math.floor((now.getTime() - new Date(createdAt).getTime()) / 86_400_000);
+export function memoryAgeLabel(locale: Locale, writtenAt: string, now: Date = new Date()): string {
+  const days = Math.floor((now.getTime() - new Date(writtenAt).getTime()) / 86_400_000);
   if (!Number.isFinite(days) || days <= 0) return locale === "en" ? "today" : "今天";
   if (days < 7) return locale === "en" ? "this week" : "本周";
   const weeks = Math.floor(days / 7);
@@ -736,20 +737,21 @@ export function memoryAgeLabel(locale: Locale, createdAt: string, now: Date = ne
 
 /**
  * Two passes on purpose. The cut takes newest-written first, so when the budget ever bites it is
- * the stalest conclusion that falls out. The survivors are then sorted by subject, so the
- * rendered text does not reshuffle every time one memory is rewritten.
+ * the stalest conclusion that falls out. The survivors then render oldest-written first: a new
+ * memory lands at the end, where it costs the prefix cache least, and when two say different
+ * things about the same matter the Bot can see which one is newer.
  */
 export function memoryDigest(store: Store, botId: string, locale: Locale, now: Date = new Date()): MemoryPromptEntry[] {
   const kept: MemoryPromptEntry[] = [];
   let used = 0;
   for (const memory of store.listEnabledMemories(botId)) {
-    const age = memoryAgeLabel(locale, memory.created_at, now);
+    const age = memoryAgeLabel(locale, memory.updated_at, now);
     const cost = memoryEntryCost(memory.subject, memory.body, age);
     if (used + cost > MEMORY_DIGEST_LIMIT) break;
     used += cost;
     kept.push({ subject: memory.subject, body: memory.body, age });
   }
-  return kept.sort((a, b) => a.subject.localeCompare(b.subject));
+  return kept.reverse();
 }
 
 function transcriptWindow(

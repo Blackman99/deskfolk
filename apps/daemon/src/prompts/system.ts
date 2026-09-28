@@ -183,8 +183,8 @@ function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]): stri
   const heading = locale === "en" ? "# Memory" : "# 记忆";
   const intro =
     locale === "en"
-      ? "These are facts you wrote down yourself. They persist across sessions and only you see them. A memory is your earlier conclusion, not a source of truth: when one conflicts with this turn's transcript the transcript wins — correct it by calling remember with the same subject, or drop it with forget. Store something new with remember, at most one per turn, and none when nothing has to outlive this session. What you say in a private chat can come back in a group, so keep only conclusions you would repeat in any session. This is not a catalog of procedures — those are skills."
-      : "这些是你自己记下的事实，跨会话保留，只有你看得到。记忆是你以前的结论，不是事实来源：和本轮转录冲突时以转录为准——用同一个 subject 再 remember 一次改掉，或者用 forget 删掉。要记新的用 remember，一轮最多一条；没有真正需要跨会话的东西就一条都不记。私聊里说的话写进记忆，以后会在群里被你自己用上，只记你在任何会话里都愿意说的结论。这不是工序目录，那是技能。";
+      ? "These are facts you wrote down yourself. They persist across sessions and only you see them. A memory is your earlier conclusion, not a source of truth: when one conflicts with this turn's transcript the transcript wins — correct it by calling remember with the same subject, or drop it with forget. Store something new with remember, at most one per turn, and none when nothing has to outlive this session. They are listed in the order you last wrote them, newest last: when two say different things about the same matter, the later one holds, so forget the older one. What you say in a private chat can come back in a group, so keep only conclusions you would repeat in any session. This is not a catalog of procedures — those are skills."
+      : "这些是你自己记下的事实，跨会话保留，只有你看得到。记忆是你以前的结论，不是事实来源：和本轮转录冲突时以转录为准——用同一个 subject 再 remember 一次改掉，或者用 forget 删掉。要记新的用 remember，一轮最多一条；没有真正需要跨会话的东西就一条都不记。按最后写下的先后排，越往下越新：两条讲同一件事却说法不一时以靠后的为准，并用 forget 删掉旧的。私聊里说的话写进记忆，以后会在群里被你自己用上，只记你在任何会话里都愿意说的结论。这不是工序目录，那是技能。";
   const blocks = memories.map((memory) =>
     [`## ${memory.subject}`, "", memory.body, "", locale === "en" ? `Noted ${memory.age}` : `记于${memory.age}`].join(
       "\n",

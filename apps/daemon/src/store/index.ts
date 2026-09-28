@@ -229,6 +229,7 @@ export class Store {
   readonly listEnabledMemories = this.bind(memories.listEnabledMemories);
   readonly getMemory = this.bind(memories.getMemory);
   readonly findMemoryBySubject = this.bind(memories.findMemoryBySubject);
+  readonly sessionMemoriesSince = this.bind(memories.sessionMemoriesSince);
   readonly rememberMemory = this.bind(memories.rememberMemory);
   readonly patchMemory = this.bind(memories.patchMemory);
   readonly deleteMemory = this.bind(memories.deleteMemory);

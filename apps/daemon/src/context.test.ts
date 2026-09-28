@@ -730,14 +730,35 @@ describe("memory in the turn context", () => {
     store.close();
   });
 
-  /** The cut takes newest-first; the survivors render by subject so the text stays put. */
-  test("memories render in subject order, not in the order they were written", () => {
+  /**
+   * The cut takes newest-first; the survivors render oldest-written first, so a new memory lands
+   * at the end and two that disagree read in the order they were written.
+   */
+  test("memories render in the order they were last written, newest last", () => {
     const store = new Store();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
-    store.rememberMemory({ bot_id: writer.bot.id, subject: "zebra", body: "written first" });
-    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "written second" });
-    const system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "written first" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "zebra", body: "written second" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "middle", body: "written third" });
+    let system = systemFor(store, writer.bot.id, writer.direct_session.id);
     expect(system.indexOf("## alpha")).toBeLessThan(system.indexOf("## zebra"));
+    expect(system.indexOf("## zebra")).toBeLessThan(system.indexOf("## middle"));
+    // Rewriting one moves it to the end: it is now the newest conclusion.
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "rewritten" });
+    system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    expect(system.indexOf("## middle")).toBeLessThan(system.indexOf("## alpha"));
+    store.close();
+  });
+
+  test("a memory's age counts from its last write, not from when it was first stored", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const memory = store.rememberMemory({ bot_id: writer.bot.id, subject: "发布口径", body: "先发 beta" });
+    const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    store.db.run(`UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?`, [old, old, memory.id]);
+    expect(systemFor(store, writer.bot.id, writer.direct_session.id)).toContain("记于4 周前");
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "发布口径", body: "直接发正式版" });
+    expect(systemFor(store, writer.bot.id, writer.direct_session.id)).toContain("记于今天");
     store.close();
   });
 
