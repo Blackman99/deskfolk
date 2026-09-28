@@ -8,13 +8,19 @@ import { memoryKeyStore } from "../secrets";
 import { HttpError } from "../errors";
 
 const dirs: string[] = [];
-afterEach(() => { while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true }); });
+const stores: Store[] = [];
+// Closed first: Windows will not remove a folder while the database inside it is still open.
+afterEach(() => {
+  while (stores.length) stores.pop()!.close();
+  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+});
 
 async function store(): Promise<{ store: Store; root: string }> {
   const root = mkdtempSync(join(tmpdir(), "rb-live-"));
   dirs.push(root);
   mkdirSync(join(root, "inbox"));
   const st = new Store({ filename: join(root, "state.sqlite"), endpointKey: memoryKeyStore() });
+  stores.push(st);
   await st.patchSettings({ workspace_path: root });
   return { store: st, root };
 }

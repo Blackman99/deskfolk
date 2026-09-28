@@ -16,7 +16,7 @@ import {
 } from "./files";
 
 describe("the static exports are the 'sh' (today's POSIX) shape by default", () => {
-  test("this machine's toolShell() defaults to sh, so the static exports match the explicit sh call", () => {
+  test.skipIf(process.platform === "win32")("this machine's toolShell() defaults to sh, so the static exports match the explicit sh call", () => {
     expect(PATH_DESC).toEqual(pathDesc("sh"));
     expect(READ_FILE).toEqual(readFileTool("sh"));
     expect(WRITE_FILE).toEqual(writeFileTool("sh"));

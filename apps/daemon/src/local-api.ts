@@ -31,6 +31,7 @@ import {
   isNonReceiptPath,
 } from "@real-bot/protocol";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { corsHeaders, originDecision } from "./origin";
@@ -987,7 +988,8 @@ function dispatch(
     }
     const result = writeWorkspaceFile(root, body.path, body.content, request.headers.get("If-Match"), (abs) => {
       if (!input.stagedWrite) throw new Error("file must be staged");
-      if (abs !== `${input.stagedWrite.root}/${input.stagedWrite.final_rel}`) throw new HttpError(409, "conflict", "workspace target changed");
+      // Joined natively: `abs` is `C:\ws\a.md` on Windows, and `final_rel` is always `/`-separated.
+      if (abs !== join(input.stagedWrite.root, ...input.stagedWrite.final_rel.split("/"))) throw new HttpError(409, "conflict", "workspace target changed");
       store.commitPreparedFile(input.stagedWrite);
     });
     const response = emptyResponse(204, null);

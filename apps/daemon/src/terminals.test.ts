@@ -15,7 +15,8 @@ import { Store } from "./store";
 const helperBuilt = (() => {
   try { ptyHelperPath(); return true; } catch { return false; }
 })();
-const withHelper = helperBuilt ? test : test.skip;
+// These sessions drive `/bin/sh`; the ConPTY helper has its own checks in pty.test.ts.
+const withHelper = helperBuilt && process.platform !== "win32" ? test : test.skip;
 
 type Harness = {
   origin: string;

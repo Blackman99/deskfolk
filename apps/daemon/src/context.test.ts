@@ -465,7 +465,8 @@ describe("assembleTurnMessages", () => {
     store.close();
   });
 
-  test("with a workspace set, the situation names its root and ~ before the work dir", async () => {
+  // POSIX spelling of the root (`/…/`, `~`); on Windows it reads `C:\…\`.
+  test.skipIf(process.platform === "win32")("with a workspace set, the situation names its root and ~ before the work dir", async () => {
     const root = mkdtempSync(join(tmpdir(), "rb-situation-root-"));
     const store = new Store();
     await store.patchSettings({ workspace_path: root });

@@ -343,7 +343,8 @@ describe("prompts", () => {
     expect(en.function.description).toContain("Workspace files written this turn become clickable links automatically");
   });
 
-  test("builtin tools include the file set and shell with locked zh descriptions", () => {
+  // The locked text is the POSIX shell's; a Windows host builds the Git Bash / PowerShell wording.
+  test.skipIf(process.platform === "win32")("builtin tools include the file set and shell with locked zh descriptions", () => {
     const tools = builtinTools("zh");
     const names = tools.map((t) => t.function.name);
     expect(names.slice(0, 5)).toEqual(["read_file", "write_file", "delete_file", "list_dir", "shell"]);
@@ -472,7 +473,7 @@ describe("mention spelling", () => {
   describe("the system block's win32 shell wording (shell: 'bash' | 'powershell')", () => {
     const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
 
-    test("shell defaults to 'sh' (this machine), so passing it explicitly changes nothing", () => {
+    test.skipIf(process.platform === "win32")("shell defaults to 'sh' (this machine), so passing it explicitly changes nothing", () => {
       expect(turnSystemPrompt({ ...profile, locale: "zh" })).toBe(
         turnSystemPrompt({ ...profile, locale: "zh", shell: "sh" }),
       );

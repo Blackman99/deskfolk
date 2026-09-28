@@ -18,7 +18,8 @@ export class RuntimeLifecycle implements SupervisorControl {
     const temporary = `${this.latchPath}.${crypto.randomUUID()}.tmp`;
     try {
       writeFileSync(temporary, "stopped\n", { mode: 0o600, flag: "wx" });
-      const fd = openSync(temporary, "r");
+      // "r+", not "r": Windows flushes only a handle opened for writing (EPERM otherwise).
+      const fd = openSync(temporary, "r+");
       try { fsyncSync(fd); } finally { closeSync(fd); }
       renameReplacing(temporary, this.latchPath, this.platform);
       this.syncDataDir();

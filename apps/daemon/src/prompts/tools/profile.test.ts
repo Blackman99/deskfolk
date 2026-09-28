@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { UPDATE_PROFILE, updateProfileTool } from "./profile";
 
 describe("updateProfileTool", () => {
-  test("this machine defaults to sh, so the static export matches the explicit sh call", () => {
+  test.skipIf(process.platform === "win32")("this machine defaults to sh, so the static export matches the explicit sh call", () => {
     expect(UPDATE_PROFILE).toEqual(updateProfileTool("sh"));
   });
 

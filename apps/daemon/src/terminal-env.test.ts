@@ -17,7 +17,7 @@ test("only the whitelist passes through, never the rest of the daemon's own env"
 });
 
 test("PATH falls back when the source has none", () => {
-  const env = terminalEnv({}, { shell: "/bin/zsh" });
+  const env = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin" });
   expect(env.PATH).toBe("/usr/bin:/bin:/usr/sbin:/sbin");
 });
 

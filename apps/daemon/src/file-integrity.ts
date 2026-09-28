@@ -1,4 +1,4 @@
-import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HttpError } from "./errors";
 import { ulid } from "./ids";
@@ -61,14 +61,32 @@ export function renameReplacing(
     rename(tmp, dest);
     return;
   }
+  let liftedReadOnly = false;
   for (let attempt = 0; ; attempt++) {
     try {
       rename(tmp, dest);
+      // The replacement keeps the target read-only, as POSIX keeps the target's mode.
+      if (liftedReadOnly) chmodSync(dest, 0o444);
       return;
     } catch (error) {
+      // Windows will not replace a file that has the read-only attribute (POSIX only asks the
+      // folder), so lift it once and try again.
+      if (!liftedReadOnly && isTransientRenameError(error) && isReadOnly(dest)) {
+        chmodSync(dest, 0o666);
+        liftedReadOnly = true;
+        continue;
+      }
       if (attempt >= RENAME_RETRY_DELAYS_MS.length || !isTransientRenameError(error)) throw error;
       sleepSync(RENAME_RETRY_DELAYS_MS[attempt]!);
     }
+  }
+}
+
+function isReadOnly(path: string): boolean {
+  try {
+    return (statSync(path).mode & 0o200) === 0;
+  } catch {
+    return false;
   }
 }
 
