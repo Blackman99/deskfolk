@@ -10,8 +10,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
-/** Everything else in the daemon's own env stays behind; a shell only gets these, when present. */
-const ENV_WHITELIST = [
+/**
+ * Everything else in the daemon's own env stays behind; a shell only gets these, when present.
+ * Exported so `acceptance-eval.ts` can build a command check's env from the same whitelist, minus
+ * `SSH_AUTH_SOCK` — a check runs unsupervised, with nobody watching what it reaches for.
+ */
+export const ENV_WHITELIST = [
   "PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "SSH_AUTH_SOCK",
   "__CF_USER_TEXT_ENCODING", "LANG", "LC_ALL", "LC_CTYPE",
 ] as const;

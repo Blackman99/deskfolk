@@ -13,6 +13,11 @@ import { pickThinkingLevel } from "../route-decision";
 export function migrateSchema(db: Database): void {
   const turnCols = db.query<{ name: string }, []>("PRAGMA table_info(turns)").all();
   if (!turnCols.some((column) => column.name === "partial_text")) db.run("ALTER TABLE turns ADD COLUMN partial_text TEXT");
+  // `acceptance_checks`/`acceptance_check_runs` are new tables, so SCHEMA_SQL's own
+  // `CREATE TABLE IF NOT EXISTS` brings them up (and indexes) on an old database too. `turn_runs`
+  // already existed, so its new column needs the same guarded ALTER every other one here gets.
+  const turnRunCols = db.query<{ name: string }, []>("PRAGMA table_info(turn_runs)").all().map((column) => column.name);
+  if (turnRunCols.length > 0 && !turnRunCols.includes("cwd")) db.run("ALTER TABLE turn_runs ADD COLUMN cwd TEXT");
   const remoteDeviceCols = db.query<{ name: string }, []>("PRAGMA table_info(remote_devices)").all();
   if (!remoteDeviceCols.some((column) => column.name === "last_active_at")) {
     db.run("ALTER TABLE remote_devices ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0");

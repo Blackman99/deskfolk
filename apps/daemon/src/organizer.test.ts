@@ -177,6 +177,57 @@ test("a user line is filed before its turn opens: the turn works in the ticket d
   expect(h.store.sessionTasks(session)).toHaveLength(1);
 });
 
+test("a quiet plan runs its stale checks before the settle payload is built, and a check run through the engine (cause edit) publishes task.upsert with its result", async () => {
+  const state: { checkId: string | null; sawRunBeforeSettlePayload: boolean | null } = { checkId: null, sawRunBeforeSettlePayload: null };
+  let h: Awaited<ReturnType<typeof harness>>;
+  h = await harness((payload) => {
+    if (payload.mode === "settle" && state.checkId && state.sawRunBeforeSettlePayload === null) {
+      // The whole point of the ordering: by the time the settle call is even built, `beforeSettle`
+      // — awaited first in `quietStretch` — has already run the check and closed its run.
+      state.sawRunBeforeSettlePayload = h.store.getCheck(state.checkId).last_run !== null;
+    }
+    if (payload.mode === "message" && !payload.current_plan) {
+      return JSON.stringify({
+        decision: "new",
+        plan: { kind: "周报", goal: "写一份周报", acceptance: ["交到 report.md"], rules: [] },
+        tickets: [{ id: "new-1", title: "初稿", spec: "写出第一版", status: "doing", worker: "Writer" }],
+        message_ticket: "new-1",
+      });
+    }
+    if (payload.mode === "settle") {
+      return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+    }
+    return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报，交到 report.md" });
+  const first = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await first;
+
+  const plan = h.store.sessionCurrentTask(session)!;
+  // Created right after the turn ends and well inside the 20 ms quiet window: a check with no run
+  // yet, on a file that is not there, so `checkStale` reads the plan as needing a run first.
+  state.checkId = h.store.createCheckByUser(plan.id, { item: "交到 report.md", kind: "exists", path: "report.md" }).id;
+  expect(h.store.checkStale(plan.id)).toBe(true);
+
+  await until(() => h.organized.some((payload) => payload.mode === "settle"));
+  expect(state.sawRunBeforeSettlePayload).toBe(true);
+  expect(h.store.getCheck(state.checkId)!.last_run).toMatchObject({ outcome: "fail", cause: "settle" });
+
+  // A second check, run directly through the engine the way the `POST /v1/checks` route does
+  // (cause `edit`), publishes a `task.upsert` that carries its result.
+  h.events.length = 0;
+  const other = h.store.createCheckByUser(plan.id, { item: "另一条", kind: "command", command: "true" });
+  await h.engine.runPlanChecks(plan.id, { cause: "edit", checkIds: [other.id] });
+  expect(h.store.getCheck(other.id).last_run).toMatchObject({ outcome: "pass", cause: "edit" });
+  const upserts = h.events.filter((event) => event.event === "task.upsert") as Array<{ checks?: Array<{ id: string; last_run: { outcome: string } | null }> }>;
+  expect(upserts.length).toBeGreaterThan(0);
+  const withResult = upserts.at(-1)!.checks?.find((row) => row.id === other.id);
+  expect(withResult?.last_run).toMatchObject({ outcome: "pass" });
+});
+
 test("an organizer that answers nothing usable, or is down, changes nothing: the turn opens in a plan without a spec", async () => {
   let down = false;
   const h = await harness(() => (down ? null : "我不知道"));

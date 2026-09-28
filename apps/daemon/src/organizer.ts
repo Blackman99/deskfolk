@@ -18,8 +18,9 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { USER_MEMBER, type Message, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type AcceptanceCheckOutcome, type Message, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
+import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { atomicWrite } from "./file-integrity";
 import { ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
@@ -51,6 +52,15 @@ export type OrganizerDeps = {
    * engine checks whether the plan stopped with tickets open (see the turn engine's reconcile).
    */
   onQuiet?: (taskId: string) => void;
+  /**
+   * The plan's acceptance checks, run around its settle: stale ones before (so the settle sees
+   * their result), unrun ones after (so a check the settle itself just added still gets a run this
+   * stretch). Absent skips both — tests that do not care about checks, mainly.
+   */
+  checks?: {
+    beforeSettle: (taskId: string) => Promise<void>;
+    afterSettle: (taskId: string) => Promise<void>;
+  };
   /** Benchmark switches (see `ablation.ts`): `organize-message` / `organize-settle` skip that call. */
   ablation?: Ablation;
 };
@@ -291,6 +301,20 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
+  /**
+   * A plan's quiet stretch: its stale checks before the settle (so the settle's own read of the
+   * plan sees their result), the settle itself, then whatever check still has no run this stretch
+   * (an organizer-added one, mainly) after it. `onQuiet` (the reconcile) runs whether or not any of
+   * this filed or found anything — that call is `noteTurnEnded`'s own, below.
+   */
+  async function quietStretch(taskId: string): Promise<void> {
+    await deps.checks?.beforeSettle(taskId);
+    if (stopped || deps.draining()) return;
+    await settlePlan(taskId);
+    if (stopped || deps.draining()) return;
+    await deps.checks?.afterSettle(taskId);
+  }
+
   function noteTurnEnded(turn: Turn): void {
     if (!turn.task_id || deps.draining()) return;
     if (turn.status === "running" || turn.status === "waiting_ask" || turn.status === "waiting_approval") return;
@@ -300,7 +324,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       settleTimers.delete(taskId);
-      void settlePlan(taskId)
+      void quietStretch(taskId)
         .catch((error) => console.error(`[organizer] settling ${taskId} failed`, error))
         .then(() => {
           if (!stopped && !deps.draining()) deps.onQuiet?.(taskId);
@@ -323,11 +347,12 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const spec = parsePlanSpec(task.spec);
     if (!spec) return;
     const tickets = store.listTickets(taskId);
+    const checks = store.listChecks(taskId);
     const planDir = classifyPath(root, task.dir);
     if (planDir.zone !== "inside") return;
     try {
       mkdirSync(planDir.abs, { recursive: true });
-      atomicWrite(join(planDir.abs, PLAN_MAP_FILE), renderPlanMap(task, spec, tickets, nameOf));
+      atomicWrite(join(planDir.abs, PLAN_MAP_FILE), renderPlanMap(task, spec, tickets, checks, nameOf));
     } catch (error) {
       console.error(`[organizer] could not write ${task.dir}/${PLAN_MAP_FILE}`, error);
     }
@@ -336,7 +361,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       if (dir.zone !== "inside") continue;
       try {
         mkdirSync(dir.abs, { recursive: true });
-        atomicWrite(join(dir.abs, TICKET_FILE), renderTicketFile(task, spec, ticket, nameOf));
+        atomicWrite(join(dir.abs, TICKET_FILE), renderTicketFile(task, spec, ticket, checks, nameOf));
       } catch (error) {
         console.error(`[organizer] could not write ${ticket.dir}/${TICKET_FILE}`, error);
       }
@@ -355,6 +380,9 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
 
 const PLAN_STATUS_ZH: Record<PlanSpec["status"], string> = { active: "进行中", done: "已完成", parked: "搁置" };
 const TICKET_STATUS_ZH: Record<Ticket["status"], string> = { todo: "待做", doing: "进行中", review: "待验收", done: "已完成", parked: "搁置" };
+const CHECK_OUTCOME_ZH: Record<AcceptanceCheckOutcome, string> = { pass: "通过", fail: "不通过", blocked: "受阻", error: "出错" };
+/** The line under the 验收 section that holds checks whose item no longer matches any acceptance line. */
+const ORPHAN_CHECKS_LABEL = "「其他验收检查」";
 
 function bullets(items: readonly string[]): string {
   return items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- （无）";
@@ -364,8 +392,56 @@ function number(seq: number): string {
   return String(seq).padStart(2, "0");
 }
 
+function checkStatusZh(check: AcceptanceCheck): string {
+  if (check.running) return "运行中";
+  if (!check.last_run) return "未跑";
+  return CHECK_OUTCOME_ZH[check.last_run.outcome ?? "error"];
+}
+
+function checkLine(check: AcceptanceCheck): string {
+  return `  - [${checkStatusZh(check)}] ${describeCheck(check, "zh")}`;
+}
+
+/**
+ * The 验收 section: each line from `spec.acceptance`, with the checks proving it indented under
+ * it; a check whose `item` matches none of those lines — the plan's spec moved out from under it —
+ * still runs and still counts, so it is shown too, grouped under {@link ORPHAN_CHECKS_LABEL}
+ * instead of silently dropped.
+ */
+function acceptanceSection(spec: PlanSpec, checks: readonly AcceptanceCheck[]): string {
+  const known = new Set(spec.acceptance);
+  const byItem = new Map<string, AcceptanceCheck[]>();
+  const orphans: AcceptanceCheck[] = [];
+  for (const check of checks) {
+    if (!known.has(check.item)) {
+      orphans.push(check);
+      continue;
+    }
+    const list = byItem.get(check.item) ?? [];
+    list.push(check);
+    byItem.set(check.item, list);
+  }
+  if (spec.acceptance.length === 0 && orphans.length === 0) return "- （无）";
+  const lines: string[] = [];
+  for (const item of spec.acceptance) {
+    lines.push(`- ${item}`);
+    for (const check of byItem.get(item) ?? []) lines.push(checkLine(check));
+  }
+  if (orphans.length > 0) {
+    lines.push(`- ${ORPHAN_CHECKS_LABEL}`);
+    for (const check of orphans) lines.push(checkLine(check));
+  }
+  return lines.join("\n");
+}
+
 /** `map.md`: the plan's spec and its ticket index, as the app last organized them. */
-export function renderPlanMap(task: Task, spec: PlanSpec, tickets: readonly Ticket[], nameOf: (id: string) => string): string {
+export function renderPlanMap(
+  task: Task,
+  spec: PlanSpec,
+  tickets: readonly Ticket[],
+  checks: readonly AcceptanceCheck[],
+  nameOf: (id: string) => string,
+): string {
   const rows = tickets.map((ticket) => {
     const who = ticket.worker ? nameOf(ticket.worker) : "";
     const rel = ticket.dir.startsWith(`${task.dir}/`) ? ticket.dir.slice(task.dir.length + 1) : ticket.dir;
@@ -380,7 +456,7 @@ export function renderPlanMap(task: Task, spec: PlanSpec, tickets: readonly Tick
     ...(task.brief ? [`- 开头的要求：${task.brief.replace(/\s+/g, " ").trim()}`] : []),
     "",
     "## 验收",
-    bullets(spec.acceptance),
+    acceptanceSection(spec, checks),
     "",
     "## 规则",
     bullets(spec.rules),
@@ -403,7 +479,13 @@ export function renderPlanMap(task: Task, spec: PlanSpec, tickets: readonly Tick
 }
 
 /** `ticket.md`: one ticket, with the plan's acceptance and rules it is measured against. */
-export function renderTicketFile(task: Task, spec: PlanSpec, ticket: Ticket, nameOf: (id: string) => string): string {
+export function renderTicketFile(
+  task: Task,
+  spec: PlanSpec,
+  ticket: Ticket,
+  checks: readonly AcceptanceCheck[],
+  nameOf: (id: string) => string,
+): string {
   return [
     `# ${number(ticket.seq)} ${ticket.title}`,
     "",
@@ -416,7 +498,7 @@ export function renderTicketFile(task: Task, spec: PlanSpec, ticket: Ticket, nam
     ticket.spec.trim() || "（还没写）",
     "",
     "## 规划的验收",
-    bullets(spec.acceptance),
+    acceptanceSection(spec, checks),
     "",
     "## 规划的规则",
     bullets(spec.rules),

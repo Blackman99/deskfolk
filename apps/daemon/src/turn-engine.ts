@@ -10,6 +10,7 @@ import { ablationList, NO_ABLATION, type Ablation } from "./ablation";
 import { parseAskAnswer } from "./ask";
 import { createCompletionsClient, type CompletionsClient } from "./completions";
 import { createChains } from "./engine/chains";
+import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
 import { createComposer } from "./engine/composer";
 import { createCore } from "./engine/core";
@@ -44,6 +45,8 @@ export type TurnEngine = {
   settlePlan: (taskId: string) => Promise<boolean>;
   /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
   renderPlanMirrors: (taskId: string) => void;
+  /** Runs a plan's acceptance checks (all of them, or just `checkIds`) and rewrites its mirrors once done. */
+  runPlanChecks: (taskId: string, opts?: { cause?: "settle" | "user" | "edit"; checkIds?: string[] }) => Promise<void>;
   assertAskPending: (askId: string, sessionId: string) => void;
   /**
    * Records your answer on the question and lets its turn go on. Choices are checked against the
@@ -159,6 +162,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     draining: () => Boolean(options.admission?.draining),
     settleQuietMs: options.settleQuietMs,
     onQuiet: (taskId) => planWatch.reconcilePlan(taskId),
+    // Late-bound: `checks` is built after `organizer`, since it renders through
+    // `organizer.renderMirrors`. Neither method is called until the engine is fully wired.
+    checks: {
+      beforeSettle: (taskId) => checks.beforeSettle(taskId),
+      afterSettle: (taskId) => checks.afterSettle(taskId),
+    },
+    ablation,
+  });
+
+  const checks = createPlanChecks({
+    store,
+    admission: options.admission,
+    wake,
+    renderMirrors: organizer.renderMirrors,
     ablation,
   });
 
@@ -384,6 +401,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     renderPlanMirrors(taskId) {
       organizer.renderMirrors(taskId);
     },
+    runPlanChecks(taskId, opts) {
+      return checks.run(taskId, { cause: opts?.cause ?? "user", checkIds: opts?.checkIds });
+    },
     sweepStaleChains: chains.sweepStaleChains,
     executionOf(turnId) {
       return lifecycle.executionOf(core.lives.get(turnId));
@@ -486,6 +506,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       chains.clearTimers();
       directReport.clearTimers();
       organizer.clearTimers();
+      checks.abortAll();
       for (const id of [...core.lives.keys()]) lifecycle.abortLive(id);
     },
     unsettledTurnIds() {
@@ -508,6 +529,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     suggestComposer: composer.suggestComposer,
     async close() {
+      checks.abortAll();
       await lifecycle.drainLives();
       for (const pending of [...participation.pendingJudges.values()]) participation.dropPendingJudgement(pending, true);
       await mcp?.close();

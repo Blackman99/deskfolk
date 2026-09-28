@@ -216,6 +216,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       endpointKey: options.endpointKey ?? bunKeyStore,
     });
     store.recoverInterruptedTurns();
+    store.recoverInterruptedCheckRuns();
     recoverLifecycle(store);
     // Remote credentials live in a file (ADR 0033). The compiled daemon always uses it and confirms
     // through its window; source runs only with REAL_BOT_DEV_REMOTE=1, confirming by stand-in.

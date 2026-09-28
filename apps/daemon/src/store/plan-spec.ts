@@ -7,6 +7,7 @@
 import type { TaskDetail, TaskSpecRevision, Ticket, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { listChecks, rebindCheckItems } from "./acceptance-checks";
 import { normalizePlanSpec, parsePlanSpec, type PlanSpec } from "./plan-shape";
 import { type StoreContext } from "./shared";
 import {
@@ -135,13 +136,15 @@ export function setPlanSpecByUser(
   raw: unknown,
   ifRevision?: unknown,
 ): { task: Task; revision: SpecRevisionRow } {
-  getTask(ctx, taskId);
+  const before = getTask(ctx, taskId);
   const spec = normalizePlanSpec(raw);
   if (!spec) throw new HttpError(422, "invalid_args", "spec needs a goal");
+  const beforeAcceptance = parsePlanSpec(before.spec)?.acceptance ?? [];
   return ctx.db.transaction(() => {
     assertRevision(ctx, taskId, ifRevision);
     const now = isoNow();
     const task = setTaskSpec(ctx, taskId, spec, now);
+    rebindCheckItems(ctx, taskId, beforeAcceptance, spec.acceptance, now);
     const revision = recordSpecRevision(ctx, { taskId, spec, actor: "user", now });
     return { task, revision };
   })();
@@ -360,6 +363,7 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     revision: latest?.revision ?? 0,
     revision_actor: latest?.actor ?? null,
     routine_id: task.routine_id,
+    checks: listChecks(ctx, taskId),
     tickets: listTickets(ctx, taskId).map((ticket) => ({
       ...ticket,
       artifacts: ticketArtifacts(ctx, ticket.id, present).map((row) => ({

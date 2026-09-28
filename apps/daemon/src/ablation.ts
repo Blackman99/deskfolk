@@ -22,6 +22,7 @@ export const SIDE_CALLS = [
   "judgement",
   "plan-nudge",
   "direct-report",
+  "acceptance-checks",
 ] as const;
 
 export type SideCall = (typeof SIDE_CALLS)[number];

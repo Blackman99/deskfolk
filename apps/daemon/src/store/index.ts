@@ -11,6 +11,7 @@ import { APP_SUPPORT_DIRNAME, providerKeychainName, mcpAuthKeychainName, type Cl
 import { installChangeJournal, committedEvents } from "./events";
 import { Transactions } from "./transactions";
 import { Receipts } from "./receipts";
+import * as acceptanceChecks from "./acceptance-checks";
 import * as credentials from "./credentials";
 import * as files from "./files";
 import { Database } from "bun:sqlite";
@@ -51,7 +52,24 @@ import * as turns from "./turns";
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
 export type { Task, PlanSpec, PlanStatus } from "./tasks";
-export { normalizePlanSpec, parsePlanSpec, emptyPlanSpec, PLAN_STATUSES } from "./plan-shape";
+export { normalizePlanSpec, parsePlanSpec, emptyPlanSpec, normalizeSpecLine, PLAN_STATUSES } from "./plan-shape";
+export {
+  CHECKS_MAX,
+  ORGANIZER_NEW_CHECKS_MAX,
+  CHECK_RUNS_KEPT,
+  CHECK_OUTPUT_MAX,
+  CHECK_DETAIL_MAX,
+  CHECK_TIMEOUT_DEFAULT_SEC,
+  CHECK_TIMEOUT_MIN_SEC,
+  CHECK_TIMEOUT_MAX_SEC,
+  CHECK_ITEM_MAX,
+  CHECK_COMMAND_MAX,
+  CHECK_PATTERN_MAX,
+  CHECK_EXPECT_STDOUT_MAX,
+  CHECK_PATH_MAX,
+  checkDefinitionKey,
+} from "./acceptance-checks";
+export type { CheckDefinition } from "./acceptance-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { ORGANIZER_NEW_TICKETS_MAX } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
@@ -293,6 +311,21 @@ export class Store {
   readonly patchTicketByUser = this.bind(planSpec.patchTicketByUser);
   readonly applyOrganizerResult = this.bind(planSpec.applyOrganizerResult);
   readonly taskDetail = this.bind(planSpec.taskDetail);
+
+  // Acceptance checks (可执行验收) ----------------------------------------------------------
+  readonly getCheck = this.bind(acceptanceChecks.getCheck);
+  readonly getCheckRun = this.bind(acceptanceChecks.getCheckRun);
+  readonly listChecks = this.bind(acceptanceChecks.listChecks);
+  readonly normalizeCheckInput = this.bind(acceptanceChecks.normalizeCheckInput);
+  readonly createCheckByUser = this.bind(acceptanceChecks.createCheckByUser);
+  readonly patchCheckByUser = this.bind(acceptanceChecks.patchCheckByUser);
+  readonly removeCheckByUser = this.bind(acceptanceChecks.removeCheckByUser);
+  readonly checkStale = this.bind(acceptanceChecks.checkStale);
+  readonly beginCheckRun = this.bind(acceptanceChecks.beginCheckRun);
+  readonly finishCheckRun = this.bind(acceptanceChecks.finishCheckRun);
+  readonly recoverInterruptedCheckRuns = this.bind(acceptanceChecks.recoverInterruptedCheckRuns);
+  readonly rebindCheckItems = this.bind(acceptanceChecks.rebindCheckItems);
+  readonly commandSeenInPlan = this.bind(acceptanceChecks.commandSeenInPlan);
 
   // Check-backs ----------------------------------------------------------------------------
   readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);

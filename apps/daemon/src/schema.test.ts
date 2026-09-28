@@ -29,6 +29,8 @@ describe("schema", () => {
     expect(SCHEMA_SQL).toContain("permit TEXT");
     expect(deliveryCols).toContain("permit");
     expect(names).toEqual([
+      "acceptance_check_runs",
+      "acceptance_checks",
       "allow_rules",
       "annotations",
       "approvals",

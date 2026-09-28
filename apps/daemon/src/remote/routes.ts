@@ -62,6 +62,24 @@ const planSpec: Check = object(
 const specRevision: Check = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
 add("PATCH", "tasks/:id/spec", { spec: planSpec, if_revision: specRevision }, ["spec"], true);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
+const checkKind: Check = one("exists", "contains", "matches", "command");
+const checkInput = {
+  item: string,
+  ticket_id: nullable(id),
+  kind: checkKind,
+  path: nullable(string),
+  pattern: nullable(string),
+  negate: bool,
+  command: nullable(string),
+  cwd: nullable(string),
+  expect_exit: nullable((v: unknown) => typeof v === "number" && Number.isInteger(v)),
+  expect_stdout: nullable(string),
+  timeout_sec: nullable((v: unknown) => typeof v === "number" && Number.isInteger(v)),
+};
+add("POST", "tasks/:id/checks", checkInput, ["item", "kind"]);
+add("PATCH", "checks/:id", { ...checkInput, ...revision }, [], true);
+add("DELETE", "checks/:id", revision);
+add("POST", "tasks/:id/checks/run", { check_id: nullable(id) });
 get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);

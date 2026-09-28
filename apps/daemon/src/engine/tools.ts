@@ -364,6 +364,7 @@ export function createTools(deps: ToolsDeps): Tools {
         exitCode: typeof result.data?.exit_code === "number" ? result.data.exit_code : null,
         ok: result.ok,
         error: result.ok ? null : (result.error?.message ?? result.error?.code ?? null),
+        cwd: name === "shell" ? (typeof args.cwd === "string" ? args.cwd : (live.workDir ?? null)) : null,
       });
     } catch {
       // the record is evidence, not the work; the call already happened
