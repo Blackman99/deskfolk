@@ -12,7 +12,7 @@
   pageKey="roadmap"
   description={t.docs.roadmapIntro}
   tag={t.docs.roadmapTag}
-  sourceFile="ROADMAP.md"
+  sourceFile={data.source}
   toc={data.doc.toc}
   suffix="/roadmap"
 >

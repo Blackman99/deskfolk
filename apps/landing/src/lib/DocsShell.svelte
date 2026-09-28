@@ -1,6 +1,5 @@
 <script lang="ts">
   import { base } from '$app/paths';
-  import { page } from '$app/state';
   import Seo from '$lib/Seo.svelte';
   import { DOCS_NAV, docsNeighbors, docsPath, type DocsPageKey, type TocEntry } from '$lib/docs';
   import { DICT, type Lang } from '$lib/i18n';
@@ -30,7 +29,79 @@
   const t = $derived(DICT[lang]);
   const copy = $derived(t.docs.pages[pageKey]);
   const neighbors = $derived(docsNeighbors(pageKey));
-  const hash = $derived(page.url.hash);
+
+  /** The section being read, lit in "On this page". */
+  let activeId = $state('');
+  let tocSide: HTMLElement | undefined = $state();
+
+  /**
+   * The last heading that has scrolled above a reading line just under the nav (a heading jumped
+   * to lands 16px under it). Once the page cannot scroll any further, the sections at the bottom
+   * never reach that line: then the one jumped to, if it is in view, or else the last.
+   */
+  function readingSection(ids: string[]): string {
+    const headings = ids
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+    if (headings.length === 0) return '';
+    const root = document.documentElement;
+    const nav = parseFloat(getComputedStyle(root).getPropertyValue('--nav-h')) || 60;
+    if (root.scrollTop + window.innerHeight >= root.scrollHeight - 2) {
+      const target = decodeURIComponent(window.location.hash.slice(1));
+      const el = headings.find((h) => h.id === target);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        if (r.top >= nav && r.top < window.innerHeight) return target;
+      }
+      return headings[headings.length - 1].id;
+    }
+    // Sections side by side (the manifesto's topic cards) share a top: the row counts as one step,
+    // lit on its first card unless the one jumped to sits in the same row.
+    let current: HTMLElement | null = null;
+    let currentTop = -Infinity;
+    for (const el of headings) {
+      const top = el.getBoundingClientRect().top;
+      if (top > nav + 80) break;
+      if (top > currentTop + 2) {
+        current = el;
+        currentTop = top;
+      }
+    }
+    if (!current) return '';
+    const target = document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+    if (target && ids.includes(target.id) && Math.abs(target.getBoundingClientRect().top - currentTop) <= 2) {
+      return target.id;
+    }
+    return current.id;
+  }
+
+  $effect(() => {
+    const ids = toc.map((entry) => entry.id);
+    if (ids.length < 2) return;
+    const update = () => (activeId = readingSection(ids));
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    window.addEventListener('hashchange', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('hashchange', update);
+    };
+  });
+
+  // A long list scrolls on its own: keep the lit entry inside it, without moving the page.
+  $effect(() => {
+    const id = activeId;
+    if (!id || !tocSide || tocSide.scrollHeight <= tocSide.clientHeight) return;
+    const link = tocSide.querySelector<HTMLElement>(`a[data-id="${CSS.escape(id)}"]`);
+    if (!link) return;
+    const box = tocSide.getBoundingClientRect();
+    const r = link.getBoundingClientRect();
+    const pad = 32;
+    if (r.top < box.top + pad) tocSide.scrollTop -= box.top + pad - r.top;
+    else if (r.bottom > box.bottom - pad) tocSide.scrollTop += r.bottom - (box.bottom - pad);
+  });
 
   function hrefFor(key: DocsPageKey): string {
     return `${base}/${lang}${docsPath(key)}`;
@@ -116,7 +187,9 @@
         <summary>{t.docs.onThisPage}</summary>
         <ol>
           {#each toc as entry}
-            <li class="lv{entry.level}"><a href={tocHref(entry.id)}>{entry.text}</a></li>
+            <li class="lv{entry.level}">
+              <a href={tocHref(entry.id)} class:here={activeId === entry.id} aria-current={activeId === entry.id ? 'location' : undefined}>{entry.text}</a>
+            </li>
           {/each}
         </ol>
       </details>
@@ -141,12 +214,17 @@
   </div>
 
   {#if toc.length > 1}
-    <nav class="toc toc-side" aria-label={t.docs.onThisPage}>
+    <nav class="toc toc-side" aria-label={t.docs.onThisPage} bind:this={tocSide}>
       <p class="toc-title">{t.docs.onThisPage}</p>
       <ol>
         {#each toc as entry}
           <li class="lv{entry.level}">
-            <a href={tocHref(entry.id)} class:here={hash === `#${entry.id}`}>{entry.text}</a>
+            <a
+              href={tocHref(entry.id)}
+              data-id={entry.id}
+              class:here={activeId === entry.id}
+              aria-current={activeId === entry.id ? 'location' : undefined}
+            >{entry.text}</a>
           </li>
         {/each}
       </ol>
@@ -319,6 +397,10 @@
     color: var(--teal-2);
   }
 
+  .toc a.here {
+    font-weight: 600;
+  }
+
   .toc .lv3 a {
     padding-left: 14px;
     color: var(--ink-3);
@@ -444,6 +526,22 @@
       overflow-y: auto;
       padding-left: 16px;
       border-left: 1px solid var(--line);
+    }
+
+    /* The lit entry marks the rail it hangs on, just inside it: the list clips what sticks out. */
+    .toc-side a {
+      position: relative;
+    }
+
+    .toc-side a.here::before {
+      content: '';
+      position: absolute;
+      left: -16px;
+      top: 4px;
+      bottom: 4px;
+      width: 2px;
+      border-radius: 1px;
+      background: var(--teal);
     }
   }
 </style>

@@ -34,7 +34,7 @@
   pageKey="manifesto"
   description={t.docs.manifestoIntro}
   tag={t.docs.manifestoTag}
-  sourceFile="CONTEXT.md"
+  sourceFile={data.source}
   toc={toc}
   suffix="/manifesto"
 >

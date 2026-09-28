@@ -1,4 +1,4 @@
-import { getDocumentContent } from '$lib/content.server';
+import { documentSource, getDocumentContent } from '$lib/content.server';
 import type { PageServerLoad, EntryGenerator } from './$types';
 import type { Lang } from '$lib/i18n';
 
@@ -16,6 +16,7 @@ export const load: PageServerLoad = ({ params }) => {
   const doc = getDocumentContent('roadmap', lang);
   return {
     lang,
-    doc
+    doc,
+    source: documentSource('roadmap', lang)
   };
 };

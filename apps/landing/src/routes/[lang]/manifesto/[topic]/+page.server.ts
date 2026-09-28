@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { getManifestoTopic } from '$lib/content.server';
+import { editionSource, getManifestoTopic } from '$lib/content.server';
 import { MANIFESTO_TOPICS, isManifestoTopic } from '$lib/docs';
 import type { PageServerLoad, EntryGenerator } from './$types';
 import type { Lang } from '$lib/i18n';
@@ -20,6 +20,7 @@ export const load: PageServerLoad = ({ params }) => {
   return {
     lang,
     topic: params.topic,
-    doc
+    doc,
+    source: editionSource('context', lang)
   };
 };

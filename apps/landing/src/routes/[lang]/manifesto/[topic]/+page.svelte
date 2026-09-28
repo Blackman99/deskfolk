@@ -14,7 +14,7 @@
   pageKey={topic}
   description={t.docs.pages[topic].blurb}
   tag={t.docs.manifestoTag}
-  sourceFile="CONTEXT.md"
+  sourceFile={data.source}
   toc={data.doc.toc}
   suffix={docsPath(topic)}
 >

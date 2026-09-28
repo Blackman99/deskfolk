@@ -23,6 +23,17 @@ export type DocsDocument = {
   toc: TocEntry[];
 };
 
+type Lang = 'zh' | 'en';
+
+/**
+ * CONTEXT.md and ROADMAP.md are written in Chinese (agents keep the glossary in it); the English
+ * site reads their English editions, and falls back to the Chinese file where one is missing.
+ */
+const EDITIONS = {
+  context: { zh: 'CONTEXT.md', en: 'CONTEXT.en.md' },
+  roadmap: { zh: 'ROADMAP.md', en: 'ROADMAP.en.md' }
+} as const;
+
 export type ManifestoIndexEntry = {
   topic: ManifestoTopic;
   terms: { name: string; id: string }[];
@@ -136,9 +147,9 @@ function sanitizeOptions(
         const pathPart = hashIdx >= 0 ? href.slice(0, hashIdx) : href;
         const hash = hashIdx >= 0 ? href.slice(hashIdx + 1) : '';
 
-        if (pathPart === 'ROADMAP.md' || pathPart.endsWith('/ROADMAP.md')) {
+        if (/(^|\/)ROADMAP(\.en)?\.md$/.test(pathPart)) {
           href = withBase(`/${lang}/roadmap`) + (hash ? `#${hash}` : '');
-        } else if (pathPart === 'CONTEXT.md' || pathPart.endsWith('/CONTEXT.md')) {
+        } else if (/(^|\/)CONTEXT(\.en)?\.md$/.test(pathPart)) {
           href = contextHref(lang, hash || undefined, termTargets);
         } else if (
           pathPart === 'README.md' ||
@@ -202,6 +213,17 @@ function stripLeadingH1(markdown: string): string {
   return markdown.replace(/^#\s+.+\n+/, '');
 }
 
+/** A document's first line under its title links its other language; the site's own switch does that job. */
+function stripLanguageLink(markdown: string): string {
+  return markdown.replace(/^(#\s+.+\n+)\[[^\]\n]+\]\([^)\s]+\.md\)\s*\n+/, '$1');
+}
+
+/** The file a page reads for this language: its edition when there is one, else the Chinese source. */
+export function editionSource(doc: keyof typeof EDITIONS, lang: Lang): string {
+  const file = EDITIONS[doc][lang];
+  return fs.existsSync(path.join(findRepoRoot(), file)) ? file : EDITIONS[doc].zh;
+}
+
 /** Version of the desktop app as declared in tauri.conf.json (the release tag source of truth). */
 export function getAppVersion(): string {
   const conf = path.join(findRepoRoot(), 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
@@ -213,15 +235,26 @@ export function getAppVersion(): string {
   }
 }
 
-function loadContext(): { preamble: string; terms: ParsedTerm[] } {
-  const raw = readRepoFile('CONTEXT.md');
+function loadContext(lang: Lang): { preamble: string; terms: ParsedTerm[] } {
+  const raw = readRepoFile(editionSource('context', lang));
   if (!raw) return { preamble: '', terms: [] };
-  return parseContextMarkdown(raw);
+  return parseContextMarkdown(stripLanguageLink(raw));
+}
+
+/**
+ * Term anchors come from CONTEXT.md's own names in both languages, so a link to a term, or the
+ * language switch on a term, lands on the same entry either way.
+ */
+function termIds(): Map<string, string> {
+  return new Map(loadContext('zh').terms.map((term) => [term.key.toLowerCase(), termAnchorId(term.name)]));
+}
+
+function termId(term: ParsedTerm, ids: Map<string, string>): string {
+  return ids.get(term.key.toLowerCase()) ?? termAnchorId(term.name);
 }
 
 export function getTermTargets(): Record<string, string> {
-  const { terms } = loadContext();
-  const grouped = groupTerms(terms);
+  const grouped = groupTerms(loadContext('zh').terms);
   const map: Record<string, string> = {};
   for (const topic of MANIFESTO_TOPICS) {
     for (const term of grouped[topic]) {
@@ -244,8 +277,9 @@ export function getManifestoHub(lang: 'zh' | 'en'): {
   index: ManifestoIndexEntry[];
   termTargets: Record<string, string>;
 } {
-  const { preamble, terms } = loadContext();
+  const { preamble, terms } = loadContext(lang);
   const termTargets = getTermTargets();
+  const ids = termIds();
   const toc: TocEntry[] = [];
   const preambleHtml = preamble
     ? renderMarkdown(stripLeadingH1(preamble), lang, toc, termTargets)
@@ -253,19 +287,20 @@ export function getManifestoHub(lang: 'zh' | 'en'): {
   const grouped = groupTerms(terms);
   const index: ManifestoIndexEntry[] = MANIFESTO_TOPICS.map((topic) => ({
     topic,
-    terms: grouped[topic].map((term) => ({ name: term.name, id: termAnchorId(term.name) }))
+    terms: grouped[topic].map((term) => ({ name: term.name, id: termId(term, ids) }))
   }));
   return { preambleHtml, toc, index, termTargets };
 }
 
 export function getManifestoTopic(topic: ManifestoTopic, lang: 'zh' | 'en'): DocsDocument {
-  const { terms } = loadContext();
+  const { terms } = loadContext(lang);
   const grouped = groupTerms(terms);
   const termTargets = getTermTargets();
+  const ids = termIds();
   const toc: TocEntry[] = [];
   const parts = grouped[topic].map((term) =>
     renderMarkdown(termToMarkdown(term), lang, toc, termTargets, (text) =>
-      text === term.name ? termAnchorId(term.name) : undefined
+      text === term.name ? termId(term, ids) : undefined
     )
   );
   return {
@@ -277,7 +312,7 @@ export function getManifestoTopic(topic: ManifestoTopic, lang: 'zh' | 'en'): Doc
 
 /** Repository path of a document page's source, per language. */
 export function documentSource(docType: 'roadmap' | 'readme' | 'remote', lang: 'zh' | 'en'): string {
-  if (docType === 'roadmap') return 'ROADMAP.md';
+  if (docType === 'roadmap') return editionSource('roadmap', lang);
   if (docType === 'remote') return lang === 'en' ? 'docs/remote-access.md' : 'docs/remote-access.zh.md';
   return lang === 'en' ? 'README.md' : 'README.zh.md';
 }
@@ -293,8 +328,7 @@ export function getDocumentContent(
 
   const filename = documentSource(docType, lang);
   const source = readRepoFile(filename);
-  // A guide's first line links its other language; the site's own switch does that job.
-  const raw = source?.replace(/^(#\s+.+\n+)\[[^\]\n]+\]\([^)\s]+\.md\)\s*\n+/, '$1') ?? null;
+  const raw = source === null ? null : stripLanguageLink(source);
   if (!raw) {
     return {
       title: filename,

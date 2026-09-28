@@ -7,6 +7,6 @@
 ## Agent skills
 
 - Issue tracker: [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)
-- Domain glossary: [`CONTEXT.md`](CONTEXT.md)
-- Public roadmap: [`ROADMAP.md`](ROADMAP.md)
+- Domain glossary: [`CONTEXT.md`](CONTEXT.md)（英文版 [`CONTEXT.en.md`](CONTEXT.en.md) 随改，官网英文页读它；加删词条两边一起）
+- Public roadmap: [`ROADMAP.md`](ROADMAP.md)（英文版 [`ROADMAP.en.md`](ROADMAP.en.md) 随改）
 - Local planning: `.scratch/v1/map.md`（存在时参考；`.scratch/` 不随公开仓库分发）

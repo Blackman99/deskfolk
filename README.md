@@ -67,7 +67,7 @@ First run: the setup wizard walks you through picking a workspace folder, adding
 
 Alpha, macOS only; features and data formats may still change. Remote access is a default-off prototype. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. A release build cannot pair yet, so remote access needs Deskfolk running from source.
 
-[What is live and what is not](https://blackman99.github.io/deskfolk/en#boundaries) · [Roadmap](ROADMAP.md) · [Domain language](CONTEXT.md) · [Relay deployment](docs/deploy-remote.md)
+[What is live and what is not](https://blackman99.github.io/deskfolk/en#boundaries) · [Roadmap](ROADMAP.en.md) · [Domain language](CONTEXT.en.md) · [Relay deployment](docs/deploy-remote.md)
 
 ## Contributing
 

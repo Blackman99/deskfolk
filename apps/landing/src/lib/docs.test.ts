@@ -15,6 +15,7 @@ import {
 } from './docs';
 
 const CONTEXT_PATH = path.resolve(import.meta.dir, '../../../../CONTEXT.md');
+const CONTEXT_EN_PATH = path.resolve(import.meta.dir, '../../../../CONTEXT.en.md');
 
 test('parseContextMarkdown reads every glossary term from CONTEXT.md', () => {
   const raw = fs.readFileSync(CONTEXT_PATH, 'utf-8');
@@ -58,6 +59,22 @@ test('termKey prefers the English parenthetical', () => {
   expect(termKey('窗口（App window）')).toBe('App window');
   expect(termKey('用户')).toBe('用户');
   expect(termKey('Always allow')).toBe('Always allow');
+  // The English edition's names for the two terms CONTEXT.md writes in Chinese alone.
+  expect(termKey('User')).toBe('用户');
+  expect(termKey('Setup wizard')).toBe('向导');
+});
+
+test('CONTEXT.en.md has the same terms as CONTEXT.md, in the same order, in English', () => {
+  const zh = parseContextMarkdown(fs.readFileSync(CONTEXT_PATH, 'utf-8'));
+  const en = parseContextMarkdown(fs.readFileSync(CONTEXT_EN_PATH, 'utf-8'));
+  // A term added to or dropped from one edition has to be added to or dropped from the other.
+  expect(en.terms.map((t) => t.key)).toEqual(zh.terms.map((t) => t.key));
+  for (const term of en.terms) expect(MANIFESTO_TOPICS).toContain(assignTermGroup(term.name));
+  expect(en.preamble).toContain('# Deskfolk');
+  expect(en.preamble).toContain('WIP');
+  // Nothing left in Chinese past the title's link back to the Chinese edition.
+  const body = fs.readFileSync(CONTEXT_EN_PATH, 'utf-8').replace(/^#.*\n+\[[^\]]+\]\(CONTEXT\.md\)\n/, '');
+  expect(body.match(/[\u3400-\u9fff\u3000-\u303f\uff01-\uff5e]+/g)).toBeNull();
 });
 
 test('docs paths and pager walk the sidebar order', () => {

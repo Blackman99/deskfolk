@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { getDocumentContent, getManifestoHub, getManifestoTopic, getTermTargets } from './content.server';
+import { documentSource, getDocumentContent, getManifestoHub, getManifestoTopic, getTermTargets } from './content.server';
 import { MANIFESTO_TOPICS, termAnchorId } from './docs';
 
 test('manifesto hub lists every topic with its terms', () => {
@@ -50,4 +50,40 @@ test('the remote-access guide renders per language, with its links resolved from
   expect(en.contentHtml).not.toContain('href="deploy-remote.md');
   // The README is the site's home page.
   expect(zh.contentHtml).toMatch(/href="[^"]*\/zh"/);
+});
+
+const CJK = /[\u3400-\u9fff\u3000-\u303f\uff01-\uff5e]/;
+/** What a reader sees: the ids and links keep the Chinese glossary's names on purpose. */
+const text = (html: string) => html.replace(/<[^>]*>/g, ' ');
+
+test('the English manifesto reads CONTEXT.en.md, with the Chinese pages\' anchors', () => {
+  const hub = getManifestoHub('en');
+  expect(hub.preambleHtml).toContain('WIP');
+  expect(text(hub.preambleHtml)).not.toMatch(CJK);
+  expect(hub.index.flatMap((e) => e.terms.map((t) => t.name)).join(' ')).not.toMatch(CJK);
+  const zhIds = getManifestoHub('zh').index.map((e) => e.terms.map((t) => t.id));
+  expect(hub.index.map((e) => e.terms.map((t) => t.id))).toEqual(zhIds);
+
+  for (const topic of MANIFESTO_TOPICS) {
+    const en = getManifestoTopic(topic, 'en');
+    const zh = getManifestoTopic(topic, 'zh');
+    expect(text(en.contentHtml)).not.toMatch(CJK);
+    // Same entries under the same ids, so the language switch keeps a term's #hash.
+    expect(en.toc.map((e) => e.id)).toEqual(zh.toc.map((e) => e.id));
+  }
+  const people = getManifestoTopic('people', 'en');
+  expect(people.toc.find((e) => e.id === 'term-用户')?.text).toBe('User');
+  expect(people.contentHtml).toContain('class="avoid"');
+});
+
+test('the English roadmap reads ROADMAP.en.md', () => {
+  expect(documentSource('roadmap', 'en')).toBe('ROADMAP.en.md');
+  expect(documentSource('roadmap', 'zh')).toBe('ROADMAP.md');
+  const en = getDocumentContent('roadmap', 'en');
+  const zh = getDocumentContent('roadmap', 'zh');
+  expect(en.title).toBe('Roadmap');
+  expect(text(en.contentHtml)).not.toMatch(CJK);
+  expect(en.toc.map((e) => e.level)).toEqual(zh.toc.map((e) => e.level));
+  // The other-language line is the site's language switch.
+  expect(zh.contentHtml).not.toContain('>English<');
 });

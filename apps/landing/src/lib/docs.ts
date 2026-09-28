@@ -23,10 +23,17 @@ export const DOCS_NAV: { group: DocsNavGroupId; pages: DocsPageKey[] }[] = [
   { group: 'direction', pages: ['roadmap'] }
 ];
 
+/**
+ * The English glossary (CONTEXT.en.md) names the two terms CONTEXT.md writes in Chinese alone;
+ * both editions key a term the same way through this.
+ */
+const ENGLISH_ONLY_KEYS: Record<string, string> = { user: '用户', 'setup wizard': '向导' };
+
 /** English name in parentheses, otherwise the term as written. */
 export function termKey(name: string): string {
   const m = name.match(/[（(]([^）)]+)[）)]\s*$/);
-  return (m ? m[1] : name).trim();
+  const key = (m ? m[1] : name).trim();
+  return ENGLISH_ONLY_KEYS[key.toLowerCase()] ?? key;
 }
 
 /**

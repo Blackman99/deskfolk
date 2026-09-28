@@ -1,4 +1,4 @@
-import { getManifestoHub } from '$lib/content.server';
+import { editionSource, getManifestoHub } from '$lib/content.server';
 import type { PageServerLoad, EntryGenerator } from './$types';
 import type { Lang } from '$lib/i18n';
 
@@ -15,6 +15,7 @@ export const load: PageServerLoad = ({ params }) => {
     lang,
     preambleHtml: hub.preambleHtml,
     index: hub.index,
-    termTargets: hub.termTargets
+    termTargets: hub.termTargets,
+    source: editionSource('context', lang)
   };
 };
