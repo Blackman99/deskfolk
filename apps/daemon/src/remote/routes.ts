@@ -144,6 +144,8 @@ add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);
 add("POST", "messages/:id/answer", { selected: list(string), custom: nullable(string) });
 add("PUT", "workspace/file", { path: string, content: string }, ["path", "content"]);
+// Into the Mac's Trash, where Finder can put it back — never an unlink.
+add("POST", "workspace/trash", { paths: list(string) }, ["paths"]);
 
 // Terminals. A paired device has the same reach as the window here — that is the decision, and
 // the gate is remote itself (default off, native activation), not a second one bolted on.

@@ -6,7 +6,11 @@ import {
   collectTreePaths,
   countCitedFiles,
   expandedDirsForSelection,
+  isUnderAny,
   mergeWorkspaceChildren,
+  removeTreePaths,
+  treeRange,
+  visibleTreePaths,
   workspaceEntriesToNodes,
 } from "./artifact-tree.ts";
 
@@ -140,4 +144,30 @@ test("buildTaskArtifactTree lists what this message handed over even when the jo
 
 test("buildTaskArtifactTree is just the outside paths when the work dir holds nothing cited", () => {
   expect(buildTaskArtifactTree(DIR, ["report.md"]).map((n) => n.path)).toEqual(["report.md"]);
+});
+
+test("visibleTreePaths lists the rows on screen, skipping what a closed folder holds", () => {
+  const tree = buildCitedPathTree(["docs/a.md", "docs/deep/b.md", "src/c.ts", "top.md"]);
+  expect(visibleTreePaths(tree, () => true)).toEqual(["docs", "docs/deep", "docs/deep/b.md", "docs/a.md", "src", "src/c.ts", "top.md"]);
+  expect(visibleTreePaths(tree, (path) => path === "src")).toEqual(["docs", "src", "src/c.ts", "top.md"]);
+});
+
+test("treeRange picks from the anchor to the target in screen order, either way round", () => {
+  const order = ["docs", "docs/a.md", "src", "src/c.ts", "top.md"];
+  expect(treeRange(order, "docs/a.md", "src/c.ts")).toEqual(["docs/a.md", "src", "src/c.ts"]);
+  expect(treeRange(order, "top.md", "src")).toEqual(["src", "src/c.ts", "top.md"]);
+  expect(treeRange(order, "top.md", "top.md")).toEqual(["top.md"]);
+  // An anchor that is gone or folded away starts the range over at the target.
+  expect(treeRange(order, "hidden/x.md", "src")).toEqual(["src"]);
+  expect(treeRange(order, null, "src")).toEqual(["src"]);
+  expect(treeRange(order, "docs", "nowhere")).toEqual([]);
+});
+
+test("removeTreePaths drops a trashed row and everything inside a trashed folder", () => {
+  const tree = buildCitedPathTree(["docs/a.md", "docs/deep/b.md", "docs-old/c.md", "top.md"]);
+  const left = removeTreePaths(tree, ["docs/deep", "top.md"]);
+  expect(collectTreePaths(left)).toEqual(["docs", "docs/a.md", "docs-old", "docs-old/c.md"]);
+  expect(collectTreePaths(removeTreePaths(tree, ["docs"]))).toEqual(["docs-old", "docs-old/c.md", "top.md"]);
+  expect(isUnderAny("docs-old/c.md", ["docs"])).toBe(false);
+  expect(isUnderAny("docs/deep/b.md", ["docs"])).toBe(true);
 });

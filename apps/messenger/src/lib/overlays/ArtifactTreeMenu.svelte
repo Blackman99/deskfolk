@@ -15,10 +15,18 @@
 		onCopyPath?: () => void;
 		/** Copies the row's path on the machine; absent while the workspace root is unknown. */
 		onCopyAbsPath?: () => void;
+		/**
+		 * How many rows the menu acts on. Above one, only what applies to all of them is offered:
+		 * the copies (one path a line) and the Trash; opening, Finder and a terminal take one row.
+		 */
+		count?: number;
+		/** Asks to move the rows to the Mac's Trash; absent where nothing can reach the Mac. */
+		onTrash?: () => void;
 		onClose: () => void;
 	};
 
-	let { x, y, t, onOpen, onReveal, onOpenTerminal, onCopyPath, onCopyAbsPath, onClose }: Props = $props();
+	let { x, y, t, onOpen, onReveal, onOpenTerminal, onCopyPath, onCopyAbsPath, count = 1, onTrash, onClose }: Props = $props();
+	const single = $derived(count <= 1);
 
 	let menuEl = $state<HTMLDivElement>();
 	let placed = $state<{ x: number; y: number } | null>(null);
@@ -109,19 +117,21 @@
 		event.stopPropagation();
 	}}
 >
-	<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open onclick={() => pick(onOpen)}>
-		{t.stream.artifactOpenSystem}
-	</button>
-	<button type="button" class="artifact-tree-menu-item" role="menuitem" data-reveal onclick={() => pick(onReveal)}>
-		{t.stream.artifactReveal}
-	</button>
-	{#if onOpenTerminal}
-		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open-terminal onclick={() => pick(onOpenTerminal)}>
-			{t.stream.artifactOpenTerminal}
+	{#if single}
+		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open onclick={() => pick(onOpen)}>
+			{t.stream.artifactOpenSystem}
 		</button>
-	{/if}
-	{#if onCopyPath || onCopyAbsPath}
-		<div class="artifact-tree-menu-divider" role="separator"></div>
+		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-reveal onclick={() => pick(onReveal)}>
+			{t.stream.artifactReveal}
+		</button>
+		{#if onOpenTerminal}
+			<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open-terminal onclick={() => pick(onOpenTerminal)}>
+				{t.stream.artifactOpenTerminal}
+			</button>
+		{/if}
+		{#if onCopyPath || onCopyAbsPath}
+			<div class="artifact-tree-menu-divider" role="separator"></div>
+		{/if}
 	{/if}
 	{#if onCopyPath}
 		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-copy-path onclick={() => pick(onCopyPath)}>
@@ -131,6 +141,14 @@
 	{#if onCopyAbsPath}
 		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-copy-abs-path onclick={() => pick(onCopyAbsPath)}>
 			{t.stream.artifactCopyAbsPath}
+		</button>
+	{/if}
+	{#if onTrash}
+		{#if onCopyPath || onCopyAbsPath || single}
+			<div class="artifact-tree-menu-divider" role="separator"></div>
+		{/if}
+		<button type="button" class="artifact-tree-menu-item is-danger" role="menuitem" data-trash onclick={() => pick(onTrash)}>
+			{single ? t.stream.artifactTrash : t.stream.artifactTrashCount(count)}
 		</button>
 	{/if}
 </div>
@@ -180,6 +198,12 @@
 		background: var(--line-subtle);
 		color: var(--accent);
 		outline: none;
+	}
+
+	.artifact-tree-menu-item.is-danger:hover,
+	.artifact-tree-menu-item.is-danger:focus-visible {
+		background: var(--danger-bg);
+		color: var(--danger);
 	}
 
 	@media (max-width: 680px) {

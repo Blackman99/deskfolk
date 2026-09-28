@@ -109,6 +109,50 @@ export function buildCitedPathTree(paths: readonly string[]): ArtifactTreeNode[]
   return sortNodes([...root.values()].map(freeze));
 }
 
+/** The rows on screen, top to bottom: a folder's children count only while it is open. */
+export function visibleTreePaths(
+  nodes: readonly ArtifactTreeNode[],
+  isOpen: (path: string) => boolean,
+): string[] {
+  const out: string[] = [];
+  const walk = (list: readonly ArtifactTreeNode[]) => {
+    for (const node of list) {
+      out.push(node.path);
+      if (node.kind === "dir" && node.children && isOpen(node.path)) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return out;
+}
+
+/** A Shift-click: the rows from the anchor to the target, both ends in; the target alone without one on screen. */
+export function treeRange(order: readonly string[], anchor: string | null, target: string): string[] {
+  const to = order.indexOf(target);
+  if (to < 0) return [];
+  const from = anchor === null ? -1 : order.indexOf(anchor);
+  if (from < 0) return [target];
+  return order.slice(Math.min(from, to), Math.max(from, to) + 1);
+}
+
+/** Whether `path` is one of `roots` or sits inside one of them. */
+export function isUnderAny(path: string, roots: readonly string[]): boolean {
+  return roots.some((root) => path === root || path.startsWith(`${root}/`));
+}
+
+/** The tree without these paths and whatever sits inside them. */
+export function removeTreePaths(
+  nodes: readonly ArtifactTreeNode[],
+  removed: readonly string[],
+): ArtifactTreeNode[] {
+  if (removed.length === 0) return [...nodes];
+  const out: ArtifactTreeNode[] = [];
+  for (const node of nodes) {
+    if (isUnderAny(node.path, removed)) continue;
+    out.push(node.children ? { ...node, children: removeTreePaths(node.children, removed) } : node);
+  }
+  return out;
+}
+
 export function collectTreePaths(nodes: readonly ArtifactTreeNode[]): string[] {
   const out: string[] = [];
   const walk = (list: readonly ArtifactTreeNode[]) => {

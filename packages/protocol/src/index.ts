@@ -434,6 +434,18 @@ export type WorkspaceTreePage = {
   items: WorkspaceTreeEntry[];
 };
 
+/** Workspace-relative files and folders to move to the Mac's Trash; a folder goes with what is in it. */
+export type WorkspaceTrashRequest = {
+  paths: string[];
+};
+
+export type WorkspaceTrashResult = {
+  /** In the Trash now, or already gone when asked — either way no longer in the workspace. */
+  trashed: string[];
+  /** Still where they were, with the Mac's reason. */
+  failed: Array<{ path: string; message: string }>;
+};
+
 export type SettingsPatch = {
   workspace_path?: string;
   endpoint_base_url?: string;
@@ -1231,10 +1243,14 @@ export type Terminal = {
  * and stored in the same transaction as its effect — right for a message, absurd for a keystroke.
  * A client that treats these as ordinary mutations will refuse the second keystroke while the
  * first is still in flight, which looks exactly like a terminal dropping characters.
+ *
+ * `/v1/workspace/trash` moves files, not rows, so no transaction could hold it together with a
+ * receipt; a repeat is harmless instead, since a path already gone is reported as trashed.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
   return withoutQuery === "/v1/models/probe"
+    || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery === "/v1/terminals"
     || withoutQuery.startsWith("/v1/terminals/")

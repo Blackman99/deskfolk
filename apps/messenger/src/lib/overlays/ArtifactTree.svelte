@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { ArtifactTreeNode } from './artifact-tree.ts';
+	import { untrack } from 'svelte';
+	import { treeRange, visibleTreePaths, type ArtifactTreeNode } from './artifact-tree.ts';
 	import FileIcon from './FileIcon.svelte';
 	import { fileIconFor } from './file-icon.ts';
 
@@ -8,8 +9,13 @@
 		selected: string;
 		label: string;
 		onSelect: (node: ArtifactTreeNode) => void;
-		/** Right-click on a row. The preview uses it for Finder and the system app. */
-		onContextMenu?: (node: ArtifactTreeNode, event: MouseEvent) => void;
+		/**
+		 * Right-click on a row. The preview uses it for Finder and the system app. `picked` is what the
+		 * menu acts on: every picked row when this one is among them, this row alone otherwise.
+		 */
+		onContextMenu?: (node: ArtifactTreeNode, event: MouseEvent, picked: ArtifactTreeNode[]) => void;
+		/** ⌘⌫ (Delete elsewhere) on a focused row, with the rows it applies to. */
+		onTrash?: (picked: ArtifactTreeNode[]) => void;
 		lazyDirs?: boolean;
 		loadedDirs?: ReadonlySet<string>;
 		onExpandDir?: (path: string) => void;
@@ -26,12 +32,103 @@
 	}
 
 	let {
-		nodes, selected, label, onSelect, onContextMenu, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
+		nodes, selected, label, onSelect, onContextMenu, onTrash, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
 		loadingDirs, failedDirs, loading = false, failed = false,
 		loadingLabel, failedLabel, emptyLabel, retryLabel, onRetry,
 	}: Props = $props();
 	let collapsed = $state(new Set<string>());
 	let expandedLazy = $state(new Set<string>());
+	/**
+	 * Rows picked with ⌘/Ctrl or Shift. Empty means the file on screen is the one highlighted, as
+	 * before there was more than one to pick; a plain click goes back to that.
+	 */
+	let picked = $state<string[]>([]);
+	/** Where a Shift-click range starts: the last row clicked, else the file on screen. */
+	let anchor: string | null = null;
+
+	const byPath = $derived.by(() => {
+		const map = new Map<string, ArtifactTreeNode>();
+		const walk = (list: readonly ArtifactTreeNode[]) => {
+			for (const node of list) {
+				map.set(node.path, node);
+				if (node.children) walk(node.children);
+			}
+		};
+		walk(nodes);
+		return map;
+	});
+	const order = $derived(visibleTreePaths(nodes, isOpen));
+	/** Rows that went away, trashed or renamed on disk, drop out of what is picked. */
+	const livePicked = $derived(picked.filter((path) => byPath.has(path)));
+	const highlighted = $derived(new Set(livePicked.length ? livePicked : [selected]));
+
+	// Another file opened from elsewhere (a chat chip, a flow card) is the new selection.
+	$effect.pre(() => {
+		void selected;
+		untrack(() => {
+			picked = [];
+			anchor = null;
+		});
+	});
+
+	/** What an action on `node` applies to, in screen order: everything highlighted if it is, else it alone. */
+	function targetsFor(node: ArtifactTreeNode): ArtifactTreeNode[] {
+		if (!highlighted.has(node.path)) return [node];
+		const rank = (path: string) => { const at = order.indexOf(path); return at < 0 ? order.length : at; };
+		return [...highlighted]
+			.sort((a, b) => rank(a) - rank(b))
+			.map((path) => byPath.get(path))
+			.filter((row): row is ArtifactTreeNode => Boolean(row));
+	}
+
+	function onRowClick(node: ArtifactTreeNode, event: MouseEvent): void {
+		if (event.shiftKey) {
+			const from = anchor ?? (order.includes(selected) ? selected : null);
+			picked = treeRange(order, from, node.path);
+			anchor = from ?? node.path;
+			return;
+		}
+		if (event.metaKey || event.ctrlKey) {
+			// The file on screen was the selection until now, so it stays in what is picked.
+			const base = livePicked.length ? livePicked : order.includes(selected) ? [selected] : [];
+			picked = base.includes(node.path) ? base.filter((path) => path !== node.path) : [...base, node.path];
+			anchor = node.path;
+			return;
+		}
+		picked = [];
+		anchor = node.path;
+		onNode(node);
+	}
+
+	function onRowContextMenu(node: ArtifactTreeNode, event: MouseEvent): void {
+		if (!onContextMenu) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const targets = targetsFor(node);
+		// Right-clicking outside the selection selects that row, so the highlight shows what the menu acts on.
+		if (!highlighted.has(node.path)) {
+			picked = [node.path];
+			anchor = node.path;
+		}
+		onContextMenu(node, event, targets);
+	}
+
+	function onKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && livePicked.length) {
+			event.preventDefault();
+			event.stopPropagation();
+			picked = [];
+			return;
+		}
+		const trashKey = (event.key === 'Backspace' && event.metaKey) || (event.key === 'Delete' && !event.metaKey);
+		if (!trashKey || !onTrash) return;
+		const row = (event.target as HTMLElement | null)?.closest<HTMLElement>('.artifact-tree-row');
+		const node = row?.dataset.path ? byPath.get(row.dataset.path) : undefined;
+		if (!node) return;
+		event.preventDefault();
+		event.stopPropagation();
+		onTrash(targetsFor(node));
+	}
 
 	function isOpen(path: string): boolean {
 		if (lazyDirs) return expandedLazy.has(path);
@@ -66,7 +163,8 @@
 	}
 </script>
 
-<nav class="artifact-tree" aria-label={label}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<nav class="artifact-tree" aria-label={label} onkeydown={onKeydown}>
 	<ul class="artifact-tree-list list-none m-0 p-0">
 		{#if loading || failed || nodes.length === 0}
 			<li>{@render state(loading, failed, 0, onRetry)}</li>
@@ -82,18 +180,18 @@
 		<button
 			type="button"
 			class="artifact-tree-row"
-			class:is-selected={node.path === selected}
+			class:is-selected={highlighted.has(node.path)}
 			class:is-dir={node.kind === 'dir'}
 			style:padding-left="{8 + depth * 12}px"
 			title={node.path}
+			data-path={node.path}
 			aria-expanded={node.kind === 'dir' ? isOpen(node.path) : undefined}
-			onclick={() => onNode(node)}
-			oncontextmenu={(event) => {
-				if (!onContextMenu) return;
-				event.preventDefault();
-				event.stopPropagation();
-				onContextMenu(node, event);
+			onmousedown={(event) => {
+				// Shift-click picks rows; it must not also select the text between them.
+				if (event.shiftKey) event.preventDefault();
 			}}
+			onclick={(event) => onRowClick(node, event)}
+			oncontextmenu={(event) => onRowContextMenu(node, event)}
 		>
 			{#if node.kind === 'dir'}
 				<span class="artifact-tree-chevron" class:is-open={isOpen(node.path)} aria-hidden="true">▸</span>

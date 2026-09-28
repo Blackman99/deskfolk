@@ -16,6 +16,8 @@
 
 - 发布流程可以用 Developer ID 签名并公证了。仓库配上 `APPLE_SIGNING_IDENTITY`、`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD` 三个 secrets 后，应用和里面带的运行时、pty、helper 都用这张证书签名；再配上 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`，就交给 Apple 公证：第一次打开不用再右键「打开」或跑 `xattr`，从第一个签名版本之后，更新也不会再弹钥匙串确认。没配这些 secrets 之前，发布包照旧是 ad-hoc 签名。每个 secret 填什么见 [notarization.md](docs/notarization.md#repository-secrets)。
 
+- 工作区文件树可以多选，右键菜单能把选中的移到废纸篓。⌘ 点击（Ctrl 点击）加选或取消一行，Shift 点击选中从上一次点的那行到这一行之间的全部，Esc 取消多选，普通点击回到只选屏幕上那个文件。在选中的行上右键，菜单作用于全部选中项：复制它们的路径（一行一个），或「将 N 项移到废纸篓」；用系统应用打开、在 Finder 中打开、打开终端只针对一行，多选时不显示。移到废纸篓前会先确认，含文件夹时写明里面的内容一起移走，正在编辑的文件有未保存修改时也会写明；确认后移到 Mac 的废纸篓，在 Finder 里还能放回：不会直接删除，符号链接只移走链接本身。在某一行上按 ⌘⌫ 也会弹同样的确认。Mac 拒绝移走的（比如上了锁的文件）留在树里，确认框保留它、写明 Mac 给的原因并提供「重试」。消息里「引用的文件」树的右键菜单也有这一项；配对的浏览器也有，安卓手机上长按即可（`POST /v1/workspace/trash`）。
+
 ## 0.1.0-rc.11 — 2026-09-28
 
 未签名的 macOS rc。不是受支持的签名安装包；Gatekeeper 可能拦截。优先从源码运行。

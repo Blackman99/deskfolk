@@ -14,6 +14,12 @@ test("terminal writes and model probes carry no receipt", () => {
   expect(isNonReceiptPath("/v1/terminals/01J0000000000000000000000B/scrollback?from=42")).toBe(true);
 });
 
+/** Moving files to the Trash is not a row a receipt could commit with; asking twice trashes nothing twice. */
+test("moving workspace files to the Trash carries no receipt", () => {
+  expect(isNonReceiptPath("/v1/workspace/trash")).toBe(true);
+  expect(isNonReceiptPath("/v1/workspace/trashcan")).toBe(false);
+});
+
 test("everything that writes a durable row still does", () => {
   for (const path of [
     "/v1/sessions/01J0000000000000000000000B/messages",

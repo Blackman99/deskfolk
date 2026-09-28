@@ -714,6 +714,19 @@ const zh = {
     artifactOpenTerminal: "在此位置打开终端",
     artifactCopyPath: "复制工作区路径",
     artifactCopyAbsPath: "复制绝对路径",
+    artifactTrash: "移到废纸篓",
+    artifactTrashCount: (count: number) => `将 ${count} 项移到废纸篓`,
+    artifactTrashTitle: (name: string, count: number) => (count > 1 ? `将 ${count} 项移到废纸篓？` : `将“${name}”移到废纸篓？`),
+    artifactTrashBody: (names: string[], count: number, folders: boolean, unsaved: boolean) =>
+      [
+        count > 1
+          ? `${names.slice(0, 3).map((name) => `“${name}”`).join("、")}${count > 3 ? ` 等 ${count} 项` : ""}会移到 Mac 的废纸篓，可以从那里放回。`
+          : "它会移到 Mac 的废纸篓，可以从那里放回。",
+        folders ? "文件夹会连同里面的内容一起移走。" : "",
+        unsaved ? "正在编辑的文件还有未保存的修改，会一起丢掉。" : "",
+      ].join(""),
+    artifactTrashFailed: (count: number, reason: string) => `有 ${count} 项没能移走：${reason}`,
+    artifactTrashRetry: "重试",
     artifactDirectory: "文件夹",
     artifactOpenUnavailable: "开发态浏览器里请下载；系统打开只在 App 窗里。",
     artifactResize: "拖动调整预览宽度",
@@ -1983,6 +1996,19 @@ const en: CopyShape<typeof zh> = {
     artifactOpenTerminal: "Open terminal here",
     artifactCopyPath: "Copy workspace path",
     artifactCopyAbsPath: "Copy absolute path",
+    artifactTrash: "Move to Trash",
+    artifactTrashCount: (count: number) => `Move ${count} items to Trash`,
+    artifactTrashTitle: (name: string, count: number) => (count > 1 ? `Move ${count} items to the Trash?` : `Move “${name}” to the Trash?`),
+    artifactTrashBody: (names: string[], count: number, folders: boolean, unsaved: boolean) =>
+      [
+        count > 1
+          ? `${names.slice(0, 3).map((name) => `“${name}”`).join(", ")}${count > 3 ? ` and ${count - 3} more` : ""} go to the Mac’s Trash, where you can put them back.`
+          : "It goes to the Mac’s Trash, where you can put it back.",
+        folders ? "Folders go with everything in them." : "",
+        unsaved ? "Unsaved edits in the file you are editing are lost." : "",
+      ].filter(Boolean).join(" "),
+    artifactTrashFailed: (count: number, reason: string) => `${count === 1 ? "1 item" : `${count} items`} could not be moved: ${reason}`,
+    artifactTrashRetry: "Try again",
     artifactDirectory: "Folder",
     artifactOpenUnavailable: "In the browser, download instead. Open with system is only in the app window.",
     artifactResize: "Drag to resize preview",

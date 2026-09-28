@@ -58,6 +58,7 @@ import type {
   PatchTaskSpecRequest,
   PatchTicketRequest,
   SessionTaskSummary,
+  WorkspaceTrashResult,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
 import {
@@ -537,6 +538,10 @@ export class LocalApi {
 
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {
     return this.request<string | null>("PUT", "/v1/workspace/file", { path, content }, undefined, ifMatch ? { "If-Match": ifMatch } : {}, true);
+  }
+  /** Into the Mac's Trash; a path already gone comes back as trashed. */
+  async trashWorkspacePaths(paths: string[]): Promise<WorkspaceTrashResult> {
+    return this.post<WorkspaceTrashResult>("/v1/workspace/trash", { paths });
   }
 
   async getWorkspaceFileBlob(path: string, onProgress?: FileProgressHandler, options?: FileLoadOptions): Promise<Blob> {

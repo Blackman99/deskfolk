@@ -59,6 +59,7 @@ import { displayAvatar, isDisplayAvatar, warmDisplayAvatar, withoutDisplayMark }
 import { Quiesce, TurnAdmission } from "./quiesce";
 import type { RuntimeLifecycle } from "./lifecycle";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./workspace-browse";
+import { trashWorkspacePaths, type TrashMover } from "./workspace-trash";
 import { listHostDir } from "./host-paths";
 import { PresenceManager, NotificationDeliveryScheduler } from "./notifications";
 
@@ -101,6 +102,8 @@ export type LocalApiOptions = {
   pushSettingsV2?: boolean;
   /** Where Deskfolk's own zsh shell integration is written, for terminals the person opens. */
   dataDir?: string;
+  /** How workspace files reach the Trash; the Mac's own Trash when absent. */
+  trash?: TrashMover;
 };
 
 export type LocalApi = {
@@ -990,6 +993,14 @@ function dispatch(
     const response = emptyResponse(204, null);
     response.headers.set("ETag", result.etag);
     return response;
+  }
+
+  // No receipt (see isNonReceiptPath): what moves is files, and a repeat finds them gone.
+  if (method === "POST" && path === "/v1/workspace/trash") {
+    const root = store.workspacePath();
+    if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
+    const body = (input.body) as { paths?: unknown };
+    return trashWorkspacePaths(root, body.paths, options.trash).then((result) => jsonResponse(result, 200, null));
   }
 
   if (method === "POST" && path === "/v1/models/probe") {

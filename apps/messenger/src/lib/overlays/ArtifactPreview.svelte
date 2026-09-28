@@ -43,12 +43,15 @@
 	import {
 		buildCitedPathTree,
 		buildTaskArtifactTree,
+		isUnderAny,
 		mergeWorkspaceChildren,
+		removeTreePaths,
 		workspaceEntriesToNodes,
 		type ArtifactTreeNode,
 	} from './artifact-tree.ts';
 	import ArtifactTree from './ArtifactTree.svelte';
 	import ArtifactTreeMenu from './ArtifactTreeMenu.svelte';
+	import DangerDialog from './DangerDialog.svelte';
 	import ArtifactCodeEditor from './ArtifactCodeEditor.svelte';
 	import { formatFileSize } from '../chat/attachments.ts';
 	import {
@@ -167,8 +170,12 @@
 	let openHint = $state(false);
 	let wrap = $state(true);
 	let showSource = $state(false);
-	/** The file-tree row that was right-clicked, and where its menu hangs. */
-	let treeMenu = $state<{ node: ArtifactTreeNode; x: number; y: number } | null>(null);
+	/** The file-tree row that was right-clicked, the rows its menu acts on, and where it hangs. */
+	let treeMenu = $state<{ node: ArtifactTreeNode; targets: ArtifactTreeNode[]; x: number; y: number } | null>(null);
+	/** Rows waiting on the Move to Trash confirm; `failed` is the Mac's reason once a try left some behind. */
+	let trashAsk = $state<{ nodes: ArtifactTreeNode[]; busy: boolean; failed: string | null } | null>(null);
+	/** Trashed from this pane. The message's own rows still name those files until the Mac says they are gone. */
+	let trashedPaths = $state<string[]>([]);
 	let liveBlob: string | null = null;
 	let mediaSource: MediaSourceHandle | null = null;
 	/** The clip on screen plays from pieces fetched as it goes (remote), so no whole-file hash exists. */
@@ -561,7 +568,9 @@
 
 	/** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
 	let ownPaths = $derived(
-		siblings.filter((row) => row.exists !== false).map((row) => row.workspace_relpath)
+		siblings
+			.filter((row) => row.exists !== false && !isUnderAny(row.workspace_relpath, trashedPaths))
+			.map((row) => row.workspace_relpath)
 	);
 	/**
 	 * The job's files, anchored at its work dir, with this message's own marked — relevance is
@@ -957,12 +966,97 @@
 		if (!ok) openHint = true;
 	}
 
-	function openTreeMenu(node: ArtifactTreeNode, event: MouseEvent): void {
-		treeMenu = { node, x: event.clientX, y: event.clientY };
+	function openTreeMenu(node: ArtifactTreeNode, event: MouseEvent, targets: ArtifactTreeNode[]): void {
+		treeMenu = { node, targets, x: event.clientX, y: event.clientY };
 	}
 
-	/** Where the right-clicked row sits on the machine; unknown until the workspace root is. */
-	const treeMenuAbsPath = $derived(treeMenu && workspacePath ? absWorkspacePath(workspacePath, treeMenu.node.path) : null);
+	/** Where the rows the menu acts on sit on the machine, one a line; unknown until the workspace root is. */
+	const treeMenuAbsPaths = $derived.by(() => {
+		if (!treeMenu || !workspacePath) return null;
+		const root = workspacePath;
+		const paths = treeMenu.targets.map((node) => absWorkspacePath(root, node.path));
+		return paths.every((path) => path !== null) ? paths.join('\n') : null;
+	});
+	/** Anything that reaches the Mac can move files to its Trash; a stand-in client without the call cannot. */
+	const canTrash = $derived(typeof api?.trashWorkspacePaths === 'function');
+
+	function askTrash(nodes: ArtifactTreeNode[]): void {
+		if (!canTrash || nodes.length === 0) return;
+		trashAsk = { nodes, busy: false, failed: null };
+	}
+
+	const trashCopy = $derived.by(() => {
+		if (!trashAsk) return null;
+		const { nodes, failed } = trashAsk;
+		const count = nodes.length;
+		return {
+			title: t.stream.artifactTrashTitle(nodes[0]?.name ?? '', count),
+			body: failed
+				? t.stream.artifactTrashFailed(count, failed)
+				: t.stream.artifactTrashBody(
+						nodes.map((node) => node.name),
+						count,
+						nodes.some((node) => node.kind === 'dir'),
+						dirty && isUnderAny(relpath, nodes.map((node) => node.path)),
+					),
+			confirm: failed ? t.stream.artifactTrashRetry : t.stream.artifactTrash,
+			cancel: t.sidebar.cancel,
+		};
+	});
+
+	async function confirmTrash(): Promise<void> {
+		const ask = trashAsk;
+		const client = api;
+		if (!ask || ask.busy || !client) return;
+		ask.busy = true;
+		let result: Awaited<ReturnType<MessengerApi['trashWorkspacePaths']>>;
+		try {
+			result = await client.trashWorkspacePaths(ask.nodes.map((node) => node.path));
+		} catch (error) {
+			if (trashAsk !== ask) return;
+			ask.busy = false;
+			ask.failed = error instanceof Error && error.message ? error.message : String(error);
+			return;
+		}
+		dropTrashed(result.trashed);
+		if (trashAsk !== ask) return;
+		if (result.failed.length === 0) {
+			trashAsk = null;
+			return;
+		}
+		const left = new Set(result.failed.map((row) => row.path));
+		trashAsk = { nodes: ask.nodes.filter((node) => left.has(node.path)), busy: false, failed: result.failed[0]!.message };
+	}
+
+	/** Takes trashed rows out of the tree where they are: re-reading it would fold every open folder. */
+	function dropTrashed(paths: string[]): void {
+		if (paths.length === 0) return;
+		trashedPaths = [...trashedPaths, ...paths];
+		if (mode === 'workspace') {
+			workspaceTree = removeTreePaths(workspaceTree, paths);
+			const keep = (dirs: Set<string>) => new Set([...dirs].filter((dir) => !isUnderAny(dir, paths)));
+			loadedDirs = keep(loadedDirs);
+			failedDirs = keep(failedDirs);
+		} else if (taskArtifacts) {
+			taskArtifacts = { ...taskArtifacts, items: taskArtifacts.items.filter((row) => !isUnderAny(row.path, paths)) };
+		}
+		if (relpath && isUnderAny(relpath, paths)) showGone();
+	}
+
+	/** The file on screen went to the Trash, so what the pane holds of it goes too, unsaved edits included. */
+	function showGone(): void {
+		loadGen += 1;
+		loadAbort?.abort();
+		loadAbort = null;
+		revoke();
+		text = null;
+		diskText = null;
+		original = null;
+		progress = null;
+		loading = false;
+		loadedKey = null;
+		missing = true;
+	}
 	/** The folder a terminal opened from that row starts in: the row itself, or a file's own folder. */
 	const treeMenuTerminalDir = $derived(
 		treeMenu && workspacePath && onOpenTerminal ? terminalDirFor(workspacePath, treeMenu.node.path, treeMenu.node.kind) : null
@@ -1316,6 +1410,7 @@
 				label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree}
 				onSelect={selectNode}
 				onContextMenu={openTreeMenu}
+				onTrash={canTrash ? askTrash : undefined}
 				lazyDirs={mode === 'workspace'}
 				{loadedDirs}
 				onExpandDir={(path) => void loadWorkspaceDir(path)}
@@ -1615,9 +1710,20 @@
 		onOpen={() => void openOnDisk(treeMenu?.node.path ?? '', false)}
 		onReveal={() => void openOnDisk(treeMenu?.node.path ?? '', true)}
 		onOpenTerminal={treeMenuTerminalDir && onOpenTerminal ? () => onOpenTerminal(treeMenuTerminalDir) : undefined}
-		onCopyPath={() => copyText(treeMenu?.node.path ?? '')}
-		onCopyAbsPath={treeMenuAbsPath ? () => copyText(treeMenuAbsPath) : undefined}
+		onCopyPath={() => copyText(treeMenu?.targets.map((node) => node.path).join('\n') ?? '')}
+		onCopyAbsPath={treeMenuAbsPaths ? () => copyText(treeMenuAbsPaths) : undefined}
+		count={treeMenu.targets.length}
+		onTrash={canTrash ? () => askTrash(treeMenu?.targets ?? []) : undefined}
 		onClose={() => (treeMenu = null)}
+	/>
+{/if}
+{#if trashAsk && trashCopy}
+	<DangerDialog
+		copy={trashCopy}
+		{t}
+		busy={trashAsk.busy}
+		onDismiss={() => (trashAsk = null)}
+		onConfirm={() => void confirmTrash()}
 	/>
 {/if}
 {#if shownEnlarged}

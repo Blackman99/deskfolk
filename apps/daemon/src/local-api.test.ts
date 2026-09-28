@@ -9,6 +9,7 @@ import { memoryKeyStore } from "./secrets";
 import { noisePng } from "./test-images";
 import { warmDisplayAvatar } from "./avatar-display";
 import { Store } from "./store";
+import type { TrashMover } from "./workspace-trash";
 
 type Harness = {
   origin: string;
@@ -20,11 +21,11 @@ type Harness = {
 const harnesses: Harness[] = [];
 
 async function start(
-  opts: { token?: string; key?: string | null; onQuit?: () => void } = {},
+  opts: { token?: string; key?: string | null; onQuit?: () => void; trash?: TrashMover } = {},
 ): Promise<Harness> {
   const token = opts.token ?? "test-token";
   const store = new Store({ endpointKey: memoryKeyStore(opts.key ?? null) });
-  const api = createLocalApi({ store, token, onQuit: opts.onQuit, schedule: false });
+  const api = createLocalApi({ store, token, onQuit: opts.onQuit, schedule: false, trash: opts.trash });
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -439,6 +440,48 @@ describe("empty roster and settings", () => {
     });
     expect(putOutside.status).toBe(422);
 
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("workspace files and folders move to the Trash, and nothing outside the workspace does", async () => {
+    const asked: string[][] = [];
+    const h = await start({ trash: async (abs) => {
+      asked.push(abs);
+      for (const path of abs) rmSync(path, { recursive: true });
+      return abs.map(() => "");
+    } });
+    const trash = (paths: unknown) => fetch(`${h.origin}/v1/workspace/trash`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ paths }),
+    });
+    expect((await trash(["brief.md"])).status).toBe(422);
+
+    const ws = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-ws-trash-")));
+    mkdirSync(join(ws, "src"));
+    writeFileSync(join(ws, "src", "app.ts"), "export {}\n");
+    writeFileSync(join(ws, "brief.md"), "# brief\n");
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ workspace_path: ws }),
+    });
+
+    const receipts = () => h.store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts").get()!.n;
+    const before = receipts();
+    const moved = await trash(["src/app.ts", "src", "brief.md"]);
+    expect(moved.status).toBe(200);
+    expect(await moved.json()).toEqual({ trashed: ["src", "brief.md"], failed: [] });
+    expect(asked).toEqual([[join(ws, "src"), join(ws, "brief.md")]]);
+    expect(((await (await fetch(`${h.origin}/v1/workspace/tree`, { headers: auth(h) })).json()) as { items: unknown[] }).items).toEqual([]);
+    // Asked again after a lost answer: already gone, so the same answer and nothing handed over.
+    expect(await (await trash(["src", "brief.md"])).json()).toEqual({ trashed: ["src", "brief.md"], failed: [] });
+    expect(asked).toHaveLength(1);
+    // No receipt, so a second request is never refused as a replay of the first.
+    expect(receipts()).toBe(before);
+
+    for (const paths of [[], ["."], ["../secret"], "brief.md"]) expect((await trash(paths)).status).toBe(422);
+    expect(asked).toHaveLength(1);
     rmSync(ws, { recursive: true, force: true });
   });
 
