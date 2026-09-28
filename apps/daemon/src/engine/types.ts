@@ -67,6 +67,8 @@ export type Live = {
   hops: number;
   /** The hop limit's note is in the loop: it goes in once, and the tools stay away after it. */
   lastHopNoted?: boolean;
+  /** An empty reply was answered with one note; the next empty one ends the turn as it would. */
+  emptyNudged?: boolean;
   toolCalls: number;
   toolErrors: number;
   /** Failed calls whose name and arguments match an earlier failure in this turn. */

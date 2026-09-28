@@ -28,7 +28,7 @@ import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
 import type { TurnExecution } from "../store/routing";
 import type { Store } from "../store";
-import { checkInNote, lastHopNote, turnPace } from "../turn-pace";
+import { checkInNote, emptyReplyNote, lastHopNote, turnPace } from "../turn-pace";
 import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from "../turn-inbox";
 import type { WakeWatch } from "../wake";
 import type { Chains } from "./chains";
@@ -641,6 +641,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         continue;
       }
 
+      // Nothing at all came back: ask once for the next step rather than end the turn silently
+      // (see emptyReplyNote). The empty answer itself is not kept in the loop.
+      if (!result.content.trim() && !live.emptyNudged) {
+        live.emptyNudged = true;
+        live.loop.push({ role: "user", content: emptyReplyNote(live.locale) });
+        continue;
+      }
       live.loop.push({ role: "assistant", content: result.content });
       const closer = isNoWorkCloser(result.content);
       const rawBody = closer ? "" : result.content;
