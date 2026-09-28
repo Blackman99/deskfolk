@@ -292,3 +292,110 @@ test("an unanswered direct reports back once, and the direct that report opens d
     await h.cleanup();
   }
 });
+
+/**
+ * You↔Bot directs fork a turn per message of yours, so you can ask two things at once. A check-back
+ * is not you asking: when the Bot already has a turn in this direct on the job the reminder is
+ * about, a second turn beside it would do that job twice and write the same files. On 2026-09-28 a
+ * video Bot re-rendered the same shots in two turns at once this way. The live turn hears it
+ * instead; a reminder about another job still opens its own turn.
+ */
+function directHarness() {
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  const root = mkdtempSync(join(tmpdir(), "bot-check-back-direct-"));
+  const seen: ChatMessage[][] = [];
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered = false;
+  const engine = createTurnEngine({
+    store,
+    publish() {},
+    completions: {
+      async complete(request) {
+        seen.push(request.messages);
+        if (triggerText(request.messages).includes("回看：")) return say("回看的事办完了。");
+        if (!request.messages.some((m) => m.role === "tool")) {
+          entered = true;
+          await held;
+          return call("read_file", { path: "renders/02.mp4" });
+        }
+        return say("02 到 03 的背景对齐了。");
+      },
+      async judge() {
+        throw new Error("direct turns do not judge");
+      },
+    },
+  });
+  return {
+    store,
+    engine,
+    seen,
+    release: () => release(),
+    entered: () => entered,
+    async setup() {
+      await store.patchSettings({ workspace_path: root, endpoint_base_url: "http://127.0.0.1:1/v1", endpoint_api_key: "fixture", endpoint_models: ["fixture"], endpoint_default_model: "fixture" });
+      const director = store.createBot({ name: "Director", duties: "direct", boundaries: "stay" });
+      const session = director.direct_session.id;
+      const ask = store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "02 到 03 还是有背景跳跃" });
+      await engine.handleInboundMessage(ask, { fromUser: true });
+      await until(() => entered);
+      const live = store.listLiveTurns({ sessionId: session, botId: director.bot.id });
+      expect(live).toHaveLength(1);
+      expect(live[0]!.task_id).toBeTruthy();
+      return { botId: director.bot.id, session, live: live[0]! };
+    },
+    async cleanup() {
+      release();
+      await engine.close();
+      store.close();
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+test("in a direct with you, a check-back about the job the Bot is already doing there is heard in that turn", async () => {
+  const h = directHarness();
+  try {
+    const { botId, session, live } = await h.setup();
+    const row = h.store.bookPlanNudge({ botId, sessionId: session, taskId: live.task_id!, ticketId: null, note: "看 02 的新渲染出来没有" });
+    const woken = h.engine.fireCheckBack(row.id, new Date(Date.now() + 60_000));
+    expect(woken?.id).toBe(live.id);
+    expect(h.store.getCheckBack(row.id).fired_turn_id).toBe(live.id);
+    expect(h.store.listLiveTurns({ sessionId: session, botId }).map((turn) => turn.id)).toEqual([live.id]);
+
+    // The live turn reads the reminder at its next hop, and finishes without anything opened beside it.
+    h.release();
+    await until(() => h.store.getTurn(live.id).status === "completed");
+    const heard = h.seen.at(-1)!.find((m) => m.role === "user" && textOf(m).includes("你这一轮干活时有人找你"));
+    expect(heard && textOf(heard)).toContain("看 02 的新渲染出来没有");
+    await Bun.sleep(50);
+    expect(h.store.listLiveTurns()).toEqual([]);
+    expect(h.seen).toHaveLength(2);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("in a direct with you, a check-back about another job still opens its own turn beside the live one", async () => {
+  const h = directHarness();
+  try {
+    const { botId, session, live } = await h.setup();
+    const other = h.store.openTask({ sessionId: session, title: "片尾字幕" });
+    const row = h.store.bookPlanNudge({ botId, sessionId: session, taskId: other.id, ticketId: null, note: "片尾字幕排好没有" });
+    const woken = h.engine.fireCheckBack(row.id, new Date(Date.now() + 60_000));
+    expect(woken).not.toBeNull();
+    expect(woken!.id).not.toBe(live.id);
+    expect(woken!.task_id).toBe(other.id);
+    await until(() => h.store.getTurn(woken!.id).status === "completed");
+    // The forked turn did its own job; the one it stood beside kept running, untouched.
+    expect(h.store.getTurn(live.id).status).toBe("running");
+    h.release();
+    await until(() => h.store.getTurn(live.id).status === "completed");
+    // The system prompt names the heard line too, so only the loop's own user lines count.
+    expect(h.seen.some((messages) => messages.some((m) => m.role === "user" && textOf(m).includes("你这一轮干活时有人找你")))).toBe(false);
+  } finally {
+    await h.cleanup();
+  }
+});

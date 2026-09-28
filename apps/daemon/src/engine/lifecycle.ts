@@ -94,7 +94,7 @@ export type Lifecycle = {
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts?: { taskId?: string | null; ticketId?: string | null },
+    opts?: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
   ) => Turn;
   hearAcross: (message: Message) => Turn[];
   attachLive: (turn: Turn, carry?: string | null) => void;
@@ -230,13 +230,17 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts: { taskId?: string | null; ticketId?: string | null } = {},
+    /** `otherwise`: how a turn opens when none here can hear it; a direct with you forks, never cuts one of yours off. */
+    opts: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" } = {},
   ): Turn {
-    for (const current of store.listLiveTurns({ sessionId, botId })) {
+    // A group turn hears lines about other jobs too; the tag says which one this is about. With
+    // more than one turn here, the one already on that job hears it.
+    const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
+    const rows = store.listLiveTurns({ sessionId, botId });
+    const onJob = rows.filter((row) => about.taskId !== null && row.task_id === about.taskId);
+    for (const current of [...onJob, ...rows.filter((row) => !onJob.includes(row))]) {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
-      // A group turn hears lines about other jobs too; the tag says which one this is about.
-      const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
       const tag = planTagger(
         store,
         { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
@@ -245,7 +249,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       live.inbox.push({ ...entry, item: { ...entry.item, tag: tag || undefined }, message: trigger });
       return current;
     }
-    return startTurn(sessionId, botId, trigger, "redirect", opts);
+    const { otherwise = "redirect", ...lands } = opts;
+    return startTurn(sessionId, botId, trigger, otherwise, lands);
   }
 
   /**
