@@ -6,7 +6,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+- Running from source (`pnpm dev`), Stage Manager shows the Deskfolk icon beside the window. The Dock already did, but the `Deskfolk Dev.app` wrapper that `tauri dev` runs in had no icon of its own, and Stage Manager showed a blank app. The wrapper now carries the app's icon and registers itself again the first time it gains it.
 
 ## 0.1.0-rc.11 — 2026-09-28
 

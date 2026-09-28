@@ -6,7 +6,6 @@
 //! inside `Deskfolk.app` and never take this path.
 
 use std::fs;
-use std::io::Write;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -15,6 +14,10 @@ use std::process::Command;
 /// System Settings applies to `tauri dev` instead of a second, never-asked app.
 const BUNDLE_ID: &str = "com.real-bot.desktop";
 const MARKER: &str = "REAL_BOT_DEV_BUNDLE";
+/// Tauri only sets the Dock's icon at runtime in dev; Stage Manager reads the
+/// bundle's own, so without this one the window showed a blank app there.
+const ICON_FILE: &str = "icon.icns";
+const ICON: &[u8] = include_bytes!("../icons/icon.icns");
 
 pub fn reexec_inside_bundle() {
     if std::env::var_os(MARKER).is_some() {
@@ -69,10 +72,18 @@ fn ensure_dev_app(exe: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| "executable has no name".to_string())?;
     let dest = macos.join(name);
     copy_exe(exe, &dest)?;
-    let mut plist = fs::File::create(app.join("Contents").join("Info.plist"))
+    let icon_changed = write_icon(&app)?;
+    fs::write(app.join("Contents").join("Info.plist"), info_plist(&name.to_string_lossy()))
         .map_err(|err| err.to_string())?;
-    write!(
-        plist,
+    sign_dev_app(&app)?;
+    if icon_changed {
+        register(&app);
+    }
+    Ok(app)
+}
+
+fn info_plist(executable: &str) -> String {
+    format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -84,7 +95,9 @@ fn ensure_dev_app(exe: &Path) -> Result<PathBuf, String> {
   <key>CFBundleDisplayName</key>
   <string>Deskfolk</string>
   <key>CFBundleExecutable</key>
-  <string>{}</string>
+  <string>{executable}</string>
+  <key>CFBundleIconFile</key>
+  <string>{ICON_FILE}</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -95,12 +108,38 @@ fn ensure_dev_app(exe: &Path) -> Result<PathBuf, String> {
   <false/>
 </dict>
 </plist>
-"#,
-        name.to_string_lossy()
+"#
     )
-    .map_err(|err| err.to_string())?;
-    sign_dev_app(&app)?;
-    Ok(app)
+}
+
+/// Rewritten only when it differs; `true` when it was, so the bundle needs registering again.
+fn write_icon(app: &Path) -> Result<bool, String> {
+    let resources = app.join("Contents").join("Resources");
+    fs::create_dir_all(&resources).map_err(|err| err.to_string())?;
+    let icon = resources.join(ICON_FILE);
+    if fs::read(&icon).is_ok_and(|current| current == ICON) {
+        return Ok(false);
+    }
+    fs::write(&icon, ICON).map_err(|err| err.to_string())?;
+    Ok(true)
+}
+
+/// Launch Services and the icon cache keep what they read when they first saw the bundle: a
+/// rewritten Info.plist changes neither, so a dev app made before it had an icon kept showing a
+/// blank one. The icon cache goes by the bundle directory's own mtime, which writing files inside
+/// it never moves, so bump that before registering again.
+fn register(app: &Path) {
+    let _ = bump_mtime(app);
+    let _ = Command::new(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    )
+    .arg("-f")
+    .arg(app)
+    .status();
+}
+
+fn bump_mtime(dir: &Path) -> std::io::Result<()> {
+    fs::File::open(dir)?.set_modified(std::time::SystemTime::now())
 }
 
 fn copy_exe(src: &Path, dest: &Path) -> Result<(), String> {
@@ -147,5 +186,23 @@ mod tests {
             bundle_root(Path::new("/repo/apps/desktop/src-tauri/target/debug/real-bot-desktop")),
             None
         );
+    }
+
+    #[test]
+    fn the_dev_app_carries_the_app_icon() {
+        let app = std::env::temp_dir().join(format!("dev-bundle-icon-{}.app", std::process::id()));
+        let _ = fs::remove_dir_all(&app);
+        assert!(write_icon(&app).unwrap());
+        assert!(!write_icon(&app).unwrap(), "an unchanged icon is not written again");
+        let written = fs::read(app.join("Contents").join("Resources").join(ICON_FILE)).unwrap();
+        assert_eq!(written, include_bytes!("../icons/icon.icns"));
+        assert!(info_plist("real-bot-desktop")
+            .contains(&format!("<key>CFBundleIconFile</key>\n  <string>{ICON_FILE}</string>")));
+
+        let long_ago = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        fs::File::open(&app).unwrap().set_modified(long_ago).unwrap();
+        bump_mtime(&app).unwrap();
+        assert!(fs::metadata(&app).unwrap().modified().unwrap() > long_ago);
+        let _ = fs::remove_dir_all(&app);
     }
 }
