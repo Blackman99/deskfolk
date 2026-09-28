@@ -41,8 +41,8 @@ export const CHECK_BACK_MIN_MINUTES = 1;
 /** A week: long enough for "look again after the weekend", short enough to still be this job. */
 export const CHECK_BACK_MAX_MINUTES = 7 * 24 * 60;
 export const CHECK_BACK_NOTE_MAX = 500;
-/** The app's plan call-back lists the plan's open tickets, so it gets more room than a Bot's own note. */
-export const PLAN_NUDGE_NOTE_MAX = 1500;
+/** The app's plan call-back lists the plan's open tickets and its failing checks' output, so it gets more room than a Bot's own note. */
+export const PLAN_NUDGE_NOTE_MAX = 2500;
 
 export function scheduleCheckBack(
   ctx: StoreContext,
@@ -119,7 +119,10 @@ export function bookPlanNudge(
   if (!isPresent(ctx, input.sessionId, input.botId)) {
     throw new HttpError(422, "not_a_member", "not in that session");
   }
-  const at = input.now ?? new Date();
+  // The store's clock, not the wall's: reconcile compares this against `acceptance_checks` rows
+  // (stamped with `isoNow()`), and `isoNow()` runs a little ahead of `Date.now()` in a burst — a
+  // nudge stamped behind a check's own `defined_at` would wrongly read as pre-dating it.
+  const at = input.now ?? new Date(isoNow());
   return insertCheckBack(ctx, {
     botId: input.botId,
     sessionId: input.sessionId,
@@ -143,6 +146,14 @@ export function lastPlanNudge(ctx: StoreContext, taskId: string): CheckBack | nu
       )
       .get(taskId, PLAN_NUDGE) ?? null
   );
+}
+
+/** How many plan nudges the app has booked for this plan since `since` — the reconcile's hard budget. */
+export function planNudgesSince(ctx: StoreContext, taskId: string, since: string): number {
+  const row = ctx.db
+    .query<{ n: number }, [string, string, string]>(`SELECT COUNT(*) AS n FROM check_backs WHERE task_id = ? AND kind = ? AND created_at > ?`)
+    .get(taskId, PLAN_NUDGE, since);
+  return row?.n ?? 0;
 }
 
 /** Appointments still pending in a plan, whoever booked them. */

@@ -19,7 +19,7 @@ import { getTask, type Task } from "./tasks";
 import { TURN_RUN_COMMAND_MAX } from "./turn-runs";
 import { classifyPath, classifyShell } from "../workspace-paths";
 
-const CHECK_KINDS: readonly AcceptanceCheckKind[] = ["exists", "contains", "matches", "command"];
+export const CHECK_KINDS: readonly AcceptanceCheckKind[] = ["exists", "contains", "matches", "command"];
 
 /** At most `limit` code points total, ellipsis included — a failing command's tail explains it, not its head. */
 function tailCodePoints(text: string, limit: number): string {
@@ -584,4 +584,185 @@ export function commandSeenInPlan(ctx: StoreContext, taskId: string, command: st
   if (ran) return true;
   const said = ctx.db.query<{ body: string }, [string]>(`SELECT body FROM messages WHERE task_id = ? AND kind = 'user'`).all(taskId);
   return said.some((row) => row.body.includes(command.trim()));
+}
+
+/**
+ * A check the organizer may write into an answer's top-level `checks` array (see
+ * `prompts/organizer.ts`). `id` is either an existing organizer check's id or `new-N`; every other
+ * field is optional and, for an existing check, absent means "leave as it is" — the same shape
+ * `OrganizerTicketInput` uses for tickets. `ticket` is a ticket id, `new-N`, or null; the store
+ * resolves a `new-N` through the same placeholder map the ticket loop built.
+ */
+export type OrganizerCheckInput = {
+  id: string;
+  remove?: true;
+  item?: string;
+  ticket?: string | null;
+  kind?: AcceptanceCheckKind;
+  path?: string;
+  pattern?: string;
+  negate?: boolean;
+  command?: string;
+  cwd?: string;
+  expect_exit?: number;
+  expect_stdout?: string;
+  timeout_sec?: number;
+};
+
+const NEW_CHECK = /^new-\d+$/;
+
+/** `OrganizerCheckInput` → the raw shape `normalizeCheckInput` reads, `ticket` resolved and renamed. */
+function organizerCheckRaw(entry: OrganizerCheckInput, ticketId: string | null | undefined): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  if (entry.item !== undefined) raw.item = entry.item;
+  if (entry.kind !== undefined) raw.kind = entry.kind;
+  if (entry.path !== undefined) raw.path = entry.path;
+  if (entry.pattern !== undefined) raw.pattern = entry.pattern;
+  if (entry.negate !== undefined) raw.negate = entry.negate;
+  if (entry.command !== undefined) raw.command = entry.command;
+  if (entry.cwd !== undefined) raw.cwd = entry.cwd;
+  if (entry.expect_exit !== undefined) raw.expect_exit = entry.expect_exit;
+  if (entry.expect_stdout !== undefined) raw.expect_stdout = entry.expect_stdout;
+  if (entry.timeout_sec !== undefined) raw.timeout_sec = entry.timeout_sec;
+  if (ticketId !== undefined) raw.ticket_id = ticketId;
+  return raw;
+}
+
+/** `entry.ticket` resolved through the placeholders a `new-N` ticket got this run; else passed through. */
+function resolveCheckTicket(entry: OrganizerCheckInput, placeholders: ReadonlyMap<string, string>): string | null | undefined {
+  if (entry.ticket === undefined) return undefined;
+  if (entry.ticket === null) return null;
+  return placeholders.get(entry.ticket) ?? entry.ticket;
+}
+
+function definitionActiveElsewhere(ctx: StoreContext, taskId: string, key: string, excludeId?: string): boolean {
+  return activeCheckRows(ctx, taskId).some((row) => row.id !== excludeId && checkDefinitionKey(rowDefinition(row)) === key);
+}
+
+/** A definition the user tombstoned on purpose: the organizer must not quietly bring it back. */
+function definitionTombstonedByUser(ctx: StoreContext, taskId: string, key: string): boolean {
+  return ctx.db
+    .query<AcceptanceCheckRow, [string]>(`SELECT * FROM acceptance_checks WHERE task_id = ? AND source = 'user' AND removed_at IS NOT NULL`)
+    .all(taskId)
+    .some((row) => checkDefinitionKey(rowDefinition(row)) === key);
+}
+
+/**
+ * What one organizer run does to a plan's checks — new ones proposed, existing organizer checks
+ * updated or removed by id — in the same transaction the spec and tickets land in. User checks and
+ * ids from another plan are silently dropped, as is anything the store's own validation refuses
+ * (`normalizeCheckInput`) or a command with no evidence in this plan (`commandSeenInPlan`). Caps:
+ * {@link ORGANIZER_NEW_CHECKS_MAX} new checks per run, {@link CHECKS_MAX} active per plan.
+ */
+export function applyOrganizerChecks(
+  ctx: StoreContext,
+  input: { task: Task; entries: readonly OrganizerCheckInput[]; placeholders: ReadonlyMap<string, string>; now: Date },
+): void {
+  if (input.entries.length === 0) return;
+  const at = input.now.toISOString();
+  let opened = 0;
+  for (const entry of input.entries) {
+    const isNew = NEW_CHECK.test(entry.id);
+    if (!isNew) {
+      let row: AcceptanceCheckRow;
+      try {
+        row = checkRow(ctx, entry.id);
+      } catch {
+        continue; // no such check
+      }
+      if (row.task_id !== input.task.id || row.source !== "organizer" || row.removed_at !== null) continue;
+      if (entry.remove) {
+        ctx.db.run(`UPDATE acceptance_checks SET removed_at = ?, updated_at = ? WHERE id = ?`, [at, at, row.id]);
+        continue;
+      }
+      const ticketId = resolveCheckTicket(entry, input.placeholders);
+      let fields: NormalizedCheck;
+      try {
+        fields = normalizeCheckInput(ctx, input.task, organizerCheckRaw(entry, ticketId), row);
+      } catch {
+        continue;
+      }
+      if (fields.kind === "command" && fields.command && !commandSeenInPlan(ctx, input.task.id, fields.command, fields.cwd)) continue;
+      const before = checkDefinitionKey(rowDefinition(row));
+      const after = checkDefinitionKey(fields);
+      const redefined = before !== after;
+      ctx.db.run(
+        `UPDATE acceptance_checks
+           SET ticket_id = ?, item = ?, kind = ?, path = ?, pattern = ?, negate = ?, command = ?, cwd = ?,
+               expect_exit = ?, expect_stdout = ?, timeout_sec = ?, updated_at = ?, defined_at = ?, first_passed_at = ?
+         WHERE id = ?`,
+        [
+          fields.ticket_id,
+          fields.item,
+          fields.kind,
+          fields.path,
+          fields.pattern,
+          fields.negate ? 1 : 0,
+          fields.command,
+          fields.cwd,
+          fields.expect_exit,
+          fields.expect_stdout,
+          fields.timeout_sec,
+          at,
+          redefined ? at : row.defined_at,
+          redefined ? null : row.first_passed_at,
+          row.id,
+        ],
+      );
+      if (redefined) ctx.db.run(`DELETE FROM acceptance_check_runs WHERE check_id = ?`, [row.id]);
+      continue;
+    }
+    // new-N: an organizer-proposed check, capped both per run and per plan.
+    if (entry.remove) continue;
+    if (opened >= ORGANIZER_NEW_CHECKS_MAX || activeCount(ctx, input.task.id) >= CHECKS_MAX) continue;
+    const ticketId = resolveCheckTicket(entry, input.placeholders);
+    let fields: NormalizedCheck;
+    try {
+      fields = normalizeCheckInput(ctx, input.task, organizerCheckRaw(entry, ticketId));
+    } catch {
+      continue;
+    }
+    if (fields.kind === "command" && fields.command && !commandSeenInPlan(ctx, input.task.id, fields.command, fields.cwd)) continue;
+    const key = checkDefinitionKey(fields);
+    if (definitionActiveElsewhere(ctx, input.task.id, key) || definitionTombstonedByUser(ctx, input.task.id, key)) continue;
+    const newId = ulid(input.now.getTime());
+    ctx.db.run(
+      `INSERT INTO acceptance_checks
+         (id, task_id, ticket_id, item, kind, path, pattern, negate, command, cwd, expect_exit, expect_stdout, timeout_sec, source, created_at, updated_at, defined_at, first_passed_at, removed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'organizer', ?, ?, ?, NULL, NULL)`,
+      [
+        newId,
+        input.task.id,
+        fields.ticket_id,
+        fields.item,
+        fields.kind,
+        fields.path,
+        fields.pattern,
+        fields.negate ? 1 : 0,
+        fields.command,
+        fields.cwd,
+        fields.expect_exit,
+        fields.expect_stdout,
+        fields.timeout_sec,
+        at,
+        at,
+        at,
+      ],
+    );
+    opened += 1;
+  }
+}
+
+/** A check with no finished run at or after its current definition: the runner has not proven it either way yet. */
+export function checkNeverRanSinceDefinition(check: Pick<AcceptanceCheck, "defined_at" | "last_run">): boolean {
+  return !check.last_run || check.last_run.started_at < check.defined_at;
+}
+
+/**
+ * Active checks that would keep a plan the organizer called `done` open: ones that failed, or that
+ * have not run since their current definition — the same evidence a `done` ticket needs, applied to
+ * checks. Used by `applyOrganizerResult` alongside `ticketsHoldingPlanOpen`.
+ */
+export function checksHoldingPlanOpen(ctx: StoreContext, taskId: string): AcceptanceCheck[] {
+  return listChecks(ctx, taskId).filter((check) => checkNeverRanSinceDefinition(check) || check.last_run?.outcome === "fail");
 }

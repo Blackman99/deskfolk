@@ -25,6 +25,13 @@ export type RunOutcome = (typeof OUTCOMES)[number];
 /** `spend.kind` (plus `route_pick` / `route_review` / `route_learn` are already spend kinds) rolled up to what an ablation switch turns off. */
 export type SpendBucketStats = { rows: number; input_tokens: number; output_tokens: number; cost_usd: number | null };
 
+/**
+ * The plan's acceptance checks (可执行验收) at the end of the run: how many active, how many of
+ * those last ran `pass`/`fail`/`blocked`/`error` (an unrun one counts toward `total` but none of
+ * these), and how many came from the organizer versus the user.
+ */
+export type ProductCheckStats = { total: number; pass: number; fail: number; blocked: number; error: number; organizer: number; user: number };
+
 export type RunStats = {
   turns: number;
   hops: number;
@@ -42,6 +49,8 @@ export type RunStats = {
   spend_by_kind: Record<string, SpendBucketStats>;
   /** `turn_route_decisions.thinking_level` histogram; empty when the column could not be read. */
   thinking_levels: Record<string, number>;
+  /** Acceptance checks (可执行验收) of the run's plan at the end of the run; absent when there was no plan. */
+  product_checks?: ProductCheckStats;
 };
 
 export const FAILURE_KINDS = [
@@ -192,6 +201,12 @@ export function sessionKindOf(run: RunResult): "group" | "direct" | null {
 
 export function spendByKindOf(run: RunResult): Record<string, SpendBucketStats> {
   return run.stats.spend_by_kind ?? EMPTY_SPEND_BY_KIND;
+}
+
+const EMPTY_PRODUCT_CHECKS: ProductCheckStats = { total: 0, pass: 0, fail: 0, blocked: 0, error: 0, organizer: 0, user: 0 };
+
+export function productChecksOf(run: RunResult): ProductCheckStats {
+  return run.stats.product_checks ?? EMPTY_PRODUCT_CHECKS;
 }
 
 export function leaksOf(run: RunResult): readonly string[] {

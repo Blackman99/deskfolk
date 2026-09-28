@@ -67,13 +67,15 @@ export {
   CHECK_PATTERN_MAX,
   CHECK_EXPECT_STDOUT_MAX,
   CHECK_PATH_MAX,
+  CHECK_KINDS,
   checkDefinitionKey,
+  checkNeverRanSinceDefinition,
 } from "./acceptance-checks";
-export type { CheckDefinition } from "./acceptance-checks";
+export type { CheckDefinition, OrganizerCheckInput } from "./acceptance-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { ORGANIZER_NEW_TICKETS_MAX } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
-export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
+export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX } from "./check-backs";
 export type { CheckBack, QuietDirect } from "./check-backs";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
@@ -290,6 +292,7 @@ export class Store {
   readonly taskSummary = this.bind(tasks.taskSummary);
   readonly taskLastActivityAt = this.bind(tasks.taskLastActivityAt);
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
+  readonly lastUserLineAt = this.bind(tasks.lastUserLineAt);
 
   // Tickets and plan specs ---------------------------------------------------------------
   readonly createTicket = this.bind(tickets.createTicket);
@@ -336,6 +339,7 @@ export class Store {
   readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);
   readonly bookPlanNudge = this.bind(checkBacks.bookPlanNudge);
   readonly lastPlanNudge = this.bind(checkBacks.lastPlanNudge);
+  readonly planNudgesSince = this.bind(checkBacks.planNudgesSince);
   readonly pendingPlanCheckBacks = this.bind(checkBacks.pendingPlanCheckBacks);
   readonly dueCheckBacks = this.bind(checkBacks.dueCheckBacks);
   readonly claimCheckBack = this.bind(checkBacks.claimCheckBack);

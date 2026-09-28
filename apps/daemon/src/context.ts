@@ -1,7 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { USER_MEMBER, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheckOutcome, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
+import { describeCheck } from "./acceptance-eval";
 import { annotationContext } from "./annotation-context";
 import { askTranscriptText } from "./ask";
 import { loopPictureSpend, pictureMime } from "./loop-pictures";
@@ -215,6 +216,17 @@ export type PlanTicketFact = {
 
 export type PlanPrecedent = { goal: string; process: string[]; rules: string[]; outcome: string[] };
 
+export type PlanCheckFact = {
+  item: string;
+  /** One line describing what it verifies, e.g. "文件存在：report.md". */
+  what: string;
+  /** null when it has never run. */
+  outcome: AcceptanceCheckOutcome | null;
+  detail: string;
+  /** Minutes since its last run; null alongside `outcome` when it has never run. */
+  ageMinutes: number | null;
+};
+
 export type PlanFacts = {
   /** The plan has no spec yet and no other turn: the trigger is the request, and it can still be clarified. */
   first_turn: boolean;
@@ -230,6 +242,8 @@ export type PlanFacts = {
   progress: PlanSpec["progress"] | null;
   /** The plan's tickets, open ones first. */
   tickets: PlanTicketFact[];
+  /** The plan's active acceptance checks — the app's own evidence, run on this machine. */
+  checks: PlanCheckFact[];
   /** The ticket this turn works in, when it has one. */
   ticket: { id: string; seq: number; title: string; status: TicketStatus; spec: string; dir: string } | null;
   /** Finished plans of the same kind, newest first: how this kind of thing went last time. */
@@ -261,6 +275,8 @@ export const OTHER_WORK_LINES = 3;
 
 /** Tickets the situation block lists; a plan past this says how many more there are. */
 export const PLAN_TICKET_LINES = 20;
+/** Checks the situation block lists; matches the store's own cap on active checks per plan. */
+export const PLAN_CHECK_LINES = 10;
 /** Finished plans of the same kind the block recounts. */
 export const PLAN_PRECEDENTS_LIMIT = 3;
 /** Files named on one ticket's line. */
@@ -321,6 +337,20 @@ export function planFacts(
       artifacts: byTicket.get(ticket.id) ?? [],
     }))
     .sort((a, b) => TICKET_ORDER[a.status] - TICKET_ORDER[b.status] || a.seq - b.seq);
+  const checks: PlanCheckFact[] = store
+    .listChecks(input.taskId)
+    .slice(0, PLAN_CHECK_LINES)
+    .map((check) => {
+      const last = check.last_run;
+      const at = last ? (last.finished_at ?? last.started_at) : null;
+      return {
+        item: check.item,
+        what: describeCheck(check, input.locale),
+        outcome: last?.outcome ?? null,
+        detail: last?.detail ?? "",
+        ageMinutes: at ? Math.max(0, Math.round((now.getTime() - Date.parse(at)) / 60_000)) : null,
+      };
+    });
   let ticket: PlanFacts["ticket"] = null;
   if (input.ticketId) {
     try {
@@ -426,6 +456,7 @@ export function planFacts(
     process: spec?.process ?? [],
     progress: spec?.progress ?? null,
     tickets,
+    checks,
     ticket,
     precedents,
     artifacts,
@@ -459,6 +490,26 @@ function ticketLine(ticket: PlanTicketFact, locale: Locale): string {
   if (ticket.worker) bits.push(en ? `${ticket.worker} on it` : `${ticket.worker}在做`);
   if (ticket.artifacts.length > 0) bits.push(ticket.artifacts.join(en ? ", " : "、"));
   return en ? `${number} ${ticket.title} (${bits.join("; ")})` : `${number} ${ticket.title}（${bits.join("；")}）`;
+}
+
+const CHECK_OUTCOME_LABEL: Record<AcceptanceCheckOutcome, { zh: string; en: string }> = {
+  pass: { zh: "通过", en: "pass" },
+  fail: { zh: "不通过", en: "fail" },
+  blocked: { zh: "受阻", en: "blocked" },
+  error: { zh: "出错", en: "error" },
+};
+
+/** 「item」what：outcome（detail；N 分钟前）— or, unrun, just 「item」what：未跑. */
+function checkLine(check: PlanCheckFact, locale: Locale): string {
+  const en = locale === "en";
+  if (!check.outcome || check.ageMinutes === null) {
+    return en ? `"${check.item}" ${check.what}: not run yet` : `「${check.item}」${check.what}：未跑`;
+  }
+  const outcome = CHECK_OUTCOME_LABEL[check.outcome][locale];
+  const age = en ? `${check.ageMinutes}min ago` : `${check.ageMinutes} 分钟前`;
+  return en
+    ? `"${check.item}" ${check.what}: ${outcome} (${check.detail}; ${age})`
+    : `「${check.item}」${check.what}：${outcome}（${check.detail}；${age}）`;
 }
 
 /** A turn that is not simply done says so on its trace line; a completed one needs no label. */
@@ -524,6 +575,10 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
         ? `What this job was asked for (plan "${facts.title}"): ${facts.brief}`
         : `这件事最初的要求（规划「${facts.title}」）：${facts.brief}`,
     );
+  }
+  if (facts.checks.length > 0) {
+    const rows = facts.checks.map((check) => `- ${checkLine(check, locale)}`);
+    lines.push(`${en ? "Acceptance checks (the app runs these itself, on this machine):" : "验收检查（应用在本机自己跑）："}\n${rows.join("\n")}`);
   }
   if (facts.home) {
     lines.push(en ? `This plan was opened in ${facts.home}.` : `这件事是在${facts.home}里开的。`);

@@ -18,6 +18,8 @@
  * 4. Quiet: nothing written (turn, message, check-back, spend row) for `quietMs`, which covers the
  *    ~10 s timer that calls a Bot back from a quiet Bot↔Bot direct, and the snapshot unchanged for
  *    `stableMs`.
+ * 5. No acceptance check still running (`acceptance_check_runs` with no `finished_at`): the quiet
+ *    stretch's `beforeSettle`/`afterSettle` runs can still be in flight after the settle itself lands.
  *
  * A waiting turn the runner could not answer (the answer was refused) is "blocked": when that is
  * all that is left, the job is blocked on you rather than busy.
@@ -41,6 +43,8 @@ export type SettleSnapshot = {
   blockedTurns: number;
   pendingJudgements: number;
   checkBackDueMs: readonly number[];
+  /** Acceptance checks with an open run (`finished_at IS NULL`) right now. */
+  runningChecks: number;
   lastActivityMs: number;
   /** When the snapshot's fingerprint last changed. */
   stableSinceMs: number;
@@ -80,6 +84,7 @@ export function settleVerdict(snapshot: SettleSnapshot, timing: SettleTiming): S
   if (snapshot.pendingJudgements > 0) waitingOn.push(`${snapshot.pendingJudgements} judgement(s) or filing(s)`);
   const due = snapshot.checkBackDueMs.filter((at) => at <= snapshot.deadlineMs).length;
   if (due > 0) waitingOn.push(`${due} check-back(s) due before the deadline`);
+  if (snapshot.runningChecks > 0) waitingOn.push(`${snapshot.runningChecks} acceptance check(s) still running`);
   const unsettled = snapshot.plans.filter((plan) => !planSettled(plan, snapshot.nowMs, timing));
   if (unsettled.length > 0) waitingOn.push(`${unsettled.length} plan(s) not yet through the organizer's settle`);
   const quiet = snapshot.nowMs - snapshot.lastActivityMs;

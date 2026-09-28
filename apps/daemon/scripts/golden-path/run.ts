@@ -34,6 +34,7 @@ import {
   failureDetail,
   isCompleted,
   spendBucket,
+  type ProductCheckStats,
   type RunOutcome,
   type RunResult,
   type RunStats,
@@ -215,6 +216,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
     .query<{ due_at: string }, []>(`SELECT due_at FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL`)
     .all()
     .map((row) => Date.parse(row.due_at));
+  const runningChecks = scalar<number>(store, `SELECT COUNT(*) AS v FROM acceptance_check_runs WHERE finished_at IS NULL`) ?? 0;
   const lastActivity = scalar<string>(
     store,
     `SELECT MAX(at) AS v FROM (
@@ -222,6 +224,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
        UNION ALL SELECT MAX(created_at) FROM messages
        UNION ALL SELECT MAX(created_at) FROM spend
        UNION ALL SELECT MAX(MAX(created_at, COALESCE(fired_at, ''), COALESCE(voided_at, ''))) FROM check_backs
+       UNION ALL SELECT MAX(COALESCE(finished_at, started_at)) FROM acceptance_check_runs
      )`,
   );
   const fingerprint = [
@@ -234,6 +237,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
     ),
     live.length,
     pendingJudgements,
+    scalar<number>(store, `SELECT COUNT(*) AS v FROM acceptance_check_runs`) ?? 0,
   ].join("|");
   if (fingerprint !== state.fingerprint) {
     state.fingerprint = fingerprint;
@@ -260,6 +264,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
     blockedTurns: live.filter((turn) => state.blockedTurns.has(turn.id)).length,
     pendingJudgements,
     checkBackDueMs,
+    runningChecks,
     lastActivityMs: ms(lastActivity) ?? now,
     stableSinceMs: state.stableSince,
     plans,
@@ -516,6 +521,22 @@ function collect(store: Store, sessionId: string | null, taskMessageId: string |
   } catch {
     thinkingLevels = {};
   }
+  // The plan's acceptance checks (可执行验收) as they stand at the end of the run: each one's last
+  // finished outcome, and where it came from.
+  let productChecks: ProductCheckStats | undefined;
+  if (planId) {
+    const checks = store.listChecks(planId);
+    productChecks = { total: checks.length, pass: 0, fail: 0, blocked: 0, error: 0, organizer: 0, user: 0 };
+    for (const check of checks) {
+      if (check.source === "organizer") productChecks.organizer += 1;
+      else productChecks.user += 1;
+      const outcome = check.last_run?.outcome;
+      if (outcome === "pass") productChecks.pass += 1;
+      else if (outcome === "fail") productChecks.fail += 1;
+      else if (outcome === "blocked") productChecks.blocked += 1;
+      else if (outcome === "error") productChecks.error += 1;
+    }
+  }
   return {
     plan,
     planId,
@@ -542,6 +563,7 @@ function collect(store: Store, sessionId: string | null, taskMessageId: string |
       judge_output_tokens: null,
       spend_by_kind: spendByKind,
       thinking_levels: thinkingLevels,
+      product_checks: productChecks,
     },
     cited,
     finalMessages: planId ? lastBotWords(store, { taskId: planId }) : sessionId ? lastBotWords(store, { sessionId }) : [],
@@ -676,6 +698,18 @@ export async function runOnce(input: {
     endedAtMs = Date.now();
     opts.log(`[${label}] error: ${detail}`);
   } finally {
+    if (handle) {
+      try {
+        // A run that hit its deadline mid-tool-call (a foreground `python3 -m http.server`, say)
+        // leaves a live turn `stop()`'s own drainLives() would otherwise wait out — it only aborts
+        // once nothing new is submitted, not on command. `/v1/runtime/quit` is the app's own route
+        // for a clean shutdown: it aborts every live turn immediately, the same way quitting the
+        // real app does, before `stop()` closes the runtime around it.
+        await apiFor(handle)("POST", "/v1/runtime/quit");
+      } catch {
+        // best-effort: nothing was live, or the runtime never got far enough to answer
+      }
+    }
     try {
       await handle?.stop();
     } catch (error) {

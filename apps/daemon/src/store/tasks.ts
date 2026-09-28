@@ -314,6 +314,16 @@ export function taskMessagesSince(
     }));
 }
 
+/**
+ * When the user last said something filed under this plan; null when they never have. The plan
+ * reconcile's nudge budget resets from here rather than from the plan's own start, so a plan that
+ * has been going for weeks does not carry a stretched-out allowance from its first day.
+ */
+export function lastUserLineAt(ctx: StoreContext, taskId: string): string | null {
+  const row = ctx.db.query<{ at: string | null }, [string]>(`SELECT MAX(created_at) AS at FROM messages WHERE task_id = ? AND kind = 'user'`).get(taskId);
+  return row?.at ?? null;
+}
+
 export function openTask(
   ctx: StoreContext,
   input: {

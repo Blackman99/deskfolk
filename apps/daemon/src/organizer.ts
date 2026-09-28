@@ -70,8 +70,13 @@ export type Organizer = {
   organizeMessage(message: Message): Promise<{ taskId: string | null; ticketId: string | null }>;
   /** A turn reached a terminal state: its plan is filed once it has been quiet for a moment. */
   noteTurnEnded(turn: Turn): void;
-  /** Files a plan now, if nothing is running in it and something happened since the last version. */
-  settlePlan(taskId: string): Promise<boolean>;
+  /**
+   * Files a plan now, if nothing is running in it and something happened since the last version.
+   * `evidence: true` skips that "something happened" guard and drops the answer's own `checks` —
+   * it exists only to give a `done` held open for lack of a check run a fresh look once that run
+   * has landed (see `quietStretch`), never to let the organizer touch checks a second time.
+   */
+  settlePlan(taskId: string, opts?: { evidence?: boolean }): Promise<boolean>;
   renderMirrors(taskId: string): void;
   clearTimers(): void;
 };
@@ -103,6 +108,13 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   const chains = new Map<string, Promise<unknown>>();
   const log = deps.log ?? ((line: string) => console.error(line));
   const ablation = deps.ablation ?? NO_ABLATION;
+  /**
+   * Plans a filing held `done` open only for lack of a run yet on some check (never a failed one):
+   * the quiet stretch that set this runs the check once more (`afterSettle`) and, once, files the
+   * plan again so the organizer's `done` gets a fresh look at real evidence instead of waiting for
+   * the next thing to happen in the plan.
+   */
+  const awaitingEvidence = new Set<string>();
   /**
    * Set when the engine clears the timers (draining, quitting, closing): a settle still in flight
    * must not call back into an engine that is going away. The next turn end clears it, since a
@@ -190,6 +202,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       recentPlanIds: new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id)),
       elsewherePlanIds: new Set(input.mode === "message" ? store.elsewherePlans(input.sessionId).map((task) => task.id) : []),
       roster: store.listBots().map((bot) => ({ id: bot.id, name: bot.name })),
+      existingCheckIds: new Set(input.current ? store.listChecks(input.current.id).map((check) => check.id) : []),
     });
     if (!parsed) log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);
     return parsed;
@@ -237,6 +250,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       return fallback;
     }
     noteHeldOpen(applied.task.id, applied.heldOpenBy);
+    if (applied.awaitingEvidence) awaitingEvidence.add(applied.task.id);
+    else awaitingEvidence.delete(applied.task.id);
     renderMirrors(applied.task.id);
     return { taskId: applied.task.id, ticketId: applied.messageTicketId };
   }
@@ -258,7 +273,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
-  async function settlePlan(taskId: string): Promise<boolean> {
+  async function settlePlan(taskId: string, opts?: { evidence?: boolean }): Promise<boolean> {
     // Off, the quiet timer still runs and `onQuiet` still reconciles the plan: only the filing is skipped.
     if (deps.draining() || ablation.has("organize-settle") || inFlight.has(taskId)) return false;
     let task: Task;
@@ -270,7 +285,9 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (!task.session_id) return false;
     if (store.taskLiveTurnCount(taskId) > 0) return false;
     const since = store.lastSpecRevisionAt(taskId);
-    if (store.taskMessagesSince(taskId, since, 1).length === 0 && store.taskArtifactsSince(taskId, since, 1).length === 0) {
+    // The evidence follow-up settle has nothing new to file since the last revision by design — the
+    // checks `afterSettle` just ran are the only thing that changed — so it skips this guard.
+    if (!opts?.evidence && store.taskMessagesSince(taskId, since, 1).length === 0 && store.taskArtifactsSince(taskId, since, 1).length === 0) {
       return false;
     }
     inFlight.add(taskId);
@@ -280,16 +297,21 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       const lastTurn = store.db
         .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
         .get(taskId);
+      // The evidence settle is only for re-reading checks that just ran; it must not also let this
+      // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
+      const result = opts?.evidence ? { ...parsed, checks: undefined } : parsed;
       try {
         const applied = store.transaction(() =>
           store.applyOrganizerResult({
             sessionId: task.session_id!,
             current: task,
-            result: { ...parsed, decision: "continue", resumePlanId: null, messageTicket: null },
+            result: { ...result, decision: "continue", resumePlanId: null, messageTicket: null },
             source: { messageId: null, turnId: lastTurn?.id ?? null, messageBody: "" },
           }),
         );
         noteHeldOpen(taskId, applied.heldOpenBy);
+        if (applied.awaitingEvidence) awaitingEvidence.add(taskId);
+        else awaitingEvidence.delete(taskId);
       } catch (error) {
         log(`[organizer] could not apply the settling of ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
         return false;
@@ -304,8 +326,12 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   /**
    * A plan's quiet stretch: its stale checks before the settle (so the settle's own read of the
    * plan sees their result), the settle itself, then whatever check still has no run this stretch
-   * (an organizer-added one, mainly) after it. `onQuiet` (the reconcile) runs whether or not any of
-   * this filed or found anything — that call is `noteTurnEnded`'s own, below.
+   * (an organizer-added one, mainly) after it. If that settle held a `done` open only because some
+   * check had never run — and `afterSettle` just ran it — one more settle gives the organizer a
+   * fresh look at the result, so a plan does not sit open until something else happens to it; at
+   * most one of these per stretch, and it never lets the organizer touch checks a second time.
+   * `onQuiet` (the reconcile) runs whether or not any of this filed or found anything — that call
+   * is `noteTurnEnded`'s own, below.
    */
   async function quietStretch(taskId: string): Promise<void> {
     await deps.checks?.beforeSettle(taskId);
@@ -313,6 +339,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     await settlePlan(taskId);
     if (stopped || deps.draining()) return;
     await deps.checks?.afterSettle(taskId);
+    if (stopped || deps.draining()) return;
+    if (awaitingEvidence.delete(taskId)) await settlePlan(taskId, { evidence: true });
   }
 
   function noteTurnEnded(turn: Turn): void {

@@ -12,6 +12,7 @@ function quiet(overrides: Partial<SettleSnapshot> = {}): SettleSnapshot {
     blockedTurns: 0,
     pendingJudgements: 0,
     checkBackDueMs: [],
+    runningChecks: 0,
     lastActivityMs: NOW - 60_000,
     stableSinceMs: NOW - 60_000,
     plans: [],
@@ -37,6 +38,12 @@ describe("settle", () => {
     expect(settleVerdict(quiet({ checkBackDueMs: [NOW + 120_000] }), TIMING).state).toBe("busy");
     expect(settleVerdict(quiet({ checkBackDueMs: [NOW - 1_000] }), TIMING).state).toBe("busy");
     expect(settleVerdict(quiet({ checkBackDueMs: [NOW + 3_600_000] }), TIMING).state).toBe("settled");
+  });
+
+  test("an acceptance check still running keeps it busy", () => {
+    const verdict = settleVerdict(quiet({ runningChecks: 2 }), TIMING);
+    expect(verdict.state).toBe("busy");
+    expect(verdict.waitingOn).toContain("2 acceptance check(s) still running");
   });
 
   test("it waits out the quiet window and a changing snapshot", () => {

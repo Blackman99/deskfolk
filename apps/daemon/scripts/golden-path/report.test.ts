@@ -8,6 +8,7 @@ import {
   formatDuration,
   formatSummary,
   isCompleted,
+  productChecksOf,
   spendBucket,
   type RunOutcome,
   type RunResult,
@@ -181,6 +182,14 @@ describe("ablationLeaks", () => {
     expect(ablationLeaks(["review"], { route_review: rows(1) })[0]).toContain("review");
     expect(ablationLeaks(["learning"], { route_learn: rows(1) })[0]).toContain("learning");
     expect(ablationLeaks(["judgement"], { judgement: rows(1) })[0]).toContain("judgement");
+  });
+});
+
+describe("productChecksOf", () => {
+  test("reads the run's own product_checks; a run written before the field existed reads as all zero", () => {
+    const withChecks = run({ stats: { ...run().stats, product_checks: { total: 3, pass: 1, fail: 1, blocked: 0, error: 1, organizer: 2, user: 1 } } });
+    expect(productChecksOf(withChecks)).toEqual({ total: 3, pass: 1, fail: 1, blocked: 0, error: 1, organizer: 2, user: 1 });
+    expect(productChecksOf(run())).toEqual({ total: 0, pass: 0, fail: 0, blocked: 0, error: 0, organizer: 0, user: 0 });
   });
 });
 

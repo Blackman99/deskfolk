@@ -93,7 +93,7 @@ export function turnRuns(ctx: StoreContext, turnId: string, limit = TURN_RUNS_PE
 export function taskRunsSince(ctx: StoreContext, taskId: string, since: string, limit: number): TurnRun[] {
   return ctx.db
     .query<TurnRun, [string, string, number]>(
-      `SELECT id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, created_at FROM (
+      `SELECT id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, cwd, created_at FROM (
          SELECT rowid AS seq_, * FROM turn_runs WHERE task_id = ? AND created_at > ? ORDER BY created_at DESC, rowid DESC LIMIT ?
        ) ORDER BY created_at ASC, seq_ ASC`,
     )

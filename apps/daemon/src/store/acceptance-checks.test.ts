@@ -5,7 +5,13 @@ import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import { Store } from ".";
 import { HttpError } from "../errors";
-import { CHECKS_MAX, CHECK_RUNS_KEPT, checkDefinitionKey } from "./acceptance-checks";
+import { CHECKS_MAX, CHECK_RUNS_KEPT, ORGANIZER_NEW_CHECKS_MAX, checkDefinitionKey } from "./acceptance-checks";
+import type { OrganizerResult } from "./plan-spec";
+
+/** `getCheck`'s shape leaves `removed_at` out (it is not something an active check's caller needs); tests that check a tombstone read the row directly. */
+function removedAt(store: Store, id: string): string | null {
+  return store.db.query<{ removed_at: string | null }, [string]>(`SELECT removed_at FROM acceptance_checks WHERE id = ?`).get(id)?.removed_at ?? null;
+}
 
 function status(error: unknown): number {
   return error instanceof HttpError ? error.status : -1;
@@ -41,6 +47,26 @@ function fixture() {
       store.close();
       rmSync(root, { recursive: true, force: true });
     },
+  };
+}
+
+/** An organizer answer that continues the current plan, touching nothing unless `over` says so. */
+function organizerResult(over: Partial<OrganizerResult> = {}): OrganizerResult {
+  return {
+    decision: "continue",
+    resumePlanId: null,
+    spec: {
+      kind: "周报",
+      goal: "写一份周报",
+      acceptance: ["交到 report.md"],
+      rules: [],
+      process: [],
+      progress: { done: [], open: [], blocked: [] },
+      status: "active",
+    },
+    tickets: [],
+    messageTicket: null,
+    ...over,
   };
 }
 
@@ -432,6 +458,170 @@ describe("task.upsert carries checks", () => {
     upserts = seen.filter((event) => event.event === "task.upsert");
     expect(upserts.at(-1)).toMatchObject({ checks: [] });
 
+    f.close();
+  });
+});
+
+describe("applyOrganizerChecks (via store.applyOrganizerResult)", () => {
+  test("a new-N check lands as an organizer check, tied to a ticket by its own new-N placeholder", () => {
+    const f = fixture();
+    const applied = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({
+        tickets: [{ id: "new-1", title: "初稿", spec: "", status: "doing", worker: f.bot.id }],
+        checks: [{ id: "new-2", item: "交到 report.md", kind: "exists", path: "report.md", ticket: "new-1" }],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    const [ticket] = applied.tickets;
+    const [check] = f.store.listChecks(f.plan.id);
+    expect(check).toMatchObject({ item: "交到 report.md", kind: "exists", path: "report.md", source: "organizer", ticket_id: ticket!.id });
+    f.close();
+  });
+
+  test("touches only a source `organizer` check by id; a user check keeps its own definition even when named by its id", () => {
+    const f = fixture();
+    const userCheck = f.store.createCheckByUser(f.plan.id, { item: "x", kind: "exists", path: "a.md" });
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: userCheck.id, item: "改了", remove: true }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.getCheck(userCheck.id)).toMatchObject({ item: "x" });
+    expect(removedAt(f.store, userCheck.id)).toBeNull();
+    f.close();
+  });
+
+  test("editing an organizer check by id: a wording-only change keeps its runs, a real definition change resets them", () => {
+    const f = fixture();
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: "new-1", item: "交到 report.md", kind: "exists", path: "report.md" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    const [check] = f.store.listChecks(f.plan.id);
+    const run = f.store.beginCheckRun(check!.id, "settle");
+    f.store.finishCheckRun(run.id, { outcome: "pass", exitCode: null, detail: "ok", output: null });
+    expect(f.store.getCheck(check!.id).first_passed_at).not.toBeNull();
+
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: check!.id, item: "交到最终的 report.md" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    const reworded = f.store.getCheck(check!.id);
+    expect(reworded).toMatchObject({ item: "交到最终的 report.md", path: "report.md" });
+    expect(reworded.first_passed_at).not.toBeNull();
+    expect(reworded.last_run).not.toBeNull();
+
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: check!.id, path: "final.md" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    const redefined = f.store.getCheck(check!.id);
+    expect(redefined.path).toBe("final.md");
+    expect(redefined.first_passed_at).toBeNull();
+    expect(redefined.last_run).toBeNull();
+    f.close();
+  });
+
+  test("remove tombstones an organizer check; it keeps its run history, but is gone from listChecks", () => {
+    const f = fixture();
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: "new-1", item: "交到 report.md", kind: "exists", path: "report.md" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    const [check] = f.store.listChecks(f.plan.id);
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: check!.id, remove: true }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id)).toEqual([]);
+    expect(removedAt(f.store, check!.id)).not.toBeNull();
+    f.close();
+  });
+
+  test("a run may open at most ORGANIZER_NEW_CHECKS_MAX new checks; the rest of that run's new-N entries are dropped", () => {
+    const f = fixture();
+    const entries = Array.from({ length: ORGANIZER_NEW_CHECKS_MAX + 2 }, (_, i) => ({
+      id: `new-${i + 1}`,
+      item: `检查 ${i + 1}`,
+      kind: "exists" as const,
+      path: `f${i + 1}.md`,
+    }));
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: entries }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id)).toHaveLength(ORGANIZER_NEW_CHECKS_MAX);
+    f.close();
+  });
+
+  test("the plan's own cap on active checks stops a new one landing, even when the plan is already full of the user's own", () => {
+    const f = fixture();
+    for (let i = 0; i < CHECKS_MAX; i++) {
+      f.store.createCheckByUser(f.plan.id, { item: `已有 ${i}`, kind: "exists", path: `u${i}.md` });
+    }
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({ checks: [{ id: "new-1", item: "新的", kind: "exists", path: "new.md" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id)).toHaveLength(CHECKS_MAX);
+    f.close();
+  });
+
+  test("a new-N whose definition duplicates an active check, or matches one the user removed on purpose, is dropped", () => {
+    const f = fixture();
+    f.store.createCheckByUser(f.plan.id, { item: "已有", kind: "exists", path: "a.md" });
+    const removed = f.store.createCheckByUser(f.plan.id, { item: "以前有过", kind: "exists", path: "b.md" });
+    f.store.removeCheckByUser(removed.id);
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({
+        checks: [
+          { id: "new-1", item: "重复", kind: "exists", path: "a.md" },
+          { id: "new-2", item: "复活", kind: "exists", path: "b.md" },
+        ],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id).map((c) => c.item)).toEqual(["已有"]);
+    f.close();
+  });
+
+  test("a command check needs evidence in this plan: one nobody ran or typed is dropped, one copied from a real exit-0 run lands", () => {
+    const f = fixture();
+    const trigger = f.store.postMessage(f.session.id, { body: "go" });
+    const turn = f.store.createTurn({ sessionId: f.session.id, botId: f.bot.id, triggerMessageId: trigger.id });
+    f.store.db.run(`UPDATE turns SET task_id = ? WHERE id = ?`, [f.plan.id, turn.id]);
+    f.store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "bun test", exitCode: 0, ok: true, cwd: f.plan.dir });
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({
+        checks: [
+          { id: "new-1", item: "凭空编的", kind: "command", command: "rm -rf build" },
+          { id: "new-2", item: "真跑过的", kind: "command", command: "bun test", cwd: f.plan.dir },
+        ],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id).map((c) => c.item)).toEqual(["真跑过的"]);
     f.close();
   });
 });
