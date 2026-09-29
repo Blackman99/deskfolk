@@ -180,6 +180,7 @@ function handleAnchor(el: Element, policy: SanitizePolicy): void {
   const setTitle = (value: string) => {
     if (value) el.setAttribute("title", value);
   };
+  let artifactPath: string | null = null;
   if (href.startsWith(BOT_HREF_SCHEME)) {
     el.setAttribute("href", href);
     el.setAttribute("class", "md-mention-chip");
@@ -188,6 +189,7 @@ function handleAnchor(el: Element, policy: SanitizePolicy): void {
     el.setAttribute("href", href);
     el.setAttribute("class", "md-artifact-link");
     setTitle(originalTitle ?? "");
+    artifactPath = parseArtifactHref(href);
   } else {
     el.setAttribute("href", href);
     el.setAttribute("class", "md-external-link");
@@ -196,6 +198,33 @@ function handleAnchor(el: Element, policy: SanitizePolicy): void {
     setTitle(originalTitle ?? href);
   }
   enforceTagPolicy(el, policy);
+  // After the policy pass, which would unwrap the span: nothing walks this link's children again.
+  if (artifactPath && shortenPathLabel(el, artifactPath) && !el.hasAttribute("title")) {
+    el.setAttribute("title", artifactPath);
+  }
+}
+
+/**
+ * A link whose text is its own workspace path — what a backticked path or a bare known path turns
+ * into — shows just the file name: `work/制作…/02-生成镜头…/shots/shot_01.mp4` wrapped over three
+ * lines of underline, and the folders are the part nobody reads. The full path moves to the title.
+ * A link the Bot labelled itself keeps its label. Says whether it shortened anything.
+ *
+ * The folders stay in the text, only out of sight (`.md-path-dir`): annotations pair every rendered
+ * character with the source, copying the line still copies the path, and the link still reads as
+ * its own path to whatever hides the ones an attachment chip repeats.
+ */
+function shortenPathLabel(el: Element, path: string): boolean {
+  if (el.childNodes.length !== 1 || el.firstChild?.nodeType !== 3) return false;
+  const text = el.textContent ?? "";
+  if (text.trim() !== path) return false;
+  const cut = text.replace(/\/+\s*$/, "").lastIndexOf("/");
+  if (cut < 0) return false;
+  const dir = el.ownerDocument.createElement("span");
+  dir.setAttribute("class", "md-path-dir");
+  dir.textContent = text.slice(0, cut + 1);
+  el.replaceChildren(dir, text.slice(cut + 1));
+  return true;
 }
 
 /** A DOMPurify instance whose attribute hook enforces one policy, and the config it runs with. */

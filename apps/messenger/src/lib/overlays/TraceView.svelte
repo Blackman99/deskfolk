@@ -663,7 +663,7 @@
 </script>
 
 {#snippet specIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 		<polyline points="14 2 14 8 20 8"></polyline>
 		<line x1="16" y1="13" x2="8" y2="13"></line>
@@ -672,7 +672,7 @@
 {/snippet}
 
 {#snippet ticketsIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		<path d="M9 11l3 3L22 4"></path>
 		<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
 	</svg>
@@ -739,7 +739,7 @@
 				{/if}
 				{#if onClose}
 				<button type="button" class="sheet-close" title={t.common.close} onclick={onClose}>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="18" y1="6" x2="6" y2="18"></line>
 						<line x1="6" y1="6" x2="18" y2="18"></line>
 					</svg>
@@ -777,7 +777,7 @@
 							aria-pressed={lighting === 'feedback'}
 							onclick={() => toggleHighlight('feedback')}
 						>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
 							<span>{t.routes.filterFeedback}</span>
 							<span class="mono">{highlightCounts.feedback}</span>
 						</button>
@@ -789,7 +789,7 @@
 							aria-pressed={lighting === 'blamed'}
 							onclick={() => toggleHighlight('blamed')}
 						>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
 							<span>{t.routes.filterBlamed}</span>
 							<span class="mono">{highlightCounts.blamed}</span>
 						</button>
@@ -817,7 +817,7 @@
 					>+</button>
 					<span class="trace-zoom-rule" aria-hidden="true"></span>
 					<button type="button" class="trace-zoom-fit" aria-label={t.trace.zoomFit} title={t.trace.zoomFit} onclick={() => canvas.fitBoard()}>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
 							<path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
 							<path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
@@ -833,7 +833,7 @@
 						aria-pressed={minimapShown}
 						onclick={toggleMinimap}
 					>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<rect x="3" y="3" width="18" height="18" rx="2"></rect>
 							<rect x="12" y="12" width="6" height="6" rx="1"></rect>
 						</svg>
@@ -1021,10 +1021,10 @@
 		display: inline-block;
 		padding: 0 6px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--muted);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		line-height: 16px;
 		white-space: nowrap;
@@ -1057,10 +1057,10 @@
 		min-height: 28px;
 		padding: 3px 10px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--ink-secondary);
-		font: 600 11.5px/1.2 var(--font);
+		font: 600 12px/1.2 var(--font);
 		cursor: pointer;
 		user-select: none;
 		transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
@@ -1085,7 +1085,7 @@
 
 	.trace-side-count {
 		padding: 0 5px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		color: var(--muted);
 		font-size: 10px;
@@ -1107,7 +1107,7 @@
 		margin: 0 12px 10px;
 		padding: 3px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		gap: 2px;
 	}
@@ -1122,10 +1122,10 @@
 		min-height: 32px;
 		padding: 4px 11px;
 		border: 0;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: transparent;
 		color: var(--muted);
-		font: 600 12.5px/1.2 var(--font);
+		font: 600 13px/1.2 var(--font);
 		cursor: pointer;
 		transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 		user-select: none;
@@ -1239,7 +1239,7 @@
 	}
 
 	.trace-meta {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1253,7 +1253,7 @@
 		min-height: 28px;
 		padding: 3px 10px 3px 8px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--pane) 92%, transparent);
 		backdrop-filter: blur(6px);
 		font-size: 12px;
@@ -1314,10 +1314,10 @@
 		min-height: 28px;
 		padding: 3px 9px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--ink-secondary);
-		font-size: 11.5px;
+		font-size: 12px;
 		cursor: pointer;
 	}
 
@@ -1389,7 +1389,7 @@
 		gap: 0;
 		padding: 1px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--pane) 92%, transparent);
 		backdrop-filter: blur(6px);
 	}
@@ -1399,7 +1399,7 @@
 		height: 26px;
 		padding: 0 6px;
 		border: 0;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: transparent;
 		color: var(--muted);
 		font: 500 12px/1 var(--font);

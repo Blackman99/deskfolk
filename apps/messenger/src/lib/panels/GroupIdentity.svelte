@@ -218,10 +218,10 @@
 	}
 
 	.badge-archived {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		padding: 1px 6px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--warn-bg);
 		color: var(--warn-text);
 		border: 1px solid var(--warn-line);

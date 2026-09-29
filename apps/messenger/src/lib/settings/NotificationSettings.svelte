@@ -790,7 +790,7 @@
 
 	.settings-card-title {
 		margin: 0;
-		font-size: 13.5px;
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--ink);
 		line-height: 1.3;
@@ -798,7 +798,7 @@
 
 	.settings-card-subtitle {
 		margin: 2px 0 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		line-height: 1.35;
 	}
@@ -810,7 +810,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		font-size: 11px;
 		font-weight: 600;
 		letter-spacing: 0.01em;
@@ -944,7 +944,7 @@
 	}
 
 	.category-desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		line-height: 1.35;
 		white-space: nowrap;
@@ -997,7 +997,7 @@
 	}
 
 	.settings-row-desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		line-height: 1.35;
 	}
@@ -1030,7 +1030,7 @@
 		display: block;
 		width: 40px;
 		height: 22px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip-line);
 		transition: background-color 0.2s ease, box-shadow 0.2s ease;
 		position: relative;
@@ -1098,7 +1098,7 @@
 	}
 
 	.time-picker-label {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		color: var(--muted);
 	}
@@ -1159,7 +1159,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		padding: 4px 8px;
 		border-radius: var(--radius-sm);
@@ -1197,7 +1197,7 @@
 		gap: 8px;
 		padding: 10px 12px;
 		border-radius: var(--radius-md);
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.4;
 		border: 1px solid transparent;
 		box-sizing: border-box;
@@ -1267,7 +1267,7 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		color: var(--ink);
-		font-size: 12.5px;
+		font-size: 13px;
 		cursor: pointer;
 		box-sizing: border-box;
 		transition: border-color 0.15s ease;
@@ -1292,14 +1292,15 @@
 		align-items: center;
 		gap: 6px;
 		padding: 7px 14px;
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 		color: var(--ink-secondary);
 		background: var(--btn-secondary-bg);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+		transition-property: var(--transition-props);
 		box-shadow: var(--shadow-xs);
 		flex-shrink: 0;
 	}

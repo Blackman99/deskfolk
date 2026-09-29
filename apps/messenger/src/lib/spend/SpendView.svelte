@@ -486,7 +486,7 @@
 </script>
 
 {#snippet icon(name: 'back' | 'refresh' | 'chevron' | 'filter' | 'close' | 'arrow' | 'coins' | 'spark' | 'calendar' | 'info')}
-	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		{#if name === 'back'}<path d="m14 6-6 6 6 6" />
 		{:else if name === 'refresh'}<path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" />
 		{:else if name === 'chevron'}<path d="m8 10 4 4 4-4" />
@@ -1079,7 +1079,7 @@
 	}
 
 	h1 {
-		font-size: 19px;
+		font-size: 20px;
 		line-height: 1.3;
 		font-weight: 650;
 		letter-spacing: -0.025em;
@@ -1113,7 +1113,8 @@
 		background: var(--pane);
 		color: var(--muted);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.icon-button:hover:not(:disabled) {
@@ -1251,13 +1252,14 @@
 		min-height: 32px;
 		padding: 4px 10px;
 		border: 1px solid var(--accent-border);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		color: var(--accent);
 		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.chip:hover {
@@ -1330,11 +1332,12 @@
 		color: var(--muted);
 		min-height: 32px;
 		padding: 4px 16px;
-		border-radius: 4px;
-		font-size: 12.5px;
+		border-radius: var(--radius-xs);
+		font-size: 13px;
 		font-weight: 550;
 		cursor: pointer;
-		transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+		transition-property: var(--transition-props);
 	}
 
 	.tab-btn:hover:not(.is-active) {
@@ -1651,14 +1654,15 @@
 	.segmented button {
 		border: 0;
 		background: transparent;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		color: var(--muted);
 		min-height: 28px;
 		padding: 3px 12px;
 		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.segmented button:hover:not([aria-pressed='true']) {
@@ -1740,7 +1744,7 @@
 	.category-track {
 		height: 5px;
 		background: var(--line-subtle);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		overflow: hidden;
 	}
 
@@ -1790,12 +1794,13 @@
 		width: 24px;
 		height: 24px;
 		border: 1px solid var(--line);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		margin-left: auto;
 		background: var(--pane);
 		color: var(--muted);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.kind-toggle:hover {
@@ -1829,13 +1834,13 @@
 
 	.kind-money {
 		grid-column: 1 / -1;
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--muted);
 	}
 
 	.num {
 		font-variant-numeric: tabular-nums;
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 
 	/* Tables (Desktop) */
@@ -1849,7 +1854,7 @@
 		width: 100%;
 		border-collapse: collapse;
 		table-layout: fixed;
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 
 	th, td {
@@ -1870,7 +1875,7 @@
 
 	th {
 		font-weight: 550;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		background: var(--sidebar-bg);
 		border-bottom: 1px solid var(--line);
@@ -1944,7 +1949,7 @@
 		font-weight: 500;
 		color: var(--muted);
 		border: 1px solid var(--line);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		white-space: nowrap;
 	}
 
@@ -1964,7 +1969,7 @@
 	}
 
 	.open-session-btn {
-		font-size: 11.5px;
+		font-size: 12px;
 	}
 
 	.group-more {
@@ -2004,7 +2009,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 3px 8px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		font-size: 11px;
 		font-weight: 550;
 		background: var(--line-subtle);
@@ -2045,7 +2050,7 @@
 		color: var(--ink-secondary);
 		background: var(--line-subtle);
 		padding: 2px 7px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 	}
 
 	.detail-amount {
@@ -2085,7 +2090,7 @@
 		gap: 6px 10px;
 		padding: 6px 0;
 		background: var(--line-subtle);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		padding: 8px 10px;
 		margin: 4px 0 0;
 	}
@@ -2102,15 +2107,15 @@
 	}
 
 	.open-trigger-btn {
-		font-size: 11.5px;
+		font-size: 12px;
 	}
 
 	.loaded-count-badge {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		background: var(--line-subtle);
 		padding: 3px 8px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 	}
 
 	.pagination {
@@ -2127,14 +2132,15 @@
 		background: var(--pane);
 		color: var(--ink);
 		font: inherit;
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.quiet:hover:not(:disabled) {
@@ -2185,7 +2191,7 @@
 
 	.empty-state p {
 		max-width: 280px;
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.5;
 	}
 
@@ -2284,7 +2290,7 @@
 		}
 
 		h1 {
-			font-size: 17px;
+			font-size: 18px;
 		}
 
 		.period-control {
@@ -2436,7 +2442,7 @@
 			border-radius: var(--radius-sm);
 			color: var(--ink);
 			font: inherit;
-			font-size: 12.5px;
+			font-size: 13px;
 		}
 
 		.compact-sort .sort-dir-btn {
@@ -2501,7 +2507,7 @@
 			content: attr(data-label);
 			display: block;
 			color: var(--muted);
-			font-size: 10.5px;
+			font-size: 11px;
 			margin-bottom: 2px;
 			font-weight: 500;
 		}
@@ -2653,7 +2659,7 @@
 
 		.period-control select {
 			max-width: 110px;
-			font-size: 11.5px;
+			font-size: 12px;
 		}
 
 		.money-summary {

@@ -111,8 +111,6 @@ test("independent runtime copy stays gated and bilingual", () => {
 });
 
 test("theme settings chrome lives on settings.*", () => {
-  expect(COPY.zh.settings.tabPreferences).toBe("基础偏好");
-  expect(COPY.en.settings.tabPreferences).toBe("Preferences");
   expect(COPY.zh.settings.theme).toBe("外观");
   expect(COPY.en.settings.theme).toBe("Appearance");
   expect(COPY.zh.settings.themeSystem).toBe("跟随系统");

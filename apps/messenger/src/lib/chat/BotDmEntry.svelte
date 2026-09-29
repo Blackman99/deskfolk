@@ -71,14 +71,14 @@
 			</button>
 			{#if status.isBusy}
 				<span class="bot-dm-live" aria-hidden="true"></span>
-				<span class="bot-dm-status text-11p5 text-muted font-normal">{status.label}</span>
+				<span class="bot-dm-status text-12 text-muted font-normal">{status.label}</span>
 			{/if}
 		</div>
 	{:else}
 		<div class="bot-dm-card is-multiple" class:is-user={isUser}>
 			<div class="bot-dm-header flex items-center gap-3 py-0 px-1 leading-none select-none">
 				<span class="bot-dm-glyph" aria-hidden="true">↔</span>
-				<span class="bot-dm-title text-11p5 font-medium text-muted tracking-[0.01em]">{openedText}</span>
+				<span class="bot-dm-title text-12 font-medium text-muted tracking-[0.01em]">{openedText}</span>
 				<span class="bot-dm-count mono">{sessions.length}</span>
 			</div>
 			<div class="bot-dm-roster flex flex-wrap gap-[5px] items-center">
@@ -125,7 +125,7 @@
 		border: 0;
 		background: transparent;
 		padding: 0 4px;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--accent);
 		cursor: pointer;
 	}
@@ -142,8 +142,8 @@
 		padding: 3px 10px 3px 4px;
 		background: var(--pane);
 		border: 1px solid var(--line);
-		border-radius: 9999px;
-		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+		border-radius: var(--radius-full);
+		box-shadow: 0 1px 3px rgba(18, 28, 32, 0.05);
 		font-size: 12px;
 		color: var(--muted);
 		line-height: 1;
@@ -165,7 +165,7 @@
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
-		box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+		box-shadow: 0 2px 6px rgba(18, 28, 32, 0.06);
 		max-width: 100%;
 	}
 
@@ -179,7 +179,7 @@
 		font-size: 10px;
 		font-weight: 600;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		border: 1px solid var(--line);
 		color: var(--muted);
@@ -194,11 +194,11 @@
 		padding: 2.5px 8px 2.5px 3px;
 		background: var(--bg);
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		font-size: 12px;
 		line-height: 1;
 		color: var(--ink);
-		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.03);
 		user-select: none;
 		cursor: pointer;
 		outline: none;

@@ -27,7 +27,7 @@
 	title={round.folded ? t.trace.roundUnfold : t.trace.roundFold}
 	onclick={onToggle}
 >
-	<svg class="trace-round-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
+	<svg class="trace-round-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
 	{#if round.folded}
 		<span class="trace-round-said"><span class="trace-round-who">{nameOf(round.node.actor)}</span>{round.node.summary}</span>
 	{/if}
@@ -67,7 +67,7 @@
 		gap: 6px;
 		padding: 0 10px;
 		border: 1px dashed var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: transparent;
 		color: var(--muted);
 		font-size: 11px;

@@ -98,7 +98,7 @@
 	<div class="ticket-list-header-group">
 		<div class="ticket-list-head">
 			<div class="ticket-list-title-wrap">
-				<svg class="ticket-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg class="ticket-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<path d="M9 11l3 3L22 4"></path>
 					<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
 				</svg>
@@ -180,7 +180,7 @@
 								</span>
 							{:else}
 								<span class="ticket-avatar is-nobody" aria-hidden="true">
-									<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+									<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
 										<circle cx="12" cy="7" r="4"></circle>
 									</svg>
@@ -197,7 +197,7 @@
 					<div class="ticket-actions">
 						{#if ticket.artifacts.length > 0}
 							<button type="button" class="ticket-artifacts" onclick={() => onOpenArtifacts(ticket)}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 									<polyline points="14 2 14 8 20 8"></polyline>
 								</svg>
@@ -206,7 +206,7 @@
 						{/if}
 						{#if node}
 							<button type="button" class="ticket-jump" onclick={() => onJump(node.session_id, node.focus_message_id)}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<polyline points="9 10 4 15 9 20"></polyline>
 									<path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
 								</svg>
@@ -293,7 +293,7 @@
 
 	.ticket-completion-pill {
 		padding: 1px 5px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		color: var(--muted);
 		font-size: 10px;
@@ -309,14 +309,14 @@
 	.ticket-progress-track {
 		width: 100%;
 		height: 3px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--line);
 		overflow: hidden;
 	}
 
 	.ticket-progress-fill {
 		height: 100%;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--ok);
 		transition: width 0.3s ease;
 	}
@@ -341,14 +341,15 @@
 		gap: 4px;
 		flex: none;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--pane);
 		color: var(--muted);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 500;
 		padding: 2px 7px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		user-select: none;
 	}
 
@@ -365,7 +366,7 @@
 	}
 
 	.ticket-filter-badge {
-		font-size: 9.5px;
+		font-size: 10px;
 		opacity: 0.8;
 	}
 
@@ -386,7 +387,7 @@
 		text-align: center;
 		border-radius: var(--radius-md);
 		background: var(--line-subtle);
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		display: flex;
 		flex-direction: column;
@@ -421,7 +422,7 @@
 		border-left: 3.5px solid var(--muted-light);
 		border-radius: var(--radius-md);
 		background: var(--pane);
-		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.03);
 		transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 	}
 
@@ -499,7 +500,7 @@
 	}
 
 	.ticket-main:hover {
-		background: rgba(15, 23, 42, 0.02);
+		background: rgba(18, 28, 32, 0.02);
 	}
 
 	.ticket-line {
@@ -517,7 +518,7 @@
 		color: var(--muted);
 		background: var(--line-subtle);
 		padding: 1px 5px;
-		border-radius: 3px;
+		border-radius: var(--radius-xs);
 		line-height: 14px;
 	}
 
@@ -527,7 +528,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--ink);
 		letter-spacing: -0.01em;
@@ -537,7 +538,7 @@
 		display: inline-flex;
 		align-items: center;
 		flex: none;
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		color: var(--muted);
 	}
@@ -593,7 +594,7 @@
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
-		font-size: 9px;
+		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
 		user-select: none;
@@ -622,7 +623,7 @@
 	.ticket-spec {
 		width: 100%;
 		box-sizing: border-box;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--ink-secondary);
 		line-height: 1.4;
 		overflow-wrap: anywhere;
@@ -637,7 +638,7 @@
 		 */
 		padding: 0 6px;
 		border-block: 3px solid transparent;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--line-subtle);
 	}
 
@@ -665,7 +666,8 @@
 		padding: 4px 7px;
 		cursor: pointer;
 		min-height: 24px;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.ticket-artifacts:hover,
@@ -700,7 +702,7 @@
 		}
 
 		.ticket-title {
-			font-size: 13.5px;
+			font-size: 14px;
 		}
 
 		.ticket-main {
@@ -716,7 +718,7 @@
 		.ticket-jump {
 			min-height: 32px;
 			padding: 5px 9px;
-			font-size: 11.5px;
+			font-size: 12px;
 		}
 
 		.ticket-actions :global(.real-select) {

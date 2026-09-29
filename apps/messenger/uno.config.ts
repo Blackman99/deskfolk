@@ -13,9 +13,11 @@ const colors = Object.fromEntries(
 	[
 		'bg', 'pane', 'sidebar-bg', 'ink', 'ink-secondary', 'muted', 'muted-light',
 		'line', 'line-subtle', 'line-hover', 'accent', 'accent-hover', 'accent-active',
-		'accent-tint', 'accent-border', 'accent-glow', 'you', 'you-text', 'bot', 'bot-border',
+		'accent-tint', 'accent-border', 'accent-glow', 'on-accent', 'mustard', 'mustard-tint',
+		'mustard-line', 'mustard-ink', 'you', 'you-text', 'bot', 'bot-border',
 		'bot-text', 'warn', 'warn-bg', 'warn-line', 'warn-text', 'ok', 'ok-bg', 'ok-line',
-		'ok-text', 'danger', 'danger-bg', 'danger-line', 'danger-text', 'purple', 'chip',
+		'ok-text', 'danger', 'danger-bg', 'danger-line', 'danger-text', 'purple', 'purple-bg', 'purple-line', 'purple-text', 'sky-bg', 'sky-line',
+		'sky-text', 'chip',
 		'chip-line', 'card', 'card-line', 'thread', 'input-bg', 'btn-secondary-bg',
 		'btn-secondary-hover', 'code-bg', 'code-header-bg', 'inline-code-bg',
 		'inline-code-border', 'reaction-bg', 'row-hover', 'date-pill-bg', 'date-pill-text',
@@ -23,10 +25,11 @@ const colors = Object.fromEntries(
 	].map((name) => [name, `var(--${name})`])
 );
 
-/** The sizes the sheet actually uses; a third land on a half pixel, so they are listed, not scaled. */
-const SIZES = new Set(
-	['9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '13.5', '14', '14.5', '15', '16', '16.5', '18', '20', '22', '24']
-);
+/**
+ * The type scale. Whole pixels only: the half-pixel steps the sheet used to mix in (11 / 11.5 / 12)
+ * were too close to tell apart, and nothing goes below 10px.
+ */
+const SIZES = new Set(['10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '28']);
 
 /** One step is 2px, and every numeric utility measures in it. */
 const SCALE = Object.fromEntries(Array.from({ length: 41 }, (_, i) => [String(i), `${i * 2}px`]));
@@ -53,11 +56,8 @@ export default defineConfig({
 	 */
 	rules: [
 		[
-			/^text-(\d+(?:p\d)?)$/,
-			([, raw]) => {
-				const px = raw!.replace('p', '.');
-				return SIZES.has(px) ? { 'font-size': `${px}px` } : undefined;
-			}
+			/^text-(\d+)$/,
+			([, px]) => (SIZES.has(px!) ? { 'font-size': `${px}px` } : undefined)
 		]
 	],
 	content: { pipeline: { include: [/\.(svelte|ts)($|\?)/] } },
@@ -75,10 +75,12 @@ export default defineConfig({
 		maxWidth: SCALE,
 		maxHeight: SCALE,
 		borderRadius: {
+			xs: 'var(--radius-xs)',
 			sm: 'var(--radius-sm)',
 			md: 'var(--radius-md)',
 			lg: 'var(--radius-lg)',
-			xl: 'var(--radius-xl)'
+			xl: 'var(--radius-xl)',
+			full: 'var(--radius-full)'
 		},
 		boxShadow: {
 			xs: 'var(--shadow-xs)',

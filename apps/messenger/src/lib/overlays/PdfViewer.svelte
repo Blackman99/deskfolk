@@ -1391,7 +1391,7 @@
 				onclick={() => (findOpen ? closeFind() : openFind())}
 				data-pdf-find-toggle
 			>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 					<circle cx="11" cy="11" r="7"></circle>
 					<line x1="20" y1="20" x2="16.2" y2="16.2"></line>
 				</svg>
@@ -1412,10 +1412,10 @@
 				/>
 				<span class="pdf-find-count text-12" aria-live="polite">{findStatus}</span>
 				<button type="button" class="pdf-tool" title={labels.findPrev} aria-label={labels.findPrev} disabled={matches.length === 0} onclick={() => stepFind(-1)}>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"></polyline></svg>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"></polyline></svg>
 				</button>
 				<button type="button" class="pdf-tool" title={labels.findNext} aria-label={labels.findNext} disabled={matches.length === 0} onclick={() => stepFind(1)}>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
 				</button>
 				<button type="button" class="pdf-tool" title={labels.findClose} aria-label={labels.findClose} onclick={() => closeFind()}>✕</button>
 			</div>
@@ -1788,7 +1788,7 @@
 		position: static;
 		margin: -1px;
 		padding: 1px;
-		border-radius: 3px;
+		border-radius: var(--radius-xs);
 		background-color: color-mix(in srgb, var(--warn) 38%, transparent);
 	}
 	.pdf-text :global(span.pdf-hl.is-selected) {
@@ -1880,7 +1880,7 @@
 		height: 18px;
 		padding: 0 5px;
 		border: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
 		color: var(--you-text);
 		font: inherit;

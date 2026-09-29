@@ -101,34 +101,6 @@
 		}
 	}
 
-	/**
-	 * A link written as its own path names the picture by that path, which is mostly folders: the
-	 * chip keeps the file's name, as an attachment's does, and the whole path is in the tooltip.
-	 * From the start, so the chip does not change size when the picture lands.
-	 */
-	function nameThePicture(anchor: HTMLAnchorElement, path: string): void {
-		if (anchor.textContent?.trim() !== path) return;
-		const name = path.split('/').pop() || path;
-		if (name === path) return;
-		for (const child of [...anchor.childNodes]) if (child.nodeType === Node.TEXT_NODE) child.remove();
-		const label = document.createElement('span');
-		label.className = 'md-artifact-name';
-		label.textContent = name;
-		anchor.append(label);
-		if (!anchor.title) {
-			anchor.title = path;
-			anchor.dataset.artifactTitled = '';
-		}
-	}
-
-	/** No picture after all: the link reads as it was written. */
-	function unnameThePicture(anchor: HTMLAnchorElement, path: string): void {
-		anchor.querySelector(':scope > .md-artifact-name')?.replaceWith(document.createTextNode(path));
-		if (anchor.dataset.artifactTitled === undefined) return;
-		anchor.removeAttribute('title');
-		delete anchor.dataset.artifactTitled;
-	}
-
 	function enhanceArtifactImages(
 		node: HTMLElement,
 		urls: Map<HTMLAnchorElement, string>,
@@ -152,7 +124,11 @@
 			if (!path || !['image', 'svg'].includes(artifactKind(path))) continue;
 			anchor.dataset.artifactImage = 'loading';
 			anchor.classList.add('md-artifact-image');
-			nameThePicture(anchor, path);
+			// In the chip's flex row the name needs a box of its own to truncate instead of overflow.
+			const name = document.createElement('span');
+			name.className = 'md-artifact-name';
+			name.append(...anchor.childNodes);
+			anchor.append(name);
 			const pending = document.createElement('span');
 			pending.className = 'md-artifact-pending';
 			pending.setAttribute('aria-hidden', 'true');
@@ -173,7 +149,8 @@
 						anchor.querySelector(':scope > .md-artifact-pending')?.remove();
 						const image = document.createElement('img');
 						image.src = url;
-						image.alt = anchor.textContent?.trim() || path.split('/').pop() || path;
+						const fileName = path.split('/').pop() || path;
+						image.alt = anchor.querySelector('.md-path-dir') ? fileName : anchor.textContent?.trim() || fileName;
 						image.className = 'md-artifact-thumb';
 						image.dataset.copyImage = '';
 						anchor.prepend(image);
@@ -181,7 +158,6 @@
 					})
 					.catch(() => {
 						anchor.querySelector(':scope > .md-artifact-pending')?.remove();
-						unnameThePicture(anchor, path);
 						anchor.dataset.artifactImage = 'failed';
 						anchor.classList.remove('md-artifact-image');
 					});
@@ -230,7 +206,7 @@
 	.md-body {
 		white-space: normal;
 		line-height: 1.55;
-		font-size: 13.5px;
+		font-size: 14px;
 		min-width: 0;
 	}
 
@@ -333,9 +309,21 @@
 		opacity: 1;
 	}
 
+	/* The folders of a link written as its own path: kept for copy and anchors, never drawn. */
+	.md-body :global(.md-path-dir) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	/* A file reads as a name with its icon; the underline only comes with the pointer. */
 	.md-body :global(a.md-artifact-link) {
 		color: var(--accent);
-		text-decoration: underline;
+		font-weight: 500;
+		text-decoration: none;
 		text-underline-offset: 2px;
 		cursor: pointer;
 		word-break: break-word;
@@ -343,6 +331,7 @@
 
 	.md-body :global(a.md-artifact-link:hover) {
 		color: var(--accent-hover);
+		text-decoration: underline;
 	}
 
 	.md-body :global(a.md-artifact-link:not(.md-artifact-image))::before {
@@ -396,7 +385,7 @@
 		display: block;
 		width: 72px;
 		height: 54px;
-		border-radius: calc(var(--radius-md) - 3px);
+		border-radius: calc(var(--radius-md) - var(--radius-xs));
 		background: var(--line-subtle);
 		flex: 0 0 auto;
 	}
@@ -454,7 +443,7 @@
 		background: var(--inline-code-bg);
 		border: 1px solid var(--inline-code-border);
 		padding: 0.1em 0.35em;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 	}
 
 	.md-body :global(pre) {
@@ -495,7 +484,7 @@
 
 	.md-body :global(table) {
 		border-collapse: collapse;
-		font-size: 12.5px;
+		font-size: 13px;
 		width: max-content;
 		min-width: 100%;
 	}
@@ -539,8 +528,8 @@
 		margin: 0 1px;
 		background: var(--accent-tint);
 		border: 1px solid var(--accent-border);
-		border-radius: 999px;
-		font-size: 12.5px;
+		border-radius: var(--radius-full);
+		font-size: 13px;
 		color: var(--accent-hover);
 		font-weight: 600;
 		line-height: 1.2;
@@ -572,7 +561,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 9.5px;
+		font-size: 10px;
 		font-weight: 700;
 		flex-shrink: 0;
 	}
@@ -617,13 +606,14 @@
 		align-items: center;
 		gap: 4px;
 		padding: 2px 6px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		font-size: 11px;
 		color: var(--muted);
 		background: transparent;
 		border: 1px solid transparent;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.md-body :global(.code-copy-btn:hover) {
@@ -633,8 +623,10 @@
 
 	.md-body.is-inverted :global(a),
 	.md-body.is-inverted :global(a.md-external-link),
+	/* White on your own bubble has no colour to set it apart, so it keeps the underline. */
 	.md-body.is-inverted :global(a.md-artifact-link) {
 		color: #ffffff;
+		text-decoration: underline;
 	}
 
 	.md-body.is-inverted :global(a.md-artifact-image) {
@@ -664,7 +656,7 @@
 	}
 
 	.md-body.is-inverted :global(pre) {
-		background: rgba(15, 23, 42, 0.28);
+		background: rgba(18, 28, 32, 0.28);
 		border-color: rgba(255, 255, 255, 0.2);
 		color: #ffffff;
 	}

@@ -226,7 +226,7 @@
 				disabled={closeDisabled(closing, item.scope)}
 				onclick={() => pick(() => closing.onClose(item.scope))}
 			>
-				<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					{#each [2.9, 9.9, 16.9] as left, slot (slot)}
 						{@const closes = closesSlot(item.scope, slot)}
 						<path
@@ -253,7 +253,7 @@
 			disabled={!editing.canCopy}
 			onclick={() => pick(editing.onCopy)}
 		>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect>
 				<path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path>
 			</svg>
@@ -261,7 +261,7 @@
 			<span class="wb-context-keys" aria-hidden="true">{formatShortcut(['mod', 'C'])}</span>
 		</button>
 		<button type="button" class="wb-context-item" role="menuitem" data-edit="paste" onclick={() => pick(editing.onPaste)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="5.5" y="5.5" width="13" height="15" rx="2"></rect>
 				<path d="M9.5 5.5V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"></path>
 			</svg>
@@ -286,7 +286,7 @@
 				onclick={() => pick(() => split(item.dir))}
 			>
 				<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-					<rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+					<rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
 					{#if item.dir === 'up'}
 						<path d="M5 6h14v5.5H5z" fill="currentColor" opacity="0.45"></path>
 					{:else if item.dir === 'down'}
@@ -308,7 +308,7 @@
 		{@const dock = onDock}
 		<div class="wb-context-divider" role="separator"></div>
 		<button type="button" class="wb-context-item" role="menuitem" data-dock onclick={() => pick(dock)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
 				<path d="M12 8v6m-3-3 3 3 3-3"></path>
 			</svg>
@@ -321,7 +321,7 @@
 			<div class="wb-context-divider" role="separator"></div>
 		{/if}
 		<button type="button" class="wb-context-item" role="menuitem" data-close-pane onclick={() => pick(closePane)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<path d="m6 6 12 12M6 18 18 6"></path>
 			</svg>
 			<span class="wb-context-label">{t.pane.close}</span>
@@ -343,8 +343,8 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow:
-			0 12px 30px -4px rgba(15, 23, 42, 0.16),
-			0 4px 12px -2px rgba(15, 23, 42, 0.08);
+			0 12px 30px -4px rgba(18, 28, 32, 0.16),
+			0 4px 12px -2px rgba(18, 28, 32, 0.08);
 		user-select: none;
 		outline: none;
 		animation: wb-context-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
@@ -388,7 +388,7 @@
 	}
 	.wb-context-keys {
 		margin-left: 12px;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 400;
 		color: var(--muted);
 		letter-spacing: 0.02em;

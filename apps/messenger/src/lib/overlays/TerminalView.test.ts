@@ -760,7 +760,7 @@ test("the pane tells the daemon its colours on attach and when the theme changes
     expect(told.colors.map((c) => c.background)).toEqual(["#ffffff"]);
     root.setAttribute("data-theme", "dark");
     await settle();
-    expect(told.colors.at(-1)!.background).toBe("#161e2b");
+    expect(told.colors.at(-1)!.background).toBe("#192125");
     term.key("k", { metaKey: true });
     await settle();
     expect(told.cleared).toBe(1);

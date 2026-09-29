@@ -54,7 +54,7 @@
 			aria-label={narrow ? t.common.back : (group ? t.detail.backToGroup : t.detail.backToBot)}
 			onclick={onBack}
 		>
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			<span class="sheet-back-label">{group ? t.detail.backToGroup : t.detail.backToBot}</span>
 		</button>
 		{#if narrow && subjectBot}
@@ -88,7 +88,7 @@
 		title={t.common.close}
 		onclick={onClose}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<line x1="18" y1="6" x2="6" y2="18"></line>
 			<line x1="6" y1="6" x2="18" y2="18"></line>
 		</svg>
@@ -112,7 +112,8 @@
 		font-weight: 600;
 		box-shadow: none;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.sheet-back:hover {

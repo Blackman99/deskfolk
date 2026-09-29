@@ -80,7 +80,7 @@
 						{#if on}
 							{#if multi}
 								<svg viewBox="0 0 12 12" width="10" height="10">
-									<path d="M2.5 6.2 5 8.6 9.5 3.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+									<path d="M2.5 6.2 5 8.6 9.5 3.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
 								</svg>
 							{:else}
 								<span class="ask-dot"></span>
@@ -139,7 +139,7 @@
 	}
 
 	.ask-mode {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
 		letter-spacing: 0.02em;
@@ -201,9 +201,9 @@
 		height: 16px;
 		margin-top: 1px;
 		border: 1.5px solid var(--line-hover);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--pane);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.ask-mark.is-radio {
@@ -256,7 +256,7 @@
 	.ask-own-text {
 		max-width: 88%;
 		padding: 7px 11px;
-		border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
+		border-radius: var(--radius-md) var(--radius-md) var(--radius-xs) var(--radius-md);
 		background: var(--you);
 		color: var(--you-text);
 		font-size: 13px;
@@ -267,7 +267,7 @@
 
 	.ask-answered {
 		align-self: flex-end;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -286,7 +286,8 @@
 		background: var(--chip);
 		color: var(--ink);
 		font-size: 13px;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.ask-reply input:focus {
@@ -297,11 +298,11 @@
 	.ask-send {
 		flex: none;
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-radius: var(--radius-sm);
 		padding: 7px 13px;
 		font-weight: 600;
-		font-size: 12.5px;
+		font-size: 13px;
 		box-shadow: var(--shadow-xs);
 	}
 

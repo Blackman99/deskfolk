@@ -52,7 +52,7 @@
 	import NotificationSettings from './NotificationSettings.svelte';
 	import RelayGuide from './RelayGuide.svelte';
 
-	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'notifications' | 'remote' | 'about';
+	type SettingsTab = 'general' | 'models' | 'mcp' | 'notifications' | 'remote' | 'about';
 
 	type Props = {
 		mobileSettingsDetail?: boolean;
@@ -185,17 +185,15 @@
 	function settingsTabLabel(tab: SettingsTab): string {
 		return tab === 'general'
 			? t.settings.tabGeneral
-			: tab === 'preferences'
-				? t.settings.tabPreferences
-				: tab === 'models'
-					? t.settings.tabModels
-					: tab === 'mcp'
-						? t.settings.tabMcp
-						: tab === 'notifications'
-							? t.settings.tabNotifications
-							: tab === 'remote'
-								? t.settings.tabRemote
-								: t.settings.tabAbout;
+			: tab === 'models'
+				? t.settings.tabModels
+				: tab === 'mcp'
+					? t.settings.tabMcp
+					: tab === 'notifications'
+						? t.settings.tabNotifications
+						: tab === 'remote'
+							? t.settings.tabRemote
+							: t.settings.tabAbout;
 	}
 	let independent = $state<IndependentStatus>(gatedIndependentStatus('g_pack_not_verified'));
 	let independentBusy = $state(false);
@@ -801,26 +799,6 @@
 						{/if}
 					</button>
 
-					<button
-						type="button"
-						class="settings-tab-btn"
-						class:is-active={activeSettingsTab === 'preferences'}
-						data-settings-tab="preferences"
-						onclick={() => openSettingsTab('preferences')}
-					>
-						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<line x1="4" y1="21" x2="4" y2="14"></line>
-							<line x1="4" y1="10" x2="4" y2="3"></line>
-							<line x1="12" y1="21" x2="12" y2="12"></line>
-							<line x1="12" y1="8" x2="12" y2="3"></line>
-							<line x1="20" y1="21" x2="20" y2="16"></line>
-							<line x1="20" y1="12" x2="20" y2="3"></line>
-							<line x1="1" y1="14" x2="7" y2="14"></line>
-							<line x1="9" y1="8" x2="15" y2="8"></line>
-							<line x1="17" y1="16" x2="23" y2="16"></line>
-						</svg>
-						<span class="tab-name">{t.settings.tabPreferences}</span>
-					</button>
 
 					<button
 						type="button"
@@ -920,7 +898,7 @@
 						aria-label={locale === 'en' ? 'Back to settings' : '返回设置'}
 						onclick={() => (mobileSettingsDetail = false)}
 					>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 					</button>
 					<div class="settings-main-head-left flex items-center gap-5">
 						<h3 class="settings-main-title">{settingsTabLabel(activeSettingsTab)}</h3>
@@ -1033,16 +1011,13 @@
 										<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
 									</svg>
 									<div class="jail-callout-content flex flex-col gap-[3px] min-w-0">
-										<span class="jail-callout-title text-11p5 font-semibold text-accent tracking-[0.01em]">{t.settings.workspaceSecurityBoundary}</span>
-										<p class="jail-callout-text m-0 text-11p5 leading-[1.45] text-muted">{JAIL_COPY[locale]}</p>
+										<span class="jail-callout-title text-12 font-semibold text-accent tracking-[0.01em]">{t.settings.workspaceSecurityBoundary}</span>
+										<p class="jail-callout-text m-0 text-12 leading-[1.45] text-muted">{JAIL_COPY[locale]}</p>
 									</div>
 								</div>
 							</div>
 						</div>
-					</div>
-				{:else if activeSettingsTab === 'preferences'}
-					<div class="settings-tab-pane">
-						<!-- Preferences Section -->
+						<!-- Preferences: one page with the workspace, which alone used to fill a tab of its own. -->
 						<div class="settings-card settings-card-preferences">
 							<div class="settings-card-header">
 								<div class="settings-card-header-main">
@@ -1221,7 +1196,7 @@
 						<div class="provider-list-head flex items-start justify-between gap-6">
 							<p class="muted">{t.settings.providersHint}</p>
 							<button type="button" class="btn-provider-add" onclick={openAddProvider}>
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 								<span>{t.settings.providerAdd}</span>
 							</button>
 						</div>
@@ -1259,7 +1234,7 @@
 													</span>
 												</span>
 												{#if host}
-													<span class="provider-card-host mono inline-flex items-center gap-[5px] text-11p5 text-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-full" title={provider.base_url ?? ''}>
+													<span class="provider-card-host mono inline-flex items-center gap-[5px] text-12 text-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-full" title={provider.base_url ?? ''}>
 														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
 														<span>{host}</span>
 													</span>
@@ -1345,7 +1320,7 @@
 										>
 											<span>{t.settings.providerModels}</span>
 											<span class="provider-model-manage-count">{t.settings.modelsEnabledCount(provider.models.length)}</span>
-											<svg class="provider-manage-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+											<svg class="provider-manage-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
 										</button>
 									</div>
 								</div>
@@ -1698,7 +1673,7 @@ void runtime.setPushEnabled(enabled);
 									<h3 class="settings-card-title">Deskfolk</h3>
 									<span class="settings-row-desc">{t.settings.aboutDescription}</span>
 									<span class="settings-row-desc">
-										<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.12')}</span>
+										<span class="about-version-chip inline-block font-mono text-12 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.12')}</span>
 									</span>
 								</div>
 								{#if updateChecker.available}
@@ -1728,7 +1703,7 @@ void runtime.setPushEnabled(enabled);
 									</div>
 								{:else if updateChecker.result?.updateAvailable && updateChecker.result.latest}
 									<div class="about-update-banner">
-										<p class="about-update-title m-0 text-12p5 font-semibold text-accent">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
+										<p class="about-update-title m-0 text-13 font-semibold text-accent">{t.settings.updateAvailable(updateChecker.result.latest)}</p>
 										{#if updateChanges.length > 0}
 											<div class="about-notes">
 												<p class="about-notes-title">{t.settings.updateChanges}</p>
@@ -1857,7 +1832,7 @@ void runtime.setPushEnabled(enabled);
 					aria-label={providerDetailModel ? t.common.back : locale === 'en' ? 'Back to model providers' : '返回模型服务'}
 					onclick={backFromProviderEditor}
 				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<h2>
 					{#if providerDetailModel}
@@ -1992,10 +1967,10 @@ void runtime.setPushEnabled(enabled);
 	}
 
 	.settings-wizard-badge {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		padding: 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
 		color: var(--warn-text);
@@ -2075,12 +2050,13 @@ void runtime.setPushEnabled(enabled);
 		width: 100%;
 		padding: 9px 12px;
 		border-radius: var(--radius-md);
-		font-size: 13.5px;
+		font-size: 14px;
 		font-weight: 500;
 		color: var(--ink-secondary);
 		background: transparent;
 		border: 1px solid transparent;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		user-select: none;
 		cursor: pointer;
 		box-sizing: border-box;
@@ -2152,7 +2128,7 @@ void runtime.setPushEnabled(enabled);
 
 	.settings-main-title {
 		margin: 0;
-		font-size: 15.5px;
+		font-size: 16px;
 		font-weight: 600;
 		color: var(--ink);
 	}
@@ -2217,7 +2193,8 @@ void runtime.setPushEnabled(enabled);
 		color: var(--muted);
 		background: transparent;
 		border: 1px solid transparent;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		user-select: none;
 		cursor: pointer;
 	}
@@ -2317,10 +2294,11 @@ void runtime.setPushEnabled(enabled);
 		border: 1.5px dashed var(--line);
 		background: var(--sidebar-bg);
 		color: var(--accent);
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-provider-add:hover {
@@ -2387,7 +2365,7 @@ void runtime.setPushEnabled(enabled);
 		font-size: 11px;
 		font-weight: 600;
 		padding: 1.5px 7px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		color: var(--accent);
 		border: 1px solid var(--accent-border);
@@ -2402,7 +2380,7 @@ void runtime.setPushEnabled(enabled);
 		font-size: 11px;
 		font-weight: 500;
 		padding: 1.5px 7px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
 		color: var(--warn-text);
@@ -2438,7 +2416,8 @@ void runtime.setPushEnabled(enabled);
 		background: var(--sidebar-bg);
 		border: 1px solid var(--line);
 		color: var(--ink-secondary);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		line-height: 1.2;
 	}
 
@@ -2488,7 +2467,7 @@ void runtime.setPushEnabled(enabled);
 		border-radius: var(--radius-sm);
 		background: transparent;
 		color: var(--ink-secondary);
-		font-size: 12.5px;
+		font-size: 13px;
 		text-align: left;
 		cursor: pointer;
 	}
@@ -2587,7 +2566,7 @@ void runtime.setPushEnabled(enabled);
 
 	.settings-card-subtitle {
 		margin: 2px 0 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		line-height: 1.35;
 	}
@@ -2598,7 +2577,7 @@ void runtime.setPushEnabled(enabled);
 		display: inline-flex;
 		align-items: center;
 		padding: 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		font-size: 11px;
 		font-weight: 600;
 		letter-spacing: 0.01em;
@@ -2664,11 +2643,11 @@ void runtime.setPushEnabled(enabled);
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 
 	.device-copy span {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -2706,7 +2685,7 @@ void runtime.setPushEnabled(enabled);
 
 	.pairing-invite-text {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--ink-secondary);
 	}
 
@@ -2741,8 +2720,8 @@ void runtime.setPushEnabled(enabled);
 		border-radius: var(--radius-md);
 		border: 1px solid var(--accent);
 		background: var(--accent);
-		color: #fff;
-		font-size: 12.5px;
+		color: var(--on-accent);
+		font-size: 13px;
 		font-weight: 600;
 		white-space: nowrap;
 	}
@@ -2792,11 +2771,11 @@ void runtime.setPushEnabled(enabled);
 		top: 1px;
 		width: 18px;
 		height: 18px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		border: 1px solid var(--line);
 		background: var(--pane);
 		color: var(--ink-secondary);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		display: flex;
 		align-items: center;
@@ -2805,14 +2784,14 @@ void runtime.setPushEnabled(enabled);
 
 	.pairing-step-text {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--ink);
 		line-height: 1.5;
 	}
 
 	.pairing-step-note {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--ink-secondary);
 	}
 
@@ -2858,7 +2837,7 @@ void runtime.setPushEnabled(enabled);
 
 	.pairing-fingerprint {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		line-height: 1.6;
 		color: var(--ink);
 		overflow-wrap: anywhere;
@@ -2870,7 +2849,7 @@ void runtime.setPushEnabled(enabled);
 
 	.pairing-done {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--ok);
 	}
 
@@ -2886,7 +2865,7 @@ void runtime.setPushEnabled(enabled);
 
 	.pairing-failed-text {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--warn-text);
 	}
 
@@ -2898,7 +2877,7 @@ void runtime.setPushEnabled(enabled);
 
 	.pairing-footnote {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--ink-tertiary, var(--ink-secondary));
 		opacity: 0.85;
 	}
@@ -2985,7 +2964,7 @@ void runtime.setPushEnabled(enabled);
 	}
 
 	.settings-row-desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		line-height: 1.35;
 	}
@@ -3019,7 +2998,8 @@ void runtime.setPushEnabled(enabled);
 		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		user-select: none;
 		white-space: nowrap;
 	}
@@ -3053,7 +3033,7 @@ void runtime.setPushEnabled(enabled);
 		display: block;
 		width: 40px;
 		height: 22px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip-line);
 		transition: background-color 0.2s ease, box-shadow 0.2s ease;
 		position: relative;
@@ -3095,7 +3075,8 @@ void runtime.setPushEnabled(enabled);
 		border-radius: var(--radius-md);
 		cursor: pointer;
 		box-shadow: var(--shadow-xs);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-check-update:hover:not(:disabled) {
@@ -3167,13 +3148,13 @@ void runtime.setPushEnabled(enabled);
 
 	.about-install-bytes {
 		font-family: var(--mono);
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
 	.about-progress {
 		height: 5px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		overflow: hidden;
 	}
@@ -3181,7 +3162,7 @@ void runtime.setPushEnabled(enabled);
 	.about-progress-fill {
 		height: 100%;
 		width: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
 		transition: width 0.2s ease;
 	}
@@ -3226,7 +3207,7 @@ void runtime.setPushEnabled(enabled);
 
 	.about-install-hint {
 		margin: 2px 0 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		line-height: 1.4;
 		color: var(--muted);
 	}
@@ -3245,7 +3226,7 @@ void runtime.setPushEnabled(enabled);
 
 	.about-notes-title {
 		margin: 0 0 4px;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--ink-secondary);
 	}
@@ -3383,7 +3364,7 @@ void runtime.setPushEnabled(enabled);
 		}
 
 		.settings-sidebar-head :global(h2) {
-			font-size: 17px;
+			font-size: 18px;
 		}
 
 		.settings-head-icon {
@@ -3695,9 +3676,9 @@ void runtime.setPushEnabled(enabled);
 		.provider-card, .provider-card.is-default { position: relative; gap: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); box-shadow: none; overflow: hidden; }
 		.provider-card-head { display: contents; }
 		.provider-card-identity { align-items: flex-start; gap: 12px; padding: 18px 16px 16px; }
-		.provider-card-mark { width: 40px; height: 40px; border-radius: var(--radius-md); font-size: 17px; box-shadow: none; }
+		.provider-card-mark { width: 40px; height: 40px; border-radius: var(--radius-md); font-size: 18px; box-shadow: none; }
 		.provider-name-row { gap: 6px; }
-		.provider-card-name { flex: 1 0 100%; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+		.provider-card-name { flex: 1 0 100%; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
 		.provider-badge-default, .provider-badge-key { padding: 3px 6px; font-size: 11px; }
 		.provider-card-host { width: 100%; font-size: 12px; margin-top: 4px; }
 		.provider-card-host span { overflow: hidden; text-overflow: ellipsis; }

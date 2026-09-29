@@ -236,7 +236,7 @@
 		border-radius: var(--radius-sm);
 		background: var(--input-bg);
 		color: var(--ink);
-		font: 12.5px/1.4 var(--font);
+		font: 13px/1.4 var(--font);
 		padding: 6px 8px;
 		transition: border-color 0.15s ease, box-shadow 0.15s ease;
 	}
@@ -266,14 +266,15 @@
 
 	.check-kind-btn {
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--ink-secondary);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		padding: 5px 10px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.check-kind-btn:hover:not(:disabled) {
@@ -287,7 +288,7 @@
 	.check-kind-btn.is-active:hover:not(:disabled) {
 		border-color: var(--accent);
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.check-kind-btn:disabled {
@@ -311,13 +312,13 @@
 		background: none;
 		padding: 2px 0;
 		color: var(--accent);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
 	}
 
 	.check-form-hint {
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--muted-light);
 	}
 

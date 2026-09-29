@@ -161,7 +161,7 @@
 		content: '';
 		position: absolute;
 		background: var(--line);
-		border-radius: 99px;
+		border-radius: var(--radius-full);
 	}
 	.wb-sash.is-vertical::before {
 		inset: 0 3px;

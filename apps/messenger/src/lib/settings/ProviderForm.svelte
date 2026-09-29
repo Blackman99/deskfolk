@@ -423,7 +423,7 @@
 			{#if showToolbar}
 				<div class="model-picker-toolbar">
 					<div class="model-search-field">
-					<svg class="model-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+					<svg class="model-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
 					<input
 						type="search"
 						class="model-picker-search"
@@ -486,7 +486,7 @@
 								onclick={() => onchange(toggleDraftModel(draft, name))}
 							>
 								<span class="model-row-box" aria-hidden="true">{on ? '✓' : ''}</span>
-								<span class="model-row-name mono flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-12p5">{name}</span>
+								<span class="model-row-name mono flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-13">{name}</span>
 								{#if !available.has(name)}
 									<span class="model-custom-tag">{t.settings.modelCustomBadge}</span>
 								{/if}
@@ -580,38 +580,14 @@
 	.model-search-icon, .model-search-clear, .model-total-count, .model-attrs-label, .model-selection-hint { display: none; }
 	.model-manual-feedback { margin: 0; padding: 8px; font-size: 12px; color: var(--ink-secondary); overflow-wrap: anywhere; }
 	.model-attributes-page { position: fixed; inset: calc(56px + env(safe-area-inset-top)) 0 calc(52px + env(safe-area-inset-bottom)); z-index: 1; overflow-y: auto; overscroll-behavior: contain; padding: 20px 16px 32px; background: var(--sidebar-bg); }
-	.model-attributes-name { margin: 0 0 8px; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+	.model-attributes-name { margin: 0 0 8px; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
 	.model-attributes-hint { margin: 0 0 24px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-
-	:global([data-theme='dark']) .attr-pill.pill-price,
-
-	:global(body.dark) .attr-pill.pill-price {
-		background: rgba(245, 158, 11, 0.2);
-		color: #fbbf24;
-		border-color: rgba(245, 158, 11, 0.4);
-	}
-
-	:global([data-theme='dark']) .attr-pill.pill-thinking,
-
-	:global(body.dark) .attr-pill.pill-thinking {
-		background: rgba(139, 92, 246, 0.2);
-		color: #c4b5fd;
-		border-color: rgba(139, 92, 246, 0.4);
-	}
-
-	:global([data-theme='dark']) .attr-pill.pill-strengths,
-
-	:global(body.dark) .attr-pill.pill-strengths {
-		background: rgba(14, 165, 233, 0.2);
-		color: #7dd3fc;
-		border-color: rgba(14, 165, 233, 0.4);
-	}
 
 	.key-status-badge {
 		font-size: 11px;
 		font-weight: 500;
 		padding: 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
 		color: var(--muted);
@@ -628,7 +604,7 @@
 		font-size: 11px;
 		font-weight: 500;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
 		color: var(--muted);
@@ -639,7 +615,7 @@
 	.attr-pill {
 		font-size: 11px;
 		padding: 2px 7px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		font-weight: 500;
 		white-space: nowrap;
 		max-width: 140px;
@@ -648,22 +624,22 @@
 	}
 
 	.attr-pill.pill-price {
-		background: #fef3c7;
-		color: #92400e;
-		border: 1px solid #fde68a;
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		border: 1px solid var(--warn-line);
 		font-family: var(--mono);
 	}
 
 	.attr-pill.pill-thinking {
-		background: #ede9fe;
-		color: #5b21b6;
-		border: 1px solid #ddd6fe;
+		background: var(--purple-bg);
+		color: var(--purple-text);
+		border: 1px solid var(--purple-line);
 	}
 
 	.attr-pill.pill-strengths {
-		background: #e0f2fe;
-		color: #075985;
-		border: 1px solid #bae6fd;
+		background: var(--sky-bg);
+		color: var(--sky-text);
+		border: 1px solid var(--sky-line);
 	}
 
 	.model-picker {
@@ -681,7 +657,7 @@
 
 	.model-picker-empty :global(p) {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.5;
 	}
 
@@ -719,7 +695,8 @@
 		border: none;
 		cursor: pointer;
 		white-space: nowrap;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.segmented :global(button) + :global(button) {
@@ -772,7 +749,7 @@
 		flex: none;
 		width: 15px;
 		height: 15px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		border: 1px solid var(--line-hover);
 		background: var(--input-bg);
 		display: inline-flex;
@@ -780,7 +757,7 @@
 		justify-content: center;
 		font-size: 10px;
 		font-weight: 700;
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.model-row.is-on .model-row-box {
@@ -792,7 +769,7 @@
 		flex: none;
 		font-size: 10px;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
 		color: var(--muted);
@@ -842,7 +819,7 @@
 	}
 
 	.attr-billing { min-width: 0; margin: 0; padding: 0; border: 0; }
-	.attr-billing legend { padding: 0; margin-bottom: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink-secondary); }
+	.attr-billing legend { padding: 0; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--ink-secondary); }
 	.attr-billing legend span { font-weight: 400; color: var(--muted); }
 	.billing-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 	.billing-input { width: 100%; min-width: 0; }
@@ -857,7 +834,7 @@
 	.attr-field :global(label),
 
 	.attr-field-label {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--ink-secondary);
 	}
@@ -873,8 +850,8 @@
 	:global(.modal-body) .chip-input {
 		width: 120px;
 		padding: 2px 7px;
-		font-size: 10.5px;
-		border-radius: 4px;
+		font-size: 11px;
+		border-radius: var(--radius-xs);
 		border-color: var(--accent);
 		box-shadow: none;
 	}
@@ -942,7 +919,7 @@
 		.model-picker-foot .btn-text-action { width: 100%; min-height: 48px; text-align: center; border: 1px dashed var(--line-hover); border-radius: var(--radius-md); background: var(--pane); font-size: 14px; }
 		:global(.modal-body) .model-manual-input { flex: 1 0 100%; width: 100%; min-width: 0; height: 48px; font-size: 16px; padding: 10px 12px; }
 		.model-manual-confirm, .model-manual-cancel { flex: 1; min-height: 44px; font-size: 14px; }
-		.model-manual-confirm { background: var(--accent); color: white; border-color: var(--accent); }
+		.model-manual-confirm { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 		.model-manual-feedback { padding: 12px 0 0; font-size: 13px; }
 		.model-row-body { display: flex; flex-direction: column; gap: 24px; padding: 20px 16px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-lg); }
 		.attr-field { gap: 12px; }

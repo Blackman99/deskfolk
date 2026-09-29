@@ -267,7 +267,7 @@
 			onkeydown={handleKeydown}
 		/>
 		<span class="multi-select-arrow" aria-hidden="true">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<polyline points="6 9 12 15 18 9"></polyline>
 			</svg>
 		</span>
@@ -381,7 +381,7 @@
 		gap: 4px;
 		max-width: 100%;
 		padding: 2px 4px 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		border: 1px solid var(--accent-border);
 		color: var(--accent);
@@ -442,7 +442,7 @@
 		background: transparent;
 		padding: 2px 4px;
 		font-family: inherit;
-		font-size: 13.5px;
+		font-size: 14px;
 		line-height: 1.4;
 		color: var(--ink);
 		box-shadow: none;
@@ -518,7 +518,7 @@
 
 	.multi-select-empty {
 		padding: 10px 12px;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--muted);
 		text-align: center;
 	}
@@ -559,9 +559,9 @@
 		height: 15px;
 		flex-shrink: 0;
 		border: 1px solid var(--line-hover);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--input-bg);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.multi-select-option.is-selected .multi-select-box {

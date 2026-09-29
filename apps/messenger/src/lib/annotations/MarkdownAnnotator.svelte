@@ -532,7 +532,7 @@
 		padding: 0 4px;
 		transform: translate(-70%, -70%);
 		border: 1px solid var(--accent);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		color: var(--accent);
 		font-family: var(--mono);
@@ -584,7 +584,7 @@
 		transform: translateX(-50%);
 		padding: 2px 12px;
 		border: 1px solid var(--accent-border);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--pane);
 		color: var(--accent);
 		font-size: 12px;

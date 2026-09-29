@@ -104,7 +104,7 @@
 		{:else if busy}
 			<span class="file-download-ring" aria-hidden="true"></span>
 		{:else}
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
 		{/if}
 	</button>
 {:else}
@@ -132,7 +132,7 @@
 		height: 32px;
 		padding: 0 16px;
 		border: 1px solid var(--accent-border);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		color: var(--accent);
 		font-size: 13px;
@@ -178,7 +178,7 @@
 	.file-download-icon.is-ready {
 		background: var(--accent);
 		border-color: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.file-download:focus-visible,
@@ -197,7 +197,7 @@
 		height: var(--file-download-size, 32px);
 		padding: 0;
 		border: 0;
-		border-radius: var(--file-download-radius, 8px);
+		border-radius: var(--file-download-radius, var(--radius-md));
 		background: transparent;
 		color: var(--ink-secondary);
 		cursor: pointer;

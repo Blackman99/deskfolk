@@ -71,7 +71,7 @@
 	.relay-guide summary {
 		cursor: pointer;
 		padding: 8px 12px;
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--accent);
 		list-style: none;
@@ -109,7 +109,7 @@
 	.relay-guide-lead,
 	.relay-guide-text {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.55;
 		color: var(--ink-secondary);
 	}
@@ -120,7 +120,7 @@
 
 	.relay-guide-note {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		line-height: 1.5;
 		color: var(--muted);
 	}
@@ -152,11 +152,11 @@
 		top: 1px;
 		width: 18px;
 		height: 18px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		border: 1px solid var(--line);
 		background: var(--sidebar-bg);
 		color: var(--ink-secondary);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		display: flex;
 		align-items: center;

@@ -106,7 +106,10 @@ test("attachment links remain visible without a bundle entry", () => {
     ...labels,
     source: "[inbox/核边数据.txt](inbox/核边数据.txt)",
   });
+  // Shown by the file's name: the folders are in the tooltip, and in the text only out of sight.
   expect(host.querySelector("a")?.textContent).toBe("inbox/核边数据.txt");
+  expect(host.querySelector("a .md-path-dir")?.textContent).toBe("inbox/");
+  expect(host.querySelector("a")?.getAttribute("title")).toBe("inbox/核边数据.txt");
   close();
 });
 
@@ -225,7 +228,9 @@ test("a picture linked by its own path is named by its file, with the path in th
     await new Promise((resolve) => setTimeout(resolve, 0));
     const [bare, named] = [...host.querySelectorAll("a.md-artifact-image")];
     expect(bare?.getAttribute("data-artifact-image")).toBe("ready");
-    expect(bare?.textContent).toBe("pair_c09.jpg");
+    // The folders are in the text for copy and anchors, but out of sight: the chip reads pair_c09.jpg.
+    expect(bare?.querySelector(".md-path-dir")?.textContent).toBe("work/preview_v9/");
+    expect(bare?.querySelector("img")?.getAttribute("alt")).toBe("pair_c09.jpg");
     expect(bare?.getAttribute("title")).toBe("work/preview_v9/pair_c09.jpg");
     // Words the author chose stay as written.
     expect(named?.textContent).toBe("终镜");
@@ -264,7 +269,7 @@ test("a failed artifact thumbnail keeps the original link", async () => {
   close();
 });
 
-test("a picture named by its file while loading reads as its path again when it cannot load", async () => {
+test("a picture that cannot load stays a link named by its file, the path in its tooltip", async () => {
   let fail!: () => void;
   const { host, close } = render(MarkdownBody, {
     ...labels,
@@ -273,13 +278,13 @@ test("a picture named by its file while loading reads as its path again when it 
   });
   try {
     const anchor = host.querySelector("a");
-    expect(anchor?.textContent).toBe("missing.png");
+    expect(anchor?.querySelector(".md-artifact-name .md-path-dir")?.textContent).toBe("work/shots/");
     expect(anchor?.getAttribute("title")).toBe("work/shots/missing.png");
     fail();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(anchor?.classList.contains("md-artifact-image")).toBe(false);
-    expect(anchor?.textContent).toBe("work/shots/missing.png");
-    expect(anchor?.hasAttribute("title")).toBe(false);
+    expect(anchor?.querySelector(".md-path-dir")?.textContent).toBe("work/shots/");
+    expect(anchor?.getAttribute("title")).toBe("work/shots/missing.png");
   } finally {
     close();
   }

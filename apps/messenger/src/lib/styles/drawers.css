@@ -69,7 +69,8 @@
   color: var(--ink);
   font-size: 13px;
   box-shadow: var(--shadow-xs);
-  transition: all 0.15s ease;
+  transition: 0.15s ease;
+  transition-property: var(--transition-props);
 }
 
 .sheet input[type="text"]:focus,
@@ -105,12 +106,13 @@
   font-weight: 600;
   color: var(--ink);
   box-shadow: var(--shadow-xs);
-  transition: all 0.15s ease;
+  transition: 0.15s ease;
+  transition-property: var(--transition-props);
 }
 
 .sheet .actions button:first-child:not(.deny) {
   background: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
   border-color: transparent;
 }
 
@@ -161,7 +163,7 @@
   background: var(--pane);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 3px rgba(18, 28, 32, 0.04);
   transition: border-color 0.15s ease;
 }
 
@@ -193,7 +195,7 @@
   font-size: 11px;
   font-weight: 700;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--chip);
   color: var(--ink-secondary);
   border: 1px solid var(--chip-line);

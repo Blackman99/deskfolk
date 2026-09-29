@@ -99,7 +99,7 @@
 				aria-label={t.common.back}
 				onclick={onClose}
 			>
-				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
 			<h2>{t.sidebar.addBot}</h2>
 			<button type="button" class="modal-close" title={t.common.close} onclick={onClose}>✕</button>

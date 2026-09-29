@@ -178,7 +178,8 @@
 		color: var(--ink);
 		cursor: pointer;
 		box-shadow: var(--shadow-xs);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.workspace-picker-path svg {

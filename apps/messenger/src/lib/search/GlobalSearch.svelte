@@ -113,7 +113,7 @@
 </script>
 
 {#snippet glyph(kind: SearchKind | 'search')}
-	<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		{#if kind === 'search'}
 			<circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4.5 4.5"></path>
 		{:else if kind === 'file'}
@@ -218,7 +218,7 @@
 	.search-head:focus-within { box-shadow: inset 0 -2px var(--accent-border); }
 	.search-clear, .search-cancel { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 36px; padding: 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
 	.search-clear:hover, .search-cancel:hover { background: var(--row-hover); color: var(--ink); }
-	kbd { font-family: var(--font); font-size: 11px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
+	kbd { font-family: var(--font); font-size: 11px; padding: 1px 4px; border: 1px solid var(--line); border-radius: var(--radius-xs); color: var(--muted); }
 	.search-categories { display: flex; gap: 4px; padding: 10px 14px; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid var(--line-subtle); }
 	.search-categories button { flex-shrink: 0; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--muted); padding: 5px 11px; font-size: 12px; cursor: pointer; }
 	.search-categories button:hover { background: var(--row-hover); color: var(--ink); }

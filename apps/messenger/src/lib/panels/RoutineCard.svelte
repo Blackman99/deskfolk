@@ -199,7 +199,7 @@
 	{#if routines.length === 0 && !(standalone && !onPhone())}
 		<div class="routine-empty-card">
 			<div class="routine-empty-icon" aria-hidden="true">
-				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<rect x="3" y="4" width="18" height="18" rx="2"></rect>
 					<line x1="16" y1="2" x2="16" y2="6"></line>
 					<line x1="8" y1="2" x2="8" y2="6"></line>
@@ -208,7 +208,7 @@
 			</div>
 			<p class="routine-empty">{t.routines.empty}</p>
 			<button type="button" class="btn-primary routine-empty-btn" disabled={disabled} onclick={() => open()}>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 				<span>{t.routines.add}</span>
 			</button>
 		</div>
@@ -228,7 +228,7 @@
 								{/if}
 							</span>
 							<span class="routine-copy-sub">
-								<svg class="routine-sub-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+								<svg class="routine-sub-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
 								<span>{routineRepeatLabel(row.schedule, t)}</span>
 							</span>
 						</span>
@@ -261,7 +261,7 @@
 		{@render inlineEditor()}
 	{:else if routines.length > 0}
 		<button type="button" class="routine-add" disabled={disabled} onclick={() => open()}>
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 			<span>{t.routines.add}</span>
 		</button>
 	{/if}
@@ -305,7 +305,7 @@
 	>
 		<div class="routine-page-head">
 			<button type="button" class="routine-page-back" aria-label={t.common.back} disabled={busy} onclick={close}>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
 			<div class="routine-page-titles">
 				<h3 tabindex="-1">{baseline ? t.routines.edit : t.routines.add}</h3>
@@ -514,7 +514,7 @@
 	.routine-copy { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 	.routine-copy-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
 	.routine-copy-main strong { min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.routine-badge-paused { flex-shrink: 0; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 999px; background: var(--sidebar-bg); border: 1px solid var(--line); color: var(--muted); line-height: 1.3; }
+	.routine-badge-paused { flex-shrink: 0; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: var(--radius-full); background: var(--sidebar-bg); border: 1px solid var(--line); color: var(--muted); line-height: 1.3; }
 	.routine-copy-sub { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
 	.routine-copy-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.routine-sub-icon { opacity: 0.7; flex-shrink: 0; }
@@ -545,28 +545,28 @@
 	.routine-form-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--pane); }
 	.routine-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 	.routine-card-title { font-size: 13px; font-weight: 650; color: var(--ink); margin: 0; }
-	.routine-card-hint { font-size: 11.5px; color: var(--muted); }
-	.routine-owner-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; color: var(--muted); background: var(--sidebar-bg); border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; }
+	.routine-card-hint { font-size: 12px; color: var(--muted); }
+	.routine-owner-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); background: var(--sidebar-bg); border: 1px solid var(--line); padding: 2px 8px; border-radius: var(--radius-full); }
 
 	fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 	.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
 	.routine-sublabel { font-size: 12px; font-weight: 600; color: var(--ink-secondary); margin: 0; }
 
-	.routine-seg { display: flex; padding: 3px; border-radius: 10px; background: var(--sidebar-bg); border: 1px solid var(--line); gap: 2px; }
+	.routine-seg { display: flex; padding: 3px; border-radius: var(--radius-md); background: var(--sidebar-bg); border: 1px solid var(--line); gap: 2px; }
 	/* The drawer's `.sheet label` spaces form labels apart; these labels are controls, so they take none of it. */
-	.routine-seg label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; margin: 0; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all 0.15s ease; }
-	.routine-seg label.is-on { background: var(--accent); color: white; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
+	.routine-seg label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; margin: 0; border-radius: var(--radius-md); font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; transition: 0.15s ease; transition-property: var(--transition-props); }
+	.routine-seg label.is-on { background: var(--accent); color: var(--on-accent); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
 	.routine-seg input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
 
 	.routine-weekdays-block { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line-subtle, var(--line)); }
 	.routine-weekdays-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 	.routine-quick-presets { display: flex; align-items: center; gap: 4px; }
-	.preset-btn { min-height: 26px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--sidebar-bg); font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.12s; }
+	.preset-btn { min-height: 26px; padding: 2px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--sidebar-bg); font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; transition: 0.12s; transition-property: var(--transition-props); }
 	.preset-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 
 	.routine-days { display: flex; gap: 6px; }
-	.routine-day { flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 999px; background: var(--pane); color: var(--ink); font-size: 14px; font-weight: 650; cursor: pointer; transition: all 0.15s ease; }
-	.routine-day.is-on { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25); }
+	.routine-day { flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--pane); color: var(--ink); font-size: 14px; font-weight: 650; cursor: pointer; transition: 0.15s ease; transition-property: var(--transition-props); }
+	.routine-day.is-on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 
 	.routine-time-block { padding-top: 10px; border-top: 1px solid var(--line-subtle, var(--line)); }
 	.routine-time-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -583,25 +583,25 @@
 
 	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
 	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
-	.switch-track { display: block; width: 44px; height: 24px; border-radius: 9999px; background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+	.switch-track { display: block; width: 44px; height: 24px; border-radius: var(--radius-full); background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 	.switch-toggle input:checked + .switch-track { background: var(--accent); }
 	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
 	.switch-toggle input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 	.switch-toggle.is-disabled { opacity: 0.55; cursor: default; }
 
-	.routine-notice-card { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--sidebar-bg); border: 1px solid var(--line-subtle, var(--line)); color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+	.routine-notice-card { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--sidebar-bg); border: 1px solid var(--line-subtle, var(--line)); color: var(--muted); font-size: 12px; line-height: 1.5; }
 	.routine-notice-card svg { flex-shrink: 0; margin-top: 1px; }
 	.routine-notice-card p { margin: 0; }
 
 	.routine-danger-card { padding: 4px 0; }
-	.routine-page-delete { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-md); background: rgba(239, 68, 68, 0.05); color: var(--danger-text, var(--danger, #ef4444)); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; }
-	.routine-page-delete:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.4); }
+	.routine-page-delete { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--danger) 5%, transparent); color: var(--danger-text, var(--danger, var(--danger))); font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.15s ease; transition-property: var(--transition-props); }
+	.routine-page-delete:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 
 	/* The inline editor's controls keep the 40px floor they had inside the old card. */
 	.routine-editor button, .routine-section .btn-secondary, .routine-section .btn-primary { min-height: 40px; }
-	.routine-section .btn-secondary, .routine-section .btn-primary, .routine-page .btn-primary { padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--btn-secondary-bg); font-size: 13px; font-weight: 600; transition: all 0.15s ease; }
-	.routine-section .btn-primary, .routine-page .btn-primary { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2); }
+	.routine-section .btn-secondary, .routine-section .btn-primary, .routine-page .btn-primary { padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--btn-secondary-bg); font-size: 13px; font-weight: 600; transition: 0.15s ease; transition-property: var(--transition-props); }
+	.routine-section .btn-primary, .routine-page .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 20%, transparent); }
 	.routine-section .btn-primary:hover:not(:disabled), .routine-page .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 	.routine-section button:disabled, .routine-page button:disabled { opacity: 0.55; cursor: default; }
 	.routine-section .btn-secondary:not(:disabled):hover { border-color: var(--accent); }
@@ -619,7 +619,7 @@
 		/* The section header carries the add button and the editor page keeps the notes, so the rows start at the top. */
 		.routine-notes, .routine-add, .routine-remove { display: none; }
 		.routine-section { gap: 10px; }
-		.routine-mobile-zone-hint { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--radius-md); background: var(--pane); border: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
+		.routine-mobile-zone-hint { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--radius-md); background: var(--pane); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 		.routine-row { padding: 12px 14px; }
 		.routine-row:hover { border-color: var(--line); }
 		.routine-row.is-open { border-color: var(--accent); }
@@ -691,7 +691,7 @@
 		}
 		.routine-page-body .routine-form-card {
 			padding: 14px 16px;
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			box-shadow: var(--shadow-xs);
 		}
 		.routine-page-foot {

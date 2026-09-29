@@ -37,7 +37,7 @@
 		max-width: 280px;
 		padding: 2px 8px;
 		overflow: hidden;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		font-size: 12px;
 		color: var(--ink);
 		background: var(--pane);

@@ -202,7 +202,7 @@
 		border: 2px solid var(--line);
 		overflow: hidden;
 		flex-shrink: 0;
-		background: var(--chip, #f1f5f9);
+		background: var(--chip);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -238,17 +238,18 @@
 		padding: 4px 10px;
 		font-size: 12px;
 		font-weight: 600;
-		border-radius: var(--radius-sm, 6px);
+		border-radius: var(--radius-sm);
 		border: 1px solid var(--line);
 		background: var(--btn-secondary-bg, var(--pane));
 		color: var(--ink);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-avatar-action:hover:not(:disabled) {
 		background: var(--btn-secondary-hover, var(--line-subtle));
-		border-color: var(--line-hover, #cbd5e1);
+		border-color: var(--line-hover);
 	}
 
 	.btn-avatar-action:disabled {
@@ -259,12 +260,13 @@
 	.variant-chip {
 		padding: 2px 7px;
 		font-size: 11px;
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		border: 1px solid var(--line);
 		background: transparent;
 		color: var(--muted);
 		cursor: pointer;
-		transition: all 0.12s ease;
+		transition: 0.12s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.variant-chip:hover {

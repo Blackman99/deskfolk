@@ -525,7 +525,7 @@
 			aria-label={t.detail.backToSections}
 			onclick={() => backFromDetail()}
 		>
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 		</button>
 		<div class="bot-detail-heading">
 			<div class="bot-detail-title-row">
@@ -546,7 +546,7 @@
 				class="bot-detail-action"
 				onclick={openAddSkill}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 				<span>{t.sidebar.skillAdd}</span>
 			</button>
 		{:else if activeTab === 'routines'}
@@ -556,7 +556,7 @@
 				disabled={!routineCard?.canAdd()}
 				onclick={() => routineCard?.addRoutine()}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 				<span>{t.routines.add}</span>
 			</button>
 		{/if}
@@ -688,7 +688,7 @@
 			title={t.sidebar.skillAdd}
 			aria-label={t.sidebar.skillAdd}
 		>
-			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<line x1="12" y1="5" x2="12" y2="19"></line>
 				<line x1="5" y1="12" x2="19" y2="12"></line>
 			</svg>
@@ -702,13 +702,13 @@
 		{#if profileSkills.length === 0}
 			<div class="skill-empty-card">
 				<div class="skill-empty-icon" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
 					</svg>
 				</div>
 				<p class="skill-empty-text">{t.sidebar.skillsEmpty}</p>
 				<button type="button" class="btn-primary skill-empty-add-btn" onclick={openAddSkill}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<line x1="12" y1="5" x2="12" y2="19"></line>
 						<line x1="5" y1="12" x2="19" y2="12"></line>
 					</svg>
@@ -927,7 +927,7 @@
 					disabled={skillBusy}
 					onclick={closeSkillEditor}
 				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<div class="modal-head-titles">
 					<h2 id="skill-modal-title">
@@ -1238,7 +1238,7 @@
 		justify-content: center;
 		width: 14px;
 		height: 14px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--danger);
 		color: #ffffff;
 		font-size: 10px;
@@ -1253,10 +1253,10 @@
 	}
 
 	.bot-tab-btn .tab-count {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		padding: 0 5px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--ink-secondary);
 		line-height: 15px;
@@ -1272,14 +1272,15 @@
 		align-items: center;
 		gap: 4px;
 		padding: 4px 10px;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--ink-secondary);
 		background: var(--btn-secondary-bg);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		line-height: 1;
 	}
 
@@ -1309,7 +1310,7 @@
 
 	.skill-empty-text {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--muted);
 	}
 
@@ -1332,13 +1333,14 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--pane);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.skill-row:hover,
 	.skill-row:focus-within {
 		border-color: var(--accent-border);
-		box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+		box-shadow: 0 1px 4px rgba(18, 28, 32, 0.04);
 	}
 
 	.skill-row.is-disabled {
@@ -1372,10 +1374,11 @@
 		width: 28px;
 		height: 28px;
 		border-radius: var(--radius-sm);
-		background: var(--accent-tint, rgba(37, 99, 235, 0.08));
+		background: var(--accent-tint);
 		color: var(--accent);
 		flex-shrink: 0;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.skill-row-icon.is-disabled {
@@ -1413,10 +1416,10 @@
 	}
 
 	.skill-uses-badge {
-		font-size: 9.5px;
+		font-size: 10px;
 		font-weight: 700;
 		padding: 1px 5px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--line-subtle);
 		color: var(--ink-secondary);
 		border: 1px solid var(--line);
@@ -1425,7 +1428,7 @@
 	}
 
 	.skill-desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1449,7 +1452,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--ink-secondary);
 		cursor: pointer;
 		user-select: none;
@@ -1468,7 +1471,8 @@
 		background: var(--btn-secondary-bg);
 		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		padding: 0;
 	}
 
@@ -1493,7 +1497,7 @@
 		font-size: 11px;
 		font-weight: 500;
 		padding: 1px 6px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--sidebar-bg);
 		border: 1px solid var(--line);
 		color: var(--muted);
@@ -1543,7 +1547,7 @@
 	}
 
 	.skill-card-header .field-label {
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--ink);
 		margin: 0;
@@ -1553,17 +1557,17 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		color: var(--muted);
 		background: var(--sidebar-bg);
 		border: 1px solid var(--line);
 		padding: 2px 8px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 	}
 
 	.skill-card-hint {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -1592,13 +1596,13 @@
 	}
 
 	.skill-switch-title {
-		font-size: 13.5px;
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--ink);
 	}
 
 	.skill-switch-desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -1613,19 +1617,20 @@
 		gap: 8px;
 		width: 100%;
 		min-height: 44px;
-		border: 1px solid rgba(239, 68, 68, 0.25);
+		border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
 		border-radius: var(--radius-md);
-		background: rgba(239, 68, 68, 0.05);
-		color: var(--danger-text, var(--danger, #ef4444));
+		background: color-mix(in srgb, var(--danger) 5%, transparent);
+		color: var(--danger-text, var(--danger, var(--danger)));
 		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.skill-page-delete:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.1);
-		border-color: rgba(239, 68, 68, 0.4);
+		background: color-mix(in srgb, var(--danger) 10%, transparent);
+		border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 	}
 
 	.required-star {
@@ -1635,7 +1640,7 @@
 
 	.skill-body-textarea {
 		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.5;
 		min-height: 140px;
 		resize: vertical;
@@ -1680,9 +1685,9 @@
 
 	.skill-modal-foot-right .btn-primary {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: transparent;
-		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
+		box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 20%, transparent);
 	}
 
 	.skill-modal-foot-right .btn-primary:hover:not(:disabled) {
@@ -1691,7 +1696,7 @@
 
 	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
 	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
-	.switch-track { display: block; width: 44px; height: 24px; border-radius: 9999px; background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+	.switch-track { display: block; width: 44px; height: 24px; border-radius: var(--radius-full); background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 	.switch-toggle input:checked + .switch-track { background: var(--accent); }
 	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
@@ -1905,7 +1910,7 @@
 			border-radius: var(--radius-md);
 			background: transparent;
 			color: var(--accent);
-			font-size: 14.5px;
+			font-size: 15px;
 			font-weight: 600;
 			cursor: pointer;
 		}
@@ -1954,7 +1959,7 @@
 		.skill-row {
 			padding: 12px 14px;
 			border: 1px solid var(--line);
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			background: var(--pane);
 			box-shadow: var(--shadow-xs);
 		}
@@ -1962,7 +1967,7 @@
 		.skill-row-icon {
 			width: 36px;
 			height: 36px;
-			border-radius: 10px;
+			border-radius: var(--radius-md);
 		}
 
 		.skill-row-icon svg {
@@ -2000,7 +2005,7 @@
 			justify-content: center;
 			gap: 12px;
 			padding: 36px 16px;
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			background: var(--pane);
 			border: 1px dashed var(--line);
 			text-align: center;
@@ -2059,7 +2064,7 @@
 
 		.skill-form-card {
 			padding: 14px 16px;
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			box-shadow: var(--shadow-xs);
 		}
 

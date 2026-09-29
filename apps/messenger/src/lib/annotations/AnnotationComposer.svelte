@@ -64,7 +64,7 @@
 		background: var(--input-bg);
 		color: var(--ink);
 		font: inherit;
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 	.annot-composer-input:focus {
 		outline: none;
@@ -79,7 +79,7 @@
 		border: 1px solid transparent;
 		border-radius: var(--radius-sm);
 		background: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 		font-size: 12px;
 		font-weight: 600;
 		cursor: pointer;

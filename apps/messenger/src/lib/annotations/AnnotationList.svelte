@@ -65,7 +65,7 @@
 		<h3 class="annot-list-title text-13 font-semibold m-0">{t.stream.annotationsCount(annotations.length)}</h3>
 		{#if onClose}
 			<button type="button" class="annot-list-close" title={t.common.close} aria-label={t.common.close} onclick={onClose}>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<line x1="18" y1="6" x2="6" y2="18"></line>
 					<line x1="6" y1="6" x2="18" y2="18"></line>
 				</svg>
@@ -93,7 +93,7 @@
 		{#if shown.length === 0}
 			<li class="annot-empty flex flex-col items-center justify-center text-center py-16 px-8 gap-4">
 				<div class="annot-empty-icon">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
 					</svg>
 				</div>
@@ -158,7 +158,7 @@
 				{/if}
 				{#if stale}
 					<div class="annot-stale-banner flex items-center gap-4 text-10">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
 							<line x1="12" y1="9" x2="12" y2="13"></line>
 							<line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -193,14 +193,14 @@
 						</button>
 					{:else if row.status === 'open'}
 						<button type="button" class="artifact-tool-btn annot-btn annot-btn-resolve" onclick={() => onToggleStatus(row, 'resolved')} disabled={busy}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<polyline points="20 6 9 17 4 12"></polyline>
 							</svg>
 							<span>{t.stream.annotationResolve}</span>
 						</button>
 					{:else}
 						<button type="button" class="artifact-tool-btn annot-btn annot-btn-reopen" onclick={() => onToggleStatus(row, 'open')} disabled={busy}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
 								<path d="M21 3v5h-5"></path>
 								<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
@@ -241,7 +241,8 @@
 		color: var(--muted);
 		cursor: pointer;
 		border-radius: var(--radius-sm);
-		transition: all 0.12s ease;
+		transition: 0.12s ease;
+		transition-property: var(--transition-props);
 	}
 	.annot-list-close:hover {
 		background: var(--line-subtle);
@@ -268,7 +269,8 @@
 		cursor: pointer;
 		font-weight: 500;
 		text-align: center;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		white-space: nowrap;
 	}
 	.annot-filter:hover:not(.is-on) {
@@ -345,7 +347,7 @@
 		min-width: 18px;
 		height: 18px;
 		padding: 0 4px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
@@ -409,7 +411,7 @@
 		flex-shrink: 0;
 		padding: 1px 7px;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		color: var(--muted);
 		line-height: 16px;
 		font-weight: 500;
@@ -472,7 +474,8 @@
 		font-size: 11px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.12s ease;
+		transition: 0.12s ease;
+		transition-property: var(--transition-props);
 		white-space: nowrap;
 	}
 	.annot-btn:hover:not(:disabled) {

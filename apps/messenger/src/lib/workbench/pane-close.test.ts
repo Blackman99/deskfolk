@@ -100,8 +100,9 @@ test('closing the last populated pane leaves a usable empty pane', () => {
     expect(tiledLeaves(state.layout.root)).toHaveLength(1);
     expect(tiledLeaves(state.layout.root)[0]!.tabs).toEqual([]);
     expect(host.querySelector('.wb-empty')).not.toBeNull();
-    click(host.querySelector('.wb-pane-close'));
-    expect(tiledLeaves(state.layout.root)).toHaveLength(1);
+    // Closing it would only empty it again, so there is no × offering to, nor a bare strip.
+    expect(host.querySelector('.wb-pane-close')).toBeNull();
+    expect(host.querySelector('.wb-strip.is-bare')).not.toBeNull();
   } finally { close(); }
 });
 

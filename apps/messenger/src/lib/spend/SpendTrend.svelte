@@ -443,7 +443,7 @@
 		width: 100%;
 		max-width: 32px;
 		height: 100%;
-		border-radius: 3px 3px 0 0;
+		border-radius: var(--radius-xs) var(--radius-xs) 0 0;
 		overflow: hidden;
 		transition: max-width 0.15s ease;
 	}
@@ -479,7 +479,7 @@
 		width: 6px;
 		height: 6px;
 		transform: translateX(-50%);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 	}
 
 	.missing {
@@ -549,7 +549,7 @@
 	}
 
 	.readout-date {
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 	}
 

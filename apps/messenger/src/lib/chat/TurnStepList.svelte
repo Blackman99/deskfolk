@@ -86,7 +86,7 @@
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
-		box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+		box-shadow: 0 2px 6px rgba(18, 28, 32, 0.06);
 		font-size: 12px;
 		color: var(--ink);
 		animation: stepsIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
@@ -97,7 +97,7 @@
 	}
 
 	.turn-steps-head {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
 		margin-bottom: 6px;
@@ -163,7 +163,7 @@
 	.turn-step-meta {
 		display: inline-flex;
 		gap: 6px;
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
@@ -192,7 +192,7 @@
 		margin: 3px 0 2px;
 		padding: 6px 8px;
 		overflow: auto;
-		border-radius: var(--radius-sm, 6px);
+		border-radius: var(--radius-sm);
 		/* The same as a command's output under its message (CommandActivity.svelte). */
 		background: var(--surface-sunken, rgba(128, 128, 128, 0.1));
 		color: var(--muted);

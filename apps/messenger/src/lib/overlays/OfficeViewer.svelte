@@ -251,7 +251,7 @@
 				aria-pressed={enlarged}
 				onclick={() => enlarged ? exitFull() : (enlarged = true)}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					{#if enlarged}<path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"></path>
 					{:else}<path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"></path>{/if}
 				</svg>

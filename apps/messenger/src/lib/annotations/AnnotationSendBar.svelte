@@ -89,7 +89,7 @@
 		background: var(--input-bg);
 		color: var(--ink);
 		font: inherit;
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 	.annot-send-input:focus {
 		outline: none;
@@ -101,9 +101,9 @@
 		border: 1px solid transparent;
 		border-radius: var(--radius-md);
 		background: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 		font-weight: 600;
-		font-size: 12.5px;
+		font-size: 13px;
 		cursor: pointer;
 		white-space: nowrap;
 	}

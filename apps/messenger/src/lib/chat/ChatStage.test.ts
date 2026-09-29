@@ -677,7 +677,9 @@ test("a picture a Bot names by its path is a thumbnail in the text, and it enlar
     const chip = host.querySelector('[data-message-id="msg-named"] a.md-artifact-image');
     expect(chip?.getAttribute("data-artifact-image")).toBe("ready");
     expect(chip?.querySelector("img.md-artifact-thumb")).not.toBeNull();
-    expect(chip?.textContent).toBe("pair_c09.jpg");
+    // Named by the file: the folders stay in the text for copy and anchors, out of sight.
+    expect(chip?.querySelector(".md-path-dir")?.textContent).toBe("work/preview_v9/");
+    expect(chip?.querySelector("img")?.getAttribute("alt")).toBe("pair_c09.jpg");
     // The small copy, queued behind whatever is opened on purpose — as an attachment's chip is.
     expect(asked[0]).toEqual({ path: "work/preview_v9/pair_c09.jpg", size: "thumb", background: true });
     click(chip);

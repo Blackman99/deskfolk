@@ -32,6 +32,7 @@ test("all loaded messages remain indexed beyond the mounting window", () => {
 
 test("previews fold whitespace and keep emoji intact", () => {
   expect(indexPreview("  a\n b ")).toBe("a b");
+  expect(indexPreview("### 交付成果概览\n1. **短片文学剧本**：见 `work/a.md`")).toBe("交付成果概览 短片文学剧本：见 work/a.md");
   expect(indexPreview("😀😀😀", 2)).toBe("😀😀…");
 });
 

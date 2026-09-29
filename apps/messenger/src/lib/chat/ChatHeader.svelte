@@ -122,19 +122,19 @@
 				aria-label={t.sidebar.backToSessions}
 				onclick={() => (runtime.selectedId = null)}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
 			{#if fileDrop}
 				<div class="top-file-identity">
 					<span class="top-avatar file-drop-mark" aria-hidden="true">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 							<polyline points="14 2 14 8 20 8"></polyline>
 						</svg>
 					</span>
 					<span class="top-titles flex flex-col min-w-0 gap-1">
 						<span class="top-title-text" role="heading" aria-level="1">{t.sidebar.fileDrop}</span>
-						<span class="top-subline flex items-center gap-3 text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
+						<span class="top-subline flex items-center gap-3 text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
 							<span class="meta">{t.sidebar.fileDropHint}</span>
 						</span>
 					</span>
@@ -171,12 +171,14 @@
 				{:else}
 					<span class="top-avatar is-composite">
 						<SessionAvatar session={selected} bots={botsById} size="top" botStatus={botStatusOf} />
-						<span class="avatar-status-dot" class:is-busy={thinkingHere}></span>
+						{#if thinkingHere}
+							<span class="avatar-status-dot is-busy"></span>
+						{/if}
 					</span>
 				{/if}
 				<span class="top-titles flex flex-col min-w-0 gap-1">
 					<span class="top-title-text" role="heading" aria-level="1">{titleOf(selected)}{archivedSuffix(selected)}</span>
-					<span class="top-subline flex items-center gap-3 text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
+					<span class="top-subline flex items-center gap-3 text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
 						{#if selectedKind === 'you-bot' && selectedPeerBot}
 							<span class="status-indicator inline-flex items-center gap-2 text-muted font-medium">
 								<span class="status-dot" class:is-busy={thinkingHere}></span>
@@ -338,14 +340,15 @@
 		align-items: center;
 		gap: 6px;
 		padding: 4px 12px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
 		color: var(--warn-text);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.setup-guide-pill:hover {
@@ -445,7 +448,7 @@
 	.top-model-pill {
 		font-size: 10px;
 		padding: 1px 6px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--chip);
 		border: 1px solid var(--line);
 		color: var(--muted);
@@ -453,7 +456,7 @@
 
 	:global(.top) .meta {
 		color: var(--muted);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		white-space: nowrap;
 	}
@@ -471,7 +474,8 @@
 		align-items: center;
 		gap: 5px;
 		white-space: nowrap;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-top-action:hover {
@@ -496,7 +500,8 @@
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-mobile-back:hover {
@@ -604,7 +609,7 @@
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
 		border-bottom: 1px solid var(--line);
-		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+		box-shadow: 0 1px 3px rgba(18, 28, 32, 0.03);
 		z-index: 2;
 	}
 
@@ -764,7 +769,7 @@
 	}
 
 	.top .mono {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--ink-secondary);
 		font-weight: 500;
 	}

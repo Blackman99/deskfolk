@@ -508,12 +508,12 @@
 			{#if saving}
 				<span class="msg-image-save-ring" aria-hidden="true"></span>
 			{:else}
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
 			{/if}
 		</button>
 	{/if}
 	<button type="button" class="msg-image-close" aria-label={t.common.close} onclick={requestClose}>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
 	</button>
 	{#if offerOriginal !== null && shown}
 		<button
@@ -554,7 +554,7 @@
 		min-width: 0;
 		min-height: 0;
 		max-width: none;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		background: var(--pane);
 		/* Text and the bar appear once the box has grown past the thumbnail. */
 		container-type: size;
@@ -567,7 +567,7 @@
 	}
 
 	.msg-image-lightbox.is-shown .msg-image-frame {
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 	}
 
 	.msg-image-frame.is-centered {
@@ -616,7 +616,7 @@
 		height: 32px;
 		padding: 0 14px;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--btn-secondary-bg);
 		color: var(--ink);
 		font-size: 12px;
@@ -705,7 +705,7 @@
 	.msg-image-progress-bytes {
 		margin-left: auto;
 		font-family: var(--mono);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 400;
 		color: var(--ink-secondary);
 		font-variant-numeric: tabular-nums;
@@ -723,7 +723,7 @@
 		gap: 8px;
 		min-width: 168px;
 		padding: 14px 18px;
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		background: var(--pane);
 		box-shadow: var(--shadow-lg);
 		color: var(--ink);
@@ -790,7 +790,7 @@
 		display: none;
 		width: min(160px, 78%);
 		height: 4px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--line-hover);
 		overflow: hidden;
 	}
@@ -835,7 +835,7 @@
 
 		.msg-image-loading-bytes {
 			font-family: var(--mono);
-			font-size: 11.5px;
+			font-size: 12px;
 			color: var(--ink-secondary);
 		}
 
@@ -870,7 +870,7 @@
 		align-items: center;
 		justify-content: center;
 		border: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--btn-secondary-bg);
 		color: var(--ink);
 		cursor: pointer;
@@ -894,7 +894,7 @@
 		align-items: center;
 		justify-content: center;
 		border: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--btn-secondary-bg);
 		color: var(--ink);
 		cursor: pointer;
@@ -913,7 +913,7 @@
 	/* The bytes are here and the share sheet wants the next tap: this is where it goes. */
 	.msg-image-save.is-ready {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.msg-image-save-ring {

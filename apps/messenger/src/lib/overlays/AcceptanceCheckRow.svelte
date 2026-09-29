@@ -169,15 +169,16 @@
 		gap: 4px;
 		flex: none;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--muted);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		line-height: 1;
 		padding: 3px 8px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.check-pill:hover {
@@ -289,7 +290,8 @@
 		font-weight: 500;
 		padding: 4px 9px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.check-actions button:hover:not(:disabled) {

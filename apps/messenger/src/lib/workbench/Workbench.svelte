@@ -161,6 +161,11 @@
 			layout.floating.find((pane) => pane.leaf.id === layout.focus.leafId)?.leaf ??
 			tiledLeaves(layout.root)[0]
 	);
+	/**
+	 * Closing the only tiled pane just empties it again, so that pane offers no × to do it with —
+	 * an empty window's strip used to hold nothing else.
+	 */
+	const closable = (leafId: string) => layout.root.type === 'branch' || leafId !== layout.root.id;
 
 	function measure(): void {
 		const element = host;
@@ -657,7 +662,7 @@
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 				tabClosing={closingOf}
-				onClosePane={closePane}
+				onClosePane={soloLeaf && closable(soloLeaf.id) ? closePane : undefined}
 				{onMenu}
 				{emptyActions}
 				{menuActions}
@@ -677,7 +682,7 @@
 			onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 			tabClosing={closingOf}
-			onClosePane={closePane}
+			onClosePane={closable(layout.root.id) ? closePane : undefined}
 			onSashPointerDown={startSash}
 			{draggingSash}
 			{draggedTab}
@@ -859,7 +864,7 @@
 		background: var(--accent-tint);
 		outline: 2px solid var(--accent);
 		outline-offset: -2px;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		pointer-events: none;
 	}
 	/* The gap a tab will drop into: a caret between two tabs, not a box around the strip. */
@@ -873,7 +878,7 @@
 		left: 0;
 		top: 0;
 		padding: 2px 8px;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		font-size: 12px;
 		color: var(--ink);
 		background: var(--pane);

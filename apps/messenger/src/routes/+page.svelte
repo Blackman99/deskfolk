@@ -354,16 +354,16 @@ const runtime = new MessengerRuntime();
 		z-index: 80;
 		background: var(--pane);
 		border: 1px solid var(--line);
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		padding: 12px 16px;
-		box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+		box-shadow: 0 8px 24px rgba(18, 28, 32, 0.16);
 		max-width: min(420px, calc(100% - 24px));
 	}
 	.disconnected-actions button {
 		min-height: 44px;
 		padding: 0 12px;
 		border: 1px solid var(--line);
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		background: var(--pane);
 		font-weight: 600;
 	}

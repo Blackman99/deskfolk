@@ -223,7 +223,7 @@
 				title={t.common.back}
 				onclick={() => runtime.closeRoutines()}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<polyline points="15 18 9 12 15 6"></polyline>
 				</svg>
 				<span>{t.common.back}</span>
@@ -262,7 +262,7 @@
 		<div class="calendar-info-banner">
 			<div class="info-banner-header">
 				<span class="info-banner-badge">
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<circle cx="12" cy="12" r="10"></circle>
 						<line x1="12" y1="16" x2="12" y2="12"></line>
 						<line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -318,7 +318,7 @@
 					</svg>
 					<span>{t.calendar.filter}</span>
 					<span class="roster-filter-count">{filterSummary}</span>
-					<svg class="roster-filter-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg class="roster-filter-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<polyline points="6 9 12 15 18 9"></polyline>
 					</svg>
 				</button>
@@ -671,7 +671,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		border: 1px solid var(--line);
 		font-size: 11px;
@@ -699,7 +699,8 @@
 		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.info-toggle-btn:hover {
@@ -840,7 +841,7 @@
 		border-radius: var(--radius-md);
 		background: var(--btn-secondary-bg);
 		color: var(--ink);
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 550;
 		cursor: pointer;
 	}
@@ -927,7 +928,7 @@
 
 	.roster-filter-empty {
 		padding: 10px 12px;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--muted);
 		text-align: center;
 	}
@@ -964,9 +965,9 @@
 		height: 15px;
 		flex-shrink: 0;
 		border: 1px solid var(--line-hover);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--input-bg);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.roster-filter-option.is-selected .roster-filter-box {
@@ -1009,11 +1010,12 @@
 		border-radius: var(--radius-sm);
 		background: transparent;
 		color: var(--accent);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 550;
 		cursor: pointer;
 		flex-shrink: 0;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.filter-reset-btn:hover {
@@ -1028,7 +1030,7 @@
 
 	.calendar-empty {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--muted);
 	}
 
@@ -1041,7 +1043,7 @@
 		height: 20px;
 		overflow: hidden;
 		border-radius: 50%;
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 650;
 		flex: 0 0 auto;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -1056,7 +1058,7 @@
 	.bot-face.is-event {
 		width: 16px;
 		height: 16px;
-		font-size: 9px;
+		font-size: 10px;
 	}
 
 	.bot-face.is-detail {
@@ -1215,7 +1217,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 650;
 	}
 
@@ -1247,7 +1249,7 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		color: var(--ink);
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 		padding: 5px 12px;
 		transition: background 0.12s ease, border-color 0.12s ease;
@@ -1287,7 +1289,8 @@
 		font-weight: 500;
 		color: var(--muted);
 		background: transparent;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.calendar-stage :global(.s5c-view-switch .s5c-btn.s5c-active) {
@@ -1299,7 +1302,7 @@
 
 	.calendar-stage :global(.s5c-daynum.s5c-is-today) {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		font-weight: 700;
 		box-shadow: 0 2px 6px var(--accent-glow);
 	}
@@ -1353,10 +1356,10 @@
 	}
 
 	.event-paused-badge {
-		font-size: 9px;
+		font-size: 10px;
 		font-weight: 600;
 		padding: 1px 4px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
 		color: var(--warn-text);
@@ -1365,7 +1368,7 @@
 	}
 
 	.event-title {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 550;
 		line-height: 1.25;
 		overflow: hidden;
@@ -1498,8 +1501,8 @@
 		align-items: center;
 		gap: 5px;
 		padding: 3px 9px;
-		border-radius: 9999px;
-		font-size: 11.5px;
+		border-radius: var(--radius-full);
+		font-size: 12px;
 		font-weight: 550;
 		background: var(--line-subtle);
 		border: 1px solid var(--line);
@@ -1552,7 +1555,7 @@
 	}
 
 	.detail-section-label {
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
 		text-transform: uppercase;

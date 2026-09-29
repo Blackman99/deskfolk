@@ -24,7 +24,7 @@
 			data-testid="build-update-dismiss"
 			onclick={() => updates.dismiss()}
 		>
-			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<path d="m3.5 3.5 7 7M10.5 3.5l-7 7" />
 			</svg>
 		</button>
@@ -47,7 +47,7 @@
 		gap: 10px;
 		padding: 6px 6px 6px 14px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--pane);
 		color: var(--ink);
 		box-shadow: var(--shadow-lg);
@@ -86,10 +86,10 @@
 		min-height: 30px;
 		padding: 0 14px;
 		border: 0;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
-		color: #fff;
-		font: 600 12.5px/1 var(--font);
+		color: var(--on-accent);
+		font: 600 13px/1 var(--font);
 		cursor: pointer;
 	}
 

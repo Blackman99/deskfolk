@@ -197,7 +197,6 @@ const zh = {
   sidebar: {
     roster: "名册",
     pinned: "置顶",
-    pinnedEmpty: "暂无置顶会话",
     pin: "置顶",
     unpin: "取消置顶",
     expand: "展开",
@@ -372,7 +371,6 @@ const zh = {
   settings: {
     title: "设置",
     tabGeneral: "通用",
-    tabPreferences: "基础偏好",
     tabNotifications: "通知",
     tabRemote: "远程控制",
     tabModels: "模型服务",
@@ -918,6 +916,10 @@ const zh = {
     idle: "没有进行中的轮。",
     fork: "另开一轮",
     send: "发送",
+    /** The empty input in a group: what goes here, and that @ calls on one Bot. */
+    groupPrompt: "发消息，@ 可点名某个 Bot",
+    /** The empty input anywhere without a better prompt. */
+    messagePrompt: "发消息…",
     /** The send button while the message is on its way; remotely that can take a while. */
     sending: "发送中…",
     /** Beside a staged file's size while it uploads. */
@@ -1568,7 +1570,6 @@ const en: CopyShape<typeof zh> = {
   sidebar: {
     roster: "Roster",
     pinned: "Pinned",
-    pinnedEmpty: "No pinned chats",
     pin: "Pin",
     unpin: "Unpin",
     expand: "Expand",
@@ -1743,7 +1744,6 @@ const en: CopyShape<typeof zh> = {
   settings: {
     title: "Settings",
     tabGeneral: "General",
-    tabPreferences: "Preferences",
     tabNotifications: "Notifications",
     tabRemote: "Remote access",
     tabModels: "Models",
@@ -2289,6 +2289,8 @@ const en: CopyShape<typeof zh> = {
     idle: "No live turn.",
     fork: "Fork a turn",
     send: "Send",
+    groupPrompt: "Message the group, @ to call on a Bot",
+    messagePrompt: "Message…",
     sending: "Sending…",
     uploaded: (percent: number) => `${percent}% sent`,
     stop: "Stop",

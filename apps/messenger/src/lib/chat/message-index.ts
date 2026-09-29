@@ -1,4 +1,5 @@
 import { isHiddenTranscriptKind, type Message } from "@real-bot/protocol";
+import { plainPreview } from "../sidebar/preview-text.ts";
 import type { TranscriptItem } from "./transcript.ts";
 
 export type IndexMark = {
@@ -12,8 +13,9 @@ export type IndexMark = {
 
 export const INDEX_MIN_MARKS = 2;
 
+/** One plain line, as the sidebar shows it: markdown taken off and a pasted key masked. */
 export function indexPreview(body: string, limit = 180): string {
-  const text = body.replace(/\s+/g, " ").trim();
+  const text = plainPreview(body, Number.POSITIVE_INFINITY);
   const characters = Array.from(text);
   return characters.length <= limit ? text : `${characters.slice(0, limit).join("")}…`;
 }

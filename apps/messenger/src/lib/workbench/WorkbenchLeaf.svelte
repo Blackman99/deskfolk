@@ -280,6 +280,7 @@
 	<div
 		class="wb-strip"
 		class:is-menu-open={newTabOpen}
+		class:is-bare={leaf.tabs.length === 0 && !onMenu && !onClosePane}
 		role="tablist"
 		aria-orientation="horizontal"
 		aria-label={t.pane.tabsIn.replace('{name}', t.pane.title)}
@@ -465,7 +466,7 @@
 			<div class="wb-empty">
 				<div class="wb-empty-head">
 					<span class="wb-empty-glyph" aria-hidden="true">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"></rect>
 							<line x1="12" y1="8.5" x2="12" y2="15.5"></line>
 							<line x1="8.5" y1="12" x2="15.5" y2="12"></line>
@@ -582,6 +583,10 @@
 	.wb-strip > :last-child {
 		margin-right: 4px;
 	}
+	/* No tab and nothing to do with the pane: a bar holding nothing reads as something broken. */
+	.wb-strip.is-bare {
+		display: none;
+	}
 	/*
 	 * The strip is a stacking context of its own, so the menu's z-index only counts inside it, and
 	 * the pane body beneath shares the layer the strip sits in: the conversation's header (z 2), a
@@ -619,7 +624,7 @@
 		flex: 0 0 auto;
 		height: 28px;
 		padding: 0 2px 0 8px;
-		border-radius: 8px 8px 0 0;
+		border-radius: var(--radius-md) var(--radius-md) 0 0;
 	}
 	/* A hairline between neighbours, the way a browser separates tabs that share a colour. It
 	   goes away next to the active tab and under the pointer, where the shape already says it. */
@@ -799,7 +804,7 @@
 		max-width: calc(100vw - 16px);
 		max-height: min(420px, calc(100vh - 48px));
 		padding: 6px;
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		background: var(--pane);
 		color: var(--ink);
 		box-shadow:
@@ -816,7 +821,7 @@
 		margin: 0 0 4px;
 		padding: 0 8px;
 		height: 30px;
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		background: var(--bg);
 		color: var(--muted);
 		box-shadow: inset 0 0 0 1px var(--line);
@@ -876,7 +881,7 @@
 		width: 100%;
 		min-height: 32px;
 		padding: 5px 8px;
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		background: transparent;
 		color: var(--ink);
 		text-align: left;
@@ -901,7 +906,7 @@
 		height: 22px;
 		display: grid;
 		place-items: center;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		background: var(--accent-tint);
 		color: var(--accent);
 	}
@@ -919,7 +924,7 @@
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.3;
 	}
 	.wb-new-scroll :global(.wb-menu-meta) {
@@ -964,7 +969,7 @@
 		width: 36px;
 		height: 36px;
 		margin-bottom: 6px;
-		border-radius: 10px;
+		border-radius: var(--radius-md);
 		background: var(--accent-tint);
 		color: var(--accent);
 	}
@@ -992,7 +997,7 @@
 		max-height: 360px;
 		min-height: 0;
 		padding: 6px;
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		background: var(--pane);
 		color: var(--ink);
 		text-align: left;

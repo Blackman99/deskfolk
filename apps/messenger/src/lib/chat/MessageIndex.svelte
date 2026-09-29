@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { USER_MEMBER } from '@real-bot/protocol';
 	import { formatDateDivider, formatMessageTime } from './chat-view.ts';
 	import type { IndexMark } from './message-index.ts';
 
@@ -104,6 +105,7 @@
 				aria-current={mark.id === activeId ? 'location' : undefined}
 				class:is-active={mark.id === activeId}
 				class:is-preview={mark.id === previewId}
+				class:is-you={mark.author === USER_MEMBER}
 				style:--proximity={previewIndex < 0 ? 0 : Math.max(0, 3 - Math.abs(index - previewIndex))}
 				onpointerenter={(event) => show(mark, event.currentTarget)}
 				onpointerleave={leave}
@@ -131,6 +133,11 @@
 </nav>
 
 <style>
+	/*
+	 * A strip of ticks, one per message: yours in the accent, a Bot's in grey, so the rhythm of who
+	 * spoke reads at a glance. Under the pointer the strip lifts onto a surface of its own, which
+	 * is what says it is something to use rather than decoration.
+	 */
 	.message-index {
 		position: absolute;
 		z-index: 6;
@@ -141,7 +148,10 @@
 		max-height: min(360px, calc(100% - var(--composer-height, 140px) - 48px));
 		display: flex;
 		flex-direction: column;
+		border-radius: var(--radius-md);
+		transition: background-color 120ms ease;
 	}
+	.message-index:hover, .message-index:focus-within { background: var(--row-hover); }
 	.message-index-list {
 		position: relative;
 		min-height: 0;
@@ -164,20 +174,23 @@
 	}
 	.index-earlier { height: 24px; flex-shrink: 0; color: var(--muted); font-size: 12px; }
 	.message-index-mark {
-		width: calc(6px + var(--proximity, 0) * 3px);
+		width: calc(8px + var(--proximity, 0) * 3px);
 		height: 2px;
 		border-radius: 2px;
 		background: var(--muted-light);
 		transition: width 100ms ease, background 100ms ease;
 		pointer-events: none;
 	}
+	.is-you .message-index-mark { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 	.is-active .message-index-mark { background: var(--ink-secondary); width: 12px; }
+	.is-you.is-active .message-index-mark { background: var(--accent); }
 	.is-preview .message-index-mark, .index-entry:focus-visible .message-index-mark {
 		width: 18px;
 		height: 4px;
 		background: var(--ink);
 	}
-	.index-entry:focus-visible, .index-earlier:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; border-radius: 3px; }
+	.is-you.is-preview .message-index-mark, .is-you.index-entry:focus-visible .message-index-mark { background: var(--accent); }
+	.index-entry:focus-visible, .index-earlier:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; border-radius: var(--radius-xs); }
 	.message-index-card {
 		position: absolute;
 		left: 100%;

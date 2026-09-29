@@ -306,14 +306,14 @@
 					}}
 					title="清除"
 				>
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="18" y1="6" x2="6" y2="18"></line>
 						<line x1="6" y1="6" x2="18" y2="18"></line>
 					</svg>
 				</span>
 			{/if}
 			<span class="real-select-arrow" aria-hidden="true">
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<polyline points="6 9 12 15 18 9"></polyline>
 				</svg>
 			</span>
@@ -330,7 +330,7 @@
 			aria-activedescendant={highlightedIndex >= 0 ? `${listboxId}-opt-${highlightedIndex}` : undefined}
 		>
 			{#if normalizedOptions.length === 0}
-				<li class="real-select-empty py-5 px-6 text-12p5 text-muted text-center" role="presentation">
+				<li class="real-select-empty py-5 px-6 text-13 text-muted text-center" role="presentation">
 					暂无选项
 				</li>
 			{:else}
@@ -357,7 +357,7 @@
 
 						{#if opt.value === value}
 							<span class="real-select-check inline-flex items-center justify-center text-accent shrink-0" aria-hidden="true">
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 									<polyline points="20 6 9 17 4 12"></polyline>
 								</svg>
 							</span>
@@ -392,7 +392,7 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		font-family: inherit;
-		font-size: 13.5px;
+		font-size: 14px;
 		line-height: 1.4;
 		color: var(--ink);
 		box-shadow: var(--shadow-xs);
@@ -534,7 +534,7 @@
 
 	.real-select--sm .real-select-option {
 		padding: 5px 8px;
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 
 	.real-select-option.is-highlighted {

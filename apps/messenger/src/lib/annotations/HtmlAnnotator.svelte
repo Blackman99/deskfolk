@@ -642,9 +642,9 @@
 		height: 22px;
 		padding: 0 6px;
 		border: 1px solid var(--accent);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 		font: inherit;
 		font-size: 11px;
 		line-height: 20px;
@@ -715,8 +715,8 @@
 		--bar-h: 30px;
 		--device-body: #1c1e23;
 		--device-rim: rgba(255, 255, 255, 0.07);
-		--device-edge: rgba(15, 23, 42, 0.22);
-		--device-shadow: 0 24px 48px -20px rgba(15, 23, 42, 0.45), 0 8px 16px -8px rgba(15, 23, 42, 0.22);
+		--device-edge: rgba(18, 28, 32, 0.22);
+		--device-shadow: 0 24px 48px -20px rgba(18, 28, 32, 0.45), 0 8px 16px -8px rgba(18, 28, 32, 0.22);
 		--device-lens: #2c3038;
 		--device-metal-hi: #e6e8ec;
 		--device-metal-lo: #b1b5bd;
@@ -773,7 +773,7 @@
 		left: 50%;
 		width: max(3px, calc(var(--bezel-top) * 0.26));
 		height: max(3px, calc(var(--bezel-top) * 0.26));
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		transform: translate(-50%, -50%);
 		background: var(--device-lens);
 		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
@@ -824,7 +824,7 @@
 		width: 15%;
 		height: 42%;
 		transform: translateX(-50%);
-		border-radius: 0 0 999px 999px;
+		border-radius: 0 0 var(--radius-full) var(--radius-full);
 		background: var(--device-metal-lo);
 		box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.18);
 	}
@@ -867,7 +867,7 @@
 		padding: 0 3px;
 		transform: translateX(-50%);
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--pane) 88%, transparent);
 		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
@@ -882,7 +882,7 @@
 		height: calc(var(--bar-h) - 6px);
 		padding: 0 9px 0 8px;
 		border: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: transparent;
 		color: var(--ink-secondary);
 		font: inherit;
@@ -925,7 +925,7 @@
 	.html-viewport-enlarge {
 		padding: 0 7px;
 		border-left: 1px solid var(--line);
-		border-radius: 0 999px 999px 0;
+		border-radius: 0 var(--radius-full) var(--radius-full) 0;
 	}
 	@container html-stage (max-width: 300px) {
 		.html-viewport-size {

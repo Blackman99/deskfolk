@@ -54,13 +54,13 @@ const ANSI: Record<ResolvedTheme, Required<Pick<ITheme,
 
 /** What the pane tokens resolve to when a stylesheet has not loaded, as in a test. */
 const FALLBACK: Record<ResolvedTheme, { background: string; foreground: string }> = {
-  light: { background: "#ffffff", foreground: "#0f172a" },
-  dark: { background: "#161e2b", foreground: "#f1f5f9" },
+  light: { background: "#ffffff", foreground: "#121c20" },
+  dark: { background: "#192125", foreground: "#eef2f3" },
 };
 
 const SELECTION: Record<ResolvedTheme, { active: string; inactive: string }> = {
-  light: { active: "#2563eb40", inactive: "#94a3b840" },
-  dark: { active: "#60a5fa4d", inactive: "#64748b4d" },
+  light: { active: "#146a7c40", inactive: "#95a2a840" },
+  dark: { active: "#45b0c34d", inactive: "#5d6a704d" },
 };
 
 export function terminalTheme(resolved: ResolvedTheme, token: (name: string) => string = () => ""): ITheme {

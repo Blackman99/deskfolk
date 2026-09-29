@@ -80,7 +80,7 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 - `chat/`：`ChatStage.svelte` 是主栏的转录 + 回到底部按钮 + 作曲栏，滚动状态归它，因为发送、搜索跳转和内容变高都要动它；`Composer.svelte` 管输入框、`@` 补全、附件、引用条和发送 / 停止按钮，草稿只写 `runtime.draft`，外面要落光标就调它导出的 `focus()`；`ChatHeader.svelte` 是会话顶栏。模块有转录分组与时间文案、批准卡判定、作曲栏形态与输入法状态机、`@` 芯片与候选、引用回复、快捷提示词、滚动计算。
 - `notifications/`：系统通知与远程推送的策略、有界已读、提问状态和标签页连接协调。`notification-center.svelte.ts`（收件箱、推送、桌面原生通知、在场与有界已读的状态）和 `tab-ownership.svelte.ts`（多个标签页谁持有连接）是 `MessengerRuntime` 的子 store。应用内不另开通知页：待批准、待回答、未完成和中断标在会话列表上；点击系统通知或推送回到对应会话，泛化待办推送回到会话列表。
-- `sidebar/`：`Sidebar.svelte` 是整条侧栏（名册行、全局搜索入口、会话分组、归档视图、手机上的浮动新建按钮、桌面底部「工作区 / 工具 / 设置」和手机搜索旁的工具菜单）。外观不在底栏，在设置「偏好」里。两张新建弹窗和右键菜单也在这里。模块有会话分组 / 状态 / 标题、未读、搜索跳转、置顶、宽度。
+- `sidebar/`：`Sidebar.svelte` 是整条侧栏（名册行、全局搜索入口、会话分组、归档视图、手机上的浮动新建按钮、桌面底部「工作区 / 工具 / 设置」和手机搜索旁的工具菜单）。外观不在底栏，在设置「通用」里。两张新建弹窗和右键菜单也在这里。模块有会话分组 / 状态 / 标题、未读、搜索跳转、置顶、宽度。
 - `search/`：全局搜索弹窗、分类与可用结果的键盘选择。`sidebar/RailTooltip.svelte` 为窄栏提供悬停约 200ms、聚焦立即显示的提示，使用 portal 与手动 popover 进入顶层；提示可移入阅读，Esc 只关闭提示，点击、滚动或改变窗口尺寸时收起。禁用工作区采用 `aria-disabled` 和动作守卫，键盘也能读取原因。
 - `panels/`：会话设置抽屉的两片 —— `ProfilePane.svelte`（人设与技能，自己管草稿与自动保存）和 `GroupPane.svelte`（成员、拉人）。群名不在卡片里：`GroupIdentity.svelte` 画在抽屉头部，和头像同一行，离开输入框或按 Enter 即保存。抽屉外壳还在 `Shell.svelte`；桌面工作台里同一个外壳（`.sheet.session-settings.is-beside`）是在会话窗格里滑出的侧栏，由 `Shell.svelte` 的 `paneSettings` snippet 画，头部和抽屉共用 `SettingsHead.svelte`。
 - `settings/`：`SettingsModal.svelte` 同时渲染设置弹窗和叠在它上面的端点编辑浮层（两个根元素，都还是 `.shell` 的直接子节点）。工作区、端点和 MCP 名称 / 备注改完即写入；模块有端点表单、MCP 表单与列表、向导保存、工作区选择。
@@ -132,6 +132,15 @@ Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现�
 1. **Uno 工具类**（`apps/messenger/uno.config.ts`）。布局、间距、字号、配色这些普通样式写在 `class` 上。主题取自 `tokens.css`：颜色映射到 `var(--pane)` 这类令牌，不写死色值；圆角、阴影、字体同理。**数字就是 2px 一档，`p-7` 和 `w-7` 都是 14px** —— 间距和尺寸共用一把尺（presetWind3 默认给尺寸另一把 0.25rem 的尺，配置里覆盖掉了）。
 2. **组件自己的 `<style>`**。只有这个组件才有的东西 —— 伪元素、动画、带结构的 `:hover` / `:focus-visible`、媒体查询、`-webkit-` 前缀那些。Svelte 会作用域化，改它波及不到别人，而且**选择器没人用时 `svelte-check` 直接报 `css_unused_selector`** —— 全局表要靠 `styles-coverage.test.ts` 才查得出来的事，搬进组件就变成编译期检查了。
 3. **`lib/styles/*.css` 全局**。只留真正没有宿主的：令牌、reset、几个面共用的骨架、第三方 DOM、那条跨面断点。**跨组件的先想办法拆进它作用的那个组件**，拆不动才留在这儿。
+
+不管落在哪一层，数值都从令牌取：
+
+- **颜色**：强调色是 Deskfolk 图标的青（`--accent`，浅色 `#146a7c`），中性灰偏青不偏蓝。强调色底上的字和图标用 `var(--on-accent)`，不写 `#fff`：暗色模式的强调色是浅的，上面要深色字。半透明的强调色、警示色写 `color-mix(in srgb, var(--accent) 12%, transparent)`，不写 `rgba()` 字面值。暗色只在 `tokens.css` 的 `[data-theme="dark"]` 写一份：`+layout.svelte` 在第一次渲染前就把 `data-theme` 设好，`prefers-color-scheme` 那一段只给脚本跑起来之前的空白页一个深底。
+- **字号**：只用整数像素，10px 起（`text-10` … `text-28`，`uno.config.ts` 的 `SIZES`）。11 / 11.5 / 12 这种半像素台阶肉眼分不出，已经全部并掉。
+- **圆角**：`--radius-xs/sm/md/lg/xl/full`（4 / 6 / 10 / 14 / 18 / 999px），不写字面值。
+- **过渡**：不写 `transition: all`，会把 left/top/width 也带上动画，布局一变卡片就滑过去。写时长和缓动，再加 `transition-property: var(--transition-props)`；真要动尺寸的（例如置顶区展开的 `max-height`）单独点名。
+- **图标**：内联 SVG 的 `stroke-width` 统一为 2。
+- **状态**：空闲不画任何标记（侧栏行、头像点都不画）；工作中是强调色，等你批准是警示色，等你回答是紫，失败 / 中断是红。
 
 搬完了：全局表从 1052 条降到 134 条。
 

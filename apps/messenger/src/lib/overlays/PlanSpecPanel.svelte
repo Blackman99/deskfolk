@@ -170,7 +170,7 @@
 
 {#snippet title()}
 	<div class="plan-spec-title-wrap">
-		<svg class="plan-spec-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<svg class="plan-spec-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 			<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 			<polyline points="14 2 14 8 20 8"></polyline>
 			<line x1="16" y1="13" x2="8" y2="13"></line>
@@ -222,7 +222,7 @@
 			<div class="plan-spec-goal">
 				<div class="plan-spec-goal-top">
 					<div class="plan-spec-goal-badge">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="12" cy="12" r="10"></circle>
 							<circle cx="12" cy="12" r="6"></circle>
 							<circle cx="12" cy="12" r="2"></circle>
@@ -231,7 +231,7 @@
 					</div>
 					{#if api && editing !== 'goal'}
 						<button type="button" class="plan-spec-edit-btn" onclick={startEditGoal} title={t.plan.edit}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<path d="M12 20h9"></path>
 								<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
 							</svg>
@@ -263,16 +263,16 @@
 						<div class="plan-spec-list-head">
 							<div class="plan-spec-list-meta">
 								{#if field === 'acceptance'}
-									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<polyline points="9 11 12 14 22 4"></polyline>
 										<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
 									</svg>
 								{:else if field === 'rules'}
-									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
 									</svg>
 								{:else}
-									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<line x1="6" y1="3" x2="6" y2="15"></line>
 										<circle cx="18" cy="6" r="3"></circle>
 										<circle cx="6" cy="18" r="3"></circle>
@@ -298,7 +298,7 @@
 								{/if}
 								{#if api && editing !== field}
 									<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 											<path d="M12 20h9"></path>
 											<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
 										</svg>
@@ -370,7 +370,7 @@
 							</div>
 							{#if api && editing !== field}
 								<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-									<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<path d="M12 20h9"></path>
 										<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
 									</svg>
@@ -417,7 +417,7 @@
 		</div>
 		{#if api}
 			<button type="button" class="plan-spec-history-toggle" aria-expanded={historyOpen} onclick={toggleHistory}>
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<circle cx="12" cy="12" r="10"></circle>
 					<polyline points="12 6 12 12 14 14"></polyline>
 					<path d="M3.05 11a9 9 0 0 1 .5-2m-.5 2H7"></path>
@@ -451,7 +451,7 @@
 										class="plan-spec-revision-jump"
 										onclick={() => onJump(rev.session_id!, rev.source_message_id!)}
 									>
-										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 											<polyline points="15 3 21 3 21 9"></polyline>
 											<line x1="10" y1="14" x2="21" y2="3"></line>
 										</svg>
@@ -523,20 +523,20 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		padding: 1px 7px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		color: var(--ink-secondary);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 500;
 	}
 
 	.plan-spec-rev-badge {
 		flex: none;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		color: var(--muted);
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 	}
 
@@ -600,7 +600,7 @@
 
 	.plan-spec-goal-text {
 		color: var(--ink);
-		font-size: 13.5px;
+		font-size: 14px;
 		font-weight: 600;
 		line-height: 1.45;
 		overflow-wrap: anywhere;
@@ -629,7 +629,7 @@
 		border-radius: var(--radius-md);
 		border: 1px solid var(--line);
 		background: var(--pane);
-		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.02);
 		transition: border-color 0.15s ease, box-shadow 0.15s ease;
 	}
 
@@ -666,14 +666,14 @@
 		flex: none;
 		font-weight: 600;
 		color: var(--muted);
-		font-size: 11.5px;
+		font-size: 12px;
 		letter-spacing: -0.01em;
 	}
 
 	.plan-spec-field-count {
 		flex: none;
 		padding: 0 5px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		color: var(--muted);
 		font-size: 10px;
@@ -688,7 +688,7 @@
 		width: 14px;
 		height: 14px;
 		border-radius: 50%;
-		font-size: 9px;
+		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
 		flex: none;
@@ -704,7 +704,7 @@
 		background: var(--accent-tint);
 		color: var(--accent);
 		border: 1px solid var(--accent-border);
-		font-size: 8px;
+		font-size: 10px;
 	}
 
 	.plan-spec-status-dot.is-blocked {
@@ -727,7 +727,8 @@
 		line-height: 1;
 		padding: 3px 7px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		min-height: 24px;
 	}
 
@@ -747,7 +748,7 @@
 	.plan-spec-checks-summary {
 		flex: none;
 		padding: 1px 7px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		color: var(--accent);
 		font-size: 10px;
@@ -770,7 +771,8 @@
 		line-height: 1;
 		padding: 3px 7px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		min-height: 24px;
 	}
 
@@ -788,7 +790,7 @@
 
 	.plan-spec-checks-hint {
 		margin: 0;
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--muted-light);
 	}
 
@@ -845,7 +847,7 @@
 
 	.plan-spec-empty-line {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted-light);
 		font-style: italic;
 	}
@@ -866,7 +868,7 @@
 		border-radius: var(--radius-sm);
 		background: var(--input-bg);
 		color: var(--ink);
-		font: 12.5px/1.4 var(--font);
+		font: 13px/1.4 var(--font);
 		padding: 7px 9px;
 		transition: border-color 0.15s ease, box-shadow 0.15s ease;
 	}
@@ -894,18 +896,19 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: var(--radius-sm);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		padding: 5px 11px;
 		cursor: pointer;
 		min-height: 28px;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.plan-spec-save-btn {
 		border: 1px solid var(--accent);
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 
 	.plan-spec-save-btn:hover:not(:disabled) {
@@ -932,7 +935,7 @@
 
 	.plan-spec-error {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--danger-text);
 		overflow-wrap: anywhere;
 	}
@@ -1010,7 +1013,7 @@
 	.plan-spec-history-loading,
 	.plan-spec-history-none {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 		font-style: italic;
 	}
@@ -1031,7 +1034,7 @@
 		background: var(--pane);
 		padding: 7px 10px;
 		font-size: 11px;
-		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.02);
 	}
 
 	.plan-spec-revision-header {
@@ -1046,9 +1049,9 @@
 		font-weight: 700;
 		color: var(--ink);
 		padding: 1px 5px;
-		border-radius: 3px;
+		border-radius: var(--radius-xs);
 		background: var(--line-subtle);
-		font-size: 10.5px;
+		font-size: 11px;
 	}
 
 	.plan-spec-revision-actor {
@@ -1079,7 +1082,7 @@
 		font-size: 11px;
 		font-weight: 500;
 		cursor: pointer;
-		border-radius: 3px;
+		border-radius: var(--radius-xs);
 		transition: background 0.15s ease;
 	}
 
@@ -1128,7 +1131,7 @@
 		.plan-spec-cancel-btn {
 			min-height: 36px;
 			padding: 6px 14px;
-			font-size: 12.5px;
+			font-size: 13px;
 		}
 
 		.plan-spec-history-toggle {

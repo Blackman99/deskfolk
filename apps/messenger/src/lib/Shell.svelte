@@ -1901,7 +1901,7 @@
 		position: absolute;
 		inset: 0 3px;
 		background: var(--line);
-		border-radius: 99px;
+		border-radius: var(--radius-full);
 	}
 
 	.preview-split:hover::before,
@@ -1926,7 +1926,7 @@
 		position: absolute;
 		inset: 0 3px;
 		background: var(--line);
-		border-radius: 99px;
+		border-radius: var(--radius-full);
 	}
 
 	.sidebar-split:hover::before,
@@ -1954,7 +1954,7 @@
 
 	.sheet.session-settings :global(.form-group) :global(.field-label) {
 		display: block;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--ink-secondary);
 		margin-bottom: 6px;
@@ -1978,7 +1978,8 @@
 		border-radius: var(--radius-md);
 		background: var(--line-subtle);
 		border: 1px solid transparent;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.sheet.session-settings :global(.member:hover) {
@@ -2008,7 +2009,7 @@
 		flex-direction: column;
 		min-height: 0;
 		min-width: 0;
-		box-shadow: -4px 0 16px rgba(15, 23, 42, 0.04);
+		box-shadow: -4px 0 16px rgba(18, 28, 32, 0.04);
 	}
 
 	.shell.is-thread .thread {
@@ -2050,7 +2051,7 @@
 	.profile-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(15, 23, 42, 0.45);
+		background: rgba(18, 28, 32, 0.45);
 		backdrop-filter: blur(6px);
 		-webkit-backdrop-filter: blur(6px);
 		display: flex;
@@ -2068,7 +2069,7 @@
 		height: 100%;
 		border-right: none;
 		border-left: 1px solid var(--line);
-		box-shadow: -16px 0 36px -6px rgba(15, 23, 42, 0.18);
+		box-shadow: -16px 0 36px -6px rgba(18, 28, 32, 0.18);
 		z-index: auto;
 		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 	}

@@ -58,5 +58,5 @@ test("the colours the daemon answers with are the pane's, as #rrggbb", () => {
   expect(colors.palette).toHaveLength(16);
   expect(colors.palette![1]).toBe(theme.red!);
   // A token that is no colour at all is not sent as one.
-  expect(terminalColors("dark", { ...terminalTheme("dark"), background: "var(--x)" }).background).toBe("#161e2b");
+  expect(terminalColors("dark", { ...terminalTheme("dark"), background: "var(--x)" }).background).toBe("#192125");
 });

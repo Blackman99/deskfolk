@@ -952,7 +952,7 @@
 	{#if !selected}
 		<div class="empty-state m-auto flex flex-col items-center justify-center text-center py-20 px-10 max-w-[360px]">
 			<div class="empty-icon" aria-hidden="true">
-				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
 				</svg>
 			</div>
@@ -963,7 +963,7 @@
 		<!-- A remote transcript arrives over the relay; saying so beats an empty room that fills
 		     without warning. -->
 		<div class="history-loading m-auto flex flex-col items-center gap-3 text-center py-20" role="status">
-			<svg class="history-spinner" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+			<svg class="history-spinner" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<path d="M12 3a9 9 0 1 0 9 9" />
 			</svg>
 			<p class="muted">{t.stream.loadingHistory}</p>
@@ -972,7 +972,7 @@
 		<div class="empty-chat-welcome m-auto flex flex-col items-center text-center py-16 px-10 max-w-[460px]">
 			{#if fileDrop}
 				<div class="empty-icon" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 						<polyline points="14 2 14 8 20 8"></polyline>
 					</svg>
@@ -1026,7 +1026,7 @@
 				{/if}
 			{:else}
 				<div class="empty-icon" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="12" r="10"></circle>
 						<line x1="8" y1="12" x2="16" y2="12"></line>
 					</svg>
@@ -1600,7 +1600,7 @@
 								{@const single = group.items[0]}
 								{#if single.type === 'streaming'}
 									{@const liveElapsed = formatLiveDuration(single.turn.created_at, nowMs)}
-									<span class="streaming-status inline-flex items-center gap-2 text-11p5 text-accent font-medium">
+									<span class="streaming-status inline-flex items-center gap-2 text-12 text-accent font-medium">
 										<span class="pulse"></span>
 										{streamingLabel(single.turn)}
 									</span>
@@ -1623,7 +1623,7 @@
 									</span>
 									{#if duration}
 										<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
-											<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+											<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
 											{duration.formatted}
 										</span>
 									{/if}
@@ -1657,7 +1657,7 @@
 											<span class="segment-tag">{t.chat.segmentPart(sIdx + 1)}</span>
 											{#if item.type === 'streaming'}
 												{@const liveElapsed = formatLiveDuration(item.turn.created_at, nowMs)}
-												<span class="streaming-status inline-flex items-center gap-2 text-11p5 text-accent font-medium">
+												<span class="streaming-status inline-flex items-center gap-2 text-12 text-accent font-medium">
 													<span class="pulse"></span>
 													{streamingLabel(item.turn)}
 												</span>
@@ -1680,7 +1680,7 @@
 												</span>
 												{#if duration}
 													<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
-														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
 														{duration.formatted}
 													</span>
 												{/if}
@@ -1689,7 +1689,7 @@
 									{/if}
 
 									{#if item.type === 'streaming'}
-										<article class="msg is-stream">
+										<article class="msg is-stream is-reply">
 											<div class="who">
 												{botAuthor?.name ?? t.top.deleted} · {streamingLabel(item.turn)}
 												<span class="pulse"></span>
@@ -1715,7 +1715,7 @@
 										</article>
 									{:else if item.type === 'message'}
 										{@const rxGroups = groupReactions(item.message.reactions, USER_MEMBER)}
-										<article class="msg">
+										<article class="msg is-reply">
 											<div class="who">{who(item.message)}</div>
 											<div class="msg-toolbar">
 												<div class="msg-toolbar-pill">
@@ -1984,13 +1984,13 @@
 		position: relative;
 		z-index: 2;
 		padding: 3px 12px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--date-pill-bg);
 		border: 1px solid var(--date-pill-border);
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--date-pill-text);
-		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.04);
 	}
 
 	/* Message Wrappers */
@@ -2003,8 +2003,13 @@
 	}
 
 	.msg-wrap.is-bot {
-		max-width: 84%;
-		align-self: flex-start;
+		max-width: 100%;
+		align-self: stretch;
+	}
+
+	/* A reply takes the column's full width, so its hover toolbar sits at the column's far edge. */
+	.msg-wrap.is-bot:not(.is-system-row) .msg-segment {
+		width: 100%;
 	}
 
 	.msg-wrap.is-user {
@@ -2078,9 +2083,9 @@
 		justify-content: center;
 		font-weight: 700;
 		font-size: 13px;
-		background: #1e293b;
-		color: #ffffff;
-		border: 1px solid #334155;
+		background: var(--ink);
+		color: var(--pane);
+		border: 1px solid transparent;
 		box-shadow: var(--shadow-xs);
 		user-select: none;
 	}
@@ -2109,7 +2114,7 @@
 	.sender-name {
 		font-weight: 650;
 		color: var(--ink);
-		font-size: 12.5px;
+		font-size: 13px;
 	}
 
 	button.sender-name.is-clickable {
@@ -2120,7 +2125,7 @@
 		font: inherit;
 		font-weight: 650;
 		color: var(--ink);
-		font-size: 12.5px;
+		font-size: 13px;
 		cursor: pointer;
 		text-align: left;
 		line-height: inherit;
@@ -2138,11 +2143,11 @@
 	}
 
 	.bot-badge {
-		font-size: 9.5px;
+		font-size: 10px;
 		font-weight: 700;
 		padding: 1px 5px;
-		border-radius: 4px;
-		background: rgba(37, 99, 235, 0.08);
+		border-radius: var(--radius-xs);
+		background: color-mix(in srgb, var(--accent) 8%, transparent);
 		color: var(--accent);
 		letter-spacing: 0.02em;
 		line-height: 1.2;
@@ -2163,9 +2168,9 @@
 	}
 
 	.model-badge {
-		font-size: 10.5px;
+		font-size: 11px;
 		padding: 1px 6px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--chip);
 		border: 1px solid var(--line);
 		color: var(--muted);
@@ -2175,7 +2180,7 @@
 		font-size: 10px;
 		font-weight: 600;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
 		border: 1px solid var(--line);
 		color: var(--muted);
@@ -2202,7 +2207,7 @@
 	.duration-badge.live {
 		font-weight: 600;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		border: 1px solid var(--accent-border);
 		background: var(--accent-tint);
 		color: var(--accent);
@@ -2222,7 +2227,8 @@
 		padding: 1px 6px;
 		cursor: pointer;
 		margin-left: auto;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-mini-stop:hover {
@@ -2232,7 +2238,7 @@
 	}
 
 	.stop-icon-mini {
-		font-size: 8px;
+		font-size: 10px;
 		line-height: 1;
 	}
 
@@ -2251,11 +2257,11 @@
 	}
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg:not(.is-you) {
-		border-radius: 10px 16px 16px 16px;
+		border-radius: var(--radius-md) 16px 16px 16px;
 	}
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg.is-you {
-		border-radius: 16px 10px 16px 16px;
+		border-radius: 16px var(--radius-md) 16px 16px;
 	}
 
 	.segment-meta.is-right {
@@ -2266,10 +2272,10 @@
 		font-size: 10px;
 		font-weight: 700;
 		padding: 1.5px 6px;
-		border-radius: 4px;
-		background: rgba(37, 99, 235, 0.08);
+		border-radius: var(--radius-xs);
+		background: color-mix(in srgb, var(--accent) 8%, transparent);
 		color: var(--accent);
-		border: 1px solid rgba(37, 99, 235, 0.18);
+		border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 		letter-spacing: 0.02em;
 		line-height: 1.2;
 	}
@@ -2280,11 +2286,11 @@
 		width: fit-content;
 		max-width: 100%;
 		padding: 10px 14px;
-		border-radius: 4px 16px 16px 16px;
+		border-radius: var(--radius-xs) 16px 16px 16px;
 		background: var(--bot);
 		border: 1px solid var(--bot-border);
 		color: var(--bot-text);
-		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+		box-shadow: 0 1px 3px rgba(18, 28, 32, 0.03);
 		transition: box-shadow 0.15s ease;
 		word-break: break-word;
 	}
@@ -2295,11 +2301,26 @@
 	}
 
 	.msg.is-you {
-		background: linear-gradient(135deg, #2563eb, #1d4ed8);
-		color: #ffffff;
+		background: var(--you);
+		color: var(--you-text);
 		border: 1px solid transparent;
-		border-radius: 16px 4px 16px 16px;
-		box-shadow: 0 2px 8px rgba(37, 99, 235, 0.18);
+		border-radius: 16px var(--radius-xs) 16px 16px;
+		box-shadow: var(--shadow-xs);
+	}
+
+	/*
+	 * A Bot's reply is read rather than glanced at — reports, lists, tables, file links — so it sits
+	 * on the page like a document: no bubble, the column's full width. The bubble stays for what
+	 * you said, and cards (a question, an approval) keep theirs.
+	 */
+	.msg.is-reply,
+	.msg.is-reply.is-stream {
+		width: 100%;
+		padding: 0 2px;
+		background: none;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
 	}
 
 	/* Message Toolbar on Hover. The strip spans the bubble and the pill sits in its far corner; on a
@@ -2315,7 +2336,8 @@
 		opacity: 0;
 		transform: translateY(2px);
 		pointer-events: none;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		z-index: 10;
 	}
 
@@ -2328,8 +2350,8 @@
 		white-space: nowrap;
 		background: var(--pane);
 		border: 1px solid var(--line);
-		border-radius: 9999px;
-		box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+		border-radius: var(--radius-full);
+		box-shadow: 0 3px 10px rgba(18, 28, 32, 0.08);
 		pointer-events: none;
 	}
 
@@ -2353,12 +2375,13 @@
 	.act-btn {
 		padding: 3px 6px;
 		color: var(--muted);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		display: flex;
 		align-items: center;
 		gap: 4px;
 		cursor: pointer;
-		transition: all 0.12s ease;
+		transition: 0.12s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.act-btn:hover {
@@ -2375,7 +2398,7 @@
 		padding: 6px 10px;
 		border: none;
 		border-left: 2px solid color-mix(in srgb, currentColor 45%, transparent);
-		border-radius: 0 8px 8px 0;
+		border-radius: 0 var(--radius-md) var(--radius-md) 0;
 		background: color-mix(in srgb, currentColor 8%, transparent);
 		color: inherit;
 		text-align: left;
@@ -2411,13 +2434,14 @@
 		align-items: center;
 		gap: 4px;
 		padding: 2px 8px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		font-size: 12px;
 		background: var(--reaction-bg);
 		border: 1px solid var(--line);
-		box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.04);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.rx-chip:hover {
@@ -2461,7 +2485,7 @@
 	.msg :global(.body) {
 		white-space: pre-wrap;
 		line-height: 1.55;
-		font-size: 13.5px;
+		font-size: 14px;
 	}
 
 	/* Streaming Active Turn */
@@ -2471,12 +2495,13 @@
 		box-shadow: var(--shadow-sm);
 	}
 
+	/* Working is the accent everywhere — the sidebar row, the portrait dot and this. */
 	.pulse {
 		display: inline-block;
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: var(--ok);
+		background: var(--accent);
 		margin-left: 4px;
 		vertical-align: middle;
 		animation: pulse 1.2s ease-in-out infinite;
@@ -2594,7 +2619,8 @@
 		font-size: 13px;
 		text-align: left;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		box-shadow: var(--shadow-xs);
 	}
 
@@ -2641,12 +2667,12 @@
 		border: 1.5px solid var(--card-line);
 		border-radius: var(--radius-lg);
 		padding: 16px 18px;
-		box-shadow: 0 4px 14px rgba(217, 119, 6, 0.08);
+		box-shadow: 0 4px 14px color-mix(in srgb, var(--warn) 8%, transparent);
 	}
 
 	.msg.is-approval .who {
 		color: var(--warn-text);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -2697,14 +2723,15 @@
 
 	.approval-acts :global(button) {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border: 1px solid transparent;
 		border-radius: var(--radius-sm);
 		padding: 7px 14px;
 		font-size: 13px;
 		font-weight: 600;
 		box-shadow: var(--shadow-xs);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.approval-acts :global(button:hover) {
@@ -2729,7 +2756,7 @@
 		color: var(--muted);
 		padding: 8px 12px;
 		font-size: 13px;
-		border-radius: 4px 16px 16px 16px;
+		border-radius: var(--radius-xs) 16px 16px 16px;
 		box-shadow: none;
 		display: inline-flex;
 		flex-direction: column;
@@ -2796,20 +2823,21 @@
 		border: 1px solid var(--accent-border);
 		border-radius: var(--radius-sm);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		user-select: none;
 	}
 
 	.btn-continue-turn:hover:not(:disabled) {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: var(--accent);
 		box-shadow: 0 1px 4px var(--accent-glow);
 	}
 
 	.btn-continue-turn:active:not(:disabled) {
 		background: var(--accent-active);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: var(--accent-active);
 	}
 

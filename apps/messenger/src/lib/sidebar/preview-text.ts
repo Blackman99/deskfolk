@@ -20,5 +20,25 @@ export function plainPreview(raw: string, limit = 90): string {
     .replace(/~~(.*?)~~/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
+  text = maskSecrets(text);
   return text.length > limit ? text.slice(0, limit) : text;
+}
+
+/** Tokens whose shape alone says they are a credential: a provider's prefix, then a long tail. */
+const PREFIXED_SECRET =
+  /(?<![\w-])(?:sk-(?:ant-|proj-)?|pt-|ghp_|gho_|ghs_|github_pat_|glpat-|xox[abprs]-|AKIA|AIza)[A-Za-z0-9_-]{16,}/g;
+/** Any long token right after a word that names one: `API key: …`, `token=…`, `密钥：…`. */
+const LABELLED_SECRET =
+  /((?:api[ _-]?key|key|token|secret|password|passwd|密钥|令牌|密码)\s*[:：=]\s*)([A-Za-z0-9_\-.+/=]{16,})/gi;
+
+/**
+ * A key pasted into a chat is still in the chat, but the one-line preview is what the list, the
+ * index and a search result show to anyone glancing at the screen — or at the phone it is
+ * mirrored to. There it keeps its first four characters, enough to tell which key it was.
+ */
+export function maskSecrets(text: string): string {
+  const mask = (token: string) => `${token.slice(0, 4)}••••`;
+  return text
+    .replace(PREFIXED_SECRET, (token) => mask(token))
+    .replace(LABELLED_SECRET, (_all, label: string, token: string) => label + mask(token));
 }

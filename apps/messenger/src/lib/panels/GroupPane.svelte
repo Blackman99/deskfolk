@@ -115,20 +115,20 @@
 	<!-- Phone only: the sections as a list. Wider windows show them all at once, as before. -->
 	<nav class="group-sections" aria-label={selected.kind === 'group' ? t.detail.titleGroup : t.detail.titleBot}>
 		<button type="button" class="group-section-btn" onclick={() => openSection('members')}>
-			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 			<span class="section-name">{t.detail.members}</span>
 			<span class="section-count">{selected.kind === 'group' ? groupPresent.length + 1 : groupPresent.length}</span>
 			<span class="section-chevron" aria-hidden="true"></span>
 		</button>
 		{#if selected.kind === 'group'}
 			<button type="button" class="group-section-btn" onclick={() => openSection('actions')}>
-				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
 				<span class="section-name">{t.detail.sessionActions}</span>
 				<span class="section-chevron" aria-hidden="true"></span>
 			</button>
 		{/if}
 		<button type="button" class="group-section-btn is-danger" onclick={() => openSection('danger')}>
-			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
 			<span class="section-name">{t.detail.dangerZone}</span>
 			<span class="section-chevron" aria-hidden="true"></span>
 		</button>
@@ -142,7 +142,7 @@
 				aria-label={t.detail.backToSections}
 				onclick={() => backFromDetail()}
 			>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
 			<div class="group-detail-heading">
 				<h3 class="group-detail-title">{sectionLabel(activeSection)}</h3>
@@ -213,7 +213,7 @@
 										{/if}
 									</div>
 									{#if bot.duties}
-										<span class="member-duties-text text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
+										<span class="member-duties-text text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
 									{/if}
 								</div>
 							{:else}
@@ -232,7 +232,7 @@
 								title={!groupCanRemove ? (locale === 'zh' ? '群内至少需保留 2 个 Bot' : 'Keep at least 2 bots') : t.detail.remove}
 								onclick={() => void removeMember(botId)}
 							>
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
 								<span>{t.detail.remove}</span>
 							</button>
 						{/if}
@@ -256,7 +256,7 @@
 							disabled={!detail.pullPick}
 							onclick={() => void pullInMember()}
 						>
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 							<span>{t.detail.pullIn}</span>
 						</button>
 					</div>
@@ -314,7 +314,7 @@
 										{/if}
 									</div>
 									{#if bot.duties}
-										<span class="member-duties-text text-11p5 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
+										<span class="member-duties-text text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
 									{/if}
 								</div>
 							{:else}
@@ -469,9 +469,9 @@
 	}
 
 	.member-avatar-mini.is-you {
-		background: #1e293b;
-		color: #ffffff;
-		border-color: #334155;
+		background: var(--ink);
+		color: var(--pane);
+		border-color: transparent;
 	}
 
 	.member-avatar-mini.is-deleted {
@@ -517,10 +517,10 @@
 	}
 
 	.member-badge {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 500;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		white-space: nowrap;
 		flex-shrink: 0;
 		line-height: 1.3;
@@ -554,14 +554,15 @@
 		border: 1px solid transparent;
 		background: transparent;
 		color: var(--muted);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		padding: 4px 8px;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 		white-space: nowrap;
 		flex-shrink: 0;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-remove-member:hover:not(:disabled) {
@@ -611,12 +612,13 @@
 		cursor: pointer;
 		white-space: nowrap;
 		flex-shrink: 0;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-pull-in:hover:not(:disabled) {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: var(--accent);
 	}
 

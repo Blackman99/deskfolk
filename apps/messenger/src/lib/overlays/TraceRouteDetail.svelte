@@ -23,7 +23,7 @@
 		<span class="trace-route-title">{t.routes.cardTitle}</span>
 		<span class="trace-route-outcome is-{route.outcome}">{route.outcomeLabel}</span>
 		<button type="button" class="trace-route-close" title={t.trace.outputClose} aria-label={t.trace.outputClose} onclick={onClose}>
-			<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+			<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
 		</button>
 	</header>
 	<div class="trace-route-chips">
@@ -110,7 +110,7 @@
 		border-radius: var(--radius-md);
 		background: var(--pane);
 		box-shadow: var(--shadow-xs);
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--ink-secondary);
 	}
 
@@ -127,10 +127,10 @@
 	}
 
 	.trace-route-outcome {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		padding: 1px 6px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		border: 1px solid var(--line);
 		background: var(--chip);
 		color: var(--muted);
@@ -191,9 +191,9 @@
 		max-width: 100%;
 		padding: 1px 7px;
 		border: 1px solid var(--line);
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		background: var(--chip);
-		font-size: 10.5px;
+		font-size: 11px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -215,7 +215,7 @@
 	}
 
 	.trace-route-stats {
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--muted);
 	}
 
@@ -258,7 +258,7 @@
 		border-radius: var(--radius-sm);
 		background: var(--chip);
 		color: var(--ink);
-		font-size: 11.5px;
+		font-size: 12px;
 		text-align: left;
 		cursor: pointer;
 		box-sizing: border-box;
@@ -309,7 +309,7 @@
 	.trace-route-direction,
 	.trace-route-rounds,
 	.trace-route-effect {
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--muted);
 	}
 

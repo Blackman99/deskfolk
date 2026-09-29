@@ -32,8 +32,8 @@ afterEach(() => {
 });
 
 const themes = [
-  { name: "light", pane: "#ffffff", ink: "#0f172a", control: "#ffffff", thumb: "#f1f5f9", accent: "#2563eb" },
-  { name: "dark", pane: "#161e2b", ink: "#f1f5f9", control: "#1c2534", thumb: "#182231", accent: "#3b82f6" },
+  { name: "light", pane: "#ffffff", ink: "#121c20", control: "#ffffff", thumb: "#eff3f4", accent: "#146a7c" },
+  { name: "dark", pane: "#192125", ink: "#eef2f3", control: "#20292d", thumb: "#1f282c", accent: "#45b0c3" },
 ];
 
 for (const [label, session] of [

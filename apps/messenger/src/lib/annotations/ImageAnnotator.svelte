@@ -677,7 +677,7 @@
 		min-width: 18px;
 		height: 18px;
 		padding: 0 4px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
 		color: var(--pane);
 		font-family: var(--mono);

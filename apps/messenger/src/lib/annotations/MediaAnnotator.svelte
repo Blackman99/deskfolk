@@ -508,7 +508,7 @@
 		margin-top: -4px;
 		box-sizing: border-box;
 		border: 1px solid var(--mk);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: color-mix(in srgb, var(--mk) 70%, transparent);
 	}
 	.media-annot-badge {
@@ -521,7 +521,7 @@
 		box-sizing: border-box;
 		transform: translate(-50%, -50%);
 		border: 1px solid var(--mk);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--mk);
 		color: #fff;
 		font-size: 10px;
@@ -659,7 +659,7 @@
 	.media-annot-btn.is-primary {
 		border-color: transparent;
 		background: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 	}
 	.media-annot-btn:hover:not(:disabled) {
 		border-color: var(--accent);

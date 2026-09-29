@@ -21,7 +21,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -42,7 +42,8 @@ button {
   background: none;
   border: none;
   padding: 0;
-  transition: all 0.15s ease;
+  transition: 0.15s ease;
+  transition-property: var(--transition-props);
 }
 
 /*

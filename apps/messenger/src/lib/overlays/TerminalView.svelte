@@ -792,7 +792,7 @@
 				the title is the switch between them.
 			-->
 			<button type="button" class="terminal-icon terminal-back" aria-label={t.common.back} title={t.common.back} onclick={onClose}>
-				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 			</button>
 			<div class="terminal-switch">
 				<button
@@ -811,7 +811,7 @@
 						<span class="terminal-title-text">{active ? (names.get(active.id) ?? active.title) : t.terminal.title}</span>
 						{#if ordered.length > 1}
 							<span class="terminal-title-count">{ordered.length}</span>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
 						{/if}
 					</span>
 					{#if active}
@@ -857,7 +857,7 @@
 					void create();
 				}}
 			>
-				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 			</button>
 			{#if active}
 				<div class="terminal-more">
@@ -1057,7 +1057,7 @@
 							{#if key.kind === 'paste'}
 								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
 							{:else if key.kind === 'keyboard'}
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<rect x="2" y="4" width="20" height="12" rx="2"></rect>
 									<path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M7 12h10"></path>
 									{#if keyboardUp}<polyline points="9 19 12 22 15 19"></polyline>{:else}<polyline points="9 22 12 19 15 22"></polyline>{/if}
@@ -1130,7 +1130,7 @@
 		padding: 4px 8px;
 		white-space: nowrap;
 		border: 1px solid var(--line);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		background: transparent;
 		color: inherit;
 		font-size: 12px;
@@ -1193,7 +1193,7 @@
 		gap: 2px;
 		padding: 3px 4px 3px 8px;
 		border: 1px solid var(--line);
-		border-radius: var(--radius-sm, 6px);
+		border-radius: var(--radius-sm);
 		background: var(--pane);
 		box-shadow: var(--shadow-md);
 	}
@@ -1224,7 +1224,7 @@
 		height: 24px;
 		padding: 0;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: transparent;
 		color: var(--muted);
 		font-size: 12px;
@@ -1565,7 +1565,7 @@
 			height: 40px;
 			padding: 0;
 			border: 1px solid var(--line);
-			border-radius: 8px;
+			border-radius: var(--radius-md);
 			background: var(--btn-secondary-bg);
 			box-shadow: 0 1px 0 var(--line);
 			color: var(--ink);
@@ -1601,7 +1601,7 @@
 			border-color: var(--accent);
 			background: var(--accent);
 			box-shadow: none;
-			color: #fff;
+			color: var(--on-accent);
 		}
 	}
 </style>

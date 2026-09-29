@@ -265,10 +265,10 @@
 	.tools-menu-badge {
 		margin-left: auto;
 		padding: 1px 7px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		color: var(--muted);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 	}
 

@@ -8,7 +8,7 @@
 	import { BuildUpdates } from '$lib/build-version.svelte';
 	import { copyFor } from '$lib/copy';
 	import { applyPlatformAttribute } from '$lib/platform';
-	import { themeManager } from '$lib/theme';
+	import { applyThemeToDocument, themeManager } from '$lib/theme';
 	import { HOSTED_MESSENGER } from '$lib/remote/mode';
 	import '$lib/styles/index.css';
 
@@ -21,6 +21,9 @@
 	// Once, at startup — `base.css` keys a rule off `:root[data-platform="windows"]`, and
 	// shortcut labels and terminal keys read it through `desktopPlatform()` on their own.
 	applyPlatformAttribute();
+	// Before the first render too: `tokens.css` keys dark mode off `data-theme` alone, and a
+	// system-dark window would otherwise draw its first frame light.
+	applyThemeToDocument(themeManager.resolved, themeManager.preference);
 	// Its own poll rather than `updated` from `$app/state`: that one is a boolean that latches,
 	// and dismissing one build and asking again for the next needs the version itself.
 	const updates = new BuildUpdates(version, () => fetchPublishedVersion(base));

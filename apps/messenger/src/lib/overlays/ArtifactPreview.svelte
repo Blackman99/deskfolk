@@ -1269,7 +1269,7 @@
 	-->
 	<header class="artifact-pane-head" class:has-download={canDownload}>
 		<button type="button" class="artifact-back" aria-label={t.common.back} onclick={() => requestClose()}>
-			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<polyline points="15 18 9 12 15 6"></polyline>
 			</svg>
 		</button>
@@ -1328,13 +1328,13 @@
 					onclick={toggleSource}
 				>
 					{#if showSource}
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
 							<circle cx="12" cy="12" r="3"></circle>
 						</svg>
 						{t.stream.artifactRendered}
 					{:else}
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<polyline points="16 18 22 12 16 6"></polyline>
 							<polyline points="8 6 2 12 8 18"></polyline>
 						</svg>
@@ -1856,7 +1856,7 @@
 		max-width: calc(100% - 32px);
 		padding: 0 10px 0 8px;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--pane) 88%, transparent);
 		color: var(--ink-secondary);
 		font-size: 12px;
@@ -1943,7 +1943,7 @@
 		flex: 1;
 		min-width: 0;
 		margin: 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		line-height: 1.4;
 		color: var(--muted);
 	}
@@ -1958,7 +1958,7 @@
 		height: 26px;
 		padding: 0 10px;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--btn-secondary-bg);
 		color: var(--ink-secondary);
 		font-size: 12px;
@@ -1966,7 +1966,8 @@
 		line-height: 1;
 		white-space: nowrap;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 	.artifact-annot-btn[data-annotation-mode]::before {
 		content: "";
@@ -1992,14 +1993,14 @@
 		background: var(--btn-secondary-hover);
 	}
 	.artifact-annot-btn.is-on {
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: var(--accent);
 		background: var(--accent);
 	}
 	.artifact-annot-btn.is-on:hover:not(:disabled) {
 		background: var(--accent-hover);
 		border-color: var(--accent-hover);
-		color: #ffffff;
+		color: var(--on-accent);
 	}
 	.artifact-annot-btn.artifact-annot-toggle.is-on {
 		color: var(--accent);
@@ -2027,8 +2028,8 @@
 		gap: 6px;
 		height: 26px;
 		padding: 0 8px;
-		border-radius: 999px;
-		font-size: 11.5px;
+		border-radius: var(--radius-full);
+		font-size: 12px;
 		font-weight: 500;
 		color: var(--ink-secondary);
 		background: var(--btn-secondary-bg);
@@ -2036,7 +2037,8 @@
 		white-space: nowrap;
 		cursor: pointer;
 		user-select: none;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 	.artifact-annot-check:hover {
 		background: var(--btn-secondary-hover);
@@ -2108,7 +2110,7 @@
 		height: 32px;
 		padding: 0 16px;
 		border: 1px solid var(--accent-border);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-tint);
 		color: var(--accent);
 		font-size: 13px;
@@ -2157,14 +2159,14 @@
 	.artifact-loading-bytes {
 		margin: 0;
 		font-family: var(--mono);
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
 	.artifact-loading-bar {
 		width: min(220px, 70%);
 		height: 5px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--line-subtle);
 		overflow: hidden;
 	}
@@ -2172,7 +2174,7 @@
 	.artifact-loading-fill {
 		height: 100%;
 		width: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
 		transition: width 0.2s ease;
 	}
@@ -2228,7 +2230,7 @@
 		position: absolute;
 		inset: 0 3px;
 		background: var(--line);
-		border-radius: 99px;
+		border-radius: var(--radius-full);
 	}
 
 	.artifact-tree-split:hover::before,
@@ -2251,7 +2253,7 @@
 
 	.artifact-dirty-save {
 		background: var(--accent) !important;
-		color: #ffffff !important;
+		color: var(--on-accent) !important;
 		border-color: transparent !important;
 	}
 
@@ -2323,7 +2325,7 @@
 			border-radius: var(--radius-md);
 			background: var(--btn-secondary-bg);
 			color: var(--ink);
-			font-size: 12.5px;
+			font-size: 13px;
 			font-weight: 600;
 		}
 
@@ -2362,7 +2364,7 @@
 			border-right: 0;
 			border-bottom: 1px solid var(--line);
 			background: var(--pane);
-			box-shadow: 0 18px 28px -18px rgba(2, 6, 23, 0.65);
+			box-shadow: 0 18px 28px -18px rgba(8, 12, 14, 0.65);
 		}
 
 		.artifact-pane-main[data-tree-open='true'] :global(.artifact-tree) {

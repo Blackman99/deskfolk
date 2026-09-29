@@ -52,7 +52,7 @@ test("the settings dialog has no save button", () => {
 });
 
 function openModels(host: HTMLElement): void {
-  click(host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")[2]);
+  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="models"]'));
 }
 
 test("editing an endpoint name saves itself a moment later", async () => {
@@ -212,7 +212,7 @@ test("mobile history back unwinds editors and categories before leaving settings
       click(host.querySelector(".btn-provider-add"));
       expect(back()).toBe(true);
       expect(back()).toBe(true);
-      click(host.querySelectorAll(".settings-tab-btn")[3]);
+      click(host.querySelector('[data-settings-tab="mcp"]'));
       click(host.querySelector(".btn-mcp-add"));
       expect(back()).toBe(true);
       expect(host.querySelector(".mcp-editor-modal")).toBeNull();

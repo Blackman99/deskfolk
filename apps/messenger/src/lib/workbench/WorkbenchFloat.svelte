@@ -197,7 +197,7 @@
 		position: absolute;
 		display: flex;
 		flex-direction: column;
-		border-radius: 10px;
+		border-radius: var(--radius-md);
 		overflow: hidden;
 		background: var(--pane);
 		box-shadow: 0 10px 30px rgb(0 0 0 / 0.22);

@@ -11,16 +11,16 @@
 
 <nav class="mobile-navigation" aria-label={t.sidebar.mainNavigation}>
 	<button type="button" class:is-active={active === 'sessions'} aria-current={active === 'sessions' ? 'page' : undefined} onclick={() => onNavigate('sessions')}>
-		<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2v-10a9 9 0 0 1 18 0Z"/><path d="M7 10h8M7 14h5"/></svg>
+		<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2v-10a9 9 0 0 1 18 0Z"/><path d="M7 10h8M7 14h5"/></svg>
 		<span>{t.sidebar.sessions}</span>
 	</button>
 	<button type="button" class:is-active={active === 'workspace'} aria-current={active === 'workspace' ? 'page' : undefined} onclick={() => onNavigate('workspace')}>
-		<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M8 12h8M8 16h5"/></svg>
+		<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M8 12h8M8 16h5"/></svg>
 		<span>{t.sidebar.workspace}</span>
 	</button>
 	<button type="button" class:is-active={active === 'settings'} aria-current={active === 'settings' ? 'page' : undefined} onclick={() => onNavigate('settings')}>
 		<span class="navigation-icon">
-			<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.6 3h4.8l.7 2.5 2.2 1.3 2.5-.6 2.4 4.1-1.8 1.8v2.6l1.8 1.8-2.4 4.1-2.5-.6-2.2 1.3-.7 2.5H9.6l-.7-2.5-2.2-1.3-2.5.6-2.4-4.1 1.8-1.8v-2.6L1.8 10l2.4-4.1 2.5.6 2.2-1.3Z" transform="translate(1 0) scale(.91)"/><circle cx="12" cy="12" r="3"/></svg>
+			<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.6 3h4.8l.7 2.5 2.2 1.3 2.5-.6 2.4 4.1-1.8 1.8v2.6l1.8 1.8-2.4 4.1-2.5-.6-2.2 1.3-.7 2.5H9.6l-.7-2.5-2.2-1.3-2.5.6-2.4-4.1 1.8-1.8v-2.6L1.8 10l2.4-4.1 2.5.6 2.2-1.3Z" transform="translate(1 0) scale(.91)"/><circle cx="12" cy="12" r="3"/></svg>
 			{#if updateAvailable}<span class="navigation-update" aria-label={t.sidebar.updateAvailable}></span>{/if}
 		</span>
 		<span>{t.settings.title}</span>

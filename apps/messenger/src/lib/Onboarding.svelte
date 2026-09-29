@@ -581,7 +581,7 @@
 						>
 							{t.onboarding.useDefaultWorkspace}
 						</button>
-						<p class="jail mt-3 mx-0 mb-0 text-11p5 text-muted leading-[1.45] bg-line-subtle py-3 px-4 rounded-sm">{JAIL_COPY[locale]}</p>
+						<p class="jail mt-3 mx-0 mb-0 text-12 text-muted leading-[1.45] bg-line-subtle py-3 px-4 rounded-sm">{JAIL_COPY[locale]}</p>
 						{#if fieldErrors.workspace}
 							<p class="field-error">
 								{fieldCopy(
@@ -757,7 +757,7 @@
 											onclick={() => toggleModelSelection(model)}
 										>
 											<span class="model-chip-check text-11 font-bold min-w-5 text-accent">{isSelected ? '✓' : ''}</span>
-											<span class="model-chip-text font-mono text-11p5">{model}</span>
+											<span class="model-chip-text font-mono text-12">{model}</span>
 										</button>
 									{/each}
 								</div>
@@ -936,7 +936,7 @@
 		padding: 8px 12px;
 		background: var(--input-bg);
 		color: var(--ink);
-		font-size: 13.5px;
+		font-size: 14px;
 		box-shadow: var(--shadow-xs);
 		outline: none;
 		transition:
@@ -964,7 +964,7 @@
 
 	.onboarding-title {
 		margin: 0;
-		font-size: 19px;
+		font-size: 20px;
 		font-weight: 700;
 		color: var(--ink);
 		letter-spacing: -0.02em;
@@ -991,7 +991,8 @@
 		cursor: pointer;
 		padding: 4px 8px;
 		border-radius: var(--radius-md);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		z-index: 2;
 	}
 
@@ -1015,14 +1016,15 @@
 		justify-content: center;
 		font-size: 12px;
 		font-weight: 700;
-		transition: all 0.2s ease;
+		transition: 0.2s ease;
+		transition-property: var(--transition-props);
 		flex-shrink: 0;
 	}
 
 	.step-bar-item.is-active .step-bar-circle {
 		background: var(--accent);
 		border-color: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
@@ -1033,7 +1035,7 @@
 	}
 
 	.step-bar-label {
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 		color: var(--muted);
 		transition: color 0.15s ease;
@@ -1091,7 +1093,7 @@
 
 	.step-pane-desc {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		color: var(--muted);
 		line-height: 1.45;
 	}
@@ -1108,14 +1110,15 @@
 	.btn-step-primary {
 		padding: 8px 18px;
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border: none;
 		border-radius: var(--radius-md);
 		font-size: 13px;
 		font-weight: 600;
 		cursor: pointer;
-		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
-		transition: all 0.15s ease;
+		box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 20%, transparent);
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-step-primary:hover:not(:disabled) {
@@ -1133,10 +1136,11 @@
 		color: var(--ink-secondary);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-step-secondary:hover {
@@ -1160,13 +1164,14 @@
 
 	.preset-chip {
 		padding: 5px 12px;
-		border-radius: 9999px;
+		border-radius: var(--radius-full);
 		font-size: 12px;
 		font-weight: 500;
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
 		color: var(--ink-secondary);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		cursor: pointer;
 	}
 
@@ -1179,16 +1184,16 @@
 	.preset-chip.is-active {
 		background: var(--accent);
 		border-color: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		font-weight: 600;
-		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+		box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 25%, transparent);
 	}
 
 	.btn-onboarding-skip {
 		background: transparent;
 		border: none;
 		color: var(--muted);
-		font-size: 12.5px;
+		font-size: 13px;
 		cursor: pointer;
 		padding: 4px 8px;
 		transition: color 0.15s ease;
@@ -1205,7 +1210,7 @@
 		border: 1px solid var(--danger-line);
 		border-radius: var(--radius-md);
 		color: var(--danger);
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 	}
 
@@ -1243,7 +1248,8 @@
 		border: 1px solid var(--line);
 		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		user-select: none;
 	}
 
@@ -1287,7 +1293,8 @@
 		border-radius: var(--radius-sm);
 		color: var(--ink);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.btn-add-custom:hover {

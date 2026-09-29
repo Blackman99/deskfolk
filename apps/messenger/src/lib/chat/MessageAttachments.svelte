@@ -178,7 +178,8 @@
 		border-radius: var(--radius-md);
 		cursor: pointer;
 		text-align: left;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 		color: var(--ink);
 	}
 
@@ -194,14 +195,14 @@
 	.attachment-file-btn:hover,
 	.attachment-bundle-btn:hover {
 		border-color: var(--accent);
-		box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+		box-shadow: 0 2px 8px rgba(18, 28, 32, 0.08);
 	}
 
 	.attachment-chip-thumb,
 	.attachment-chip-pending {
 		width: 36px;
 		height: 36px;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		flex-shrink: 0;
 		background: var(--line-subtle);
 	}

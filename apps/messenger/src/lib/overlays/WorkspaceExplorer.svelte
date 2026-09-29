@@ -100,7 +100,7 @@
 		overflow: hidden;
 		background: var(--pane);
 		border-left: 1px solid var(--line);
-		box-shadow: -16px 0 36px -6px rgba(15, 23, 42, 0.18);
+		box-shadow: -16px 0 36px -6px rgba(18, 28, 32, 0.18);
 		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 

@@ -561,9 +561,9 @@
 		margin: 4px 0 0 -2px;
 		padding: 2px 10px;
 		border: 1px solid var(--accent-border);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 		font: inherit;
 		font-size: 12px;
 		font-weight: 600;

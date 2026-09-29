@@ -66,7 +66,7 @@
 		border: 0;
 		background: transparent;
 		color: var(--muted);
-		font-size: 11.5px;
+		font-size: 12px;
 		text-align: left;
 		cursor: pointer;
 	}
@@ -87,7 +87,7 @@
 	}
 
 	.command-failed {
-		color: var(--danger, #e05c5c);
+		color: var(--danger);
 	}
 
 	.command-pulse {
@@ -109,7 +109,7 @@
 		margin: 0;
 		padding: 6px 8px;
 		overflow: auto;
-		border-radius: var(--radius-sm, 6px);
+		border-radius: var(--radius-sm);
 		background: var(--surface-sunken, rgba(128, 128, 128, 0.1));
 		color: var(--muted);
 		font-size: 11px;

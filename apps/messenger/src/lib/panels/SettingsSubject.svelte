@@ -121,7 +121,7 @@
 	}
 
 	.is-line .settings-subject-name {
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 500;
 		line-height: 1.3;
 	}

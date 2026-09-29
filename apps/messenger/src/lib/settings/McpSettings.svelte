@@ -294,7 +294,7 @@
 					aria-label={`${t.settings.mcpEdit}: ${server.name}`}
 					onclick={() => void openEditor(server)}
 				>
-					<span class="mcp-server-name text-13p5 font-semibold" title={server.name}>{server.name}</span>
+					<span class="mcp-server-name text-14 font-semibold" title={server.name}>{server.name}</span>
 					<span class="mcp-server-meta flex items-center gap-4 min-w-0 max-w-full text-muted text-12">
 						<span class="mcp-badge">{server.transport === 'http' ? 'HTTP' : 'stdio'}</span>
 						<span class="mcp-server-connection mono" title={mcpConnectionSummary(server)}>{mcpConnectionSummary(server)}</span>
@@ -340,7 +340,7 @@
 					disabled={busy}
 					onclick={closeEditor}
 				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<h2 id="mcp-editor-title">{editor === 'add' ? t.settings.sectionMcpAdd : t.settings.mcpEdit}</h2>
 				{#if editor !== 'add'}
@@ -474,7 +474,7 @@
 		background: var(--pane);
 		color: var(--accent);
 		padding: 7px 10px;
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 		cursor: pointer;
 	}
@@ -544,7 +544,7 @@
 		font-size: 10px;
 		font-weight: 600;
 		padding: 1px 6px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
 		color: var(--muted);

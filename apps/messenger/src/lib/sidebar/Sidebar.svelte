@@ -230,7 +230,7 @@
 
 {#snippet searchGlyph()}
 	<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<circle cx="11" cy="11" r="8"></circle>
 			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
 		</svg>
@@ -238,11 +238,10 @@
 {/snippet}
 
 <aside class="side">
+	<!-- Nothing pinned is not news worth the top of the sidebar: the band only appears once something is. -->
+	{#if pinnedSessions.length > 0}
 	<div class="roster-panel">
 		<div class="roster" class:is-expanded={pinnedExpanded} title={t.sidebar.pinned}>
-			{#if pinnedSessions.length === 0}
-				<span class="roster-empty-hint text-12 text-muted py-2 px-0 select-none self-center">{t.sidebar.pinnedEmpty}</span>
-			{:else}
 				{#each pinnedSessions as pSession (pSession.id)}
 					{@const pStatus = statusOf(pSession)}
 					{@const pUnread = unreadOf(pSession)}
@@ -261,7 +260,7 @@
 							{#if isFileDropSession(pSession)}
 								<span class="row-avatar size-md" aria-hidden="true">
 									<span class="row-avatar-bot file-drop-mark">
-										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 											<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 											<polyline points="14 2 14 8 20 8"></polyline>
 											<line x1="12" y1="18" x2="12" y2="12"></line>
@@ -281,7 +280,6 @@
 						<span class="pinned-session-name text-11 font-medium text-ink leading-[1.2] w-full max-w-27 overflow-hidden text-ellipsis whitespace-nowrap text-center block select-none">{titleOf(pSession)}</span>
 					</button>
 				{/each}
-			{/if}
 		</div>
 		{#if pinnedSessions.length > 5}
 			<button
@@ -296,7 +294,7 @@
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
-					stroke-width="2.5"
+					stroke-width="2"
 					stroke-linecap="round"
 					stroke-linejoin="round"
 					class:is-rotated={pinnedExpanded}
@@ -306,6 +304,7 @@
 			</button>
 		{/if}
 	</div>
+	{/if}
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
 	{#if phone && viewingArchived}
 		<div class="mobile-archived-head">
@@ -316,7 +315,7 @@
 				aria-label={t.sidebar.backToSessions}
 				onclick={() => (viewingArchived = false)}
 			>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<polyline points="15 18 9 12 15 6"></polyline>
 				</svg>
 			</button>
@@ -428,7 +427,7 @@
 				>
 					<span class="row-avatar size-md" aria-hidden="true">
 						<span class="row-avatar-bot file-drop-mark">
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
 								<polyline points="14 2 14 8 20 8"></polyline>
 								<line x1="12" y1="18" x2="12" y2="12"></line>
@@ -694,7 +693,7 @@
 						onCreateBot();
 					}}
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<rect x="4" y="8" width="16" height="12" rx="3"></rect>
 						<path d="M12 8V4"></path>
 						<circle cx="9" cy="14" r="1"></circle>
@@ -711,7 +710,7 @@
 						onCreateGroup();
 					}}
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
 						<circle cx="9" cy="7" r="4"></circle>
 						<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
@@ -729,7 +728,7 @@
 			aria-label={t.sidebar.createMenu}
 			onclick={() => (createMenuOpen = !createMenuOpen)}
 		>
-			<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+			<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<path d="M12 5v14M5 12h14"></path>
 			</svg>
 		</button>
@@ -825,7 +824,7 @@
 	.search-trigger-wrap { position: relative; flex: 1; min-width: 0; }
 	.search-trigger { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer; }
 	.search-trigger span { color: var(--muted); }
-	.search-trigger kbd { flex-shrink: 0; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font: 10px var(--font); }
+	.search-trigger kbd { flex-shrink: 0; padding: 1px 4px; border: 1px solid var(--line); border-radius: var(--radius-xs); color: var(--muted); font: 10px var(--font); }
 	.search-trigger:hover { border-color: var(--line-hover); background: var(--row-hover); }
 	@media (max-width: 680px) { .search-trigger kbd { display: none; } }
 	/* Beside the two buttons, a list dragged to its narrowest has no room for "Search" and ⌘K both. */
@@ -969,7 +968,8 @@
 		min-height: 72px;
 		flex: 1;
 		min-width: 0;
-		transition: all 0.2s ease;
+		transition: 0.2s ease;
+		transition-property: max-height, gap;
 	}
 
 	.roster::-webkit-scrollbar {
@@ -978,7 +978,7 @@
 
 	.roster::-webkit-scrollbar-thumb {
 		background: var(--line-hover);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 	}
 
 	.roster.is-expanded {
@@ -1003,7 +1003,8 @@
 		color: var(--muted);
 		box-shadow: var(--shadow-xs);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.pinned-expand-btn:hover {
@@ -1031,7 +1032,8 @@
 		position: relative;
 		flex: 0 0 58px;
 		box-shadow: var(--shadow-xs);
-		transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+		transition-property: var(--transition-props);
 		padding: 4px 2px 2px;
 		cursor: pointer;
 		box-sizing: border-box;
@@ -1091,12 +1093,12 @@
 		right: -4px;
 		background: var(--warn);
 		color: #ffffff;
-		font-size: 9.5px;
+		font-size: 10px;
 		font-weight: 700;
 		min-width: 15px;
 		height: 15px;
 		padding: 0 3px;
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1150,7 +1152,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.ghead :global(.add:hover) {
@@ -1251,7 +1254,8 @@
 		border: 1px solid transparent;
 		background: transparent;
 		color: inherit;
-		transition: all 0.12s ease;
+		transition: 0.12s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.row:hover {
@@ -1265,7 +1269,7 @@
 	.row.is-on {
 		background: var(--accent-tint);
 		border-color: var(--accent-border);
-		box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06);
+		box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 6%, transparent);
 	}
 
 	/* Ring colors according to active / hover / container contexts */
@@ -1283,7 +1287,7 @@
 
 	.row.is-on :global(.row-avatar) :global(.slot-overflow) {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: var(--accent);
 	}
 
@@ -1301,7 +1305,7 @@
 
 	.pinned-session-btn.is-active :global(.row-avatar) :global(.slot-overflow) {
 		background: var(--accent);
-		color: #ffffff;
+		color: var(--on-accent);
 		border-color: var(--accent);
 	}
 
@@ -1310,7 +1314,7 @@
 	}
 
 	.row .t {
-		font-size: 13.5px;
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--ink);
 		white-space: nowrap;
@@ -1338,20 +1342,46 @@
 		min-height: 1.4em;
 	}
 
-	/* Placed by the phone block below; a wide row shows the status chip in that corner instead. */
+	/* The time beside each name, the way a messenger shows it. */
 	.row-time {
-		display: none;
+		grid-column: 3;
+		grid-row: 1;
+		justify-self: end;
+		align-self: center;
+		font-size: 11px;
+		line-height: 1.3;
+		color: var(--muted-light);
+		white-space: nowrap;
 	}
 
+	.row.is-unread .row-time {
+		color: var(--accent);
+	}
+
+	/*
+	 * Idle is the normal state, so it carries no mark at all: a green "空闲" on every row drowned
+	 * out the rows that did need a look. The label only appears when a Bot is doing something or
+	 * waiting on you, and then it speaks in place of the last message, the way a messenger shows
+	 * "typing…".
+	 */
 	.row-status {
 		display: inline-flex;
 		align-items: center;
-		gap: 4.5px;
-		grid-column: 3;
-		grid-row: 1;
-		font-size: 11px;
-		line-height: 1;
+		gap: 5px;
+		grid-column: 2 / 4;
+		grid-row: 2;
+		min-width: 0;
+		font-size: 12px;
+		line-height: 1.4;
 		white-space: nowrap;
+	}
+
+	.row-status.is-idle {
+		display: none;
+	}
+
+	.row:has(.row-status:not(.is-idle)) :global(.s) {
+		display: none;
 	}
 
 	.row-status-dot {
@@ -1360,15 +1390,6 @@
 		border-radius: 50%;
 		flex-shrink: 0;
 		transition: background 0.15s ease;
-	}
-
-	.row-status.is-idle .row-status-dot {
-		background: var(--ok);
-	}
-
-	.row-status.is-idle .row-status-text {
-		color: var(--muted-light);
-		font-weight: 500;
 	}
 
 	.row-status.is-running .row-status-dot {
@@ -1424,7 +1445,7 @@
 		margin-left: 2px;
 		height: 16px;
 		min-width: 16px;
-		font-size: 9.5px;
+		font-size: 10px;
 		padding: 0 4px;
 	}
 
@@ -1435,10 +1456,10 @@
 		min-width: 16px;
 		height: 16px;
 		padding: 0 4px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
-		color: #ffffff;
-		font-size: 9.5px;
+		color: var(--on-accent);
+		font-size: 10px;
 		font-weight: 700;
 		display: inline-flex;
 		align-items: center;
@@ -1453,10 +1474,10 @@
 		min-width: 15px;
 		height: 15px;
 		padding: 0 3px;
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		background: var(--accent);
-		color: #ffffff;
-		font-size: 9.5px;
+		color: var(--on-accent);
+		font-size: 10px;
 		font-weight: 700;
 		display: flex;
 		align-items: center;
@@ -1471,7 +1492,7 @@
 	.badge {
 		background: var(--warn);
 		color: #ffffff;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		font-size: 10px;
 		font-weight: 700;
 		min-width: 18px;
@@ -1481,7 +1502,7 @@
 		justify-content: center;
 		padding: 0 5px;
 		grid-column: 2;
-		box-shadow: 0 1px 3px rgba(217, 119, 6, 0.3);
+		box-shadow: 0 1px 3px color-mix(in srgb, var(--warn) 30%, transparent);
 	}
 
 	.btn-back-sessions {
@@ -1591,10 +1612,10 @@
 		height: 14px;
 		line-height: 12px;
 		padding: 0 3px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent);
-		color: #ffffff;
-		font-size: 9px;
+		color: var(--on-accent);
+		font-size: 10px;
 		font-weight: 700;
 		display: flex;
 		align-items: center;
@@ -1639,7 +1660,8 @@
 		color: var(--ink);
 		font-size: 13px;
 		box-shadow: var(--shadow-xs);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.search:focus {
@@ -1712,25 +1734,14 @@
 		}
 
 		.row .t {
-			font-size: 15.5px;
+			font-size: 16px;
 			font-weight: 600;
 			grid-column: 2;
 			grid-row: 1;
 		}
 
 		.row-time {
-			display: block;
-			grid-column: 3;
-			grid-row: 1;
-			justify-self: end;
-			font-size: 11.5px;
-			line-height: 1.3;
-			color: var(--muted-light);
-			white-space: nowrap;
-		}
-
-		.row.is-unread .row-time {
-			color: var(--accent);
+			font-size: 12px;
 		}
 
 		.row :global(.s) {
@@ -1740,23 +1751,9 @@
 			line-height: 1.35;
 		}
 
-		/*
-		 * Idle is the normal state and the portrait already carries a dot for it, so the label
-		 * only appears when the Bot is actually doing something — and then it speaks in place of
-		 * the last message, the way a messenger shows "typing…".
-		 */
-		.row-status.is-idle {
-			display: none;
-		}
-
-		.row-status:not(.is-idle) {
+		.row-status {
 			grid-column: 2;
-			grid-row: 2;
-			font-size: 12.5px;
-		}
-
-		.row:has(.row-status:not(.is-idle)) :global(.s) {
-			display: none;
+			font-size: 13px;
 		}
 
 		.unread-dot {
@@ -1767,7 +1764,7 @@
 			min-width: 18px;
 			height: 18px;
 			padding: 0 5px;
-			font-size: 10.5px;
+			font-size: 11px;
 		}
 
 		/* Tapping a row leaves the list, so the selected one only needs a tint, not a frame. */
@@ -1779,7 +1776,7 @@
 
 		.ghead {
 			padding: 12px 14px 4px;
-			font-size: 10.5px;
+			font-size: 11px;
 		}
 
 		/* Creating is the floating + now, so the headers are labels. */
@@ -1796,23 +1793,16 @@
 		 * A phone has no room for a scrollbar to push the list 15px off the edge the search field
 		 * and the group headers keep; touch scrolling shows its own indicator anyway.
 		 */
+		/* Room under the last row for the floating + (52px and its 16px inset), so the list can
+		   scroll every row clear of it instead of leaving the last one's time underneath. */
 		.groups {
 			scrollbar-width: none;
+			padding-bottom: 84px;
 		}
 
 		.groups::-webkit-scrollbar {
 			width: 0;
 			height: 0;
-		}
-
-		/* Nothing pinned is not news worth a row at the top of a phone screen. */
-		.roster-empty-hint {
-			display: none;
-		}
-
-		/* …and with the hint gone the rail was holding 88px of blank band, so it goes too. */
-		.roster-panel:has(.roster-empty-hint) {
-			display: none;
 		}
 
 		/*

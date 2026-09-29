@@ -74,7 +74,7 @@
 		gap: 8px;
 		padding: 6px 8px;
 		border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		background: color-mix(in srgb, currentColor 6%, transparent);
 	}
 	.annot-card.is-resolved {
@@ -119,7 +119,7 @@
 		flex-shrink: 0;
 		padding: 1px 7px;
 		border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		line-height: 16px;
 		white-space: nowrap;
 		color: inherit;

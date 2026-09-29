@@ -132,7 +132,7 @@
 		{#if memories.length === 0}
 			<div class="memory-empty-card">
 				<div class="memory-empty-icon" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
 						<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
 					</svg>
@@ -297,7 +297,7 @@
 					disabled={busy}
 					onclick={closeEdit}
 				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 				</button>
 				<div class="modal-head-titles">
 					<h2 id="memory-modal-title">{t.sidebar.memoryEdit}</h2>
@@ -493,7 +493,8 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--pane);
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.memory-row.is-off {
@@ -529,10 +530,10 @@
 	}
 
 	.memory-badge-disabled {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 500;
 		padding: 1px 6px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--sidebar-bg);
 		border: 1px solid var(--line);
 		color: var(--muted);
@@ -575,7 +576,7 @@
 
 	.memory-body {
 		margin: 0;
-		font-size: 12.5px;
+		font-size: 13px;
 		line-height: 1.5;
 		color: var(--ink-secondary);
 	}
@@ -618,7 +619,7 @@
 		border: 0;
 		background: transparent;
 		padding: 2px 0;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
 		cursor: pointer;
@@ -664,7 +665,7 @@
 	}
 
 	.memory-field-label {
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--ink);
 		margin: 0;
@@ -679,17 +680,17 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 500;
 		color: var(--muted);
 		background: var(--sidebar-bg);
 		border: 1px solid var(--line);
 		padding: 2px 8px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 	}
 
 	.memory-card-hint {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -707,7 +708,7 @@
 		border-radius: var(--radius-md);
 		background: var(--input-bg);
 		padding: 8px 12px;
-		font-size: 13.5px;
+		font-size: 14px;
 		color: var(--ink);
 		font-family: inherit;
 	}
@@ -733,10 +734,11 @@
 		border: 1px solid var(--line);
 		background: var(--sidebar-bg);
 		color: var(--ink-secondary);
-		font-size: 12.5px;
+		font-size: 13px;
 		text-align: left;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.memory-origin-action-btn:hover {
@@ -754,7 +756,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -777,13 +779,13 @@
 	}
 
 	.memory-switch-title {
-		font-size: 13.5px;
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--ink);
 	}
 
 	.memory-switch-desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--muted);
 	}
 
@@ -798,19 +800,20 @@
 		gap: 8px;
 		width: 100%;
 		min-height: 44px;
-		border: 1px solid rgba(239, 68, 68, 0.25);
+		border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
 		border-radius: var(--radius-md);
-		background: rgba(239, 68, 68, 0.05);
-		color: var(--danger-text, var(--danger, #ef4444));
+		background: color-mix(in srgb, var(--danger) 5%, transparent);
+		color: var(--danger-text, var(--danger, var(--danger)));
 		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
 	}
 
 	.memory-page-delete:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.1);
-		border-color: rgba(239, 68, 68, 0.4);
+		background: color-mix(in srgb, var(--danger) 10%, transparent);
+		border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 	}
 
 	.memory-modal-foot {
@@ -836,7 +839,7 @@
 
 	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
 	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
-	.switch-track { display: block; width: 44px; height: 24px; border-radius: 9999px; background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+	.switch-track { display: block; width: 44px; height: 24px; border-radius: var(--radius-full); background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 	.switch-toggle input:checked + .switch-track { background: var(--accent); }
 	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
@@ -878,7 +881,7 @@
 		.memory-row {
 			padding: 12px 14px;
 			border: 1px solid var(--line);
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			background: var(--pane);
 			box-shadow: var(--shadow-xs);
 			cursor: pointer;
@@ -898,7 +901,7 @@
 		}
 
 		.memory-body {
-			font-size: 13.5px;
+			font-size: 14px;
 			line-height: 1.5;
 		}
 
@@ -913,7 +916,7 @@
 			justify-content: center;
 			gap: 12px;
 			padding: 36px 16px;
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			background: var(--pane);
 			border: 1px dashed var(--line);
 			text-align: center;
@@ -965,7 +968,7 @@
 
 		.memory-form-card {
 			padding: 14px 16px;
-			border-radius: var(--radius-lg, 12px);
+			border-radius: var(--radius-lg);
 			box-shadow: var(--shadow-xs);
 		}
 
