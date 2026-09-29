@@ -2064,10 +2064,15 @@ void runtime.setPushEnabled(enabled);
 		background: var(--row-hover);
 	}
 
-	/* The open page is tinted the way the open conversation is in the sidebar. */
+	/*
+	 * The open page is tinted the way the open conversation is in the sidebar. The frame the
+	 * generic `.settings-tab-btn.is-active` draws for the row of tabs is taken off here.
+	 */
 	.settings-sidebar .settings-tab-btn.is-active {
 		color: var(--accent);
 		background: var(--accent-tint);
+		border-color: transparent;
+		box-shadow: none;
 		font-weight: 600;
 	}
 
