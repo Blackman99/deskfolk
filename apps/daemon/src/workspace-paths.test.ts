@@ -9,7 +9,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import {
   asFolder,
@@ -197,7 +197,8 @@ const n = fs.readFileSync("launch/copy.md", "utf8").split(/\s+/g).length; consol
     expect(classifyShell(root, "ls /").kind).toBe("unconstrained");
     expect(classifyShell(root, `python3 -c "open('/etc/hosts')"`).kind).toBe("unconstrained");
     expect(classifyShell(root, "bun tool/tally.ts samples/a.csv >/tmp/out.txt").kind).toBe("unconstrained");
-    expect(classifyShell(root, `python3 -c "open('/Users/x/secret')"`).kind).toBe("unconstrained");
+    // A home folder, wherever this host keeps them (/Users on a Mac, /home on Linux).
+    expect(classifyShell(root, `python3 -c "open('${homedir()}/secret')"`).kind).toBe("unconstrained");
   });
 
   test("cwd outside the workspace is unconstrained", () => {
