@@ -22,6 +22,11 @@
   let scene = $state(0);
   /** Scrolling up into a step shows where it ends instead of playing it again. */
   let back = $state(false);
+  /**
+   * Reduced motion: a jump from the rail lands at once instead of scrolling there. The clips still
+   * play as you scroll: they are what the section shows, and Windows reports reduced motion
+   * whenever its animation effects are off.
+   */
   let instant = $state(false);
   let dark = $state(false);
   /** Which picture is on the stage: 0 = the still, n = step n's clip. Lags `scene` until that clip can show. */
@@ -38,7 +43,8 @@
   const wanted = new SvelteSet<number>();
   /**
    * Steps whose clip has started playing on this visit. The rest wait on a frame without having
-   * moved (reduced motion, autoplay refused), so their button offers to play, not to replay.
+   * moved (autoplay refused, or reached by scrolling back up), so their button offers to play, not
+   * to replay.
    */
   const played = new SvelteSet<number>();
 
@@ -105,7 +111,7 @@
     const reveal = () => {
       if (scene === n) shown = n;
     };
-    if (back || instant) {
+    if (back) {
       v.pause();
       const end = Math.max(0, v.duration - 0.05);
       if (Math.abs(v.currentTime - end) < 0.01) return reveal();

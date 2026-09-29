@@ -62,7 +62,7 @@ export type Dict = {
     railLabel: string;
     /** What the first screen's still shows, for screen readers. */
     stillLabel: string;
-    /** On a step whose clip has not played yet on this visit (reduced motion, autoplay refused). */
+    /** On a step whose clip has not played yet on this visit (autoplay refused, or scrolled back up to). */
     play: string;
     replay: string;
     /** Opens the step's clip bigger than the stage. */
