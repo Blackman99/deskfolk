@@ -353,6 +353,16 @@
 		remoteState === 'online' ? 'ok' : remoteState === 'connecting' ? 'neutral' : remoteState === 'off' ? 'neutral' : 'warn'
 	);
 	const remoteExplains = $derived(remoteState === 'online' || remoteState === 'off' ? '' : t.remote.experimental);
+	/** Why the card offers no connect form when the runtime, not the relay, is what stands in the way. */
+	const remoteSetupNote = $derived(
+		runtime.remote
+			? ''
+			: runtime.remoteStatus?.diagnostic === 'platform_unsupported'
+				? t.remote.setupUnsupportedWindows
+				: runtime.remoteStatus?.diagnostic === 'sealed_runtime_required'
+					? t.remote.setupNeedsDevSwitch
+					: ''
+	);
 	let workspaceSavedTick = $state(0);
 	/** Latest editor draft, so a parent that nulls `providerEditor` still has something to flush. */
 	let latestProviderEditor: ProviderEditorState | null = null;
@@ -932,6 +942,9 @@
 								{#if remoteExplains}
 									<p class="muted">{remoteLabel === t.remote.statusGated ? t.remote.experimental : remoteExplains}</p>
 								{/if}
+								{#if remoteSetupNote}
+									<p class="muted" data-testid="remote-setup-note">{remoteSetupNote}</p>
+								{/if}
 
 								{#if relayConnectable}
 									<form class="relay-connect" data-testid="remote-connect" onsubmit={connectRelay}>
@@ -1116,7 +1129,7 @@
 											</ul>
 										{/if}
 									</div>
-								{:else if runtime.remoteStatus && !runtime.remote && !relayConnectable}
+								{:else if runtime.remoteStatus && !runtime.remote && !relayConnectable && !remoteSetupNote}
 									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
 								{/if}
 

@@ -46,7 +46,7 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 - **编译态（发布包）**：`shippedRemoteNative` 见到 `/$bunfs/` 就交出它。窗 spawn 时给的 FD3 按来历信任（不再找 dylib 验签名），上面用 `windowDispatch`：设置操作之外只多 `challenge_display` / `challenge_proof`。Tauri 的 `remote_native_confirmation` 先问前者，用 `LAContext` 弹触控 ID（`local_confirm.rs`），人过了才问后者拿 proof；`remote_local_setup` 的白名单里没有这两步，网页发不了。
 - **源码态带 `REAL_BOT_DEV_REMOTE=1`**：`remote/dev-setup.ts` 交出同一个存储，并把 setup dispatcher 开在 `dev-remote/setup.sock`（0600；数据目录过长时退回 `$TMPDIR/real-bot-dev-remote-<hash>.sock`），协议帧与 FD3 一致，多两个不问人的替身 `dev_describe` / `dev_authenticate`。编译态守护进程从不提供这两个（`devRemoteAllowed` 见到 `/$bunfs/` 直接 false）。
-- **源码态不带开关**：仍是封口的 `remote-native.ts`（只在编译后的 `/$bunfs/` 里加载 dylib，`capability()` 固定答 `g_pack_not_verified`），远控状态是 `off` + `sealed_runtime_required`，卡片不给登记表。
+- **源码态不带开关**：仍是封口的 `remote-native.ts`（只在编译后的 `/$bunfs/` 里加载 dylib，`capability()` 固定答 `g_pack_not_verified`），远控状态是 `off` + `sealed_runtime_required`，卡片不给登记表，改为提示带 `REAL_BOT_DEV_REMOTE=1` 启动。
 
 设置面板里的远控卡：这台 Mac 还没登记中继时给一张登记表（中继地址、`RELAY_ID`、bootstrap 令牌 → `initialize`），之后是配对和设备列表。源码态时 daemon 在 `POST /v1/remote/setup` 上开放登记、设备列表、移除和配对操作（`status` / `initialize` / `list_devices` / `prepare_remove_device` / `confirm_remove_device` / `open_pair` / `prepare_pair` / `confirm_pair` 与两个确认替身），改中继、重置身份仍然只在 unix socket 上；打包态同一张卡改走窗口的 `remote_local_setup` 与触控 ID 确认，信使侧由 `remote/pairing-host.ts` 分流，卡片本身不关心是哪条。打包窗答了的就是最终答案，不再回落到本机 HTTP（打包态守护进程没有那条路由）。
 
@@ -277,7 +277,7 @@ CI（`.github/workflows/windows.yml`）在 `windows-latest` 上跑一遍单元�
 
 安装与升级：安装包按当前用户安装（不要管理员）。窗口开着时，守护进程和它起的终端都在窗口的 Job Object 里，安装程序关窗口时它们一起结束；`src-tauri/installer-hooks.nsh` 在没有窗口、只剩上次留下的守护进程或 pty helper 时先把它们停掉，否则占着的 exe 覆盖不了。
 
-还没有的：远控接线与手机配对、独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`；发给模型的图片不受影响，Windows 上用 GDI+ 缩小）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
+还没有的：远控接线与手机配对（Windows 上的守护进程一直用封口 provider，远控状态带 `platform_unsupported`，设置卡片不给登记表，直接写明 Windows 版还不支持）、独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`；发给模型的图片不受影响，Windows 上用 GDI+ 缩小）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
 
 ## 命令
 

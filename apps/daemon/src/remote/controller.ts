@@ -30,6 +30,8 @@ export type RemoteControllerOptions = {
   pausedUpgrade?: boolean;
   /** Test-only heartbeat pace. Production asks the relay every 15 s and gives it 10 s to answer. */
   relayHeartbeat?: RelayHeartbeat;
+  /** The OS this runs on, for the status the sealed provider gives; this process's own unless a test says. */
+  platform?: NodeJS.Platform;
 };
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
@@ -64,8 +66,13 @@ export class RemoteController {
   private routes = new Set<string>();
   constructor(private readonly options: RemoteControllerOptions) {
     this.native = options.native ?? remoteNative;
-    // The sealed provider cannot be set up from any build yet; say so, so the panel offers no form.
-    if (this.native === remoteNative) this.statusValue = { state: "off", diagnostic: "sealed_runtime_required", devices: 0 };
+    // The sealed provider cannot be set up from any build yet, and on Windows nothing can: its window
+    // hands the daemon no setup channel and has no confirmation sheet. Say which, so the panel offers
+    // no form and names why.
+    if (this.native === remoteNative) {
+      const windows = (options.platform ?? process.platform) === "win32";
+      this.statusValue = { state: "off", diagnostic: windows ? "platform_unsupported" : "sealed_runtime_required", devices: 0 };
+    }
     this.trust = new RemoteTrust(options.store, this.native, options.now);
     this.push = new PushService({
       store: options.store,

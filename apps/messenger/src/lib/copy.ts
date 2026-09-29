@@ -180,6 +180,8 @@ const zh = {
     hostConnectUnreachable: "这个地址上连不到中继。",
     hostConnectFailed: "没能接入。检查中继地址和中继 ID。",
     setupChannelLost: "这个窗口打开时运行时已经在跑，窗口管不到它的远控设置。退出 Deskfolk 再打开。",
+    setupUnsupportedWindows: "Windows 版还不支持远控：不能接入中继，也不能配对手机。要从手机访问，目前需要在 Mac 上运行 Deskfolk。",
+    setupNeedsDevSwitch: "从源码运行时，要带 REAL_BOT_DEV_REMOTE=1 启动（REAL_BOT_DEV_REMOTE=1 pnpm dev）才能在这里接入中继；安装的应用不需要。",
   },
   sidebar: {
     roster: "名册",
@@ -1538,6 +1540,8 @@ const en: CopyShape<typeof zh> = {
     hostConnectUnreachable: "No relay answered at that address.",
     hostConnectFailed: "Could not connect this Mac. Check the relay address and relay ID.",
     setupChannelLost: "The runtime was already running when this window opened, so this window cannot set up remote access. Quit Deskfolk and open it again.",
+    setupUnsupportedWindows: "Remote access isn't available on Windows yet: this version can't connect to a relay or pair a phone. To reach Deskfolk from a phone, run it on a Mac for now.",
+    setupNeedsDevSwitch: "A source run sets up remote access here only when started with REAL_BOT_DEV_REMOTE=1 (REAL_BOT_DEV_REMOTE=1 pnpm dev). The installed app needs no switch.",
   },
   sidebar: {
     roster: "Roster",
