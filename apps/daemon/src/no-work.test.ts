@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isNoWorkCloser } from "./no-work";
+import { isBareRemark, isNoWorkCloser } from "./no-work";
 
 describe("isNoWorkCloser", () => {
   test("drops the short no-work closers bots actually post", () => {
@@ -93,5 +93,24 @@ describe("isNoWorkCloser", () => {
     expect(isNoWorkCloser("本轮没有新工作，请 @Writer 接手 brief.md")).toBe(false);
     expect(isNoWorkCloser("本轮没有新工作，要不要我去查资料？")).toBe(false);
     expect(isNoWorkCloser("请同组同事也各自介绍一下：\n@架构师\n@审查员")).toBe(false);
+  });
+});
+
+describe("isBareRemark", () => {
+  test("takes the short sign-offs two Bots traded in a direct", () => {
+    expect(isBareRemark("收到。Shot 12 不开，这一片不再生成、不再修声、不再剪母带。Shot 01–11 按现有文件封存。")).toBe(true);
+    expect(isBareRemark("停工已对齐，不再回复。")).toBe(true);
+    expect(isBareRemark("停工已经对齐，没有新的复检或放行。本轮不发消息。")).toBe(true);
+    expect(isBareRemark("")).toBe(true);
+  });
+
+  test("leaves lines that ask, name someone, point at something or run long", () => {
+    expect(isBareRemark("停工已对齐，Shot 12 要删掉吗？")).toBe(false);
+    expect(isBareRemark("Is Shot 12 cancelled?")).toBe(false);
+    expect(isBareRemark("@审片员 停工已对齐。")).toBe(false);
+    expect(isBareRemark("母带在 shots/master.mp4")).toBe(false);
+    expect(isBareRemark("见 review.md")).toBe(false);
+    expect(isBareRemark("https://example.com/cut")).toBe(false);
+    expect(isBareRemark("驳回重跑。".repeat(40))).toBe(false);
   });
 });

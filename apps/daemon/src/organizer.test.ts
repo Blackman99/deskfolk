@@ -13,6 +13,7 @@ import { PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
 import { PLAN_NUDGES_UNANSWERED_MAX } from "./engine/plan-watch";
 import { createTurnEngine } from "./turn-engine";
 import {
+  asksToStop,
   createOrganizer,
   ORGANIZER_MAX_TOKENS,
   ORGANIZER_SETTLE_TIMEOUT_MS,
@@ -847,6 +848,80 @@ test("a filing that comes to nothing files nothing and says why: cut off, unread
   expect(h.lines[2]).toContain("first_byte");
   expect(h.lines[3]).toContain("socket hang up");
   for (const text of h.lines) expect(text).toMatch(/^\[organizer\] filing message /);
+});
+
+test("a line asking to stop never puts a parked plan back to work; one that says to go on does", async () => {
+  // The live case: 「你私聊里的没停」 came back as 「私聊里这件还没停，不要搁置，接着做完」, the
+  // plan went active again and the video Bots rendered two more shots after being told to stop.
+  const reopen = (planId: string) =>
+    judged(
+      JSON.stringify({
+        decision: "resume",
+        resume_plan_id: planId,
+        plan: { goal: "做一部短片", rules: ["私聊里这件还没停，不要搁置，接着做完"], status: "active" },
+        tickets: [],
+      }),
+    );
+  const answers: JudgeResult[] = [];
+  const h = bareOrganizer(answers);
+  const director = h.store.createBot({ name: "Director", duties: "direct", boundaries: "stay" });
+  const session = director.direct_session.id;
+  const plan = h.store.openTask({ sessionId: session, title: "做一部短片" });
+  const opening = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "做一部短片" });
+  h.store.db.run("UPDATE messages SET task_id = ? WHERE id = ?", [plan.id, opening.id]);
+  h.store.setPlanSpecByUser(plan.id, { goal: "做一部短片", rules: ["用户叫停，没说继续之前不再做"], status: "parked" });
+  const revisions = h.store.listSpecRevisions(plan.id).length;
+
+  for (const body of ["你私聊里的没停", "停下你所有的工作", "you still haven't stopped"]) {
+    h.lines.length = 0;
+    h.requests.length = 0;
+    const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body });
+    // The call was made and its answer read; only applying it is refused.
+    answers.push(reopen(plan.id));
+    expect(await h.organizer.organizeMessage(line)).toEqual({ taskId: null, ticketId: null });
+    expect(h.requests).toHaveLength(1);
+    expect(h.store.getTask(plan.id).status).toBe("parked");
+    expect(h.store.getMessage(line.id).task_id).toBeNull();
+    expect(h.lines).toEqual([
+      `[organizer] filing message ${line.id}: a line asking to stop would have reopened parked plan ${plan.id}, nothing filed`,
+    ]);
+  }
+  expect(h.store.listSpecRevisions(plan.id)).toHaveLength(revisions);
+  expect(JSON.parse(h.store.getTask(plan.id).spec!).rules).toEqual(["用户叫停，没说继续之前不再做"]);
+
+  const goOn = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "停了的那部接着做" });
+  answers.push(reopen(plan.id));
+  expect(await h.organizer.organizeMessage(goOn)).toMatchObject({ taskId: plan.id });
+  expect(h.store.getTask(plan.id).status).toBe("active");
+});
+
+test("a settle files what the Bots handed over in a parked plan but leaves it parked", async () => {
+  const answers: JudgeResult[] = [];
+  const h = bareOrganizer(answers);
+  const director = h.store.createBot({ name: "Director", duties: "direct", boundaries: "stay" });
+  const session = director.direct_session.id;
+  const plan = h.store.openTask({ sessionId: session, title: "做一部短片" });
+  h.store.setPlanSpecByUser(plan.id, { goal: "做一部短片", status: "parked" });
+  const handed = h.store.insertMessage({ sessionId: session, kind: "bot", author: director.bot.id, body: "Shot 12 交在 shots/shot_12.mp4" });
+  h.store.db.run("UPDATE messages SET task_id = ?, created_at = ? WHERE id = ?", [plan.id, new Date(Date.now() + 1000).toISOString(), handed.id]);
+  answers.push(
+    judged(JSON.stringify({ decision: "continue", plan: { goal: "做一部短片", progress: { done: ["Shot 12 已交"] }, status: "active" }, tickets: [] })),
+  );
+
+  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
+  const task = h.store.getTask(plan.id);
+  expect(task.status).toBe("parked");
+  expect(JSON.parse(task.spec!)).toMatchObject({ status: "parked", progress: { done: ["Shot 12 已交"] } });
+  expect(h.lines).toEqual([`[organizer] plan ${plan.id}: the settle called it active; kept parked`]);
+});
+
+test("stop lines are told from lines that say to go on", () => {
+  for (const body of ["停下你所有的工作", "私聊里的也停掉", "你私聊里的没停", "你手头的生成停一下", "先暂停", "别再生成了", "Stop everything", "please pause"]) {
+    expect(asksToStop(body)).toBe(true);
+  }
+  for (const body of ["继续", "停了的那部接着做", "不要停", "停车场那张图再亮一点", "为什么不继续了", "don't stop now", "keep going", "别再用冻帧补时长", "不要再出现左右手反"]) {
+    expect(asksToStop(body)).toBe(false);
+  }
 });
 
 /**

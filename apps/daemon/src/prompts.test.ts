@@ -323,6 +323,22 @@ describe("prompts", () => {
     expect(JUDGEMENT_SYSTEM).toContain("用户向全员提出的工作请求不是打招呼");
   });
 
+  test("a Bot with nothing to say ends the turn with end_turn instead of a sign-off line", () => {
+    for (const locale of ["zh", "en"] as const) {
+      const end = builtinTools(locale).find((t) => t.function.name === "end_turn")!;
+      expect(end.function.parameters.properties).toEqual({});
+      expect(end.function.description).toContain(locale === "zh" ? "结束本轮，不发任何消息" : "End this turn without posting anything");
+      expect(end.function.description).toContain(locale === "zh" ? "在 Bot↔Bot 私聊里还会叫醒对方" : "in a Bot↔Bot direct it wakes the other Bot");
+    }
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
+    const zh = turnSystemPrompt({ ...profile, locale: "zh" });
+    expect(zh).toContain("调用 end_turn 结束本轮，主转录里不要留痕迹");
+    expect(zh).toContain("Bot↔Bot 私聊里你发的每句话都会叫醒对方");
+    const en = turnSystemPrompt({ ...profile, locale: "en" });
+    expect(en).toContain("call end_turn to end the turn with no transcript message");
+    expect(en).toContain("In a Bot↔Bot direct every line you post wakes the other Bot");
+  });
+
   test("send_message tool copy says mention forces a new turn", () => {
     const zh = builtinTools("zh").find((t) => t.function.name === "send_message")!;
     expect(zh.function.description).toContain("会点名并让对方必须下场（对方正在干活时不会被打断，它下一跳就会读到）");
@@ -340,6 +356,8 @@ describe("prompts", () => {
     expect(en.function.description).toContain("Do not re-mention a request the user already made to the group");
     expect(en.function.description).toContain("Do not rebroadcast a request already in the transcript");
     expect(en.function.description).toContain("Do not post a closer or status note such as \"no new work\"");
+    expect(zh.function.description).toContain("调用 end_turn 结束本轮");
+    expect(en.function.description).toContain("call end_turn instead");
     expect(en.function.description).toContain("Workspace files written this turn become clickable links automatically");
   });
 

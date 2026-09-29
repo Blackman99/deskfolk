@@ -141,6 +141,9 @@ export async function runCollabTool(
         return askUser(ctx, args);
       case "check_back":
         return checkBack(ctx, args);
+      case "end_turn":
+        // The engine ends the turn once the hop's calls are done (see executeTools).
+        return { ok: true, data: { ended: true }, emitted: [] };
       case "list_routines":
         return listRoutines(ctx, args);
       case "create_routine":

@@ -112,6 +112,7 @@ export function createTools(deps: ToolsDeps): Tools {
     const workDir = live.workDir;
     let posted = false;
     let spoke = false;
+    let ended = false;
     // What read_file found this hop; shown after all the hop's tool results (see loop-pictures.ts).
     const pictures: LoopPicture[] = [];
     for (const call of calls) {
@@ -284,6 +285,7 @@ export function createTools(deps: ToolsDeps): Tools {
         spoke = true;
         live.spoke = true;
       }
+      if (call.name === "end_turn" && result.ok) ended = true;
       if (!skipped) posted = true;
       const payload = result.ok
         ? { ok: true, data: admitPicture(live, pictures, result) }
@@ -299,6 +301,8 @@ export function createTools(deps: ToolsDeps): Tools {
       });
     }
     if (spoke) return "spoke";
+    // end_turn: the Bot has nothing to say, so the turn ends here with no message.
+    if (ended) return "noop";
     attachPictures(live.loop, pictures, live.locale);
     return posted ? "more" : "noop";
   }

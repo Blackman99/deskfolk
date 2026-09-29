@@ -13,6 +13,7 @@ import {
   REMOVE_MEMBER,
   ASK_USER,
   CHECK_BACK,
+  END_TURN,
 } from "./tools/collab";
 import { UPDATE_PROFILE, LIST_SKILLS, READ_SKILL, CREATE_SKILL, UPDATE_SKILL, DELETE_SKILL } from "./tools/profile";
 import { REMEMBER, FORGET } from "./tools/memory";
@@ -46,6 +47,7 @@ export const TOOLS: ToolDef[] = [
   REMOVE_MEMBER,
   ASK_USER,
   CHECK_BACK,
+  END_TURN,
   LIST_ROUTINES,
   CREATE_ROUTINE,
   UPDATE_ROUTINE,

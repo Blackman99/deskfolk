@@ -27,7 +27,7 @@ import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
 import { atomicWrite } from "./file-integrity";
 import { holdSettle, ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
-import { parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type PlanSpec, type Store, type Task } from "./store";
+import { parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
 import { classifyPath } from "./workspace-paths";
 
 export type OrganizerRouting = {
@@ -104,6 +104,19 @@ export const SETTLE_QUIET_MS = 30_000;
 export const MIRROR_FILES = true;
 /** Turns of the plan the organizer sees as "so far". */
 const TRACE_LIMIT = 12;
+
+const STOP_CUE = /停下|停掉|停止|停一下|停手|停工|暂停|叫停|没停|先停|都停|全停|中止|终止|别再生成|不要再生成|别再做|不要再做|别做了|不要做了|先别做|别弄了|\b(?:stop|stopped|pause|halt)\b|hold off/i;
+const GO_ON_CUE = /继续|接着|恢复|重新开始|往下做|别停|不要停|不用停|开工|\b(?:continue|resume|unpause|keep going|go on|carry on)\b|don'?t stop/i;
+
+/**
+ * A line that asks the Bots to stop, or tells them they have not stopped (「停下你所有的工作」
+ * 「私聊里的也停掉」「你私聊里的没停」). One that also says to go on (「停了的接着做」「不要停」)
+ * does not, and neither does 「别再 / 不要再 + what」: that is a requirement
+ * (「别再用冻帧补时长」), not a stop.
+ */
+export function asksToStop(body: string): boolean {
+  return STOP_CUE.test(body) && !GO_ON_CUE.test(body);
+}
 
 export function createOrganizer(deps: OrganizerDeps): Organizer {
   const store = deps.store;
@@ -215,6 +228,22 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     return parsed;
   }
 
+  /** The parked plan an answer would put back to work: the one it resumes, joins or continues. */
+  function parkedPlanReopened(parsed: OrganizerResult, current: Task | null): string | null {
+    if (parsed.spec.status === "parked") return null;
+    const id =
+      parsed.decision === "resume" ? parsed.resumePlanId
+      : parsed.decision === "join" ? (parsed.joinPlanId ?? null)
+      : parsed.decision === "continue" ? (current?.id ?? null)
+      : null;
+    if (!id) return null;
+    try {
+      return store.getTask(id).status === "parked" ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** A plan called done over open tickets stays active; the log says which tickets kept it. */
   function noteHeldOpen(taskId: string, held: readonly Ticket[]): void {
     if (held.length === 0) return;
@@ -242,6 +271,13 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (deps.draining() || ablation.has("organize-message") || !shouldFile(message)) return fallback;
     const parsed = await call({ mode: "message", sessionId: message.session_id, message, current });
     if (!parsed) return fallback;
+    // 「你私聊里的没停」 once came back as 「私聊里这件还没停，接着做完」 and put a stopped video
+    // job back to work: a line asking to stop never reopens a parked plan, whatever the answer says.
+    const reopened = parkedPlanReopened(parsed, current);
+    if (reopened && asksToStop(message.body)) {
+      log(`[organizer] filing message ${message.id}: a line asking to stop would have reopened parked plan ${reopened}, nothing filed`);
+      return fallback;
+    }
     let applied;
     try {
       applied = store.transaction(() =>
@@ -310,9 +346,13 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       const lastTurn = store.db
         .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
         .get(taskId);
+      // A settle files what the Bots handed over; putting a parked plan back to work is yours to say.
+      const reopens = task.status === "parked" && parsed.spec.status === "active";
+      if (reopens) log(`[organizer] plan ${taskId}: the settle called it active; kept parked`);
+      const kept = reopens ? { ...parsed, spec: { ...parsed.spec, status: "parked" as const } } : parsed;
       // The evidence settle is only for re-reading checks that just ran; it must not also let this
       // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
-      const answer = opts?.evidence ? { ...parsed, checks: undefined } : parsed;
+      const answer = opts?.evidence ? { ...kept, checks: undefined } : kept;
       const { result, held } = holdSettle(
         { ...answer, decision: "continue", resumePlanId: null, messageTicket: null },
         { before, tickets: store.listTickets(taskId), userSpoke },

@@ -1,9 +1,9 @@
 /**
- * Who a message wakes. A direct always wakes the other side; a group reads its `@mentions` against
- * the roster and, naming no one, treats a user line as a floor open to everyone present — the
- * focused Bot hears it, the rest judge whether it is theirs to join. `pendingJudges` tracks a
- * judgement from the moment it is announced to the moment it lands, so the sidebar can show a Bot
- * as still deciding.
+ * Who a message wakes. A direct wakes the other side, except a Bot's nod to a nod in a Bot↔Bot
+ * direct (see `isNodToANod`); a group reads its `@mentions` against the roster and, naming no one,
+ * treats a user line as a floor open to everyone present — the focused Bot hears it, the rest judge
+ * whether it is theirs to join. `pendingJudges` tracks a judgement from the moment it is announced
+ * to the moment it lands, so the sidebar can show a Bot as still deciding.
  */
 import {
   USER_MEMBER,
@@ -17,6 +17,7 @@ import type { CompletionsClient } from "../completions";
 import { assembleJudgementUser, extractJudgement } from "../context";
 import { isoNow, ulid } from "../ids";
 import { parseMentions } from "../mentions";
+import { isBareRemark } from "../no-work";
 import { JUDGEMENT_MAX_TOKENS, JUDGEMENT_SYSTEM, unknownMentionBody } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
@@ -167,6 +168,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const bots = store.presentBotIds(session.id);
       const target = bots.find((id) => id !== message.author);
       if (!target) return;
+      if (!opts.fromUser && message.kind === "bot" && isNodToANod(message)) return;
       // Your new message forks by default. With no user in the room, a Bot's next message is
       // heard inside the other Bot's live turn instead of cloning or ending it — as in a group.
       const fork = opts.fork !== undefined ? opts.fork : store.isPresent(session.id, USER_MEMBER);
@@ -248,6 +250,27 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         judge(botId, message, parsed.mentions, parsed.everyone, pendingByBot.get(botId)!),
       ),
     );
+  }
+
+  /**
+   * In a Bot↔Bot direct every line wakes the other Bot, so two Bots with nothing left to do can
+   * trade 「收到」「已对齐，本轮不发消息」 for ever: on 2026-09-29 视频导演 and 审片员 kept it up every
+   * 20 s after the user had stopped both. A line is a nod to a nod when it and the other Bot's
+   * line that opened its turn are both bare remarks, neither cites a file, and neither turn ran a
+   * command or an MCP tool. It stays in the transcript but wakes nobody, which ends the exchange;
+   * the opener's report-back takes it from there.
+   */
+  function isNodToANod(message: Message): boolean {
+    if (!message.turn_id || message.attachments.length > 0 || !isBareRemark(message.body)) return false;
+    try {
+      if (store.turnRuns(message.turn_id).length > 0) return false;
+      const trigger = store.getMessage(store.getTurn(message.turn_id).trigger_message_id);
+      if (trigger.kind !== "bot" || trigger.author === message.author || !trigger.turn_id) return false;
+      if (trigger.attachments.length > 0 || !isBareRemark(trigger.body)) return false;
+      return store.turnRuns(trigger.turn_id).length === 0;
+    } catch {
+      return false;
+    }
   }
 
   function inboxItem(message: Message): HeardItem {

@@ -3,8 +3,8 @@ import type { ToolDef } from "../tool-schema";
 export const SEND_MESSAGE: ToolDef = {
   name: "send_message",
   description: {
-    zh: "在你已在场的会话里发言或交接。省略 session_id 即本轮所在会话。正文里的 @Name 会点名并让对方必须下场（对方正在干活时不会被打断，它下一跳就会读到）；只在对方有尚未看见的新工作要接手时点名。用户已经向全员说过的请求不要再 @ 一遍。对方已经在场并同意时不要再点名。要针对某一条主线消息说话时传 parent_id（只能一层）；引用 Bot 时正文会自动加上 @对方。群里点到名册已有但不在场的 Bot 会先拉入。名册没有的名字不新建 Bot。群里 @ 的名字必须与在场成员逐字一致，写错会返回 unknown_mention 且消息不会发出。本轮写入的工作区文件会自动变成可点链接，正文里直接写路径即可。不要把已经提出的请求再广播一遍。没有新工作、介绍已经发出、无其他事项、本轮结束这类收尾或状态汇报不要发：直接结束本轮。成功发送会结束本轮；先解决可恢复的障碍并验证结果，不要用它预告排查或把可自行处理的技术问题交给用户。",
-    en: "Speak or hand off in a session you currently belong to. Omit session_id for this turn's session. @Name in the body mentions a teammate and forces them to take the floor (one who is mid-task is not interrupted and reads it on their next step); mention someone only when they have new work they have not already seen. Do not re-mention a request the user already made to the group. Do not mention someone who is already present and in agreement. To speak to a specific main-transcript line, pass parent_id (one level only); quoting a Bot prepends @them. In a group, a roster Bot who is not a member is pulled in first. Unknown names do not create a Bot. In a group, an @ that matches no member exactly fails with unknown_mention and nothing is sent. Workspace files written this turn become clickable links automatically; just write the path in the body. Do not rebroadcast a request already in the transcript. Do not post a closer or status note such as \"no new work\", \"introduction posted\", or \"nothing else\"; end the turn instead. A successful send_message ends this turn; resolve recoverable obstacles and verify results first, rather than announcing an investigation or handing technical work back to the user.",
+    zh: "在你已在场的会话里发言或交接。省略 session_id 即本轮所在会话。正文里的 @Name 会点名并让对方必须下场（对方正在干活时不会被打断，它下一跳就会读到）；只在对方有尚未看见的新工作要接手时点名。用户已经向全员说过的请求不要再 @ 一遍。对方已经在场并同意时不要再点名。要针对某一条主线消息说话时传 parent_id（只能一层）；引用 Bot 时正文会自动加上 @对方。群里点到名册已有但不在场的 Bot 会先拉入。名册没有的名字不新建 Bot。群里 @ 的名字必须与在场成员逐字一致，写错会返回 unknown_mention 且消息不会发出。本轮写入的工作区文件会自动变成可点链接，正文里直接写路径即可。不要把已经提出的请求再广播一遍。没有新工作、介绍已经发出、无其他事项、本轮结束这类收尾或状态汇报不要发：调用 end_turn 结束本轮。成功发送会结束本轮；先解决可恢复的障碍并验证结果，不要用它预告排查或把可自行处理的技术问题交给用户。",
+    en: "Speak or hand off in a session you currently belong to. Omit session_id for this turn's session. @Name in the body mentions a teammate and forces them to take the floor (one who is mid-task is not interrupted and reads it on their next step); mention someone only when they have new work they have not already seen. Do not re-mention a request the user already made to the group. Do not mention someone who is already present and in agreement. To speak to a specific main-transcript line, pass parent_id (one level only); quoting a Bot prepends @them. In a group, a roster Bot who is not a member is pulled in first. Unknown names do not create a Bot. In a group, an @ that matches no member exactly fails with unknown_mention and nothing is sent. Workspace files written this turn become clickable links automatically; just write the path in the body. Do not rebroadcast a request already in the transcript. Do not post a closer or status note such as \"no new work\", \"introduction posted\", or \"nothing else\"; call end_turn instead. A successful send_message ends this turn; resolve recoverable obstacles and verify results first, rather than announcing an investigation or handing technical work back to the user.",
   },
   properties: {
     body: { type: "string", description: { zh: "消息正文。", en: "Message text." } },
@@ -202,4 +202,13 @@ export const CHECK_BACK: ToolDef = {
     },
   },
   required: ["after_minutes", "note"],
+};
+
+export const END_TURN: ToolDef = {
+  name: "end_turn",
+  description: {
+    zh: "结束本轮，不发任何消息。没有新东西要说时用它：对方只是回执、确认或说已对齐，你手里没有对方没见过的新东西，或者只剩「收到」「已对齐」「不再回复」「本轮不发消息」这类话。不要把这类话写成回复或 send_message：那会发出一条消息，在 Bot↔Bot 私聊里还会叫醒对方，两边就这样来回空转。本轮写入的文件照常挂出。它在这一跳的其它工具之后生效，本轮随即结束。",
+    en: "End this turn without posting anything. Use it when there is nothing new to say: the other side only acknowledged, confirmed or said you are aligned, you hold nothing they have not seen, or all that is left is \"got it\", \"aligned\", \"no further reply\" or \"not posting this turn\". Do not write such words as a reply or a send_message: that posts a message, and in a Bot↔Bot direct it wakes the other Bot, so the two of you bounce acknowledgments forever. Files written this turn are still cited. It takes effect after this hop's other tool calls, and the turn ends there.",
+  },
+  properties: {},
 };

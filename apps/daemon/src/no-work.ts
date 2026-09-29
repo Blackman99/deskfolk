@@ -44,3 +44,15 @@ export function isNoWorkCloser(body: string): boolean {
     .trim();
   return remainder.length === 0;
 }
+
+/**
+ * A line with nothing in it for anyone to act on, judged by its shape alone: short, no question, no
+ * one named, no path, link or code. Whether it is only a nod depends on what it answers; see
+ * `isNodToANod` in engine/participation.ts.
+ */
+export function isBareRemark(body: string): boolean {
+  const text = body.trim();
+  if ([...text].length > MAX_CLOSER_CODE_POINTS) return false;
+  if (/@[^\s@]/.test(text) || /[?？]/.test(text)) return false;
+  return !WORK_MARKERS.test(text);
+}
