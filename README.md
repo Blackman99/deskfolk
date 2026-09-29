@@ -90,6 +90,8 @@ pnpm dev
 
 - **Windows (experimental preview):** same `git clone` / `pnpm install` / `pnpm dev`, with Rust's MSVC toolchain and Visual Studio Build Tools ("Desktop development with C++") standing in for Xcode, plus a one-time `cargo build --manifest-path apps/conpty-helper/Cargo.toml` for the terminal helper. To build an installer locally, `pnpm --filter @real-bot/desktop tauri build --bundles nsis`; the [`windows.yml`](.github/workflows/windows.yml) GitHub Actions workflow also uploads an unsigned NSIS installer as a run artifact (SmartScreen will warn — it's not signed). Remote access/phone pairing, the independent runtime, in-app update install, desktop notifications and image downscaling aren't there yet — see the [development guide](docs/development.md) for the full list and prerequisites.
 
+For long jobs on a source build (a multi-shot video, say), run `pnpm dev:steady` instead of `pnpm dev`: the daemon does not restart when the code changes or you `git pull`, so turns in progress are not interrupted.
+
 First run: the setup wizard walks you through picking a workspace folder, adding an endpoint and key, and creating the first Bot; then let it hire the rest.
 
 ## Status

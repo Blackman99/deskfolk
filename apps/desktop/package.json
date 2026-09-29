@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tauri dev",
+    "dev:steady": "REAL_BOT_DAEMON_WATCH=0 tauri dev",
     "build:native": "bun scripts/build-native.ts",
     "test": "bun test scripts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

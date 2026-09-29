@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/main.ts",
+    "dev:steady": "bun src/main.ts",
     "start": "bun src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",

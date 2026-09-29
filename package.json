@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @real-bot/daemon --filter @real-bot/desktop --parallel dev",
+    "dev:steady": "pnpm --filter @real-bot/daemon --filter @real-bot/desktop --parallel dev:steady",
     "dev:landing": "pnpm --filter @real-bot/landing dev",
     "build:landing": "pnpm --filter @real-bot/landing build",
     "test": "pnpm --filter @real-bot/remote test && pnpm --filter @real-bot/relay test && pnpm --filter @real-bot/protocol test && pnpm --filter @real-bot/daemon test && pnpm --filter @real-bot/messenger test && pnpm --filter @real-bot/desktop test && pnpm --filter @real-bot/landing test",

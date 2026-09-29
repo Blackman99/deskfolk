@@ -90,6 +90,8 @@ pnpm dev
 
 - **Windows（实验性预览）：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`；[`windows.yml`](.github/workflows/windows.yml) 这条 GitHub Actions 工作流也会把一份未签名的 NSIS 安装包传成 artifact（没签名，SmartScreen 会提示未知发布者）。远控/手机配对、独立运行时、应用内下载安装更新、桌面通知和图片缩略图这些还没有——完整清单和前置条件见[开发说明](docs/development.md)。
 
+拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
+
 首次使用：启动向导会带你选一个工作区目录、填端点和密钥、建第一个 Bot；之后再让它把其他队友建出来。
 
 ## 状态
