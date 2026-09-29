@@ -12,16 +12,29 @@ export const MANIFESTO_TOPICS = [
 
 export type ManifestoTopic = (typeof MANIFESTO_TOPICS)[number];
 
-export const DOCS_PAGE_KEYS = ['manifesto', ...MANIFESTO_TOPICS, 'remote', 'roadmap'] as const;
+/** Guides published from docs/, each at `/<lang>/<key>`, in sidebar order. */
+export const GUIDES = ['gatekeeper', 'windows', 'routines', 'spend', 'remote'] as const;
+export type Guide = (typeof GUIDES)[number];
+
+export const DOCS_PAGE_KEYS = ['docs', ...GUIDES, 'manifesto', ...MANIFESTO_TOPICS, 'roadmap'] as const;
 export type DocsPageKey = (typeof DOCS_PAGE_KEYS)[number];
 
-export type DocsNavGroupId = 'language' | 'guides' | 'direction';
+export type DocsNavGroupId = 'start' | 'guides' | 'glossary' | 'direction';
 
 export const DOCS_NAV: { group: DocsNavGroupId; pages: DocsPageKey[] }[] = [
-  { group: 'language', pages: ['manifesto', ...MANIFESTO_TOPICS] },
-  { group: 'guides', pages: ['remote'] },
+  { group: 'start', pages: ['docs', 'gatekeeper', 'windows'] },
+  { group: 'guides', pages: ['routines', 'spend', 'remote'] },
+  { group: 'glossary', pages: ['manifesto', ...MANIFESTO_TOPICS] },
   { group: 'direction', pages: ['roadmap'] }
 ];
+
+export function isGuide(value: string): value is Guide {
+  return (GUIDES as readonly string[]).includes(value);
+}
+
+export function docsGroup(key: DocsPageKey): DocsNavGroupId {
+  return DOCS_NAV.find((g) => g.pages.includes(key))!.group;
+}
 
 /**
  * The English glossary (CONTEXT.en.md) names the two terms CONTEXT.md writes in Chinese alone;
@@ -192,14 +205,56 @@ export function slugify(text: string): string {
     .toLowerCase();
 }
 
+/** The English name a term key stands for: the key itself, or the name of a Chinese-only key. */
+function englishName(key: string): string {
+  const entry = Object.entries(ENGLISH_ONLY_KEYS).find(([, zh]) => zh === key);
+  return entry ? entry[0] : key;
+}
+
+/**
+ * A term's anchor, from its English name so both editions share it and a link reads plainly
+ * (`#term-handoff`, `#term-user`).
+ */
 export function termAnchorId(name: string): string {
+  return `term-${slugify(englishName(termKey(name))) || 'entry'}`;
+}
+
+/** The anchor a term had before anchors were keyed by English name (`#term-交接handoff`). */
+export function legacyTermAnchorId(name: string): string {
   return `term-${slugify(name) || 'entry'}`;
 }
 
+/** A location hash as text; a malformed escape is kept as written. */
+export function decodeHash(hash: string): string {
+  const raw = hash.replace(/^#/, '');
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Where a glossary hash lands: a bare, prefixed or pre-rename term anchor → the anchor it has now
+ * and the topic page it is on.
+ */
+export function resolveTermHash(
+  hash: string,
+  targets: Record<string, string>,
+  aliases: Record<string, string>
+): { id: string; path: string } | null {
+  const raw = decodeHash(hash);
+  if (!raw) return null;
+  const prefixed = raw.startsWith('term-') ? raw : `term-${raw}`;
+  const id = aliases[prefixed] ?? prefixed;
+  return targets[id] ? { id, path: targets[id] } : null;
+}
+
 export function docsPath(key: DocsPageKey): string {
+  if (key === 'docs') return '/docs';
   if (key === 'manifesto') return '/manifesto';
   if (key === 'roadmap') return '/roadmap';
-  if (key === 'remote') return '/remote';
+  if (isGuide(key)) return `/${key}`;
   return `/manifesto/${key}`;
 }
 

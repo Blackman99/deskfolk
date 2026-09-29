@@ -6,7 +6,7 @@
   const lang: Lang = $derived(data.lang);
 </script>
 
-<DocsShell {lang} pageKey="roadmap" sourceFile={data.source} toc={data.doc.toc}>
+<DocsShell {lang} pageKey={data.guide} sourceFile={data.source} toc={data.doc.toc}>
   <article class="markdown-body">
     {@html data.doc.contentHtml}
   </article>

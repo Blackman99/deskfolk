@@ -9,7 +9,9 @@ import {
   docsNeighbors,
   docsPath,
   groupTerms,
+  legacyTermAnchorId,
   parseContextMarkdown,
+  resolveTermHash,
   termAnchorId,
   termKey
 } from './docs';
@@ -77,18 +79,48 @@ test('CONTEXT.en.md has the same terms as CONTEXT.md, in the same order, in Engl
   expect(body.match(/[\u3400-\u9fff\u3000-\u303f\uff01-\uff5e]+/g)).toBeNull();
 });
 
+test('term anchors come from the English name, the same in both editions', () => {
+  expect(termAnchorId('交接（Handoff）')).toBe('term-handoff');
+  expect(termAnchorId('Handoff')).toBe('term-handoff');
+  expect(termAnchorId('判断日志（Judgement log）')).toBe('term-judgement-log');
+  expect(termAnchorId('用户')).toBe('term-user');
+  expect(termAnchorId('User')).toBe('term-user');
+  expect(termAnchorId('向导')).toBe('term-setup-wizard');
+  expect(termAnchorId('Setup wizard')).toBe('term-setup-wizard');
+  expect(termAnchorId('Always allow')).toBe('term-always-allow');
+  // What links from before the rename carry.
+  expect(legacyTermAnchorId('交接（Handoff）')).toBe('term-交接handoff');
+  expect(legacyTermAnchorId('Bot')).toBe('term-bot');
+});
+
+test('a glossary hash resolves bare, prefixed and pre-rename anchors', () => {
+  const targets = { 'term-handoff': '/manifesto/collaboration' };
+  const aliases = { 'term-交接handoff': 'term-handoff' };
+  const hit = { id: 'term-handoff', path: '/manifesto/collaboration' };
+  expect(resolveTermHash('#term-handoff', targets, aliases)).toEqual(hit);
+  expect(resolveTermHash('#handoff', targets, aliases)).toEqual(hit);
+  expect(resolveTermHash(`#${encodeURIComponent('term-交接handoff')}`, targets, aliases)).toEqual(hit);
+  expect(resolveTermHash('#people', targets, aliases)).toBeNull();
+  expect(resolveTermHash('', targets, aliases)).toBeNull();
+  expect(resolveTermHash('#term-%E4', targets, aliases)).toBeNull();
+});
+
 test('docs paths and pager walk the sidebar order', () => {
+  expect(docsPath('docs')).toBe('/docs');
+  expect(docsPath('gatekeeper')).toBe('/gatekeeper');
   expect(docsPath('manifesto')).toBe('/manifesto');
   expect(docsPath('people')).toBe('/manifesto/people');
   expect(docsPath('roadmap')).toBe('/roadmap');
   expect(docsPath('remote')).toBe('/remote');
 
   const flat = DOCS_NAV.flatMap((g) => g.pages);
-  expect(flat[0]).toBe('manifesto');
+  expect(flat[0]).toBe('docs');
   expect(flat[flat.length - 1]).toBe('roadmap');
-  expect(docsNeighbors('manifesto')).toEqual({ next: 'people' });
-  expect(docsNeighbors('roadmap')).toEqual({ prev: 'remote' });
-  expect(docsNeighbors('remote')).toEqual({ prev: 'safety', next: 'roadmap' });
+  expect(new Set(flat).size).toBe(flat.length);
+  expect(docsNeighbors('docs')).toEqual({ next: 'gatekeeper' });
+  expect(docsNeighbors('remote')).toEqual({ prev: 'spend', next: 'manifesto' });
+  expect(docsNeighbors('manifesto')).toEqual({ prev: 'remote', next: 'people' });
+  expect(docsNeighbors('roadmap')).toEqual({ prev: 'safety' });
   expect(docsNeighbors('conversations')).toEqual({ prev: 'people', next: 'collaboration' });
 });
 

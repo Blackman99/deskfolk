@@ -1,38 +1,58 @@
 <script lang="ts">
   import { base } from '$app/paths';
+  import { page } from '$app/state';
+  import { mount, unmount, type Snippet } from 'svelte';
+  import CopyButton from '$lib/CopyButton.svelte';
+  import DocsSearch from '$lib/DocsSearch.svelte';
   import Seo from '$lib/Seo.svelte';
-  import { DOCS_NAV, docsNeighbors, docsPath, type DocsPageKey, type TocEntry } from '$lib/docs';
+  import {
+    DOCS_NAV,
+    MANIFESTO_TOPICS,
+    docsGroup,
+    docsNeighbors,
+    docsPath,
+    type DocsPageKey,
+    type TocEntry
+  } from '$lib/docs';
   import { DICT, type Lang } from '$lib/i18n';
-  import { GITHUB_BLOB_MAIN } from '$lib/site';
-  import type { Snippet } from 'svelte';
+  import { GITHUB_BLOB_MAIN, RELEASES_URL } from '$lib/site';
 
   let {
     lang,
     pageKey,
-    description,
-    tag,
     sourceFile,
     toc = [],
-    suffix,
     children
   }: {
     lang: Lang;
     pageKey: DocsPageKey;
-    description: string;
-    tag: string;
-    sourceFile: string;
+    /** Repository path the page is generated from, linked as its source. */
+    sourceFile?: string;
     toc?: TocEntry[];
-    suffix: string;
     children: Snippet;
   } = $props();
 
   const t = $derived(DICT[lang]);
   const copy = $derived(t.docs.pages[pageKey]);
+  const description = $derived(copy.intro ?? copy.blurb);
   const neighbors = $derived(docsNeighbors(pageKey));
+  const group = $derived(docsGroup(pageKey));
+  const isTopic = $derived((MANIFESTO_TOPICS as readonly string[]).includes(pageKey));
+  const experimental = $derived(pageKey === 'remote' || pageKey === 'windows');
+  const version = $derived((page.data as { version?: string }).version);
+  /** The group names the page in its title, except where the group is the page itself. */
+  const seoTitle = $derived(
+    pageKey === 'docs'
+      ? `${t.nav.docs} — Deskfolk`
+      : group === 'direction'
+        ? `${copy.title} — Deskfolk`
+        : `${copy.title} — ${t.docs.navGroup[group]} — Deskfolk`
+  );
 
   /** The section being read, lit in "On this page". */
   let activeId = $state('');
   let tocSide: HTMLElement | undefined = $state();
+  let mainEl: HTMLElement | undefined = $state();
 
   /**
    * The last heading that has scrolled above a reading line just under the nav (a heading jumped
@@ -103,6 +123,41 @@
     else if (r.bottom > box.bottom - pad) tocSide.scrollTop += r.bottom - (box.bottom - pad);
   });
 
+  // A code block gets a copy button; the page's markdown is re-rendered on every navigation.
+  $effect(() => {
+    void pageKey;
+    void toc;
+    const root = mainEl;
+    if (!root) return;
+    const label = t.hero.copy;
+    const doneLabel = t.hero.copied;
+    const buttons: Record<string, unknown>[] = [];
+    for (const box of root.querySelectorAll<HTMLElement>('.markdown-body .codeblock')) {
+      const text = (box.querySelector('pre')?.textContent ?? '').replace(/\n$/, '');
+      const slot = document.createElement('div');
+      slot.className = 'copy-slot';
+      box.append(slot);
+      buttons.push(mount(CopyButton, { target: slot, props: { text, label, doneLabel, compact: true } }));
+    }
+    return () => {
+      for (const button of buttons) void unmount(button);
+      root.querySelectorAll('.markdown-body .copy-slot').forEach((slot) => slot.remove());
+    };
+  });
+
+  // "/" jumps to the docs search, as on most docs sites.
+  function onWindowKeydown(event: KeyboardEvent) {
+    if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+    const el = event.target as HTMLElement | null;
+    if (el?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    const box = [...document.querySelectorAll<HTMLInputElement>('input[data-docs-search]')].find(
+      (input) => input.offsetParent !== null
+    );
+    if (!box) return;
+    event.preventDefault();
+    box.focus();
+  }
+
   function hrefFor(key: DocsPageKey): string {
     return `${base}/${lang}${docsPath(key)}`;
   }
@@ -114,26 +169,17 @@
   function isCurrent(key: DocsPageKey): boolean {
     return key === pageKey;
   }
-
-  const isTopic = $derived(DOCS_NAV[0].pages.includes(pageKey) && pageKey !== 'manifesto');
-  const section = $derived(
-    pageKey === 'roadmap' ? t.nav.roadmap : pageKey === 'remote' ? t.docs.navGroup.guides : t.nav.manifesto
-  );
 </script>
 
-<Seo
-  {lang}
-  title="{copy.title} — {section} — Deskfolk"
-  {description}
-  {suffix}
-  imageAlt={t.seo.imageAlt}
-/>
+<svelte:window onkeydown={onWindowKeydown} />
+
+<Seo {lang} title={seoTitle} {description} suffix={docsPath(pageKey)} imageAlt={t.seo.imageAlt} />
 
 {#snippet tree()}
-  {#each DOCS_NAV as group}
-    <p class="group">{t.docs.navGroup[group.group]}</p>
+  {#each DOCS_NAV as navGroup}
+    <p class="group">{t.docs.navGroup[navGroup.group]}</p>
     <ul>
-      {#each group.pages as key}
+      {#each navGroup.pages as key}
         <li>
           <a href={hrefFor(key)} class:current={isCurrent(key)} aria-current={isCurrent(key) ? 'page' : undefined}>
             {t.docs.pages[key].title}
@@ -145,38 +191,62 @@
 {/snippet}
 
 <div class="docs page">
-  <details class="rail rail-mobile">
-    <summary>{t.docs.navLabel}</summary>
-    <nav class="tree" aria-label={t.docs.navLabel}>
-      {@render tree()}
-    </nav>
-  </details>
+  <div class="rail-mobile">
+    {#if pageKey !== 'docs'}
+      <DocsSearch {lang} />
+    {/if}
+    <details class="rail">
+      <summary>{t.docs.navLabel}</summary>
+      <nav class="tree" aria-label={t.docs.navLabel}>
+        {@render tree()}
+      </nav>
+    </details>
+  </div>
 
   <aside class="rail rail-side" aria-label={t.docs.navLabel}>
+    {#if pageKey !== 'docs'}
+      <div class="rail-search"><DocsSearch {lang} /></div>
+    {/if}
     <nav class="tree">
       {@render tree()}
     </nav>
   </aside>
 
-  <div class="main">
+  <div class="main" bind:this={mainEl}>
     <nav class="crumbs" aria-label="Breadcrumb">
       <a href="{base}/{lang}">Deskfolk</a>
       <span aria-hidden="true">/</span>
-      {#if isTopic}
-        <a href={hrefFor('manifesto')}>{t.nav.manifesto}</a>
-        <span aria-hidden="true">/</span>
-        <span>{copy.title}</span>
-      {:else if pageKey === 'manifesto'}
-        <span>{t.nav.manifesto}</span>
+      {#if pageKey === 'docs'}
+        <span>{t.nav.docs}</span>
       {:else}
-        <span>{copy.title}</span>
+        <a href={hrefFor('docs')}>{t.nav.docs}</a>
+        <span aria-hidden="true">/</span>
+        {#if isTopic}
+          <a href={hrefFor('manifesto')}>{t.nav.glossary}</a>
+          <span aria-hidden="true">/</span>
+          <span>{copy.title}</span>
+        {:else if pageKey === 'manifesto'}
+          <span>{t.nav.glossary}</span>
+        {:else}
+          <span>{copy.title}</span>
+        {/if}
       {/if}
     </nav>
 
     <header class="head">
       <div class="kicker">
-        <span class="tag mono" class:mustard={pageKey === 'roadmap' || pageKey === 'remote'}>{tag}</span>
-        <a class="src" href="{GITHUB_BLOB_MAIN}/{sourceFile}" target="_blank" rel="noreferrer">{t.docs.source}</a>
+        {#if experimental}
+          <span class="tag mustard">{t.docs.experimentalTag}</span>
+        {/if}
+        {#if sourceFile}
+          <a class="src" href="{GITHUB_BLOB_MAIN}/{sourceFile}" target="_blank" rel="noreferrer">{t.docs.source}</a>
+        {/if}
+        {#if version}
+          <span class="edition" title={t.docs.editionTitle}>
+            {t.docs.editionMain} ·
+            <a href={RELEASES_URL} target="_blank" rel="noreferrer">{t.docs.editionLatest} v{version}</a>
+          </span>
+        {/if}
       </div>
       <h1 class="serif">{copy.title}</h1>
       <p>{description}</p>
@@ -246,7 +316,12 @@
   }
 
   .rail-mobile {
+    display: grid;
+    gap: 10px;
     margin-bottom: 8px;
+  }
+
+  .rail-mobile details {
     border: 1px solid var(--line);
     border-radius: 10px;
     background: var(--paper);
@@ -255,9 +330,42 @@
 
   .rail-mobile summary,
   .toc-inline summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     cursor: pointer;
     font-weight: 650;
     font-size: 14px;
+    min-height: 24px;
+    list-style: none;
+  }
+
+  .rail-mobile summary::-webkit-details-marker,
+  .toc-inline summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* A chevron that turns when the list opens, in place of the browser's triangle. */
+  .rail-mobile summary::after,
+  .toc-inline summary::after {
+    content: '';
+    width: 7px;
+    height: 7px;
+    margin-right: 3px;
+    border-right: 1.6px solid var(--ink-3);
+    border-bottom: 1.6px solid var(--ink-3);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.15s ease;
+  }
+
+  .rail-mobile details[open] summary::after,
+  .toc-inline[open] summary::after {
+    transform: translateY(2px) rotate(-135deg);
+  }
+
+  .rail-search {
+    margin-bottom: 14px;
   }
 
   .tree {
@@ -330,9 +438,26 @@
 
   .kicker {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 6px 12px;
     margin-bottom: 14px;
+  }
+
+  .edition {
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+
+  .edition a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .edition a:hover {
+    color: var(--teal-2);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   .tag {
@@ -483,6 +608,84 @@
     margin-top: 0;
     padding-top: 0;
     border-top: 0;
+  }
+
+  :global(.markdown-body .codeblock) {
+    position: relative;
+  }
+
+  :global(.markdown-body .copy-slot) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  @media (hover: hover) {
+    :global(.markdown-body .copy-slot) {
+      opacity: 0;
+      transition: opacity 0.12s ease;
+    }
+
+    :global(.markdown-body .codeblock:hover .copy-slot),
+    :global(.markdown-body .copy-slot:focus-within) {
+      opacity: 1;
+    }
+  }
+
+  :global(.markdown-body details.behavior) {
+    margin: 0.9rem 0 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+    scroll-margin-top: calc(var(--nav-h) + 16px);
+  }
+
+  :global(.markdown-body details.behavior > summary) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-2);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  :global(.markdown-body details.behavior > summary::-webkit-details-marker) {
+    display: none;
+  }
+
+  :global(.markdown-body details.behavior > summary::before) {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-right: 1.6px solid currentColor;
+    border-bottom: 1.6px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease;
+  }
+
+  :global(.markdown-body details.behavior[open] > summary::before) {
+    transform: rotate(45deg);
+  }
+
+  :global(.markdown-body details.behavior > summary:hover) {
+    color: var(--teal-2);
+  }
+
+  :global(.markdown-body details.behavior[open] > summary) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  :global(.markdown-body details.behavior > :not(summary)) {
+    margin-inline: 16px;
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  :global(.markdown-body details.behavior > :last-child) {
+    margin-bottom: 14px;
   }
 
   :global(.markdown-body p.avoid) {

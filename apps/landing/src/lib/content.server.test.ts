@@ -1,6 +1,18 @@
 import { expect, test } from 'bun:test';
-import { documentSource, getDocumentContent, getManifestoHub, getManifestoTopic, getTermTargets } from './content.server';
-import { MANIFESTO_TOPICS, termAnchorId } from './docs';
+import {
+  GUIDE_SOURCES,
+  PUBLISHED_SOURCES,
+  documentSource,
+  getDocumentContent,
+  getManifestoHub,
+  getManifestoTopic,
+  getSearchIndex,
+  getTermAliases,
+  getTermTargets,
+  publishedAssets
+} from './content.server';
+import { GUIDES, MANIFESTO_TOPICS, termAnchorId } from './docs';
+import { GITHUB_BLOB_MAIN } from './site';
 
 test('manifesto hub lists every topic with its terms', () => {
   const hub = getManifestoHub('zh');
@@ -10,14 +22,17 @@ test('manifesto hub lists every topic with its terms', () => {
   expect(hub.index.every((e) => e.terms.length > 0)).toBe(true);
   const people = hub.index.find((e) => e.topic === 'people');
   expect(people?.terms.some((t) => t.name === 'Bot' && t.id === 'term-bot')).toBe(true);
+  // The Windows note in the preamble is a page of the site now.
+  expect(hub.preambleHtml).toContain('href="/zh/windows"');
 });
 
 test('a topic page renders term headings and avoid lines', () => {
   const doc = getManifestoTopic('people', 'zh');
   expect(doc.contentHtml).toContain('id="term-bot"');
-  expect(doc.contentHtml).toContain('id="term-用户"');
+  expect(doc.contentHtml).toContain('id="term-user"');
   expect(doc.toc[0]).toEqual({ id: 'term-bot', text: 'Bot', level: 2 });
-  expect(doc.contentHtml).toContain('class="avoid"');
+  expect(doc.contentHtml).toContain('<p class="avoid"><em>回避：</em>');
+  expect(getManifestoTopic('people', 'en').contentHtml).toContain('<p class="avoid"><em>Avoid: </em>');
 });
 
 test('term targets send glossary hashes to the topic page', () => {
@@ -25,6 +40,32 @@ test('term targets send glossary hashes to the topic page', () => {
   expect(targets[termAnchorId('Bot')]).toBe('/manifesto/people');
   expect(targets[termAnchorId('群（Group）')]).toBe('/manifesto/conversations');
   expect(targets[termAnchorId('Always allow')]).toBe('/manifesto/safety');
+  expect(targets['term-handoff']).toBe('/manifesto/collaboration');
+});
+
+test('anchors from before the rename point at the ones terms have now', () => {
+  const aliases = getTermAliases();
+  expect(aliases['term-交接handoff']).toBe('term-handoff');
+  expect(aliases['term-用户']).toBe('term-user');
+  // Unchanged anchors need no alias.
+  expect(aliases['term-bot']).toBeUndefined();
+  const topic = getManifestoTopic('collaboration', 'en');
+  expect(topic.aliases['term-交接handoff']).toBe('term-handoff');
+  expect(topic.aliases['term-用户']).toBeUndefined();
+});
+
+test('a term folds in its behavior details instead of linking to GitHub', () => {
+  for (const lang of ['zh', 'en'] as const) {
+    const doc = getManifestoTopic('collaboration', lang);
+    expect(doc.contentHtml).toContain('<details class="behavior" id="behavior-plan">');
+    expect(doc.contentHtml).toContain('href="/' + lang + '/manifesto/collaboration#behavior-plan"');
+    expect(doc.contentHtml).not.toContain('docs/behavior');
+    // Details sit above the avoid line, and put nothing in the page's toc.
+    const plan = doc.contentHtml.slice(doc.contentHtml.indexOf('id="term-plan"'));
+    expect(plan.indexOf('class="behavior"')).toBeLessThan(plan.indexOf('class="avoid"'));
+    expect(doc.toc.every((e) => e.id.startsWith('term-'))).toBe(true);
+  }
+  expect(getManifestoTopic('collaboration', 'zh').contentHtml).toContain('<summary>行为细节</summary>');
 });
 
 test('roadmap still has a heading toc', () => {
@@ -35,26 +76,87 @@ test('roadmap still has a heading toc', () => {
   expect(doc.contentHtml).toContain('href=');
 });
 
+test('every guide renders in both languages from its own source', () => {
+  for (const guide of GUIDES) {
+    for (const lang of ['zh', 'en'] as const) {
+      expect(documentSource(guide, lang)).toBe(GUIDE_SOURCES[guide][lang]);
+      const doc = getDocumentContent(guide, lang);
+      expect(doc.contentHtml).not.toContain('not found');
+      // The other-language line is the site's language switch now.
+      expect(doc.contentHtml).not.toContain(lang === 'en' ? '简体中文' : '>English<');
+    }
+  }
+});
+
 test('the remote-access guide renders per language, with its links resolved from docs/', () => {
   const zh = getDocumentContent('remote', 'zh');
   const en = getDocumentContent('remote', 'en');
   expect(zh.title).toBe('远程访问（实验性）');
   expect(en.title).toBe('Remote access (experimental)');
   expect(en.toc.some((e) => e.text === '3. Pair a phone')).toBe(true);
-  // The other-language line is the site's language switch now.
-  expect(en.contentHtml).not.toContain('简体中文');
-  expect(zh.contentHtml).not.toContain('>English<');
-  // Sibling docs, parent-directory files and anchors point at the repository on GitHub.
+  // Unpublished sibling docs, parent-directory files and anchors point at the repository on GitHub.
   expect(en.contentHtml).toContain('href="https://github.com/Blackman99/deskfolk/blob/main/docs/deploy-remote.md#web-push-proxy"');
   expect(en.contentHtml).toContain('href="https://github.com/Blackman99/deskfolk/blob/main/deploy/remote/Caddyfile"');
   expect(en.contentHtml).not.toContain('href="deploy-remote.md');
   // The README is the site's home page.
   expect(zh.contentHtml).toMatch(/href="[^"]*\/zh"/);
+  // Code blocks sit in a box the page hangs a copy button on.
+  expect(en.contentHtml).toContain('<div class="codeblock"><pre>');
 });
 
-const CJK = /[\u3400-\u9fff\u3000-\u303f\uff01-\uff5e]/;
-/** What a reader sees: the ids and links keep the Chinese glossary's names on purpose. */
-const text = (html: string) => html.replace(/<[^>]*>/g, ' ');
+test('the Gatekeeper guide shows its screenshot from the site and links home for downloads', () => {
+  const zh = getDocumentContent('gatekeeper', 'zh');
+  expect(zh.contentHtml).toContain('src="/docs-assets/gatekeeper-2step.png"');
+  expect(zh.contentHtml).toContain('href="/zh#quickstart"');
+  expect(getDocumentContent('gatekeeper', 'en').contentHtml).toContain('href="/en#quickstart"');
+  expect(publishedAssets()).toEqual(['gatekeeper-2step.png']);
+});
+
+test('no rendered page sends a link to GitHub for a file the site publishes', () => {
+  const pages: { name: string; html: string }[] = [];
+  for (const lang of ['zh', 'en'] as const) {
+    pages.push({ name: `${lang} hub`, html: getManifestoHub(lang).preambleHtml });
+    for (const topic of MANIFESTO_TOPICS) {
+      pages.push({ name: `${lang} ${topic}`, html: getManifestoTopic(topic, lang).contentHtml });
+    }
+    for (const doc of ['roadmap', ...GUIDES] as const) {
+      pages.push({ name: `${lang} ${doc}`, html: getDocumentContent(doc, lang).contentHtml });
+    }
+  }
+  const published = new Set(PUBLISHED_SOURCES);
+  const leaks: string[] = [];
+  for (const { name, html } of pages) {
+    for (const [, href] of html.matchAll(/href="([^"]+)"/g)) {
+      if (!href.startsWith(`${GITHUB_BLOB_MAIN}/`)) continue;
+      const file = href.slice(GITHUB_BLOB_MAIN.length + 1).split('#')[0];
+      if (published.has(file)) leaks.push(`${name}: ${href}`);
+    }
+  }
+  expect(leaks).toEqual([]);
+});
+
+test('the search index has a section per term and per guide heading', () => {
+  const zh = getSearchIndex('zh');
+  const handoff = zh.find((e) => e.href === '/manifesto/collaboration#term-handoff');
+  expect(handoff?.title).toBe('交接（Handoff）');
+  expect(handoff?.page).toBe('协作');
+  expect(handoff?.text).not.toContain('<');
+  expect(zh.some((e) => e.href.startsWith('/gatekeeper#') && e.text.includes('xattr'))).toBe(true);
+  expect(zh.some((e) => e.href.startsWith('/windows'))).toBe(true);
+  // Behavior details are searchable under their term.
+  expect(zh.find((e) => e.href === '/manifesto/collaboration#term-plan')?.text).toContain('task_id');
+  const en = getSearchIndex('en');
+  expect(en.find((e) => e.href === '/manifesto/people#term-user')?.title).toBe('User');
+  expect(new Set(en.map((e) => e.href)).size).toBe(en.length);
+});
+
+const CJK = /[㐀-鿿　-〿！-～]/;
+/**
+ * What a reader sees of the entries themselves; the folded behavior details quote a few literal
+ * strings the daemon writes in Chinese (`附件：path`).
+ */
+const text = (html: string) =>
+  html.replace(/<details class="behavior"[\s\S]*?<\/details>/g, ' ').replace(/<[^>]*>/g, ' ');
 
 test('the English manifesto reads CONTEXT.en.md, with the Chinese pages\' anchors', () => {
   const hub = getManifestoHub('en');
@@ -70,9 +172,11 @@ test('the English manifesto reads CONTEXT.en.md, with the Chinese pages\' anchor
     expect(text(en.contentHtml)).not.toMatch(CJK);
     // Same entries under the same ids, so the language switch keeps a term's #hash.
     expect(en.toc.map((e) => e.id)).toEqual(zh.toc.map((e) => e.id));
+    // And the ids are plain ASCII, so a shared link reads as it looks.
+    expect(en.toc.every((e) => /^term-[a-z0-9-]+$/.test(e.id))).toBe(true);
   }
   const people = getManifestoTopic('people', 'en');
-  expect(people.toc.find((e) => e.id === 'term-用户')?.text).toBe('User');
+  expect(people.toc.find((e) => e.id === 'term-user')?.text).toBe('User');
   expect(people.contentHtml).toContain('class="avoid"');
 });
 

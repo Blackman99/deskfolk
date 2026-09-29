@@ -2,7 +2,7 @@
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
   import DocsShell from '$lib/DocsShell.svelte';
-  import { docsPath } from '$lib/docs';
+  import { decodeHash, docsPath, resolveTermHash } from '$lib/docs';
   import { DICT, type Lang } from '$lib/i18n';
 
   let { data } = $props();
@@ -16,28 +16,17 @@
     }))
   );
 
+  // A term linked on the hub (CONTEXT.md#term, or an anchor from before the rename) lives on its
+  // topic page; a topic card's own anchor (#workspace) stays here.
   onMount(() => {
-    const raw = window.location.hash.replace(/^#/, '');
-    if (!raw) return;
-    const id = raw.startsWith('term-') ? raw : `term-${raw}`;
-    const dest = data.termTargets[raw] ?? data.termTargets[id];
-    if (!dest) return;
-    const next = `${base}/${lang}${dest}#${id}`;
-    if (window.location.pathname + window.location.hash !== next) {
-      window.location.replace(next);
-    }
+    if (document.getElementById(decodeHash(window.location.hash))) return;
+    const term = resolveTermHash(window.location.hash, data.termTargets, data.termAliases);
+    if (!term) return;
+    window.location.replace(`${base}/${lang}${term.path}#${term.id}`);
   });
 </script>
 
-<DocsShell
-  {lang}
-  pageKey="manifesto"
-  description={t.docs.manifestoIntro}
-  tag={t.docs.manifestoTag}
-  sourceFile={data.source}
-  toc={toc}
-  suffix="/manifesto"
->
+<DocsShell {lang} pageKey="manifesto" sourceFile={data.source} {toc}>
   <article class="markdown-body">
     {@html data.preambleHtml}
   </article>

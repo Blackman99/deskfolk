@@ -42,7 +42,7 @@
       {/each}
     </div>
     <p class="footnote">
-      {t.boundaries.footnote[0]}<a class="text-link" href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>{t.boundaries.footnote[1]}<a class="text-link" href="{base}/{lang}/manifesto">CONTEXT.md</a>{t.boundaries.footnote[2]}
+      {t.boundaries.footnote[0]}<a class="text-link" href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>{t.boundaries.footnote[1]}<a class="text-link" href="{base}/{lang}/manifesto">{t.nav.glossary}</a>{t.boundaries.footnote[2]}
     </p>
   </div>
 </section>
@@ -60,8 +60,9 @@
         {/each}
       </ol>
       <div class="qs-links">
+        <a class="text-link" href="{base}/{lang}/docs">{t.quickstart.linkDocsSite}</a>
         <a class="text-link" href="{GITHUB_BLOB_MAIN}/docs/development.md" target="_blank" rel="noreferrer">{t.quickstart.linkDocs}</a>
-        <a class="text-link" href="{base}/{lang}/manifesto">{t.quickstart.linkManifesto}</a>
+        <a class="text-link" href="{base}/{lang}/manifesto">{t.quickstart.linkGlossary}</a>
         <a class="text-link" href="{base}/{lang}/roadmap">{t.quickstart.linkRoadmap}</a>
         <a class="text-link" href="{base}/{lang}/remote">{t.quickstart.linkRemote}</a>
         <a class="text-link" href={GITHUB_URL} target="_blank" rel="noreferrer">{t.nav.github}</a>
@@ -79,6 +80,10 @@
           <pre class="mono dl-note">{t.quickstart.download.note}</pre>
           <CopyButton text={t.quickstart.download.note} label={t.hero.copy} doneLabel={t.hero.copied} compact />
         </div>
+        <p class="dl-guides">
+          <a class="text-link" href="{base}/{lang}/gatekeeper">{t.quickstart.download.faq}</a>
+          <a class="text-link" href="{base}/{lang}/windows">{t.quickstart.download.windows}</a>
+        </p>
         <a class="btn btn-primary" href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.quickstart.download.link}</a>
       </div>
 
@@ -335,6 +340,13 @@
     color: var(--ink-2);
     line-height: 1.7;
     font-size: 15px;
+  }
+
+  .download .dl-guides {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 14px;
   }
 
   .dl-note {

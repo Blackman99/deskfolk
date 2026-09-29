@@ -2,14 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
-import { GITHUB_BLOB_MAIN } from './site';
+import { GITHUB_BLOB_MAIN, GITHUB_RAW_MAIN } from './site';
+import { DICT } from './i18n';
 import {
+  DOCS_NAV,
+  GUIDES,
   MANIFESTO_TOPICS,
+  type DocsPageKey,
+  type Guide,
   type ManifestoTopic,
   type ParsedTerm,
   type TocEntry,
   docsPath,
   groupTerms,
+  legacyTermAnchorId,
   parseContextMarkdown,
   slugify,
   termAnchorId
@@ -31,8 +37,36 @@ type Lang = 'zh' | 'en';
  */
 const EDITIONS = {
   context: { zh: 'CONTEXT.md', en: 'CONTEXT.en.md' },
-  roadmap: { zh: 'ROADMAP.md', en: 'ROADMAP.en.md' }
+  roadmap: { zh: 'ROADMAP.md', en: 'ROADMAP.en.md' },
+  behavior: { zh: 'docs/behavior.md', en: 'docs/behavior.en.md' }
 } as const;
+
+/** The file each guide page is published from, per language. */
+export const GUIDE_SOURCES: Record<Guide, Record<Lang, string>> = {
+  gatekeeper: { zh: 'docs/gatekeeper.zh.md', en: 'docs/gatekeeper.md' },
+  windows: { zh: 'docs/windows.zh.md', en: 'docs/windows.md' },
+  routines: { zh: 'docs/routines.zh.md', en: 'docs/routines.md' },
+  spend: { zh: 'docs/spend.zh.md', en: 'docs/spend.md' },
+  remote: { zh: 'docs/remote-access.zh.md', en: 'docs/remote-access.md' }
+};
+
+/** The site page a guide under docs/ is published as, keyed by its repository path. */
+const GUIDE_PAGES: Record<string, { lang: Lang; path: string }> = Object.fromEntries(
+  GUIDES.flatMap((guide) =>
+    (['zh', 'en'] as const).map((lang) => [GUIDE_SOURCES[guide][lang], { lang, path: docsPath(guide) }])
+  )
+);
+
+/** Repository files that have a page on the site; a rendered link to one never goes to GitHub. */
+export const PUBLISHED_SOURCES: readonly string[] = [
+  ...Object.values(EDITIONS).flatMap((e) => [e.zh, e.en]),
+  ...Object.keys(GUIDE_PAGES),
+  'README.md',
+  'README.zh.md'
+];
+
+/** Images from docs/assets/ that a published page shows; the site serves them at /docs-assets/. */
+const ASSET_DIR = 'docs/assets/';
 
 export type ManifestoIndexEntry = {
   topic: ManifestoTopic;
@@ -40,6 +74,7 @@ export type ManifestoIndexEntry = {
 };
 
 function createMarked(
+  lang: Lang,
   toc: TocEntry[],
   headingId?: (text: string, depth: number) => string | undefined
 ) {
@@ -72,7 +107,8 @@ function createMarked(
         const first = tokens[0];
         const firstText = first && 'text' in first ? String(first.text) : '';
         if (!inQuote && first?.type === 'em' && firstText === 'Avoid') {
-          return `<p class="avoid">${html}</p>\n`;
+          const label = DICT[lang].docs.avoidLabel;
+          return `<p class="avoid">${html.replace(/^<em>Avoid<\/em>\s*[：:]?\s*/, `<em>${label}</em>`)}</p>\n`;
         }
         return `<p>${html}</p>\n`;
       }
@@ -87,43 +123,47 @@ function withBase(pathname: string): string {
   return `${base}${normalized}`;
 }
 
-function contextHref(lang: 'zh' | 'en', hash?: string, termTargets?: Record<string, string>): string {
+type LinkTargets = {
+  /** Term anchor → glossary page path. */
+  terms: Record<string, string>;
+  /** Anchor a term used to have → the one it has now. */
+  aliases: Record<string, string>;
+  /** Section id in docs/behavior*.md → the glossary page and anchor it is shown at. */
+  behavior: Record<string, string>;
+};
+
+function contextHref(lang: Lang, hash: string | undefined, targets: LinkTargets): string {
   if (hash) {
-    const id = hash.startsWith('term-') ? hash : `term-${hash}`;
-    const dest = termTargets?.[hash] ?? termTargets?.[id];
+    const raw = hash.startsWith('term-') ? hash : `term-${hash}`;
+    const id = targets.aliases[raw] ?? raw;
+    const dest = targets.terms[id];
     if (dest) return withBase(`/${lang}${dest}#${id}`);
     return withBase(`/${lang}/manifesto#${hash}`);
   }
   return withBase(`/${lang}/manifesto`);
 }
 
-/** The site page a guide under docs/ is published as, keyed by its repository path. */
-const GUIDE_PAGES: Record<string, { lang: 'zh' | 'en'; path: string }> = {
-  'docs/remote-access.md': { lang: 'en', path: '/remote' },
-  'docs/remote-access.zh.md': { lang: 'zh', path: '/remote' }
-};
-
 /** Resolves a relative link in a file under `dir` to a repository path; other links are left alone. */
 function repoRelative(href: string, dir: string): string | null {
-  if (!dir || !href || href.startsWith('#') || href.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
+  if (!href || href.startsWith('#') || href.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
     return null;
   }
-  return path.posix.normalize(path.posix.join(dir, href));
+  return path.posix.normalize(dir ? path.posix.join(dir, href) : href);
 }
 
-function sanitizeOptions(
-  lang: 'zh' | 'en',
-  termTargets?: Record<string, string>,
-  dir = ''
-): sanitizeHtml.IOptions {
+/** The README section the site's home page carries as its download / run-from-source block. */
+const README_QUICKSTART = new Set(['get-it', '获取']);
+
+function sanitizeOptions(lang: Lang, targets: LinkTargets, dir = ''): sanitizeHtml.IOptions {
   return {
     allowedTags: [
-      'p', 'br', 'strong', 'em', 'del', 's', 'code', 'pre', 'a',
+      'p', 'br', 'strong', 'em', 'del', 's', 'code', 'pre', 'a', 'img',
       'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
       'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section'
     ],
     allowedAttributes: {
       a: ['href', 'target', 'rel', 'class', 'title'],
+      img: ['src', 'alt', 'title', 'loading'],
       code: ['class'],
       pre: ['class'],
       p: ['id', 'class'],
@@ -139,6 +179,13 @@ function sanitizeOptions(
       td: ['align']
     },
     transformTags: {
+      img: (_tagName, attribs) => {
+        const resolved = repoRelative(attribs.src || '', dir);
+        let src = attribs.src || '';
+        if (resolved?.startsWith(ASSET_DIR)) src = withBase(`/docs-assets/${resolved.slice(ASSET_DIR.length)}`);
+        else if (resolved) src = `${GITHUB_RAW_MAIN}/${resolved}`;
+        return { tagName: 'img', attribs: { ...attribs, src, loading: 'lazy' } };
+      },
       a: (_tagName, attribs) => {
         let href = attribs.href || '';
         const resolved = repoRelative(href, dir);
@@ -150,13 +197,16 @@ function sanitizeOptions(
         if (/(^|\/)ROADMAP(\.en)?\.md$/.test(pathPart)) {
           href = withBase(`/${lang}/roadmap`) + (hash ? `#${hash}` : '');
         } else if (/(^|\/)CONTEXT(\.en)?\.md$/.test(pathPart)) {
-          href = contextHref(lang, hash || undefined, termTargets);
+          href = contextHref(lang, hash || undefined, targets);
+        } else if (/(^|\/)docs\/behavior(\.en)?\.md$/.test(pathPart)) {
+          const dest = targets.behavior[hash];
+          href = withBase(`/${lang}${dest ?? '/manifesto'}`);
         } else if (
           pathPart === 'README.md' ||
           pathPart === 'README.en.md' ||
           pathPart === 'README.zh.md'
         ) {
-          href = withBase(`/${lang}`);
+          href = withBase(`/${lang}`) + (README_QUICKSTART.has(decodeURIComponent(hash)) ? '#quickstart' : '');
         } else if (GUIDE_PAGES[pathPart]) {
           const guide = GUIDE_PAGES[pathPart];
           href = withBase(`/${guide.lang}${guide.path}`) + (hash ? `#${hash}` : '');
@@ -197,16 +247,21 @@ function readRepoFile(filename: string): string | null {
   return fs.readFileSync(targetPath, 'utf-8');
 }
 
+/** A code block sits in a box that the page hangs its copy button on. */
+function boxCodeBlocks(html: string): string {
+  return html.replace(/<pre(\s[^>]*)?>/g, '<div class="codeblock"><pre$1>').replace(/<\/pre>/g, '</pre></div>');
+}
+
 function renderMarkdown(
   raw: string,
-  lang: 'zh' | 'en',
+  lang: Lang,
   toc: TocEntry[],
-  termTargets?: Record<string, string>,
+  targets: LinkTargets,
   headingId?: (text: string, depth: number) => string | undefined,
   dir = ''
 ): string {
-  const rawHtml = createMarked(toc, headingId).parse(raw) as string;
-  return sanitizeHtml(rawHtml, sanitizeOptions(lang, termTargets, dir));
+  const rawHtml = createMarked(lang, toc, headingId).parse(raw) as string;
+  return boxCodeBlocks(sanitizeHtml(rawHtml, sanitizeOptions(lang, targets, dir)));
 }
 
 function stripLeadingH1(markdown: string): string {
@@ -241,27 +296,56 @@ function loadContext(lang: Lang): { preamble: string; terms: ParsedTerm[] } {
   return parseContextMarkdown(stripLanguageLink(raw));
 }
 
-/**
- * Term anchors come from CONTEXT.md's own names in both languages, so a link to a term, or the
- * language switch on a term, lands on the same entry either way.
- */
-function termIds(): Map<string, string> {
-  return new Map(loadContext('zh').terms.map((term) => [term.key.toLowerCase(), termAnchorId(term.name)]));
+const BEHAVIOR_LINK = /docs\/behavior(?:\.en)?\.md#([a-z0-9-]+)/;
+
+/** The docs/behavior*.md section a term points to for its details, if any. */
+function behaviorId(term: ParsedTerm): string | undefined {
+  return term.markdown.match(BEHAVIOR_LINK)?.[1];
 }
 
-function termId(term: ParsedTerm, ids: Map<string, string>): string {
-  return ids.get(term.key.toLowerCase()) ?? termAnchorId(term.name);
+/** docs/behavior*.md split at its `<a id="…"></a>` + `## Term` headings: section id → body. */
+function loadBehavior(lang: Lang): Map<string, string> {
+  const raw = readRepoFile(editionSource('behavior', lang)) ?? '';
+  const sections = new Map<string, string>();
+  const heading = /<a id="([^"]+)"><\/a>\s*\n##\s[^\n]*\n/g;
+  const marks = [...raw.matchAll(heading)];
+  marks.forEach((m, i) => {
+    const start = (m.index ?? 0) + m[0].length;
+    const end = i + 1 < marks.length ? marks[i + 1].index : raw.length;
+    sections.set(m[1], raw.slice(start, end).trim());
+  });
+  return sections;
 }
 
-export function getTermTargets(): Record<string, string> {
-  const grouped = groupTerms(loadContext('zh').terms);
-  const map: Record<string, string> = {};
+function behaviorAnchorId(id: string): string {
+  return `behavior-${id}`;
+}
+
+function linkTargets(): LinkTargets {
+  const { terms } = loadContext('zh');
+  const grouped = groupTerms(terms);
+  const targets: LinkTargets = { terms: {}, aliases: {}, behavior: {} };
   for (const topic of MANIFESTO_TOPICS) {
     for (const term of grouped[topic]) {
-      map[termAnchorId(term.name)] = docsPath(topic);
+      const id = termAnchorId(term.name);
+      targets.terms[id] = docsPath(topic);
+      const legacy = legacyTermAnchorId(term.name);
+      if (legacy !== id) targets.aliases[legacy] = id;
+      const behavior = behaviorId(term);
+      if (behavior) targets.behavior[behavior] = `${docsPath(topic)}#${behaviorAnchorId(behavior)}`;
     }
   }
-  return map;
+  return targets;
+}
+
+/** Term anchor → the glossary page it lives on. */
+export function getTermTargets(): Record<string, string> {
+  return linkTargets().terms;
+}
+
+/** Anchors terms had before they were keyed by English name → the anchors they have now. */
+export function getTermAliases(): Record<string, string> {
+  return linkTargets().aliases;
 }
 
 function termToMarkdown(term: ParsedTerm): string {
@@ -271,61 +355,71 @@ function termToMarkdown(term: ParsedTerm): string {
   return `## ${term.name}\n\n${body}`;
 }
 
-export function getManifestoHub(lang: 'zh' | 'en'): {
+export function getManifestoHub(lang: Lang): {
   preambleHtml: string;
   toc: TocEntry[];
   index: ManifestoIndexEntry[];
   termTargets: Record<string, string>;
+  termAliases: Record<string, string>;
 } {
   const { preamble, terms } = loadContext(lang);
-  const termTargets = getTermTargets();
-  const ids = termIds();
+  const targets = linkTargets();
   const toc: TocEntry[] = [];
   const preambleHtml = preamble
-    ? renderMarkdown(stripLeadingH1(preamble), lang, toc, termTargets)
+    ? renderMarkdown(stripLeadingH1(preamble), lang, toc, targets)
     : '<p>CONTEXT.md not found.</p>';
   const grouped = groupTerms(terms);
   const index: ManifestoIndexEntry[] = MANIFESTO_TOPICS.map((topic) => ({
     topic,
-    terms: grouped[topic].map((term) => ({ name: term.name, id: termId(term, ids) }))
+    terms: grouped[topic].map((term) => ({ name: term.name, id: termAnchorId(term.name) }))
   }));
-  return { preambleHtml, toc, index, termTargets };
+  return { preambleHtml, toc, index, termTargets: targets.terms, termAliases: targets.aliases };
 }
 
-export function getManifestoTopic(topic: ManifestoTopic, lang: 'zh' | 'en'): DocsDocument {
+/** A term's behavior details, folded under its body and above its avoid line. */
+function withBehavior(termHtml: string, id: string, bodyHtml: string, lang: Lang): string {
+  const details =
+    `<details class="behavior" id="${behaviorAnchorId(id)}">` +
+    `<summary>${DICT[lang].docs.behaviorSummary}</summary>\n${bodyHtml}</details>\n`;
+  const avoidAt = termHtml.lastIndexOf('<p class="avoid">');
+  return avoidAt >= 0 ? termHtml.slice(0, avoidAt) + details + termHtml.slice(avoidAt) : termHtml + details;
+}
+
+export function getManifestoTopic(topic: ManifestoTopic, lang: Lang): DocsDocument & { aliases: Record<string, string> } {
   const { terms } = loadContext(lang);
   const grouped = groupTerms(terms);
-  const termTargets = getTermTargets();
-  const ids = termIds();
+  const targets = linkTargets();
+  const behavior = loadBehavior(lang);
   const toc: TocEntry[] = [];
-  const parts = grouped[topic].map((term) =>
-    renderMarkdown(termToMarkdown(term), lang, toc, termTargets, (text) =>
-      text === term.name ? termId(term, ids) : undefined
-    )
-  );
+  const parts = grouped[topic].map((term) => {
+    const id = termAnchorId(term.name);
+    const html = renderMarkdown(termToMarkdown(term), lang, toc, targets, (text) =>
+      text === term.name ? id : undefined
+    );
+    const detailsId = behaviorId(term);
+    const details = detailsId ? behavior.get(detailsId) : undefined;
+    if (!detailsId || !details) return html;
+    const bodyHtml = renderMarkdown(details, lang, [], targets, undefined, 'docs');
+    return withBehavior(html, detailsId, bodyHtml, lang);
+  });
+  const ids = new Set(toc.map((e) => e.id));
+  const aliases = Object.fromEntries(Object.entries(targets.aliases).filter(([, id]) => ids.has(id)));
   return {
     title: topic,
     contentHtml: parts.join('\n') || '<p>No terms in this topic.</p>',
-    toc
+    toc,
+    aliases
   };
 }
 
 /** Repository path of a document page's source, per language. */
-export function documentSource(docType: 'roadmap' | 'readme' | 'remote', lang: 'zh' | 'en'): string {
+export function documentSource(docType: 'roadmap' | 'readme' | Guide, lang: Lang): string {
   if (docType === 'roadmap') return editionSource('roadmap', lang);
-  if (docType === 'remote') return lang === 'en' ? 'docs/remote-access.md' : 'docs/remote-access.zh.md';
-  return lang === 'en' ? 'README.md' : 'README.zh.md';
+  if (docType === 'readme') return lang === 'en' ? 'README.md' : 'README.zh.md';
+  return GUIDE_SOURCES[docType][lang];
 }
 
-export function getDocumentContent(
-  docType: 'manifesto' | 'roadmap' | 'readme' | 'remote',
-  lang: 'zh' | 'en' = 'zh'
-): DocsDocument {
-  if (docType === 'manifesto') {
-    const hub = getManifestoHub(lang);
-    return { title: 'CONTEXT.md', contentHtml: hub.preambleHtml, toc: hub.toc };
-  }
-
+export function getDocumentContent(docType: 'roadmap' | 'readme' | Guide, lang: Lang = 'zh'): DocsDocument {
   const filename = documentSource(docType, lang);
   const source = readRepoFile(filename);
   const raw = source === null ? null : stripLanguageLink(source);
@@ -341,6 +435,85 @@ export function getDocumentContent(
   const title = titleMatch ? titleMatch[1].trim() : filename;
   const toc: TocEntry[] = [];
   const dir = path.posix.dirname(filename);
-  const contentHtml = renderMarkdown(raw, lang, toc, getTermTargets(), undefined, dir === '.' ? '' : dir);
+  const contentHtml = renderMarkdown(raw, lang, toc, linkTargets(), undefined, dir === '.' ? '' : dir);
   return { title, contentHtml, toc };
+}
+
+/** Images under docs/assets/ that published pages show. */
+export function publishedAssets(): string[] {
+  const files = new Set<string>();
+  for (const source of PUBLISHED_SOURCES) {
+    const raw = readRepoFile(source);
+    if (!raw) continue;
+    const dir = path.posix.dirname(source);
+    for (const m of raw.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) {
+      const resolved = repoRelative(m[1], dir === '.' ? '' : dir);
+      if (resolved?.startsWith(ASSET_DIR)) files.add(resolved.slice(ASSET_DIR.length));
+    }
+  }
+  return [...files].sort();
+}
+
+export function readAsset(file: string): Buffer | null {
+  if (file.includes('/') || file.includes('\\') || file.startsWith('.')) return null;
+  const target = path.join(findRepoRoot(), ASSET_DIR, file);
+  return fs.existsSync(target) ? fs.readFileSync(target) : null;
+}
+
+export type SearchEntry = {
+  /** Page title. */
+  page: string;
+  /** Section heading, or the page title for the text above the first heading. */
+  title: string;
+  /** Path after the language segment, with the section's anchor. */
+  href: string;
+  text: string;
+};
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: ' ' };
+
+function plainText(html: string): string {
+  return html
+    .replace(/<summary>[\s\S]*?<\/summary>/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, e: string) => ENTITIES[e])
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** A rendered page cut at its h2 / h3 headings. */
+function sections(html: string, page: string, pathname: string): SearchEntry[] {
+  const out: SearchEntry[] = [];
+  const heading = /<h([23]) id="([^"]+)">([\s\S]*?)<\/h\1>/g;
+  let last = { title: page, id: '', start: 0 };
+  const push = (end: number) => {
+    const text = plainText(html.slice(last.start, end));
+    if (text || last.id) out.push({ page, title: last.title, href: last.id ? `${pathname}#${last.id}` : pathname, text });
+  };
+  for (const m of html.matchAll(heading)) {
+    push(m.index ?? 0);
+    last = { title: plainText(m[3]), id: m[2], start: (m.index ?? 0) + m[0].length };
+  }
+  push(html.length);
+  return out;
+}
+
+/** Everything the docs search looks through, per language: one entry per section. */
+export function getSearchIndex(lang: Lang): SearchEntry[] {
+  const titles = DICT[lang].docs.pages;
+  const entries: SearchEntry[] = [];
+  for (const key of DOCS_NAV.flatMap((g) => g.pages) as DocsPageKey[]) {
+    const pathname = docsPath(key);
+    const title = titles[key].title;
+    if (key === 'docs') continue;
+    if (key === 'manifesto') {
+      entries.push(...sections(getManifestoHub(lang).preambleHtml, title, pathname));
+    } else if ((MANIFESTO_TOPICS as readonly string[]).includes(key)) {
+      entries.push(...sections(getManifestoTopic(key as ManifestoTopic, lang).contentHtml, title, pathname));
+    } else {
+      const doc = getDocumentContent(key as 'roadmap' | Guide, lang);
+      entries.push(...sections(doc.contentHtml.replace(/<h1[^>]*>[\s\S]*?<\/h1>/, ''), title, pathname));
+    }
+  }
+  return entries;
 }

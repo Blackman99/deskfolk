@@ -223,7 +223,7 @@ body {
   text-decoration-color: currentColor;
 }
 
-/* Rendered markdown for manifesto / roadmap */
+/* Rendered markdown for the docs pages */
 .markdown-body {
   color: var(--ink);
   line-height: 1.8;
@@ -343,6 +343,15 @@ body {
 
 .markdown-body blockquote p {
   margin: 0.35rem 0;
+}
+
+.markdown-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.1rem 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
 .markdown-body hr {

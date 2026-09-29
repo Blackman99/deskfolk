@@ -22,7 +22,8 @@ export type Dict = {
     demo: string;
     boundaries: string;
     quickstart: string;
-    manifesto: string;
+    docs: string;
+    glossary: string;
     roadmap: string;
     remote: string;
     github: string;
@@ -84,7 +85,7 @@ export type Dict = {
     colWip: string;
     colAvoid: string;
     rows: BoundaryRow[];
-    /** [before roadmap link, between roadmap and CONTEXT.md links, after] */
+    /** [before roadmap link, between roadmap and glossary links, after] */
     footnote: [string, string, string];
   };
   quickstart: {
@@ -94,9 +95,10 @@ export type Dict = {
     step1: string;
     step2: string;
     firstRun: string[];
-    download: { title: string; body: string; link: string; note: string };
+    download: { title: string; body: string; link: string; note: string; faq: string; windows: string };
     linkDocs: string;
-    linkManifesto: string;
+    linkDocsSite: string;
+    linkGlossary: string;
     linkRoadmap: string;
     linkRemote: string;
   };
@@ -114,18 +116,35 @@ export type Dict = {
     onThisPage: string;
     source: string;
     navLabel: string;
-    manifestoTag: string;
-    manifestoIntro: string;
+    experimentalTag: string;
+    /** "Built from main · latest release vX": the site follows main, the download is a release. */
+    editionMain: string;
+    editionLatest: string;
+    editionTitle: string;
     manifestoIndexHeading: string;
     manifestoIndexLead: string;
-    roadmapTag: string;
-    roadmapIntro: string;
-    remoteTag: string;
-    remoteIntro: string;
+    /** Label that opens a term's avoid line (the source writes `_Avoid_:`). */
+    avoidLabel: string;
+    avoidToggle: string;
+    avoidToggleHint: string;
+    behaviorSummary: string;
+    searchLabel: string;
+    searchPlaceholder: string;
+    searchLoading: string;
+    /** `{q}` is the query. */
+    searchEmpty: string;
     pagerPrev: string;
     pagerNext: string;
     navGroup: Record<DocsNavGroupId, string>;
-    pages: Record<DocsPageKey, { title: string; blurb: string }>;
+    /** `intro` leads the page and is its meta description; the blurb stands in where there is none. */
+    pages: Record<DocsPageKey, { title: string; blurb: string; intro?: string }>;
+  };
+  error: {
+    notFound: string;
+    generic: string;
+    body: string;
+    home: string;
+    docs: string;
   };
 };
 
@@ -134,7 +153,8 @@ const zh: Dict = {
     demo: '完整流程',
     boundaries: '边界',
     quickstart: '从源码启动',
-    manifesto: '设计理念',
+    docs: '文档',
+    glossary: '术语表',
     roadmap: '路线图',
     remote: '远程访问',
     github: 'GitHub',
@@ -304,7 +324,7 @@ const zh: Dict = {
         avoid: '项目方运营的云端中继、把实验原型当成可用的远控'
       }
     ],
-    footnote: ['详细方向见', '；领域词汇以 ', ' 为准。']
+    footnote: ['详细方向见', '；领域词汇以', '为准。']
   },
   quickstart: {
     heading: '下载，或从源码启动',
@@ -320,12 +340,15 @@ const zh: Dict = {
     ],
     download: {
       title: '下载 Alpha 快照',
-      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg，以及 Windows 预览版安装包 Deskfolk_<版本>_x64-setup.exe。构建都未签名：Windows 上 SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」；Mac 上首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（完整 FAQ：docs/gatekeeper.zh.md；昂贵动作仍会先问你）：',
+      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg，以及 Windows 预览版安装包 Deskfolk_<版本>_x64-setup.exe。构建都未签名：Windows 上 SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」；Mac 上首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（应用里的昂贵动作仍会先问你）：',
       link: '前往最新 Release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
+      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"',
+      faq: 'macOS 首次打开的完整说明',
+      windows: 'Windows 预览版说明'
     },
     linkDocs: '开发说明',
-    linkManifesto: '设计理念',
+    linkDocsSite: '文档',
+    linkGlossary: '术语表',
     linkRoadmap: '路线图',
     linkRemote: '远程访问'
   },
@@ -344,24 +367,64 @@ const zh: Dict = {
     onThisPage: '本页',
     source: '源文件',
     navLabel: '文档',
-    manifestoTag: 'CONTEXT.md',
-    manifestoIntro:
-      '领域语言与明确回避的反模式。源文件仍是仓库根目录的 CONTEXT.md；站点按主题拆页，不另写一份词汇。',
+    experimentalTag: '实验性',
+    editionMain: '按 main 分支生成',
+    editionLatest: '最新发布',
+    editionTitle: '文档随 main 分支更新，可能写到了最新发布版里还没有的改动。',
     manifestoIndexHeading: '按主题读术语',
-    manifestoIndexLead: '每个主题一页。点开后左侧是整份文档导航，右侧是本页术语。',
-    roadmapTag: 'ROADMAP.md',
-    roadmapIntro: 'Deskfolk 的建设方向，不是稳定版承诺或交付时间表。页面在构建时直接由仓库根目录的 ROADMAP.md 生成。',
-    remoteTag: '实验性',
-    remoteIntro: '从手机或另一台电脑连到你 Mac 上的 Deskfolk：自己部署中继、让 Mac 连上它、配对设备。默认关闭，页面在构建时由仓库里的 docs/remote-access.zh.md 生成。',
+    manifestoIndexLead: '每个主题一页，点词条直接跳到它。',
+    avoidLabel: '回避：',
+    avoidToggle: '显示回避用语',
+    avoidToggleHint: '每个词条下面列着 Deskfolk 刻意不用的叫法，默认收起。',
+    behaviorSummary: '行为细节',
+    searchLabel: '搜索文档',
+    searchPlaceholder: '搜索文档',
+    searchLoading: '正在载入…',
+    searchEmpty: '没有找到「{q}」',
     pagerPrev: '上一页',
     pagerNext: '下一页',
     navGroup: {
-      language: '领域语言',
+      start: '开始',
       guides: '指南',
+      glossary: '术语表',
       direction: '方向'
     },
     pages: {
-      manifesto: { title: '概述', blurb: '这份语言管什么、不管什么。' },
+      docs: {
+        title: '文档概览',
+        blurb: '怎么装、怎么用，以及每个词指什么。',
+        intro: '怎么装、怎么用 Deskfolk，以及它里面每个词指的是什么。先看「开始」，要细节去「指南」，词义以「术语表」为准。'
+      },
+      gatekeeper: {
+        title: 'macOS 首次打开',
+        blurb: '未公证的 .dmg 被 Gatekeeper 拦下时怎么放行。',
+        intro: 'Mac 版 Alpha 还没有经过 Apple 公证，首次打开会被 Gatekeeper 拦下：怎么放行，放行之后应用里还有哪些把关。'
+      },
+      windows: {
+        title: 'Windows 预览版',
+        blurb: '怎么装、和 Mac 版哪里不同、还缺什么。',
+        intro: 'Windows 版是实验性预览：怎么装，数据和密钥放在哪，Bot 用什么 shell 跑命令，以及和 Mac 版相比还缺哪些功能。'
+      },
+      routines: {
+        title: '日程',
+        blurb: '让 Bot 每天或每周定点开工。',
+        intro: 'Bot 可以按设定的时间自己开工：每天，或每周选定的几天。日程在哪看、怎么改，以及它按什么规则执行。'
+      },
+      spend: {
+        title: '花费',
+        blurb: '每次模型调用花了多少，实报与估算。',
+        intro: '每一次模型调用都记在本机的账本上：在哪里看，实报和估算金额分别从哪来，计费单价怎么配。'
+      },
+      remote: {
+        title: '远程访问',
+        blurb: '自托管中继、配对手机、Web Push。',
+        intro: '从手机或另一台电脑连到你 Mac 上的 Deskfolk：自己部署中继、让 Mac 连上它、配对设备。默认关闭，目前只在 macOS 上有。'
+      },
+      manifesto: {
+        title: '全部术语',
+        blurb: '每个词指什么，按主题分页。',
+        intro: 'Deskfolk 里每个词指的是什么、和别的词是什么关系，以及刻意不用的叫法。按主题分成七页。'
+      },
       people: { title: '人与名册', blurb: 'Bot、你、人设、归档。' },
       conversations: { title: '会话', blurb: '群、私聊、线程、回应。' },
       collaboration: { title: '协作', blurb: '点名、判断、交接、轮次。' },
@@ -369,9 +432,19 @@ const zh: Dict = {
       runtime: { title: '运行时', blurb: '窗与窗格、守护进程、托盘、终端、本机接口。' },
       models: { title: '模型与工具', blurb: '端点、MCP、日程、技能、上下文与花费。' },
       safety: { title: '批准与边界', blurb: '危险动作、壳、Always allow。' },
-      remote: { title: '远程访问', blurb: '自托管中继、配对手机、Web Push。' },
-      roadmap: { title: '路线图', blurb: '建设方向，不是交付时间表。' }
+      roadmap: {
+        title: '路线图',
+        blurb: '建设方向，不是交付时间表。',
+        intro: 'Deskfolk 的建设方向，不是稳定版承诺或交付时间表。'
+      }
     }
+  },
+  error: {
+    notFound: '找不到这一页',
+    generic: '出了点问题',
+    body: '地址可能写错了，或者这一页已经搬走。',
+    home: '回首页',
+    docs: '看文档'
   }
 };
 
@@ -380,7 +453,8 @@ const en: Dict = {
     demo: 'Full walkthrough',
     boundaries: 'Boundaries',
     quickstart: 'Run from source',
-    manifesto: 'Manifesto',
+    docs: 'Docs',
+    glossary: 'Glossary',
     roadmap: 'Roadmap',
     remote: 'Remote access',
     github: 'GitHub',
@@ -550,7 +624,7 @@ const en: Dict = {
         avoid: 'A project-run cloud relay, passing a prototype off as working remote access'
       }
     ],
-    footnote: ['See the ', ' for direction; ', ' is the source of truth for vocabulary.']
+    footnote: ['See the ', ' for direction; the ', ' is the source of truth for vocabulary.']
   },
   quickstart: {
     heading: 'Download, or run from source',
@@ -566,12 +640,15 @@ const en: Dict = {
     ],
     download: {
       title: 'Download the alpha snapshot',
-      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel, and a Windows preview installer, Deskfolk_<version>_x64-setup.exe. Neither is signed: on Windows, SmartScreen warns about an unknown publisher (More info → Run anyway); on a Mac, if Gatekeeper blocks the first launch, right-click and choose Open, or run (full FAQ: docs/gatekeeper.md; expensive actions still ask first):',
+      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel, and a Windows preview installer, Deskfolk_<version>_x64-setup.exe. Neither is signed: on Windows, SmartScreen warns about an unknown publisher (More info → Run anyway); on a Mac, if Gatekeeper blocks the first launch, right-click and choose Open, or run (expensive actions inside the app still ask first):',
       link: 'Go to the latest release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
+      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"',
+      faq: 'Full first-launch guide for macOS',
+      windows: 'About the Windows preview'
     },
     linkDocs: 'Development guide',
-    linkManifesto: 'Manifesto',
+    linkDocsSite: 'Docs',
+    linkGlossary: 'Glossary',
     linkRoadmap: 'Roadmap',
     linkRemote: 'Remote access'
   },
@@ -590,24 +667,64 @@ const en: Dict = {
     onThisPage: 'On this page',
     source: 'Source',
     navLabel: 'Docs',
-    manifestoTag: 'CONTEXT.md',
-    manifestoIntro:
-      'The domain language and the anti-patterns it avoids. The source is still CONTEXT.md at the repository root; this site splits it by topic instead of rewriting the glossary.',
+    experimentalTag: 'Experimental',
+    editionMain: 'Built from main',
+    editionLatest: 'latest release',
+    editionTitle: 'The docs follow the main branch and may describe changes the latest release does not have yet.',
     manifestoIndexHeading: 'Terms by topic',
-    manifestoIndexLead: 'One page per topic. The left rail is the whole docs tree; the right rail is this page.',
-    roadmapTag: 'ROADMAP.md',
-    roadmapIntro: 'Where Deskfolk is heading. Not a stable-release promise or a delivery schedule. Generated at build time from ROADMAP.md at the repository root.',
-    remoteTag: 'Experimental',
-    remoteIntro: 'Reach the Deskfolk on your Mac from a phone or another computer: deploy your own relay, point the Mac at it, pair a device. Off by default. Generated at build time from docs/remote-access.md in the repository.',
+    manifestoIndexLead: 'One page per topic; click a term to jump to it.',
+    avoidLabel: 'Avoid: ',
+    avoidToggle: 'Show words to avoid',
+    avoidToggleHint: 'Each entry lists the names Deskfolk deliberately does not use; they are folded away by default.',
+    behaviorSummary: 'Behavior details',
+    searchLabel: 'Search docs',
+    searchPlaceholder: 'Search docs',
+    searchLoading: 'Loading…',
+    searchEmpty: 'Nothing found for “{q}”',
     pagerPrev: 'Previous',
     pagerNext: 'Next',
     navGroup: {
-      language: 'Language',
+      start: 'Get started',
       guides: 'Guides',
+      glossary: 'Glossary',
       direction: 'Direction'
     },
     pages: {
-      manifesto: { title: 'Overview', blurb: 'What this language covers, and what it does not.' },
+      docs: {
+        title: 'Docs overview',
+        blurb: 'Installing, using, and what each word means.',
+        intro: 'How to install and use Deskfolk, and what each word in it means. Start with Get started, go to Guides for the details; the Glossary settles what a word means.'
+      },
+      gatekeeper: {
+        title: 'First launch on macOS',
+        blurb: 'Getting an unnotarized .dmg past Gatekeeper.',
+        intro: 'The Mac alpha is not notarized by Apple yet, so Gatekeeper blocks the first launch: how to let it through, and what the app still guards after that.'
+      },
+      windows: {
+        title: 'Windows preview',
+        blurb: 'Installing it, how it differs from the Mac, what is missing.',
+        intro: 'The Windows build is an experimental preview: how to install it, where data and keys live, which shell Bots run commands in, and what it still lacks next to the Mac.'
+      },
+      routines: {
+        title: 'Routines',
+        blurb: 'Bots that start work daily or weekly at a set time.',
+        intro: 'A Bot can start work on its own at a set time, daily or on chosen weekdays: where routines live, how to edit them, and the rules they run by.'
+      },
+      spend: {
+        title: 'Spend',
+        blurb: 'What each model call cost, reported and estimated.',
+        intro: 'Every model call goes into a ledger on this computer: where to read it, where reported and estimated amounts come from, and how to set prices.'
+      },
+      remote: {
+        title: 'Remote access',
+        blurb: 'Self-hosted relay, pairing a phone, Web Push.',
+        intro: 'Reach Deskfolk on your Mac from a phone or another computer: deploy your own relay, point the Mac at it, pair a device. Off by default, and macOS only for now.'
+      },
+      manifesto: {
+        title: 'All terms',
+        blurb: 'What each word means, one page per topic.',
+        intro: 'What each word in Deskfolk means, how it relates to the others, and the names it deliberately avoids. Split into seven topics.'
+      },
       people: { title: 'People and roster', blurb: 'Bots, you, profiles, archive.' },
       conversations: { title: 'Sessions', blurb: 'Groups, directs, threads, reactions.' },
       collaboration: { title: 'Collaboration', blurb: 'Mentions, judgement, handoffs, turns.' },
@@ -615,9 +732,19 @@ const en: Dict = {
       runtime: { title: 'Runtime', blurb: 'Window and panes, daemon, tray, terminal, local API.' },
       models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, skills, context, spend.' },
       safety: { title: 'Approval and bounds', blurb: 'Dangerous actions, shells, Always allow.' },
-      remote: { title: 'Remote access', blurb: 'Self-hosted relay, pairing a phone, Web Push.' },
-      roadmap: { title: 'Roadmap', blurb: 'Direction, not a delivery schedule.' }
+      roadmap: {
+        title: 'Roadmap',
+        blurb: 'Direction, not a delivery schedule.',
+        intro: 'Where Deskfolk is heading. Not a stable-release promise or a delivery schedule.'
+      }
     }
+  },
+  error: {
+    notFound: 'Page not found',
+    generic: 'Something went wrong',
+    body: 'The address may be mistyped, or the page has moved.',
+    home: 'Home',
+    docs: 'Docs'
   }
 };
 

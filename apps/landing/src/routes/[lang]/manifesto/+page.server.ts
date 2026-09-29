@@ -16,6 +16,7 @@ export const load: PageServerLoad = ({ params }) => {
     preambleHtml: hub.preambleHtml,
     index: hub.index,
     termTargets: hub.termTargets,
+    termAliases: hub.termAliases,
     source: editionSource('context', lang)
   };
 };

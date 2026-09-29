@@ -17,7 +17,8 @@ const config = {
       strict: false
     }),
     prerender: {
-      handleHttpError: 'warn'
+      // A dead link between pages the site builds fails the build instead of shipping.
+      handleHttpError: 'fail'
     }
   }
 };
