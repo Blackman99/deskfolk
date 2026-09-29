@@ -104,8 +104,7 @@
 		{@const step = stepLine?.(entry) ?? null}
 		<div class="attached-replying-card is-single" class:is-user={isUser}>
 			{@render identity(entry)}
-			<span class="attached-replying-dots inline-flex items-center gap-[2.5px] ml-1 mr-1" aria-hidden="true">
-				<span class="replying-dot"></span>
+			<span class="attached-replying-dots ml-1 mr-1" aria-hidden="true">
 				<span class="replying-dot"></span>
 				<span class="replying-dot"></span>
 			</span>
@@ -132,8 +131,7 @@
 	{:else}
 		<div class="attached-replying-card is-multiple" class:is-user={isUser}>
 			<div class="attached-replying-header flex items-center gap-3 py-0 px-1 leading-none select-none">
-				<span class="attached-replying-dots inline-flex items-center gap-[2.5px] ml-1 mr-1" aria-hidden="true">
-					<span class="replying-dot"></span>
+				<span class="attached-replying-dots ml-1 mr-1" aria-hidden="true">
 					<span class="replying-dot"></span>
 					<span class="replying-dot"></span>
 				</span>
@@ -432,25 +430,38 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	/*
+	 * Thinking is the mark's two teammates taking turns: two overlapping circles, one swelling as the
+	 * other shrinks. The second is ringed in the card's own ground, so it cuts into the first the
+	 * way the mustard circle does in the mark.
+	 */
+	.attached-replying-dots {
+		position: relative;
+		display: inline-block;
+		flex-shrink: 0;
+		width: 15px;
+		height: 9px;
+	}
+
 	.replying-dot {
-		width: 4px;
-		height: 4px;
+		position: absolute;
+		top: 0;
+		width: 9px;
+		height: 9px;
 		border-radius: 50%;
-		background: var(--accent);
-		box-shadow: 0 0 4px var(--accent-glow);
-		animation: dotBounce 1.4s infinite ease-in-out both;
+		animation: relaySwap 1.2s infinite ease-in-out both;
 	}
 
 	.replying-dot:nth-child(1) {
-		animation-delay: -0.32s;
+		left: 0;
+		background: var(--accent);
 	}
 
 	.replying-dot:nth-child(2) {
-		animation-delay: -0.16s;
-	}
-
-	.replying-dot:nth-child(3) {
-		animation-delay: 0s;
+		left: 6px;
+		background: var(--art-ring);
+		box-shadow: 0 0 0 1.5px var(--pane);
+		animation-delay: -0.6s;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -476,14 +487,12 @@
 		}
 	}
 
-	@keyframes dotBounce {
-		0%, 80%, 100% {
-		transform: scale(0.6);
-		opacity: 0.35;
+	@keyframes relaySwap {
+		0%, 100% {
+		transform: scale(1);
 		}
-		40% {
-		transform: scale(1.1);
-		opacity: 1;
+		50% {
+		transform: scale(0.62);
 		}
 	}
 

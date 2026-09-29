@@ -110,7 +110,7 @@
 		padding: 6px 8px;
 		overflow: auto;
 		border-radius: var(--radius-sm);
-		background: var(--surface-sunken, rgba(128, 128, 128, 0.1));
+		background: var(--chip);
 		color: var(--muted);
 		font-size: 11px;
 		line-height: 1.45;

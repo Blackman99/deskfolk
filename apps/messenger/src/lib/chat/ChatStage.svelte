@@ -16,6 +16,7 @@
 	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import EmptyState from '../EmptyState.svelte';
 	import {
 		approvalForMessage,
 		approvalNeedsSecret,
@@ -950,15 +951,7 @@
 	>
 		<div class="stream-inner" bind:this={streamInner}>
 	{#if !selected}
-		<div class="empty-state m-auto flex flex-col items-center justify-center text-center py-20 px-10 max-w-[360px]">
-			<div class="empty-icon" aria-hidden="true">
-				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-				</svg>
-			</div>
-			<h2>{t.top.pickSession}</h2>
-			<p class="muted">{t.top.pickSession}</p>
-		</div>
+		<EmptyState title={t.top.pickSession} hint={t.top.pickSessionHint} />
 	{:else if stream.length === 0 && view?.historyLoading}
 		<!-- A remote transcript arrives over the relay; saying so beats an empty room that fills
 		     without warning. -->
@@ -1937,12 +1930,6 @@
 		margin-bottom: 14px;
 	}
 
-	.empty-state :global(h2) {
-		font-size: 15px;
-		font-weight: 600;
-		color: var(--ink);
-		margin: 0 0 6px;
-	}
 
 
 
@@ -1976,21 +1963,19 @@
 		position: absolute;
 		inset: 50% 0 auto 0;
 		height: 1px;
-		background: var(--line);
+		background: var(--line-subtle);
 		z-index: 1;
 	}
 
+	/* The date sits on the line itself, on the stream's own ground, instead of in a bordered pill. */
 	.date-pill {
 		position: relative;
 		z-index: 2;
-		padding: 3px 12px;
-		border-radius: var(--radius-full);
-		background: var(--date-pill-bg);
-		border: 1px solid var(--date-pill-border);
-		font-size: 11px;
+		padding: 0 12px;
+		background: var(--pane);
+		font-size: var(--text-micro);
 		font-weight: 600;
 		color: var(--date-pill-text);
-		box-shadow: 0 1px 2px rgba(18, 28, 32, 0.04);
 	}
 
 	/* Message Wrappers */
@@ -2083,10 +2068,10 @@
 		justify-content: center;
 		font-weight: 700;
 		font-size: 13px;
-		background: var(--ink);
-		color: var(--pane);
-		border: 1px solid transparent;
-		box-shadow: var(--shadow-xs);
+		/* The mark's white teammate: the pane's colour ringed in the accent, not a solid black disc. */
+		background: var(--pane);
+		color: var(--accent);
+		border: 1.5px solid var(--accent);
 		user-select: none;
 	}
 
@@ -2142,14 +2127,14 @@
 		outline-offset: 2px;
 	}
 
+	/* A quiet tag beside the name: the accent is kept for what you can act on. */
 	.bot-badge {
 		font-size: 10px;
-		font-weight: 700;
+		font-weight: 600;
 		padding: 1px 5px;
 		border-radius: var(--radius-xs);
-		background: color-mix(in srgb, var(--accent) 8%, transparent);
-		color: var(--accent);
-		letter-spacing: 0.02em;
+		border: 1px solid var(--line);
+		color: var(--muted);
 		line-height: 1.2;
 	}
 
@@ -2189,7 +2174,7 @@
 
 	.msg-time {
 		font-size: 11px;
-		color: var(--muted-light);
+		color: var(--muted);
 		margin-left: 2px;
 	}
 
@@ -2200,7 +2185,7 @@
 		gap: 3px;
 		font-size: 11px;
 		font-weight: 400;
-		color: var(--muted-light);
+		color: var(--muted);
 		letter-spacing: -0.01em;
 	}
 
@@ -2257,11 +2242,11 @@
 	}
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg:not(.is-you) {
-		border-radius: var(--radius-md) 16px 16px 16px;
+		border-radius: var(--radius-md) var(--radius-lg) var(--radius-lg) var(--radius-lg);
 	}
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg.is-you {
-		border-radius: 16px var(--radius-md) 16px 16px;
+		border-radius: var(--radius-lg) var(--radius-md) var(--radius-lg) var(--radius-lg);
 	}
 
 	.segment-meta.is-right {
@@ -2304,7 +2289,8 @@
 		background: var(--you);
 		color: var(--you-text);
 		border: 1px solid transparent;
-		border-radius: 16px var(--radius-xs) 16px 16px;
+		/* The corner nearest your avatar is the mark's bubble tail. */
+		border-radius: var(--radius-lg) var(--radius-xs) var(--radius-lg) var(--radius-lg);
 		box-shadow: var(--shadow-xs);
 	}
 
@@ -2645,9 +2631,9 @@
 	.msg.is-ask {
 		width: min(100%, 440px);
 		background: var(--pane);
-		border: 1.5px solid var(--accent);
+		border: 1px solid var(--accent-border);
 		max-width: 480px;
-		box-shadow: 0 4px 16px var(--accent-glow);
+		box-shadow: var(--shadow-sm);
 		border-radius: var(--radius-lg);
 		padding: 14px 16px;
 	}
@@ -2663,19 +2649,18 @@
 	.msg.is-approval {
 		align-self: stretch;
 		max-width: none;
-		background: var(--card);
-		border: 1.5px solid var(--card-line);
+		background: var(--pane);
+		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
 		padding: 16px 18px;
-		box-shadow: 0 4px 14px color-mix(in srgb, var(--warn) 8%, transparent);
+		box-shadow: var(--shadow-sm);
 	}
 
+	/* The card is plain; what says it is waiting on you is this label in the warn colour. */
 	.msg.is-approval .who {
 		color: var(--warn-text);
-		font-size: 12px;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		font-size: var(--text-caption);
+		font-weight: 650;
 		margin-bottom: 6px;
 	}
 
@@ -2751,12 +2736,12 @@
 
 	/* System Messages */
 	.msg.is-system {
-		background: var(--chip);
-		border: 1px dashed var(--line);
-		color: var(--muted);
+		background: var(--line-subtle);
+		border: 1px solid var(--line);
+		color: var(--ink-secondary);
 		padding: 8px 12px;
 		font-size: 13px;
-		border-radius: var(--radius-xs) 16px 16px 16px;
+		border-radius: var(--radius-md);
 		box-shadow: none;
 		display: inline-flex;
 		flex-direction: column;
@@ -2769,7 +2754,7 @@
 		border-style: solid;
 		border-color: var(--line);
 		padding: 10px 14px;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+		box-shadow: var(--shadow-xs);
 	}
 
 	.msg.is-system.is-unreachable {

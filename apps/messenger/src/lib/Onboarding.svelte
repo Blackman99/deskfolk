@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BrandMark from './BrandMark.svelte';
 	import AvatarEditor from './AvatarEditor.svelte';
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
@@ -462,12 +463,7 @@
 <div class="onboarding-screen w-[100vw] h-screen bg-bg flex p-10 overflow-y-auto box-border">
 	<div class="onboarding-card">
 		<div class="onboarding-hero text-center flex flex-col items-center gap-3">
-			<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
-			<svg class="onboarding-logo" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
-				<path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" />
-				<circle cx="25" cy="29" r="10.5" fill="#ffffff" />
-				<circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3" />
-			</svg>
+			<BrandMark size={52} />
 			<h1 class="onboarding-title">{t.onboarding.welcome}</h1>
 			<p class="onboarding-subtitle m-0 text-13 text-muted max-w-[480px] leading-[1.45]">{t.onboarding.subtitle}</p>
 		</div>
@@ -915,11 +911,6 @@
 		animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.onboarding-logo {
-		display: block;
-		margin-bottom: 2px;
-	}
-
 	/*
 	 * The provider fields sit in neither a `.modal-body` nor a `.sheet`, where the shared input
 	 * styles live, so they rendered as bare browser inputs. Same look as those.
@@ -964,21 +955,19 @@
 
 	.onboarding-title {
 		margin: 0;
-		font-size: 20px;
+		font-size: 24px;
 		font-weight: 700;
 		color: var(--ink);
-		letter-spacing: -0.02em;
+		letter-spacing: -0.01em;
 	}
 
 	/* Onboarding Step Bar */
+	/* The steps sit on the card itself: the box they had around them was a card inside the card. */
 	.onboarding-step-bar {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 10px 12px;
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
+		padding: 4px 0;
 		position: relative;
 	}
 
@@ -997,7 +986,7 @@
 	}
 
 	.step-bar-item:hover:not(:disabled) {
-		background: rgba(0, 0, 0, 0.04);
+		background: var(--row-hover);
 	}
 
 	.step-bar-item:disabled {
@@ -1021,17 +1010,19 @@
 		flex-shrink: 0;
 	}
 
+	/* The step you are on is ringed in the accent; a finished one is filled with it. Green is for
+	   a check that passed, and a step behind you is just done. */
 	.step-bar-item.is-active .step-bar-circle {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--on-accent);
+		background: var(--pane);
+		border: 2px solid var(--accent);
+		color: var(--accent);
 		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
 	.step-bar-item.is-complete .step-bar-circle {
-		background: var(--ok);
-		border-color: var(--ok);
-		color: #ffffff;
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--on-accent);
 	}
 
 	.step-bar-label {
@@ -1043,7 +1034,7 @@
 	}
 
 	.step-bar-item.is-active .step-bar-label {
-		color: var(--accent);
+		color: var(--ink);
 		font-weight: 600;
 	}
 
@@ -1061,33 +1052,29 @@
 	}
 
 	.step-bar-line.is-complete {
-		background: var(--ok);
+		background: var(--accent);
 	}
 
+	/* The step's content is part of the card under a hairline, not another bordered card in it. */
 	.step-pane {
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 20px 22px;
+		border-top: 1px solid var(--line-subtle);
+		padding-top: 18px;
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-		box-shadow: var(--shadow-xs);
 		animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.step-pane-header {
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
-		padding-bottom: 2px;
-		border-bottom: 1px solid var(--line-subtle);
+		gap: 4px;
 	}
 
 	.step-pane-title {
 		margin: 0;
-		font-size: 15px;
-		font-weight: 600;
+		font-size: var(--text-heading);
+		font-weight: 650;
 		color: var(--ink);
 	}
 

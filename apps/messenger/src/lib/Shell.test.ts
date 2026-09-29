@@ -2151,7 +2151,7 @@ test('the session list folds to a rail of avatars from its own button or ⌘B, a
   cleanups.push(() => mounted.close());
   await settle();
   const shell = () => mounted.host.querySelector('.shell') as HTMLElement;
-  const collapse = () => mounted.host.querySelector('.side .search-wrap .side-collapse') as HTMLButtonElement | null;
+  const collapse = () => mounted.host.querySelector('.side .brand-row .side-collapse') as HTMLButtonElement | null;
   const expand = () => mounted.host.querySelector('.rail .rail-expand') as HTMLButtonElement | null;
 
   expect(collapse()?.getAttribute('aria-label')).toBe('Hide the session list');

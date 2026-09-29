@@ -165,9 +165,7 @@
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
-		box-shadow:
-			0 12px 30px -4px rgba(18, 28, 32, 0.16),
-			0 4px 12px -2px rgba(18, 28, 32, 0.08);
+		box-shadow: var(--shadow-menu);
 		user-select: none;
 		outline: none;
 	}

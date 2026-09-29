@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BrandMark from '$lib/BrandMark.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -272,6 +273,7 @@ const runtime = new MessengerRuntime();
 		<PairingScreen {runtime} t={copy} />
 	{:else if runtime.tabRole === 'standby'}
 		<main class="disconnected" data-testid="tab-standby">
+			<BrandMark size={48} />
 			<span>{copy.notifications.tabTakeoverNotice}</span>
 			<div class="disconnected-actions">
 				<button type="button" data-testid="tab-takeover" onclick={() => void runtime.requestTabTakeover()}>
@@ -283,11 +285,13 @@ const runtime = new MessengerRuntime();
 			{/if}
 		</main>
 	{:else if runtime.connection === 'connecting'}
-		<main class="disconnected" data-testid="connecting">
+		<main class="disconnected is-connecting" data-testid="connecting">
+			<BrandMark size={48} />
 			<span>{connectingCopy}</span>
 		</main>
 	{:else}
 		<main class="disconnected" data-testid="unreachable">
+			<BrandMark size={48} />
 			<span>{disconnectedCopy}</span>
 			{#if runtime.hostUnreachable === 'host'}
 				<p class="disconnected-hint">{copy.disconnected.hostHint}</p>
@@ -356,7 +360,7 @@ const runtime = new MessengerRuntime();
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
 		padding: 12px 16px;
-		box-shadow: 0 8px 24px rgba(18, 28, 32, 0.16);
+		box-shadow: var(--shadow-menu);
 		max-width: min(420px, calc(100% - 24px));
 	}
 	.disconnected-actions button {
@@ -367,13 +371,17 @@ const runtime = new MessengerRuntime();
 		background: var(--pane);
 		font-weight: 600;
 	}
-	.disconnected::before {
+	/*
+	 * Only an attempt in progress spins. A host that could not be reached waits for Retry, and a
+	 * ring turning over "unreachable" said the opposite of what the line under it did.
+	 */
+	.disconnected.is-connecting::after {
 		content: "";
 		display: block;
-		width: 44px;
-		height: 44px;
+		width: 20px;
+		height: 20px;
 		border-radius: 50%;
-		border: 3px solid var(--line);
+		border: 2px solid var(--line);
 		border-top-color: var(--accent);
 		animation: spin 1s linear infinite;
 	}
@@ -387,7 +395,7 @@ const runtime = new MessengerRuntime();
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.disconnected::before {
+		.disconnected.is-connecting::after {
 			animation: none;
 		}
 	}

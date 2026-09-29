@@ -30,6 +30,24 @@
   --mustard-tint: #fdf3e1;
   --mustard-line: #f3d08e;
   --mustard-ink: #8a5a08;
+  /* Text on a mustard fill: the unread count. */
+  --on-mustard: #3d2804;
+
+  /*
+   * The mark as BrandMark draws it: the bubble, the white teammate and the mustard one, whose
+   * ring is the bubble's own colour so it cuts into the white circle.
+   */
+  --brand-bubble: #146a7c;
+  --brand-front: #ffffff;
+  --brand-mustard: #f0ab3d;
+  /*
+   * The faded mark an empty state draws: a tint bubble and a ringed pane-coloured circle, with
+   * only the mustard one left solid. `--art-bubble` is opaque on purpose: it is also the ring
+   * the mustard circle cuts with, and a translucent ring would show the circle under it.
+   */
+  --art-bubble: #e6f2f4;
+  --art-front: #ffffff;
+  --art-ring: #b9d6dc;
 
   /* Message Bubbles */
   --you: #146a7c;
@@ -55,6 +73,11 @@
   --danger-line: #fca5a5;
   --danger-text: #b91c1c;
 
+  /* Text and icons drawn on a status fill (a badge, a count, a destructive button). */
+  --on-danger: #ffffff;
+  --on-warn: #ffffff;
+  --on-ok: #ffffff;
+
   --purple: #8b5cf6;
   --purple-bg: #f5f3ff;
   --purple-line: #ddd6fe;
@@ -66,14 +89,54 @@
 
   --chip: #eff3f4;
   --chip-line: #e0e6e8;
-  --card: #fdf6e7;
-  --card-line: #f3d08e;
   --thread: #f7f9f9;
+
+  /*
+   * Letter avatars (`botAvatarColor`): eight pairs drawn from the mark — its teal and mustard, then
+   * clay, sage, plum, slate, harbour and rose at the same softness — so a roster of letters reads
+   * as one family with the accent, and each pair has a dark twin below.
+   */
+  --av-1-bg: #dcecef;
+  --av-1-text: #0f5462;
+  --av-1-line: #b9d6dc;
+  --av-2-bg: #fbecd0;
+  --av-2-text: #7a4f06;
+  --av-2-line: #f3d08e;
+  --av-3-bg: #f6e3dc;
+  --av-3-text: #8a3b22;
+  --av-3-line: #ecc4b5;
+  --av-4-bg: #e1ede4;
+  --av-4-text: #2f5b3c;
+  --av-4-line: #bfd8c6;
+  --av-5-bg: #ece4f0;
+  --av-5-text: #5b3a6b;
+  --av-5-line: #d5c4de;
+  --av-6-bg: #e4e9eb;
+  --av-6-text: #37444a;
+  --av-6-line: #c9d3d6;
+  --av-7-bg: #e2eef6;
+  --av-7-text: #22506e;
+  --av-7-line: #bcd6e8;
+  --av-8-bg: #f3e6ea;
+  --av-8-text: #7d3450;
+  --av-8-line: #e3c2cd;
 
   /* Typography: macOS then Windows; Latin faces before CJK so Latin never renders in a CJK face's Latin glyphs */
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
   --mono: "SF Mono", Monaco, Menlo, "Cascadia Mono", Consolas, "Liberation Mono", ui-monospace, monospace;
+
+  /*
+   * The type scale by role. Headings take 650, labels 600, body 400; section labels are sentence
+   * case at `--text-caption`, never uppercase with tracking, which does nothing for Chinese.
+   */
+  --text-display: 28px;
+  --text-title: 20px;
+  --text-heading: 16px;
+  --text-body: 14px;
+  --text-small: 13px;
+  --text-caption: 12px;
+  --text-micro: 11px;
 
   /* Radius & Elevation */
   --radius-xs: 4px;
@@ -95,6 +158,10 @@
   --shadow-md: 0 4px 12px rgba(18, 28, 32, 0.07);
   --shadow-lg: 0 12px 28px -4px rgba(18, 28, 32, 0.12);
   --shadow-sheet: 16px 0 36px -6px rgba(18, 28, 32, 0.14);
+  /* A sheet that slides in from the right casts to its left. */
+  --shadow-sheet-end: -16px 0 36px -6px rgba(18, 28, 32, 0.18);
+  /* Context menus and popovers. */
+  --shadow-menu: 0 12px 30px -4px rgba(18, 28, 32, 0.16), 0 4px 12px -2px rgba(18, 28, 32, 0.08);
   /* Components & Controls */
   --input-bg: #ffffff;
   --btn-secondary-bg: #ffffff;
@@ -106,9 +173,7 @@
   --modal-backdrop: rgba(18, 28, 32, 0.45);
   --inline-code-bg: rgba(18, 28, 32, 0.06);
   --inline-code-border: transparent;
-  --date-pill-bg: #ffffff;
   --date-pill-text: var(--muted);
-  --date-pill-border: var(--line);
   --reaction-bg: #ffffff;
   --code-bg: #1b2428;
   --code-header-bg: #162024;
@@ -117,8 +182,8 @@
 
 /*
  * Dark is written once. `theme.ts` resolves "follow the system" to light or dark and puts it on
- * the root as `data-theme` before the app first renders (see `hooks.client.ts`), so this is the
- * only rule the app ever needs.
+ * the root as `data-theme` before the app first renders (`routes/+layout.svelte` calls it), so
+ * this is the only rule the app ever needs.
  *
  * Each surface steps up in lightness — ground, sidebar, pane, raised — far enough apart that the
  * sidebar, the pane and a card on it stay distinguishable, and the hue is a desaturated teal-grey
@@ -150,6 +215,16 @@ body.dark,
   --mustard-tint: rgba(240, 171, 61, 0.14);
   --mustard-line: rgba(240, 171, 61, 0.4);
   --mustard-ink: #f5c065;
+  --on-mustard: #2a1c02;
+
+  /* A step lighter so the bubble holds against the dark sidebar; the white stays white. */
+  --brand-bubble: #1b7d91;
+  --brand-front: #ffffff;
+  --brand-mustard: #f0ab3d;
+  /* --accent-tint laid over --pane, flattened (see the light block for why it is opaque). */
+  --art-bubble: #1f353b;
+  --art-front: #192125;
+  --art-ring: #2f6f7c;
 
   /* Message Bubbles */
   --you: #1b6b7a;
@@ -174,6 +249,11 @@ body.dark,
   --danger-line: rgba(239, 68, 68, 0.35);
   --danger-text: #f87171;
 
+  /* Dark mode's warn and ok fills are light; white on them fails contrast. */
+  --on-danger: #ffffff;
+  --on-warn: #1f1402;
+  --on-ok: #04210f;
+
   --purple: #a78bfa;
   --purple-bg: rgba(167, 139, 250, 0.15);
   --purple-line: rgba(167, 139, 250, 0.4);
@@ -185,9 +265,32 @@ body.dark,
 
   --chip: #20292d;
   --chip-line: #2e393e;
-  --card: #192125;
-  --card-line: #2e393e;
   --thread: #13191c;
+
+  --av-1-bg: #1d3a41;
+  --av-1-text: #8fd3df;
+  --av-1-line: #2f5d67;
+  --av-2-bg: #3d321c;
+  --av-2-text: #f5c065;
+  --av-2-line: #6b5320;
+  --av-3-bg: #3d2a24;
+  --av-3-text: #f0b49e;
+  --av-3-line: #62423a;
+  --av-4-bg: #23362a;
+  --av-4-text: #9fd0ad;
+  --av-4-line: #3a5a44;
+  --av-5-bg: #352a3b;
+  --av-5-text: #d6b9e6;
+  --av-5-line: #564460;
+  --av-6-bg: #263034;
+  --av-6-text: #c5cfd3;
+  --av-6-line: #3d4a50;
+  --av-7-bg: #1f3242;
+  --av-7-text: #9cc8e6;
+  --av-7-line: #34506a;
+  --av-8-bg: #3b2730;
+  --av-8-text: #eab3c6;
+  --av-8-line: #5e3d4b;
 
   /* Elevation Shadows */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
@@ -195,6 +298,8 @@ body.dark,
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55);
   --shadow-lg: 0 12px 30px -4px rgba(0, 0, 0, 0.7);
   --shadow-sheet: 16px 0 40px -6px rgba(0, 0, 0, 0.75);
+  --shadow-sheet-end: -16px 0 40px -6px rgba(0, 0, 0, 0.75);
+  --shadow-menu: 0 12px 30px -4px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.45);
 
   /* Components & Controls */
   --input-bg: #12181b;
@@ -207,9 +312,7 @@ body.dark,
   --modal-backdrop: rgba(0, 0, 0, 0.6);
   --inline-code-bg: rgba(238, 242, 243, 0.09);
   --inline-code-border: rgba(238, 242, 243, 0.12);
-  --date-pill-bg: #20292d;
   --date-pill-text: var(--muted);
-  --date-pill-border: var(--line);
   --reaction-bg: #20292d;
   --code-bg: #12181b;
   --code-header-bg: #171e21;

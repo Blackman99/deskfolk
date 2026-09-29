@@ -7,48 +7,50 @@ import type { ResolvedTheme } from "../theme.ts";
  * The terminal's colours, in step with the app's light and dark.
  *
  * Background and text are the pane's own tokens, so a terminal is the pane it sits in and not a
- * black hole in a light window. The sixteen ANSI colours are the same slate-and-blue family the
- * rest of the app is drawn in: brighter ones on the dark pane, deeper ones on the white one.
+ * black hole in a light window. Of the sixteen ANSI colours, black/white and their bright variants
+ * follow the app's own teal-leaning greys rather than Tailwind's slate; the six chromatic ones
+ * (red, green, yellow, blue, magenta, cyan) keep their standard hues so programs that assume them
+ * stay legible.
  */
 const ANSI: Record<ResolvedTheme, Required<Pick<ITheme,
   | "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white"
   | "brightBlack" | "brightRed" | "brightGreen" | "brightYellow" | "brightBlue" | "brightMagenta" | "brightCyan" | "brightWhite"
 >>> = {
   light: {
-    black: "#0f172a",
+    black: "#121c20",
     red: "#dc2626",
     green: "#16a34a",
     yellow: "#ca8a04",
     blue: "#2563eb",
     magenta: "#9333ea",
     cyan: "#0891b2",
-    white: "#94a3b8",
-    brightBlack: "#64748b",
+    white: "#95a2a8",
+    brightBlack: "#5f6d74",
     brightRed: "#ef4444",
     brightGreen: "#22c55e",
     brightYellow: "#eab308",
     brightBlue: "#3b82f6",
     brightMagenta: "#a855f7",
     brightCyan: "#06b6d4",
-    brightWhite: "#e2e8f0",
+    brightWhite: "#e0e6e8",
   },
   dark: {
-    black: "#334155",
+    black: "#2e393e",
     red: "#f87171",
     green: "#4ade80",
     yellow: "#facc15",
     blue: "#60a5fa",
     magenta: "#c084fc",
     cyan: "#22d3ee",
-    white: "#cbd5e1",
-    brightBlack: "#64748b",
+    white: "#c5cfd3",
+    brightBlack: "#5d6a70",
     brightRed: "#fca5a5",
     brightGreen: "#86efac",
     brightYellow: "#fde047",
     brightBlue: "#93c5fd",
     brightMagenta: "#d8b4fe",
     brightCyan: "#67e8f9",
-    brightWhite: "#f8fafc",
+    brightWhite: "#eef2f3",
   },
 };
 

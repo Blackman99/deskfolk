@@ -61,7 +61,7 @@ const CODE_BADGE: Record<string, { letter: string; tint: string }> = {
 };
 
 const KIND_ICON: Record<ArtifactKind, FileIcon> = {
-  directory: { shape: "folder", tint: "#64748b", letter: null },
+  directory: { shape: "folder", tint: "#5f6d74", letter: null },
   image: { shape: "image", tint: "#0f7a4f", letter: null },
   svg: { shape: "image", tint: "#0f7a4f", letter: null },
   audio: { shape: "audio", tint: "#7c3aed", letter: null },
@@ -71,9 +71,9 @@ const KIND_ICON: Record<ArtifactKind, FileIcon> = {
   spreadsheet: { shape: "file", tint: "#15803d", letter: "X" },
   presentation: { shape: "file", tint: "#c2410c", letter: "P" },
   html: { shape: "html", tint: "#e44d26", letter: null },
-  markdown: { shape: "markdown", tint: "#334155", letter: null },
-  text: { shape: "code", tint: "#64748b", letter: null },
-  file: { shape: "file", tint: "#64748b", letter: null },
+  markdown: { shape: "markdown", tint: "#37444a", letter: null },
+  text: { shape: "code", tint: "#5f6d74", letter: null },
+  file: { shape: "file", tint: "#5f6d74", letter: null },
 };
 
 export function fileIconFor(path: string, opts: { isDir?: boolean } = {}): FileIcon {

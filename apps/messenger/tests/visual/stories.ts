@@ -524,6 +524,27 @@ const defs: Record<StoryName, Story> = {
 			onNewTerminal: () => {}
 		}
 	},
+	'sidebar-empty': {
+		component: Sidebar as never,
+		props: {
+			onOpenSearch: () => {},
+			runtime: fakeRuntime({ ...world, sessions: [] }, { selectedId: null }),
+			t,
+			selected: null,
+			pinnedSessionIds: [],
+			workspaceOpen: false,
+			contextMenuSessionId: null,
+			onOpenContextMenu: () => {},
+			onToggleWorkspace: () => {},
+			onOpenRoutines: () => {},
+			onOpenSpend: () => {},
+			onOpenSettings: () => {},
+			onCreateBot: () => {},
+			onCreateGroup: () => {},
+			onOpenArtifact: () => {},
+			onNewTerminal: () => {}
+		}
+	},
 	'sidebar-botdm': {
 		component: Sidebar as never,
 		props: {

@@ -16,12 +16,12 @@ const colors = Object.fromEntries(
 		'accent-tint', 'accent-border', 'accent-glow', 'on-accent', 'mustard', 'mustard-tint',
 		'mustard-line', 'mustard-ink', 'you', 'you-text', 'bot', 'bot-border',
 		'bot-text', 'warn', 'warn-bg', 'warn-line', 'warn-text', 'ok', 'ok-bg', 'ok-line',
-		'ok-text', 'danger', 'danger-bg', 'danger-line', 'danger-text', 'purple', 'purple-bg', 'purple-line', 'purple-text', 'sky-bg', 'sky-line',
+		'ok-text', 'on-ok', 'danger', 'danger-bg', 'danger-line', 'danger-text', 'on-danger', 'on-warn', 'purple', 'purple-bg', 'purple-line', 'purple-text', 'sky-bg', 'sky-line',
 		'sky-text', 'chip',
-		'chip-line', 'card', 'card-line', 'thread', 'input-bg', 'btn-secondary-bg',
+		'chip-line', 'thread', 'input-bg', 'btn-secondary-bg',
 		'btn-secondary-hover', 'code-bg', 'code-header-bg', 'inline-code-bg',
-		'inline-code-border', 'reaction-bg', 'row-hover', 'date-pill-bg', 'date-pill-text',
-		'date-pill-border', 'modal-backdrop'
+		'inline-code-border', 'reaction-bg', 'row-hover', 'date-pill-text',
+		'modal-backdrop'
 	].map((name) => [name, `var(--${name})`])
 );
 

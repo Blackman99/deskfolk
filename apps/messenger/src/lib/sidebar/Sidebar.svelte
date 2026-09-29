@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import BrandMark from '../BrandMark.svelte';
+	import EmptyState from '../EmptyState.svelte';
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -116,6 +118,10 @@
 	);
 	const nothingWorking = $derived(
 		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && botBotVisible.length === 0
+	);
+	/** No conversation at all yet, unfiltered: the list says how to start one instead of three bare headers. */
+	const rosterEmpty = $derived(
+		workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && botBotVisible.length === 0
 	);
 	const archivedSessions = $derived(
 		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
@@ -238,6 +244,15 @@
 {/snippet}
 
 <aside class="side">
+	<!-- The mark heads the list on a wider window; a phone's top bar is the page title instead. -->
+	{#if !phone}
+		<div class="brand-row">
+			<BrandMark size={22} />
+			<span class="brand-name">Deskfolk</span>
+			{#if !viewingArchived}{@render workingFilter()}{/if}
+			{#if onCollapse}{@render collapseButton()}{/if}
+		</div>
+	{/if}
 	<!-- Nothing pinned is not news worth the top of the sidebar: the band only appears once something is. -->
 	{#if pinnedSessions.length > 0}
 	<div class="roster-panel">
@@ -336,37 +351,7 @@
 					<span>{t.sidebar.searchShort}</span><kbd>{searchShortcutLabel()}</kbd>
 				</button>
 			</div>
-			{#if !viewingArchived}
-				<button
-					type="button"
-					class="working-filter"
-					class:is-active={workingOnly}
-					title={workingOnly ? t.sidebar.workingOnlyOff : t.sidebar.workingOnly}
-					aria-label={t.sidebar.workingOnly}
-					aria-pressed={workingOnly}
-					onclick={toggleWorkingOnly}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-					</svg>
-				</button>
-			{/if}
-				{#if !phone && onCollapse}
-					<button
-						type="button"
-						class="side-collapse"
-						title="{t.sidebar.hide} ({formatShortcut(['mod', 'B'])})"
-						aria-label={t.sidebar.hide}
-						aria-expanded="true"
-						onclick={onCollapse}
-					>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="3" y="3" width="18" height="18" rx="2"></rect>
-							<path d="M9 3v18"></path>
-							<path d="m16 15-3-3 3-3"></path>
-						</svg>
-					</button>
-				{/if}
+			{#if phone && !viewingArchived}{@render workingFilter()}{/if}
 		</div>
 	{/if}
 	<div class="groups">
@@ -586,6 +571,12 @@
 			{#if nothingWorking}
 				<p class="working-empty-hint">{pinnedWorking ? t.sidebar.workingEmptyPinned : t.sidebar.workingEmpty}</p>
 			{/if}
+			{#if rosterEmpty}
+				<EmptyState size="inline" level={3} title={t.sidebar.rosterEmpty} hint={t.sidebar.rosterEmptyHint}>
+					<button type="button" class="roster-empty-btn is-primary" onclick={onCreateBot}>{t.sidebar.addBot}</button>
+					<button type="button" class="roster-empty-btn" onclick={onCreateGroup}>{t.sidebar.addGroup}</button>
+				</EmptyState>
+			{/if}
 		{/if}
 	</div>
 	</div>
@@ -646,6 +637,39 @@
 		onOpenArchived={() => (viewingArchived = true)}
 	/>
 </aside>
+
+{#snippet workingFilter()}
+	<button
+		type="button"
+		class="working-filter"
+		class:is-active={workingOnly}
+		title={workingOnly ? t.sidebar.workingOnlyOff : t.sidebar.workingOnly}
+		aria-label={t.sidebar.workingOnly}
+		aria-pressed={workingOnly}
+		onclick={toggleWorkingOnly}
+	>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+		</svg>
+	</button>
+{/snippet}
+
+{#snippet collapseButton()}
+	<button
+		type="button"
+		class="side-collapse"
+		title="{t.sidebar.hide} ({formatShortcut(['mod', 'B'])})"
+		aria-label={t.sidebar.hide}
+		aria-expanded="true"
+		onclick={onCollapse}
+	>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<rect x="3" y="3" width="18" height="18" rx="2"></rect>
+			<path d="M9 3v18"></path>
+			<path d="m16 15-3-3 3-3"></path>
+		</svg>
+	</button>
+{/snippet}
 
 {#snippet toolsToggle()}
 	<button
@@ -747,6 +771,29 @@
 		background: var(--accent-tint);
 	}
 
+	/* The mark and the name, with the list's two switches at the far end. */
+	.brand-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		height: 46px;
+		padding: 6px 10px 0 16px;
+		flex-shrink: 0;
+	}
+
+	.brand-name {
+		flex: 1;
+		min-width: 0;
+		margin-left: 4px;
+		font-size: 15px;
+		font-weight: 650;
+		letter-spacing: -0.01em;
+		color: var(--ink);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
 	.search-wrap {
 		position: relative;
 		margin: 10px 12px 6px;
@@ -754,6 +801,38 @@
 		align-items: center;
 		gap: 8px;
 		container: sidebar-search / inline-size;
+	}
+
+	/* Right under the mark, the search needs no gap of its own above it. */
+	.brand-row + .side-body .search-wrap {
+		margin-top: 4px;
+	}
+
+	.roster-empty-btn {
+		height: 32px;
+		padding: 0 14px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--btn-secondary-bg);
+		color: var(--ink);
+		font-size: 13px;
+		font-weight: 600;
+	}
+
+	.roster-empty-btn:hover {
+		background: var(--btn-secondary-hover);
+		border-color: var(--line-hover);
+	}
+
+	.roster-empty-btn.is-primary {
+		border-color: var(--accent);
+		background: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.roster-empty-btn.is-primary:hover {
+		border-color: var(--accent-hover);
+		background: var(--accent-hover);
 	}
 
 	.tools-entry-wrap {
@@ -851,7 +930,7 @@
 		border: 0;
 		border-radius: 50%;
 		background: var(--accent);
-		color: var(--accent-ink, #fff);
+		color: var(--on-accent);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1092,7 +1171,7 @@
 		top: -4px;
 		right: -4px;
 		background: var(--warn);
-		color: #ffffff;
+		color: var(--on-warn);
 		font-size: 10px;
 		font-weight: 700;
 		min-width: 15px;
@@ -1125,12 +1204,11 @@
 		padding: 6px 8px 12px;
 	}
 
+	/* Sentence case at caption size: uppercase and tracking did nothing for 群 or 你 ↔ Bot. */
 	.ghead {
-		padding: 14px 10px 6px;
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
+		padding: 14px 10px 4px;
+		font-size: var(--text-caption);
+		font-weight: 600;
 		color: var(--muted);
 		display: flex;
 		align-items: center;
@@ -1266,10 +1344,9 @@
 		background: var(--accent-tint);
 	}
 
+	/* The tint alone marks the open conversation; an outline on top of it was one signal too many. */
 	.row.is-on {
 		background: var(--accent-tint);
-		border-color: var(--accent-border);
-		box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 6%, transparent);
 	}
 
 	/* Ring colors according to active / hover / container contexts */
@@ -1325,9 +1402,6 @@
 		min-width: 0;
 	}
 
-	.row.is-on .t {
-		color: var(--accent);
-	}
 
 	.row :global(.s) {
 		font-size: 12px;
@@ -1350,12 +1424,13 @@
 		align-self: center;
 		font-size: 11px;
 		line-height: 1.3;
-		color: var(--muted-light);
+		color: var(--muted);
 		white-space: nowrap;
 	}
 
 	.row.is-unread .row-time {
-		color: var(--accent);
+		color: var(--mustard-ink);
+		font-weight: 600;
 	}
 
 	/*
@@ -1417,7 +1492,7 @@
 	}
 
 	.row-status.is-waiting_approval .row-status-text {
-		color: var(--warn);
+		color: var(--warn-text);
 		font-weight: 600;
 	}
 
@@ -1426,7 +1501,7 @@
 	}
 
 	.row-status.is-waiting_ask .row-status-text {
-		color: var(--purple);
+		color: var(--purple-text);
 		font-weight: 600;
 	}
 
@@ -1457,14 +1532,14 @@
 		height: 16px;
 		padding: 0 4px;
 		border-radius: var(--radius-full);
-		background: var(--accent);
-		color: var(--on-accent);
+		/* Unread is the one place the mark's mustard marks the list: new, not working or selected. */
+		background: var(--mustard);
+		color: var(--on-mustard);
 		font-size: 10px;
 		font-weight: 700;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		box-shadow: 0 1px 3px var(--accent-glow);
 	}
 
 	.pinned-unread {
@@ -1475,8 +1550,8 @@
 		height: 15px;
 		padding: 0 3px;
 		border-radius: var(--radius-md);
-		background: var(--accent);
-		color: var(--on-accent);
+		background: var(--mustard);
+		color: var(--on-mustard);
 		font-size: 10px;
 		font-weight: 700;
 		display: flex;
@@ -1491,7 +1566,7 @@
 
 	.badge {
 		background: var(--warn);
-		color: #ffffff;
+		color: var(--on-warn);
 		border-radius: var(--radius-full);
 		font-size: 10px;
 		font-weight: 700;
@@ -1631,7 +1706,8 @@
 		padding: 0;
 		top: 3px;
 		right: 3px;
-		background: var(--danger);
+		/* An update is news, not an error. */
+		background: var(--accent);
 	}
 
 	/* Kept global: `.row` is the sidebar session row, but the context menu is what opens it. */
@@ -1776,7 +1852,6 @@
 
 		.ghead {
 			padding: 12px 14px 4px;
-			font-size: 11px;
 		}
 
 		/* Creating is the floating + now, so the headers are labels. */
@@ -1876,7 +1951,7 @@
 		.tools-entry.is-active {
 			background: var(--row-hover);
 			color: var(--ink);
-			border-color: var(--line-active, var(--line));
+			border-color: var(--line-hover);
 		}
 
 		.search-trigger-wrap {

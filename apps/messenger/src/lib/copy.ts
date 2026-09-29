@@ -33,6 +33,7 @@ type CopyShape<T> = T extends (...args: infer A) => string
 const zh = {
   routines: {
     title: "日程", add: "新建日程", edit: "编辑日程", empty: "这个 Bot 还没有日程。",
+    emptyHint: "日程到点会叫它自己开工。",
     owner: "归属 Bot", name: "标题", instruction: "任务指令", frequency: "重复", daily: "每天", weekly: "每周",
     time: "时间（24 小时制）", weekdays: "星期", days: { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五", sat: "周六", sun: "周日" },
     daysShort: { mon: "一", tue: "二", wed: "三", thu: "四", fri: "五", sat: "六", sun: "日" },
@@ -240,6 +241,8 @@ const zh = {
     botBotSourceUnknown: "来源未知",
     botBotSourceMissing: "来源已不在",
     botBotMore: (n: number) => `还有 ${n} 个`,
+    rosterEmpty: "还没有会话",
+    rosterEmptyHint: "先建一个 Bot 单聊，或者拉几个 Bot 建个群。",
     settings: "设置",
     notifications: "通知",
     addBot: "新建 Bot",
@@ -584,6 +587,7 @@ const zh = {
     groupSettings: "群组设置",
     botSettings: "Bot 设置",
     pickSession: "选择一个会话",
+    pickSessionHint: "从列表里挑一个群或 Bot，或者新建一个。",
     emptyRoster: "名册是空的。点名册那一行的 + 建 Bot。",
     members: "在场",
     presenceOpen: "可打开（只读）",
@@ -945,7 +949,7 @@ const zh = {
     forkLive: (name: string) => `发送会另开一轮；${name} 当前轮继续。`,
   },
   chat: {
-    botBadge: "BOT",
+    botBadge: "Bot",
     today: "今天",
     yesterday: "昨天",
     copyMessage: "复制内容",
@@ -1406,6 +1410,7 @@ const zh = {
 const en: CopyShape<typeof zh> = {
   routines: {
     title: "Routines", add: "Add routine", edit: "Edit routine", empty: "This Bot has no routines yet.",
+    emptyHint: "A routine wakes it at the set time to start on its own.",
     owner: "Owning Bot", name: "Title", instruction: "Task instruction", frequency: "Repeat", daily: "Daily", weekly: "Weekly",
     time: "Time (24-hour)", weekdays: "Weekdays", days: { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" },
     daysShort: { mon: "Mo", tue: "Tu", wed: "We", thu: "Th", fri: "Fr", sat: "Sa", sun: "Su" },
@@ -1613,6 +1618,8 @@ const en: CopyShape<typeof zh> = {
     botBotSourceUnknown: "Source unknown",
     botBotSourceMissing: "Source is gone",
     botBotMore: (n: number) => `${n} more`,
+    rosterEmpty: "No conversations yet",
+    rosterEmptyHint: "Start a chat with one Bot, or put a few Bots in a group.",
     settings: "Settings",
     notifications: "Notifications",
     addBot: "New bot",
@@ -1962,6 +1969,7 @@ const en: CopyShape<typeof zh> = {
     groupSettings: "Group settings",
     botSettings: "Bot settings",
     pickSession: "Pick a session",
+    pickSessionHint: "Pick a group or a Bot from the list, or start a new one.",
     emptyRoster: "The roster is empty. Use + on the roster row to create a bot.",
     members: "Here",
     presenceOpen: "open, read-only",
@@ -2310,7 +2318,7 @@ const en: CopyShape<typeof zh> = {
     forkLive: (name: string) => `Send forks a new turn; ${name}'s current turn keeps running.`,
   },
   chat: {
-    botBadge: "BOT",
+    botBadge: "Bot",
     today: "Today",
     yesterday: "Yesterday",
     copyMessage: "Copy message",

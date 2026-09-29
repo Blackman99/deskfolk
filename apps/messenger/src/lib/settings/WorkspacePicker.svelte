@@ -255,6 +255,6 @@
 	}
 
 	.host-browse-item:hover {
-		background: var(--hover);
+		background: var(--row-hover);
 	}
 </style>

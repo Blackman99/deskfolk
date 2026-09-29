@@ -135,12 +135,14 @@ Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现�
 
 不管落在哪一层，数值都从令牌取：
 
-- **颜色**：强调色是 Deskfolk 图标的青（`--accent`，浅色 `#146a7c`），中性灰偏青不偏蓝。强调色底上的字和图标用 `var(--on-accent)`，不写 `#fff`：暗色模式的强调色是浅的，上面要深色字。半透明的强调色、警示色写 `color-mix(in srgb, var(--accent) 12%, transparent)`，不写 `rgba()` 字面值。暗色只在 `tokens.css` 的 `[data-theme="dark"]` 写一份：`+layout.svelte` 在第一次渲染前就把 `data-theme` 设好，`prefers-color-scheme` 那一段只给脚本跑起来之前的空白页一个深底。
-- **字号**：只用整数像素，10px 起（`text-10` … `text-28`，`uno.config.ts` 的 `SIZES`）。11 / 11.5 / 12 这种半像素台阶肉眼分不出，已经全部并掉。
+- **颜色**：强调色是 Deskfolk 图标的青（`--accent`，浅色 `#146a7c`），中性灰偏青不偏蓝。强调色底上的字和图标用 `var(--on-accent)`，不写 `#fff`：暗色模式的强调色是浅的，上面要深色字。状态色底上的字同理用 `--on-danger` / `--on-warn` / `--on-ok`，芥末底上用 `--on-mustard`。半透明的强调色、警示色写 `color-mix(in srgb, var(--accent) 12%, transparent)`，不写 `rgba()` 字面值；阴影用 `--shadow-*`（菜单 `--shadow-menu`，从右边滑出的抽屉 `--shadow-sheet-end`），遮罩用 `--modal-backdrop`。芥末（`--mustard`，图标里的第二个颜色）只用在标识和未读计数上，不当状态色。字母头像的底色、字色、描边是 `--av-1-*` … `--av-8-*` 八组，由 `avatar.ts` 的 `botAvatarColor` 按 id 取，以 `var()` 写进内联样式，所以跟着暗色变。暗色只在 `tokens.css` 的 `[data-theme="dark"]` 写一份：`+layout.svelte` 在第一次渲染前就把 `data-theme` 设好，`prefers-color-scheme` 那一段只给脚本跑起来之前的空白页一个深底。
+- **字号**：只用整数像素，10px 起（`text-10` … `text-28`，`uno.config.ts` 的 `SIZES`）。11 / 11.5 / 12 这种半像素台阶肉眼分不出，已经全部并掉。按角色取的有 `--text-display` / `--text-title` / `--text-heading` / `--text-body` / `--text-small` / `--text-caption` / `--text-micro`（28 / 20 / 16 / 14 / 13 / 12 / 11px）；分组标题用 `--text-caption`、正常大小写，不用大写加字距。
 - **圆角**：`--radius-xs/sm/md/lg/xl/full`（4 / 6 / 10 / 14 / 18 / 999px），不写字面值。
 - **过渡**：不写 `transition: all`，会把 left/top/width 也带上动画，布局一变卡片就滑过去。写时长和缓动，再加 `transition-property: var(--transition-props)`；真要动尺寸的（例如置顶区展开的 `max-height`）单独点名。
 - **图标**：内联 SVG 的 `stroke-width` 统一为 2。
-- **状态**：空闲不画任何标记（侧栏行、头像点都不画）；工作中是强调色，等你批准是警示色，等你回答是紫，失败 / 中断是红。
+- **状态**：空闲不画任何标记（侧栏行、头像点都不画）；工作中是强调色，等你批准是警示色，等你回答是紫，失败 / 中断是红。有新版本的点是强调色，不是红：更新不是错误。
+- **标识与空状态**：界面里的 Deskfolk 标识一律用 `src/lib/BrandMark.svelte`，颜色走 `--brand-*`，暗色下气泡提亮一档；不要再复制 SVG。任何「这里还什么都没有」的地方用 `src/lib/EmptyState.svelte`：淡化的标识（`BrandMark variant="art"`，颜色走 `--art-*`）、标题、一句该做什么、可选的按钮，`badge` 放一个说明缺的是什么的小图标。「思考中」是两个叠着的圆轮流放大（`ReplyingIndicator.svelte`），不是三个跳点。
+- **动效**：系统要求减少动效时，`base.css` 末尾的全局规则让所有动画和过渡一帧走完、停在终点（`animationend` 照常触发）；组件里不必再各写一段。
 
 搬完了：全局表从 1052 条降到 134 条。
 
@@ -572,7 +574,7 @@ GitHub 仓库侧的展示信息：描述、主页（落地页地址）和 topics
 
 主题：页面令牌在 `src/app.css` 的 `:root` 上定义亮色，暗色分别写在 `@media (prefers-color-scheme: dark)` 的 `:root:not([data-theme="light"])` 与 `:root[data-theme="dark"]` 两处，同一块里还有几个 `--app-*` 令牌（取自信使 `styles.css` 的亮 / 暗调色板），垫在首页短片和宣传片舞台的背后。默认跟随系统；导航栏的 `ThemeToggle.svelte` 通过 `src/lib/theme.svelte.ts` 写 `data-theme` 与 `localStorage` 的 `real-bot-theme`（选「跟随系统」即删除两者），`app.html` 里的内联脚本在首屏绘制前读同一个键。首页短片按同一个主题取亮色或暗色那一套。
 
-桌面 App 图标的源文件是 `apps/desktop/src-tauri/icons/app-icon.svg`（1024 画布、macOS 式圆角方块留透明边距）。改动后在 `apps/desktop` 下执行 `pnpm exec tauri icon src-tauri/icons/app-icon.svg --output src-tauri/icons` 重新生成 `tauri.conf.json` 引用的 `32x32.png` / `128x128.png` / `128x128@2x.png` / `icon.icns` / `icon.ico` 以及 Windows 商店尺寸；托盘图标取自窗口默认图标，无需单独维护。SVG 注释里不能出现 `--`，否则 CLI 的 SVG 解析会失败。信使窗口的 favicon 在 `apps/messenger/src/lib/assets/favicon.svg`，与落地页 `static/favicon.svg` 是同一份标识。
+桌面 App 图标的源文件是 `apps/desktop/src-tauri/icons/app-icon.svg`（1024 画布、macOS 式圆角方块留透明边距）。改动后在 `apps/desktop` 下执行 `pnpm exec tauri icon src-tauri/icons/app-icon.svg --output src-tauri/icons` 重新生成 `tauri.conf.json` 引用的 `32x32.png` / `128x128.png` / `128x128@2x.png` / `icon.icns` / `icon.ico` 以及 Windows 商店尺寸；托盘图标取自窗口默认图标，无需单独维护。SVG 注释里不能出现 `--`，否则 CLI 的 SVG 解析会失败。信使窗口的 favicon 在 `apps/messenger/src/lib/assets/favicon.svg`，与落地页 `static/favicon.svg` 是同一份标识；界面里画出来的标识（侧栏顶部、向导、关于、配对页、连接页、空状态）来自 `BrandMark.svelte`，改标识时两处一起改。
 
 release 正文由 `apps/desktop/scripts/release-notes.ts` 生成：按 `tauri.conf.json` 的版本在 `CHANGELOG.md` 里找 `## <版本>` 那一段，正文 = 该段内容 + 未签名说明，`generateReleaseNotes` 关掉。信使的「关于」卡片直接画这份正文（见下一段），所以正文必须是「改了什么」而不是「去看 CHANGELOG」。找不到该段时脚本以非零退出、打包任务失败——发版前先滚 CHANGELOG。GitHub 拒收超过 125,000 字符的正文，一个周期攒得太长时，脚本从较长那种语言的末尾（最早的条目）逐条去掉，并在那一节末尾写明「另有 N 条」、指回 CHANGELOG。正文里裸露的 `@名字`（比如引用群聊原话里的 `@frontend`）会被 GitHub 当成提及：通知同名账号，还把它列成这个 release 的贡献者，所以脚本把代码片段之外的 `@名字` 包进代码片段；已在代码里的、邮箱、`@-mentions` 这类不动。脚本的纯函数由 `apps/desktop/scripts/release-notes.test.ts` 覆盖（`pnpm test` 会跑），其中一条直接拿本仓库的 CHANGELOG 和当前版本对，防止两边脱节。
 

@@ -3,6 +3,7 @@
 	import type { LeafNode, TabAction, TabClosing, WorkbenchTab } from './layout-types.ts';
 	import type { Copy } from '../copy.ts';
 	import PaneContextMenu from './PaneContextMenu.svelte';
+	import BrandMark from '../BrandMark.svelte';
 
 	type Props = {
 		leaf: LeafNode;
@@ -465,13 +466,7 @@
 		{:else}
 			<div class="wb-empty">
 				<div class="wb-empty-head">
-					<span class="wb-empty-glyph" aria-hidden="true">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"></rect>
-							<line x1="12" y1="8.5" x2="12" y2="15.5"></line>
-							<line x1="8.5" y1="12" x2="15.5" y2="12"></line>
-						</svg>
-					</span>
+					<span class="wb-empty-glyph" aria-hidden="true"><BrandMark variant="art" size={64} /></span>
 					<p class="wb-empty-title">{t.pane.empty}</p>
 					<p class="wb-empty-hint">{menuActions || emptyActions ? t.pane.emptyPick : t.pane.emptyHint}</p>
 				</div>
@@ -963,26 +958,21 @@
 		gap: 4px;
 		flex: 0 0 auto;
 	}
+	/* The faded mark every empty place draws (see EmptyState). */
 	.wb-empty-glyph {
-		display: grid;
-		place-items: center;
-		width: 36px;
-		height: 36px;
-		margin-bottom: 6px;
-		border-radius: var(--radius-md);
-		background: var(--accent-tint);
-		color: var(--accent);
+		display: block;
+		margin-bottom: 8px;
 	}
 	.wb-empty-title {
 		margin: 0;
 		color: var(--ink);
-		font-size: 14px;
-		font-weight: 600;
+		font-size: var(--text-heading);
+		font-weight: 650;
 	}
 	.wb-empty-hint {
 		margin: 0;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-small);
 	}
 	/*
 	 * The + menu's card, resting in the pane instead of floating over it: the same padding,

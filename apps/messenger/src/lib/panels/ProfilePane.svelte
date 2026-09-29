@@ -1240,7 +1240,7 @@
 		height: 14px;
 		border-radius: var(--radius-full);
 		background: var(--danger);
-		color: #ffffff;
+		color: var(--on-danger);
 		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
@@ -1639,7 +1639,7 @@
 	}
 
 	.skill-body-textarea {
-		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+		font-family: var(--mono);
 		font-size: 13px;
 		line-height: 1.5;
 		min-height: 140px;

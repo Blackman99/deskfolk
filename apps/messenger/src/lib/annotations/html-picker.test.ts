@@ -583,7 +583,7 @@ test("existing marks are drawn numbered in their status; the pending element get
   expect(boxes.slice(0, 4).map((b) => b.textContent)).toEqual(["1", "2", "4", "5"]);
   expect(boxes[0]!.style.getPropertyValue("border")).toContain("solid");
   expect(boxes[1]!.style.getPropertyValue("border")).toContain("dotted");
-  expect(boxes[2]!.style.getPropertyValue("border")).toContain("#8b929c");
+  expect(boxes[2]!.style.getPropertyValue("border")).toContain("#5f6d74");
   expect(boxes[4]!.style.getPropertyValue("border")).toContain("3px");
   // A mark whose element is not in the page is not shown.
   expect(boxes[3]!.style.getPropertyValue("display")).toBe("none");

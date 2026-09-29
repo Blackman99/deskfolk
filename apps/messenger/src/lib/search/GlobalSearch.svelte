@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import type { SearchHit, SearchKind } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import EmptyState from '../EmptyState.svelte';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
@@ -172,7 +173,7 @@
 				{:else if runtime.searchLoading}<p class="search-working"><span class="search-spinner" aria-hidden="true"></span>{t.sidebar.searchLoading}</p>
 				{:else if runtime.searchError}<p>{t.sidebar.searchFailed}</p><button class="search-retry" type="button" onclick={() => void runtime.runSearch(runtime.searchQuery)}>{t.sidebar.searchRetry}</button>
 				{:else if !queried}<div class="search-intro">{@render glyph('search')}<p>{t.sidebar.searchIntro}</p><span>{t.sidebar.searchHint}</span></div>
-				{:else if hits.length === 0}<p>{t.sidebar.searchNoResults}</p><span>{t.sidebar.searchTryAnother}</span>
+				{:else if hits.length === 0}<EmptyState size="inline" level={3} title={t.sidebar.searchNoResults} hint={t.sidebar.searchTryAnother}>{#snippet badge()}{@render glyph('search')}{/snippet}</EmptyState>
 				{:else}<span class="search-count">{t.sidebar.searchResults(hits.length)}</span>{/if}
 			</div>
 			<div id={`${id}-results`} class="search-results" role="listbox" aria-label={t.sidebar.globalSearch} aria-busy={runtime.searchLoading}>
@@ -228,7 +229,8 @@
 	.search-state > p { margin: 40px 16px 8px; }
 	.search-state > span:not(.search-count) { display: block; margin: 0 16px 32px; font-size: 12px; }
 	.search-intro { padding: 32px 16px 28px; }
-	.search-intro :global(svg) { width: 28px; height: 28px; color: var(--muted-light); }
+	.search-intro :global(svg) { width: 28px; height: 28px; color: var(--muted); }
+	.search-state :global(.empty-badge svg) { width: 13px; height: 13px; }
 	.search-intro p { margin: 14px 0 6px; color: var(--ink-secondary); font-size: 14px; }
 	.search-intro span { font-size: 12px; }
 	.search-count { display: block; padding: 12px 10px 6px; text-align: left; font-size: 11px; }

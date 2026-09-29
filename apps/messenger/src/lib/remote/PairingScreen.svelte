@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BrandMark from '../BrandMark.svelte';
 	import { formatFingerprint } from './fingerprint.ts';
 	import { previewPairing } from './pairing.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -15,7 +16,8 @@
 
 <main class="pairing-screen">
 	<div class="modal-dialog pairing-card">
-		<div class="modal-head">
+		<div class="modal-head pairing-head">
+			<BrandMark size={28} />
 			<h1>{t.remote.pairTitle}</h1>
 		</div>
 		<div class="modal-body">
@@ -94,6 +96,11 @@
 	}
 	.pairing-card {
 		width: min(520px, 100%);
+	}
+	/* The mark before the title: this is the first screen a new phone sees. */
+	.pairing-head {
+		justify-content: flex-start;
+		gap: 10px;
 	}
 	.pairing-lead,
 	.pairing-hint,

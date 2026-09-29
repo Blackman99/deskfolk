@@ -7,7 +7,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(18, 28, 32, 0.45);
+  background: var(--modal-backdrop);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;

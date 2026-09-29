@@ -215,8 +215,8 @@ function pickerMain(win: any, cfg: PickerConfig, lib: PickerLib): void {
   // in a browser; a DOM that leaves it undefined (a test's) is treated as the person.
   const synthetic = (ev: any): boolean => ev.isTrusted === false;
 
-  const ACCENT = "#2563eb";
-  const MUTED = "#8b929c";
+  const ACCENT = "#146a7c";
+  const MUTED = "#5f6d74";
   const TOP = "2147483647";
   const SKIP = /^(script|style|template|noscript|link|meta|title|base|head)$/;
   const BASE: Record<string, string> = {
@@ -300,21 +300,21 @@ function pickerMain(win: any, cfg: PickerConfig, lib: PickerLib): void {
     const color = kind === "resolved" ? MUTED : ACCENT;
     const fill =
       kind === "resolved"
-        ? "rgba(139,146,156,0.10)"
+        ? "rgba(95,109,116,0.10)"
         : kind === "draft"
-          ? "rgba(37,99,235,0.05)"
+          ? "rgba(20,106,124,0.05)"
           : kind === "pending"
-            ? "rgba(37,99,235,0.16)"
+            ? "rgba(20,106,124,0.16)"
             : kind === "hover"
-              ? "rgba(37,99,235,0.08)"
-              : "rgba(37,99,235,0.10)";
+              ? "rgba(20,106,124,0.08)"
+              : "rgba(20,106,124,0.10)";
     css(box, {
       position: "absolute",
       "z-index": TOP,
       border: (kind === "pending" ? "3px " : "2px ") + (stale ? "dashed " : kind === "draft" ? "dotted " : "solid ") + color,
       "border-radius": "3px",
       background: fill,
-      "box-shadow": flash ? "0 0 0 4px rgba(37,99,235,0.45)" : kind === "pending" ? "0 0 0 1px rgba(255,255,255,0.9)" : "none",
+      "box-shadow": flash ? "0 0 0 4px rgba(20,106,124,0.45)" : kind === "pending" ? "0 0 0 1px rgba(255,255,255,0.9)" : "none",
     });
   }
 

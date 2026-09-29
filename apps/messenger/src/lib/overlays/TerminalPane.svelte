@@ -88,7 +88,7 @@
 		z-index: 60;
 		display: flex;
 		justify-content: flex-end;
-		background: var(--scrim, rgba(0, 0, 0, 0.35));
+		background: var(--modal-backdrop);
 	}
 
 	.terminal-overlay-pane {

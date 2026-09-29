@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import BrandMark from '../BrandMark.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { formatShortcut } from '../keymap.ts';
@@ -166,6 +167,7 @@
 </script>
 
 <nav class="rail" aria-label={t.sidebar.sessions}>
+	<span class="rail-brand"><BrandMark size={26} /></span>
 	<RailTooltip
 		class="rail-action rail-expand"
 		label={shortcutTip(t.sidebar.show, formatShortcut(['mod', 'B']))}
@@ -361,8 +363,17 @@
 		transition: background 0.15s ease, color 0.15s ease;
 	}
 
+	/* The mark heads the folded list too, where the full one shows it beside the name. */
+	.rail-brand {
+		width: 64px;
+		display: flex;
+		justify-content: center;
+		padding-top: 12px;
+		flex-shrink: 0;
+	}
+
 	.rail :global(.rail-expand) {
-		margin-top: 10px;
+		margin-top: 8px;
 		margin-bottom: 4px;
 	}
 
@@ -404,7 +415,8 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: var(--danger);
+		/* An update is news, not an error: the same dot as the full sidebar's. */
+		background: var(--accent);
 	}
 
 	.rail-divider {
@@ -446,7 +458,7 @@
 	.rail :global(.rail-item.is-on),
 	.rail :global(.rail-item.is-context-open) {
 		background: var(--accent-tint);
-		border-color: var(--accent-border);
+		border-color: transparent;
 	}
 
 	.rail :global(.rail-item.is-on .row-avatar),
@@ -468,8 +480,8 @@
 		height: 15px;
 		padding: 0 3px;
 		border-radius: var(--radius-md);
-		background: var(--accent);
-		color: var(--on-accent);
+		background: var(--mustard);
+		color: var(--on-mustard);
 		font-size: 10px;
 		font-weight: 700;
 		display: flex;
@@ -481,5 +493,6 @@
 
 	.rail-badge.is-waiting {
 		background: var(--warn);
+		color: var(--on-warn);
 	}
 </style>

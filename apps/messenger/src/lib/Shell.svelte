@@ -2051,7 +2051,7 @@
 	.profile-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(18, 28, 32, 0.45);
+		background: var(--modal-backdrop);
 		backdrop-filter: blur(6px);
 		-webkit-backdrop-filter: blur(6px);
 		display: flex;
@@ -2069,7 +2069,7 @@
 		height: 100%;
 		border-right: none;
 		border-left: 1px solid var(--line);
-		box-shadow: -16px 0 36px -6px rgba(18, 28, 32, 0.18);
+		box-shadow: var(--shadow-sheet-end);
 		z-index: auto;
 		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 	}

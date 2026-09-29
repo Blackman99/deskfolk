@@ -1867,7 +1867,7 @@
 
 	.composer-quote-cancel:hover {
 		background: var(--line-subtle);
-		color: var(--text);
+		color: var(--ink);
 	}
 
 	/*

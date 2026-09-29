@@ -55,16 +55,15 @@ export type AvatarPalette = {
   border: string;
 };
 
-const PALETTES: readonly AvatarPalette[] = [
-  { bg: "#eff6ff", text: "#1d4ed8", border: "#bfdbfe" },
-  { bg: "#ecfdf5", text: "#047857", border: "#a7f3d0" },
-  { bg: "#f5f3ff", text: "#6d28d9", border: "#ddd6fe" },
-  { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
-  { bg: "#fdf2f8", text: "#be185d", border: "#fbcfe8" },
-  { bg: "#f0fdfa", text: "#0f766e", border: "#99f6e4" },
-  { bg: "#faf5ff", text: "#7e22ce", border: "#e9d5ff" },
-  { bg: "#f1f5f9", text: "#334155", border: "#cbd5e1" },
-];
+/**
+ * Eight brand-derived pairs, defined in tokens.css (`--av-N-*`) with a dark twin each. The values
+ * are `var()` references rather than colours so an inline `style:background` follows the theme.
+ */
+const PALETTES: readonly AvatarPalette[] = Array.from({ length: 8 }, (_, i) => ({
+  bg: `var(--av-${i + 1}-bg)`,
+  text: `var(--av-${i + 1}-text)`,
+  border: `var(--av-${i + 1}-line)`,
+}));
 
 /** Deterministic letter-block palette from a Bot id or name. */
 export function botAvatarColor(seed: string): AvatarPalette {

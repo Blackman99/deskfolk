@@ -79,3 +79,18 @@ select:focus-visible {
 .muted {
   color: var(--muted);
 }
+/*
+ * With reduced motion asked for, nothing slides, scales or pulses: the shared keyframes (modal
+ * scale-in, sheet slide-in, the status-dot pulse) and every component's own run for one frame and
+ * land on their end state. `animationend` still fires, so code waiting on it keeps working.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

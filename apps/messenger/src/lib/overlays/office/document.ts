@@ -23,7 +23,7 @@ export async function documentFrame(host: HTMLElement, title: string, signal: Ab
 	frame.title = title;
 	frame.setAttribute('sandbox', 'allow-same-origin');
 	frame.style.cssText = 'display:block;width:100%;height:100%;border:0;background:transparent;';
-	const html = injectHtmlPreviewNonce(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src 'none'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;min-height:100%;color:#171717;background:var(--office-fill,#eef2f6);font-family:system-ui,sans-serif}*{box-sizing:border-box}#office{min-height:100%;overflow:auto}.slides,.slides body{height:100%}.slides #office{display:flex;flex-direction:column;justify-content:center;height:100%;overflow:hidden}.slides #office>*{flex:none}.docx-wrapper{padding:16px!important;background:transparent!important}.docx-wrapper>section.docx{margin-bottom:16px!important}a{pointer-events:none;color:inherit}img{max-width:100%}@media(max-width:600px){.docx-wrapper{padding:8px!important}.docx-wrapper>section.docx{padding:24px!important}}</style></head><body><main id="office"></main></body></html>`, pageCspNonce());
+	const html = injectHtmlPreviewNonce(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src 'none'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;min-height:100%;color:#171717;background:var(--office-fill,#eef1f2);font-family:system-ui,sans-serif}*{box-sizing:border-box}#office{min-height:100%;overflow:auto}.slides,.slides body{height:100%}.slides #office{display:flex;flex-direction:column;justify-content:center;height:100%;overflow:hidden}.slides #office>*{flex:none}.docx-wrapper{padding:16px!important;background:transparent!important}.docx-wrapper>section.docx{margin-bottom:16px!important}a{pointer-events:none;color:inherit}img{max-width:100%}@media(max-width:600px){.docx-wrapper{padding:8px!important}.docx-wrapper>section.docx{padding:24px!important}}</style></head><body><main id="office"></main></body></html>`, pageCspNonce());
 	const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 	try {
 		await new Promise<void>((resolve, reject) => {
@@ -53,6 +53,6 @@ export async function documentFrame(host: HTMLElement, title: string, signal: Ab
 export function paintOfficeFill(frame: Document, from: Element): void {
 	const style = getComputedStyle(from);
 	const root = frame.documentElement;
-	root.style.setProperty('--office-fill', style.getPropertyValue('--bg').trim() || '#eef2f6');
+	root.style.setProperty('--office-fill', style.getPropertyValue('--bg').trim() || '#eef1f2');
 	root.style.colorScheme = style.colorScheme === 'dark' ? 'dark' : 'light';
 }

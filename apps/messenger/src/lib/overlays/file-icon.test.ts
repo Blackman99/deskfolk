@@ -4,7 +4,7 @@ import { fileIconFor } from "./file-icon.ts";
 test("fileIconFor maps kinds and common code suffixes", () => {
   expect(fileIconFor("src", { isDir: true })).toEqual({
     shape: "folder",
-    tint: "#64748b",
+    tint: "#5f6d74",
     letter: null,
   });
   expect(fileIconFor("shot.png").shape).toBe("image");
@@ -19,6 +19,6 @@ test("fileIconFor maps kinds and common code suffixes", () => {
   expect(fileIconFor("lib.rs").letter).toBe("RS");
   expect(fileIconFor("pkg.json").letter).toBe("{}");
   expect(fileIconFor("styles.css").letter).toBe("#");
-  expect(fileIconFor("notes.txt")).toEqual({ shape: "code", tint: "#64748b", letter: null });
+  expect(fileIconFor("notes.txt")).toEqual({ shape: "code", tint: "#5f6d74", letter: null });
   expect(fileIconFor("archive.zip").shape).toBe("file");
 });

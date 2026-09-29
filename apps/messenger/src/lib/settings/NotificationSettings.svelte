@@ -1249,7 +1249,7 @@
 		font-weight: 600;
 		border-radius: var(--radius-sm);
 		background: var(--warn);
-		color: #ffffff;
+		color: var(--on-warn);
 		border: none;
 		cursor: pointer;
 		transition: opacity 0.15s ease;

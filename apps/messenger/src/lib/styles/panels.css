@@ -108,7 +108,7 @@
 
 .action-btn.deny:hover:not(:disabled) {
   background: var(--danger);
-  color: #ffffff;
+  color: var(--on-danger);
   border-color: var(--danger);
 }
 

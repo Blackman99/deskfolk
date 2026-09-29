@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BrandMark from '../BrandMark.svelte';
 	import { untrack } from 'svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import McpSettings from './McpSettings.svelte';
@@ -1007,11 +1008,11 @@
 								{/if}
 
 								<div class="workspace-jail-callout">
-									<svg class="jail-callout-icon shrink-0 text-accent mt-1" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<svg class="jail-callout-icon shrink-0 text-muted mt-1" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
 									</svg>
 									<div class="jail-callout-content flex flex-col gap-[3px] min-w-0">
-										<span class="jail-callout-title text-12 font-semibold text-accent tracking-[0.01em]">{t.settings.workspaceSecurityBoundary}</span>
+										<span class="jail-callout-title text-12 font-semibold text-ink-secondary">{t.settings.workspaceSecurityBoundary}</span>
 										<p class="jail-callout-text m-0 text-12 leading-[1.45] text-muted">{JAIL_COPY[locale]}</p>
 									</div>
 								</div>
@@ -1663,12 +1664,7 @@ void runtime.setPushEnabled(enabled);
 						<div class="settings-card settings-card-about">
 							<!-- One block: the pane is already titled About, so the card leads with the app itself. -->
 							<div class="about-identity">
-								<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
-								<svg class="about-logo" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">
-									<path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" />
-									<circle cx="25" cy="29" r="10.5" fill="#ffffff" />
-									<circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3" />
-								</svg>
+								<BrandMark size={44} />
 								<div class="settings-row-info">
 									<h3 class="settings-card-title">Deskfolk</h3>
 									<span class="settings-row-desc">{t.settings.aboutDescription}</span>
@@ -2068,12 +2064,11 @@ void runtime.setPushEnabled(enabled);
 		background: var(--row-hover);
 	}
 
+	/* The open page is tinted the way the open conversation is in the sidebar. */
 	.settings-sidebar .settings-tab-btn.is-active {
 		color: var(--accent);
-		background: var(--pane);
-		border-color: var(--line);
+		background: var(--accent-tint);
 		font-weight: 600;
-		box-shadow: var(--shadow-xs);
 	}
 
 	.settings-sidebar .settings-tab-btn .tab-icon {
@@ -2230,7 +2225,7 @@ void runtime.setPushEnabled(enabled);
 		height: 15px;
 		border-radius: 50%;
 		background: var(--danger);
-		color: #ffffff;
+		color: var(--on-danger);
 		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
@@ -2241,14 +2236,15 @@ void runtime.setPushEnabled(enabled);
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: var(--danger);
+		/* An update is news, not an error: the sidebar's settings entry shows the same dot. */
+		background: var(--accent);
 		margin-left: auto;
 		flex-shrink: 0;
 		box-shadow: 0 0 0 2px var(--sidebar-bg);
 	}
 
 	.settings-sidebar .settings-tab-btn.is-active .tab-badge-dot {
-		box-shadow: 0 0 0 2px var(--pane);
+		box-shadow: none;
 	}
 
 	.settings-sidebar .settings-tab-btn:hover .tab-badge-dot {
@@ -2878,7 +2874,7 @@ void runtime.setPushEnabled(enabled);
 	.pairing-footnote {
 		margin: 0;
 		font-size: 12px;
-		color: var(--ink-tertiary, var(--ink-secondary));
+		color: var(--ink-secondary);
 		opacity: 0.85;
 	}
 
@@ -2915,14 +2911,12 @@ void runtime.setPushEnabled(enabled);
 		word-break: break-all;
 	}
 
+	/* A note on what the folder means, not an alert: no tinted box, the card's own text colours. */
 	.workspace-jail-callout {
 		display: flex;
 		align-items: flex-start;
-		gap: 10px;
-		padding: 10px 14px;
-		border-radius: var(--radius-md);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
+		gap: 8px;
+		padding: 2px 0 0;
 	}
 
 	/* Preferences Rows */
@@ -3098,10 +3092,6 @@ void runtime.setPushEnabled(enabled);
 		display: flex;
 		align-items: center;
 		gap: 14px;
-	}
-
-	.about-logo {
-		flex-shrink: 0;
 	}
 
 	.about-status-banner.is-ok {

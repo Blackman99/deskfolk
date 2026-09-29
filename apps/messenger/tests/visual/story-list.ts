@@ -27,6 +27,8 @@ export const STORY_SIZES = {
 	// The row under an open context menu: a rule that used to live in the last file imported,
 	// so its cascade position was doing work that scoping has to reproduce.
 	'sidebar-context': { width: 300, height: 820 },
+	// No conversation yet: the list's empty state with its two ways to start one.
+	'sidebar-empty': { width: 300, height: 820 },
 	// Bot↔Bot directs: capped list with a source line under each row, and the entry point the
 	// transcript hangs under the message that set them off. Neither appears in any other shot.
 	'sidebar-botdm': { width: 300, height: 820 },

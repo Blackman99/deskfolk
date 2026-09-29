@@ -2,6 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import type { Bot, Routine } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import EmptyState from '../EmptyState.svelte';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
@@ -198,19 +199,20 @@
 
 	{#if routines.length === 0 && !(standalone && !onPhone())}
 		<div class="routine-empty-card">
-			<div class="routine-empty-icon" aria-hidden="true">
-				<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="3" y="4" width="18" height="18" rx="2"></rect>
-					<line x1="16" y1="2" x2="16" y2="6"></line>
-					<line x1="8" y1="2" x2="8" y2="6"></line>
-					<line x1="3" y1="10" x2="21" y2="10"></line>
-				</svg>
-			</div>
-			<p class="routine-empty">{t.routines.empty}</p>
-			<button type="button" class="btn-primary routine-empty-btn" disabled={disabled} onclick={() => open()}>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-				<span>{t.routines.add}</span>
-			</button>
+			<EmptyState size="inline" level={3} title={t.routines.empty} hint={t.routines.emptyHint}>
+				{#snippet badge()}
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="4" width="18" height="18" rx="2"></rect>
+						<line x1="16" y1="2" x2="16" y2="6"></line>
+						<line x1="8" y1="2" x2="8" y2="6"></line>
+						<line x1="3" y1="10" x2="21" y2="10"></line>
+					</svg>
+				{/snippet}
+				<button type="button" class="btn-primary routine-empty-btn" disabled={disabled} onclick={() => open()}>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+					<span>{t.routines.add}</span>
+				</button>
+			</EmptyState>
 		</div>
 	{/if}
 
@@ -494,12 +496,10 @@
 
 <style>
 	.routine-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-	.routine-hint, .routine-empty { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+	.routine-hint { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 	.routine-mobile-zone-hint { display: none; }
 
-	.routine-empty-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px 16px; border: 1px dashed var(--line); border-radius: var(--radius-lg); background: var(--pane); text-align: center; }
-	.routine-empty-icon { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; background: var(--sidebar-bg); color: var(--muted); }
-	.routine-empty { font-size: 13px; }
+	.routine-empty-card { display: flex; justify-content: center; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); }
 	.routine-empty-btn { display: inline-flex; align-items: center; gap: 6px; }
 
 	.routine-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
@@ -627,9 +627,7 @@
 		.routine-open:active { opacity: 0.85; }
 		.routine-clock { font-size: 24px; width: 68px; }
 
-		.routine-empty-card { padding: 36px 16px; }
-		.routine-empty-icon { width: 56px; height: 56px; }
-		.routine-empty { font-size: 14px; }
+		.routine-empty-card { padding: 20px 16px; }
 		.routine-empty-btn { min-height: 42px; padding: 0 20px; font-size: 14px; }
 
 		/* Mobile Page Slide-over */
