@@ -310,6 +310,55 @@ test("the group headers keep their own + on a wider window, and there is no floa
   close();
 });
 
+test("a narrow desktop footer keeps the icons and drops the words", () => {
+  const OriginalObserver = globalThis.ResizeObserver;
+  const observers: Array<{ el: HTMLElement; callback: ResizeObserverCallback }> = [];
+  let width = 180;
+  const widthOf = (el: HTMLElement) => (el.classList.contains("foot") ? width : 0);
+  const realClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  const realScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() { return widthOf(this as HTMLElement) || realClient?.get?.call(this) || 0; } });
+  Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get() { return (this as HTMLElement).classList.contains("foot") ? ((this as HTMLElement).classList.contains("is-compact") ? 120 : 240) : realScroll?.get?.call(this) || 0; } });
+  globalThis.ResizeObserver = class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(el: Element) { observers.push({ el: el as HTMLElement, callback: this.callback }); }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  const { host, close } = open([], null, true);
+  const foot = host.querySelector<HTMLElement>(".foot")!;
+  const labels = () => [...foot.querySelectorAll<HTMLElement>(".foot-label")];
+  const buttons = () => [...foot.querySelectorAll<HTMLButtonElement>(".foot-action")];
+  try {
+    const measure = () => observers.at(-1)?.callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver);
+    measure();
+    flushSync();
+    expect(foot.classList.contains("is-compact")).toBe(true);
+    const sheets = [...document.querySelectorAll("style")].map((style) => style.textContent ?? "").join("\n");
+    expect(sheets).toContain(".foot.is-compact");
+    expect(sheets).toContain(".foot-label");
+    expect(sheets).toMatch(/\.foot\.is-compact[^{]*\.foot-label[^{]*\{\s*display:\s*none/);
+    expect(buttons().every((button) => button.querySelector("svg"))).toBe(true);
+    expect(buttons().map((button) => button.getAttribute("aria-label"))).toEqual([
+      t.sidebar.workspace, t.sidebar.tools, t.sidebar.settings,
+    ]);
+    // Still narrow, and measuring again must not bring the words back just because they now fit.
+    measure();
+    flushSync();
+    expect(foot.classList.contains("is-compact")).toBe(true);
+    width = 260;
+    measure();
+    flushSync();
+    expect(foot.classList.contains("is-compact")).toBe(false);
+    expect(labels()).toHaveLength(3);
+  } finally {
+    if (realClient) Object.defineProperty(HTMLElement.prototype, "clientWidth", realClient);
+    if (realScroll) Object.defineProperty(HTMLElement.prototype, "scrollWidth", realScroll);
+    globalThis.ResizeObserver = OriginalObserver;
+    close();
+  }
+});
+
 test('desktop footer exposes three labelled entries and dispatches each tool', () => {
   const { host, runtime, created, close } = open([], null, true);
   flushSync(() => { runtime.snapshot.settings.workspace_path = '/fixture'; });

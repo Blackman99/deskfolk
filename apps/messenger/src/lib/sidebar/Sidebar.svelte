@@ -137,6 +137,31 @@
 	let viewingArchived = $state(false);
 
 	let phone = $state(false);
+	/** The footer row. Its labels hide once the three of them no longer fit beside each other. */
+	let footEl = $state<HTMLElement | null>(null);
+	let footCompact = $state(false);
+	$effect(() => {
+		const foot = footEl;
+		if (!foot || typeof ResizeObserver !== 'function') return;
+		// How wide the row is while its words are showing. A plain variable, not state: reading the
+		// state here would rerun this effect the moment the words hide, and forget the width.
+		let labelWidth = 0;
+		let compact = false;
+		const measure = () => {
+			const room = foot.clientWidth;
+			if (!compact) {
+				labelWidth = foot.scrollWidth;
+				compact = labelWidth > room + 1;
+			} else if (labelWidth > 0 && labelWidth <= room + 1) {
+				compact = false;
+			}
+			footCompact = compact;
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(foot);
+		return () => observer.disconnect();
+	});
 	$effect(() => {
 		if (typeof window.matchMedia !== 'function') return;
 		const query = window.matchMedia('(max-width: 680px)');
@@ -581,7 +606,7 @@
 	</div>
 	</div>
 	{#if !phone}
-		<div class="foot">
+		<div class="foot" class:is-compact={footCompact} bind:this={footEl}>
 			<button
 				type="button"
 				class="foot-action"
@@ -595,7 +620,7 @@
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
 				</svg>
-				<span>{t.sidebar.workspace}</span>
+				<span class="foot-label">{t.sidebar.workspace}</span>
 			</button>
 			{@render toolsToggle()}
 			<button
@@ -610,7 +635,7 @@
 					<circle cx="12" cy="12" r="3"></circle>
 					<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 				</svg>
-				<span>{t.sidebar.settings}</span>
+				<span class="foot-label">{t.sidebar.settings}</span>
 				{#if updateChecker.updateVisible}
 					<span class="foot-badge is-dot" aria-hidden="true"></span>
 				{/if}
@@ -693,7 +718,7 @@
 			<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
 		</svg>
 		{#if !phone}
-			<span>{t.sidebar.tools}</span>
+			<span class="foot-label">{t.sidebar.tools}</span>
 			<svg class="tools-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>
 		{/if}
 	</button>
@@ -1649,10 +1674,13 @@
 		}
 	}
 
-	@container sidebar-footer (max-width: 230px) {
-		.foot-action svg {
-			display: none;
-		}
+	/* Three labels no longer fit, so the words go and the icons stay. */
+	.foot.is-compact .foot-label {
+		display: none;
+	}
+
+	.foot.is-compact .foot-action {
+		padding-inline: 8px;
 	}
 
 	.foot-action:hover:not(:disabled) {
