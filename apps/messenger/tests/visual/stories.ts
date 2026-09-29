@@ -962,7 +962,26 @@ const maintenanceRuntime = (over: Record<string, unknown> = {}) =>
 		...over
 	});
 
+function onboardingValidationRuntime() {
+	const runtime = reactive(fakeRuntime({}, {
+		workspacePath: '',
+		probeModels: async () => ({ ok: true, models: [], catalog: [] }),
+		createProvider: async () => {
+			runtime.snapshot.settings.wizard_complete = true;
+			return null;
+		}
+	}));
+	return runtime;
+}
+
 export const rc11Stories = {
+	'onboarding-validation': {
+		component: Shell as never,
+		props: { runtime: onboardingValidationRuntime() },
+		width: 1000,
+		height: 900,
+		afterMount(host: HTMLElement) { document.body.style.width = '100vw'; document.body.style.height = '100dvh'; host.style.width = '100vw'; host.style.height = '100dvh'; }
+	},
 	'global-search': {
 		component: Shell as never,
 		props: { runtime: searchStoryRuntime() },

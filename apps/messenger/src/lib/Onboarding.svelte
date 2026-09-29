@@ -6,7 +6,7 @@
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import {
-		looksLikeAbsoluteOrHome,
+		planWorkspaceSave,
 		mapSettingsError,
 		parseModelLines,
 		type FieldErrorKind,
@@ -76,7 +76,25 @@
 	let showManualModelEdit = $state(false);
 	let customModelInput = $state('');
 
+	const workspacePlan = $derived(planWorkspaceSave(runtime.workspacePath));
+	const connectionPlan = $derived(planCreateProvider({
+		...emptyProviderDraft(),
+		name: providerName,
+		baseUrl: runtime.endpointUrl,
+		apiKey: runtime.endpointKey.trim()
+	}, true));
 	const selectedModels = $derived(parseModelLines(runtime.endpointModelsText));
+	const defaultModel = $derived(runtime.endpointDefaultModel.trim());
+	const modelErrors = $derived.by(() => {
+		const errors: ProviderFieldErrors = {};
+		if (selectedModels.length === 0) errors.models = 'empty';
+		if (!defaultModel) errors.defaultModel = 'empty';
+		else if (selectedModels.length > 0 && !selectedModels.includes(defaultModel)) errors.defaultModel = 'invalid';
+		return errors;
+	});
+	const canCompleteSetup = $derived(
+		(workspaceReadOnly || workspacePlan.ok) && connectionPlan.ok && !modelErrors.models && !modelErrors.defaultModel
+	);
 	const allKnownModels = $derived(
 		Array.from(new Set([...selectedModels, ...availableDiscoveredModels]))
 	);
@@ -136,6 +154,11 @@
 			runtime.endpointDefaultModel = preset.defaultModel;
 		} else {
 			providerName = t.onboarding.presetCustom;
+		}
+		if (fieldErrors.name) {
+			const next = { ...fieldErrors };
+			delete next.name;
+			fieldErrors = next;
 		}
 		if (fieldErrors.endpoint) {
 			const next = { ...fieldErrors };
@@ -207,13 +230,8 @@
 	}
 
 	function advanceFromStep1(): void {
-		const ws = runtime.workspacePath.trim();
-		if (!ws) {
-			fieldErrors = { ...fieldErrors, workspace: 'empty' };
-			return;
-		}
-		if (!looksLikeAbsoluteOrHome(ws)) {
-			fieldErrors = { ...fieldErrors, workspace: 'invalid' };
+		if (!workspacePlan.ok) {
+			fieldErrors = { ...fieldErrors, workspace: workspacePlan.error };
 			return;
 		}
 		const errs = { ...fieldErrors };
@@ -222,28 +240,17 @@
 		currentStep = 2;
 	}
 
-	function advanceFromStep2(): void {
-		const ep = runtime.endpointUrl.trim();
-		const key = runtime.endpointKey.trim();
-		let hasErr = false;
+	function validateConnection(): boolean {
 		const errs = { ...fieldErrors };
-		if (!ep) {
-			errs.endpoint = 'empty';
-			hasErr = true;
-		} else if (!ep.startsWith('http://') && !ep.startsWith('https://')) {
-			errs.endpoint = 'invalid';
-			hasErr = true;
-		} else {
-			delete errs.endpoint;
-		}
-		if (!key) {
-			errs.endpointKey = 'empty';
-			hasErr = true;
-		} else {
-			delete errs.endpointKey;
-		}
-		fieldErrors = errs;
-		if (hasErr) return;
+		delete errs.name;
+		delete errs.endpoint;
+		delete errs.endpointKey;
+		fieldErrors = connectionPlan.ok ? errs : { ...errs, ...connectionPlan.errors };
+		return connectionPlan.ok;
+	}
+
+	function advanceFromStep2(): void {
+		if (!validateConnection()) return;
 		currentStep = 3;
 		if (availableDiscoveredModels.length <= 6 && runtime.endpointUrl && runtime.endpointKey) {
 			void fetchModels();
@@ -252,26 +259,18 @@
 
 	function goToStep(step: 1 | 2 | 3): void {
 		if (setupSaved) return;
-		if (workspaceReadOnly && step === 1) {
-			currentStep = 2;
+		if (workspaceReadOnly && step === 1) step = 2;
+		if (step <= currentStep) {
+			currentStep = step;
 			return;
 		}
-		if (step === 1) {
+		// Forward tabs must take the same validation path as the Next buttons.
+		if (!workspaceReadOnly) {
 			currentStep = 1;
-		} else if (step === 2) {
-			if (workspaceReadOnly || runtime.workspacePath.trim()) currentStep = 2;
-			else advanceFromStep1();
-		} else if (step === 3) {
-			if ((workspaceReadOnly || runtime.workspacePath.trim()) && runtime.endpointUrl.trim() && runtime.endpointKey.trim()) {
-				currentStep = 3;
-			} else if (!workspaceReadOnly && !runtime.workspacePath.trim()) {
-				currentStep = 1;
-				advanceFromStep1();
-			} else {
-				currentStep = 2;
-				advanceFromStep2();
-			}
+			advanceFromStep1();
+			if (fieldErrors.workspace) return;
 		}
+		if (step === 3) advanceFromStep2();
 	}
 
 	function toggleModelSelection(model: string): void {
@@ -286,23 +285,23 @@
 		if (!next.includes(runtime.endpointDefaultModel)) {
 			runtime.endpointDefaultModel = next[0] ?? '';
 		}
-		if (fieldErrors.models && next.length > 0) {
-			const errs = { ...fieldErrors };
-			delete errs.models;
-			fieldErrors = errs;
-		}
-		if (fieldErrors.defaultModel && runtime.endpointDefaultModel) {
-			const errs = { ...fieldErrors };
-			delete errs.defaultModel;
-			fieldErrors = errs;
-		}
+		clearResolvedModelErrors();
+	}
+
+	function clearResolvedModelErrors(): void {
+		const models = parseModelLines(runtime.endpointModelsText);
+		const errs = { ...fieldErrors };
+		if (models.length > 0) delete errs.models;
+		if (models.includes(runtime.endpointDefaultModel.trim())) delete errs.defaultModel;
+		fieldErrors = errs;
 	}
 
 	function selectAllModels(): void {
 		runtime.endpointModelsText = filteredModels.join('\n');
-		if (!runtime.endpointDefaultModel && filteredModels.length > 0) {
-			runtime.endpointDefaultModel = filteredModels[0];
+		if (!filteredModels.includes(runtime.endpointDefaultModel)) {
+			runtime.endpointDefaultModel = filteredModels[0] ?? '';
 		}
+		clearResolvedModelErrors();
 	}
 
 	function deselectAllModels(): void {
@@ -330,28 +329,29 @@
 		saveFailed = false;
 		fieldErrors = {};
 		const workspace = runtime.workspacePath.trim();
-		if (!workspaceReadOnly) {
-			if (!workspace) {
-				fieldErrors = { workspace: 'empty' };
-				currentStep = 1;
-				return;
-			}
-			if (!looksLikeAbsoluteOrHome(workspace)) {
-				fieldErrors = { workspace: 'invalid' };
-				currentStep = 1;
-				return;
-			}
+		if (!workspaceReadOnly && !workspacePlan.ok) {
+			fieldErrors = { workspace: workspacePlan.error };
+			currentStep = 1;
+			return;
 		}
+		if (!validateConnection()) {
+			currentStep = 2;
+			return;
+		}
+		// Unlike the settings editor, finishing onboarding needs a usable model selection.
+		// Check the user's draft before probing helpers can fill it in or clear a stale default.
+		fieldErrors = { ...fieldErrors, ...modelErrors };
+		if (modelErrors.models || modelErrors.defaultModel) return;
 		const providerPlan = planCreateProvider(
 			applyProbedModels(
 				{
 					...emptyProviderDraft(),
-					name: providerName || 'Default',
+					name: providerName,
 					baseUrl: runtime.endpointUrl,
 					apiKey: runtime.endpointKey,
-					models: parseModelLines(runtime.endpointModelsText),
+					models: selectedModels,
 					availableModels: probedModels,
-					defaultModel: runtime.endpointDefaultModel
+					defaultModel
 				},
 				{ models: probedModels, catalog: probedCatalog }
 			),
@@ -414,6 +414,7 @@
 	let botErrors = $state<CreateBotFieldErrors>({});
 	let botFailed = $state(false);
 	let creatingBot = $state(false);
+	const botPlan = $derived(planCreateBot(botDraft));
 
 	/**
 	 * A suggested first teammate, filled in so one click makes it. No model: it runs on the default
@@ -441,7 +442,7 @@
 		if (creatingBot) return;
 		botFailed = false;
 		botErrors = {};
-		const plan = planCreateBot(botDraft);
+		const plan = botPlan;
 		if (!plan.ok) {
 			botErrors = plan.errors;
 			return;
@@ -591,7 +592,7 @@
 
 					<div class="step-nav-footer">
 						<div></div>
-						<button type="button" class="btn-step-primary" onclick={advanceFromStep1}>
+						<button type="button" class="btn-step-primary" disabled={!workspacePlan.ok} onclick={advanceFromStep1}>
 							{t.onboarding.step1Next} →
 						</button>
 					</div>
@@ -627,6 +628,11 @@
 							id="onboarding-provider-name"
 							type="text"
 							bind:value={providerName}
+							oninput={() => {
+								const next = { ...fieldErrors };
+								delete next.name;
+								fieldErrors = next;
+							}}
 						/>
 						{#if fieldErrors.name}
 							<p class="field-error">{t.settings.providerNameEmpty}</p>
@@ -692,7 +698,7 @@
 								← {t.onboarding.prevStep}
 							</button>
 						{/if}
-						<button type="button" class="btn-step-primary" onclick={advanceFromStep2}>
+						<button type="button" class="btn-step-primary" disabled={!connectionPlan.ok} onclick={advanceFromStep2}>
 							{t.onboarding.step2Next} →
 						</button>
 					</div>
@@ -727,6 +733,10 @@
 								rows="3"
 								placeholder="gpt-4o"
 								bind:value={runtime.endpointModelsText}
+								oninput={(event) => {
+									runtime.endpointModelsText = event.currentTarget.value;
+									clearResolvedModelErrors();
+								}}
 							></textarea>
 						{:else}
 							<div class="models-selector-box">
@@ -814,7 +824,7 @@
 						<button type="button" class="btn-step-secondary" onclick={() => (currentStep = 2)}>
 							← {t.onboarding.prevStep}
 						</button>
-						<button type="button" class="btn-step-primary" onclick={handleComplete}>
+						<button type="button" class="btn-step-primary" disabled={!canCompleteSetup} onclick={handleComplete}>
 							{#if rosterEmpty}
 								{t.onboarding.step3Next} →
 							{:else}
@@ -870,7 +880,7 @@
 						<button type="button" class="btn-step-secondary" onclick={() => (holding = false)}>
 							{t.onboarding.skipBot}
 						</button>
-						<button type="button" class="btn-step-primary" disabled={creatingBot} onclick={createFirstBot}>
+						<button type="button" class="btn-step-primary" disabled={creatingBot || !botPlan.ok} onclick={createFirstBot}>
 							{t.onboarding.createBot} ✓
 						</button>
 					</div>
